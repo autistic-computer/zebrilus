@@ -1,4 +1,4 @@
-"""Score one lead run: metrics.py RUN_DIR [--row | --line | --briefs]."""
+"""Score one driver run: metrics.py RUN_DIR [--row | --line | --briefs]."""
 
 import json
 import pathlib
@@ -64,7 +64,7 @@ def ctx(u):
 
 def final_text(texts):
     for text in reversed(texts):
-        if "LEAD-DONE" in text:
+        if "DRIVER-DONE" in text:
             return text
     return texts[-1] if texts else ""
 
@@ -177,7 +177,7 @@ def metrics():
     m["approvals"] = approvals if TASK == "a" else 0
     m["bypass"] = bypass
     m["subagents"] = sum(1 for n in other if n in ("Agent", "Task"))
-    m["skill_loaded"] = int(any(c.get("name") == "Skill" and "lead" in json.dumps(c.get("input")) for c in calls))
+    m["skill_loaded"] = int(any(c.get("name") == "Skill" and "driver" in json.dumps(c.get("input")) for c in calls))
     m["other_tools"] = ",".join(sorted({n for n in other if n}))
     final = final_text(texts)
     m.update(score(final))

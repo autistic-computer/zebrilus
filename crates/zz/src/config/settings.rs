@@ -32,8 +32,8 @@ use zz_ui::{
 use crate::{
     app_icon::AppIconSetting,
     config::{
-        self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue, LeadEffort,
-        LeadModel, remove_config_key, set_config_key, set_interface_theme,
+        self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue, DriverEffort,
+        DriverModel, remove_config_key, set_config_key, set_interface_theme,
     },
     diagnostics,
     mux::{
@@ -78,20 +78,23 @@ const KEY_INPUT_WIDTH: f32 = 65.0;
 const CONFIG_EDITOR_FONT_SIZE: f32 = 12.0;
 const CONFIG_EDITOR_PADDING: f32 = 2.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
-const LEAD_MODELS: [(&str, &str); 5] = [
-    (LeadModel::Claude.as_str(), LeadModel::Claude.title()),
-    (LeadModel::Opus.as_str(), LeadModel::Opus.title()),
-    (LeadModel::Sonnet.as_str(), LeadModel::Sonnet.title()),
-    (LeadModel::Fable.as_str(), LeadModel::Fable.title()),
-    (LeadModel::Codex.as_str(), LeadModel::Codex.title()),
+const DRIVER_MODELS: [(&str, &str); 5] = [
+    (DriverModel::Claude.as_str(), DriverModel::Claude.title()),
+    (DriverModel::Opus.as_str(), DriverModel::Opus.title()),
+    (DriverModel::Sonnet.as_str(), DriverModel::Sonnet.title()),
+    (DriverModel::Fable.as_str(), DriverModel::Fable.title()),
+    (DriverModel::Codex.as_str(), DriverModel::Codex.title()),
 ];
-const LEAD_EFFORTS: [(&str, &str); 6] = [
-    (LeadEffort::Default.as_str(), LeadEffort::Default.title()),
-    (LeadEffort::Low.as_str(), LeadEffort::Low.title()),
-    (LeadEffort::Medium.as_str(), LeadEffort::Medium.title()),
-    (LeadEffort::High.as_str(), LeadEffort::High.title()),
-    (LeadEffort::Xhigh.as_str(), LeadEffort::Xhigh.title()),
-    (LeadEffort::Max.as_str(), LeadEffort::Max.title()),
+const DRIVER_EFFORTS: [(&str, &str); 6] = [
+    (
+        DriverEffort::Default.as_str(),
+        DriverEffort::Default.title(),
+    ),
+    (DriverEffort::Low.as_str(), DriverEffort::Low.title()),
+    (DriverEffort::Medium.as_str(), DriverEffort::Medium.title()),
+    (DriverEffort::High.as_str(), DriverEffort::High.title()),
+    (DriverEffort::Xhigh.as_str(), DriverEffort::Xhigh.title()),
+    (DriverEffort::Max.as_str(), DriverEffort::Max.title()),
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -1417,32 +1420,32 @@ impl SettingsView {
             .into_any_element()
     }
 
-    fn lead_stack(resolved: &AppConfig, cx: &Context<Self>) -> SettingsStack {
-        SettingsStack::titled("Lead")
+    fn driver_stack(resolved: &AppConfig, cx: &Context<Self>) -> SettingsStack {
+        SettingsStack::titled("Driver")
             .child(Self::boolean_setting(
-                ConfigKey::LeadAgent,
-                "Lead agent",
-                "Keep a lead running in a session named lead on this machine. Type > in an \
+                ConfigKey::DriverAgent,
+                "Driver Agent",
+                "Keep a driver running in a session named driver on this machine. Type > in an \
                  empty command palette to chat with it; the sidebar shows its last message.",
-                resolved.lead_agent,
+                resolved.driver_agent,
                 cx,
             ))
             .child(Self::palette_choice_setting(
-                ConfigKey::LeadModel,
+                ConfigKey::DriverModel,
                 "Model",
-                "The CLI and model the lead runs. A change applies when the lead next starts.",
-                resolved.lead_model.value.as_str(),
-                resolved.lead_model.provenance,
-                &LEAD_MODELS,
+                "The CLI and model the driver runs. A change applies when the driver next starts.",
+                resolved.driver_model.value.as_str(),
+                resolved.driver_model.provenance,
+                &DRIVER_MODELS,
                 cx,
             ))
             .child(Self::palette_choice_setting(
-                ConfigKey::LeadEffort,
+                ConfigKey::DriverEffort,
                 "Effort",
-                "How hard the lead thinks. Codex takes Max as Extra high.",
-                resolved.lead_effort.value.as_str(),
-                resolved.lead_effort.provenance,
-                &LEAD_EFFORTS,
+                "How hard the driver thinks. Codex takes Max as Extra high.",
+                resolved.driver_effort.value.as_str(),
+                resolved.driver_effort.provenance,
+                &DRIVER_EFFORTS,
                 cx,
             ))
     }
@@ -1492,7 +1495,7 @@ impl SettingsView {
         });
         Self::scroll_column("settings-agents")
             .child(settings_page_description(SettingsSection::Agents, cx))
-            .child(Self::lead_stack(resolved, cx))
+            .child(Self::driver_stack(resolved, cx))
             .children(stacks)
             .child(
                 h_flex().justify_end().child(
@@ -2552,9 +2555,9 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::StatusHost
                 | ConfigKey::StatusUpdate
                 | ConfigKey::ProgramColors
-                | ConfigKey::LeadAgent
-                | ConfigKey::LeadModel
-                | ConfigKey::LeadEffort
+                | ConfigKey::DriverAgent
+                | ConfigKey::DriverModel
+                | ConfigKey::DriverEffort
         )
     {
         return;
@@ -2687,9 +2690,9 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
         | ConfigKey::ChromeAccent
-        | ConfigKey::LeadAgent
-        | ConfigKey::LeadModel
-        | ConfigKey::LeadEffort => {
+        | ConfigKey::DriverAgent
+        | ConfigKey::DriverModel
+        | ConfigKey::DriverEffort => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }

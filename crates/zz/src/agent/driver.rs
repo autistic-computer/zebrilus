@@ -1,8 +1,8 @@
-//! The lead chat: the conversation with the lead agent, read from its pane's
-//! lens stream on whichever host runs it. The lead is the first terminal
-//! running Claude Code or Codex in a session named `lead`; zz follows it from
-//! every window, attached to that session or not. While `lead-agent` is on
-//! and no host has a `lead` session, zz starts one on this machine with the
+//! The driver chat: the conversation with the Driver Agent, read from its pane's
+//! lens stream on whichever host runs it. The driver is the first terminal
+//! running Claude Code or Codex in a session named `driver`; zz follows it from
+//! every window, attached to that session or not. While `driver-agent` is on
+//! and no host has a `driver` session, zz starts one on this machine with the
 //! model and effort the Agents settings pick.
 
 use std::{
@@ -35,25 +35,25 @@ use super::controller::{
     AgentController, AgentPaneState, AgentPermissionKind, AgentPermissionRequest, AgentThreadEntry,
 };
 use crate::{
-    config::{LeadEffort, LeadModel},
+    config::{DriverEffort, DriverModel},
     mux::{
         client::MuxClient,
         hosts::{HostId, HostState},
     },
 };
 
-/// The session zz looks in for the lead.
-pub(crate) const LEAD_SESSION: &str = "lead";
-/// Entries that arrive this soon after zz starts following a lead are its
+/// The session zz looks in for the driver.
+pub(crate) const DRIVER_SESSION: &str = "driver";
+/// Entries that arrive this soon after zz starts following a driver are its
 /// history being replayed, not messages arriving, so they get no time.
 const REPLAY_SETTLE: Duration = Duration::from_secs(3);
 const AGENT_NOTICE: &str = "[zz] Agent ";
-/// How long zz waits after starting a lead before it starts another, so a
+/// How long zz waits after starting a driver before it starts another, so a
 /// CLI that exits at once does not restart in a loop.
 const START_BACKOFF: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Lead {
+pub(crate) struct Driver {
     pub(crate) host: HostId,
     pub(crate) pane: PaneId,
     pub(crate) provider: AgentProvider,
@@ -62,21 +62,21 @@ pub(crate) struct Lead {
     pub(crate) program: Option<&'static Program>,
 }
 
-/// The lead: the first terminal running Claude Code or Codex in a session
-/// named [`LEAD_SESSION`], on the first host in fleet order that has one.
-pub(crate) fn find_lead(mux: &MuxClient, local_name: &SharedString) -> Option<Lead> {
+/// The driver: the first terminal running Claude Code or Codex in a session
+/// named [`DRIVER_SESSION`], on the first host in fleet order that has one.
+pub(crate) fn find_driver(mux: &MuxClient, local_name: &SharedString) -> Option<Driver> {
     mux.fleet_hosts().find_map(|(host, name, _, snapshot)| {
         let session = snapshot?
             .sessions
             .iter()
-            .find(|session| session.name == LEAD_SESSION)?;
+            .find(|session| session.name == DRIVER_SESSION)?;
         session
             .windows
             .iter()
             .flat_map(|window| window.panes.values())
             .filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal))
             .find_map(|pane| {
-                Some(Lead {
+                Some(Driver {
                     host,
                     pane: pane.id,
                     provider: pane_agent(pane)?,
@@ -94,16 +94,16 @@ pub(crate) fn find_lead(mux: &MuxClient, local_name: &SharedString) -> Option<Le
     })
 }
 
-/// The command zz starts the lead with: the CLI `model` names, with the
+/// The command zz starts the driver with: the CLI `model` names, with the
 /// model and effort as its flags. Codex has no `max` effort and gets `xhigh`.
-pub(crate) fn lead_command(model: LeadModel, effort: LeadEffort) -> String {
-    let effort = (effort != LeadEffort::Default).then_some(effort);
-    if model == LeadModel::Codex {
+pub(crate) fn driver_command(model: DriverModel, effort: DriverEffort) -> String {
+    let effort = (effort != DriverEffort::Default).then_some(effort);
+    if model == DriverModel::Codex {
         return effort.map_or_else(
             || "codex".to_owned(),
             |effort| {
-                let effort = if effort == LeadEffort::Max {
-                    LeadEffort::Xhigh
+                let effort = if effort == DriverEffort::Max {
+                    DriverEffort::Xhigh
                 } else {
                     effort
                 };
@@ -112,7 +112,7 @@ pub(crate) fn lead_command(model: LeadModel, effort: LeadEffort) -> String {
         );
     }
     let mut command = "claude".to_owned();
-    if model != LeadModel::Claude {
+    if model != DriverModel::Claude {
         command.push_str(" --model ");
         command.push_str(model.as_str());
     }
@@ -123,10 +123,10 @@ pub(crate) fn lead_command(model: LeadModel, effort: LeadEffort) -> String {
     command
 }
 
-/// Whether zz may start a lead on this machine now: this machine's daemon is
-/// connected and has sent its sessions, and no host zz reaches has a `lead`
+/// Whether zz may start a driver on this machine now: this machine's daemon is
+/// connected and has sent its sessions, and no host zz reaches has a `driver`
 /// session, with or without an agent in it.
-fn may_start_lead(mux: &MuxClient) -> bool {
+fn may_start_driver(mux: &MuxClient) -> bool {
     let mut local_ready = false;
     for (host, _, state, snapshot) in mux.fleet_hosts() {
         let Some(snapshot) = snapshot else {
@@ -135,7 +135,7 @@ fn may_start_lead(mux: &MuxClient) -> bool {
         if snapshot
             .sessions
             .iter()
-            .any(|session| session.name == LEAD_SESSION)
+            .any(|session| session.name == DRIVER_SESSION)
         {
             return false;
         }
@@ -147,42 +147,42 @@ fn may_start_lead(mux: &MuxClient) -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum LeadMessageKind {
+pub(crate) enum DriverMessageKind {
     Mine(Receipt),
-    Lead,
-    /// A notice zz typed into the lead about one of its agents.
+    Driver,
+    /// A notice zz typed into the driver about one of its agents.
     Agent(PaneId),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct LeadMessage {
+pub(crate) struct DriverMessage {
     pub(crate) id: u64,
-    pub(crate) kind: LeadMessageKind,
+    pub(crate) kind: DriverMessageKind,
     pub(crate) text: String,
 }
 
-/// The chat in a lead's transcript: your turns, the lead's last answer of each
+/// The chat in a driver's transcript: your turns, the driver's last answer of each
 /// finished turn, and zz's notices about agents, which zz types into the
-/// lead's pane as `[zz] Agent %N …`. A turn of yours reads as seen once the
-/// lead has done anything after it. Tool calls, thoughts and plans are left
+/// driver's pane as `[zz] Agent %N …`. A turn of yours reads as seen once the
+/// driver has done anything after it. Tool calls, thoughts and plans are left
 /// to the agents' own rows in the sidebar.
-pub(crate) fn lead_messages(entries: &[AgentThreadEntry], turn_live: bool) -> Vec<LeadMessage> {
+pub(crate) fn driver_messages(entries: &[AgentThreadEntry], turn_live: bool) -> Vec<DriverMessage> {
     let mut messages = Vec::new();
     let mut answer: Option<(u64, &str)> = None;
     for (index, entry) in entries.iter().enumerate() {
         match entry {
             AgentThreadEntry::User { id, markdown, .. } => {
                 if let Some((id, text)) = answer.take() {
-                    messages.push(LeadMessage {
+                    messages.push(DriverMessage {
                         id,
-                        kind: LeadMessageKind::Lead,
+                        kind: DriverMessageKind::Driver,
                         text: text.to_owned(),
                     });
                 }
                 if let Some((pane, text)) = agent_notice(markdown) {
-                    messages.push(LeadMessage {
+                    messages.push(DriverMessage {
                         id: *id,
-                        kind: LeadMessageKind::Agent(pane),
+                        kind: DriverMessageKind::Agent(pane),
                         text,
                     });
                     continue;
@@ -190,9 +190,9 @@ pub(crate) fn lead_messages(entries: &[AgentThreadEntry], turn_live: bool) -> Ve
                 let answered = entries[index + 1..]
                     .iter()
                     .any(|later| !matches!(later, AgentThreadEntry::User { .. }));
-                messages.push(LeadMessage {
+                messages.push(DriverMessage {
                     id: *id,
-                    kind: LeadMessageKind::Mine(if answered {
+                    kind: DriverMessageKind::Mine(if answered {
                         Receipt::Read
                     } else {
                         Receipt::Delivered
@@ -212,21 +212,21 @@ pub(crate) fn lead_messages(entries: &[AgentThreadEntry], turn_live: bool) -> Ve
         }
     }
     if let Some((id, text)) = answer.filter(|_| !turn_live) {
-        messages.push(LeadMessage {
+        messages.push(DriverMessage {
             id,
-            kind: LeadMessageKind::Lead,
+            kind: DriverMessageKind::Driver,
             text: text.to_owned(),
         });
     }
     messages
 }
 
-/// What the lead is doing in its live turn, one short line per step, oldest
+/// What the driver is doing in its live turn, one short line per step, oldest
 /// first: the item its plan has in progress, then each step since the last
 /// message it got, in the words its CLI gives the step where it gives any
 /// (a Bash call's description, an agent's task, a reasoning summary's title)
 /// and from the tool and what it touches otherwise.
-pub(crate) fn lead_steps(entries: &[AgentThreadEntry]) -> Vec<String> {
+pub(crate) fn driver_steps(entries: &[AgentThreadEntry]) -> Vec<String> {
     let start = entries
         .iter()
         .rposition(|entry| matches!(entry, AgentThreadEntry::User { .. }))
@@ -326,7 +326,7 @@ fn single_line(text: &str) -> String {
     text.lines().next().unwrap_or_default().trim().to_owned()
 }
 
-/// The agent and the words of a notice zz typed into the lead, or `None`
+/// The agent and the words of a notice zz typed into the driver, or `None`
 /// for anything else. `finished` and `stopped` notices carry the agent's
 /// reply after a blank line; the rest are one sentence about the agent.
 fn agent_notice(text: &str) -> Option<(PaneId, String)> {
@@ -346,11 +346,11 @@ fn agent_notice(text: &str) -> Option<(PaneId, String)> {
     Some((pane, body))
 }
 
-pub(crate) struct LeadChat {
+pub(crate) struct DriverChat {
     mux: Entity<MuxClient>,
     controller: Entity<AgentController>,
     local_name: SharedString,
-    lead: Option<Lead>,
+    driver: Option<Driver>,
     following_since: Instant,
     times: HashMap<u64, Option<SharedString>>,
     read: usize,
@@ -358,13 +358,13 @@ pub(crate) struct LeadChat {
     started: Option<Instant>,
 }
 
-impl LeadChat {
+impl DriverChat {
     pub(crate) fn new(
         mux: Entity<MuxClient>,
         local_name: SharedString,
         cx: &mut Context<Self>,
     ) -> Self {
-        let controller = cx.new(|_| AgentController::for_lead());
+        let controller = cx.new(|_| AgentController::for_driver());
         controller.update(cx, |controller, _| controller.attach_mux(mux.clone()));
         cx.observe(&mux, |chat, _, cx| chat.synchronize(cx))
             .detach();
@@ -379,7 +379,7 @@ impl LeadChat {
             mux,
             controller,
             local_name,
-            lead: None,
+            driver: None,
             following_since: Instant::now(),
             times: HashMap::new(),
             read: 0,
@@ -392,20 +392,23 @@ impl LeadChat {
 
     fn synchronize(&mut self, cx: &mut Context<Self>) {
         let config = crate::config::resolved_config(cx);
-        let lead = if config.lead_agent.value {
-            let lead = find_lead(self.mux.read(cx), &self.local_name);
-            if lead.is_none() {
-                self.start(config.lead_model.value, config.lead_effort.value, cx);
+        let driver = if config.driver_agent.value {
+            let driver = find_driver(self.mux.read(cx), &self.local_name);
+            if driver.is_none() {
+                self.start(config.driver_model.value, config.driver_effort.value, cx);
             }
-            lead
+            driver
         } else {
             None
         };
-        if lead != self.lead {
-            let pane = lead.as_ref().map(|lead| lead.pane);
+        if driver != self.driver {
+            let pane = driver.as_ref().map(|driver| driver.pane);
             let same_pane = pane.is_some()
-                && self.lead.as_ref().map(|lead| (lead.host, lead.pane))
-                    == lead.as_ref().map(|lead| (lead.host, lead.pane));
+                && self
+                    .driver
+                    .as_ref()
+                    .map(|driver| (driver.host, driver.pane))
+                    == driver.as_ref().map(|driver| (driver.host, driver.pane));
             if !same_pane {
                 self.times.clear();
                 self.read = 0;
@@ -414,17 +417,20 @@ impl LeadChat {
             }
             self.controller.update(cx, |controller, cx| {
                 controller.retain_panes(&pane.into_iter().collect::<BTreeSet<_>>(), cx);
-                if let Some(lead) = &lead {
-                    controller.ensure_pane(lead.pane, lead.provider, lead.cwd.clone());
+                if let Some(driver) = &driver {
+                    controller.ensure_pane(driver.pane, driver.provider, driver.cwd.clone());
                 }
             });
-            self.lead = lead;
+            self.driver = driver;
             cx.notify();
         }
-        let followed = self.lead.as_ref().map(|lead| (lead.host, lead.pane));
+        let followed = self
+            .driver
+            .as_ref()
+            .map(|driver| (driver.host, driver.pane));
         let events = self.mux.update(cx, |mux, _| {
-            mux.follow_lead(followed);
-            mux.has_lead_events().then(|| mux.take_lead_events())
+            mux.follow_driver(followed);
+            mux.has_driver_events().then(|| mux.take_driver_events())
         });
         if let Some(events) = events {
             self.controller.update(cx, |controller, cx| {
@@ -438,22 +444,22 @@ impl LeadChat {
         }
     }
 
-    /// Start a lead in a new `lead` session on this machine, in the home
+    /// Start a driver in a new `driver` session on this machine, in the home
     /// folder, unless one may be on its way.
-    fn start(&mut self, model: LeadModel, effort: LeadEffort, cx: &App) {
+    fn start(&mut self, model: DriverModel, effort: DriverEffort, cx: &App) {
         if self
             .started
             .is_some_and(|started| started.elapsed() < START_BACKOFF)
-            || !may_start_lead(self.mux.read(cx))
+            || !may_start_driver(self.mux.read(cx))
         {
             return;
         }
-        let mut arguments = vec!["-d".to_owned(), "-s".to_owned(), LEAD_SESSION.to_owned()];
+        let mut arguments = vec!["-d".to_owned(), "-s".to_owned(), DRIVER_SESSION.to_owned()];
         if let Some(home) = std::env::var_os("HOME") {
             arguments.push("-c".to_owned());
             arguments.push(home.to_string_lossy().into_owned());
         }
-        arguments.push(lead_command(model, effort));
+        arguments.push(driver_command(model, effort));
         self.mux.read(cx).execute_on_host(
             HostId::LOCAL,
             CommandInvocation::new("new-session", arguments),
@@ -462,7 +468,7 @@ impl LeadChat {
     }
 
     fn stamp(&mut self, cx: &App) {
-        let Some(pane) = self.lead.as_ref().map(|lead| lead.pane) else {
+        let Some(pane) = self.driver.as_ref().map(|driver| driver.pane) else {
             return;
         };
         let Some((entries, _, _)) = self.controller.read(cx).pane_entries(pane) else {
@@ -476,59 +482,59 @@ impl LeadChat {
         }
     }
 
-    pub(crate) fn lead(&self) -> Option<&Lead> {
-        self.lead.as_ref()
+    pub(crate) fn driver(&self) -> Option<&Driver> {
+        self.driver.as_ref()
     }
 
     fn state(&self, cx: &App) -> Option<AgentPaneState> {
         self.controller
             .read(cx)
-            .pane_state(self.lead.as_ref()?.pane)
+            .pane_state(self.driver.as_ref()?.pane)
     }
 
-    /// Whether the lead is in a turn, which the composer's button queues
+    /// Whether the driver is in a turn, which the composer's button queues
     /// behind.
     pub(crate) fn running(&self, cx: &App) -> bool {
         self.state(cx)
             .is_some_and(|state| state.connection.has_active_turn())
     }
 
-    pub(crate) fn messages(&self, cx: &App) -> Vec<LeadMessage> {
-        let Some(lead) = &self.lead else {
+    pub(crate) fn messages(&self, cx: &App) -> Vec<DriverMessage> {
+        let Some(driver) = &self.driver else {
             return Vec::new();
         };
         self.controller
             .read(cx)
-            .pane_entries(lead.pane)
-            .map(|(entries, _, _)| lead_messages(entries, self.running(cx)))
+            .pane_entries(driver.pane)
+            .map(|(entries, _, _)| driver_messages(entries, self.running(cx)))
             .unwrap_or_default()
     }
 
-    /// The lead's last answer, which the sidebar shows.
+    /// The driver's last answer, which the sidebar shows.
     pub(crate) fn last_answer(&self, cx: &App) -> Option<String> {
         self.messages(cx)
             .into_iter()
             .rev()
-            .find(|message| message.kind == LeadMessageKind::Lead)
+            .find(|message| message.kind == DriverMessageKind::Driver)
             .map(|message| message.text)
     }
 
-    /// The lead's steps in its live turn, or `None` while it is not working.
+    /// The driver's steps in its live turn, or `None` while it is not working.
     pub(crate) fn steps(&self, cx: &App) -> Option<Vec<String>> {
-        let lead = self.lead.as_ref()?;
+        let driver = self.driver.as_ref()?;
         if !self.running(cx) {
             return None;
         }
         Some(
             self.controller
                 .read(cx)
-                .pane_entries(lead.pane)
-                .map(|(entries, _, _)| lead_steps(entries))
+                .pane_entries(driver.pane)
+                .map(|(entries, _, _)| driver_steps(entries))
                 .unwrap_or_default(),
         )
     }
 
-    /// The thread as a surface draws it: the bubbles, then the lead typing
+    /// The thread as a surface draws it: the bubbles, then the driver typing
     /// with its latest steps while it works. The count grows with every
     /// bubble and step, and when an answer takes the typing bubble's place,
     /// so a surface can follow the bottom as it grows.
@@ -574,9 +580,9 @@ impl LeadChat {
         self.error.as_ref()
     }
 
-    /// Type `text` into the lead's pane as your turn.
+    /// Type `text` into the driver's pane as your turn.
     pub(crate) fn send(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
-        let Some(pane) = self.lead.as_ref().map(|lead| lead.pane) else {
+        let Some(pane) = self.driver.as_ref().map(|driver| driver.pane) else {
             return false;
         };
         let sent = self.controller.update(cx, |controller, cx| {
@@ -601,7 +607,7 @@ impl LeadChat {
     }
 
     fn respond(&mut self, request_id: u64, option_id: Option<String>, cx: &mut Context<Self>) {
-        let Some(pane) = self.lead.as_ref().map(|lead| lead.pane) else {
+        let Some(pane) = self.driver.as_ref().map(|driver| driver.pane) else {
             return;
         };
         self.controller.update(cx, |controller, cx| {
@@ -609,12 +615,12 @@ impl LeadChat {
         });
     }
 
-    /// Who an agent notice is about: its window's name on the lead's host and
+    /// Who an agent notice is about: its window's name on the driver's host and
     /// the program its tile shows.
     fn sender(&self, pane: PaneId, cx: &App) -> ChatSender {
-        let found = self.lead.as_ref().and_then(|lead| {
+        let found = self.driver.as_ref().and_then(|driver| {
             let mux = self.mux.read(cx);
-            let snapshot = mux.host_snapshot(lead.host)?;
+            let snapshot = mux.host_snapshot(driver.host)?;
             snapshot
                 .sessions
                 .iter()
@@ -638,11 +644,11 @@ impl LeadChat {
         }
     }
 
-    /// The lead's tile and name for the chat header.
-    pub(crate) fn lead_sender(&self) -> Option<ChatSender> {
-        self.lead.as_ref().map(|lead| ChatSender {
-            name: "Lead".into(),
-            program: lead.program,
+    /// The driver's tile and name for the chat header.
+    pub(crate) fn driver_sender(&self) -> Option<ChatSender> {
+        self.driver.as_ref().map(|driver| ChatSender {
+            name: "Driver".into(),
+            program: driver.program,
         })
     }
 
@@ -659,14 +665,14 @@ impl LeadChat {
                     .unwrap_or_default();
                 let id = (scope, usize::try_from(message.id).unwrap_or(usize::MAX));
                 match message.kind {
-                    LeadMessageKind::Mine(receipt) => ChatBubble::mine(id, message.text, time)
+                    DriverMessageKind::Mine(receipt) => ChatBubble::mine(id, message.text, time)
                         .receipt(receipt)
                         .on(ground)
                         .into_any_element(),
-                    LeadMessageKind::Lead => ChatBubble::theirs(id, message.text, time)
+                    DriverMessageKind::Driver => ChatBubble::theirs(id, message.text, time)
                         .on(ground)
                         .into_any_element(),
-                    LeadMessageKind::Agent(pane) => ChatBubble::theirs(id, message.text, time)
+                    DriverMessageKind::Agent(pane) => ChatBubble::theirs(id, message.text, time)
                         .sender(self.sender(pane, cx))
                         .on(ground)
                         .into_any_element(),
@@ -676,7 +682,7 @@ impl LeadChat {
     }
 
     /// The oldest approval or question waiting on you, as the lens's
-    /// permission card; picking an option answers it in the lead's pane.
+    /// permission card; picking an option answers it in the driver's pane.
     pub(crate) fn ask(chat: &Entity<Self>, scope: &'static str, cx: &App) -> Option<AnyElement> {
         let request: AgentPermissionRequest = chat
             .read(cx)
@@ -734,18 +740,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_lead_starts_with_its_model_and_effort_as_flags() {
+    fn the_driver_starts_with_its_model_and_effort_as_flags() {
         assert_eq!(
-            lead_command(LeadModel::Claude, LeadEffort::Default),
+            driver_command(DriverModel::Claude, DriverEffort::Default),
             "claude"
         );
         assert_eq!(
-            lead_command(LeadModel::Opus, LeadEffort::Xhigh),
+            driver_command(DriverModel::Opus, DriverEffort::Xhigh),
             "claude --model opus --effort xhigh"
         );
-        assert_eq!(lead_command(LeadModel::Codex, LeadEffort::Default), "codex");
         assert_eq!(
-            lead_command(LeadModel::Codex, LeadEffort::Max),
+            driver_command(DriverModel::Codex, DriverEffort::Default),
+            "codex"
+        );
+        assert_eq!(
+            driver_command(DriverModel::Codex, DriverEffort::Max),
             "codex -c model_reasoning_effort=xhigh",
             "Codex has no max effort"
         );
@@ -769,7 +778,7 @@ mod tests {
     }
 
     #[test]
-    fn a_turn_shows_only_the_leads_last_answer_once_it_ends() {
+    fn a_turn_shows_only_the_drivers_last_answer_once_it_ends() {
         let entries = [
             user(1, "status?"),
             answer(2, "Let me check the panes."),
@@ -777,28 +786,28 @@ mod tests {
             user(4, "thanks"),
         ];
         assert_eq!(
-            lead_messages(&entries, false),
+            driver_messages(&entries, false),
             vec![
-                LeadMessage {
+                DriverMessage {
                     id: 1,
-                    kind: LeadMessageKind::Mine(Receipt::Read),
+                    kind: DriverMessageKind::Mine(Receipt::Read),
                     text: "status?".into()
                 },
-                LeadMessage {
+                DriverMessage {
                     id: 3,
-                    kind: LeadMessageKind::Lead,
+                    kind: DriverMessageKind::Driver,
                     text: "Three agents are working.".into()
                 },
-                LeadMessage {
+                DriverMessage {
                     id: 4,
-                    kind: LeadMessageKind::Mine(Receipt::Delivered),
+                    kind: DriverMessageKind::Mine(Receipt::Delivered),
                     text: "thanks".into()
                 },
             ]
         );
-        let live = lead_messages(&entries[..3], true);
+        let live = driver_messages(&entries[..3], true);
         assert_eq!(live.len(), 1);
-        assert_eq!(live[0].kind, LeadMessageKind::Mine(Receipt::Read));
+        assert_eq!(live[0].kind, DriverMessageKind::Mine(Receipt::Read));
     }
 
     #[test]
@@ -811,7 +820,7 @@ mod tests {
             user(2, "[zz] Agent %7 is waiting for a permission answer."),
             user(3, "[zz] Agent %9 stopped (max turns):\n\nHalf done."),
         ];
-        let messages = lead_messages(&entries, false);
+        let messages = driver_messages(&entries, false);
         assert_eq!(
             messages
                 .iter()
@@ -819,14 +828,14 @@ mod tests {
                 .collect::<Vec<_>>(),
             [
                 (
-                    LeadMessageKind::Agent(PaneId(5)),
+                    DriverMessageKind::Agent(PaneId(5)),
                     "Sprite sheet is done at 32px."
                 ),
                 (
-                    LeadMessageKind::Agent(PaneId(7)),
+                    DriverMessageKind::Agent(PaneId(7)),
                     "Waiting for a permission answer."
                 ),
-                (LeadMessageKind::Agent(PaneId(9)), "Half done."),
+                (DriverMessageKind::Agent(PaneId(9)), "Half done."),
             ]
         );
         assert_eq!(agent_notice("[zz] Agentless"), None);
@@ -880,15 +889,15 @@ mod tests {
             tool(
                 6,
                 AgentToolKindModel::Read,
-                "Read crates/zz/src/agent/lead.rs",
-                Some("/home/me/zz/crates/zz/src/agent/lead.rs:40"),
-                &serde_json::json!({"file_path": "/home/me/zz/crates/zz/src/agent/lead.rs"}),
+                "Read crates/zz/src/agent/driver.rs",
+                Some("/home/me/zz/crates/zz/src/agent/driver.rs:40"),
+                &serde_json::json!({"file_path": "/home/me/zz/crates/zz/src/agent/driver.rs"}),
             ),
             tool(
                 7,
                 AgentToolKindModel::Read,
-                "Read crates/zz/src/agent/lead.rs",
-                Some("/home/me/zz/crates/zz/src/agent/lead.rs"),
+                "Read crates/zz/src/agent/driver.rs",
+                Some("/home/me/zz/crates/zz/src/agent/driver.rs"),
                 &serde_json::json!({}),
             ),
             AgentThreadEntry::Reasoning {
@@ -913,17 +922,17 @@ mod tests {
             ),
         ];
         assert_eq!(
-            lead_steps(&entries),
+            driver_steps(&entries),
             [
                 "Committing the changes",
                 "Show dirty files",
-                "Reading lead.rs",
+                "Reading driver.rs",
                 "Writing the message",
                 "Searching for pinned",
                 "Running git commit -m 'x'",
             ]
         );
-        assert_eq!(lead_steps(&entries[..2]), ["Running zz ls"]);
-        assert!(lead_steps(&entries[..3]).is_empty());
+        assert_eq!(driver_steps(&entries[..2]), ["Running zz ls"]);
+        assert!(driver_steps(&entries[..3]).is_empty());
     }
 }

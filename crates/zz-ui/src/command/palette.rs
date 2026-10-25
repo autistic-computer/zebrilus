@@ -49,7 +49,7 @@ pub enum PalettePill {
         status: PaletteStatus,
     },
     Command(SharedString),
-    /// A mode named by the program behind it, such as the lead agent.
+    /// A mode named by the program behind it, such as the Driver Agent.
     Program {
         label: SharedString,
         program: &'static zz_client::program::Program,

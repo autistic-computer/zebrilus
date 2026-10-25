@@ -1,4 +1,4 @@
-"""Create one host's lab fixtures for a lead run, or check them afterwards.
+"""Create one host's lab fixtures for a driver run, or check them afterwards.
 
 ssh HOST python3 - setup|check RUN TOKEN HOST < fixtures.py
 

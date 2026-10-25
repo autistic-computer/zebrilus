@@ -220,7 +220,7 @@ so a message that lands just as an earlier turn ends can return that turn's end.
 `agent-send -t %N --wait ''` (empty text, no `--context`) posts nothing and skips the
 [agent lens](/concepts/agent-lens.md), which would refuse an empty prompt. It prints a kept late reply
 at once, returns at once with empty text when the pane is idle, and otherwise waits for the reply
-or the end of the running turn the same way. A lead re-arms a timed-out wait this way without
+or the end of the running turn the same way. A driver re-arms a timed-out wait this way without
 nudging the worker. Terminal panes without a Claude Code record treat empty text the same way on
 `@agent_state` alone. Since the lens, `--wait` with text to a pane running `claude` types it and
 reads the transcript instead, so this inbox wait serves panes whose program is not recognized as

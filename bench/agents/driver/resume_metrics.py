@@ -1,4 +1,4 @@
-"""Score a killed-and-resumed lead run: resume_metrics.py RUN_DIR [--row]."""
+"""Score a killed-and-resumed driver run: resume_metrics.py RUN_DIR [--row]."""
 
 import datetime
 import json
@@ -50,7 +50,7 @@ bash = [c["input"].get("command", "") for c in calls if c.get("name") == "Bash"]
 rows = usage_rows(post)
 pre_rows = usage_rows(pre)
 done_ts = next((e["timestamp"] for e in post if e.get("type") == "assistant" and any(
-    b.get("type") == "text" and "LEAD-DONE" in b.get("text", "") for b in e["message"]["content"])), None)
+    b.get("type") == "text" and "DRIVER-DONE" in b.get("text", "") for b in e["message"]["content"])), None)
 first_ts = next((e["timestamp"] for e in post if e.get("timestamp")), None)
 
 outcome = json.loads(subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("metrics.py")), str(D)],

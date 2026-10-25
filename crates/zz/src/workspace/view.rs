@@ -686,7 +686,7 @@ impl AppRevision {
 enum OverlayKind {
     CommandPalette,
     #[cfg(feature = "agent-pane")]
-    LeadPalette,
+    DriverPalette,
     ChooseBuffer,
     ChooseTree,
     DisplayPanes,
@@ -810,7 +810,7 @@ pub struct AppView {
     display_panes: Option<Entity<DisplayPanesView>>,
     command_palette: Option<Entity<CommandPaletteView>>,
     #[cfg(feature = "agent-pane")]
-    lead_palette: Option<Entity<crate::agent::lead_palette::LeadPalette>>,
+    driver_palette: Option<Entity<crate::agent::driver_palette::DriverPalette>>,
     path_picker: Option<PathPickerOverlay>,
     local_palette_prompt_revision: Option<u64>,
     local_palette_chooser_revision: Option<u64>,
@@ -1177,8 +1177,8 @@ impl AppView {
         cx.subscribe_in(
             &sidebar,
             window,
-            |view, _, _: &crate::workspace::sidebar::SidebarOpenLead, window, cx| {
-                view.open_lead_palette(window, cx);
+            |view, _, _: &crate::workspace::sidebar::SidebarOpenDriver, window, cx| {
+                view.open_driver_palette(window, cx);
             },
         )
         .detach();
@@ -1219,7 +1219,7 @@ impl AppView {
             display_panes: None,
             command_palette: None,
             #[cfg(feature = "agent-pane")]
-            lead_palette: None,
+            driver_palette: None,
             path_picker: None,
             local_palette_prompt_revision: None,
             local_palette_chooser_revision: None,
@@ -1463,7 +1463,7 @@ impl AppView {
             || self.command_palette.as_ref().is_some_and(|palette| {
                 palette.read(cx).is_local() || palette.read(cx).is_window_chooser()
             })
-            || self.lead_palette_open()
+            || self.driver_palette_open()
             || self.path_picker.is_some()
             || self.sidebar.read(cx).route() == WorkspaceRoute::Settings
     }
@@ -1585,7 +1585,7 @@ impl AppView {
         self.discard_path_picker(cx);
         #[cfg(feature = "agent-pane")]
         {
-            self.lead_palette = None;
+            self.driver_palette = None;
         }
         let mux = self.mux.clone();
         mux.update(cx, |mux, _| mux.send_prefix_cancel());
@@ -1605,8 +1605,14 @@ impl AppView {
             cx.new(|cx| CommandPaletteView::new_unified(palette_backend(mux), mode, window, cx));
         #[cfg(feature = "agent-pane")]
         {
-            let lead = self.sidebar.read(cx).lead_chat().read(cx).lead().is_some();
-            palette.update(cx, |palette, cx| palette.offer_lead(lead, cx));
+            let driver = self
+                .sidebar
+                .read(cx)
+                .driver_chat()
+                .read(cx)
+                .driver()
+                .is_some();
+            palette.update(cx, |palette, cx| palette.offer_driver(driver, cx));
         }
         self.observe_command_palette(&palette, window, cx);
         palette.read(cx).focus(cx).focus(window, cx);
@@ -1616,58 +1622,58 @@ impl AppView {
         cx.notify();
     }
 
-    /// Open the palette in Lead mode: the lead chat in the palette's surface.
-    /// Does nothing while there is no lead or another overlay holds input.
+    /// Open the palette in Driver mode: the driver chat in the palette's surface.
+    /// Does nothing while there is no driver or another overlay holds input.
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn open_lead_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use crate::agent::lead_palette::{LeadPalette, LeadPaletteEvent};
-        let chat = self.sidebar.read(cx).lead_chat();
-        if chat.read(cx).lead().is_none() || self.menu.is_some() || self.confirm.is_some() {
+    pub(crate) fn open_driver_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::agent::driver_palette::{DriverPalette, DriverPaletteEvent};
+        let chat = self.sidebar.read(cx).driver_chat();
+        if chat.read(cx).driver().is_none() || self.menu.is_some() || self.confirm.is_some() {
             return;
         }
         self.command_palette = None;
         self.discard_path_picker(cx);
-        let palette = cx.new(|cx| LeadPalette::new(chat, window, cx));
+        let palette = cx.new(|cx| DriverPalette::new(chat, window, cx));
         cx.subscribe_in(&palette, window, |view, palette, event, window, cx| {
-            if view.lead_palette.as_ref() != Some(palette) {
+            if view.driver_palette.as_ref() != Some(palette) {
                 return;
             }
-            view.lead_palette = None;
+            view.driver_palette = None;
             view.focused_overlay = None;
             view.synchronized_signature = None;
             match event {
-                LeadPaletteEvent::Close => view.focus_active_pane(window, cx),
-                LeadPaletteEvent::LeaveMode => view.open_command_palette(None, window, cx),
+                DriverPaletteEvent::Close => view.focus_active_pane(window, cx),
+                DriverPaletteEvent::LeaveMode => view.open_command_palette(None, window, cx),
             }
             cx.notify();
         })
         .detach();
         palette.read(cx).focus(cx).focus(window, cx);
-        self.lead_palette = Some(palette);
-        self.focused_overlay = Some(OverlayKind::LeadPalette);
+        self.driver_palette = Some(palette);
+        self.focused_overlay = Some(OverlayKind::DriverPalette);
         self.synchronized_signature = None;
         cx.notify();
     }
 
     #[cfg(feature = "agent-pane")]
-    const fn lead_palette_open(&self) -> bool {
-        self.lead_palette.is_some()
+    const fn driver_palette_open(&self) -> bool {
+        self.driver_palette.is_some()
     }
 
     #[cfg(not(feature = "agent-pane"))]
-    const fn lead_palette_open(&self) -> bool {
+    const fn driver_palette_open(&self) -> bool {
         false
     }
 
     #[cfg(feature = "agent-pane")]
-    fn lead_palette_focus(&self, cx: &App) -> Option<(OverlayKind, FocusHandle)> {
-        self.lead_palette
+    fn driver_palette_focus(&self, cx: &App) -> Option<(OverlayKind, FocusHandle)> {
+        self.driver_palette
             .as_ref()
-            .map(|palette| (OverlayKind::LeadPalette, palette.read(cx).focus(cx)))
+            .map(|palette| (OverlayKind::DriverPalette, palette.read(cx).focus(cx)))
     }
 
     #[cfg(not(feature = "agent-pane"))]
-    fn lead_palette_focus(&self, _: &App) -> Option<(OverlayKind, FocusHandle)> {
+    fn driver_palette_focus(&self, _: &App) -> Option<(OverlayKind, FocusHandle)> {
         None
     }
 
@@ -1693,9 +1699,9 @@ impl AppView {
                     cx.notify();
                 }
                 #[cfg(feature = "agent-pane")]
-                CommandPaletteEvent::Lead => view.open_lead_palette(window, cx),
+                CommandPaletteEvent::Driver => view.open_driver_palette(window, cx),
                 #[cfg(not(feature = "agent-pane"))]
-                CommandPaletteEvent::Lead => {}
+                CommandPaletteEvent::Driver => {}
             }
         })
         .detach();
@@ -2033,7 +2039,7 @@ impl AppView {
             Some((OverlayKind::Confirm, confirm.read(cx).focus().clone()))
         } else if let Some(palette) = &self.command_palette {
             Some((OverlayKind::CommandPalette, palette.read(cx).focus(cx)))
-        } else if let Some(focus) = self.lead_palette_focus(cx) {
+        } else if let Some(focus) = self.driver_palette_focus(cx) {
             Some(focus)
         } else if let Some(picker) = &self.path_picker {
             Some((OverlayKind::PathPicker, picker.view.focus_handle(cx)))
@@ -2581,7 +2587,7 @@ impl AppView {
         self.audit_pane_focus("pass", window, cx);
         let floating_input = self.menu.is_some()
             || self.confirm.is_some()
-            || self.lead_palette_open()
+            || self.driver_palette_open()
             || self
                 .command_palette
                 .as_ref()
@@ -4630,7 +4636,7 @@ impl Render for AppView {
             );
         }
         #[cfg(feature = "agent-pane")]
-        if let Some(palette) = &self.lead_palette {
+        if let Some(palette) = &self.driver_palette {
             overlays.push(AnyView::from(palette.clone()).into_any_element());
         }
         if let Some(menu) = self.menu_overlay(canvas_origin, window, cx) {

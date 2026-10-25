@@ -5,7 +5,7 @@ S=$(cd "$(dirname "$0")" && pwd)
 OUT=${OUT:-$S/out}; mkdir -p "$OUT"; export OUT
 STAMP=$(date +%m%d%H%M%S)
 H=$OUT/harness-$STAMP
-mkdir -p "$H" && cp -R "$S"/*.sh "$S"/*.py "$S/skills" "$S/../../../scripts/lead-checkpoint.py" "$H/"
+mkdir -p "$H" && cp -R "$S"/*.sh "$S"/*.py "$S/skills" "$S/../../../scripts/driver-checkpoint.py" "$H/"
 "$H/snapshot.sh" "$OUT/snapshot-$STAMP"
 { if [ -n "${JOBS:-}" ]; then printf '%s\n' "$JOBS"; else
   for arm in ${ARMS:-none v2}; do for task in ${TASKS:-g f r a}; do for rep in $(seq 1 "${REPS:-1}"); do

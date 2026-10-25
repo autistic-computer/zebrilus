@@ -1,4 +1,4 @@
-"""Grade the briefs a lead sent its workers: judge.py RUN_DIR (prints JSON)."""
+"""Grade the briefs a driver sent its workers: judge.py RUN_DIR (prints JSON)."""
 
 import json
 import pathlib
@@ -13,7 +13,7 @@ if not briefs:
     print(json.dumps({"n": 0, "mean": "", "scores": []}))
     sys.exit(0)
 
-RUBRIC = """You grade task briefs that a lead agent sent to worker agents. Each worker starts with an
+RUBRIC = """You grade task briefs that a Driver Agent sent to worker agents. Each worker starts with an
 empty context and sees only its brief. Some items are shell commands that carry the brief
 (an agent-send call, a heredoc, or a CLI started with a prompt); grade the brief text inside.
 A follow-up message to a worker that already has a brief (a status question, an answer to its
@@ -21,7 +21,7 @@ question, a nudge) is not a brief: mark it "followup" and do not grade it.
 
 Give one point for each criterion the brief meets:
 1 goal: states the outcome wanted, not just an activity
-2 self_contained: a newcomer can act on it; no reference to things only the lead knows
+2 self_contained: a newcomer can act on it; no reference to things only the driver knows
 3 location: exact machine, paths, and branch where they matter
 4 scope: says what is in and what is out (files not to touch, no pushing, etc.)
 5 done: an explicit done criterion

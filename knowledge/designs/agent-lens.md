@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Agent lens . the agent view of a terminal pane
-description: "zz stops drawing its own agent pane. Claude Code and Codex run as their real TUIs in ordinary terminal panes, and a terminal running one of them gets a lens button in its header that swaps the cell grid for the agent timeline of that same pane. The daemon tails the transcript the CLI already writes (Claude's session jsonl, the rollout Codex holds open) through the existing translators, the lens composer pastes into the TUI, and a Claude permission prompt is answered with the keys the TUI takes. The Agent pane kind, its pickers and every place that treats it as a pane type are deleted; the native drivers stay for the lead chat."
+description: "zz stops drawing its own agent pane. Claude Code and Codex run as their real TUIs in ordinary terminal panes, and a terminal running one of them gets a lens button in its header that swaps the cell grid for the agent timeline of that same pane. The daemon tails the transcript the CLI already writes (Claude's session jsonl, the rollout Codex holds open) through the existing translators, the lens composer pastes into the TUI, and a Claude permission prompt is answered with the keys the TUI takes. The Agent pane kind, its pickers and every place that treats it as a pane type are deleted; the native drivers stay for the driver chat."
 status: Built and merged to main in d20c49f4b (2026-10-23; replaces the abandoned 2026-09-17 attempt)
 resource: crates/zz-daemon/src/agent/lens.rs
 tags:
@@ -17,7 +17,7 @@ timestamp: 2026-10-23T00:00:00Z
 # Rulings (fabrico, 2026-10-23)
 
 1. The vendors' own TUIs are the workers. zz no longer draws a full agent pane; it adds a lens over
-   terminal panes and, later, a lead chat in the sidebar (design canvas
+   terminal panes and, later, a driver chat in the sidebar (design canvas
    https://claude.ai/artifact/7HM478qCqYwJePXn82fcxa).
 2. A terminal pane whose foreground program is Claude Code or Codex shows a lens button in its
    header. Clicking it renders the agent timeline for that pane; clicking again shows the terminal.
@@ -27,7 +27,7 @@ timestamp: 2026-10-23T00:00:00Z
 4. Nothing may treat the agent as its own pane type any more: no `PaneKindSnapshot::Agent`, no
    `PaneTag::Agent`, no desktop or thin-client agent pane, no agent pane stories.
 5. The daemon agent runtime (native drivers, turn machine, journal, peers, codex queue, fanout)
-   stays, because the lead chat will run on it. A part goes only when nothing but the deleted pane
+   stays, because the driver chat will run on it. A part goes only when nothing but the deleted pane
    used it.
 
 # How the lens works
@@ -114,7 +114,7 @@ Codex, on desktop, web/iPad and PiP headers. With the lens on, the pane body is 
 composer under the same terminal header. The lens closes by itself when the pane goes away or the
 agent CLI stops being its foreground program. A client tracks the stream only for lenses it shows:
 opening sends a replay from seq 0 and starts a cursor, closing drops the cursor and anything
-buffered, so reopening replays from the start. The pieces kept for the lead chat are
+buffered, so reopening replays from the start. The pieces kept for the driver chat are
 `AgentTimeline` and its rows (`render_user_entry`, `render_answer`), `permission_card`, the question
 card, `AgentComposer` and the task tray.
 
@@ -138,7 +138,7 @@ card, `AgentComposer` and the task tray.
 
 | Area | Why |
 |---|---|
-| native drivers, turn machine, journal, fanout, host | the lead chat runs on them; the lens reuses host, journal and fanout |
+| native drivers, turn machine, journal, fanout, host | the driver chat runs on them; the lens reuses host, journal and fanout |
 | `AgentSetConfigOption`, `AgentSetMode`, `AgentSessionOp`, `AgentAuthenticate` | runtime commands the drivers answer; no pane UI sends them now |
 | `claude_peers.rs`, `codex_queue.rs`, `agent_waits.rs` | terminal `agent-send`, `@agent_state`, the peer bus |
 | `claude/sessions.rs`, `claude/translate.rs`, `codex/translate.rs`, `codex/rollout.rs` (`v2_item`) | the lens readers |
@@ -178,4 +178,4 @@ shape while its wrapper fields change, and Codex's `item_completed` records need
   other one's thread; matching the prompt the lens pasted to the rollout that records it would
   settle that.
 - `AgentSetConfigOption`, `AgentSetMode`, `AgentSessionOp`, `AgentAuthenticate` and the config, mode
-  and auth fields of `AgentPaneWire` serve only the lead chat now; drop them if it does not use them.
+  and auth fields of `AgentPaneWire` serve only the driver chat now; drop them if it does not use them.

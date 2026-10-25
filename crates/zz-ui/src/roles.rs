@@ -26,7 +26,7 @@ pub const CHROME_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "chrome.button",
     "Chrome buttons",
-    "Icon buttons on the window chrome: sidebar toggle, settings, list view, search, the lead chat, window overflow",
+    "Icon buttons on the window chrome: sidebar toggle, settings, list view, search, the driver chat, window overflow",
 )
 .with(P.ink(Ink::Rest));
 pub const WINDOW_TAB: SurfaceRole = SurfaceRole::under(
@@ -220,20 +220,20 @@ pub const CHAT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "chat.bubble",
     Kind::Card,
     "Chat bubbles",
-    "The lead's replies and agents' messages in the lead chat",
+    "The driver's replies and agents' messages in the driver chat",
 );
 pub const CHAT_MINE: SurfaceRole = SurfaceRole::under(
     &CHAT_BUBBLE,
     "chat.bubble.mine",
     "Your chat bubbles",
-    "Your messages to the lead, washed in the accent",
+    "Your messages to the driver, washed in the accent",
 )
 .with(P.fill(Fill::Tint));
 pub const CHAT_COMPOSER: SurfaceRole = SurfaceRole::new(
     "chat.composer",
     Kind::Field,
     "Chat composer",
-    "The one-line box you message the lead in",
+    "The one-line box you message the driver in",
 )
 .with(P.shape(Shape::Pill));
 pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::under(
@@ -246,7 +246,7 @@ pub const AGENT_SEND: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "agent.send",
     "Send",
-    "Send, queue and stop in the lens composer and the lead chat",
+    "Send, queue and stop in the lens composer and the driver chat",
 )
 .with(
     P.fill(Fill::Solid)
@@ -314,7 +314,7 @@ pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
     "inline-panel",
     Kind::Floating,
     "Inline panels",
-    "Panels raised inside a pane or the lead chat: question and approval cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
+    "Panels raised inside a pane or the driver chat: question and approval cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
 )
 .with_knobs(SurfaceRole::DIALOG.knobs());
 
@@ -453,7 +453,7 @@ pub const PALETTE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::POPOVER,
     "palette",
     "Command palette",
-    "The command palette, its Lead mode and the path picker",
+    "The command palette, its Driver mode and the path picker",
 );
 pub const PICKER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DIALOG,
@@ -539,7 +539,7 @@ pub const CHAT_RULE: SurfaceRole = SurfaceRole::new(
     "rule.chat",
     Kind::Rule,
     "Chat split",
-    "The line over the lead chat in the sidebar, dragged to resize it",
+    "The line over the driver chat in the sidebar, dragged to resize it",
 );
 
 /// zz's own roles, after the kit's. The theme creator lists every role

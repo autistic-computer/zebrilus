@@ -97,11 +97,11 @@ impl AgentEvents {
     }
 }
 
-/// The lead agent's pane, on whichever host runs it, and the stream zz
+/// The Driver Agent's pane, on whichever host runs it, and the stream zz
 /// follows it with: a cursor and buffer of its own, apart from the attached
-/// session's lenses, so the lead chat keeps up while you work elsewhere.
+/// session's lenses, so the driver chat keeps up while you work elsewhere.
 #[cfg(feature = "agent-pane")]
-struct LeadFeed {
+struct DriverFeed {
     host: HostId,
     pane: PaneId,
     cursor: u64,
@@ -1106,7 +1106,7 @@ pub struct MuxClient {
     #[cfg(feature = "agent-pane")]
     agent_lenses: BTreeSet<PaneId>,
     #[cfg(feature = "agent-pane")]
-    lead: Option<LeadFeed>,
+    driver: Option<DriverFeed>,
     screenshot_requests: Vec<(PaneId, u64, String)>,
     terminal_commands: BTreeMap<PaneId, Vec<TerminalUiCommand>>,
     pane_images: BTreeMap<PaneId, PaneImageSnapshots>,
@@ -1262,7 +1262,7 @@ impl MuxClient {
             #[cfg(feature = "agent-pane")]
             agent_lenses: BTreeSet::new(),
             #[cfg(feature = "agent-pane")]
-            lead: None,
+            driver: None,
             screenshot_requests: Vec::new(),
             terminal_commands: BTreeMap::new(),
             pane_images: BTreeMap::new(),
@@ -3950,14 +3950,14 @@ impl MuxClient {
         !self.agent_events.is_empty()
     }
 
-    /// Follow `lead`'s agent stream, or stop following one. Asks its host for
-    /// a replay from the cursor when the lead changes and whenever that
+    /// Follow `driver`'s agent stream, or stop following one. Asks its host for
+    /// a replay from the cursor when the driver changes and whenever that
     /// host's connection is a new one; the daemon keeps sending a pane's
     /// stream to a client that asked for it.
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn follow_lead(&mut self, lead: Option<(HostId, PaneId)>) {
-        if self.lead() != lead {
-            self.lead = lead.map(|(host, pane)| LeadFeed {
+    pub(crate) fn follow_driver(&mut self, driver: Option<(HostId, PaneId)>) {
+        if self.driver() != driver {
+            self.driver = driver.map(|(host, pane)| DriverFeed {
                 host,
                 pane,
                 cursor: 0,
@@ -3966,17 +3966,17 @@ impl MuxClient {
                 events: AgentEvents::default(),
             });
         }
-        let Some(feed) = &self.lead else {
+        let Some(feed) = &self.driver else {
             return;
         };
-        let client = self.lead_client(feed.host);
+        let client = self.driver_client(feed.host);
         if client.is_some() && client != feed.client {
-            self.request_lead_replay();
+            self.request_driver_replay();
         }
     }
 
     #[cfg(feature = "agent-pane")]
-    fn lead_client(&self, host: HostId) -> Option<usize> {
+    fn driver_client(&self, host: HostId) -> Option<usize> {
         self.connections
             .get(&host)
             .and_then(|connection| connection.client.as_ref())
@@ -3984,17 +3984,17 @@ impl MuxClient {
     }
 
     #[cfg(feature = "agent-pane")]
-    fn request_lead_replay(&mut self) {
+    fn request_driver_replay(&mut self) {
         let Some((host, pane, from_seq)) = self
-            .lead
+            .driver
             .as_ref()
             .map(|feed| (feed.host, feed.pane, feed.cursor))
         else {
             return;
         };
         let sent = self.send_agent_request_to(host, pane, AgentRequest::Replay { from_seq });
-        let client = self.lead_client(host);
-        if let Some(feed) = &mut self.lead
+        let client = self.driver_client(host);
+        if let Some(feed) = &mut self.driver
             && sent
         {
             feed.replay_pending = true;
@@ -4004,14 +4004,14 @@ impl MuxClient {
 
     #[cfg(feature = "agent-pane")]
     #[must_use]
-    pub(crate) fn lead(&self) -> Option<(HostId, PaneId)> {
-        self.lead.as_ref().map(|feed| (feed.host, feed.pane))
+    pub(crate) fn driver(&self) -> Option<(HostId, PaneId)> {
+        self.driver.as_ref().map(|feed| (feed.host, feed.pane))
     }
 
-    /// Everything the lead's stream delivered since the last call.
+    /// Everything the driver's stream delivered since the last call.
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn take_lead_events(&mut self) -> AgentEvents {
-        self.lead
+    pub(crate) fn take_driver_events(&mut self) -> AgentEvents {
+        self.driver
             .as_mut()
             .map(|feed| std::mem::take(&mut feed.events))
             .unwrap_or_default()
@@ -4019,30 +4019,30 @@ impl MuxClient {
 
     #[cfg(feature = "agent-pane")]
     #[must_use]
-    pub(crate) fn has_lead_events(&self) -> bool {
-        self.lead
+    pub(crate) fn has_driver_events(&self) -> bool {
+        self.driver
             .as_ref()
             .is_some_and(|feed| !feed.events.is_empty())
     }
 
-    /// Ship one agent request to the lead's pane on the lead's host.
+    /// Ship one agent request to the driver's pane on the driver's host.
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn send_lead_request(&self, request: AgentRequest) -> bool {
-        self.lead
+    pub(crate) fn send_driver_request(&self, request: AgentRequest) -> bool {
+        self.driver
             .as_ref()
             .is_some_and(|feed| self.send_agent_request_to(feed.host, feed.pane, request))
     }
 
     #[cfg(feature = "agent-pane")]
     fn following(&self, host: HostId, pane: PaneId) -> bool {
-        self.lead
+        self.driver
             .as_ref()
             .is_some_and(|feed| feed.host == host && feed.pane == pane)
     }
 
     #[cfg(feature = "agent-pane")]
-    fn apply_lead_updates(&mut self, first_seq: u64, items: Vec<Vec<u8>>) {
-        let Some(feed) = &mut self.lead else {
+    fn apply_driver_updates(&mut self, first_seq: u64, items: Vec<Vec<u8>>) {
+        let Some(feed) = &mut self.driver else {
             return;
         };
         let (accepted, gapped) = accept_agent_items(feed.pane, &mut feed.cursor, first_seq, items);
@@ -4051,7 +4051,7 @@ impl MuxClient {
         }
         if gapped {
             if !feed.replay_pending {
-                self.request_lead_replay();
+                self.request_driver_replay();
             }
         } else {
             feed.replay_pending = false;
@@ -4059,8 +4059,8 @@ impl MuxClient {
     }
 
     #[cfg(feature = "agent-pane")]
-    fn apply_lead_state(&mut self, state: zz_protocol::AgentPaneWire) {
-        if let Some(feed) = &mut self.lead {
+    fn apply_driver_state(&mut self, state: zz_protocol::AgentPaneWire) {
+        if let Some(feed) = &mut self.driver {
             feed.events.states.push((feed.pane, state));
         }
     }
@@ -4404,18 +4404,18 @@ impl MuxClient {
                         first_seq,
                         items,
                     } if self.following(host, pane) => {
-                        self.apply_lead_updates(first_seq, items);
+                        self.apply_driver_updates(first_seq, items);
                         cx.notify();
                     }
                     #[cfg(feature = "agent-pane")]
                     EventPayload::AgentState { pane, state } if self.following(host, pane) => {
-                        self.apply_lead_state(state);
+                        self.apply_driver_state(state);
                         cx.emit(AgentStateChanged);
                         cx.notify();
                     }
                     #[cfg(feature = "agent-pane")]
                     EventPayload::AgentLagged { pane, .. } if self.following(host, pane) => {
-                        self.request_lead_replay();
+                        self.request_driver_replay();
                     }
                     EventPayload::AppearanceChanged {
                         appearance,
@@ -4709,7 +4709,7 @@ impl MuxClient {
             } => {
                 #[cfg(feature = "agent-pane")]
                 if self.following(host, pane) {
-                    self.apply_lead_updates(first_seq, items.clone());
+                    self.apply_driver_updates(first_seq, items.clone());
                 }
                 self.apply_agent_updates(pane, first_seq, items);
             }
@@ -4718,7 +4718,7 @@ impl MuxClient {
                 if self.following(host, pane)
                     && let Some(state) = self.core.agent_state(pane).cloned()
                 {
-                    self.apply_lead_state(state);
+                    self.apply_driver_state(state);
                 }
                 cx.emit(AgentStateChanged);
                 #[cfg(feature = "agent-pane")]
@@ -4754,7 +4754,7 @@ impl MuxClient {
                 }
                 #[cfg(feature = "agent-pane")]
                 if self.following(host, pane) {
-                    self.request_lead_replay();
+                    self.request_driver_replay();
                 }
             }
             CoreEvent::Message(message) => self.handle_unreduced_message(*message, cx),
@@ -8392,7 +8392,7 @@ mod tests {
 
     #[cfg(feature = "agent-pane")]
     #[zz_gpui::test]
-    fn the_lead_is_followed_on_its_own_host_whatever_is_attached(cx: &mut TestAppContext) {
+    fn the_driver_is_followed_on_its_own_host_whatever_is_attached(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::config::set_fleet_hosts_for_test(vec![test_host("xps", "ssh://xps")], cx);
             let mux = cx.new(|cx| {
@@ -8406,8 +8406,8 @@ mod tests {
                 let xps = mux.registry.get_by_name("xps").unwrap().0;
                 let pane = PaneId(5);
                 let sink = mux.record_agent_requests_for_test();
-                mux.follow_lead(Some((xps, pane)));
-                assert_eq!(mux.lead(), Some((xps, pane)));
+                mux.follow_driver(Some((xps, pane)));
+                assert_eq!(mux.driver(), Some((xps, pane)));
                 let updates = |first_seq, items| {
                     ProtocolMessage::Event(Event {
                         sequence: 0,
@@ -8420,8 +8420,8 @@ mod tests {
                 };
                 mux.handle_message(HostId::LOCAL, updates(1, vec![agent_blob(1)]), cx);
                 assert!(
-                    !mux.has_lead_events(),
-                    "the same pane id on another host is not the lead"
+                    !mux.has_driver_events(),
+                    "the same pane id on another host is not the driver"
                 );
                 mux.handle_message(xps, updates(1, vec![agent_blob(1), agent_blob(2)]), cx);
                 let seqs = |events: AgentEvents| {
@@ -8431,18 +8431,18 @@ mod tests {
                         .flat_map(|(_, items)| items.into_iter().map(|item| item.seq))
                         .collect::<Vec<_>>()
                 };
-                assert_eq!(seqs(mux.take_lead_events()), [1, 2]);
+                assert_eq!(seqs(mux.take_driver_events()), [1, 2]);
                 mux.handle_message(xps, updates(5, vec![agent_blob(5)]), cx);
-                assert!(seqs(mux.take_lead_events()).is_empty());
+                assert!(seqs(mux.take_driver_events()).is_empty());
                 assert_eq!(
                     sink.borrow().last(),
                     Some(&(pane, AgentRequest::Replay { from_seq: 2 })),
-                    "a gap asks the lead's host for the rest"
+                    "a gap asks the driver's host for the rest"
                 );
-                assert!(mux.send_lead_request(AgentRequest::Cancel));
-                mux.follow_lead(None);
-                assert_eq!(mux.lead(), None);
-                assert!(!mux.send_lead_request(AgentRequest::Cancel));
+                assert!(mux.send_driver_request(AgentRequest::Cancel));
+                mux.follow_driver(None);
+                assert_eq!(mux.driver(), None);
+                assert!(!mux.send_driver_request(AgentRequest::Cancel));
             });
         });
     }

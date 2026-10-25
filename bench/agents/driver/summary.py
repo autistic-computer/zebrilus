@@ -1,4 +1,4 @@
-"""Pivot lead runs: summary.py RUNS_DIR... (each holds runs/*/metrics.json). Prints one row per model/arm/task."""
+"""Pivot driver runs: summary.py RUNS_DIR... (each holds runs/*/metrics.json). Prints one row per model/arm/task."""
 
 import collections
 import json
@@ -24,7 +24,7 @@ def fmt(value, digits=0):
     return "-" if value is None else f"{value:.{digits}f}"
 
 
-print("| model | arm | task | runs | pass | wrong done | wall s | lead tools | worker starts | polls | keys to workers | sleep s | peak ctx k | out tok k | brief |")
+print("| model | arm | task | runs | pass | wrong done | wall s | driver tools | worker starts | polls | keys to workers | sleep s | peak ctx k | out tok k | brief |")
 print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
 for (model, arm, task), ms in sorted(rows.items(), key=lambda kv: (kv[0][2], kv[0][0], kv[0][1])):
     print("| " + " | ".join([

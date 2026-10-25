@@ -57,7 +57,7 @@ false.
 
 `open_lens` is the only production caller of the agent runtime. The native Claude and Codex
 drivers, the ACP runtime and the [turn machine](/designs/agent-turn-machine.md) stay in the source
-for the lead chat, but no pane opens them now.
+for the driver chat, but no pane opens them now.
 
 # Where the timeline comes from
 
@@ -134,7 +134,7 @@ The delivery model is unchanged from the agent pane; the full contract is in the
 - **Watchers.** A client that sends `AgentReplay` for a pane watches it from then on, attached or
   not (`watched_agents` on the client entry): it gets the pane's `AgentUpdates`, `AgentState` and
   `AgentLagged` until it disconnects or the pane closes, and the pane's `AgentState` right away when
-  the watch starts. This is how the desktop's lead chat follows a lead agent on another host without
+  the watch starts. This is how the desktop's driver chat follows a Driver Agent on another host without
   attaching to its session, which would resize its panes, and how an attached client keeps a lens
   live while its focused window shows something else. A client that both sees and watches a pane is
   sent each frame once, and a watched pane leaving the visible set keeps its queued frames. There is

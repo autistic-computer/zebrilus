@@ -1,6 +1,6 @@
-//! The lead chat: your messages and the lead's answers as bubbles with a tail
+//! The driver chat: your messages and the driver's answers as bubbles with a tail
 //! on the speaker's side, an agent's message under its sidebar tile and name,
-//! read ticks on what you sent, and the one-line composer. The lead's model is
+//! read ticks on what you sent, and the one-line composer. The driver's model is
 //! a setting, so the composer carries no pickers.
 
 use zz_client::program::Program;
@@ -57,8 +57,8 @@ const HEADER_TILE: f32 = 16.0;
 const COMPOSER_PADDING_LEFT: f32 = 14.0;
 const COMPOSER_PADDING_RIGHT: f32 = 5.0;
 const THREAD_FADE: f32 = 28.0;
-const LEAD_THREAD_MAX: f32 = 360.0;
-/// How many of the lead's steps a [`ChatTyping`] shows.
+const DRIVER_THREAD_MAX: f32 = 360.0;
+/// How many of the driver's steps a [`ChatTyping`] shows.
 pub const TYPING_STEPS: usize = 3;
 const TYPING_PERIOD: std::time::Duration = std::time::Duration::from_millis(1300);
 const TYPING_BEAT: f32 = 0.14;
@@ -76,11 +76,11 @@ const STEP_CHECK: f32 = 12.0;
 /// How far a message you sent has got.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Receipt {
-    /// zz has it; the lead's pane does not yet.
+    /// zz has it; the driver's pane does not yet.
     Sent,
-    /// Typed into the lead's pane.
+    /// Typed into the driver's pane.
     Delivered,
-    /// The lead started a turn on it.
+    /// The driver started a turn on it.
     Read,
 }
 
@@ -102,7 +102,7 @@ impl Receipt {
     }
 }
 
-/// Who wrote a message the lead passed on: the agent's name as the sidebar
+/// Who wrote a message the driver passed on: the agent's name as the sidebar
 /// shows it, and the program its tile draws.
 #[derive(Clone)]
 pub struct ChatSender {
@@ -117,7 +117,7 @@ pub enum ChatSide {
 }
 
 /// One message. Yours sit right, washed in the accent, with a tail on the
-/// right and ticks after the time; the lead's and the agents' sit left with
+/// right and ticks after the time; the driver's and the agents' sit left with
 /// the tail on the left, and an agent's carries its tile and name on top.
 #[derive(IntoElement)]
 pub struct ChatBubble {
@@ -325,9 +325,9 @@ fn dot_lift(phase: f32, index: usize) -> f32 {
     }
 }
 
-/// The lead at work: a bubble on its side whose three dots rise in turn,
+/// The driver at work: a bubble on its side whose three dots rise in turn,
 /// with its latest steps, the newest beside the dots and the ones before it
-/// above, muted and ticked. A step is what the lead's CLI says it is doing,
+/// above, muted and ticked. A step is what the driver's CLI says it is doing,
 /// cut to one line; with none yet the bubble holds only the dots.
 #[derive(IntoElement)]
 pub struct ChatTyping {
@@ -345,7 +345,7 @@ impl ChatTyping {
         }
     }
 
-    /// The lead's steps so far, oldest first; the last [`TYPING_STEPS`] show.
+    /// The driver's steps so far, oldest first; the last [`TYPING_STEPS`] show.
     #[must_use]
     pub fn steps(mut self, steps: impl IntoIterator<Item = impl Into<SharedString>>) -> Self {
         self.steps = steps.into_iter().map(Into::into).collect();
@@ -524,7 +524,7 @@ fn sender_line(sender: &ChatSender, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// Who has read a message the lead routed on, under it on your side.
+/// Who has read a message the driver routed on, under it on your side.
 pub fn chat_seen(senders: &[ChatSender], cx: &App) -> AnyElement {
     h_flex()
         .debug_selector(|| "chat-seen".to_owned())
@@ -557,10 +557,10 @@ pub fn chat_thread(messages: impl IntoIterator<Item = AnyElement>) -> zz_gpui::D
         .children(messages)
 }
 
-/// The line over the thread: the lead's tile, its name and the host it runs
+/// The line over the thread: the driver's tile, its name and the host it runs
 /// on, and whatever the place it sits in puts at the end.
 pub fn chat_header(
-    lead: &ChatSender,
+    driver: &ChatSender,
     host: impl Into<SharedString>,
     trailing: Option<AnyElement>,
     cx: &App,
@@ -577,20 +577,20 @@ pub fn chat_header(
         .pr(px(12.0))
         .text_size(crate::rems_from_px(12.0))
         .text_color(theme.foreground.muted())
-        .children(sender_tile(lead, HEADER_TILE, cx))
+        .children(sender_tile(driver, HEADER_TILE, cx))
         .child(
             div()
                 .text_size(crate::rems_from_px(13.0))
                 .font_weight(zz_gpui::FontWeight::MEDIUM)
                 .text_color(theme.foreground)
-                .child(lead.name.clone()),
+                .child(driver.name.clone()),
         )
         .child(format!("on {}", host.into()))
         .child(div().flex_1())
         .children(trailing)
 }
 
-/// The lead's last word at the bottom of the sidebar, under the chat's rule:
+/// The driver's last word at the bottom of the sidebar, under the chat's rule:
 /// `header`, then `message`, its last answer or [`ChatTyping`] while it
 /// works. The caller makes a click open the chat.
 pub fn chat_latest(
@@ -615,8 +615,8 @@ pub fn chat_latest(
         )
 }
 
-/// The palette's footer keys in Lead mode.
-pub const LEAD_PALETTE_HINTS: [PaletteHint; 4] = [
+/// The palette's footer keys in Driver mode.
+pub const DRIVER_PALETTE_HINTS: [PaletteHint; 4] = [
     PaletteHint {
         key: "enter",
         label: "send",
@@ -635,17 +635,17 @@ pub const LEAD_PALETTE_HINTS: [PaletteHint; 4] = [
     },
 ];
 
-/// What the palette shows in Lead mode, under its input: the thread, up to
-/// `LEAD_THREAD_MAX` tall and scrolling with the same fade at its top, then
+/// What the palette shows in Driver mode, under its input: the thread, up to
+/// `DRIVER_THREAD_MAX` tall and scrolling with the same fade at its top, then
 /// an approval or question waiting on you. `fade` is the palette's fill.
-pub fn lead_palette_body(
+pub fn driver_palette_body(
     thread: impl IntoElement,
     ask: Option<AnyElement>,
     scroll: &ScrollHandle,
     fade: Hsla,
 ) -> zz_gpui::Div {
     v_flex()
-        .debug_selector(|| "lead-palette".to_owned())
+        .debug_selector(|| "driver-palette".to_owned())
         .w_full()
         .child(
             div()
@@ -653,8 +653,8 @@ pub fn lead_palette_body(
                 .w_full()
                 .child(
                     div()
-                        .id("lead-palette-thread")
-                        .max_h(px(LEAD_THREAD_MAX))
+                        .id("driver-palette-thread")
+                        .max_h(px(DRIVER_THREAD_MAX))
                         .overflow_y_scroll()
                         .track_scroll(scroll)
                         .child(thread),
@@ -683,7 +683,7 @@ pub fn chat_button(button: impl IntoElement, unread: Option<Hsla>) -> zz_gpui::D
         })
 }
 
-/// The one-line box you message the lead in, with the round action button at
+/// The one-line box you message the driver in, with the round action button at
 /// its end.
 #[derive(IntoElement)]
 pub struct ChatComposer {

@@ -1,8 +1,8 @@
-"""Prototype for knowledge/designs/durable-lead-chat.md: resume a lead from its checkpoint.
+"""Prototype for knowledge/designs/durable-driver-chat.md: resume a driver from its checkpoint.
 
-lead-checkpoint.py chat TRANSCRIPT              the conversation layer as JSON lines
-lead-checkpoint.py packet TRANSCRIPT|CHAT LEDGER  the first prompt of a restarted lead
-lead-checkpoint.py stop-hook                    Claude Code Stop hook: no turn ends with a stale ledger
+driver-checkpoint.py chat TRANSCRIPT              the conversation layer as JSON lines
+driver-checkpoint.py packet TRANSCRIPT|CHAT LEDGER  the first prompt of a restarted driver
+driver-checkpoint.py stop-hook                    Claude Code Stop hook: no turn ends with a stale ledger
 """
 
 import json
@@ -37,7 +37,7 @@ def writes_ledger(block):
 
 
 def chat(path):
-    """User prompts, worker notices and the lead's last text of each turn, with the checkpoints between them."""
+    """User prompts, worker notices and the driver's last text of each turn, with the checkpoints between them."""
     out, last_text = [], None
     for e in entries(path):
         message = e.get("message") or {}
@@ -50,7 +50,7 @@ def chat(path):
                     out.append({"ts": e.get("timestamp"), "role": "checkpoint"})
         elif e.get("type") == "user" and (e.get("origin") or {}).get("kind") == "peer":
             if last_text:
-                out.append({"ts": last_text[0], "role": "lead", "text": last_text[1]})
+                out.append({"ts": last_text[0], "role": "driver", "text": last_text[1]})
                 last_text = None
             origin = e["origin"]
             out.append({"ts": e.get("timestamp"), "role": "peer", "text": f"from {origin.get('name', '?')}: {origin.get('body', '')}"})
@@ -61,7 +61,7 @@ def chat(path):
             if not text:
                 continue
             if last_text:
-                out.append({"ts": last_text[0], "role": "lead", "text": last_text[1]})
+                out.append({"ts": last_text[0], "role": "driver", "text": last_text[1]})
                 last_text = None
             if text.startswith("<task-notification>"):
                 summary = re.search(r"<summary>(.*?)</summary>", text, re.S)
@@ -73,7 +73,7 @@ def chat(path):
             else:
                 out.append({"ts": e.get("timestamp"), "role": "user", "text": text})
     if last_text:
-        out.append({"ts": last_text[0], "role": "lead", "text": last_text[1]})
+        out.append({"ts": last_text[0], "role": "driver", "text": last_text[1]})
     return out
 
 
@@ -86,7 +86,7 @@ def packet(path, ledger):
     if users and users[-1] not in tail:
         tail = [users[-1]] + tail
     lines = [
-        "You are fabrico's lead and you were restarted: your previous process died, and with it every "
+        "You are fabrico's driver and you were restarted: your previous process died, and with it every "
         "wait you had running. Follow the Restarted section of your instructions.",
         "",
         "Your ledger.md as you last wrote it:",

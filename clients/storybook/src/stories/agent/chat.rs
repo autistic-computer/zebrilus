@@ -10,8 +10,8 @@ use zz_ui::{
     ActiveTheme as _, Ground, PaintState,
     agent::{
         chat::{
-            ChatBubble, ChatComposer, ChatSender, ChatTyping, LEAD_PALETTE_HINTS, Receipt,
-            chat_button, chat_header, chat_latest, chat_seen, chat_thread, lead_palette_body,
+            ChatBubble, ChatComposer, ChatSender, ChatTyping, DRIVER_PALETTE_HINTS, Receipt,
+            chat_button, chat_header, chat_latest, chat_seen, chat_thread, driver_palette_body,
         },
         controls::{composer_action, composer_action_button},
     },
@@ -42,18 +42,18 @@ use crate::story::{Framed as _, Section, Story, stateless, states};
 const CHAT_WIDTH: f32 = 340.0;
 const WINDOW_HEIGHT: f32 = 640.0;
 const PALETTE_TOP: f32 = 72.0;
-const PLACEHOLDER: &str = "Message the lead…";
+const PLACEHOLDER: &str = "Message the driver…";
 
 pub const STORY: Story = Story {
-    id: "lead-chat",
-    name: "Lead chat",
+    id: "driver-chat",
+    name: "Driver chat",
     group: "Agent",
-    summary: "The chat with the lead agent lives in the command palette's Lead mode: type > in an empty palette, click the title bar's chat button, or click the lead's last message at the bottom of the sidebar. Your messages sit right in the accent's wash with read ticks; the lead's answers and the agents' messages sit left, an agent's under its sidebar tile and name. Agents at work show as sidebar rows, so the chat carries no tool calls. The lead's model and effort are settings, under Agents.",
+    summary: "The chat with the Driver Agent lives in the command palette's Driver mode: type > in an empty palette, click the title bar's chat button, or click the driver's last message at the bottom of the sidebar. Your messages sit right in the accent's wash with read ticks; the driver's answers and the agents' messages sit left, an agent's under its sidebar tile and name. Agents at work show as sidebar rows, so the chat carries no tool calls. The driver's model and effort are settings, under Agents.",
     sections: &[
         Section {
             id: "messages",
             name: "Messages",
-            summary: "ChatBubble on the sidebar's ground. One tick: zz has it. Two: typed into the lead's pane. Two in the accent: the lead started a turn on it. The time and ticks keep the bubble's corner; a last line that would run into them wraps first. While the lead works, ChatTyping takes the place of its answer: three dots that rise in turn, and its latest steps in the words its CLI gives them (a Bash call's description, the plan item in progress), the newest beside the dots.",
+            summary: "ChatBubble on the sidebar's ground. One tick: zz has it. Two: typed into the driver's pane. Two in the accent: the driver started a turn on it. The time and ticks keep the bubble's corner; a last line that would run into them wraps first. While the driver works, ChatTyping takes the place of its answer: three dots that rise in turn, and its latest steps in the words its CLI gives them (a Bash call's description, the plan item in progress), the newest beside the dots.",
             build: |_, cx| stateless(messages, cx),
         },
         Section {
@@ -65,13 +65,13 @@ pub const STORY: Story = Story {
         Section {
             id: "header",
             name: "Header",
-            summary: "chat_header names the lead and the host it runs on.",
+            summary: "chat_header names the driver and the host it runs on.",
             build: |_, cx| stateless(headers, cx),
         },
         Section {
             id: "latest",
             name: "Last message",
-            summary: "chat_latest: what the sidebar keeps of the chat. The lead's header, then its last answer cut to four lines, or ChatTyping while it works. A dot in the header while an approval waits on you. A click opens the command palette in Lead mode.",
+            summary: "chat_latest: what the sidebar keeps of the chat. The driver's header, then its last answer cut to four lines, or ChatTyping while it works. A dot in the header while an approval waits on you. A click opens the command palette in Driver mode.",
             build: |_, cx| stateless(latest, cx),
         },
         Section {
@@ -83,13 +83,13 @@ pub const STORY: Story = Story {
         Section {
             id: "titlebar",
             name: "In titlebar mode",
-            summary: "With the sidebar hidden, the title bar's chat button opens the command palette in Lead mode: the Lead pill in the input, the thread under it with the same fade, an approval waiting on you, and Lead mode's keys in the footer. In either layout, > typed into an empty palette switches to Lead mode too. Click the scrim to close it and the button to open it again; the button carries a dot while something waits.",
+            summary: "With the sidebar hidden, the title bar's chat button opens the command palette in Driver mode: the Driver pill in the input, the thread under it with the same fade, an approval waiting on you, and Driver mode's keys in the footer. In either layout, > typed into an empty palette switches to Driver mode too. Click the scrim to close it and the button to open it again; the button carries a dot while something waits.",
             build: |window, cx| cx.new(|cx| TitlebarChat::new(window, cx)).into(),
         },
     ],
 };
 
-pub(crate) fn lead_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<InputState> {
+pub(crate) fn driver_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<InputState> {
     let value = value.to_owned();
     cx.new(|cx| {
         InputState::new(window, cx)
@@ -111,8 +111,8 @@ fn sender(name: &'static str, program: &str) -> ChatSender {
     }
 }
 
-fn lead() -> ChatSender {
-    sender("Lead", "claude")
+fn driver() -> ChatSender {
+    sender("Driver", "claude")
 }
 
 fn agentbound() -> ChatSender {
@@ -200,7 +200,7 @@ fn messages(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "the lead's answer",
+            "the driver's answer",
             column(
                 chat_thread([ChatBubble::theirs(
                     "answer",
@@ -231,7 +231,7 @@ fn messages(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "the lead at work, before its first step",
+            "the driver at work, before its first step",
             column(
                 chat_thread([
                     ChatBubble::mine("typing-sent", "commit this", "9:44")
@@ -243,7 +243,7 @@ fn messages(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "the lead at work: its last three steps, the newest beside the dots",
+            "the driver at work: its last three steps, the newest beside the dots",
             column(
                 chat_thread([ChatTyping::new("typing-steps")
                     .steps(COMMIT_STEPS)
@@ -314,8 +314,8 @@ pub(crate) struct Composers {
 impl Composers {
     fn new(window: &mut Window, cx: &mut App) -> Self {
         Self {
-            empty: lead_input("", window, cx),
-            typed: lead_input("ship it once checks pass", window, cx),
+            empty: driver_input("", window, cx),
+            typed: driver_input("ship it once checks pass", window, cx),
         }
     }
 }
@@ -333,7 +333,7 @@ fn composers(state: &Composers, _: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "typed while the lead works: queues",
+            "typed while the driver works: queues",
             column(
                 div()
                     .pt(px(10.0))
@@ -348,7 +348,7 @@ fn headers(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .state(
             "in the sidebar",
-            column(chat_header(&lead(), "xps", None, cx), cx),
+            column(chat_header(&driver(), "xps", None, cx), cx),
         )
         .into_any_element()
 }
@@ -366,7 +366,7 @@ fn list(scroll: &ScrollHandle, fade: zz_gpui::Hsla, cx: &App) -> AnyElement {
         .min_h(px(0.0))
         .child(
             div()
-                .id("lead-sidebar-list")
+                .id("driver-sidebar-list")
                 .size_full()
                 .overflow_y_scroll()
                 .track_scroll(scroll)
@@ -428,12 +428,12 @@ fn window_frame(content: impl IntoElement, cx: &App) -> AnyElement {
 }
 
 const LATEST_ANSWER: &str = "Three agents are working. zz on alienware needs you: it asks whether to keep the old socket path. agentbound finished the sprite sheet at 32px, and clairvo merges its PR once the last two checks pass.";
-/// How many lines of the lead's last answer the sidebar shows, as the app.
+/// How many lines of the driver's last answer the sidebar shows, as the app.
 const LATEST_LINES: usize = 4;
 const ATTENTION_DOT: f32 = 7.0;
 
-/// The lead's last word as the sidebar shows it under its list: its last
-/// answer cut to four lines, or the lead at work, with a dot in the header
+/// The driver's last word as the sidebar shows it under its list: its last
+/// answer cut to four lines, or the driver at work, with a dot in the header
 /// while something waits on you.
 pub(crate) fn sidebar_latest(
     scope: &'static str,
@@ -462,15 +462,15 @@ pub(crate) fn sidebar_latest(
     });
     chat_latest(
         (scope, 2_usize),
-        chat_header(&lead(), "xps", dot, cx),
+        chat_header(&driver(), "xps", dot, cx),
         message,
         cx,
     )
     .into_any_element()
 }
 
-/// `list` over the lead's last message, as the sidebar holds them.
-pub(crate) fn with_lead(id: &'static str, list: impl IntoElement, cx: &App) -> AnyElement {
+/// `list` over the driver's last message, as the sidebar holds them.
+pub(crate) fn with_driver(id: &'static str, list: impl IntoElement, cx: &App) -> AnyElement {
     div()
         .id(id)
         .flex()
@@ -527,16 +527,16 @@ impl Render for SidebarChat {
         let fade = workspace_sidebar_fade(cx.theme().ground(), cx);
         window_frame(
             app_shell_surface(
-                "lead-sidebar-shell",
+                "driver-sidebar-shell",
                 cx.theme().background,
                 flat_view_sidebar(
-                    with_lead("lead-sidebar-column", list(&self.list, fade, cx), cx),
+                    with_driver("driver-sidebar-column", list(&self.list, fade, cx), cx),
                     cx,
                 ),
                 None,
                 app_workspace_surface(
-                    "lead-sidebar-workspace",
-                    panes("lead-sidebar-panes", cx),
+                    "driver-sidebar-workspace",
+                    panes("driver-sidebar-panes", cx),
                     Vec::new(),
                     cx,
                 ),
@@ -556,20 +556,20 @@ pub(crate) struct TitlebarChat {
 impl TitlebarChat {
     fn new(window: &mut Window, cx: &mut App) -> Self {
         Self {
-            input: lead_input("", window, cx),
+            input: driver_input("", window, cx),
             thread: bottom_scroll(),
             open: true,
         }
     }
 
     fn palette(&self, cx: &App) -> AnyElement {
-        lead_palette(&self.input, &self.thread, cx)
+        driver_palette(&self.input, &self.thread, cx)
     }
 }
 
-/// The command palette in Lead mode: the Lead pill in the input, the thread
+/// The command palette in Driver mode: the Driver pill in the input, the thread
 /// under it and an approval waiting on you.
-pub(crate) fn lead_palette(
+pub(crate) fn driver_palette(
     input: &Entity<InputState>,
     thread: &ScrollHandle,
     cx: &App,
@@ -582,12 +582,12 @@ pub(crate) fn lead_palette(
     .into_iter()
     .chain(
         Program::by_id("claude").map(|program| PalettePill::Program {
-            label: "Lead".into(),
+            label: "Driver".into(),
             program,
         }),
     );
     let ask = permission(
-        "lead-ask",
+        "driver-ask",
         "Atlas tests wants to run sudo pacman -S vulkan-swrast",
         None,
         &[("Yes", Some(true)), ("No, tell it what to do", Some(false))],
@@ -596,20 +596,20 @@ pub(crate) fn lead_palette(
         cx,
     );
     CommandPaletteSurface::new(unified_command_palette_input(input, pills, cx), 1)
-        .rows(lead_palette_body(
-            chat_thread(conversation("lead-palette", layer.ground, cx)),
+        .rows(driver_palette_body(
+            chat_thread(conversation("driver-palette", layer.ground, cx)),
             Some(ask),
             thread,
             layer.ground.fill,
         ))
-        .hints(LEAD_PALETTE_HINTS)
+        .hints(DRIVER_PALETTE_HINTS)
         .into_any_element()
 }
 
 impl Render for TitlebarChat {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let waiting = (!self.open).then_some(cx.theme().warning);
-        let button = workspace_chat_button("lead-chat-button").on_click(cx.listener(
+        let button = workspace_chat_button("driver-chat-button").on_click(cx.listener(
             |this, _, window, cx| {
                 this.open = true;
                 this.input.read(cx).focus_handle(cx).focus(window, cx);
@@ -626,7 +626,7 @@ impl Render for TitlebarChat {
         .child(chat_button(button, waiting));
         let overlay = self.open.then(|| {
             div()
-                .id("lead-palette-scrim")
+                .id("driver-palette-scrim")
                 .absolute()
                 .inset_0()
                 .bg(cx.theme().scrim)
@@ -653,13 +653,13 @@ impl Render for TitlebarChat {
         });
         window_frame(
             app_shell_surface(
-                "lead-titlebar-shell",
+                "driver-titlebar-shell",
                 cx.theme().background,
                 div(),
                 Some(bar.into_any_element()),
                 app_workspace_surface(
-                    "lead-titlebar-workspace",
-                    panes("lead-titlebar-panes", cx),
+                    "driver-titlebar-workspace",
+                    panes("driver-titlebar-panes", cx),
                     Vec::new(),
                     cx,
                 ),

@@ -51,7 +51,7 @@ start scripts pass it in that spot). Nothing after `--` is a zz flag, so a neste
 the raw TUI shares: a `host-NAME` line wins, otherwise the value is an ssh destination, and a value
 starting with `-` is refused. `local` and `all` are reserved. Before that, `names_this_machine` drops
 a `--host` whose name `zz/config` does not list and that matches this machine's hostname (whole or
-up to the first dot, any case), so a lead that keeps `<host> %N` pairs can address its own host;
+up to the first dot, any case), so a driver that keeps `<host> %N` pairs can address its own host;
 a configured `host-NAME` still wins. `--host all` re-runs the CLI once per
 configured host in parallel for a chain whose every command passes `!spec.mutates` (`inspect`,
 `list-hosts`, `show-last-output`, `protocol-version` and `--version` count as read-only). The parent checks the

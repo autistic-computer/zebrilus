@@ -1,6 +1,6 @@
-mod flat;
 #[cfg(feature = "agent-pane")]
-mod lead;
+mod driver;
+mod flat;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -126,8 +126,8 @@ fn workspace_tree_key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
 pub(crate) struct SidebarReleaseFocus;
 pub(crate) struct SidebarModeChanged;
 pub(crate) struct SidebarRouteChanged;
-/// A click on the lead's last message: open the chat.
-pub(crate) struct SidebarOpenLead;
+/// A click on the driver's last message: open the chat.
+pub(crate) struct SidebarOpenDriver;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ChromeMode {
@@ -186,7 +186,7 @@ pub struct WorkspaceSidebar {
     flat: bool,
     flat_view: flat::FlatView,
     #[cfg(feature = "agent-pane")]
-    lead: lead::LeadSection,
+    driver: driver::DriverSection,
 }
 
 impl WorkspaceSidebar {
@@ -205,7 +205,7 @@ impl WorkspaceSidebar {
         .detach();
         Self {
             #[cfg(feature = "agent-pane")]
-            lead: lead::LeadSection::new(mux.clone(), local_hostname.clone(), cx),
+            driver: driver::DriverSection::new(mux.clone(), local_hostname.clone(), cx),
             mux,
             tree_model: Rc::new(MuxTreeModel::default()),
             tree_revision: None,
@@ -923,7 +923,7 @@ impl Render for WorkspaceSidebar {
         let navigation = if settings_route {
             navigation
         } else {
-            self.with_lead_latest(navigation, cx)
+            self.with_driver_latest(navigation, cx)
         };
         let controls = if settings_route {
             None
@@ -982,7 +982,7 @@ impl Render for WorkspaceSidebar {
 impl EventEmitter<SidebarReleaseFocus> for WorkspaceSidebar {}
 impl EventEmitter<SidebarModeChanged> for WorkspaceSidebar {}
 impl EventEmitter<SidebarRouteChanged> for WorkspaceSidebar {}
-impl EventEmitter<SidebarOpenLead> for WorkspaceSidebar {}
+impl EventEmitter<SidebarOpenDriver> for WorkspaceSidebar {}
 
 #[derive(Clone, Debug)]
 struct VisibleTreeEntry {

@@ -59,7 +59,7 @@ impl AppShell {
     ) -> Self {
         let sidebar = workspace.read(cx).sidebar();
         #[cfg(feature = "agent-pane")]
-        cx.observe(&sidebar.read(cx).lead_chat(), |_, _, cx| cx.notify())
+        cx.observe(&sidebar.read(cx).driver_chat(), |_, _, cx| cx.notify())
             .detach();
         let mux = workspace.read(cx).mux();
         crate::menus::observe_mux(&mux, cx);
@@ -260,13 +260,13 @@ impl AppShell {
         })
     }
 
-    /// The lead chat's button at the title bar's end while there is a lead:
-    /// it opens the palette in Lead mode, dotted while something waits there.
+    /// The driver chat's button at the title bar's end while there is a driver:
+    /// it opens the palette in Driver mode, dotted while something waits there.
     #[cfg(feature = "agent-pane")]
     fn render_chat_button(&self, cx: &App) -> Option<AnyElement> {
-        let chat = self.sidebar.read(cx).lead_chat();
+        let chat = self.sidebar.read(cx).driver_chat();
         let chat = chat.read(cx);
-        chat.lead()?;
+        chat.driver()?;
         let workspace = self.workspace.clone();
         Some(
             zz_ui::agent::chat::chat_button(
@@ -276,8 +276,9 @@ impl AppShell {
                     })
                     .on_click(move |_, window, cx| {
                         cx.stop_propagation();
-                        workspace
-                            .update(cx, |workspace, cx| workspace.open_lead_palette(window, cx));
+                        workspace.update(cx, |workspace, cx| {
+                            workspace.open_driver_palette(window, cx);
+                        });
                     }),
                 chat.attention(cx),
             )

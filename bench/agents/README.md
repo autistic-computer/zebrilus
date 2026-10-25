@@ -99,13 +99,13 @@ tokens, cost, run id. `run-all.sh` fans out (`TASKS`, `REPS`, `CLAUDE_ARMS`, `CO
 `summary.py` pivots. Run directories stay under `/tmp/fu-runs/`; delete them afterwards. `results/`
 keeps the 2026-10-21 runs; the 0.21.0 grid there predates the `blocked` column.
 
-## lead/ - does the zz-lead skill make a good lead
+## driver/ - does the zz-driver skill make a good driver
 
-A Claude Code lead in a zz pane on ubuntu coordinates workers on xps, alienware and ubuntu
+A Claude Code driver in a zz pane on ubuntu coordinates workers on xps, alienware and ubuntu
 through zz on four tasks (green tests on three machines, a quick fact check, an env-var
 inventory, a worker that hits a permission prompt), with the skill absent, in the system prompt,
 or installed as a project skill. `run-one.sh [MODEL/]ARM TASK`, `run-all.sh` (`JOBS` or a grid),
-`summary.py`. Layout, metrics and the iteration log: `lead/README.md`.
+`summary.py`. Layout, metrics and the iteration log: `driver/README.md`.
 
 Results and the traps the harnesses found live in
 `knowledge/playbooks/agent-benchmarks.md`.
