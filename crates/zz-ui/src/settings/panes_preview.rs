@@ -1,13 +1,24 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, PaintState,
-    input::{field_chrome, field_paint},
+    ActiveTheme as _, Colorize as _, IconName,
+    browser::{
+        BrowserHeader, BrowserTabInfo, BrowserTabStrip, BrowserToolbar, browser_address,
+        browser_site_controls_button, browser_toolbar_button,
+    },
+    input::InputState,
     pane::{
-        PaneChrome, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface,
-        pane_surface,
+        PaneChrome, PaneDragSource, PaneLens, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
+        pane_header_actions, pane_header_frame, pane_header_icon_button, pane_split_surface,
+        pane_surface, terminal_pane_header,
     },
 };
-use zz_gpui::{App, Corners, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px};
+use zz_gpui::{
+    AnyElement, App, Corners, Hsla, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px,
+};
+use zz_protocol::{AgentProvider, PaneId};
 
+/// The Panes page's preview: a terminal, Claude Code in a terminal with its
+/// lens, and a browser, drawn with the headers, toolbar and dimming the
+/// workspace gives them. Clicking a pane makes it the active one.
 #[derive(Clone, Copy, IntoElement)]
 pub struct PanesPreview {
     pub gaps: bool,
@@ -15,38 +26,84 @@ pub struct PanesPreview {
     pub inactive_opacity: f32,
 }
 
+#[derive(Clone, Copy)]
+enum Line {
+    Plain(&'static str),
+    Muted(&'static str),
+    Success(&'static str),
+    Prompt(&'static str),
+}
+
+const SHELL: &[Line] = &[
+    Line::Muted("~/workspace"),
+    Line::Plain("$ cargo run"),
+    Line::Muted("   Compiling workspace v0.1.0"),
+    Line::Success("    Finished in 0.42s"),
+    Line::Plain("Hello, workspace."),
+    Line::Prompt("$"),
+];
+
+const CLAUDE: &[Line] = &[
+    Line::Muted("~/workspace"),
+    Line::Plain("> Fix the flaky drag test"),
+    Line::Muted("• Bash(cargo test drag)"),
+    Line::Success("  └ 9 passed; 0 failed"),
+    Line::Prompt(">"),
+];
+
 impl RenderOnce for PanesPreview {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let selection =
             window.use_keyed_state("settings-pane-preview-selection", cx, |_, _| 0_usize);
+        let address = window.use_keyed_state("settings-pane-preview-address", cx, |window, cx| {
+            InputState::new(window, cx).default_value("zed.dev/docs")
+        });
         let selected = *selection.read(cx);
         let margin = px(if self.gaps { self.margin } else { 0.0 });
-        let radius = if self.gaps {
+        let radii = Corners::all(if self.gaps {
             cx.theme().pane_radius()
         } else {
             px(0.0)
-        };
-        let height = (f32::from(window.viewport_size().height) * 0.32)
-            .clamp(180.0, 280.0)
+        });
+        let height = (f32::from(window.viewport_size().height) * 0.4)
+            .clamp(300.0, 380.0)
             .max(f32::from(margin) * 3.0 + 112.0);
-        let backdrop = cx.theme().surface(Elevation::Popover).fill;
-        let pane = |index: usize, content: zz_gpui::Div| {
+        let backdrop = cx.theme().background;
+        let opacity = |index: usize| {
+            if selected == index {
+                1.0
+            } else {
+                self.inactive_opacity.clamp(0.0, 1.0)
+            }
+        };
+        let pane = |index: usize, content: zz_gpui::Div, covers_frame: bool| {
             let active = selected == index;
             pane_surface(
                 ("settings-preview-pane", index),
                 content
-                    .rounded(radius)
+                    .size_full()
                     .debug_selector(move || format!("settings-preview-active-{index}-{active}")),
-                [],
-                PaneChrome::new(Corners::all(radius), self.gaps)
+                [div()
+                    .id(("settings-preview-pick", index))
+                    .absolute()
+                    .inset_0()
+                    .occlude()
+                    .cursor_pointer()
+                    .on_click(window.listener_for(&selection, move |selected, _, _, cx| {
+                        if *selected != index {
+                            *selected = index;
+                            cx.notify();
+                        }
+                    }))
+                    .into_any_element()],
+                PaneChrome::new(radii, self.gaps)
                     .active(active)
-                    .dimmed(!active, self.inactive_opacity)
+                    .rim_over_content(covers_frame)
                     .frame(self.gaps.then(|| cx.theme().pane_frame(backdrop, active))),
                 cx,
             )
             .min_w_0()
             .min_h_0()
-            .cursor_pointer()
             .debug_selector(move || {
                 [
                     "settings-preview-terminal",
@@ -55,16 +112,43 @@ impl RenderOnce for PanesPreview {
                 ][index]
                     .to_owned()
             })
-            .on_click(window.listener_for(&selection, move |selected, _, _, cx| {
-                if *selected != index {
-                    *selected = index;
-                    cx.notify();
-                }
-            }))
         };
-        let terminal = pane(0_usize, terminal_sample(cx));
-        let agent = pane(1_usize, lens_sample(cx));
-        let browser = pane(2_usize, browser_sample(radius, cx));
+        let terminal = pane(
+            0,
+            terminal_sample(
+                1,
+                "cargo run",
+                None,
+                SHELL,
+                selected == 0,
+                opacity(0),
+                radii,
+                cx,
+            ),
+            false,
+        );
+        let agent = pane(
+            1,
+            terminal_sample(
+                2,
+                "claude",
+                Some(PaneLens {
+                    provider: AgentProvider::ClaudeCode,
+                    open: false,
+                }),
+                CLAUDE,
+                selected == 1,
+                opacity(1),
+                radii,
+                cx,
+            ),
+            false,
+        );
+        let browser = pane(
+            2,
+            browser_sample(&address, selected == 2, opacity(2), radii, window, cx),
+            true,
+        );
         let horizontal_highlight = match selected {
             0 => PaneSplitHighlight::new(0.0, 1.0, PaneSplitSide::First, cx.theme().accent),
             1 => PaneSplitHighlight::new(0.0, 0.5, PaneSplitSide::Second, cx.theme().accent),
@@ -105,8 +189,6 @@ impl RenderOnce for PanesPreview {
             .h(px(height))
             .flex_none()
             .text_color(cx.theme().foreground)
-            .text_size(px(11.0))
-            .line_height(px(16.0))
             .p(margin)
             .child(pane_split_surface(
                 "settings-preview-horizontal-split",
@@ -125,137 +207,145 @@ impl RenderOnce for PanesPreview {
     }
 }
 
-fn sample_surface() -> zz_gpui::Div {
+fn noop_drag(pane: u64, title: &'static str) -> PaneDragSource {
+    PaneDragSource::new(PaneId(pane), title, false, |_, _, _| {})
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "a sample pane is the sum of these independent pieces"
+)]
+fn terminal_sample(
+    pane: u64,
+    title: &'static str,
+    lens: Option<PaneLens>,
+    lines: &'static [Line],
+    active: bool,
+    opacity: f32,
+    radii: Corners<Pixels>,
+    cx: &App,
+) -> zz_gpui::Div {
+    let header = terminal_pane_header(
+        active,
+        title,
+        noop_drag(pane, title),
+        false,
+        lens,
+        |_, _, _| {},
+        cx,
+    );
     div()
         .flex()
         .flex_col()
-        .size_full()
-        .min_w_0()
-        .min_h_0()
-        .overflow_hidden()
+        .child(pane_header_frame(header, radii, opacity))
+        .child(terminal_body(lines, opacity, cx))
 }
 
-fn sample_header(icon: IconName, title: &'static str, cx: &App) -> zz_gpui::Div {
+fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> zz_gpui::Div {
+    let theme = cx.theme();
+    let tone = |color: Hsla, text: &'static str| div().text_color(color).child(text);
     div()
         .flex()
-        .items_center()
-        .flex_none()
-        .h(px(28.0))
-        .px(px(10.0))
-        .gap(px(6.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(
-            div()
-                .relative()
-                .top(px(0.5))
-                .child(Icon::new(icon).size(px(12.0))),
-        )
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(title),
-        )
+        .flex_col()
+        .flex_1()
+        .min_h_0()
+        .min_w_0()
+        .overflow_hidden()
+        .px(px(12.0))
+        .pt(px(4.0))
+        .font_family(theme.mono_font_family.clone())
+        .text_size(px(12.0))
+        .line_height(px(18.0))
+        .whitespace_nowrap()
+        .opacity(opacity)
+        .children(lines.iter().map(|line| -> AnyElement {
+            match *line {
+                Line::Plain(text) => tone(theme.foreground, text).into_any_element(),
+                Line::Muted(text) => tone(theme.foreground.muted(), text).into_any_element(),
+                Line::Success(text) => tone(theme.success, text).into_any_element(),
+                Line::Prompt(text) => tone(theme.foreground, text)
+                    .flex()
+                    .items_center()
+                    .gap(px(7.0))
+                    .child(div().w(px(7.0)).h(px(14.0)).bg(theme.foreground))
+                    .into_any_element(),
+            }
+        }))
 }
 
-fn terminal_sample(cx: &App) -> zz_gpui::Div {
-    sample_surface()
-        .child(sample_header(IconName::SquareTerminal, "Terminal", cx))
+fn browser_sample(
+    address: &zz_gpui::Entity<InputState>,
+    active: bool,
+    opacity: f32,
+    radii: Corners<Pixels>,
+    window: &Window,
+    cx: &App,
+) -> zz_gpui::Div {
+    let button = |id, icon, tooltip, disabled| {
+        browser_toolbar_button(cx, id, icon, tooltip, disabled, false)
+    };
+    let actions = div().flex().flex_none().items_center().gap_1().children(
+        pane_header_actions(false)
+            .iter()
+            .map(|(_, icon, label)| pane_header_icon_button(*label, icon.clone(), true, cx)),
+    );
+    let header = BrowserHeader::new(
+        active,
+        BrowserTabStrip::new(vec![BrowserTabInfo::new(1, "zed.dev", "Zed docs")], 0)
+            .title(noop_drag(3, "Browser"), |_, _| {}),
+        actions,
+        BrowserToolbar::new(
+            button("browser-back", IconName::ArrowLeft, "Back", false),
+            button("browser-forward", IconName::ArrowRight, "Forward", true),
+            button("browser-reload", IconName::Redo2, "Reload", false),
+            browser_address(address, browser_site_controls_button(cx), window, cx),
+            button(
+                "browser-element-picker",
+                IconName::Inspector,
+                "Pick an element",
+                false,
+            ),
+            button(
+                "browser-more",
+                IconName::EllipsisVertical,
+                "More browser actions",
+                false,
+            ),
+        ),
+    );
+    div()
+        .flex()
+        .flex_col()
+        .rounded_tl(radii.top_left)
+        .rounded_tr(radii.top_right)
+        .child(
+            div()
+                .h(BrowserHeader::HEIGHT)
+                .w_full()
+                .flex_none()
+                .opacity(opacity)
+                .child(header),
+        )
         .child(
             div()
                 .flex()
                 .flex_col()
+                .flex_1()
                 .min_h_0()
                 .overflow_hidden()
-                .p(px(12.0))
                 .gap(px(4.0))
-                .font_family(cx.theme().mono_font_family.clone())
-                .whitespace_nowrap()
-                .child(
-                    div()
-                        .text_color(cx.theme().foreground.muted())
-                        .child("~/workspace"),
-                )
-                .child("❯ cargo run")
-                .child(
-                    div()
-                        .text_color(cx.theme().success)
-                        .child("Finished in 0.42s"),
-                )
-                .child("Hello, workspace.")
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.0))
-                        .pt(px(8.0))
-                        .child("❯")
-                        .child(div().w(px(6.0)).h(px(12.0)).bg(cx.theme().foreground)),
-                ),
-        )
-}
-
-fn lens_sample(cx: &App) -> zz_gpui::Div {
-    let paint = field_paint(crate::roles::AGENT_COMPOSER, cx);
-    let composer = div()
-        .flex_none()
-        .h(px(24.0))
-        .mx(px(6.0))
-        .mb(px(6.0))
-        .px(px(6.0))
-        .flex()
-        .items_center();
-    sample_surface()
-        .child(sample_header(IconName::Claude, "claude", cx))
-        .child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .overflow_hidden()
-                .px(px(10.0))
-                .child("Ready when you are."),
-        )
-        .child(
-            field_chrome(
-                composer,
-                crate::roles::AGENT_COMPOSER,
-                PaintState::Rest,
-                true,
-                true,
-                cx,
-            )
-            .text_color(paint.faint_at(PaintState::Rest))
-            .child(
-                div()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .child("Ask anything…"),
-            ),
-        )
-}
-
-fn browser_sample(content_radius: Pixels, cx: &App) -> zz_gpui::Div {
-    sample_surface()
-        .child(sample_header(IconName::Globe, "Browser", cx))
-        .child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .overflow_hidden()
-                .px(px(10.0))
-                .py(px(6.0))
-                .rounded_bl(content_radius)
-                .rounded_br(content_radius)
+                .px(px(16.0))
+                .py(px(12.0))
+                .rounded_bl(radii.bottom_left)
+                .rounded_br(radii.bottom_right)
                 .bg(cx.theme().background.opaque())
-                .child("Welcome to zz")
+                .text_size(px(13.0))
+                .line_height(px(18.0))
+                .child(div().text_size(px(16.0)).child("Key bindings"))
                 .child(
                     div()
                         .text_color(cx.theme().foreground.muted())
-                        .child("Your workspace, together."),
+                        .child("Zed has a very customizable key binding system."),
                 ),
         )
 }

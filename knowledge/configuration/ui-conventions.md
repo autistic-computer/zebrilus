@@ -172,12 +172,14 @@ materials decide what those look like, and the theme can change any role by id. 
    opacity; under a frame they paint none.
 
 Settings > Panes scrolls its three-pane preview with the controls, like the Terminal preview. The shared
-`settings::panes_preview::PanesPreview` uses sample Terminal, Agent, and Browser content inside
-`pane_surface` and `pane_split_surface`, with full-size logical-pixel margins and corners, and the
-theme's pane frames. A neutral backdrop makes pane transparency visible. Clicking a sample changes
-only the preview selection and moves the accent edge.
-The Browser sample keeps its page opaque, and the
-Agent sample draws its composer as a field, like the real one. Desktop pane edits and resets refresh the saved configuration
+`settings::panes_preview::PanesPreview` draws a terminal, Claude Code in a terminal with its lens
+button, and a browser, inside `pane_surface` and `pane_split_surface` at the workspace's real size:
+`terminal_pane_header` and `BrowserHeader` with its tab row and toolbar, full-size logical-pixel
+margins and corners, and the theme's pane frames over the workspace background. Inactive samples
+dim the way the workspace dims them, the terminal's header and text and the browser's chrome, with
+no scrim. An occluding layer over each sample makes it one click target, so its header buttons stay
+inert; clicking a sample changes only the preview selection and moves the accent edge. The Browser
+sample keeps its page opaque. Desktop pane edits and resets refresh the saved configuration
 immediately, including valid numeric input while typing; the file watcher still handles external edits.
 
 Settings > Status bar scrolls its live preview with the controls. The titlebar holds only the

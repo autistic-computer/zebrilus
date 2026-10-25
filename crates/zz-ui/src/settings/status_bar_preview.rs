@@ -36,7 +36,7 @@ pub fn status_bar_page(
                         .flex_col()
                         .gap(px(12.0))
                         .child(settings_page_title(SettingsSection::StatusBar, cx))
-                        .child(settings_group_header("Preview".into()))
+                        .child(settings_group_header("Preview".into(), cx))
                         .child(status_bar_preview(settings, gaps, cx)),
                 )
                 .child(controls),

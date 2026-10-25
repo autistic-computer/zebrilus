@@ -56,7 +56,7 @@ use zz_ui::{
         pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
         pane_split_surface, pane_surface,
     },
-    settings::{SettingsSection, settings_navigation_button},
+    settings::{SettingsSection, settings_navigation_button, settings_navigation_group_gap},
     shell::{app_shell_surface, app_workspace_surface, titlebar_over_panes},
 };
 
@@ -965,7 +965,13 @@ impl AppShell {
         let ground = self.sidebar_ground(window, cx);
         let navigation = if let Some(selected) = self.settings {
             let mut rows = Vec::new();
+            let mut previous_group = None;
             for section in settings::sections() {
+                let group = section.navigation_group();
+                if previous_group.is_some_and(|previous| previous != group) {
+                    rows.push(settings_navigation_group_gap().into_any_element());
+                }
+                previous_group = Some(group);
                 rows.push(
                     settings_navigation_button(section, section == selected, cx)
                         .on_click(cx.listener(move |this, _, _, cx| {

@@ -675,15 +675,18 @@ impl AppShell {
                                 cx.notify();
                             })),
                     ),
-                    SettingEntry::new("Window badges").control(
-                        Switch::new("settings-status-badges")
-                            .checked(self.preferences.status_badges)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.preferences.status_badges = !this.preferences.status_badges;
-                                this.preferences.save();
-                                cx.notify();
-                            })),
-                    ),
+                    SettingEntry::new("Window badges")
+                        .description("Bell and activity markers on window items")
+                        .control(
+                            Switch::new("settings-status-badges")
+                                .checked(self.preferences.status_badges)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.preferences.status_badges =
+                                        !this.preferences.status_badges;
+                                    this.preferences.save();
+                                    cx.notify();
+                                })),
+                        ),
                 ];
                 return zz_ui::settings::status_bar_preview::status_bar_page(
                     self.preferences.status_bar_settings(),
@@ -696,17 +699,19 @@ impl AppShell {
             SettingsSection::Terminal => return self.terminal_settings(narrow, cx),
             SettingsSection::Advanced => {
                 let text_size = shown(Setting::SystemTextSize, phone).then(|| {
-                    SettingEntry::new("Match system text size").control(
-                        Switch::new("settings-system-text-size")
-                            .checked(self.preferences.system_text_size)
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.preferences.system_text_size =
-                                    !this.preferences.system_text_size;
-                                this.preferences.save();
-                                this.preferences.apply(&this.connection, window, cx);
-                                cx.notify();
-                            })),
-                    )
+                    SettingEntry::new("Match system text size")
+                        .description("Follows the iPadOS text size")
+                        .control(
+                            Switch::new("settings-system-text-size")
+                                .checked(self.preferences.system_text_size)
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.preferences.system_text_size =
+                                        !this.preferences.system_text_size;
+                                    this.preferences.save();
+                                    this.preferences.apply(&this.connection, window, cx);
+                                    cx.notify();
+                                })),
+                        )
                 });
                 return settings_scroll_column("settings-page")
                     .children((!narrow).then(|| settings_page_heading(section.title(), cx)))
@@ -733,17 +738,19 @@ impl AppShell {
                                 )
                                 .children(text_size)
                                 .child(
-                                    SettingEntry::new("Keep the screen awake").control(
-                                        Switch::new("settings-keep-awake")
-                                            .checked(self.preferences.keep_screen_awake)
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.preferences.keep_screen_awake =
-                                                    !this.preferences.keep_screen_awake;
-                                                this.preferences.save();
-                                                this.sync_idle_guard(cx);
-                                                cx.notify();
-                                            })),
-                                    ),
+                                    SettingEntry::new("Keep the screen awake")
+                                        .description("While connected to a host")
+                                        .control(
+                                            Switch::new("settings-keep-awake")
+                                                .checked(self.preferences.keep_screen_awake)
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.preferences.keep_screen_awake =
+                                                        !this.preferences.keep_screen_awake;
+                                                    this.preferences.save();
+                                                    this.sync_idle_guard(cx);
+                                                    cx.notify();
+                                                })),
+                                        ),
                                 ),
                         )
                     })
@@ -857,15 +864,17 @@ impl AppShell {
             }
             AppearancePageItem::ProgramColors => {
                 let title = item.title().unwrap_or_default();
-                SettingEntry::new(title).control(
-                    Switch::new("settings-program-colors")
-                        .checked(self.preferences.program_colors)
-                        .on_click(cx.listener(|this, _, window, cx| {
-                            this.preferences.program_colors = !this.preferences.program_colors;
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        })),
-                )
+                SettingEntry::new(title)
+                    .description("Fill sidebar tiles with the running program's colors")
+                    .control(
+                        Switch::new("settings-program-colors")
+                            .checked(self.preferences.program_colors)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.preferences.program_colors = !this.preferences.program_colors;
+                                this.preferences.save();
+                                this.preferences.apply(&this.connection, window, cx);
+                            })),
+                    )
             }
             AppearancePageItem::Animations => SettingEntry::new("Animations").control(
                 Switch::new("settings-animations")
@@ -1045,10 +1054,18 @@ impl AppShell {
     }
 
     fn pane_setting(&self, control: PaneControl, cx: &mut Context<Self>) -> SettingEntry {
-        let entry = SettingEntry::new(control.title()).disabled(
-            !matches!(control, PaneControl::PipOpacity | PaneControl::Opacity)
-                && !self.preferences.gaps,
-        );
+        let needs_gaps = !matches!(control, PaneControl::PipOpacity | PaneControl::Opacity);
+        let off = needs_gaps && !self.preferences.gaps;
+        let description = if off {
+            Some("Needs pane gaps")
+        } else if control == PaneControl::Opacity {
+            Some("1 turns dimming off")
+        } else {
+            None
+        };
+        let entry = SettingEntry::new(control.title())
+            .when_some(description, SettingEntry::description)
+            .disabled(off);
         entry.control(number_control(
             &self.settings_controls.panes[control as usize],
             cx,
@@ -1091,17 +1108,19 @@ impl AppShell {
         };
         settings_scroll_column("settings-terminal")
             .children((!narrow).then(|| settings_page_heading("Terminal", cx)))
-            .child(zz_ui::settings::settings_list_group_header("Preview"))
+            .child(zz_ui::settings::settings_list_group_header("Preview", cx))
             .child(terminal_preview(appearance, cx))
             .child(SettingsStack::titled("Display").child(font).child(scale))
             .child(
                 SettingsStack::titled("Host configuration").child(
-                    SettingEntry::new(host_title).control(
-                        div()
-                            .text_size(zz_ui::rems_from_px(13.0))
-                            .text_color(cx.theme().foreground.muted())
-                            .child("Shared"),
-                    ),
+                    SettingEntry::new(host_title)
+                        .description("Set in the host's Ghostty configuration")
+                        .control(
+                            div()
+                                .text_size(zz_ui::rems_from_px(13.0))
+                                .text_color(cx.theme().foreground.muted())
+                                .child("Shared"),
+                        ),
                 ),
             )
             .into_any_element()
@@ -1116,11 +1135,13 @@ impl AppShell {
                 "Navigation layout",
                 cx,
             )),
-            SettingEntry::new("Host prefix").control(choice_select(
-                &self.settings_controls.host_prefix,
-                "Host prefix",
-                cx,
-            )),
+            SettingEntry::new("Host prefix")
+                .description("Type it in an empty palette to browse hosts")
+                .control(choice_select(
+                    &self.settings_controls.host_prefix,
+                    "Host prefix",
+                    cx,
+                )),
             SettingEntry::new("Command shortcuts").control(
                 Switch::new("settings-palette-show-keys")
                     .checked(self.preferences.palette_show_keys)

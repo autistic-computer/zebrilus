@@ -31,8 +31,8 @@ use zz_ui::{
         panes_preview::PanesPreview,
         providers::{ProvidersHost, providers_stack},
         settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
-        settings_navigation_back_row, settings_navigation_button, settings_page_title,
-        settings_scroll_column, settings_section_index,
+        settings_navigation_back_row, settings_navigation_button, settings_navigation_group_gap,
+        settings_page_title, settings_scroll_column, settings_section_index,
         status_bar_preview::status_bar_page,
     },
     switch::Switch,
@@ -51,13 +51,13 @@ pub const STORY: Story = Story {
         Section {
             id: "navigation",
             name: "Navigation",
-            summary: "On a wide window the sidebar swaps the workspace tree for the section list, with no group labels. On a narrow one the sections become a touch-size index.",
+            summary: "On a wide window the sidebar swaps the workspace tree for the section list, its groups set apart by a gap. On a narrow one the groups become stacks of touch-size rows.",
             build: |_, cx| stateless(navigation, cx),
         },
         Section {
             id: "entries",
             name: "Stacks and entries",
-            summary: "SettingsStack glues SettingEntry rows into one surface and rounds only its ends. A row is its title and its control at the right edge, with no description under it.",
+            summary: "SettingsStack glues SettingEntry rows into one surface and rounds only its ends. A row is its title and its control at the right edge; a short description sits under the title only where it says something the title and control do not.",
             build: |window, cx| stateful(window, cx, Controls::new, entries),
         },
         Section {
@@ -146,8 +146,16 @@ impl Controls {
 
 fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
     let selected = SettingsSection::Appearance;
-    let rows = SettingsSection::ALL
-        .map(|section| settings_navigation_button(section, section == selected, cx));
+    let mut rows = Vec::new();
+    let mut previous = None;
+    for section in SettingsSection::ALL {
+        let group = section.navigation_group();
+        if previous.is_some_and(|previous| previous != group) {
+            rows.push(settings_navigation_group_gap().into_any_element());
+        }
+        previous = Some(group);
+        rows.push(settings_navigation_button(section, section == selected, cx).into_any_element());
+    }
     let list = div()
         .id("settings-nav")
         .flex()
@@ -225,19 +233,32 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             SettingsStack::titled("Frame")
                 .child(
                     SettingEntry::new("Pane margin")
+                        .description("Needs pane gaps")
                         .disabled(true)
                         .control(controls.number(3, cx)),
                 )
                 .child(
                     SettingEntry::new("Pane edge width")
+                        .description("Needs pane gaps")
                         .disabled(true)
                         .control(controls.number(5, cx)),
+                ),
+        )
+        .state(
+            "a stack note saying why its rows are off",
+            SettingsStack::titled("Split panes")
+                .note("Connect to a local session to edit split shortcuts.")
+                .child(
+                    SettingEntry::new("Split below")
+                        .disabled(true)
+                        .control(controls.number(4, cx)),
                 ),
         )
         .state(
             "a state glyph before the title",
             SettingsStack::titled("Hosts").child(
                 SettingEntry::new("devbox")
+                    .description("fabrico@devbox.local")
                     .title_icon(Icon::new(IconName::CircleCheck).text_color(cx.theme().success))
                     .control(Button::new("open-host").label("Disconnect")),
             ),
@@ -362,6 +383,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             "sidebar rows",
             SettingsStack::titled("Sidebar").child(
                 entry(AppearancePageItem::ProgramColors)
+                    .description("Fill sidebar tiles with the running program's colors")
                     .control(Switch::new("program-colors").checked(knobs.program_colors)),
             ),
         )
@@ -455,12 +477,16 @@ fn panes(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             [SettingEntry::new("Pane gaps").control(Switch::new("gaps").checked(gaps))],
             [SettingEntry::new("Pane background opacity").control(controls.number(0, cx))],
             [
-                SettingEntry::new("Inactive pane opacity").control(controls.number(1, cx)),
+                SettingEntry::new("Inactive pane opacity")
+                    .description("1 turns dimming off")
+                    .control(controls.number(1, cx)),
                 SettingEntry::new("Selected pane contrast")
+                    .when(!gaps, |entry| entry.description("Needs pane gaps"))
                     .disabled(!gaps)
                     .control(controls.number(2, cx)),
             ],
             [SettingEntry::new("Pane margin")
+                .when(!gaps, |entry| entry.description("Needs pane gaps"))
                 .disabled(!gaps)
                 .control(controls.number(3, cx))],
             cx,
@@ -483,6 +509,7 @@ fn status_rows(settings: StatusBarSettings) -> SettingsStack {
         .child(SettingEntry::new("Sidebar").control(Switch::new("sidebar").checked(false)))
         .child(
             SettingEntry::new("Window badges")
+                .description("Bell and activity markers on window items")
                 .control(Switch::new("status-badges").checked(settings.badges)),
         )
 }

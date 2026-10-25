@@ -156,7 +156,8 @@ impl SettingsView {
             return div().into_any_element();
         };
         let disabled_reason = self.mux_split_disabled_reason(cx);
-        let mut stack = SettingsStack::titled("Split panes");
+        let mut stack =
+            SettingsStack::titled("Split panes").when_some(disabled_reason, SettingsStack::note);
         for (index, row) in controls.rows.iter().enumerate() {
             let kind = row
                 .binding
@@ -178,54 +179,62 @@ impl SettingsView {
             };
             let settings = cx.entity().downgrade();
             stack = stack.child(
-                SettingEntry::new(title).control(
-                    h_flex()
-                        .gap(px(8.0))
-                        .flex_none()
-                        .child(
-                            div()
-                                .text_size(zz_ui::rems_from_px(11.0))
-                                .text_color(cx.theme().foreground.muted())
-                                .child("Prefix +"),
-                        )
-                        .child(
-                            div().w(px(KEY_INPUT_WIDTH)).child(
-                                Input::new(&row.key)
-                                    .disabled(disabled)
-                                    .on(settings_card_ground(cx)),
-                            ),
-                        )
-                        .child(
-                            Button::new(("settings-split-kind", index))
-                                .label(label)
-                                .dropdown_caret(true)
-                                .disabled(disabled)
-                                .on(settings_card_ground(cx))
-                                .dropdown_menu_with_anchor(
-                                    zz_gpui::Anchor::TopRight,
-                                    move |menu, _, _| {
-                                        PANE_KINDS.into_iter().fold(
-                                            menu,
-                                            |menu, (choice, label)| {
-                                                let settings = settings.clone();
-                                                menu.item(
-                                                    PopupMenuItem::new(label)
-                                                        .checked(kind == Some(choice))
-                                                        .on_click(move |_, window, cx| {
-                                                            let _ =
-                                                                settings.update(cx, |this, cx| {
-                                                                    this.commit_mux_split(
-                                                                        index, choice, window, cx,
-                                                                    );
-                                                                });
-                                                        }),
-                                                )
-                                            },
-                                        )
-                                    },
+                SettingEntry::new(title)
+                    .when(custom, |entry| {
+                        entry
+                            .description("Bound to another command, edit it in the overrides below")
+                    })
+                    .control(
+                        h_flex()
+                            .gap(px(8.0))
+                            .flex_none()
+                            .child(
+                                div()
+                                    .text_size(zz_ui::rems_from_px(11.0))
+                                    .text_color(cx.theme().foreground.muted())
+                                    .child("Prefix +"),
+                            )
+                            .child(
+                                div().w(px(KEY_INPUT_WIDTH)).child(
+                                    Input::new(&row.key)
+                                        .disabled(disabled)
+                                        .on(settings_card_ground(cx)),
                                 ),
-                        ),
-                ),
+                            )
+                            .child(
+                                Button::new(("settings-split-kind", index))
+                                    .label(label)
+                                    .dropdown_caret(true)
+                                    .disabled(disabled)
+                                    .on(settings_card_ground(cx))
+                                    .dropdown_menu_with_anchor(
+                                        zz_gpui::Anchor::TopRight,
+                                        move |menu, _, _| {
+                                            PANE_KINDS.into_iter().fold(
+                                                menu,
+                                                |menu, (choice, label)| {
+                                                    let settings = settings.clone();
+                                                    menu.item(
+                                                        PopupMenuItem::new(label)
+                                                            .checked(kind == Some(choice))
+                                                            .on_click(move |_, window, cx| {
+                                                                let _ = settings.update(
+                                                                    cx,
+                                                                    |this, cx| {
+                                                                        this.commit_mux_split(
+                                                                            index, choice, window,
+                                                                            cx,
+                                                                        );
+                                                                    },
+                                                                );
+                                                            }),
+                                                    )
+                                                },
+                                            )
+                                        },
+                                    ),
+                            ),
+                    ),
             );
         }
         if controls

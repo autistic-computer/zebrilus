@@ -532,7 +532,7 @@ pub fn appearance_page(
                         .into_any_element()
                 }
                 AppearancePageItem::Group { title } => {
-                    super::settings_list_group_header(title).into_any_element()
+                    super::settings_list_group_header(title, cx).into_any_element()
                 }
                 _ => render(item, position, window, cx),
             };
