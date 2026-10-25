@@ -3975,6 +3975,17 @@ impl MuxClient {
         }
     }
 
+    pub(crate) fn connection_identity(&self, host: HostId) -> Option<usize> {
+        self.connections
+            .get(&host)
+            .and_then(|connection| connection.client.as_ref())
+            .map(|client| Arc::as_ptr(client) as usize)
+    }
+
+    pub(crate) fn local_socket_path(&self) -> &std::path::Path {
+        self.registry.local_socket_path()
+    }
+
     #[cfg(feature = "agent-pane")]
     fn driver_client(&self, host: HostId) -> Option<usize> {
         self.connections

@@ -6,14 +6,16 @@
 //! model and effort the Agents settings pick.
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
 };
 
+use zz_cli::driver::Recovery;
 use zz_client::{
     agent_transcript::{AgentToolKindModel, ToolPayload},
+    driver_log::PACKET_OPENING,
     program::Program,
     window_summary::{pane_agent, pane_program},
 };
@@ -21,7 +23,7 @@ use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, Hsla, IntoElement as _, ParentElement as _,
     SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use zz_protocol::{AgentProvider, CommandInvocation, PaneId, PaneKindSnapshot};
+use zz_protocol::{AgentProvider, ClientMessageKind, CommandInvocation, PaneId, PaneKindSnapshot};
 use zz_ui::{
     ActiveTheme as _, Ground,
     agent::{
@@ -123,27 +125,15 @@ pub(crate) fn driver_command(model: DriverModel, effort: DriverEffort) -> String
     command
 }
 
-/// Whether zz may start a driver on this machine now: this machine's daemon is
-/// connected and has sent its sessions, and no host zz reaches has a `driver`
-/// session, with or without an agent in it.
+/// Whether zz may ask the fleet for a driver now: this machine's daemon is
+/// connected and has sent its sessions. `zz driver recover` asks every host
+/// itself, so a host zz is still reconnecting to cannot hide a live driver.
 fn may_start_driver(mux: &MuxClient) -> bool {
-    let mut local_ready = false;
-    for (host, _, state, snapshot) in mux.fleet_hosts() {
-        let Some(snapshot) = snapshot else {
-            continue;
-        };
-        if snapshot
-            .sessions
-            .iter()
-            .any(|session| session.name == DRIVER_SESSION)
-        {
-            return false;
-        }
-        if host == HostId::LOCAL {
-            local_ready = matches!(state, HostState::Connected) && !snapshot.sessions.is_empty();
-        }
-    }
-    local_ready
+    mux.fleet_hosts().any(|(host, _, state, snapshot)| {
+        host == HostId::LOCAL
+            && matches!(state, HostState::Connected)
+            && snapshot.is_some_and(|snapshot| !snapshot.sessions.is_empty())
+    })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -178,6 +168,9 @@ pub(crate) fn driver_messages(entries: &[AgentThreadEntry], turn_live: bool) -> 
                         kind: DriverMessageKind::Driver,
                         text: text.to_owned(),
                     });
+                }
+                if markdown.trim().starts_with(PACKET_OPENING) {
+                    continue;
                 }
                 if let Some((pane, text)) = agent_notice(markdown) {
                     messages.push(DriverMessage {
@@ -356,6 +349,8 @@ pub(crate) struct DriverChat {
     read: usize,
     error: Option<Arc<str>>,
     started: Option<Instant>,
+    recovering: bool,
+    kept: HashSet<(HostId, usize)>,
 }
 
 impl DriverChat {
@@ -385,6 +380,8 @@ impl DriverChat {
             read: 0,
             error: None,
             started: None,
+            recovering: false,
+            kept: HashSet::new(),
         };
         chat.synchronize(cx);
         chat
@@ -393,9 +390,15 @@ impl DriverChat {
     fn synchronize(&mut self, cx: &mut Context<Self>) {
         let config = crate::config::resolved_config(cx);
         let driver = if config.driver_agent.value {
+            self.keep_hosts(cx);
             let driver = find_driver(self.mux.read(cx), &self.local_name);
             if driver.is_none() {
-                self.start(config.driver_model.value, config.driver_effort.value, cx);
+                self.start(
+                    config.driver_model.value,
+                    config.driver_effort.value,
+                    false,
+                    cx,
+                );
             }
             driver
         } else {
@@ -444,27 +447,72 @@ impl DriverChat {
         }
     }
 
-    /// Start a driver in a new `driver` session on this machine, in the home
-    /// folder, unless one may be on its way.
-    fn start(&mut self, model: DriverModel, effort: DriverEffort, cx: &App) {
-        if self
-            .started
-            .is_some_and(|started| started.elapsed() < START_BACKOFF)
+    /// Ask the fleet for the driver with `zz driver recover`: follow a live
+    /// one, or start one on this machine from the newest copy any host keeps
+    /// once most hosts answered. `force` starts it with fewer answers.
+    fn start(
+        &mut self,
+        model: DriverModel,
+        effort: DriverEffort,
+        force: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.recovering
+            || (!force
+                && self
+                    .started
+                    .is_some_and(|started| started.elapsed() < START_BACKOFF))
             || !may_start_driver(self.mux.read(cx))
         {
             return;
         }
-        let mut arguments = vec!["-d".to_owned(), "-s".to_owned(), DRIVER_SESSION.to_owned()];
-        if let Some(home) = std::env::var_os("HOME") {
-            arguments.push("-c".to_owned());
-            arguments.push(home.to_string_lossy().into_owned());
-        }
-        arguments.push(driver_command(model, effort));
-        self.mux.read(cx).execute_on_host(
-            HostId::LOCAL,
-            CommandInvocation::new("new-session", arguments),
-        );
+        self.recovering = true;
         self.started = Some(Instant::now());
+        let socket = self.mux.read(cx).local_socket_path().to_path_buf();
+        let command = driver_command(model, effort);
+        let recovery = cx
+            .background_executor()
+            .spawn(async move { zz_cli::driver::recover(&socket, force, &command) });
+        cx.spawn(async move |chat, cx| {
+            let recovery = recovery.await;
+            let _ = chat.update(cx, |chat, cx| chat.recovered(recovery, cx));
+        })
+        .detach();
+    }
+
+    fn recovered(&mut self, recovery: Result<Recovery, String>, cx: &mut Context<Self>) {
+        self.recovering = false;
+        let warning = match recovery {
+            Ok(Recovery::Unreachable { answered, hosts }) => format!(
+                "The Driver Agent is not running and only {answered} of {hosts} hosts answered, \
+                 so zz did not start another. Start it here with `zz driver recover --force`."
+            ),
+            Err(error) => format!("zz could not start the Driver Agent: {error}"),
+            Ok(Recovery::Alive { .. } | Recovery::Started { .. }) => return,
+        };
+        self.mux.update(cx, |_, cx| {
+            MuxClient::emit_notification(ClientMessageKind::Warning, warning, cx);
+        });
+    }
+
+    /// Start `zz driver keep` on every connected host once per connection, so
+    /// each keeps its own copy of the driver's chat. A second keeper on a host
+    /// finds the first one's lock and exits.
+    fn keep_hosts(&mut self, cx: &App) {
+        let mux = self.mux.read(cx);
+        let connected = mux
+            .fleet_hosts()
+            .filter(|(_, _, state, _)| matches!(state, HostState::Connected))
+            .filter_map(|(host, _, _, _)| Some((host, mux.connection_identity(host)?)))
+            .collect::<Vec<_>>();
+        for connection in connected {
+            if self.kept.insert(connection) {
+                mux.execute_on_host(
+                    connection.0,
+                    CommandInvocation::new("run-shell", ["-b", "zz driver keep"]),
+                );
+            }
+        }
     }
 
     fn stamp(&mut self, cx: &App) {

@@ -183,6 +183,9 @@ impl CommandSpec {
             }
             "display-message" => flagged(&["-I", "-d"]).unwrap_or(true),
             "capture-pane" => !flagged(&["-p"]).unwrap_or(false),
+            "driver" => {
+                !matches!(args, [verb, rest @ ..] if verb == "state" && !rest.iter().any(|argument| argument == "--follow"))
+            }
             name => !READ_ONLY_COMMAND_NAMES.contains(&name),
         }
     }
@@ -686,6 +689,7 @@ pub static DAEMON_COMMAND_NAMES: &[&str] = &[
     "tools",
     "fleet",
     "list-hosts",
+    "driver",
     "set-buffer",
     "setb",
     "show-buffer",
@@ -819,6 +823,7 @@ pub static NATIVE_COMMAND_NAMES: &[&str] = &[
     "choose-path",
     "copy-mode-search-prompt",
     "debug-marker",
+    "driver",
     "events",
     "fleet",
     "html",
@@ -1135,6 +1140,49 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             "--restart-daemon",
             "with install, restart the host's daemon; this ends its sessions",
         )],
+        positionals: &[],
+        variadic: Some(FreeForm),
+    },
+    CommandSpec {
+        name: "driver",
+        aliases: &[],
+        description: "Keep the Driver Agent: its state on this machine, the copy of its chat, and starting or recovering it",
+        usage: "state [--brief] [--json] [--since GEN:SEQ] [--follow] | keep | start [--generation N] [--from HOST] [--command CMD] | recover [--force] | stop-hook",
+        options: &[
+            CommandOptionSpec::flag(
+                "--brief",
+                "with state, one JSON line: generation, position, whether its driver is alive",
+            ),
+            CommandOptionSpec::flag("--json", "with state --brief, JSON for --host all"),
+            CommandOptionSpec::value(
+                "--since",
+                FreeForm,
+                "with state, only the lines after this generation and position",
+            ),
+            CommandOptionSpec::flag(
+                "--follow",
+                "with state, keep printing lines as they are written",
+            ),
+            CommandOptionSpec::value(
+                "--command",
+                FreeForm,
+                "with start or recover, the CLI to start, such as claude --model opus",
+            ),
+            CommandOptionSpec::value(
+                "--generation",
+                FreeForm,
+                "with start, the generation to start at",
+            ),
+            CommandOptionSpec::value(
+                "--from",
+                FreeForm,
+                "with start, the host whose copy to start from",
+            ),
+            CommandOptionSpec::flag(
+                "--force",
+                "with recover, start without a majority of hosts answering",
+            ),
+        ],
         positionals: &[],
         variadic: Some(FreeForm),
     },
