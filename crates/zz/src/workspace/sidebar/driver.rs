@@ -2,7 +2,7 @@ use zz_gpui::{
     AnyElement, AppContext as _, Context, Entity, IntoElement as _, ParentElement as _,
     SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use zz_ui::agent::chat::{ChatBubble, ChatTyping, chat_header, chat_latest};
+use zz_ui::agent::chat::{ChatBubble, ChatTyping, chat_header, chat_latest, chat_unreachable};
 
 use super::{SidebarOpenDriver, WorkspaceSidebar};
 use crate::{agent::driver::DriverChat, mux::client::MuxClient};
@@ -43,7 +43,26 @@ impl WorkspaceSidebar {
     ) -> AnyElement {
         let chat = self.driver.chat.read(cx);
         let (Some(sender), Some(driver)) = (chat.driver_sender(), chat.driver()) else {
-            return navigation;
+            let Some((answered, hosts)) = chat.unreachable() else {
+                return navigation;
+            };
+            let ground = self.content_ground(cx);
+            let entity = self.driver.chat.clone();
+            return div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .min_h_0()
+                .child(div().flex().flex_col().flex_1().min_h_0().child(navigation))
+                .child(chat_unreachable(
+                    "workspace-driver-unreachable",
+                    answered,
+                    hosts,
+                    ground,
+                    move |_, _, cx| entity.update(cx, DriverChat::start_here),
+                    cx,
+                ))
+                .into_any_element();
         };
         let ground = self.content_ground(cx);
         let message = if let Some(steps) = chat.steps(cx) {

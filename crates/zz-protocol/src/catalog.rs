@@ -1147,7 +1147,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         name: "driver",
         aliases: &[],
         description: "Keep the Driver Agent: its state on this machine, the copy of its chat, and starting or recovering it",
-        usage: "state [--brief] [--json] [--since GEN:SEQ] [--follow] | keep | start [--generation N] [--from HOST] [--command CMD] | recover [--force] | stop-hook",
+        usage: "state [--brief] [--json] [--since GEN:SEQ] [--follow] | keep | start [--generation N] [--from HOST] [--command CMD] | recover [--force] [--on HOSTS] | stop-hook",
         options: &[
             CommandOptionSpec::flag(
                 "--brief",
@@ -1181,6 +1181,11 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             CommandOptionSpec::flag(
                 "--force",
                 "with recover, start without a majority of hosts answering",
+            ),
+            CommandOptionSpec::value(
+                "--on",
+                FreeForm,
+                "with recover, the hosts to start on, first that answers; local is this machine",
             ),
         ],
         positionals: &[],

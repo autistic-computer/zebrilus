@@ -11,7 +11,8 @@ use zz_ui::{
     agent::{
         chat::{
             ChatBubble, ChatComposer, ChatSender, ChatTyping, DRIVER_PALETTE_HINTS, Receipt,
-            chat_button, chat_header, chat_latest, chat_seen, chat_thread, driver_palette_body,
+            chat_button, chat_header, chat_latest, chat_seen, chat_thread, chat_unreachable,
+            driver_palette_body,
         },
         controls::{composer_action, composer_action_button},
     },
@@ -71,7 +72,7 @@ pub const STORY: Story = Story {
         Section {
             id: "latest",
             name: "Last message",
-            summary: "chat_latest: what the sidebar keeps of the chat. The driver's header, then its last answer cut to four lines, or ChatTyping while it works. A dot in the header while an approval waits on you. A click opens the command palette in Driver mode.",
+            summary: "chat_latest: what the sidebar keeps of the chat. The driver's header, then its last answer cut to four lines, or ChatTyping while it works. A dot in the header while an approval waits on you. A click opens the command palette in Driver mode. With no driver running and too few hosts answering for zz to start one, chat_unreachable says so and Start here starts one on this machine.",
             build: |_, cx| stateless(latest, cx),
         },
         Section {
@@ -506,6 +507,20 @@ fn latest(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "waiting on you",
             frame(sidebar_latest("latest-waiting", false, true, cx)),
+        )
+        .state(
+            "no driver, too few hosts",
+            frame(
+                chat_unreachable(
+                    "latest-unreachable",
+                    1,
+                    3,
+                    cx.theme().ground(),
+                    |_, _, _| {},
+                    cx,
+                )
+                .into_any_element(),
+            ),
         )
         .into_any_element()
 }

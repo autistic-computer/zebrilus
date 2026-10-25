@@ -11,8 +11,8 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, Ground, Icon, IconName, PaintState, StyledExt as _,
-    Surface, Tone,
+    ActiveTheme as _, Colorize as _, Edge, Ground, Icon, IconName, PaintState, Sizable as _,
+    StyledExt as _, Surface, Tone,
     command::PaletteHint,
     h_flex,
     input::{Input, InputState, field_chrome},
@@ -613,6 +613,60 @@ pub fn chat_latest(
                 .pb(px(CHAT_PADDING_BOTTOM))
                 .child(message),
         )
+}
+
+/// What the sidebar keeps of the chat when no driver runs and too few hosts
+/// answered for zz to start one: why, and the button that starts one here.
+pub fn chat_unreachable(
+    scope: &'static str,
+    answered: usize,
+    hosts: usize,
+    ground: Ground,
+    on_start: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Stateful<zz_gpui::Div> {
+    let theme = cx.theme();
+    let header = h_flex()
+        .debug_selector(|| "chat-unreachable".to_owned())
+        .flex_none()
+        .w_full()
+        .h(px(CHAT_HEADER_HEIGHT))
+        .items_center()
+        .gap(px(8.0))
+        .pl(px(18.0))
+        .pr(px(12.0))
+        .text_size(crate::rems_from_px(12.0))
+        .text_color(theme.foreground.muted())
+        .child(
+            div()
+                .text_size(crate::rems_from_px(13.0))
+                .font_weight(zz_gpui::FontWeight::MEDIUM)
+                .text_color(theme.foreground)
+                .child("Driver Agent"),
+        )
+        .child("not running");
+    let message = v_flex()
+        .gap(px(8.0))
+        .items_start()
+        .child(
+            div()
+                .text_size(crate::rems_from_px(12.0))
+                .text_color(theme.foreground.muted())
+                .child(format!(
+                    "Only {answered} of {hosts} hosts answered, so zz did not start another. \
+                     One may still run on a host this machine cannot reach."
+                )),
+        )
+        .child(
+            crate::button::Button::new(SharedString::from(format!("{scope}-start")))
+                .tone(Tone::Primary)
+                .emphasis(crate::Emphasis::Solid)
+                .small()
+                .on(ground)
+                .label("Start here")
+                .on_click(on_start),
+        );
+    chat_latest(scope, header, message, cx)
 }
 
 /// The palette's footer keys in Driver mode.

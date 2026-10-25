@@ -2558,6 +2558,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::DriverAgent
                 | ConfigKey::DriverModel
                 | ConfigKey::DriverEffort
+                | ConfigKey::DriverHosts
         )
     {
         return;
@@ -2692,7 +2693,8 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::ChromeAccent
         | ConfigKey::DriverAgent
         | ConfigKey::DriverModel
-        | ConfigKey::DriverEffort => {
+        | ConfigKey::DriverEffort
+        | ConfigKey::DriverHosts => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }

@@ -997,6 +997,11 @@ fn run_command_mode(
         });
     }
 
+    if let Some(refusal) = driver::fence(socket_path, host, &command_chain) {
+        eprintln!("zz: {refusal}");
+        return Some(exit_code_for(CliFailure::Runtime));
+    }
+
     let start_server = !no_start_server && tmux_command_starts_server(&command);
     let routing = ChainRouting {
         socket_path,
@@ -2701,7 +2706,7 @@ fn host_command_error_message(host: &str, error: &DaemonError) -> String {
     }
 }
 
-fn chain_is_read_only(command_chain: &[CommandInvocation]) -> bool {
+pub(crate) fn chain_is_read_only(command_chain: &[CommandInvocation]) -> bool {
     command_chain.iter().all(|invocation| {
         catalog_command_spec(canonical_command(&invocation.name))
             .is_some_and(|spec| !spec.mutates(&invocation.args))
