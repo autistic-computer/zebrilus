@@ -20,7 +20,7 @@ const STORY: Story = Story {
         Section {
             id: "lens-toggle",
             name: "Lens toggle",
-            summary: "terminal_pane_header with a PaneLens: an eye before the pane actions, lit while the lens is open. It stays on an inactive pane, where the actions wait for the pointer.",
+            summary: "terminal_pane_header with a PaneLens: an eye before the pane actions, lit while the lens is open. Like the actions, it shows on the focused pane and waits for the pointer on the others.",
             build: lens::toggles,
         },
         Section {
@@ -86,13 +86,13 @@ const STORY: Story = Story {
         Section {
             id: "composer",
             name: "Composer",
-            summary: "The prompt box and its footer. The round action button sends, queues behind a running turn, or stops it.",
+            summary: "The Composer the lens and the Driver chat share: a pill with + (which starts an @ mention, as in the Driver chat), the field, the context ring and the round action button, all inset the same from its edge. A long draft grows the pill and keeps the buttons on its last line. The branch and its changes sit under it. The action button sends, queues behind a running turn, or stops it.",
             build: composer::composers,
         },
         Section {
             id: "composer-controls",
             name: "Composer controls",
-            summary: "The pieces of the composer on their own: action button, attach, context meter and git summary.",
+            summary: "The pieces of the composer on their own: action button, the + that starts a mention, context meter and git summary.",
             build: composer::controls,
         },
         Section {

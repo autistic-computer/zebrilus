@@ -230,19 +230,13 @@ pub const CHAT_MINE: SurfaceRole = SurfaceRole::under(
     "Your messages to the driver, washed in the accent",
 )
 .with(P.fill(Fill::Tint));
-pub const CHAT_COMPOSER: SurfaceRole = SurfaceRole::new(
-    "chat.composer",
-    Kind::Field,
-    "Chat composer",
-    "The one-line box you message the driver in",
-)
-.with(P.shape(Shape::Pill));
 pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
     "agent.composer",
     "Composer",
-    "The box you write to the agent in",
-);
+    "The pill you write to an agent or the driver in",
+)
+.with(P.shape(Shape::Pill));
 pub const AGENT_SEND: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "agent.send",
@@ -605,7 +599,6 @@ const ZZ: &[SurfaceRole] = &[
     PHONE_ADD,
     PANE_STACK,
     AGENT_COMPOSER,
-    CHAT_COMPOSER,
     AGENT_PICKER,
     AGENT_STATUS,
     ADDRESS_BAR,

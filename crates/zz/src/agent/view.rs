@@ -2,10 +2,10 @@ use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,
 };
-use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, composer_ground};
+use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, Composer, composer_ground};
 use zz_ui::agent::controls::{
-    ComposerAction, agent_queue_chip, composer_action, composer_action_button, context_usage_meter,
-    git_summary_footer,
+    ComposerAction, agent_queue_chip, composer_action, composer_action_button, composer_add_button,
+    context_usage_meter, git_summary_footer,
 };
 #[cfg(test)]
 use zz_ui::agent::controls::{context_usage_fraction, context_usage_tooltip, git_file_count_label};
@@ -31,6 +31,12 @@ use zz_gpui::{
     ScrollStrategy, SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*,
     px, uniform_list,
 };
+use zz_ui::{
+    command::target_picker,
+    target::{TargetPicker, mention_at_caret, mention_keys},
+};
+
+use crate::command::palette::palette_backend;
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
 use zz_ui::agent::{
@@ -479,6 +485,8 @@ pub(crate) struct AgentView {
     question: Option<QuestionCardState>,
     tray_open: Option<TrayPanel>,
     attachments: Vec<Arc<Image>>,
+    /// The `@` picker over the composer, the Driver chat's.
+    mention: Entity<TargetPicker>,
     completions: Arc<[CommandCompletion]>,
     completion_selected: Option<usize>,
     completion_dismissed: bool,
@@ -500,7 +508,7 @@ impl AgentView {
     ) -> Self {
         let input = cx.new(|cx| {
             InputState::new(window, cx)
-                .auto_grow(2, 8)
+                .auto_grow(1, 8)
                 .submit_on_enter(true)
                 .placeholder(format!("Message {}…", provider.label()))
                 .context_menu(true)
@@ -575,6 +583,7 @@ impl AgentView {
                 cx.notify();
             }
         });
+        let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
         Self {
             pane,
             mux,
@@ -594,6 +603,7 @@ impl AgentView {
             question: None,
             tray_open: None,
             attachments: Vec::new(),
+            mention,
             completions: Arc::from([]),
             completion_selected: None,
             completion_dismissed: false,
@@ -1108,28 +1118,22 @@ impl AgentView {
         if self.attachments.is_empty() {
             return None;
         }
-        Some(
-            h_flex()
-                .w_full()
-                .flex_wrap()
-                .gap_2()
-                .px_3()
-                .pt_2()
-                .children(self.attachments.iter().enumerate().map(|(index, image)| {
-                    let remove_view = view.clone();
-                    composer_attachment(
-                        ("agent-composer-attachment", index),
-                        format!("agent-attachment-remove-{}-{index}", self.pane.0),
-                        Arc::clone(image),
-                        move |_, cx| {
-                            remove_view.update(cx, |view, cx| {
-                                view.remove_attachment(index, cx);
-                            });
-                        },
-                        cx,
-                    )
-                })),
-        )
+        Some(h_flex().w_full().flex_wrap().gap_2().py_1().children(
+            self.attachments.iter().enumerate().map(|(index, image)| {
+                let remove_view = view.clone();
+                composer_attachment(
+                    ("agent-composer-attachment", index),
+                    format!("agent-attachment-remove-{}-{index}", self.pane.0),
+                    Arc::clone(image),
+                    move |_, cx| {
+                        remove_view.update(cx, |view, cx| {
+                            view.remove_attachment(index, cx);
+                        });
+                    },
+                    cx,
+                )
+            }),
+        ))
     }
 
     fn render_empty_state(
@@ -1659,14 +1663,33 @@ impl AgentView {
             &pane_commands(&state.available_commands, state.session_capabilities.verbs),
         );
         let completions = self.render_completions(view, cx);
+        let add = {
+            let input = self.input.clone();
+            composer_add_button(
+                format!("agent-mention-{}", self.pane.0),
+                "Mention a host, session or file",
+            )
+            .on(composer_ground(cx))
+            .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
+        };
+        let mention = self
+            .mention
+            .read(cx)
+            .is_open()
+            .then(|| self.mention.clone().into_any_element());
         zz_ui::agent::composer::AgentComposer {
-            input: self.input.clone(),
-            action: action.into_any_element(),
-            settings: Vec::new(),
-            usage: usage.map(IntoElement::into_any_element),
+            composer: Composer {
+                input: self.input.clone(),
+                leading: Some(add.into_any_element()),
+                usage: usage.map(IntoElement::into_any_element),
+                action: action.into_any_element(),
+                attachments: self
+                    .render_attachments(view, cx)
+                    .map(IntoElement::into_any_element),
+                command_hint: command_hint.map(Into::into),
+                ground: None,
+            },
             git: git.map(IntoElement::into_any_element),
-            footer_actions: Vec::new(),
-            command_hint: command_hint.map(Into::into),
             prefix: self
                 .render_permission_wizard(state, view, cx)
                 .into_iter()
@@ -1684,10 +1707,8 @@ impl AgentView {
                         .map(IntoElement::into_any_element),
                 )
                 .chain(completions)
+                .chain(mention)
                 .collect(),
-            attachments: self
-                .render_attachments(view, cx)
-                .map(IntoElement::into_any_element),
         }
     }
 }
@@ -1821,6 +1842,7 @@ impl Render for AgentView {
             .capture_action(cx.listener(Self::move_completion_up))
             .capture_action(cx.listener(Self::move_completion_down))
             .capture_action(cx.listener(Self::complete))
+            .map(|root| mention_keys(root, &self.mention))
             .on_key_down(cx.listener(Self::on_key_down))
             .child(
                 div()
@@ -2315,6 +2337,7 @@ mod completion_tests {
             ];
 
             let timeline_scroll = ListState::new(2, ListAlignment::Top, px(1_200.0));
+            let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
             AgentView {
                 pane: PaneId(7),
                 mux,
@@ -2334,6 +2357,7 @@ mod completion_tests {
                 question: None,
                 tray_open: None,
                 attachments: Vec::new(),
+                mention,
                 completions: Arc::from([]),
                 completion_selected: None,
                 completion_dismissed: false,

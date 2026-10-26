@@ -28,11 +28,11 @@ use zz_ui::{
         AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore, AgentToolEntry,
         AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText, MarkdownSlot, TimelineRow,
         TimelineStick, agent_jump_to_bottom_button,
-        composer::{AgentComposer, COMPOSER_OUTER_PADDING, composer_ground},
+        composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer, composer_ground},
         composer_attachment,
         controls::{
             ComposerAction, agent_queue_chip, composer_action, composer_action_button,
-            context_usage_meter, git_summary_footer,
+            composer_add_button, context_usage_meter, git_summary_footer,
         },
         fold_timeline_rows,
         presentation::{
@@ -44,11 +44,13 @@ use zz_ui::{
         tool_output_text,
     },
     button::Button,
+    command::{PaletteSettings, target_picker},
     input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
     scroll::Scrollbar,
+    target::{TargetPicker, mention_at_caret, mention_keys},
 };
 
-use crate::connection::Connection;
+use crate::{command_palette::palette_backend, connection::Connection};
 
 pub(super) struct AgentLens {
     pane: PaneId,
@@ -71,6 +73,8 @@ pub(super) struct AgentLens {
     last_sequence: u64,
     last_reclaim_id: u64,
     attachments: Vec<AgentImage>,
+    /// The `@` picker over the composer, the Driver chat's.
+    mention: Entity<TargetPicker>,
     draft_error: Option<String>,
     permission_request_id: Option<u64>,
     permission_selected: usize,
@@ -97,7 +101,7 @@ impl AgentLens {
         let input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder(format!("Message {agent}…"))
-                .auto_grow(2, 8)
+                .auto_grow(1, 8)
                 .submit_on_enter(true)
                 .context_menu(true)
         });
@@ -174,6 +178,11 @@ impl AgentLens {
                 });
             });
         });
+        let mention = target_picker(
+            &palette_backend(connection.clone(), PaletteSettings::default()),
+            Some(input.clone()),
+            cx,
+        );
         Self {
             pane,
             connection,
@@ -195,6 +204,7 @@ impl AgentLens {
             last_sequence: 0,
             last_reclaim_id: 0,
             attachments: Vec::new(),
+            mention,
             draft_error: None,
             permission_request_id: None,
             permission_selected: 0,
@@ -1284,6 +1294,12 @@ impl Render for AgentLens {
         );
         prefix.extend(self.render_error(&state, cx));
         prefix.extend(self.render_completions(cx));
+        prefix.extend(
+            self.mention
+                .read(cx)
+                .is_open()
+                .then(|| self.mention.clone().into_any_element()),
+        );
         let has_content =
             !self.input.read(cx).value().trim().is_empty() || !self.attachments.is_empty();
         let action_kind = composer_action(running, has_content);
@@ -1325,11 +1341,54 @@ impl Render for AgentLens {
                 .into_any_element()
         } else {
             AgentComposer {
-                input: self.input.clone(),
-                action: action.into_any_element(),
-                settings: Vec::new(),
-                usage,
-                footer_actions: Vec::new(),
+                composer: Composer {
+                    input: self.input.clone(),
+                    leading: Some({
+                        let input = self.input.clone();
+                        composer_add_button(
+                            ("agent-mention", self.pane.0),
+                            "Mention a host, session or file",
+                        )
+                        .on(composer_ground(cx))
+                        .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
+                        .into_any_element()
+                    }),
+                    usage,
+                    action: action.into_any_element(),
+                    attachments: (!self.attachments.is_empty()).then(|| {
+                        zz_ui::h_flex()
+                            .w_full()
+                            .flex_wrap()
+                            .gap_2()
+                            .px_2()
+                            .py_1()
+                            .children(self.attachments.iter().enumerate().filter_map(
+                                |(index, image)| {
+                                    let preview = preview_image(image)?;
+                                    let view = cx.entity();
+                                    Some(composer_attachment(
+                                        ("web-agent-image", index),
+                                        ("web-agent-remove-image", index),
+                                        preview,
+                                        move |_, cx| {
+                                            view.update(cx, |this, cx| {
+                                                if index < this.attachments.len() {
+                                                    this.attachments.remove(index);
+                                                }
+                                                this.draft_error = None;
+                                                cx.notify();
+                                            });
+                                        },
+                                        cx,
+                                    ))
+                                },
+                            ))
+                            .into_any_element()
+                    }),
+                    command_hint: active_command_hint(&self.last_input, &self.commands)
+                        .map(Into::into),
+                    ground: None,
+                },
                 git: state.git.as_ref().map(|git| {
                     git_summary_footer(
                         ("agent-git-summary", self.pane.0),
@@ -1340,38 +1399,7 @@ impl Render for AgentLens {
                         cx,
                     )
                 }),
-                command_hint: active_command_hint(&self.last_input, &self.commands).map(Into::into),
                 prefix,
-                attachments: (!self.attachments.is_empty()).then(|| {
-                    zz_ui::h_flex()
-                        .w_full()
-                        .flex_wrap()
-                        .gap_2()
-                        .px_3()
-                        .pt_2()
-                        .children(self.attachments.iter().enumerate().filter_map(
-                            |(index, image)| {
-                                let preview = preview_image(image)?;
-                                let view = cx.entity();
-                                Some(composer_attachment(
-                                    ("web-agent-image", index),
-                                    ("web-agent-remove-image", index),
-                                    preview,
-                                    move |_, cx| {
-                                        view.update(cx, |this, cx| {
-                                            if index < this.attachments.len() {
-                                                this.attachments.remove(index);
-                                            }
-                                            this.draft_error = None;
-                                            cx.notify();
-                                        });
-                                    },
-                                    cx,
-                                ))
-                            },
-                        ))
-                        .into_any_element()
-                }),
             }
             .into_any_element()
         };
@@ -1493,6 +1521,7 @@ impl Render for AgentLens {
             .capture_action(cx.listener(Self::complete))
             .capture_action(cx.listener(Self::move_completion_up))
             .capture_action(cx.listener(Self::move_completion_down))
+            .map(|root| mention_keys(root, &self.mention))
             .capture_key_down(cx.listener(Self::key_down))
     }
 }

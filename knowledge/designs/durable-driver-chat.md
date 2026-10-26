@@ -357,15 +357,17 @@ dotted with `chat_button` in the color of what waits). The parts are in
 
 A receipt is one tick (`Sent`: zz has it), two (`Delivered`: typed into the driver's pane) or two in
 full ink (`Read`: the driver started a turn on it; the others are muted on the accent fill). `chat_seen` lists the agents a routed answer
-reached under it. The bubble and its tail are one painted path, so a translucent fill does not
-double where they meet; a hidden copy of the time at the end of the text keeps the last line clear
+reached under it. A bubble is the role's plain rounded box, its corner capped at 17px (the tails
+went on 2026-10-26); a hidden copy of the time at the end of the text keeps the last line clear
 of the stamp. A markdown answer goes through the kit's `TextView` (the lens's code and figure
 roles, half-rem paragraph gaps, headings at the body's size the way chat apps draw them),
 shrinks to its widest line, and puts the stamp on a line of its own. The zz-driver skill asks the
 driver to write like a message (short paragraphs, one level of bullets, bold and code, no headings,
-rules or tables); the sidebar's four-line cut shows it as plain text, one line per block. `chat_header` names the driver and its host. `ChatComposer` is one line (the `chat.composer` pill, 44px) with an optional button before the
-field and the lens composer's round send button after it; there are no pickers, since the driver's
-model is a setting. Approvals use the lens's
+rules or tables); the sidebar's four-line cut shows it as plain text, one line per block. `chat_header` names the driver and its host. The composer is the lens's (`agent::composer::Composer`,
+2026-10-26; before, `ChatComposer` and the `chat.composer` role): an `agent.composer` pill 40px tall
+with `+` (which starts an `@` mention), the field, the driver's context ring and the round send
+button, 28px each and 6px from the edge; there are no pickers, since the driver's model is a
+setting. Approvals use the lens's
 permission card.
 
 While the driver works, `ChatTyping` takes the place of its answer at the bottom of the thread: a

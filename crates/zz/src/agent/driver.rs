@@ -589,6 +589,11 @@ impl DriverChat {
         &self.mux
     }
 
+    /// The driver's context window: tokens used and its size.
+    pub(crate) fn usage(&self, cx: &App) -> Option<(u64, u64)> {
+        self.state(cx)?.usage
+    }
+
     fn state(&self, cx: &App) -> Option<AgentPaneState> {
         self.controller
             .read(cx)

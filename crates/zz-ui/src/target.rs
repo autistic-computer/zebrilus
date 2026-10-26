@@ -1524,6 +1524,19 @@ impl Render for TargetPicker {
     }
 }
 
+/// Put `text` at the caret of `input`, a space before it unless one is
+/// there, and focus the field: what a composer's `+` does with `@`.
+pub fn mention_at_caret(input: &Entity<InputState>, text: &str, window: &mut Window, cx: &mut App) {
+    input.update(cx, |input, cx| {
+        let before = input.value()[..input.cursor()].chars().next_back();
+        if !before.is_none_or(char::is_whitespace) {
+            input.insert(" ", window, cx);
+        }
+        input.insert(text, window, cx);
+        input.focus(window, cx);
+    });
+}
+
 /// Route a composer's keys to `picker` while it is open: Up and Down move the
 /// highlight, Tab opens the level under the row, Enter inserts and Esc closes
 /// only the picker. Hang it on an element around the input; it captures the

@@ -380,7 +380,7 @@ pickers, so `agent_status_pill` and the composer pickers are deleted, and `agent
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `agent.bubble` | card | your messages | `ui/agent.rs:2416` | |
-| `agent.composer` | field.multiline | the message box | `ui/agent/composer.rs:56` | |
+| `agent.composer` | field.multiline | the composer pill the lens and the Driver chat share, a pill in every theme (a taller draft keeps the one-line corner) | `ui/agent/composer.rs` (`Composer`) | took over `chat.composer` 2026-10-26 |
 | `agent.send` | icon-button | send, queue, stop | `ui/agent/controls.rs:42` | stop had no fill, send was solid; fixed, stop takes send's fill |
 | `agent.picker` | field | mode, model and folder pickers | `ui/agent/controls.rs:59` | |
 | `agent.status` | badge | Running, Waiting for you and Exited in an agent pane's header | `ui/agent.rs:3712` (`agent_status_pill`) | was a `pane.chip`, so styling the floating chips restyled it; its own role since 10-15 |
@@ -403,9 +403,8 @@ corners of the sender tiles.
 
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
-| `chat.bubble` | card | the driver's replies and agents' messages, with their tails | `ui/agent/chat.rs` (`ChatBubble`) | new 2026-10-24 |
+| `chat.bubble` | card | the driver's replies and agents' messages, plain rounded boxes since 2026-10-26 | `ui/agent/chat.rs` (`ChatBubble`) | new 2026-10-24 |
 | `chat.bubble.mine` | chat.bubble | your messages, in the accent's wash | `ui/agent/chat.rs` (`ChatBubble::mine`) | new 2026-10-24 |
-| `chat.composer` | field | the one-line box you message the driver in, a pill in every theme | `ui/agent/chat.rs` (`ChatComposer`) | new 2026-10-24 |
 | `rule.chat` | rule | the line over the driver's last message in the sidebar | `ui/agent/chat.rs` (`chat_latest`) | drew as `rule.list` until 2026-10-24, so styling list dividers restyled it |
 
 ### Reading content (markdown in agent replies)

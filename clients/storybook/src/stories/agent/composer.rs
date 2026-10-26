@@ -9,10 +9,10 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, IconName, Sizable as _,
     agent::{
         COMPOSER_ATTACHMENT, agent_attachment_thumbnail,
-        composer::{AgentComposer, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING},
+        composer::{AgentComposer, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING, Composer},
         controls::{
-            ComposerAction, composer_action, composer_action_button, context_usage_meter,
-            git_summary_footer,
+            ComposerAction, composer_action, composer_action_button, composer_add_button,
+            context_usage_meter, git_summary_footer,
         },
         presentation::error_card,
     },
@@ -34,7 +34,7 @@ pub fn composer_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<
     cx.new(|cx| {
         InputState::new(window, cx)
             .placeholder(PLACEHOLDER)
-            .auto_grow(2, 8)
+            .auto_grow(1, 8)
             .submit_on_enter(true)
             .context_menu(true)
             .default_value(value)
@@ -74,8 +74,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             .w_full()
             .flex_wrap()
             .gap_2()
-            .px_3()
-            .pt_2()
+            .py_1()
             .children(draft.images.iter().enumerate().map(|(index, image)| {
                 div()
                     .relative()
@@ -97,27 +96,35 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             }))
             .into_any_element()
     });
-    let settings = draft
-        .attach
-        .then(|| {
-            Button::compact_icon(SharedString::from(format!("{id}-attach")), IconName::Plus)
-                .tooltip("Attach images")
-                .disabled(!ready)
-                .into_any_element()
-        })
-        .into_iter()
-        .collect();
+    let leading = draft.attach.then(|| {
+        composer_add_button(
+            SharedString::from(format!("{id}-mention")),
+            "Mention a host, session or file",
+        )
+            .disabled(!ready)
+            .into_any_element()
+    });
+    let command_hint = active_command_hint(&value, &pane_commands(&[], true)).map(Into::into);
     AgentComposer {
-        input: draft.input,
-        action: composer_action_button(SharedString::from(format!("{id}-action")), action, enabled)
+        composer: Composer {
+            input: draft.input,
+            leading,
+            usage: Some(context_usage_meter(
+                SharedString::from(format!("{id}-usage")),
+                68_000,
+                200_000,
+                cx,
+            )),
+            action: composer_action_button(
+                SharedString::from(format!("{id}-action")),
+                action,
+                enabled,
+            )
             .into_any_element(),
-        settings,
-        usage: Some(context_usage_meter(
-            SharedString::from(format!("{id}-usage")),
-            68_000,
-            200_000,
-            cx,
-        )),
+            attachments,
+            command_hint,
+            ground: None,
+        },
         git: Some(git_summary_footer(
             SharedString::from(format!("{id}-git")),
             Some("fix/pinned-tab-width".into()),
@@ -126,10 +133,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             17,
             cx,
         )),
-        footer_actions: Vec::new(),
-        command_hint: active_command_hint(&value, &pane_commands(&[], true)).map(Into::into),
         prefix: draft.prefix,
-        attachments,
     }
     .into_any_element()
 }
@@ -366,14 +370,14 @@ impl Render for Controls {
                     )),
             )
             .state(
-                "attach images, enabled and disabled",
+                "+ starts a mention, enabled and disabled",
                 row()
+                    .child(composer_add_button(
+                        "mention-on",
+                        "Mention a host, session or file",
+                    ))
                     .child(
-                        Button::compact_icon("attach-on", IconName::Plus).tooltip("Attach images"),
-                    )
-                    .child(
-                        Button::compact_icon("attach-off", IconName::Plus)
-                            .tooltip("Attach images")
+                        composer_add_button("mention-off", "Mention a host, session or file")
                             .disabled(true),
                     ),
             )
