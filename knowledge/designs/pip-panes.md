@@ -8,7 +8,7 @@ tags:
 - ui
 - floating-panes
 - design-plan
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-26T00:00:00-03:00
 ---
 
 # Rulings (fabrico, 2026-10-18)
@@ -72,9 +72,9 @@ Only the title drags, as on a tiled pane. `PaneDragSource::floating` makes it ca
 instead of a `PaneDrag`, so the tile drop zones ignore it and the client moves the PiP from the
 first `DragMoveEvent<PipGrab>`.
 
-A bordered PiP on the desktop keeps the side, bottom and bottom corner grips for `resize-pane`, 8 px
-wide and straddling the card's edge; they block the pointer so a press half outside the card does
-not reach the pane under it. A resize stops at `PipLayout::max_cells`, the largest PiP that sits a
+A bordered PiP on the desktop has a grip on every edge and corner for `resize-pane`, 8 px wide and
+straddling the card's edge, the top one over the header's first 4 px; they block the pointer so a
+press half outside the card does not reach the pane under it. A resize stops at `PipLayout::max_cells`, the largest PiP that sits a
 margin inside the canvas and inside the window (`float_drag_within` keeps the edge the grip did not
 move). `resize-pane` from the CLI can still make a float larger; the layout then pins it to the top
 left so its header shows.
@@ -148,9 +148,11 @@ settles, so the daemon sees one resize, not one a frame.
 # Clients
 
 Every tiled pane's header (terminal, browser) has a Float button (`picture-in-picture`) after
-Split bottom and Split right. It sends `break-pane -W -x 33% -y 33% -s %N`, then
+Split bottom and Split right. It sends `break-pane -W -x 33% -y <rows> -s %N`, then
 `move-pane -t %N -P bottom-right` (`float_pane_commands` in `zz_client::floating`), so the pane
-becomes a PiP a third of the window's size in the bottom-right corner. `prefix @` and the pane menu
+becomes a PiP a third of the window wide on its right side and as tall as the window fits: `<rows>`
+is `PipLayout::fill_rows`, the tallest PiP that sits a margin inside the canvas with its header,
+which each client measures (`pip_fill_rows`), since the daemon knows only cells. `prefix @` and the pane menu
 keep tmux 3.8's size (half the width, a quarter of the height, or the pane's last float). In a PiP
 the header has Tile back and Zoom instead (`pane_floats`). `prefix @`, the pane menu and the CLI
 still work.

@@ -40,7 +40,7 @@ pub const STORY: Story = Story {
         Section {
             id: "terminal-header",
             name: "Terminal header",
-            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it. A terminal running Claude Code or Codex adds the lens toggle before them, lit while the pane shows the agent timeline.",
+            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W at the tallest height the window fits, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it. A terminal running Claude Code or Codex adds the lens toggle before them, lit while the pane shows the agent timeline.",
             build: |_, cx| stateless(terminal_header, cx),
         },
         Section {

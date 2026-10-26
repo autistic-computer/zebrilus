@@ -1295,6 +1295,12 @@ impl AppShell {
                             this.show_pill_notice(pane, text, kind, cx);
                         });
                     });
+                    let rows_view = view.clone();
+                    browser.set_float_rows_handler(move |cx| {
+                        rows_view
+                            .upgrade()
+                            .and_then(|view| view.read(cx).pip_fill_rows(cx))
+                    });
                     browser.set_header_drag_handler(move |drag, _, cx| {
                         let _ = view.update(cx, |this, cx| this.on_pane_drag_start(*drag, cx));
                     });
@@ -1367,6 +1373,7 @@ impl AppShell {
         let lens_view = cx.weak_entity();
         let connection = self.connection.clone();
         let lens = self.pane_lens(pane_id, cx);
+        let float_rows = self.pip_fill_rows(cx);
         zz_ui::pane::pane_header(
             icon,
             active,
@@ -1390,7 +1397,7 @@ impl AppShell {
                     if !connection.connected || connection.core.attached_read_only() {
                         return;
                     }
-                    for command in action.commands(pane_id) {
+                    for command in action.commands(pane_id, float_rows) {
                         connection.invoke(command, cx);
                     }
                 });
