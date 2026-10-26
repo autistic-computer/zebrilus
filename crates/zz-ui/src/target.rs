@@ -288,7 +288,7 @@ pub fn pop_level(body: &str) -> Option<String> {
     Some(trimmed[..cut].to_owned())
 }
 
-fn unescape(text: &str) -> String {
+pub(crate) fn unescape(text: &str) -> String {
     let mut plain = String::with_capacity(text.len());
     let mut characters = text.chars();
     while let Some(character) = characters.next() {
@@ -611,13 +611,13 @@ fn file_items(query: &FileQuery) -> Vec<TargetItem> {
         .collect()
 }
 
-fn count(value: usize, noun: &str) -> String {
+pub(crate) fn count(value: usize, noun: &str) -> String {
     format!("{value} {noun}{}", if value == 1 { "" } else { "s" })
 }
 
 /// A session as a target names it: its name when tmux can read that back, else
 /// its id.
-fn session_ref(session: &TargetSession) -> String {
+pub(crate) fn session_ref(session: &TargetSession) -> String {
     let plain = !session.name.is_empty()
         && !session.name.starts_with(['$', '@', '%', '~', '/'])
         && !session
@@ -630,7 +630,7 @@ fn session_ref(session: &TargetSession) -> String {
     }
 }
 
-fn find_session<'a>(host: &'a TargetHost, text: &str) -> Option<&'a TargetSession> {
+pub(crate) fn find_session<'a>(host: &'a TargetHost, text: &str) -> Option<&'a TargetSession> {
     host.sessions
         .iter()
         .find(|session| session.name == text)
@@ -641,7 +641,7 @@ fn find_session<'a>(host: &'a TargetHost, text: &str) -> Option<&'a TargetSessio
         })
 }
 
-fn find_window<'a>(session: &'a TargetSession, text: &str) -> Option<&'a TargetWindow> {
+pub(crate) fn find_window<'a>(session: &'a TargetSession, text: &str) -> Option<&'a TargetWindow> {
     session
         .windows
         .iter()
@@ -649,7 +649,7 @@ fn find_window<'a>(session: &'a TargetSession, text: &str) -> Option<&'a TargetW
         .or_else(|| session.windows.iter().find(|window| window.name == text))
 }
 
-fn pane_detail(pane: &TargetPane, place: Option<String>) -> String {
+pub(crate) fn pane_detail(pane: &TargetPane, place: Option<String>) -> String {
     let title = pane.title.trim();
     place
         .into_iter()
@@ -1560,4 +1560,4 @@ fn on<A: Action>(
 
 #[cfg(test)]
 #[path = "target_tests.rs"]
-mod tests;
+pub(crate) mod tests;

@@ -10,6 +10,7 @@ mod document;
 mod global;
 mod inline;
 mod inline_flow;
+mod links;
 mod markdown_ext;
 mod markdown_parse;
 mod node;
@@ -26,6 +27,7 @@ mod window_selection;
 
 use zz_gpui::{App, KeyBinding, actions};
 
+pub use links::{LinkClick, TextLinks};
 pub use markdown_ext::{
     MarkdownBlockParserFn, MarkdownBlockRenderFn, MarkdownExtensions, MarkdownNode,
     MarkdownParseContext, MarkdownPlugin, markdown_ast,

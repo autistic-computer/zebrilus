@@ -38,7 +38,7 @@ A terminal whose agent lens is open carries its agent state in the tree and sear
 
 # Targets
 
-The `@` mode, the Driver chat's `@` mentions and `prefix F` share one grammar and one picker,
+The `@` mode, the Driver chat's `@` mentions and links, and `prefix F` share one grammar and one picker,
 `zz_ui::target::TargetPicker` (2026-10-26; before, the palette had `@` Navigate, `%` Pane and `~`
 Host modes, the chat its own picker, and `prefix F` a list under the shell cursor). A target is
 tmux's `-t` with an optional host in front, or a file on a host in scp form:

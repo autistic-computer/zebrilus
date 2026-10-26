@@ -29,6 +29,12 @@ and `@xps:~/path` are a file or folder on that host, scp style: read it there wi
 machine you run on (`hostname -s`), drop `--host`. Mentions picked in the chat always carry their
 host; one typed without it (`@work:2`, `@~/notes.md`) means the machine the user's zz window is on.
 
+Name things the same way in your answers, as Markdown links whose destination is the mention:
+`[the failing test](@xps:work:2.%7)`, `[atlas.rs:212](@xps:~/dev/zz/src/atlas.rs:212)`. zz draws
+them as links the user hovers to see what they point at and clicks to go there; a bare
+`@xps:work:2` works too. Always write the host, and name a pane by its `%id`, which survives
+renames and moves.
+
 ## Ledger
 
 `ledger.md` in your working directory is your checkpoint: if you are restarted, it and the last

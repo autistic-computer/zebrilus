@@ -1640,6 +1640,10 @@ impl AppView {
                 DriverPaletteEvent::Close => view.focus_active_pane(window, cx),
                 DriverPaletteEvent::LeaveMode => view.open_command_palette(None, window, cx),
                 DriverPaletteEvent::ShowTerminal => view.show_driver_terminal(window, cx),
+                DriverPaletteEvent::Open(address) => {
+                    crate::command::palette::open_link(&view.mux, address, cx);
+                    view.focus_active_pane(window, cx);
+                }
             }
             cx.notify();
         })
@@ -8957,6 +8961,33 @@ mod tests {
             }]
         );
         assert!(workspace.read_with(cx, |workspace, _| workspace.command_palette.is_none()));
+    }
+
+    #[zz_gpui::test]
+    fn a_file_link_in_the_driver_chat_pastes_into_the_active_pane(cx: &mut TestAppContext) {
+        let (_, mux, input, _, cx) = path_picker_workspace(cx);
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(
+                SessionId(0),
+                two_pane_snapshot_of(PaneId(0), PaneKindSnapshot::Terminal),
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        input.borrow_mut().clear();
+        let open = |address: &str, cx: &mut zz_gpui::VisualTestContext| {
+            cx.update(|_, cx| crate::command::palette::open_link(&mux, address, cx))
+        };
+        assert!(open(r"@~/my\ notes.txt:3", cx));
+        assert_eq!(
+            input.borrow().as_slice(),
+            &[InputMessage::TerminalView {
+                pane: PaneId(0),
+                action: zz_terminal::TerminalViewAction::Paste(r"~/my\ notes.txt ".to_owned()),
+            }]
+        );
+        assert!(!open("@%99", cx));
+        assert!(!open("plain words", cx));
     }
 
     #[test]

@@ -33,6 +33,7 @@ use super::{
     global::TextGlobal,
     inline::{Inline, InlineState, point_in_text_selection},
     inline_flow::{InlineFlow, InlineFlowItem},
+    links::{LinkClick, SharedLinks, link_highlight, open_link},
     markdown_ext::{MarkdownExtensions, MarkdownNode},
     scroll_area::horizontal_scroll_area,
     text_view::{CodeBlockActionsFn, CodeBlockBodyFn},
@@ -1031,6 +1032,7 @@ pub(crate) struct NodeContext {
     pub(crate) style: TextViewStyle,
     pub(crate) code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     pub(crate) code_block_body: Option<Arc<CodeBlockBodyFn>>,
+    pub(crate) links: Option<SharedLinks>,
     pub(crate) markdown_extensions: Arc<MarkdownExtensions>,
     pub(crate) streaming_veil: Option<StreamingVeil>,
 }
@@ -1058,6 +1060,7 @@ impl Paragraph {
                 self.inline_flow_items(node_cx, cx),
             )
             .code_role(node_cx.style.code_role)
+            .links(node_cx.links.clone())
             .into_any_element();
         }
 
@@ -1089,6 +1092,7 @@ impl Paragraph {
                         )
                         .code_ranges(code_ranges.clone())
                         .code_role(node_cx.style.code_role)
+                        .links(node_cx.links.clone())
                         .streaming_veil(
                             node_cx.streaming_veil.clone(),
                             VeilKey::new(span.unwrap_or_default().start, element),
@@ -1104,14 +1108,20 @@ impl Paragraph {
                         .when_some(image.width, |this, width| this.w(width))
                         .when_some(image.link.clone(), |this, link| {
                             let title = image.title();
+                            let links = node_cx.links.clone();
                             this.cursor_pointer()
                                 .tooltip(move |window, cx| {
                                     Tooltip::new(title.clone()).build(window, cx)
                                 })
-                                .on_click(move |_, window, cx| {
+                                .on_click(move |event, window, cx| {
                                     window.end_text_selection(cx);
                                     cx.stop_propagation();
-                                    cx.open_url(&link.url);
+                                    let click = LinkClick {
+                                        url: link.url.clone(),
+                                        button: zz_gpui::MouseButton::Left,
+                                        modifiers: event.modifiers(),
+                                    };
+                                    open_link(links.as_ref(), &click, window, cx);
                                 })
                         })
                         .into_any_element(),
@@ -1154,17 +1164,16 @@ impl Paragraph {
                     }
 
                     if let Some(mut link_mark) = style.link.clone() {
-                        highlight.color = Some(cx.theme().foreground);
-                        highlight.underline = Some(zz_gpui::UnderlineStyle {
-                            thickness: zz_gpui::px(1.),
-                            ..Default::default()
-                        });
-
                         if let Some(identifier) = link_mark.identifier.as_ref() {
                             if let Some(mark) = node_cx.link_refs.get(identifier) {
                                 link_mark = mark.clone();
                             }
                         }
+                        highlight = highlight.highlight(link_highlight(
+                            node_cx.links.as_ref(),
+                            &link_mark.url,
+                            cx,
+                        ));
 
                         links.push((inner_range.clone(), link_mark));
                     }
@@ -1187,6 +1196,7 @@ impl Paragraph {
                 Inline::new(ix, self.state.clone(), links, highlights)
                     .code_ranges(code_ranges)
                     .code_role(node_cx.style.code_role)
+                    .links(node_cx.links.clone())
                     .streaming_veil(
                         node_cx.streaming_veil.clone(),
                         VeilKey::new(span.unwrap_or_default().start, element),
@@ -1278,17 +1288,16 @@ impl Paragraph {
                     }
 
                     if let Some(mut link_mark) = style.link.clone() {
-                        highlight.color = Some(cx.theme().foreground);
-                        highlight.underline = Some(zz_gpui::UnderlineStyle {
-                            thickness: zz_gpui::px(1.),
-                            ..Default::default()
-                        });
-
                         if let Some(identifier) = link_mark.identifier.as_ref()
                             && let Some(mark) = node_cx.link_refs.get(identifier)
                         {
                             link_mark = mark.clone();
                         }
+                        highlight = highlight.highlight(link_highlight(
+                            node_cx.links.as_ref(),
+                            &link_mark.url,
+                            cx,
+                        ));
 
                         links.push((inner_range.clone(), link_mark));
                     }
