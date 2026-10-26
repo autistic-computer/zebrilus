@@ -93,6 +93,9 @@ pub struct Theme {
     /// The monospace font size for the application, default is 13px.
     pub mono_font_size: Pixels,
     pub radius: Pixels,
+    /// The corner radius of buttons, fields, tabs and other controls that
+    /// round with the theme; `None` follows `radius`.
+    pub control_radius: Option<Pixels>,
     pub contrast: f32,
     /// The width of the hairline every edged thing draws: controls, cards
     /// and floating surfaces. Zero draws none.
@@ -204,10 +207,11 @@ impl Global for Theme {}
 
 impl Theme {
     pub fn control_radius(&self) -> Pixels {
-        if self.radius > px(24.0) {
+        let radius = self.control_radius.unwrap_or(self.radius);
+        if radius > px(24.0) {
             zz_gpui::FULL_CORNER_RADIUS
         } else {
-            self.radius
+            radius
         }
     }
 
@@ -494,6 +498,7 @@ impl From<&ThemeColor> for Theme {
             },
             mono_font_size: px(13.),
             radius: px(6.),
+            control_radius: None,
             contrast: 1.0,
             outline: px(0.5),
             picked_outlines: false,

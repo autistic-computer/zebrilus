@@ -146,6 +146,7 @@ fn text_layer(variant: ButtonVariant, state: PaintState, ground: Ground, cx: &Ap
         border: theme.transparent,
         border_width: px(0.0),
         shadow: Vec::new(),
+        mark: None,
         text: match (variant, state) {
             (_, PaintState::Disabled) => foreground.faint(),
             (ButtonVariant::Text, PaintState::Active) => foreground.muted(),
@@ -638,6 +639,7 @@ impl RenderOnce for Button {
             .border(rest.border_width)
             .border_color(rest.border)
             .shadow(rest.shadow.clone())
+            .when_some(rest.mark, Styled::edge_mark)
             .text_color(rest.text)
             .map(|this| match rest.glass {
                 Some(material) => this.glass(material),

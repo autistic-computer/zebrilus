@@ -9,7 +9,7 @@ tags:
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-24T00:00:00Z
+timestamp: 2026-10-25T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -87,8 +87,9 @@ the mode sets it, 0 casts nothing; the float shadow draws the contact shadow und
 
 The highlights: `tint` is a wash a step deeper than the fill; `lift` is that wash plus the outline
 and a contact shadow, as if the surface rose; `accent` fills with the accent and its text; `ring`
-is a 2px accent ring outside the edge; `bar` is a 3px accent bar along the leading edge (under a
-tab, along the bottom); `glass` turns the surface into the theme's glass for that state, tinted
+is a 2px accent ring outside the edge; `bar` is a 3px accent line along the bottom edge (on a
+row, the `tint` wash with a 3 by 16px accent pill centered on its leading edge, as Windows 11 marks
+the selected navigation item); `glass` turns the surface into the theme's glass for that state, tinted
 with its solid fill, so a tab can be solid at rest and glass when selected. A surface already in
 glass, or sitting on glass, takes `tint` instead, and a theme with no glass takes `lift`, so the
 state never paints the same as rest. Hover and press restyle with `restyle`, which clears the
@@ -159,7 +160,8 @@ with no role draws as its kind. `zz_ui::roles::all()` lists the kit's kinds and 
 
 A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
 concentric inside its list: its round corners are the radius less 4px, square when the row inset
-is 0, and a bar highlight runs down its leading edge instead of along the bottom.
+is 0, and a bar highlight is the wash with a short pill on its leading edge (zz-gpui's
+`EdgeMark`, carried on `Layer::mark`) instead of a line along the bottom.
 
 ### Knobs: what a theme may change
 

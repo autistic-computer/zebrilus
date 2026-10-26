@@ -132,6 +132,10 @@ pub trait StyledExt: Styled + Sized {
             .border_color(layer.border)
             .shadow(layer.shadow.clone())
             .text_color(layer.text);
+        let this = match layer.mark {
+            Some(mark) => this.edge_mark(mark),
+            None => this,
+        };
         match layer.glass {
             Some(material) => this.glass(material),
             None => this.bg(layer.fill),

@@ -272,9 +272,11 @@ impl Knobs {
                 ),
             };
         }
+        let mut control_radius = None;
         for (key, value) in pairs {
             match key {
                 "interface-theme" | "glass" => {}
+                "control-radius" => control_radius = Some(number(key, value)?),
                 "theme" => {
                     knobs.theme = match value {
                         "light" => Some(ThemeMode::Light),
@@ -418,6 +420,9 @@ impl Knobs {
                 }
             }
         }
+        if let Some(radius) = control_radius {
+            knobs.materials.control_radius = (radius != knobs.materials.radius).then_some(radius);
+        }
         Ok(knobs)
     }
 
@@ -481,6 +486,10 @@ pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_js
         .iter()
         .map(|(name, get, _)| ((*name).to_owned(), serde_json::json!(get(materials))))
         .collect::<serde_json::Map<_, _>>();
+    knobs.insert(
+        "control-radius".to_owned(),
+        serde_json::json!(materials.control_radius.unwrap_or(materials.radius)),
+    );
     knobs.insert("primary".to_owned(), serde_json::json!(materials.primary));
     knobs.insert(
         "smoothing".to_owned(),
@@ -814,6 +823,10 @@ mod tests {
         assert!(Knobs::parse("pane-margin=wide").is_err());
         assert!(Knobs::parse("radius=wide").is_err());
         assert!(Knobs::parse("interface-theme=sepia").is_err());
+        let controls = |query| Knobs::parse(query).unwrap().materials.control_radius;
+        assert_eq!(controls("control-radius=4&radius=8"), Some(4.0));
+        assert_eq!(controls("radius=8&control-radius=8"), None);
+        assert_eq!(controls("radius=8"), None);
     }
 
     #[test]

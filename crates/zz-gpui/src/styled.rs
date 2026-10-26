@@ -768,6 +768,12 @@ pub trait Styled: Sized {
         self
     }
 
+    /// Paints `mark` over this element's background, on its left edge.
+    fn edge_mark(mut self, mark: crate::EdgeMark) -> Self {
+        self.style().edge_mark = Some(mark);
+        self
+    }
+
     /// Sets the opacity of this element and its children.
     fn opacity(mut self, opacity: f32) -> Self {
         self.style().opacity = Some(opacity);

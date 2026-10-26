@@ -22,6 +22,10 @@ use crate::{PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Theme, ThemeCol
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Materials {
     pub radius: f32,
+    /// The corner radius of buttons, fields, tabs and other controls; `None`
+    /// follows `radius`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control_radius: Option<f32>,
     /// How the corners of every role curve, unless the theme sets another
     /// for the role.
     pub smoothing: Smoothing,
@@ -81,6 +85,7 @@ impl Default for Materials {
     fn default() -> Self {
         Self {
             radius: 10.0,
+            control_radius: None,
             smoothing: Smoothing::THEME,
             picked_smoothing: false,
             outline: 0.5,
@@ -103,6 +108,7 @@ impl Default for Materials {
 impl Materials {
     pub fn apply(&self, theme: &mut Theme) {
         theme.radius = px(self.radius);
+        theme.control_radius = self.control_radius.map(px);
         theme.smoothing = self.smoothing;
         theme.picked_smoothing = self.picked_smoothing;
         theme.outline = px(self.outline);
@@ -627,6 +633,21 @@ mod tests {
         assert_eq!(dark.accent, crate::parse_hex("#ff0000").unwrap());
         assert_eq!(dark.background, ThemeColor::dark().background);
         assert_eq!(theme.colors(ThemeMode::Light), *ThemeColor::light());
+    }
+
+    #[test]
+    fn a_control_radius_reaches_the_kit_and_built_ins_follow_the_radius() {
+        let theme = parse_theme(r#"{"materials":{"radius":8,"control-radius":4}}"#).unwrap();
+        assert_eq!(theme.materials.control_radius, Some(4.0));
+        let mut kit = Theme::from(&*ThemeColor::for_mode(ThemeMode::Dark));
+        theme.apply(&mut kit);
+        assert_eq!(kit.control_radius, Some(px(4.0)));
+        assert!(theme.to_json().contains("\"control-radius\": 4.0"));
+
+        for (id, builtin) in builtin_themes() {
+            assert_eq!(builtin.materials.control_radius, None, "{id}");
+            assert!(!builtin.to_json().contains("control-radius"), "{id}");
+        }
     }
 
     #[test]
