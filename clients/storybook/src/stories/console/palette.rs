@@ -1,14 +1,20 @@
-use std::{rc::Rc, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    sync::Arc,
+};
 
 use zz_client::completion::PaneKindAvailability;
 use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyDownEvent,
-    Keystroke, ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
+    Keystroke, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity,
+    Window, div, prelude::*, px,
 };
 use zz_protocol::{
     ChooseTreeItem, ChooseTreeKind, ChooseTreePaneKind, ChooseTreeState, ChooseTreeTarget,
     CommandInvocation, CommandPromptKind, CommandPromptMode, CommandPromptState, CommandPromptType,
-    InputMessage, MuxSnapshot, PaneId, PromptCursor, SessionId, WindowId,
+    GitMark, InputMessage, InsertStyle, MuxSnapshot, PaneId, PathEntry, PathKind, PathListRoot,
+    PromptCursor, SessionId, ShellKind, WindowId,
 };
 use zz_ui::{
     ActiveTheme as _, IconName, StyledExt as _,
@@ -22,6 +28,7 @@ use zz_ui::{
     },
     h_flex,
     input::InputState,
+    target::TargetPicker,
     v_flex,
 };
 
@@ -31,7 +38,7 @@ pub const STORY: Story = Story {
     id: "command-palette",
     name: "Command palette",
     group: "Commands",
-    summary: "One palette for navigation, commands and hosts. A prefix picks the mode, pills show the scope, and daemon prompts reuse the same surface.",
+    summary: "One palette for going places and running commands. @ picks a target the way tmux's -t names one, with an optional host in front, and : picks a command. Pills show the scope, and daemon prompts reuse the same surface.",
     sections: &[
         Section {
             id: "rows",
@@ -66,53 +73,35 @@ pub const STORY: Story = Story {
         Section {
             id: "search",
             name: "Search everything",
-            summary: "A typed query with no prefix searches navigation, commands and hosts together, each under its own header. The only focused palette on this page.",
+            summary: "A typed query with no prefix searches navigation, commands and hosts together, each under its own header.",
             build: |window, cx| unified(window, cx, online_tree(), true, None, &["e", "d"]),
         },
         Section {
             id: "navigate-mode",
-            name: "Navigate mode",
-            summary: "The @ prefix: sessions, windows and panes across connected hosts, sessions open.",
+            name: "Go to mode",
+            summary: "The @ prefix, Go to: with nothing typed, the sessions on the host here, then every other host with its status dot, then ~/ for the files here. A row with more under it ends in ›: Tab opens that level, and : . or / typed by hand do the same. Enter goes to a session, window or pane, Backspace on a level's edge goes up one.",
             build: |window, cx| {
                 unified(
                     window,
                     cx,
                     online_tree(),
                     true,
-                    Some(PaletteMode::Window),
+                    Some(PaletteMode::Target),
                     &[],
                 )
             },
         },
         Section {
-            id: "pane-mode",
-            name: "Pane mode",
-            summary: "The % prefix: panes only, each with its full path.",
-            build: |window, cx| {
-                unified(
-                    window,
-                    cx,
-                    online_tree(),
-                    true,
-                    Some(PaletteMode::Pane),
-                    &[],
-                )
-            },
+            id: "target-host",
+            name: "Into a host",
+            summary: "@gpu-box: names a host, so the level under it lists that host's sessions, then its home folder. Without a host a target means the host here: @zz: lists the windows of zz on local.",
+            build: |window, cx| target(window, cx, "gpu-box:"),
         },
         Section {
-            id: "host-mode",
-            name: "Host mode",
-            summary: "The ~ prefix: every host with its status dot, connected hosts open to their sessions.",
-            build: |window, cx| {
-                unified(
-                    window,
-                    cx,
-                    online_tree(),
-                    true,
-                    Some(PaletteMode::Host),
-                    &[],
-                )
-            },
+            id: "target-search",
+            name: "Search the fleet",
+            summary: "Before any colon, typing searches every connected host at once: hosts, sessions, windows and panes, each labelled the way you would type it, so a target on the host here leaves its host out. @agents finds a window named agents here and one on gpu-box.",
+            build: |window, cx| target(window, cx, "agents"),
         },
         Section {
             id: "offline",
@@ -239,12 +228,58 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("select-layout", "C-b Space"),
 ];
 
+/// What a host answers when the palette asks it for a folder.
+#[derive(Clone, Copy)]
+pub(super) enum Files {
+    Listed,
+    Listing,
+    Refused,
+    Empty,
+}
+
 struct StoryBackend {
     tree: PaletteTree,
     settings: PaletteSettings,
+    files: Files,
+    picker: RefCell<Option<WeakEntity<TargetPicker>>>,
+    requests: Cell<u64>,
 }
 
 impl PaletteBackend for StoryBackend {
+    fn list_path(
+        &self,
+        host: PaletteHostId,
+        dir: &str,
+        _: Option<PaneId>,
+        cx: &mut App,
+    ) -> Result<u64, SharedString> {
+        let request = self.requests.get() + 1;
+        self.requests.set(request);
+        let host = self
+            .tree
+            .host(host)
+            .map(|host| host.name.clone())
+            .unwrap_or_default();
+        let picker = self.picker.borrow().clone();
+        let files = self.files;
+        let dir = dir.to_owned();
+        cx.defer(move |cx| {
+            if let Some(picker) = picker {
+                picker
+                    .update(cx, |picker, cx| {
+                        answer(picker, &host, request, &dir, files, cx);
+                    })
+                    .ok();
+            }
+        });
+        Ok(request)
+    }
+
+    fn feed_targets(&self, picker: &Entity<TargetPicker>, _: &mut App) -> Option<Subscription> {
+        self.picker.replace(Some(picker.downgrade()));
+        None
+    }
+
     fn snapshot(&self, _: &App) -> Arc<MuxSnapshot> {
         Arc::default()
     }
@@ -297,20 +332,153 @@ impl PaletteBackend for StoryBackend {
 }
 
 fn backend(tree: PaletteTree, grouped: bool) -> Rc<dyn PaletteBackend> {
+    files_backend(tree, grouped, Files::Listed)
+}
+
+fn files_backend(tree: PaletteTree, grouped: bool, files: Files) -> Rc<dyn PaletteBackend> {
     Rc::new(StoryBackend {
         tree,
         settings: PaletteSettings {
             grouped,
             ..PaletteSettings::default()
         },
+        files,
+        picker: RefCell::new(None),
+        requests: Cell::new(0),
     })
 }
 
-fn pane(id: u64, label: &str, detail: &str, icon: IconName, running: bool) -> PaletteTreePane {
+/// Everything under the home folder of every host, as the daemon walks it:
+/// folders end in `/`.
+const HOME: &[&str] = &[
+    "Downloads/",
+    "dev/",
+    "dev/blog/",
+    "dev/blog/astro.config.mjs",
+    "dev/zz/",
+    "dev/zz/.github/",
+    "dev/zz/clients/",
+    "dev/zz/clients/storybook/",
+    "dev/zz/clients/storybook/src/",
+    "dev/zz/clients/storybook/src/story.rs",
+    "dev/zz/crates/",
+    "dev/zz/crates/zz-ui/",
+    "dev/zz/crates/zz-ui/src/",
+    "dev/zz/crates/zz-ui/src/command/",
+    "dev/zz/crates/zz-ui/src/command/palette.rs",
+    "dev/zz/crates/zz-ui/src/command/palette_model.rs",
+    "dev/zz/crates/zz-ui/src/command/palette_view.rs",
+    "dev/zz/crates/zz-ui/src/pane/",
+    "dev/zz/crates/zz-ui/src/settings/",
+    "dev/zz/crates/zz-ui/src/lib.rs",
+    "dev/zz/crates/zz-ui/src/target.rs",
+    "dev/zz/crates/zz-ui/src/target_tests.rs",
+    "dev/zz/crates/zz-ui/src/terminal.rs",
+    "dev/zz/crates/zz-ui/src/which_key.rs",
+    "dev/zz/knowledge/",
+    "dev/zz/knowledge/designs/",
+    "dev/zz/knowledge/designs/command-palette.md",
+    "dev/zz/scripts/",
+    "dev/zz/scripts/build-storybook.sh",
+    "dev/zz/site/",
+    "dev/zz/third_party/",
+    "dev/zz/Cargo.lock",
+    "dev/zz/Cargo.toml",
+    "dev/zz/Justfile",
+    "dev/zz/NOTES.md",
+    "dev/zz/README.md",
+    "dev/zz/mise.toml",
+    "dev/zz/rust-toolchain.toml",
+    "notes.md",
+];
+
+const MARKS: &[(&str, GitMark)] = &[
+    ("dev/zz/Cargo.toml", GitMark::Modified),
+    ("dev/zz/rust-toolchain.toml", GitMark::Added),
+    ("dev/zz/NOTES.md", GitMark::Untracked),
+    ("dev/zz/Justfile", GitMark::Conflicted),
+    ("dev/zz/crates/", GitMark::Modified),
+    ("dev/zz/clients/storybook/", GitMark::Added),
+    ("dev/zz/crates/zz-ui/src/target.rs", GitMark::Added),
+];
+
+/// `dir` under the home folder, or `None` for a folder outside it.
+fn under_home(dir: &str) -> Option<&str> {
+    dir.strip_prefix("~/")
+}
+
+/// What `host` answers for `dir`, the way the daemon streams it.
+fn answer(
+    picker: &mut TargetPicker,
+    host: &str,
+    request: u64,
+    dir: &str,
+    files: Files,
+    cx: &mut Context<TargetPicker>,
+) {
+    let root = PathListRoot {
+        root: format!("/Users/fabrico/{}", under_home(dir).unwrap_or(dir))
+            .trim_end_matches('/')
+            .to_owned(),
+        display_root: dir.to_owned(),
+        cwd: None,
+        insert: InsertStyle::Shell(ShellKind::Posix),
+    };
+    let under = |path: &'static str| {
+        under_home(dir)
+            .and_then(|base| path.strip_prefix(base))
+            .filter(|rel| !rel.is_empty())
+    };
+    match files {
+        Files::Listing => {}
+        Files::Refused => picker.apply_begin(
+            host,
+            request,
+            Err("Permission denied: ~/Library/Mail".to_owned()),
+            cx,
+        ),
+        Files::Empty => {
+            picker.apply_begin(host, request, Ok(root), cx);
+            picker.apply_chunk(host, request, &Arc::from([]), true, false, cx);
+        }
+        Files::Listed => {
+            let entries: Arc<[PathEntry]> = HOME
+                .iter()
+                .filter_map(|path| under(path))
+                .map(|rel| PathEntry {
+                    rel: rel.to_owned(),
+                    kind: if rel.ends_with('/') {
+                        PathKind::Dir
+                    } else {
+                        PathKind::File
+                    },
+                    symlink: false,
+                })
+                .collect();
+            let marks = MARKS
+                .iter()
+                .filter_map(|(path, mark)| Some((under(path)?.to_owned(), *mark)))
+                .collect();
+            picker.apply_begin(host, request, Ok(root), cx);
+            picker.apply_chunk(host, request, &entries, true, false, cx);
+            picker.apply_git(host, request, marks, cx);
+        }
+    }
+}
+
+fn pane(
+    id: u64,
+    label: &str,
+    detail: &str,
+    program: Option<&'static str>,
+    icon: IconName,
+    running: bool,
+) -> PaletteTreePane {
     PaletteTreePane {
         id: PaneId(id),
         label: label.to_owned(),
         detail: detail.to_owned().into(),
+        program: program.map(SharedString::from),
         icon,
         running,
     }
@@ -318,6 +486,7 @@ fn pane(id: u64, label: &str, detail: &str, icon: IconName, running: bool) -> Pa
 
 fn window(
     id: u64,
+    index: u32,
     name: &str,
     active: bool,
     active_pane: u64,
@@ -325,6 +494,7 @@ fn window(
 ) -> PaletteTreeWindow {
     PaletteTreeWindow {
         id: WindowId(id),
+        index,
         name: name.to_owned(),
         active,
         active_pane: PaneId(active_pane),
@@ -382,15 +552,24 @@ fn online_tree() -> PaletteTree {
                         vec![
                             window(
                                 1,
+                                1,
                                 "editor",
                                 true,
                                 10,
                                 vec![
-                                    pane(10, "nvim", "Terminal", IconName::SquareTerminal, false),
+                                    pane(
+                                        10,
+                                        "nvim",
+                                        "Terminal",
+                                        None,
+                                        IconName::SquareTerminal,
+                                        false,
+                                    ),
                                     pane(
                                         11,
                                         "cargo watch",
                                         "Terminal",
+                                        None,
                                         IconName::SquareTerminal,
                                         true,
                                     ),
@@ -398,12 +577,27 @@ fn online_tree() -> PaletteTree {
                             ),
                             window(
                                 2,
+                                2,
                                 "agents",
                                 false,
                                 12,
                                 vec![
-                                    pane(12, "claude", "Terminal", IconName::SquareTerminal, true),
-                                    pane(13, "localhost:8097", "Browser", IconName::Globe, false),
+                                    pane(
+                                        12,
+                                        "fix the atlas tests",
+                                        "Terminal",
+                                        Some("Claude Code"),
+                                        IconName::SquareTerminal,
+                                        true,
+                                    ),
+                                    pane(
+                                        13,
+                                        "localhost:8097",
+                                        "Browser",
+                                        None,
+                                        IconName::Globe,
+                                        false,
+                                    ),
                                 ],
                             ),
                         ],
@@ -414,10 +608,11 @@ fn online_tree() -> PaletteTree {
                         false,
                         vec![window(
                             3,
+                            1,
                             "scratch",
                             false,
                             14,
-                            vec![pane(14, "README.md", "Editor", IconName::File, false)],
+                            vec![pane(14, "README.md", "Editor", None, IconName::File, false)],
                         )],
                     ),
                 ],
@@ -432,19 +627,38 @@ fn online_tree() -> PaletteTree {
                     3,
                     "train",
                     false,
-                    vec![window(
-                        4,
-                        "logs",
-                        true,
-                        15,
-                        vec![pane(
-                            15,
-                            "python train.py",
-                            "Terminal",
-                            IconName::SquareTerminal,
+                    vec![
+                        window(
+                            4,
+                            1,
+                            "logs",
                             true,
-                        )],
-                    )],
+                            15,
+                            vec![pane(
+                                15,
+                                "python train.py",
+                                "Terminal",
+                                None,
+                                IconName::SquareTerminal,
+                                true,
+                            )],
+                        ),
+                        window(
+                            5,
+                            2,
+                            "agents",
+                            false,
+                            16,
+                            vec![pane(
+                                16,
+                                "tune the lr schedule",
+                                "Terminal",
+                                Some("Codex"),
+                                IconName::SquareTerminal,
+                                true,
+                            )],
+                        ),
+                    ],
                 )],
             ),
             host(
@@ -621,7 +835,7 @@ impl Render for Frame {
     }
 }
 
-fn mount(
+pub(super) fn mount(
     window: &mut Window,
     cx: &mut App,
     palette: Entity<CommandPaletteView>,
@@ -653,6 +867,25 @@ fn unified(
     let backend = backend(tree, grouped);
     let palette = cx.new(|cx| CommandPaletteView::new_unified(backend, mode, window, cx));
     mount(window, cx, palette, 560.0, keys)
+}
+
+/// The palette in `@` mode with `body` typed, a file picked going into
+/// `pane`: what `prefix F` opens on a pane's folder.
+pub(super) fn target_palette(
+    window: &mut Window,
+    cx: &mut App,
+    files: Files,
+    body: &str,
+    pane: Option<PaneId>,
+) -> Entity<CommandPaletteView> {
+    let backend = files_backend(online_tree(), true, files);
+    let body = body.to_owned();
+    cx.new(|cx| CommandPaletteView::new_target(backend, body, pane, window, cx))
+}
+
+fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {
+    let palette = target_palette(window, cx, Files::Listed, body, None);
+    mount(window, cx, palette, 560.0, &[])
 }
 
 fn command_query(window: &mut Window, cx: &mut App, query: &str) -> AnyView {
@@ -939,7 +1172,7 @@ fn parts(_: &mut Window, cx: &mut App) -> AnyElement {
                 v_flex()
                     .child(command_palette_section("Workspace", "@", cx))
                     .child(command_palette_section("Commands", ":", cx))
-                    .child(command_palette_section("Hosts", "~", cx)),
+                    .child(command_palette_section("Hosts", "@", cx)),
                 cx,
             ),
         )

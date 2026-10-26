@@ -72,7 +72,7 @@ fn chooser_indices(state: &UnifiedPalette) -> Vec<u32> {
 #[test]
 fn daemon_tree_keeps_source_indices_and_selectable_sessions_windows_and_panes() {
     let source = window_chooser_state();
-    let mut state = UnifiedPalette::new(Some(PaletteMode::Window));
+    let mut state = UnifiedPalette::new(Some(PaletteMode::Target));
     state.rebuild_window_chooser(&source, "");
     assert_eq!(chooser_indices(&state), [0, 1, 2, 3, 5, 6]);
     assert_eq!(
@@ -128,7 +128,7 @@ fn daemon_tree_keeps_source_indices_and_selectable_sessions_windows_and_panes() 
 #[test]
 fn daemon_window_search_keeps_custom_text_and_matches_hidden_target_metadata() {
     let source = window_chooser_state();
-    let mut state = UnifiedPalette::new(Some(PaletteMode::Window));
+    let mut state = UnifiedPalette::new(Some(PaletteMode::Target));
     for query in ["ref", "docs", "files", "@20"] {
         state.rebuild_window_chooser(&source, query);
         assert_eq!(chooser_indices(&state), [5], "query={query}");
@@ -150,7 +150,7 @@ fn daemon_session_rows_remain_selectable_without_visible_children() {
         .items
         .retain(|item| matches!(item.target, ChooseTreeTarget::Session(_)));
     source.items[1].text = "<<scratch>>".to_owned();
-    let mut state = UnifiedPalette::new(Some(PaletteMode::Window));
+    let mut state = UnifiedPalette::new(Some(PaletteMode::Target));
     state.rebuild_window_chooser(&source, "");
     assert_eq!(chooser_indices(&state), [0, 1]);
     assert_eq!(state.rows[0].row.label, "dev");
@@ -164,6 +164,7 @@ const LOCAL: PaletteHostId = PaletteHostId(0);
 fn navigation_tree() -> PaletteTree {
     let window = |id: u64, name: &str, active, panes: &[&str]| PaletteTreeWindow {
         id: WindowId(id),
+        index: u32::try_from(id).unwrap(),
         name: name.to_owned(),
         active,
         active_pane: PaneId(id * 10),
@@ -174,6 +175,7 @@ fn navigation_tree() -> PaletteTree {
                 id: PaneId(id * 10 + index as u64),
                 label: (*label).to_owned(),
                 detail: "Terminal".into(),
+                program: None,
                 icon: IconName::SquareTerminal,
                 running: false,
             })
@@ -265,17 +267,9 @@ fn default_tree_expands_current_session_and_preserves_local_branch_choices() {
 }
 
 #[test]
-fn navigate_entry_opens_sessions_and_search_finds_hidden_descendants() {
-    let mut state = UnifiedPalette::new(Some(PaletteMode::Window));
+fn search_finds_hidden_descendants() {
+    let mut state = UnifiedPalette::new(None);
     state.tree = navigation_tree();
-    state.rows = state.navigation_entries("");
-    assert_eq!(
-        row_labels(&state),
-        ["dev", "editor", "logs", "scratch", "experiments"]
-    );
-    assert_eq!(PaletteMode::Window.label(), "Navigate");
-    assert_eq!(state.placeholder(), "Search sessions, windows, panes");
-    assert!(state.set_expanded(3, false));
     state.rows = state.navigation_entries("python");
     assert_eq!(
         row_labels(&state),
@@ -403,13 +397,13 @@ fn backspace_pops_exactly_one_palette_layer() {
 }
 
 #[test]
-fn host_prefix_is_configurable_without_stealing_the_alternative() {
-    assert_eq!(PaletteMode::from_prefix("#", "#"), Some(PaletteMode::Host));
-    assert_eq!(PaletteMode::from_prefix("~", "#"), None);
-    assert_eq!(
-        PaletteMode::from_prefix("@", "~"),
-        Some(PaletteMode::Window)
-    );
+fn colon_opens_commands_and_at_opens_targets() {
+    assert_eq!(PaletteMode::from_prefix(":"), Some(PaletteMode::Command));
+    assert_eq!(PaletteMode::from_prefix("@"), Some(PaletteMode::Target));
+    assert_eq!(PaletteMode::Target.label(), "Go to");
+    for freed in ["%", "~", "#"] {
+        assert_eq!(PaletteMode::from_prefix(freed), None, "{freed}");
+    }
 }
 
 #[test]

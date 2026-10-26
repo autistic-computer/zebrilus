@@ -6,11 +6,9 @@ use zz_gpui::{
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, Sizable as _,
-    SurfaceRole, Tone,
+    ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, SurfaceRole, Tone,
     badge::Badge,
     input::{Input, InputState},
-    kbd::Keycap,
     list::ListItem,
     picker::muted_on,
     row_corners,
@@ -29,7 +27,7 @@ pub enum PaletteStatus {
 }
 
 impl PaletteStatus {
-    fn color(self, cx: &App) -> Hsla {
+    pub fn color(self, cx: &App) -> Hsla {
         match self {
             Self::Online => cx.theme().success,
             Self::Running => cx.theme().foreground.muted(),
@@ -124,7 +122,7 @@ pub fn unified_command_palette_input(
     Input::new(input)
         .appearance(false)
         .w_full()
-        .h(px(40.0))
+        .h(px(super::COMMAND_PALETTE_INPUT_HEIGHT))
         .px(px(14.0))
         .py(px(8.0))
         .gap(px(6.0))
@@ -304,13 +302,8 @@ pub(super) fn palette_entry(
                             .child(row.right.clone()),
                     )
                 })
-                .when_some(row.shortcut.clone(), |element, shortcut| {
-                    element.child(
-                        Keycap::new(shortcut)
-                            .small()
-                            .on(layer.ground)
-                            .font_family(cx.theme().mono_font_family.clone()),
-                    )
+                .when_some(row.shortcut.as_ref(), |element, shortcut| {
+                    element.child(super::tmux_shortcut(shortcut, layer.ground, cx))
                 })
                 .children(badge)
                 .when(row.running, |element| {

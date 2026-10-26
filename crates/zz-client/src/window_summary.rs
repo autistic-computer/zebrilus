@@ -245,9 +245,15 @@ pub fn summarize_session(session: &SessionSnapshot) -> SessionSummary {
 
 #[must_use]
 pub fn summarize_host(snapshot: &MuxSnapshot) -> (Vec<SessionSummary>, AttentionRollup) {
-    let sessions = snapshot
-        .sessions
-        .iter()
+    summarize_sessions(&snapshot.sessions)
+}
+
+#[must_use]
+pub fn summarize_sessions<'a>(
+    sessions: impl IntoIterator<Item = &'a SessionSnapshot>,
+) -> (Vec<SessionSummary>, AttentionRollup) {
+    let sessions = sessions
+        .into_iter()
         .map(summarize_session)
         .collect::<Vec<_>>();
     let mut rollup = AttentionRollup::default();

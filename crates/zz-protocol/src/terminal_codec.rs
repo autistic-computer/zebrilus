@@ -2059,6 +2059,10 @@ mod tests {
                 pane,
                 reclaim_id: 3,
             },
+            ProtocolMessage::AgentSteer {
+                pane,
+                text: "only the fast tests".to_owned(),
+            },
         ];
         for message in &messages {
             assert_control_round_trip(message);

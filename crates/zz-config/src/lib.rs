@@ -84,7 +84,6 @@ pub const DEFAULT_EXPERIMENTAL_EDITOR_PANE: bool = false;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigKey {
     PaletteWindowLayout,
-    PaletteHostPrefix,
     PaletteShowKeys,
     PickerFocusSidebar,
     WhichKeyDelay,
@@ -138,7 +137,6 @@ impl ConfigKey {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::PaletteWindowLayout => "palette-window-layout",
-            Self::PaletteHostPrefix => "palette-host-prefix",
             Self::PaletteShowKeys => "palette-show-keys",
             Self::PickerFocusSidebar => "picker-focus-sidebar",
             Self::WhichKeyDelay => "which-key-delay",
@@ -192,7 +190,6 @@ impl ConfigKey {
     pub fn parse(key: &str) -> Option<Self> {
         match key {
             "palette-window-layout" => Some(Self::PaletteWindowLayout),
-            "palette-host-prefix" => Some(Self::PaletteHostPrefix),
             "palette-show-keys" => Some(Self::PaletteShowKeys),
             "picker-focus-sidebar" => Some(Self::PickerFocusSidebar),
             "which-key-delay" => Some(Self::WhichKeyDelay),
@@ -265,7 +262,6 @@ impl ConfigKey {
             Self::WhichKeyDelay => Some((0.0, MAX_WHICH_KEY_DELAY)),
             Self::UseSystemTitlebar
             | Self::PaletteWindowLayout
-            | Self::PaletteHostPrefix
             | Self::PaletteShowKeys
             | Self::PickerFocusSidebar
             | Self::WindowBackgroundBlur
@@ -385,37 +381,6 @@ impl PaletteWindowLayout {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum PaletteHostPrefix {
-    #[default]
-    Tilde,
-    Hash,
-}
-
-impl PaletteHostPrefix {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Tilde => "~",
-            Self::Hash => "#",
-        }
-    }
-
-    pub const fn as_char(self) -> char {
-        match self {
-            Self::Tilde => '~',
-            Self::Hash => '#',
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "~" => Some(Self::Tilde),
-            "#" => Some(Self::Hash),
-            _ => None,
-        }
-    }
-}
-
 /// What zz starts the Driver Agent with: a Claude Code model, or Codex on the
 /// model its own config names.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -518,7 +483,6 @@ impl DriverEffort {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AppConfig {
     pub palette_window_layout: ConfigValue<PaletteWindowLayout>,
-    pub palette_host_prefix: ConfigValue<PaletteHostPrefix>,
     pub palette_show_keys: ConfigValue<bool>,
     pub picker_focus_sidebar: ConfigValue<bool>,
     pub which_key_delay: ConfigValue<f32>,
@@ -570,7 +534,6 @@ impl Default for AppConfig {
         let status_bar = StatusBarSettings::default();
         Self {
             palette_window_layout: ConfigValue::from_default(PaletteWindowLayout::Grouped),
-            palette_host_prefix: ConfigValue::from_default(PaletteHostPrefix::Tilde),
             palette_show_keys: ConfigValue::from_default(true),
             picker_focus_sidebar: ConfigValue::from_default(false),
             which_key_delay: ConfigValue::from_default(DEFAULT_WHICH_KEY_DELAY),
@@ -656,7 +619,6 @@ impl AppConfig {
             ConfigKey::WindowCornerRadius
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
-            | ConfigKey::PaletteHostPrefix
             | ConfigKey::PipBackgroundOpacity
             | ConfigKey::WindowBackgroundOpacity
             | ConfigKey::PaneGlowStrength
@@ -1122,23 +1084,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == ConfigKey::PaletteHostPrefix {
-            let target = &mut parsed.config.palette_host_prefix;
-            target.provenance = ConfigProvenance::Override;
-            match parse_config_string(value)
-                .ok()
-                .as_deref()
-                .and_then(PaletteHostPrefix::parse)
-            {
-                Some(prefix) => target.value = prefix,
-                None => parsed.diagnostics.push(ConfigDiagnostic {
-                    line: line_number,
-                    message: "invalid `palette-host-prefix`: expected ~ or \"#\"".to_owned(),
-                }),
-            }
-            continue;
-        }
-
         if key == ConfigKey::DriverModel {
             let target = &mut parsed.config.driver_model;
             target.provenance = ConfigProvenance::Override;
@@ -1310,7 +1255,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::WhichKeyDelay => &mut parsed.config.which_key_delay,
             ConfigKey::UseSystemTitlebar
             | ConfigKey::PaletteWindowLayout
-            | ConfigKey::PaletteHostPrefix
             | ConfigKey::PaletteShowKeys
             | ConfigKey::PickerFocusSidebar
             | ConfigKey::WindowBackgroundBlur
@@ -2147,52 +2091,31 @@ mod tests {
     }
 
     #[test]
-    fn palette_preferences_validate_and_preserve_hash_prefix() {
+    fn palette_preferences_validate() {
         let defaults = parse_config("", "monospace");
         assert_eq!(
             defaults.config.palette_window_layout.value,
             PaletteWindowLayout::Grouped
         );
-        assert_eq!(
-            defaults.config.palette_host_prefix.value,
-            PaletteHostPrefix::Tilde
-        );
         assert!(defaults.config.palette_show_keys.value);
 
-        let source =
-            "palette-window-layout = flat\npalette-host-prefix = #\npalette-show-keys = off\n";
+        let source = "palette-window-layout = flat\npalette-show-keys = off\n";
         let parsed = parse_config(source, "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(
             parsed.config.palette_window_layout.value,
             PaletteWindowLayout::Flat
         );
-        assert_eq!(
-            parsed.config.palette_host_prefix.value,
-            PaletteHostPrefix::Hash
-        );
         assert!(!parsed.config.palette_show_keys.value);
-        let edited = edit_config_source(source, "palette-host-prefix", Some("~"));
-        assert_eq!(
-            parse_config(&edited, "monospace")
-                .config
-                .palette_host_prefix
-                .value,
-            PaletteHostPrefix::Tilde
-        );
 
         let invalid = parse_config(
-            "palette-window-layout = grid\npalette-host-prefix = !\npalette-show-keys = maybe\n",
+            "palette-window-layout = grid\npalette-show-keys = maybe\n",
             "monospace",
         );
-        assert_eq!(invalid.diagnostics.len(), 3);
+        assert_eq!(invalid.diagnostics.len(), 2);
         assert_eq!(
             invalid.config.palette_window_layout.value,
             PaletteWindowLayout::Grouped
-        );
-        assert_eq!(
-            invalid.config.palette_host_prefix.value,
-            PaletteHostPrefix::Tilde
         );
         assert!(invalid.config.palette_show_keys.value);
     }

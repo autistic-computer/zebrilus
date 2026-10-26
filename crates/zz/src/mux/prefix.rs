@@ -28,6 +28,10 @@ fn prefix_binding(bindings: &[KeyBindingSnapshot], input: &KeyInput) -> Option<B
     tables.resolve_input("prefix", input).cloned()
 }
 
+pub(crate) fn binds_input(bindings: &[KeyBindingSnapshot], input: &KeyInput) -> bool {
+    prefix_binding(bindings, input).is_some()
+}
+
 pub(crate) fn is_all_keys_input(bindings: &[KeyBindingSnapshot], input: &KeyInput) -> bool {
     prefix_binding(bindings, input)
         .is_some_and(|binding| zz_client::which_key::opens_all_keys(&binding.commands))

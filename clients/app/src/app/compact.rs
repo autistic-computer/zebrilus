@@ -17,6 +17,7 @@ use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, PaintState,
+    command::tmux_keystroke,
     compact::{
         ArrowPadEvent, COMPACT_PANE_HEADER_HEIGHT, Instant, KEY_ROW_HEIGHT, KeyRow, Lift,
         LiftEvent, PageDot, Pager, PagerEvent, PillLabel, PillPlacement, PillSpring, PopoverKey,
@@ -222,65 +223,6 @@ pub(super) const fn kind_icon(kind: &PaneKindSnapshot) -> IconName {
         PaneKindSnapshot::Editor(_) => IconName::File,
         PaneKindSnapshot::Picker => IconName::Plus,
     }
-}
-
-pub(super) fn tmux_keystroke(spelling: &str) -> Option<Keystroke> {
-    let key = zz_client::ChromeKey::parse(spelling)?;
-    let base = match key.base.as_str() {
-        " " | "Space" => "space",
-        "Enter" => "enter",
-        "Escape" => "escape",
-        "Tab" => "tab",
-        "BSpace" => "backspace",
-        "DC" => "delete",
-        "Up" => "up",
-        "Down" => "down",
-        "Left" => "left",
-        "Right" => "right",
-        "Home" => "home",
-        "End" => "end",
-        "PPage" | "PageUp" => "pageup",
-        "NPage" | "PageDown" => "pagedown",
-        "-" => "minus",
-        other if other.chars().count() == 1 => other,
-        _ => return None,
-    };
-    let mut source = String::new();
-    if key.command {
-        source.push_str("cmd-");
-    }
-    if key.control {
-        source.push_str("ctrl-");
-    }
-    if key.alt {
-        source.push_str("alt-");
-    }
-    let mut characters = base.chars();
-    match (characters.next(), characters.next()) {
-        (Some(character), None) if character.is_ascii_uppercase() => {
-            source.push_str("shift-");
-            source.extend(character.to_lowercase());
-        }
-        _ => {
-            if key.shift {
-                source.push_str("shift-");
-            }
-            source.push_str(base);
-        }
-    }
-    let mut keystroke = Keystroke::parse(&source).ok()?;
-    if base == "minus" {
-        keystroke.key = "-".into();
-    }
-    if keystroke.key_char.is_none()
-        && !keystroke.modifiers.control
-        && !keystroke.modifiers.alt
-        && !keystroke.modifiers.platform
-        && base.chars().count() == 1
-    {
-        keystroke.key_char = Some(base.to_owned());
-    }
-    Some(keystroke)
 }
 
 fn dispatch_key(keystroke: Keystroke, window: &mut Window, cx: &mut App) {
@@ -1600,28 +1542,6 @@ impl AppShell {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn tmux_spellings_become_gpui_keystrokes() {
-        let control = tmux_keystroke("C-b").expect("prefix");
-        assert!(control.modifiers.control);
-        assert_eq!(control.key, "b");
-        let percent = tmux_keystroke("%").expect("percent");
-        assert_eq!(percent.key, "%");
-        assert_eq!(percent.key_char.as_deref(), Some("%"));
-        let upper = tmux_keystroke("L").expect("upper");
-        assert!(upper.modifiers.shift);
-        assert_eq!(upper.key, "l");
-        assert_eq!(
-            tmux_keystroke("Escape").map(|key| key.key),
-            Some("escape".into())
-        );
-        assert_eq!(
-            tmux_keystroke("M-Up").map(|key| (key.key, key.modifiers.alt)),
-            Some(("up".into(), true))
-        );
-        assert!(tmux_keystroke("F13-nope").is_none());
-    }
 
     #[test]
     fn pinch_scales_terminal_text_in_five_percent_steps_within_the_setting_range() {

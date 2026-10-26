@@ -1,22 +1,31 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 use zz_client::program::Program;
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, Focusable as _, IntoElement, MouseButton,
-    ParentElement as _, Render, ScrollHandle, Styled as _, Window, div, prelude::*, px,
+    ParentElement as _, Render, ScrollHandle, SharedString, Styled as _, Window, div, prelude::*,
+    px,
 };
-use zz_protocol::AgentProvider;
+use zz_protocol::{
+    AgentProvider, GitMark, InsertStyle, PaneId, PathEntry, PathKind, PathListRoot, SessionId,
+    ShellKind, WindowId,
+};
 use zz_ui::{
-    ActiveTheme as _, Ground, PaintState,
+    ActiveTheme as _, Ground, IconName, PaintState,
     agent::{
         chat::{
-            ChatBubble, ChatComposer, ChatSender, ChatTyping, DRIVER_PALETTE_HINTS, Receipt,
-            chat_button, chat_header, chat_latest, chat_seen, chat_thread, chat_unreachable,
-            driver_palette_body,
+            ChatBubble, ChatComposer, ChatSender, ChatTyping, Receipt, chat_asleep, chat_button,
+            chat_header, chat_latest, chat_seen, chat_thread, chat_unreachable,
+            driver_palette_body, driver_palette_hints, driver_palette_place,
+            driver_palette_thread_least,
         },
-        controls::{composer_action, composer_action_button},
+        controls::{ComposerAction, composer_action_button},
     },
-    command::{CommandPaletteSurface, PalettePill, PaletteStatus, unified_command_palette_input},
+    button::{Button, ButtonVariants as _},
+    command::{
+        COMMAND_PALETTE_MAX_WIDTH, CommandPaletteSurface, PaletteHostId, PalettePill,
+        PaletteStatus, unified_command_palette_input,
+    },
     input::InputState,
     navigation::{
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
@@ -28,6 +37,7 @@ use zz_ui::{
     roles,
     scroll::ScrollableElement as _,
     shell::{app_shell_surface, app_workspace_surface, titlebar_over_panes},
+    target::{TargetBackend, TargetHost, TargetPane, TargetPicker, TargetSession, TargetWindow},
 };
 
 use super::cards::permission;
@@ -49,18 +59,18 @@ pub const STORY: Story = Story {
     id: "driver-chat",
     name: "Driver chat",
     group: "Agent",
-    summary: "The chat with the Driver Agent lives in the command palette's Driver mode: type > in an empty palette, click the title bar's chat button, or click the driver's last message at the bottom of the sidebar. Your messages sit right in the accent's wash with read ticks; the driver's answers and the agents' messages sit left, an agent's under its sidebar tile and name. Agents at work show as sidebar rows, so the chat carries no tool calls. The driver's model and effort are settings, under Agents.",
+    summary: "The chat with the Driver Agent lives in the command palette's Driver mode: type > in an empty palette, click the title bar's chat button, or click the driver's last message at the bottom of the sidebar. Your messages sit right in the accent with read ticks; the driver's answers and the agents' messages sit left, an agent's under its sidebar tile and name. Agents at work show as sidebar rows, so the chat carries no tool calls. The driver's model and effort are settings, under Agents.",
     sections: &[
         Section {
             id: "messages",
             name: "Messages",
-            summary: "ChatBubble on the sidebar's ground. One tick: zz has it. Two: typed into the driver's pane. Two in the accent: the driver started a turn on it. The time and ticks keep the bubble's corner; a last line that would run into them wraps first. While the driver works, ChatTyping takes the place of its answer: three dots that rise in turn, and its latest steps in the words its CLI gives them (a Bash call's description, the plan item in progress), the newest beside the dots.",
+            summary: "ChatBubble on the sidebar's ground. One tick: zz has it. Two: typed into the driver's pane. Two in full ink: the driver started a turn on it. The driver's answers render markdown the way chat apps do: lists, bold, code, with headings at the body's size. The time and ticks keep the bubble's corner; a last line that would run into them wraps first. While the driver works, ChatTyping takes the place of its answer: three dots that rise in turn, and its latest steps in the words its CLI gives them (a Bash call's description, the plan item in progress), the newest beside the dots.",
             build: |_, cx| stateless(messages, cx),
         },
         Section {
             id: "composer",
             name: "Composer",
-            summary: "ChatComposer: one line and the round send button, which queues behind a running turn like the lens composer's. Click it to focus.",
+            summary: "ChatComposer as Driver mode draws it: a pill on the palette with + to start an @ mention, the field, and the round send button. While the driver works, the button steers it with what you typed, and with the field empty it stops the driver. Click a field to focus it.",
             build: |window, cx| stateful(window, cx, Composers::new, composers),
         },
         Section {
@@ -72,7 +82,7 @@ pub const STORY: Story = Story {
         Section {
             id: "latest",
             name: "Last message",
-            summary: "chat_latest: what the sidebar keeps of the chat. The driver's header, then its last answer cut to four lines, or ChatTyping while it works. A dot in the header while an approval waits on you. A click opens the command palette in Driver mode. With no driver running and too few hosts answering for zz to start one, chat_unreachable says so and Start here starts one on this machine.",
+            summary: "chat_latest: what the sidebar keeps of the chat. The driver's header, then its last answer cut to four lines, or ChatTyping while it works. A dot in the header while an approval waits on you. A click opens the command palette in Driver mode. With no driver running, chat_asleep offers Wake: zz never starts one on its own, so a restart spends no tokens. When too few hosts answer for zz to start one, chat_unreachable says so and Start here starts one on this machine.",
             build: |_, cx| stateless(latest, cx),
         },
         Section {
@@ -84,8 +94,20 @@ pub const STORY: Story = Story {
         Section {
             id: "titlebar",
             name: "In titlebar mode",
-            summary: "With the sidebar hidden, the title bar's chat button opens the command palette in Driver mode: the Driver pill in the input, the thread under it with the same fade, an approval waiting on you, and Driver mode's keys in the footer. In either layout, > typed into an empty palette switches to Driver mode too. Click the scrim to close it and the button to open it again; the button carries a dot while something waits.",
+            summary: "With the sidebar hidden, the title bar's chat button opens the command palette in Driver mode, wider than the other modes: the thread with the same fade, which opens from nothing so the input slides down to the bottom like a chat composer, an approval waiting on you, the composer pill (+ starts a mention, the round button sends, steers, or stops while the driver works), and the footer: where the driver runs on the left (a click shows its terminal), Driver mode's keys on the right (while the driver works, Enter steers it, Tab queues and Ctrl-C stops it; Up takes your last message back to edit). In either layout, > typed into an empty palette switches to Driver mode too. Click the scrim to close it and the button to open it again; the button carries a dot while something waits.",
             build: |window, cx| cx.new(|cx| TitlebarChat::new(window, cx)).into(),
+        },
+        Section {
+            id: "fades",
+            name: "Thread fades",
+            summary: "Driver mode's thread scrolled halfway: it fades at the top while there is more above and at the bottom while there is more below, and starts one inset under the palette's top edge so nothing it holds draws into the rounded corners. Scroll it to see each fade go at its end.",
+            build: |window, cx| stateful(window, cx, Fades::new, fades),
+        },
+        Section {
+            id: "mentions",
+            name: "Mentions",
+            summary: "@ in the input opens the target picker floating over it, the one the command palette's @ mode and prefix F use too. A mention is a target the way tmux's -t names one, session:window.pane, with an optional host in front, or a file in scp form, @xps:~/dev/zz/Cargo.toml, with git's letter. Without a host it means the host here, so @ lists the sessions here first, then the other hosts with their status dot, then ~/. A row with more under it ends in ›, and Tab (or a click) opens that level: a host its sessions and its home folder, a session its windows, a window its panes, a folder its entries. Typing :, . or / does the same by hand. Typing filters the level the cursor is in, and after the last / it searches everything under that folder. Up and Down move, Enter puts the highlighted row in as a finished mention and a space, its host always written, so @main:1 goes out as @macbook:main:1. Esc closes only the picker. The header says where the cursor is.",
+            build: |window, cx| stateful(window, cx, Mentions::new, mentions),
         },
     ],
 };
@@ -133,7 +155,7 @@ fn conversation(scope: &'static str, ground: Ground, cx: &App) -> Vec<AnyElement
             .into_any_element(),
         ChatBubble::theirs(
             id(1),
-            "Three agents are working. zz on alienware needs you, its question is open on the right.",
+            "Three agents are working:\n\n- **zz** on alienware needs you, its question is open on the right\n- `atlas` tests are green on xps\n- the sprite sheet is half done",
             "9:40",
         )
         .on(ground)
@@ -207,6 +229,18 @@ fn messages(_: &mut Window, cx: &mut App) -> AnyElement {
                     "answer",
                     "Three agents are working. zz needs you for one thing.",
                     "9:40",
+                )
+                .into_any_element()]),
+                cx,
+            ),
+        )
+        .state(
+            "an answer with headings and nested bullets: headings at the body's size",
+            column(
+                chat_thread([ChatBubble::theirs(
+                    "headings",
+                    "## Status\n\nThree agents are working:\n\n- **zz** on alienware needs you\n  - it asks whether to keep the old socket path\n- `atlas` tests are green on xps\n\n### Next\n\nI merge clairvo's PR once the last two checks pass.",
+                    "9:45",
                 )
                 .into_any_element()]),
                 cx,
@@ -287,29 +321,10 @@ fn messages(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn composer(
-    scope: &'static str,
-    input: &Entity<InputState>,
-    running: bool,
-    ground: Option<Ground>,
-    cx: &App,
-) -> ChatComposer {
-    let has_content = !input.read(cx).value().trim().is_empty();
-    ChatComposer {
-        input: input.clone(),
-        action: composer_action_button(
-            (scope, 0_usize),
-            composer_action(running, has_content),
-            running || has_content,
-        )
-        .into_any_element(),
-        ground,
-    }
-}
-
 pub(crate) struct Composers {
     empty: Entity<InputState>,
     typed: Entity<InputState>,
+    working: Entity<InputState>,
 }
 
 impl Composers {
@@ -317,30 +332,39 @@ impl Composers {
         Self {
             empty: driver_input("", window, cx),
             typed: driver_input("ship it once checks pass", window, cx),
+            working: driver_input("", window, cx),
         }
     }
+}
+
+/// A column on the palette's paint, where Driver mode's composer sits.
+fn palette_column(content: impl IntoElement, cx: &App) -> AnyElement {
+    let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
+    div()
+        .w_full()
+        .max_w(px(CHAT_WIDTH))
+        .pt(px(10.0))
+        .bg(layer.fill)
+        .rounded(cx.theme().radius)
+        .framed(cx)
+        .child(content)
+        .into_any_element()
 }
 
 fn composers(state: &Composers, _: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .columns(2)
         .state(
-            "empty",
-            column(
-                div()
-                    .pt(px(10.0))
-                    .child(composer("empty", &state.empty, false, None, cx)),
-                cx,
-            ),
+            "empty: + starts a mention, nothing to send yet",
+            palette_column(palette_composer("empty", &state.empty, false, cx), cx),
         )
         .state(
-            "typed while the driver works: queues",
-            column(
-                div()
-                    .pt(px(10.0))
-                    .child(composer("typed", &state.typed, true, None, cx)),
-                cx,
-            ),
+            "typed while the driver works: the button steers",
+            palette_column(palette_composer("typed", &state.typed, true, cx), cx),
+        )
+        .state(
+            "the driver works and the field is empty: the button stops it",
+            palette_column(palette_composer("working", &state.working, true, cx), cx),
         )
         .into_any_element()
 }
@@ -509,6 +533,26 @@ fn latest(_: &mut Window, cx: &mut App) -> AnyElement {
             frame(sidebar_latest("latest-waiting", false, true, cx)),
         )
         .state(
+            "asleep until you wake it",
+            frame(
+                chat_asleep(
+                    "latest-asleep",
+                    false,
+                    cx.theme().ground(),
+                    |_, _, _| {},
+                    cx,
+                )
+                .into_any_element(),
+            ),
+        )
+        .state(
+            "waking",
+            frame(
+                chat_asleep("latest-waking", true, cx.theme().ground(), |_, _, _| {}, cx)
+                    .into_any_element(),
+            ),
+        )
+        .state(
             "no driver, too few hosts",
             frame(
                 chat_unreachable(
@@ -582,25 +626,14 @@ impl TitlebarChat {
     }
 }
 
-/// The command palette in Driver mode: the Driver pill in the input, the thread
-/// under it and an approval waiting on you.
+/// The command palette in Driver mode: the thread, an approval waiting on you,
+/// and the input with the Driver pill at the bottom.
 pub(crate) fn driver_palette(
     input: &Entity<InputState>,
     thread: &ScrollHandle,
     cx: &App,
 ) -> AnyElement {
     let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
-    let pills = [PalettePill::Host {
-        label: "xps".into(),
-        status: PaletteStatus::Online,
-    }]
-    .into_iter()
-    .chain(
-        Program::by_id("claude").map(|program| PalettePill::Program {
-            label: "Driver".into(),
-            program,
-        }),
-    );
     let ask = permission(
         "driver-ask",
         "Atlas tests wants to run sudo pacman -S vulkan-swrast",
@@ -610,15 +643,61 @@ pub(crate) fn driver_palette(
         true,
         cx,
     );
-    CommandPaletteSurface::new(unified_command_palette_input(input, pills, cx), 1)
+    CommandPaletteSurface::new(palette_composer("driver-palette", input, true, cx), 1)
+        .input_last()
         .rows(driver_palette_body(
             chat_thread(conversation("driver-palette", layer.ground, cx)),
             Some(ask),
             thread,
             layer.ground.fill,
+            driver_palette_thread_least(px(WINDOW_HEIGHT)),
+            px(240.0),
         ))
-        .hints(DRIVER_PALETTE_HINTS)
+        .hints(driver_palette_hints(true, true))
+        .footer_leading(palette_place(cx))
         .into_any_element()
+}
+
+/// Driver mode's composer: `+` to start a mention, the field, and send or stop.
+pub(crate) fn palette_composer(
+    scope: &'static str,
+    input: &Entity<InputState>,
+    running: bool,
+    cx: &App,
+) -> ChatComposer {
+    let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
+    let typed = !input.read(cx).value().trim().is_empty();
+    let stop = running && !typed;
+    ChatComposer {
+        input: input.clone(),
+        leading: Some(
+            Button::compact_icon((scope, 1_usize), IconName::Plus)
+                .ghost()
+                .into_any_element(),
+        ),
+        action: composer_action_button(
+            (scope, 0_usize),
+            if stop {
+                ComposerAction::Stop
+            } else {
+                ComposerAction::Send
+            },
+            stop || typed,
+        )
+        .into_any_element(),
+        ground: Some(layer.ground),
+    }
+}
+
+/// Where the driver runs, at the left of Driver mode's footer.
+pub(crate) fn palette_place(cx: &App) -> AnyElement {
+    driver_palette_place(
+        "xps",
+        PaletteStatus::Online.color(cx),
+        Program::by_id("claude"),
+        |_, _, _| {},
+        cx,
+    )
 }
 
 impl Render for TitlebarChat {
@@ -683,4 +762,297 @@ impl Render for TitlebarChat {
             cx,
         )
     }
+}
+
+struct StoryMentions;
+
+impl TargetBackend for StoryMentions {
+    fn hosts(&self, _: &App) -> Vec<TargetHost> {
+        let pane = |id: u64, title: &str, program: Option<&'static str>| TargetPane {
+            id: PaneId(id),
+            title: title.to_owned(),
+            program: program.map(SharedString::from),
+            icon: IconName::SquareTerminal,
+        };
+        let window = |id: u64, index: u32, name: &str, panes: Vec<TargetPane>| TargetWindow {
+            id: WindowId(id),
+            index,
+            name: name.to_owned(),
+            panes,
+        };
+        let session = |id: u64, name: &str, windows: Vec<TargetWindow>| TargetSession {
+            id: SessionId(id),
+            name: name.to_owned(),
+            windows,
+        };
+        let host = |id: u32, name: &str, status, sessions: Vec<TargetSession>| TargetHost {
+            id: PaletteHostId(id),
+            name: name.to_owned(),
+            status,
+            here: id == 0,
+            sessions,
+        };
+        vec![
+            host(
+                0,
+                "macbook",
+                PaletteStatus::Online,
+                vec![
+                    session(
+                        0,
+                        "main",
+                        vec![
+                            window(
+                                0,
+                                1,
+                                "zz",
+                                vec![pane(0, "nvim", None), pane(12, "cargo watch", None)],
+                            ),
+                            window(
+                                8,
+                                2,
+                                "agents",
+                                vec![pane(13, "fix the sidebar fade", Some("Claude Code"))],
+                            ),
+                        ],
+                    ),
+                    session(
+                        4,
+                        "dotfiles",
+                        vec![window(9, 1, "nvim", vec![pane(14, "init.lua", None)])],
+                    ),
+                ],
+            ),
+            host(
+                1,
+                "xps",
+                PaletteStatus::Online,
+                vec![
+                    session(
+                        2,
+                        "work",
+                        vec![
+                            window(
+                                4,
+                                1,
+                                "zz",
+                                vec![
+                                    pane(7, "fix the atlas tests", Some("Claude Code")),
+                                    pane(8, "cargo test", None),
+                                ],
+                            ),
+                            window(5, 2, "atlas", vec![pane(9, "review", Some("Codex"))]),
+                            window(6, 3, "logs", vec![pane(10, "journalctl -f", None)]),
+                        ],
+                    ),
+                    session(
+                        1,
+                        "blog",
+                        vec![window(1, 1, "astro", vec![pane(1, "npm run dev", None)])],
+                    ),
+                ],
+            ),
+            host(
+                2,
+                "alienware",
+                PaletteStatus::Online,
+                vec![session(
+                    3,
+                    "sprites",
+                    vec![window(7, 1, "sheet", vec![pane(11, "", Some("Codex"))])],
+                )],
+            ),
+            host(3, "ubuntu", PaletteStatus::Waiting, Vec::new()),
+        ]
+    }
+
+    fn list(&self, _: &str, _: &str, _: Option<PaneId>, _: &mut App) -> Result<u64, SharedString> {
+        Ok(1)
+    }
+
+    fn cancel(&self, _: &str, _: u64, _: &mut App) {}
+}
+
+/// Everything under `~/dev/zz/` on xps, as the daemon walks it: folders end
+/// in `/`.
+const ZZ: &[&str] = &[
+    "crates/",
+    "crates/zz/",
+    "crates/zz/src/",
+    "crates/zz/src/agent/",
+    "crates/zz/src/agent/driver_palette.rs",
+    "crates/zz-ui/",
+    "crates/zz-ui/src/",
+    "crates/zz-ui/src/lib.rs",
+    "crates/zz-ui/src/target.rs",
+    "crates/zz-ui/src/target_tests.rs",
+    "knowledge/",
+    "knowledge/index.md",
+    "scripts/",
+    "scripts/build-storybook.sh",
+    "Cargo.toml",
+    "CLAUDE.md",
+    "Justfile",
+    "README.md",
+];
+
+/// xps answering the listing of `~/dev/zz/`.
+fn list_zz(picker: &mut TargetPicker, cx: &mut Context<TargetPicker>) {
+    let root = PathListRoot {
+        root: "/home/fab/dev/zz".to_owned(),
+        display_root: "~/dev/zz/".to_owned(),
+        cwd: None,
+        insert: InsertStyle::Shell(ShellKind::Posix),
+    };
+    let entries: Arc<[PathEntry]> = ZZ
+        .iter()
+        .map(|rel| PathEntry {
+            rel: (*rel).to_owned(),
+            kind: if rel.ends_with('/') {
+                PathKind::Dir
+            } else {
+                PathKind::File
+            },
+            symlink: false,
+        })
+        .collect();
+    picker.apply_begin("xps", 1, Ok(root), cx);
+    picker.apply_chunk("xps", 1, &entries, true, false, cx);
+    picker.apply_git(
+        "xps",
+        1,
+        vec![
+            ("Cargo.toml".to_owned(), GitMark::Modified),
+            ("crates/zz-ui/src/target.rs".to_owned(), GitMark::Added),
+            ("scripts/".to_owned(), GitMark::Untracked),
+        ],
+        cx,
+    );
+}
+
+struct MentionDemo {
+    input: Entity<InputState>,
+    picker: Entity<TargetPicker>,
+    thread: ScrollHandle,
+}
+
+impl MentionDemo {
+    fn new(value: &str, window: &mut Window, cx: &mut App) -> Self {
+        let input = driver_input(value, window, cx);
+        let picker =
+            cx.new(|cx| TargetPicker::for_composer(Rc::new(StoryMentions), input.clone(), cx));
+        picker.update(cx, TargetPicker::sync);
+        Self {
+            input,
+            picker,
+            thread: bottom_scroll(),
+        }
+    }
+
+    fn listed(self, cx: &mut App) -> Self {
+        self.picker.update(cx, list_zz);
+        self
+    }
+}
+
+struct Mentions {
+    top: MentionDemo,
+    here: MentionDemo,
+    host: MentionDemo,
+    windows: MentionDemo,
+    files: MentionDemo,
+    search: MentionDemo,
+}
+
+impl Mentions {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            top: MentionDemo::new("@", window, cx),
+            here: MentionDemo::new("ask @main:", window, cx),
+            host: MentionDemo::new("ask @xps:", window, cx),
+            windows: MentionDemo::new("ask @xps:work:", window, cx),
+            files: MentionDemo::new("compare with @xps:~/dev/zz/", window, cx).listed(cx),
+            search: MentionDemo::new("compare with @xps:~/dev/zz/target", window, cx).listed(cx),
+        }
+    }
+}
+
+/// The palette in Driver mode with the `@` picker open over its input.
+fn mention_palette(scope: &'static str, demo: &MentionDemo, cx: &App) -> AnyElement {
+    let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
+    let pills = Program::by_id("claude").map(|program| PalettePill::Program {
+        label: "Driver".into(),
+        program,
+    });
+    div()
+        .w(px(COMMAND_PALETTE_MAX_WIDTH))
+        .child(
+            CommandPaletteSurface::new(unified_command_palette_input(&demo.input, pills, cx), 1)
+                .input_last()
+                .rows(driver_palette_body(
+                    chat_thread(conversation(scope, layer.ground, cx)),
+                    None,
+                    &demo.thread,
+                    layer.ground.fill,
+                    driver_palette_thread_least(px(WINDOW_HEIGHT)),
+                    px(340.0),
+                ))
+                .hints(driver_palette_hints(false, false))
+                .over_input(demo.picker.clone()),
+        )
+        .into_any_element()
+}
+
+fn mentions(state: &Mentions, _: &mut Window, cx: &mut App) -> AnyElement {
+    states()
+        .state(
+            "@ lists the sessions here, then the other hosts, then ~/",
+            mention_palette("mention-hosts", &state.top, cx),
+        )
+        .state(
+            "@main: needs no host: session main on macbook, the host here",
+            mention_palette("mention-here", &state.here, cx),
+        )
+        .state(
+            "Tab on xps opens @xps: with its sessions, then its home folder",
+            mention_palette("mention-host", &state.host, cx),
+        )
+        .state(
+            "Tab on work opens @xps:work: with the session's windows",
+            mention_palette("mention-windows", &state.windows, cx),
+        )
+        .state(
+            "@xps:~/dev/zz/ lists a folder on xps",
+            mention_palette("mention-files", &state.files, cx),
+        )
+        .state(
+            "@xps:~/dev/zz/target searches everything under the folder",
+            mention_palette("mention-search", &state.search, cx),
+        )
+        .into_any_element()
+}
+
+pub(crate) struct Fades {
+    input: Entity<InputState>,
+    thread: ScrollHandle,
+}
+
+impl Fades {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        let thread = ScrollHandle::new();
+        thread.set_offset(zz_gpui::point(px(0.0), px(-160.0)));
+        Self {
+            input: driver_input("", window, cx),
+            thread,
+        }
+    }
+}
+
+fn fades(state: &Fades, _: &mut Window, cx: &mut App) -> AnyElement {
+    div()
+        .w_full()
+        .flex()
+        .justify_center()
+        .child(driver_palette(&state.input, &state.thread, cx))
+        .into_any_element()
 }

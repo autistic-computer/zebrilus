@@ -613,6 +613,13 @@ fn expand_directory(
     Some(normalize_lexically(&path))
 }
 
+/// A dir that names its own root, absolute or from a home, so the listing does
+/// not depend on the pane's cwd: any terminal on this daemon can carry it, in
+/// a session the client is attached to or not.
+fn names_own_root(dir: &str) -> bool {
+    dir.starts_with('~') || Path::new(dir).is_absolute()
+}
+
 fn display_root(root: &Path, home: Option<&str>) -> String {
     let home = home.map(Path::new).filter(|home| home.parent().is_some());
     let text = match home.and_then(|home| root.strip_prefix(home).ok()) {
@@ -715,7 +722,9 @@ impl Shared {
                 Some("path listing needs the zz desktop app".to_owned())
             } else if inner.client_flags.contains(client) {
                 Some("client is read-only".to_owned())
-            } else if !client_is_attached_to_pane(&inner, client, pane) {
+            } else if !client_is_attached_to_pane(&inner, client, pane)
+                && !dir.as_deref().is_some_and(names_own_root)
+            {
                 Some(format!("{pane} is not in an attached session"))
             } else {
                 None
@@ -2099,6 +2108,66 @@ mod tests {
             [ProtocolMessage::PathListBegin { result: Err(error), .. }] if error == "client is read-only"
         ));
     }
+
+    #[test]
+    fn a_dir_that_names_its_root_lists_through_a_pane_in_any_session() {
+        let shared = Arc::new(Shared::new(1));
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, OutboundMailbox::new());
+        let mut context = ExecutionContext::default();
+        shared
+            .execute(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("new-session", ["-d", "-s", "elsewhere"]),
+            )
+            .expect("session");
+        let pane = context.pane.expect("pane id");
+        shared.inner.lock().client_entry(client).path_picker = true;
+        let scratch = tempfile::tempdir().expect("temp dir");
+        let root = scratch.path().canonicalize().expect("canonical temp dir");
+        touch(&root, "a.txt");
+        let root_text = root.to_str().expect("utf-8 temp dir").to_owned();
+
+        let messages = listing(
+            &shared,
+            client,
+            ClientKind::Interactive,
+            (1, pane, Some(root_text.clone())),
+        );
+        assert!(
+            matches!(
+                messages.first(),
+                Some(ProtocolMessage::PathListBegin { request_id: 1, result: Ok(begin) })
+                    if begin.root == root_text
+            ),
+            "{messages:?}"
+        );
+        for dir in [None, Some("sub".to_owned())] {
+            let messages = listing(&shared, client, ClientKind::Interactive, (2, pane, dir));
+            assert!(
+                matches!(
+                    messages.as_slice(),
+                    [ProtocolMessage::PathListBegin { result: Err(error), .. }]
+                        if error.contains("not in an attached session")
+                ),
+                "{messages:?}"
+            );
+        }
+        shared.inner.lock().client_flags.insert(client);
+        let messages = listing(
+            &shared,
+            client,
+            ClientKind::Interactive,
+            (3, pane, Some(root_text)),
+        );
+        assert!(matches!(
+            messages.as_slice(),
+            [ProtocolMessage::PathListBegin { result: Err(error), .. }] if error == "client is read-only"
+        ));
+    }
+
     fn path_list_client() -> (Arc<Shared>, ClientId, PaneId) {
         let shared = Arc::new(Shared::new(1));
         let (client, _) =

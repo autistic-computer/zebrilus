@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v114)
+title: zz wire protocol (v115)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-10-24T00:00:00-03:00
+timestamp: 2026-10-26T00:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 114`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 115`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (114) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (115) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -96,6 +96,7 @@ fields in declaration order.
 | `PastedImageChunk { pane, number, bytes }` | one ordered slice | Body of the announced fetch, at most `MAX_PASTE_UPLOAD_CHUNK_BYTES` (1 MiB) per message |
 | `PastedImageUnavailable { pane, number }` | one placeholder | Daemon → client: that numbered image is gone or could not be encoded |
 | `AgentPrompt { pane, text, images: Vec<AgentImage> }` | one prompt | Client → daemon: submit a prompt to the agent runtime of a terminal pane. The lens types the text into the CLI and refuses images. `AgentImage { format, data }` carries encoded bytes; text plus every image totals at most `MAX_AGENT_PROMPT_BYTES` (6 MiB), each `format` at most 64 bytes |
+| `AgentSteer { pane, text }` | one message | Client → daemon (v115): type `text` into the turn the pane is running, which Claude Code and Codex take as steering. With no turn running, a permission waiting, or a runtime that cannot steer, it is an `AgentPrompt`. Bounded like a prompt's text |
 | `AgentCancel { pane }` | . | Cancel the pane's running turn |
 | `AgentUnqueue { pane }` | . | Reclaim the pane's queued prompts; the daemon returns them inside the stream so the composer refills |
 | `AgentRespondPermission { pane, request_id, option_id: Option<String> }` | one answer | Answer a parked permission request; `None` cancels. First answer wins and a late one is a no-op |
@@ -775,7 +776,8 @@ another key. `key_table_active_appends_after_the_command_client_exit` pins the t
 v107 adds the shell path picker ([design](/designs/path-picker-and-which-key.md)). The desktop
 advertises `ClientHello::CLIENT_PATH_PICKER_CAPABILITY` (`client-path-picker-v1`); iOS, web, the
 TUI and FFI clients do not, and `choose-path` answers them with an error, as does a
-`PathListRequest` from them or for a pane outside the client's attached session. `EventPayload` gains
+`PathListRequest` from them or for a pane outside the client's attached session (unless its `dir`
+is absolute or starts with `~`, since 2026-10-26 with no version change). `EventPayload` gains
 `OpenPathPicker { pane, start_dir }` after `KeyTableActive`, pushed only to the invoking client.
 v107 also appends `EventPayload::KeyTablesPatched { tables, removed }` after `OpenPathPicker`: the
 tables whose bindings changed since the previous publication, each replacing the client's table of
@@ -1021,11 +1023,18 @@ system package found with `dpkg-query -S`, `pacman -Qqo` or `rpm -qf`; `-u` on o
 that text. The daemon sends the whole report on every change to each client that
 asked.
 
+v115 appends `ProtocolMessage::AgentSteer { pane, text }`, the Driver Agent chat's way to
+redirect a running turn ([agent lens](/concepts/agent-lens.md#input-and-approvals)). The pane host
+turns it into the runtime's `/steer` verb while a turn runs; the lens types the text into the CLI
+without opening a turn of its own, and text the terminal refuses comes back as `PromptsReclaimed`.
+
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 114`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 115`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v115 requires updated clients and daemon together, including the daemon on every ssh host.
+  v115 appends `ProtocolMessage::AgentSteer`.
 - v114 requires updated clients and daemon together, including the daemon on every ssh host.
   v112 shipped in zz 0.21.0 and 0.22.0; v113 removes the Agent pane kind, `AgentDescriptor`,
   `EventPayload::AgentCommand`, `ChooseTreePaneKind::Agent` and `MuxOptionKey::ExperimentalAgentPane`; v114 appends `EventPayload::Providers`.

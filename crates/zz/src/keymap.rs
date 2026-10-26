@@ -596,7 +596,15 @@ mod tests {
 
         assert!(parse_bind("browser:D-t").is_err());
         assert!(parse_bind("browser=browser-new-tab").is_err());
-        assert!(parse_bind("prefix:D-t=browser-new-tab").is_err());
+        assert!(parse_bind("root:D-t=browser-new-tab").is_err());
+        assert_eq!(
+            parse_bind("prefix:S-a=open-driver-chat"),
+            Ok(ChromeOverride::Bind {
+                table: zz_client::PREFIX_TABLE,
+                key: "A".to_owned(),
+                action: "open-driver-chat".to_owned(),
+            })
+        );
         assert!(parse_bind("browser:D-t=fly-me-to-the-moon").is_err());
         assert!(parse_bind("browser::=browser-new-tab").is_ok());
         assert!(parse_unbind("browser:").is_err());

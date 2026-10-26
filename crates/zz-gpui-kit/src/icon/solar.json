@@ -94,6 +94,10 @@
     {"name": "key-escape", "variant": "KeyEscape", "group": "Keys", "parts": [["arc", 13, 13, 7.5, 255, 555], ["line", 12.25, 12.25, 5.15, 5.15], ["path", [4.25, 9.75], [4.25, 4.25, 1], [9.75, 4.25]]]},
     {"name": "key-control-iso", "variant": "KeyControlIso", "group": "Keys", "parts": [["circle", 12, 12, 6], ["line", 2.5, 12, 21.5, 12], ["line", 12, 2.5, 12, 21.5], ["line", 5.28, 5.28, 18.72, 18.72], ["line", 18.72, 5.28, 5.28, 18.72]]},
     {"name": "key-alt-iso", "variant": "KeyAltIso", "group": "Keys", "parts": [["line", 3, 7, 21, 7], ["path", [8, 7], [15.5, 17, 1], [21, 17]]]},
-    {"name": "key-tab-iso", "variant": "KeyTabIso", "group": "Keys", "parts": [["line", 21, 8, 5.75, 8], ["path", [8, 4.5], [4.5, 8, 1], [8, 11.5]], ["line", 2.5, 4.5, 2.5, 11.5], ["line", 3, 16, 18.25, 16], ["path", [16, 12.5], [19.5, 16, 1], [16, 19.5]], ["line", 21.5, 12.5, 21.5, 19.5]]}
+    {"name": "key-tab-iso", "variant": "KeyTabIso", "group": "Keys", "parts": [["line", 21, 8, 5.75, 8], ["path", [8, 4.5], [4.5, 8, 1], [8, 11.5]], ["line", 2.5, 4.5, 2.5, 11.5], ["line", 3, 16, 18.25, 16], ["path", [16, 12.5], [19.5, 16, 1], [16, 19.5]], ["line", 21.5, 12.5, 21.5, 19.5]]},
+    {"name": "key-return", "variant": "KeyReturn", "group": "Keys", "parts": [["path", [20, 5], [20, 15, 1], [5.75, 15]], ["path", [9, 10.5], [4.5, 15, 1], [9, 19.5]]]},
+    {"name": "key-backspace", "variant": "KeyBackspace", "group": "Keys", "parts": [["shape", [2.5, 12, 1], [8, 5.5, 0.5], [21, 5.5, 0.5], [21, 18.5, 0.5], [8, 18.5, 0.5]], ["line", 12, 9.5, 17, 14.5], ["line", 17, 9.5, 12, 14.5]]},
+    {"name": "key-shift", "variant": "KeyShift", "group": "Keys", "parts": [["shape", [12, 3, 1], [21, 12.5, 0.5], [16, 12.5, 0.5], [16, 20.5, 0.5], [8, 20.5, 0.5], [8, 12.5, 0.5], [3, 12.5, 0.5]]]},
+    {"name": "key-command", "variant": "KeyCommand", "group": "Keys", "parts": [["arc", 6.5, 6.5, 2.5, 90, 360], ["arc", 17.5, 6.5, 2.5, 180, 450], ["arc", 17.5, 17.5, 2.5, 270, 540], ["arc", 6.5, 17.5, 2.5, 0, 270], ["line", 9, 6.5, 9, 17.5], ["line", 15, 6.5, 15, 17.5], ["line", 6.5, 9, 17.5, 9], ["line", 6.5, 15, 17.5, 15]]}
   ]
 }

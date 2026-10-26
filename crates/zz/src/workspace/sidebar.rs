@@ -128,6 +128,8 @@ pub(crate) struct SidebarModeChanged;
 pub(crate) struct SidebarRouteChanged;
 /// A click on the driver's last message: open the chat.
 pub(crate) struct SidebarOpenDriver;
+/// "Show terminal" on the driver's last message: switch to the driver's pane.
+pub(crate) struct SidebarShowDriverTerminal;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ChromeMode {
@@ -191,13 +193,21 @@ pub struct WorkspaceSidebar {
 
 impl WorkspaceSidebar {
     pub(crate) fn new(mux: Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
-        let local_hostname = sidebar_hostname(sysinfo::System::host_name().as_deref());
-        let mut observed_revision = SidebarRevision::for_mux(mux.read(cx));
+        let local_hostname = local_hostname();
+        let mut observed_revision =
+            SidebarRevision::for_mux(mux.read(cx), crate::agent::hidden_session(cx));
         cx.observe(&mux, move |sidebar, mux, cx| {
-            let revision = SidebarRevision::for_mux(mux.read(cx));
+            let revision = SidebarRevision::for_mux(mux.read(cx), crate::agent::hidden_session(cx));
             if revision != observed_revision {
                 observed_revision = revision;
                 sidebar.synchronize_tree(cx);
+                sidebar.reconcile_attention(cx);
+                cx.notify();
+            }
+        })
+        .detach();
+        cx.observe_global::<crate::config::AppConfig>(|sidebar, cx| {
+            if sidebar.synchronize_tree(cx) {
                 sidebar.reconcile_attention(cx);
                 cx.notify();
             }
@@ -654,11 +664,12 @@ impl WorkspaceSidebar {
 
     fn synchronize_tree(&mut self, cx: &App) -> bool {
         let mux = self.mux.read(cx);
-        let revision = SidebarRevision::for_mux(mux);
+        let hidden = crate::agent::hidden_session(cx);
+        let revision = SidebarRevision::for_mux(mux, hidden);
         if self.tree_revision.as_ref() == Some(&revision) {
             return false;
         }
-        let model = MuxTreeModel::from_mux(mux);
+        let model = MuxTreeModel::from_mux(mux).without_session(hidden);
         self.tree_revision = Some(revision);
         self.reconcile_tree(model)
     }
@@ -983,6 +994,7 @@ impl EventEmitter<SidebarReleaseFocus> for WorkspaceSidebar {}
 impl EventEmitter<SidebarModeChanged> for WorkspaceSidebar {}
 impl EventEmitter<SidebarRouteChanged> for WorkspaceSidebar {}
 impl EventEmitter<SidebarOpenDriver> for WorkspaceSidebar {}
+impl EventEmitter<SidebarShowDriverTerminal> for WorkspaceSidebar {}
 
 #[derive(Clone, Debug)]
 struct VisibleTreeEntry {
@@ -1180,10 +1192,11 @@ struct SidebarRevision {
     attached_host: HostId,
     attached_session: Option<SessionId>,
     active_target: Option<TreeNode>,
+    hidden: Option<&'static str>,
 }
 
 impl SidebarRevision {
-    fn for_mux(mux: &MuxClient) -> Self {
+    fn for_mux(mux: &MuxClient, hidden: Option<&'static str>) -> Self {
         let attached_host = mux.attached_host();
         let attached_session = mux.attached_session();
         let mut active_target = None;
@@ -1208,6 +1221,7 @@ impl SidebarRevision {
             attached_host,
             attached_session,
             active_target,
+            hidden,
         }
     }
 }
@@ -1576,6 +1590,14 @@ fn render_node_marker(
         badge.map(|badge| agent_badge_color(badge, cx)),
         cx,
     )
+}
+
+/// This machine's name, which the sidebar, the palette and targets show for
+/// the local host.
+pub(crate) fn local_hostname() -> SharedString {
+    static NAME: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| sidebar_hostname(sysinfo::System::host_name().as_deref()))
+        .clone()
 }
 
 fn sidebar_hostname(hostname: Option<&str>) -> SharedString {
@@ -2212,6 +2234,76 @@ mod tests {
         assert_eq!(
             node_agent_badge(&model, &BTreeMap::new(), TreeNode::Host(HostId::LOCAL)),
             None
+        );
+    }
+
+    #[cfg(feature = "agent-pane")]
+    #[zz_gpui::test]
+    fn the_driver_session_leaves_the_sidebar_only_while_the_driver_agent_is_on(
+        cx: &mut TestAppContext,
+    ) {
+        let mut snapshot = snapshot_with_two_panes();
+        let mut window = mux_window(21, 0, "claude", 301);
+        window.panes.get_mut(&PaneId(301)).unwrap().status = Some(PaneStatus {
+            state: PaneStatusState::Blocked,
+            kind: None,
+            progress: None,
+            app: String::new(),
+            title: String::new(),
+            message: String::new(),
+        });
+        snapshot.sessions.push(SessionSnapshot {
+            id: SessionId(2),
+            name: "driver".to_owned(),
+            active_window: window.id,
+            windows: vec![window],
+            viewers: Vec::new(),
+        });
+        let hidden = |on: bool, cx: &mut TestAppContext| {
+            cx.update(|cx| {
+                let mut config = crate::config::AppConfig::default();
+                config.driver_agent.value = on;
+                cx.set_global(config);
+                crate::agent::hidden_session(cx)
+            })
+        };
+        let badges = BTreeMap::from([((HostId::LOCAL, PaneId(301)), AgentBadge::NeedsInput)]);
+        let lists = |hidden: Option<&str>, attached: SessionId| {
+            let model = local_model(&snapshot, Some(attached)).without_session(hidden);
+            let (sessions, rollup) = flat::listed_summary(
+                &snapshot,
+                HostId::LOCAL,
+                hidden,
+                (HostId::LOCAL, Some(attached)),
+            );
+            (
+                model.hosts[0]
+                    .sessions
+                    .iter()
+                    .map(|session| session.name.clone())
+                    .collect::<Vec<_>>(),
+                node_agent_badge(&model, &badges, TreeNode::Host(HostId::LOCAL)),
+                sessions.len(),
+                rollup.needs_you,
+            )
+        };
+        let both = vec!["main workspace".to_owned(), "driver".to_owned()];
+
+        let on = hidden(true, cx);
+        assert_eq!(
+            lists(on, SessionId(1)),
+            (vec!["main workspace".to_owned()], None, 1, 0)
+        );
+        assert_eq!(
+            lists(on, SessionId(2)),
+            (both.clone(), Some(AgentBadge::NeedsInput), 2, 1),
+            "the attached driver session stays listed"
+        );
+        let off = hidden(false, cx);
+        assert_eq!(off, None);
+        assert_eq!(
+            lists(off, SessionId(1)),
+            (both, Some(AgentBadge::NeedsInput), 2, 1)
         );
     }
 

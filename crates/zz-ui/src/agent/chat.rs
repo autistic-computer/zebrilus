@@ -3,6 +3,8 @@
 //! read ticks on what you sent, and the one-line composer. The driver's model is
 //! a setting, so the composer carries no pickers.
 
+use std::sync::Arc;
+
 use zz_client::program::Program;
 use zz_gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, ElementId, Entity, Focusable as _,
@@ -19,6 +21,7 @@ use crate::{
     program::program_tile,
     roles,
     scroll::ScrollableElement as _,
+    text::{TextView, TextViewStyle},
     v_flex,
 };
 
@@ -27,7 +30,7 @@ pub const CHAT_PADDING_X: f32 = 14.0;
 pub const CHAT_PADDING_TOP: f32 = 8.0;
 pub const CHAT_PADDING_BOTTOM: f32 = 12.0;
 pub const CHAT_HEADER_HEIGHT: f32 = 36.0;
-pub const CHAT_COMPOSER_HEIGHT: f32 = 40.0;
+pub const CHAT_COMPOSER_HEIGHT: f32 = 44.0;
 pub const CHAT_COMPOSER_INSET: f32 = 10.0;
 
 const BUBBLE_RADIUS: f32 = 17.0;
@@ -57,16 +60,18 @@ const HEADER_TILE: f32 = 16.0;
 const COMPOSER_PADDING_LEFT: f32 = 14.0;
 const COMPOSER_PADDING_RIGHT: f32 = 5.0;
 const THREAD_FADE: f32 = 28.0;
-const DRIVER_THREAD_MAX: f32 = 360.0;
+/// How long the thread takes to open under the palette's input, pushing
+/// the composer down to the bottom.
+const DRIVER_THREAD_OPEN: std::time::Duration = std::time::Duration::from_millis(280);
 /// How many of the driver's steps a [`ChatTyping`] shows.
 pub const TYPING_STEPS: usize = 3;
 const TYPING_PERIOD: std::time::Duration = std::time::Duration::from_millis(1300);
 const TYPING_BEAT: f32 = 0.14;
 const TYPING_FPS: f32 = 30.0;
 const TYPING_RISE_SHARE: f32 = 0.42;
-const TYPING_DOT: f32 = 6.0;
-const TYPING_DOT_GAP: f32 = 4.0;
-const TYPING_LIFT: f32 = 2.5;
+const TYPING_DOT: f32 = 4.0;
+const TYPING_DOT_GAP: f32 = 3.0;
+const TYPING_LIFT: f32 = 1.5;
 const TYPING_REST: f32 = 0.4;
 const TYPING_PADDING_Y: f32 = 8.0;
 const STEP_SIZE: f32 = 12.0;
@@ -199,7 +204,9 @@ impl RenderOnce for ChatBubble {
         let mine = self.side == ChatSide::Mine;
         let ground = self.ground.unwrap_or_else(|| theme.ground());
         let surface = if mine {
-            Surface::new(roles::CHAT_MINE).tone(Tone::Accent)
+            Surface::new(roles::CHAT_MINE)
+                .tone(Tone::Accent)
+                .prominent(true)
         } else {
             Surface::new(roles::CHAT_BUBBLE)
         }
@@ -208,21 +215,41 @@ impl RenderOnce for ChatBubble {
         let radius = layer.radius.min(px(BUBBLE_RADIUS));
         let fill = layer.fill;
         let edge = (layer.border_width > px(0.0)).then_some((layer.border, layer.border_width));
-        let ink = ground.ink;
-        let muted = ink.muted();
-        let read = theme.accent;
+        let ink = layer.ground.ink;
+        let muted = crate::picker::muted_on(&layer, cx);
+        let read = if mine { ink } else { theme.accent };
         let receipt = self.receipt.filter(|_| mine);
+        let rich = !mine && self.lines.is_none() && is_rich(&self.text);
+        let stamped = !self.time.is_empty() || receipt.is_some();
 
-        let room = format!(" {}{}", self.time, receipt.map_or("", Receipt::room));
-        let text = format!("{}{room}", self.text);
-        let hidden = self.text.len()..text.len();
-        let body = StyledText::new(text).with_highlights([(
-            hidden,
-            HighlightStyle {
-                fade_out: Some(1.0),
-                ..HighlightStyle::default()
-            },
-        )]);
+        let body = if rich {
+            TextView::markdown(
+                ElementId::NamedChild(Arc::new(self.id.clone()), "markdown".into()),
+                self.text.clone(),
+            )
+            .style(chat_markdown_style(cx))
+            .selectable(true)
+            .min_w_0()
+            .into_any_element()
+        } else {
+            let text = if self.lines.is_some() && !mine {
+                SharedString::from(plain_text(&self.text))
+            } else {
+                self.text.clone()
+            };
+            let room = format!(" {}{}", self.time, receipt.map_or("", Receipt::room));
+            let shown = format!("{text}{room}");
+            let hidden = text.len()..shown.len();
+            StyledText::new(shown)
+                .with_highlights([(
+                    hidden,
+                    HighlightStyle {
+                        fade_out: Some(1.0),
+                        ..HighlightStyle::default()
+                    },
+                )])
+                .into_any_element()
+        };
 
         let stamp = h_flex()
             .absolute()
@@ -262,7 +289,11 @@ impl RenderOnce for ChatBubble {
             }))
             .px(px(BUBBLE_PADDING_X))
             .pt(px(BUBBLE_PADDING_TOP))
-            .pb(px(BUBBLE_PADDING_BOTTOM))
+            .pb(px(if rich && stamped {
+                BUBBLE_PADDING_BOTTOM + STAMP_LINE
+            } else {
+                BUBBLE_PADDING_BOTTOM
+            }))
             .text_size(crate::rems_from_px(TEXT_SIZE))
             .line_height(px(TEXT_LINE))
             .text_color(ink)
@@ -272,6 +303,7 @@ impl RenderOnce for ChatBubble {
             })
             .child(
                 div()
+                    .min_w_0()
                     .when_some(self.lines, |body, lines| {
                         body.line_clamp(lines).text_ellipsis()
                     })
@@ -284,6 +316,56 @@ impl RenderOnce for ChatBubble {
             .when(mine, zz_gpui::Styled::justify_end)
             .child(bubble)
     }
+}
+
+/// Whether `text` needs the markdown renderer: anything but one paragraph of
+/// plain words, which keeps the bubble as narrow as its line and the time
+/// tucked after it.
+fn is_rich(text: &str) -> bool {
+    use markdown::mdast::Node;
+    let Ok(Node::Root(root)) = markdown::to_mdast(text, &markdown::ParseOptions::gfm()) else {
+        return false;
+    };
+    match root.children.as_slice() {
+        [Node::Paragraph(paragraph)] => !paragraph
+            .children
+            .iter()
+            .all(|node| matches!(node, Node::Text(_) | Node::Break(_))),
+        _ => true,
+    }
+}
+
+/// `text` with its markdown taken out, one line per block, for a bubble cut
+/// to a few lines.
+fn plain_text(text: &str) -> String {
+    use markdown::mdast::Node;
+    match markdown::to_mdast(text, &markdown::ParseOptions::gfm()) {
+        Ok(Node::Root(root)) => root
+            .children
+            .iter()
+            .flat_map(|block| match block {
+                Node::List(list) => list.children.iter().map(ToString::to_string).collect(),
+                block => vec![block.to_string()],
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => text.to_owned(),
+    }
+}
+
+/// Markdown the way chat apps draw it: headings at the body's size, so an
+/// answer with `#` titles reads as a message, not a document.
+fn chat_markdown_style(cx: &App) -> TextViewStyle {
+    TextViewStyle {
+        paragraph_gap: zz_gpui::rems(0.5),
+        heading_base_font_size: px(TEXT_SIZE),
+        heading_font_size: Some(Arc::new(|_, base| base)),
+        highlight_theme: Arc::clone(&cx.theme().highlight_theme),
+        is_dark: cx.theme().is_dark(),
+        ..TextViewStyle::default()
+    }
+    .code_role(roles::CODE)
+    .figure_role(roles::FIGURE)
 }
 
 /// The bubble's fill and edge, painted along [`bubble_path`] behind what
@@ -625,9 +707,52 @@ pub fn chat_unreachable(
     on_start: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
+    chat_idle(
+        scope,
+        "not running",
+        Some(format!(
+            "Only {answered} of {hosts} hosts answered, so zz did not start another. \
+             One may still run on a host this machine cannot reach."
+        )),
+        ("Start here", false),
+        ground,
+        on_start,
+        cx,
+    )
+}
+
+/// What the sidebar keeps of the chat while no driver runs: zz starts one only
+/// when you press Wake, so restarting zz spends no tokens.
+pub fn chat_asleep(
+    scope: &'static str,
+    waking: bool,
+    ground: Ground,
+    on_wake: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Stateful<zz_gpui::Div> {
+    chat_idle(
+        scope,
+        if waking { "waking" } else { "asleep" },
+        None,
+        (if waking { "Waking" } else { "Wake" }, waking),
+        ground,
+        on_wake,
+        cx,
+    )
+}
+
+fn chat_idle(
+    scope: &'static str,
+    status: &'static str,
+    note: Option<String>,
+    (action, busy): (&'static str, bool),
+    ground: Ground,
+    on_click: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> zz_gpui::Stateful<zz_gpui::Div> {
     let theme = cx.theme();
     let header = h_flex()
-        .debug_selector(|| "chat-unreachable".to_owned())
+        .debug_selector(move || format!("chat-{}", status.replace(' ', "-")))
         .flex_none()
         .w_full()
         .h(px(CHAT_HEADER_HEIGHT))
@@ -644,60 +769,81 @@ pub fn chat_unreachable(
                 .text_color(theme.foreground)
                 .child("Driver Agent"),
         )
-        .child("not running");
+        .child(status);
     let message = v_flex()
         .gap(px(8.0))
         .items_start()
-        .child(
+        .children(note.map(|note| {
             div()
                 .text_size(crate::rems_from_px(12.0))
                 .text_color(theme.foreground.muted())
-                .child(format!(
-                    "Only {answered} of {hosts} hosts answered, so zz did not start another. \
-                     One may still run on a host this machine cannot reach."
-                )),
-        )
+                .child(note)
+        }))
         .child(
             crate::button::Button::new(SharedString::from(format!("{scope}-start")))
                 .tone(Tone::Primary)
                 .emphasis(crate::Emphasis::Solid)
                 .small()
                 .on(ground)
-                .label("Start here")
-                .on_click(on_start),
+                .label(action)
+                .loading(busy)
+                .on_click(move |event, window, cx| {
+                    if !busy {
+                        on_click(event, window, cx);
+                    }
+                }),
         );
     chat_latest(scope, header, message, cx)
 }
 
-/// The palette's footer keys in Driver mode.
-pub const DRIVER_PALETTE_HINTS: [PaletteHint; 4] = [
-    PaletteHint {
-        key: "enter",
-        label: "send",
-    },
-    PaletteHint {
-        key: "1 2",
-        label: "answer",
-    },
-    PaletteHint {
-        key: "backspace",
-        label: "leave mode",
-    },
-    PaletteHint {
-        key: "escape",
-        label: "close",
-    },
-];
+/// The palette's footer keys in Driver mode: while the driver works, Enter
+/// steers it, Tab queues for after its turn and Ctrl-C stops it; digits
+/// answer what it asks.
+pub fn driver_palette_hints(working: bool, asking: bool) -> Vec<PaletteHint> {
+    let hint = |key, label| PaletteHint { key, label };
+    let mut hints = if working {
+        vec![
+            hint("enter", "steer"),
+            hint("tab", "queue"),
+            hint("ctrl-c", "stop"),
+        ]
+    } else {
+        vec![hint("enter", "send")]
+    };
+    hints.push(hint("up", "edit last"));
+    if asking {
+        hints.push(hint("1 2", "answer"));
+    }
+    hints.push(hint("escape", "close"));
+    hints
+}
 
-/// What the palette shows in Driver mode, under its input: the thread, up to
-/// `DRIVER_THREAD_MAX` tall and scrolling with the same fade at its top, then
-/// an approval or question waiting on you. `fade` is the palette's fill.
+/// The least height of Driver mode's thread in a window `viewport` tall: what
+/// keeps the palette as tall as it is with its rows full, so switching to
+/// Driver mode keeps its size.
+pub fn driver_palette_thread_least(viewport: Pixels) -> Pixels {
+    px(crate::command::command_palette_full_height(viewport)
+        - crate::command::COMMAND_PALETTE_INSET
+        - CHAT_COMPOSER_HEIGHT
+        - CHAT_COMPOSER_INSET
+        - crate::command::COMMAND_PALETTE_FOOTER_HEIGHT)
+}
+
+/// What the palette shows in Driver mode, over its input: the thread, from
+/// `min_height` to `max_height` tall with its newest message on the input and
+/// scrolling with a fade at either end while there is more that way, then an
+/// approval or question waiting on you. `fade` is the palette's fill. The
+/// thread opens from nothing, so the input slides from the palette's top to
+/// its bottom as the chat appears.
 pub fn driver_palette_body(
     thread: impl IntoElement,
     ask: Option<AnyElement>,
     scroll: &ScrollHandle,
     fade: Hsla,
+    min_height: Pixels,
+    max_height: Pixels,
 ) -> zz_gpui::Div {
+    let min_height = min_height.min(max_height);
     v_flex()
         .debug_selector(|| "driver-palette".to_owned())
         .w_full()
@@ -708,14 +854,54 @@ pub fn driver_palette_body(
                 .child(
                     div()
                         .id("driver-palette-thread")
-                        .max_h(px(DRIVER_THREAD_MAX))
+                        .min_h(min_height)
+                        .max_h(max_height)
                         .overflow_y_scroll()
                         .track_scroll(scroll)
-                        .child(thread),
+                        .child(v_flex().min_h(min_height).justify_end().child(thread))
+                        .with_animation(
+                            "driver-palette-open",
+                            Animation::new(DRIVER_THREAD_OPEN)
+                                .with_easing(zz_gpui::ease_out_quint()),
+                            move |thread, delta| {
+                                thread.min_h(min_height * delta).max_h(max_height * delta)
+                            },
+                        ),
                 )
-                .top_fade(scroll, fade, px(THREAD_FADE)),
+                .top_fade(scroll, fade, px(THREAD_FADE))
+                .bottom_fade(scroll, fade, px(THREAD_FADE)),
         )
         .children(ask.map(|ask| div().px(px(4.0)).pt(px(4.0)).child(ask)))
+}
+
+/// Where the driver runs, at the left of Driver mode's footer: its host's
+/// status dot and name, then its tile. `on_click` opens its terminal.
+pub fn driver_palette_place(
+    host: impl Into<SharedString>,
+    status: Hsla,
+    program: Option<&'static Program>,
+    on_click: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let theme = cx.theme();
+    h_flex()
+        .id("driver-palette-place")
+        .debug_selector(|| "driver-palette-place".to_owned())
+        .flex_none()
+        .min_w_0()
+        .gap(px(6.0))
+        .items_center()
+        .cursor_pointer()
+        .text_color(theme.foreground.muted())
+        .hover(|place| place.text_color(theme.foreground))
+        .child(crate::navigation::status_dot(status))
+        .child(host.into())
+        .children(program.map(|program| {
+            program_tile(program, px(SEEN_TILE), px(SEEN_TILE), 0.0, cx).flex_none()
+        }))
+        .child("Driver")
+        .on_click(on_click)
+        .into_any_element()
 }
 
 /// The chat's button in the title bar, with a dot in the color of what waits
@@ -737,11 +923,12 @@ pub fn chat_button(button: impl IntoElement, unread: Option<Hsla>) -> zz_gpui::D
         })
 }
 
-/// The one-line box you message the driver in, with the round action button at
-/// its end.
+/// The one-line box you message the driver in, a pill with an optional button
+/// before the text and the round action button at its end.
 #[derive(IntoElement)]
 pub struct ChatComposer {
     pub input: Entity<InputState>,
+    pub leading: Option<AnyElement>,
     pub action: AnyElement,
     pub ground: Option<Ground>,
 }
@@ -767,7 +954,11 @@ impl RenderOnce for ChatComposer {
                         .h(px(CHAT_COMPOSER_HEIGHT))
                         .items_center()
                         .gap(px(8.0))
-                        .pl(px(COMPOSER_PADDING_LEFT))
+                        .pl(px(if self.leading.is_some() {
+                            COMPOSER_PADDING_RIGHT
+                        } else {
+                            COMPOSER_PADDING_LEFT
+                        }))
                         .pr(px(COMPOSER_PADDING_RIGHT)),
                     surface,
                     state,
@@ -775,6 +966,7 @@ impl RenderOnce for ChatComposer {
                     true,
                     cx,
                 )
+                .children(self.leading)
                 .child(
                     Input::new(&self.input)
                         .flex_1()
@@ -856,6 +1048,19 @@ mod tests {
         assert_eq!(
             bubble.size.height,
             px(2.0 * TEXT_LINE + BUBBLE_PADDING_TOP + BUBBLE_PADDING_BOTTOM)
+        );
+    }
+
+    #[test]
+    fn only_markdown_beyond_plain_words_takes_the_renderer() {
+        assert!(!is_rich("Three agents are working."));
+        assert!(!is_rich("line one\nline two"));
+        assert!(is_rich("Three agents:\n\n- zz\n- atlas"));
+        assert!(is_rich("the **sprite** sheet"));
+        assert!(is_rich("run `just ios`"));
+        assert_eq!(
+            plain_text("Three agents:\n\n- **zz** waits\n- `atlas` is green"),
+            "Three agents:\nzz waits\natlas is green"
         );
     }
 

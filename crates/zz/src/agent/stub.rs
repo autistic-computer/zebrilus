@@ -87,6 +87,10 @@ pub(crate) struct ShowTerminal;
 
 impl zz_gpui::EventEmitter<ShowTerminal> for AgentView {}
 
+pub(crate) const fn hidden_session(_cx: &App) -> Option<&'static str> {
+    None
+}
+
 impl Render for AgentView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()

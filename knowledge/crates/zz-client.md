@@ -100,7 +100,8 @@ geometry caches across same-actor updates and resets them only for a new actor o
 
 # Chrome keymap
 
-`ChromeKeymap` stores the client-owned `ui`, `sidebar`, `browser`, and `terminal` tables. It uses the
+`ChromeKeymap` stores the client-owned `ui`, `sidebar`, `browser`, `terminal`, and `prefix` tables
+(`prefix` answers the key after the prefix when the daemon's prefix table leaves it unbound). It uses the
 same `KeyTables` resolution rules as the daemon contract, with a chrome-only grammar that preserves
 Command/Super (`D-`) and Shift (`S-`) chords. `ChromeProfile` supplies TUI, desktop, and Apple
 defaults; `chrome-keybind` and `chrome-unbind` apply user overrides. Skins resolve a key to a

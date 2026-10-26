@@ -34,7 +34,7 @@ pub mod window_summary;
 
 pub use chrome::{
     BROWSER_TABLE, CHROME_TABLES, ChromeAction, ChromeKey, ChromeKeymap, ChromeProfile,
-    SIDEBAR_TABLE, TERMINAL_TABLE, UI_TABLE, UnknownChromeAction,
+    PREFIX_TABLE, SIDEBAR_TABLE, TERMINAL_TABLE, UI_TABLE, UnknownChromeAction,
 };
 pub use core::{
     AgentAttentionEdge, AgentAttentionStatus, ClientCore, CoreEvent, Outbound, ViewportDamage,

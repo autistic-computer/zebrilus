@@ -483,12 +483,7 @@ impl AgentController {
             },
             cx,
         ) {
-            if let Some(thread) = self.panes.get_mut(&pane) {
-                thread.connection = AgentConnectionState::Failed;
-                thread.error = Some(Arc::from("agent daemon is not connected"));
-            }
-            cx.notify();
-            return Err(Arc::from("agent daemon is not connected"));
+            return Err(self.disconnected(pane, cx));
         }
         if command {
             return Ok(());
@@ -505,6 +500,44 @@ impl AgentController {
         }
         cx.notify();
         Ok(())
+    }
+
+    /// Type `text` into the pane's running turn, which Claude Code and Codex
+    /// take as steering; it shows once the CLI records it. With no turn
+    /// running it is a prompt.
+    pub(crate) fn steer(
+        &mut self,
+        pane: PaneId,
+        text: &str,
+        cx: &mut Context<Self>,
+    ) -> Result<(), Arc<str>> {
+        let Some(thread) = self.panes.get(&pane) else {
+            return Err(Arc::from("the lens is not open"));
+        };
+        if !thread.connection.has_active_turn() {
+            return self.prompt(pane, text, Vec::new(), cx);
+        }
+        let text = text.trim();
+        if text.is_empty() {
+            return Ok(());
+        }
+        let steer = AgentRequest::Steer {
+            text: text.to_owned(),
+        };
+        if !self.send(pane, steer, cx) {
+            return Err(self.disconnected(pane, cx));
+        }
+        Ok(())
+    }
+
+    fn disconnected(&mut self, pane: PaneId, cx: &mut Context<Self>) -> Arc<str> {
+        let error = Arc::<str>::from("agent daemon is not connected");
+        if let Some(thread) = self.panes.get_mut(&pane) {
+            thread.connection = AgentConnectionState::Failed;
+            thread.error = Some(error.clone());
+        }
+        cx.notify();
+        error
     }
 
     fn viewport_mut(&mut self, pane: PaneId) -> &mut PaneViewport {
@@ -2913,6 +2946,41 @@ mod tests {
                     images: Vec::new(),
                 },
                 AgentRequest::Unqueue,
+            ]
+        );
+    }
+
+    #[zz_gpui::test]
+    fn a_steer_types_into_the_running_turn_and_prompts_when_idle(cx: &mut TestAppContext) {
+        let (controller, sink) = proxy_controller(cx);
+        let pane = PaneId(7);
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                controller
+                    .steer(pane, "first", cx)
+                    .expect("an idle steer is a prompt");
+                controller
+                    .steer(pane, " only the fast ones ", cx)
+                    .expect("a steer goes out mid-turn");
+                assert_eq!(controller.queued_count(pane), 0);
+                assert_eq!(controller.panes[&pane].transcript.entries().len(), 1);
+            });
+        });
+
+        assert_eq!(
+            sink.borrow()
+                .iter()
+                .map(|(_, request)| request.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                AgentRequest::Prompt {
+                    text: "first".to_owned(),
+                    images: Vec::new(),
+                },
+                AgentRequest::Steer {
+                    text: "only the fast ones".to_owned(),
+                },
             ]
         );
     }

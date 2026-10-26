@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, prompts pasted into the TUI, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-24T00:00:00-03:00
+timestamp: 2026-10-26T00:00:00-03:00
 ---
 
 # Overview
@@ -100,6 +100,15 @@ lens, from typing in the terminal, or from a peer message.
   placeholder names the agent ("Message Claude Code…"), and before the agent has written a
   transcript the lens shows `presentation::lens_welcome`: the agent's mark, "Claude Code is waiting
   for its first prompt" and "What you send here is typed into the terminal."
+- **Steer.** `AgentSteer` (the Driver Agent chat's) types text into a running turn without
+  opening a lens turn, so the running one keeps its tracking: the pane host sends the runtime
+  `/steer <text>` and the lens pastes `<text>` like a prompt. Claude Code reads text typed mid-turn
+  as a message for the running turn, and Codex's Enter steers. With no turn running, a permission
+  waiting, or images, the host takes it as `AgentPrompt`. Claude Code records the message once the
+  turn takes it in, at its next tool boundary, as an `attachment` line of type `queued_command`
+  (`commandMode: "prompt"`, `origin.kind: "human"`); the translator turns that into the user's
+  message, and other origins (peers, task notifications) stay hidden. Codex 0.164 records it as an
+  `item_completed` `UserMessage` inside the same turn. Until then the chat shows nothing for it.
 - **Stop.** `AgentCancel` sends Escape to the TUI.
 - **Claude permission prompts.** While the dialog is up, the record reads `"status":"waiting"` with
   `"waitingFor":"permission prompt"`, and the pending `tool_use` is the last assistant block with no

@@ -2,8 +2,9 @@
 //! lens stream on whichever host runs it. The driver is the first terminal
 //! running Claude Code or Codex in a session named `driver`; zz follows it from
 //! every window, attached to that session or not. While `driver-agent` is on
-//! and no host has a `driver` session, zz starts one on this machine with the
-//! model and effort the Agents settings pick.
+//! and no host has a `driver` session, the sidebar offers to wake one, which zz
+//! starts on this machine with the model and effort the Agents settings pick.
+//! zz never starts one on its own, so restarting zz spends no tokens.
 
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -50,9 +51,11 @@ pub(crate) const DRIVER_SESSION: &str = "driver";
 /// history being replayed, not messages arriving, so they get no time.
 const REPLAY_SETTLE: Duration = Duration::from_secs(3);
 const AGENT_NOTICE: &str = "[zz] Agent ";
-/// How long zz waits after starting a driver before it starts another, so a
-/// CLI that exits at once does not restart in a loop.
-const START_BACKOFF: Duration = Duration::from_secs(30);
+/// What Claude Code writes as your turn when you stop it.
+const INTERRUPTED: &str = "[Request interrupted";
+/// How long the sidebar keeps saying the driver wakes after a host started or
+/// found one, while its session reaches this window.
+const WAKE_GRACE: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Driver {
@@ -94,6 +97,15 @@ pub(crate) fn find_driver(mux: &MuxClient, local_name: &SharedString) -> Option<
                 })
             })
     })
+}
+
+/// The session the app's session lists leave out: the driver's, while
+/// `driver-agent` is on. The CLI, `list-sessions` and `choose-tree` still list it.
+pub(crate) fn hidden_session(cx: &App) -> Option<&'static str> {
+    crate::config::resolved_config(cx)
+        .driver_agent
+        .value
+        .then_some(DRIVER_SESSION)
 }
 
 /// The command zz starts the driver with: the CLI `model` names, with the
@@ -169,7 +181,9 @@ pub(crate) fn driver_messages(entries: &[AgentThreadEntry], turn_live: bool) -> 
                         text: text.to_owned(),
                     });
                 }
-                if markdown.trim().starts_with(PACKET_OPENING) {
+                if markdown.trim().starts_with(PACKET_OPENING)
+                    || markdown.trim().starts_with(INTERRUPTED)
+                {
                     continue;
                 }
                 if let Some((pane, text)) = agent_notice(markdown) {
@@ -348,8 +362,9 @@ pub(crate) struct DriverChat {
     times: HashMap<u64, Option<SharedString>>,
     read: usize,
     error: Option<Arc<str>>,
-    started: Option<Instant>,
     recovering: bool,
+    /// Set while a driver another host started or runs has yet to show up.
+    woke: bool,
     unreachable: Option<(usize, usize)>,
     kept: HashSet<(HostId, usize)>,
 }
@@ -380,8 +395,8 @@ impl DriverChat {
             times: HashMap::new(),
             read: 0,
             error: None,
-            started: None,
             recovering: false,
+            woke: false,
             unreachable: None,
             kept: HashSet::new(),
         };
@@ -396,19 +411,13 @@ impl DriverChat {
         }
         let driver = if config.driver_agent.value {
             self.keep_hosts(cx);
-            let driver = find_driver(self.mux.read(cx), &self.local_name);
-            if driver.is_none() {
-                self.start(
-                    config.driver_model.value,
-                    config.driver_effort.value,
-                    false,
-                    cx,
-                );
-            }
-            driver
+            find_driver(self.mux.read(cx), &self.local_name)
         } else {
             None
         };
+        if driver.is_some() {
+            self.woke = false;
+        }
         if driver != self.driver {
             let pane = driver.as_ref().map(|driver| driver.pane);
             let same_pane = pane.is_some()
@@ -455,26 +464,15 @@ impl DriverChat {
     /// Ask the fleet for the driver with `zz driver recover`: follow a live
     /// one, or start one on this machine from the newest copy any host keeps
     /// once most hosts answered. `force` starts it with fewer answers.
-    fn start(
-        &mut self,
-        model: DriverModel,
-        effort: DriverEffort,
-        force: bool,
-        cx: &mut Context<Self>,
-    ) {
-        if self.recovering
-            || (!force
-                && self
-                    .started
-                    .is_some_and(|started| started.elapsed() < START_BACKOFF))
-            || !may_start_driver(self.mux.read(cx))
-        {
+    fn start(&mut self, force: bool, cx: &mut Context<Self>) {
+        if self.recovering || !may_start_driver(self.mux.read(cx)) {
             return;
         }
         self.recovering = true;
-        self.started = Some(Instant::now());
+        cx.notify();
+        let config = crate::config::resolved_config(cx);
         let socket = self.mux.read(cx).local_socket_path().to_path_buf();
-        let command = driver_command(model, effort);
+        let command = driver_command(config.driver_model.value, config.driver_effort.value);
         let hosts = crate::config::driver_hosts(cx);
         let recovery = cx
             .background_executor()
@@ -493,7 +491,17 @@ impl DriverChat {
             Ok(Recovery::Unreachable { answered, hosts }) => {
                 self.unreachable = Some((answered, hosts));
             }
-            Ok(Recovery::Alive { .. } | Recovery::Started { .. }) => {}
+            Ok(Recovery::Alive { .. } | Recovery::Started { .. }) => {
+                self.woke = self.driver.is_none();
+                cx.spawn(async move |chat, cx| {
+                    cx.background_executor().timer(WAKE_GRACE).await;
+                    let _ = chat.update(cx, |chat, cx| {
+                        chat.woke = false;
+                        cx.notify();
+                    });
+                })
+                .detach();
+            }
             Err(error) => {
                 self.mux.update(cx, |_, cx| {
                     MuxClient::emit_notification(
@@ -514,13 +522,26 @@ impl DriverChat {
 
     /// Start a driver on this machine although too few hosts answered.
     pub(crate) fn start_here(&mut self, cx: &mut Context<Self>) {
-        let config = crate::config::resolved_config(cx);
-        self.start(
-            config.driver_model.value,
-            config.driver_effort.value,
-            true,
-            cx,
-        );
+        self.start(true, cx);
+    }
+
+    /// The sidebar's Wake button: follow the driver a host still runs, or
+    /// start one.
+    pub(crate) fn wake(&mut self, cx: &mut Context<Self>) {
+        self.start(false, cx);
+    }
+
+    /// Whether the sidebar offers to wake a driver: `driver-agent` is on, no
+    /// host runs one and the last start did not stop short of a quorum.
+    pub(crate) fn asleep(&self, cx: &App) -> bool {
+        self.driver.is_none()
+            && self.unreachable.is_none()
+            && crate::config::resolved_config(cx).driver_agent.value
+    }
+
+    /// Whether a wake is under way.
+    pub(crate) const fn waking(&self) -> bool {
+        self.recovering || self.woke
     }
 
     /// Start `zz driver keep` on every connected host once per connection, so
@@ -560,6 +581,10 @@ impl DriverChat {
 
     pub(crate) fn driver(&self) -> Option<&Driver> {
         self.driver.as_ref()
+    }
+
+    pub(crate) const fn mux(&self) -> &Entity<MuxClient> {
+        &self.mux
     }
 
     fn state(&self, cx: &App) -> Option<AgentPaneState> {
@@ -667,6 +692,70 @@ impl DriverChat {
         self.error = sent.err();
         cx.notify();
         self.error.is_none()
+    }
+
+    /// Type `text` into the driver's running turn, which it reads as
+    /// steering; with no turn running it is your next turn, as [`Self::send`].
+    pub(crate) fn steer(&mut self, text: &str, cx: &mut Context<Self>) -> bool {
+        let Some(pane) = self.driver.as_ref().map(|driver| driver.pane) else {
+            return false;
+        };
+        let sent = self
+            .controller
+            .update(cx, |controller, cx| controller.steer(pane, text, cx));
+        self.error = sent.err();
+        cx.notify();
+        self.error.is_none()
+    }
+
+    /// How many of your messages wait behind the driver's turn.
+    pub(crate) fn queued(&self, cx: &App) -> usize {
+        self.state(cx).map_or(0, |state| state.queued_prompts)
+    }
+
+    /// Stop the driver's turn, the way Esc does in its terminal. Whether it
+    /// was working.
+    pub(crate) fn stop(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(pane) = self.driver.as_ref().map(|driver| driver.pane) else {
+            return false;
+        };
+        if !self.running(cx) {
+            return false;
+        }
+        self.controller
+            .update(cx, |controller, cx| controller.cancel(pane, cx));
+        true
+    }
+
+    /// Take your last message back to edit it. Messages still queued behind
+    /// the driver's turn come back through [`Self::take_reclaimed`];
+    /// otherwise this is the last one you sent, and the driver stops if it is
+    /// still working on it.
+    pub(crate) fn take_back(&mut self, cx: &mut Context<Self>) -> Option<String> {
+        let pane = self.driver.as_ref()?.pane;
+        if self.queued(cx) > 0 {
+            self.controller
+                .update(cx, |controller, cx| controller.unqueue_prompts(pane, cx));
+            return None;
+        }
+        let messages = self.messages(cx);
+        let last = messages
+            .iter()
+            .rposition(|message| matches!(message.kind, DriverMessageKind::Mine(_)))?;
+        if messages[last + 1..]
+            .iter()
+            .all(|message| message.kind != DriverMessageKind::Driver)
+        {
+            self.stop(cx);
+        }
+        Some(messages[last].text.clone())
+    }
+
+    /// Queued messages the daemon handed back, for the composer to refill.
+    pub(crate) fn take_reclaimed(&mut self, cx: &mut Context<Self>) -> Option<String> {
+        let pane = self.driver.as_ref()?.pane;
+        self.controller
+            .update(cx, |controller, _| controller.take_pending_composer(pane))
     }
 
     /// Pick option `index` of the oldest approval waiting on you, the way a
@@ -884,6 +973,22 @@ mod tests {
         let live = driver_messages(&entries[..3], true);
         assert_eq!(live.len(), 1);
         assert_eq!(live[0].kind, DriverMessageKind::Mine(Receipt::Read));
+    }
+
+    #[test]
+    fn stopping_the_driver_leaves_no_bubble_of_its_own() {
+        let entries = [
+            user(1, "status?"),
+            user(2, "[Request interrupted by user]"),
+            user(3, "status of xps?"),
+        ];
+        assert_eq!(
+            driver_messages(&entries, false)
+                .iter()
+                .map(|message| message.text.as_str())
+                .collect::<Vec<_>>(),
+            ["status?", "status of xps?"]
+        );
     }
 
     #[test]

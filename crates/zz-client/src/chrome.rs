@@ -11,8 +11,15 @@ pub const SIDEBAR_TABLE: &str = "sidebar";
 pub const BROWSER_TABLE: &str = "browser";
 /// The chrome table consulted while a terminal surface has focus.
 pub const TERMINAL_TABLE: &str = "terminal";
+pub const PREFIX_TABLE: &str = "prefix";
 /// Every table a chrome binding may name.
-pub const CHROME_TABLES: [&str; 4] = [UI_TABLE, SIDEBAR_TABLE, BROWSER_TABLE, TERMINAL_TABLE];
+pub const CHROME_TABLES: [&str; 5] = [
+    UI_TABLE,
+    SIDEBAR_TABLE,
+    BROWSER_TABLE,
+    TERMINAL_TABLE,
+    PREFIX_TABLE,
+];
 
 const SELECT_TAB_PREFIX: &str = "browser-select-tab-";
 const SELECT_TAB_NAMES: [&str; 8] = [
@@ -53,6 +60,7 @@ pub enum ChromeAction {
     ClosePane,
     OpenSettings,
     OpenCommandPalette,
+    OpenDriverChat,
     UiZoomIn,
     UiZoomOut,
     UiZoomReset,
@@ -113,6 +121,7 @@ impl ChromeAction {
             Self::ClosePane => "close-pane",
             Self::OpenSettings => "open-settings",
             Self::OpenCommandPalette => "open-command-palette",
+            Self::OpenDriverChat => "open-driver-chat",
             Self::UiZoomIn => "ui-zoom-in",
             Self::UiZoomOut => "ui-zoom-out",
             Self::UiZoomReset => "ui-zoom-reset",
@@ -182,6 +191,7 @@ impl ChromeAction {
             "close-pane" => Self::ClosePane,
             "open-settings" => Self::OpenSettings,
             "open-command-palette" => Self::OpenCommandPalette,
+            "open-driver-chat" => Self::OpenDriverChat,
             "ui-zoom-in" => Self::UiZoomIn,
             "ui-zoom-out" => Self::UiZoomOut,
             "ui-zoom-reset" => Self::UiZoomReset,
@@ -393,6 +403,7 @@ const DESKTOP_DEFAULTS: &[ChromeDefault] = &[
     (SIDEBAR_TABLE, "Home", ChromeAction::SidebarSelectFirst),
     (SIDEBAR_TABLE, "G", ChromeAction::SidebarSelectLast),
     (SIDEBAR_TABLE, "End", ChromeAction::SidebarSelectLast),
+    (PREFIX_TABLE, "A", ChromeAction::OpenDriverChat),
     (TERMINAL_TABLE, "C-=", ChromeAction::TerminalFontIncrease),
     (TERMINAL_TABLE, "C-+", ChromeAction::TerminalFontIncrease),
     (TERMINAL_TABLE, "C--", ChromeAction::TerminalFontDecrease),
@@ -767,6 +778,39 @@ mod tests {
         for name in ["select-window-0", "select-window-10", "select-window-256"] {
             assert_eq!(ChromeAction::from_name(name), None);
         }
+    }
+
+    #[test]
+    fn desktop_prefix_a_opens_the_driver_chat_and_rebinds() {
+        let shifted = press(
+            KeyCode::Character('a'),
+            Modifiers::new(true, false, false, false),
+        );
+        let bare = press(KeyCode::Character('a'), Modifiers::default());
+        for profile in [ChromeProfile::Desktop, ChromeProfile::DesktopApple] {
+            let mut keymap = ChromeKeymap::for_profile(profile);
+            assert_eq!(
+                keymap.resolve(PREFIX_TABLE, &shifted),
+                Some(ChromeAction::OpenDriverChat)
+            );
+            assert_eq!(keymap.resolve(PREFIX_TABLE, &bare), None);
+            for table in [UI_TABLE, SIDEBAR_TABLE, TERMINAL_TABLE, BROWSER_TABLE] {
+                assert_eq!(keymap.resolve(table, &shifted), None, "{table}");
+            }
+            assert!(keymap.unbind(PREFIX_TABLE, "S-a"));
+            keymap
+                .bind(PREFIX_TABLE, "y", "open-driver-chat")
+                .expect("known action");
+            assert_eq!(keymap.resolve(PREFIX_TABLE, &shifted), None);
+            assert_eq!(
+                keymap.resolve(
+                    PREFIX_TABLE,
+                    &press(KeyCode::Character('y'), Modifiers::default())
+                ),
+                Some(ChromeAction::OpenDriverChat)
+            );
+        }
+        assert_eq!(ChromeKeymap::new().resolve(PREFIX_TABLE, &shifted), None);
     }
 
     #[test]

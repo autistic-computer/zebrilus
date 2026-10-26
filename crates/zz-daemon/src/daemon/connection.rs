@@ -1124,7 +1124,8 @@ impl Session {
             | ProtocolMessage::AgentReplay { .. }
             | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
             | ProtocolMessage::AgentAnswerQuestion { .. }
-            | ProtocolMessage::AgentStopTask { .. }) => {
+            | ProtocolMessage::AgentStopTask { .. }
+            | ProtocolMessage::AgentSteer { .. }) => {
                 let read_only_blocked = !matches!(
                     message,
                     ProtocolMessage::AgentReplay { .. }

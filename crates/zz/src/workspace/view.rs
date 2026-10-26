@@ -23,28 +23,22 @@ use zz_client::{
     pane_drop_command, pane_rects, predicted_drop_layout,
 };
 use zz_gpui::{
-    Anchor, AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView,
-    AnyWindowHandle, App, Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId,
-    FocusHandle, Focusable as _, IntoElement, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent,
-    MouseExitEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement,
-    Subscription, Task, WeakEntity, Window, anchored, deferred, div, ease_out_quint, point,
-    prelude::*, px,
+    AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView, AnyWindowHandle, App,
+    Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle,
+    IntoElement, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseExitEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
+    Window, anchored, div, ease_out_quint, point, prelude::*, px,
 };
 use zz_mux::display_width;
 use zz_protocol::{
     Axis, ClientMessageKind, CommandInvocation, DisplayPanesAction, FloatingPaneSnapshot,
     GuiResponse, InputMessage, LayoutNode, MenuState, ModalPaneSnapshot, MuxSnapshot,
     PROTOCOL_VERSION, PaneBorderLines, PaneBorderStatus, PaneId, PaneIndicator, PaneKindSnapshot,
-    PathEntry, PathListRoot, PopupBorderLines, SPLIT_RATIO_BASIS, SessionId, SplitId, WindowId,
-    WindowSnapshot,
+    PopupBorderLines, SPLIT_RATIO_BASIS, SessionId, SplitId, WindowId, WindowSnapshot,
 };
 use zz_terminal::KeyAction as TerminalKeyAction;
 use zz_ui::attachment::open_attachment_preview;
-use zz_ui::command::COMMAND_PALETTE_ROW_HEIGHT;
 use zz_ui::dialog::DialogButtonProps;
-use zz_ui::path_picker::{
-    PATH_PICKER_VISIBLE_ROWS, PathPickerBackend, PathPickerEvent, PathPickerView,
-};
 use zz_ui::pip::{PipCard, PipDrag, PipLayout, PipPlaced, PipStage, PipSurface, PipThrow};
 use zz_ui::{
     ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _, button::ButtonVariant,
@@ -93,7 +87,7 @@ use crate::{
         },
         hosts::HostId,
         nav::{TreeTarget, kill_target_command, select_window_command},
-        prefix::{is_all_keys_input, is_sidebar_picker_input, terminal_key_input},
+        prefix::{binds_input, is_all_keys_input, is_sidebar_picker_input, terminal_key_input},
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
@@ -104,9 +98,6 @@ use crate::{
 
 const DROP_PREVIEW_MORPH: Duration = Duration::from_millis(180);
 const DROP_PREVIEW_FADE: Duration = Duration::from_millis(140);
-const PATH_PICKER_MAX_HEIGHT: f32 =
-    COMMAND_PALETTE_ROW_HEIGHT * PATH_PICKER_VISIBLE_ROWS as f32 + 84.0;
-const PATH_PICKER_WINDOW_MARGIN: f32 = 8.0;
 
 zz_gpui::actions!(zz, [ClosePane]);
 
@@ -693,80 +684,25 @@ enum OverlayKind {
     CommandOutput(PaneId),
     Menu,
     Confirm,
-    PathPicker,
 }
 
-struct PathPickerOverlay {
-    view: Entity<PathPickerView>,
-    pane: PaneId,
-    active_pane: Option<PaneId>,
-    anchor: Anchor,
-    position: Point<Pixels>,
-    _blur: Subscription,
-}
-
-struct MuxPathPickerBackend {
-    mux: WeakEntity<MuxClient>,
-    terminal: Option<WeakEntity<TerminalView>>,
-    pane: PaneId,
-}
-
-impl PathPickerBackend for MuxPathPickerBackend {
-    fn list(&self, dir: Option<&str>, cx: &mut App) -> Option<u64> {
-        self.mux
-            .update(cx, |mux, _| {
-                mux.request_path_list(self.pane, dir.map(str::to_owned))
-            })
-            .ok()
-            .flatten()
-    }
-
-    fn cancel(&self, request_id: u64, cx: &mut App) {
-        self.mux
-            .update(cx, |mux, _| mux.cancel_path_list(request_id))
-            .ok();
-    }
-
-    fn insert(&self, root: &PathListRoot, entry: &PathEntry, absolute: bool, cx: &mut App) {
-        let Some(text) = path_picker_insert_text(root, entry, absolute) else {
-            return;
-        };
-        if let Some(terminal) = self.terminal.as_ref().and_then(WeakEntity::upgrade) {
-            terminal.update(cx, |terminal, cx| terminal.paste_text(text, cx));
-            return;
-        }
-        self.mux
-            .update(cx, |mux, _| mux.paste_to_pane(self.pane, text))
-            .ok();
-    }
-}
-
-fn path_picker_insert_text(
-    root: &PathListRoot,
-    entry: &PathEntry,
-    absolute: bool,
-) -> Option<String> {
-    zz_client::path_insert::insert_text(
-        &root.root,
-        &entry.rel,
-        entry.kind,
-        root.cwd.as_deref(),
-        root.insert,
-        absolute,
-    )
-}
-
-fn path_picker_placement(
-    target: Bounds<Pixels>,
-    viewport_height: Pixels,
-) -> (Anchor, Point<Pixels>) {
-    let below = viewport_height - target.bottom();
-    let above = target.top();
-    if below >= px(PATH_PICKER_MAX_HEIGHT + PATH_PICKER_WINDOW_MARGIN) || below >= above {
-        (Anchor::TopLeft, target.bottom_left())
-    } else {
-        (Anchor::BottomLeft, target.origin)
-    }
+/// A folder as the palette's `@` mode types it: under `home` as `~/`, with
+/// its spaces escaped and a `/` at its end, or the home folder when there is
+/// none.
+fn path_target(dir: Option<&str>, home: Option<std::path::PathBuf>) -> String {
+    let Some(dir) = dir.filter(|dir| dir.starts_with(['/', '~'])) else {
+        return "~/".to_owned();
+    };
+    let home = home.and_then(|home| {
+        home.to_str()
+            .map(|home| home.trim_end_matches('/').to_owned())
+    });
+    let dir = match home.as_deref().and_then(|home| dir.strip_prefix(home)) {
+        Some("") => "~".to_owned(),
+        Some(rest) if rest.starts_with('/') => format!("~{rest}"),
+        _ => dir.to_owned(),
+    };
+    format!("{}/", zz_ui::target::escape(dir.trim_end_matches('/')))
 }
 
 fn pane_in_session(snapshot: &MuxSnapshot, session: Option<SessionId>, pane: PaneId) -> bool {
@@ -811,7 +747,6 @@ pub struct AppView {
     command_palette: Option<Entity<CommandPaletteView>>,
     #[cfg(feature = "agent-pane")]
     driver_palette: Option<Entity<crate::agent::driver_palette::DriverPalette>>,
-    path_picker: Option<PathPickerOverlay>,
     local_palette_prompt_revision: Option<u64>,
     local_palette_chooser_revision: Option<u64>,
     pending_palette_chooser_close: Option<u64>,
@@ -1182,6 +1117,15 @@ impl AppView {
             },
         )
         .detach();
+        #[cfg(feature = "agent-pane")]
+        cx.subscribe_in(
+            &sidebar,
+            window,
+            |view, _, _: &crate::workspace::sidebar::SidebarShowDriverTerminal, window, cx| {
+                view.show_driver_terminal(window, cx);
+            },
+        )
+        .detach();
         cx.subscribe(&sidebar, |view, _, _: &SidebarRouteChanged, cx| {
             view.input_router.event(InputEvent::WindowDeactivated);
             cx.notify();
@@ -1220,7 +1164,6 @@ impl AppView {
             command_palette: None,
             #[cfg(feature = "agent-pane")]
             driver_palette: None,
-            path_picker: None,
             local_palette_prompt_revision: None,
             local_palette_chooser_revision: None,
             pending_palette_chooser_close: None,
@@ -1379,32 +1322,7 @@ impl AppView {
         }
         for effect in effects {
             match effect {
-                Effect::Chrome(ChromeAction::OpenCommandPalette) => {
-                    self.open_command_palette(None, window, cx);
-                }
-                Effect::Chrome(ChromeAction::SelectWindow(position)) => {
-                    let mux = self.mux.read(cx);
-                    if mux.is_connected()
-                        && let Some(target) =
-                            window_at_position(&mux.snapshot(), mux.attached_session(), position)
-                    {
-                        mux.execute(select_window_command(target));
-                        self.focus_active_pane(window, cx);
-                    }
-                }
-                Effect::Chrome(action) => {
-                    let action: Box<dyn zz_gpui::Action> = match action {
-                        ChromeAction::NewSession => Box::new(crate::menus::NewSession),
-                        ChromeAction::NewWindow => Box::new(crate::menus::NewWindow),
-                        ChromeAction::SplitRight => Box::new(crate::menus::SplitRight),
-                        ChromeAction::SplitDown => Box::new(crate::menus::SplitDown),
-                        ChromeAction::Detach => Box::new(crate::menus::Detach),
-                        ChromeAction::ToggleSidebar => Box::new(crate::menus::ToggleSidebar),
-                        ChromeAction::OpenSettings => Box::new(config::settings::OpenSettings),
-                        _ => continue,
-                    };
-                    window.dispatch_action(action, cx);
-                }
+                Effect::Chrome(action) => self.run_chrome_action(action, window, cx),
                 Effect::ForwardKey { pane, input } => {
                     if armed
                         && which_key::delay(config::resolved_config(cx).which_key_delay.value)
@@ -1437,6 +1355,16 @@ impl AppView {
                                 ));
                             }
                         });
+                    } else if armed
+                        && let Some(action) = self.prefix_chrome_action(keystroke, &input, cx)
+                    {
+                        self.input_router.suppress_release(
+                            input
+                                .unshifted_codepoint
+                                .map_or(input.key, zz_terminal::KeyCode::Character),
+                        );
+                        self.mux.update(cx, |mux, _| mux.send_prefix_cancel());
+                        self.run_chrome_action(action, window, cx);
                     } else {
                         log::info!(
                             target: "zz::diagnostics::input",
@@ -1457,6 +1385,58 @@ impl AppView {
         }
     }
 
+    fn prefix_chrome_action(
+        &self,
+        keystroke: &Keystroke,
+        input: &zz_terminal::KeyInput,
+        cx: &App,
+    ) -> Option<ChromeAction> {
+        let mux = self.mux.read(cx);
+        if mux.key_table() != Some(("prefix", false)) || binds_input(mux.prefix_bindings(), input) {
+            return None;
+        }
+        crate::keymap::resolve(cx, zz_client::PREFIX_TABLE, keystroke)
+    }
+
+    fn run_chrome_action(
+        &mut self,
+        action: ChromeAction,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let action: Box<dyn zz_gpui::Action> = match action {
+            ChromeAction::OpenCommandPalette => {
+                self.open_command_palette(None, window, cx);
+                return;
+            }
+            #[cfg(feature = "agent-pane")]
+            ChromeAction::OpenDriverChat => {
+                self.open_driver_palette(window, cx);
+                return;
+            }
+            ChromeAction::SelectWindow(position) => {
+                let mux = self.mux.read(cx);
+                if mux.is_connected()
+                    && let Some(target) =
+                        window_at_position(&mux.snapshot(), mux.attached_session(), position)
+                {
+                    mux.execute(select_window_command(target));
+                    self.focus_active_pane(window, cx);
+                }
+                return;
+            }
+            ChromeAction::NewSession => Box::new(crate::menus::NewSession),
+            ChromeAction::NewWindow => Box::new(crate::menus::NewWindow),
+            ChromeAction::SplitRight => Box::new(crate::menus::SplitRight),
+            ChromeAction::SplitDown => Box::new(crate::menus::SplitDown),
+            ChromeAction::Detach => Box::new(crate::menus::Detach),
+            ChromeAction::ToggleSidebar => Box::new(crate::menus::ToggleSidebar),
+            ChromeAction::OpenSettings => Box::new(config::settings::OpenSettings),
+            _ => return,
+        };
+        window.dispatch_action(action, cx);
+    }
+
     fn overlay_open(&self, cx: &App) -> bool {
         self.menu.is_some()
             || self.confirm.is_some()
@@ -1464,7 +1444,6 @@ impl AppView {
                 palette.read(cx).is_local() || palette.read(cx).is_window_chooser()
             })
             || self.driver_palette_open()
-            || self.path_picker.is_some()
             || self.sidebar.read(cx).route() == WorkspaceRoute::Settings
     }
 
@@ -1579,10 +1558,28 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.show_command_palette(
+            move |backend, window, cx| CommandPaletteView::new_unified(backend, mode, window, cx),
+            window,
+            cx,
+        );
+    }
+
+    /// Open the palette `build` makes, closing whatever other palette or
+    /// prompt is up.
+    fn show_command_palette(
+        &mut self,
+        build: impl FnOnce(
+            Rc<dyn zz_ui::command::PaletteBackend>,
+            &mut Window,
+            &mut Context<CommandPaletteView>,
+        ) -> CommandPaletteView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.menu.is_some() || self.confirm.is_some() {
             return;
         }
-        self.discard_path_picker(cx);
         #[cfg(feature = "agent-pane")]
         {
             self.driver_palette = None;
@@ -1601,8 +1598,7 @@ impl AppView {
                 action: zz_protocol::ChooseTreeAction::Close,
             });
         }
-        let palette =
-            cx.new(|cx| CommandPaletteView::new_unified(palette_backend(mux), mode, window, cx));
+        let palette = cx.new(|cx| build(palette_backend(mux), window, cx));
         #[cfg(feature = "agent-pane")]
         {
             let driver = self
@@ -1632,7 +1628,6 @@ impl AppView {
             return;
         }
         self.command_palette = None;
-        self.discard_path_picker(cx);
         let palette = cx.new(|cx| DriverPalette::new(chat, window, cx));
         cx.subscribe_in(&palette, window, |view, palette, event, window, cx| {
             if view.driver_palette.as_ref() != Some(palette) {
@@ -1644,6 +1639,7 @@ impl AppView {
             match event {
                 DriverPaletteEvent::Close => view.focus_active_pane(window, cx),
                 DriverPaletteEvent::LeaveMode => view.open_command_palette(None, window, cx),
+                DriverPaletteEvent::ShowTerminal => view.show_driver_terminal(window, cx),
             }
             cx.notify();
         })
@@ -1653,6 +1649,28 @@ impl AppView {
         self.focused_overlay = Some(OverlayKind::DriverPalette);
         self.synchronized_signature = None;
         cx.notify();
+    }
+
+    #[cfg(feature = "agent-pane")]
+    pub(crate) fn show_driver_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some((host, pane)) = self
+            .sidebar
+            .read(cx)
+            .driver_chat()
+            .read(cx)
+            .driver()
+            .map(|driver| (driver.host, driver.pane))
+        else {
+            return;
+        };
+        let Some(activation) = crate::mux::nav::pane_activation(self.mux.read(cx), host, pane)
+        else {
+            return;
+        };
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
+        crate::mux::nav::activate_nav(&self.mux, activation, cx);
+        self.focus_active_pane(window, cx);
     }
 
     #[cfg(feature = "agent-pane")]
@@ -1735,181 +1753,53 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        match event {
-            PathPickerUpdate::Open { pane, start_dir } => {
-                self.open_path_picker(*pane, start_dir.as_deref(), window, cx);
-            }
-            PathPickerUpdate::Close => self.close_path_picker(window, cx),
-            PathPickerUpdate::Begin { request_id, result } => {
-                if let Some(picker) = &self.path_picker {
-                    picker.view.update(cx, |view, cx| {
-                        view.apply_begin(*request_id, result.clone(), cx);
-                    });
-                }
-            }
-            PathPickerUpdate::Chunk {
-                request_id,
-                entries,
-                done,
-                truncated,
-            } => {
-                if let Some(picker) = &self.path_picker {
-                    picker.view.update(cx, |view, cx| {
-                        view.apply_chunk(*request_id, Arc::clone(entries), *done, *truncated, cx);
-                    });
-                }
-            }
-            PathPickerUpdate::Git { request_id, marks } => {
-                if let Some(picker) = &self.path_picker {
-                    picker.view.update(cx, |view, cx| {
-                        view.apply_git(*request_id, marks.clone(), cx);
-                    });
-                }
-            }
+        if let PathPickerUpdate::Open { pane, start_dir } = event {
+            self.open_path_palette(*pane, start_dir.as_deref(), window, cx);
         }
     }
 
-    fn open_path_picker(
+    /// `prefix F`: the palette in `@` mode on `pane`'s folder, or the `-c`
+    /// folder, putting what you pick at that pane's cursor.
+    fn open_path_palette(
         &mut self,
         pane: PaneId,
         start_dir: Option<&str>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.menu.is_some()
-            || self.confirm.is_some()
-            || self.command_palette.is_some()
-            || self.sidebar.read(cx).route() != WorkspaceRoute::App
-        {
+        if self.command_palette.is_some() || self.sidebar.read(cx).route() != WorkspaceRoute::App {
             return;
         }
-        let (attached, snapshot) = {
+        let (attached, snapshot, local) = {
             let mux = self.mux.read(cx);
-            (mux.attached_session(), mux.snapshot())
+            (
+                mux.attached_session(),
+                mux.snapshot(),
+                mux.attached_host() == HostId::LOCAL,
+            )
         };
         if !pane_in_session(&snapshot, attached, pane) {
             return;
         }
-        self.close_path_picker(window, cx);
-        self.mux.update(cx, |mux, _| mux.send_prefix_cancel());
-        let (anchor, position) = self.path_picker_anchor(pane, window, cx);
-        let backend = Rc::new(MuxPathPickerBackend {
-            mux: self.mux.downgrade(),
-            terminal: self.terminals.get(&pane).map(Entity::downgrade),
-            pane,
-        });
-        let view = cx.new(|cx| PathPickerView::new(backend, start_dir, window, cx));
-        if view.read(cx).request_id().is_none() {
-            return;
-        }
-        cx.subscribe_in(
-            &view,
-            window,
-            |this, view, _: &PathPickerEvent, window, cx| {
-                if this
-                    .path_picker
-                    .as_ref()
-                    .is_none_or(|picker| picker.view != *view)
-                {
-                    return;
-                }
-                this.path_picker = None;
-                this.focused_overlay = None;
-                this.synchronized_signature = None;
-                this.focus_active_pane(window, cx);
-                cx.notify();
-            },
-        )
-        .detach();
-        let focus = view.focus_handle(cx);
-        focus.focus(window, cx);
-        let blur = cx.on_blur(&focus, window, |this, window, cx| {
-            if window.is_window_active() {
-                this.discard_path_picker(cx);
-            }
-        });
-        self.path_picker = Some(PathPickerOverlay {
-            view,
-            pane,
-            active_pane: self.active_pane(cx),
-            anchor,
-            position,
-            _blur: blur,
-        });
-        self.focused_overlay = Some(OverlayKind::PathPicker);
-        self.focused_pane = None;
-        self.synchronized_signature = None;
-        cx.notify();
-    }
-
-    fn path_picker_anchor(
-        &self,
-        pane: PaneId,
-        window: &Window,
-        cx: &App,
-    ) -> (Anchor, Point<Pixels>) {
-        let terminal = self.terminals.get(&pane).map(|terminal| terminal.read(cx));
-        let target = terminal
-            .and_then(TerminalView::cursor_bounds)
+        let cwd = start_dir
+            .filter(|dir| dir.starts_with(['/', '~']))
+            .map(str::to_owned)
             .or_else(|| {
-                terminal
-                    .and_then(TerminalView::grid_bounds)
-                    .map(|grid| Bounds::new(grid.bottom_left(), Size::default()))
-            })
-            .unwrap_or_else(|| {
-                let canvas = self.pane_canvas_bounds.get();
-                Bounds::new(canvas.bottom_left(), Size::default())
+                snapshot
+                    .sessions
+                    .iter()
+                    .flat_map(|session| &session.windows)
+                    .find_map(|window| window.panes.get(&pane))
+                    .map(|pane| pane.summary.cwd.clone())
             });
-        path_picker_placement(target, window.viewport_size().height)
-    }
-
-    fn discard_path_picker(&mut self, cx: &mut Context<Self>) -> bool {
-        let Some(picker) = self.path_picker.take() else {
-            return false;
-        };
-        picker.view.update(cx, PathPickerView::close);
-        if self.focused_overlay == Some(OverlayKind::PathPicker) {
-            self.focused_overlay = None;
-        }
-        cx.notify();
-        true
-    }
-
-    fn close_path_picker(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.discard_path_picker(cx) {
-            self.synchronized_signature = None;
-            self.focus_active_pane(window, cx);
-        }
-    }
-
-    fn path_picker_overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let picker = self.path_picker.as_ref()?;
-        Some(
-            div()
-                .id("path-picker-overlay")
-                .debug_selector(|| "path-picker-overlay".to_owned())
-                .absolute()
-                .inset_0()
-                .occlude()
-                .on_mouse_down(
-                    MouseButton::Left,
-                    cx.listener(|view, _, window, cx| {
-                        view.close_path_picker(window, cx);
-                        cx.stop_propagation();
-                    }),
-                )
-                .child(
-                    deferred(
-                        anchored()
-                            .anchor(picker.anchor)
-                            .position(picker.position)
-                            .snap_to_window_with_margin(px(PATH_PICKER_WINDOW_MARGIN))
-                            .child(picker.view.clone()),
-                    )
-                    .with_priority(1),
-                )
-                .into_any_element(),
-        )
+        let body = path_target(cwd.as_deref(), local.then(std::env::home_dir).flatten());
+        self.show_command_palette(
+            move |backend, window, cx| {
+                CommandPaletteView::new_target(backend, body, Some(pane), window, cx)
+            },
+            window,
+            cx,
+        );
     }
 
     // Reached from the app shell's ClosePane action.
@@ -2041,8 +1931,6 @@ impl AppView {
             Some((OverlayKind::CommandPalette, palette.read(cx).focus(cx)))
         } else if let Some(focus) = self.driver_palette_focus(cx) {
             Some(focus)
-        } else if let Some(picker) = &self.path_picker {
-            Some((OverlayKind::PathPicker, picker.view.focus_handle(cx)))
         } else if let Some(chooser) = &self.choose_buffer {
             Some((OverlayKind::ChooseBuffer, chooser.read(cx).focus().clone()))
         } else if let Some(chooser) = &self.choose_tree {
@@ -2089,7 +1977,6 @@ impl AppView {
         let command_output = mux.command_output();
         let menu = mux.menu().cloned();
         let confirm = mux.confirm().cloned();
-        let daemon_overlay_up = menu.is_some() || confirm.is_some();
         let command_prompt = mux.command_prompt().cloned();
         let command_prompt_revision = mux.command_prompt_revision();
         let choose_tree = mux.choose_tree().cloned();
@@ -2577,13 +2464,6 @@ impl AppView {
             self.pickers.contains_key(&active)
                 && self.focused_pane.map(|(pane, _)| pane) != Some(active)
         });
-        if self.path_picker.as_ref().is_some_and(|picker| {
-            daemon_overlay_up
-                || picker.active_pane != active_pane
-                || !pane_in_session(&snapshot, attached, picker.pane)
-        }) {
-            self.discard_path_picker(cx);
-        }
         self.audit_pane_focus("pass", window, cx);
         let floating_input = self.menu.is_some()
             || self.confirm.is_some()
@@ -4622,7 +4502,6 @@ impl Render for AppView {
                 self.choose_buffer
                     .clone()
                     .map(IntoElement::into_any_element),
-                self.path_picker_overlay(cx),
             ]
             .into_iter()
             .flatten()
@@ -4699,7 +4578,7 @@ impl Render for AppView {
                 )
                 .on_action(
                     cx.listener(|view, _: &crate::menus::ChooseWindow, window, cx| {
-                        view.open_command_palette(Some(PaletteMode::Window), window, cx);
+                        view.open_command_palette(Some(PaletteMode::Target), window, cx);
                     }),
                 )
                 .capture_any_mouse_down(cx.listener(Self::on_menu_mouse_down))
@@ -8922,8 +8801,8 @@ mod tests {
         })
     }
 
-    fn path_list_root_for_test() -> PathListRoot {
-        PathListRoot {
+    fn path_list_root_for_test() -> zz_protocol::PathListRoot {
+        zz_protocol::PathListRoot {
             root: "/home/me/src".to_owned(),
             display_root: "~/src/".to_owned(),
             cwd: Some("/home/me/src".to_owned()),
@@ -8931,13 +8810,17 @@ mod tests {
         }
     }
 
-    fn picker_is_focused(workspace: &Entity<AppView>, cx: &mut zz_gpui::VisualTestContext) -> bool {
+    fn palette_input(
+        workspace: &Entity<AppView>,
+        cx: &mut zz_gpui::VisualTestContext,
+    ) -> Option<String> {
         cx.update(|window, cx| {
-            workspace
-                .read(cx)
-                .path_picker
-                .as_ref()
-                .is_some_and(|picker| picker.view.focus_handle(cx).is_focused(window))
+            let palette = workspace.read(cx).command_palette.clone()?;
+            let palette = palette.read(cx);
+            palette
+                .focus(cx)
+                .is_focused(window)
+                .then(|| palette.query().to_owned())
         })
     }
 
@@ -8953,24 +8836,54 @@ mod tests {
         })
     }
 
-    fn cancelled_path_lists(lists: &RefCell<Vec<zz_protocol::ProtocolMessage>>) -> Vec<u64> {
-        lists
-            .borrow()
-            .iter()
-            .filter_map(|message| match message {
-                zz_protocol::ProtocolMessage::PathListCancel { request_id } => Some(*request_id),
-                _ => None,
+    fn answer_listing(
+        mux: &Entity<MuxClient>,
+        entries: Vec<zz_protocol::PathEntry>,
+        cx: &mut zz_gpui::VisualTestContext,
+    ) {
+        publish_to_mux(
+            mux,
+            zz_protocol::ProtocolMessage::PathListBegin {
+                request_id: 1,
+                result: Ok(path_list_root_for_test()),
+            },
+            cx,
+        );
+        publish_to_mux(
+            mux,
+            zz_protocol::ProtocolMessage::PathListChunk {
+                request_id: 1,
+                entries,
+                done: true,
+                truncated: false,
+            },
+            cx,
+        );
+    }
+
+    fn notes() -> Vec<zz_protocol::PathEntry> {
+        let mut entries = (0..30)
+            .map(|index| zz_protocol::PathEntry {
+                rel: format!("file{index:02}.rs"),
+                kind: zz_protocol::PathKind::File,
+                symlink: false,
             })
-            .collect()
+            .collect::<Vec<_>>();
+        entries.push(zz_protocol::PathEntry {
+            rel: "my notes.txt".to_owned(),
+            kind: zz_protocol::PathKind::File,
+            symlink: false,
+        });
+        entries
     }
 
     #[zz_gpui::test]
-    fn path_picker_pastes_into_its_pane_and_hands_focus_back(cx: &mut TestAppContext) {
+    fn prefix_f_opens_the_palette_on_the_panes_folder_and_pastes_the_pick(cx: &mut TestAppContext) {
         let (workspace, mux, input, lists, cx) = path_picker_workspace(cx);
         assert!(terminal_is_focused(&workspace, cx));
         input.borrow_mut().clear();
         publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert!(picker_is_focused(&workspace, cx));
+        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("~/"));
         assert!(
             input
                 .borrow()
@@ -8982,44 +8895,12 @@ mod tests {
             &[zz_protocol::ProtocolMessage::PathListRequest {
                 request_id: 1,
                 pane: PaneId(0),
-                dir: None,
+                dir: Some("~/".to_owned()),
             }]
         );
-        let mut entries = (0..30)
-            .map(|index| PathEntry {
-                rel: format!("file{index:02}.rs"),
-                kind: zz_protocol::PathKind::File,
-                symlink: false,
-            })
-            .collect::<Vec<_>>();
-        entries.push(PathEntry {
-            rel: "my notes.txt".to_owned(),
-            kind: zz_protocol::PathKind::File,
-            symlink: false,
-        });
-        publish_to_mux(
-            &mux,
-            zz_protocol::ProtocolMessage::PathListBegin {
-                request_id: 1,
-                result: Ok(path_list_root_for_test()),
-            },
-            cx,
-        );
-        publish_to_mux(
-            &mux,
-            zz_protocol::ProtocolMessage::PathListChunk {
-                request_id: 1,
-                entries,
-                done: true,
-                truncated: false,
-            },
-            cx,
-        );
-        let bounds = cx.debug_bounds("path-picker").expect("picker drawn");
-        assert!(bounds.size.height <= px(PATH_PICKER_MAX_HEIGHT));
-        assert!(bounds.size.height > px(PATH_PICKER_MAX_HEIGHT - 8.0));
+        answer_listing(&mux, notes(), cx);
         input.borrow_mut().clear();
-        cx.simulate_keystrokes("n o t e s");
+        cx.simulate_input("notes");
         cx.run_until_parked();
         assert!(input.borrow().is_empty());
         cx.simulate_keystrokes("enter");
@@ -9031,163 +8912,28 @@ mod tests {
                 action: zz_terminal::TerminalViewAction::Paste("'my notes.txt' ".to_owned()),
             }]
         );
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
+        assert!(workspace.read_with(cx, |workspace, _| workspace.command_palette.is_none()));
         assert!(terminal_is_focused(&workspace, cx));
-        assert!(cancelled_path_lists(&lists).is_empty());
     }
 
     #[zz_gpui::test]
-    fn path_picker_stays_shut_while_a_menu_is_up(cx: &mut TestAppContext) {
-        let (workspace, mux, _, lists, cx) = path_picker_workspace(cx);
-        publish_to_mux(
-            &mux,
-            zz_protocol::ProtocolMessage::Event(zz_protocol::Event {
-                sequence: 1,
-                payload: zz_protocol::EventPayload::Menu {
-                    state: Some(menu_state_for_test()),
-                },
-            }),
-            cx,
-        );
-        publish_to_mux(&mux, open_path_picker_event(2), cx);
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
-        assert!(lists.borrow().is_empty());
-    }
-
-    #[zz_gpui::test]
-    fn path_picker_closes_on_escape_outside_click_pane_change_and_reset(cx: &mut TestAppContext) {
+    fn prefix_f_closes_on_escape_and_cancels_its_listing(cx: &mut TestAppContext) {
         let (workspace, mux, _, lists, cx) = path_picker_workspace(cx);
         publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert!(picker_is_focused(&workspace, cx));
+        assert!(workspace.read_with(cx, |workspace, _| workspace.command_palette.is_some()));
         cx.simulate_keystrokes("escape");
         cx.run_until_parked();
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
+        assert!(workspace.read_with(cx, |workspace, _| workspace.command_palette.is_none()));
         assert!(terminal_is_focused(&workspace, cx));
-        assert_eq!(cancelled_path_lists(&lists), vec![1]);
-
-        publish_to_mux(&mux, open_path_picker_event(2), cx);
-        assert!(picker_is_focused(&workspace, cx));
-        let picker = cx.debug_bounds("path-picker").expect("picker drawn");
-        let layer = cx
-            .debug_bounds("path-picker-overlay")
-            .expect("close layer drawn");
-        let outside = [
-            layer.origin + point(px(2.0), px(2.0)),
-            layer.bottom_right() - point(px(2.0), px(2.0)),
-        ]
-        .into_iter()
-        .find(|point| !picker.contains(point))
-        .expect("a point beside the picker");
-        cx.simulate_click(picker.center(), Modifiers::none());
-        cx.run_until_parked();
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_some()));
-        cx.simulate_click(outside, Modifiers::none());
-        cx.run_until_parked();
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
-        assert!(terminal_is_focused(&workspace, cx));
-        assert_eq!(cancelled_path_lists(&lists), vec![1, 2]);
-
-        publish_to_mux(&mux, open_path_picker_event(3), cx);
-        assert!(picker_is_focused(&workspace, cx));
-        let mut moved = one_pane_snapshot(2);
-        let window = &mut moved.sessions[0].windows[0];
-        let mut pane = window.panes.remove(&PaneId(0)).expect("pane 0");
-        pane.id = PaneId(1);
-        window.panes.insert(PaneId(1), pane);
-        window.active_pane = PaneId(1);
-        window.layout = LayoutNode::Pane(PaneId(1));
-        mux.update(cx, |mux, cx| {
-            mux.attach_snapshot_for_test(SessionId(0), moved, cx);
-        });
-        cx.run_until_parked();
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
-        assert_eq!(cancelled_path_lists(&lists), vec![1, 2, 3]);
-
-        mux.update(cx, |mux, cx| {
-            mux.attach_snapshot_for_test(SessionId(0), one_pane_snapshot(3), cx);
-        });
-        cx.run_until_parked();
-        publish_to_mux(&mux, open_path_picker_event(4), cx);
-        assert!(picker_is_focused(&workspace, cx));
-        mux.update(cx, MuxClient::reset_session_state_for_test);
-        cx.run_until_parked();
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
-        assert_eq!(cancelled_path_lists(&lists), vec![1, 2, 3, 4]);
+        assert!(lists.borrow().iter().any(|message| matches!(
+            message,
+            zz_protocol::ProtocolMessage::PathListCancel { request_id: 1 }
+        )));
     }
 
     #[zz_gpui::test]
-    fn opening_the_palette_retires_the_path_picker(cx: &mut TestAppContext) {
-        let (workspace, mux, _, lists, cx) = path_picker_workspace(cx);
-        publish_to_mux(&mux, open_path_picker_event(1), cx);
-        workspace.update_in(cx, |workspace, window, cx| {
-            workspace.open_command_palette(None, window, cx);
-        });
-        cx.run_until_parked();
-        workspace.read_with(cx, |workspace, _| {
-            assert!(workspace.path_picker.is_none());
-            assert!(workspace.command_palette.is_some());
-        });
-        assert_eq!(cancelled_path_lists(&lists), vec![1]);
-    }
-
-    #[zz_gpui::test]
-    fn a_daemon_menu_retires_an_open_path_picker(cx: &mut TestAppContext) {
-        let (workspace, mux, _, lists, cx) = path_picker_workspace(cx);
-        publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert!(picker_is_focused(&workspace, cx));
-        publish_to_mux(
-            &mux,
-            zz_protocol::ProtocolMessage::Event(zz_protocol::Event {
-                sequence: 2,
-                payload: zz_protocol::EventPayload::Menu {
-                    state: Some(menu_state_for_test()),
-                },
-            }),
-            cx,
-        );
-        workspace.read_with(cx, |workspace, _| {
-            assert!(workspace.path_picker.is_none());
-            assert!(workspace.menu.is_some());
-            assert_eq!(workspace.focused_overlay, Some(OverlayKind::Menu));
-        });
-        assert_eq!(cancelled_path_lists(&lists), vec![1]);
-    }
-
-    #[zz_gpui::test]
-    fn focusing_the_sidebar_retires_the_path_picker(cx: &mut TestAppContext) {
-        let (workspace, mux, _, lists, cx) = path_picker_workspace(cx);
-        cx.update(|window, _| window.activate_window());
-        cx.run_until_parked();
-        publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert!(picker_is_focused(&workspace, cx));
-        cx.deactivate_window();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        cx.update(|window, _| window.activate_window());
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        assert!(picker_is_focused(&workspace, cx));
-        workspace.update_in(cx, |workspace, window, cx| {
-            workspace.sidebar.read(cx).focus_handle().focus(window, cx);
-        });
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-        cx.run_until_parked();
-        workspace.read_with(cx, |workspace, _| {
-            assert!(workspace.path_picker.is_none());
-            assert_ne!(workspace.focused_overlay, Some(OverlayKind::PathPicker));
-        });
-        assert_eq!(cancelled_path_lists(&lists), vec![1]);
-    }
-
-    #[zz_gpui::test]
-    fn path_picker_serves_its_own_pane_and_closes_when_that_pane_goes(cx: &mut TestAppContext) {
-        let (workspace, mux, input, lists, cx) = path_picker_workspace(cx);
+    fn prefix_f_pastes_into_the_pane_it_came_from(cx: &mut TestAppContext) {
+        let (workspace, mux, input, _, cx) = path_picker_workspace(cx);
         mux.update(cx, |mux, cx| {
             mux.attach_snapshot_for_test(
                 SessionId(0),
@@ -9196,117 +8942,64 @@ mod tests {
             );
         });
         cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
         publish_to_mux(&mux, open_path_picker_event_for(1, PaneId(2)), cx);
-        assert!(picker_is_focused(&workspace, cx));
-        publish_to_mux(
-            &mux,
-            zz_protocol::ProtocolMessage::PathListBegin {
-                request_id: 1,
-                result: Ok(path_list_root_for_test()),
-            },
-            cx,
-        );
-        publish_to_mux(
-            &mux,
-            zz_protocol::ProtocolMessage::PathListChunk {
-                request_id: 1,
-                entries: vec![PathEntry {
-                    rel: "main.rs".to_owned(),
-                    kind: zz_protocol::PathKind::File,
-                    symlink: false,
-                }],
-                done: true,
-                truncated: false,
-            },
-            cx,
-        );
+        answer_listing(&mux, notes(), cx);
         input.borrow_mut().clear();
+        cx.simulate_input("notes");
+        cx.run_until_parked();
         cx.simulate_keystrokes("enter");
         cx.run_until_parked();
         assert_eq!(
             input.borrow().as_slice(),
             &[InputMessage::TerminalView {
                 pane: PaneId(2),
-                action: zz_terminal::TerminalViewAction::Paste("main.rs ".to_owned()),
+                action: zz_terminal::TerminalViewAction::Paste("'my notes.txt' ".to_owned()),
             }]
         );
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
-        assert!(cancelled_path_lists(&lists).is_empty());
-
-        publish_to_mux(&mux, open_path_picker_event_for(2, PaneId(2)), cx);
-        assert!(picker_is_focused(&workspace, cx));
-        mux.update(cx, |mux, cx| {
-            mux.attach_snapshot_for_test(SessionId(0), one_pane_snapshot(200), cx);
-        });
-        cx.run_until_parked();
-        assert!(workspace.read_with(cx, |workspace, _| workspace.path_picker.is_none()));
-        assert_eq!(cancelled_path_lists(&lists), vec![2]);
+        assert!(workspace.read_with(cx, |workspace, _| workspace.command_palette.is_none()));
     }
 
     #[test]
-    fn path_picker_sits_under_the_cursor_and_flips_when_short_of_room() {
-        let caret = Bounds::new(point(px(40.0), px(100.0)), zz_gpui::size(px(8.0), px(18.0)));
+    fn a_folder_opens_as_a_target_under_home() {
+        let home = Some(std::path::PathBuf::from("/home/me"));
         assert_eq!(
-            path_picker_placement(caret, px(900.0)),
-            (Anchor::TopLeft, point(px(40.0), px(118.0)))
+            path_target(Some("/home/me/dev/zz"), home.clone()),
+            "~/dev/zz/"
         );
-        let low = Bounds::new(point(px(40.0), px(700.0)), zz_gpui::size(px(8.0), px(18.0)));
+        assert_eq!(path_target(Some("/home/me"), home.clone()), "~/");
+        assert_eq!(path_target(Some("/home/meow"), home.clone()), "/home/meow/");
         assert_eq!(
-            path_picker_placement(low, px(900.0)),
-            (Anchor::BottomLeft, point(px(40.0), px(700.0)))
+            path_target(Some("/srv/My Files/"), home.clone()),
+            r"/srv/My\ Files/"
         );
-        let cramped = Bounds::new(point(px(40.0), px(100.0)), zz_gpui::size(px(8.0), px(18.0)));
-        assert_eq!(
-            path_picker_placement(cramped, px(300.0)),
-            (Anchor::TopLeft, point(px(40.0), px(118.0)))
-        );
+        assert_eq!(path_target(Some(""), home.clone()), "~/");
+        assert_eq!(path_target(None, home), "~/");
+        assert_eq!(path_target(Some("/etc"), None), "/etc/");
     }
 
     #[test]
-    fn path_picker_insert_text_follows_the_listing_root() {
+    fn a_picked_path_follows_the_listing_root() {
         let root = path_list_root_for_test();
-        let entry = |rel: &str, kind| PathEntry {
+        let entry = |rel: &str, kind| zz_protocol::PathEntry {
             rel: rel.to_owned(),
             kind,
             symlink: false,
         };
+        let insert = crate::command::palette::path_insert_text;
         assert_eq!(
-            path_picker_insert_text(
-                &root,
-                &entry("src/main.rs", zz_protocol::PathKind::File),
-                false
-            )
-            .as_deref(),
+            insert(&root, &entry("src/main.rs", zz_protocol::PathKind::File)).as_deref(),
             Some("src/main.rs ")
         );
         assert_eq!(
-            path_picker_insert_text(
-                &root,
-                &entry("src/main.rs", zz_protocol::PathKind::File),
-                true
-            )
-            .as_deref(),
-            Some("/home/me/src/src/main.rs ")
-        );
-        assert_eq!(
-            path_picker_insert_text(&root, &entry("docs", zz_protocol::PathKind::Dir), false)
-                .as_deref(),
+            insert(&root, &entry("docs", zz_protocol::PathKind::Dir)).as_deref(),
             Some("docs/ ")
         );
-        let claude = PathListRoot {
+        let claude = zz_protocol::PathListRoot {
             insert: zz_protocol::InsertStyle::Claude,
             ..root
         };
         assert_eq!(
-            path_picker_insert_text(
-                &claude,
-                &entry("src/main.rs", zz_protocol::PathKind::File),
-                false
-            )
-            .as_deref(),
+            insert(&claude, &entry("src/main.rs", zz_protocol::PathKind::File)).as_deref(),
             Some("@src/main.rs ")
         );
     }

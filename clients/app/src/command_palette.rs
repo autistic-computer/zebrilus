@@ -67,6 +67,7 @@ impl PaletteBackend for ConnectionPalette {
                             .iter()
                             .map(|window| PaletteTreeWindow {
                                 id: window.id,
+                                index: window.index,
                                 name: window.name.clone(),
                                 active: active && window.id == focused,
                                 active_pane: window.active_pane,
@@ -243,6 +244,7 @@ fn tree_pane(pane: &zz_protocol::PaneSnapshot, core: &ClientCore) -> PaletteTree
     PaletteTreePane {
         id: pane.id,
         label: pane_label(pane),
+        program: zz_client::window_summary::pane_program(pane).map(|program| program.name.into()),
         detail: match &pane.kind {
             PaneKindSnapshot::Terminal => match attention {
                 Some(AgentAttentionStatus::Working) => "Agent · running",

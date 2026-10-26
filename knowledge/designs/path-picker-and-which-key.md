@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Shell path picker and which-key
-description: Shipped plan for two desktop overlays over protocol v107 - a path picker anchored at the terminal cursor whose listing, git marks, and insert style come from the daemon that owns the pane while the client ranks and pastes, and a which-key sheet that follows the prefix and custom key tables through a new KeyTableActive event, with the stock notes brought to tmux parity.
+description: Shipped plan for two desktop overlays over protocol v107 - a path picker whose listing, git marks, and insert style come from the daemon that owns the pane while the client ranks and pastes (anchored at the terminal cursor until 2026-10-26, now the command palette's @ mode), and a which-key sheet that follows the prefix and custom key tables through a new KeyTableActive event, with the stock notes brought to tmux parity.
 status: Shipped
 tags:
 - picker
@@ -14,6 +14,15 @@ timestamp: 2026-10-13T00:00:00Z
 ---
 
 # Summary
+
+> **2026-10-26:** the picker's view is gone. `prefix F` now opens the command palette's `@` mode on
+> the pane's folder, which shares its grammar, rows and keys with the palette and the Driver chat's
+> mentions ([command palette, Targets](/concepts/command-palette.md#targets)). Its listing goes
+> through `MuxClient::request_host_path_list` with the pane as the anchor, so the daemon side below
+> (`choose-path`, `OpenPathPicker`, the walker, the insert style) is unchanged, and the client still
+> ranks with `path_rank` and pastes with `path_insert::insert_text`. Alt-Enter's forced absolute path
+> went with the old view. Sections below that describe `PathPickerView`, its placement under the
+> cursor and its keys are history.
 
 Two features from the [terminal augmentation survey](../research/2026-09-25-terminal-augmentation-survey.md):
 
@@ -99,7 +108,11 @@ command). Synchronize-panes fans the paste out, the same as a typed or pasted pa
 Handled in the per-client connection loop, next to `HomeDirectoryRequest`, before the catch-all arm.
 One active walk per client: a local `Option<(request_id, Arc<AtomicBool>)>`; a new request,
 `PathListCancel`, or loop exit sets the flag. Clients that are read-only, lack
-`client-path-picker-v1`, or are not attached to the pane's session get an error `Begin`.
+`client-path-picker-v1`, or are not attached to the pane's session get an error `Begin`. Since
+2026-10-26 a `dir` that names its own root (absolute, or starting with `~`) is listed through any
+terminal pane on the daemon, attached or not, so the Driver chat's `@` picker can list files on a
+host it only watches ([durable driver chat](/designs/durable-driver-chat.md#chat-ui)); the pane then
+only decides the insert style and the remote-foreground refusal below. Same messages, no wire bump.
 
 **Root**, in order, each step checked with `is_dir()`:
 
