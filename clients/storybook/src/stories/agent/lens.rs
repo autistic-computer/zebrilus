@@ -634,7 +634,7 @@ const TOGGLES: [ToggleCase; 7] = [
         ..TOGGLE
     },
     ToggleCase {
-        label: "inactive pane: the toggle stays, the actions wait for the pointer",
+        label: "inactive pane: the toggle and the actions wait for the pointer",
         active: false,
         ..TOGGLE
     },

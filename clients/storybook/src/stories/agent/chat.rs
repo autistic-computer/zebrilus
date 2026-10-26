@@ -14,14 +14,14 @@ use zz_ui::{
     ActiveTheme as _, Ground, IconName, PaintState,
     agent::{
         chat::{
-            ChatBubble, ChatComposer, ChatSender, ChatTyping, Receipt, chat_asleep, chat_button,
+            CHAT_COMPOSER_INSET, ChatBubble, ChatSender, ChatTyping, Receipt, chat_asleep, chat_button,
             chat_header, chat_latest, chat_seen, chat_thread, chat_unreachable,
             driver_palette_body, driver_palette_hints, driver_palette_place,
             driver_palette_thread_least,
         },
-        controls::{ComposerAction, composer_action_button},
+        composer::{Composer, composer_ground},
+        controls::{ComposerAction, composer_action_button, composer_add_button, context_usage_meter},
     },
-    button::{Button, ButtonVariants as _},
     command::{
         COMMAND_PALETTE_MAX_WIDTH, CommandPaletteSurface, PaletteHostId, PalettePill,
         PaletteStatus, unified_command_palette_input,
@@ -76,7 +76,7 @@ pub const STORY: Story = Story {
         Section {
             id: "composer",
             name: "Composer",
-            summary: "ChatComposer as Driver mode draws it: a pill on the palette with + to start an @ mention, the field, and the round send button. While the driver works, the button steers it with what you typed, and with the field empty it stops the driver. Click a field to focus it.",
+            summary: "The Composer the agent lens uses too, as Driver mode draws it: a pill on the palette with + to start an @ mention, the field, the driver's context ring and the round send button. While the driver works, the button steers it with what you typed, and with the field empty it stops the driver. Click a field to focus it.",
             build: |window, cx| stateful(window, cx, Composers::new, composers),
         },
         Section {
@@ -696,35 +696,46 @@ pub(crate) fn driver_palette(
         .into_any_element()
 }
 
-/// Driver mode's composer: `+` to start a mention, the field, and send or stop.
+/// Driver mode's composer: `+` to start a mention, the field, the driver's
+/// context ring, and send or stop.
 pub(crate) fn palette_composer(
     scope: &'static str,
     input: &Entity<InputState>,
     running: bool,
     cx: &App,
-) -> ChatComposer {
+) -> AnyElement {
     let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
     let typed = !input.read(cx).value().trim().is_empty();
     let stop = running && !typed;
-    ChatComposer {
-        input: input.clone(),
-        leading: Some(
-            Button::compact_icon((scope, 1_usize), IconName::Plus)
-                .ghost()
-                .into_any_element(),
-        ),
-        action: composer_action_button(
-            (scope, 0_usize),
-            if stop {
-                ComposerAction::Stop
-            } else {
-                ComposerAction::Send
-            },
-            stop || typed,
-        )
-        .into_any_element(),
-        ground: Some(layer.ground),
-    }
+    div()
+        .flex_none()
+        .w_full()
+        .px(px(CHAT_COMPOSER_INSET))
+        .pb(px(CHAT_COMPOSER_INSET))
+        .child(Composer {
+            input: input.clone(),
+            leading: Some(
+                composer_add_button((scope, 1_usize), "Mention a host, session or file")
+                    .on(composer_ground(cx))
+                    .into_any_element(),
+            ),
+            usage: Some(context_usage_meter((scope, 2_usize), 41_000, 200_000, cx)),
+            action: composer_action_button(
+                (scope, 0_usize),
+                if stop {
+                    ComposerAction::Stop
+                } else {
+                    ComposerAction::Send
+                },
+                stop || typed,
+            )
+            .on(composer_ground(cx))
+            .into_any_element(),
+            attachments: None,
+            command_hint: None,
+            ground: Some(layer.ground),
+        })
+        .into_any_element()
 }
 
 /// Where the driver runs, at the left of Driver mode's footer.

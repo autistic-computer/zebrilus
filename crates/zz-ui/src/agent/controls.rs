@@ -13,7 +13,7 @@ use crate::{
     tooltip::Tooltip,
 };
 
-use super::composer::COMPOSER_FOOTER_HEIGHT;
+use super::composer::{COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComposerAction {
@@ -41,11 +41,21 @@ pub fn composer_action_button(
         ComposerAction::Stop => (IconName::Stop, "Stop the current turn"),
     };
     Button::compact_icon(id, icon)
+        .size(crate::rems_from_px(COMPOSER_BUTTON))
         .when(action == ComposerAction::Send, ButtonVariants::primary)
         .when(action == ComposerAction::Queue, ButtonVariants::secondary)
         .surface_role(roles::AGENT_SEND)
         .tooltip(tooltip)
         .disabled(!enabled)
+}
+
+/// The round `+` at the composer's start, the size of its send button.
+pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str) -> Button {
+    Button::compact_icon(id, IconName::Plus)
+        .size(crate::rems_from_px(COMPOSER_BUTTON))
+        .secondary()
+        .surface_role(roles::AGENT_SEND)
+        .tooltip(tooltip)
 }
 
 pub fn agent_chrome_button(id: impl Into<ElementId>) -> Button {
@@ -265,7 +275,7 @@ pub fn context_usage_meter(
         .aria_value(aria_value)
         .flex()
         .flex_none()
-        .size(px(28.0))
+        .size(px(COMPOSER_BUTTON))
         .items_center()
         .justify_center()
         .tooltip(move |window, cx| Tooltip::new(hover_tooltip.clone()).build(window, cx))

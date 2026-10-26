@@ -7,20 +7,22 @@ use zz_gpui::{
     ScrollHandle, Styled as _, Window, div, prelude::FluentBuilder as _, px,
 };
 use zz_ui::{
-    ActiveTheme as _, IconName, PaintState,
+    ActiveTheme as _, PaintState,
     agent::{
         chat::{
-            ChatComposer, chat_thread, driver_palette_body, driver_palette_hints,
+            CHAT_COMPOSER_INSET, chat_thread, driver_palette_body, driver_palette_hints,
             driver_palette_place, driver_palette_thread_least,
         },
-        controls::{ComposerAction, composer_action_button},
+        composer::{Composer, composer_ground},
+        controls::{
+            ComposerAction, composer_action_button, composer_add_button, context_usage_meter,
+        },
     },
-    button::{Button, ButtonVariants as _},
     command::{COMMAND_PALETTE_INSET, CommandPaletteSurface, PaletteStatus, target_picker},
     input::{InputEvent, InputState},
     link::{MentionLink, OpenLink},
     roles,
-    target::{TargetPicker, mention_keys},
+    target::{TargetPicker, mention_at_caret, mention_keys},
 };
 
 use super::driver::DriverChat;
@@ -136,17 +138,16 @@ impl DriverPalette {
     }
 
     /// The `+` at the composer's start: it starts a mention at the caret.
-    fn mention_button(&self) -> zz_gpui::AnyElement {
+    fn mention_button(&self, cx: &zz_gpui::App) -> zz_gpui::AnyElement {
         let input = self.input.clone();
-        Button::compact_icon("driver-mention", IconName::Plus)
-            .ghost()
-            .tooltip("Mention a host, session or file")
-            .on_click(move |_, window, cx| mention(&input, "@", window, cx))
+        composer_add_button("driver-mention", "Mention a host, session or file")
+            .on(composer_ground(cx))
+            .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
             .into_any_element()
     }
 
     fn on_mention_link(&mut self, link: &MentionLink, window: &mut Window, cx: &mut Context<Self>) {
-        mention(&self.input, &format!("{} ", link.address), window, cx);
+        mention_at_caret(&self.input, &format!("{} ", link.address), window, cx);
     }
 
     /// The round button at the composer's end: send, or steer while the
@@ -164,6 +165,7 @@ impl DriverPalette {
             },
             stop || typed,
         )
+        .on(composer_ground(cx))
         .on_click(move |_, window, cx| {
             palette.update(cx, |palette, cx| {
                 if stop {
@@ -269,12 +271,23 @@ impl Render for DriverPalette {
         self.mention.update(cx, |mention, _| {
             mention.fit(thread_least.min(thread_height) + px(COMMAND_PALETTE_INSET));
         });
-        let composer = ChatComposer {
-            input: self.input.clone(),
-            leading: Some(self.mention_button()),
-            action: self.action_button(running, cx),
-            ground: Some(layer.ground),
-        };
+        let usage = chat.read(cx).usage(cx).map(|(used, size)| {
+            context_usage_meter("driver-context-usage", used, size, cx).into_any_element()
+        });
+        let composer = div()
+            .flex_none()
+            .w_full()
+            .px(px(CHAT_COMPOSER_INSET))
+            .pb(px(CHAT_COMPOSER_INSET))
+            .child(Composer {
+                input: self.input.clone(),
+                leading: Some(self.mention_button(cx)),
+                usage,
+                action: self.action_button(running, cx),
+                attachments: None,
+                command_hint: None,
+                ground: Some(layer.ground),
+            });
         let surface = CommandPaletteSurface::new(composer, cx.entity_id().as_u64())
             .input_last()
             .rows(driver_palette_body(
@@ -327,17 +340,4 @@ impl Render for DriverPalette {
             })
             .child(surface)
     }
-}
-
-/// Put `text` at the caret, a space before it unless one is there, and
-/// focus the field.
-fn mention(input: &Entity<InputState>, text: &str, window: &mut Window, cx: &mut zz_gpui::App) {
-    input.update(cx, |input, cx| {
-        let before = input.value()[..input.cursor()].chars().next_back();
-        if !before.is_none_or(char::is_whitespace) {
-            input.insert(" ", window, cx);
-        }
-        input.insert(text, window, cx);
-        input.focus(window, cx);
-    });
 }

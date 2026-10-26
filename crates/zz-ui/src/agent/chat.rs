@@ -1,15 +1,16 @@
-//! The driver chat: your messages and the driver's answers as bubbles with a tail
+//! The driver chat: your messages and the driver's answers as rounded bubbles
 //! on the speaker's side, an agent's message under its sidebar tile and name,
-//! read ticks on what you sent, and the one-line composer. The driver's model is
-//! a setting, so the composer carries no pickers.
+//! and read ticks on what you sent. It is typed into with the lens's
+//! [`super::composer::Composer`]. The driver's model is a setting, so the
+//! composer carries no pickers.
 
 use std::sync::Arc;
 
 use zz_client::program::Program;
 use zz_gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, ElementId, Entity, Focusable as _,
-    HighlightStyle, Hsla, IntoElement, PathBuilder, Pixels, RenderOnce, ScrollHandle, SharedString,
-    StyledText, Window, canvas, div, point, prelude::*, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, ElementId, HighlightStyle, Hsla, IntoElement,
+    Pixels, RenderOnce, ScrollHandle, SharedString, StyledText, Window, div, prelude::*, px,
+    relative,
 };
 
 use crate::{
@@ -17,7 +18,6 @@ use crate::{
     StyledExt as _, Surface, Tone,
     command::PaletteHint,
     h_flex,
-    input::{Input, InputState, field_chrome},
     link::{LinkInk, TargetLinks, autolink, autolink_plain},
     program::program_tile,
     roles,
@@ -32,7 +32,6 @@ pub const CHAT_PADDING_X: f32 = 14.0;
 pub const CHAT_PADDING_TOP: f32 = 8.0;
 pub const CHAT_PADDING_BOTTOM: f32 = 12.0;
 pub const CHAT_HEADER_HEIGHT: f32 = 36.0;
-pub const CHAT_COMPOSER_HEIGHT: f32 = 44.0;
 pub const CHAT_COMPOSER_INSET: f32 = 10.0;
 
 const BUBBLE_RADIUS: f32 = 17.0;
@@ -48,19 +47,11 @@ const STAMP_LINE: f32 = 14.0;
 const STAMP_RIGHT: f32 = 8.0;
 const STAMP_BOTTOM: f32 = 4.0;
 const TICK_SIZE: f32 = 16.0;
-const TAIL_REACH: f32 = 7.0;
-const TAIL_RISE: f32 = 10.0;
-/// Where the tail's underside meets the bubble's bottom corner, 55° round
-/// it, as shares of the corner radius in from the side and up from the bottom.
-const MEET_IN: f32 = 0.426;
-const MEET_UP: f32 = 0.181;
 const SENDER_TILE: f32 = 16.0;
 const SENDER_SIZE: f32 = 12.0;
 const SENDER_LINE: f32 = 16.0;
 const SEEN_TILE: f32 = 14.0;
 const HEADER_TILE: f32 = 16.0;
-const COMPOSER_PADDING_LEFT: f32 = 14.0;
-const COMPOSER_PADDING_RIGHT: f32 = 5.0;
 const THREAD_FADE: f32 = 28.0;
 /// How long the thread takes to open under the palette's input, pushing
 /// the composer down to the bottom.
@@ -123,9 +114,9 @@ pub enum ChatSide {
     Theirs,
 }
 
-/// One message. Yours sit right, washed in the accent, with a tail on the
-/// right and ticks after the time; the driver's and the agents' sit left with
-/// the tail on the left, and an agent's carries its tile and name on top.
+/// One message. Yours sit right, washed in the accent, with ticks after the
+/// time; the driver's and the agents' sit left, and an agent's carries its
+/// tile and name on top.
 #[derive(IntoElement)]
 pub struct ChatBubble {
     id: ElementId,
@@ -225,8 +216,6 @@ impl RenderOnce for ChatBubble {
         .on(ground);
         let layer = theme.layer(surface, PaintState::Rest);
         let radius = layer.radius.min(px(BUBBLE_RADIUS));
-        let fill = layer.fill;
-        let edge = (layer.border_width > px(0.0)).then_some((layer.border, layer.border_width));
         let ink = layer.ground.ink;
         let muted = crate::picker::muted_on(&layer, cx);
         let read = if mine { ink } else { theme.accent };
@@ -302,8 +291,6 @@ impl RenderOnce for ChatBubble {
                 )
             });
 
-        let shape = bubble_shape(radius, fill, edge, self.side);
-
         let bubble = v_flex()
             .id(self.id)
             .debug_selector(move || if mine { "chat-mine" } else { "chat-theirs" }.to_owned())
@@ -324,7 +311,7 @@ impl RenderOnce for ChatBubble {
             .text_size(crate::rems_from_px(TEXT_SIZE))
             .line_height(px(TEXT_LINE))
             .text_color(ink)
-            .child(shape)
+            .child(bubble_back(&layer, radius))
             .when_some(self.sender, |bubble, sender| {
                 bubble.child(sender_line(&sender, cx))
             })
@@ -395,30 +382,10 @@ fn chat_markdown_style(cx: &App) -> TextViewStyle {
     .figure_role(roles::FIGURE)
 }
 
-/// The bubble's fill and edge, painted along [`bubble_path`] behind what
-/// the bubble holds.
-fn bubble_shape(
-    radius: Pixels,
-    fill: Hsla,
-    edge: Option<(Hsla, Pixels)>,
-    side: ChatSide,
-) -> impl IntoElement {
-    canvas(
-        |_, _, _| (),
-        move |bounds, (), window, _| {
-            if let Ok(path) = bubble_path(PathBuilder::fill(), bounds, radius, side).build() {
-                window.paint_path(path, fill);
-            }
-            if let Some((color, width)) = edge
-                && let Ok(path) =
-                    bubble_path(PathBuilder::stroke(width), bounds, radius, side).build()
-            {
-                window.paint_path(path, color);
-            }
-        },
-    )
-    .absolute()
-    .inset_0()
+/// The bubble's fill and edge behind what it holds, so the edge takes no
+/// room from the text.
+fn bubble_back(layer: &crate::Layer, radius: Pixels) -> zz_gpui::Div {
+    div().absolute().inset_0().layer(layer).rounded(radius)
 }
 
 /// How high the dot at `index` sits at `phase`, from 0 at rest to 1: each
@@ -478,7 +445,6 @@ impl RenderOnce for ChatTyping {
             PaintState::Rest,
         );
         let radius = layer.radius.min(px(BUBBLE_RADIUS));
-        let edge = (layer.border_width > px(0.0)).then_some((layer.border, layer.border_width));
         let ink = ground.ink;
         let muted = ink.muted();
         let shown = self.steps.len().saturating_sub(TYPING_STEPS);
@@ -527,7 +493,7 @@ impl RenderOnce for ChatTyping {
             .gap(px(2.0))
             .text_size(crate::rems_from_px(STEP_SIZE))
             .line_height(px(STEP_LINE))
-            .child(bubble_shape(radius, layer.fill, edge, ChatSide::Theirs))
+            .child(bubble_back(&layer, radius))
             .children(steps.into_iter().map(|step| {
                 h_flex()
                     .debug_selector(|| "chat-typing-done".to_owned())
@@ -553,61 +519,6 @@ impl RenderOnce for ChatTyping {
             );
         h_flex().w_full().child(bubble)
     }
-}
-
-/// The outline of a bubble with its tail: the speaker's side curves out from
-/// `TAIL_RISE` above the bottom into a point `TAIL_REACH` past the edge, and
-/// the tail's underside rises back into the bubble's rounded corner, so the
-/// tail reads apart from the bottom edge.
-fn bubble_path(
-    mut path: PathBuilder,
-    bounds: Bounds<Pixels>,
-    radius: Pixels,
-    side: ChatSide,
-) -> PathBuilder {
-    let left = bounds.origin.x;
-    let right = bounds.origin.x + bounds.size.width;
-    let top = bounds.origin.y;
-    let bottom = bounds.origin.y + bounds.size.height;
-    let radius = radius
-        .min(bounds.size.height / 2.0)
-        .min(bounds.size.width / 2.0)
-        .max(px(0.0));
-    let mirrored = side == ChatSide::Theirs;
-    let x = |offset: Pixels| {
-        if mirrored {
-            left + right - offset
-        } else {
-            offset
-        }
-    };
-    let at = |offset: Pixels, y: Pixels| point(x(offset), y);
-    let corner = point(radius, radius);
-    let rise = px(TAIL_RISE).min(bounds.size.height - radius).max(px(0.0));
-    let turn = !mirrored;
-
-    path.move_to(at(left + radius, top));
-    path.line_to(at(right - radius, top));
-    path.arc_to(corner, px(0.0), false, turn, at(right, top + radius));
-    path.line_to(at(right, bottom - rise));
-    path.arc_to(
-        point(rise, rise),
-        px(0.0),
-        false,
-        !turn,
-        at(right + px(TAIL_REACH), bottom),
-    );
-    if radius > px(1.0) {
-        let meet = at(right - radius * MEET_IN, bottom - radius * MEET_UP);
-        path.curve_to(meet, at(right - px(1.0), bottom));
-        path.arc_to(corner, px(0.0), false, turn, at(right - radius, bottom));
-    }
-    path.line_to(at(left + radius, bottom));
-    path.arc_to(corner, px(0.0), false, turn, at(left, bottom - radius));
-    path.line_to(at(left, top + radius));
-    path.arc_to(corner, px(0.0), false, turn, at(left + radius, top));
-    path.close();
-    path
 }
 
 fn sender_tile(sender: &ChatSender, size: f32, cx: &App) -> Option<AnyElement> {
@@ -851,7 +762,7 @@ pub fn driver_palette_hints(working: bool, asking: bool) -> Vec<PaletteHint> {
 pub fn driver_palette_thread_least(viewport: Pixels) -> Pixels {
     px(crate::command::command_palette_full_height(viewport)
         - crate::command::COMMAND_PALETTE_INSET
-        - CHAT_COMPOSER_HEIGHT
+        - super::composer::COMPOSER_HEIGHT
         - CHAT_COMPOSER_INSET
         - crate::command::COMMAND_PALETTE_FOOTER_HEIGHT)
 }
@@ -950,64 +861,6 @@ pub fn chat_button(button: impl IntoElement, unread: Option<Hsla>) -> zz_gpui::D
         })
 }
 
-/// The one-line box you message the driver in, a pill with an optional button
-/// before the text and the round action button at its end.
-#[derive(IntoElement)]
-pub struct ChatComposer {
-    pub input: Entity<InputState>,
-    pub leading: Option<AnyElement>,
-    pub action: AnyElement,
-    pub ground: Option<Ground>,
-}
-
-impl RenderOnce for ChatComposer {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let state = if self.input.read(cx).focus_handle(cx).is_focused(window) {
-            PaintState::Focused
-        } else {
-            PaintState::Rest
-        };
-        let surface = Surface::new(roles::CHAT_COMPOSER).on_maybe(self.ground);
-        div()
-            .flex_none()
-            .w_full()
-            .px(px(CHAT_COMPOSER_INSET))
-            .pb(px(CHAT_COMPOSER_INSET))
-            .child(
-                field_chrome(
-                    h_flex()
-                        .debug_selector(|| "chat-composer".to_owned())
-                        .w_full()
-                        .h(px(CHAT_COMPOSER_HEIGHT))
-                        .items_center()
-                        .gap(px(8.0))
-                        .pl(px(if self.leading.is_some() {
-                            COMPOSER_PADDING_RIGHT
-                        } else {
-                            COMPOSER_PADDING_LEFT
-                        }))
-                        .pr(px(COMPOSER_PADDING_RIGHT)),
-                    surface,
-                    state,
-                    true,
-                    true,
-                    cx,
-                )
-                .children(self.leading)
-                .child(
-                    Input::new(&self.input)
-                        .flex_1()
-                        .min_w_0()
-                        .text_size(crate::rems_from_px(TEXT_SIZE))
-                        .appearance(false)
-                        .bordered(false)
-                        .focus_bordered(false),
-                )
-                .child(self.action),
-            )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1089,23 +942,5 @@ mod tests {
             plain_text("Three agents:\n\n- **zz** waits\n- `atlas` is green"),
             "Three agents:\nzz waits\natlas is green"
         );
-    }
-
-    #[test]
-    fn the_tail_reaches_past_the_speakers_edge_only() {
-        let bounds = Bounds::new(point(px(10.0), px(0.0)), zz_gpui::size(px(100.0), px(34.0)));
-        for side in [ChatSide::Mine, ChatSide::Theirs] {
-            let path = bubble_path(PathBuilder::fill(), bounds, px(BUBBLE_RADIUS), side)
-                .build()
-                .unwrap();
-            let reach = path.bounds;
-            let near = |a: Pixels, b: Pixels| (a - b).abs() < px(0.01);
-            let (left, right) = match side {
-                ChatSide::Mine => (bounds.left(), bounds.right() + px(TAIL_REACH)),
-                ChatSide::Theirs => (bounds.left() - px(TAIL_REACH), bounds.right()),
-            };
-            assert!(near(reach.left(), left), "{side:?} {reach:?}");
-            assert!(near(reach.right(), right), "{side:?} {reach:?}");
-        }
     }
 }

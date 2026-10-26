@@ -31,7 +31,8 @@ feeds are gone. The [daemon-owned agent runtime](/designs/agent-daemon-runtime.m
   synced, so one client can show the lens while another shows the terminal. The header button is
   `zz_ui::pane::pane_lens_button` (`PaneLens`, sent as `TerminalPaneAction::Lens`), an eye (Solar's
   `eye`) for either agent, drawn in the
-  `pane.header.lens` role, which tints it while the lens is open.
+  `pane.header.lens` role, which tints it while the lens is open. Like the split buttons beside it,
+  it shows on the focused pane and on the others only while the pointer is over the header.
 - **Phone.** In the compact shell (iPhone) the lens opens by default for a terminal running an
   agent, since typing into a TUI with a phone keyboard is slow. Closing it with the toggle keeps that
   pane on its terminal until the agent exits (`CompactState::lens_dismissed` in
@@ -178,7 +179,10 @@ the reference; the [command set](/tmux/commands.md) has the rows.
 # What the clients draw
 
 The kept pieces are `AgentTimeline` and its rows, the permission and question cards,
-`AgentComposer` and the task tray (`crates/zz-ui/src/agent.rs` and `crates/zz-ui/src/agent/`). The
+`AgentComposer` and the task tray (`crates/zz-ui/src/agent.rs` and `crates/zz-ui/src/agent/`).
+`AgentComposer` holds the `Composer` pill the Driver chat uses too: `+`, which starts an `@` mention
+with the Driver chat's target picker (inserted with its host), the field, the context ring and the
+round send button; the cards over it and the branch under it are the lens's own. The
 timeline mechanics carried over unchanged: the `TimelineStick` / `StickSpring` follow-the-tail pin
 (`agent.rs`), the display-only Markdown repair for streaming text (`zz-ui/src/mend.rs`), the
 streamed-text fade (`zz-gpui-kit/src/text/veil.rs`) and the shared leased animation clock

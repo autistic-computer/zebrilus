@@ -340,11 +340,18 @@ pub fn pane_header(
             ),
         )
         .children(lens.map(|lens| {
-            pane_lens_button(
-                lens,
-                move |window, cx| toggle(TerminalPaneAction::Lens, window, cx),
-                cx,
-            )
+            div()
+                .flex()
+                .flex_none()
+                .when(!active, |slot| {
+                    slot.invisible()
+                        .group_hover("terminal-pane-header", zz_gpui::Styled::visible)
+                })
+                .child(pane_lens_button(
+                    lens,
+                    move |window, cx| toggle(TerminalPaneAction::Lens, window, cx),
+                    cx,
+                ))
         }))
         .child(
             div()
