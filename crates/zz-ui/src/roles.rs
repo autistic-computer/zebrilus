@@ -237,11 +237,11 @@ pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::under(
     "The pill you write to an agent or the driver in",
 )
 .with(P.shape(Shape::Pill));
-pub const AGENT_SEND: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::ICON_BUTTON,
+pub const AGENT_SEND: SurfaceRole = SurfaceRole::new(
     "agent.send",
-    "Send",
-    "Send, queue and stop in the lens composer and the driver chat",
+    Kind::Button,
+    "Composer buttons",
+    "Send, stop and + in the composer the lens and the driver chat share, filled in every theme",
 )
 .with(
     P.fill(Fill::Solid)

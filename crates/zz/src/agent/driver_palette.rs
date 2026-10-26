@@ -13,7 +13,7 @@ use zz_ui::{
             CHAT_COMPOSER_INSET, chat_thread, driver_palette_body, driver_palette_hints,
             driver_palette_place, driver_palette_thread_least,
         },
-        composer::{Composer, composer_ground},
+        composer::Composer,
         controls::{
             ComposerAction, composer_action_button, composer_add_button, context_usage_meter,
         },
@@ -140,8 +140,7 @@ impl DriverPalette {
     /// The `+` at the composer's start: it starts a mention at the caret.
     fn mention_button(&self, cx: &zz_gpui::App) -> zz_gpui::AnyElement {
         let input = self.input.clone();
-        composer_add_button("driver-mention", "Mention a host, session or file")
-            .on(composer_ground(cx))
+        composer_add_button("driver-mention", "Mention a host, session or file", cx)
             .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
             .into_any_element()
     }
@@ -164,8 +163,8 @@ impl DriverPalette {
                 ComposerAction::Send
             },
             stop || typed,
+            cx,
         )
-        .on(composer_ground(cx))
         .on_click(move |_, window, cx| {
             palette.update(cx, |palette, cx| {
                 if stop {

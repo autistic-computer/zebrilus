@@ -14,13 +14,15 @@ use zz_ui::{
     ActiveTheme as _, Ground, IconName, PaintState,
     agent::{
         chat::{
-            CHAT_COMPOSER_INSET, ChatBubble, ChatSender, ChatTyping, Receipt, chat_asleep, chat_button,
-            chat_header, chat_latest, chat_seen, chat_thread, chat_unreachable,
+            CHAT_COMPOSER_INSET, ChatBubble, ChatSender, ChatTyping, Receipt, chat_asleep,
+            chat_button, chat_header, chat_latest, chat_seen, chat_thread, chat_unreachable,
             driver_palette_body, driver_palette_hints, driver_palette_place,
             driver_palette_thread_least,
         },
         composer::{Composer, composer_ground},
-        controls::{ComposerAction, composer_action_button, composer_add_button, context_usage_meter},
+        controls::{
+            ComposerAction, composer_action_button, composer_add_button, context_usage_meter,
+        },
     },
     command::{
         COMMAND_PALETTE_MAX_WIDTH, CommandPaletteSurface, PaletteHostId, PalettePill,
@@ -715,8 +717,7 @@ pub(crate) fn palette_composer(
         .child(Composer {
             input: input.clone(),
             leading: Some(
-                composer_add_button((scope, 1_usize), "Mention a host, session or file")
-                    .on(composer_ground(cx))
+                composer_add_button((scope, 1_usize), "Mention a host, session or file", cx)
                     .into_any_element(),
             ),
             usage: Some(context_usage_meter((scope, 2_usize), 41_000, 200_000, cx)),
@@ -728,6 +729,7 @@ pub(crate) fn palette_composer(
                     ComposerAction::Send
                 },
                 stop || typed,
+                cx,
             )
             .on(composer_ground(cx))
             .into_any_element(),

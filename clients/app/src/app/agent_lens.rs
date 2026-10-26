@@ -28,7 +28,7 @@ use zz_ui::{
         AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore, AgentToolEntry,
         AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText, MarkdownSlot, TimelineRow,
         TimelineStick, agent_jump_to_bottom_button,
-        composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer, composer_ground},
+        composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer},
         composer_attachment,
         controls::{
             ComposerAction, agent_queue_chip, composer_action, composer_action_button,
@@ -1310,8 +1310,8 @@ impl Render for AgentLens {
                 ComposerAction::Stop | ComposerAction::Queue => writable,
                 ComposerAction::Send => ready && state.pending_permission.is_none() && has_content,
             },
-        )
-        .on(composer_ground(cx));
+            cx,
+        );
         let action = if action_kind == ComposerAction::Stop {
             let connection = self.connection.clone();
             let pane = self.pane;
@@ -1348,8 +1348,8 @@ impl Render for AgentLens {
                         composer_add_button(
                             ("agent-mention", self.pane.0),
                             "Mention a host, session or file",
+                            cx,
                         )
-                        .on(composer_ground(cx))
                         .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
                         .into_any_element()
                     }),

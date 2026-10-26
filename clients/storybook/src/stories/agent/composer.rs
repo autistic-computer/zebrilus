@@ -54,7 +54,6 @@ pub struct Draft {
     pub input: Entity<InputState>,
     pub running: bool,
     pub writable: bool,
-    pub attach: bool,
     pub images: Vec<Arc<Image>>,
     pub prefix: Vec<AnyElement>,
 }
@@ -96,19 +95,17 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             }))
             .into_any_element()
     });
-    let leading = draft.attach.then(|| {
-        composer_add_button(
-            SharedString::from(format!("{id}-mention")),
-            "Mention a host, session or file",
-        )
-            .disabled(!ready)
-            .into_any_element()
-    });
+    let leading = composer_add_button(
+        SharedString::from(format!("{id}-mention")),
+        "Mention a host, session or file",
+        cx,
+    )
+    .into_any_element();
     let command_hint = active_command_hint(&value, &pane_commands(&[], true)).map(Into::into);
     AgentComposer {
         composer: Composer {
             input: draft.input,
-            leading,
+            leading: Some(leading),
             usage: Some(context_usage_meter(
                 SharedString::from(format!("{id}-usage")),
                 68_000,
@@ -119,6 +116,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
                 SharedString::from(format!("{id}-action")),
                 action,
                 enabled,
+                cx,
             )
             .into_any_element(),
             attachments,
@@ -266,7 +264,6 @@ impl Render for Composers {
                     input: case.input.clone(),
                     running: case.running,
                     writable: case.writable,
-                    attach: true,
                     images: case.images.clone(),
                     prefix,
                 },
@@ -352,21 +349,25 @@ impl Render for Controls {
                         "action-send",
                         ComposerAction::Send,
                         true,
+                        cx,
                     ))
                     .child(composer_action_button(
                         "action-send-off",
                         ComposerAction::Send,
                         false,
+                        cx,
                     ))
                     .child(composer_action_button(
                         "action-queue",
                         ComposerAction::Queue,
                         true,
+                        cx,
                     ))
                     .child(composer_action_button(
                         "action-stop",
                         ComposerAction::Stop,
                         true,
+                        cx,
                     )),
             )
             .state(
@@ -375,9 +376,10 @@ impl Render for Controls {
                     .child(composer_add_button(
                         "mention-on",
                         "Mention a host, session or file",
+                        cx,
                     ))
                     .child(
-                        composer_add_button("mention-off", "Mention a host, session or file")
+                        composer_add_button("mention-off", "Mention a host, session or file", cx)
                             .disabled(true),
                     ),
             )
