@@ -72,6 +72,7 @@ pub(super) struct BrowserPane {
     backdrop: Option<(u64, Bounds<Pixels>, Arc<RenderImage>, Option<Hsla>)>,
     radii: Corners<Pixels>,
     header_drag_handler: Option<Rc<dyn Fn(&PaneDrag, &mut Window, &mut App)>>,
+    float_rows_handler: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
     header_touch_drag_handler: Option<Rc<dyn Fn(&zz_gpui::TouchDragEvent, &mut Window, &mut App)>>,
     page_scroll_handler: Option<Rc<dyn Fn(f32, bool, &mut Window, &mut App)>>,
     notice_handler: Option<Rc<dyn Fn(&'static str, PillNotice, &mut Window, &mut App)>>,
@@ -154,6 +155,7 @@ impl BrowserPane {
             backdrop: None,
             radii: Corners::default(),
             header_drag_handler: None,
+            float_rows_handler: None,
             header_touch_drag_handler: None,
             page_scroll_handler: None,
             notice_handler: None,
@@ -189,6 +191,13 @@ impl BrowserPane {
         handler: impl Fn(&PaneDrag, &mut Window, &mut App) + 'static,
     ) {
         self.header_drag_handler = Some(Rc::new(handler));
+    }
+
+    pub(super) fn set_float_rows_handler(
+        &mut self,
+        handler: impl Fn(&App) -> Option<u16> + 'static,
+    ) {
+        self.float_rows_handler = Some(Rc::new(handler));
     }
 
     pub(super) fn set_header_touch_drag_handler(
@@ -847,17 +856,19 @@ impl BrowserPane {
                 .children(zz_ui::pane::pane_header_actions(floats).iter().map(
                     |(action, icon, label)| {
                         let connection = self.connection.clone();
-                        let commands = action.commands(pane);
+                        let action = *action;
+                        let float_rows = self.float_rows_handler.clone();
                         pane_header_icon_button(
-                            ("ios-browser-action", *action as usize),
+                            ("ios-browser-action", action as usize),
                             icon.clone(),
                             writable,
                             cx,
                         )
                         .tooltip(*label)
                         .on_click(move |_, _, cx| {
+                            let rows = float_rows.as_ref().and_then(|rows| rows(cx));
                             connection.update(cx, |connection, cx| {
-                                for command in commands.clone() {
+                                for command in action.commands(pane, rows) {
                                     connection.invoke(command, cx);
                                 }
                             });

@@ -183,7 +183,13 @@ pub struct PaneLens {
 }
 
 impl TerminalPaneAction {
-    pub fn commands(self, pane: zz_protocol::PaneId) -> Vec<zz_protocol::CommandInvocation> {
+    /// What the action sends for `pane`. Float makes a float `float_rows` tall,
+    /// the most [`crate::pip::PipLayout::fill_rows`] says fits.
+    pub fn commands(
+        self,
+        pane: zz_protocol::PaneId,
+        float_rows: Option<u16>,
+    ) -> Vec<zz_protocol::CommandInvocation> {
         let split = |axis: &str| {
             zz_protocol::CommandInvocation::new(
                 "split-window",
@@ -199,7 +205,7 @@ impl TerminalPaneAction {
         match self {
             Self::SplitBottom => vec![split("-v")],
             Self::SplitRight => vec![split("-h")],
-            Self::Float => zz_client::floating::float_pane_commands(pane).to_vec(),
+            Self::Float => zz_client::floating::float_pane_commands(pane, float_rows).to_vec(),
             Self::Tile => vec![zz_client::floating::tile_pane_command(pane)],
             Self::Zoom => vec![zz_client::floating::zoom_pane_command(pane)],
             Self::Close => vec![zz_protocol::CommandInvocation::new(
@@ -307,6 +313,7 @@ pub fn pane_header(
     let action = |action, icon, label: &'static str| {
         let on_action = std::rc::Rc::clone(&on_action);
         pane_header_icon_button(label, icon, true, cx)
+            .debug_selector(move || format!("pane-action-{label}"))
             .tooltip(label)
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();

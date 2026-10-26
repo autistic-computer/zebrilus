@@ -565,6 +565,7 @@ struct TerminalHeaderView {
     pane: PaneId,
     app: WeakEntity<AppView>,
     mux: Entity<MuxClient>,
+    canvas: Rc<Cell<Bounds<Pixels>>>,
     state: Option<TerminalHeaderState>,
 }
 
@@ -584,6 +585,7 @@ impl Render for TerminalHeaderView {
         };
         let pane = self.pane;
         let mux = self.mux.clone();
+        let canvas = Rc::clone(&self.canvas);
         let drag_app = self.app.clone();
         let click_app = self.app.clone();
         let lens_app = self.app.clone();
@@ -605,7 +607,8 @@ impl Render for TerminalHeaderView {
                     }
                     return;
                 }
-                for command in action.commands(pane) {
+                let rows = pip_fill_rows(mux.read(cx), pane, canvas.get().size, window, cx);
+                for command in action.commands(pane, rows) {
                     mux.read(cx).execute(command);
                 }
             },
@@ -2081,10 +2084,12 @@ impl AppView {
                                 let pane = *pane;
                                 let app = cx.entity().downgrade();
                                 let mux = self.mux.clone();
+                                let canvas = Rc::clone(&self.pane_canvas_bounds);
                                 let header = cx.new(|_| TerminalHeaderView {
                                     pane,
                                     app,
                                     mux,
+                                    canvas,
                                     state: None,
                                 });
                                 self.terminal_headers.insert(pane, header);
@@ -2098,6 +2103,7 @@ impl AppView {
                                 let pane = *pane;
                                 let descriptor = browser.clone();
                                 let resize_held = Rc::clone(&self.terminal_resize_suppressed);
+                                let pane_canvas = Rc::clone(&self.pane_canvas_bounds);
                                 let view = cx.new(|cx| {
                                     let mut view = BrowserView::new(
                                         pane,
@@ -2108,6 +2114,7 @@ impl AppView {
                                         cx,
                                     );
                                     view.share_resize_hold(resize_held);
+                                    view.share_pane_canvas(pane_canvas);
                                     view
                                 });
                                 cx.subscribe(&view, |view, _, drag: &PaneDrag, cx| {
@@ -3771,13 +3778,7 @@ impl AppView {
     }
 
     fn float_cell_size(&self, window: &Window, cx: &App) -> Size<Pixels> {
-        let appearance = self.mux.read(cx).appearance();
-        zz_ui::terminal::terminal_cell_size(
-            &crate::terminal::view::terminal_font(&appearance),
-            crate::terminal::view::terminal_font_size(&appearance),
-            &appearance,
-            window,
-        )
+        float_cell_size(self.mux.read(cx), window)
     }
 
     fn floating_layer(
@@ -4099,7 +4100,7 @@ impl AppView {
                 true,
                 None,
                 move |action, _, cx| {
-                    for command in action.commands(pane) {
+                    for command in action.commands(pane, None) {
                         mux.read(cx).execute(command);
                     }
                 },
@@ -4133,11 +4134,7 @@ impl AppView {
         let far_x = (frame.width - edge.width - near).max(Pixels::ZERO);
         let far_y = (frame.height - edge.height - near).max(Pixels::ZERO);
         let inner_width = (frame.width - edge.width * 2.0 - near * 2.0).max(Pixels::ZERO);
-        let top = if pip {
-            cx.theme().pane_header_height()
-        } else {
-            edge.height
-        };
+        let top = near + edge.height;
         let edges = |left, top, right, bottom| FloatGrip {
             left,
             top,
@@ -4173,6 +4170,15 @@ impl AppView {
                 Some(CursorStyle::ResizeLeftRight),
             ),
             (
+                "top",
+                edges(false, true, false, false),
+                Bounds::new(
+                    point(near + edge.width, near),
+                    zz_gpui::size(inner_width, edge.height),
+                ),
+                Some(CursorStyle::ResizeUpDown),
+            ),
+            (
                 "bottom",
                 edges(false, false, false, true),
                 Bounds::new(
@@ -4184,13 +4190,13 @@ impl AppView {
             (
                 "top-left",
                 edges(true, true, false, false),
-                Bounds::new(point(Pixels::ZERO, Pixels::ZERO), edge),
+                Bounds::new(point(near, near), edge),
                 Some(CursorStyle::ResizeUpLeftDownRight),
             ),
             (
                 "top-right",
                 edges(false, true, true, false),
-                Bounds::new(point(far_x, Pixels::ZERO), edge),
+                Bounds::new(point(far_x, near), edge),
                 Some(CursorStyle::ResizeUpRightDownLeft),
             ),
             (
@@ -4207,7 +4213,7 @@ impl AppView {
             ),
         ]
         .into_iter()
-        .filter(|(name, ..)| !pip || !matches!(*name, "move" | "top-left" | "top-right"))
+        .filter(|(name, ..)| *name != if pip { "move" } else { "top" })
         .map(|(name, grip, bounds, cursor)| {
             div()
                 .id(zz_gpui::SharedString::from(format!(
@@ -4623,6 +4629,43 @@ fn dead_label(snapshot: Option<&zz_protocol::PaneSnapshot>) -> Option<String> {
         pane.dead_status
             .map_or_else(|| "Dead".to_owned(), |status| format!("Dead · {status}"))
     })
+}
+
+fn float_cell_size(mux: &MuxClient, window: &Window) -> Size<Pixels> {
+    let appearance = mux.appearance();
+    zz_ui::terminal::terminal_cell_size(
+        &crate::terminal::view::terminal_font(&appearance),
+        crate::terminal::view::terminal_font_size(&appearance),
+        &appearance,
+        window,
+    )
+}
+
+/// How tall, borders included, Float makes `pane`: the tallest float that fits
+/// its window's `canvas`, the panes' area in pixels.
+pub(crate) fn pip_fill_rows(
+    mux: &MuxClient,
+    pane: PaneId,
+    canvas: Size<Pixels>,
+    window: &Window,
+    cx: &App,
+) -> Option<u16> {
+    let snapshot = mux.snapshot();
+    let pane_window = snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find(|candidate| candidate.panes.contains_key(&pane))?;
+    Some(
+        PipLayout {
+            window: (pane_window.sx, pane_window.sy),
+            cell: float_cell_size(mux, window),
+            canvas,
+            lines: pane_window.pane_border_lines,
+            header: cx.theme().pane_header_height(),
+        }
+        .fill_rows(),
+    )
 }
 
 fn pane_select_command(pane: PaneId) -> CommandInvocation {
@@ -7735,6 +7778,121 @@ mod tests {
         window.active_pane = floating;
         window.zoomed_pane = zoomed.then_some(floating);
         snapshot
+    }
+
+    #[zz_gpui::test]
+    fn float_makes_a_pip_as_tall_as_the_pane_canvas(cx: &mut TestAppContext) {
+        let (workspace, mux, cx) = float_workspace_for_test(cx);
+        cx.simulate_resize(zz_gpui::size(px(1065.0), px(686.0)));
+        let settle = |cx: &mut zz_gpui::VisualTestContext| {
+            for _ in 0..60 {
+                cx.executor().advance_clock(Duration::from_millis(16));
+                cx.update(|window, cx| {
+                    _ = window.draw(cx);
+                });
+            }
+        };
+        mux.update(cx, |mux, cx| {
+            mux.connect_for_test();
+            mux.attach_snapshot_for_test(SessionId(0), one_pane_snapshot(1), cx);
+        });
+        cx.run_until_parked();
+        settle(cx);
+        let canvas = workspace.read_with(cx, |workspace, _| workspace.pane_canvas_bounds.get());
+        let cell = cx.update(|window, cx| workspace.read(cx).float_cell_size(window, cx));
+        #[allow(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "a test window is a few hundred cells"
+        )]
+        let window_cells = (
+            (canvas.size.width / cell.width).floor() as u16,
+            (canvas.size.height / cell.height).floor() as u16,
+        );
+        let mut snapshot = one_pane_snapshot(2);
+        (
+            snapshot.sessions[0].windows[0].sx,
+            snapshot.sessions[0].windows[0].sy,
+        ) = window_cells;
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
+        });
+        cx.run_until_parked();
+        settle(cx);
+        let float = cx
+            .debug_bounds("pane-action-Float")
+            .expect("the tiled header has Float");
+        cx.simulate_click(float.center(), Modifiers::default());
+        cx.run_until_parked();
+        let sent = mux.read_with(cx, |mux, _| mux.executed_for_test());
+        let rows: u16 = sent
+            .iter()
+            .find(|command| command.name == "break-pane")
+            .and_then(|command| {
+                let at = command.args.iter().position(|arg| arg == "-y")?;
+                command.args.get(at + 1)?.parse().ok()
+            })
+            .unwrap_or_else(|| panic!("Float sent no break-pane -y: {sent:?}"));
+
+        let mut floated = tile_and_float_snapshot(3, false);
+        let window = &mut floated.sessions[0].windows[0];
+        (window.sx, window.sy) = window_cells;
+        let cells = zz_client::floating::FloatPlace::BottomRight.cells(
+            FloatCells {
+                xoff: 0,
+                yoff: 0,
+                sx: window_cells.0 / 3,
+                sy: rows - 2,
+            },
+            window_cells,
+            PaneBorderLines::Single,
+        );
+        let float = &mut window.floating[0];
+        (float.xoff, float.yoff, float.sx, float.sy) = (cells.xoff, cells.yoff, cells.sx, cells.sy);
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(SessionId(0), floated, cx);
+        });
+        cx.run_until_parked();
+        settle(cx);
+        let pip = cx
+            .debug_bounds("floating-pane-1")
+            .expect("the PiP is drawn");
+        let gap = pip.top() - canvas.top();
+        assert!(
+            gap < cell.height + px(12.0),
+            "the PiP {pip:?} stops {gap:?} under the canvas {canvas:?} top"
+        );
+        assert!(pip.bottom() <= canvas.bottom(), "{pip:?} {canvas:?}");
+    }
+
+    #[zz_gpui::test]
+    fn a_pip_resizes_from_its_top_edge_and_top_corners(cx: &mut TestAppContext) {
+        let (_workspace, mux, cx) = float_workspace_for_test(cx);
+        mux.update(cx, |mux, cx| {
+            mux.attach_snapshot_for_test(SessionId(0), tile_and_float_snapshot(1, false), cx);
+        });
+        cx.run_until_parked();
+        for _ in 0..60 {
+            cx.executor().advance_clock(Duration::from_millis(16));
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        }
+        let card = cx
+            .debug_bounds("floating-pane-1")
+            .expect("the PiP is drawn");
+        for (grip, bounds) in [
+            ("top", cx.debug_bounds("floating-grip-1-top")),
+            ("top-left", cx.debug_bounds("floating-grip-1-top-left")),
+            ("top-right", cx.debug_bounds("floating-grip-1-top-right")),
+        ] {
+            let bounds = bounds.unwrap_or_else(|| panic!("the PiP has no {grip} grip"));
+            assert!(
+                bounds.top() < card.top() && card.top() < bounds.bottom(),
+                "the {grip} grip {bounds:?} does not straddle the PiP's top edge {card:?}"
+            );
+        }
+        assert!(cx.debug_bounds("floating-grip-1-move").is_none());
     }
 
     #[zz_gpui::test]

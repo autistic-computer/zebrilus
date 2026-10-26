@@ -387,8 +387,11 @@ pub fn zoom_pane_command(pane: PaneId) -> CommandInvocation {
     )
 }
 
+/// Floats `pane` a third of the window wide on its right side, `rows` tall
+/// (borders included), the tallest float the client can fit; without `rows`, the
+/// window's height.
 #[must_use]
-pub fn float_pane_commands(pane: PaneId) -> [CommandInvocation; 2] {
+pub fn float_pane_commands(pane: PaneId, rows: Option<u16>) -> [CommandInvocation; 2] {
     [
         CommandInvocation::new(
             "break-pane",
@@ -397,7 +400,7 @@ pub fn float_pane_commands(pane: PaneId) -> [CommandInvocation; 2] {
                 "-x".to_owned(),
                 "33%".to_owned(),
                 "-y".to_owned(),
-                "33%".to_owned(),
+                rows.map_or_else(|| "100%".to_owned(), |rows| rows.to_string()),
                 "-s".to_owned(),
                 pane.to_string(),
             ],
@@ -743,10 +746,12 @@ mod tests {
     }
 
     #[test]
-    fn float_asks_for_a_third_of_the_window_in_the_bottom_right_corner() {
-        let [float, place] = float_pane_commands(PaneId(7));
-        assert_eq!(words(&float), "break-pane -W -x 33% -y 33% -s %7");
+    fn float_asks_for_a_third_of_the_width_and_the_height_that_fits() {
+        let [float, place] = float_pane_commands(PaneId(7), Some(40));
+        assert_eq!(words(&float), "break-pane -W -x 33% -y 40 -s %7");
         assert_eq!(words(&place), "move-pane -t %7 -P bottom-right");
+        let [float, _] = float_pane_commands(PaneId(7), None);
+        assert_eq!(words(&float), "break-pane -W -x 33% -y 100% -s %7");
     }
 
     #[test]

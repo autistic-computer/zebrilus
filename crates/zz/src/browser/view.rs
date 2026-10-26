@@ -430,6 +430,7 @@ pub(crate) struct BrowserView {
     page_buttons_down: u8,
     viewport: Viewport,
     resize_held: Rc<Cell<bool>>,
+    pane_canvas: Rc<Cell<Bounds<Pixels>>>,
     resize_cover: ResizeCover,
     resize_covers: u64,
     frame_size: (u32, u32),
@@ -787,6 +788,7 @@ impl BrowserView {
             page_buttons_down: 0,
             viewport,
             resize_held: Rc::new(Cell::new(false)),
+            pane_canvas: Rc::default(),
             resize_cover: ResizeCover::None,
             resize_covers: 0,
             frame_size: (0, 0),
@@ -1145,6 +1147,10 @@ impl BrowserView {
 
     pub(crate) fn share_resize_hold(&mut self, held: Rc<Cell<bool>>) {
         self.resize_held = held;
+    }
+
+    pub(crate) fn share_pane_canvas(&mut self, canvas: Rc<Cell<Bounds<Pixels>>>) {
+        self.pane_canvas = canvas;
     }
 
     pub(crate) fn resize_covered(&self) -> bool {
@@ -3708,12 +3714,20 @@ impl Render for BrowserChromeView {
                     let action = *action;
                     pane_header_icon_button(*label, icon.clone(), true, cx)
                         .tooltip(*label)
-                        .on_click(move |_, _, cx| {
+                        .on_click(move |_, window, cx| {
                             cx.stop_propagation();
                             if let Some(browser) = browser.upgrade() {
                                 browser.update(cx, |view, cx| {
-                                    for command in action.commands(view.pane) {
-                                        view.mux.read(cx).execute(command);
+                                    let mux = view.mux.read(cx);
+                                    let rows = crate::workspace::pip_fill_rows(
+                                        mux,
+                                        view.pane,
+                                        view.pane_canvas.get().size,
+                                        window,
+                                        cx,
+                                    );
+                                    for command in action.commands(view.pane, rows) {
+                                        mux.execute(command);
                                     }
                                 });
                             }

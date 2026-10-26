@@ -182,6 +182,13 @@ impl PipLayout {
         )
     }
 
+    /// The height, borders included, of the tallest float that fits: what Float
+    /// asks `break-pane -y` for.
+    #[must_use]
+    pub fn fill_rows(&self) -> u16 {
+        self.max_cells().1 + if self.bordered() { 2 } else { 0 }
+    }
+
     fn area(&self) -> Size<Pixels> {
         if self.canvas.width > Pixels::ZERO && self.canvas.height > Pixels::ZERO {
             self.canvas
@@ -759,6 +766,24 @@ mod tests {
         assert!(largest.height <= LAYOUT.canvas.height - px(MARGIN * 2.0));
         assert!(size(sx + 1, sy).width > LAYOUT.canvas.width - px(MARGIN * 2.0));
         assert!(size(sx, sy + 1).height > LAYOUT.canvas.height - px(MARGIN * 2.0));
+    }
+
+    #[test]
+    fn a_floated_pane_fills_the_canvas_height_a_margin_in() {
+        let float = FloatPlace::BottomRight.cells(
+            FloatCells {
+                xoff: 0,
+                yoff: 0,
+                sx: 26,
+                sy: LAYOUT.fill_rows() - 2,
+            },
+            LAYOUT.window,
+            LAYOUT.lines,
+        );
+        let frame = LAYOUT.frame(float);
+        assert_eq!(frame.bottom(), LAYOUT.canvas.height - px(MARGIN));
+        assert!(frame.top() >= px(MARGIN), "{frame:?}");
+        assert!(frame.top() < px(MARGIN) + LAYOUT.cell.height, "{frame:?}");
     }
 
     #[test]

@@ -245,11 +245,7 @@ impl AppShell {
 }
 
 impl AppShell {
-    pub(super) fn cell_size(
-        &self,
-        active: &zz_protocol::WindowSnapshot,
-        cx: &Context<Self>,
-    ) -> (f32, f32) {
+    pub(super) fn cell_size(&self, active: &zz_protocol::WindowSnapshot, cx: &App) -> (f32, f32) {
         std::iter::once(active.active_pane)
             .chain(self.terminals.keys().copied())
             .find_map(|pane| self.terminals.get(&pane))
@@ -257,6 +253,23 @@ impl AppShell {
                 let (width, height) = terminal.read(cx).cell_size();
                 (f32::from(width), f32::from(height))
             })
+    }
+
+    /// How tall, borders included, Float makes a pane of the window on screen:
+    /// the tallest float it fits.
+    pub(super) fn pip_fill_rows(&self, cx: &App) -> Option<u16> {
+        let active = self.active_window(cx)?;
+        let cell = self.cell_size(&active, cx);
+        Some(
+            PipLayout {
+                window: (active.sx, active.sy),
+                cell: size(px(cell.0), px(cell.1)),
+                canvas: self.float_canvas_bounds.get().size,
+                lines: active.pane_border_lines,
+                header: cx.theme().pane_header_height(),
+            }
+            .fill_rows(),
+        )
     }
 
     fn begin_pip(
