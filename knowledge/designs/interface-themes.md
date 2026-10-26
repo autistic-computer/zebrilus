@@ -10,7 +10,7 @@ tags:
 - design-system
 - configuration
 - design-plan
-timestamp: 2026-10-23T00:00:00Z
+timestamp: 2026-10-25T00:00:00Z
 ---
 
 # Why
@@ -28,7 +28,7 @@ The editor palettes were made for syntax colors and gave six roots; everything e
 A theme (`InterfaceTheme`) is one object:
 
 - `name`: what Settings calls it;
-- `materials`: the `Materials`, every value that is not a color, defined once: `radius`, `smoothing` (the corner every role follows unless the theme sets its own), `picked-smoothing` (only the roles the theme sets `smoothing` for curve that way; the rest draw circular corners), `outline` (the width of every outline; 0 draws none), `picked-outlines` (only the roles the theme turns `outline` on for draw it), `row-inset`, `primary` (`foreground` or `accent`), `flat-highlights` (a lift washes a step deeper instead of rising), `bright-surfaces` (cards, panes and floating surfaces rise toward white in light mode instead of darkening), `highlight-strength` (how far a tint or lift washes from the resting fill; 1 is the built-in), `font`, `glass`, `light-glass` (what glass becomes in light mode, as the fields it changes from `glass`; left out, light mode draws `glass`), `picked-shadows` (only the roles the theme gives a `shadow` cast one), and the two shadows `contact` and `float`, each `y`, `blur`, `spread` and `strength`;
+- `materials`: the `Materials`, every value that is not a color, defined once: `radius`, `control-radius` (the corners of buttons, fields, tabs, chips and other controls, so a theme can round them tighter than its menus, cards and panes, as WinUI's 4px controls sit in 8px flyouts; left out, controls follow `radius`, and the pane corner, concentric with the controls in its header, follows it too), `smoothing` (the corner every role follows unless the theme sets its own), `picked-smoothing` (only the roles the theme sets `smoothing` for curve that way; the rest draw circular corners), `outline` (the width of every outline; 0 draws none), `picked-outlines` (only the roles the theme turns `outline` on for draw it), `row-inset`, `primary` (`foreground` or `accent`), `flat-highlights` (a lift washes a step deeper instead of rising), `bright-surfaces` (cards, panes and floating surfaces rise toward white in light mode instead of darkening), `highlight-strength` (how far a tint or lift washes from the resting fill; 1 is the built-in), `font`, `glass`, `light-glass` (what glass becomes in light mode, as the fields it changes from `glass`; left out, light mode draws `glass`), `picked-shadows` (only the roles the theme gives a `shadow` cast one), and the two shadows `contact` and `float`, each `y`, `blur`, `spread` and `strength`;
 - `roles`: how the theme changes each kit kind and each zz role, by id, as a patch of the seven style props (`fill`, `outline`, `shadow`, `shape`, `smoothing`, `hover`, `selected`); what it leaves out draws as built in. The model is in [surface roles](/designs/surface-roles.md);
 - `light` and `dark`: a `ThemeColors` each, the six roots plus `on-accent` (text on an accent fill) and `shadow-color` (the ink of every drop shadow).
 

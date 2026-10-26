@@ -311,6 +311,10 @@ pub struct Style {
     /// lies beneath it through the material.
     pub glass: Option<GlassMaterial>,
 
+    /// A short rounded bar painted over the background, centered on the
+    /// element's left edge.
+    pub edge_mark: Option<EdgeMark>,
+
     /// The text style of this element
     #[refineable]
     pub text: TextStyleRefinement,
@@ -410,6 +414,18 @@ impl BoxShadow {
         self.inset = true;
         self
     }
+}
+
+/// A short bar with round ends, standing on an element's left edge and
+/// centered along it, like the indicator on a selected navigation item.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct EdgeMark {
+    /// The color of the bar.
+    pub color: Hsla,
+    /// How far the bar reaches into the element from its left edge.
+    pub width: Pixels,
+    /// How long the bar runs along the edge, held to the element's height.
+    pub length: Pixels,
 }
 
 /// How to handle whitespace in text
@@ -796,6 +812,15 @@ impl Style {
             self.corner_smoothing,
         );
 
+        if let Some(mark) = self.edge_mark {
+            let length = mark.length.min(bounds.size.height);
+            let mark_bounds = Bounds::new(
+                point(bounds.origin.x, bounds.center().y - length / 2.0),
+                size(mark.width.min(bounds.size.width), length),
+            );
+            window.paint_quad(crate::fill(mark_bounds, mark.color).corner_radii(mark.width / 2.0));
+        }
+
         continuation(window, cx);
 
         if self.is_border_visible() {
@@ -868,6 +893,7 @@ impl Default for Style {
             corner_smoothing: None,
             box_shadow: Default::default(),
             glass: None,
+            edge_mark: None,
             text: TextStyleRefinement::default(),
             mouse_cursor: None,
             opacity: None,

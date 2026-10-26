@@ -32,7 +32,7 @@ const SHADOW_KNOBS = [
     "float-spread",
     "float-strength",
 ];
-const MATERIAL_KNOBS = ["name", "radius", "smoothing", "smoothed", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "surfaces", "highlight-strength", "font"];
+const MATERIAL_KNOBS = ["name", "radius", "control-radius", "smoothing", "smoothed", "outline", "outlines", "row-inset", "shadows", ...SHADOW_KNOBS, "primary", "highlights", "surfaces", "highlight-strength", "font"];
 const COLORS = [
     ["background", "Background"],
     ["foreground", "Foreground"],

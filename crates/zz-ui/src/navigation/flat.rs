@@ -491,7 +491,12 @@ pub fn flat_window_row(
         paint_state,
         None,
         surface.ground.unwrap_or_else(|| theme.ground()),
-        Some(px(ROW_RADIUS)),
+        theme
+            .styles
+            .get(surface.role.id)
+            .and_then(|patch| patch.shape)
+            .is_none()
+            .then_some(px(ROW_RADIUS)),
         cx,
     );
     let hover = handler.clone();

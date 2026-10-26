@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 use zz_gpui::{
-    App, BoxShadow, FULL_CORNER_RADIUS, GlassMaterial, Hsla, InteractiveElement, Pixels,
+    App, BoxShadow, EdgeMark, FULL_CORNER_RADIUS, GlassMaterial, Hsla, InteractiveElement, Pixels,
     StatefulInteractiveElement, Styled, point, px,
 };
 
@@ -123,7 +123,8 @@ pub enum Highlight {
     Accent,
     /// A ring in the accent just outside the edge.
     Ring,
-    /// A bar in the accent along the leading edge.
+    /// On a row, the wash with a short accent bar centered on its leading
+    /// edge; elsewhere, an accent line along the bottom edge.
     Bar,
     Glass,
     /// The outline in the focus color, where a field draws one.
@@ -1047,6 +1048,7 @@ const CONTACT_ALPHA: f32 = 0.2;
 const RING_WIDTH: Pixels = px(2.0);
 /// The width of an accent bar along a selected row.
 const BAR_WIDTH: Pixels = px(3.0);
+const BAR_LENGTH: Pixels = px(16.0);
 /// How strongly a control's outline shows its ink.
 const CONTROL_EDGE_ALPHA: f32 = 0.1;
 const DISABLED: f32 = 0.5;
@@ -1138,6 +1140,7 @@ pub struct Layer {
     /// is inside it.
     pub border_width: Pixels,
     pub shadow: Vec<BoxShadow>,
+    pub mark: Option<EdgeMark>,
     pub text: Hsla,
     pub radius: Pixels,
     /// The superellipse exponent its corners follow.
@@ -1248,6 +1251,7 @@ impl Theme {
                 FULL_CORNER_RADIUS
             }
             Shape::Round if role.row => self.menu_radius(),
+            Shape::Round if role.kind.is_control() => self.control_radius.unwrap_or(self.radius),
             Shape::Round => self.radius,
         }
     }
@@ -1409,6 +1413,10 @@ impl Theme {
                 super::color::toward(paint.fill, washed(&paint), self.highlight_strength),
                 paint.text,
             ),
+            Highlight::Bar if surface.role.row => (
+                super::color::toward(paint.fill, washed(&paint), self.highlight_strength),
+                paint.text,
+            ),
             Highlight::Accent => (paint.selected, paint.selected_text),
             Highlight::Glass if kind.is_control() => (glass_fill, paint.text),
             Highlight::Glass => (self.raise(base, step), paint.text),
@@ -1476,13 +1484,9 @@ impl Theme {
                 spread_radius: RING_WIDTH,
                 inset: false,
             }),
-            Highlight::Bar => shadow.push(BoxShadow {
+            Highlight::Bar if !surface.role.row => shadow.push(BoxShadow {
                 color: self.accent.opaque(),
-                offset: if surface.role.row {
-                    point(BAR_WIDTH, px(0.0))
-                } else {
-                    point(px(0.0), -BAR_WIDTH)
-                },
+                offset: point(px(0.0), -BAR_WIDTH),
                 blur_radius: px(0.0),
                 spread_radius: px(0.0),
                 inset: true,
@@ -1519,10 +1523,18 @@ impl Theme {
             };
             material.tint(tint.alpha(material.tint.a)).fallback(tint)
         });
+        let mark =
+            (highlight == Highlight::Bar && surface.role.row && state != PaintState::Disabled)
+                .then(|| EdgeMark {
+                    color: self.accent.opaque(),
+                    width: BAR_WIDTH,
+                    length: BAR_LENGTH,
+                });
         let under = ground.fill.opaque().blend(fill_color);
         let radius = self.shape_radius(surface.role, style.shape);
         Layer {
             fill: fill_color,
+            mark,
             border,
             border_width,
             shadow,
@@ -1611,10 +1623,13 @@ pub trait StatefulSurfaceExt: StatefulInteractiveElement + Styled + Sized {
 impl<E: StatefulInteractiveElement + Styled> StatefulSurfaceExt for E {}
 
 pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui::StyleRefinement {
-    let style = style
+    let mut style = style
         .border_color(layer.border)
         .shadow(layer.shadow.clone())
         .text_color(layer.text);
+    if let Some(mark) = layer.mark {
+        style = style.edge_mark(mark);
+    }
     match layer.glass {
         Some(material) => style.glass(material).bg(zz_gpui::transparent_black()),
         None => style.bg(layer.fill),
@@ -1846,6 +1861,60 @@ mod tests {
         assert_eq!(theme.style(role).selected, Highlight::Ring);
         assert_eq!(theme.style(SurfaceRole::MENU_ITEM).selected, Highlight::Bar);
         assert_eq!(theme.style(Kind::Button.role()).hover, Highlight::Glass);
+    }
+
+    #[test]
+    fn a_control_radius_rounds_controls_and_leaves_the_rest_on_the_radius() {
+        let mut theme = theme();
+        theme.radius = px(8.0);
+        theme.row_inset = px(4.0);
+        let button = Kind::Button.role();
+        assert_eq!(theme.shape_radius(button, Shape::Round), px(8.0));
+
+        theme.control_radius = Some(px(4.0));
+        assert_eq!(theme.control_radius(), px(4.0));
+        assert_eq!(theme.shape_radius(button, Shape::Round), px(4.0));
+        assert_eq!(
+            theme.shape_radius(Kind::Field.role(), Shape::Round),
+            px(4.0)
+        );
+        assert_eq!(theme.shape_radius(SurfaceRole::TAB, Shape::Round), px(4.0));
+        assert_eq!(
+            theme.shape_radius(SurfaceRole::POPOVER, Shape::Round),
+            px(8.0)
+        );
+        assert_eq!(theme.shape_radius(Kind::Card.role(), Shape::Round), px(8.0));
+        assert_eq!(
+            theme.shape_radius(SurfaceRole::MENU_ITEM, Shape::Round),
+            px(4.0)
+        );
+    }
+
+    #[test]
+    fn a_bar_marks_a_row_with_a_washed_pill_and_a_field_with_a_line() {
+        let mut theme = theme();
+        let bar = StylePatch::EMPTY.selected(Highlight::Bar);
+        theme.styles.insert("menu-item".into(), bar);
+        theme.styles.insert("field".into(), bar);
+
+        let row = theme.layer(SurfaceRole::MENU_ITEM, PaintState::Selected);
+        let mark = row.mark.expect("a selected row carries the pill");
+        assert_eq!(mark.color, theme.accent.opaque());
+        assert!(row.shadow.iter().all(|shadow| !shadow.inset));
+        assert_ne!(
+            row.fill,
+            theme.layer(SurfaceRole::MENU_ITEM, PaintState::Rest).fill
+        );
+        assert!(
+            theme
+                .layer(SurfaceRole::MENU_ITEM, PaintState::Rest)
+                .mark
+                .is_none()
+        );
+
+        let field = theme.layer(Kind::Field.role(), PaintState::Focused);
+        assert!(field.mark.is_none());
+        assert!(field.shadow.iter().any(|shadow| shadow.inset));
     }
 
     #[test]
