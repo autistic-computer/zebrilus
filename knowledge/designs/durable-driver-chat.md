@@ -232,7 +232,10 @@ middle of the green task.
   interactive Claude in an untrusted folder stops at the trust dialog and runs no hooks; Codex asks
   only inside a git repository, and the folder is in none;
 - takes `PATH` from the login shell before it starts the CLI, because a daemon started from the
-  desktop app or a non-login ssh has no `~/.local/bin` on its `PATH`;
+  desktop app or a non-login ssh has no `~/.local/bin` on its `PATH`, and puts the pane's tmux
+  shim folder (`ZZ_TMUX_SHIM_DIR`) back in front, so the driver's `zz` is the daemon's own binary
+  and not an older one on the login `PATH` (2026-10-26: under zz Dev the release `zz` answered,
+  spoke an older protocol, and every `zz --host` failed);
 - exports `ZZ_DRIVER_GENERATION` into the driver's shell (see fencing below), refuses to start
   while a driver runs on this host, kills a `driver` session here that has no agent in it, starts
   the CLI in a new `driver` session in `work/` with the packet as its first prompt, and starts this

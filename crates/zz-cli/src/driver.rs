@@ -40,7 +40,8 @@ const HOOK_TIMEOUT: u64 = 30;
 const CODEX_HOOK_KEY: &str = "/<session-flags>/config.toml:stop:0:0";
 const LOGIN_PATH: &str = "login_path=$(\"${SHELL:-/bin/sh}\" -lc env 2>/dev/null | sed -n \
                           's/^PATH=//p'); [ -n \"$login_path\" ] && PATH=$login_path; \
-                          PATH=\"$PATH:$HOME/.local/bin\"; export PATH; ";
+                          PATH=\"${ZZ_TMUX_SHIM_DIR:+$ZZ_TMUX_SHIM_DIR:}$PATH:$HOME/.local/bin\"; \
+                          export PATH; ";
 const RECHECK: Duration = Duration::from_secs(10);
 const IDLE: Duration = Duration::from_secs(60);
 const SILENCE: Duration = Duration::from_secs(45);
@@ -1344,9 +1345,38 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        Brief, Record, acted_without_ledger, civil_from_days, codex_acted_without_ledger,
-        codex_stop_hook, instructions, newer_driver, provider, stale, start_host,
+        Brief, LOGIN_PATH, Record, acted_without_ledger, civil_from_days,
+        codex_acted_without_ledger, codex_stop_hook, instructions, newer_driver, provider, stale,
+        start_host,
     };
+
+    #[cfg(unix)]
+    #[test]
+    fn the_driver_finds_the_zz_of_the_daemon_it_runs_under_first() {
+        let path = |shim: Option<&str>| {
+            let mut shell = std::process::Command::new("/bin/sh");
+            shell
+                .arg("-c")
+                .arg(format!("{LOGIN_PATH}printf %s \"$PATH\""))
+                .env_clear()
+                .env("SHELL", "/bin/sh")
+                .env("HOME", "/home/u")
+                .env("PATH", "/usr/bin:/bin");
+            if let Some(shim) = shim {
+                shell.env("ZZ_TMUX_SHIM_DIR", shim);
+            }
+            String::from_utf8(shell.output().expect("sh").stdout).expect("utf-8")
+        };
+        let shimmed = path(Some("/tmp/zz-tmux-shim-1-0"));
+        assert!(shimmed.starts_with("/tmp/zz-tmux-shim-1-0:"), "{shimmed}");
+        assert!(shimmed.ends_with(":/home/u/.local/bin"), "{shimmed}");
+        let plain = path(None);
+        assert!(
+            !plain.starts_with(':') && !plain.contains("zz-tmux-shim"),
+            "{plain}"
+        );
+        assert!(plain.ends_with(":/home/u/.local/bin"), "{plain}");
+    }
 
     #[test]
     fn a_turn_that_acted_must_write_the_ledger() {
