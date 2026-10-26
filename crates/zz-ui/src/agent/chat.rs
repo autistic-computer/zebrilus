@@ -18,9 +18,11 @@ use crate::{
     command::PaletteHint,
     h_flex,
     input::{Input, InputState, field_chrome},
+    link::{LinkInk, TargetLinks, autolink, autolink_plain},
     program::program_tile,
     roles,
     scroll::ScrollableElement as _,
+    target::TargetHost,
     text::{TextView, TextViewStyle},
     v_flex,
 };
@@ -134,6 +136,7 @@ pub struct ChatBubble {
     sender: Option<ChatSender>,
     ground: Option<Ground>,
     lines: Option<usize>,
+    hosts: Option<Arc<[TargetHost]>>,
 }
 
 impl ChatBubble {
@@ -168,6 +171,7 @@ impl ChatBubble {
             sender: None,
             ground: None,
             lines: None,
+            hosts: None,
         }
     }
 
@@ -196,6 +200,14 @@ impl ChatBubble {
         self.lines = Some(lines);
         self
     }
+
+    /// Read zz links and bare `@` mentions against `hosts`, the fleet as it
+    /// is now. A cut message keeps its mentions as text.
+    #[must_use]
+    pub fn links(mut self, hosts: Arc<[TargetHost]>) -> Self {
+        self.hosts = Some(hosts);
+        self
+    }
 }
 
 impl RenderOnce for ChatBubble {
@@ -219,16 +231,31 @@ impl RenderOnce for ChatBubble {
         let muted = crate::picker::muted_on(&layer, cx);
         let read = if mine { ink } else { theme.accent };
         let receipt = self.receipt.filter(|_| mine);
-        let rich = !mine && self.lines.is_none() && is_rich(&self.text);
+        let hosts = self.hosts.filter(|_| self.lines.is_none());
+        let linked = hosts.as_ref().and_then(|hosts| {
+            if mine {
+                autolink_plain(&self.text, hosts)
+            } else {
+                autolink(&self.text, hosts)
+            }
+        });
+        let rich = linked.is_some() || (!mine && self.lines.is_none() && is_rich(&self.text));
         let stamped = !self.time.is_empty() || receipt.is_some();
 
         let body = if rich {
+            let ink = LinkInk {
+                live: if mine { ink } else { theme.accent },
+                muted,
+            };
             TextView::markdown(
                 ElementId::NamedChild(Arc::new(self.id.clone()), "markdown".into()),
-                self.text.clone(),
+                linked.map_or_else(|| self.text.clone(), SharedString::from),
             )
             .style(chat_markdown_style(cx))
             .selectable(true)
+            .when_some(hosts, |view, hosts| {
+                view.links(TargetLinks::new(hosts, ink))
+            })
             .min_w_0()
             .into_any_element()
         } else {

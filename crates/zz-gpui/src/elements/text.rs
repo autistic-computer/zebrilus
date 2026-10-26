@@ -1328,6 +1328,59 @@ impl IntoElement for InteractiveText {
     }
 }
 
+/// Hover tooltips over parts of a custom element, the way [`InteractiveText`]
+/// shows them over character ranges: the same delay, hiding and long press.
+/// Keep one per element across frames, in its element state.
+#[derive(Default)]
+pub struct PartTooltip {
+    active: Rc<RefCell<Option<ActiveTooltip>>>,
+    long_press: Rc<Cell<bool>>,
+}
+
+impl PartTooltip {
+    /// Call from prepaint: puts the tooltip that is up on the window.
+    pub fn prepaint(&self, window: &mut Window) -> Option<TooltipId> {
+        set_tooltip_on_window(&self.active, window)
+    }
+
+    /// Call from paint with what [`Self::prepaint`] returned: while the mouse
+    /// is over `hitbox` at a point `over` accepts, show what `build` makes.
+    pub fn paint(
+        &self,
+        id: Option<TooltipId>,
+        hitbox: &Hitbox,
+        over: Rc<dyn Fn(Point<Pixels>) -> bool>,
+        build: Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyView>>,
+        window: &mut Window,
+    ) {
+        let build_tooltip = Rc::new(move |window: &mut Window, cx: &mut App| {
+            build(window, cx).map(|view| (view, false))
+        });
+        let check_is_hovered_during_prepaint = Rc::new({
+            let bounds = hitbox.bounds;
+            let over = over.clone();
+            move |window: &Window| {
+                let position = window.mouse_position();
+                bounds.contains(&position) && over(position)
+            }
+        });
+        let check_is_hovered = Rc::new({
+            let hitbox = hitbox.clone();
+            move |window: &Window| hitbox.is_hovered(window) && over(window.mouse_position())
+        });
+        register_tooltip_mouse_handlers(
+            &self.active,
+            id,
+            build_tooltip,
+            check_is_hovered,
+            check_is_hovered_during_prepaint,
+            self.long_press.clone(),
+            None,
+            window,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

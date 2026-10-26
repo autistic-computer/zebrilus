@@ -10,9 +10,10 @@ use zz_ui::{
     IconName,
     command::{
         PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus, PaletteTarget, PaletteTree,
-        PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+        PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow, target_hosts,
     },
-    target::TargetPicker,
+    link::resolve_link,
+    target::{TargetKind, TargetPicker},
 };
 
 pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, PaletteMode};
@@ -33,6 +34,44 @@ const REMOTE_FOREGROUND: &[&str] = &["ssh", "mosh", "mosh-client", "tmux", "zz_c
 
 pub(crate) fn palette_backend(mux: Entity<MuxClient>) -> Rc<dyn PaletteBackend> {
     Rc::new(MuxPalette(mux))
+}
+
+/// Go to what the zz link `address` names: attach its host, switch to its
+/// session, window or pane, or paste its path into the active pane.
+pub(crate) fn open_link(mux: &Entity<MuxClient>, address: &str, cx: &mut App) -> bool {
+    let backend = MuxPalette(mux.clone());
+    let Some(link) = resolve_link(address, &target_hosts(&backend.tree(cx))) else {
+        return false;
+    };
+    let host = HostId::from(link.host_id);
+    match link.kind {
+        TargetKind::Host => {
+            let client = mux.read(cx);
+            let Some(activation) = MuxTreeModel::from_mux(client).activation_for_node(
+                TreeNode::Host(host),
+                client.attached_host(),
+                client.attached_session(),
+            ) else {
+                return false;
+            };
+            crate::mux::nav::activate_nav(mux, activation, cx);
+            true
+        }
+        TargetKind::File | TargetKind::Dir => {
+            let client = mux.read(cx);
+            let (Some(pane), Some(text)) = (
+                client.active_pane(),
+                link.paste_text(host == client.attached_host()),
+            ) else {
+                return false;
+            };
+            client.paste_to_pane(pane, text);
+            true
+        }
+        TargetKind::Session | TargetKind::Window | TargetKind::Pane => link
+            .target
+            .is_some_and(|target| backend.activate(link.host_id, target, cx)),
+    }
 }
 
 struct MuxPalette(Entity<MuxClient>);

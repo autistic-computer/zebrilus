@@ -22,6 +22,7 @@ use super::{
     SelectAll,
     auto_scroll::AutoScroll,
     document::ParsedDocument,
+    links::SharedLinks,
     markdown_ext::MarkdownExtensions,
     markdown_parse,
     node::{self, NodeContext},
@@ -56,6 +57,7 @@ pub struct TextViewState {
     pub(super) text_view_style: TextViewStyle,
     pub(super) code_block_actions: Option<std::sync::Arc<CodeBlockActionsFn>>,
     pub(super) code_block_body: Option<std::sync::Arc<CodeBlockBodyFn>>,
+    pub(super) links: Option<SharedLinks>,
     pub(super) markdown_extensions: Arc<MarkdownExtensions>,
     pub(super) streaming: bool,
 
@@ -124,6 +126,7 @@ impl TextViewState {
             text_view_style: TextViewStyle::default(),
             code_block_actions: None,
             code_block_body: None,
+            links: None,
             markdown_extensions: Arc::default(),
             streaming: false,
             is_selecting: false,
@@ -469,6 +472,7 @@ impl Render for TextViewState {
 
         node_cx.code_block_actions = self.code_block_actions.clone();
         node_cx.code_block_body = self.code_block_body.clone();
+        node_cx.links = self.links.clone();
         node_cx.markdown_extensions = self.markdown_extensions.clone();
         node_cx.style = self.text_view_style.clone();
         if self.streaming {

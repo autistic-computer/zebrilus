@@ -11,14 +11,16 @@ use std::{
 use zz_gpui::{
     App, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId, GlobalElementId, Half,
     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, SharedString, StyledText,
-    TextAlign, TextLayout, TextRun, Window, WrappedLineLayout, point, px, quad,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, PartTooltip, Pixels, Point, SharedString,
+    StyledText, TextAlign, TextLayout, TextRun, TooltipId, Window, WrappedLineLayout, point, px,
+    quad,
 };
 
 use crate::{ActiveTheme, PaintState, SurfaceRole, WindowExt as _};
 
 use super::{
     global::TextGlobal,
+    links::{LinkClick, SharedLinks, open_link},
     node::LinkMark,
     selection::{Selection, word_range_at},
     state::TextViewMultiClickKind,
@@ -144,6 +146,7 @@ pub(super) struct Inline {
     code_role: Option<SurfaceRole>,
     styled_text: StyledText,
     streaming_veil: Option<(StreamingVeil, VeilKey)>,
+    shared_links: Option<SharedLinks>,
 
     state: Arc<Mutex<InlineState>>,
 }
@@ -202,8 +205,14 @@ impl Inline {
             text: text.clone(),
             styled_text: StyledText::new(text),
             streaming_veil: None,
+            shared_links: None,
             state,
         }
+    }
+
+    pub(super) fn links(mut self, links: Option<SharedLinks>) -> Self {
+        self.shared_links = links;
+        self
     }
 
     /// Backtick spans, which take the mono family and a rounded fill. They stay
@@ -466,7 +475,7 @@ impl IntoElement for Inline {
 
 impl Element for Inline {
     type RequestLayoutState = ();
-    type PrepaintState = Hitbox;
+    type PrepaintState = (Hitbox, Option<TooltipId>);
 
     fn id(&self) -> Option<ElementId> {
         Some(self.id.clone())
@@ -524,8 +533,18 @@ impl Element for Inline {
         self.styled_text
             .prepaint(id, inspector_id, bounds, &mut (), window, cx);
 
-        let hitbox = window.insert_hitbox(bounds, HitboxBehavior::Normal);
-        hitbox
+        let tooltip = match (id, &self.shared_links) {
+            (Some(id), Some(_)) if !self.links.is_empty() => window
+                .with_element_state::<PartTooltip, _>(id, |tooltip, window| {
+                    let tooltip = tooltip.unwrap_or_default();
+                    (tooltip.prepaint(window), tooltip)
+                }),
+            _ => None,
+        };
+        (
+            window.insert_hitbox(bounds, HitboxBehavior::Normal),
+            tooltip,
+        )
     }
 
     fn paint(
@@ -539,7 +558,8 @@ impl Element for Inline {
         cx: &mut App,
     ) {
         let current_view = window.current_view();
-        let hitbox = prepaint;
+        let (hitbox, tooltip_id) = prepaint;
+        let tooltip_id = *tooltip_id;
         let Ok(mut state) = self.state.lock() else {
             return;
         };
@@ -661,9 +681,34 @@ impl Element for Inline {
             });
         }
 
+        if let (Some(global_id), Some(shared_links)) = (global_id, self.shared_links.clone())
+            && !self.links.is_empty()
+        {
+            let over = Rc::new({
+                let text_layout = text_layout.clone();
+                let links = self.links.clone();
+                move |position| Self::link_for_position(&text_layout, &links, position).is_some()
+            });
+            let build = Rc::new({
+                let text_layout = text_layout.clone();
+                let links = self.links.clone();
+                move |window: &mut Window, cx: &mut App| {
+                    let link =
+                        Self::link_for_position(&text_layout, &links, window.mouse_position())?;
+                    shared_links.tooltip(&link.url, window, cx)
+                }
+            });
+            window.with_element_state::<PartTooltip, _>(global_id, |tooltip, window| {
+                let tooltip = tooltip.unwrap_or_default();
+                tooltip.paint(tooltip_id, hitbox, over, build, window);
+                ((), tooltip)
+            });
+        }
+
         if !is_selection {
             window.on_mouse_event({
                 let links = self.links.clone();
+                let shared_links = self.shared_links.clone();
                 let text_layout = text_layout.clone();
                 let hitbox = hitbox.clone();
                 let text_view_state = TextGlobal::current_view(cx).cloned();
@@ -684,19 +729,17 @@ impl Element for Inline {
                     {
                         window.end_text_selection(cx);
                         cx.stop_propagation();
-                        if is_openable(&link.url) {
-                            cx.open_url(&link.url);
-                        }
+                        let click = LinkClick {
+                            url: link.url,
+                            button: event.button,
+                            modifiers: event.modifiers,
+                        };
+                        open_link(shared_links.as_ref(), &click, window, cx);
                     }
                 }
             });
         }
     }
-}
-
-fn is_openable(url: &str) -> bool {
-    let scheme = url.split_once(':').map_or("", |(scheme, _)| scheme);
-    !(scheme.eq_ignore_ascii_case("data") || scheme.eq_ignore_ascii_case("javascript"))
 }
 
 fn selection_for_multi_click(
@@ -761,8 +804,9 @@ pub(super) fn point_in_text_selection(
 mod tests {
     use super::{
         Bounds, CODE_FILL_PAD_X, CODE_FILL_PAD_Y, InlineState, TextAlign, code_fill_bounds,
-        is_openable, point_in_text_selection, selectable_line_bounds,
+        point_in_text_selection, selectable_line_bounds,
     };
+    use crate::text::links::is_openable;
     use std::sync::Arc;
     use zz_gpui::{
         FontId, GlyphId, LineLayout, ShapedGlyph, ShapedRun, WrapBoundary, WrappedLineLayout,

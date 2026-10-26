@@ -19,6 +19,7 @@ use crate::{ActiveTheme as _, SurfaceRole, WindowExt as _, tooltip::Tooltip};
 
 use super::{
     inline::{Inline, InlineState, code_runs},
+    links::{LinkClick, SharedLinks, open_link},
     node::LinkMark,
 };
 
@@ -28,6 +29,7 @@ pub(super) struct InlineFlow {
     id: ElementId,
     items: Vec<InlineFlowItem>,
     code_role: Option<SurfaceRole>,
+    links: Option<SharedLinks>,
 }
 
 pub(super) enum InlineFlowItem {
@@ -114,11 +116,17 @@ impl InlineFlow {
             id: id.into(),
             items,
             code_role: None,
+            links: None,
         }
     }
 
     pub(super) fn code_role(mut self, code_role: Option<SurfaceRole>) -> Self {
         self.code_role = code_role;
+        self
+    }
+
+    pub(super) fn links(mut self, links: Option<SharedLinks>) -> Self {
+        self.links = links;
         self
     }
 
@@ -128,6 +136,7 @@ impl InlineFlow {
         link: &Option<LinkMark>,
         title: &str,
         size: Size<Pixels>,
+        links: Option<SharedLinks>,
     ) -> AnyElement {
         img(url.clone())
             .id(ix)
@@ -139,10 +148,15 @@ impl InlineFlow {
                 let title = title.to_string();
                 this.cursor_pointer()
                     .tooltip(move |window, cx| Tooltip::new(title.clone()).build(window, cx))
-                    .on_click(move |_, window, cx| {
+                    .on_click(move |event, window, cx| {
                         window.end_text_selection(cx);
                         cx.stop_propagation();
-                        cx.open_url(&link.url);
+                        let click = LinkClick {
+                            url: link.url.clone(),
+                            button: zz_gpui::MouseButton::Left,
+                            modifiers: event.modifiers(),
+                        };
+                        open_link(links.as_ref(), &click, window, cx);
                     })
             })
             .into_any_element()
@@ -275,6 +289,7 @@ impl Element for InlineFlow {
                     let mut element = Inline::new(elements.len(), state, links, highlights)
                         .code_ranges(code_ranges)
                         .code_role(self.code_role)
+                        .links(self.links.clone())
                         .into_any_element();
                     element.prepaint_as_root(
                         bounds.origin + origin,
@@ -304,6 +319,7 @@ impl Element for InlineFlow {
                         link,
                         title.as_str(),
                         fragment_size,
+                        self.links.clone(),
                     );
                     element.prepaint_as_root(
                         bounds.origin + origin,

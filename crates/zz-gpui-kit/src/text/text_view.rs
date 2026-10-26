@@ -14,8 +14,14 @@ use zz_gpui::{
 use crate::{StyledExt, scroll::ScrollableElement};
 
 use super::{
-    CONTEXT, Copy, clipboard_selection_text, global::TextGlobal, markdown_ext::MarkdownExtensions,
-    node::CodeBlock, state::TextViewState, style::TextViewStyle, window_selection,
+    CONTEXT, Copy, clipboard_selection_text,
+    global::TextGlobal,
+    links::{SharedLinks, TextLinks},
+    markdown_ext::MarkdownExtensions,
+    node::CodeBlock,
+    state::TextViewState,
+    style::TextViewStyle,
+    window_selection,
 };
 
 pub(crate) type CodeBlockActionsFn =
@@ -36,6 +42,7 @@ pub struct TextView {
     code_block_actions: Option<Arc<CodeBlockActionsFn>>,
     code_block_body: Option<Arc<CodeBlockBodyFn>>,
     markdown_extensions: Arc<MarkdownExtensions>,
+    links: Option<SharedLinks>,
 }
 
 impl Styled for TextView {
@@ -58,6 +65,7 @@ impl TextView {
             code_block_actions: None,
             code_block_body: None,
             markdown_extensions: Arc::default(),
+            links: None,
         }
     }
 
@@ -75,6 +83,7 @@ impl TextView {
             code_block_actions: None,
             code_block_body: None,
             markdown_extensions: Arc::default(),
+            links: None,
         }
     }
 
@@ -119,6 +128,12 @@ impl TextView {
         F: Fn(&CodeBlock, &mut Window, &mut App) -> Option<AnyElement> + Send + Sync + 'static,
     {
         self.code_block_body = Some(Arc::new(f));
+        self
+    }
+
+    /// Let `links` paint, hover and open the links instead of the defaults.
+    pub fn links(mut self, links: impl TextLinks) -> Self {
+        self.links = Some(Arc::new(links));
         self
     }
 
@@ -178,6 +193,7 @@ impl Element for TextView {
         state.update(cx, |state, cx| {
             state.code_block_actions = self.code_block_actions.clone();
             state.code_block_body = self.code_block_body.clone();
+            state.links = self.links.clone();
             state.set_markdown_extensions(self.markdown_extensions.clone(), cx);
             state.selectable = self.selectable;
             state.scrollable = self.scrollable;

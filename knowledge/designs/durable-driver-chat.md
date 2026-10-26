@@ -475,6 +475,22 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   connection, with any terminal there as the anchor; a daemon lists a dir that names its own
   root (absolute or `~`) through a pane in a session the client is not attached to. The message
   goes out as plain text, and the zz-driver skill tells the driver what a mention means.
+- **Links** (2026-10-26). The thread draws zz links: a Markdown link whose destination is a
+  target, `[cargo test](@xps:work:1.%8)` or `[atlas.rs:212](@xps:~/dev/atlas.rs:212)`, which the
+  zz-driver skill asks the driver to write, and a bare `@xps:work:2` in a message, yours or its,
+  which `zz_ui::link::autolink` (Markdown answers, outside code and links) and `autolink_plain`
+  (your plain text, everything else escaped) turn into one when its host is written or what it
+  names is there. `resolve_link` reads a link against the fleet as `ChatBubble::links` gets it
+  each render (`target_hosts` over the palette backend): accent and underlined while it is there
+  (your ink on your own bubbles), muted while its host is offline or connecting, struck through
+  once gone. A file link takes `:line` or `:line:col`. The kit's `TextView::links` takes a
+  `TextLinks` that paints each link, builds the card hovering it shows (through zz-gpui's
+  `PartTooltip`, the tooltip machinery `InteractiveText` uses) and takes its clicks before the OS
+  would. A click dispatches `OpenLink`, which Driver mode turns into `DriverPaletteEvent::Open`
+  and the workspace into `command::palette::open_link`: a host attaches or reconnects, a session,
+  window or pane is switched to as the palette's `@` mode does, and a file's path is pasted into
+  the active pane, in scp form when it is on another host. The platform key with a click
+  dispatches `MentionLink`, which puts the mention in the composer, and a right click copies it.
 
 Not yet: the web and iPad clients, peer-bus messages (they arrive as plain user turns and show as
 yours), and an unwatch message, so a client keeps getting the stream of

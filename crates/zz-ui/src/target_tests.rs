@@ -41,7 +41,7 @@ fn pane(id: u64, title: &str, program: Option<&'static str>) -> TargetPane {
     }
 }
 
-fn hosts() -> Vec<TargetHost> {
+pub(crate) fn hosts() -> Vec<TargetHost> {
     vec![
         TargetHost {
             id: PaletteHostId(0),

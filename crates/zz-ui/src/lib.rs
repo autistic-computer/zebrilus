@@ -36,6 +36,7 @@ pub mod command;
 pub mod compact;
 pub mod feedback;
 pub mod interface_theme;
+pub mod link;
 pub mod mend;
 pub mod motion;
 pub mod navigation;

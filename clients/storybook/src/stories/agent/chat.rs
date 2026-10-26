@@ -68,6 +68,12 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(messages, cx),
         },
         Section {
+            id: "links",
+            name: "Links",
+            summary: "zz links: a Markdown link whose destination is a target, [cargo test](@xps:work:1.%8) or [atlas.rs:212](@xps:~/dev/zz/crates/atlas/src/atlas.rs:212), and a bare @xps:work:2 in prose, which the bubble makes a link when its host is written or what it names is there. Your own mentions are links too. A link reads the fleet as it is: underlined in the accent (your ink on your bubbles) while what it names is there, muted while its host is offline or connecting, struck through once it is gone. Hover one for its card: what it names, where, and whether it is up. A click goes there (attaches the host, switches to the session, window or pane, or pastes a file's path into the pane you came from), the platform key with a click mentions it in the composer, and a right click copies it.",
+            build: |_, cx| stateless(links, cx),
+        },
+        Section {
             id: "composer",
             name: "Composer",
             summary: "ChatComposer as Driver mode draws it: a pill on the palette with + to start an @ mention, the field, and the round send button. While the driver works, the button steers it with what you typed, and with the field empty it stops the driver. Click a field to focus it.",
@@ -315,6 +321,38 @@ fn messages(_: &mut Window, cx: &mut App) -> AnyElement {
                     )
                     .into_any_element(),
                 ]),
+                cx,
+            ),
+        )
+        .into_any_element()
+}
+
+const LINKED_ANSWER: &str = "The atlas tests broke in [cargo test](@xps:work:1.%8), see [atlas.rs:212](@xps:~/dev/zz/crates/atlas/src/atlas.rs:212). [Codex](@xps:%9) is reviewing it on @xps:work:2.\n\n@ubuntu is still connecting, and [the old logs window](@xps:work:7) is gone.";
+
+fn links(_: &mut Window, cx: &mut App) -> AnyElement {
+    let hosts: Arc<[TargetHost]> = StoryMentions.hosts(cx).into();
+    states()
+        .columns(2)
+        .state(
+            "the driver's answer: a pane, a file, a bare window, an offline host and a gone window",
+            column(
+                chat_thread([ChatBubble::theirs("links-answer", LINKED_ANSWER, "9:45")
+                    .links(hosts.clone())
+                    .into_any_element()]),
+                cx,
+            ),
+        )
+        .state(
+            "your message: what you mention is a link too",
+            column(
+                chat_thread([ChatBubble::mine(
+                    "links-mine",
+                    "what is @xps:work:1.%8 stuck on? and read @macbook:~/dev/zz/Cargo.toml",
+                    "9:44",
+                )
+                .receipt(Receipt::Read)
+                .links(hosts)
+                .into_any_element()]),
                 cx,
             ),
         )

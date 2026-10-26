@@ -18,6 +18,7 @@ use zz_ui::{
     button::{Button, ButtonVariants as _},
     command::{COMMAND_PALETTE_INSET, CommandPaletteSurface, PaletteStatus, target_picker},
     input::{InputEvent, InputState},
+    link::{MentionLink, OpenLink},
     roles,
     target::{TargetPicker, mention_keys},
 };
@@ -42,6 +43,8 @@ pub(crate) enum DriverPaletteEvent {
     LeaveMode,
     /// The footer's host label: show the driver's terminal.
     ShowTerminal,
+    /// A zz link in the thread: go to what it names.
+    Open(zz_gpui::SharedString),
 }
 
 pub(crate) struct DriverPalette {
@@ -138,19 +141,12 @@ impl DriverPalette {
         Button::compact_icon("driver-mention", IconName::Plus)
             .ghost()
             .tooltip("Mention a host, session or file")
-            .on_click(move |_, window, cx| {
-                input.update(cx, |input, cx| {
-                    let before = input.value()[..input.cursor()].chars().next_back();
-                    let mention = if before.is_none_or(char::is_whitespace) {
-                        "@"
-                    } else {
-                        " @"
-                    };
-                    input.insert(mention, window, cx);
-                    input.focus(window, cx);
-                });
-            })
+            .on_click(move |_, window, cx| mention(&input, "@", window, cx))
             .into_any_element()
+    }
+
+    fn on_mention_link(&mut self, link: &MentionLink, window: &mut Window, cx: &mut Context<Self>) {
+        mention(&self.input, &format!("{} ", link.address), window, cx);
     }
 
     /// The round button at the composer's end: send, or steer while the
@@ -319,6 +315,10 @@ impl Render for DriverPalette {
             .px(px(16.0))
             .pt(window.viewport_size().height * 0.12)
             .capture_key_down(cx.listener(Self::on_key_down))
+            .on_action(cx.listener(|_, link: &OpenLink, _, cx| {
+                cx.emit(DriverPaletteEvent::Open(link.address.clone()));
+            }))
+            .on_action(cx.listener(Self::on_mention_link))
             .map(|overlay| mention_keys(overlay, &self.mention))
             .on_key_up(|_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
@@ -327,4 +327,17 @@ impl Render for DriverPalette {
             })
             .child(surface)
     }
+}
+
+/// Put `text` at the caret, a space before it unless one is there, and
+/// focus the field.
+fn mention(input: &Entity<InputState>, text: &str, window: &mut Window, cx: &mut zz_gpui::App) {
+    input.update(cx, |input, cx| {
+        let before = input.value()[..input.cursor()].chars().next_back();
+        if !before.is_none_or(char::is_whitespace) {
+            input.insert(" ", window, cx);
+        }
+        input.insert(text, window, cx);
+        input.focus(window, cx);
+    });
 }

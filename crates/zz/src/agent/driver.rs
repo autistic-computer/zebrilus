@@ -32,6 +32,8 @@ use zz_ui::{
         presentation::{permission_card, permission_option},
     },
     button::Button,
+    command::target_hosts,
+    target::TargetHost,
 };
 
 use super::controller::{
@@ -819,6 +821,8 @@ impl DriverChat {
 
     /// The bubbles, drawn on `ground`, with ids under `scope`.
     pub(crate) fn bubbles(&self, scope: &'static str, ground: Ground, cx: &App) -> Vec<AnyElement> {
+        let backend = crate::command::palette::palette_backend(self.mux.clone());
+        let hosts: Arc<[TargetHost]> = target_hosts(&backend.tree(cx)).into();
         self.messages(cx)
             .into_iter()
             .map(|message| {
@@ -832,13 +836,16 @@ impl DriverChat {
                 match message.kind {
                     DriverMessageKind::Mine(receipt) => ChatBubble::mine(id, message.text, time)
                         .receipt(receipt)
+                        .links(hosts.clone())
                         .on(ground)
                         .into_any_element(),
                     DriverMessageKind::Driver => ChatBubble::theirs(id, message.text, time)
+                        .links(hosts.clone())
                         .on(ground)
                         .into_any_element(),
                     DriverMessageKind::Agent(pane) => ChatBubble::theirs(id, message.text, time)
                         .sender(self.sender(pane, cx))
+                        .links(hosts.clone())
                         .on(ground)
                         .into_any_element(),
                 }
