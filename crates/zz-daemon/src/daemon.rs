@@ -33582,6 +33582,13 @@ impl Shared {
                 answers,
             },
             ProtocolMessage::AgentStopTask { task_id, .. } => HostCommand::StopTask { task_id },
+            ProtocolMessage::AgentSteer { text, .. } => HostCommand::Steer(AgentPrompt {
+                owner: self
+                    .client_instance_id(client)
+                    .ok_or(ServerError::PaneExited(pane))?,
+                text,
+                images: Vec::new(),
+            }),
             ProtocolMessage::AgentSetConfigOption {
                 option_id, value, ..
             } => HostCommand::SetConfigOption { option_id, value },
@@ -34054,7 +34061,8 @@ fn agent_message_pane(message: &ProtocolMessage) -> Result<PaneId, ServerError> 
         | ProtocolMessage::AgentReplay { pane, .. }
         | ProtocolMessage::AgentAcknowledgePromptRestore { pane, .. }
         | ProtocolMessage::AgentAnswerQuestion { pane, .. }
-        | ProtocolMessage::AgentStopTask { pane, .. } => Ok(*pane),
+        | ProtocolMessage::AgentStopTask { pane, .. }
+        | ProtocolMessage::AgentSteer { pane, .. } => Ok(*pane),
         _ => Err(ServerError::InvalidCommand(
             "not an agent message".to_owned(),
         )),
@@ -53354,7 +53362,8 @@ fn handle_connection_message<S: TransportStream>(
             | ProtocolMessage::AgentReplay { .. }
             | ProtocolMessage::AgentAcknowledgePromptRestore { .. }
             | ProtocolMessage::AgentAnswerQuestion { .. }
-            | ProtocolMessage::AgentStopTask { .. }) => {
+            | ProtocolMessage::AgentStopTask { .. }
+            | ProtocolMessage::AgentSteer { .. }) => {
                 let read_only_blocked = !matches!(
                     message,
                     ProtocolMessage::AgentReplay { .. }

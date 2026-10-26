@@ -327,10 +327,18 @@ host once per connection while `driver-agent` is on.
 
 ## Chat UI
 
-The chat lives in the command palette's Driver mode: a `PalettePill::Program` for the driver in the
-input, `driver_palette_body` under it (the thread, at most 360px and scrolling, then the approval
-waiting on you, or the error of a message that did not go through) and `DRIVER_PALETTE_HINTS` in the
-footer. The sidebar keeps only the driver's last word under its list (`chat_latest`): the driver's
+The chat lives in the command palette's Driver mode, as wide as the other modes (560px) and never
+shorter than the palette with its rows full (`driver_palette_thread_least`, from
+`command_palette_full_height`), so `>` keeps the palette's size: `driver_palette_body` on top (the
+thread, its newest message on the input, scrolling, up to 78% of the window less the palette's
+chrome and any approval card, then the approval waiting on you, or the error of a message that did
+not go through), a `ChatComposer` at the bottom like a messaging app's
+(`CommandPaletteSurface::input_last`: a `+` that starts an `@` mention, the field, and the round
+`agent.send` button, which sends, steers while the driver works, and turns into stop while it
+works and the field is empty), and the footer: where the driver runs on the left
+(`driver_palette_place`: the host's status dot and name, the driver's tile; a click shows the
+driver's terminal) and `driver_palette_hints` on the right. The thread opens from nothing in 280 ms (ease-out), so when Driver mode opens the input
+slides from the palette's top to its bottom. The sidebar keeps only the driver's last word under its list (`chat_latest`): the driver's
 header, then its last answer cut to four lines (`ChatBubble::lines`) or `ChatTyping` while it
 works, with a dot in the header while an approval waits. A click on it opens Driver mode, as `>` in an
 empty palette does, and in titlebar mode the title bar's chat button (`workspace_chat_button`,
@@ -339,17 +347,22 @@ dotted with `chat_button` in the color of what waits). The parts are in
 
 | Chat log line | Drawn as |
 |---|---|
-| `user` | `ChatBubble::mine`: right, the `chat.bubble.mine` role in the accent tone, a tail on the right, the time and a `Receipt` |
-| `driver` | `ChatBubble::theirs`: left, the `chat.bubble` role, a tail on the left, no sender line |
+| `user` | `ChatBubble::mine`: right, the `chat.bubble.mine` role filled solid in the accent (prominent), a tail on the right, the time and a `Receipt` |
+| `driver` | `ChatBubble::theirs`: left, the `chat.bubble` role, a tail on the left, no sender line; markdown rendered (lists, code, emphasis, tables) unless it is one paragraph of plain words |
 | `peer` | `ChatBubble::theirs` with a `ChatSender`: the agent's sidebar program tile and name on top |
 | `notice`, `checkpoint` | nothing: workers at work show as sidebar rows above the chat |
 
 A receipt is one tick (`Sent`: zz has it), two (`Delivered`: typed into the driver's pane) or two in
-the accent (`Read`: the driver started a turn on it). `chat_seen` lists the agents a routed answer
+full ink (`Read`: the driver started a turn on it; the others are muted on the accent fill). `chat_seen` lists the agents a routed answer
 reached under it. The bubble and its tail are one painted path, so a translucent fill does not
 double where they meet; a hidden copy of the time at the end of the text keeps the last line clear
-of the stamp. `chat_header` names the driver and its host. `ChatComposer` is one line (the `chat.composer` pill) with the lens composer's round
-send button; there are no pickers, since the driver's model is a setting. Approvals use the lens's
+of the stamp. A markdown answer goes through the kit's `TextView` (the lens's code and figure
+roles, half-rem paragraph gaps, headings at the body's size the way chat apps draw them),
+shrinks to its widest line, and puts the stamp on a line of its own. The zz-driver skill asks the
+driver to write like a message (short paragraphs, one level of bullets, bold and code, no headings,
+rules or tables); the sidebar's four-line cut shows it as plain text, one line per block. `chat_header` names the driver and its host. `ChatComposer` is one line (the `chat.composer` pill, 44px) with an optional button before the
+field and the lens composer's round send button after it; there are no pickers, since the driver's
+model is a setting. Approvals use the lens's
 permission card.
 
 While the driver works, `ChatTyping` takes the place of its answer at the bottom of the thread: a
@@ -372,9 +385,11 @@ Code's own spinner shows the todo item in progress. `driver_steps` reads them fr
 The same step twice in a row shows once. Nothing new is asked of the driver and nothing goes on the
 wire.
 
-The palette's thread scrolls and fades under the input while there is more above (the kit's
-`top_fade`, the mirror of the list's `bottom_fade`); Driver mode calls `scroll_to_bottom` when a
-message arrives. A full chat at the bottom of the sidebar, with a split you dragged, came first and
+The palette's thread scrolls and fades at the top while there is more above and at the bottom
+while there is more below (the kit's `top_fade` and `bottom_fade`); Driver mode calls
+`scroll_to_bottom` when a message arrives. The thread starts one inset below the palette's top edge:
+content clips to a rectangle, so a thread flush with the edge drew into the palette's rounded
+corners while it scrolled. A full chat at the bottom of the sidebar, with a split you dragged, came first and
 went on 2026-10-24: it crowded the list and the composer fought the panes for focus.
 
 The desktop app feeds it from the driver's pane today, through the lens stream, keeping nothing on
@@ -382,14 +397,16 @@ disk yet (`crates/zz/src/agent/driver.rs`):
 
 - **Which pane.** While `driver-agent` is on, the driver is the first terminal running Claude Code or
   Codex in a session named `driver`, on the first host in fleet order that has one. With none on
-  any connected host, zz runs the recovery above (`driver::recover` on a background thread) with
-  `driver_command`: `claude` with `--model` and `--effort`, or `codex` with
-  `-c model_reasoning_effort=` (Codex has no `max`, so it gets `xhigh`). It waits until this
-  machine's daemon has sent its sessions, and 30 s between attempts, so a CLI that exits at once
-  does not loop. Recovery asks every host over ssh itself, so a host zz is still reconnecting to
-  (whose session list `MuxClient::ensure_connected` drops) no longer looks driverless: before
-  2026-10-25 zz started a second, blank driver here whenever the driver's host was reconnecting,
-  and at every launch before the ssh connections were up. When too few hosts answer, the sidebar
+  any connected host, the sidebar keeps `chat_asleep` where the driver's last message goes:
+  "Driver Agent asleep" and a Wake button (`DriverChat::wake`). zz never starts a driver on its own
+  (since 2026-10-26; before, it ran the recovery at every launch with no driver, so each restart of
+  zz spent a packet's worth of tokens). Wake runs the recovery above (`driver::recover` on a
+  background thread) with `driver_command`: `claude` with `--model` and `--effort`, or `codex` with
+  `-c model_reasoning_effort=` (Codex has no `max`, so it gets `xhigh`), once this machine's daemon
+  has sent its sessions. The button reads Waking until a driver shows up, at most 20 s after the
+  recovery found or started one. Recovery asks every host over ssh itself, so a host zz is still
+  reconnecting to (whose session list `MuxClient::ensure_connected` drops) does not look
+  driverless. When too few hosts answer, the sidebar
   keeps `chat_unreachable` where the driver's last message goes: "Driver Agent not running", how
   many hosts answered, and a Start here button that runs the recovery with `--force` on this
   machine. It passes `driver-hosts` as `--on`. Off, zz neither
@@ -407,14 +424,57 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   program tile. Your turn reads two ticks once it is in the transcript and two in the accent once
   the driver did anything after it. Messages that arrive live get the local time; the history
   replayed when zz starts following gets none, since the stream carries no timestamps.
-- **Talking back.** Driver mode's input types into the driver's pane like the lens composer, and
-  queues behind a running turn. The oldest approval waiting in the driver shows as the lens's
-  permission card under the thread; a digit in an empty field picks an option.
+- **Talking back.** Driver mode's input types into the driver's pane like the lens composer. While
+  the driver works, Enter steers it (`AgentSteer`, wire v115: the text goes into the running turn
+  the way typing into its terminal does) and Tab queues the message behind the turn instead, the
+  way Codex splits the two keys. Ctrl-C stops the driver's turn (the lens sends Esc, as you would in
+  its terminal) unless the input has a selection. Up in an empty field takes your last message
+  back: messages still queued come back from the daemon (`AgentUnqueue`) into the field; otherwise
+  the text of the last one you sent fills it, and if the driver had not answered it yet its turn
+  stops first. Claude Code's `[Request interrupted by user]` turn shows no bubble. The oldest
+  approval waiting in the driver shows as the lens's permission card under the thread; a digit in an
+  empty field picks an option.
 - **Where.** Driver mode, a view of its own over the panes (`agent/driver_palette.rs`), opens in either
   layout: `>` typed into an empty command palette switches to it while there is a driver (the
   palette's footer then shows the key), a click on the driver's last message in the sidebar opens it
-  (`SidebarOpenDriver`), and in titlebar mode the title bar's chat button opens it too. Esc closes it
+  (`SidebarOpenDriver`), in titlebar mode the title bar's chat button opens it too, and so does
+  `prefix A` in the desktop app (the `open-driver-chat` chrome action in the client's `prefix`
+  table, which does nothing while there is no driver). Esc closes it
   and Backspace in an empty field goes back to the command palette.
+- **Out of the session lists.** While `driver-agent` is on, the desktop app leaves every session
+  named `driver`, on every host, out of the places you switch sessions from: the sidebar's tree and
+  flat list, the command palette's tree, the File menu's Switch Session and the tray
+  (`driver::hidden_session`, applied by `MuxTreeModel::without_session`, the flat sidebar's
+  `listed_summary`, `menus::update_sessions` and `tray::facts_from`). Its windows, bells, agent
+  badges and needs-you counts leave the host rows with it, and so do its chimes and banners, since
+  the sidebar reads those from the same tree. The session you are attached to stays in the tree and
+  the flat list, so a driver you went to keeps its rows until you switch away. The CLI,
+  `list-sessions`, `choose-tree`, command-line completion, the status bar and the daemon still see
+  it, and so do the web and iPad clients, which have no Driver mode and no `driver-agent` setting.
+  With the setting off, a session called `driver` is listed like any other.
+- **Its terminal.** `WorkspaceView::show_driver_terminal` attaches to the driver's host and session
+  and selects its pane (`nav::pane_activation`, which the tray's Focus Pane uses too). Driver mode's
+  footer host label sends `DriverPaletteEvent::ShowTerminal` for it, and a right click on the
+  driver's last message in the sidebar offers Show terminal (`SidebarShowDriverTerminal`).
+- **Mentions.** `@` in the input opens the palette's target picker floating over it
+  (`zz_ui::target::TargetPicker::for_composer`, made by `zz_ui::command::target_picker` over the
+  desktop's palette backend, laid over the rows with `CommandPaletteSurface::over_input`, with
+  only as many rows as fit above the input, `TargetPicker::fit`, so it never reaches past the
+  window). The grammar, rows and keys are the command palette's `@` mode
+  ([Targets](/concepts/command-palette.md#targets)): tmux's target with an optional host,
+  `work:2.%7`, `xps:work`, `%7`, or a file in scp form, `~/dev/` or `xps:/etc/`, a target without a
+  host meaning the host the window is attached to. Tab completes the highlighted row and opens
+  what is under it, Up and Down move, Enter puts the finished mention in with a space after it,
+  and Esc closes only the picker until the cursor leaves the word; those are the input's own
+  actions captured around it, so Driver mode's key handler never sees them. A mention always goes
+  in with its host written (`@main:` inserts `@macbook:main:1`), since the driver may run
+  elsewhere: this machine goes by its hostname, the sidebar's (`sidebar::local_hostname`). The
+  driver's own session is not listed while `driver-agent` is on, as in every session list. A
+  session whose name tmux could not read back goes in as `$id`, a window by its index, a pane as
+  `%id`, and a space in a file name as `\ `. Files come from the host that has them over its own
+  connection, with any terminal there as the anchor; a daemon lists a dir that names its own
+  root (absolute or `~`) through a pane in a session the client is not attached to. The message
+  goes out as plain text, and the zz-driver skill tells the driver what a mention means.
 
 Not yet: the web and iPad clients, peer-bus messages (they arrive as plain user turns and show as
 yours), and an unwatch message, so a client keeps getting the stream of

@@ -61,6 +61,9 @@ pub(crate) enum AgentRequest {
         text: String,
         images: Vec<zz_protocol::AgentImage>,
     },
+    Steer {
+        text: String,
+    },
     Cancel,
     Unqueue,
     RespondPermission {
@@ -403,6 +406,13 @@ pub(crate) enum PathPickerUpdate {
         marks: Vec<(String, GitMark)>,
     },
     Close,
+}
+
+/// A listing asked of `host` with [`MuxClient::request_host_path_list`], for
+/// pickers that list files on any host rather than in the attached session.
+pub(crate) struct HostPathListUpdate {
+    pub(crate) host: HostId,
+    pub(crate) update: PathPickerUpdate,
 }
 
 /// A pasted image a terminal pane asked to reopen.
@@ -1112,7 +1122,7 @@ pub struct MuxClient {
     pane_images: BTreeMap<PaneId, PaneImageSnapshots>,
     pasted_image_assemblies: BTreeMap<(PaneId, u32), PastedImageAssembly>,
     pending_pasted_image_previews: BTreeSet<(PaneId, u32)>,
-    path_list_requests: BTreeSet<u64>,
+    host_path_lists: BTreeSet<(HostId, u64)>,
     artifact_fetches: BTreeMap<u64, ArtifactFetch>,
     #[cfg(test)]
     path_list_sink: Option<std::rc::Rc<std::cell::RefCell<Vec<ProtocolMessage>>>>,
@@ -1268,7 +1278,7 @@ impl MuxClient {
             pane_images: BTreeMap::new(),
             pasted_image_assemblies: BTreeMap::new(),
             pending_pasted_image_previews: BTreeSet::new(),
-            path_list_requests: BTreeSet::new(),
+            host_path_lists: BTreeSet::new(),
             artifact_fetches: BTreeMap::new(),
             #[cfg(test)]
             path_list_sink: None,
@@ -3004,7 +3014,15 @@ impl MuxClient {
         }
     }
 
-    pub(crate) fn request_path_list(&mut self, pane: PaneId, dir: Option<String>) -> Option<u64> {
+    /// List `dir` on `host`'s daemon through `pane`, any terminal there: the
+    /// daemon takes an absolute or `~` dir from a client not attached to the
+    /// pane's session. The replies come back as [`HostPathListUpdate`].
+    pub(crate) fn request_host_path_list(
+        &mut self,
+        host: HostId,
+        pane: PaneId,
+        dir: String,
+    ) -> Option<u64> {
         #[cfg(test)]
         if let Some(sink) = &self.path_list_sink {
             let sent = sink
@@ -3016,42 +3034,86 @@ impl MuxClient {
             sink.borrow_mut().push(ProtocolMessage::PathListRequest {
                 request_id,
                 pane,
-                dir,
+                dir: Some(dir),
             });
-            self.path_list_requests.insert(request_id);
+            self.host_path_lists.insert((host, request_id));
             return Some(request_id);
         }
-        let client = self.attached_connection().client.as_ref()?;
-        match client.request_path_list(pane, dir) {
+        let client = self.connections.get(&host)?.client.as_ref()?;
+        match client.request_path_list(pane, Some(dir)) {
             Ok(request_id) => {
-                self.path_list_requests.insert(request_id);
+                self.host_path_lists.insert((host, request_id));
                 Some(request_id)
             }
             Err(error) => {
-                log::warn!("failed to request a path listing: {error}");
+                log::warn!("failed to request a path listing on {host:?}: {error}");
                 None
             }
         }
     }
 
-    pub(crate) fn cancel_path_list(&mut self, request_id: u64) {
-        if self.path_list_requests.remove(&request_id) {
-            self.send_path_list_cancel(request_id);
+    pub(crate) fn cancel_host_path_list(&mut self, host: HostId, request_id: u64) {
+        #[cfg(test)]
+        if let Some(sink) = &self.path_list_sink {
+            if self.host_path_lists.remove(&(host, request_id)) {
+                sink.borrow_mut()
+                    .push(ProtocolMessage::PathListCancel { request_id });
+            }
+            return;
+        }
+        if self.host_path_lists.remove(&(host, request_id))
+            && let Some(client) = self
+                .connections
+                .get(&host)
+                .and_then(|connection| connection.client.as_ref())
+            && let Err(error) = client.cancel_path_list(request_id)
+        {
+            log::warn!("failed to cancel path listing {request_id} on {host:?}: {error}");
         }
     }
 
-    fn send_path_list_cancel(&self, request_id: u64) {
-        #[cfg(test)]
-        if let Some(sink) = &self.path_list_sink {
-            sink.borrow_mut()
-                .push(ProtocolMessage::PathListCancel { request_id });
-            return;
+    /// Hand a listing asked of `host` with [`Self::request_host_path_list`] to
+    /// whoever asked, before the attached session's path picker sees it.
+    fn route_host_path_list(
+        &mut self,
+        host: HostId,
+        message: ProtocolMessage,
+        cx: &mut Context<Self>,
+    ) -> Option<ProtocolMessage> {
+        let asked = |request_id: &u64| self.host_path_lists.contains(&(host, *request_id));
+        let (request_id, finished, update) = match message {
+            ProtocolMessage::PathListBegin { request_id, result } if asked(&request_id) => (
+                request_id,
+                result.is_err(),
+                PathPickerUpdate::Begin { request_id, result },
+            ),
+            ProtocolMessage::PathListChunk {
+                request_id,
+                entries,
+                done,
+                truncated,
+            } if asked(&request_id) => (
+                request_id,
+                done,
+                PathPickerUpdate::Chunk {
+                    request_id,
+                    entries: entries.into(),
+                    done,
+                    truncated,
+                },
+            ),
+            ProtocolMessage::PathListGit { request_id, marks } if asked(&request_id) => (
+                request_id,
+                false,
+                PathPickerUpdate::Git { request_id, marks },
+            ),
+            message => return Some(message),
+        };
+        if finished {
+            self.host_path_lists.remove(&(host, request_id));
         }
-        if let Some(client) = &self.attached_connection().client
-            && let Err(error) = client.cancel_path_list(request_id)
-        {
-            log::warn!("failed to cancel path listing {request_id}: {error}");
-        }
+        cx.emit(HostPathListUpdate { host, update });
+        None
     }
 
     pub(crate) fn paste_to_pane(&self, pane: PaneId, text: String) -> bool {
@@ -3503,9 +3565,6 @@ impl MuxClient {
 
     fn reset_session_state(&mut self, cx: &mut Context<Self>) {
         let key_table_changed = self.core.key_table().is_some();
-        for request_id in std::mem::take(&mut self.path_list_requests) {
-            self.send_path_list_cancel(request_id);
-        }
         cx.emit(PathPickerUpdate::Close);
         self.reset_client_focus_attach();
         let connection = self.attached_connection_mut();
@@ -4102,6 +4161,7 @@ impl MuxClient {
         };
         let sent = match request {
             AgentRequest::Prompt { text, images } => client.agent_prompt(pane, text, images),
+            AgentRequest::Steer { text } => client.agent_steer(pane, text),
             AgentRequest::Cancel => client.agent_cancel(pane),
             AgentRequest::Unqueue => client.agent_unqueue(pane),
             AgentRequest::RespondPermission {
@@ -4292,6 +4352,9 @@ impl MuxClient {
     }
 
     fn handle_message(&mut self, host: HostId, message: ProtocolMessage, cx: &mut Context<Self>) {
+        let Some(message) = self.route_host_path_list(host, message, cx) else {
+            return;
+        };
         let message = match message {
             ProtocolMessage::Event(Event {
                 payload: EventPayload::Providers(report),
@@ -4995,31 +5058,6 @@ impl MuxClient {
             ProtocolMessage::PastedImageUnavailable { pane, number } => {
                 self.pasted_image_unavailable(pane, number);
             }
-            ProtocolMessage::PathListBegin { request_id, result } => {
-                if result.is_err() {
-                    self.path_list_requests.remove(&request_id);
-                }
-                cx.emit(PathPickerUpdate::Begin { request_id, result });
-            }
-            ProtocolMessage::PathListChunk {
-                request_id,
-                entries,
-                done,
-                truncated,
-            } => {
-                if done {
-                    self.path_list_requests.remove(&request_id);
-                }
-                cx.emit(PathPickerUpdate::Chunk {
-                    request_id,
-                    entries: entries.into(),
-                    done,
-                    truncated,
-                });
-            }
-            ProtocolMessage::PathListGit { request_id, marks } => {
-                cx.emit(PathPickerUpdate::Git { request_id, marks });
-            }
             ProtocolMessage::ArtifactBegin {
                 request_id,
                 mime,
@@ -5221,6 +5259,8 @@ impl EventEmitter<SshPromptRequest> for MuxClient {}
 impl EventEmitter<RemoteInstallOffer> for MuxClient {}
 
 impl EventEmitter<PathPickerUpdate> for MuxClient {}
+
+impl EventEmitter<HostPathListUpdate> for MuxClient {}
 
 fn adjusted_terminal_font_size(current: f32, adjustment: TerminalFontSizeAdjustment) -> f32 {
     (current + adjustment.delta_points())

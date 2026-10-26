@@ -82,8 +82,25 @@ impl Translator {
                 updates.extend(self.tool_results(entry));
                 updates
             }
+            Some("attachment") => self.queued_prompt(entry),
             _ => Vec::new(),
         }
+    }
+
+    /// A message you typed while Claude worked. Claude Code records it as a
+    /// queued command once the running turn takes it in.
+    fn queued_prompt(&self, entry: &Value) -> Vec<Value> {
+        let attachment = &entry["attachment"];
+        if attachment["type"] != "queued_command"
+            || attachment["commandMode"] != "prompt"
+            || attachment["origin"]["kind"] != "human"
+        {
+            return Vec::new();
+        }
+        self.user_text(&json!({
+            "uuid": entry["uuid"],
+            "message": { "content": attachment["prompt"] },
+        }))
     }
 
     pub(crate) fn task_tool_call(&self, task_id: &str) -> Option<String> {

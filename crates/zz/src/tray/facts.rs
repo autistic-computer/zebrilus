@@ -66,6 +66,7 @@ impl Source {
 
 pub(super) fn facts_from(
     snapshot: Option<&MuxSnapshot>,
+    hidden: Option<&str>,
     attention: impl Fn(PaneId) -> Option<AgentAttentionStatus>,
     stale: bool,
 ) -> Option<TrayFacts> {
@@ -75,7 +76,11 @@ pub(super) fn facts_from(
         attention: Vec::new(),
         update_available: stale,
     };
-    for session in &snapshot.sessions {
+    for session in snapshot
+        .sessions
+        .iter()
+        .filter(|session| hidden != Some(session.name.as_str()))
+    {
         facts.sessions.push(Session {
             name: session.name.clone(),
             windows: session.windows.len(),
@@ -248,7 +253,10 @@ mod tests {
             PaneId(3) => Some(AgentAttentionStatus::Working),
             _ => None,
         };
-        let facts = facts_from(Some(&snapshot), attention, true).expect("snapshot facts");
+        let facts = facts_from(Some(&snapshot), None, attention, true).expect("snapshot facts");
+        let hidden =
+            facts_from(Some(&snapshot), Some("work"), attention, true).expect("snapshot facts");
+        assert!(hidden.sessions.is_empty() && hidden.attention.is_empty());
         assert_eq!(
             facts.sessions,
             vec![Session {
@@ -269,10 +277,10 @@ mod tests {
         );
         assert!(facts.update_available);
         snapshot.sessions[0].viewers.clear();
-        let detached = facts_from(Some(&snapshot), attention, false).expect("snapshot facts");
+        let detached = facts_from(Some(&snapshot), None, attention, false).expect("snapshot facts");
         assert!(!detached.sessions[0].attached);
         assert!(!detached.update_available);
-        assert!(facts_from(None, attention, true).is_none());
+        assert!(facts_from(None, None, attention, true).is_none());
     }
 
     #[test]

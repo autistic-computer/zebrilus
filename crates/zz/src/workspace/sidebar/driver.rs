@@ -2,9 +2,14 @@ use zz_gpui::{
     AnyElement, AppContext as _, Context, Entity, IntoElement as _, ParentElement as _,
     SharedString, StatefulInteractiveElement as _, Styled as _, div, px,
 };
-use zz_ui::agent::chat::{ChatBubble, ChatTyping, chat_header, chat_latest, chat_unreachable};
+use zz_ui::{
+    agent::chat::{
+        ChatBubble, ChatTyping, chat_asleep, chat_header, chat_latest, chat_unreachable,
+    },
+    navigation::sidebar::{TreeRowMenuItem, tree_row_menu},
+};
 
-use super::{SidebarOpenDriver, WorkspaceSidebar};
+use super::{SidebarOpenDriver, SidebarShowDriverTerminal, WorkspaceSidebar};
 use crate::{agent::driver::DriverChat, mux::client::MuxClient};
 
 /// How many lines of the driver's last answer the sidebar shows.
@@ -43,25 +48,35 @@ impl WorkspaceSidebar {
     ) -> AnyElement {
         let chat = self.driver.chat.read(cx);
         let (Some(sender), Some(driver)) = (chat.driver_sender(), chat.driver()) else {
-            let Some((answered, hosts)) = chat.unreachable() else {
-                return navigation;
-            };
             let ground = self.content_ground(cx);
             let entity = self.driver.chat.clone();
-            return div()
-                .flex()
-                .flex_col()
-                .size_full()
-                .min_h_0()
-                .child(div().flex().flex_col().flex_1().min_h_0().child(navigation))
-                .child(chat_unreachable(
+            let idle = if let Some((answered, hosts)) = chat.unreachable() {
+                chat_unreachable(
                     "workspace-driver-unreachable",
                     answered,
                     hosts,
                     ground,
                     move |_, _, cx| entity.update(cx, DriverChat::start_here),
                     cx,
-                ))
+                )
+            } else if chat.asleep(cx) {
+                chat_asleep(
+                    "workspace-driver-asleep",
+                    chat.waking(),
+                    ground,
+                    move |_, _, cx| entity.update(cx, DriverChat::wake),
+                    cx,
+                )
+            } else {
+                return navigation;
+            };
+            return div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .min_h_0()
+                .child(div().flex().flex_col().flex_1().min_h_0().child(navigation))
+                .child(idle)
                 .into_any_element();
         };
         let ground = self.content_ground(cx);
@@ -86,16 +101,21 @@ impl WorkspaceSidebar {
                 .into_any_element()
         });
         let header = chat_header(&sender, driver.host_name.clone(), attention, cx);
+        let sidebar = cx.entity().downgrade();
+        let show_terminal = TreeRowMenuItem::new("Show terminal", move |_, cx| {
+            let _ = sidebar.update(cx, |_, cx| cx.emit(SidebarShowDriverTerminal));
+        });
         div()
             .flex()
             .flex_col()
             .size_full()
             .min_h_0()
             .child(div().flex().flex_col().flex_1().min_h_0().child(navigation))
-            .child(
+            .child(tree_row_menu(
                 chat_latest("workspace-driver-latest", header, message, cx)
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(SidebarOpenDriver))),
-            )
+                vec![show_terminal],
+            ))
             .into_any_element()
     }
 }

@@ -184,6 +184,7 @@ pub struct AgentTranscript<I> {
     plan_entry: Option<u64>,
     suppress_user_echo: bool,
     echo_target: Option<u64>,
+    echo_message: Option<String>,
     decode_image: ImageDecoder<I>,
 }
 
@@ -207,6 +208,7 @@ impl<I> AgentTranscript<I> {
             plan_entry: None,
             suppress_user_echo: false,
             echo_target: None,
+            echo_message: None,
             decode_image,
         }
     }
@@ -266,6 +268,7 @@ impl<I> AgentTranscript<I> {
         });
         self.suppress_user_echo = true;
         self.echo_target = Some(id);
+        self.echo_message = None;
     }
     pub fn apply_update(&mut self, update: SessionUpdate) {
         match update {
@@ -335,14 +338,22 @@ impl<I> AgentTranscript<I> {
         self.entry_changes.push_back((revision, index));
     }
 
+    /// The first user chunk of a turn [`Self::begin_prompt`] opened echoes
+    /// the prompt already shown, and so does any chunk of that message. A
+    /// user chunk under another message id is one typed mid-turn.
     fn apply_message_chunk(&mut self, role: StreamRole, chunk: ContentChunk) {
         if role == StreamRole::User && self.suppress_user_echo {
-            if let Some(target) = self.echo_target.take()
-                && let Some(message_id) = chunk.message_id
-            {
-                self.set_message_id(target, message_id.0.to_string());
+            let message_id = chunk.message_id.as_ref().map(|id| id.0.to_string());
+            if let Some(target) = self.echo_target.take() {
+                if let Some(message_id) = &message_id {
+                    self.set_message_id(target, message_id.clone());
+                }
+                self.echo_message = message_id;
+                return;
             }
-            return;
+            if message_id.is_none() || message_id == self.echo_message {
+                return;
+            }
         }
         self.append_chunk(role, chunk);
     }
@@ -786,6 +797,7 @@ impl<I> AgentTranscript<I> {
         self.pending_permissions = Arc::from([]);
         self.suppress_user_echo = false;
         self.echo_target = None;
+        self.echo_message = None;
         self.active_stream = None;
     }
 
@@ -1214,15 +1226,17 @@ mod tests {
                 Some("u-1"),
                 Some("zz-command-1-in"),
                 Some("u-2"),
-                Some("u-3")
-            ]
+                Some("u-3"),
+                Some("zz-command-2-in"),
+            ],
+            "a message typed mid-turn gets its own row; the echo again does not"
         );
         let rewind_ids = transcript
             .entries()
             .iter()
             .map(AgentThreadEntry::rewind_id)
             .collect::<Vec<_>>();
-        assert_eq!(rewind_ids, [Some("u-1"), None, None, Some("u-3")]);
+        assert_eq!(rewind_ids, [Some("u-1"), None, None, Some("u-3"), None]);
         assert_eq!(rewind_command("u-3"), "/rewind u-3");
         assert!(is_zz_command("  /rewind u-3"));
         assert!(!is_zz_command("//rewind u-3"));

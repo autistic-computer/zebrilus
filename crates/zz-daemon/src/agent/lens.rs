@@ -25,7 +25,9 @@ use crate::agent::{
     codex_queue,
     host::RuntimeChannels,
     runtime::{RuntimeCommand, RuntimeControl},
-    stream::{AgentPrompt, AgentPromptOutcome, AgentSessionCapabilities, AgentStreamPayload},
+    stream::{
+        AgentPrompt, AgentPromptOutcome, AgentSessionCapabilities, AgentStreamPayload, agent_verb,
+    },
 };
 
 const POLL: Duration = Duration::from_millis(250);
@@ -881,6 +883,31 @@ impl Lens {
         }
     }
 
+    /// Type a `/steer` into the CLI without opening a turn, so the one
+    /// running keeps its tracking. Claude Code and Codex read text typed
+    /// mid-turn as steering; text the terminal refuses goes back to the
+    /// composer.
+    fn steer(&mut self, prompt: AgentPrompt) -> Vec<AgentStreamPayload> {
+        let Some(("steer", text)) = agent_verb(&prompt.text) else {
+            return Vec::new();
+        };
+        if text.is_empty() {
+            return Vec::new();
+        }
+        match self.spec.io.submit(text) {
+            Ok(()) => Vec::new(),
+            Err(error) => {
+                log::debug!(target: "zz::agent", "could not steer {}: {error}", self.spec.pane);
+                vec![AgentStreamPayload::PromptsReclaimed {
+                    prompts: vec![AgentPrompt {
+                        text: text.to_owned(),
+                        ..prompt
+                    }],
+                }]
+            }
+        }
+    }
+
     fn cancel(&mut self) {
         if let Some(turn) = self.turn.as_mut() {
             turn.cancelled = true;
@@ -926,6 +953,7 @@ impl Lens {
         match command {
             RuntimeCommand::Open { .. } => self.open(),
             RuntimeCommand::Prompt { turn_id, prompt } => self.prompt(turn_id, &prompt),
+            RuntimeCommand::Verb { prompt } => self.steer(prompt),
             RuntimeCommand::ListSessions { client, .. } => {
                 vec![AgentStreamPayload::SessionListFailed {
                     client,
@@ -953,8 +981,7 @@ impl Lens {
                 option_id: "legacy-session-mode".to_owned(),
                 message: unsupported.to_owned(),
             }],
-            RuntimeCommand::Verb { .. }
-            | RuntimeCommand::StopTask { .. }
+            RuntimeCommand::StopTask { .. }
             | RuntimeCommand::Authenticate { .. }
             | RuntimeCommand::Shutdown => Vec::new(),
         }
@@ -1172,6 +1199,16 @@ mod tests {
         })
     }
 
+    fn queued(uuid: &str, parent: &str, origin: &str, text: &str) -> Value {
+        json!({
+            "type": "attachment", "uuid": uuid, "parentUuid": parent, "isSidechain": false,
+            "attachment": {
+                "type": "queued_command", "prompt": text, "commandMode": "prompt",
+                "origin": { "kind": origin }, "humanTurn": origin == "human",
+            },
+        })
+    }
+
     fn turn_duration(uuid: &str, parent: &str) -> Value {
         json!({
             "type": "system", "subtype": "turn_duration", "uuid": uuid, "parentUuid": parent,
@@ -1278,6 +1315,80 @@ mod tests {
             AgentStreamPayload::PromptFinished { turn_id: 3, outcome: AgentPromptOutcome::Finished { stop_reason } }
                 if stop_reason == "end_turn"
         )));
+    }
+
+    fn verb(text: &str) -> RuntimeCommand {
+        RuntimeCommand::Verb {
+            prompt: AgentPrompt {
+                text: text.to_owned(),
+                ..AgentPrompt::default()
+            },
+        }
+    }
+
+    #[test]
+    fn a_steer_types_into_the_running_turn_and_lands_as_your_message() {
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "run the tests"));
+        let mut lens = claudes.lens();
+        lens.open();
+        lens.command(RuntimeCommand::Prompt {
+            turn_id: 3,
+            prompt: AgentPrompt {
+                text: "run the tests".to_owned(),
+                ..AgentPrompt::default()
+            },
+        });
+        claudes.record("busy", "");
+        lens.tick();
+        assert!(lens.command(verb("/steer only the fast ones")).is_empty());
+        assert_eq!(
+            *claudes.pane.sent.lock(),
+            ["run the tests", "only the fast ones"]
+        );
+        claudes.line(&tool_use("a1", "u1", "toolu_1", "cargo test"));
+        claudes.line(&queued("q1", "a1", "human", "only the fast ones"));
+        claudes.line(&queued("q2", "q1", "peer", "a peer said hi"));
+        let absorbed = lens.tick();
+        assert_eq!(
+            texts(&absorbed, "user_message_chunk"),
+            ["only the fast ones"]
+        );
+        assert!(
+            !absorbed.iter().any(|payload| matches!(
+                payload,
+                AgentStreamPayload::PromptFinished { .. } | AgentStreamPayload::SessionReset { .. }
+            )),
+            "{absorbed:?}"
+        );
+        claudes.record("idle", "");
+        claudes.line(&answer("a2", "q2", "the fast ones pass"));
+        claudes.line(&turn_duration("d1", "a2"));
+        assert!(lens.tick().iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PromptFinished { turn_id: 3, outcome: AgentPromptOutcome::Finished { stop_reason } }
+                if stop_reason == "end_turn"
+        )));
+    }
+
+    #[test]
+    fn a_steer_the_terminal_refuses_goes_back_to_the_composer() {
+        let mut claudes = Claudes::new();
+        claudes.pane = Arc::new(FakePane {
+            refuse: true,
+            ..FakePane::default()
+        });
+        let mut lens = claudes.lens();
+        lens.open();
+        let refused = lens.command(verb("/steer stop there"));
+        assert!(
+            matches!(
+                &refused[..],
+                [AgentStreamPayload::PromptsReclaimed { prompts }] if prompts[0].text == "stop there"
+            ),
+            "{refused:?}"
+        );
+        assert!(lens.turn.is_none());
     }
 
     #[test]

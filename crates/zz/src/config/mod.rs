@@ -426,10 +426,6 @@ pub(crate) fn palette_window_layout(cx: &App) -> PaletteWindowLayout {
     resolved_config(cx).palette_window_layout.value
 }
 
-pub(crate) fn palette_host_prefix(cx: &App) -> char {
-    resolved_config(cx).palette_host_prefix.value.as_char()
-}
-
 pub(crate) fn palette_show_keys(cx: &App) -> bool {
     resolved_config(cx).palette_show_keys.value
 }

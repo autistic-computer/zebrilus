@@ -48,6 +48,9 @@ pub(crate) type AgentStreamSink =
 #[derive(Debug)]
 pub(crate) enum HostCommand {
     Prompt(QueuedPrompt),
+    /// Type into the turn running now, which the CLI takes as steering;
+    /// with none running it is a prompt.
+    Steer(AgentPrompt),
     Cancel,
     /// Hand the queued prompts back so the composer can refill.
     Unqueue,
@@ -889,6 +892,11 @@ impl PanePump {
                         prompts: vec![queued.into_reclaimed(AgentTurnFailure::Closed)],
                     });
                 }
+                PaneInput::Command(HostCommand::Steer(prompt)) => {
+                    self.emit(AgentStreamPayload::PromptsReclaimed {
+                        prompts: vec![prompt],
+                    });
+                }
                 PaneInput::Command(HostCommand::NewSession {
                     reply: Some(reply), ..
                 }) => {
@@ -937,6 +945,7 @@ impl PanePump {
     fn command(&mut self, command: HostCommand) {
         match command {
             HostCommand::Prompt(prompt) => self.prompt(prompt),
+            HostCommand::Steer(prompt) => self.steer(prompt),
             HostCommand::Cancel => self.cancel(),
             HostCommand::Unqueue => self.reclaim_queue(),
             HostCommand::RespondPermission { response } => match response {
@@ -1404,6 +1413,37 @@ impl PanePump {
         }
         self.queue.push_back(queued);
         self.publish_queue_depth();
+    }
+
+    /// Type `prompt` into the turn running now as the runtime's `/steer`,
+    /// which the lens types into the CLI and Claude Code and Codex take as
+    /// steering. With no turn running, a permission waiting, images, or a
+    /// runtime that cannot steer, it is an ordinary prompt.
+    fn steer(&mut self, prompt: AgentPrompt) {
+        let steerable = {
+            let state = self.state.lock();
+            state.phase == AgentConnectionPhase::Running
+                && state.pending_permissions.is_empty()
+                && (state.capabilities.verbs || self.spec.lens.is_some())
+        };
+        let text = prompt.text.trim();
+        if !steerable || text.is_empty() || !prompt.images.is_empty() {
+            self.prompt(prompt.into());
+            return;
+        }
+        let steer = AgentPrompt {
+            text: format!("/steer {text}"),
+            ..prompt.clone()
+        };
+        if self
+            .commands
+            .try_send(RuntimeCommand::Verb { prompt: steer })
+            .is_err()
+        {
+            self.emit(AgentStreamPayload::PromptsReclaimed {
+                prompts: vec![prompt],
+            });
+        }
     }
 
     fn dispatch(&mut self, queued: QueuedPrompt) {
@@ -2052,6 +2092,14 @@ mod tests {
             ));
         }
 
+        fn steer(&self, text: &str) {
+            self.command(HostCommand::Steer(AgentPrompt {
+                owner: ClientInstanceId::default(),
+                text: text.to_owned(),
+                images: Vec::new(),
+            }));
+        }
+
         fn prompt_waiting(&self, text: &str) -> crossbeam_channel::Receiver<AgentTurnResult> {
             self.prompt_with_policy(text, AgentBlockPolicy::Wait, Arc::default())
         }
@@ -2260,6 +2308,84 @@ mod tests {
                 .iter()
                 .any(|text| text.starts_with("verb /steer"))
         );
+        fixture.close();
+    }
+
+    #[test]
+    fn a_steer_rides_the_running_turn_and_is_a_prompt_when_idle() {
+        let fixture = Fixture::open_with_runner(Box::new(|channels| {
+            Box::pin(async move {
+                let send = |payload| channels.events.send(payload);
+                let text = |text: String| AgentStreamPayload::Update {
+                    update: serde_json::json!({
+                        "sessionUpdate": "agent_message_chunk",
+                        "content": { "type": "text", "text": text },
+                    }),
+                };
+                send(AgentStreamPayload::Ready {
+                    agent_name: "Claude Code".to_owned(),
+                    agent_key: "claude-code".to_owned(),
+                    auth_methods: Vec::new(),
+                    capabilities: AgentSessionCapabilities {
+                        verbs: true,
+                        ..AgentSessionCapabilities::default()
+                    },
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                send(AgentStreamPayload::SessionReady {
+                    session_id: "s".to_owned(),
+                    modes: None,
+                    config_options: None,
+                })
+                .await
+                .map_err(|error| error.to_string())?;
+                let mut running = None;
+                while let Ok(command) = channels.commands.recv().await {
+                    let payloads = match command {
+                        RuntimeCommand::Prompt { turn_id, prompt } => {
+                            running = Some(turn_id);
+                            vec![text(format!("prompt {}", prompt.text))]
+                        }
+                        RuntimeCommand::Verb { prompt } => {
+                            let mut payloads = vec![text(format!("verb {}", prompt.text))];
+                            payloads.extend(running.take().map(|turn_id| {
+                                AgentStreamPayload::PromptFinished {
+                                    turn_id,
+                                    outcome: AgentPromptOutcome::Finished {
+                                        stop_reason: serde_json::json!("end_turn"),
+                                    },
+                                }
+                            }));
+                            payloads
+                        }
+                        RuntimeCommand::Shutdown => break,
+                        _ => Vec::new(),
+                    };
+                    for payload in payloads {
+                        send(payload).await.map_err(|error| error.to_string())?;
+                    }
+                }
+                Ok(())
+            })
+        }));
+        fixture.wait_for_session();
+        fixture.steer("go left");
+        fixture
+            .recorder
+            .wait("the idle steer as a prompt", |payload| {
+                chunk_text(payload) == Some("prompt go left")
+            });
+        assert_eq!(fixture.state().phase, AgentConnectionPhase::Running);
+        fixture.steer("  go right ");
+        fixture
+            .recorder
+            .wait("the turn the steer finished", |payload| {
+                matches!(payload, AgentStreamPayload::PromptFinished { .. })
+            });
+        let texts = chunk_texts(&fixture.recorder.payloads());
+        assert_eq!(texts, ["prompt go left", "verb /steer go right"]);
+        assert_eq!(fixture.state().queued_prompts, 0);
         fixture.close();
     }
 

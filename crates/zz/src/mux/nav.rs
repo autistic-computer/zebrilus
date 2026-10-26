@@ -163,6 +163,17 @@ impl MuxTreeModel {
     }
 
     #[must_use]
+    pub fn without_session(mut self, hidden: Option<&str>) -> Self {
+        if hidden.is_some() {
+            for host in &mut self.hosts {
+                host.sessions
+                    .retain(|session| lists_session(hidden, &session.name, session.active));
+            }
+        }
+        self
+    }
+
+    #[must_use]
     pub fn is_expandable(&self, node: TreeNode) -> bool {
         match node {
             TreeNode::Host(host) => self.host(host).is_some(),
@@ -547,6 +558,11 @@ pub enum TreeNodeKind {
 }
 
 #[must_use]
+pub fn lists_session(hidden: Option<&str>, name: &str, attached: bool) -> bool {
+    attached || hidden != Some(name)
+}
+
+#[must_use]
 pub fn active_tree_target(
     snapshot: &MuxSnapshot,
     attached: Option<SessionId>,
@@ -664,6 +680,32 @@ pub fn activation_for_target(
             commands: select_pane_commands(pane),
         }),
     }
+}
+
+#[must_use]
+pub fn pane_activation(mux: &MuxClient, host: HostId, pane: PaneId) -> Option<NavActivation> {
+    let (session, window) = mux
+        .fleet_hosts()
+        .find(|(fleet_host, ..)| *fleet_host == host)
+        .and_then(|(.., snapshot)| snapshot)?
+        .sessions
+        .iter()
+        .find_map(|session| {
+            session
+                .windows
+                .iter()
+                .find(|window| window.panes.contains_key(&pane))
+                .map(|window| (session.id, window.id))
+        })?;
+    activation_for_target(
+        host,
+        TreeTarget::Pane(pane),
+        Some(session),
+        Some(window),
+        mux.attached_host(),
+        mux.attached_session(),
+        true,
+    )
 }
 
 pub fn activate_nav(mux: &Entity<MuxClient>, activation: NavActivation, cx: &mut App) {

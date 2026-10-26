@@ -343,7 +343,7 @@ With control or alt held nothing is uppercased: the binding is spelled off the b
 | `crates/zz-protocol/src/key.rs` | `KeyTables`, `KeyEngine` (`handle`, synthetic `Any`, and transient-mode `Any`), `Binding`, `KeyDecision`, `canonical_key`, `input_key_name`, typed-text precedence, and default bindings. |
 | `crates/zz-mux/src/command.rs` | `bind-key`/`unbind-key`/`list-keys`, `send-prefix`, and `set-option prefix` drive these tables. |
 | `crates/zz-daemon/src/keys.rs` | Daemon overlay-action projection and tmux `send-keys` token conversion; it consumes the shared fold and tables. |
-| `crates/zz-client/src/chrome.rs` | Client-side `ui`, `sidebar`, `browser`, and `terminal` chrome tables, resolved before the skin applies an action. |
+| `crates/zz-client/src/chrome.rs` | Client-side `ui`, `sidebar`, `browser`, `terminal`, and `prefix` chrome tables, resolved before the skin applies an action; `prefix` only answers an armed key the daemon's prefix table leaves unbound (desktop default `A`, `open-driver-chat`). |
 | `crates/zz/src/mux/prefix.rs` | The desktop window-root claim that forwards the configured prefix and the daemon-reported armed sequence from local widgets. |
 
 # Related

@@ -35,7 +35,6 @@ use crate::{
 pub(super) use crate::preferences::Preferences;
 
 const PALETTE_LAYOUTS: [(&str, &str); 2] = [("grouped", "Tree"), ("flat", "Flat")];
-const HOST_PREFIXES: [(&str, &str); 2] = [("~", "~"), ("#", "#")];
 
 fn palette_layout_value(preferences: &Preferences) -> &'static str {
     if preferences.palette_grouped {
@@ -215,7 +214,6 @@ pub(super) struct Controls {
     ui_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
-    host_prefix: Entity<SelectState<Vec<SettingsSelectItem>>>,
     zoom: FocusHandle,
     /// Whether the Interface page lists the knobs under Advanced.
     advanced: bool,
@@ -356,32 +354,24 @@ impl Controls {
             window,
             cx,
         );
-        let host_prefix = choice(&HOST_PREFIXES, &preferences.palette_host_prefix, window, cx);
-        for (select, layout) in [(&palette_layout, true), (&host_prefix, false)] {
-            subscriptions.push(cx.subscribe_in(
-                select,
-                window,
-                move |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, _, cx| {
-                    let SelectEvent::Confirm(Some(value)) = event else {
-                        return;
-                    };
-                    if layout {
-                        this.preferences.palette_grouped = value == "grouped";
-                    } else {
-                        value.clone_into(&mut this.preferences.palette_host_prefix);
-                    }
-                    this.preferences.save();
-                    cx.notify();
-                },
-            ));
-        }
+        subscriptions.push(cx.subscribe_in(
+            &palette_layout,
+            window,
+            |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, _, cx| {
+                let SelectEvent::Confirm(Some(value)) = event else {
+                    return;
+                };
+                this.preferences.palette_grouped = value == "grouped";
+                this.preferences.save();
+                cx.notify();
+            },
+        ));
         Self {
             accent,
             panes,
             ui_font,
             terminal_font,
             palette_layout,
-            host_prefix,
             zoom: cx.focus_handle(),
             advanced: false,
             _subscriptions: subscriptions,
@@ -1135,13 +1125,6 @@ impl AppShell {
                 "Navigation layout",
                 cx,
             )),
-            SettingEntry::new("Host prefix")
-                .description("Type it in an empty palette to browse hosts")
-                .control(choice_select(
-                    &self.settings_controls.host_prefix,
-                    "Host prefix",
-                    cx,
-                )),
             SettingEntry::new("Command shortcuts").control(
                 Switch::new("settings-palette-show-keys")
                     .checked(self.preferences.palette_show_keys)

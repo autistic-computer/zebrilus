@@ -86,11 +86,18 @@ discovery. Fleet-host edits use the same rule.
 ## Repeatable chrome bindings
 
 `chrome-keybind = <table>:<key>=<action>` replaces or adds one binding, and
-`chrome-unbind = <table>:<key>` removes one. The allowed tables are `ui`, `sidebar`, `browser`, and
-`terminal`; action names come from `zz_client::ChromeAction`. Keys use the chrome grammar from
+`chrome-unbind = <table>:<key>` removes one. The allowed tables are `ui`, `sidebar`, `browser`,
+`terminal`, and `prefix`; action names come from `zz_client::ChromeAction`. Keys use the chrome grammar from
 `zz-client`, including `D-` for Command/Super and `S-` for Shift. These directives may appear more
 than once, preserve file order, and stay client-side. They are separate from the scalar
 knobs below and from the daemon-owned tmux tables in `zz/mux.conf`.
+
+The `prefix` table holds the key pressed after the prefix, and only for keys the daemon's prefix
+table leaves unbound: a `bind A …` in `zz/mux.conf` wins over it. The desktop binds `prefix A` to
+`open-driver-chat`, which opens the command palette's Driver mode and does nothing while there is no
+Driver Agent. `chrome-keybind = prefix:y=open-driver-chat` moves it, and `chrome-unbind = prefix:A`
+removes it. The key does not show in `list-keys` or the which-key sheet, which read the daemon's
+tables.
 
 The desktop binds `Cmd+1` through `Cmd+9` on macOS and `Ctrl+1` through `Ctrl+9`
 on Linux to `ui:select-window-1` through `ui:select-window-9`. Each number selects
@@ -147,7 +154,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `ui-font-family` | System default | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
-| `driver-agent` | `false` | `true` or `false` | Whether zz keeps a Driver Agent: it follows the first Claude Code or Codex terminal in a session named `driver` on any connected host, and when there is none it runs `zz driver recover`: a live driver on any host is followed, and otherwise one starts on this machine from the newest copy of its chat when most hosts answer ([durable driver chat](/designs/durable-driver-chat.md)); it also starts `zz driver keep` on each connected host. Its chat is the command palette's Driver mode (`>` in an empty palette); the sidebar shows its last message. Off, a driver already running keeps running. Settings › Agents › Driver sets it |
+| `driver-agent` | `false` | `true` or `false` | Whether zz keeps a Driver Agent: it follows the first Claude Code or Codex terminal in a session named `driver` on any connected host, and when there is none it runs `zz driver recover`: a live driver on any host is followed, and otherwise one starts on this machine from the newest copy of its chat when most hosts answer ([durable driver chat](/designs/durable-driver-chat.md)); it also starts `zz driver keep` on each connected host. Its chat is the command palette's Driver mode (`>` in an empty palette); the sidebar shows its last message. On, the sidebar, the command palette's tree, the Switch Session menu and the tray leave `driver` sessions out unless you are attached to one ([durable driver chat](/designs/durable-driver-chat.md)). Off, a driver already running keeps running. Settings › Agents › Driver sets it |
 | `driver-model` | `claude` | `claude`, `opus`, `sonnet`, `fable`, `codex` | What zz starts the driver with: Claude Code on its own default model or with `--model`, or Codex on the model its config names. Applies at the driver's next start |
 | `driver-effort` | `default` | `default`, `low`, `medium`, `high`, `xhigh`, `max` | The driver's `--effort` for Claude Code, or `model_reasoning_effort` for Codex, which takes `max` as `xhigh`; `default` passes nothing. Applies at the driver's next start |
 | `driver-hosts` | empty | host names from `zz/config`, `local` for this machine, separated by commas or spaces | Where a new Driver Agent starts when none runs: the first of these hosts that answered `zz driver recover`, this machine when none did or the list is empty. File-only. |

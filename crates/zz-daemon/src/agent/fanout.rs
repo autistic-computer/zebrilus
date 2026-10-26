@@ -563,6 +563,7 @@ impl AgentFanout {
                 queued.settle(Err(AgentTurnFailure::Reclaimed));
                 return self.reclaim_prompt(pane, queued.prompt);
             }
+            HostCommand::Steer(prompt) => return self.reclaim_prompt(pane, prompt),
             HostCommand::Cancel | HostCommand::Unqueue | HostCommand::RespondPermission { .. } => {
                 AgentStreamPayload::PaneFailed {
                     message: "agent control queue is busy".to_owned(),

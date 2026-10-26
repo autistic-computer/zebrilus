@@ -7,7 +7,7 @@ use crate::{
     mux::{
         client::MuxClient,
         hosts::HostId,
-        nav::{TreeTarget, activate_nav, activation_for_target},
+        nav::{activate_nav, pane_activation},
     },
     workspace::{AppView, sidebar::WorkspaceSidebar},
 };
@@ -77,7 +77,18 @@ pub(crate) fn init_desktop(mux: &Entity<MuxClient>, window: AnyWindowHandle, cx:
     sync_enabled(cx);
     refresh(mux, cx);
     cx.observe(mux, |mux, cx| refresh(&mux, cx)).detach();
-    cx.observe_global::<AppConfig>(sync_enabled).detach();
+    cx.observe_global::<AppConfig>(|cx| {
+        sync_enabled(cx);
+        let mux = cx
+            .global::<DesktopTray>()
+            .mux
+            .as_ref()
+            .and_then(WeakEntity::upgrade);
+        if let Some(mux) = mux {
+            refresh(&mux, cx);
+        }
+    })
+    .detach();
 }
 
 fn sync_enabled(cx: &mut App) {
@@ -107,6 +118,7 @@ fn refresh(mux: &Entity<MuxClient>, cx: &mut App) {
         .find_map(|(host, _, _, snapshot)| (host == HostId::LOCAL).then_some(snapshot).flatten());
     let facts = facts_from(
         snapshot,
+        crate::agent::hidden_session(cx),
         |pane| mux.agent_attention_status(pane),
         mux.stale_daemon().is_some(),
     );
@@ -257,33 +269,7 @@ fn handle_intent(event: TrayEvent, mux: &Entity<MuxClient>, handle: AnyWindowHan
                 }
             }
             TrayEvent::FocusPane(host, pane) => {
-                let client = mux.read(cx);
-                let owner = client
-                    .fleet_hosts()
-                    .find_map(|(fleet_host, _, _, snapshot)| {
-                        if fleet_host != host {
-                            return None;
-                        }
-                        snapshot?.sessions.iter().find_map(|session| {
-                            session
-                                .windows
-                                .iter()
-                                .find(|window| window.panes.contains_key(&pane))
-                                .map(|window| (session.id, window.id))
-                        })
-                    });
-                let activation = owner.and_then(|(session, window)| {
-                    activation_for_target(
-                        host,
-                        TreeTarget::Pane(pane),
-                        Some(session),
-                        Some(window),
-                        client.attached_host(),
-                        client.attached_session(),
-                        true,
-                    )
-                });
-                if let Some(activation) = activation {
+                if let Some(activation) = pane_activation(mux.read(cx), host, pane) {
                     if let Some(sidebar) = sidebar {
                         sidebar.update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
                     }

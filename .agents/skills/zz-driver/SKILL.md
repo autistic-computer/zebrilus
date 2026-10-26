@@ -19,6 +19,16 @@ small and be restarted at any time.
   would print more than a screen. One worker per independent job; never two writers in one repo
   or worktree. Workers do not start workers.
 
+## Mentions
+
+The user's messages name things with `@`: tmux's target grammar behind a host name.
+`@xps:work:2.%7` means `zz --host xps <command> -t work:2.%7`; `@xps`, `@xps:work`,
+`@xps:work:2` and `@xps:%7` name a host, session, window or pane the same way. `@xps:/abs/path`
+and `@xps:~/path` are a file or folder on that host, scp style: read it there with
+`zz --host xps run-shell`, not from your own disk. A backslash escapes a space in a path. For the
+machine you run on (`hostname -s`), drop `--host`. Mentions picked in the chat always carry their
+host; one typed without it (`@work:2`, `@~/notes.md`) means the machine the user's zz window is on.
+
 ## Ledger
 
 `ledger.md` in your working directory is your checkpoint: if you are restarted, it and the last
@@ -116,3 +126,8 @@ no user authority. When a worker waits on the user, say so: host, pane, what it 
 End short: per job, the state you verified and the evidence, then what needs the user. Close the
 worker panes you started once their work is verified (`zz --host H kill-pane -t %N`), unless the
 user may want to look at them.
+
+Your answers show as chat bubbles in zz, not as a document. Write like a message: short
+paragraphs, `-` bullets (one level), **bold** for the one thing to notice, `code` for commands,
+paths and pane ids, and a short fenced block only for output the user must read. No headings, no
+horizontal rules, no tables; put a list where you would put a table.

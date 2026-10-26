@@ -1,17 +1,17 @@
 ---
 type: Concept
 title: Unified palette and tmux command completions
-description: Desktop session, window, and pane navigation alongside command and host search, with shared zz-ui presentation and preserved tmux prompt behavior.
+description: Desktop session, window, and pane navigation alongside command and host search, the `@` target mode that prefix F also opens, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [gpui, command-prompt, tmux, completions, ui]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-26T00:00:00-03:00
 ---
 
 # Overview
 
 The desktop unified palette combines a session, window, and pane tree with command and host search.
 `Cmd-K` and `Cmd-P` open a fresh search on macOS; `Ctrl-Shift-K` and `Ctrl-Shift-P` do so on
-other desktop platforms. View > Choose Window opens the palette in Navigate mode. Daemon
+other desktop platforms. View > Choose Window opens the palette in `@` mode. Daemon
 `choose-tree -s` and `choose-tree -w` requests, including `prefix s`, `prefix w`, remaps, and
 direct commands, use the same tree presentation with their daemon-selected expansion and row.
 The desktop lets the daemon resolve prefix bindings.
@@ -24,31 +24,71 @@ The browser retains its command-prompt adapter.
 | --- | --- | --- |
 | none | Workspace tree, three recent commands, then hosts; typed search groups Navigation, Commands, and Hosts | Attach to a session, switch window, focus pane, execute, or scope according to the selected row |
 | `:` | Command catalog with descriptions, shortcuts, and highlighted-command usage | Execute a command or choose its target |
-| `@` | Navigate: session/window/pane tree, with sessions expanded at first open; search uses flat breadcrumbs | Attach to a session, switch window, or focus pane |
-| `%` | Panes with session/window context, pane kind, and available agent status | Focus pane |
-| `~` | Hosts and their sessions; Left/Right collapse or expand | Scope an online host, connect an offline host, or attach to a session |
+| `@` | A target in zz's grammar: hosts, sessions, windows, panes and files ([below](#targets)) | Switch to a session or window, focus a pane, open a host, or put a file's path at the pane's cursor |
+| `>` | The Driver chat, while there is a driver | See [durable driver chat](/designs/durable-driver-chat.md) |
 
 The default Workspace tree opens the current session to its windows and leaves other sessions
 collapsed. Windows expand to panes. Session, window, and pane rows all activate their targets;
 the disclosure control only toggles the branch. Left/Right collapse or expand tree branches.
-The Navigate view starts with all sessions expanded and windows collapsed. The `%` mode remains
-a direct pane list.
+A host row in the Hosts section opens `@host:`, connecting the host first when it is offline.
 
 Typed search includes descendants hidden by collapsed branches and shows their session/window
-breadcrumbs. The default search keeps Navigation, Commands, and Hosts in separate sections;
-Navigate search stays within navigation targets. A terminal whose agent lens is open carries its
-agent state in the tree and search results.
+breadcrumbs. The default search keeps Navigation, Commands, and Hosts in separate sections.
+A terminal whose agent lens is open carries its agent state in the tree and search results.
 
-Typing a prefix into an empty default search replaces it with a mode Badge. A host scope adds a
-Badge before the mode. Choosing a target command adds its name as another Badge. Backspace on an
-empty field removes one layer: command, mode, then host. Escape and clicking outside close the
+# Targets
+
+The `@` mode, the Driver chat's `@` mentions and `prefix F` share one grammar and one picker,
+`zz_ui::target::TargetPicker` (2026-10-26; before, the palette had `@` Navigate, `%` Pane and `~`
+Host modes, the chat its own picker, and `prefix F` a list under the shell cursor). A target is
+tmux's `-t` with an optional host in front, or a file on a host in scp form:
+
+| Typed | Means |
+| --- | --- |
+| `work:2.%7` | session work, window 2, pane %7, on the host the window is attached to |
+| `%7` | pane %7 there |
+| `~/dev/zz/`, `/etc/` | that folder there |
+| `xps:` | xps's sessions, then its home folder |
+| `xps:work:2` | window 2 of work on xps |
+| `xps:~/src/` | a folder on xps |
+
+Without a host a target means the attached host, the way tmux's `-t` means the current server, and
+a host's name wins over a session with the same name (`parse_target`). Before any `:` the list is
+the sessions here, the other hosts, then `~/`, and typing searches the whole fleet: hosts, then
+each connected host's sessions, windows (by name too) and panes (by program or title), labelled
+as you would type them. After the last `/` typing fuzzy-matches everything under that folder with
+the path picker's ranking, and an empty filter lists the folder's own entries, folders first, with
+git's letter. A folder under one already walked whole is listed from that walk without asking the
+host again.
+
+Tab completes the highlighted row and opens what is under it (`xps` to `xps:`, a session to
+`work:`, a window to `work:2.`, a folder to `src/`); `:`, `.` and `/` typed by hand do the same.
+Enter goes to a session or window, focuses a pane, opens a host, and puts a file or folder at the
+pane's cursor. Backspace at a level's edge removes the whole level (`xps:work:` to `xps:`,
+`~/dev/zz/` to `~/dev/`, `pop_level`), and on an empty field leaves the mode. The footer's Enter
+label says what it does to the highlighted row. Files are listed by the host that has them,
+through the pane a path goes into when it is on that host and any terminal there otherwise
+(`PaletteBackend::list_path`, `MuxClient::request_host_path_list`), so the insert style is that
+pane's: quoted for its shell, `@path` for Claude Code. A path from another host goes in as
+`host:/abs/path`.
+
+`prefix F` (`choose-path`) opens the palette in `@` mode on the pane's folder, or `-c`'s, written
+under `~` on this machine (`CommandPaletteView::new_target`), and the pick goes into that pane.
+The thin clients have the grammar and the session, window and pane levels but list no files.
+
+Keys in the footer and on rows are drawn as key icons, Apple's on macOS and iOS and ISO 9995's
+elsewhere (`zz_gpui_kit::kbd::KeyGlyphs`, [design system](/designs/design-system.md)), and a
+command's tmux shortcut (`C-b c`) as one small cap per key.
+
+Typing a prefix into an empty default search replaces it with a mode Badge. Choosing a target
+command adds its name as another Badge, and a host Badge before it while the command runs on the
+target's host. Backspace on an empty field removes one layer: command, mode, then host. Escape and clicking outside close the
 palette; reopening resets the mode, query, and scope. Up/Down wrap across selectable rows and
 skip headers. Moving beyond the visible rows scrolls only far enough to reveal the selected row,
 including in daemon command prompts. Pointer movement selects the hovered row, and clicking activates it.
 
 Session, window, and pane targets use stable IDs for execution; rows display names and breadcrumbs.
-IDs remain searchable metadata. A host scope restricts search and execution to that host without
-attaching just to browse it. On the attached host, a terminal row whose
+IDs remain searchable metadata. On the attached host, a terminal row whose
 [agent lens](/concepts/agent-lens.md) runtime is open reads `Agent · running`, `Agent · waiting for
 input`, `Agent · idle` or `Agent · failed` from that pane's agent state (`tree_pane` in
 `crates/zz/src/command/palette.rs`), without a duplicate status dot; other terminal rows read
@@ -61,12 +101,11 @@ returns UTF-8 byte ranges for text highlights. Each section sorts matches by sco
 
 # Settings
 
-Settings > Advanced > Command palette exposes three preferences:
+Settings > Advanced > Command palette exposes two preferences:
 
 | Config key | Values | Default |
 | --- | --- | --- |
 | `palette-window-layout` | `grouped`, `flat` | `grouped` |
-| `palette-host-prefix` | `~`, `#` | `~` |
 | `palette-show-keys` | `true`, `false` | `true` |
 
 The `open-command-palette` chrome action lives in the UI key table and can be remapped.

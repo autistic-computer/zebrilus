@@ -4,12 +4,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use zz_client::window_summary::{age_label, summarize_host};
+use zz_client::window_summary::{AttentionRollup, SessionSummary, age_label, summarize_sessions};
 use zz_gpui::{
     AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
     ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
-use zz_protocol::{SessionId, WindowId};
+use zz_protocol::{MuxSnapshot, SessionId, WindowId};
 use zz_ui::{
     command::PaletteHostId,
     menu::PopupMenuItem,
@@ -27,7 +27,9 @@ use super::{WorkspaceSidebar, activate_sidebar};
 use crate::mux::{
     client::MuxClient,
     hosts::{HostId, HostState},
-    nav::{MuxTreeHost, TreeNode, TreeTarget, kill_target_command, new_window_command},
+    nav::{
+        MuxTreeHost, TreeNode, TreeTarget, kill_target_command, lists_session, new_window_command,
+    },
 };
 
 #[derive(Default)]
@@ -63,6 +65,17 @@ fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs())
+}
+
+pub(super) fn listed_summary(
+    snapshot: &MuxSnapshot,
+    host: HostId,
+    hidden: Option<&str>,
+    attached: (HostId, Option<SessionId>),
+) -> (Vec<SessionSummary>, AttentionRollup) {
+    summarize_sessions(snapshot.sessions.iter().filter(|session| {
+        lists_session(hidden, &session.name, attached == (host, Some(session.id)))
+    }))
 }
 
 fn current_window(mux: &MuxClient) -> Option<(PaletteHostId, WindowId)> {
@@ -116,6 +129,8 @@ impl WorkspaceSidebar {
     pub(super) fn render_flat_navigation(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
         let mux = self.mux.read(cx);
         let now = unix_now();
+        let hidden = crate::agent::hidden_session(cx);
+        let attached = (mux.attached_host(), mux.attached_session());
         let hosts = mux
             .fleet_hosts()
             .map(|(id, name, state, snapshot)| {
@@ -128,7 +143,9 @@ impl WorkspaceSidebar {
                     },
                     id != HostId::LOCAL,
                     connection(state, snapshot.is_some()),
-                    snapshot.map(summarize_host).unwrap_or_default(),
+                    snapshot
+                        .map(|snapshot| listed_summary(snapshot, id, hidden, attached))
+                        .unwrap_or_default(),
                     |changed| age_label(changed, now),
                 );
                 host.folded = self.flat_view.folded_hosts.contains(&id);

@@ -1,15 +1,21 @@
-//! Keyboard-shortcut pill: one [`Keystroke`] as a platform-appropriate glyph
-//! string, ⌘⇧A on Apple platforms and Ctrl+Shift+A elsewhere.
+//! Keyboard-shortcut pill: one [`Keystroke`] drawn in the platform's key
+//! glyphs, ⌘⇧A on Apple platforms and ISO 9995's elsewhere, or as text
+//! (⌘⇧A, Ctrl+Shift+A) where there is no room for a cap.
 
 use zz_gpui::{
-    Action, App, AsKeystroke as _, FocusHandle, FontWeight, IntoElement, KeyContext, Keystroke,
-    ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, px,
+    Action, AnyElement, App, AsKeystroke as _, FocusHandle, FontWeight, IntoElement, KeyContext,
+    Keystroke, ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, px,
 };
 
 use crate::{
-    ActiveTheme as _, Ground, Layer, PaintState, Sizable, Size, StyledExt as _, Surface,
-    SurfaceRole, Theme, h_flex, rems_from_px,
+    ActiveTheme as _, Ground, Icon, IconName, Layer, PaintState, Sizable, Size, StyledExt as _,
+    Surface, SurfaceRole, Theme, h_flex, rems_from_px,
 };
+
+const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
+/// How much larger than the text around them key icons draw, to match its
+/// capitals.
+const ICON_SCALE: f32 = 1.2;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 const SEPARATOR: &str = "";
@@ -68,8 +74,12 @@ impl Kbd {
     }
 
     fn cap(&self) -> Keycap {
+        let glyphs = KeyGlyphs {
+            stroke: self.stroke.clone(),
+            lowercase: self.lowercase,
+        };
         Keycap {
-            label: self.text().into(),
+            label: glyphs.into_any_element(),
             surface_role: self.surface_role,
             on: self.on,
             size: self.size,
@@ -183,6 +193,110 @@ fn key_symbol(key: &str) -> String {
     }
 }
 
+/// The icon a key or modifier, in GPUI's key names, draws as on this
+/// platform: Apple's glyph on macOS and iOS, ISO 9995's elsewhere. `None` for
+/// a key drawn by its name.
+#[must_use]
+pub fn key_icon(key: &str) -> Option<IconName> {
+    Some(match key {
+        "ctrl" if APPLE => IconName::KeyControl,
+        "ctrl" => IconName::KeyControlIso,
+        "alt" if APPLE => IconName::KeyOption,
+        "alt" => IconName::KeyAltIso,
+        "shift" => IconName::KeyShift,
+        "cmd" if APPLE => IconName::KeyCommand,
+        "escape" => IconName::KeyEscape,
+        "tab" if APPLE => IconName::KeyTab,
+        "tab" => IconName::KeyTabIso,
+        "enter" => IconName::KeyReturn,
+        "backspace" => IconName::KeyBackspace,
+        "up" => IconName::ArrowUp,
+        "down" => IconName::ArrowDown,
+        "left" => IconName::ArrowLeft,
+        "right" => IconName::ArrowRight,
+        _ => return None,
+    })
+}
+
+/// A keystroke as a row of key icons where the platform has them and names
+/// elsewhere, without a cap: ⌃ then B on a Mac, ✲ then B on Linux. Icons take
+/// the color of the text around them and a little more than its size.
+#[derive(IntoElement, Clone, Debug)]
+pub struct KeyGlyphs {
+    stroke: Keystroke,
+    lowercase: bool,
+}
+
+impl KeyGlyphs {
+    #[must_use]
+    pub const fn new(stroke: Keystroke) -> Self {
+        Self {
+            stroke,
+            lowercase: false,
+        }
+    }
+
+    /// Name the key in lower case, the way tmux spells `C-b`.
+    #[must_use]
+    pub const fn lowercase(mut self) -> Self {
+        self.lowercase = true;
+        self
+    }
+
+    /// Each key of the stroke, modifiers first: its icon, or its name.
+    fn parts(&self) -> Vec<Result<IconName, String>> {
+        let m = &self.stroke.modifiers;
+        let modifiers = [
+            (m.control, "ctrl", MODIFIERS[0]),
+            (m.alt, "alt", MODIFIERS[1]),
+            (m.shift, "shift", MODIFIERS[2]),
+            (m.platform, "cmd", MODIFIERS[3]),
+        ];
+        let key = self.stroke.key.as_str();
+        let mut parts: Vec<Result<IconName, String>> = modifiers
+            .into_iter()
+            .filter(|(held, ..)| *held)
+            .map(|(_, name, text)| key_icon(name).ok_or_else(|| text.to_owned()))
+            .collect();
+        parts.push(key_icon(key).ok_or_else(|| {
+            let name = key_symbol(key);
+            if self.lowercase {
+                name.to_lowercase()
+            } else {
+                name
+            }
+        }));
+        let mut merged: Vec<Result<IconName, String>> = Vec::with_capacity(parts.len());
+        for part in parts {
+            match (merged.last_mut(), part) {
+                (Some(Err(text)), Err(next)) => {
+                    text.push_str(SEPARATOR);
+                    text.push_str(&next);
+                }
+                (_, part) => merged.push(part),
+            }
+        }
+        merged
+    }
+}
+
+impl RenderOnce for KeyGlyphs {
+    fn render(self, window: &mut Window, _: &mut App) -> impl IntoElement {
+        let text = window.text_style().font_size.to_pixels(window.rem_size());
+        let icon = (text * ICON_SCALE).round();
+        h_flex()
+            .flex_none()
+            .items_center()
+            .gap(px(1.0))
+            .children(self.parts().into_iter().map(|part| -> AnyElement {
+                match part {
+                    Ok(name) => Icon::new(name).size(icon).into_any_element(),
+                    Err(text) => SharedString::from(text).into_any_element(),
+                }
+            }))
+    }
+}
+
 impl Styled for Kbd {
     fn style(&mut self) -> &mut StyleRefinement {
         &mut self.style
@@ -207,7 +321,7 @@ impl RenderOnce for Kbd {
 /// accent or other colored fill, where muting would wash it into the color.
 #[derive(IntoElement)]
 pub struct Keycap {
-    label: SharedString,
+    label: AnyElement,
     surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
     size: Size,
@@ -218,7 +332,7 @@ impl Keycap {
     #[must_use]
     pub fn new(label: impl Into<SharedString>) -> Self {
         Self {
-            label: label.into(),
+            label: label.into().into_any_element(),
             surface_role: None,
             on: None,
             size: Size::default(),
@@ -287,7 +401,7 @@ impl RenderOnce for Keycap {
 
 #[cfg(test)]
 mod tests {
-    use super::{Kbd, Keycap};
+    use super::{Kbd, KeyGlyphs, Keycap};
     use crate::{Elevation, Theme, ThemeColor};
     use zz_gpui::Keystroke;
 
@@ -316,6 +430,35 @@ mod tests {
             modified.trim_end_matches('a'),
             Kbd::format(&key("ctrl-a")).trim_end_matches('A')
         );
+    }
+
+    #[test]
+    fn glyphs_draw_keys_with_icons_and_name_the_rest() {
+        use crate::IconName;
+        let parts = |s: &str| KeyGlyphs::new(Keystroke::parse(s).unwrap()).parts();
+        let control = if cfg!(any(target_os = "macos", target_os = "ios")) {
+            IconName::KeyControl
+        } else {
+            IconName::KeyControlIso
+        };
+        assert_eq!(parts("ctrl-c"), [Ok(control.clone()), Err("C".to_owned())]);
+        assert_eq!(
+            KeyGlyphs::new(Keystroke::parse("ctrl-b").unwrap())
+                .lowercase()
+                .parts(),
+            [Ok(control), Err("b".to_owned())]
+        );
+        assert_eq!(parts("up"), [Ok(IconName::ArrowUp)]);
+        assert_eq!(parts("enter"), [Ok(IconName::KeyReturn)]);
+        assert_eq!(parts("1"), [Err("1".to_owned())]);
+        if cfg!(any(target_os = "macos", target_os = "ios")) {
+            assert_eq!(
+                parts("cmd-k"),
+                [Ok(IconName::KeyCommand), Err("K".to_owned())]
+            );
+        } else {
+            assert_eq!(parts("cmd-k"), [Err("Win+K".to_owned())]);
+        }
     }
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]

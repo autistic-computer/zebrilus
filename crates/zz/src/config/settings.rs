@@ -1389,13 +1389,6 @@ impl SettingsView {
                         &[("grouped", "Tree"), ("flat", "Flat")],
                         cx,
                     ))
-                    .child(Self::palette_choice_setting(
-                        ConfigKey::PaletteHostPrefix,
-                        "Host prefix",
-                        resolved.palette_host_prefix.value.as_str(),
-                        &[("~", "~"), ("#", "#")],
-                        cx,
-                    ))
                     .child(Self::boolean_setting(
                         ConfigKey::PaletteShowKeys,
                         "Command shortcuts",
@@ -2352,7 +2345,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::ChromeTintHue
                 | ConfigKey::WindowBackgroundOpacity
                 | ConfigKey::PaletteWindowLayout
-                | ConfigKey::PaletteHostPrefix
                 | ConfigKey::PaletteShowKeys
                 | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
@@ -2466,7 +2458,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::WhichKeyDelay => config.which_key_delay,
         ConfigKey::UseSystemTitlebar
         | ConfigKey::PaletteWindowLayout
-        | ConfigKey::PaletteHostPrefix
         | ConfigKey::PaletteShowKeys
         | ConfigKey::PickerFocusSidebar
         | ConfigKey::WindowBackgroundBlur

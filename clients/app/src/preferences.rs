@@ -39,7 +39,6 @@ pub struct Preferences {
     pub pane_glow_strength: f32,
     pub pane_margin: f32,
     pub palette_grouped: bool,
-    pub palette_host_prefix: String,
     pub palette_show_keys: bool,
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
@@ -72,7 +71,6 @@ impl Default for Preferences {
             pane_glow_strength: 1.0,
             pane_margin: 6.0,
             palette_grouped: true,
-            palette_host_prefix: "~".into(),
             palette_show_keys: true,
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
@@ -135,9 +133,6 @@ impl Preferences {
             *value = bounded(*value, min, max, fallback);
         }
         self.mode = Some(self.theme_mode().as_str().into());
-        if self.palette_host_prefix != "#" {
-            self.palette_host_prefix = "~".into();
-        }
         self.ui_font_family = self.ui_font_family.trim().into();
         self.terminal_font_family = self
             .terminal_font_family
@@ -159,11 +154,6 @@ impl Preferences {
     pub fn palette_settings(&self) -> zz_ui::command::PaletteSettings {
         zz_ui::command::PaletteSettings {
             grouped: self.palette_grouped,
-            host_prefix: if self.palette_host_prefix == "#" {
-                "#"
-            } else {
-                "~"
-            },
             show_keys: self.palette_show_keys,
         }
     }
@@ -529,7 +519,10 @@ mod tests {
         assert_eq!(restored.shown_theme().materials.outline, macos.outline);
         assert_eq!(restored.widget_corner_radius(), macos.radius);
         assert_eq!(restored.sidebar_width, 320.0);
-        let retired = Preferences::decode(r#"{"sidebar":false,"status_agents":false}"#).unwrap();
+        let retired = Preferences::decode(
+            r##"{"sidebar":false,"status_agents":false,"palette_host_prefix":"#"}"##,
+        )
+        .unwrap();
         assert!(!retired.sidebar);
     }
 

@@ -11,7 +11,7 @@ tags:
 - agent
 - program-status
 - design-plan
-timestamp: 2026-10-24T00:00:00-03:00
+timestamp: 2026-10-26T00:00:00-03:00
 ---
 
 # Overview
@@ -28,7 +28,9 @@ the mux tree, so a client that subscribes to all sessions can draw every row wit
 This plan covers the daemon producers, the wire fields, and the view model. The row, header and
 sidebar builders live in `zz_ui::navigation::flat` with a storybook story (`flat-sidebar`). The eye
 button at the bottom right of the sidebar footer switches between the session tree and this list:
-the desktop draws every fleet host from `MuxClient::fleet_hosts` and remembers the choice as
+the desktop draws every fleet host from `MuxClient::fleet_hosts`, leaving out the Driver Agent's
+`driver` session while `driver-agent` is on and you are not attached to it (`listed_summary`, see
+[durable driver chat](/designs/durable-driver-chat.md)), and remembers the choice as
 `flat-sidebar` in `zz/config` (`crates/zz/src/workspace/sidebar/flat.rs`); the web and iPad clients
 draw their one host and keep it in their saved preferences. Row actions open a rename and close menu
 (`FlatMenu`) from a right click or a long press. A window row draws its highlight with

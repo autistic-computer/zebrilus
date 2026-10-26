@@ -101,12 +101,22 @@ pub(crate) fn observe_mux(mux: &Entity<MuxClient>, cx: &mut App) {
         }
     })
     .detach();
+    let mux = mux.downgrade();
+    cx.observe_global::<crate::config::AppConfig>(move |cx| {
+        if let Some(mux) = mux.upgrade() {
+            let snapshot = mux.read(cx).snapshot();
+            update_sessions(&snapshot, cx);
+        }
+    })
+    .detach();
 }
 
 fn update_sessions(snapshot: &zz_protocol::MuxSnapshot, cx: &mut App) {
+    let hidden = crate::agent::hidden_session(cx);
     let names = snapshot
         .sessions
         .iter()
+        .filter(|session| hidden != Some(session.name.as_str()))
         .map(|session| session.name.clone())
         .collect::<BTreeSet<_>>();
     if cx

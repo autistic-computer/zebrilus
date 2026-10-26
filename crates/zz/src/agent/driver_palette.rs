@@ -4,25 +4,44 @@
 use zz_gpui::{
     AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable as _,
     InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton, ParentElement as _, Render,
-    ScrollHandle, Styled as _, Window, div, px,
+    ScrollHandle, Styled as _, Window, div, prelude::FluentBuilder as _, px,
 };
 use zz_ui::{
-    ActiveTheme as _, PaintState,
-    agent::chat::{DRIVER_PALETTE_HINTS, chat_thread, driver_palette_body},
-    command::{CommandPaletteSurface, PalettePill, PaletteStatus, unified_command_palette_input},
+    ActiveTheme as _, IconName, PaintState,
+    agent::{
+        chat::{
+            ChatComposer, chat_thread, driver_palette_body, driver_palette_hints,
+            driver_palette_place, driver_palette_thread_least,
+        },
+        controls::{ComposerAction, composer_action_button},
+    },
+    button::{Button, ButtonVariants as _},
+    command::{COMMAND_PALETTE_INSET, CommandPaletteSurface, PaletteStatus, target_picker},
     input::{InputEvent, InputState},
     roles,
+    target::{TargetPicker, mention_keys},
 };
 
 use super::driver::DriverChat;
 
 const PLACEHOLDER: &str = "Message the driver…";
+/// How much of the window the palette may take in Driver mode, below its
+/// top margin, like the other modes.
+const THREAD_SHARE: f32 = 0.88;
+/// The palette's input, footer and bottom margin, which the thread leaves
+/// room for.
+const CHROME_HEIGHT: f32 = 152.0;
+const THREAD_MIN: f32 = 240.0;
+/// Room an approval card under the thread takes.
+const ASK_HEIGHT: f32 = 170.0;
 
 pub(crate) enum DriverPaletteEvent {
     /// Esc or a click outside: close the palette.
     Close,
     /// Backspace in an empty field: back to the palette's other modes.
     LeaveMode,
+    /// The footer's host label: show the driver's terminal.
+    ShowTerminal,
 }
 
 pub(crate) struct DriverPalette {
@@ -30,6 +49,8 @@ pub(crate) struct DriverPalette {
     input: Entity<InputState>,
     scroll: ScrollHandle,
     shown: usize,
+    /// The `@` picker over the input.
+    mention: Entity<TargetPicker>,
 }
 
 impl EventEmitter<DriverPaletteEvent> for DriverPalette {}
@@ -45,20 +66,27 @@ impl DriverPalette {
             &input,
             window,
             |palette, _, event: &InputEvent, window, cx| match event {
-                InputEvent::PressEnter { shift: false } => palette.send(window, cx),
+                InputEvent::PressEnter { shift: false } => palette.send(false, window, cx),
                 InputEvent::Change => cx.notify(),
                 _ => {}
             },
         )
         .detach();
-        cx.observe(&chat, |_, _, cx| cx.notify()).detach();
+        cx.observe_in(&chat, window, |palette, _, window, cx| {
+            palette.refill(window, cx);
+            cx.notify();
+        })
+        .detach();
         let scroll = ScrollHandle::new();
         scroll.scroll_to_bottom();
+        let backend = crate::command::palette::palette_backend(chat.read(cx).mux().clone());
+        let mention = target_picker(&backend, Some(input.clone()), cx);
         Self {
             chat,
             input,
             scroll,
             shown: 0,
+            mention,
         }
     }
 
@@ -66,12 +94,21 @@ impl DriverPalette {
         self.input.read(cx).focus_handle(cx)
     }
 
-    fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Send the input. While the driver works it steers the running turn, or
+    /// with `queue` waits for the turn to end.
+    fn send(&mut self, queue: bool, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.input.read(cx).value().to_string();
         if text.trim().is_empty() {
             return;
         }
-        if self.chat.update(cx, |chat, cx| chat.send(&text, cx)) {
+        let sent = self.chat.update(cx, |chat, cx| {
+            if queue {
+                chat.send(&text, cx)
+            } else {
+                chat.steer(&text, cx)
+            }
+        });
+        if sent {
             self.input
                 .update(cx, |input, cx| input.set_value("", window, cx));
             self.scroll.scroll_to_bottom();
@@ -79,8 +116,81 @@ impl DriverPalette {
         cx.notify();
     }
 
-    fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+    /// Put messages the daemon handed back from the queue into the input.
+    fn refill(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(text) = self.chat.update(cx, DriverChat::take_reclaimed) else {
+            return;
+        };
+        self.input.update(cx, |input, cx| {
+            let value = input.value();
+            let text = if value.trim().is_empty() {
+                text
+            } else {
+                format!("{text}\n{value}")
+            };
+            input.set_value(text, window, cx);
+        });
+    }
+
+    /// The `+` at the composer's start: it starts a mention at the caret.
+    fn mention_button(&self) -> zz_gpui::AnyElement {
+        let input = self.input.clone();
+        Button::compact_icon("driver-mention", IconName::Plus)
+            .ghost()
+            .tooltip("Mention a host, session or file")
+            .on_click(move |_, window, cx| {
+                input.update(cx, |input, cx| {
+                    let before = input.value()[..input.cursor()].chars().next_back();
+                    let mention = if before.is_none_or(char::is_whitespace) {
+                        "@"
+                    } else {
+                        " @"
+                    };
+                    input.insert(mention, window, cx);
+                    input.focus(window, cx);
+                });
+            })
+            .into_any_element()
+    }
+
+    /// The round button at the composer's end: send, or steer while the
+    /// driver works, and stop while it works and the field is empty.
+    fn action_button(&self, running: bool, cx: &Context<Self>) -> zz_gpui::AnyElement {
+        let typed = !self.input.read(cx).value().trim().is_empty();
+        let stop = running && !typed;
+        let palette = cx.entity();
+        composer_action_button(
+            "driver-send",
+            if stop {
+                ComposerAction::Stop
+            } else {
+                ComposerAction::Send
+            },
+            stop || typed,
+        )
+        .on_click(move |_, window, cx| {
+            palette.update(cx, |palette, cx| {
+                if stop {
+                    palette.chat.update(cx, DriverChat::stop);
+                } else {
+                    palette.send(false, window, cx);
+                }
+            });
+        })
+        .into_any_element()
+    }
+
+    fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let empty = self.input.read(cx).value().is_empty();
+        let modifiers = event.keystroke.modifiers;
+        if modifiers.control
+            && event.keystroke.key == "c"
+            && self.input.read(cx).selected_range().is_empty()
+            && self.chat.update(cx, DriverChat::stop)
+        {
+            cx.stop_propagation();
+            return;
+        }
         match event.keystroke.key.as_str() {
             "escape" => {
                 cx.emit(DriverPaletteEvent::Close);
@@ -88,6 +198,21 @@ impl DriverPalette {
             }
             "backspace" if empty => {
                 cx.emit(DriverPaletteEvent::LeaveMode);
+                cx.stop_propagation();
+            }
+            "tab"
+                if !empty
+                    && modifiers.number_of_modifiers() == 0
+                    && self.chat.read(cx).running(cx) =>
+            {
+                self.send(true, window, cx);
+                cx.stop_propagation();
+            }
+            "up" if empty && modifiers.number_of_modifiers() == 0 => {
+                if let Some(text) = self.chat.update(cx, DriverChat::take_back) {
+                    self.input
+                        .update(cx, |input, cx| input.set_value(text, window, cx));
+                }
                 cx.stop_propagation();
             }
             digit if empty && event.keystroke.modifiers.number_of_modifiers() == 0 => {
@@ -111,24 +236,14 @@ impl DriverPalette {
 }
 
 impl Render for DriverPalette {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let chat = self.chat.clone();
         let layer = cx.theme().layer(roles::PALETTE, PaintState::Rest);
-        let (pills, bubbles) = {
+        let (place, bubbles) = {
             let chat = chat.read(cx);
-            let host = chat.driver().map(|driver| PalettePill::Host {
-                label: driver.host_name.clone(),
-                status: PaletteStatus::Online,
-            });
-            let driver = chat
-                .driver()
-                .and_then(|driver| driver.program)
-                .map(|program| PalettePill::Program {
-                    label: "Driver".into(),
-                    program,
-                });
             (
-                host.into_iter().chain(driver).collect::<Vec<_>>(),
+                chat.driver()
+                    .map(|driver| (driver.host_name.clone(), driver.program)),
                 chat.thread("driver-palette", layer.ground, cx),
             )
         };
@@ -149,17 +264,47 @@ impl Render for DriverPalette {
                     .into_any_element()
             })
         });
-        let surface = CommandPaletteSurface::new(
-            unified_command_palette_input(&self.input, pills, cx),
-            cx.entity_id().as_u64(),
-        )
-        .rows(driver_palette_body(
-            chat_thread(bubbles),
-            ask,
-            &self.scroll,
-            layer.ground.fill,
-        ))
-        .hints(DRIVER_PALETTE_HINTS);
+        let running = chat.read(cx).running(cx);
+        let hints = driver_palette_hints(running, ask.is_some());
+        let chrome = CHROME_HEIGHT + if ask.is_some() { ASK_HEIGHT } else { 0.0 };
+        let viewport = window.viewport_size().height;
+        let thread_height = (viewport * THREAD_SHARE - px(chrome)).max(px(THREAD_MIN));
+        let thread_least = driver_palette_thread_least(viewport);
+        self.mention.update(cx, |mention, _| {
+            mention.fit(thread_least.min(thread_height) + px(COMMAND_PALETTE_INSET));
+        });
+        let composer = ChatComposer {
+            input: self.input.clone(),
+            leading: Some(self.mention_button()),
+            action: self.action_button(running, cx),
+            ground: Some(layer.ground),
+        };
+        let surface = CommandPaletteSurface::new(composer, cx.entity_id().as_u64())
+            .input_last()
+            .rows(driver_palette_body(
+                chat_thread(bubbles),
+                ask,
+                &self.scroll,
+                layer.ground.fill,
+                thread_least,
+                thread_height,
+            ))
+            .hints(hints)
+            .when_some(place, |surface, (host, program)| {
+                let palette = cx.entity();
+                surface.footer_leading(driver_palette_place(
+                    host,
+                    PaletteStatus::Online.color(cx),
+                    program,
+                    move |_, _, cx| {
+                        palette.update(cx, |_, cx| cx.emit(DriverPaletteEvent::ShowTerminal));
+                    },
+                    cx,
+                ))
+            })
+            .when(self.mention.read(cx).is_open(), |surface| {
+                surface.over_input(self.mention.clone())
+            });
         let palette = cx.entity();
         div()
             .id("driver-palette-overlay")
@@ -171,9 +316,10 @@ impl Render for DriverPalette {
             .flex()
             .items_start()
             .justify_center()
-            .px(px(24.0))
-            .pt(px(22.0))
+            .px(px(16.0))
+            .pt(window.viewport_size().height * 0.12)
             .capture_key_down(cx.listener(Self::on_key_down))
+            .map(|overlay| mention_keys(overlay, &self.mention))
             .on_key_up(|_, _, cx| cx.stop_propagation())
             .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                 palette.update(cx, |_, cx| cx.emit(DriverPaletteEvent::Close));

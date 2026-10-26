@@ -20,6 +20,8 @@ enum Call {
     Execute(PaletteHostId, CommandInvocation),
     Connect(PaletteHostId),
     Activate(PaletteHostId, PaletteTarget),
+    List(PaletteHostId, String, Option<PaneId>),
+    Insert(PaneId, String),
 }
 
 type Calls = Rc<RefCell<Vec<Call>>>;
@@ -86,6 +88,32 @@ impl PaletteBackend for FakeBackend {
         self.calls.borrow_mut().push(Call::Activate(host, target));
         true
     }
+
+    fn list_path(
+        &self,
+        host: PaletteHostId,
+        dir: &str,
+        anchor: Option<PaneId>,
+        _: &mut App,
+    ) -> Result<u64, SharedString> {
+        self.calls
+            .borrow_mut()
+            .push(Call::List(host, dir.to_owned(), anchor));
+        Ok(1)
+    }
+
+    fn insert_path(
+        &self,
+        pane: PaneId,
+        _: PaletteHostId,
+        _: &PathListRoot,
+        entry: &PathEntry,
+        _: &mut App,
+    ) {
+        self.calls
+            .borrow_mut()
+            .push(Call::Insert(pane, entry.rel.clone()));
+    }
 }
 
 fn fake_backend(
@@ -139,6 +167,7 @@ fn online_tree() -> PaletteTree {
             active: true,
             windows: vec![PaletteTreeWindow {
                 id: WindowId(1),
+                index: 1,
                 name: "editor".to_owned(),
                 active: true,
                 active_pane: PaneId(10),
@@ -146,6 +175,7 @@ fn online_tree() -> PaletteTree {
                     id: PaneId(10),
                     label: "nvim".to_owned(),
                     detail: "Terminal".into(),
+                    program: None,
                     icon: IconName::SquareTerminal,
                     running: false,
                 }],
@@ -522,44 +552,39 @@ fn unified_palette_modes_targets_and_backspace_keep_input_focus(cx: &mut TestApp
     );
     cx.simulate_keystrokes("backspace");
     cx.run_until_parked();
-    for (prefix, mode) in [
-        ("@", PaletteMode::Window),
-        ("%", PaletteMode::Pane),
-        ("~", PaletteMode::Host),
-    ] {
-        cx.simulate_input(prefix);
+    cx.simulate_input("@");
+    cx.run_until_parked();
+    assert_eq!(
+        palette.read_with(cx, |palette, _| palette.unified.as_ref().unwrap().mode),
+        Some(PaletteMode::Target)
+    );
+    assert!(palette.read_with(cx, |palette, _| palette.target.is_some()));
+    cx.simulate_input("x");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("backspace");
+    cx.run_until_parked();
+    assert_eq!(
+        palette.read_with(cx, |palette, _| palette.unified.as_ref().unwrap().mode),
+        Some(PaletteMode::Target)
+    );
+    cx.simulate_keystrokes("backspace");
+    cx.run_until_parked();
+    assert_eq!(
+        palette.read_with(cx, |palette, _| palette.unified.as_ref().unwrap().mode),
+        None
+    );
+    assert!(palette.read_with(cx, |palette, _| palette.target.is_none()));
+    assert!(cx.update(|window, cx| palette.read(cx).focus(cx).is_focused(window)));
+    for freed in ["%", "~"] {
+        cx.simulate_input(freed);
         cx.run_until_parked();
         assert_eq!(
             palette.read_with(cx, |palette, _| palette.unified.as_ref().unwrap().mode),
-            Some(mode)
+            None,
+            "{freed} is text now"
         );
-        if mode == PaletteMode::Host {
-            cx.simulate_keystrokes("left");
-            cx.run_until_parked();
-            assert!(palette.read_with(cx, |palette, _| {
-                palette.unified.as_ref().unwrap().collapsed.is_empty()
-            }));
-            cx.simulate_keystrokes("right");
-            cx.run_until_parked();
-            assert!(palette.read_with(cx, |palette, _| {
-                palette.unified.as_ref().unwrap().collapsed.is_empty()
-            }));
-        }
-        cx.simulate_input("x");
-        cx.run_until_parked();
         cx.simulate_keystrokes("backspace");
         cx.run_until_parked();
-        assert_eq!(
-            palette.read_with(cx, |palette, _| palette.unified.as_ref().unwrap().mode),
-            Some(mode)
-        );
-        cx.simulate_keystrokes("backspace");
-        cx.run_until_parked();
-        assert_eq!(
-            palette.read_with(cx, |palette, _| palette.unified.as_ref().unwrap().mode),
-            None
-        );
-        assert!(cx.update(|window, cx| palette.read(cx).focus(cx).is_focused(window)));
     }
     cx.simulate_input(DRIVER_PREFIX);
     cx.run_until_parked();
@@ -620,6 +645,100 @@ fn local_palette_activates_targets_through_the_backend(cx: &mut TestAppContext) 
     assert_eq!(
         *calls.borrow(),
         [Call::Activate(LOCAL, PaletteTarget::Window(WindowId(1)))]
+    );
+}
+
+fn target_value(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) -> String {
+    palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string())
+}
+
+#[zz_gpui::test]
+fn at_mode_goes_to_targets_and_drills_and_backs_out_a_level_at_a_time(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls) = backend(online_tree());
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.simulate_input("@");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("tab");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "dev:");
+    cx.simulate_keystrokes("tab");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "dev:1.");
+    cx.simulate_keystrokes("backspace");
+    cx.run_until_parked();
+    assert_eq!(
+        target_value(&palette, cx),
+        "dev:",
+        "backspace goes up a level"
+    );
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+    assert_eq!(
+        *calls.borrow(),
+        [Call::Activate(LOCAL, PaletteTarget::Window(WindowId(1)))]
+    );
+}
+
+#[zz_gpui::test]
+fn prefix_f_lists_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls) = backend(online_tree());
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_target(
+            backend,
+            "~/dev/zz/".to_owned(),
+            Some(PaneId(10)),
+            window,
+            cx,
+        )
+    });
+    cx.run_until_parked();
+    assert_eq!(
+        *calls.borrow(),
+        [Call::List(LOCAL, "~/dev/zz/".to_owned(), Some(PaneId(10)))]
+    );
+    let picker = palette.read_with(cx, |palette, _| palette.target.as_ref().unwrap().0.clone());
+    picker.update(cx, |picker, cx| {
+        picker.apply_begin(
+            "local",
+            1,
+            Ok(PathListRoot {
+                root: "/home/fab/dev/zz".to_owned(),
+                display_root: "~/dev/zz".to_owned(),
+                cwd: Some("/home/fab/dev/zz".to_owned()),
+                insert: zz_protocol::InsertStyle::Shell(zz_protocol::ShellKind::Posix),
+            }),
+            cx,
+        );
+        let entries: Arc<[PathEntry]> = Arc::from([
+            PathEntry {
+                rel: "crates/".to_owned(),
+                kind: zz_protocol::PathKind::Dir,
+                symlink: false,
+            },
+            PathEntry {
+                rel: "crates/zz/src/main.rs".to_owned(),
+                kind: zz_protocol::PathKind::File,
+                symlink: false,
+            },
+        ]);
+        picker.apply_chunk("local", 1, &entries, true, false, cx);
+    });
+    cx.simulate_input("mainrs");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+    assert_eq!(
+        calls.borrow().last(),
+        Some(&Call::Insert(
+            PaneId(10),
+            "crates/zz/src/main.rs".to_owned()
+        ))
     );
 }
 

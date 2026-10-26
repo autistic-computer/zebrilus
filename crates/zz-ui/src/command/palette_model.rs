@@ -17,9 +17,9 @@ use crate::IconName;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaletteMode {
     Command,
-    Window,
-    Pane,
-    Host,
+    /// `@`: a target in zz's grammar, a host, session, window, pane or file
+    /// ([`crate::target`]).
+    Target,
 }
 
 impl PaletteMode {
@@ -27,29 +27,23 @@ impl PaletteMode {
     pub const fn label(self) -> &'static str {
         match self {
             Self::Command => "Command",
-            Self::Window => "Navigate",
-            Self::Pane => "Pane",
-            Self::Host => "Host",
+            Self::Target => "Go to",
         }
     }
 
     #[must_use]
-    pub const fn prefix(self, host_prefix: &'static str) -> &'static str {
+    pub const fn prefix(self) -> &'static str {
         match self {
             Self::Command => ":",
-            Self::Window => "@",
-            Self::Pane => "%",
-            Self::Host => host_prefix,
+            Self::Target => "@",
         }
     }
 
     #[must_use]
-    pub fn from_prefix(value: &str, host_prefix: &str) -> Option<Self> {
+    pub fn from_prefix(value: &str) -> Option<Self> {
         match value {
             ":" => Some(Self::Command),
-            "@" => Some(Self::Window),
-            "%" => Some(Self::Pane),
-            value if value == host_prefix => Some(Self::Host),
+            "@" => Some(Self::Target),
             _ => None,
         }
     }
@@ -78,7 +72,6 @@ impl fmt::Display for PaletteTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PaletteSettings {
     pub grouped: bool,
-    pub host_prefix: &'static str,
     pub show_keys: bool,
 }
 
@@ -86,7 +79,6 @@ impl Default for PaletteSettings {
     fn default() -> Self {
         Self {
             grouped: true,
-            host_prefix: "~",
             show_keys: true,
         }
     }
@@ -133,6 +125,7 @@ pub struct PaletteTreeSession {
 #[derive(Clone, Debug)]
 pub struct PaletteTreeWindow {
     pub id: WindowId,
+    pub index: u32,
     pub name: String,
     pub active: bool,
     pub active_pane: PaneId,
@@ -150,6 +143,8 @@ pub struct PaletteTreePane {
     pub id: PaneId,
     pub label: String,
     pub detail: SharedString,
+    /// The program in the foreground, such as Claude Code.
+    pub program: Option<SharedString>,
     pub icon: IconName,
     pub running: bool,
 }
@@ -217,11 +212,9 @@ pub(crate) struct UnifiedPalette {
     pub command: Option<&'static CommandSpec>,
     pub tree: PaletteTree,
     pub rows: Vec<PaletteEntry>,
-    pub collapsed: BTreeSet<PaletteHostId>,
     expanded: BTreeMap<(PaletteHostId, PaletteTarget), bool>,
     chooser_current_window: Option<u32>,
     pub grouped: bool,
-    pub host_prefix: &'static str,
     pub show_keys: bool,
 }
 
@@ -234,18 +227,15 @@ impl UnifiedPalette {
             command: None,
             tree: PaletteTree::default(),
             rows: Vec::new(),
-            collapsed: BTreeSet::new(),
             expanded: BTreeMap::new(),
             chooser_current_window: None,
             grouped: settings.grouped,
-            host_prefix: settings.host_prefix,
             show_keys: settings.show_keys,
         }
     }
 
     pub fn apply_settings(&mut self, settings: PaletteSettings) {
         self.grouped = settings.grouped;
-        self.host_prefix = settings.host_prefix;
         self.show_keys = settings.show_keys;
     }
 
@@ -275,7 +265,7 @@ impl UnifiedPalette {
     }
 
     pub fn is_navigation_tree(&self) -> bool {
-        self.command.is_none() && matches!(self.mode, None | Some(PaletteMode::Window))
+        self.command.is_none() && self.mode.is_none()
     }
 
     pub fn initial_selection(&self) -> Option<usize> {
@@ -313,13 +303,6 @@ impl UnifiedPalette {
             Some(PaletteAction::Target { host, target, .. }) => {
                 self.expanded.insert((host, target), expanded);
             }
-            Some(PaletteAction::Host(host)) => {
-                if expanded {
-                    self.collapsed.remove(&host);
-                } else {
-                    self.collapsed.insert(host);
-                }
-            }
             _ => return false,
         }
         true
@@ -355,7 +338,7 @@ impl UnifiedPalette {
         }
         if let Some(mode) = self.mode {
             pills.push(PalettePill::Mode {
-                prefix: mode.prefix(self.host_prefix).into(),
+                prefix: mode.prefix().into(),
                 label: mode.label().into(),
             });
         }
@@ -376,15 +359,13 @@ impl UnifiedPalette {
         }
         match self.mode {
             Some(PaletteMode::Command) => "Type a command".to_owned(),
-            Some(PaletteMode::Window) => "Search sessions, windows, panes".to_owned(),
-            Some(PaletteMode::Pane) => "Choose a pane".to_owned(),
-            Some(PaletteMode::Host) => "Choose a host or session".to_owned(),
+            Some(PaletteMode::Target) => "A session, window, pane or ~/file".to_owned(),
             None => {
                 let scope = self
                     .host
                     .and_then(|id| self.tree.host(id))
                     .map_or(String::new(), |host| format!(" {}", host.name));
-                format!("Search{scope}, or type : @ {}", self.host_prefix)
+                format!("Search{scope}, or type : or @")
             }
         }
     }
@@ -499,8 +480,7 @@ impl UnifiedPalette {
     fn navigation_entries(&self, query: &str) -> Vec<PaletteEntry> {
         let tree = self.grouped && query.is_empty() && self.is_navigation_tree();
         let target_kind = self.command.and_then(target_kind);
-        let pane_only =
-            self.mode == Some(PaletteMode::Pane) || target_kind == Some(CommandValueKind::Pane);
+        let pane_only = target_kind == Some(CommandValueKind::Pane);
         let window_only = target_kind == Some(CommandValueKind::Window);
         let scope = self
             .host
@@ -523,7 +503,7 @@ impl UnifiedPalette {
                     .expanded
                     .get(&(host.id, PaletteTarget::Session(session.id)))
                     .copied()
-                    .unwrap_or(self.mode == Some(PaletteMode::Window) || session.active);
+                    .unwrap_or(session.active);
                 if !pane_only && !window_only {
                     let mut entry = session_entry(host, session);
                     entry.row.label = format!("{host_prefix}{}", session.name).into();
@@ -607,31 +587,7 @@ impl UnifiedPalette {
         let show_keys = self.show_keys;
         let shortcut = move |name: &str| show_keys.then(|| shortcut(name)).flatten();
         match self.mode {
-            Some(PaletteMode::Window | PaletteMode::Pane) => {
-                self.rows = self.navigation_entries(query);
-            }
-            Some(PaletteMode::Host) => {
-                let mut rows = Vec::new();
-                for host in &self.tree.hosts {
-                    let Some(mut entry) = host_entry(host).matching(query, "") else {
-                        continue;
-                    };
-                    let open = !self.collapsed.contains(&host.id);
-                    entry.row.expanded = (query.is_empty() && host.connected()).then_some(open);
-                    rows.push(entry);
-                    if query.is_empty() && host.connected() && open {
-                        for session in &host.sessions {
-                            let mut entry = session_entry(host, session);
-                            entry.row.indent = 18.0;
-                            rows.push(entry);
-                        }
-                    }
-                }
-                if !query.is_empty() {
-                    rows.sort_by_key(|entry| entry.score);
-                }
-                self.rows = rows;
-            }
+            Some(PaletteMode::Target) => {}
             Some(PaletteMode::Command) => {
                 self.rows = command_entries(query, availability, &shortcut);
             }
@@ -692,7 +648,7 @@ impl UnifiedPalette {
                         .filter_map(|host| host_entry(host).matching(query, ""))
                         .collect();
                     hosts.sort_by_key(|entry| entry.score);
-                    append_section(&mut rows, "Hosts", self.host_prefix, hosts);
+                    append_section(&mut rows, "Hosts", "@", hosts);
                 }
                 self.rows = rows;
             }
