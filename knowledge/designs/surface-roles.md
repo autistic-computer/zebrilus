@@ -381,7 +381,7 @@ pickers, so `agent_status_pill` and the composer pickers are deleted, and `agent
 |---|---|---|---|---|
 | `agent.bubble` | card | your messages | `ui/agent.rs:2416` | |
 | `agent.composer` | field.multiline | the composer pill the lens and the Driver chat share, a pill in every theme (a taller draft keeps the one-line corner) | `ui/agent/composer.rs` (`Composer`) | took over `chat.composer` 2026-10-26 |
-| `agent.send` | icon-button | send, queue, stop | `ui/agent/controls.rs:42` | stop had no fill, send was solid; fixed, stop takes send's fill |
+| `agent.send` | button | send, stop and queue, and the composer's `+` | `ui/agent/controls.rs` (`composer_action_button`, `composer_add_button`) | stop had no fill, send was solid; fixed, stop takes send's fill. Moved from `icon-button` to `button` 2026-10-26: themes that turn icon-button fills off (macOS, Yaru) left `+` and stop bare. Send and stop draw prominent, `+` and queue neutral, all on the composer's ground |
 | `agent.picker` | field | mode, model and folder pickers | `ui/agent/controls.rs:59` | |
 | `agent.status` | badge | Running, Waiting for you and Exited in an agent pane's header | `ui/agent.rs:3712` (`agent_status_pill`) | was a `pane.chip`, so styling the floating chips restyled it; its own role since 10-15 |
 | `agent.tray` | tab | plan and tasks chips that open the tray over the composer (the queue chip is a quiet button) | `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the tab's selected lift |

@@ -38,6 +38,9 @@
       "hover": "none",
       "selected": "none"
     },
+    "agent.send": {
+      "shape": "pill"
+    },
     "browser.tab": {
       "hover": "tint",
       "selected": "tint"

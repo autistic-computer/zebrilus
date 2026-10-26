@@ -13,7 +13,7 @@ use crate::{
     tooltip::Tooltip,
 };
 
-use super::composer::{COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT};
+use super::composer::{COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, composer_ground};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ComposerAction {
@@ -30,10 +30,13 @@ pub const fn composer_action(active_turn: bool, has_content: bool) -> ComposerAc
     }
 }
 
+/// The round send, queue or stop button at the composer's end, on the
+/// composer's ground so its fill shows against the pill.
 pub fn composer_action_button(
     id: impl Into<ElementId>,
     action: ComposerAction,
     enabled: bool,
+    cx: &App,
 ) -> Button {
     let (icon, tooltip) = match action {
         ComposerAction::Send => (IconName::ArrowUp, "Send message"),
@@ -42,19 +45,21 @@ pub fn composer_action_button(
     };
     Button::compact_icon(id, icon)
         .size(crate::rems_from_px(COMPOSER_BUTTON))
-        .when(action == ComposerAction::Send, ButtonVariants::primary)
+        .when(action != ComposerAction::Queue, ButtonVariants::primary)
         .when(action == ComposerAction::Queue, ButtonVariants::secondary)
         .surface_role(roles::AGENT_SEND)
+        .on(composer_ground(cx))
         .tooltip(tooltip)
         .disabled(!enabled)
 }
 
 /// The round `+` at the composer's start, the size of its send button.
-pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str) -> Button {
+pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, cx: &App) -> Button {
     Button::compact_icon(id, IconName::Plus)
         .size(crate::rems_from_px(COMPOSER_BUTTON))
         .secondary()
         .surface_role(roles::AGENT_SEND)
+        .on(composer_ground(cx))
         .tooltip(tooltip)
 }
 

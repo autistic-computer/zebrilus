@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeSet, HashMap},
     sync::Arc,
 };
-use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, Composer, composer_ground};
+use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, Composer};
 use zz_ui::agent::controls::{
     ComposerAction, agent_queue_chip, composer_action, composer_action_button, composer_add_button,
     context_usage_meter, git_summary_footer,
@@ -1631,8 +1631,8 @@ impl AgentView {
             format!("agent-action-{}", self.pane.0),
             action_kind,
             action_kind != ComposerAction::Send || (can_submit && self.composer_has_content()),
-        )
-        .on(composer_ground(cx));
+            cx,
+        );
         let action = if action_kind == ComposerAction::Stop {
             let controller = self.controller.clone();
             let pane = self.pane;
@@ -1668,8 +1668,8 @@ impl AgentView {
             composer_add_button(
                 format!("agent-mention-{}", self.pane.0),
                 "Mention a host, session or file",
+                cx,
             )
-            .on(composer_ground(cx))
             .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
         };
         let mention = self

@@ -468,7 +468,6 @@ impl LensPane {
                 input: self.input.clone(),
                 running: self.scene.running(),
                 writable: true,
-                attach: false,
                 images: Vec::new(),
                 prefix,
             },

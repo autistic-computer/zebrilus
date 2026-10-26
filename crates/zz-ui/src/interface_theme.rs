@@ -526,6 +526,33 @@ mod tests {
     }
 
     #[test]
+    fn the_composers_buttons_are_filled_in_every_builtin() {
+        use crate::{PaintState, Surface, roles};
+        for (id, theme) in builtin_themes() {
+            for mode in [ThemeMode::Light, ThemeMode::Dark] {
+                let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
+                kit.mode = mode;
+                theme.apply(&mut kit);
+                let pill = kit.layer(roles::AGENT_COMPOSER, PaintState::Rest).ground;
+                for (button, prominent, least) in [("send and stop", true, 1.5), ("+", false, 1.05)]
+                {
+                    let layer = kit.layer(
+                        Surface::new(roles::AGENT_SEND)
+                            .prominent(prominent)
+                            .on(pill),
+                        PaintState::Rest,
+                    );
+                    let ratio = contrast(pill.fill.blend(layer.fill), pill.fill);
+                    assert!(
+                        layer.glass.is_some() || ratio >= least,
+                        "{id} {mode:?} {button} is {ratio:.2}:1 on the composer"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn every_builtin_parses_with_its_id_and_a_name() {
         let ids = builtin_themes()
             .iter()
