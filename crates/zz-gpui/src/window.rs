@@ -4564,6 +4564,38 @@ impl Window {
         result
     }
 
+    /// Paints what `f` paints scaled by `scale` around `origin` and then moved
+    /// by `offset`, clipped to the current content mask. Layout and hit
+    /// testing are not transformed. This method should only be called as part
+    /// of the paint phase of element drawing.
+    pub fn with_paint_scale<R>(
+        &mut self,
+        origin: Point<Pixels>,
+        scale: f32,
+        offset: Point<Pixels>,
+        f: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        self.invalidator.debug_assert_paint();
+        if scale == 1.0 && offset.is_zero() {
+            return f(self);
+        }
+        let scale_factor = self.scale_factor();
+        let origin = origin.scale(scale_factor);
+        let offset = offset.scale(scale_factor);
+        let transform = crate::scene::SceneTransform {
+            scale,
+            offset: point(
+                ScaledPixels(origin.x.0 * (1.0 - scale) + offset.x.0),
+                ScaledPixels(origin.y.0 * (1.0 - scale) + offset.y.0),
+            ),
+            clip: self.content_mask().bounds.scale(scale_factor),
+        };
+        self.next_frame.scene.push_transform(transform);
+        let result = f(self);
+        self.next_frame.scene.pop_transform();
+        result
+    }
+
     pub(crate) fn with_element_opacity<R>(
         &mut self,
         opacity: Option<f32>,

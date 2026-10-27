@@ -18,11 +18,11 @@ use zz_ui::{
         unified_command_palette_input,
     },
     compact::{
-        ArrowDirection, BottomSheet, HostState, PillLabel, ToolKeys, WhichKeyList,
-        arrow_pad_bubble, bottom_sheet, compact_bar_button, compact_floating_bar,
-        compact_floating_group, compact_floating_pill, compact_hud, compact_pane_header,
-        overview_card, overview_choice_row, overview_count, overview_host_row,
-        overview_section_heading, page_dots, sheet_close, sheet_row,
+        ArrowDirection, BENTO_INSET, BentoSpan, BottomSheet, HostState, PillLabel, ToolKeys,
+        WhichKeyList, arrow_pad_bubble, bento_grid, bottom_sheet, compact_bar_button,
+        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
+        compact_pane_header, mini_pane, overview_choice_row, overview_count, overview_host_row,
+        overview_session_heading, page_dots, sheet_close, sheet_row, window_layout,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -966,57 +966,83 @@ impl Phone {
         };
         let placement = placement();
         let bar = compact_floating_bar(
-            compact_floating_pill(
-                "showcase-overview-session",
-                PillLabel {
-                    icon: IconName::Layers,
-                    title: "work".into(),
-                    meta: "macbook · 2 windows".into(),
-                    warning: false,
-                },
-                zz_ui::Icon::new(IconName::ChevronUp)
-                    .size(px(12.0))
-                    .text_color(muted),
+            compact_floating_group(
+                [compact_bar_button(
+                    "showcase-overview-back",
+                    IconName::ChevronLeft,
+                )],
                 &placement,
                 cx,
             ),
             &placement,
             cx,
         )
+        .child(compact_floating_pill(
+            "showcase-overview-host",
+            PillLabel {
+                icon: IconName::Server,
+                title: "macbook".into(),
+                meta: "2 sessions".into(),
+                warning: false,
+            },
+            div(),
+            &placement,
+            cx,
+        ))
         .child(compact_floating_group(
             [
-                compact_bar_button("showcase-overview-settings", IconName::Settings),
-                compact_bar_button("showcase-overview-close", IconName::Xmark),
+                compact_bar_button("showcase-overview-new", IconName::Plus),
+                compact_bar_button("showcase-overview-chat", IconName::Chat),
             ],
             &placement,
             cx,
         ));
-        let sections = OVERVIEW.iter().map(|(index, name, panes)| {
-            v_flex()
-                .child(overview_section_heading(*index, name, None, cx))
-                .child(
-                    h_flex()
-                        .gap(px(zz_ui::compact::OVERVIEW_CARD_GAP))
-                        .px(px(16.0))
-                        .py(px(2.0))
-                        .overflow_hidden()
-                        .children(panes.iter().enumerate().map(
-                            |(slot, (icon, title, current, attention))| {
-                                let id = (*index as usize) * 10 + slot;
-                                overview_card(
-                                    ("showcase-overview-card", id),
-                                    ("showcase-overview-press", id),
-                                    icon.clone(),
-                                    *title,
-                                    (*icon == IconName::SquareTerminal).then(preview),
-                                    *current,
-                                    *attention,
-                                    cx,
-                                )
-                            },
-                        )),
+        let tiles = OVERVIEW
+            .iter()
+            .map(|(index, name, panes)| {
+                let share = 1.0 / panes.len() as f32;
+                let layout = panes
+                    .iter()
+                    .enumerate()
+                    .map(|(slot, (icon, title, current, attention))| {
+                        (
+                            [share * slot as f32, 0.0, share, 1.0],
+                            mini_pane(
+                                icon.clone(),
+                                (panes.len() > 1).then(|| (*title).into()),
+                                (*icon == IconName::SquareTerminal).then(preview),
+                                theme.background,
+                                *current,
+                                *attention,
+                                cx,
+                            )
+                            .into_any_element(),
+                        )
+                    })
+                    .collect();
+                (
+                    BentoSpan::for_window(panes.len()),
+                    zz_ui::compact::window_tile(
+                        ("showcase-overview-window", *index as usize),
+                        ("showcase-overview-press", *index as usize),
+                        *index,
+                        *name,
+                        None,
+                        panes.iter().any(|pane| pane.3),
+                        window_layout(layout),
+                        cx,
+                    )
+                    .into_any_element(),
                 )
-        });
+            })
+            .collect();
+        let sections = [
+            overview_session_heading("work", cx).into_any_element(),
+            div()
+                .px(px(BENTO_INSET))
+                .child(bento_grid(px(PHONE_WIDTH - BENTO_INSET * 2.0), tiles))
+                .into_any_element(),
+        ];
         phone_frame("showcase-phone-overview", cx)
             .bg(theme.surface(Elevation::Panel).fill)
             .children(sections)

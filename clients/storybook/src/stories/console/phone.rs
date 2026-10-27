@@ -9,11 +9,13 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     button::{Button, ButtonVariants as _},
     compact::{
-        ArrowPad, HostState, KeyRow, OVERVIEW_CARD_GAP, PageDot, PillLabel, PillPlacement,
-        PopoverKey, PopoverKeyItem, PopoverKeyTap, ToolKeys, WhichKeyList, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
-        compact_pane_header, overview_card, overview_choice_row, overview_host_empty,
-        overview_host_row, overview_section_heading, overview_session_heading, page_dots,
+        ArrowPad, BENTO_INSET, BentoSpan, HostState, KeyRow, PageDot, PillLabel, PillPlacement,
+        PopoverKey, PopoverKeyItem, PopoverKeyTap, ToolKeys, WhichKeyList, bento_add_tile,
+        bento_grid, compact_bar_button, compact_composer_pill, compact_floating_bar,
+        compact_floating_group, compact_floating_pill, compact_group_dot, compact_hud,
+        compact_pane_header, folding_title_bar, host_tile, host_tile_line, large_title, mini_pane,
+        overview_choice_row, overview_host_empty, overview_session_heading, page_dots,
+        window_layout, window_tile,
     },
     pane::{PaneLens, agent_provider_icon, pane_header_icon_button, pane_lens_button},
     v_flex,
@@ -33,7 +35,7 @@ pub const STORY: Story = Story {
         Section {
             id: "bar",
             name: "Bottom bar",
-            summary: "The pill floating at the bottom of a page, set in from a 55pt screen corner so it runs concentric with it. It turns amber when the page needs attention.",
+            summary: "The bar at the bottom of a pane: back to the host's windows, the pill that pages panes, and the driver chat with a dot while the driver works (accent) or waits on you (amber). The pill is set in from a 55pt screen corner so it runs concentric with it, and turns amber when the page needs attention.",
             build: |_, cx| stateless(bars, cx),
         },
         Section {
@@ -75,13 +77,13 @@ pub const STORY: Story = Story {
         Section {
             id: "overview",
             name: "Overview",
-            summary: "One host per page: its sessions inline, each with its windows' cards, and the host pill that pages hosts with one dot per host. + in the bar makes a new window; a host that is not connected shows why and one thing to do.",
+            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, under the driver's last word, with the message field and settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed; back, the host pill that pages hosts, + and the chat sit in the bar. Tapping a window zooms into the pane it was last on. The large title folds into a frosted bar once the page scrolls it away; a host that is not connected shows why and one thing to do.",
             build: |_, cx| stateless(overview, cx),
         },
         Section {
             id: "drawers",
-            name: "Hosts and New drawers",
-            summary: "The rows of the drawers the overview bar opens: every host with its state, and what + makes.",
+            name: "New drawer",
+            summary: "The rows of the drawer + opens on a host's page: what it makes.",
             build: |_, cx| stateless(drawers, cx),
         },
         Section {
@@ -123,6 +125,9 @@ pub(crate) fn groups() -> Vec<Vec<PageDot>> {
     ]
 }
 
+const SCROLLED: f32 = 72.0;
+const SCROLLED_HEIGHT: f32 = 380.0;
+
 pub(crate) fn placement() -> PillPlacement {
     PillPlacement::new(Some(px(55.0)), px(34.0))
 }
@@ -145,7 +150,22 @@ fn bar(id: &'static str, title: &str, meta: &str, warning: bool, cx: &App) -> im
         &placement,
         cx,
     );
-    phone(compact_floating_bar(pill, &placement, cx), cx)
+    let back = compact_bar_button(format!("{id}-back"), IconName::ChevronLeft);
+    let chat = compact_bar_button(format!("{id}-chat"), IconName::Chat);
+    phone(
+        compact_floating_bar(
+            compact_floating_group([back], &placement, cx),
+            &placement,
+            cx,
+        )
+        .child(pill)
+        .child(
+            compact_floating_group([chat], &placement, cx)
+                .relative()
+                .child(compact_group_dot(cx.theme().accent)),
+        ),
+        cx,
+    )
 }
 
 fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -228,87 +248,273 @@ fn host_bar(id: &'static str, title: &str, meta: &str, page: usize, cx: &App) ->
         &placement,
         cx,
     );
+    let back = compact_bar_button(format!("{id}-back"), IconName::ChevronLeft);
     let new = compact_bar_button(format!("{id}-new"), IconName::Plus);
-    let settings = compact_bar_button(format!("{id}-settings"), IconName::Settings);
-    compact_floating_bar(pill, &placement, cx)
-        .child(compact_floating_group([new, settings], &placement, cx))
-        .into_any_element()
+    let chat = compact_bar_button(format!("{id}-chat"), IconName::Chat);
+    compact_floating_bar(
+        compact_floating_group([back], &placement, cx),
+        &placement,
+        cx,
+    )
+    .child(pill)
+    .child(
+        compact_floating_group([new, chat], &placement, cx)
+            .relative()
+            .child(compact_group_dot(cx.theme().warning)),
+    )
+    .into_any_element()
 }
 
-fn card(id: &'static str, icon: IconName, title: &str, current: bool, cx: &App) -> AnyElement {
-    let muted = cx.theme().foreground.muted();
-    let preview = div()
-        .size_full()
+fn hosts_bar(cx: &App) -> AnyElement {
+    let placement = placement();
+    let leading = div()
+        .size(px(30.0))
         .flex()
         .items_center()
         .justify_center()
-        .text_color(muted)
-        .child(zz_ui::Icon::new(icon.clone()).size(px(20.0)))
-        .into_any_element();
-    overview_card(
-        id,
-        format!("{id}-press"),
+        .child(zz_ui::Icon::new(IconName::Chat).size(px(20.0)));
+    let composer = compact_composer_pill(
+        "hosts-composer",
+        leading,
+        "Message the driver",
+        &placement,
+        cx,
+    );
+    let settings = compact_bar_button("hosts-settings", IconName::Settings);
+    compact_floating_bar(composer, &placement, cx)
+        .child(compact_floating_group([settings], &placement, cx))
+        .into_any_element()
+}
+
+const GRID: f32 = PHONE_WIDTH - BENTO_INSET * 2.0;
+
+fn subtitle(text: &str, cx: &App) -> impl IntoElement {
+    div()
+        .px(px(BENTO_INSET))
+        .pb(px(16.0))
+        .text_size(px(15.0))
+        .line_height(px(20.0))
+        .text_color(cx.theme().foreground.muted())
+        .child(text.to_owned())
+}
+
+fn hosts_page(cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    let tiles = vec![
+        (
+            BentoSpan::new(2, 2),
+            host_tile(
+                "hosts-macbook",
+                "hosts-macbook-press",
+                HostState::Connected,
+                "macbook",
+                "2 sessions · 8 panes",
+                vec![
+                    host_tile_line(theme.warning, "1 waiting", true, cx).into_any_element(),
+                    host_tile_line(theme.success, "2 working", false, cx).into_any_element(),
+                ],
+                cx,
+            )
+            .into_any_element(),
+        ),
+        (
+            BentoSpan::new(2, 2),
+            host_tile(
+                "hosts-xps",
+                "hosts-xps-press",
+                HostState::Connected,
+                "xps",
+                "1 session · 3 panes",
+                vec![host_tile_line(theme.success, "1 working", false, cx).into_any_element()],
+                cx,
+            )
+            .into_any_element(),
+        ),
+        (
+            BentoSpan::new(2, 2),
+            host_tile(
+                "hosts-alienware",
+                "hosts-alienware-press",
+                HostState::Offline,
+                "alienware",
+                "Not connected",
+                vec![
+                    Button::new("hosts-alienware-connect")
+                        .label("Connect")
+                        .into_any_element(),
+                ],
+                cx,
+            )
+            .into_any_element(),
+        ),
+        (
+            BentoSpan::new(2, 2),
+            host_tile(
+                "hosts-ubuntu",
+                "hosts-ubuntu-press",
+                HostState::Connecting,
+                "ubuntu",
+                "Connecting…",
+                vec![
+                    Button::new("hosts-ubuntu-cancel")
+                        .label("Cancel")
+                        .ghost()
+                        .into_any_element(),
+                ],
+                cx,
+            )
+            .into_any_element(),
+        ),
+        (
+            BentoSpan::new(4, 1),
+            bento_add_tile("hosts-add", "Add host", cx).into_any_element(),
+        ),
+    ];
+    v_flex()
+        .pb(px(16.0))
+        .child(large_title("Hosts", cx))
+        .child(subtitle("4 hosts · 2 connected", cx))
+        .child(div().px(px(BENTO_INSET)).child(bento_grid(px(GRID), tiles)))
+}
+
+fn preview(lines: &str, cx: &App) -> AnyElement {
+    div()
+        .font_family(cx.theme().mono_font_family.clone())
+        .text_size(px(5.0))
+        .line_height(px(6.5))
+        .whitespace_nowrap()
+        .text_color(cx.theme().foreground.muted())
+        .children(lines.lines().map(|line| div().child(line.to_owned())))
+        .into_any_element()
+}
+
+fn mini(
+    icon: IconName,
+    title: &str,
+    lines: &str,
+    current: bool,
+    attention: bool,
+    cx: &App,
+) -> AnyElement {
+    mini_pane(
         icon,
-        title.to_owned(),
-        Some(preview),
+        (!title.is_empty()).then(|| title.to_owned().into()),
+        (!lines.is_empty()).then(|| preview(lines, cx)),
+        cx.theme().background,
         current,
-        false,
+        attention,
         cx,
     )
     .into_any_element()
 }
 
 fn host_page(cx: &App) -> impl IntoElement {
-    let row = |cards: Vec<AnyElement>| {
-        div()
-            .flex()
-            .gap(px(OVERVIEW_CARD_GAP))
-            .px(px(16.0))
-            .py(px(2.0))
-            .children(cards)
-    };
-    v_flex()
-        .pb(px(8.0))
-        .child(overview_session_heading("zz", cx))
-        .child(overview_section_heading(1, "daemon", Some("~/dev/zz"), cx))
-        .child(row(vec![
-            card(
-                "overview-cargo",
-                IconName::SquareTerminal,
-                "cargo test",
-                true,
-                cx,
+    let daemon = window_tile(
+        "window-daemon",
+        "window-daemon-press",
+        1,
+        "daemon",
+        Some("~/dev/zz".into()),
+        false,
+        window_layout(vec![
+            (
+                [0.0, 0.0, 0.6, 1.0],
+                mini(
+                    IconName::SquareTerminal,
+                    "cargo test",
+                    "running 214 tests\ntest driver_chat::steps ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
+                    true,
+                    false,
+                    cx,
+                ),
             ),
-            card(
-                "overview-claude",
+            (
+                [0.6, 0.0, 0.4, 0.5],
+                mini(
+                    IconName::File,
+                    "overview.rs",
+                    "fn host_body(\n  &mut self,",
+                    false,
+                    false,
+                    cx,
+                ),
+            ),
+            (
+                [0.6, 0.5, 0.4, 0.5],
+                mini(IconName::SquareTerminal, "perf audit", "", false, false, cx),
+            ),
+        ]),
+        cx,
+    );
+    let site = window_tile(
+        "window-site",
+        "window-site-press",
+        2,
+        "site",
+        Some("~/dev/zz/site".into()),
+        false,
+        window_layout(vec![(
+            [0.0, 0.0, 1.0, 1.0],
+            mini(IconName::Globe, "", "localhost:4321", false, false, cx),
+        )]),
+        cx,
+    );
+    let agents = window_tile(
+        "window-agents",
+        "window-agents-press",
+        3,
+        "agents",
+        None,
+        true,
+        window_layout(vec![
+            (
+                [0.0, 0.0, 0.5, 1.0],
+                mini(IconName::SquareTerminal, "review", "", true, true, cx),
+            ),
+            (
+                [0.5, 0.0, 0.5, 1.0],
+                mini(IconName::SquareTerminal, "fix ci", "", false, false, cx),
+            ),
+        ]),
+        cx,
+    );
+    let notes = window_tile(
+        "window-notes",
+        "window-notes-press",
+        1,
+        "notes",
+        None,
+        false,
+        window_layout(vec![(
+            [0.0, 0.0, 1.0, 1.0],
+            mini(
                 IconName::SquareTerminal,
-                "perf audit",
+                "",
+                "- [ ] fold title on iPad\n- [x] driver drawer",
+                false,
                 false,
                 cx,
             ),
-        ]))
-        .child(overview_section_heading(
-            2,
-            "site",
-            Some("~/dev/zz/site/src/content/docs/guides"),
-            cx,
-        ))
-        .child(row(vec![card(
-            "overview-site",
-            IconName::Globe,
-            "localhost:4321",
-            false,
-            cx,
-        )]))
+        )]),
+        cx,
+    );
+    v_flex()
+        .pb(px(8.0))
+        .child(large_title("macbook", cx))
+        .child(overview_session_heading("zz", cx))
+        .child(div().px(px(BENTO_INSET)).child(bento_grid(
+            px(GRID),
+            vec![
+                (BentoSpan::for_window(3), daemon.into_any_element()),
+                (BentoSpan::for_window(1), site.into_any_element()),
+                (BentoSpan::for_window(2), agents.into_any_element()),
+            ],
+        )))
         .child(overview_session_heading("scratch", cx))
-        .child(overview_section_heading(1, "notes", None, cx))
-        .child(row(vec![card(
-            "overview-notes",
-            IconName::SquareTerminal,
-            "nvim",
-            false,
-            cx,
-        )]))
+        .child(div().px(px(BENTO_INSET)).child(bento_grid(
+            px(GRID),
+            vec![(BentoSpan::for_window(1), notes.into_any_element())],
+        )))
 }
 
 fn empty_page(cx: &App, action: AnyElement, detail: &str) -> impl IntoElement {
@@ -325,11 +531,38 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .columns(2)
         .state(
+            "hosts, where you start",
+            phone(v_flex().child(hosts_page(cx)).child(hosts_bar(cx)), cx),
+        )
+        .state(
             "a connected host",
             phone(
                 v_flex()
                     .child(host_page(cx))
                     .child(host_bar("overview-bar-macbook", "macbook", "2 sessions", 0, cx)),
+                cx,
+            ),
+        )
+        .state(
+            "scrolled, the title folded into the bar",
+            phone(
+                v_flex()
+                    .child(
+                        div()
+                            .relative()
+                            .h(px(SCROLLED_HEIGHT))
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top(px(-SCROLLED))
+                                    .left_0()
+                                    .right_0()
+                                    .child(host_page(cx)),
+                            )
+                            .child(folding_title_bar("macbook", SCROLLED, px(0.0), cx)),
+                    )
+                    .child(host_bar("overview-bar-scrolled", "macbook", "2 sessions", 0, cx)),
                 cx,
             ),
         )
@@ -374,46 +607,6 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
 fn drawers(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     let muted = cx.theme().foreground.muted();
-    let hosts = v_flex()
-        .p(px(8.0))
-        .child(overview_host_row(
-            "drawer-macbook",
-            HostState::Connected,
-            "macbook",
-            "2 sessions",
-            true,
-            cx,
-        ))
-        .child(overview_host_row(
-            "drawer-xps",
-            HostState::Connected,
-            "xps",
-            "1 session",
-            false,
-            cx,
-        ))
-        .child(
-            overview_host_row(
-                "drawer-ubuntu",
-                HostState::Connecting,
-                "ubuntu",
-                "Connecting…",
-                false,
-                cx,
-            )
-            .child(Button::new("drawer-ubuntu-cancel").label("Cancel").ghost()),
-        )
-        .child(
-            overview_host_row(
-                "drawer-alienware",
-                HostState::Offline,
-                "alienware",
-                "Not connected",
-                false,
-                cx,
-            )
-            .child(Button::new("drawer-alienware-connect").label("Connect")),
-        );
     let new = v_flex()
         .p(px(8.0))
         .child(
@@ -447,7 +640,6 @@ fn drawers(_: &mut Window, cx: &mut App) -> AnyElement {
         ));
     states()
         .columns(2)
-        .state("hosts", phone(hosts, cx))
         .state("new", phone(new, cx))
         .into_any_element()
 }

@@ -19,12 +19,13 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, PaintState,
     command::tmux_keystroke,
     compact::{
-        ArrowPadEvent, COMPACT_PANE_HEADER_HEIGHT, Instant, KEY_ROW_HEIGHT, KeyRow, Lift,
-        LiftEvent, PageDot, Pager, PagerEvent, PillLabel, PillPlacement, PillSpring, PopoverKey,
-        PopoverKeyEvent, PopoverKeyItem, ToolKeys, WhichKeyList, bottom_sheet, close_sheet,
-        compact_floating_bar, compact_floating_pill, compact_hud, compact_pane_header,
-        compact_pill_collapse, compact_pill_label, compact_pill_morph, mini_pill_width,
-        page_dots_in, pill_bounds, pill_corner, pill_ink, pill_inverted_over, swipe_back,
+        ArrowPadEvent, BENTO_INSET, COMPACT_PANE_HEADER_HEIGHT, COMPACT_PILL_HEIGHT, Instant,
+        KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent, PillLabel,
+        PillPlacement, PillSpring, PopoverKey, PopoverKeyEvent, PopoverKeyItem, ToolKeys,
+        WhichKeyList, bottom_sheet, close_sheet, compact_bar_button, compact_floating_bar,
+        compact_floating_group, compact_floating_pill, compact_group_dot, compact_hud,
+        compact_pane_header, compact_pill_collapse, compact_pill_label, compact_pill_morph,
+        mini_pill_width, page_dots_in, pill_bounds, pill_corner, pill_ink, pill_inverted_over,
     },
     kbd::Kbd,
     pane::pane_header_icon_button,
@@ -48,6 +49,9 @@ const LANDING_WAIT: Duration = Duration::from_secs(1);
 const BAR_DROP: f32 = 15.0;
 const BAR_FADE: f32 = 2.2;
 const COLLAPSE_TRAVEL: f32 = 24.0;
+const SIDE_GAP: f32 = 8.0;
+const LIFT_FALLBACK_TOP: f32 = 140.0;
+const LIFT_FALLBACK_HEIGHT: f32 = 272.0;
 
 const NEW_PANE: &str = "new-pane";
 const NEW_WINDOW: &str = "new-window";
@@ -55,6 +59,7 @@ const RENAME_PANE: &str = "rename-pane";
 const LAST_PANE: &str = "last-pane";
 const KILL_PANE: &str = "kill-pane";
 const ALL_BINDINGS: &str = "all-bindings";
+const DRIVER_CHAT: &str = "driver-chat";
 const BINDINGS_SHEET: &str = "compact-bindings-sheet";
 
 #[derive(Default)]
@@ -76,14 +81,15 @@ pub(super) struct CompactState {
     keyboard_moving: bool,
     extra_height: Pixels,
     pub(super) overview: bool,
-    hosts_sheet: bool,
     new_sheet: bool,
     add_host: bool,
     host_pager: Pager,
     host_scrolls: BTreeMap<usize, ScrollHandle>,
+    hosts_scroll: ScrollHandle,
+    host_tiles: Rc<RefCell<BTreeMap<usize, Bounds<Pixels>>>>,
     overview_reveal: bool,
-    overview_rows: BTreeMap<(usize, WindowId), ScrollHandle>,
     lift: Lift,
+    hosts: Lift,
     morph: PillSpring,
     collapse: PillSpring,
     collapse_travel: f32,
@@ -110,7 +116,6 @@ impl CompactState {
         self.notice = None;
         self.landing = None;
         self.cards.borrow_mut().clear();
-        self.overview_rows.clear();
         self.host_scrolls.clear();
     }
 
@@ -125,7 +130,6 @@ impl CompactState {
     }
 
     pub(super) fn close_sheets(&mut self) {
-        self.hosts_sheet = false;
         self.new_sheet = false;
         self.add_host = false;
     }
@@ -143,6 +147,7 @@ fn prefix_menu() -> (Vec<PopoverKeyItem>, PopoverKeyItem) {
             PopoverKeyItem::new(NEW_WINDOW, "New window").icon(IconName::AppWindow),
             PopoverKeyItem::new(RENAME_PANE, "Rename pane").icon(IconName::Pencil),
             PopoverKeyItem::new(LAST_PANE, "Last pane").icon(IconName::History),
+            PopoverKeyItem::new(DRIVER_CHAT, "Driver chat").icon(IconName::Chat),
             PopoverKeyItem::new(KILL_PANE, "Kill pane")
                 .icon(IconName::Xmark)
                 .danger(),
@@ -312,7 +317,9 @@ fn binding_rows(core: &zz_client::ClientCore, prefix: &str) -> Arc<[WhichKeyRow]
 
 impl AppShell {
     pub(super) fn compact_active(&self, window: &Window, cx: &App) -> bool {
-        Self::narrow(window) && self.settings.is_none() && self.active_window(cx).is_some()
+        Self::narrow(window)
+            && self.settings.is_none()
+            && (self.compact.overview || self.active_window(cx).is_some())
     }
 
     pub(super) fn sync_compact_mode(&mut self, compact: bool, cx: &mut Context<Self>) {
@@ -438,9 +445,13 @@ impl AppShell {
             cx.subscribe_in(
                 &keys.prefix,
                 window,
-                |this, _, event: &PopoverKeyEvent, _, cx| {
+                |this, _, event: &PopoverKeyEvent, window, cx| {
                     let PopoverKeyEvent::Pick(id) = event;
-                    this.prefix_action(id, cx);
+                    if id == DRIVER_CHAT {
+                        this.open_driver_chat(window, cx);
+                    } else {
+                        this.prefix_action(id, cx);
+                    }
                 },
             ),
         ];
@@ -1098,18 +1109,23 @@ impl AppShell {
             .unwrap_or_default();
         let floating = !keyboard;
         let strip_width = px(width);
+        let side = px(COMPACT_PILL_HEIGHT + SIDE_GAP);
+        let bar_width = (strip_width - side * 2.0).max(px(0.0));
+        let beside = |bounds: Bounds<Pixels>| {
+            Bounds::new(point(bounds.origin.x + side, bounds.origin.y), bounds.size)
+        };
         let mini = mini_pill_width(&short, window, cx);
-        let pill_shown = pill_bounds(collapse, strip_width, mini, &placement);
-        let pill_rest = pill_bounds(
+        let pill_shown = beside(pill_bounds(collapse, bar_width, mini, &placement));
+        let pill_rest = beside(pill_bounds(
             if self.compact.collapse.full() {
                 1.0
             } else {
                 0.0
             },
-            strip_width,
+            bar_width,
             mini,
             &placement,
-        );
+        ));
         let zone_top = window.viewport_size().height - zone;
         let in_window = |bounds: Bounds<Pixels>| {
             Bounds::new(
@@ -1299,17 +1315,18 @@ impl AppShell {
                 ),
                 pill_shown.size,
             );
+            let fade = (1.0 - drop.min(1.0) * BAR_FADE).max(0.0);
             let pill = compact_pill_collapse(
                 "compact-pill",
                 label,
                 short,
                 collapse,
                 lowered,
-                strip_width,
+                bar_width,
                 &pill_placement,
                 cx,
             )
-            .opacity((1.0 - drop.min(1.0) * BAR_FADE).max(0.0))
+            .opacity(fade)
             .on_click(cx.listener(move |this, _, _, cx| {
                 if full {
                     this.open_overview(cx);
@@ -1339,6 +1356,42 @@ impl AppShell {
                         .on_scroll_wheel(cx.listener(Self::compact_lift_scroll)),
                 )
                 .child(pill)
+                .when(collapse > 0.0, |zone| {
+                    let top = pill_rest.origin.y + (placement.zone() + px(BAR_DROP)) * drop;
+                    let shown = fade * collapse * collapse;
+                    let back = compact_bar_button("compact-back", IconName::ChevronLeft)
+                        .when(full, |back| {
+                            back.on_click(cx.listener(|this, _, _, cx| this.open_overview(cx)))
+                        });
+                    let chat =
+                        compact_bar_button("compact-chat", IconName::Chat).when(full, |chat| {
+                            chat.on_click(cx.listener(|this, _, window, cx| {
+                                this.open_driver_chat(window, cx);
+                            }))
+                        });
+                    zone.child(
+                        div()
+                            .absolute()
+                            .left(placement.inset)
+                            .top(top)
+                            .opacity(shown)
+                            .child(compact_floating_group([back], &pill_placement, cx)),
+                    )
+                    .child(
+                        div()
+                            .absolute()
+                            .right(placement.inset)
+                            .top(top)
+                            .opacity(shown)
+                            .child(
+                                compact_floating_group([chat], &pill_placement, cx)
+                                    .relative()
+                                    .when_some(self.driver_dot(cx), |group, color| {
+                                        group.child(compact_group_dot(color))
+                                    }),
+                            ),
+                    )
+                })
                 .into_any_element()
         };
         let mut sheets = Vec::new();
@@ -1363,9 +1416,6 @@ impl AppShell {
             .child(pager_area)
             .child(bottom);
         let content = if open {
-            if self.compact.hosts_sheet {
-                sheets.push(self.overview_hosts_sheet(safe_bottom, cx));
-            }
             if self.compact.new_sheet {
                 sheets.push(self.overview_new_sheet(safe_bottom, cx));
             }
@@ -1373,22 +1423,65 @@ impl AppShell {
             if self.compact.add_host {
                 sheets.push(self.overview_add_host_sheet(safe_bottom, cx));
             }
-            let view = cx.weak_entity();
-            swipe_back(
-                "overview-swipe-back",
-                self.compact_overview(&model, top_inset, &placement, window, cx),
-                move |_, cx| {
-                    let _ = view.update(cx, AppShell::close_overview);
-                },
-            )
-            .under(screen)
-            .into_any_element()
+            let (pages, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
+            div()
+                .relative()
+                .size_full()
+                .child(pages)
+                .child(bars)
+                .into_any_element()
         } else if lifting {
-            let pane = Bounds::new(
-                zz_gpui::point(px(0.0), px(0.0)),
-                zz_gpui::size(px(width), window.viewport_size().height - zone),
+            let (overview, bars) = self.overview_layers(&model, top_inset, &placement, window, cx);
+            let target = self
+                .compact
+                .landing
+                .map(|(pane, _)| pane)
+                .or(current_pane)
+                .and_then(|pane| pages.iter().find(|page| page.pane == pane).cloned());
+            let stage = window.viewport_size();
+            let card = target
+                .as_ref()
+                .and_then(|page| self.compact.cards.borrow().get(&page.pane).copied())
+                .unwrap_or_else(|| {
+                    Bounds::new(
+                        point(px(BENTO_INSET), top_inset + px(LIFT_FALLBACK_TOP)),
+                        zz_gpui::size(
+                            stage.width - px(BENTO_INSET * 2.0),
+                            px(LIFT_FALLBACK_HEIGHT),
+                        ),
+                    )
+                });
+            let child = target.map_or_else(
+                || div().into_any_element(),
+                |page| self.compact_page(&page, false, 0.0, top_inset, zone, None, window, cx),
             );
-            self.overview_lift(&model, pane, top_inset, &placement, window, cx)
+            div()
+                .relative()
+                .size_full()
+                .child(overview::zoom_layers(
+                    overview,
+                    child,
+                    &overview::Zoom {
+                        tile: card,
+                        stage,
+                        progress,
+                        ground: page_background,
+                    },
+                ))
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .opacity(progress.clamp(0.0, 1.0))
+                        .child(bars),
+                )
+                .child(
+                    div()
+                        .id("overview-lift-block")
+                        .absolute()
+                        .inset_0()
+                        .occlude(),
+                )
                 .child(div().absolute().inset_0().child(screen))
                 .into_any_element()
         } else {

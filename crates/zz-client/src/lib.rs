@@ -13,6 +13,7 @@ pub mod agent_transcript;
 mod chrome;
 pub mod completion;
 mod core;
+pub mod driver_chat;
 pub mod driver_log;
 #[cfg(not(target_family = "wasm"))]
 pub mod element_picker;

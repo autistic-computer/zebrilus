@@ -112,6 +112,12 @@ pub const STORY: Story = Story {
             build: |window, cx| stateful(window, cx, Fades::new, fades),
         },
         Section {
+            id: "phone",
+            name: "On a phone",
+            summary: "The phone's Hosts page keeps the driver's last answer, cut to two lines, in phone_chat_card above the hosts, or ChatTyping while it works; a dot in its header while something new waits. The card, the Message the driver field in the Hosts bar, the chat button on a host's page and on a pane (dotted while the driver works or waits on you) and Driver chat in the prefix menu open the chat in a full-height drawer that drags down to close: phone_chat_place as its heading, the driver's name over where it runs (a tap shows its terminal), a close button, the thread, an approval waiting on you, and the composer pill riding on the keyboard. The driver's session stays out of the overview.",
+            build: |window, cx| stateful(window, cx, Phones::new, phones),
+        },
+        Section {
             id: "mentions",
             name: "Mentions",
             summary: "@ in the input opens the target picker floating over it, the one the command palette's @ mode and prefix F use too. A mention is a target the way tmux's -t names one, session:window.pane, with an optional host in front, or a file in scp form, @xps:~/dev/zz/Cargo.toml, with git's letter. Without a host it means the host here, so @ lists the sessions here first, then the other hosts with their status dot, then ~/. A row with more under it ends in ›, and Tab (or a click) opens that level: a host its sessions and its home folder, a session its windows, a window its panes, a folder its entries. Typing :, . or / does the same by hand. Typing filters the level the cursor is in, and after the last / it searches everything under that folder. Up and Down move, Enter puts the highlighted row in as a finished mention and a space, its host always written, so @main:1 goes out as @macbook:main:1. Esc closes only the picker. The header says where the cursor is.",
@@ -1105,5 +1111,163 @@ fn fades(state: &Fades, _: &mut Window, cx: &mut App) -> AnyElement {
         .flex()
         .justify_center()
         .child(driver_palette(&state.input, &state.thread, cx))
+        .into_any_element()
+}
+
+const PHONE_WIDTH: f32 = 340.0;
+const PHONE_HEIGHT: f32 = 620.0;
+const PHONE_SAFE_TOP: f32 = 24.0;
+const PHONE_SAFE_BOTTOM: f32 = 20.0;
+
+pub(crate) struct Phones {
+    empty: Entity<InputState>,
+}
+
+impl Phones {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            empty: driver_input("", window, cx),
+        }
+    }
+}
+
+fn phone_frame(content: impl IntoElement, cx: &App) -> AnyElement {
+    div()
+        .relative()
+        .w_full()
+        .max_w(px(PHONE_WIDTH))
+        .h(px(PHONE_HEIGHT))
+        .overflow_hidden()
+        .bg(cx.theme().background)
+        .rounded(px(36.0))
+        .framed(cx)
+        .child(content)
+        .into_any_element()
+}
+
+fn overview_card(scope: &'static str, working: bool, unread: bool, cx: &App) -> AnyElement {
+    let ground = cx.theme().ground_of(roles::PHONE_PILL);
+    let message = if working {
+        ChatTyping::new((scope, 0_usize))
+            .steps(COMMIT_STEPS)
+            .on(ground)
+            .into_any_element()
+    } else {
+        ChatBubble::theirs((scope, 1_usize), LATEST_ANSWER, "")
+            .lines(2)
+            .on(ground)
+            .into_any_element()
+    };
+    let dot = unread.then(|| {
+        div()
+            .size(px(ATTENTION_DOT))
+            .rounded_full()
+            .bg(cx.theme().accent)
+            .into_any_element()
+    });
+    phone_frame(
+        div()
+            .absolute()
+            .left(px(16.0))
+            .right(px(16.0))
+            .bottom(px(24.0))
+            .child(zz_ui::agent::chat::phone_chat_card(
+                (scope, 2_usize),
+                chat_header(&driver(), "xps", dot, cx),
+                message,
+                cx,
+            )),
+        cx,
+    )
+}
+
+fn phone_sheet(input: &Entity<InputState>, cx: &App) -> AnyElement {
+    let ground = cx.theme().ground_of(roles::DRIVER_DRAWER);
+    let body = div()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_h(px(0.0))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h(px(0.0))
+                .justify_end()
+                .overflow_hidden()
+                .child(chat_thread(conversation("phone-sheet", ground, cx))),
+        )
+        .child(
+            div()
+                .flex_none()
+                .w_full()
+                .px(px(CHAT_COMPOSER_INSET))
+                .pb(px(CHAT_COMPOSER_INSET))
+                .child(Composer {
+                    input: input.clone(),
+                    leading: Some(
+                        composer_add_button(
+                            "phone-sheet-mention",
+                            "Mention a host, session or file",
+                            cx,
+                        )
+                        .into_any_element(),
+                    ),
+                    usage: Some(context_usage_meter(
+                        "phone-sheet-usage",
+                        41_000,
+                        200_000,
+                        cx,
+                    )),
+                    action: composer_action_button(
+                        "phone-sheet-send",
+                        ComposerAction::Stop,
+                        true,
+                        cx,
+                    )
+                    .into_any_element(),
+                    attachments: None,
+                    command_hint: None,
+                    ground: Some(ground),
+                }),
+        );
+    phone_frame(
+        zz_ui::compact::bottom_sheet(
+            "phone-sheet",
+            "Driver",
+            [zz_ui::compact::sheet_close("phone-sheet-close").into_any_element()],
+            body,
+            px(PHONE_SAFE_BOTTOM),
+            |_, _| {},
+        )
+        .surface_role(roles::DRIVER_DRAWER)
+        .header_role(roles::PHONE_BAR)
+        .full(px(PHONE_SAFE_TOP))
+        .heading(zz_ui::agent::chat::phone_chat_place(
+            "xps",
+            Program::by_id("claude"),
+            |_, _, _| {},
+            cx,
+        )),
+        cx,
+    )
+}
+
+fn phones(state: &Phones, _: &mut Window, cx: &mut App) -> AnyElement {
+    states()
+        .columns(3)
+        .state(
+            "overview: its last answer, unread",
+            overview_card("phone-latest", false, true, cx),
+        )
+        .state(
+            "overview: at work",
+            overview_card("phone-working", true, false, cx),
+        )
+        .state(
+            "the drawer, the driver at work",
+            phone_sheet(&state.empty, cx),
+        )
         .into_any_element()
 }
