@@ -238,6 +238,29 @@ fn fleet_link(host: &TargetHost, rest: &str) -> TargetLink {
             None => link.gone(),
         };
     }
+    if rest.starts_with('@') {
+        let link = TargetLink::new(host, TargetKind::Window, rest);
+        let found = host.sessions.iter().find_map(|session| {
+            session
+                .windows
+                .iter()
+                .find(|window| window.id.to_string() == rest)
+                .map(|window| (session, window))
+        });
+        return match found {
+            Some((session, window)) => {
+                let detail = format!(
+                    "{}:{} · {} · {}",
+                    session_ref(session),
+                    window.index,
+                    window.name,
+                    count(window.panes.len(), "pane")
+                );
+                link.found(PaletteTarget::Window(window.id), detail)
+            }
+            None => link.gone(),
+        };
+    }
     let (session_text, window_text) = match rest.split_once(':') {
         Some((session, window)) => (session, Some(window)),
         None => (rest, None),

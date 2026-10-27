@@ -32,8 +32,9 @@ host; one typed without it (`@work:2`, `@~/notes.md`) means the machine the user
 Name things the same way in your answers, as Markdown links whose destination is the mention:
 `[the failing test](@xps:work:2.%7)`, `[atlas.rs:212](@xps:~/dev/zz/src/atlas.rs:212)`. zz draws
 them as links the user hovers to see what they point at and clicks to go there; a bare
-`@xps:work:2` works too. Always write the host, and name a pane by its `%id`, which survives
-renames and moves.
+`@xps:work:2` works too. Always write the host, and name a session, window or pane by its id
+(`@xps:$7`, `@xps:@41`, `@xps:%52`), which survives renames and moves; the palette's Alt-Enter
+copies places in that form.
 
 ## Ledger
 
