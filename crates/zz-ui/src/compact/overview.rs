@@ -1,11 +1,6 @@
-use zz_gpui::{
-    AnyElement, App, Div, ElementId, ParentElement as _, SharedString, Stateful, Styled as _, div,
-    prelude::*, px,
-};
+use zz_gpui::{AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, div, px};
 
-use zz_gpui_kit::sheet::sheet_detail_row;
-
-use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _, roles};
+use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _};
 
 /// `n` of `noun`, as the overview counts panes and windows.
 pub fn overview_count(n: usize, noun: &str) -> String {
@@ -95,50 +90,4 @@ pub fn overview_host_empty(
                 .child(detail.into()),
         )
         .children(action.map(|action| div().mt(px(8.0)).child(action)))
-}
-
-/// A row of a phone drawer with a line under its name: what the New drawer
-/// makes.
-pub fn overview_choice_row(
-    id: impl Into<ElementId>,
-    icon: Option<Icon>,
-    title: impl Into<SharedString>,
-    detail: impl Into<SharedString>,
-    cx: &App,
-) -> Stateful<Div> {
-    sheet_detail_row(id, roles::PHONE_ROW, icon, title, detail.into(), cx)
-}
-
-/// A host in the hosts drawer, the way Find My lists a device: a server on a
-/// tile, its name, and under it its state dot and how many sessions it has or
-/// what it is doing; checked when it is the page on screen. The caller adds
-/// a button after it for a host that needs one.
-pub fn overview_host_row(
-    id: impl Into<ElementId>,
-    state: HostState,
-    title: impl Into<SharedString>,
-    detail: impl Into<SharedString>,
-    current: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    sheet_detail_row(
-        id,
-        roles::PHONE_ROW,
-        Some(Icon::new(IconName::Server)),
-        title,
-        div()
-            .flex()
-            .items_center()
-            .gap(px(6.0))
-            .child(host_state_dot(state, cx))
-            .child(detail.into()),
-        cx,
-    )
-    .when(current, |row| {
-        row.child(
-            Icon::new(IconName::Check)
-                .size(px(18.0))
-                .text_color(cx.theme().accent),
-        )
-    })
 }

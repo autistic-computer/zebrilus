@@ -17,7 +17,7 @@ use zz_ui::{
     },
     select::{Select, SelectState},
     settings::{
-        SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack,
+        SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
         about::{
             ABOUT_LOGO_SIZE, about_build_stack, about_copy_button, about_hero, about_project_stack,
         },
@@ -32,7 +32,7 @@ use zz_ui::{
         providers::{ProvidersHost, providers_stack},
         settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
         settings_navigation_back_row, settings_navigation_button, settings_navigation_group_gap,
-        settings_page_title, settings_scroll_column, settings_section_index,
+        settings_page_title, settings_scroll_column, settings_section_index, settings_title_bar,
         status_bar_preview::status_bar_page,
     },
     switch::Switch,
@@ -51,7 +51,7 @@ pub const STORY: Story = Story {
         Section {
             id: "navigation",
             name: "Navigation",
-            summary: "On a wide window the sidebar swaps the workspace tree for the section list, its groups set apart by a gap. On a narrow one the groups become stacks of touch-size rows.",
+            summary: "On a wide window the sidebar swaps the workspace tree for the section list, its groups set apart by a gap. On a narrow one the groups become stacks of touch-size rows. On a phone every page opens with its title large, under a bar holding only Back; once the page scrolls the large title away, the bar takes it small and centered over a hairline.",
             build: |_, cx| stateless(navigation, cx),
         },
         Section {
@@ -177,6 +177,26 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
         |_, _, _| {},
         cx,
     );
+    let fold = SettingsFold::default();
+    let phone_index = settings_section_index(
+        &[
+            SettingsSection::Appearance,
+            SettingsSection::Terminal,
+            SettingsSection::Hosts,
+            SettingsSection::Agents,
+            SettingsSection::Advanced,
+            SettingsSection::About,
+        ],
+        |section| match section {
+            SettingsSection::Hosts => Some("Local socket".into()),
+            SettingsSection::About => Some("0.22.0".into()),
+            _ => None,
+        },
+        |_, _, _| {},
+        cx,
+    )
+    .large_title("Settings", &fold);
+    let back = zz_ui::compact::compact_bar_button("settings-phone-back", IconName::ArrowLeft);
     states()
         .columns(2)
         .state(
@@ -197,6 +217,20 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
                 .rounded(cx.theme().radius)
                 .framed(cx)
                 .child(index),
+        )
+        .state(
+            "on a phone: the large title folds into the bar as the page scrolls",
+            div()
+                .id("settings-phone")
+                .flex()
+                .flex_col_reverse()
+                .w(px(360.0))
+                .h(px(420.0))
+                .rounded(cx.theme().radius)
+                .framed(cx)
+                .overflow_hidden()
+                .child(div().flex().flex_1().min_h_0().child(phone_index))
+                .child(settings_title_bar("Settings", &fold, back)),
         )
         .into_any_element()
 }

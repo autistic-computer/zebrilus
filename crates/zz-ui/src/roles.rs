@@ -393,7 +393,7 @@ pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
     "phone.pill",
     Kind::Button,
     "Phone pill",
-    "The pills floating at the bottom of the phone: the pane pill, the overview's session pill and its Settings and close group, and the pill the keys sit in over the keyboard",
+    "The pills floating at the bottom of the phone: the pane pill and the actions its menu stacks above it, the overview's session pill and its Settings and close group, and the pills the keys sit in over the keyboard",
 );
 pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
@@ -466,20 +466,14 @@ pub const PICKER: SurfaceRole = SurfaceRole::under(
 pub const HOSTS_DRAWER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DRAWER,
     "drawer.hosts",
-    "Hosts drawer",
-    "Every host in the phone overview, with how each is connected",
-);
-pub const NEW_DRAWER: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::DRAWER,
-    "drawer.new",
-    "New drawer",
-    "What the phone overview's + makes: a terminal, agent, browser or session",
+    "Host drawer",
+    "One saved host from the phone's Settings › Hosts: its address, how it is connected, and Connect, Disconnect or Remove",
 );
 pub const ADD_HOST_DRAWER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DRAWER,
     "drawer.add-host",
     "Add host drawer",
-    "The ssh destination field and Connect button for a new host",
+    "The ssh destination field, Connect, and the phone's SSH key to copy",
 );
 pub const NEW_PANE_DRAWER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DRAWER,
@@ -570,7 +564,6 @@ const ZZ: &[SurfaceRole] = &[
     FIND_BAR,
     PICKER,
     HOSTS_DRAWER,
-    NEW_DRAWER,
     ADD_HOST_DRAWER,
     NEW_PANE_DRAWER,
     TABS_DRAWER,

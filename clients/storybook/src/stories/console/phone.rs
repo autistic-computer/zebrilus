@@ -1,23 +1,23 @@
 use std::sync::Arc;
 
 use zz_gpui::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    Render, Styled as _, Window, div, prelude::*, px,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, Hsla, IntoElement,
+    ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, white,
 };
 use zz_protocol::AgentProvider;
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     button::{Button, ButtonVariants as _},
     compact::{
-        ArrowPad, BENTO_INSET, BentoSpan, HostState, KeyRow, PageDot, PillLabel, PillPlacement,
-        PopoverKey, PopoverKeyItem, PopoverKeyTap, ToolKeys, WhichKeyList, bento_add_tile,
-        bento_grid, compact_bar_button, compact_composer_pill, compact_floating_bar,
-        compact_floating_group, compact_floating_pill, compact_group_dot, compact_hud,
-        compact_pane_header, folding_title_bar, host_tile, host_tile_line, large_title, mini_pane,
-        overview_choice_row, overview_host_empty, overview_session_heading, page_dots,
-        window_layout, window_tile,
+        ArrowPad, BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, HostState, KEY_ROW_HEIGHT, KeyRow,
+        PageDot, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement, PopoverKey,
+        PopoverKeyTap, ToolKeys, WhichKeyList, bento_add_tile, bento_grid, compact_bar_button,
+        compact_composer_pill, compact_floating_bar, compact_floating_group, compact_floating_pill,
+        compact_group_dot, compact_hud, compact_pill_menu, folding_title_bar, host_tile,
+        host_tile_line, large_title, mini_pane, overview_host_empty,
+        overview_session_heading, page_dots, pill_glass_over, window_layout, window_tile,
     },
-    pane::{PaneLens, agent_provider_icon, pane_header_icon_button, pane_lens_button},
+    pane::agent_provider_icon,
     v_flex,
     which_key::WhichKeyRow,
 };
@@ -30,12 +30,12 @@ pub const STORY: Story = Story {
     id: "phone",
     name: "Phone",
     group: "Phone",
-    summary: "The compact pieces of the phone shell, at phone width: the bottom bar and its pill, page dots, the pane header, the HUD, the key row and the bindings list.",
+    summary: "The compact pieces of the phone shell, at phone width: the pill, its menu, page dots, the HUD, the key row and the bindings list.",
     sections: &[
         Section {
             id: "bar",
-            name: "Bottom bar",
-            summary: "The bar at the bottom of a pane: back to the host's windows, the pill that pages panes, and the driver chat with a dot while the driver works (accent) or waits on you (amber). The pill is set in from a 55pt screen corner so it runs concentric with it, and turns amber when the page needs attention.",
+            name: "Pill",
+            summary: "The one control at the bottom of a pane, with no header above the page: swipe it sideways to page panes, swipe it up to go back to the host's windows, tap it for the menu. It carries a dot while the driver works (accent) or waits on you (amber), is set in from a 55pt screen corner so it runs concentric with it, and turns amber when the page needs attention.",
             build: |_, cx| stateless(bars, cx),
         },
         Section {
@@ -45,10 +45,10 @@ pub const STORY: Story = Story {
             build: |_, cx| stateless(dots, cx),
         },
         Section {
-            id: "pane-header",
-            name: "Pane header",
-            summary: "The header over a terminal page, with and without actions.",
-            build: |_, cx| stateless(headers, cx),
+            id: "pill-menu",
+            name: "Pill menu",
+            summary: "What tapping the pill, or the prefix key over the keyboard, opens, the way Calendar's + rises into its actions: the page dims, the pill turns into a close button and the actions stack above it. Overview and the driver chat sit nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Lens view, which reads Terminal view while the lens is open. On a host's page the pill opens what + and the chat did: a new terminal, browser or session on that host (only while it is connected), the driver chat, All hosts and Settings.",
+            build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
             id: "hud",
@@ -59,13 +59,13 @@ pub const STORY: Story = Story {
         Section {
             id: "key-row",
             name: "Key row",
-            summary: "The row above the soft keyboard: prefix, ctrl and alt popover keys, plain keys, the arrow pad and hide. It scrolls sideways when it does not fit.",
+            summary: "The row above the soft keyboard: the prefix key on its own, then ctrl and alt popover keys, plain keys, the arrow pad and hide in a row that scrolls sideways when it does not fit. A fade and a chevron mark the side with more keys; tapping them scrolls there.",
             build: |_, cx| cx.new(KeyRows::new).into(),
         },
         Section {
             id: "keys",
             name: "Popover keys",
-            summary: "A popover key at rest and armed, as when the prefix is waiting for its next key, and the arrow pad at rest.",
+            summary: "The prefix key at rest and armed, as when the prefix is waiting for its next key, a popover key with nothing behind it, and the arrow pad at rest.",
             build: |_, cx| cx.new(Keys::new).into(),
         },
         Section {
@@ -77,25 +77,19 @@ pub const STORY: Story = Story {
         Section {
             id: "overview",
             name: "Overview",
-            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, under the driver's last word, with the message field and settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed; back, the host pill that pages hosts, + and the chat sit in the bar. Tapping a window zooms into the pane it was last on. The large title folds into a frosted bar once the page scrolls it away; a host that is not connected shows why and one thing to do.",
+            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, under the driver's last word, with the message field and settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed, over the host pill alone. Swiping the pill sideways pages hosts, swiping it up zooms back out to Hosts, and tapping it opens the host's menu. Tapping a window zooms into the pane it was last on. The large title folds into a frosted bar once the page scrolls it away; a host that is not connected shows why and one thing to do.",
             build: |_, cx| stateless(overview, cx),
-        },
-        Section {
-            id: "drawers",
-            name: "New drawer",
-            summary: "The rows of the drawer + opens on a host's page: what it makes.",
-            build: |_, cx| stateless(drawers, cx),
         },
         Section {
             id: "screen",
             name: "Phone screen",
-            summary: "The pieces together: a terminal page under its header, the key row and the bar.",
+            summary: "The pieces together: a terminal page under the status bar, the key row and the pill.",
             build: |_, cx| cx.new(Screen::new).into(),
         },
         Section {
             id: "lens",
             name: "Agent lens",
-            summary: "A terminal running Claude Code or Codex on the phone opens in the lens, since typing into a TUI with a phone keyboard is slow. The toggle sits before close in the pane header; closing the lens keeps that pane on its terminal until the agent exits. While the lens is open the page drops the key row the way a browser page does, and the composer types into the TUI.",
+            summary: "A terminal running Claude Code or Codex on the phone opens in the lens, since typing into a TUI with a phone keyboard is slow. Lens view and Terminal view in the pill's menu switch between them; switching to the terminal keeps that pane there until the agent exits. While the lens is open the page drops the key row the way a browser page does, and the composer types into the TUI.",
             build: phone_lens,
         },
     ],
@@ -103,7 +97,7 @@ pub const STORY: Story = Story {
 
 const PHONE_WIDTH: f32 = 390.0;
 
-fn phone(content: impl IntoElement, cx: &App) -> impl IntoElement {
+fn phone(content: impl IntoElement, cx: &App) -> zz_gpui::Div {
     div()
         .w(px(PHONE_WIDTH))
         .bg(cx.theme().background)
@@ -132,8 +126,19 @@ pub(crate) fn placement() -> PillPlacement {
     PillPlacement::new(Some(px(55.0)), px(34.0))
 }
 
-fn bar(id: &'static str, title: &str, meta: &str, warning: bool, cx: &App) -> impl IntoElement {
-    let placement = placement();
+fn bar(
+    id: &'static str,
+    title: &str,
+    meta: &str,
+    warning: bool,
+    page: Option<Hsla>,
+    driver: Option<Hsla>,
+    cx: &App,
+) -> impl IntoElement {
+    let placement = PillPlacement {
+        glass: page.and_then(|page| pill_glass_over(page, cx)),
+        ..placement()
+    };
     let pill = compact_floating_pill(
         id,
         PillLabel {
@@ -149,23 +154,9 @@ fn bar(id: &'static str, title: &str, meta: &str, warning: bool, cx: &App) -> im
         page_dots(&groups(), cx),
         &placement,
         cx,
-    );
-    let back = compact_bar_button(format!("{id}-back"), IconName::ChevronLeft);
-    let chat = compact_bar_button(format!("{id}-chat"), IconName::Chat);
-    phone(
-        compact_floating_bar(
-            compact_floating_group([back], &placement, cx),
-            &placement,
-            cx,
-        )
-        .child(pill)
-        .child(
-            compact_floating_group([chat], &placement, cx)
-                .relative()
-                .child(compact_group_dot(cx.theme().accent)),
-        ),
-        cx,
     )
+    .when_some(driver, |pill, color| pill.child(compact_group_dot(color)));
+    phone(compact_floating_bar(pill, &placement, cx), cx).when_some(page, Styled::bg)
 }
 
 fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
@@ -174,7 +165,15 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         .columns(2)
         .state(
             "rest",
-            bar("bar-rest", "cargo watch", "zz · editor", false, cx),
+            bar(
+                "bar-rest",
+                "cargo watch",
+                "zz · editor",
+                false,
+                None,
+                None,
+                cx,
+            ),
         )
         .state(
             "attention",
@@ -183,6 +182,8 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "python train.py",
                 "exited with 1 · gpu-box",
                 true,
+                None,
+                None,
                 cx,
             ),
         )
@@ -193,6 +194,32 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "claude · reviewing crates/zz-ui/src/command/palette_view.rs",
                 "zz · agents · 2 of 4 panes",
                 false,
+                None,
+                None,
+                cx,
+            ),
+        )
+        .state(
+            "over a white page",
+            bar(
+                "bar-page",
+                "Google",
+                "www.google.com",
+                false,
+                Some(white()),
+                None,
+                cx,
+            ),
+        )
+        .state(
+            "the driver at work",
+            bar(
+                "bar-driver",
+                "cargo watch",
+                "zz · editor",
+                false,
+                None,
+                Some(cx.theme().accent),
                 cx,
             ),
         )
@@ -248,19 +275,10 @@ fn host_bar(id: &'static str, title: &str, meta: &str, page: usize, cx: &App) ->
         &placement,
         cx,
     );
-    let back = compact_bar_button(format!("{id}-back"), IconName::ChevronLeft);
-    let new = compact_bar_button(format!("{id}-new"), IconName::Plus);
-    let chat = compact_bar_button(format!("{id}-chat"), IconName::Chat);
     compact_floating_bar(
-        compact_floating_group([back], &placement, cx),
+        pill.child(compact_group_dot(cx.theme().warning)),
         &placement,
         cx,
-    )
-    .child(pill)
-    .child(
-        compact_floating_group([new, chat], &placement, cx)
-            .relative()
-            .child(compact_group_dot(cx.theme().warning)),
     )
     .into_any_element()
 }
@@ -604,141 +622,157 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn drawers(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    let muted = cx.theme().foreground.muted();
-    let new = v_flex()
-        .p(px(8.0))
-        .child(
+const MENU_HEIGHT: f32 = 700.0;
+const MENU_TOP: f32 = 12.0;
+const PREFIX_AT: (f32, f32) = (12.0, 8.0);
+const PREFIX_SIZE: f32 = 40.0;
+
+fn menu_items(lens: Option<bool>) -> Vec<Vec<PillMenuItem>> {
+    let mut panes = vec![
+        PillMenuItem::new("rename-pane", "Rename pane", IconName::Pencil),
+        PillMenuItem::new("new-window", "New window", IconName::AppWindow),
+        PillMenuItem::new("new-pane", "New pane", IconName::Plus),
+        PillMenuItem::new("last-pane", "Last pane", IconName::History),
+        PillMenuItem::new("driver-chat", "Driver chat", IconName::Chat),
+        PillMenuItem::new("overview", "Overview", IconName::LayoutDashboard),
+    ];
+    if let Some(open) = lens {
+        let (label, icon) = if open {
+            ("Terminal view", IconName::SquareTerminal)
+        } else {
+            ("Lens view", IconName::Eye)
+        };
+        panes.push(PillMenuItem::new("lens", label, icon).look(PillMenuLook::Primary));
+    }
+    vec![
+        vec![
+            PillMenuItem::new("all-bindings", "All bindings", IconName::Keyboard)
+                .look(PillMenuLook::Quiet),
+            PillMenuItem::new("kill-pane", "Kill pane", IconName::Xmark).look(PillMenuLook::Danger),
+        ],
+        panes,
+    ]
+}
+
+fn host_menu_items() -> Vec<Vec<PillMenuItem>> {
+    vec![
+        vec![PillMenuItem::new("settings", "Settings", IconName::Settings).look(PillMenuLook::Quiet)],
+        vec![
+            PillMenuItem::new("new-session", "New session", IconName::Layers),
+            PillMenuItem::new("new-browser", "New browser", IconName::Globe),
+            PillMenuItem::new("new-terminal", "New terminal", IconName::SquareTerminal),
+            PillMenuItem::new("driver-chat", "Driver chat", IconName::Chat),
+            PillMenuItem::new("all-hosts", "All hosts", IconName::Server),
+        ],
+    ]
+}
+
+fn screen_lines(cx: &App) -> impl IntoElement {
+    let theme = cx.theme();
+    v_flex()
+        .px(px(12.0))
+        .py(px(8.0))
+        .font_family(theme.mono_font_family.clone())
+        .text_size(px(12.0))
+        .line_height(px(17.0))
+        .text_color(theme.foreground)
+        .children(
+            SCREEN_LINES
+                .iter()
+                .map(|line| div().h(px(17.0)).child(*line)),
+        )
+}
+
+struct Menus {
+    keys: ToolKeys,
+}
+
+impl Menus {
+    fn new(cx: &mut Context<Self>) -> Self {
+        Self {
+            keys: tool_keys(cx),
+        }
+    }
+
+    fn from_pill(items: Vec<Vec<PillMenuItem>>, cx: &App) -> impl IntoElement {
+        let placement = placement();
+        let top = px(MENU_HEIGHT) - placement.zone() + placement.pill_top();
+        let close = zz_gpui::Bounds::new(
+            zz_gpui::point(placement.inset, top),
+            zz_gpui::size(
+                px(PHONE_WIDTH) - placement.inset * 2.0,
+                px(COMPACT_PILL_HEIGHT),
+            ),
+        );
+        phone(
             div()
-                .px(px(12.0))
-                .pb(px(8.0))
-                .text_size(px(13.0))
-                .text_color(muted)
-                .child("Opens as a new window in zz on macbook."),
-        )
-        .child(overview_choice_row(
-            "drawer-terminal",
-            Some(zz_ui::Icon::new(IconName::SquareTerminal)),
-            "Terminal",
-            "A shell in the current folder",
-            cx,
-        ))
-        .child(overview_choice_row(
-            "drawer-browser",
-            Some(zz_ui::Icon::new(IconName::Globe)),
-            "Browser",
-            "A web page on macbook, localhost included",
-            cx,
-        ))
-        .child(overview_choice_row(
-            "drawer-session",
-            Some(zz_ui::Icon::new(IconName::Layers)),
-            "New session",
-            "Its own set of windows on macbook",
-            cx,
-        ));
-    states()
-        .columns(2)
-        .state("new", phone(new, cx))
-        .into_any_element()
-}
-
-pub(crate) fn close(id: &'static str, cx: &App) -> AnyElement {
-    pane_header_icon_button(id, IconName::Xmark, true, cx).into_any_element()
-}
-
-fn headers(_: &mut Window, cx: &mut App) -> AnyElement {
-    let cx: &App = cx;
-    states()
-        .columns(2)
-        .state(
-            "close action",
-            phone(
-                compact_pane_header(
-                    IconName::SquareTerminal,
-                    "cargo watch",
-                    [close("header-close", cx)],
-                    cx,
-                ),
-                cx,
-            ),
-        )
-        .state(
-            "no actions",
-            phone(
-                compact_pane_header(IconName::SquareTerminal, "~/dev/zz", [], cx),
-                cx,
-            ),
-        )
-        .state(
-            "two actions, long title",
-            phone(
-                compact_pane_header(
-                    IconName::SquareTerminal,
-                    "ssh gpu-box · tail -f /var/log/train/run-2026-10-09.log",
-                    [
-                        pane_header_icon_button("header-copy", IconName::Copy, true, cx)
-                            .into_any_element(),
-                        close("header-close-long", cx),
-                    ],
-                    cx,
-                ),
-                cx,
-            ),
-        )
-        .state(
-            "running Claude Code: the lens toggle before close",
-            phone(
-                div().id("header-lens-claude").child(compact_pane_header(
-                    IconName::SquareTerminal,
-                    "Pinned tabs keep their icon width",
-                    [
-                        lens_toggle(AgentProvider::ClaudeCode, false, cx),
-                        close("header-close-claude", cx),
-                    ],
+                .relative()
+                .h(px(MENU_HEIGHT))
+                .child(screen_lines(cx))
+                .child(compact_pill_menu(
+                    items,
+                    close,
+                    px(MENU_TOP),
+                    PillMenuAlign::Center,
+                    1.0,
+                    |_, _, _| {},
+                    |_, _| {},
                     cx,
                 )),
-                cx,
-            ),
+            cx,
         )
-        .state(
-            "running Codex with the lens open: the toggle lit",
-            phone(
-                div().id("header-lens-codex").child(compact_pane_header(
-                    IconName::SquareTerminal,
-                    "codex",
-                    [
-                        lens_toggle(AgentProvider::Codex, true, cx),
-                        close("header-close-codex", cx),
-                    ],
-                    cx,
-                )),
-                cx,
-            ),
-        )
-        .state(
-            "disabled action",
-            phone(
-                compact_pane_header(
-                    IconName::SquareTerminal,
-                    "read-only attach",
-                    [
-                        pane_header_icon_button("header-disabled", IconName::Xmark, false, cx)
-                            .into_any_element(),
-                    ],
-                    cx,
-                ),
-                cx,
-            ),
-        )
-        .into_any_element()
+    }
 }
 
-fn lens_toggle(provider: AgentProvider, open: bool, cx: &App) -> AnyElement {
-    pane_lens_button(PaneLens { provider, open }, |_, _| {}, cx)
-        .hit_slop(10.0, 10.0)
-        .into_any_element()
+impl Render for Menus {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let (x, y) = PREFIX_AT;
+        let row_top = MENU_HEIGHT - KEY_ROW_HEIGHT;
+        let prefix = zz_gpui::Bounds::new(
+            zz_gpui::point(px(x), px(row_top + y)),
+            zz_gpui::size(px(PREFIX_SIZE), px(PREFIX_SIZE)),
+        );
+        states()
+            .columns(2)
+            .state("tapping the pill", Self::from_pill(menu_items(None), cx))
+            .state(
+                "on a Claude Code pane: Lens view",
+                Self::from_pill(menu_items(Some(false)), cx),
+            )
+            .state(
+                "on a host's page",
+                Self::from_pill(host_menu_items(), cx),
+            )
+            .state(
+                "tapping the prefix key over the keyboard",
+                phone(
+                    div()
+                        .id("menu-prefix")
+                        .relative()
+                        .h(px(MENU_HEIGHT))
+                        .child(screen_lines(cx))
+                        .child(
+                            div()
+                                .absolute()
+                                .left_0()
+                                .right_0()
+                                .bottom_0()
+                                .child(key_row(&self.keys)),
+                        )
+                        .child(compact_pill_menu(
+                            menu_items(None),
+                            prefix,
+                            px(MENU_TOP),
+                            PillMenuAlign::Start,
+                            1.0,
+                            |_, _, _| {},
+                            |_, _| {},
+                            cx,
+                        )),
+                    cx,
+                ),
+            )
+    }
 }
 
 struct PhoneLens(Vec<(&'static str, &'static str, AgentProvider, AnyView)>);
@@ -758,7 +792,7 @@ fn phone_lens(window: &mut Window, cx: &mut App) -> AnyView {
             lens::phone_claude_asks(window, cx),
         ),
         (
-            "Codex after its lens was closed: the toggle opens it again",
+            "Codex after switching to its terminal: Lens view in the pill's menu opens the lens again",
             "codex",
             AgentProvider::Codex,
             lens::phone_codex(window, cx),
@@ -831,28 +865,13 @@ fn huds(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn prefix_items() -> (Vec<PopoverKeyItem>, PopoverKeyItem) {
-    (
-        vec![
-            PopoverKeyItem::new("new-pane", "New pane").icon(IconName::Plus),
-            PopoverKeyItem::new("new-window", "New window").icon(IconName::AppWindow),
-            PopoverKeyItem::new("rename-pane", "Rename pane").icon(IconName::Pencil),
-            PopoverKeyItem::new("last-pane", "Last pane").icon(IconName::History),
-            PopoverKeyItem::new("kill-pane", "Kill pane")
-                .icon(IconName::Xmark)
-                .danger(),
-        ],
-        PopoverKeyItem::new("all-bindings", "All bindings").icon(IconName::Keyboard),
-    )
-}
-
 pub(crate) fn tool_keys(cx: &mut App) -> ToolKeys {
-    let (items, footer) = prefix_items();
-    ToolKeys::new(items, Some(footer), cx)
+    ToolKeys::new(cx)
 }
 
 pub(crate) fn key_row(keys: &ToolKeys) -> KeyRow {
     KeyRow::new(keys.row())
+        .lead(keys.lead())
         .track_scroll(&keys.scroll)
         .on_key(|_, _, _| {})
         .on_hide(|_, _| {})
@@ -861,14 +880,25 @@ pub(crate) fn key_row(keys: &ToolKeys) -> KeyRow {
 struct KeyRows {
     rest: ToolKeys,
     armed: ToolKeys,
+    narrow: ToolKeys,
+    end: ToolKeys,
 }
+
+const NARROW_WIDTH: f32 = 320.0;
 
 impl KeyRows {
     fn new(cx: &mut Context<Self>) -> Self {
         let rest = tool_keys(cx);
         let armed = tool_keys(cx);
         armed.prefix.update(cx, |key, cx| key.set_armed(true, cx));
-        Self { rest, armed }
+        let end = tool_keys(cx);
+        end.scroll.set_offset(zz_gpui::point(px(-1000.0), px(0.0)));
+        Self {
+            rest,
+            armed,
+            narrow: tool_keys(cx),
+            end,
+        }
     }
 }
 
@@ -884,6 +914,15 @@ impl Render for KeyRows {
                 "prefix armed",
                 phone(div().id("key-row-armed").child(key_row(&self.armed)), cx),
             )
+            .state(
+                "narrow: more keys ahead",
+                phone(div().id("key-row-narrow").child(key_row(&self.narrow)), cx)
+                    .w(px(NARROW_WIDTH)),
+            )
+            .state(
+                "narrow, scrolled to the end",
+                phone(div().id("key-row-end").child(key_row(&self.end)), cx).w(px(NARROW_WIDTH)),
+            )
     }
 }
 
@@ -897,12 +936,7 @@ struct Keys {
 impl Keys {
     fn new(cx: &mut Context<Self>) -> Self {
         let popover = |cx: &mut Context<Self>, armed: bool| {
-            let key = cx.new(|cx| {
-                let (items, footer) = prefix_items();
-                PopoverKey::new("prefix", PopoverKeyTap::Open, cx)
-                    .items(items)
-                    .footer(footer)
-            });
+            let key = cx.new(|cx| PopoverKey::new("prefix", PopoverKeyTap::Press, cx));
             key.update(cx, |key, cx| key.set_armed(armed, cx));
             key
         };
@@ -996,7 +1030,6 @@ const SCREEN_LINES: &[&str] = &[
 
 impl Render for Screen {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
         let placement = placement();
         let pill = compact_floating_pill(
             "screen-pill",
@@ -1013,28 +1046,7 @@ impl Render for Screen {
         phone(
             v_flex()
                 .h(px(640.0))
-                .child(compact_pane_header(
-                    IconName::SquareTerminal,
-                    "cargo test",
-                    [close("screen-close", cx)],
-                    cx,
-                ))
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .min_h_0()
-                        .px(px(12.0))
-                        .py(px(8.0))
-                        .font_family(theme.mono_font_family.clone())
-                        .text_size(px(12.0))
-                        .line_height(px(17.0))
-                        .text_color(theme.foreground)
-                        .children(
-                            SCREEN_LINES
-                                .iter()
-                                .map(|line| div().h(px(17.0)).child(*line)),
-                        ),
-                )
+                .child(div().flex_1().min_h_0().child(screen_lines(cx)))
                 .child(div().id("screen-key-row").child(key_row(&self.keys)))
                 .child(compact_floating_bar(pill, &placement, cx)),
             cx,

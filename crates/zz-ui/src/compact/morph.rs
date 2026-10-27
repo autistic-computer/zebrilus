@@ -46,6 +46,18 @@ impl Default for PillSpring {
 }
 
 impl PillSpring {
+    /// A spring at rest on the other shape, 0.
+    pub fn shut() -> Self {
+        Self {
+            state: SpringState {
+                position: 0.0,
+                velocity: 0.0,
+            },
+            target: 0.0,
+            at: None,
+        }
+    }
+
     pub fn progress(&self) -> f32 {
         self.state.position
     }
@@ -92,7 +104,7 @@ impl PillSpring {
 
 /// The key row partway to the floating pill, `progress` of the way: one
 /// surface moving and reshaping between the key row's pill and the floating
-/// pill while the keys fade out and `label` fades in. Positions are measured
+/// pill while the keys and the lead key's pill fade out and `label` fades in. Positions are measured
 /// from the top of the strip the key row sits in: `pill_top` is where the
 /// floating pill's top would be and `floor` is the keyboard's top edge, which
 /// pushes the surface up so it never slips under the keyboard.
@@ -110,6 +122,7 @@ pub fn compact_pill_morph(
     let height = between(px(KEY_PILL_HEIGHT), px(COMPACT_PILL_HEIGHT));
     let top = between(px(KEY_ROW_MARGIN_Y), pill_top).min(floor - px(KEY_ROW_MARGIN_Y) - height);
     let middle = top + height / 2.0;
+    let start = between(px(KEY_ROW_MARGIN_X + keys.lead_room()), placement.inset);
     let side = between(px(KEY_ROW_MARGIN_X), placement.inset);
     let pill = floating_layer(placement, cx);
     let keys_layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
@@ -135,7 +148,7 @@ pub fn compact_pill_morph(
             div()
                 .absolute()
                 .top(top)
-                .left(side)
+                .left(start)
                 .right(side)
                 .h(height)
                 .layer(&Layer { radius, ..pill }),

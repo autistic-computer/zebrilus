@@ -16,7 +16,8 @@ use zz_ui::{
     IconName, PaintState, StyledExt as _,
     browser::{
         BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserTabInfo, BrowserTabStrip,
-        BrowserToolbar, browser_address, browser_start_surface, browser_toolbar_button,
+        BrowserToolbar, CompactBrowserBar, browser_address, browser_start_surface,
+        browser_toolbar_button,
     },
     button::{Button, ButtonVariants as _},
     compact::{
@@ -25,7 +26,7 @@ use zz_ui::{
     },
     input::{InputEvent, InputState},
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
-    rems_from_px, roles,
+    roles,
 };
 
 use super::compact::PillNotice;
@@ -70,6 +71,8 @@ pub(super) struct BrowserPane {
     covered_bottom: Pixels,
     pill_hole: Option<(Bounds<Pixels>, Pixels)>,
     backdrop: Option<(u64, Bounds<Pixels>, Arc<RenderImage>, Option<Hsla>)>,
+    frozen: bool,
+    still: Option<(u64, Arc<RenderImage>)>,
     radii: Corners<Pixels>,
     header_drag_handler: Option<Rc<dyn Fn(&PaneDrag, &mut Window, &mut App)>>,
     float_rows_handler: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
@@ -153,6 +156,8 @@ impl BrowserPane {
             covered_bottom: px(0.0),
             pill_hole: None,
             backdrop: None,
+            frozen: false,
+            still: None,
             radii: Corners::default(),
             header_drag_handler: None,
             float_rows_handler: None,
@@ -237,6 +242,28 @@ impl BrowserPane {
             self.pill_hole = hole;
             cx.notify();
         }
+    }
+
+    /// Holds the page as a still while something drawn over the pane needs
+    /// the web view hidden, so the page shows dimmed under it, not blank.
+    pub(super) fn set_frozen(&mut self, frozen: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if self.frozen == frozen {
+            return;
+        }
+        self.frozen = frozen;
+        if frozen {
+            self.tabs[self.active].view.snapshot_still();
+        } else if let Some((_, old)) = self.still.take() {
+            let _ = window.drop_image(old);
+        }
+        cx.notify();
+    }
+
+    /// Whether the still of the page is ready to stand in for the web view.
+    pub(super) fn still_ready(&self) -> bool {
+        self.still
+            .as_ref()
+            .is_some_and(|(id, _)| *id == self.tabs[self.active].id)
     }
 
     pub(super) fn backdrop_color(&self) -> Option<Hsla> {
@@ -479,6 +506,15 @@ impl BrowserPane {
                     (self.tabs[index].id, bounds, image, color)
                 });
                 if let Some((_, _, old, _)) = std::mem::replace(&mut self.backdrop, next) {
+                    let _ = window.drop_image(old);
+                }
+            }
+            BrowserEvent::Still(image) => {
+                if !self.frozen || index != self.active {
+                    let _ = window.drop_image(image);
+                    return;
+                }
+                if let Some((_, old)) = self.still.replace((self.tabs[index].id, image)) {
                     let _ = window.drop_image(old);
                 }
             }
@@ -878,62 +914,15 @@ impl BrowserPane {
         (strip, actions)
     }
 
-    fn compact_tab_row(
-        &self,
-        writable: bool,
-        cx: &mut Context<Self>,
-    ) -> (zz_gpui::Div, zz_gpui::Div) {
-        let pane = self.pane;
-        let title = div()
-            .flex()
-            .flex_1()
-            .min_w_0()
-            .items_center()
-            .gap_2()
-            .pl_1()
-            .child(
-                Icon::new(IconName::Globe)
-                    .size(rems_from_px(14.0))
-                    .flex_none(),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .child(tab_title(&self.tabs[self.active]).to_owned()),
-            );
-        let connection = self.connection.clone();
-        let actions = div()
-            .flex()
-            .items_center()
-            .gap_2()
-            .child(
-                compact_tabs_button(("ios-browser-tabs", pane.0), self.tabs.len(), cx)
-                    .disabled(!writable)
-                    .hit_slop(4.0, 10.0)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.tabs_sheet = true;
-                        cx.notify();
-                    })),
-            )
-            .child(
-                pane_header_icon_button(
-                    ("ios-browser-close", pane.0),
-                    IconName::Xmark,
-                    writable,
-                    cx,
-                )
-                .hit_slop(4.0, 10.0)
-                .on_click(move |_, _, cx| {
-                    connection.update(cx, |connection, cx| {
-                        connection.command("kill-pane", vec!["-t".into(), pane.to_string()], cx);
-                    });
-                }),
-            );
-        (title, actions)
+    fn compact_tabs(&self, writable: bool, cx: &mut Context<Self>) -> Button {
+        compact_tabs_button(("ios-browser-tabs", self.pane.0), self.tabs.len(), cx)
+            .size(CompactBrowserBar::CONTROL)
+            .disabled(!writable)
+            .hit_slop(4.0, 6.0)
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.tabs_sheet = true;
+                cx.notify();
+            }))
     }
 
     fn tab_drawer(&self, window: &Window, cx: &mut Context<Self>) -> AnyElement {
@@ -1043,82 +1032,90 @@ impl Render for BrowserPane {
         let writable = self.writable(cx);
         let pane = self.pane;
         let tab = &self.tabs[self.active];
-        let toolbar = BrowserToolbar::new(
-            browser_toolbar_button(
-                cx,
-                "ios-browser-back",
-                IconName::ArrowLeft,
-                "Back",
-                !writable || !tab.back,
-                false,
-            )
-            .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.back())),
-            browser_toolbar_button(
-                cx,
-                "ios-browser-forward",
-                IconName::ArrowRight,
-                "Forward",
-                !writable || !tab.forward,
-                false,
-            )
-            .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.forward())),
-            browser_toolbar_button(
-                cx,
-                "ios-browser-reload",
-                if tab.loading {
-                    IconName::Xmark
-                } else {
-                    IconName::Redo2
-                },
-                "Reload",
-                !writable,
-                false,
-            )
-            .on_click(cx.listener(|this, _, _, cx| this.reload(cx))),
-            browser_address(&self.address, Icon::new(IconName::Globe), window, cx),
-            div()
-                .relative()
-                .flex_none()
-                .child(
-                    browser_toolbar_button(
-                        cx,
-                        "ios-browser-element-picker",
-                        IconName::Inspector,
-                        if tab.picking {
-                            "Cancel element picker"
-                        } else {
-                            "Pick an element"
-                        },
-                        !writable || tab.loading,
-                        tab.picking,
-                    )
-                    .on_click(
-                        cx.listener(|this, _, window, cx| this.toggle_element_pick(window, cx)),
-                    ),
+        let address = browser_address(&self.address, Icon::new(IconName::Globe), window, cx);
+        let picker = div()
+            .relative()
+            .flex_none()
+            .child(
+                browser_toolbar_button(
+                    cx,
+                    "ios-browser-element-picker",
+                    IconName::Inspector,
+                    if tab.picking {
+                        "Cancel element picker"
+                    } else {
+                        "Pick an element"
+                    },
+                    !writable || tab.loading,
+                    tab.picking,
                 )
-                .child(super::touch_drag_handle({
-                    let pane = cx.weak_entity();
-                    move |event, window, cx| {
-                        let claimed = pane
-                            .update(cx, |this, cx| this.held_pick(event, window, cx))
-                            .unwrap_or(false);
-                        if claimed && event.phase == TouchPhase::Started {
-                            window.prevent_default();
-                        }
+                .when(self.compact, |button| {
+                    button.size(CompactBrowserBar::CONTROL)
+                })
+                .on_click(cx.listener(|this, _, window, cx| this.toggle_element_pick(window, cx))),
+            )
+            .child(super::touch_drag_handle({
+                let pane = cx.weak_entity();
+                move |event, window, cx| {
+                    let claimed = pane
+                        .update(cx, |this, cx| this.held_pick(event, window, cx))
+                        .unwrap_or(false);
+                    if claimed && event.phase == TouchPhase::Started {
+                        window.prevent_default();
                     }
-                })),
-            div(),
-        );
+                }
+            }));
         let header = if self.compact {
-            let (title, actions) = self.compact_tab_row(writable, cx);
-            BrowserHeader::new(true, title, actions, toolbar.back_only())
+            CompactBrowserBar::new(
+                address.h(CompactBrowserBar::CONTROL),
+                self.compact_tabs(writable, cx),
+                picker,
+            )
+            .into_any_element()
         } else {
+            let toolbar = BrowserToolbar::new(
+                browser_toolbar_button(
+                    cx,
+                    "ios-browser-back",
+                    IconName::ArrowLeft,
+                    "Back",
+                    !writable || !tab.back,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.back())),
+                browser_toolbar_button(
+                    cx,
+                    "ios-browser-forward",
+                    IconName::ArrowRight,
+                    "Forward",
+                    !writable || !tab.forward,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, _| this.tabs[this.active].view.forward())),
+                browser_toolbar_button(
+                    cx,
+                    "ios-browser-reload",
+                    if tab.loading {
+                        IconName::Xmark
+                    } else {
+                        IconName::Redo2
+                    },
+                    "Reload",
+                    !writable,
+                    false,
+                )
+                .on_click(cx.listener(|this, _, _, cx| this.reload(cx))),
+                address,
+                picker,
+                div(),
+            );
             let (strip, actions) = self.tab_row(writable, cx);
-            BrowserHeader::new(self.active_pane, strip, actions, toolbar)
+            BrowserHeader::new(self.active_pane, strip, actions, toolbar).into_any_element()
         };
         let drawer = self.compact && self.tabs_sheet;
         let covered_bottom = self.covered_bottom;
         let hole = self.pill_hole;
+        let holes: Vec<_> = hole.into_iter().collect();
         let reach = hole.and_then(|_| {
             cx.theme()
                 .layer(roles::PHONE_PILL, PaintState::Rest)
@@ -1133,6 +1130,11 @@ impl Render for BrowserPane {
             .backdrop
             .clone()
             .filter(|(id, _, _, _)| reach.is_some() && *id == tab.id);
+        let still = self
+            .still
+            .clone()
+            .filter(|(id, _)| self.frozen && *id == tab.id)
+            .map(|(_, image)| image);
         let visible = self.visible && self.profile.available();
         let theme = cx.theme();
         let edge = theme.pane_edge_width();
@@ -1222,7 +1224,7 @@ impl Render for BrowserPane {
                                 bounds,
                                 radius,
                                 covered_bottom,
-                                hole,
+                                holes: holes.clone(),
                                 backdrop,
                             },
                             window,
@@ -1237,15 +1239,19 @@ impl Render for BrowserPane {
                         );
                     })
                     .when_some(
-                        backdrop.filter(|_| !failed && !drawer && !blank),
+                        backdrop.filter(|_| visible && !failed && !drawer && !blank),
                         |page, (_, bounds, image, _)| {
                             page.child(
                                 canvas(
                                     |_, _, _| {},
-                                    move |_, (), window, _| {
+                                    move |area, (), window, _| {
+                                        let at = Bounds::new(
+                                            point(area.left() + edge, bounds.origin.y),
+                                            bounds.size,
+                                        );
                                         let _ = window.paint_image(
-                                            bounds,
-                                            bounds,
+                                            at,
+                                            at,
                                             Corners::default(),
                                             image,
                                             0,
@@ -1258,6 +1264,37 @@ impl Render for BrowserPane {
                             )
                         },
                     )
+                    .when_some(still.filter(|_| !failed && !blank), |page, image| {
+                        page.child(
+                            canvas(
+                                |_, _, _| {},
+                                move |area, (), window, _| {
+                                    let at = Bounds::new(
+                                        point(area.left() + edge, area.top()),
+                                        size(
+                                            (area.size.width - edge * 2.0).max(px(0.0)),
+                                            (area.size.height - edge).max(px(0.0)),
+                                        ),
+                                    );
+                                    let _ = window.paint_image(
+                                        at,
+                                        at,
+                                        Corners {
+                                            top_left: px(0.0),
+                                            top_right: px(0.0),
+                                            bottom_left: radius,
+                                            bottom_right: radius,
+                                        },
+                                        image,
+                                        0,
+                                        false,
+                                    );
+                                },
+                            )
+                            .absolute()
+                            .size_full(),
+                        )
+                    })
                     .when(blank, |page| {
                         page.child(browser_start_surface(BrowserEmptyHint))
                     })

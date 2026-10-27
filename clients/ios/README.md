@@ -11,34 +11,41 @@ The sidebar is 256 points wide and respects the iOS safe area.
 On iPhone, and in any window narrower than 640 points, the attached session uses the
 phone shell instead: one pane fills the screen and a sideways drag on the bar's pill pages
 through every pane in window order. A sideways swipe on the pane itself stays with the pane. Each page paints its pane's color, opaque, from the top of the screen
-down: the status bar and the pane header are transparent over it, and the status bar text
-turns light or dark to match. Landing on a pane zooms it (`resize-pane -Z`), so the daemon sizes
+down, with no header: the status bar is transparent over it, and its text turns light or dark
+to match. Landing on a pane zooms it (`resize-pane -Z`), so the daemon sizes
 the window to that pane; terminal previews keep the neighbouring pane live while it
-slides in. The bottom bar is a grabber, a pill, and a keyboard button. The pill shows the pane's
-icon, its name, and under it the window and page dots grouped by window; an agent waiting on a
-permission turns the icon and that line yellow. Back sits left of the pill and the Driver chat
-right of it, dotted while the driver works or waits on you. The overview is three levels you zoom
-through, the way Calendar goes from year to month to day. Back, a tap on the pill, or dragging the
-bar up (past a third of the way or with a flick) zooms the pane out into its host's page: the
+slides in, and a browser pane slides in with its page showing. The pill is the only control at
+the bottom. It shows the pane's icon, its name, and under it the window and page dots grouped by
+window; an agent waiting on a permission turns the icon and that line yellow, and a dot in its
+corner shows the driver working or waiting on you. Over a web page the pill keeps its text color,
+as Safari's bar does, and deepens its glass instead when the page under it is light. Tapping the
+pill opens the pane menu the way Calendar's + opens its actions: the page dims (a web page holds
+as a still while the menu is up), the pill turns into a close button, and Overview, Driver chat,
+Last pane, New pane, New window and Rename pane stack above it, with Kill pane and All bindings
+furthest from the thumb. A pane running Claude Code or Codex adds Lens view, or Terminal view
+while its lens is open. The overview is three levels you zoom through, the way Calendar goes from
+year to month to day. Overview in the menu, or dragging the pill up (past a third of the way or
+with a flick), zooms the pane out into its host's page: the
 pane shrinks into its own preview in its window's tile while the page grows around it. A host's
 page opens with the host's name as a large title, which folds into a frosted bar with the name
 small and centered as the page scrolls, then every session with its windows as a bento grid, each
 window drawn the way it splits its panes with a live preview of each, the pane it opens to ringed
-in the accent. Tap a window and it zooms into that pane. Its bar holds Back, the host pill (swipe
-it to page hosts), + for a new window or session, and the Driver chat. Back from a host's page
-zooms out to Hosts: every host as a tile with what its agents are doing, or Connect or Cancel,
+in the accent. Tap a window and it zooms into that pane. Its bar is the host pill alone: swipe it
+sideways to page hosts, and tap it for the host's menu, which stacks New terminal, New browser
+and New session (while the host is connected), Driver chat and All hosts above it, with Settings
+furthest. All hosts, or dragging the pill up, zooms out to Hosts: every host as a tile with what its agents are doing, or Connect or Cancel,
 under the driver's last word, with a Message the driver field and Settings in its bar; tap a host
 to zoom into it. Entering a host, or paging to it with the pill, puts it on screen, since the
 daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the
 overview instead. The keyboard opens only from that button or a tap on the terminal.
-While it is up, a key row replaces the bar: prefix, ctrl, alt, tab, esc, `/`, `@`, an arrow
-pad, and hide, each 52 points wide. When they do not fit, the row scrolls sideways from any
-key but the arrow pad. Keys with a dot share one gesture: tap for the key's own job, hold or
-slide up for a card, slide sideways to scroll the row, and release on an item to pick it. A tap latches ctrl or
-alt for the next key; holding them offers common chords (^C, ^D, ^Z, ^R, M-b, M-f).
-Prefix opens a short menu (new pane, new window, rename pane, last pane, kill pane) and
-an All bindings sheet that sends any prefix binding through the daemon's key table. The
-arrow pad repeats while held.
+While it is up, a key row replaces the pill: the prefix key in a pill of its own, then ctrl,
+alt, tab, esc, `/`, `@`, an arrow pad, and hide in a row that scrolls sideways when they do
+not fit, from any key but the arrow pad. A fade and a chevron mark the side with more keys;
+tapping them scrolls there. Prefix opens the pane menu, rising from the key, and its All
+bindings sheet sends any prefix binding through the daemon's key table. Ctrl and alt share one
+gesture: tap for the key's own job, hold or slide up for a card, slide sideways to scroll the
+row, and release on an item to pick it. A tap latches ctrl or alt for the next key; holding
+them offers common chords (^C, ^D, ^Z, ^R, M-b, M-f). The arrow pad repeats while held.
 
 Both sheets follow the finger when dragged down by the grabber or the header, or by their
 content once it is scrolled to the top. Dragged past about half their height, or flicked down,
@@ -55,8 +62,10 @@ Each row puts its control beside the title and the description underneath at ful
 and palette tiles sit below. Switches grow to 44 by 26. A dropdown opens a bottom sheet of the
 desktop's menu rows at 44 points, check in front, with a search field once the list passes 12
 choices; fonts preview in their own face. A color well shows its hex and opens a sheet with the
-hex field and the desktop's ten-column swatches at touch size. The navigation bar is a back arrow
-and the page title, and the section list follows the desktop settings sidebar's groups. A
+hex field and the desktop's ten-column swatches at touch size. Every page opens with its title large,
+under a bar holding only the back arrow; once the page scrolls the large title away, the bar
+takes the title small and centered over a hairline. The section list follows the desktop
+settings sidebar's groups. A
 rightward drag anywhere on a settings page goes back, except on a horizontal strip (the palette
 tiles) that can still scroll back.
 
@@ -107,7 +116,7 @@ connects straight away and adds the host to the saved list; later launches from 
 open the connection screen with it at the top. The Mac needs Remote Login
 enabled and `zz-dev` on its PATH (desktop dev runs link it into `~/.local/bin`). Sign in with your
 password; after a password sign-in the app offers to add its key to `~/.ssh/authorized_keys` so
-later connections skip the password. The key is also in Settings › Hosts to copy by hand. Override the
+later connections skip the password. The key is also in the Add host sheet to copy by hand. Override the
 choices with `ZZ_GPUI_DEVICE`, `ZZ_GPUI_SIGN_IDENTITY`, `ZZ_GPUI_PROFILE`, or `ZZ_GPUI_ENDPOINT`.
 
 Simulator and device builds use the zz Dev icon (`assets/zz-dev.icon`, compiled with `actool`).
@@ -149,8 +158,12 @@ opens the command palette without a hardware keyboard.
 The app does not connect on launch. Until it connects, the workspace shows the connection screen:
 saved hosts (most recent first) with Connect and Remove, a destination field (`user@host` or
 `user@host:port`), and the app's SSH key. On iPhone it fills the screen under the status bar, with no
-toolbar above it. Settings › Hosts shows the same list, plus Disconnect for
-the current host. Hosts are saved in `Library/Application Support/zz-gpui/hosts.json`; a
+toolbar above it. Settings › Hosts shows the same list. On iPhone each host is one row: its name
+(a socket's file name, or Local socket for the default one), a short address, and its state; tapping
+it opens a sheet with the full address, the last error, and Open, Connect, Disconnect or Remove
+host. Add host opens the same sheet as the Hosts page's tile: the destination field, Connect, and
+Copy SSH key. Settings › Agents lists each connected host's agents and gathers the rest under Not
+connected. Hosts are saved in `Library/Application Support/zz-gpui/hosts.json`; a
 successful connection moves its host to the top. `ZZ_GPUI_ENDPOINT` (or `ZZ_SOCKET`) connects
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
 SSH endpoints show host-key confirmation and authentication dialogs. The terminal example shares
@@ -190,7 +203,7 @@ its pane's content, and display-panes labels keep their tmux styles and alignmen
 Notices preserve severity, duration, and explicit clearing; a failed command reports
 as `command: error`.
 
-The bar's pill opens navigation on iPhone.
+On iPhone the pill opens the pane menu, and dragging it up opens navigation.
 
 ## Keyboard
 
@@ -217,7 +230,7 @@ keyboard once the keys pass it. While the keyboard opens, terminals keep their g
 prompt row stays above the key row) and report their new size once it stops. While it closes,
 the backend reports where the keyboard will come to rest (`target_visual_viewport_bounds`),
 and the phone shell sizes the terminal for that resting place from the first frame: the shell
-gets its one resize at the start, the grid hangs past the top edge under the pane header, and
+gets its one resize at the start, the grid hangs past the top edge under the status bar, and
 the rows the keyboard uncovers slide into view already filled instead of arriving in one step
 after the keyboard lands.
 
@@ -390,12 +403,10 @@ saved by this example.
   scrolling (`LocalScrollState` and `HistoryPacer` in `zz-client`). `less`, `vim`, and other
   mouse-tracking or alternate-screen programs still get wheel events.
 - In the phone shell, rows of a scrolled-back terminal, or one bouncing at the bottom, keep
-  drawing above the top row, under the pane header and the status bar up to the top of the
-  screen, the way content runs under a translucent iOS navigation bar. A tint of the pane color
-  behind the header and status bar, fading out over the header's last 12 points, fades those rows
-  so the title and the close button stay readable. At the live bottom nothing draws above the top
-  row, so the resting layout is unchanged. The header floats over the terminal instead of sitting
-  above it in the layout, which keeps its button on top for taps.
+  drawing above the top row, under the status bar up to the top of the screen, the way content
+  runs under a translucent iOS navigation bar. A tint of the pane color behind the status bar,
+  fading out over 12 points below it, fades those rows so the clock stays readable. At the live
+  bottom nothing draws above the top row, so the resting layout is unchanged.
 
 The standalone example displays one active terminal pane. The main app supports
 multiple terminal panes with the agent lens; full mux overlays remain a later step.

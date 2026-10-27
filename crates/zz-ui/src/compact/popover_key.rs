@@ -121,11 +121,13 @@ pub fn alt_chords() -> Vec<PopoverKeyItem> {
 pub enum PopoverKeyTap {
     Latch(StickyModifier),
     Open,
+    Press,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PopoverKeyEvent {
     Pick(SharedString),
+    Press,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,6 +158,7 @@ pub struct PopoverKey {
     hover: Option<usize>,
     slots: Rc<RefCell<Vec<Bounds<Pixels>>>>,
     key: Rc<Cell<Bounds<Pixels>>>,
+    face: Rc<Cell<Bounds<Pixels>>>,
     hold: Option<Task<()>>,
     scroll: Option<ScrollHandle>,
 }
@@ -178,6 +181,7 @@ impl PopoverKey {
             hover: None,
             slots: Rc::default(),
             key: Rc::default(),
+            face: Rc::default(),
             hold: None,
             scroll: None,
         }
@@ -215,6 +219,11 @@ impl PopoverKey {
 
     pub fn is_open(&self) -> bool {
         self.open.is_some()
+    }
+
+    /// Where the key last painted, in window coordinates.
+    pub fn bounds(&self) -> Bounds<Pixels> {
+        self.face.get()
     }
 
     /// Opens the card as a tap does: it stays until a pick or a press
@@ -423,7 +432,7 @@ impl Press for PopoverKey {
             pan: None,
         });
         self.hover = None;
-        self.hold = self.open.is_none().then(|| {
+        self.hold = (self.open.is_none() && !self.items.is_empty()).then(|| {
             cx.spawn(async move |key, cx| {
                 cx.background_executor().timer(HOLD).await;
                 let _ = key.update(cx, |key, cx| {
@@ -450,6 +459,7 @@ impl Press for PopoverKey {
                     Some(scroll) if moved.x.abs() > moved.y.abs() => {
                         touch.pan = Some((at.x, scroll.offset().x));
                     }
+                    _ if self.items.is_empty() => {}
                     _ => self.open = Some(Open::Held),
                 }
                 cx.notify();
@@ -491,6 +501,7 @@ impl Press for PopoverKey {
                 (None, _) => match self.tap {
                     PopoverKeyTap::Latch(modifier) => StickyModifiers::toggle(modifier, cx),
                     PopoverKeyTap::Open => self.open = Some(Open::Pinned),
+                    PopoverKeyTap::Press => cx.emit(PopoverKeyEvent::Press),
                 },
             }
         }
@@ -502,7 +513,7 @@ impl Render for PopoverKey {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let latched = match self.tap {
             PopoverKeyTap::Latch(modifier) => StickyModifiers::get(cx).is_latched(modifier),
-            PopoverKeyTap::Open => false,
+            PopoverKeyTap::Open | PopoverKeyTap::Press => false,
         };
         let pressed = self.touch.is_some_and(|touch| touch.pan.is_none());
         let look = if pressed || self.open.is_some() || self.armed {
@@ -522,6 +533,7 @@ impl Render for PopoverKey {
             )
             .faint_at(PaintState::Rest);
         let key = Rc::clone(&self.key);
+        let face = Rc::clone(&self.face);
         let selector = format!("popover-key-{}", self.label);
         let open = self.open.is_some();
         key_surface(div().id(ElementId::Name(self.label.clone())), look, cx)
@@ -550,6 +562,11 @@ impl Render for PopoverKey {
                 move |bounds, _, _| key.set(bounds),
                 |_, (), _, _| {},
             )))
+            .child(
+                canvas(move |bounds, _, _| face.set(bounds), |_, (), _, _| {})
+                    .absolute()
+                    .inset_0(),
+            )
             .child(press_listeners(cx.entity().downgrade()))
             .when(open, |key| {
                 let card = self.card(cx);
@@ -595,8 +612,9 @@ mod tests {
                     .footer(PopoverKeyItem::new("more", "More").icon(IconName::ChevronRight))
             });
             let subscription = cx.subscribe(&key, |host: &mut Host, _, event, _| {
-                let PopoverKeyEvent::Pick(id) = event;
-                host.picks.push(id.clone());
+                if let PopoverKeyEvent::Pick(id) = event {
+                    host.picks.push(id.clone());
+                }
             });
             Host {
                 key,

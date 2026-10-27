@@ -21,7 +21,8 @@ const PILL_GAP: f32 = 8.0;
 const PILL_INSET: f32 = 8.0;
 const PILL_INSET_MIN: f32 = 16.0;
 const PILL_INSET_MAX: f32 = 20.0;
-const INK_SWITCH: f32 = 1.25;
+const INK_CONTRAST: f32 = 4.5;
+const TINT_MAX: f32 = 0.95;
 const DOT: f32 = 8.0;
 const DOT_TOP: f32 = 12.0;
 const DOT_RIGHT: f32 = 8.0;
@@ -46,7 +47,15 @@ pub struct PillPlacement {
     pub inset: Pixels,
     pub bottom: Pixels,
     pub radius: Option<Pixels>,
-    pub inverted: Option<Hsla>,
+    pub glass: Option<PillGlass>,
+}
+
+/// The floating pill's glass over a page: the tint it takes and the color it
+/// then shows, from [`pill_glass_over`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PillGlass {
+    pub tint: Hsla,
+    pub color: Hsla,
 }
 
 impl PillPlacement {
@@ -59,14 +68,14 @@ impl PillPlacement {
                     inset,
                     bottom: inset,
                     radius: Some(screen - inset),
-                    inverted: None,
+                    glass: None,
                 }
             }
             None => Self {
                 inset: px(PILL_INSET),
                 bottom: safe_bottom + px(PILL_INSET),
                 radius: None,
-                inverted: None,
+                glass: None,
             },
         }
     }
@@ -119,48 +128,57 @@ pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
         _ => resting.radius,
     };
     let layer = Layer { radius, ..resting };
-    match placement.inverted {
-        Some(over) => {
-            let ink = layer.fill.opaque();
-            Layer {
-                text: ink,
-                ground: Ground {
-                    fill: over,
-                    ink,
-                    ..layer.ground
-                },
-                ..layer
-            }
-        }
+    match placement.glass {
+        Some(glass) => Layer {
+            glass: layer.glass.map(|material| GlassMaterial {
+                tint: glass.tint,
+                ..material
+            }),
+            ground: Ground {
+                fill: glass.color,
+                ..layer.ground
+            },
+            ..layer
+        },
         None => layer,
     }
 }
 
-/// Whether the floating pill's glass over `backdrop`, the color under it,
-/// reads better with the pill's fill as its ink than with its own ink, and
-/// the color the glass then shows. `was` is the last answer: it holds until
-/// the other ink reads clearly better, so a page scrolling under the pill
-/// does not flicker it.
-pub fn pill_inverted_over(backdrop: Hsla, was: bool, cx: &App) -> Option<Hsla> {
+/// The floating pill's glass over `backdrop`, the color under it. The pill
+/// keeps its ink whatever the page, as Safari's bar does; the glass deepens
+/// its tint instead, only as far as the ink needs to read at 4.5:1.
+pub fn pill_glass_over(backdrop: Hsla, cx: &App) -> Option<PillGlass> {
     let layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
     let tint = layer.glass.filter(GlassMaterial::reads_backdrop)?.tint;
     let under = Rgba::from(backdrop.opaque());
     let over = Rgba::from(tint.opaque());
-    let mix = |under: f32, over: f32| under + (over - under) * tint.a;
-    let glass = Hsla::from(Rgba {
-        r: mix(under.r, over.r),
-        g: mix(under.g, over.g),
-        b: mix(under.b, over.b),
-        a: 1.0,
-    });
-    let own = contrast(layer.text, glass);
-    let fill = contrast(layer.fill.opaque(), glass);
-    let inverted = if was {
-        fill * INK_SWITCH >= own
-    } else {
-        fill >= own * INK_SWITCH
+    let shows = |alpha: f32| {
+        let mix = |under: f32, over: f32| under + (over - under) * alpha;
+        Hsla::from(Rgba {
+            r: mix(under.r, over.r),
+            g: mix(under.g, over.g),
+            b: mix(under.b, over.b),
+            a: 1.0,
+        })
     };
-    inverted.then_some(glass)
+    let reads = |alpha: f32| contrast(layer.text, shows(alpha)) >= INK_CONTRAST;
+    let mut alpha = tint.a;
+    if !reads(alpha) {
+        let (mut low, mut high) = (alpha, TINT_MAX.max(alpha));
+        for _ in 0..12 {
+            let middle = f32::midpoint(low, high);
+            if reads(middle) {
+                high = middle;
+            } else {
+                low = middle;
+            }
+        }
+        alpha = high;
+    }
+    Some(PillGlass {
+        tint: tint.alpha(alpha),
+        color: shows(alpha),
+    })
 }
 
 fn contrast(left: Hsla, right: Hsla) -> f32 {
@@ -177,14 +195,6 @@ fn contrast(left: Hsla, right: Hsla) -> f32 {
     };
     let (left, right) = (luminance(left), luminance(right));
     (left.max(right) + 0.05) / (left.min(right) + 0.05)
-}
-
-/// The ink the floating pill's text takes at `placement`.
-pub fn pill_ink(placement: &PillPlacement, cx: &App) -> Hsla {
-    match placement.inverted {
-        Some(_) => floating_layer(placement, cx).text,
-        None => cx.theme().foreground,
-    }
 }
 
 /// Buttons in a capsule beside the floating pill, painted and rounded as the

@@ -4,7 +4,7 @@ pub mod panes_preview;
 pub mod providers;
 pub mod status_bar_preview;
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use web_time::Duration;
 
@@ -653,6 +653,61 @@ pub fn settings_page_title(section: SettingsSection, cx: &App) -> zz_gpui::Div {
     settings_page_heading(section.title(), cx)
 }
 
+/// How far a phone settings page has scrolled its large title away, written by
+/// the page's column as it renders and read by the [`settings_title_bar`] over
+/// it.
+#[derive(Clone, Debug, Default)]
+pub struct SettingsFold(Rc<Cell<f32>>);
+
+impl SettingsFold {
+    /// Points the large title has moved up from where it rests.
+    #[must_use]
+    pub fn scrolled(&self) -> f32 {
+        self.0.get()
+    }
+}
+
+fn settings_large_title(title: SharedString, cx: &App) -> zz_gpui::Div {
+    crate::compact::large_title(title, cx)
+        .px(px(2.0))
+        .mt(px(-SETTINGS_PAGE_PADDING))
+}
+
+/// The bar over a phone settings page that opens with a large title: `back`
+/// at its start, and the title, small and centered, once `fold` says the
+/// large one has scrolled under the bar. Lay it out after the page, so it
+/// reads the page's scroll from the same frame.
+pub fn settings_title_bar(
+    title: impl Into<SharedString>,
+    fold: &SettingsFold,
+    back: impl IntoElement,
+) -> SettingsTitleBar {
+    SettingsTitleBar {
+        title: title.into(),
+        fold: fold.clone(),
+        back: back.into_any_element(),
+    }
+}
+
+#[derive(IntoElement)]
+pub struct SettingsTitleBar {
+    title: SharedString,
+    fold: SettingsFold,
+    back: AnyElement,
+}
+
+impl RenderOnce for SettingsTitleBar {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        crate::compact::compact_nav_bar(cx)
+            .relative()
+            .child(
+                crate::compact::folding_title_bar(self.title, self.fold.scrolled(), px(0.0), cx)
+                    .h_full(),
+            )
+            .child(self.back)
+    }
+}
+
 /// A settings page's title. Under a coarse pointer it leaves the title to the
 /// sidebar or the bar above the page.
 pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
@@ -691,6 +746,7 @@ pub fn settings_scroll_column(id: &'static str) -> SettingsScrollColumn {
     SettingsScrollColumn {
         id,
         children: Vec::new(),
+        large_title: None,
     }
 }
 
@@ -698,6 +754,17 @@ pub fn settings_scroll_column(id: &'static str) -> SettingsScrollColumn {
 pub struct SettingsScrollColumn {
     id: &'static str,
     children: Vec<AnyElement>,
+    large_title: Option<(SharedString, SettingsFold)>,
+}
+
+impl SettingsScrollColumn {
+    /// Opens the page with `title`, large, and keeps `fold` up to date with
+    /// how far the page has scrolled it.
+    #[must_use]
+    pub fn large_title(mut self, title: impl Into<SharedString>, fold: &SettingsFold) -> Self {
+        self.large_title = Some((title.into(), fold.clone()));
+        self
+    }
 }
 
 impl zz_gpui::ParentElement for SettingsScrollColumn {
@@ -714,6 +781,10 @@ impl RenderOnce for SettingsScrollColumn {
             })
             .read(cx)
             .clone();
+        let title = self.large_title.map(|(title, fold)| {
+            fold.0.set((-f32::from(handle.offset().y)).max(0.0));
+            settings_large_title(title, cx)
+        });
         div()
             .flex_1()
             .min_w_0()
@@ -742,6 +813,7 @@ impl RenderOnce for SettingsScrollColumn {
                         settings_page_content()
                             .flex_none()
                             .gap(px(18.0))
+                            .children(title)
                             .children(self.children),
                     )
                     .child(div().flex_none().h(SettingsBottomInset::get(cx))),
@@ -797,6 +869,7 @@ pub fn settings_virtual_column(
         item_count,
         render_item: Box::new(render_item),
         row_focus: Vec::new(),
+        large_title: None,
     }
 }
 
@@ -806,6 +879,7 @@ pub struct SettingsVirtualColumn {
     item_count: usize,
     render_item: SettingsItemRenderer,
     row_focus: Vec<Option<FocusHandle>>,
+    large_title: Option<(SharedString, SettingsFold)>,
 }
 
 impl SettingsVirtualColumn {
@@ -817,13 +891,23 @@ impl SettingsVirtualColumn {
         self.row_focus = handles.into_iter().collect();
         self
     }
+
+    /// Opens the page with `title`, large, as a row ahead of the others, and
+    /// keeps `fold` up to date with how far the page has scrolled it.
+    #[must_use]
+    pub fn large_title(mut self, title: impl Into<SharedString>, fold: &SettingsFold) -> Self {
+        self.large_title = Some((title.into(), fold.clone()));
+        self
+    }
 }
 
 impl RenderOnce for SettingsVirtualColumn {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state_key = ElementId::Name(format!("{}-list-state", self.id).into());
-        let mut focus = self.row_focus;
-        focus.resize(self.item_count, None);
+        let lead = usize::from(self.large_title.is_some());
+        let mut focus = vec![None; lead];
+        focus.extend(self.row_focus);
+        focus.resize(self.item_count + lead, None);
         let list_state = window
             .use_keyed_state(state_key, cx, |_, _| {
                 (
@@ -845,17 +929,27 @@ impl RenderOnce for SettingsVirtualColumn {
                 list_state.clone()
             });
 
+        let title = self.large_title.map(|(title, fold)| {
+            let top = list_state.logical_scroll_top();
+            fold.0.set(if top.item_ix == 0 {
+                f32::from(top.offset_in_item)
+            } else {
+                f32::INFINITY
+            });
+            title
+        });
         let mut render_item = self.render_item;
         let rows = list(list_state.clone(), move |index, window, cx| {
+            let row = match (&title, index.checked_sub(lead)) {
+                (_, Some(index)) => render_item(index, window, cx),
+                (Some(title), None) => settings_large_title(title.clone(), cx).into_any_element(),
+                (None, None) => div().into_any_element(),
+            };
             div()
                 .flex()
                 .w_full()
                 .px(px(SETTINGS_PAGE_PADDING))
-                .child(
-                    settings_page_content()
-                        .flex_none()
-                        .child(render_item(index, window, cx)),
-                )
+                .child(settings_page_content().flex_none().child(row))
                 .into_any_element()
         })
         .with_sizing_behavior(ListSizingBehavior::Auto)

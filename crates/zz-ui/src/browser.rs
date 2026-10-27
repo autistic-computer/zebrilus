@@ -19,6 +19,8 @@ use zz_gpui::{
 
 pub const BROWSER_OMNIBOX_KEY_CONTEXT: &str = "BrowserOmnibox";
 const BROWSER_CONTROL_HEIGHT: f32 = 28.0;
+const COMPACT_BAR_HEIGHT: f32 = 52.0;
+const COMPACT_CONTROL_HEIGHT: f32 = 40.0;
 /// The header's first row: the title, the tabs and New tab, the tabs as
 /// tall as the address bar and as far in from the pane's top as a pane
 /// header's controls.
@@ -112,6 +114,60 @@ impl RenderOnce for BrowserHeader {
                         .h(crate::RULE_WIDTH),
                 )
             })
+    }
+}
+
+/// The phone's browser bar: one row with the address field, the tabs button
+/// and the element picker. Back and forward are edge swipes on the page, and
+/// closing the pane is in the pill's menu.
+#[derive(IntoElement)]
+pub struct CompactBrowserBar {
+    address: AnyElement,
+    tabs: AnyElement,
+    picker: AnyElement,
+}
+
+impl CompactBrowserBar {
+    pub const HEIGHT: Pixels = px(COMPACT_BAR_HEIGHT);
+    pub const CONTROL: Pixels = px(COMPACT_CONTROL_HEIGHT);
+
+    pub fn new(
+        address: impl IntoElement,
+        tabs: impl IntoElement,
+        picker: impl IntoElement,
+    ) -> Self {
+        Self {
+            address: address.into_any_element(),
+            tabs: tabs.into_any_element(),
+            picker: picker.into_any_element(),
+        }
+    }
+}
+
+impl RenderOnce for CompactBrowserBar {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        div()
+            .id("compact-browser-bar")
+            .debug_selector(|| "compact-browser-bar".into())
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(px(8.0))
+            .w_full()
+            .h(Self::HEIGHT)
+            .px(px(12.0))
+            .surface(crate::roles::PANE_HEADER, cx)
+            .text_color(cx.theme().foreground)
+            .child(self.address)
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(4.0))
+                    .child(self.tabs)
+                    .child(self.picker),
+            )
     }
 }
 

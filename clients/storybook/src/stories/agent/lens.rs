@@ -7,7 +7,6 @@ use zz_gpui::{
 };
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
-    IconName,
     agent::{
         AgentEntry, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind,
         AgentToolStatus as Status, TimelineRow,
@@ -16,12 +15,8 @@ use zz_ui::{
         presentation::{lens_welcome, spinner_phase, terminal_wait_card},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
-    compact::compact_pane_header,
     input::InputState,
-    pane::{
-        PaneDragSource, PaneLens, TerminalPaneAction, pane_header_icon_button, pane_lens_button,
-        terminal_pane_header,
-    },
+    pane::{PaneDragSource, PaneLens, TerminalPaneAction, terminal_pane_header},
     pip::PipSurface,
     scroll::Scrollbar,
 };
@@ -350,33 +345,6 @@ impl LensPane {
     fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
         let title = self.scene.title();
-        if self.look == Look::Phone {
-            let toggle = pane_lens_button(
-                PaneLens {
-                    provider: self.scene.provider(),
-                    open: self.open,
-                },
-                move |_, cx| {
-                    entity.update(cx, |view, cx| {
-                        view.open = !view.open;
-                        cx.notify();
-                    });
-                },
-                cx,
-            )
-            .hit_slop(10.0, 10.0)
-            .into_any_element();
-            let close = pane_header_icon_button(
-                ("lens-phone-close", self.scene.pane()),
-                IconName::Xmark,
-                true,
-                cx,
-            )
-            .hit_slop(10.0, 10.0)
-            .into_any_element();
-            return compact_pane_header(IconName::SquareTerminal, title, [toggle, close], cx)
-                .into_any_element();
-        }
         terminal_pane_header(
             true,
             title,
@@ -511,13 +479,22 @@ impl LensPane {
 
 impl Render for LensPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let header = self.header(cx);
         let body = if self.open {
             self.lens(cx)
         } else {
             terminal_body(self.scene.terminal(), false, cx).into_any_element()
         };
         let id = ("lens-pane", self.scene.pane());
+        if self.look == Look::Phone {
+            return div()
+                .id(id)
+                .size_full()
+                .flex()
+                .flex_col()
+                .child(body)
+                .into_any_element();
+        }
+        let header = self.header(cx);
         match self.look {
             Look::Page(height) => pane_frame(cx)
                 .id(id)

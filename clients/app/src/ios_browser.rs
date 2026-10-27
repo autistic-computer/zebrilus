@@ -34,7 +34,6 @@ use zz_gpui_platform::ios::{
 
 const OBSERVED: &[&str] = &["URL", "title", "loading", "canGoBack", "canGoForward"];
 const SCROLL_OFFSET: &str = "contentOffset";
-const HOLE: [&str; 4] = ["holeX", "holeY", "holeWidth", "holeHeight"];
 const PULL_TO_REFRESH: f64 = 80.0;
 const GESTURE_CHANGED: isize = 2;
 const GESTURE_ENDED: isize = 3;
@@ -56,14 +55,14 @@ unsafe impl objc::Encode for UIEdgeInsets {
 }
 
 /// Where the web view sits and what floats over it: its frame, its lower
-/// corners, how much of its bottom edge app UI covers, and the cutout that
+/// corners, how much of its bottom edge app UI covers, and the cutouts that
 /// UI shows through, all in window points.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BrowserMount {
     pub bounds: Bounds<Pixels>,
     pub radius: Pixels,
     pub covered_bottom: Pixels,
-    pub hole: Option<(Bounds<Pixels>, Pixels)>,
+    pub holes: Vec<(Bounds<Pixels>, Pixels)>,
     pub backdrop: Option<Bounds<Pixels>>,
 }
 use zz_client::element_picker::ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT;
@@ -97,6 +96,7 @@ pub enum BrowserEvent {
         bounds: Bounds<Pixels>,
         image: Arc<RenderImage>,
     },
+    Still(Arc<RenderImage>),
 }
 
 pub struct BrowserProfile {
@@ -258,7 +258,8 @@ pub struct BrowserView {
     mask: id,
     spinner: id,
     delegate: id,
-    mounted: Cell<Option<BrowserMount>>,
+    mounted: RefCell<Option<BrowserMount>>,
+    points: Cell<f64>,
     _state: Rc<DelegateState>,
 }
 
@@ -290,7 +291,7 @@ impl BrowserView {
             let _: () = msg_send![view, setInspectable: YES];
             state.view.set(view);
             let host: id = msg_send![host_class(), new];
-            let _: () = msg_send![host, setHidden: YES];
+            let _: () = msg_send![host, setAlpha: 0.0f64];
             let _: () = msg_send![host, addSubview: view];
             let mask: id = msg_send![class!(CAShapeLayer), new];
             let _: () = msg_send![mask, setFillRule: ns_string("even-odd")];
@@ -329,7 +330,8 @@ impl BrowserView {
                     mask,
                     spinner,
                     delegate,
-                    mounted: Cell::new(None),
+                    mounted: RefCell::new(None),
+                    points: Cell::new(1.0),
                     _state: state,
                 }),
                 receiver,
@@ -381,13 +383,12 @@ impl BrowserView {
 
     pub fn set_visible(&self, visible: bool) {
         unsafe {
-            let hidden: BOOL = msg_send![self.host, isHidden];
-            if (hidden == YES) == visible {
+            if shown(self.host) != visible {
                 if !visible {
                     self.cancel_element_pick();
                     let _: BOOL = msg_send![self.view, endEditing: YES];
                 }
-                let _: () = msg_send![self.host, setHidden: if visible { NO } else { YES }];
+                let _: () = msg_send![self.host, setAlpha: if visible { 1.0f64 } else { 0.0 }];
                 if visible {
                     request_backdrop(&self._state);
                 }
@@ -442,21 +443,27 @@ impl BrowserView {
     }
 
     pub fn point_element_pick(&self, at: Point<Pixels>) -> bool {
-        let Some(mount) = self.mounted.get().filter(|_| self._state.picking.get()) else {
+        let Some(bounds) = self
+            .mounted
+            .borrow()
+            .as_ref()
+            .map(|mount| mount.bounds)
+            .filter(|_| self._state.picking.get())
+        else {
             return false;
         };
-        let local = at - mount.bounds.origin;
+        let local = at - bounds.origin;
         let script = format!(
             "globalThis.__zzElementPicker?.point({},{},{});",
             f32::from(local.x),
             f32::from(local.y),
-            f32::from(mount.bounds.size.width)
+            f32::from(bounds.size.width)
         );
         unsafe {
             let _: () =
                 msg_send![self.view, evaluateJavaScript: ns_string(&script) completionHandler: nil];
         }
-        mount.bounds.contains(&at)
+        bounds.contains(&at)
     }
 
     pub fn release_element_pick(&self) {
@@ -471,6 +478,47 @@ impl BrowserView {
     pub fn refresh_backdrop(&self) {
         unsafe {
             request_backdrop(&self._state);
+        }
+    }
+
+    /// Snapshots the whole page as it shows, for the pane to paint while
+    /// something drawn over it has the web view hidden.
+    pub fn snapshot_still(&self) {
+        let Some(bounds) = self.mounted.borrow().as_ref().map(|mount| mount.bounds) else {
+            return;
+        };
+        unsafe {
+            let view = self._state.view.get();
+            if view.is_null() || !shown(self.host) {
+                return;
+            }
+            let width = f64::from(f32::from(bounds.size.width)) * self.points.get();
+            let height = f64::from(f32::from(bounds.size.height)) * self.points.get();
+            if width < 1.0 || height < 1.0 {
+                return;
+            }
+            let configuration: id = msg_send![class!(WKSnapshotConfiguration), new];
+            let _: () = msg_send![configuration, setRect: CGRect {
+                origin: CGPoint::default(),
+                size: CGSize { width, height },
+            }];
+            let _: () = msg_send![configuration, setAfterScreenUpdates: NO];
+            let snapshot_width: id = msg_send![class!(NSNumber), numberWithDouble: width];
+            let _: () = msg_send![configuration, setSnapshotWidth: snapshot_width];
+            let state = self._state.clone();
+            let (pixels_wide, pixels_high) = (width.round() as usize, height.round() as usize);
+            let completion = block2::RcBlock::new(
+                move |image: *mut std::ffi::c_void, _: *mut std::ffi::c_void| {
+                    if state.view.get().is_null() {
+                        return;
+                    }
+                    if let Some(image) = bgra_image(image as id, pixels_wide, pixels_high) {
+                        let _ = state.events.unbounded_send(BrowserEvent::Still(image));
+                    }
+                },
+            );
+            let _: () = msg_send![view, takeSnapshotWithConfiguration: configuration completionHandler: &*completion];
+            let _: () = msg_send![configuration, release];
         }
     }
 
@@ -493,14 +541,14 @@ impl BrowserView {
             let previous: id = msg_send![self.host, superview];
             if previous != parent {
                 let _: () = msg_send![parent, addSubview: self.host];
-                self.mounted.set(None);
+                self.mounted.replace(None);
             }
-            if self.mounted.get() == Some(mount) {
+            if self.mounted.borrow().as_ref() == Some(&mount) {
                 return;
             }
-            self.mounted.set(Some(mount));
             let native_scale: f64 = msg_send![parent, contentScaleFactor];
             let scale = f64::from(window.scale_factor()) / native_scale;
+            self.points.set(scale);
             let points = |value: Pixels| f64::from(f32::from(value)) * scale;
             let bounds = mount.bounds;
             let frame = CGRect {
@@ -527,40 +575,29 @@ impl BrowserView {
             let _: () = msg_send![layer, setCornerRadius: points(mount.radius)];
             let _: () = msg_send![layer, setMaskedCorners: 12usize];
             let _: () = msg_send![layer, setMasksToBounds: YES];
-            let hole = mount.hole.map(|(hole, radius)| {
-                let rect = CGRect {
-                    origin: CGPoint {
-                        x: points(hole.origin.x - bounds.origin.x),
-                        y: points(hole.origin.y - bounds.origin.y),
-                    },
-                    size: CGSize {
-                        width: points(hole.size.width),
-                        height: points(hole.size.height),
-                    },
-                };
-                (rect, points(radius).min(rect.size.height / 2.0))
-            });
-            let (x, y, width, height) = hole.map_or((0.0, 0.0, 0.0, 0.0), |(rect, _)| {
-                (
-                    rect.origin.x,
-                    rect.origin.y,
-                    rect.size.width,
-                    rect.size.height,
-                )
-            });
-            for (name, value) in HOLE.iter().zip([x, y, width, height]) {
-                (*self.host).set_ivar::<f64>(name, value);
-            }
-            if let Some((rect, radius)) = hole {
+            if mount.holes.is_empty() {
+                let _: () = msg_send![layer, setMask: nil];
+            } else {
                 let path: id = msg_send![class!(UIBezierPath), bezierPathWithRect: local];
-                let cutout: id = msg_send![class!(UIBezierPath), bezierPathWithRoundedRect: rect cornerRadius: radius];
-                let _: () = msg_send![path, appendPath: cutout];
+                for (hole, radius) in &mount.holes {
+                    let rect = CGRect {
+                        origin: CGPoint {
+                            x: points(hole.origin.x - bounds.origin.x),
+                            y: points(hole.origin.y - bounds.origin.y),
+                        },
+                        size: CGSize {
+                            width: points(hole.size.width),
+                            height: points(hole.size.height),
+                        },
+                    };
+                    let radius = points(*radius).min(rect.size.height / 2.0);
+                    let cutout: id = msg_send![class!(UIBezierPath), bezierPathWithRoundedRect: rect cornerRadius: radius];
+                    let _: () = msg_send![path, appendPath: cutout];
+                }
                 let shape: id = msg_send![path, CGPath];
                 let _: () = msg_send![self.mask, setFrame: local];
                 let _: () = msg_send![self.mask, setPath: shape];
                 let _: () = msg_send![layer, setMask: self.mask];
-            } else {
-                let _: () = msg_send![layer, setMask: nil];
             }
             let _: () = msg_send![class!(CATransaction), commit];
             let insets = UIEdgeInsets {
@@ -583,6 +620,7 @@ impl BrowserView {
                 };
                 (strip, rect)
             }));
+            self.mounted.replace(Some(mount));
             request_backdrop(&self._state);
         }
     }
@@ -755,18 +793,18 @@ unsafe fn snapshot(
     let _: () = msg_send![configuration, release];
 }
 
+unsafe fn shown(host: id) -> bool {
+    let alpha: f64 = msg_send![host, alpha];
+    alpha > 0.5
+}
+
 unsafe fn request_backdrop(state: &Rc<DelegateState>) {
     let view = state.view.get();
     let Some((bounds, rect)) = state.backdrop.get().filter(|_| !view.is_null()) else {
         return;
     };
     let host: id = msg_send![view, superview];
-    let hidden: BOOL = if host.is_null() {
-        YES
-    } else {
-        msg_send![host, isHidden]
-    };
-    if hidden == YES || rect.size.width < 1.0 || rect.size.height < 1.0 {
+    if host.is_null() || !shown(host) || rect.size.width < 1.0 || rect.size.height < 1.0 {
         return;
     }
     if state.snapshotting.replace(true) {
@@ -963,9 +1001,6 @@ fn host_class() -> &'static Class {
     static CLASS: std::sync::OnceLock<&Class> = std::sync::OnceLock::new();
     CLASS.get_or_init(|| unsafe {
         let mut decl = ClassDecl::new("ZZBrowserHost", class!(UIView)).unwrap();
-        for name in HOLE {
-            decl.add_ivar::<f64>(name);
-        }
         decl.add_method(
             sel!(hitTest:withEvent:),
             host_hit_test as extern "C" fn(&Object, Sel, CGPoint, id) -> id,
@@ -976,15 +1011,13 @@ fn host_class() -> &'static Class {
 
 extern "C" fn host_hit_test(this: &Object, _: Sel, point: CGPoint, event: id) -> id {
     unsafe {
-        let [x, y, width, height] = HOLE.map(|name| *this.get_ivar::<f64>(name));
-        if width > 0.0
-            && height > 0.0
-            && point.x >= x
-            && point.x <= x + width
-            && point.y >= y
-            && point.y <= y + height
-        {
-            return nil;
+        let layer: id = msg_send![this, layer];
+        let mask: id = msg_send![layer, mask];
+        if !mask.is_null() {
+            let path: *const std::ffi::c_void = msg_send![mask, path];
+            if !path.is_null() && !CGPathContainsPoint(path, std::ptr::null(), point, true) {
+                return nil;
+            }
         }
         msg_send![super(this, class!(UIView)), hitTest: point withEvent: event]
     }
@@ -1116,6 +1149,12 @@ unsafe extern "C" {
         image: *mut std::ffi::c_void,
     );
     fn CGContextRelease(context: *mut std::ffi::c_void);
+    fn CGPathContainsPoint(
+        path: *const std::ffi::c_void,
+        transform: *const std::ffi::c_void,
+        point: CGPoint,
+        even_odd: bool,
+    ) -> bool;
 }
 
 #[link(name = "UIKit", kind = "framework")]
