@@ -10352,10 +10352,25 @@ impl Shared {
                                     appearance: terminal_options.appearance,
                                 },
                             );
+                            let previewing = previewing_clients(&inner);
                             relocated_terminal_views.push((
                                 terminal,
-                                inner.attached.get(from).cloned().unwrap_or_default(),
-                                inner.attached.get(to).cloned().unwrap_or_default(),
+                                inner
+                                    .attached
+                                    .get(from)
+                                    .cloned()
+                                    .unwrap_or_default()
+                                    .union(&previewing)
+                                    .copied()
+                                    .collect::<BTreeSet<_>>(),
+                                inner
+                                    .attached
+                                    .get(to)
+                                    .cloned()
+                                    .unwrap_or_default()
+                                    .union(&previewing)
+                                    .copied()
+                                    .collect::<BTreeSet<_>>(),
                             ));
                         }
                         for output in inner
@@ -20488,7 +20503,7 @@ impl Shared {
                 .set_window_silence_flag(active_window, false);
         }
         let visible = visible_terminal_panes(&inner, client, session);
-        let streamed = streamed_terminal_panes(&inner, client, session, &visible);
+        let streamed = streamed_terminal_panes(&inner, client, &visible);
         let next_streamed = streamed.keys().copied().collect::<BTreeSet<_>>();
         let removed_streamed = previous_streamed
             .difference(&next_streamed)
@@ -20894,7 +20909,7 @@ impl Shared {
             event_hooks_enabled.then(|| hook_events::FocusProbeScope::open(&mut inner));
         let client_name =
             (event_hooks_enabled && was_attached).then(|| client_format_name(&inner, client));
-        let terminals = sessions
+        let mut terminals = sessions
             .iter()
             .flat_map(|session| session_terminals(&inner, *session))
             .collect::<Vec<_>>();
@@ -20930,6 +20945,9 @@ impl Shared {
             if let Some(terminal) = inner.terminals.get(pane) {
                 terminal.set_view_stream(TerminalViewId(client.0), ViewStream::Off);
                 sync_view_sink(&inner, terminal, client, *pane, None);
+                if !terminals.iter().any(|known| Arc::ptr_eq(known, terminal)) {
+                    terminals.push(Arc::clone(terminal));
+                }
             }
         }
         let _ = inner
@@ -29052,7 +29070,7 @@ impl Shared {
             let mut affected_panes = BTreeSet::new();
             for &(session, client) in &attachments {
                 let next_visible = visible_terminal_panes(&inner, client, session);
-                let next_streamed = streamed_terminal_panes(&inner, client, session, &next_visible);
+                let next_streamed = streamed_terminal_panes(&inner, client, &next_visible);
                 let previous_visible = inner
                     .client(client)
                     .and_then(|c| c.visible_terminals.as_ref())
@@ -30376,25 +30394,27 @@ impl Shared {
             let (unclaimed, mode_changed) =
                 reconcile_copy_session(&mut inner, pane, client, current.mode);
             let kill_pending = !inner.copy_kill_panes.is_empty();
-            let kind = inner
+            let attached = inner
                 .engine
                 .state
                 .window_for_pane(pane)
                 .map(|window| inner.engine.state.windows[&window].session)
-                .filter(|session| {
+                .is_some_and(|session| {
                     inner
                         .attached
-                        .get(session)
+                        .get(&session)
                         .is_some_and(|clients| clients.contains(&client))
-                })
-                .filter(|_| !client_terminal_publication_frozen(&inner, client))
-                .and_then(|_| {
+                });
+            let kind = (!client_terminal_publication_frozen(&inner, client))
+                .then(|| {
                     inner
                         .client(client)
                         .and_then(|c| c.streamed_terminals.as_ref())
                         .and_then(|streamed| streamed.get(&pane))
                         .copied()
-                });
+                })
+                .flatten()
+                .filter(|kind| attached || *kind == TerminalStreamKind::Preview);
             let subscriber = kind.and_then(|_| {
                 inner
                     .client(client)
@@ -46074,13 +46094,12 @@ fn session_terminals(inner: &ServerState, session: SessionId) -> Vec<Arc<Termina
         .collect()
 }
 
-fn session_terminal_panes(inner: &ServerState, session: SessionId) -> BTreeSet<PaneId> {
+fn host_terminal_panes(inner: &ServerState) -> BTreeSet<PaneId> {
     inner
         .engine
         .state
         .sessions
-        .get(&session)
-        .into_iter()
+        .values()
         .flat_map(|session| session.windows.iter())
         .filter_map(|window| inner.engine.state.windows.get(window))
         .flat_map(|window| window.panes.keys())
@@ -46129,10 +46148,18 @@ fn visible_terminal_panes(
         .collect()
 }
 
+fn previewing_clients(inner: &ServerState) -> BTreeSet<ClientId> {
+    inner
+        .clients
+        .iter()
+        .filter(|(_, client)| client.terminal_preview)
+        .map(|(id, _)| *id)
+        .collect()
+}
+
 fn streamed_terminal_panes(
     inner: &ServerState,
     client: ClientId,
-    session: SessionId,
     visible: &BTreeSet<PaneId>,
 ) -> BTreeMap<PaneId, TerminalStreamKind> {
     let mut streamed = visible
@@ -46141,7 +46168,7 @@ fn streamed_terminal_panes(
         .map(|pane| (pane, TerminalStreamKind::Foreground))
         .collect::<BTreeMap<_, _>>();
     if inner.client(client).is_some_and(|c| c.terminal_preview) {
-        for pane in session_terminal_panes(inner, session) {
+        for pane in host_terminal_panes(inner) {
             streamed.entry(pane).or_insert(TerminalStreamKind::Preview);
         }
     }
@@ -46187,6 +46214,9 @@ fn apply_view_streams(
         if let Some(terminal) = inner.terminals.get(pane) {
             terminal.set_view_stream(view, ViewStream::Off);
             sync_view_sink(inner, terminal, client, *pane, None);
+            if !client_is_attached_to_pane(inner, client, *pane) {
+                terminal.detach_view(view);
+            }
         }
     }
     for (pane, kind) in next {
@@ -46196,6 +46226,9 @@ fn apply_view_streams(
         sync_view_sink(inner, terminal, client, *pane, Some(*kind));
         if previous.contains_key(pane) {
             continue;
+        }
+        if !client_is_attached_to_pane(inner, client, *pane) {
+            terminal.attach_view(view);
         }
         sync_view_area(inner, *pane, client);
         terminal.set_view_stream(
@@ -96030,6 +96063,67 @@ bind - split-window -v -c "#{pane_current_path}"
             !inner
                 .client(first_client)
                 .is_some_and(|c| c.terminal_preview)
+        );
+    }
+
+    #[test]
+    fn terminal_preview_streams_every_session_on_the_host() {
+        let shared = Arc::new(Shared::new(1));
+        let mailbox = OutboundMailbox::new();
+        let (client, _) =
+            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
+        let (session, attached, _) =
+            output_view_session_fixture(&shared, "preview-attached", "attached");
+        let (_, other, other_terminal) =
+            output_view_session_fixture(&shared, "preview-other", "other");
+        shared.attach(client, session).expect("attach client");
+        assert_eq!(
+            (*shared.inner.lock().clients[&client]
+                .streamed_terminals
+                .as_ref()
+                .unwrap()),
+            BTreeMap::from([(attached, TerminalStreamKind::Foreground)])
+        );
+
+        shared.set_terminal_preview(client, ClientKind::Interactive, true);
+        assert_eq!(
+            (*shared.inner.lock().clients[&client]
+                .streamed_terminals
+                .as_ref()
+                .unwrap()),
+            BTreeMap::from([
+                (attached, TerminalStreamKind::Foreground),
+                (other, TerminalStreamKind::Preview),
+            ])
+        );
+        wait_for_viewport(
+            &other_terminal,
+            TerminalViewId(client.0),
+            "other session preview viewport",
+            |_| true,
+        );
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !mailbox
+            .state
+            .lock()
+            .terminals
+            .get(&other)
+            .is_some_and(|pending| pending.preview)
+        {
+            assert!(
+                Instant::now() < deadline,
+                "other session preview reaches the client"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+
+        shared.set_terminal_preview(client, ClientKind::Interactive, false);
+        assert_eq!(
+            (*shared.inner.lock().clients[&client]
+                .streamed_terminals
+                .as_ref()
+                .unwrap()),
+            BTreeMap::from([(attached, TerminalStreamKind::Foreground)])
         );
     }
 

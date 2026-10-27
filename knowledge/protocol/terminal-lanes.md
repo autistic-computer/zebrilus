@@ -239,7 +239,9 @@ W3-SHARDS, and one encoded `Arc<[u8]>` per (pane, base) is W4-DELIVER.
 Protocol v87 separates terminal delivery scope from foreground authority. `visible_terminals`
 contains the attached client's focused window after zoom filtering and is the source for input,
 history and PTY geometry. With `SetTerminalPreview { enabled: true }`, `streamed_terminals` also
-holds every terminal pane of the attached session as `Preview`. Preview frames are bounded and
+holds every terminal pane on the host as `Preview`, in every session. For a pane outside the
+attached session the daemon attaches the client's view while the preview runs and detaches it
+when it stops, and a window moved between sessions keeps a previewing client's view. Preview frames are bounded and
 lower priority: their pending slots and bytes reserve room for the foreground panes, and queued
 previews are retried as a latest full viewport after the writer makes progress. The daemon does not
 send Kitty image payloads for preview panes.
