@@ -2414,6 +2414,7 @@ mod completion_tests {
             });
             let controller = cx.new(|_| AgentController::new());
             let timeline_scroll = ListState::new(0, ListAlignment::Top, px(1_200.0));
+            let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
             let view = cx.new(|view_cx| AgentView {
                 pane: PaneId(7),
                 mux,
@@ -2433,6 +2434,7 @@ mod completion_tests {
                 question: None,
                 tray_open: None,
                 attachments: Vec::new(),
+                mention,
                 completions: vec![
                     CommandCompletion {
                         command: command("first"),
