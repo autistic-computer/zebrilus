@@ -5,7 +5,7 @@ use zz_client::{
         CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion,
         complete_command, completion_insertion,
     },
-    place::ActionKind,
+    place::{ActionKind, parse},
 };
 use zz_gpui::{
     App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable,
@@ -19,7 +19,7 @@ use zz_protocol::{
 };
 
 use super::{
-    CommandPaletteSurface, CopyAddress, PaletteActionLevel, PaletteHint, PaletteRow,
+    CommandPaletteSurface, CopyAddress, LevelEffect, PaletteActionLevel, PaletteHint, PaletteRow,
     command_kind_badge, command_palette_empty, command_palette_input, command_palette_row,
     command_palette_row_height, command_palette_section, command_palette_tree_entry,
     palette_model::{
@@ -1609,6 +1609,28 @@ impl CommandPaletteView {
             Self::notify_action(format!("Copied {address}"), window, cx);
         }
         cx.stop_propagation();
+    }
+
+    pub fn apply_level_effect(
+        &mut self,
+        effect: LevelEffect,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match effect {
+            LevelEffect::Stay => {}
+            LevelEffect::Close => self.close(cx),
+            LevelEffect::Emit(event) => cx.emit(event),
+            LevelEffect::Copied(text) => Self::notify_action(format!("Copied {text}"), window, cx),
+            LevelEffect::SetRest(rest) => {
+                let value = self.input.read(cx).value().to_string();
+                if let Some(action) = parse(&value).action {
+                    let range = action.rest_range();
+                    let value = format!("{}{rest}{}", &value[..range.start], &value[range.end..]);
+                    self.set_query(value, window, cx);
+                }
+            }
+        }
     }
 
     fn on_copy_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
