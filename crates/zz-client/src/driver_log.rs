@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use zz_protocol::agent_stream::AgentStreamPayload;
 
 use crate::agent_transcript::{
-    AgentThreadEntry, AgentToolStatusModel, AgentTranscript, ToolPayload,
+    AgentPermissionRequest, AgentThreadEntry, AgentToolStatusModel, AgentTranscript, ToolPayload,
 };
 
 pub const AGENT_NOTICE: &str = "[zz] Agent ";
@@ -101,6 +101,24 @@ impl DriverLog {
                 self.transcript.finish_replay();
             }
             AgentStreamPayload::Update { update } => self.update(update),
+            AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call,
+                options,
+                questions,
+            } => {
+                if let (Ok(tool_call), Ok(options)) = (
+                    serde_json::from_value(tool_call),
+                    serde_json::from_value(options),
+                ) {
+                    self.transcript
+                        .request_questions(request_id, tool_call, options, questions);
+                }
+            }
+            AgentStreamPayload::PermissionResolved {
+                request_id,
+                canceled,
+            } => self.transcript.resolve_permission(request_id, canceled),
             AgentStreamPayload::Activity { busy } => self.live = busy,
             AgentStreamPayload::PromptFinished { .. } => {
                 self.transcript.finish_turn();
@@ -118,6 +136,21 @@ impl DriverLog {
     #[must_use]
     pub fn session(&self) -> Option<&str> {
         self.session.as_deref()
+    }
+
+    #[must_use]
+    pub fn entries(&self) -> &[AgentThreadEntry<()>] {
+        self.transcript.entries()
+    }
+
+    #[must_use]
+    pub fn permissions(&self) -> &[AgentPermissionRequest] {
+        self.transcript.permissions()
+    }
+
+    #[must_use]
+    pub const fn live(&self) -> bool {
+        self.live
     }
 
     #[must_use]

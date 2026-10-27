@@ -2,7 +2,7 @@
 type: Design Plan
 title: Durable driver chat . one Driver Agent, any machine
 description: "How the Driver Agent (the lead until 2026-10-25) survives restarts and the loss of its host without replaying its history: every host keeps zz's copy of the driver's stream and a record of where it ran, a new driver asks every reachable host with zz driver state and starts from the newest copy as a fresh Claude Code or Codex session given a 2-4 KB packet, and two rules (follow a live driver, start only when a majority of hosts answered) keep it to one. The vendor transcript stays where it was written. Measured against full transcript resume with mid-task kills on the fleet; prototypes in scripts/driver-checkpoint.py and scripts/driver-sync.sh."
-status: Built (2026-10-25; zz driver state, keep, start, recover and stop-hook, keepers on every host, the older of two live drivers standing down, the generation fence, driver-hosts, the sidebar's Start here and Codex drivers with their Stop hook, verified with zz-dev on xps, alienware and the Mac; the web and iPad clients do not keep or recover the driver)
+status: Built (2026-10-25; zz driver state, keep, start, recover and stop-hook, keepers on every host, the older of two live drivers standing down, the generation fence, driver-hosts, the sidebar's Start here and Codex drivers with their Stop hook, verified with zz-dev on xps, alienware and the Mac; the iPhone, iPad and web clients show the chat and wake a driver through a host's `zz driver recover`, but do not keep its copy)
 resource: scripts/driver-checkpoint.py
 tags:
 - agent
@@ -455,12 +455,35 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   the sidebar reads those from the same tree. The session you are attached to stays in the tree and
   the flat list, so a driver you went to keeps its rows until you switch away. The CLI,
   `list-sessions`, `choose-tree`, command-line completion, the status bar and the daemon still see
-  it, and so do the web and iPad clients, which have no Driver mode and no `driver-agent` setting.
+  it. The thin clients have no `driver-agent` setting: the phone overview always leaves a `driver`
+  session out unless you are attached to it, and the web and iPad sidebars still list it.
   With the setting off, a session called `driver` is listed like any other.
 - **Its terminal.** `WorkspaceView::show_driver_terminal` attaches to the driver's host and session
   and selects its pane (`nav::pane_activation`, which the tray's Focus Pane uses too). Driver mode's
   footer host label sends `DriverPaletteEvent::ShowTerminal` for it, and a right click on the
   driver's last message in the sidebar offers Show terminal (`SidebarShowDriverTerminal`).
+- **On the thin clients.** The iPhone, iPad and web app (`clients/app`) follow the same driver:
+  `driver_chat::DriverChat` looks through the app's host connections in order for the first
+  Claude Code or Codex terminal in a `driver` session (`zz_client::driver_chat::driver_pane`, the
+  rule the desktop's `find_driver` uses too), asks that host's `Connection` to keep the pane's
+  agent stream (`Connection::follow_agent`, kept beside the open lenses so closing a lens on the
+  driver pane does not drop it), and reduces it with `zz_client::driver_log::DriverLog`, which now
+  also tracks approvals. Messages and steps come from `zz_client::driver_chat`, shared with the
+  desktop. The chat opens in a full-height drawer (`driver_sheet::DriverSheet`, the kit's
+  `bottom_sheet` with `full`, drawn as `drawer.driver`) that drags down to close:
+  `phone_chat_place` as its heading (the driver's name over its host, a tap shows its terminal), a
+  close button, the thread, an approval waiting on you, and the composer, the drawer riding on the
+  keyboard; Send sends with no turn
+  running and steers one that runs, and the round button stops it while the field is empty. On the
+  phone the Hosts page shows the driver's last answer, cut to two lines, in `phone_chat_card` over
+  the hosts (or `ChatTyping` while it works, with a dot while something new waits), its bar has a
+  Message the driver field, and a host's page and every pane have a chat button, dotted in the
+  accent while the driver works or has news and amber while it waits on you; all open the drawer, as do Driver chat in the prefix menu, `>` in an empty palette
+  and the `open-driver-chat` menu command. The chat button stays while no driver runs, so the
+  drawer is always reachable: it says the driver is asleep and offers Wake, which asks the attached
+  host's daemon to run `zz driver recover` (`run-shell -b`, the way the desktop starts keepers).
+  If no driver shows up within 20 seconds, the drawer offers Start here, `zz driver recover
+  --force`. The thin clients have no model setting, so a driver they wake runs `claude`.
 - **Mentions.** `@` in the input opens the palette's target picker floating over it
   (`zz_ui::target::TargetPicker::for_composer`, made by `zz_ui::command::target_picker` over the
   desktop's palette backend, laid over the rows with `CommandPaletteSurface::over_input`, with

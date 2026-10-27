@@ -53,6 +53,10 @@ const SENDER_LINE: f32 = 16.0;
 const SEEN_TILE: f32 = 14.0;
 const HEADER_TILE: f32 = 16.0;
 const THREAD_FADE: f32 = 28.0;
+const PHONE_TITLE_SIZE: f32 = 24.0;
+const PHONE_TITLE_LINE: f32 = 30.0;
+const PHONE_PLACE_SIZE: f32 = 13.0;
+const PHONE_CARD_RADIUS: f32 = 22.0;
 /// How long the thread takes to open under the palette's input, pushing
 /// the composer down to the bottom.
 const DRIVER_THREAD_OPEN: std::time::Duration = std::time::Duration::from_millis(280);
@@ -859,6 +863,66 @@ pub fn chat_button(button: impl IntoElement, unread: Option<Hsla>) -> zz_gpui::D
                     .child(crate::navigation::status_dot(color)),
             )
         })
+}
+
+pub fn phone_chat_place(
+    host: impl Into<SharedString>,
+    program: Option<&'static Program>,
+    on_click: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let theme = cx.theme();
+    v_flex()
+        .id("phone-chat-place")
+        .debug_selector(|| "phone-chat-place".to_owned())
+        .flex_1()
+        .min_w_0()
+        .child(
+            div()
+                .text_size(px(PHONE_TITLE_SIZE))
+                .line_height(px(PHONE_TITLE_LINE))
+                .font_bold()
+                .text_color(theme.foreground)
+                .child("Driver"),
+        )
+        .child(
+            h_flex()
+                .gap(px(5.0))
+                .items_center()
+                .text_size(crate::rems_from_px(PHONE_PLACE_SIZE))
+                .text_color(theme.foreground.muted())
+                .child(host.into())
+                .children(program.map(|program| {
+                    program_tile(program, px(SEEN_TILE), px(SEEN_TILE), 0.0, cx).flex_none()
+                }))
+                .child(Icon::new(IconName::ChevronRight).size(crate::rems_from_px(12.0))),
+        )
+        .on_click(on_click)
+        .into_any_element()
+}
+
+pub fn phone_chat_card(
+    id: impl Into<ElementId>,
+    header: impl IntoElement,
+    message: impl IntoElement,
+    cx: &App,
+) -> zz_gpui::Stateful<zz_gpui::Div> {
+    let layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
+    v_flex()
+        .id(id)
+        .debug_selector(|| "phone-chat-card".to_owned())
+        .w_full()
+        .overflow_hidden()
+        .cursor_pointer()
+        .layer(&layer)
+        .rounded(px(PHONE_CARD_RADIUS))
+        .child(header)
+        .child(
+            div()
+                .px(px(CHAT_PADDING_X))
+                .pb(px(CHAT_PADDING_BOTTOM))
+                .child(message),
+        )
 }
 
 #[cfg(test)]

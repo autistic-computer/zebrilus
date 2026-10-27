@@ -78,6 +78,8 @@ pub struct BottomSheet {
     content_scroll: Option<ScrollHandle>,
     surface_role: Option<SurfaceRole>,
     header_role: Option<SurfaceRole>,
+    heading: Option<AnyElement>,
+    full: Option<Pixels>,
 }
 
 pub fn bottom_sheet(
@@ -98,6 +100,8 @@ pub fn bottom_sheet(
         content_scroll: None,
         surface_role: None,
         header_role: None,
+        heading: None,
+        full: None,
     }
 }
 
@@ -120,6 +124,23 @@ impl BottomSheet {
     #[must_use]
     pub fn header_role(mut self, role: SurfaceRole) -> Self {
         self.header_role = Some(role);
+        self
+    }
+
+    /// Show `heading` in the header in place of the title.
+    #[must_use]
+    pub fn heading(mut self, heading: impl IntoElement) -> Self {
+        self.heading = Some(heading.into_any_element());
+        self
+    }
+
+    /// Reach up to `top` from the top of the parent whatever the content
+    /// needs, and give the content the height left instead of scrolling it.
+    /// Content that scrolls itself passes its handle in
+    /// [`Self::content_scroll`], so a drag down at its top still dismisses.
+    #[must_use]
+    pub fn full(mut self, top: Pixels) -> Self {
+        self.full = Some(top);
         self
     }
 }
@@ -500,6 +521,7 @@ impl RenderOnce for BottomSheet {
         let enter = ENTER;
         let margin = px(FLOAT_MARGIN);
         let rest = self.bottom_inset.max(margin);
+        let full = self.full;
         let sheet = self.surface_role.unwrap_or(SurfaceRole::DRAWER);
         let ground = theme.ground_of(sheet);
         let grabber = Layer {
@@ -571,7 +593,10 @@ impl RenderOnce for BottomSheet {
             .left_0()
             .right_0()
             .bottom_0()
-            .max_h(relative(MAX_HEIGHT))
+            .map(|panel| match full {
+                Some(_) => panel.top_0(),
+                None => panel.max_h(relative(MAX_HEIGHT)),
+            })
             .flex()
             .flex_col()
             .occlude()
@@ -599,7 +624,7 @@ impl RenderOnce for BottomSheet {
                     .pl(px(PADDING_X))
                     .pr(px(14.0))
                     .surface(header, cx)
-                    .child(
+                    .child(self.heading.unwrap_or_else(|| {
                         div()
                             .flex_1()
                             .min_w_0()
@@ -609,12 +634,20 @@ impl RenderOnce for BottomSheet {
                             .text_size(px(24.0))
                             .line_height(px(30.0))
                             .font_bold()
-                            .child(self.title),
-                    )
+                            .child(self.title)
+                            .into_any_element()
+                    }))
                     .children(self.actions),
             )
-            .child(
-                div()
+            .child(match full {
+                Some(_) => div()
+                    .id("bottom-sheet-content")
+                    .flex()
+                    .flex_col()
+                    .flex_1()
+                    .min_h_0()
+                    .child(self.content),
+                None => div()
                     .id("bottom-sheet-content")
                     .flex()
                     .flex_col()
@@ -629,11 +662,19 @@ impl RenderOnce for BottomSheet {
                             .w_full()
                             .child(self.content),
                     ),
-            )
+            })
             .with_animation(
                 "bottom-sheet-panel-enter",
                 Animation::new(enter).with_easing(ease_out_quint()),
-                |panel, delta| panel.bottom(relative(-RISE * (1.0 - delta))),
+                move |panel, delta| {
+                    let rise = RISE * (1.0 - delta);
+                    let panel = panel.bottom(relative(-rise));
+                    if full.is_some() {
+                        panel.top(relative(rise))
+                    } else {
+                        panel
+                    }
+                },
             );
         div()
             .id(self.id)
@@ -646,7 +687,7 @@ impl RenderOnce for BottomSheet {
                     .absolute()
                     .left(margin)
                     .right(margin)
-                    .top(offset)
+                    .top(full.unwrap_or_default() + offset)
                     .bottom(rest - offset)
                     .child(panel),
             )

@@ -16,14 +16,21 @@ turns light or dark to match. Landing on a pane zooms it (`resize-pane -Z`), so 
 the window to that pane; terminal previews keep the neighbouring pane live while it
 slides in. The bottom bar is a grabber, a pill, and a keyboard button. The pill shows the pane's
 icon, its name, and under it the window and page dots grouped by window; an agent waiting on a
-permission turns the icon and that line yellow. Drag the bar up and the pane shrinks into its card
-in the overview; past a third of the way or with a flick it opens, otherwise it springs back. A tap
-on the pill opens it too. The overview shows every
-pane of the session as a card with a live preview, one row per window, the current pane ringed
-in the accent. Tap a card and it grows back into the pane, or a row's New pane card to split that window. The
-top bar switches sessions (or starts one) from a sheet and opens Settings; New window sits
-under the last row. Close it with the X (the current card grows back) or a swipe right. The phone has no session tree:
-the sidebar toggle and `focus-sidebar` open the overview instead. The keyboard opens only from that button or a tap on the terminal.
+permission turns the icon and that line yellow. Back sits left of the pill and the Driver chat
+right of it, dotted while the driver works or waits on you. The overview is three levels you zoom
+through, the way Calendar goes from year to month to day. Back, a tap on the pill, or dragging the
+bar up (past a third of the way or with a flick) zooms the pane out into its host's page: the
+pane shrinks into its own preview in its window's tile while the page grows around it. A host's
+page opens with the host's name as a large title, which folds into a frosted bar with the name
+small and centered as the page scrolls, then every session with its windows as a bento grid, each
+window drawn the way it splits its panes with a live preview of each, the pane it opens to ringed
+in the accent. Tap a window and it zooms into that pane. Its bar holds Back, the host pill (swipe
+it to page hosts), + for a new window or session, and the Driver chat. Back from a host's page
+zooms out to Hosts: every host as a tile with what its agents are doing, or Connect or Cancel,
+under the driver's last word, with a Message the driver field and Settings in its bar; tap a host
+to zoom into it. Entering a host, or paging to it with the pill, puts it on screen, since the
+daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the
+overview instead. The keyboard opens only from that button or a tap on the terminal.
 While it is up, a key row replaces the bar: prefix, ctrl, alt, tab, esc, `/`, `@`, an arrow
 pad, and hide, each 52 points wide. When they do not fit, the row scrolls sideways from any
 key but the arrow pad. Keys with a dot share one gesture: tap for the key's own job, hold or

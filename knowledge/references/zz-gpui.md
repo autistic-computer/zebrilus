@@ -263,6 +263,15 @@ Each is upstream-able as a small Zed PR; if Zed merges an equivalent, drop it. I
     glyph and emoji paint). `Window::with_text_fade` takes the span from opaque to gone in either
     direction, so text can also be hidden up to a point and fade in after it, as zz does under an
     open pane stack.
+38. Painting an element scaled without laying it out again: `PaintScaleExt::paint_scale(scale,
+    offset)` on any element, over `Window::with_paint_scale(origin, scale, offset, f)`. The scene
+    keeps a stack of scale-and-offset transforms (`PaintOperation::StartTransform`/`EndTransform`),
+    and `Scene::insert_primitive` maps every primitive's bounds, content mask, corner radii,
+    border widths, blur and path vertices through the top one, clipped to the content mask the
+    transform was pushed under; glyph sprites stretch their atlas tiles. The scene records the
+    primitive as it was painted, so a cached view replayed under a different transform takes the
+    new one. Layout and hit testing are not transformed. The phone's drill-in overview zooms with
+    it.
 
 WGPU window-frame antialiasing (`c8135f5b6b`) applies outer coverage once when a quad and the
 window mask have identical bounds, radii, and corner smoothing. Other intersections retain their
