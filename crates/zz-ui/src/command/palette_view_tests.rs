@@ -678,6 +678,22 @@ fn alt_enter_copies_the_highlighted_place_as_tmux_writes_it(cx: &mut TestAppCont
     assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
 }
 
+#[zz_gpui::test]
+fn a_level_can_replace_the_text_after_its_sigil(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, _) = backend(online_tree());
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.simulate_input("$dev&~/dev/zz/");
+    cx.run_until_parked();
+    palette.update_in(cx, |palette, window, cx| {
+        palette.apply_level_effect(LevelEffect::SetRest("~/dev/".to_owned()), window, cx);
+    });
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "$dev&~/dev/");
+}
+
 fn target_value(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) -> String {
     palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string())
 }

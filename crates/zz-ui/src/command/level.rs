@@ -4,9 +4,10 @@ use zz_client::{
     place::{ActionKind, Fleet, LevelSet, Place},
     recents::{RecentKey, Recents, now_secs},
 };
-use zz_gpui::{AnyElement, App, Global, Window, actions};
+use zz_gpui::{AnyElement, App, Global, WeakEntity, Window, actions};
+use zz_protocol::PaneId;
 
-use super::{CommandPaletteEvent, PaletteHint};
+use super::{CommandPaletteEvent, CommandPaletteView, PaletteHint};
 
 actions!(zz_palette, [CopyAddress]);
 
@@ -19,6 +20,7 @@ pub struct ActionContext {
     pub host_auto: bool,
     pub rest: String,
     pub rest_range: Range<usize>,
+    pub insert_pane: Option<PaneId>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,17 +34,20 @@ pub enum ActionKey {
     Down,
     First,
     Last,
-    BackspaceEmpty,
+    Backspace,
     Copy,
 }
 
 pub enum LevelEffect {
     Stay,
     Close,
+    SetRest(String),
+    Copied(String),
     Emit(CommandPaletteEvent),
 }
 
 pub trait PaletteActionLevel {
+    fn attach(&mut self, _palette: WeakEntity<CommandPaletteView>, _cx: &mut App) {}
     fn update(&mut self, context: &ActionContext, window: &mut Window, cx: &mut App)
     -> LevelEffect;
     fn key(&mut self, key: ActionKey, window: &mut Window, cx: &mut App) -> Option<LevelEffect>;
