@@ -38,7 +38,7 @@ pub const STORY: Story = Story {
     id: "command-palette",
     name: "Command palette",
     group: "Commands",
-    summary: "One palette for going places and running commands. @ picks a target the way tmux's -t names one, with an optional host in front, and : picks a command. Pills show the scope, and daemon prompts reuse the same surface.",
+    summary: "One palette for going places and acting on them. A line is a place, typed with tmux's sigils (^ host, $ session, @ window, % pane) and matched fuzzily, then an action: : a command with -t set to the place, & files, > a setting, ? the driver. Places you enter become chips; daemon prompts reuse the same surface.",
     sections: &[
         Section {
             id: "rows",
@@ -60,26 +60,62 @@ pub const STORY: Story = Story {
         },
         Section {
             id: "workspace",
-            name: "Workspace",
-            summary: "The palette as it opens, with no query: the attached host's sessions as a tree, then every host.",
+            name: "Empty palette",
+            summary: "The palette as it opens: the host chip, then the windows whose agents wait on you, recent places and commands, and every host.",
             build: |window, cx| unified(window, cx, online_tree(), true, None, &[]),
         },
         Section {
-            id: "workspace-flat",
-            name: "Workspace, flat",
-            summary: "The same workspace with grouping off: one row per target, its path muted in front.",
-            build: |window, cx| unified(window, cx, online_tree(), false, None, &[]),
+            id: "no-host-chip",
+            name: "No host chip",
+            summary: "Backspace on the empty field drops the host chip, so typing searches every host.",
+            build: |window, cx| {
+                unified(
+                    window,
+                    cx,
+                    online_tree(),
+                    true,
+                    None,
+                    &["backspace", "l", "o", "g"],
+                )
+            },
         },
         Section {
             id: "search",
             name: "Search everything",
-            summary: "A typed query with no prefix searches navigation, commands and hosts together, each under its own header.",
+            summary: "Plain text searches the places under the chips, then commands, each kind under its own header.",
             build: |window, cx| unified(window, cx, online_tree(), true, None, &["e", "d"]),
         },
         Section {
-            id: "navigate-mode",
-            name: "Go to mode",
-            summary: "The @ prefix, Go to: with nothing typed, the sessions on the host here, then every other host with its status dot, then ~/ for the files here. A row with more under it ends in ›: Tab opens that level, and : . or / typed by hand do the same. Enter goes to a session, window or pane, Backspace on a level's edge goes up one.",
+            id: "sessions",
+            name: "A sigil lists its level",
+            summary: "$ lists the sessions on the chip's host, the current one first. Digits match what the rows show, and #N pins an id.",
+            build: |window, cx| unified(window, cx, online_tree(), true, None, &["$"]),
+        },
+        Section {
+            id: "sigil-commits",
+            name: "A sigil commits",
+            summary: "$z then @ takes the best session as a chip and lists its windows. Backspace on the empty field right after gives $z back; Tab and Shift-Tab go into and out of a row.",
+            build: |window, cx| unified(window, cx, online_tree(), true, None, &["$", "z", "@"]),
+        },
+        Section {
+            id: "another-host",
+            name: "Another host",
+            summary: "^ at the start of the field replaces the host chip: ^gpu then $ lists gpu-box's sessions.",
+            build: |window, cx| {
+                unified(
+                    window,
+                    cx,
+                    online_tree(),
+                    true,
+                    None,
+                    &["^", "g", "p", "u", "$"],
+                )
+            },
+        },
+        Section {
+            id: "choose-window",
+            name: "Choose window",
+            summary: "View › Choose Window opens on @: every window on this host, the current one first.",
             build: |window, cx| {
                 unified(
                     window,
@@ -92,16 +128,10 @@ pub const STORY: Story = Story {
             },
         },
         Section {
-            id: "target-host",
-            name: "Into a host",
-            summary: "@gpu-box: names a host, so the level under it lists that host's sessions, then its home folder. Without a host a target means the host here: @zz: lists the windows of zz on local.",
-            build: |window, cx| target(window, cx, "gpu-box:"),
-        },
-        Section {
-            id: "target-search",
-            name: "Search the fleet",
-            summary: "Before any colon, typing searches every connected host at once: hosts, sessions, windows and panes, each labelled the way you would type it, so a target on the host here leaves its host out. @agents finds a window named agents here and one on gpu-box.",
-            build: |window, cx| target(window, cx, "agents"),
+            id: "files",
+            name: "Files",
+            summary: "prefix F opens on & and the pane's folder.",
+            build: |window, cx| target(window, cx, "~/"),
         },
         Section {
             id: "offline",
@@ -112,7 +142,7 @@ pub const STORY: Story = Story {
         Section {
             id: "command-mode",
             name: "Command mode",
-            summary: "The : prefix lists every command with its description, its key when it has one, and the usage of the selected command.",
+            summary: ": lists every command with its description, its key when it has one, and the usage of the selected command. After a place, the command runs with -t set to it.",
             build: |window, cx| {
                 unified(
                     window,
@@ -476,11 +506,15 @@ fn pane(
 ) -> PaletteTreePane {
     PaletteTreePane {
         id: PaneId(id),
+        index: 0,
         label: label.to_owned(),
         detail: detail.to_owned().into(),
         program: program.map(SharedString::from),
         icon,
         running,
+        needs_you: detail == "Agent · waiting for input",
+        terminal: detail != "Browser" && detail != "Editor",
+        cwd: String::new(),
     }
 }
 
@@ -498,7 +532,14 @@ fn window(
         name: name.to_owned(),
         active,
         active_pane: PaneId(active_pane),
-        panes,
+        panes: panes
+            .into_iter()
+            .enumerate()
+            .map(|(index, pane)| PaletteTreePane {
+                index: u32::try_from(index).unwrap_or(u32::MAX),
+                ..pane
+            })
+            .collect(),
     }
 }
 
@@ -511,6 +552,7 @@ fn session(
     PaletteTreeSession {
         id: SessionId(id),
         name: name.to_owned(),
+        tmux_name: name.to_owned(),
         active,
         windows,
     }
@@ -585,7 +627,7 @@ fn online_tree() -> PaletteTree {
                                     pane(
                                         12,
                                         "fix the atlas tests",
-                                        "Terminal",
+                                        "Agent · waiting for input",
                                         Some("Claude Code"),
                                         IconName::SquareTerminal,
                                         true,
@@ -880,7 +922,7 @@ pub(super) fn target_palette(
 ) -> Entity<CommandPaletteView> {
     let backend = files_backend(online_tree(), true, files);
     let body = body.to_owned();
-    cx.new(|cx| CommandPaletteView::new_target(backend, body, pane, window, cx))
+    cx.new(|cx| CommandPaletteView::new_target(backend, &body, pane, window, cx))
 }
 
 fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {

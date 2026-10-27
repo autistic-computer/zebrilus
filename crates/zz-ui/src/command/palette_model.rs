@@ -1,17 +1,22 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
+    rc::Rc,
 };
 
-use zz_client::completion::{CompletionSuggestion, PaneKindAvailability};
 pub(crate) use zz_client::fuzzy::fuzzy_match;
+use zz_client::{
+    completion::{CompletionSuggestion, PaneKindAvailability},
+    place::{Fleet, Place},
+    recents::RecentKey,
+};
 use zz_gpui::SharedString;
 use zz_protocol::{
     ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, PaneId, SessionId, WindowId,
     command_specs,
 };
 
-use super::{PalettePill, PaletteRow, PaletteStatus};
+use super::{PalettePill, PaletteRow, PaletteStatus, palette_places::Chip};
 use crate::IconName;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,6 +123,7 @@ impl PaletteTreeHost {
 pub struct PaletteTreeSession {
     pub id: SessionId,
     pub name: String,
+    pub tmux_name: String,
     pub active: bool,
     pub windows: Vec<PaletteTreeWindow>,
 }
@@ -141,16 +147,22 @@ impl PaletteTreeWindow {
 #[derive(Clone, Debug)]
 pub struct PaletteTreePane {
     pub id: PaneId,
+    pub index: u32,
     pub label: String,
     pub detail: SharedString,
     /// The program in the foreground, such as Claude Code.
     pub program: Option<SharedString>,
     pub icon: IconName,
     pub running: bool,
+    pub needs_you: bool,
+    pub terminal: bool,
+    pub cwd: String,
 }
 
 #[derive(Clone)]
 pub(crate) enum PaletteAction {
+    Place(Place),
+    Recent(RecentKey),
     Host(PaletteHostId),
     Target {
         host: PaletteHostId,
@@ -172,7 +184,7 @@ pub(crate) struct PaletteEntry {
 }
 
 impl PaletteEntry {
-    fn row(row: PaletteRow, action: PaletteAction) -> Self {
+    pub(crate) fn row(row: PaletteRow, action: PaletteAction) -> Self {
         Self {
             row,
             action: Some(action),
@@ -181,7 +193,7 @@ impl PaletteEntry {
         }
     }
 
-    fn header(label: impl Into<SharedString>, hint: &'static str) -> Self {
+    pub(crate) fn header(label: impl Into<SharedString>, hint: &'static str) -> Self {
         Self {
             row: PaletteRow {
                 label: label.into(),
@@ -210,6 +222,8 @@ pub(crate) struct UnifiedPalette {
     pub mode: Option<PaletteMode>,
     pub host: Option<PaletteHostId>,
     pub command: Option<&'static CommandSpec>,
+    pub chips: Vec<Chip>,
+    pub fleet: Rc<Fleet>,
     pub tree: PaletteTree,
     pub rows: Vec<PaletteEntry>,
     expanded: BTreeMap<(PaletteHostId, PaletteTarget), bool>,
@@ -225,6 +239,8 @@ impl UnifiedPalette {
             mode,
             host: None,
             command: None,
+            chips: Vec::new(),
+            fleet: Rc::default(),
             tree: PaletteTree::default(),
             rows: Vec::new(),
             expanded: BTreeMap::new(),
@@ -329,6 +345,9 @@ impl UnifiedPalette {
     }
 
     pub fn pills(&self) -> Vec<PalettePill> {
+        if self.is_places() {
+            return self.place_pills();
+        }
         let mut pills = Vec::new();
         if let Some(host) = self.host.and_then(|id| self.tree.host(id)) {
             pills.push(PalettePill::Host {
@@ -349,6 +368,9 @@ impl UnifiedPalette {
     }
 
     pub fn placeholder(&self) -> String {
+        if self.is_places() {
+            return self.place_placeholder();
+        }
         if let Some(command) = self.command {
             return if target_kind(command) == Some(CommandValueKind::Window) {
                 "Target window"
@@ -656,7 +678,7 @@ impl UnifiedPalette {
     }
 }
 
-fn append_section(
+pub(crate) fn append_section(
     rows: &mut Vec<PaletteEntry>,
     label: &'static str,
     hint: &'static str,
@@ -669,7 +691,7 @@ fn append_section(
     rows.extend(entries);
 }
 
-fn command_entries(
+pub(crate) fn command_entries(
     query: &str,
     availability: PaneKindAvailability,
     shortcut: &dyn Fn(&str) -> Option<SharedString>,
@@ -770,7 +792,7 @@ fn pane_entry(
     )
 }
 
-fn host_entry(host: &PaletteTreeHost) -> PaletteEntry {
+pub(crate) fn host_entry(host: &PaletteTreeHost) -> PaletteEntry {
     PaletteEntry::row(
         PaletteRow {
             label: host.name.clone().into(),
@@ -829,7 +851,7 @@ pub(crate) fn needs_arguments(spec: &CommandSpec) -> bool {
     })
 }
 
-fn count(value: usize, noun: &str) -> String {
+pub(crate) fn count(value: usize, noun: &str) -> String {
     format!("{value} {noun}{}", if value == 1 { "" } else { "s" })
 }
 

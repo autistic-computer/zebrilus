@@ -1839,7 +1839,7 @@ impl AppView {
         let body = path_target(cwd.as_deref(), local.then(std::env::home_dir).flatten());
         self.show_command_palette(
             move |backend, window, cx| {
-                CommandPaletteView::new_target(backend, body, Some(pane), window, cx)
+                CommandPaletteView::new_target(backend, &body, Some(pane), window, cx)
             },
             window,
             cx,
@@ -9056,7 +9056,7 @@ mod tests {
         assert!(terminal_is_focused(&workspace, cx));
         input.borrow_mut().clear();
         publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("~/"));
+        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("&~/"));
         assert!(
             input
                 .borrow()
