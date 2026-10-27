@@ -207,7 +207,7 @@ Browser, Terminal, Hosts, Providers, System, About:
 
 | Section | Contents |
 |---------|----------|
-| Interface | Theme (Mode tiles for `theme-mode`, the Themes strip for `interface-theme` with Save and Import, the Accent swatches for `chrome-accent`, and the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, system UI font picker, transient UI zoom, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | Theme (a Mode segmented control for `theme-mode`, a Theme picker for `interface-theme`, each theme with its accent, with Import from clipboard in its more menu, the Accent swatches for `chrome-accent`, and the Tint and Tint strength sliders for `chrome-tint-hue` and `chrome-tint`), Advanced (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, both sliders, system UI font picker, transient UI zoom, macOS app-icon pickers, `animations`, window blur, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Session chip, window badges and alignment, Agent count, remote host, update, and clock; visible in the title bar when the sidebar is retracted |
 | Editor | Editor-pane typography and display controls, when compiled in |
 | Panes | Layout (`pane-gaps`), PiP (`pip-background-opacity`), Focus (`pane-inactive-opacity`, `pane-glow-strength`), Frame (`pane-margin`); gapped panes draw their frame in glass, with corners from the theme's radius and the rim from the theme's glass (a hairline the outline's width without glass) |

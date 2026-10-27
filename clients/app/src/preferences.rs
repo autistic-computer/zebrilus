@@ -207,18 +207,6 @@ impl Preferences {
         }
     }
 
-    /// Saves the look on screen as a theme, with every override and the UI
-    /// font folded in, selects the copy and drops the overrides.
-    pub fn duplicate_theme(&mut self) -> Result<String, String> {
-        let mut theme = self.shown_theme();
-        if !self.ui_font_family.is_empty() {
-            theme.materials.font = Some(self.ui_font_family.clone().into());
-        }
-        let id = self.save_theme(theme)?;
-        self.overrides = ThemeOverrides::default();
-        Ok(id)
-    }
-
     /// Saves the theme file on the clipboard and selects it.
     pub fn import_theme(&mut self, clipboard: &str) -> Result<String, String> {
         let theme = if clipboard.len() > MAX_THEME_BYTES {
@@ -681,7 +669,7 @@ mod tests {
             theme: Some("macos".into()),
             ..Preferences::default()
         };
-        glass.duplicate_theme().unwrap();
+        glass.save_theme(glass.shown_theme()).unwrap();
         let restored = Preferences::decode(&serde_json::to_string(&glass).unwrap()).unwrap();
         assert_eq!(restored.theme_id(), "theme-1");
         assert!(restored.interface_theme().materials.glass.is_some());
@@ -743,42 +731,6 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_keeps_what_is_on_screen() {
-        let overrides = ThemeOverrides {
-            radius: Some(7.0),
-            accent: Some("green".into()),
-            tint: Some(0.5),
-            tint_hue: Some(145.0),
-        };
-        let mut preferences = Preferences {
-            theme: Some("default".into()),
-            overrides: overrides.clone(),
-            ui_font_family: "Lilex".into(),
-            ..Preferences::default()
-        };
-        let shown = preferences.shown_theme();
-        assert_eq!(preferences.duplicate_theme().unwrap(), "theme-1");
-        let copy = preferences.saved_theme("theme-1").unwrap().clone();
-        let mut expected = interface_theme::default_theme().clone();
-        overrides.apply_to(&mut expected);
-        expected.materials.font = Some("Lilex".into());
-        expected.name = "theme-1".into();
-        assert_eq!(copy, expected);
-        assert_eq!(preferences.theme_id(), "theme-1");
-        assert_eq!(preferences.overrides, ThemeOverrides::default());
-        assert!(preferences.ui_font_family.is_empty());
-        assert_eq!(preferences.shown_theme(), copy);
-        assert_eq!(
-            (
-                preferences.shown_theme().dark.background,
-                preferences.widget_corner_radius(),
-                preferences.shown_ui_font()
-            ),
-            (shown.dark.background, 7.0, "Lilex")
-        );
-    }
-
-    #[test]
     fn import_names_built_in_and_nameless_themes_after_their_id() {
         let mut preferences = Preferences::default();
         preferences.import_theme(r#"{"name":"Default"}"#).unwrap();
@@ -806,7 +758,6 @@ mod tests {
         }
         preferences.overrides.accent = Some("green".into());
         assert!(preferences.import_theme(NEON).is_err());
-        assert!(preferences.duplicate_theme().is_err());
         assert_eq!(preferences.themes.len(), super::MAX_SAVED_THEMES);
         assert_eq!(preferences.overrides.accent.as_deref(), Some("green"));
     }

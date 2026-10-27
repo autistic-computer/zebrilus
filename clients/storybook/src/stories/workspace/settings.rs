@@ -6,15 +6,15 @@ use zz_gpui::{
     Styled as _, Window, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, Sizable as _, StylePatch,
-    SurfaceRole, ThemeMode, Tone,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, StylePatch, SurfaceRole,
+    ThemeMode, Tone,
+    button::Button,
     color_picker::{ColorPicker, ColorPickerState},
     input::{InputState, NumberInput},
     interface_theme::{
         InterfaceTheme, Materials, ThemeModeSetting, ThemeOverrides, builtin_themes,
-        pinned_theme_mode,
     },
+    menu::PopupMenuItem,
     select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -23,8 +23,8 @@ use zz_ui::{
         },
         appearance::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, contrast_slider,
-            corner_radius_slider, interface_theme_preview, picker_tile, theme_preview,
-            themes_strip, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
+            corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
+            theme_picker, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
             zoom_slider,
         },
         panes_page,
@@ -63,7 +63,7 @@ pub const STORY: Story = Story {
         Section {
             id: "appearance",
             name: "Appearance pickers",
-            summary: "The Interface page's Theme rows: the mode tiles, the Style strip drawn over the look on screen, the accent swatches with a custom picker (all following the corner radius), the tint sliders (they follow the tint knobs), the saved themes strip, the Advanced heading, and the corner radius, contrast, animation speed (it follows the speed knob) and window blur opacity sliders under it.",
+            summary: "The Interface page's Theme rows: Mode as a segmented control, the Theme picker with its more menu, the accent swatches with a custom picker (following the corner radius), the tint sliders (they follow the tint knobs), the Advanced heading, and the corner radius, contrast, animation speed (it follows the speed knob) and window blur opacity sliders under it.",
             build: |window, cx| stateful(window, cx, Controls::new, appearance),
         },
         Section {
@@ -320,23 +320,6 @@ fn entries(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
 fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
     let knobs = crate::knobs();
     let active = knobs.interface_theme();
-    let light = active.colors(ThemeMode::Light);
-    let dark = active.colors(ThemeMode::Dark);
-    let tiles =
-        div()
-            .flex()
-            .flex_none()
-            .flex_wrap()
-            .gap(px(8.0))
-            .children(ThemeModeSetting::ALL.map(|mode| {
-                picker_tile(
-                    format!("theme-{}", mode.as_str()).into(),
-                    mode.title(),
-                    theme_preview(pinned_theme_mode(mode), &light, &dark, cx),
-                    mode == ThemeModeSetting::System,
-                    cx,
-                )
-            }));
     let mode = cx.theme().mode;
     let saved = InterfaceTheme {
         name: "theme-1".to_owned(),
@@ -373,18 +356,17 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "theme rows",
             SettingsStack::titled("Interface")
-                .child(SettingEntry::new("Mode").control(tiles))
-                .child(
-                    entry(AppearancePageItem::Themes)
-                        .title_actions(
-                            div()
-                                .flex()
-                                .gap(px(4.0))
-                                .child(Button::new("theme-save").ghost().small().label("Save"))
-                                .child(Button::new("theme-import").ghost().small().label("Import")),
-                        )
-                        .child(themes_strip(&picks, mode, |_, _, _| {}, cx)),
-                )
+                .child(SettingEntry::new("Mode").control(theme_mode_control(
+                    ThemeModeSetting::System,
+                    |_, _, _| {},
+                    cx,
+                )))
+                .child(entry(AppearancePageItem::Themes).control(theme_picker(
+                    &picks,
+                    |_, _, _| {},
+                    |menu, _, _| menu.item(PopupMenuItem::new("Import from clipboard")),
+                    cx,
+                )))
                 .child(entry(AppearancePageItem::Accent).control(accent_swatches(
                     &picks,
                     mode,
