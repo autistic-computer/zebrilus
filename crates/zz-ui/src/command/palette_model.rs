@@ -1,10 +1,10 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    ops::Range,
 };
 
 use zz_client::completion::{CompletionSuggestion, PaneKindAvailability};
+pub(crate) use zz_client::fuzzy::fuzzy_match;
 use zz_gpui::SharedString;
 use zz_protocol::{
     ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, PaneId, SessionId, WindowId,
@@ -831,40 +831,6 @@ pub(crate) fn needs_arguments(spec: &CommandSpec) -> bool {
 
 fn count(value: usize, noun: &str) -> String {
     format!("{value} {noun}{}", if value == 1 { "" } else { "s" })
-}
-
-pub(crate) fn fuzzy_match(query: &str, label: &str) -> Option<(usize, Vec<Range<usize>>)> {
-    let mut needle = query
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .flat_map(char::to_lowercase)
-        .peekable();
-    if needle.peek().is_none() {
-        return Some((0, Vec::new()));
-    }
-    let mut hits = Vec::new();
-    let mut first = None;
-    let mut previous = 0;
-    let mut gaps = 0;
-    for (position, (byte, character)) in label.char_indices().enumerate() {
-        if character
-            .to_lowercase()
-            .any(|ch| Some(&ch) == needle.peek())
-        {
-            needle.next();
-            if first.is_none() {
-                first = Some(position);
-            } else {
-                gaps += position - previous - 1;
-            }
-            previous = position;
-            hits.push(byte..byte + character.len_utf8());
-            if needle.peek().is_none() {
-                return Some((first.unwrap_or_default() + 2 * gaps, hits));
-            }
-        }
-    }
-    None
 }
 
 #[cfg(test)]

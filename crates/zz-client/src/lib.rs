@@ -18,6 +18,7 @@ pub mod driver_log;
 #[cfg(not(target_family = "wasm"))]
 pub mod element_picker;
 pub mod floating;
+pub mod fuzzy;
 mod input;
 mod layout;
 pub mod local_scroll;
@@ -26,7 +27,9 @@ pub mod navigation;
 pub mod pane_separator;
 pub mod path_insert;
 pub mod path_rank;
+pub mod place;
 pub mod program;
+pub mod recents;
 pub mod scrollback;
 mod status;
 mod status_bar;
