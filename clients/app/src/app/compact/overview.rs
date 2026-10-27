@@ -13,36 +13,30 @@ use zz_gpui::{
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, StyledExt as _,
+    ActiveTheme as _, Colorize as _, Icon, IconName,
     agent::chat::{ChatBubble, ChatSender, ChatTyping, chat_header, phone_chat_card},
     button::{Button, ButtonVariants as _},
     compact::{
         BENTO_INSET, BentoSpan, HostState, Instant, PageDot, PagerEvent, PillLabel, PillPlacement,
-        bento_grid, bottom_sheet, close_sheet, compact_bar_button, compact_composer_pill,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_group_dot,
-        folding_title_bar, host_tile, host_tile_line, large_title, mini_pane, overview_choice_row,
-        overview_count, overview_host_empty, overview_session_heading, page_dots, scrolled,
-        window_layout, window_tile,
+        bento_grid, compact_bar_button, compact_composer_pill, compact_floating_bar,
+        compact_floating_group, compact_floating_pill, compact_group_dot, folding_title_bar,
+        host_tile, host_tile_line, large_title, mini_pane, overview_count, overview_host_empty,
+        overview_session_heading, page_dots, scrolled, window_layout, window_tile,
     },
     program::program_tile,
     roles,
     terminal::terminal_background,
 };
 
-use zz_ui::compact::sheet_close;
-
-use super::{AppShell, Page, kind_icon, pages};
+use super::{AppShell, MenuFrom, Page, kind_icon, pages};
 use crate::{connection::Connection, terminal::phone_colors};
 #[cfg(target_os = "ios")]
-use zz_ui::{compact::bento_add_tile, input::Input};
+use zz_ui::compact::bento_add_tile;
 
 const PREVIEW_TEXT: f32 = 4.0;
 const PREVIEW_LINE: f32 = 4.8;
 const PREVIEW_ROWS: u16 = 40;
 const PREVIEW_COLUMNS: usize = 56;
-const NEW_SHEET: &str = "overview-new-sheet";
-#[cfg(target_os = "ios")]
-const ADD_HOST_SHEET: &str = "overview-add-host-sheet";
 const HOST_GAP: f32 = 12.0;
 const DRIVER_LINES: usize = 2;
 const ZOOM_FADE_START: f32 = 0.3;
@@ -271,7 +265,7 @@ impl AppShell {
         cx.notify();
     }
 
-    fn open_hosts(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn open_hosts(&mut self, cx: &mut Context<Self>) {
         self.compact.close_sheets();
         self.compact.hosts.animate(true, Instant::now());
         cx.notify();
@@ -318,6 +312,7 @@ impl AppShell {
         }
         let progress = self.compact.hosts.progress().clamp(0.0, 1.0);
         let moving = self.compact.hosts.is_moving();
+        let dragging = self.compact.hosts.is_dragging();
         let host_view =
             (progress < 1.0).then(|| self.host_level(model, top_inset, placement, window, cx));
         let fleet_view =
@@ -372,7 +367,7 @@ impl AppShell {
                 linear_color_stop(scrim.alpha(0.0), 0.0),
                 linear_color_stop(scrim, 0.55),
             )));
-        if progress < 1.0 {
+        if progress < 1.0 || dragging {
             bars = bars.child(
                 div()
                     .absolute()
@@ -390,7 +385,7 @@ impl AppShell {
                     .child(self.hosts_bar(placement, cx)),
             );
         }
-        if moving {
+        if moving && !dragging {
             bars = bars.child(
                 div()
                     .id("overview-zoom-block")
@@ -709,6 +704,18 @@ impl AppShell {
         }
     }
 
+    pub(super) fn open_settings(&mut self, cx: &mut Context<Self>) {
+        self.settings = Some(zz_ui::settings::SettingsSection::Appearance);
+        self.focused_pane = None;
+        cx.notify();
+    }
+
+    pub(super) fn shown_host_connected(&self, cx: &App) -> bool {
+        self.host_pages(cx)
+            .get(self.compact.host_pager.index())
+            .is_some_and(|host| host.connected(cx))
+    }
+
     fn hosts_bar(&self, placement: &PillPlacement, cx: &mut Context<Self>) -> AnyElement {
         let program = self
             .driver_chat
@@ -748,13 +755,8 @@ impl AppShell {
             cx,
         )
         .on_click(cx.listener(|this, _, window, cx| this.open_driver_composer(window, cx)));
-        let settings = compact_bar_button("hosts-settings", IconName::Settings).on_click(
-            cx.listener(|this, _, _, cx| {
-                this.settings = Some(zz_ui::settings::SettingsSection::Appearance);
-                this.focused_pane = None;
-                cx.notify();
-            }),
-        );
+        let settings = compact_bar_button("hosts-settings", IconName::Settings)
+            .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx)));
         compact_floating_bar(composer, placement, cx)
             .child(compact_floating_group([settings], placement, cx))
             .into_any_element()
@@ -768,7 +770,6 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let host = hosts.get(index);
-        let connected = host.is_some_and(|host| host.connected(cx));
         let meta = host.map_or_else(String::new, |host| host.detail(cx));
         let dots = (hosts.len() > 1).then(|| {
             page_dots(
@@ -781,8 +782,11 @@ impl AppShell {
                 cx,
             )
         });
-        let back = compact_bar_button("host-back", IconName::ChevronLeft)
-            .on_click(cx.listener(|this, _, _, cx| this.open_hosts(cx)));
+        let menu = match self.compact.menu {
+            Some((MenuFrom::Host, spring)) => spring.progress().clamp(0.0, 1.0),
+            _ => 0.0,
+        };
+        let at = self.compact.pill_at.clone();
         let pill = compact_floating_pill(
             "overview-host",
             PillLabel {
@@ -797,31 +801,45 @@ impl AppShell {
             placement,
             cx,
         )
-        .on_click(cx.listener(|this, _, _, cx| this.open_hosts(cx)))
-        .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
-            this.swipe_host(event, window, cx);
-        }));
-        let new = compact_bar_button("overview-new", IconName::Plus)
-            .disabled(!connected)
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.compact.new_sheet = true;
-                cx.notify();
-            }));
-        let driver = compact_bar_button("overview-driver", IconName::Chat).on_click(cx.listener(
-            |this, _, window, cx| {
-                this.open_driver_chat(window, cx);
-            },
-        ));
-        compact_floating_bar(compact_floating_group([back], placement, cx), placement, cx)
-            .child(pill)
-            .child(
-                compact_floating_group([new, driver], placement, cx)
-                    .relative()
-                    .when_some(self.driver_dot(cx), |group, color| {
-                        group.child(compact_group_dot(color))
-                    }),
-            )
-            .into_any_element()
+        .opacity(1.0 - menu)
+        .child(
+            canvas(move |bounds, _, _| at.set(bounds), |_, (), _, _| {})
+                .absolute()
+                .inset_0(),
+        )
+        .when_some(self.driver_dot(cx), |pill, color| {
+            pill.child(compact_group_dot(color))
+        })
+        .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(MenuFrom::Host, cx)))
+        .on_scroll_wheel(cx.listener(Self::host_pill_scroll));
+        compact_floating_bar(pill, placement, cx).into_any_element()
+    }
+
+    fn host_pill_scroll(
+        &mut self,
+        event: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.swipe_host(event, window, cx) {
+            return;
+        }
+        let delta = event.delta.pixel_delta(window.line_height());
+        let response =
+            self.compact
+                .hosts
+                .scroll(f32::from(delta.y), event.touch_phase, Instant::now());
+        if !response.consumed {
+            return;
+        }
+        cx.stop_propagation();
+        if response.started {
+            self.compact.close_sheets();
+        }
+        if response.event.is_some() {
+            window.end_touch_momentum();
+        }
+        cx.notify();
     }
 
     fn swipe_host(
@@ -829,7 +847,7 @@ impl AppShell {
         event: &ScrollWheelEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) {
+    ) -> bool {
         let delta_x = match event.delta {
             ScrollDelta::Pixels(delta) => f32::from(delta.x),
             ScrollDelta::Lines(delta) => delta.x * 20.0,
@@ -841,7 +859,7 @@ impl AppShell {
             Instant::now(),
         );
         if !response.consumed {
-            return;
+            return false;
         }
         cx.stop_propagation();
         if self.compact.host_pager.swallows_momentum() {
@@ -851,6 +869,7 @@ impl AppShell {
             self.show_host(index, window, cx);
         }
         cx.notify();
+        true
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1317,118 +1336,7 @@ impl AppShell {
             }
             NewThing::Session => self.command("new-session", Vec::new(), cx),
         }
-        self.compact.new_sheet = false;
         self.close_overview(cx);
-    }
-
-    pub(super) fn overview_new_sheet(
-        &self,
-        bottom_inset: Pixels,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let host = self
-            .host_pages(cx)
-            .get(self.compact.host_pager.index())
-            .cloned();
-        let host_name = host
-            .as_ref()
-            .map_or_else(String::new, |host| host.title.clone());
-        let session = host
-            .as_ref()
-            .and_then(|host| host.connection.as_ref())
-            .and_then(|connection| {
-                let connection = connection.read(cx);
-                let core = &connection.core;
-                let id = core
-                    .attached_session()
-                    .or_else(|| connection.remembered_session())?;
-                core.snapshot()
-                    .sessions
-                    .iter()
-                    .find(|session| session.id == id)
-                    .map(|session| session_label(session).text)
-            });
-        let muted = cx.theme().foreground.muted();
-        let place = match &session {
-            Some(session) => format!("Opens as a new window in {session} on {host_name}."),
-            None => format!("Opens as a new window on {host_name}."),
-        };
-        let choice = |id: &'static str,
-                      icon: IconName,
-                      title: &'static str,
-                      detail: String,
-                      what: NewThing,
-                      cx: &mut Context<Self>| {
-            overview_choice_row(id, Some(Icon::new(icon)), title, detail, cx)
-                .on_click(cx.listener(move |this, _, window, cx| this.create(what, window, cx)))
-                .into_any_element()
-        };
-        let rows = vec![
-            choice(
-                "overview-new-terminal",
-                IconName::SquareTerminal,
-                "Terminal",
-                "A shell in the current folder".into(),
-                NewThing::Terminal,
-                cx,
-            ),
-            choice(
-                "overview-new-browser",
-                IconName::Globe,
-                "Browser",
-                format!("A web page on {host_name}, localhost included"),
-                NewThing::Browser,
-                cx,
-            ),
-        ];
-        let new_session = overview_choice_row(
-            "overview-new-session",
-            Some(Icon::new(IconName::Layers)),
-            "New session",
-            format!("Its own set of windows on {host_name}"),
-            cx,
-        )
-        .on_click(cx.listener(|this, _, window, cx| this.create(NewThing::Session, window, cx)));
-        let close =
-            sheet_close("overview-new-close").on_click(|_, _, cx| close_sheet(NEW_SHEET, cx));
-        let dismiss = cx.weak_entity();
-        bottom_sheet(
-            NEW_SHEET,
-            "New",
-            [close.into_any_element()],
-            div()
-                .flex()
-                .flex_col()
-                .list_inset(cx)
-                .pb(px(8.0))
-                .child(
-                    div()
-                        .px(px(12.0))
-                        .pb(px(10.0))
-                        .text_size(px(13.0))
-                        .line_height(px(18.0))
-                        .text_color(muted)
-                        .child(place),
-                )
-                .children(rows)
-                .child(
-                    div()
-                        .mx(px(12.0))
-                        .my(px(6.0))
-                        .rule_on(roles::LIST_RULE, Edge::Top, cx),
-                )
-                .child(new_session),
-            bottom_inset,
-            move |_, cx| {
-                let _ = dismiss.update(cx, |this, cx| {
-                    this.compact.new_sheet = false;
-                    cx.notify();
-                });
-            },
-        )
-        .surface_role(roles::NEW_DRAWER)
-        .header_role(roles::PHONE_BAR)
-        .into_any_element()
     }
 
     #[cfg(target_os = "ios")]
@@ -1437,87 +1345,24 @@ impl AppShell {
         bottom_inset: Pixels,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let muted = cx.theme().foreground.muted();
-        let close = sheet_close("overview-add-host-close")
-            .on_click(|_, _, cx| close_sheet(ADD_HOST_SHEET, cx));
-        let dismiss = cx.weak_entity();
-        bottom_sheet(
-            ADD_HOST_SHEET,
-            "Add host",
-            [close.into_any_element()],
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(12.0))
-                .px(px(16.0))
-                .pb(px(16.0))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.0))
-                        .child(div().flex_1().min_w_0().child(Input::new(&self.hosts.destination)))
-                        .child(
-                            Button::new("overview-add-host-connect")
-                                .primary()
-                                .label("Connect")
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    if this.add_host(window, cx) {
-                                        this.compact.add_host = false;
-                                        let count = this.host_pages(cx).len();
-                                        let shown = this.compact.host_pager.index();
-                                        this.compact.host_pager.sync(shown, count);
-                                        this.compact
-                                            .host_pager
-                                            .go_to(count.saturating_sub(1), Instant::now());
-                                        cx.notify();
-                                    }
-                                })),
-                        ),
-                )
-                .children(self.hosts.error.clone().map(|error| {
-                    div()
-                        .text_size(px(13.0))
-                        .text_color(cx.theme().warning)
-                        .child(error)
-                }))
-                .child(
-                    div()
-                        .text_size(px(13.0))
-                        .text_color(muted)
-                        .child("user@host, or user@host:port. Hosts you are on stay connected."),
-                )
-                .child(div().rule_on(roles::LIST_RULE, Edge::Top, cx))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(12.0))
-                        .child(
-                            div()
-                                .flex_1()
-                                .min_w_0()
-                                .text_size(px(13.0))
-                                .text_color(muted)
-                                .child("Add this key to ~/.ssh/authorized_keys on the host to sign in without a password."),
-                        )
-                        .child(
-                            Button::new("overview-add-host-copy-key")
-                                .label("Copy key")
-                                .on_click(|_, window, cx| super::super::hosts::copy_ssh_key(window, cx)),
-                        ),
-                ),
+        self.add_host_sheet(
             bottom_inset,
-            move |_, cx| {
-                let _ = dismiss.update(cx, |this, cx| {
-                    this.compact.add_host = false;
-                    cx.notify();
-                });
+            |this, cx| {
+                this.compact.add_host = false;
+                let count = this.host_pages(cx).len();
+                let shown = this.compact.host_pager.index();
+                this.compact.host_pager.sync(shown, count);
+                this.compact
+                    .host_pager
+                    .go_to(count.saturating_sub(1), Instant::now());
+                cx.notify();
             },
+            |this, cx| {
+                this.compact.add_host = false;
+                cx.notify();
+            },
+            cx,
         )
-        .surface_role(roles::ADD_HOST_DRAWER)
-        .header_role(roles::PHONE_BAR)
-        .into_any_element()
     }
 }
 

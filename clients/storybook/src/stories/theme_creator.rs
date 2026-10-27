@@ -18,11 +18,10 @@ use zz_ui::{
         unified_command_palette_input,
     },
     compact::{
-        ArrowDirection, BENTO_INSET, BentoSpan, BottomSheet, HostState, PillLabel, ToolKeys,
-        WhichKeyList, arrow_pad_bubble, bento_grid, bottom_sheet, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
-        compact_pane_header, mini_pane, overview_choice_row, overview_count, overview_host_row,
-        overview_session_heading, page_dots, sheet_close, sheet_row, window_layout,
+        ArrowDirection, BENTO_INSET, BentoSpan, BottomSheet, PillLabel, ToolKeys, WhichKeyList,
+        arrow_pad_bubble, bento_grid, bottom_sheet, compact_bar_button, compact_floating_bar,
+        compact_floating_group, compact_floating_pill, compact_hud, mini_pane, overview_count,
+        overview_session_heading, page_dots, sheet_action, sheet_close, sheet_row, window_layout,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -65,7 +64,7 @@ use super::{
         lens,
     },
     console::{
-        phone::{binding_rows, close, groups, key_row, placement, tool_keys},
+        phone::{binding_rows, groups, key_row, placement, tool_keys},
         which_key::{prefix_header, prefix_rows},
     },
     kit::menus::{SplitRight, bind_keys, pane_menu, view_menu},
@@ -653,13 +652,9 @@ impl Controls {
             .w_full()
             .child(
                 SettingsStack::titled("Interface")
+                    .child(SettingEntry::new("Mode").child(tiles))
                     .child(
-                        SettingEntry::new("Mode")
-                        .child(tiles),
-                    )
-                    .child(
-                        SettingEntry::new("Navigation layout")
-                        .control(
+                        SettingEntry::new("Navigation layout").control(
                             Select::new(&self.layout)
                                 .title("Navigation layout")
                                 .on(settings_card_ground(cx)),
@@ -871,7 +866,7 @@ impl Phone {
         cx.new(|cx| {
             let keys = tool_keys(cx);
             let menu = tool_keys(cx);
-            menu.prefix.update(cx, zz_ui::compact::PopoverKey::open);
+            menu.prefix.update(cx, |key, cx| key.set_armed(true, cx));
             Self { keys, menu }
         })
         .into()
@@ -893,12 +888,6 @@ impl Phone {
             cx,
         );
         phone_frame("showcase-phone-screen", cx)
-            .child(compact_pane_header(
-                IconName::SquareTerminal,
-                "cargo test",
-                [close("showcase-phone-close", cx)],
-                cx,
-            ))
             .child(
                 v_flex()
                     .relative()
@@ -919,12 +908,6 @@ impl Phone {
     fn keys(&self, cx: &App) -> AnyElement {
         let theme = cx.theme();
         phone_frame("showcase-phone-menu", cx)
-            .child(compact_pane_header(
-                IconName::SquareTerminal,
-                "zsh",
-                [close("showcase-phone-menu-close", cx)],
-                cx,
-            ))
             .child(
                 h_flex()
                     .h(px(KEYS_PAGE_HEIGHT))
@@ -1197,66 +1180,61 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
         )
     };
     let hosts = list()
-        .child(overview_host_row(
-            "drawer-host-macbook",
-            HostState::Connected,
-            "macbook",
-            "2 sessions",
-            true,
-            cx,
-        ))
-        .child(overview_host_row(
-            "drawer-host-xps",
-            HostState::Connected,
-            "xps",
-            "1 session",
-            false,
-            cx,
-        ))
         .child(
-            overview_host_row(
-                "drawer-host-alienware",
-                HostState::Offline,
-                "alienware",
-                "Not connected",
-                false,
-                cx,
-            )
-            .child(Button::new("drawer-host-connect").label("Connect")),
-        )
-        .child(rule())
-        .child(plus("drawer-host-add", "Add host"));
-    let new = list()
-        .child(
-            div()
+            v_flex()
+                .gap(px(4.0))
                 .px(px(12.0))
                 .pb(px(10.0))
                 .text_size(px(13.0))
-                .text_color(muted)
-                .child("Opens as a new window in zz on macbook."),
+                .child(div().text_color(muted).child("ssh://fabri@alienware"))
+                .child(
+                    div()
+                        .text_color(cx.theme().warning)
+                        .child("ssh: connect to host alienware port 22: Connection refused"),
+                ),
         )
-        .children(PANES.map(|(id, icon, title, detail)| {
-            overview_choice_row(id, Some(zz_ui::Icon::new(icon)), title, detail, cx)
-        }));
+        .child(sheet_action(
+            "drawer-host-connect",
+            IconName::Server,
+            "Connect",
+            cx,
+        ))
+        .child(
+            sheet_action("drawer-host-remove", IconName::Xmark, "Remove host", cx)
+                .text_color(cx.theme().danger),
+        );
+    let note = |text: &'static str| {
+        div()
+            .text_size(px(13.0))
+            .line_height(px(18.0))
+            .text_color(muted)
+            .child(text)
+    };
     let add_host = v_flex()
-        .gap(px(12.0))
+        .gap(px(10.0))
         .px(px(16.0))
         .pb(px(16.0))
+        .child(Input::new(destination))
+        .child(note("user@host, or user@host:port"))
         .child(
-            h_flex()
-                .gap(px(8.0))
-                .child(div().flex_1().min_w_0().child(Input::new(destination)))
-                .child(
-                    Button::new("drawer-add-host-connect")
-                        .primary()
-                        .label("Connect"),
-                ),
+            Button::new("drawer-add-host-connect")
+                .primary()
+                .w_full()
+                .label("Connect"),
         )
         .child(
             div()
-                .text_size(px(13.0))
-                .text_color(muted)
-                .child("user@host, or user@host:port. Hosts you are on stay connected."),
+                .my(px(6.0))
+                .rule_on(roles::LIST_RULE, zz_ui::Edge::Top, cx),
+        )
+        .child(note(
+            "Add this phone's key to authorized_keys on the host to sign in without a password.",
+        ))
+        .child(
+            Button::new("drawer-add-host-key")
+                .w_full()
+                .icon(IconName::Copy)
+                .label("Copy SSH key"),
         );
     let new_pane = list().children(PANES.map(|(id, icon, title, _)| {
         sheet_row(
@@ -1299,16 +1277,9 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
             vec![
                 drawer_screen(
                     "drawer-screen-hosts",
-                    drawer("drawer-hosts", "Hosts", roles::HOSTS_DRAWER, hosts),
+                    drawer("drawer-hosts", "alienware", roles::HOSTS_DRAWER, hosts),
                     cx,
                 ),
-                drawer_screen(
-                    "drawer-screen-new",
-                    drawer("drawer-new", "New", roles::NEW_DRAWER, new),
-                    cx,
-                ),
-            ],
-            vec![
                 drawer_screen(
                     "drawer-screen-add-host",
                     drawer(
@@ -1319,6 +1290,8 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                     ),
                     cx,
                 ),
+            ],
+            vec![
                 drawer_screen(
                     "drawer-screen-new-pane",
                     drawer(
@@ -1329,15 +1302,13 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                     ),
                     cx,
                 ),
-            ],
-            vec![
                 drawer_screen(
                     "drawer-screen-tabs",
                     drawer("drawer-tabs", "Tabs", roles::TABS_DRAWER, tabs),
                     cx,
                 ),
-                drawer_screen("drawer-screen-bindings", bindings, cx),
             ],
+            vec![drawer_screen("drawer-screen-bindings", bindings, cx)],
         ],
     )
     .into_any_element()

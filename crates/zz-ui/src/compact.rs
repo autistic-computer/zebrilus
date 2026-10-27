@@ -9,6 +9,7 @@ mod lift;
 mod morph;
 mod overview;
 mod pager;
+mod pill_menu;
 mod popover_key;
 mod press;
 mod sticky;
@@ -17,9 +18,9 @@ mod which_key_list;
 
 pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
 pub use bar::{
-    COMPACT_NAV_BAR_HEIGHT, COMPACT_PILL_HEIGHT, PillLabel, PillPlacement, compact_bar_button,
-    compact_composer_pill, compact_floating_bar, compact_floating_group, compact_floating_pill,
-    compact_group_dot, compact_nav_bar, compact_pill_label, pill_ink, pill_inverted_over,
+    COMPACT_NAV_BAR_HEIGHT, COMPACT_PILL_HEIGHT, PillGlass, PillLabel, PillPlacement,
+    compact_bar_button, compact_composer_pill, compact_floating_bar, compact_floating_group,
+    compact_floating_pill, compact_group_dot, compact_nav_bar, compact_pill_label, pill_glass_over,
 };
 pub use bento::{
     BENTO_COLUMNS, BENTO_GAP, BENTO_INSET, BentoSpan, bento_add_tile, bento_grid, bento_pack,
@@ -27,8 +28,8 @@ pub use bento::{
 };
 pub use dots::{PageDot, page_dots, page_dots_in};
 pub use header::{
-    COMPACT_PANE_HEADER_HEIGHT, LARGE_TITLE_HEIGHT, TITLE_BAR_HEIGHT, compact_pane_header,
-    compact_tabs_button, folding_title_bar, large_title, scrolled,
+    LARGE_TITLE_HEIGHT, TITLE_BAR_HEIGHT, compact_tabs_button, folding_title_bar, large_title,
+    scrolled,
 };
 pub use hud::compact_hud;
 pub use key_row::{KEY_ROW_HEIGHT, KeyRow, KeyRowKey, ToolKeys};
@@ -38,10 +39,10 @@ pub use morph::{
     mini_pill_width, pill_bounds, pill_corner,
 };
 pub use overview::{
-    HostState, host_state_dot, overview_choice_row, overview_count, overview_host_empty,
-    overview_host_row, overview_session_heading,
+    HostState, host_state_dot, overview_count, overview_host_empty, overview_session_heading,
 };
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
+pub use pill_menu::{PillMenuAlign, PillMenuItem, PillMenuLook, compact_pill_menu};
 pub use popover_key::{
     PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords,
 };

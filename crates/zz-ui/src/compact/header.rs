@@ -1,16 +1,14 @@
 use zz_gpui::{
-    AnyElement, App, Div, ElementId, GlassMaterial, ParentElement as _, Pixels, ScrollHandle,
-    SharedString, Styled as _, div, prelude::*, px, transparent_black,
+    App, Div, ElementId, GlassMaterial, ParentElement as _, Pixels, ScrollHandle, SharedString,
+    Styled as _, div, prelude::*, px, transparent_black,
 };
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, Icon, IconName, PANE_HEADER_CONTROL_HEIGHT,
-    StyledExt as _,
+    ActiveTheme as _, Colorize as _, Edge, PANE_HEADER_CONTROL_HEIGHT, StyledExt as _,
     button::{Button, ButtonVariants as _},
     rems_from_px, roles,
 };
 
-pub const COMPACT_PANE_HEADER_HEIGHT: f32 = 36.0;
 pub const LARGE_TITLE_HEIGHT: f32 = 52.0;
 pub const TITLE_BAR_HEIGHT: f32 = 44.0;
 
@@ -20,71 +18,6 @@ const TITLE_SPAN: f32 = 14.0;
 const FROST_BLUR: f32 = 20.0;
 const FROST_TINT: f32 = 0.72;
 const FROST_SATURATION: f32 = 1.8;
-
-const PADDING_X: f32 = 12.0;
-const ACTIONS_RIGHT: f32 = 6.0;
-const ACTION_SLOT: f32 = 28.0;
-
-pub fn compact_pane_header(
-    icon: IconName,
-    title: impl Into<SharedString>,
-    actions: impl IntoIterator<Item = AnyElement>,
-    cx: &App,
-) -> Div {
-    let actions: Vec<AnyElement> = actions.into_iter().collect();
-    let reserve = if actions.is_empty() {
-        PADDING_X
-    } else {
-        ACTIONS_RIGHT + ACTION_SLOT * actions.len() as f32 + 4.0
-    };
-    div()
-        .debug_selector(|| "compact-pane-header".to_owned())
-        .relative()
-        .flex()
-        .flex_none()
-        .items_center()
-        .w_full()
-        .h(rems_from_px(COMPACT_PANE_HEADER_HEIGHT))
-        .pl(rems_from_px(PADDING_X))
-        .pr(rems_from_px(reserve))
-        .gap(rems_from_px(8.0))
-        .font_family(cx.theme().font_family.clone())
-        .text_size(rems_from_px(15.0))
-        .line_height(rems_from_px(20.0))
-        .surface(roles::PANE_HEADER, cx)
-        .text_color(cx.theme().foreground.muted())
-        .child(
-            div()
-                .flex_none()
-                .relative()
-                .top(rems_from_px(0.5))
-                .opacity(0.8)
-                .child(Icon::new(icon).size(rems_from_px(16.0))),
-        )
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(title.into()),
-        )
-        .when(!actions.is_empty(), |header| {
-            header.child(
-                div()
-                    .debug_selector(|| "compact-pane-header-actions".to_owned())
-                    .absolute()
-                    .top_0()
-                    .right(rems_from_px(ACTIONS_RIGHT))
-                    .h_full()
-                    .flex()
-                    .items_center()
-                    .gap(rems_from_px(4.0))
-                    .children(actions),
-            )
-        })
-}
 
 /// How far a page has scrolled down, in points.
 pub fn scrolled(scroll: &ScrollHandle) -> f32 {

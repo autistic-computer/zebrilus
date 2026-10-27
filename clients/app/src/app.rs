@@ -157,6 +157,8 @@ pub struct AppShell {
     settings: Option<SettingsSection>,
     settings_picked: bool,
     settings_leaving: bool,
+    settings_fold: zz_ui::settings::SettingsFold,
+    settings_index_fold: zz_ui::settings::SettingsFold,
     preferences: settings::Preferences,
     settings_controls: settings::Controls,
     pub focus: FocusHandle,
@@ -397,6 +399,8 @@ impl AppShell {
             settings: None,
             settings_picked: false,
             settings_leaving: false,
+            settings_fold: zz_ui::settings::SettingsFold::default(),
+            settings_index_fold: zz_ui::settings::SettingsFold::default(),
             preferences,
             settings_controls,
             focus: cx.focus_handle(),
@@ -1718,12 +1722,21 @@ impl AppShell {
             }
             self.pane_layout_override = None;
             if !self.connection.read(cx).connected {
-                return self.hosts_page(
-                    "web-connect-page",
-                    Some("Connect to zz"),
-                    Self::narrow(window),
-                    cx,
-                );
+                #[cfg(target_os = "ios")]
+                let sheet = self.host_sheets(window, cx);
+                #[cfg(not(target_os = "ios"))]
+                let sheet: Option<AnyElement> = None;
+                return div()
+                    .flex()
+                    .size_full()
+                    .child(self.hosts_page(
+                        "web-connect-page",
+                        Some("Connect to zz"),
+                        Self::narrow(window),
+                        cx,
+                    ))
+                    .children(sheet)
+                    .into_any_element();
             }
             let has_sessions = !self.connection.read(cx).core.snapshot().sessions.is_empty();
             return div()
@@ -2900,6 +2913,28 @@ impl Render for AppShell {
                 .into_any_element()
         });
         let workspace = (!compact).then(|| self.workspace(window, cx));
+        let mut terminal_overlays = self.terminal_overlay(cx).into_iter().collect::<Vec<_>>();
+        terminal_overlays.extend(self.floating_overlay(window, cx));
+        let mut overlays = Vec::new();
+        if !compact && self.slideover && !self.inline_sidebar(window) && self.settings.is_none() {
+            overlays.push(self.slideover(window, cx));
+        }
+        overlays.extend(self.overlay(window, cx));
+        overlays.extend(Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element));
+        overlays
+            .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));
+        let shell = if let Some(workspace) = workspace {
+            app_shell_surface(
+                "web-client",
+                cx.theme().background,
+                sidebar,
+                titlebar,
+                app_workspace_surface("web-workspace", workspace, terminal_overlays, cx),
+                overlays,
+            )
+        } else {
+            self.compact_shell(terminal_overlays, overlays, window, cx)
+        };
         #[cfg(target_os = "ios")]
         {
             let connection = self.connection.read(cx);
@@ -2919,6 +2954,7 @@ impl Render for AppShell {
                 });
             let unobstructed = connection.connected
                 && self.settings.is_none()
+                && self.driver_sheet.is_none()
                 && !dialog
                 && !native_obscured
                 && self.prompt.is_none()
@@ -2975,28 +3011,6 @@ impl Render for AppShell {
                 });
             }
         }
-        let mut terminal_overlays = self.terminal_overlay(cx).into_iter().collect::<Vec<_>>();
-        terminal_overlays.extend(self.floating_overlay(window, cx));
-        let mut overlays = Vec::new();
-        if !compact && self.slideover && !self.inline_sidebar(window) && self.settings.is_none() {
-            overlays.push(self.slideover(window, cx));
-        }
-        overlays.extend(self.overlay(window, cx));
-        overlays.extend(Root::render_dialog_layer(window, cx).map(IntoElement::into_any_element));
-        overlays
-            .extend(Root::render_notification_layer(window, cx).map(IntoElement::into_any_element));
-        let shell = if let Some(workspace) = workspace {
-            app_shell_surface(
-                "web-client",
-                cx.theme().background,
-                sidebar,
-                titlebar,
-                app_workspace_surface("web-workspace", workspace, terminal_overlays, cx),
-                overlays,
-            )
-        } else {
-            self.compact_shell(terminal_overlays, overlays, window, cx)
-        };
         let shell = shell
             .track_focus(&self.focus)
             .on_key_up(cx.listener(Self::key_up))

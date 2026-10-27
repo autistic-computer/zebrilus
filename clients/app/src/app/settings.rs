@@ -5,15 +5,15 @@ use zz_gpui::{
     TextInputMode, Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _, Theme, ThemeMode,
-    UiZoom,
+    ActiveTheme as _, Colorize as _, IconName, Sizable as _, Theme, ThemeMode, UiZoom,
     button::{Button, ButtonVariants as _},
     color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
     input::{InputEvent, InputState, NumberInput},
     interface_theme::{self, ThemeModeSetting},
     select::{Select, SelectEvent, SelectState},
     settings::{
-        SettingEntry, SettingsSection, SettingsSelectItem, SettingsStack, StackPosition,
+        SettingEntry, SettingsFold, SettingsScrollColumn, SettingsSection, SettingsSelectItem,
+        SettingsStack, StackPosition,
         appearance::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, appearance_page,
             appearance_page_items, contrast_slider, corner_radius_slider, percent_slider,
@@ -21,7 +21,7 @@ use zz_ui::{
             zoom_slider,
         },
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
-        settings_preview, settings_scroll_column,
+        settings_preview, settings_scroll_column, settings_title_bar,
     },
     switch::Switch,
 };
@@ -447,13 +447,17 @@ impl AppShell {
             SettingsSection::Appearance
         };
         if !narrow {
-            return self.settings_page(section, narrow, cx);
+            return self.settings_page(section, None, cx);
         }
         let view = cx.entity().downgrade();
         let shell = cx.entity().downgrade();
         let picked = self.settings_picked;
         let attached = self.active_window(cx).is_some();
-        zz_ui::compact::swipe_back(
+        #[cfg(target_os = "ios")]
+        let sheet = self.host_sheets(window, cx);
+        #[cfg(not(target_os = "ios"))]
+        let sheet: Option<AnyElement> = None;
+        let route = zz_ui::compact::swipe_back(
             "settings-swipe-back",
             self.settings_route(section, picked, cx),
             move |window, cx| {
@@ -485,12 +489,20 @@ impl AppShell {
             })
         })
         .pushed(picked)
-        .leaving(self.settings_leaving)
-        .into_any_element()
+        .leaving(self.settings_leaving);
+        div()
+            .size_full()
+            .child(route)
+            .children(sheet)
+            .into_any_element()
     }
 
     fn settings_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_leaving = false;
+        #[cfg(target_os = "ios")]
+        {
+            self.hosts.sheet = None;
+        }
         if self.settings_picked {
             self.settings_picked = false;
         } else {
@@ -507,8 +519,13 @@ impl AppShell {
         picked: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let fold = if picked {
+            &self.settings_fold
+        } else {
+            &self.settings_index_fold
+        };
         let content = if picked {
-            self.settings_page(section, true, cx)
+            self.settings_page(section, Some(fold), cx)
         } else {
             #[cfg(target_os = "ios")]
             let host = self
@@ -537,36 +554,21 @@ impl AppShell {
                 },
                 cx,
             )
+            .large_title("Settings", fold)
             .into_any_element()
         };
         let title = if picked { section.title() } else { "Settings" };
+        let back = zz_ui::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.settings_leaving = true;
+                cx.notify();
+            }));
         div()
             .flex()
-            .flex_col()
+            .flex_col_reverse()
             .size_full()
             .min_w_0()
             .min_h_0()
-            .child(
-                zz_ui::compact::compact_nav_bar(cx)
-                    .child(
-                        zz_ui::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.settings_leaving = true;
-                                cx.notify();
-                            })),
-                    )
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .text_size(px(17.0))
-                            .font_semibold()
-                            .child(title),
-                    ),
-            )
             .child(
                 div().flex_1().min_h_0().relative().child(
                     div()
@@ -576,15 +578,21 @@ impl AppShell {
                         .child(zz_ui::touch::touch_scale(content, cx)),
                 ),
             )
+            .child(settings_title_bar(title, fold, back))
             .into_any_element()
     }
 
     fn settings_page(
         &self,
         section: SettingsSection,
-        narrow: bool,
+        fold: Option<&SettingsFold>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let narrow = fold.is_some();
+        let large = |page: SettingsScrollColumn| match fold {
+            Some(fold) => page.large_title(section.title(), fold),
+            None => page,
+        };
         let phone = phone();
         match section {
             SettingsSection::Appearance => {
@@ -624,6 +632,7 @@ impl AppShell {
                     })
                 })
                 .row_focus(row_focus)
+                .when_some(fold, |page, fold| page.large_title(section.title(), fold))
                 .into_any_element();
             }
             SettingsSection::Panes => {
@@ -686,7 +695,9 @@ impl AppShell {
                 )
                 .into_any_element();
             }
-            SettingsSection::Terminal => return self.terminal_settings(narrow, cx),
+            SettingsSection::Terminal => {
+                return large(self.terminal_settings(narrow, cx)).into_any_element();
+            }
             SettingsSection::Advanced => {
                 let text_size = shown(Setting::SystemTextSize, phone).then(|| {
                     SettingEntry::new("Match system text size")
@@ -703,7 +714,7 @@ impl AppShell {
                                 })),
                         )
                 });
-                return settings_scroll_column("settings-page")
+                return large(settings_scroll_column("settings-page"))
                     .children((!narrow).then(|| settings_page_heading(section.title(), cx)))
                     .when(shown(Setting::CommandPalette, phone), |page| {
                         page.child(
@@ -746,18 +757,20 @@ impl AppShell {
                     })
                     .into_any_element();
             }
-            SettingsSection::About => return about_page(cx),
+            SettingsSection::About => return large(about_page(cx)).into_any_element(),
             SettingsSection::Agents => {
-                return self.providers_page((!narrow).then_some(section.title()), cx);
+                return large(self.providers_page((!narrow).then_some(section.title()), cx))
+                    .into_any_element();
             }
             _ => {}
         }
-        self.hosts_page(
+        large(self.hosts_page(
             "settings-page",
             (!narrow).then_some(section.title()),
             narrow,
             cx,
-        )
+        ))
+        .into_any_element()
     }
 
     fn appearance_item(
@@ -1062,7 +1075,7 @@ impl AppShell {
         ))
     }
 
-    fn terminal_settings(&self, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn terminal_settings(&self, narrow: bool, cx: &mut Context<Self>) -> SettingsScrollColumn {
         let available = cx.text_system().all_font_names();
         let appearance =
             localized_font_appearance(&self.connection.read(cx).core, &available, "Lilex", cx);
@@ -1113,7 +1126,6 @@ impl AppShell {
                         ),
                 ),
             )
-            .into_any_element()
     }
 }
 
@@ -1138,7 +1150,7 @@ impl AppShell {
     }
 }
 
-fn about_page(cx: &mut Context<AppShell>) -> AnyElement {
+fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
     use zz_ui::settings::about;
 
     static LOGOS: std::sync::LazyLock<[Arc<zz_gpui::Image>; 2]> = std::sync::LazyLock::new(|| {
@@ -1189,7 +1201,6 @@ fn about_page(cx: &mut Context<AppShell>) -> AnyElement {
             cx,
         ))
         .child(about::about_project_stack(cx))
-        .into_any_element()
 }
 
 pub(super) fn with_control(

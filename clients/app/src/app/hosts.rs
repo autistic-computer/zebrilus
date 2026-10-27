@@ -1,19 +1,22 @@
-use zz_gpui::{AnyElement, Context, IntoElement, div, prelude::*};
 #[cfg(target_os = "ios")]
-use zz_gpui::{Entity, SharedString, Subscription, Window, px};
+use zz_gpui::{AnyElement, Entity, Pixels, SharedString, Subscription, Window, px};
+use zz_gpui::{Context, IntoElement, div, prelude::*};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,
     h_flex, rems_from_px,
     settings::{
-        SettingEntry, SettingsStack, settings_card_ground, settings_page_heading,
-        settings_scroll_column,
+        SettingEntry, SettingsScrollColumn, SettingsStack, settings_card_ground,
+        settings_page_heading, settings_scroll_column,
     },
 };
 #[cfg(target_os = "ios")]
 use zz_ui::{
+    StyledExt as _,
     button::ButtonVariants as _,
+    compact::{bottom_sheet, close_sheet, floating_sheet, sheet_action, sheet_close, sheet_inset},
     input::{Input, InputEvent, InputState},
+    roles,
 };
 
 use super::{AppShell, settings::with_control};
@@ -133,7 +136,11 @@ pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
 #[cfg(any(target_os = "ios", test))]
 pub(super) fn host_title(endpoint: &str) -> String {
     let Some(rest) = endpoint.strip_prefix("ssh://") else {
-        return "Local socket".into();
+        return std::path::Path::new(endpoint)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .filter(|stem| *stem != "default")
+            .map_or_else(|| "Local socket".into(), str::to_owned);
     };
     let authority = rest.split('/').next().unwrap_or_default();
     let host = authority
@@ -146,11 +153,39 @@ pub(super) fn host_title(endpoint: &str) -> String {
     .to_owned()
 }
 
+#[cfg(any(target_os = "ios", test))]
+fn host_location(endpoint: &str) -> String {
+    if let Some(rest) = endpoint.strip_prefix("ssh://") {
+        return rest.trim_end_matches('/').to_owned();
+    }
+    let parts = endpoint
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    match parts.as_slice() {
+        [.., parent, file] if parts.len() > 3 => format!("…/{parent}/{file}"),
+        _ => endpoint.to_owned(),
+    }
+}
+
+#[cfg(target_os = "ios")]
+pub(super) const ADD_HOST_SHEET: &str = "add-host-sheet";
+#[cfg(target_os = "ios")]
+const HOST_SHEET: &str = "host-sheet";
+
+#[cfg(target_os = "ios")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum HostSheet {
+    Add,
+    Host(String),
+}
+
 #[cfg(target_os = "ios")]
 pub(super) struct Hosts {
     pub(super) saved: SavedHosts,
     pub(super) destination: Entity<InputState>,
     pub(super) error: Option<SharedString>,
+    pub(super) sheet: Option<HostSheet>,
     _destination_events: Subscription,
 }
 
@@ -163,7 +198,7 @@ impl Hosts {
             window,
             |this: &mut AppShell, _, event: &InputEvent, window, cx| {
                 if matches!(event, InputEvent::PressEnter { .. }) && this.add_host(window, cx) {
-                    this.compact.close_add_host();
+                    close_sheet(ADD_HOST_SHEET, cx);
                 }
             },
         );
@@ -171,6 +206,7 @@ impl Hosts {
             saved: SavedHosts::load(),
             destination,
             error: None,
+            sheet: None,
             _destination_events: destination_events,
         }
     }
@@ -183,16 +219,27 @@ impl AppShell {
         title: Option<&'static str>,
         narrow: bool,
         cx: &mut Context<Self>,
-    ) -> AnyElement {
+    ) -> SettingsScrollColumn {
         let entries = self.host_entries(narrow, cx);
-        let page = settings_scroll_column(id)
+        #[cfg(target_os = "ios")]
+        let add = Some(if narrow {
+            self.add_host_row(cx)
+        } else {
+            self.add_host_stack(narrow, cx)
+        });
+        #[cfg(not(target_os = "ios"))]
+        let add: Option<SettingsStack> = None;
+        let hosts = if narrow {
+            SettingsStack::new()
+        } else {
+            SettingsStack::titled("Hosts")
+        };
+        settings_scroll_column(id)
             .children(title.map(|title| settings_page_heading(title, cx)))
             .when(!entries.is_empty(), |page| {
-                page.child(SettingsStack::titled("Hosts").children(entries))
-            });
-        #[cfg(target_os = "ios")]
-        let page = page.child(self.add_host_stack(narrow, cx));
-        page.into_any_element()
+                page.child(hosts.children(entries))
+            })
+            .children(add)
     }
 
     #[cfg(target_os = "ios")]
@@ -284,6 +331,25 @@ impl AppShell {
                 } else {
                     IconName::HardDrive
                 };
+                if narrow {
+                    let status = match &state {
+                        Some(_) if connected => "Connected",
+                        Some(_) if busy => "Connecting…",
+                        _ => "Not connected",
+                    };
+                    let view = cx.entity().downgrade();
+                    let picked = endpoint.clone();
+                    return SettingEntry::new(host_title(endpoint))
+                        .description(host_location(endpoint))
+                        .title_icon(Icon::new(icon).text_color(color))
+                        .control(row_meta(status, cx))
+                        .on_click(("hosts-row", index), move |_, _, cx| {
+                            let _ = view.update(cx, |this, cx| {
+                                this.hosts.sheet = Some(HostSheet::Host(picked.clone()));
+                                cx.notify();
+                            });
+                        });
+                }
                 let entry = SettingEntry::new(host_title(endpoint))
                     .description(endpoint.clone())
                     .title_icon(Icon::new(icon).text_color(color))
@@ -387,6 +453,229 @@ impl AppShell {
     }
 
     #[cfg(target_os = "ios")]
+    fn add_host_row(&self, cx: &mut Context<Self>) -> SettingsStack {
+        let view = cx.entity().downgrade();
+        SettingsStack::new().child(
+            SettingEntry::new("Add host")
+                .title_icon(Icon::new(IconName::Plus).text_color(cx.theme().accent))
+                .control(row_meta("", cx))
+                .on_click("hosts-add-row", move |_, _, cx| {
+                    let _ = view.update(cx, |this, cx| {
+                        this.hosts.error = None;
+                        this.hosts.sheet = Some(HostSheet::Add);
+                        cx.notify();
+                    });
+                }),
+        )
+    }
+
+    #[cfg(target_os = "ios")]
+    pub(super) fn host_sheets(
+        &self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let inset = sheet_inset(window);
+        let sheet = match self.hosts.sheet.as_ref()? {
+            HostSheet::Add => self.add_host_sheet(
+                inset,
+                |_, cx| close_sheet(ADD_HOST_SHEET, cx),
+                |this, cx| {
+                    this.hosts.sheet = None;
+                    cx.notify();
+                },
+                cx,
+            ),
+            HostSheet::Host(endpoint) => self.host_sheet(endpoint, inset, cx),
+        };
+        Some(floating_sheet(sheet, window))
+    }
+
+    #[cfg(target_os = "ios")]
+    pub(super) fn add_host_sheet(
+        &self,
+        bottom_inset: Pixels,
+        on_added: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        on_dismiss: impl Fn(&mut Self, &mut Context<Self>) + 'static,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let muted = cx.theme().foreground.muted();
+        let close =
+            sheet_close("add-host-close").on_click(|_, _, cx| close_sheet(ADD_HOST_SHEET, cx));
+        let dismiss = cx.weak_entity();
+        let note = |text: SharedString| {
+            div()
+                .text_size(px(13.0))
+                .line_height(px(18.0))
+                .text_color(muted)
+                .child(text)
+        };
+        bottom_sheet(
+            ADD_HOST_SHEET,
+            "Add host",
+            [close.into_any_element()],
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(10.0))
+                .px(px(16.0))
+                .pb(px(16.0))
+                .child(Input::new(&self.hosts.destination))
+                .child(note("user@host, or user@host:port".into()))
+                .children(self.hosts.error.clone().map(|error| {
+                    div()
+                        .text_size(px(13.0))
+                        .line_height(px(18.0))
+                        .text_color(cx.theme().warning)
+                        .child(error)
+                }))
+                .child(
+                    Button::new("add-host-connect")
+                        .primary()
+                        .w_full()
+                        .label("Connect")
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            if this.add_host(window, cx) {
+                                on_added(this, cx);
+                            }
+                        })),
+                )
+                .child(div().my(px(6.0)).rule_on(roles::LIST_RULE, zz_ui::Edge::Top, cx))
+                .child(note(
+                    "Add this phone's key to authorized_keys on the host to sign in without a password."
+                        .into(),
+                ))
+                .child(
+                    Button::new("add-host-copy-key")
+                        .w_full()
+                        .icon(IconName::Copy)
+                        .label("Copy SSH key")
+                        .on_click(|_, window, cx| copy_ssh_key(window, cx)),
+                ),
+            bottom_inset,
+            move |_, cx| {
+                let _ = dismiss.update(cx, |this, cx| on_dismiss(this, cx));
+            },
+        )
+        .surface_role(roles::ADD_HOST_DRAWER)
+        .header_role(roles::PHONE_BAR)
+        .into_any_element()
+    }
+
+    #[cfg(target_os = "ios")]
+    fn host_sheet(
+        &self,
+        endpoint: &str,
+        bottom_inset: Pixels,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let (connected, busy, on_screen, status) = self
+            .host_connection(endpoint, cx)
+            .map(|connection| {
+                let connection = connection.read(cx);
+                (
+                    connection.connected,
+                    connection.busy(),
+                    !connection.background(),
+                    connection.status.clone(),
+                )
+            })
+            .unwrap_or_default();
+        let theme = cx.theme();
+        let muted = theme.foreground.muted();
+        let (state, color) = if connected {
+            ("Connected".to_owned(), muted)
+        } else if busy {
+            ("Connecting…".to_owned(), muted)
+        } else if status.is_empty() {
+            ("Not connected".to_owned(), muted)
+        } else {
+            (status, theme.warning)
+        };
+        let danger = theme.danger;
+        let target = endpoint.to_owned();
+        let mut rows = Vec::new();
+        if connected && !on_screen {
+            let target = target.clone();
+            rows.push(
+                sheet_action("host-sheet-open", IconName::ArrowRight, "Open", cx).on_click(
+                    cx.listener(move |this, _, window, cx| {
+                        this.hosts.sheet = None;
+                        this.switch_host(&target, None, None, window, cx);
+                        this.settings = None;
+                        cx.notify();
+                    }),
+                ),
+            );
+        }
+        let toggle = target.clone();
+        rows.push(if connected || busy {
+            sheet_action(
+                "host-sheet-disconnect",
+                IconName::Stop,
+                if connected { "Disconnect" } else { "Cancel" },
+                cx,
+            )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.disconnect_host(&toggle, window, cx);
+            }))
+        } else {
+            sheet_action("host-sheet-connect", IconName::Server, "Connect", cx).on_click(
+                cx.listener(move |this, _, window, cx| {
+                    this.connect_host(toggle.clone(), window, cx);
+                }),
+            )
+        });
+        rows.push(
+            sheet_action("host-sheet-remove", IconName::Xmark, "Remove host", cx)
+                .text_color(danger)
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.disconnect_host(&target, window, cx);
+                    this.hosts.saved.remove(&target);
+                    this.hosts.saved.save();
+                    close_sheet(HOST_SHEET, cx);
+                    cx.notify();
+                })),
+        );
+        let close =
+            sheet_close("host-sheet-close").on_click(|_, _, cx| close_sheet(HOST_SHEET, cx));
+        let dismiss = cx.weak_entity();
+        bottom_sheet(
+            HOST_SHEET,
+            host_title(endpoint),
+            [close.into_any_element()],
+            div()
+                .flex()
+                .flex_col()
+                .list_inset(cx)
+                .pb(px(8.0))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(4.0))
+                        .px(px(12.0))
+                        .pb(px(10.0))
+                        .text_size(px(13.0))
+                        .line_height(px(18.0))
+                        .child(div().text_color(muted).child(endpoint.to_owned()))
+                        .child(div().text_color(color).child(state)),
+                )
+                .children(rows),
+            bottom_inset,
+            move |_, cx| {
+                let _ = dismiss.update(cx, |this, cx| {
+                    this.hosts.sheet = None;
+                    cx.notify();
+                });
+            },
+        )
+        .surface_role(roles::HOSTS_DRAWER)
+        .header_role(roles::PHONE_BAR)
+        .into_any_element()
+    }
+
+    #[cfg(target_os = "ios")]
     fn add_host_stack(&self, narrow: bool, cx: &mut Context<Self>) -> SettingsStack {
         let destination = SettingEntry::new("Destination")
             .description("user@host, or user@host:port")
@@ -447,6 +736,25 @@ pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut zz_gpui::App) {
     window.push_notification(notification, cx);
 }
 
+#[cfg(target_os = "ios")]
+fn row_meta(text: &'static str, cx: &zz_gpui::App) -> impl IntoElement {
+    let theme = cx.theme();
+    h_flex()
+        .flex_none()
+        .gap(px(6.0))
+        .children((!text.is_empty()).then(|| {
+            div()
+                .text_size(rems_from_px(12.0))
+                .text_color(theme.foreground.muted())
+                .child(text)
+        }))
+        .child(
+            Icon::new(IconName::ChevronRight)
+                .size(px(14.0))
+                .text_color(theme.foreground.faint()),
+        )
+}
+
 fn status_line(text: impl Into<zz_gpui::SharedString>, color: zz_gpui::Hsla) -> impl IntoElement {
     div()
         .text_size(rems_from_px(11.0))
@@ -468,7 +776,7 @@ fn gateway_address() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{SavedHosts, destination_endpoint, host_title};
+    use super::{SavedHosts, destination_endpoint, host_location, host_title};
 
     #[test]
     fn destinations_default_to_ssh_and_reject_blank_or_spaced_input() {
@@ -493,7 +801,21 @@ mod tests {
         assert_eq!(host_title("ssh://fabrico@mac.local"), "mac.local");
         assert_eq!(host_title("ssh://box:2222/run/zz.sock"), "box");
         assert_eq!(host_title("ssh://me@[::1]:22"), "::1");
-        assert_eq!(host_title("/tmp/zz.sock"), "Local socket");
+        assert_eq!(host_title("/tmp/zzlag.sock"), "zzlag");
+        assert_eq!(
+            host_title("/var/folders/5v/T/zz-dev-me/default.sock"),
+            "Local socket"
+        );
+    }
+
+    #[test]
+    fn locations_keep_the_end_of_a_long_socket_path() {
+        assert_eq!(host_location("ssh://me@box:2222"), "me@box:2222");
+        assert_eq!(host_location("/tmp/zzlag.sock"), "/tmp/zzlag.sock");
+        assert_eq!(
+            host_location("/var/folders/5v/y9xj/T//zz-dev-me/default.sock"),
+            "…/zz-dev-me/default.sock"
+        );
     }
 
     #[test]

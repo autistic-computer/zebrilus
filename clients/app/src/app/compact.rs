@@ -19,17 +19,15 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _, IconName, PaintState,
     command::tmux_keystroke,
     compact::{
-        ArrowPadEvent, BENTO_INSET, COMPACT_PANE_HEADER_HEIGHT, COMPACT_PILL_HEIGHT, Instant,
-        KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent, PillLabel,
-        PillPlacement, PillSpring, PopoverKey, PopoverKeyEvent, PopoverKeyItem, ToolKeys,
-        WhichKeyList, bottom_sheet, close_sheet, compact_bar_button, compact_floating_bar,
-        compact_floating_group, compact_floating_pill, compact_group_dot, compact_hud,
-        compact_pane_header, compact_pill_collapse, compact_pill_label, compact_pill_morph,
-        mini_pill_width, page_dots_in, pill_bounds, pill_corner, pill_ink, pill_inverted_over,
+        ArrowPadEvent, BENTO_INSET, Instant, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot,
+        Pager, PagerEvent, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
+        PillSpring, PopoverKey, PopoverKeyEvent, ToolKeys, WhichKeyList, bottom_sheet, close_sheet,
+        compact_floating_bar, compact_floating_pill, compact_group_dot, compact_hud,
+        compact_pill_collapse, compact_pill_label, compact_pill_menu, compact_pill_morph,
+        mini_pill_width, page_dots_in, pill_bounds, pill_corner, pill_glass_over,
     },
     kbd::Kbd,
-    pane::pane_header_icon_button,
-    rems_from_px, roles,
+    roles,
     which_key::{WhichKeyCap, WhichKeyRow},
 };
 
@@ -39,8 +37,8 @@ use crate::terminal::{TerminalDisplayPreferences, TerminalText};
 mod overview;
 
 const PAGE_GAP: f32 = 12.0;
+const TOP_FADE: f32 = 12.0;
 const SCRIM_ALPHA: f32 = 0.8;
-const SCRIM_FADE: f32 = 12.0;
 const PINCH_STEPS: f32 = 20.0;
 const SCALE_HUD_LINGER: Duration = Duration::from_secs(1);
 #[cfg(target_os = "ios")]
@@ -49,7 +47,6 @@ const LANDING_WAIT: Duration = Duration::from_secs(1);
 const BAR_DROP: f32 = 15.0;
 const BAR_FADE: f32 = 2.2;
 const COLLAPSE_TRAVEL: f32 = 24.0;
-const SIDE_GAP: f32 = 8.0;
 const LIFT_FALLBACK_TOP: f32 = 140.0;
 const LIFT_FALLBACK_HEIGHT: f32 = 272.0;
 
@@ -60,6 +57,13 @@ const LAST_PANE: &str = "last-pane";
 const KILL_PANE: &str = "kill-pane";
 const ALL_BINDINGS: &str = "all-bindings";
 const DRIVER_CHAT: &str = "driver-chat";
+const OVERVIEW: &str = "overview";
+const LENS: &str = "lens";
+const NEW_TERMINAL: &str = "new-terminal";
+const NEW_BROWSER: &str = "new-browser";
+const NEW_SESSION: &str = "new-session";
+const ALL_HOSTS: &str = "all-hosts";
+const SETTINGS: &str = "settings";
 const BINDINGS_SHEET: &str = "compact-bindings-sheet";
 
 #[derive(Default)]
@@ -81,7 +85,6 @@ pub(super) struct CompactState {
     keyboard_moving: bool,
     extra_height: Pixels,
     pub(super) overview: bool,
-    new_sheet: bool,
     add_host: bool,
     host_pager: Pager,
     host_scrolls: BTreeMap<usize, ScrollHandle>,
@@ -98,8 +101,16 @@ pub(super) struct CompactState {
     cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
     text: Option<TerminalText>,
     page_background: Option<zz_gpui::Hsla>,
-    pill_inverted: Option<zz_gpui::Hsla>,
     lens_dismissed: BTreeSet<PaneId>,
+    menu: Option<(MenuFrom, PillSpring)>,
+    pill_at: Rc<Cell<Bounds<Pixels>>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MenuFrom {
+    Pill,
+    Prefix,
+    Host,
 }
 
 impl CompactState {
@@ -126,34 +137,64 @@ impl CompactState {
         self.previous = None;
         self.bindings =
             std::env::var("ZZ_GPUI_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
+        self.menu = None;
         self.close_sheets();
     }
 
     pub(super) fn close_sheets(&mut self) {
-        self.new_sheet = false;
-        self.add_host = false;
-    }
-
-    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
-    pub(super) fn close_add_host(&mut self) {
         self.add_host = false;
     }
 }
 
-fn prefix_menu() -> (Vec<PopoverKeyItem>, PopoverKeyItem) {
-    (
+fn pill_menu(
+    lens: Option<zz_ui::pane::PaneLens>,
+    driver: Option<zz_gpui::Hsla>,
+) -> Vec<Vec<PillMenuItem>> {
+    let mut panes = vec![
+        PillMenuItem::new(RENAME_PANE, "Rename pane", IconName::Pencil),
+        PillMenuItem::new(NEW_WINDOW, "New window", IconName::AppWindow),
+        PillMenuItem::new(NEW_PANE, "New pane", IconName::Plus),
+        PillMenuItem::new(LAST_PANE, "Last pane", IconName::History),
+        PillMenuItem::new(DRIVER_CHAT, "Driver chat", IconName::Chat).dot(driver),
+        PillMenuItem::new(OVERVIEW, "Overview", IconName::LayoutDashboard),
+    ];
+    if let Some(lens) = lens {
+        let (label, icon) = if lens.open {
+            ("Terminal view", IconName::SquareTerminal)
+        } else {
+            ("Lens view", IconName::Eye)
+        };
+        panes.push(PillMenuItem::new(LENS, label, icon).look(PillMenuLook::Primary));
+    }
+    vec![
         vec![
-            PopoverKeyItem::new(NEW_PANE, "New pane").icon(IconName::Plus),
-            PopoverKeyItem::new(NEW_WINDOW, "New window").icon(IconName::AppWindow),
-            PopoverKeyItem::new(RENAME_PANE, "Rename pane").icon(IconName::Pencil),
-            PopoverKeyItem::new(LAST_PANE, "Last pane").icon(IconName::History),
-            PopoverKeyItem::new(DRIVER_CHAT, "Driver chat").icon(IconName::Chat),
-            PopoverKeyItem::new(KILL_PANE, "Kill pane")
-                .icon(IconName::Xmark)
-                .danger(),
+            PillMenuItem::new(ALL_BINDINGS, "All bindings", IconName::Keyboard)
+                .look(PillMenuLook::Quiet),
+            PillMenuItem::new(KILL_PANE, "Kill pane", IconName::Xmark).look(PillMenuLook::Danger),
         ],
-        PopoverKeyItem::new(ALL_BINDINGS, "All bindings").icon(IconName::Keyboard),
-    )
+        panes,
+    ]
+}
+
+fn host_menu(connected: bool, driver: Option<zz_gpui::Hsla>) -> Vec<Vec<PillMenuItem>> {
+    let new = [
+        PillMenuItem::new(NEW_SESSION, "New session", IconName::Layers),
+        PillMenuItem::new(NEW_BROWSER, "New browser", IconName::Globe),
+        PillMenuItem::new(NEW_TERMINAL, "New terminal", IconName::SquareTerminal),
+    ];
+    let host = connected
+        .then_some(new)
+        .into_iter()
+        .flatten()
+        .chain([
+            PillMenuItem::new(DRIVER_CHAT, "Driver chat", IconName::Chat).dot(driver),
+            PillMenuItem::new(ALL_HOSTS, "All hosts", IconName::Server),
+        ])
+        .collect();
+    vec![
+        vec![PillMenuItem::new(SETTINGS, "Settings", IconName::Settings).look(PillMenuLook::Quiet)],
+        host,
+    ]
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -243,8 +284,9 @@ fn send_chord(
     window: &mut Window,
     cx: &mut Context<AppShell>,
 ) {
-    let PopoverKeyEvent::Pick(id) = event;
-    if let Ok(keystroke) = Keystroke::parse(id) {
+    if let PopoverKeyEvent::Pick(id) = event
+        && let Ok(keystroke) = Keystroke::parse(id)
+    {
         let keystroke = zz_ui::compact::StickyModifiers::apply(&keystroke, cx);
         dispatch_key(keystroke, window, cx);
     }
@@ -426,8 +468,7 @@ impl AppShell {
         if let Some((keys, _)) = &self.compact.tool_keys {
             return keys.clone();
         }
-        let (items, footer) = prefix_menu();
-        let keys = ToolKeys::new(items, Some(footer), cx);
+        let keys = ToolKeys::new(cx);
         let subscriptions = [
             cx.subscribe_in(
                 &keys.arrows,
@@ -445,18 +486,66 @@ impl AppShell {
             cx.subscribe_in(
                 &keys.prefix,
                 window,
-                |this, _, event: &PopoverKeyEvent, window, cx| {
-                    let PopoverKeyEvent::Pick(id) = event;
-                    if id == DRIVER_CHAT {
-                        this.open_driver_chat(window, cx);
-                    } else {
-                        this.prefix_action(id, cx);
+                |this, _, event: &PopoverKeyEvent, _, cx| {
+                    if *event == PopoverKeyEvent::Press {
+                        this.open_pill_menu(MenuFrom::Prefix, cx);
                     }
                 },
             ),
         ];
         self.compact.tool_keys = Some((keys.clone(), subscriptions));
         keys
+    }
+
+    fn open_pill_menu(&mut self, from: MenuFrom, cx: &mut Context<Self>) {
+        let mut spring = PillSpring::shut();
+        spring.aim(true, Instant::now());
+        self.compact.menu = Some((from, spring));
+        cx.notify();
+    }
+
+    fn close_pill_menu(&mut self, cx: &mut Context<Self>) {
+        if let Some((_, spring)) = self.compact.menu.as_mut() {
+            spring.aim(false, Instant::now());
+            cx.notify();
+        }
+    }
+
+    fn pill_menu_pick(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.close_pill_menu(cx);
+        let new = match id {
+            NEW_TERMINAL => Some(overview::NewThing::Terminal),
+            NEW_BROWSER => Some(overview::NewThing::Browser),
+            NEW_SESSION => Some(overview::NewThing::Session),
+            _ => None,
+        };
+        if let Some(new) = new {
+            self.compact.menu = None;
+            self.create(new, window, cx);
+            return;
+        }
+        match id {
+            DRIVER_CHAT => self.open_driver_chat(window, cx),
+            ALL_HOSTS => {
+                self.compact.menu = None;
+                self.open_hosts(cx);
+            }
+            SETTINGS => {
+                self.compact.menu = None;
+                self.open_settings(cx);
+            }
+            OVERVIEW => {
+                self.compact.menu = None;
+                window.dismiss_virtual_keyboard();
+                self.open_overview(cx);
+            }
+            LENS => {
+                if let Some(pane) = self.active_window(cx).map(|window| window.active_pane) {
+                    self.toggle_lens(pane, window, cx);
+                }
+            }
+            _ => self.prefix_action(id, cx),
+        }
     }
 
     fn prefix_action(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -763,34 +852,6 @@ impl AppShell {
                 picker.into_any_element()
             }
         };
-        let writable = {
-            let connection = self.connection.read(cx);
-            connection.connected && !connection.core.attached_read_only()
-        };
-        let lens_view = cx.weak_entity();
-        let lens = self.pane_lens(pane_id, cx).map(|lens| {
-            zz_ui::pane::pane_lens_button(
-                lens,
-                move |window, cx| {
-                    let _ = lens_view.update(cx, |this, cx| this.toggle_lens(pane_id, window, cx));
-                },
-                cx,
-            )
-            .hit_slop(10.0, 10.0)
-            .into_any_element()
-        });
-        let close = writable.then(|| {
-            pane_header_icon_button(("compact-close-pane", pane_id.0), IconName::Xmark, true, cx)
-                .hit_slop(10.0, 10.0)
-                .tooltip("Close pane")
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    this.command("kill-pane", vec!["-t".into(), pane_id.to_string()], cx);
-                }))
-                .into_any_element()
-        });
-        let actions = lens.into_iter().chain(close);
-        let header = matches!(pane.kind, PaneKindSnapshot::Terminal)
-            .then(|| compact_pane_header(kind_icon(&pane.kind), slot.title.clone(), actions, cx));
         if current {
             self.compact.page_background = Some(background);
         }
@@ -799,7 +860,10 @@ impl AppShell {
             zz_gpui_platform::ios::set_status_bar_on_dark(Some(background.l < 0.5));
         }
         let browser = matches!(pane.kind, PaneKindSnapshot::Browser(_));
+        let fade = top_inset + px(TOP_FADE);
+        let scrim = cx.theme().background.opaque().blend(background);
         div()
+            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -807,36 +871,26 @@ impl AppShell {
             .when(!browser, |page| page.pb(reserve))
             .bg(background)
             .rounded(radius)
-            .when(header.is_some(), |page| {
+            .child(div().flex_1().min_h_0().min_w_0().child(content))
+            .when(rows_above && top_inset > px(0.0), |page| {
                 page.child(
                     div()
-                        .flex_none()
-                        .h(rems_from_px(COMPACT_PANE_HEADER_HEIGHT)),
-                )
-            })
-            .child(div().flex_1().min_h_0().min_w_0().child(content))
-            .children(header.map(|header| {
-                let bar = top_inset
-                    + rems_from_px(COMPACT_PANE_HEADER_HEIGHT).to_pixels(window.rem_size());
-                let scrim = cx.theme().background.opaque().blend(background);
-                div()
-                    .absolute()
-                    .top_0()
-                    .left_0()
-                    .right_0()
-                    .pt(top_inset)
-                    .when(rows_above && bar > px(0.0), |overlay| {
-                        overlay.bg(linear_gradient(
+                        .debug_selector(|| "compact-top-fade".to_owned())
+                        .absolute()
+                        .top_0()
+                        .left_0()
+                        .right_0()
+                        .h(fade)
+                        .bg(linear_gradient(
                             180.0,
                             linear_color_stop(
                                 scrim.alpha(SCRIM_ALPHA),
-                                1.0 - SCRIM_FADE / f32::from(bar),
+                                1.0 - TOP_FADE / f32::from(fade),
                             ),
                             linear_color_stop(scrim.alpha(0.0), 1.0),
-                        ))
-                    })
-                    .child(header)
-            }))
+                        )),
+                )
+            })
             .into_any_element()
     }
 
@@ -968,8 +1022,31 @@ impl AppShell {
 
     #[cfg(target_os = "ios")]
     pub(super) fn compact_visible_panes(&self, cx: &App) -> BTreeSet<PaneId> {
-        if self.compact.pager.is_moving() || self.compact_lifted() {
+        if self.compact_lifted() || self.compact.bindings {
             return BTreeSet::new();
+        }
+        if self.compact.menu.is_some() {
+            return self
+                .active_window(cx)
+                .map(|window| window.active_pane)
+                .filter(|pane| {
+                    self.browsers
+                        .get(pane)
+                        .is_some_and(|browser| !browser.read(cx).still_ready())
+                })
+                .into_iter()
+                .collect();
+        }
+        if self.compact.pager.is_moving() {
+            let (pages, _) = pages(&self.status_model(cx), &self.unseen_agents);
+            return self
+                .compact
+                .pager
+                .layout(self.compact.width, PAGE_GAP)
+                .pages
+                .into_iter()
+                .filter_map(|(index, _)| pages.get(index).map(|page| page.pane))
+                .collect();
         }
         self.active_window(cx)
             .map(|window| BTreeSet::from([window.active_pane]))
@@ -1108,15 +1185,10 @@ impl AppShell {
             })
             .unwrap_or_default();
         let floating = !keyboard;
-        let strip_width = px(width);
-        let side = px(COMPACT_PILL_HEIGHT + SIDE_GAP);
-        let bar_width = (strip_width - side * 2.0).max(px(0.0));
-        let beside = |bounds: Bounds<Pixels>| {
-            Bounds::new(point(bounds.origin.x + side, bounds.origin.y), bounds.size)
-        };
+        let bar_width = px(width);
         let mini = mini_pill_width(&short, window, cx);
-        let pill_shown = beside(pill_bounds(collapse, bar_width, mini, &placement));
-        let pill_rest = beside(pill_bounds(
+        let pill_shown = pill_bounds(collapse, bar_width, mini, &placement);
+        let pill_rest = pill_bounds(
             if self.compact.collapse.full() {
                 1.0
             } else {
@@ -1125,7 +1197,7 @@ impl AppShell {
             bar_width,
             mini,
             &placement,
-        ));
+        );
         let zone_top = window.viewport_size().height - zone;
         let in_window = |bounds: Bounds<Pixels>| {
             Bounds::new(
@@ -1152,7 +1224,7 @@ impl AppShell {
                     motion,
                     top_inset,
                     reserve,
-                    hole.filter(|_| index == shown),
+                    hole,
                     window,
                     cx,
                 );
@@ -1208,6 +1280,45 @@ impl AppShell {
         if !keyboard && let Some((keys, _)) = &self.compact.tool_keys {
             keys.clone().close(cx);
         }
+        if !keyboard && matches!(self.compact.menu, Some((MenuFrom::Prefix, _))) {
+            self.compact.menu = None;
+        }
+        if let Some((_, spring)) = self.compact.menu.as_mut() {
+            if cx.reduce_motion() {
+                spring.finish();
+            }
+            if spring.tick(now) {
+                window.request_animation_frame();
+            }
+            if !spring.full() && spring.progress() <= 0.0 {
+                self.compact.menu = None;
+            }
+        }
+        #[cfg(target_os = "ios")]
+        {
+            let frozen = matches!(
+                self.compact.menu,
+                Some((MenuFrom::Pill | MenuFrom::Prefix, _))
+            )
+            .then_some(current_pane)
+            .flatten();
+            for (pane, browser) in &self.browsers {
+                let still = frozen == Some(*pane);
+                browser.update(cx, |browser, cx| browser.set_frozen(still, window, cx));
+            }
+        }
+        let menu_progress = match self.compact.menu {
+            Some((MenuFrom::Pill, spring)) => spring.progress().clamp(0.0, 1.0),
+            _ => 0.0,
+        };
+        let pill_at = self.compact.pill_at.clone();
+        let track_pill = move || {
+            let at = pill_at.clone();
+            canvas(move |bounds, _, _| at.set(bounds), |_, (), _, _| {})
+                .absolute()
+                .inset_0()
+        };
+        let driver_dot = self.driver_dot(cx);
         let page_background = self
             .compact
             .page_background
@@ -1235,20 +1346,19 @@ impl AppShell {
             .filter(|_| floating)
             .and_then(|page| self.browser_backdrop(page, cx))
             .or(self.compact.page_background.filter(|_| floating));
-        self.compact.pill_inverted = backdrop.and_then(|backdrop| {
-            pill_inverted_over(backdrop, self.compact.pill_inverted.is_some(), cx)
-        });
         let pill_placement = PillPlacement {
-            inverted: self.compact.pill_inverted,
+            glass: backdrop.and_then(|backdrop| pill_glass_over(backdrop, cx)),
             ..placement
         };
-        let dots = page_dots_in(
-            &dot_groups(&pages, shown),
-            pill_ink(&pill_placement, cx),
-            cx,
-        );
+        let dots = page_dots_in(&dot_groups(&pages, shown), cx.theme().foreground, cx);
         let bottom = if keyboard && keyless {
-            let pill = compact_floating_pill("compact-pill", label, dots, &placement, cx);
+            let pill = compact_floating_pill("compact-pill", label, dots, &placement, cx)
+                .opacity(1.0 - menu_progress)
+                .child(track_pill())
+                .when_some(driver_dot, |pill, color| {
+                    pill.child(compact_group_dot(color))
+                })
+                .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(MenuFrom::Pill, cx)));
             div()
                 .relative()
                 .flex_none()
@@ -1326,10 +1436,14 @@ impl AppShell {
                 &pill_placement,
                 cx,
             )
-            .opacity(fade)
+            .opacity(fade * (1.0 - menu_progress))
+            .child(track_pill())
+            .when_some(driver_dot.filter(|_| full), |pill, color| {
+                pill.child(compact_group_dot(color))
+            })
             .on_click(cx.listener(move |this, _, _, cx| {
                 if full {
-                    this.open_overview(cx);
+                    this.open_pill_menu(MenuFrom::Pill, cx);
                 } else {
                     this.expand_pill(cx);
                 }
@@ -1356,42 +1470,6 @@ impl AppShell {
                         .on_scroll_wheel(cx.listener(Self::compact_lift_scroll)),
                 )
                 .child(pill)
-                .when(collapse > 0.0, |zone| {
-                    let top = pill_rest.origin.y + (placement.zone() + px(BAR_DROP)) * drop;
-                    let shown = fade * collapse * collapse;
-                    let back = compact_bar_button("compact-back", IconName::ChevronLeft)
-                        .when(full, |back| {
-                            back.on_click(cx.listener(|this, _, _, cx| this.open_overview(cx)))
-                        });
-                    let chat =
-                        compact_bar_button("compact-chat", IconName::Chat).when(full, |chat| {
-                            chat.on_click(cx.listener(|this, _, window, cx| {
-                                this.open_driver_chat(window, cx);
-                            }))
-                        });
-                    zone.child(
-                        div()
-                            .absolute()
-                            .left(placement.inset)
-                            .top(top)
-                            .opacity(shown)
-                            .child(compact_floating_group([back], &pill_placement, cx)),
-                    )
-                    .child(
-                        div()
-                            .absolute()
-                            .right(placement.inset)
-                            .top(top)
-                            .opacity(shown)
-                            .child(
-                                compact_floating_group([chat], &pill_placement, cx)
-                                    .relative()
-                                    .when_some(self.driver_dot(cx), |group, color| {
-                                        group.child(compact_group_dot(color))
-                                    }),
-                            ),
-                    )
-                })
                 .into_any_element()
         };
         let mut sheets = Vec::new();
@@ -1416,9 +1494,6 @@ impl AppShell {
             .child(pager_area)
             .child(bottom);
         let content = if open {
-            if self.compact.new_sheet {
-                sheets.push(self.overview_new_sheet(safe_bottom, cx));
-            }
             #[cfg(target_os = "ios")]
             if self.compact.add_host {
                 sheets.push(self.overview_add_host_sheet(safe_bottom, cx));
@@ -1487,12 +1562,52 @@ impl AppShell {
         } else {
             screen.into_any_element()
         };
+        let menu = self.compact.menu.map(|(from, spring)| {
+            let (close, align) = match from {
+                MenuFrom::Pill | MenuFrom::Host => {
+                    (self.compact.pill_at.get(), PillMenuAlign::Center)
+                }
+                MenuFrom::Prefix => (
+                    self.compact
+                        .tool_keys
+                        .as_ref()
+                        .map(|(keys, _)| keys.prefix.read(cx).bounds())
+                        .unwrap_or_default(),
+                    PillMenuAlign::Start,
+                ),
+            };
+            let items = if from == MenuFrom::Host {
+                host_menu(self.shown_host_connected(cx), driver_dot)
+            } else {
+                pill_menu(
+                    shown_page.and_then(|page| self.pane_lens(page.pane, cx)),
+                    driver_dot,
+                )
+            };
+            let pick = cx.weak_entity();
+            let shut = cx.weak_entity();
+            compact_pill_menu(
+                items,
+                close,
+                top_inset,
+                align,
+                spring.progress(),
+                move |id, window, cx| {
+                    let _ = pick.update(cx, |this, cx| this.pill_menu_pick(id, window, cx));
+                },
+                move |_, cx| {
+                    let _ = shut.update(cx, Self::close_pill_menu);
+                },
+                cx,
+            )
+        });
         div()
             .id("compact-shell")
             .relative()
             .size_full()
             .bg(cx.theme().background)
             .child(content)
+            .children(menu)
             .children(sheets)
             .child(zz_ui::touch::touch_scale(
                 div()
@@ -1594,6 +1709,7 @@ impl AppShell {
             key.set_keystroke(prefix, cx);
         });
         KeyRow::new(keys.row())
+            .lead(keys.lead())
             .track_scroll(&keys.scroll)
             .on_key(|keystroke, window, cx| dispatch_key(keystroke.clone(), window, cx))
             .on_hide(|window, _| window.dismiss_virtual_keyboard())

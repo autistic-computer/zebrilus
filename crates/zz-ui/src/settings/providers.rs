@@ -68,8 +68,8 @@ fn provider_entry(
         .description(
             status
                 .path
-                .clone()
-                .unwrap_or_else(|| "Not installed".to_owned()),
+                .as_deref()
+                .map_or_else(|| "Not installed".to_owned(), home_relative),
         )
         .title_icon(Icon::new(agent_provider_icon(provider)))
         .control(
@@ -106,6 +106,17 @@ fn provider_entry(
         ProviderTask::Running { .. } | ProviderTask::Idle => {}
     }
     entry
+}
+
+fn home_relative(path: &str) -> String {
+    ["/Users/", "/home/"]
+        .iter()
+        .find_map(|root| {
+            let rest = path.strip_prefix(root)?;
+            let tail = rest.find('/').map_or("", |slash| &rest[slash..]);
+            Some(format!("~{tail}"))
+        })
+        .unwrap_or_else(|| path.to_owned())
 }
 
 fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {
