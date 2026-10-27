@@ -58,8 +58,8 @@ animations off and freezes spinners). Two more keys only steer the page: `step` 
 `materials`, `roles`, `export`, `app`) opens a step of the knob panel, and `inspect=<role id>` picks a role
 on the Roles step. The tint and pane knobs are app config, not theme, so Copy JSON leaves them out;
 they stay in the URL. The Settings story's Appearance pickers section (`#/settings/appearance`)
-draws the Interface page's Theme rows with the builders the app uses: the Mode tiles, the Themes
-strip (Default, macOS, Yaru and a saved theme), the accent swatches with a custom picker (both
+draws the Interface page's Theme rows with the builders the app uses: Mode as a segmented control,
+the Theme picker (Default, macOS, Yaru and a saved theme) with its more menu, the accent swatches with a custom picker (both
 rounding with the corner radius) and the tint sliders (which follow the tint knobs), then
 the Advanced heading and its Corner radius and Contrast sliders.
 
