@@ -139,6 +139,7 @@ mod linux {
             let deadline = Instant::now() + limit;
             while Instant::now() < deadline {
                 if watch.changes.try_recv().is_ok() {
+                    std::thread::sleep(CONFIG_SETTLE_DELAY);
                     watch.drain();
                     return true;
                 }
