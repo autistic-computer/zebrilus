@@ -15,8 +15,8 @@ timestamp: 2026-10-13T00:00:00Z
 
 # Summary
 
-> **2026-10-26:** the picker's view is gone. `prefix F` now opens the command palette's `@` mode on
-> the pane's folder, which shares its grammar, rows and keys with the palette and the Driver chat's
+> **2026-10-26:** the picker's view is gone. `prefix F` now opens the command palette on the pane's
+> folder (in `@` mode until 2026-10-27, on `&` since), which shares its grammar, rows and keys with the palette and the Driver chat's
 > mentions ([command palette, Targets](/concepts/command-palette.md#targets)). Its listing goes
 > through `MuxClient::request_host_path_list` with the pane as the anchor, so the daemon side below
 > (`choose-path`, `OpenPathPicker`, the walker, the insert style) is unchanged, and the client still

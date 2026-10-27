@@ -1,7 +1,7 @@
 use std::{rc::Rc, sync::Arc};
 
 use zz_client::completion::PaneKindAvailability;
-use zz_client::navigation::{ordered_panes, pane_label, session_label};
+use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
 use zz_client::{AgentAttentionStatus, ClientCore, agent_attention_status};
 use zz_gpui::{App, Entity, KeyDownEvent, SharedString};
 use zz_protocol::{
@@ -61,6 +61,7 @@ impl PaletteBackend for ConnectionPalette {
                     PaletteTreeSession {
                         id: session.id,
                         name: session_label(session).to_string(),
+                        tmux_name: session.name.clone(),
                         active,
                         windows: session
                             .windows
@@ -73,7 +74,7 @@ impl PaletteBackend for ConnectionPalette {
                                 active_pane: window.active_pane,
                                 panes: ordered_panes(window)
                                     .into_iter()
-                                    .map(|pane| tree_pane(pane, core))
+                                    .map(|pane| tree_pane(window, pane, core))
                                     .collect(),
                             })
                             .collect(),
@@ -237,12 +238,17 @@ impl PaletteBackend for ConnectionPalette {
     }
 }
 
-fn tree_pane(pane: &zz_protocol::PaneSnapshot, core: &ClientCore) -> PaletteTreePane {
+fn tree_pane(
+    window: &zz_protocol::WindowSnapshot,
+    pane: &zz_protocol::PaneSnapshot,
+    core: &ClientCore,
+) -> PaletteTreePane {
     let attention = matches!(pane.kind, PaneKindSnapshot::Terminal)
         .then(|| core.agent_state(pane.id).map(agent_attention_status))
         .flatten();
     PaletteTreePane {
         id: pane.id,
+        index: pane_index(window, pane.id),
         label: pane_label(pane),
         program: zz_client::window_summary::pane_program(pane).map(|program| program.name.into()),
         detail: match &pane.kind {
@@ -265,5 +271,13 @@ fn tree_pane(pane: &zz_protocol::PaneSnapshot, core: &ClientCore) -> PaletteTree
             PaneKindSnapshot::Editor(_) => IconName::File,
         },
         running: attention == Some(AgentAttentionStatus::Working),
+        needs_you: pane.status.as_ref().is_some_and(|status| {
+            matches!(
+                status.state,
+                zz_protocol::PaneStatusState::Blocked | zz_protocol::PaneStatusState::Error
+            )
+        }),
+        terminal: matches!(pane.kind, PaneKindSnapshot::Terminal),
+        cwd: pane.summary.cwd.clone(),
     }
 }

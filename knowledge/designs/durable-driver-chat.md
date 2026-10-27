@@ -488,8 +488,9 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   (`zz_ui::target::TargetPicker::for_composer`, made by `zz_ui::command::target_picker` over the
   desktop's palette backend, laid over the rows with `CommandPaletteSurface::over_input`, with
   only as many rows as fit above the input, `TargetPicker::fit`, so it never reaches past the
-  window). The grammar, rows and keys are the command palette's `@` mode
-  ([Targets](/concepts/command-palette.md#targets)): tmux's target with an optional host,
+  window). The grammar, rows and keys are the target picker's
+  ([Targets](/concepts/command-palette.md#targets-chat-mentions)), which the command palette used
+  for its `@` mode until 2026-10-27: tmux's target with an optional host,
   `work:2.%7`, `xps:work`, `%7`, or a file in scp form, `~/dev/` or `xps:/etc/`, a target without a
   host meaning the host the window is attached to. Tab completes the highlighted row and opens
   what is under it, Up and Down move, Enter puts the finished mention in with a space after it,
@@ -516,7 +517,7 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   `PartTooltip`, the tooltip machinery `InteractiveText` uses) and takes its clicks before the OS
   would. A click dispatches `OpenLink`, which Driver mode turns into `DriverPaletteEvent::Open`
   and the workspace into `command::palette::open_link`: a host attaches or reconnects, a session,
-  window or pane is switched to as the palette's `@` mode does, and a file's path is pasted into
+  window or pane is switched to as the palette does, and a file's path is pasted into
   the active pane, in scp form when it is on another host. The platform key with a click
   dispatches `MentionLink`, which puts the mention in the composer, and a right click copies it.
 

@@ -173,11 +173,15 @@ fn navigation_tree() -> PaletteTree {
             .enumerate()
             .map(|(index, label)| PaletteTreePane {
                 id: PaneId(id * 10 + index as u64),
+                index: 0,
                 label: (*label).to_owned(),
                 detail: "Terminal".into(),
                 program: None,
                 icon: IconName::SquareTerminal,
                 running: false,
+                needs_you: false,
+                terminal: true,
+                cwd: String::new(),
             })
             .collect(),
     };
@@ -193,6 +197,7 @@ fn navigation_tree() -> PaletteTree {
                 PaletteTreeSession {
                     id: SessionId(1),
                     name: "dev".to_owned(),
+                    tmux_name: "dev".to_owned(),
                     active: true,
                     windows: vec![
                         window(1, "editor", true, &["nvim", "cargo watch"]),
@@ -202,6 +207,7 @@ fn navigation_tree() -> PaletteTree {
                 PaletteTreeSession {
                     id: SessionId(2),
                     name: "scratch".to_owned(),
+                    tmux_name: "scratch".to_owned(),
                     active: false,
                     windows: vec![window(3, "experiments", false, &["python hidden"])],
                 },

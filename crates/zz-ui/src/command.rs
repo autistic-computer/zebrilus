@@ -2,6 +2,7 @@ pub mod floating;
 mod level;
 mod palette;
 mod palette_model;
+mod palette_places;
 mod palette_view;
 
 pub use level::{
@@ -16,6 +17,7 @@ pub use palette_model::{
     PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost,
     PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
 };
+pub use palette_places::palette_fleet;
 pub use palette_view::{
     CommandPaletteEvent, CommandPaletteView, DRIVER_PREFIX, PaletteBackend, target_hosts,
     target_picker,

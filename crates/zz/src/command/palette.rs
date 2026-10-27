@@ -4,7 +4,7 @@ use zz_client::completion::PaneKindAvailability;
 use zz_gpui::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
-    PathEntry, PathListRoot,
+    PaneStatusState, PathEntry, PathListRoot,
 };
 use zz_ui::{
     IconName,
@@ -183,6 +183,7 @@ impl PaletteBackend for MuxPalette {
                         .map(|session| PaletteTreeSession {
                             id: session.id,
                             name: session.label.to_string(),
+                            tmux_name: session.name.clone(),
                             active: session.active,
                             windows: session
                                 .windows
@@ -276,6 +277,19 @@ impl PaletteBackend for MuxPalette {
         };
         let Some(activation) = MuxTreeModel::from_mux(mux).activation_for_node(
             TreeNode::Target(host.into(), target),
+            mux.attached_host(),
+            mux.attached_session(),
+        ) else {
+            return false;
+        };
+        crate::mux::nav::activate_nav(&self.0, activation, cx);
+        true
+    }
+
+    fn activate_host(&self, host: PaletteHostId, cx: &mut App) -> bool {
+        let mux = self.0.read(cx);
+        let Some(activation) = MuxTreeModel::from_mux(mux).activation_for_node(
+            TreeNode::Host(host.into()),
             mux.attached_host(),
             mux.attached_session(),
         ) else {
@@ -407,6 +421,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
         .flatten();
     PaletteTreePane {
         id: pane.id,
+        index: pane.index,
         label: pane.label.clone(),
         program: pane.program.map(|program| program.name.into()),
         detail: match pane.kind {
@@ -429,5 +444,11 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Editor => IconName::File,
         },
         running: attention == Some(zz_client::AgentAttentionStatus::Working),
+        needs_you: matches!(
+            pane.status,
+            Some(PaneStatusState::Blocked | PaneStatusState::Error)
+        ),
+        terminal: pane.kind == MuxTreePaneKind::Terminal,
+        cwd: pane.cwd.clone(),
     }
 }

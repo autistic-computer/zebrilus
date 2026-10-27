@@ -56,7 +56,15 @@ pub trait PaletteActionLevel {
     fn copy_text(&self, _cx: &App) -> Option<String> {
         None
     }
-    fn closing(&mut self, _window: &mut Window, _cx: &mut App) {}
+    fn open_recent(
+        &mut self,
+        _key: &RecentKey,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> LevelEffect {
+        LevelEffect::Stay
+    }
+    fn closing(&mut self, _cx: &mut App) {}
 }
 
 #[derive(Default)]
