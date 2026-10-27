@@ -476,9 +476,9 @@ impl CommandPaletteView {
     }
 
     fn open_recent(&mut self, key: &RecentKey, window: &mut Window, cx: &mut Context<Self>) {
-        let kind = match key {
-            RecentKey::Gui(_) => ActionKind::Gui,
-            RecentKey::File { .. } => ActionKind::Files,
+        let (kind, rest, host) = match key {
+            RecentKey::Gui(_) => (ActionKind::Gui, String::new(), None),
+            RecentKey::File { host, path, .. } => (ActionKind::Files, path.clone(), Some(host)),
             RecentKey::Command(command) => {
                 self.run_place_command(command.clone(), None, window, cx);
                 return;
@@ -494,11 +494,17 @@ impl CommandPaletteView {
                 return;
             }
         };
-        let Some(mut level) = self.backend.action_level(kind, cx) else {
-            return;
+        if let Some(unified) = &mut self.unified
+            && let Some(host) = host.and_then(|name| unified.fleet.host_named(name))
+            && let Some(chip) = chip_for(&unified.fleet, Place::host(host.id), None)
+        {
+            unified.chips = vec![chip];
+        }
+        self.set_query(format!("{}{rest}", kind.sigil()), window, cx);
+        let effect = match self.level.as_mut() {
+            Some((active, level)) if *active == kind => level.open_recent(key, window, cx),
+            _ => return,
         };
-        level.attach(cx.entity().downgrade(), cx);
-        let effect = level.open_recent(key, window, cx);
         self.apply_level_effect(effect, window, cx);
     }
 
