@@ -40,6 +40,7 @@ pub struct Preferences {
     pub pane_margin: f32,
     pub palette_grouped: bool,
     pub palette_show_keys: bool,
+    pub palette_vim_mode: bool,
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
     pub system_text_size: bool,
@@ -72,6 +73,7 @@ impl Default for Preferences {
             pane_margin: 6.0,
             palette_grouped: true,
             palette_show_keys: true,
+            palette_vim_mode: false,
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
             system_text_size: true,
@@ -155,6 +157,7 @@ impl Preferences {
         zz_ui::command::PaletteSettings {
             grouped: self.palette_grouped,
             show_keys: self.palette_show_keys,
+            vim: self.palette_vim_mode,
         }
     }
 

@@ -4,6 +4,7 @@ mod palette;
 mod palette_model;
 mod palette_places;
 mod palette_view;
+mod palette_vim;
 
 pub use level::{
     ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,
@@ -24,6 +25,7 @@ pub use palette_view::{
 };
 
 pub(crate) use palette_model::fuzzy_match;
+pub use palette_vim::PaletteVimMode;
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, PaintState, Sizable as _, StyledExt as _,

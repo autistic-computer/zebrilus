@@ -65,6 +65,7 @@ impl fmt::Display for PaletteTarget {
 pub struct PaletteSettings {
     pub grouped: bool,
     pub show_keys: bool,
+    pub vim: bool,
 }
 
 impl Default for PaletteSettings {
@@ -72,6 +73,7 @@ impl Default for PaletteSettings {
         Self {
             grouped: true,
             show_keys: true,
+            vim: false,
         }
     }
 }
