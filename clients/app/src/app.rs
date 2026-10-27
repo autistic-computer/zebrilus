@@ -4,6 +4,8 @@ mod authentication;
 #[cfg(target_os = "ios")]
 mod browser_pane;
 mod compact;
+mod driver_chat;
+mod driver_sheet;
 #[cfg(target_os = "ios")]
 mod fleet;
 mod floating;
@@ -190,6 +192,8 @@ pub struct AppShell {
     pane_arrivals: PaneArrivals,
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
     compact: compact::CompactState,
+    driver_chat: Entity<driver_chat::DriverChat>,
+    driver_sheet: Option<Entity<driver_sheet::DriverSheet>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -365,6 +369,8 @@ impl AppShell {
             }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
+        let driver_chat = cx.new(|_| driver_chat::DriverChat::new());
+        let driver_observer = cx.observe(&driver_chat, |_, _, cx| cx.notify());
         #[cfg(target_os = "ios")]
         let hosts = hosts::Hosts::new(window, cx);
         #[cfg_attr(not(target_os = "ios"), allow(unused_mut))]
@@ -430,7 +436,14 @@ impl AppShell {
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
             compact: compact::CompactState::default(),
-            _subscriptions: vec![key_events, appearance_observer, activation_observer],
+            driver_chat,
+            driver_sheet: None,
+            _subscriptions: vec![
+                key_events,
+                appearance_observer,
+                activation_observer,
+                driver_observer,
+            ],
         };
         this.connection.update(cx, Connection::start);
         #[cfg(target_os = "ios")]
@@ -601,6 +614,13 @@ impl AppShell {
             cx.stop_propagation();
             return;
         }
+        if self.driver_sheet.is_some() {
+            if event.keystroke.key == "escape" {
+                zz_ui::compact::close_sheet(driver_sheet::DRIVER_SHEET, cx);
+                cx.stop_propagation();
+            }
+            return;
+        }
         let input = crate::terminal::key_input(event);
         let core = &self.connection.read(cx).core;
         if self.prompt.as_ref().is_some_and(|palette| {
@@ -765,6 +785,7 @@ impl AppShell {
             ChromeAction::NewWindow => self.tmux_command("new-window", cx),
             ChromeAction::SplitRight => self.tmux_command("split-window -h", cx),
             ChromeAction::SplitDown => self.tmux_command("split-window -v", cx),
+            ChromeAction::OpenDriverChat => self.open_driver_chat(window, cx),
             _ => {}
         }
     }
@@ -873,6 +894,8 @@ impl AppShell {
         }
         let backend = self.palette_backend();
         let palette = cx.new(|cx| CommandPaletteView::new_unified(backend, mode, window, cx));
+        let connected = self.connection.read(cx).connected;
+        palette.update(cx, |palette, cx| palette.offer_driver(connected, cx));
         self.observe_palette(&palette, window, cx);
         palette.read(cx).focus(cx).focus(window, cx);
         self.prompt = Some(palette);
@@ -904,7 +927,10 @@ impl AppShell {
                     palette.update(cx, |palette, cx| palette.return_to_default(window, cx));
                     cx.notify();
                 }
-                CommandPaletteEvent::Driver => {}
+                CommandPaletteEvent::Driver => {
+                    this.prompt = None;
+                    this.open_driver_chat(window, cx);
+                }
             },
         )
         .detach();
@@ -2810,6 +2836,7 @@ impl AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.sync_driver_hosts(cx);
         if self.settings.is_none() {
             self.settings_picked = false;
             self.settings_leaving = false;
@@ -3014,6 +3041,7 @@ impl Render for AppShell {
             .pr(window.viewport_size().width - visible.right())
             .child(zz_ui::compact::coast_guard())
             .child(shell)
+            .children(self.driver_sheet_layer(cx))
     }
 }
 

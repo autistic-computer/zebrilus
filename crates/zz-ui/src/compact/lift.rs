@@ -12,6 +12,7 @@ const VELOCITY_WINDOW: Duration = Duration::from_millis(100);
 const FRAME: Duration = Duration::from_millis(16);
 const SETTLE_EPSILON: f32 = 0.001;
 const SPRING: SpringConfig = SpringConfig::new(900.0, 60.0, 1.0);
+const TAP_SPRING: SpringConfig = SpringConfig::new(320.0, 36.0, 1.0);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LiftEvent {
@@ -36,6 +37,7 @@ enum Motion {
         target: f32,
         velocity: f32,
         at: Instant,
+        tapped: bool,
     },
 }
 
@@ -116,12 +118,14 @@ impl Lift {
             target,
             velocity,
             at,
+            tapped,
         } = self.motion
         else {
             return false;
         };
+        let spring = if tapped { TAP_SPRING } else { SPRING };
         let elapsed = now.saturating_duration_since(at).as_secs_f32();
-        let state = SPRING.step(
+        let state = spring.step(
             SpringState {
                 position: self.progress,
                 velocity,
@@ -129,7 +133,7 @@ impl Lift {
             target,
             elapsed,
         );
-        if SPRING.is_settled(state, target, SETTLE_EPSILON) {
+        if spring.is_settled(state, target, SETTLE_EPSILON) {
             self.progress = target;
             self.motion = Motion::Idle;
             return false;
@@ -139,6 +143,7 @@ impl Lift {
             target,
             velocity: state.velocity,
             at: now,
+            tapped,
         };
         true
     }
@@ -157,17 +162,22 @@ impl Lift {
                 target,
                 velocity,
                 at: now,
+                tapped: true,
             }
         };
     }
 
     pub fn finish(&mut self) {
-        if let Motion::Settle { target, at, .. } = self.motion {
+        if let Motion::Settle {
+            target, at, tapped, ..
+        } = self.motion
+        {
             self.progress = target;
             self.motion = Motion::Settle {
                 target,
                 velocity: 0.0,
                 at,
+                tapped,
             };
         }
     }
@@ -251,6 +261,7 @@ impl Lift {
             target,
             velocity,
             at: now,
+            tapped: false,
         };
         if open {
             LiftEvent::Open

@@ -425,14 +425,21 @@ pub const PHONE_CARD: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "phone.card",
     "Pane cards",
-    "Pane thumbnails in the phone overview",
+    "Host and window tiles in the phone overview",
 )
 .with(P.fill(Fill::Tint));
+pub const PHONE_MINI: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::TILE,
+    "phone.mini",
+    "Panes in a window tile",
+    "The panes drawn where they split inside a window's tile in the phone overview, ringed on the one the window opens to",
+)
+.with(P.fill(Fill::None).selected(Highlight::Ring));
 pub const PHONE_ADD: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "phone.add",
-    "New pane tile",
-    "The New pane tile that ends each window's cards in the phone overview",
+    "Add tile",
+    "The Add host tile at the end of the phone's Hosts page",
 )
 .with(P.fill(Fill::Tint));
 pub const PHONE_ROW: SurfaceRole = SurfaceRole::under(
@@ -491,6 +498,12 @@ pub const BINDINGS_DRAWER: SurfaceRole = SurfaceRole::under(
     "drawer.bindings",
     "Bindings drawer",
     "Every key binding on the phone, each sent when picked",
+);
+pub const DRIVER_DRAWER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DRAWER,
+    "drawer.driver",
+    "Driver drawer",
+    "The Driver Agent's chat on the phone",
 );
 pub const PICKER_NOTICE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
@@ -562,6 +575,7 @@ const ZZ: &[SurfaceRole] = &[
     NEW_PANE_DRAWER,
     TABS_DRAWER,
     BINDINGS_DRAWER,
+    DRIVER_DRAWER,
     INLINE_PANEL,
     FLOATING_PANE,
     PIP,
@@ -596,6 +610,7 @@ const ZZ: &[SurfaceRole] = &[
     AGENT_TRAY,
     SETTINGS_TILE,
     PHONE_CARD,
+    PHONE_MINI,
     PHONE_ADD,
     PANE_STACK,
     AGENT_COMPOSER,
