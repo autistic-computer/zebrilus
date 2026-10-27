@@ -28,7 +28,7 @@ frames in `RetainedTerminalViewport`, avoiding a second patch application on the
 client. The hand-maintained header exposes raw key forwarding,
 style/grapheme tables, generation counters, mux/session/window/pane snapshots, normalized visible
 pane geometry, damage rows, terminal focus
-and scrolling, passive attached-session terminal preview control, semantic selection and typed
+and scrolling, passive host-wide terminal preview control, semantic selection and typed
 clipboard delivery, appearance, disconnect events,
 interactive endpoint connection with typed failures and SSH prompts, its iOS SSH public identity, and
 retained Agent summaries, attention edges, permission responses, and cancellation. The Agent
@@ -182,7 +182,7 @@ Deleted 2026-10-09 with no remaining consumer; the text below records what it co
 
 The shipped `#[no_mangle]` shim and hand-maintained header now cover interactive connection with
 typed SSH prompts and failures, pollable event wake/drain, attach, typed mux snapshots with full
-window trees and normalized visible pane rectangles, passive attached-session terminal previews,
+window trees and normalized visible pane rectangles, passive host-wide terminal previews,
 caller-owned
 styled terminal viewports, raw key and text input, command execution, resize, separate client-window
 and terminal pane focus, scrolling, semantic selection, typed clipboard delivery, retained Agent
@@ -194,7 +194,7 @@ the core and toolkits integrate its wake fd with GSource, `QSocketNotifier`, or 
 threads never call toolkit code.
 
 `zz_client_set_terminal_preview` changes only which retained terminal viewports the daemon delivers.
-It adds every terminal pane across all windows of the attached session while enabled; selection,
+It adds every terminal pane on the host, across every session, while enabled; selection,
 input, history, and resize continue through the existing foreground-only calls.
 
 The C link client compiles and links the contract, rejects an invalid interactive endpoint with a typed
