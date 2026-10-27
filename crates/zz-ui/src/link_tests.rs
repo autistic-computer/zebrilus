@@ -29,6 +29,17 @@ fn a_link_names_what_it_points_at_on_its_host() {
         link("@ubuntu:work:2.1").target,
         Some(PaletteTarget::Pane(PaneId(13)))
     );
+    let by_id = link("@ubuntu:@8");
+    assert_eq!(
+        (by_id.kind, by_id.target),
+        (TargetKind::Window, Some(PaletteTarget::Window(WindowId(8))))
+    );
+    assert_eq!(by_id.detail, "work:2 · agents · 2 panes");
+    assert_eq!(link("@ubuntu:@99").state, LinkState::Gone);
+    assert_eq!(
+        link("@ubuntu:$3").target,
+        Some(PaletteTarget::Session(SessionId(3)))
+    );
     let pane = link("@ubuntu:%12");
     assert_eq!(pane.target, Some(PaletteTarget::Pane(PaneId(12))));
     assert_eq!(pane.detail, "work:2 · Claude Code · fix tests");
