@@ -1146,10 +1146,13 @@ mod tests {
         let mailbox = OutboundMailbox::new();
         let (client, _) =
             shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
-        shared.providers.lock().search = Some(
-            std::env::join_paths([bin.as_path(), Path::new("/usr/bin"), Path::new("/bin")])
-                .unwrap(),
-        );
+        let tools = dir.path().join("tools");
+        fs::create_dir_all(&tools).unwrap();
+        for tool in ["sh", "cat", "chmod"] {
+            std::os::unix::fs::symlink(Path::new("/bin").join(tool), tools.join(tool)).unwrap();
+        }
+        shared.providers.lock().search =
+            Some(std::env::join_paths([bin.as_path(), tools.as_path()]).unwrap());
         let run = |args: &[&str]| {
             shared
                 .execute(
