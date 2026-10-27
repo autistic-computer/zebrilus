@@ -9,8 +9,8 @@ use zz_client::window_summary::{
 };
 use zz_gpui::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures,
-    FontWeight, HighlightStyle, Hsla, IntoElement, ParentElement as _, Pixels, Role, SharedString,
-    Stateful, StyledText, Window, div, font, prelude::*, px,
+    FontWeight, HighlightStyle, Hsla, IntoElement, Keystroke, ParentElement as _, Pixels, Role,
+    SharedString, Stateful, StyledText, Window, div, font, prelude::*, px,
 };
 use zz_protocol::{PaneId, SessionId, WindowId};
 
@@ -88,13 +88,13 @@ pub enum HostConnection {
 pub struct FlatWindow {
     pub summary: WindowSummary,
     pub age: Option<SharedString>,
+    pub shortcut: Option<Keystroke>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FlatSession {
     pub id: SessionId,
     pub label: SharedString,
-    pub index: Option<SharedString>,
     pub rollup: AttentionRollup,
     pub folded: bool,
     pub windows: Vec<FlatWindow>,
@@ -105,7 +105,6 @@ impl FlatSession {
         Self {
             id: summary.session,
             label: summary.label.text.into(),
-            index: summary.label.index.map(Into::into),
             rollup: summary.rollup,
             folded: false,
             windows: summary
@@ -114,6 +113,7 @@ impl FlatSession {
                 .map(|window| FlatWindow {
                     age: age(window.changed_at).map(Into::into),
                     summary: window,
+                    shortcut: None,
                 })
                 .collect(),
         }
@@ -575,21 +575,31 @@ pub fn flat_window_row(
                                     .text_color(ink.dim(ink.muted))
                                     .child(detail_text(summary, ink, cx)),
                             )
-                            .children(window.age.clone().map(|age| {
-                                div()
-                                    .flex_none()
-                                    .relative()
-                                    .top(baseline_drop(DETAIL_SIZE, AGE_SIZE, cx))
-                                    .text_size(px(AGE_SIZE))
-                                    .line_height(px(DETAIL_LINE))
-                                    .font_features(TABULAR.clone())
-                                    .text_color(ink.dim(ink.muted))
-                                    .child(age)
-                            })),
+                            .children(
+                                window
+                                    .age
+                                    .clone()
+                                    .filter(|_| window.shortcut.is_none())
+                                    .map(|age| {
+                                        div()
+                                            .flex_none()
+                                            .relative()
+                                            .top(baseline_drop(DETAIL_SIZE, AGE_SIZE, cx))
+                                            .text_size(px(AGE_SIZE))
+                                            .line_height(px(DETAIL_LINE))
+                                            .font_features(TABULAR.clone())
+                                            .text_color(ink.dim(ink.muted))
+                                            .child(age)
+                                    }),
+                            ),
                     ),
                 px(TILE_GAP),
             ),
         )
+        .children(window.shortcut.clone().map(|stroke| {
+            super::window_shortcut_cap(stroke, surface.ground.unwrap_or_else(|| theme.ground()))
+                .flex_none()
+        }))
         .context_menu(move |popup, window_handle, cx| context(host, id, popup, window_handle, cx))
         .into_any_element()
 }
@@ -924,13 +934,6 @@ pub fn flat_session_header(
                         .text_fade(crate::LABEL_FADE)
                         .child(session.label.clone()),
                 )
-                .children(session.index.clone().map(|index| {
-                    div()
-                        .flex_none()
-                        .font_weight(FontWeight::NORMAL)
-                        .text_color(theme.foreground.faint())
-                        .child(index)
-                }))
                 .children(chevron(
                     ElementId::NamedInteger(
                         format!("flat-session-fold-{}", host_id.0).into(),
@@ -1068,7 +1071,6 @@ mod tests {
                 sessions: vec![FlatSession {
                     id: session,
                     label: "zz".into(),
-                    index: None,
                     rollup: AttentionRollup::default(),
                     folded: false,
                     windows: Vec::new(),

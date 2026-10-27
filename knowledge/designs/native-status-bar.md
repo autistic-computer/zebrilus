@@ -53,9 +53,9 @@ The sidebar and status bar are mutually exclusive desktop views: an expanded sid
 status bar; retracting it shows the status bar in the title bar. There is no bottom placement.
 
 Desktop shortcuts Cmd+1–9 on macOS and Ctrl+1–9 on Linux select windows by their
-position in the attached session's displayed order, whether the sidebar or titlebar
-is visible. They include windows outside the five visible pills and ignore missing
-positions. The `ui` chrome actions `select-window-1` through `select-window-9`
+position in the sidebar's list, across sessions and connected hosts, whether the
+sidebar or titlebar is visible, so with the titlebar showing a number can open a
+window of another session. They ignore missing positions. The `ui` chrome actions `select-window-1` through `select-window-9`
 support rebinding and take priority over pane shortcuts.
 
 Window pills are 26px high and vertically centered inside the titlebar, a pane header tall (36px) plus the pane margin above and below it, leaving at least 5px at both edges. They

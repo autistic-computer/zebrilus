@@ -9,15 +9,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-use zz_client::{ChromeAction, SIDEBAR_TABLE, program::Program};
+use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_gpui::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Hsla,
-    InteractiveElement as _, IntoElement, KeyBinding, ListSizingBehavior, MouseButton,
+    InteractiveElement as _, IntoElement, KeyBinding, Keystroke, ListSizingBehavior, MouseButton,
     ParentElement as _, Render, ScrollStrategy, SharedString, StatefulInteractiveElement as _,
     Styled as _, SystemNotification, UniformListScrollHandle, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px, uniform_list,
 };
-use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
 use zz_ui::navigation::{
     WORKSPACE_SIDEBAR_DEFAULT_WIDTH as SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
     WORKSPACE_TREE_CONTENT_INSET as TREE_CONTENT_INSET,
@@ -33,7 +33,7 @@ use zz_ui::navigation::{
     workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_footer_controls,
     workspace_sidebar_ground, workspace_sidebar_panel, workspace_sidebar_resize_handle,
     workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
-    workspace_tree_disclosure, workspace_tree_opened, workspace_tree_row,
+    workspace_tree_disclosure, workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _,
@@ -187,8 +187,27 @@ pub struct WorkspaceSidebar {
     banners: AttentionBanners<(HostId, PaneId)>,
     flat: bool,
     flat_view: flat::FlatView,
+    window_shortcuts: bool,
     #[cfg(feature = "agent-pane")]
     driver: driver::DriverSection,
+}
+
+const WINDOW_SHORTCUTS: u8 = 9;
+
+fn shortcut_windows(model: &MuxTreeModel) -> impl Iterator<Item = (HostId, WindowId)> + '_ {
+    model
+        .hosts
+        .iter()
+        .filter(|host| host.connected())
+        .flat_map(|host| {
+            host.sessions.iter().flat_map(move |session| {
+                session
+                    .windows
+                    .iter()
+                    .map(move |window| (host.id, window.id))
+            })
+        })
+        .take(usize::from(WINDOW_SHORTCUTS))
 }
 
 impl WorkspaceSidebar {
@@ -239,7 +258,54 @@ impl WorkspaceSidebar {
             banners: AttentionBanners::default(),
             flat: crate::config::resolved_config(cx).flat_sidebar.value,
             flat_view: flat::FlatView::default(),
+            window_shortcuts: false,
         }
+    }
+
+    pub(crate) fn open_window_shortcut(&mut self, position: u8, cx: &mut Context<Self>) -> bool {
+        self.synchronize_tree(cx);
+        let Some((host, window)) = shortcut_windows(&self.tree_model).nth(usize::from(position))
+        else {
+            return false;
+        };
+        let (attached_host, attached) = {
+            let mux = self.mux.read(cx);
+            (mux.attached_host(), mux.attached_session())
+        };
+        let Some(activation) = self.tree_model.activation_for_node(
+            TreeNode::Target(host, TreeTarget::Window(window)),
+            attached_host,
+            attached,
+        ) else {
+            return false;
+        };
+        activate_sidebar(&self.mux, activation, cx);
+        true
+    }
+
+    pub(crate) const fn window_shortcuts_shown(&self) -> bool {
+        self.window_shortcuts
+    }
+
+    pub(crate) fn show_window_shortcuts(&mut self, shown: bool, cx: &mut Context<Self>) {
+        if self.window_shortcuts != shown {
+            self.window_shortcuts = shown;
+            cx.notify();
+        }
+    }
+
+    fn window_shortcut_keys(&self, cx: &App) -> Vec<(HostId, WindowId, Keystroke)> {
+        if !self.window_shortcuts {
+            return Vec::new();
+        }
+        shortcut_windows(&self.tree_model)
+            .zip(0..WINDOW_SHORTCUTS)
+            .filter_map(|((host, window), position)| {
+                let chord =
+                    crate::keymap::chord_for(cx, UI_TABLE, ChromeAction::SelectWindow(position))?;
+                Some((host, window, Keystroke::parse(&chord).ok()?))
+            })
+            .collect()
     }
 
     fn reconcile_attention(&mut self, cx: &mut Context<Self>) {
@@ -732,6 +798,7 @@ impl WorkspaceSidebar {
                 focused: self.focus_handle.is_focused(window),
                 local_hostname: self.local_hostname.clone(),
                 badges: Rc::clone(&self.badges),
+                shortcuts: self.window_shortcut_keys(cx).into(),
                 ground: self.content_ground(cx),
             },
             window,
@@ -1001,7 +1068,6 @@ struct VisibleTreeEntry {
     node: TreeNode,
     parent: Option<TreeNode>,
     label: SharedString,
-    index: Option<SharedString>,
     depth: u8,
     kind: TreeNodeKind,
     expandable: bool,
@@ -1041,7 +1107,6 @@ impl TreeProjection {
                     node: host_node,
                     parent: None,
                     label: host.name.clone().into(),
-                    index: None,
                     depth: 0,
                     kind: TreeNodeKind::Host,
                     expandable: true,
@@ -1065,7 +1130,6 @@ impl TreeProjection {
                         node: session_node,
                         parent: Some(host_node),
                         label: session.label.text.clone().into(),
-                        index: session.label.index.clone().map(Into::into),
                         depth: 1,
                         kind: TreeNodeKind::Session,
                         expandable: session_expandable,
@@ -1089,7 +1153,6 @@ impl TreeProjection {
                             node: window_node,
                             parent: Some(session_node),
                             label: window.label().into(),
-                            index: None,
                             depth: 2,
                             kind: TreeNodeKind::Window,
                             expandable: window_expandable,
@@ -1114,7 +1177,6 @@ impl TreeProjection {
                                 node: TreeNode::Target(host.id, pane.target()),
                                 parent: Some(window_node),
                                 label: pane.label.clone().into(),
-                                index: None,
                                 depth: 3,
                                 kind: TreeNodeKind::Pane { kind: pane.kind },
                                 expandable: false,
@@ -1239,6 +1301,7 @@ struct TreeRowRuntime {
     focused: bool,
     local_hostname: SharedString,
     badges: Rc<BTreeMap<(HostId, PaneId), AgentBadge>>,
+    shortcuts: Rc<[(HostId, WindowId, Keystroke)]>,
     ground: Ground,
 }
 
@@ -1395,13 +1458,7 @@ fn render_tree_row(
             } else {
                 entry.label.clone()
             },
-        ))
-        .children(entry.index.clone().map(|index| {
-            div()
-                .flex_none()
-                .text_color(cx.theme().foreground.faint())
-                .child(index)
-        }));
+        ));
     let actions = render_node_actions(entry, runtime, cx);
     let actions = if is_host {
         div()
@@ -1412,6 +1469,16 @@ fn render_tree_row(
             .into_any_element()
     } else {
         actions
+    };
+    let shortcut = match node {
+        TreeNode::Target(host, TreeTarget::Window(window)) => runtime
+            .shortcuts
+            .iter()
+            .find(|(shortcut_host, shortcut_window, _)| {
+                (*shortcut_host, *shortcut_window) == (host, window)
+            })
+            .map(|(_, _, stroke)| stroke.clone()),
+        _ => None,
     };
     let trailing = div()
         .flex()
@@ -1448,21 +1515,25 @@ fn render_tree_row(
         marker
     };
     let hover_actions = !is_host;
-    let row = workspace_tree_row(
-        ("workspace-tree-row", index),
-        entry.depth,
-        active,
-        selected,
-        runtime.focused,
-        connected || target.is_none(),
-        expandable || connected && target.is_some(),
-        hover_actions,
-        row_group,
-        marker,
-        label,
-        trailing,
+    let row = workspace_tree_shortcut(
+        workspace_tree_row(
+            ("workspace-tree-row", index),
+            entry.depth,
+            active,
+            selected,
+            runtime.focused,
+            connected || target.is_none(),
+            expandable || connected && target.is_some(),
+            hover_actions,
+            row_group,
+            marker,
+            label,
+            trailing,
+            runtime.ground,
+            cx,
+        ),
+        shortcut,
         runtime.ground,
-        cx,
     )
     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
         focus_handle.focus(window, cx);
@@ -2632,6 +2703,57 @@ mod tests {
             TreeProjection::new(&model, &BTreeSet::from([TreeNode::Host(HostId::LOCAL)]));
         assert!(collapsed.expandable.contains(&TreeNode::Host(remote)));
         assert!(!collapsed.visible_indices.contains_key(&remote_session));
+    }
+
+    #[test]
+    fn window_shortcuts_count_windows_across_sessions_and_connected_hosts() {
+        let hosts = host_ids(&["studio", "attic"]);
+        let (studio, attic) = (hosts[0], hosts[1]);
+        let connected = HostState::Connected;
+        let disconnected = HostState::Disconnected;
+        let session = |id: u64, windows: &[u64]| SessionSnapshot {
+            id: SessionId(id),
+            name: id.to_string(),
+            active_window: WindowId(windows[0]),
+            windows: windows
+                .iter()
+                .map(|&window| mux_window(window, 0, "shell", window * 10))
+                .collect(),
+            viewers: Vec::new(),
+        };
+        let snapshot = |sessions| MuxSnapshot {
+            generation: 1,
+            focused_window: None,
+            sessions,
+        };
+        let local = snapshot(vec![session(2, &[21, 22, 23]), session(0, &[1])]);
+        let attic_snapshot = snapshot(vec![session(5, &[51])]);
+        let studio_snapshot = snapshot((10..16).map(|id| session(id, &[id * 10])).collect());
+        let model = MuxTreeModel::from_hosts(
+            HostId::LOCAL,
+            Some(SessionId(0)),
+            [
+                (HostId::LOCAL, "local", &connected, Some(&local)),
+                (attic, "attic", &disconnected, Some(&attic_snapshot)),
+                (studio, "studio", &connected, Some(&studio_snapshot)),
+            ],
+        );
+        let local_window = |id| (HostId::LOCAL, WindowId(id));
+        let studio_window = |id| (studio, WindowId(id));
+        assert_eq!(
+            shortcut_windows(&model).collect::<Vec<_>>(),
+            [
+                local_window(21),
+                local_window(22),
+                local_window(23),
+                local_window(1),
+                studio_window(100),
+                studio_window(110),
+                studio_window(120),
+                studio_window(130),
+                studio_window(140),
+            ]
+        );
     }
 
     #[test]

@@ -100,9 +100,12 @@ removes it. The key does not show in `list-keys` or the which-key sheet, which r
 tables.
 
 The desktop binds `Cmd+1` through `Cmd+9` on macOS and `Ctrl+1` through `Ctrl+9`
-on Linux to `ui:select-window-1` through `ui:select-window-9`. Each number selects
-that position in the attached session's displayed window order, including windows
-beyond the visible titlebar range. Missing positions do nothing. The workspace
+on Linux to `ui:select-window-1` through `ui:select-window-9`. The numbers run
+through the windows the sidebar lists, top to bottom across sessions and connected
+hosts, folded sessions included, so a window keeps its number while you move
+around; a number in another session or host switches there and focuses that window.
+Holding the modifier for 300ms puts each number's key on its window row in both
+sidebars, in place of the age. Missing positions do nothing. The workspace
 intercepts these shortcuts before pane shortcuts, including browser tab selection.
 Dialogs, popups, menus, local palettes, and Settings retain their keyboard handling.
 For example, `chrome-keybind = ui:D-2=select-window-4` selects the fourth window
