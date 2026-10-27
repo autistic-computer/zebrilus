@@ -1,13 +1,16 @@
 use std::{ops::Range, rc::Rc, sync::Arc, time::Duration};
 
-use zz_client::completion::{
-    CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion, complete_command,
-    completion_insertion,
+use zz_client::{
+    completion::{
+        CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion,
+        complete_command, completion_insertion,
+    },
+    place::ActionKind,
 };
 use zz_gpui::{
-    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Global,
-    IntoElement, KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString, Subscription,
-    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    Global, IntoElement, KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString,
+    Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_protocol::{
     ChooseTreeAction, ChooseTreeState, ChooseTreeTarget, CommandInvocation, CommandPromptAction,
@@ -16,9 +19,9 @@ use zz_protocol::{
 };
 
 use super::{
-    CommandPaletteSurface, PaletteHint, PaletteRow, command_kind_badge, command_palette_empty,
-    command_palette_input, command_palette_row, command_palette_row_height,
-    command_palette_section, command_palette_tree_entry,
+    CommandPaletteSurface, CopyAddress, PaletteActionLevel, PaletteHint, PaletteRow,
+    command_kind_badge, command_palette_empty, command_palette_input, command_palette_row,
+    command_palette_row_height, command_palette_section, command_palette_tree_entry,
     palette_model::{
         PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget,
         PaletteTree, UnifiedPalette, needs_arguments, target_kind,
@@ -65,6 +68,13 @@ pub trait PaletteBackend {
         Err("Files are listed in the desktop app".into())
     }
     fn cancel_path(&self, _host: PaletteHostId, _request_id: u64, _cx: &mut App) {}
+    fn action_level(
+        &self,
+        _kind: ActionKind,
+        _cx: &mut App,
+    ) -> Option<Box<dyn PaletteActionLevel>> {
+        None
+    }
     /// Feed `picker` the listings it asks for while it keeps the subscription.
     fn feed_targets(&self, _picker: &Entity<TargetPicker>, _cx: &mut App) -> Option<Subscription> {
         None
@@ -1380,6 +1390,8 @@ impl CommandPaletteView {
             .capture_action(cx.listener(Self::dismiss))
             .capture_action(cx.listener(Self::collapse_host))
             .capture_action(cx.listener(Self::open_host))
+            .capture_action(cx.listener(Self::copy_address))
+            .capture_key_down(cx.listener(Self::on_copy_key))
             .capture_key_down(cx.listener(Self::on_raw_key))
             .on_key_down(cx.listener(Self::on_key_down))
             .on_key_up(|_, _, cx| cx.stop_propagation())
@@ -1569,6 +1581,46 @@ impl CommandPaletteView {
             self.refresh(window, cx);
             cx.notify();
             cx.stop_propagation();
+        }
+    }
+
+    fn address(&self, cx: &App) -> Option<String> {
+        if let Some((picker, _)) = &self.target {
+            let item = picker.read(cx).selected_item()?;
+            return match (item.kind, item.target) {
+                (TargetKind::Host, _) => Some(format!("@{}", item.host)),
+                (_, Some(target)) => Some(format!("@{}:{target}", item.host)),
+                _ => None,
+            };
+        }
+        let unified = self.unified.as_ref()?;
+        match unified.rows.get(self.selected?)?.action.as_ref()? {
+            PaletteAction::Host(host) => Some(format!("@{}", unified.tree.host(*host)?.name)),
+            PaletteAction::Target { host, target, .. } => {
+                Some(format!("@{}:{target}", unified.tree.host(*host)?.name))
+            }
+            _ => None,
+        }
+    }
+
+    fn copy_address(&mut self, _: &CopyAddress, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(address) = self.address(cx) {
+            cx.write_to_clipboard(ClipboardItem::new_string(address.clone()));
+            Self::notify_action(format!("Copied {address}"), window, cx);
+        }
+        cx.stop_propagation();
+    }
+
+    fn on_copy_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let modifiers = event.keystroke.modifiers;
+        if self.unified.is_some()
+            && event.keystroke.key == "enter"
+            && modifiers.alt
+            && !modifiers.platform
+            && !modifiers.control
+            && !modifiers.shift
+        {
+            self.copy_address(&CopyAddress, window, cx);
         }
     }
 

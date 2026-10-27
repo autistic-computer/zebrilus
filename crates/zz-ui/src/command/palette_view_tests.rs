@@ -648,6 +648,36 @@ fn local_palette_activates_targets_through_the_backend(cx: &mut TestAppContext) 
     );
 }
 
+#[zz_gpui::test]
+fn alt_enter_copies_the_highlighted_place_as_tmux_writes_it(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls) = backend(online_tree());
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.run_until_parked();
+    cx.simulate_keystrokes("alt-enter");
+    cx.run_until_parked();
+    assert_eq!(
+        cx.read_from_clipboard()
+            .and_then(|item| item.text())
+            .as_deref(),
+        Some("@local:@1")
+    );
+    cx.simulate_input("@");
+    cx.run_until_parked();
+    cx.dispatch_action(CopyAddress);
+    cx.run_until_parked();
+    assert_eq!(
+        cx.read_from_clipboard()
+            .and_then(|item| item.text())
+            .as_deref(),
+        Some("@local:$1")
+    );
+    assert!(calls.borrow().is_empty());
+    assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
+}
+
 fn target_value(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) -> String {
     palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string())
 }
