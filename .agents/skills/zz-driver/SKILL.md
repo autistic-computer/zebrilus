@@ -72,15 +72,19 @@ your old process:
 
 ## Start a worker
 
+Put each worker in a session named after its project (the repo or folder name, such as `zz` or
+`clairvo`, or a short topic when there is none), one window per worker. Never use your own
+session: `new-window` without `-t` lands there. `zz --host H list-sessions -F '#{session_name}'`
+shows what exists; add a window to the project's session, or start it with the worker:
+
 ```sh
-zz --host xps new-window -d -P -F '#{pane_id}' -n fix-tests -c ~/dev/repo claude
-zz --host alienware new-window -d -P -F '#{pane_id}' -n check -c ~/dev/repo codex
+zz --host xps new-window -d -P -F '#{pane_id}' -t zz: -n fix-tests -c ~/dev/zz claude
+zz --host alienware new-session -d -P -F '#{pane_id}' -s clairvo -n check -c ~/dev/clairvo codex
 ```
 
 Give the CLI as the window's command; never type it into a shell, where the user's aliases can
-add flags such as a permission bypass. On a host with no session use
-`new-session -d -s jobs -P -F '#{pane_id}' -c DIR CMD`. Pane ids are per host: always pair one
-with its host. Look at the new pane once (`zz --host xps capture-pane -p -t %N | tail -15`).
+add flags such as a permission bypass. Pane ids are per host: always pair one with its host.
+Look at the new pane once (`zz --host xps capture-pane -p -t %N | tail -15`).
 Startup dialogs (folder trust for every new git repo or folder, a Chrome-extension notice, new
 MCP servers, an update offer, a login) are the user's to answer: report them and work elsewhere.
 Workers keep their normal permissions; add a bypass flag only where the user allowed it.
