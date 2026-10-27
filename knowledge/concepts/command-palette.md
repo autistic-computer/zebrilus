@@ -77,7 +77,9 @@ draws its rows and hints. Until the files level lands, `&` falls back to the tar
 Needs you (a window per pane whose status is blocked or failed, on any connected host), recent
 places, recent commands, recent GUI actions and files (three each), then every host.
 `zz_client::recents` keeps one decayed score per pick (three-day half-life, at most 200), recorded
-through `record_recent`; the desktop keeps it per client.
+through `record_recent`. The desktop keeps it per client in `palette-recents.json` in the app's
+data folder (`app_identity::palette_recents_path`, `command::palette::init_recents`); the iPad and
+web keep it in memory. Their only host is named after the endpoint on iOS and `local` on the web.
 
 # Written places
 

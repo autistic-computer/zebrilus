@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc};
 
-use zz_client::completion::PaneKindAvailability;
+use zz_client::{completion::PaneKindAvailability, recents::Recents};
 use zz_gpui::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
@@ -31,6 +31,39 @@ use crate::{
 /// Foreground programs whose files are on another machine: the daemon will
 /// not list through a pane running one.
 const REMOTE_FOREGROUND: &[&str] = &["ssh", "mosh", "mosh-client", "tmux", "zz_cli"];
+
+pub(crate) fn init_recents(cx: &mut App) {
+    let path = match zz_protocol::app_identity::palette_recents_path() {
+        Ok(path) => path,
+        Err(error) => {
+            log::warn!(target: "zz::palette", "palette recents are not persisted: {error}");
+            return;
+        }
+    };
+    let recents = std::fs::read_to_string(&path)
+        .map_or_else(|_| Recents::default(), |text| Recents::from_json(&text));
+    zz_ui::command::install_recents(
+        recents,
+        move |recents, cx| {
+            let path = path.clone();
+            let json = recents.to_json();
+            cx.background_executor()
+                .spawn(async move {
+                    if let Some(parent) = path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let temporary = path.with_extension("json.tmp");
+                    if let Err(error) = std::fs::write(&temporary, json)
+                        .and_then(|()| std::fs::rename(&temporary, &path))
+                    {
+                        log::warn!(target: "zz::palette", "saving palette recents failed: {error}");
+                    }
+                })
+                .detach();
+        },
+        cx,
+    );
+}
 
 pub(crate) fn palette_backend(mux: Entity<MuxClient>) -> Rc<dyn PaletteBackend> {
     Rc::new(MuxPalette(mux))
