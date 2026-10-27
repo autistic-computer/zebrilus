@@ -78,7 +78,10 @@ use crate::{
         nav::{TreeTarget, kill_target_command},
         prefix::terminal_key_input,
     },
-    window::corners::{WindowCorners, round_div_radii},
+    window::{
+        corners::{WindowCorners, round_div_radii},
+        drag::window_drag_handle,
+    },
     workspace::ClosePane,
 };
 
@@ -3703,6 +3706,26 @@ impl Render for BrowserChromeView {
                 )
             }
             None => tabs,
+        };
+        let tabs = div()
+            .id("browser-tab-strip-drag")
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .child(tabs);
+        let tabs = if self.state.floats {
+            tabs
+        } else {
+            window_drag_handle(
+                (
+                    "browser-header-window-drag",
+                    self.browser.entity_id().as_u64(),
+                ),
+                tabs,
+                window,
+                cx,
+            )
         };
         let actions = div().flex().flex_none().items_center().gap_1().children(
             zz_ui::pane::pane_header_actions(self.state.floats)

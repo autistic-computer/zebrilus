@@ -1,8 +1,8 @@
 use std::{rc::Rc, time::Duration};
 
 use zz_gpui::{
-    AnyElement, App, Bounds, Context, CursorStyle, Div, Entity, IntoElement, Pixels, Point, Render,
-    Stateful, Window, div, prelude::*, px,
+    AnyElement, App, Bounds, Context, CursorStyle, Div, Entity, IntoElement, MouseButton, Pixels,
+    Point, Render, Stateful, Window, div, prelude::*, px,
 };
 use zz_protocol::PaneId;
 
@@ -155,7 +155,8 @@ impl PaneDragSource {
         let element = element
             .relative()
             .children(touch)
-            .cursor(CursorStyle::OpenHand);
+            .cursor(CursorStyle::OpenHand)
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default());
         if floating {
             return element.on_drag(PipGrab { pane }, |_, _, _, cx| cx.new(|_| PipGrabPreview));
         }

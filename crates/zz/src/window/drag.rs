@@ -73,9 +73,11 @@ mod tests {
     use super::*;
     use zz_gpui::{AppContext as _, Context, Entity, FocusHandle, Render, div, prelude::*, px};
     use zz_ui::{
+        IconName,
         button::Button,
         h_flex,
         input::{Input, InputState},
+        pane::{PaneDragSource, PaneTitle},
     };
 
     struct Preview {
@@ -120,13 +122,31 @@ mod tests {
                                 .w(px(120.0))
                                 .debug_selector(|| "drag-input".into())
                                 .child(Input::new(&self.input)),
+                        )
+                        .child(
+                            div()
+                                .w(px(100.0))
+                                .debug_selector(|| "drag-title".into())
+                                .child(PaneTitle::new(
+                                    "drag-title",
+                                    IconName::SquareTerminal,
+                                    "Shell",
+                                    PaneDragSource::new(
+                                        zz_protocol::PaneId(1),
+                                        "Shell",
+                                        true,
+                                        |_, _, _| {},
+                                    ),
+                                )),
                         ),
                 )
         }
     }
 
     #[zz_gpui::test]
-    fn background_drag_yields_to_buttons_and_text_fields(cx: &mut zz_gpui::TestAppContext) {
+    fn background_drag_yields_to_buttons_text_fields_and_pane_titles(
+        cx: &mut zz_gpui::TestAppContext,
+    ) {
         cx.update(zz_ui::init);
         let (preview, cx) = cx.add_window_view(|window, cx| Preview {
             focus: cx.focus_handle(),
@@ -138,13 +158,13 @@ mod tests {
             _ = window.draw(cx);
         });
         let state = preview.read_with(cx, |preview, _| preview.drag.clone().unwrap());
-        let background = zz_gpui::point(px(300.0), px(15.0));
+        let background = zz_gpui::point(px(360.0), px(15.0));
         cx.simulate_mouse_down(background, MouseButton::Left, zz_gpui::Modifiers::default());
         assert!(state.read_with(cx, |state: &DragCandidate, _| state.armed));
         cx.simulate_mouse_up(background, MouseButton::Left, zz_gpui::Modifiers::default());
         assert!(!state.read_with(cx, |state, _| state.armed));
 
-        for selector in ["drag-button", "drag-input"] {
+        for selector in ["drag-button", "drag-input", "drag-title"] {
             let bounds = cx.debug_bounds(selector).unwrap();
             cx.simulate_mouse_down(
                 bounds.center(),
