@@ -73,6 +73,155 @@ pub struct Scene {
     pub shader_layers: Vec<ShaderLayer>,
     pub glasses: Vec<Glass>,
     open_shader_layers: Vec<OpenShaderLayer>,
+    transforms: Vec<SceneTransform>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct SceneTransform {
+    pub(crate) scale: f32,
+    pub(crate) offset: Point<ScaledPixels>,
+    pub(crate) clip: Bounds<ScaledPixels>,
+}
+
+impl SceneTransform {
+    fn within(self, outer: SceneTransform) -> SceneTransform {
+        SceneTransform {
+            scale: self.scale * outer.scale,
+            offset: outer.point(self.offset),
+            clip: outer.bounds(self.clip).intersect(&outer.clip),
+        }
+    }
+
+    fn length(&self, length: ScaledPixels) -> ScaledPixels {
+        ScaledPixels(length.0 * self.scale)
+    }
+
+    fn point(&self, point: Point<ScaledPixels>) -> Point<ScaledPixels> {
+        Point {
+            x: ScaledPixels(point.x.0 * self.scale + self.offset.x.0),
+            y: ScaledPixels(point.y.0 * self.scale + self.offset.y.0),
+        }
+    }
+
+    fn bounds(&self, bounds: Bounds<ScaledPixels>) -> Bounds<ScaledPixels> {
+        Bounds {
+            origin: self.point(bounds.origin),
+            size: Size {
+                width: self.length(bounds.size.width),
+                height: self.length(bounds.size.height),
+            },
+        }
+    }
+
+    fn mask(&self, mask: ContentMask<ScaledPixels>) -> ContentMask<ScaledPixels> {
+        ContentMask {
+            bounds: self.bounds(mask.bounds).intersect(&self.clip),
+        }
+    }
+
+    fn corners(&self, corners: Corners<ScaledPixels>) -> Corners<ScaledPixels> {
+        Corners {
+            top_left: self.length(corners.top_left),
+            top_right: self.length(corners.top_right),
+            bottom_right: self.length(corners.bottom_right),
+            bottom_left: self.length(corners.bottom_left),
+        }
+    }
+
+    fn edges(&self, edges: Edges<ScaledPixels>) -> Edges<ScaledPixels> {
+        Edges {
+            top: self.length(edges.top),
+            right: self.length(edges.right),
+            bottom: self.length(edges.bottom),
+            left: self.length(edges.left),
+        }
+    }
+
+    fn matrix(&self, matrix: TransformationMatrix) -> TransformationMatrix {
+        if matrix == TransformationMatrix::unit() {
+            return matrix;
+        }
+        let [[a, b], [c, d]] = matrix.rotation_scale;
+        let (x, y) = (self.offset.x.0, self.offset.y.0);
+        TransformationMatrix {
+            rotation_scale: matrix.rotation_scale,
+            translation: [
+                matrix.translation[0] * self.scale + x - (a * x + b * y),
+                matrix.translation[1] * self.scale + y - (c * x + d * y),
+            ],
+        }
+    }
+
+    fn apply(&self, primitive: &mut Primitive) {
+        match primitive {
+            Primitive::Shadow(shadow) => {
+                shadow.bounds = self.bounds(shadow.bounds);
+                shadow.content_mask = self.mask(shadow.content_mask);
+                shadow.corner_radii = self.corners(shadow.corner_radii);
+                shadow.blur_radius = self.length(shadow.blur_radius);
+                shadow.element_bounds = self.bounds(shadow.element_bounds);
+                shadow.element_corner_radii = self.corners(shadow.element_corner_radii);
+            }
+            Primitive::Quad(quad) => {
+                quad.bounds = self.bounds(quad.bounds);
+                quad.content_mask = self.mask(quad.content_mask);
+                quad.corner_radii = self.corners(quad.corner_radii);
+                quad.border_widths = self.edges(quad.border_widths);
+            }
+            Primitive::Path(path) => {
+                path.bounds = self.bounds(path.bounds);
+                path.content_mask = self.mask(path.content_mask);
+                for vertex in &mut path.vertices {
+                    vertex.xy_position = self.point(vertex.xy_position);
+                    vertex.content_mask = self.mask(vertex.content_mask);
+                }
+            }
+            Primitive::Underline(underline) => {
+                underline.bounds = self.bounds(underline.bounds);
+                underline.content_mask = self.mask(underline.content_mask);
+                underline.thickness = self.length(underline.thickness);
+            }
+            Primitive::MonochromeSprite(sprite) => {
+                sprite.bounds = self.bounds(sprite.bounds);
+                sprite.content_mask = self.mask(sprite.content_mask);
+                sprite.transformation = self.matrix(sprite.transformation);
+            }
+            Primitive::SubpixelSprite(sprite) => {
+                sprite.bounds = self.bounds(sprite.bounds);
+                sprite.content_mask = self.mask(sprite.content_mask);
+                sprite.transformation = self.matrix(sprite.transformation);
+            }
+            Primitive::PolychromeSprite(sprite) => {
+                sprite.bounds = self.bounds(sprite.bounds);
+                sprite.content_mask = self.mask(sprite.content_mask);
+                sprite.corner_radii = self.corners(sprite.corner_radii);
+            }
+            Primitive::Surface(surface) => {
+                surface.bounds = self.bounds(surface.bounds);
+                surface.content_mask = self.mask(surface.content_mask);
+                surface.corner_radii = self.corners(surface.corner_radii);
+            }
+            Primitive::ShaderLayer(layer) => {
+                layer.bounds = self.bounds(layer.bounds);
+                layer.content_mask = self.mask(layer.content_mask);
+            }
+            Primitive::Glass(glass) => {
+                glass.bounds = self.bounds(glass.bounds);
+                glass.backdrop_bounds = self.bounds(glass.backdrop_bounds);
+                glass.content_mask = self.mask(glass.content_mask);
+                let count = (glass.shape_count as usize).min(glass.shapes.len());
+                for (bounds, corners) in &mut glass.shapes[..count] {
+                    *bounds = self.bounds(*bounds);
+                    *corners = self.corners(*corners);
+                }
+                if let Some(shadow) = &mut glass.shadow {
+                    shadow.bounds = self.bounds(shadow.bounds);
+                    shadow.corner_radii = self.corners(shadow.corner_radii);
+                    shadow.blur_radius = self.length(shadow.blur_radius);
+                }
+            }
+        }
+    }
 }
 
 struct OpenShaderLayer {
@@ -98,6 +247,7 @@ impl Scene {
         self.shader_layers.clear();
         self.glasses.clear();
         self.open_shader_layers.clear();
+        self.transforms.clear();
     }
 
     pub fn len(&self) -> usize {
@@ -105,9 +255,28 @@ impl Scene {
     }
 
     pub fn push_layer(&mut self, bounds: Bounds<ScaledPixels>) {
-        self.target().open_layer(bounds);
+        let placed = match self.transforms.last() {
+            Some(transform) => transform.bounds(bounds),
+            None => bounds,
+        };
+        self.target().open_layer(placed);
         self.paint_operations
             .push(PaintOperation::StartLayer(bounds));
+    }
+
+    pub(crate) fn push_transform(&mut self, transform: SceneTransform) {
+        self.paint_operations
+            .push(PaintOperation::StartTransform(transform));
+        let composed = match self.transforms.last() {
+            Some(outer) => transform.within(*outer),
+            None => transform,
+        };
+        self.transforms.push(composed);
+    }
+
+    pub(crate) fn pop_transform(&mut self) {
+        self.paint_operations.push(PaintOperation::EndTransform);
+        self.transforms.pop();
     }
 
     pub fn pop_layer(&mut self) {
@@ -120,6 +289,11 @@ impl Scene {
     pub(crate) fn push_shader_layer(&mut self, descriptor: ShaderLayerDescriptor) {
         self.paint_operations
             .push(PaintOperation::StartShaderLayer(descriptor.clone()));
+        let mut descriptor = descriptor;
+        if let Some(transform) = self.transforms.last() {
+            descriptor.bounds = transform.bounds(descriptor.bounds);
+            descriptor.content_mask = transform.mask(descriptor.content_mask);
+        }
         self.open_shader_layers.push(OpenShaderLayer {
             descriptor,
             scene: Scene::default(),
@@ -162,7 +336,16 @@ impl Scene {
 
     pub fn insert_primitive(&mut self, primitive: impl Into<Primitive>) {
         let mut primitive = primitive.into();
-        if self.target().place_primitive(&mut primitive) {
+        let Some(transform) = self.transforms.last().copied() else {
+            if self.target().place_primitive(&mut primitive) {
+                self.paint_operations
+                    .push(PaintOperation::Primitive(primitive));
+            }
+            return;
+        };
+        let mut placed = primitive.clone();
+        transform.apply(&mut placed);
+        if self.target().place_primitive(&mut placed) {
             self.paint_operations
                 .push(PaintOperation::Primitive(primitive));
         }
@@ -244,6 +427,8 @@ impl Scene {
                     self.push_shader_layer(descriptor.clone())
                 }
                 PaintOperation::EndShaderLayer => self.pop_shader_layer(),
+                PaintOperation::StartTransform(transform) => self.push_transform(*transform),
+                PaintOperation::EndTransform => self.pop_transform(),
             }
         }
     }
@@ -338,6 +523,8 @@ pub(crate) enum PaintOperation {
     EndLayer,
     StartShaderLayer(ShaderLayerDescriptor),
     EndShaderLayer,
+    StartTransform(SceneTransform),
+    EndTransform,
 }
 
 #[derive(Clone)]
