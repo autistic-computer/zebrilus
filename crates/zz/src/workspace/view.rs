@@ -93,7 +93,7 @@ use crate::{
     pane::layout::{SeparatorSide, pane_separator},
     pane::picker::PanePickerView,
     terminal::view::TerminalView,
-    window::corners::WindowCorners,
+    window::{corners::WindowCorners, drag::window_drag_handle},
 };
 
 const DROP_PREVIEW_MORPH: Duration = Duration::from_millis(180);
@@ -579,7 +579,7 @@ impl TerminalHeaderView {
 }
 
 impl Render for TerminalHeaderView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(state) = self.state.clone() else {
             return div().w_full().into_any_element();
         };
@@ -625,6 +625,11 @@ impl Render for TerminalHeaderView {
                 }
             });
         });
+        let header = if state.floats {
+            header
+        } else {
+            window_drag_handle(("pane-header-window-drag", pane.0), header, window, cx)
+        };
         pane_header_frame(header, state.radii, state.opacity).into_any_element()
     }
 }
