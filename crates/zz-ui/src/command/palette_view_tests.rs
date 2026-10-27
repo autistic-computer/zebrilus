@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+use zz_client::recents::RecentKey;
 use zz_gpui::{TestAppContext, VisualTestContext};
 use zz_protocol::{ChooseTreeItem, ChooseTreeKind, SessionId, WindowId};
 
@@ -7,7 +8,8 @@ use super::*;
 use crate::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, Root,
     command::{
-        PaletteStatus, PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+        ActionContext, PaletteStatus, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
+        PaletteTreeWindow, record_recent,
     },
 };
 
@@ -31,6 +33,35 @@ struct FakeBackend {
     snapshot: Arc<MuxSnapshot>,
     tree: PaletteTree,
     availability: PaneKindAvailability,
+    levels: Option<Rc<RefCell<Vec<String>>>>,
+}
+
+struct FakeLevel(Rc<RefCell<Vec<String>>>);
+
+impl PaletteActionLevel for FakeLevel {
+    fn update(&mut self, context: &ActionContext, _: &mut Window, _: &mut App) -> LevelEffect {
+        self.0
+            .borrow_mut()
+            .push(format!("update {:?} {}", context.kind, context.rest));
+        LevelEffect::Stay
+    }
+
+    fn key(&mut self, _: ActionKey, _: &mut Window, _: &mut App) -> Option<LevelEffect> {
+        None
+    }
+
+    fn rows(&mut self, _: &mut Window, _: &mut App) -> zz_gpui::AnyElement {
+        div().into_any_element()
+    }
+
+    fn hints(&self, _: &App) -> Vec<PaletteHint> {
+        Vec::new()
+    }
+
+    fn open_recent(&mut self, key: &RecentKey, _: &mut Window, _: &mut App) -> LevelEffect {
+        self.0.borrow_mut().push(format!("recent {key:?}"));
+        LevelEffect::Stay
+    }
 }
 
 impl PaletteBackend for FakeBackend {
@@ -84,6 +115,12 @@ impl PaletteBackend for FakeBackend {
         self.calls.borrow_mut().push(Call::Connect(host));
     }
 
+    fn action_level(&self, _: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+        self.levels
+            .as_ref()
+            .map(|log| Box::new(FakeLevel(Rc::clone(log))) as Box<dyn PaletteActionLevel>)
+    }
+
     fn activate(&self, host: PaletteHostId, target: PaletteTarget, _: &mut App) -> bool {
         self.calls.borrow_mut().push(Call::Activate(host, target));
         true
@@ -126,8 +163,24 @@ fn fake_backend(
         snapshot: Arc::default(),
         tree,
         availability,
+        levels: None,
     };
     (Rc::new(backend), calls)
+}
+
+fn level_backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Rc<RefCell<Vec<String>>>) {
+    let log = Rc::new(RefCell::new(Vec::new()));
+    let backend = FakeBackend {
+        calls: Calls::default(),
+        snapshot: Arc::default(),
+        tree,
+        availability: PaneKindAvailability {
+            browser: true,
+            editor: true,
+        },
+        levels: Some(Rc::clone(&log)),
+    };
+    (Rc::new(backend), log)
 }
 
 fn backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Calls) {
@@ -634,6 +687,39 @@ fn a_level_can_replace_the_text_after_its_sigil(cx: &mut TestAppContext) {
     });
     cx.run_until_parked();
     assert_eq!(target_value(&palette, cx), "&~/dev/");
+}
+
+#[zz_gpui::test]
+fn a_recent_file_opens_its_level_on_the_files_folder(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let key = RecentKey::File {
+        host: "local".to_owned(),
+        path: "~/dev/zz/Cargo.toml".to_owned(),
+        dir: false,
+    };
+    let recorded = key.clone();
+    cx.update(|cx| record_recent(recorded, "Cargo.toml", cx));
+    let (backend, log) = level_backend(online_tree());
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.run_until_parked();
+    let selected = palette.read_with(cx, |palette, _| {
+        let state = palette.unified.as_ref().unwrap();
+        state.rows[palette.selected.unwrap()].row.label.to_string()
+    });
+    assert_eq!(selected, "Cargo.toml");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/dev/zz/Cargo.toml");
+    assert_eq!(
+        *log.borrow(),
+        [
+            "update Files ~/dev/zz/Cargo.toml".to_owned(),
+            format!("recent {key:?}"),
+        ]
+    );
+    assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
 }
 
 fn chip_labels(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) -> Vec<String> {
