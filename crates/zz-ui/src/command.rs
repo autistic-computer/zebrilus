@@ -1,8 +1,13 @@
 pub mod floating;
+mod level;
 mod palette;
 mod palette_model;
 mod palette_view;
 
+pub use level::{
+    ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,
+    palette_recents, record_recent,
+};
 pub use palette::{
     PalettePill, PaletteRow, PaletteStatus, command_palette_empty, command_palette_entry,
     command_palette_section, command_palette_tree_entry, unified_command_palette_input,
