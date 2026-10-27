@@ -25,7 +25,7 @@ use zz_client::{
 use zz_gpui::{
     AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView, AnyWindowHandle, App,
     Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle,
-    IntoElement, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseExitEvent,
+    IntoElement, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
     Window, anchored, div, ease_out_quint, point, prelude::*, px,
 };
@@ -86,7 +86,7 @@ use crate::{
             KeyTableChanged, MuxClient, PathPickerUpdate, RemoteInstallOffer, SshPromptRequest,
         },
         hosts::HostId,
-        nav::{TreeTarget, kill_target_command, select_window_command},
+        nav::{TreeTarget, kill_target_command},
         prefix::{binds_input, is_all_keys_input, is_sidebar_picker_input, terminal_key_input},
     },
     pane::display::DisplayPanesView,
@@ -220,17 +220,11 @@ fn attached_focused_window(
         .map(|session| snapshot.focused_window_for(session))
 }
 
-fn window_at_position(
-    snapshot: &MuxSnapshot,
-    attached: Option<SessionId>,
-    position: u8,
-) -> Option<WindowId> {
-    snapshot
-        .sessions
-        .iter()
-        .find(|session| Some(session.id) == attached)
-        .and_then(|session| session.windows.get(usize::from(position)))
-        .map(|window| window.id)
+const WINDOW_SHORTCUT_HINT_DELAY: Duration = Duration::from_millis(300);
+
+fn window_shortcut_modifiers(cx: &App) -> Option<Modifiers> {
+    let chord = crate::keymap::chord_for(cx, zz_client::UI_TABLE, ChromeAction::SelectWindow(0))?;
+    Keystroke::parse(&chord).ok().map(|stroke| stroke.modifiers)
 }
 
 fn browser_metadata_command(
@@ -789,6 +783,7 @@ pub struct AppView {
     which_key: Option<WhichKeySheet>,
     which_key_timer: Option<Task<()>>,
     which_key_generation: u64,
+    window_shortcut_timer: Option<Task<()>>,
 }
 
 impl AppView {
@@ -923,6 +918,9 @@ impl AppView {
                 mux.set_client_window_focused(window_active);
             });
             view.input_router.event(InputEvent::WindowDeactivated);
+            if !window_active {
+                view.hide_window_shortcuts(cx);
+            }
             if !window_active
                 && view
                     .float_drag
@@ -1206,7 +1204,40 @@ impl AppView {
             which_key: None,
             which_key_timer: None,
             which_key_generation: 0,
+            window_shortcut_timer: None,
         }
+    }
+
+    pub(crate) fn on_window_shortcut_modifiers(
+        &mut self,
+        modifiers: Modifiers,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let held = window_shortcut_modifiers(cx) == Some(modifiers);
+        if !held {
+            self.hide_window_shortcuts(cx);
+            return;
+        }
+        if self.window_shortcut_timer.is_some() {
+            return;
+        }
+        self.window_shortcut_timer = Some(cx.spawn_in(window, async move |view, cx| {
+            cx.background_executor()
+                .timer(WINDOW_SHORTCUT_HINT_DELAY)
+                .await;
+            view.update(cx, |view, cx| {
+                view.sidebar
+                    .update(cx, |sidebar, cx| sidebar.show_window_shortcuts(true, cx));
+            })
+            .ok();
+        }));
+    }
+
+    fn hide_window_shortcuts(&mut self, cx: &mut Context<Self>) {
+        self.window_shortcut_timer = None;
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.show_window_shortcuts(false, cx));
     }
 
     fn intercept_keystroke(
@@ -1225,6 +1256,9 @@ impl AppView {
         }
         if !(event.is_held && self.mux.read(cx).prefix_armed()) {
             self.hide_which_key(cx);
+        }
+        if !self.sidebar.read(cx).window_shortcuts_shown() {
+            self.window_shortcut_timer = None;
         }
         if self.reconcile_dialog_prefix(window, cx) {
             return;
@@ -1423,12 +1457,10 @@ impl AppView {
                 return;
             }
             ChromeAction::SelectWindow(position) => {
-                let mux = self.mux.read(cx);
-                if mux.is_connected()
-                    && let Some(target) =
-                        window_at_position(&mux.snapshot(), mux.attached_session(), position)
+                if self
+                    .sidebar
+                    .update(cx, |sidebar, cx| sidebar.open_window_shortcut(position, cx))
                 {
-                    mux.execute(select_window_command(target));
                     self.focus_active_pane(window, cx);
                 }
                 return;
@@ -5951,32 +5983,6 @@ mod tests {
             cx.run_until_parked();
             assert!(cx.update(|window, cx| settings_focus.contains_focused(window, cx)));
         }
-    }
-
-    #[test]
-    fn window_shortcuts_follow_position_within_the_attached_session() {
-        let mut snapshot = one_pane_snapshot(1);
-        let mut attached = snapshot.sessions[0].clone();
-        attached.id = SessionId(42);
-        attached.windows = [(71, 4), (12, 10), (99, 90)]
-            .into_iter()
-            .map(|(id, index)| {
-                let mut window = attached.windows[0].clone();
-                window.id = WindowId(id);
-                window.index = index;
-                window
-            })
-            .collect();
-        snapshot.sessions.push(attached);
-        for (position, id) in [(0, 71), (1, 12), (2, 99)] {
-            assert_eq!(
-                window_at_position(&snapshot, Some(SessionId(42)), position),
-                Some(WindowId(id))
-            );
-        }
-        assert_eq!(window_at_position(&snapshot, Some(SessionId(42)), 3), None);
-        assert_eq!(window_at_position(&snapshot, Some(SessionId(100)), 0), None);
-        assert_eq!(window_at_position(&snapshot, None, 0), None);
     }
 
     #[zz_gpui::test]

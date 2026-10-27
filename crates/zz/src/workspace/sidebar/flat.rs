@@ -131,6 +131,7 @@ impl WorkspaceSidebar {
         let now = unix_now();
         let hidden = crate::agent::hidden_session(cx);
         let attached = (mux.attached_host(), mux.attached_session());
+        let shortcuts = self.window_shortcut_keys(cx);
         let hosts = mux
             .fleet_hosts()
             .map(|(id, name, state, snapshot)| {
@@ -151,6 +152,14 @@ impl WorkspaceSidebar {
                 host.folded = self.flat_view.folded_hosts.contains(&id);
                 for session in &mut host.sessions {
                     session.folded = self.flat_view.folded_sessions.contains(&(id, session.id));
+                    for window in &mut session.windows {
+                        window.shortcut = shortcuts
+                            .iter()
+                            .find(|(host, window_id, _)| {
+                                (*host, *window_id) == (id, window.summary.window)
+                            })
+                            .map(|(.., stroke)| stroke.clone());
+                    }
                 }
                 host
             })

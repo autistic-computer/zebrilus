@@ -8,7 +8,7 @@ use zz_client::{
     },
 };
 use zz_gpui::{
-    AnyElement, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
+    AnyElement, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _, Render,
     ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
 use zz_protocol::{
@@ -50,6 +50,15 @@ pub const STORY: Story = Story {
             name: "Sidebar",
             summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the row fill and the brighter session label follow the pointer; a right click opens the row's menu. A host header's button opens a new session and a session header's opens a new window; nas is connected with no sessions; hover it for New session. The footer adds a host and switches between the session tree and this list.",
             build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
+        },
+        Section {
+            id: "shortcuts",
+            name: "Window shortcuts",
+            summary: "Holding the window shortcuts' modifier (⌘ on macOS, Ctrl elsewhere) for a moment puts a key on each window it reaches, in place of the age: the first nine windows of the connected hosts, top to bottom across sessions, so a window keeps its number while you move around. A folded session's windows keep their numbers too.",
+            build: |_, cx| {
+                cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT)).shortcuts())
+                    .into()
+            },
         },
         Section {
             id: "rows",
@@ -660,6 +669,7 @@ pub(crate) struct Live {
     scroll: ScrollHandle,
     height: Option<f32>,
     driver: bool,
+    shortcuts: bool,
 }
 
 impl Live {
@@ -673,7 +683,13 @@ impl Live {
             scroll: ScrollHandle::new(),
             height,
             driver: false,
+            shortcuts: false,
         }
+    }
+
+    pub(crate) const fn shortcuts(mut self) -> Self {
+        self.shortcuts = true;
+        self
     }
 
     /// The driver's last message under the list, as the app draws it while
@@ -724,8 +740,13 @@ impl Render for Live {
         let handler: FlatHandler = Rc::new(move |event, _, cx| {
             let _ = view.update(cx, |this, cx| this.handle(event, cx));
         });
+        let hosts = if self.shortcuts {
+            numbered(&self.hosts)
+        } else {
+            self.hosts.clone()
+        };
         let list = flat_sidebar(
-            &self.hosts,
+            &hosts,
             self.state,
             &handler,
             &window_menu(),
@@ -773,6 +794,24 @@ impl Render for Live {
                 cx,
             ))
     }
+}
+
+fn numbered(hosts: &[FlatHost]) -> Vec<FlatHost> {
+    let mut hosts = hosts.to_vec();
+    let mut keys = (1..=9).filter_map(|key| Keystroke::parse(&format!("secondary-{key}")).ok());
+    for host in hosts
+        .iter_mut()
+        .filter(|host| host.connection == HostConnection::Connected)
+    {
+        for window in host
+            .sessions
+            .iter_mut()
+            .flat_map(|session| &mut session.windows)
+        {
+            window.shortcut = keys.next();
+        }
+    }
+    hosts
 }
 
 fn row_frame(index: usize, content: impl IntoElement) -> AnyElement {
