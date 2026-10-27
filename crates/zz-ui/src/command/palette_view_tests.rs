@@ -34,6 +34,7 @@ struct FakeBackend {
     tree: PaletteTree,
     availability: PaneKindAvailability,
     levels: Option<Rc<RefCell<Vec<String>>>>,
+    vim: Rc<std::cell::Cell<bool>>,
 }
 
 struct FakeLevel(Rc<RefCell<Vec<String>>>);
@@ -78,7 +79,10 @@ impl PaletteBackend for FakeBackend {
     }
 
     fn settings(&self, _: &App) -> PaletteSettings {
-        PaletteSettings::default()
+        PaletteSettings {
+            vim: self.vim.get(),
+            ..PaletteSettings::default()
+        }
     }
 
     fn availability(&self, _: &App) -> PaneKindAvailability {
@@ -164,6 +168,7 @@ fn fake_backend(
         tree,
         availability,
         levels: None,
+        vim: Rc::default(),
     };
     (Rc::new(backend), calls)
 }
@@ -179,6 +184,7 @@ fn level_backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Rc<RefCell<Vec<S
             editor: true,
         },
         levels: Some(Rc::clone(&log)),
+        vim: Rc::default(),
     };
     (Rc::new(backend), log)
 }
@@ -1199,4 +1205,255 @@ fn unicode_scalar_cursor_conversion_is_boundary_safe() {
     assert_eq!(byte_index_for_char(value, 2), Some(5));
     assert_eq!(byte_index_for_char(value, 4), Some(value.len()));
     assert_eq!(byte_index_for_char(value, 5), None);
+}
+
+fn vim_palette(
+    cx: &mut TestAppContext,
+    vim: bool,
+    mode: Option<PaletteMode>,
+) -> (
+    Entity<CommandPaletteView>,
+    Calls,
+    Rc<std::cell::Cell<bool>>,
+    &mut VisualTestContext,
+) {
+    cx.update(crate::init);
+    let calls = Calls::default();
+    let toggle = Rc::new(std::cell::Cell::new(vim));
+    let backend: Rc<dyn PaletteBackend> = Rc::new(FakeBackend {
+        calls: Rc::clone(&calls),
+        snapshot: Arc::default(),
+        tree: online_tree(),
+        availability: PaneKindAvailability {
+            browser: true,
+            editor: true,
+        },
+        levels: None,
+        vim: Rc::clone(&toggle),
+    });
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, mode, window, cx)
+    });
+    cx.run_until_parked();
+    (palette, calls, toggle, cx)
+}
+
+#[derive(Debug, PartialEq)]
+struct Seen {
+    value: String,
+    chips: Vec<(String, Option<String>)>,
+    command: Option<&'static str>,
+    selected: Option<usize>,
+    finished: bool,
+    calls: usize,
+    clipboard: Option<String>,
+}
+
+fn seen(palette: &Entity<CommandPaletteView>, calls: &Calls, cx: &mut VisualTestContext) -> Seen {
+    let clipboard = cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()));
+    palette.read_with(cx, |palette, cx| {
+        let unified = palette.unified.as_ref().expect("a unified palette");
+        Seen {
+            value: palette.input.read(cx).value().to_string(),
+            chips: unified
+                .chips
+                .iter()
+                .map(|chip| (chip.label.clone(), chip.typed.clone()))
+                .collect(),
+            command: unified.command.map(|command| command.name),
+            selected: palette.selected,
+            finished: palette.is_finished(),
+            calls: calls.borrow().len(),
+            clipboard,
+        }
+    })
+}
+
+fn vim_mode(
+    palette: &Entity<CommandPaletteView>,
+    cx: &mut VisualTestContext,
+) -> Option<PaletteVimMode> {
+    palette.read_with(cx, |palette, _| palette.vim_mode())
+}
+
+fn field_normal(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) -> bool {
+    palette.read_with(cx, |palette, cx| palette.input.read(cx).is_normal_mode())
+}
+
+fn press(cx: &mut VisualTestContext, keys: &str) {
+    cx.simulate_keystrokes(keys);
+    cx.run_until_parked();
+}
+
+#[zz_gpui::test]
+fn vim_mode_opens_in_insert_and_escape_steps_to_normal_then_closes(cx: &mut TestAppContext) {
+    let (palette, _, _, cx) = vim_palette(cx, true, None);
+    assert_eq!(vim_mode(&palette, cx), Some(PaletteVimMode::Insert));
+    assert!(!field_normal(&palette, cx));
+
+    cx.simulate_input("dev");
+    press(cx, "escape");
+    assert_eq!(vim_mode(&palette, cx), Some(PaletteVimMode::Normal));
+    assert!(field_normal(&palette, cx));
+    assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
+
+    press(cx, "z");
+    cx.simulate_input("jk");
+    cx.run_until_parked();
+    assert_eq!(
+        palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string()),
+        "dev",
+        "normal mode types nothing, by key or through the input method"
+    );
+
+    press(cx, "escape");
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+}
+
+#[zz_gpui::test]
+fn without_vim_mode_escape_closes_at_once(cx: &mut TestAppContext) {
+    let (palette, _, _, cx) = vim_palette(cx, false, None);
+    assert_eq!(vim_mode(&palette, cx), None);
+    press(cx, "escape");
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+}
+
+#[zz_gpui::test]
+fn q_and_ctrl_bracket_close_from_normal(cx: &mut TestAppContext) {
+    for keys in ["escape q", "ctrl-[ ctrl-["] {
+        let (palette, _, _, cx) = vim_palette(cx, true, None);
+        press(cx, keys);
+        assert!(
+            palette.read_with(cx, |palette, _| palette.is_finished()),
+            "{keys}"
+        );
+    }
+}
+
+#[zz_gpui::test]
+fn each_vim_key_does_what_its_twin_does(cx: &mut TestAppContext) {
+    for (setup, vim_key, twin) in [
+        (":", "j", "down"),
+        (":", "j j k", "down down up"),
+        (":", "k", "up"),
+        ("dev", "x", "backspace"),
+        (":", "x", "backspace"),
+        ("", "x", "backspace"),
+        ("$dev@", "x", "backspace"),
+        ("", "l", "tab"),
+        ("", "right", "tab"),
+        (":join", "l", "tab"),
+        ("", "h", "shift-tab"),
+        ("$dev@", "h", "shift-tab"),
+        ("$dev@", "left", "shift-tab"),
+        ("", "y y", "alt-enter"),
+        ("$dev", "y y", "alt-enter"),
+    ] {
+        cx.update(|cx| cx.write_to_clipboard(ClipboardItem::new_string(String::new())));
+        let (vim, vim_calls, _, cx) = vim_palette(cx, true, None);
+        cx.simulate_input(setup);
+        press(cx, "escape");
+        press(cx, vim_key);
+        let by_vim = seen(&vim, &vim_calls, cx);
+
+        cx.update(|_, cx| cx.write_to_clipboard(ClipboardItem::new_string(String::new())));
+        let (plain, plain_calls, _, cx) = vim_palette(cx, false, None);
+        cx.simulate_input(setup);
+        cx.run_until_parked();
+        let before = seen(&plain, &plain_calls, cx);
+        press(cx, twin);
+        let by_twin = seen(&plain, &plain_calls, cx);
+
+        assert_eq!(by_vim, by_twin, "{vim_key} after {setup:?}");
+        assert_ne!(
+            by_twin, before,
+            "{twin} after {setup:?} changed nothing to compare"
+        );
+    }
+}
+
+#[zz_gpui::test]
+fn gg_and_shift_g_jump_to_the_first_and_last_row(cx: &mut TestAppContext) {
+    let (palette, _, _, cx) = vim_palette(cx, true, Some(PaletteMode::Command));
+    let (first, last) = palette.read_with(cx, |palette, _| {
+        let rows = &palette.unified.as_ref().unwrap().rows;
+        (
+            rows.iter().position(|row| row.action.is_some()),
+            rows.iter().rposition(|row| row.action.is_some()),
+        )
+    });
+    press(cx, "escape shift-g");
+    assert_eq!(palette.read_with(cx, |palette, _| palette.selected), last);
+    press(cx, "g");
+    assert_eq!(palette.read_with(cx, |palette, _| palette.selected), last);
+    press(cx, "g");
+    assert_eq!(palette.read_with(cx, |palette, _| palette.selected), first);
+}
+
+#[zz_gpui::test]
+fn i_a_and_slash_go_back_to_insert(cx: &mut TestAppContext) {
+    let (palette, _, _, cx) = vim_palette(cx, true, Some(PaletteMode::Command));
+    let field = |palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext| {
+        palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string())
+    };
+    cx.simulate_input("join");
+    press(cx, "escape i");
+    assert_eq!(vim_mode(&palette, cx), Some(PaletteVimMode::Insert));
+    assert!(!field_normal(&palette, cx));
+    cx.simulate_input("-");
+    press(cx, "escape a");
+    cx.simulate_input("p");
+    cx.run_until_parked();
+    assert_eq!(field(&palette, cx), ":join-p");
+
+    press(cx, "escape /");
+    assert_eq!(vim_mode(&palette, cx), Some(PaletteVimMode::Insert));
+    assert_eq!(
+        field(&palette, cx),
+        ":",
+        "/ clears the text after the action sigil"
+    );
+
+    press(cx, "backspace");
+    cx.simulate_input("$dev@edi");
+    press(cx, "escape /");
+    let chips = palette.read_with(cx, |palette, _| {
+        palette.unified.as_ref().unwrap().chips.len()
+    });
+    assert_eq!(field(&palette, cx), "", "/ clears a part in progress");
+    assert!(chips >= 2, "/ keeps the chips");
+}
+
+#[zz_gpui::test]
+fn a_sigil_in_normal_mode_types_itself_in_insert(cx: &mut TestAppContext) {
+    for sigil in [":", "@"] {
+        let (vim, vim_calls, _, cx) = vim_palette(cx, true, None);
+        press(cx, "escape");
+        press(cx, sigil);
+        assert_eq!(vim_mode(&vim, cx), Some(PaletteVimMode::Insert), "{sigil}");
+        let by_vim = seen(&vim, &vim_calls, cx);
+
+        let (plain, plain_calls, _, cx) = vim_palette(cx, false, None);
+        cx.simulate_input(sigil);
+        cx.run_until_parked();
+        assert_eq!(by_vim, seen(&plain, &plain_calls, cx), "{sigil}");
+    }
+}
+
+#[zz_gpui::test]
+fn turning_vim_mode_off_gives_the_field_back(cx: &mut TestAppContext) {
+    let (palette, _, toggle, cx) = vim_palette(cx, true, None);
+    press(cx, "escape");
+    assert!(field_normal(&palette, cx));
+    toggle.set(false);
+    cx.update(|window, cx| palette.update(cx, |palette, cx| palette.refresh(window, cx)));
+    cx.run_until_parked();
+    assert_eq!(vim_mode(&palette, cx), None);
+    assert!(!field_normal(&palette, cx));
+    cx.simulate_input("dev");
+    cx.run_until_parked();
+    assert_eq!(
+        palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string()),
+        "dev"
+    );
 }

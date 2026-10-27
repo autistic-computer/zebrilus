@@ -430,6 +430,10 @@ pub(crate) fn palette_show_keys(cx: &App) -> bool {
     resolved_config(cx).palette_show_keys.value
 }
 
+pub(crate) fn palette_vim_mode(cx: &App) -> bool {
+    resolved_config(cx).palette_vim_mode.value
+}
+
 /// Whether the experimental editor pane is enabled. Blocks creating new editor
 /// panes while off; existing ones keep rendering. Always false without the
 /// `editor-pane` cargo feature.

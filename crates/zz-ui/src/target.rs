@@ -1180,6 +1180,17 @@ impl TargetPicker {
         true
     }
 
+    /// Highlight the first or the last row.
+    pub fn select_edge(&mut self, first: bool, cx: &mut Context<Self>) {
+        if self.items.is_empty() {
+            return;
+        }
+        self.selected = if first { 0 } else { self.items.len() - 1 };
+        self.scroll
+            .scroll_to_item(self.selected, ScrollStrategy::Nearest);
+        cx.notify();
+    }
+
     /// Tab in a composer: complete the highlighted row into the word, opening
     /// the level under it when it has one.
     pub fn complete(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {

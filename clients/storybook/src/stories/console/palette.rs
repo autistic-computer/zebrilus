@@ -166,6 +166,18 @@ pub const STORY: Story = Story {
             summary: "A query nothing matches.",
             build: |window, cx| command_query(window, cx, "qxqz"),
         },
+        Section {
+            id: "vim-insert",
+            name: "Vim mode, insert",
+            summary: "With palette-vim-mode on, the palette opens in insert and says so at the right of the field. Esc goes to normal.",
+            build: |window, cx| vim(window, cx, &["d", "e"]),
+        },
+        Section {
+            id: "vim-normal",
+            name: "Vim mode, normal",
+            summary: "After Esc: a block caret, the NORMAL badge, and the footer lists the normal keys. j k move, l goes in, h goes up, x is Backspace, yy copies the row, i a / or a sigil go back to insert, Esc or q close.",
+            build: |window, cx| vim(window, cx, &["d", "e", "escape", "j"]),
+        },
     ],
 };
 
@@ -923,6 +935,21 @@ pub(super) fn target_palette(
     let backend = files_backend(online_tree(), true, files);
     let body = body.to_owned();
     cx.new(|cx| CommandPaletteView::new_target(backend, &body, pane, window, cx))
+}
+
+fn vim(window: &mut Window, cx: &mut App, keys: &'static [&'static str]) -> AnyView {
+    let backend: Rc<dyn PaletteBackend> = Rc::new(StoryBackend {
+        tree: online_tree(),
+        settings: PaletteSettings {
+            vim: true,
+            ..PaletteSettings::default()
+        },
+        files: Files::Listed,
+        picker: RefCell::new(None),
+        requests: Cell::new(0),
+    });
+    let palette = cx.new(|cx| CommandPaletteView::new_unified(backend, None, window, cx));
+    mount(window, cx, palette, 560.0, keys)
 }
 
 fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {

@@ -24,11 +24,14 @@ use super::{
     PaletteRow, command_kind_badge, command_palette_empty, command_palette_input,
     command_palette_row, command_palette_row_height, command_palette_section,
     command_palette_tree_entry,
+    palette::palette_vim_badge,
     palette_model::{
         PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget,
         PaletteTree, UnifiedPalette, needs_arguments, target_kind,
     },
-    palette_recents, unified_command_palette_input,
+    palette_recents,
+    palette_vim::{PaletteVim, PaletteVimMode, Twin, VimCommand},
+    unified_command_palette_input,
 };
 use crate::{
     WindowExt as _,
@@ -272,6 +275,7 @@ pub struct CommandPaletteView {
     /// the active one.
     insert_pane: Option<PaneId>,
     level: Option<(ActionKind, Box<dyn PaletteActionLevel>)>,
+    vim: Option<PaletteVim>,
 }
 
 #[derive(Default)]
@@ -390,6 +394,7 @@ impl CommandPaletteView {
             target: None,
             insert_pane: None,
             level: None,
+            vim: None,
         };
         cx.on_release(|palette, cx| {
             if let Some((_, mut level)) = palette.level.take() {
@@ -644,7 +649,8 @@ impl CommandPaletteView {
                 Some(PaletteAction::Place(place)) => Some(place),
                 _ => None,
             });
-        unified.apply_settings(self.backend.settings(cx));
+        let settings = self.backend.settings(cx);
+        unified.apply_settings(settings);
         self.availability = self.backend.availability(cx);
         self.snapshot = self.backend.snapshot(cx);
         let mut history = cx
@@ -764,7 +770,126 @@ impl CommandPaletteView {
         self.input
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
         self.sync_level(window, cx);
+        if settings.vim != self.vim.is_some() {
+            self.vim = settings.vim.then(PaletteVim::default);
+            self.sync_vim_mode(cx);
+        }
         self.sync_target(window, cx);
+    }
+
+    /// The vim mode the palette is in, while `palette-vim-mode` is on.
+    #[must_use]
+    pub fn vim_mode(&self) -> Option<PaletteVimMode> {
+        self.vim.as_ref().map(PaletteVim::mode)
+    }
+
+    fn vim_normal(&self) -> bool {
+        self.vim_mode() == Some(PaletteVimMode::Normal)
+    }
+
+    fn sync_vim_mode(&mut self, cx: &mut Context<Self>) {
+        let normal = self.vim_normal();
+        self.input
+            .update(cx, |input, cx| input.set_normal_mode(normal, cx));
+        cx.notify();
+    }
+
+    fn vim_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(vim) = &mut self.vim else {
+            return;
+        };
+        let command = vim.key(&event.keystroke, zz_client::place::is_sigil);
+        if command == VimCommand::Pass {
+            return;
+        }
+        cx.stop_propagation();
+        match command {
+            VimCommand::Pass | VimCommand::Swallow | VimCommand::Normal => {}
+            VimCommand::Twin(twin) => Self::dispatch_twin(twin, window, cx),
+            VimCommand::First => self.select_edge(true, window, cx),
+            VimCommand::Last => self.select_edge(false, window, cx),
+            VimCommand::Insert { after } => {
+                if after {
+                    self.input.update(cx, |input, cx| {
+                        let value = input.value();
+                        let cursor = input.cursor();
+                        let next = value[cursor..]
+                            .chars()
+                            .next()
+                            .map_or(cursor, |key| cursor + key.len_utf8());
+                        input.set_selected_range(next..next, cx);
+                    });
+                }
+            }
+            VimCommand::ClearAndInsert => {
+                let value = self.input.read(cx).value().to_string();
+                let kept = parse(&value)
+                    .action
+                    .map_or("", |action| &value[..action.rest_range().start])
+                    .to_owned();
+                self.set_query(kept, window, cx);
+            }
+            VimCommand::InsertWith(sigil) => {
+                self.input
+                    .update(cx, |input, cx| input.insert(sigil.to_string(), window, cx));
+            }
+            VimCommand::Close => self.close(cx),
+        }
+        self.sync_vim_mode(cx);
+    }
+
+    fn dispatch_twin(twin: Twin, window: &mut Window, cx: &mut App) {
+        let action: Box<dyn zz_gpui::Action> = match twin {
+            Twin::Down => Box::new(MoveDown),
+            Twin::Up => Box::new(MoveUp),
+            Twin::Into => Box::new(IndentInline),
+            Twin::Out => Box::new(OutdentInline),
+            Twin::Drop => Box::new(Backspace),
+            Twin::CopyAddress => Box::new(CopyAddress),
+        };
+        window.dispatch_action(action, cx);
+    }
+
+    fn escape(&mut self, cx: &mut Context<Self>) {
+        if let Some(vim) = &mut self.vim
+            && vim.escape() == VimCommand::Normal
+        {
+            self.sync_vim_mode(cx);
+            return;
+        }
+        self.close(cx);
+    }
+
+    fn select_edge(&mut self, first: bool, window: &mut Window, cx: &mut Context<Self>) {
+        let edge = if first {
+            ActionKey::First
+        } else {
+            ActionKey::Last
+        };
+        if self.level_key(edge, window, cx) {
+            return;
+        }
+        if let Some((picker, _)) = &self.target {
+            picker.update(cx, |picker, cx| picker.select_edge(first, cx));
+            return;
+        }
+        let Some(unified) = &self.unified else {
+            return;
+        };
+        let mut rows = unified
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(_, row)| row.action.is_some())
+            .map(|(index, _)| index);
+        let Some(next) = (if first { rows.next() } else { rows.next_back() }) else {
+            return;
+        };
+        self.selected = Some(next);
+        self.navigation_engaged = true;
+        self.scroll_handle
+            .scroll_to_item(next, ScrollStrategy::Nearest);
+        cx.notify();
     }
 
     /// Keep the `@` mode's picker while the palette is in that mode, on what
@@ -1423,7 +1548,58 @@ impl CommandPaletteView {
         {
             hints.retain(|hint| hint.key != "left right");
         }
-        let input = unified_command_palette_input(&self.input, unified.pills(), cx);
+        if self.vim_normal() {
+            hints = vec![
+                PaletteHint {
+                    key: "j k",
+                    label: "move",
+                },
+                PaletteHint {
+                    key: "l",
+                    label: "into",
+                },
+                PaletteHint {
+                    key: "h",
+                    label: "up",
+                },
+                PaletteHint {
+                    key: "enter",
+                    label: enter_hint,
+                },
+                PaletteHint {
+                    key: "i",
+                    label: "insert",
+                },
+                PaletteHint {
+                    key: "q",
+                    label: "close",
+                },
+            ];
+        } else if self.vim.is_some() {
+            for hint in &mut hints {
+                if hint.key == "escape" {
+                    hint.label = "normal";
+                }
+            }
+        }
+        let mut input = unified_command_palette_input(&self.input, unified.pills(), cx);
+        if let Some(vim) = &self.vim {
+            input = input.suffix(palette_vim_badge(vim.mode(), vim.pending(), cx));
+        }
+        let vim_palette = palette.clone();
+        let input = div()
+            .w_full()
+            .capture_any_mouse_down(move |_, _, cx| {
+                vim_palette.update(cx, |palette, cx| {
+                    if let Some(vim) = &mut palette.vim
+                        && vim.mode() == PaletteVimMode::Normal
+                    {
+                        vim.insert();
+                        palette.sync_vim_mode(cx);
+                    }
+                });
+            })
+            .child(input);
         let mut surface = CommandPaletteSurface::new(input, cx.entity_id().as_u64()).hints(hints);
         if let Some(usage) = usage {
             surface = surface.usage(usage);
@@ -1743,11 +1919,16 @@ impl CommandPaletteView {
     }
 
     fn dismiss(&mut self, _: &Escape, _: &mut Window, cx: &mut Context<Self>) {
-        self.close(cx);
+        self.escape(cx);
         cx.stop_propagation();
     }
 
     fn collapse_host(&mut self, _: &MoveLeft, window: &mut Window, cx: &mut Context<Self>) {
+        if self.vim_normal() {
+            Self::dispatch_twin(Twin::Out, window, cx);
+            cx.stop_propagation();
+            return;
+        }
         if self.caret_at_end(cx) && self.level_key(ActionKey::Left, window, cx) {
             cx.stop_propagation();
             return;
@@ -1756,6 +1937,11 @@ impl CommandPaletteView {
     }
 
     fn open_host(&mut self, _: &MoveRight, window: &mut Window, cx: &mut Context<Self>) {
+        if self.vim_normal() {
+            Self::dispatch_twin(Twin::Into, window, cx);
+            cx.stop_propagation();
+            return;
+        }
         if self.caret_at_end(cx) && self.level_key(ActionKey::Right, window, cx) {
             cx.stop_propagation();
             return;
@@ -1835,7 +2021,7 @@ impl CommandPaletteView {
         match event.keystroke.key.as_str() {
             "up" if !modifiers.platform && !modifiers.alt => self.navigate(-1, cx),
             "down" if !modifiers.platform && !modifiers.alt => self.navigate(1, cx),
-            "escape" => self.close(cx),
+            "escape" => self.escape(cx),
             _ => return,
         }
         cx.stop_propagation();
@@ -1846,11 +2032,12 @@ impl CommandPaletteView {
     /// travels on the pane-targeted key path and never reaches the input
     /// widget. `-e` needs the same interception for exactly one key, because a
     /// backspace on an empty field edits nothing and would otherwise be silent.
-    fn on_raw_key(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_raw_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.finishing {
             return;
         }
         if self.unified.is_some() {
+            self.vim_key(event, window, cx);
             return;
         }
         if self.mode == CommandPromptMode::BackspaceExit {

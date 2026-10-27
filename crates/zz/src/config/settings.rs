@@ -1348,7 +1348,15 @@ impl SettingsView {
                         ConfigKey::PaletteShowKeys,
                         "Command shortcuts",
                         resolved.palette_show_keys,
-                    )),
+                    ))
+                    .child(
+                        Self::boolean_setting(
+                            ConfigKey::PaletteVimMode,
+                            "Vim mode",
+                            resolved.palette_vim_mode,
+                        )
+                        .description("Esc for normal mode: j k move, l into, h up"),
+                    ),
             )
             .when(crate::profile::profile(cx).has_tray, |column| {
                 column.child(
@@ -2301,6 +2309,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::WindowBackgroundOpacity
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteShowKeys
+                | ConfigKey::PaletteVimMode
                 | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
                 | ConfigKey::StatusBadges
@@ -2414,6 +2423,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::UseSystemTitlebar
         | ConfigKey::PaletteWindowLayout
         | ConfigKey::PaletteShowKeys
+        | ConfigKey::PaletteVimMode
         | ConfigKey::PickerFocusSidebar
         | ConfigKey::WindowBackgroundBlur
         | ConfigKey::Animations

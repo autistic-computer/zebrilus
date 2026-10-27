@@ -6,7 +6,7 @@ use unicode_segmentation::UnicodeSegmentation as _;
 use zz_gpui::{
     App, Bounds, ContentMask, DispatchPhase, Element, ElementId, ElementInputHandler, Entity,
     GlobalElementId, InspectorElementId, IntoElement, LayoutId, MouseButton, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, SharedString, Size, Style, TextAlign, TextRun, Window,
+    MouseUpEvent, Pixels, Point, ShapedLine, SharedString, Size, Style, TextAlign, TextRun, Window,
     WrappedLine, fill, point, px, relative, size,
 };
 
@@ -259,6 +259,7 @@ pub(super) struct PrepaintState {
     layout: LastLayout,
     selection_quads: Vec<Bounds<Pixels>>,
     caret: Option<Bounds<Pixels>>,
+    caret_glyph: Option<ShapedLine>,
 }
 
 impl Element for TextElement {
@@ -330,6 +331,19 @@ impl Element for TextElement {
         let is_placeholder = value.is_empty();
         let mask =
             (state.masked && !mode.is_multi_line() && !is_placeholder).then(|| Mask::new(&value));
+        let block = (show_caret && state.is_normal_mode()).then(|| {
+            let under: &str = if is_placeholder { &placeholder } else { &value };
+            let start = if is_placeholder {
+                0
+            } else {
+                cursor.min(under.len())
+            };
+            under
+                .get(start..)
+                .and_then(|rest| rest.graphemes(true).next())
+                .filter(|grapheme| *grapheme != "\n" && mask.is_none())
+                .map(SharedString::new)
+        });
         let display_text: SharedString = match (&mask, is_placeholder) {
             (Some(mask), _) => mask.display_text(),
             (None, true) => placeholder,
@@ -406,9 +420,26 @@ impl Element for TextElement {
             })
             .collect();
 
+        let caret_glyph = block.clone().flatten().map(|grapheme| {
+            let run = TextRun {
+                color: text_style.color.on(),
+                ..text_style.to_run(grapheme.len())
+            };
+            window
+                .text_system()
+                .shape_line(grapheme, font_size, &[run], None)
+        });
+        let caret_width = match (&block, &caret_glyph) {
+            (None, _) => CURSOR_WIDTH,
+            (Some(_), Some(glyph)) if glyph.width() > Pixels::ZERO => glyph.width(),
+            (Some(_), _) => window
+                .text_system()
+                .shape_line("0".into(), font_size, &[text_style.to_run(1)], None)
+                .width(),
+        };
         let caret = show_caret.then(|| Bounds {
             origin: layout.origin + caret_position,
-            size: size(CURSOR_WIDTH, line_height),
+            size: size(caret_width, line_height),
         });
 
         self.state.update(cx, |state, cx| {
@@ -430,6 +461,7 @@ impl Element for TextElement {
             layout,
             selection_quads,
             caret,
+            caret_glyph,
         }
     }
 
@@ -482,6 +514,16 @@ impl Element for TextElement {
 
                 if let Some(caret) = prepaint.caret {
                     window.paint_quad(fill(caret, caret_color));
+                    if let Some(glyph) = &prepaint.caret_glyph {
+                        _ = glyph.paint(
+                            caret.origin,
+                            layout.line_height,
+                            TextAlign::Left,
+                            None,
+                            window,
+                            cx,
+                        );
+                    }
                 }
             },
         );
@@ -894,5 +936,48 @@ mod tests {
         let (state, cx) = field_with("one\ntwo", SECRET, true, cx);
         assert_eq!(shaped(&state, cx), "one\ntwo");
         assert!(layout(&state, cx).mask.is_none());
+    }
+
+    fn normal_field<'a>(
+        value: &str,
+        cx: &'a mut TestAppContext,
+    ) -> (Entity<InputState>, &'a mut VisualTestContext) {
+        let (state, cx) = field(value, PLAIN, cx);
+        state.update(cx, |state, cx| state.set_normal_mode(true, cx));
+        draw(cx);
+        (state, cx)
+    }
+
+    fn value(state: &Entity<InputState>, cx: &mut VisualTestContext) -> String {
+        state.read_with(cx, |state, _| state.value().to_string())
+    }
+
+    #[zz_gpui::test]
+    fn normal_mode_drops_typed_and_composed_text(cx: &mut TestAppContext) {
+        let (state, cx) = normal_field("abc", cx);
+        cx.simulate_input("jk");
+        cx.update(|window, cx| {
+            state.update(cx, |state, cx| {
+                use zz_gpui::EntityInputHandler as _;
+                assert!(!state.accepts_text_input(window, cx));
+                state.replace_and_mark_text_in_range(None, "に", None, window, cx);
+                assert_eq!(state.marked_text_range(window, cx), None);
+            });
+        });
+        draw(cx);
+        assert_eq!(value(&state, cx), "abc");
+    }
+
+    #[zz_gpui::test]
+    fn normal_mode_keeps_the_fields_own_actions(cx: &mut TestAppContext) {
+        let (state, cx) = normal_field("abc", cx);
+        cx.simulate_keystrokes("backspace");
+        draw(cx);
+        assert_eq!(value(&state, cx), "ab");
+
+        state.update(cx, |state, cx| state.set_normal_mode(false, cx));
+        cx.simulate_input("x");
+        draw(cx);
+        assert_eq!(value(&state, cx), "abx");
     }
 }
