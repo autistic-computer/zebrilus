@@ -10,6 +10,8 @@ mod driver_sheet;
 mod fleet;
 mod floating;
 mod hosts;
+#[cfg(target_os = "ios")]
+pub(crate) use hosts::host_title;
 mod picker;
 mod providers;
 mod settings;

@@ -22,6 +22,18 @@ use crate::connection::Connection;
 
 const HOST: PaletteHostId = PaletteHostId(0);
 
+#[cfg(target_os = "ios")]
+fn host_name(connection: &Connection) -> String {
+    connection
+        .endpoint()
+        .map_or_else(|| "host".to_owned(), crate::app::host_title)
+}
+
+#[cfg(not(target_os = "ios"))]
+fn host_name(_: &Connection) -> String {
+    "local".to_owned()
+}
+
 #[must_use]
 pub fn palette_backend(
     connection: Entity<Connection>,
@@ -88,7 +100,7 @@ impl PaletteBackend for ConnectionPalette {
             attached: HOST,
             hosts: vec![PaletteTreeHost {
                 id: HOST,
-                name: "zz daemon".to_owned(),
+                name: host_name(connection),
                 detail: "Daemon host".to_owned(),
                 right: if connection.connected {
                     format!(
