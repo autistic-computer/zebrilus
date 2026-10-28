@@ -4,7 +4,7 @@ title: zz-client crate
 description: Renderer-free client state, effects, chrome keymaps, and normalized pane geometry shared by native and terminal skins.
 resource: crates/zz-client/src/lib.rs
 tags: [client, core, sans-io, keybindings, crate]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-27T00:00:00-03:00
 ---
 
 # Overview
@@ -107,6 +107,19 @@ Command/Super (`D-`) and Shift (`S-`) chords. `ChromeProfile` supplies TUI, desk
 defaults; `chrome-keybind` and `chrome-unbind` apply user overrides. Skins resolve a key to a
 `ChromeAction` and apply the action instead of matching chords in view code.
 
+# Overlay and palette rules
+
+The rules the daemon overlays and the palette follow outside of drawing live here so every client
+calls the same code. `menu.rs` resolves menu keys, pointer reports, pastes and confirm keys, maps a
+pointer to the menu cell it lands on (`menu_hit_cell`) and fits menu rows to the window
+(`menu_row_height`). `floating.rs` places a menu or popup on its client cell grid
+(`overlay_frame`) and sizes the confirm prompt (`confirm_size`). `chooser.rs` holds the
+choose-tree and choose-buffer titles, subtitles, key labels, footer hints and buffer row text.
+`palette.rs` holds the palette's fuzzy matcher, which catalog commands ask for a target or more
+arguments, and the tmux key spelling a shortcut cap draws. `tmux_style.rs` splits a styled label
+into its left, centre and right runs and reads literal colours out of a style. zz-ui's GPUI views
+and the HTML client (`clients/dom`) both call these.
+
 # Testing
 
 `tests/simulator.rs` boots a real daemon and drives seeded client cores. It checks snapshot and
@@ -125,6 +138,10 @@ are not errors because the daemon may supersede an unread terminal frame under b
 | `crates/zz-client/src/layout.rs` | Recursive split ratios projected into normalized pane rectangles. |
 | `crates/zz-client/src/status_bar.rs` | Pure native status projection from `MuxSnapshot`, an attachment, an optional host, and typed settings. |
 | `crates/zz-client/src/window_summary.rs` | Pure sidebar rows from a host's `MuxSnapshot`: window title, second line with tones, age from `PaneSummary.changed_at`, pane tiles, attention and rollups, plus `DaemonClock` for daemon-time ages. No client draws it yet. |
+| `crates/zz-client/src/menu.rs` | Menu key, pointer, paste and confirm resolution, menu hit cells and row height. |
+| `crates/zz-client/src/chooser.rs` | Chooser titles, subtitles, key labels, footer hints and buffer row text. |
+| `crates/zz-client/src/palette.rs` | Palette fuzzy matching, command target and argument rules, tmux shortcut spelling. |
+| `crates/zz-client/src/tmux_style.rs` | Styled label alignment buckets and literal style colours. |
 | `crates/zz-client/tests/simulator.rs` | Real-daemon deterministic convergence harness. |
 
 # Related

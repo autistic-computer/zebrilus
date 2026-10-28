@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sidebar buttons</title>
+<link rel="stylesheet" href="../../kit/zz.css">
+<script src="../../kit/kit.js"></script>
+<style>
+  .zz-variants { --zz-variant-width: 300px; }
+  .frame { position: relative; height: 360px; overflow: hidden; border-radius: 12px; corner-shape: superellipse(2); box-shadow: 0 0 0 0.5px #0006, 0 16px 48px #0004; }
+  .frame > [data-zz="sidebar"] { height: 100%; }
+  .grow { flex: 1; }
+  .footer { display: flex; gap: 4px; padding: 0 8px; }
+  .host-actions { display: none; margin-left: auto; gap: 2px; }
+  [data-zz="sidebar.row"]:hover .host-actions,
+  [data-zz="sidebar.row"][data-state~="hover"] .host-actions { display: flex; }
+</style>
+</head>
+<body>
+<template id="tree">
+  <div data-zz="sidebar.row" style="--depth: 1"><span class="zz-marker"><i data-icon="chevron-down" class="zz-muted"></i></span><span class="zz-label">zz</span></div>
+  <div data-zz="sidebar.row" style="--depth: 2" aria-current="true"><span class="zz-marker"><i data-icon="terminal"></i></span><span class="zz-label">editor</span></div>
+  <div data-zz="sidebar.row" style="--depth: 2"><span class="zz-marker"><i data-icon="globe"></i></span><span class="zz-label">docs</span></div>
+  <div data-zz="sidebar.row" style="--depth: 0"><span class="zz-marker"><i data-icon="server"></i></span><span class="zz-label">desktop</span></div>
+</template>
+
+<div class="zz-variants">
+  <figure>
+    <figcaption><b>A</b>Buttons in the top strip, next to the window lights</figcaption>
+    <div class="frame">
+      <div class="zz-lights"><i></i><i></i><i></i></div>
+      <nav data-zz="sidebar">
+        <div class="zz-strip">
+          <button data-zz="chrome.button" title="New session"><i data-icon="plus"></i></button>
+          <button data-zz="chrome.button" title="Settings"><i data-icon="settings"></i></button>
+        </div>
+        <div data-zz="sidebar.row" style="--depth: 0"><span class="zz-marker"><i data-icon="laptop"></i></span><span class="zz-label">macbook</span></div>
+        <div data-tree></div>
+      </nav>
+    </div>
+  </figure>
+
+  <figure>
+    <figcaption><b>B</b>A footer under the tree</figcaption>
+    <div class="frame">
+      <div class="zz-lights"><i></i><i></i><i></i></div>
+      <nav data-zz="sidebar">
+        <div class="zz-strip"></div>
+        <div data-zz="sidebar.row" style="--depth: 0"><span class="zz-marker"><i data-icon="laptop"></i></span><span class="zz-label">macbook</span></div>
+        <div data-tree></div>
+        <div class="grow"></div>
+        <div class="footer">
+          <button data-zz="button.quiet" data-size="small"><i data-icon="plus"></i>New session</button>
+          <span class="grow"></span>
+          <button data-zz="icon-button" data-size="small" title="Settings"><i data-icon="settings"></i></button>
+        </div>
+      </nav>
+    </div>
+  </figure>
+
+  <figure>
+    <figcaption><b>C</b>On the host row, shown on hover; settings in the strip</figcaption>
+    <div class="frame">
+      <div class="zz-lights"><i></i><i></i><i></i></div>
+      <nav data-zz="sidebar">
+        <div class="zz-strip">
+          <button data-zz="chrome.button" title="Settings"><i data-icon="settings"></i></button>
+        </div>
+        <div data-zz="sidebar.row" style="--depth: 0" data-state="hover"><span class="zz-marker"><i data-icon="laptop"></i></span><span class="zz-label">macbook</span>
+          <span class="host-actions"><button data-zz="sidebar.row-action" title="New session"><i data-icon="plus"></i></button></span>
+        </div>
+        <div data-tree></div>
+      </nav>
+    </div>
+  </figure>
+</div>
+
+<script>
+  const tree = document.getElementById("tree");
+  document.querySelectorAll("[data-tree]").forEach((slot) => slot.replaceWith(tree.content.cloneNode(true)));
+</script>
+</body>
+</html>

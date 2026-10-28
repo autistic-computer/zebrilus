@@ -1,4 +1,7 @@
 use crate::connection::Connection;
+use zz_client::pane_picker::{
+    PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key,
+};
 use zz_gpui::{
     AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
     MouseButton, Pixels, Render, Window, div, prelude::*, px,
@@ -11,11 +14,17 @@ use zz_ui::{
     roles,
 };
 
-const CHOICES: &[(&str, &str, IconName, &str)] = &[
-    ("Terminal", "terminal", IconName::SquareTerminal, "t"),
-    #[cfg(target_os = "ios")]
-    ("Browser", "browser", IconName::Globe, "b"),
-];
+fn choices() -> &'static [PaneChoice] {
+    pane_choices(cfg!(target_os = "ios"))
+}
+
+fn choice_icon(choice: &PaneChoice) -> IconName {
+    if choice.kind == "browser" {
+        IconName::Globe
+    } else {
+        IconName::SquareTerminal
+    }
+}
 
 pub(super) struct PanePicker {
     pane: PaneId,
@@ -56,16 +65,16 @@ impl PanePicker {
             return None;
         }
         let id = self.sheet_id();
-        let rows = CHOICES
+        let rows = choices()
             .iter()
             .enumerate()
-            .map(|(index, (title, _, icon, _))| {
+            .map(|(index, choice)| {
                 let id = id.clone();
                 sheet_row(
                     ("pane-picker-option", index),
                     roles::PHONE_ROW,
-                    Some(Icon::new(icon.clone())),
-                    *title,
+                    Some(Icon::new(choice_icon(choice))),
+                    choice.title,
                     cx,
                 )
                 .on_click(cx.listener(move |this, _, _, cx| {
@@ -127,40 +136,31 @@ impl PanePicker {
         {
             return;
         }
-        self.connection.update(cx, |connection, cx| {
-            connection.command(
-                "select-pane-kind",
-                vec!["-t".into(), self.pane.to_string(), CHOICES[index].1.into()],
-                cx,
-            );
-        });
+        let Some(choice) = choices().get(index) else {
+            return;
+        };
+        let command = pane_kind_command(self.pane, choice);
+        self.connection
+            .update(cx, |connection, cx| connection.invoke(command, cx));
     }
 
     fn key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let key = &event.keystroke;
-        if key.modifiers.control || key.modifiers.alt || key.modifiers.platform {
-            return;
-        }
-        match key.key.as_str() {
-            "down" | "j" | "up" | "k" => {
-                let step = if matches!(key.key.as_str(), "down" | "j") {
-                    1
-                } else {
-                    CHOICES.len() - 1
-                };
-                self.selected = (self.selected + step) % CHOICES.len();
+        match pane_picker_key(
+            choices(),
+            self.selected,
+            &key.key,
+            key.modifiers.control || key.modifiers.alt || key.modifiers.platform,
+        ) {
+            PanePickerKey::Select(index) => {
+                self.selected = index;
                 cx.notify();
             }
-            "enter" => self.activate(self.selected, cx),
-            "escape" => self.connection.update(cx, |connection, cx| {
+            PanePickerKey::Choose(index) => self.activate(index, cx),
+            PanePickerKey::Close => self.connection.update(cx, |connection, cx| {
                 connection.command("kill-pane", vec!["-t".into(), self.pane.to_string()], cx);
             }),
-            shortcut => {
-                let Some(index) = CHOICES.iter().position(|choice| choice.3 == shortcut) else {
-                    return;
-                };
-                self.activate(index, cx);
-            }
+            PanePickerKey::Ignored => return,
         }
         cx.stop_propagation();
     }
@@ -177,16 +177,16 @@ impl Render for PanePicker {
         let writable = self.connection.read(cx).connected
             && !self.connection.read(cx).core.attached_read_only();
         let phone = super::settings::phone();
-        let rows = CHOICES
+        let rows = choices()
             .iter()
             .enumerate()
             .filter(|_| !phone)
-            .map(|(index, (title, _, icon, shortcut))| {
+            .map(|(index, choice)| {
                 pane_picker_row(
                     ("web-pane-choice", index),
-                    title,
-                    icon.clone(),
-                    shortcut,
+                    choice.title,
+                    choice_icon(choice),
+                    choice.shortcut,
                     self.selected == index,
                     writable,
                     cx,

@@ -1,12 +1,13 @@
 use std::ops::Range;
 
+pub use zz_client::tmux_style::split_tmux_alignment;
+use zz_client::tmux_style::style_field;
 use zz_gpui::{
     App, FontStyle, FontWeight, HighlightStyle, Hsla, Rgba, SharedString, StrikethroughStyle,
     StyledText, UnderlineStyle, px,
 };
 use zz_protocol::{
-    StyledSegment, TmuxAlign, TmuxAttributeState, TmuxColour, TmuxStyle, indexed_colour_rgb,
-    parse_styled_segments, parse_tmux_colour,
+    StyledSegment, TmuxAttributeState, TmuxColour, TmuxStyle, indexed_colour_rgb, parse_tmux_colour,
 };
 
 use crate::{ActiveTheme as _, Colorize as _, Elevation};
@@ -20,18 +21,8 @@ pub fn tmux_style_colour(style: &str, key: &str, fallback: Hsla, cx: &App) -> Hs
 }
 
 #[must_use]
-pub fn tmux_literal_colour(style: &str, key: &str, cx: &App) -> Option<Hsla> {
-    match parse_tmux_colour(style_field(style, key)?)? {
-        TmuxColour::Theme(_) | TmuxColour::Default | TmuxColour::Terminal => None,
-        colour => resolve_tmux_colour(colour, cx),
-    }
-}
-
-fn style_field<'a>(style: &'a str, key: &str) -> Option<&'a str> {
-    style.rsplit([',', ' ']).find_map(|part| {
-        let (name, value) = part.split_once('=')?;
-        name.eq_ignore_ascii_case(key).then_some(value)
-    })
+pub fn tmux_literal_colour(style: &str, key: &str, _cx: &App) -> Option<Hsla> {
+    zz_client::tmux_style::literal_style_colour(style, key).map(packed_tmux_colour)
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -68,20 +59,6 @@ pub fn tmux_styled_segments_text(
         text: text.into(),
         highlights,
     }
-}
-
-#[must_use]
-pub fn split_tmux_alignment(label: &str) -> [Vec<StyledSegment>; 3] {
-    let mut buckets: [Vec<StyledSegment>; 3] = [Vec::new(), Vec::new(), Vec::new()];
-    for segment in parse_styled_segments(label) {
-        let bucket = match segment.style.align {
-            Some(TmuxAlign::Centre | TmuxAlign::AbsoluteCentre) => 1,
-            Some(TmuxAlign::Right) => 2,
-            _ => 0,
-        };
-        buckets[bucket].push(segment);
-    }
-    buckets
 }
 
 fn tmux_highlight_style(

@@ -132,8 +132,9 @@ CJK or emoji fallback, so unsupported glyphs render as missing glyphs.
 
 The command palette shares desktop input, result rows, pills, and keyboard hints.
 Command-P/Command-K (Control-Shift-P/Control-Shift-K on non-Apple desktops) opens
-Workspace search. Prefixes `:`, `@`, `%`, and `~` select commands, windows, panes,
-and the connected host. The window chooser uses the same compact navigation tree. Both clients
+Workspace search. Prefixes `:` and `@` select commands and targets; in `@` mode `%` filters
+panes by id and `~/` names files, which the browser does not list. The window chooser uses the
+same compact navigation tree. Both clients
 use `zz-client` completion for commands, options, recent commands, and live session/window/pane
 targets. Menus and confirmations share floating frames and rows, while pane indicators and
 terminal search use the desktop overlays. Popup terminals also use the desktop cell geometry,
@@ -195,6 +196,8 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `crates/zz-client/src/agent_transcript.rs`: shared streaming transcript, plan, permission, and tool reduction.
 - `crates/zz-client/src/pane_separator.rs`: active pane separator spans for desktop and thin clients.
 - `crates/zz-client/src/agent_completion.rs`: shared provider command matching, query replacement, and hints.
+- `crates/zz-client/src/agent_lens.rs`: the agent stream cursor (replay, gaps, command catalog), the lens journal reducer, parked permissions, restored drafts and context usage.
+- `crates/zz-client/src/agent_timeline.rs`: timeline rows, turn folding, trace labels and counts, plan and composer labels, shared by zz-ui and the HTML client.
 - `crates/zz-ui/src/agent/slash.rs`: shared Agent command suggestion rows and list.
 - `clients/app/src/app/picker.rs`: pane-picker interaction over shared desktop rows.
 - `crates/zz-ui/src/chrome_palette.rs`: shared presets and palette resolution.

@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zz kit</title>
+<link rel="stylesheet" href="zz.css">
+<script src="kit.js"></script>
+<style>
+  main { display: grid; gap: 36px; padding: 32px; max-width: 1180px; }
+  section { display: grid; gap: 12px; }
+  section > h2 { margin: 0; font-size: 12px; font-weight: 600; color: var(--zz-muted); }
+  .line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .stack { display: grid; gap: 8px; justify-items: start; }
+  .backdrop { padding: 28px; border-radius: 16px; background: linear-gradient(135deg, #ff6b6b, #5b6cff 45%, #ffd166 70%, #2bd9a1); }
+  .apart { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .demo-window { height: 420px; }
+  .demo-window main { display: contents; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; min-height: 0; background: var(--zz-divider); }
+  .zz-gaps .split { gap: 6px; padding: 0 6px 6px; background: transparent; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Buttons</h2>
+    <div class="line">
+      <button data-zz="button" data-prominent>Primary</button>
+      <button data-zz="button">Secondary</button>
+      <button data-zz="button.quiet">Ghost</button>
+      <button data-zz="button" data-tone="danger">Danger</button>
+      <button data-zz="button" data-tone="success">Success</button>
+      <button data-zz="button" data-tone="warning">Warning</button>
+      <button data-zz="button" data-tone="danger" data-prominent>Delete</button>
+    </div>
+    <div class="line">
+      <button data-zz="button" data-size="small">Small</button>
+      <button data-zz="button">Medium</button>
+      <button data-zz="button"><i data-icon="plus"></i>With icon</button>
+      <button data-zz="icon-button" title="Settings"><i data-icon="settings"></i></button>
+      <button data-zz="icon-button" data-size="small" title="Close"><i data-icon="xmark"></i></button>
+    </div>
+    <div class="line">
+      <button data-zz="button" data-state="hover">hover</button>
+      <button data-zz="button" data-state="active">active</button>
+      <button data-zz="button" data-state="selected">selected</button>
+      <button data-zz="button" data-state="focused">focused</button>
+      <button data-zz="button" data-state="disabled">disabled</button>
+      <button data-zz="button" data-prominent data-state="disabled">disabled</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Fields</h2>
+    <div class="stack" style="width: 320px">
+      <label data-zz="field" style="width: 100%"><i data-icon="search" class="zz-muted"></i><input placeholder="Search sessions"></label>
+      <label data-zz="field" data-state="focused" style="width: 100%"><input value="focused"></label>
+      <label data-zz="field" data-size="small" style="width: 100%"><input placeholder="Small"></label>
+      <label data-zz="field.multiline" style="width: 100%"><textarea rows="2" placeholder="Multiline"></textarea></label>
+    </div>
+  </section>
+
+  <section>
+    <h2>Menu, tooltip, badge, keycap</h2>
+    <div class="apart">
+      <div data-zz="popover" class="zz-menu" style="width: 240px">
+        <div class="zz-menu-label">Pane</div>
+        <div data-zz="menu-item"><i data-icon="panel-right"></i>Split right<span class="zz-shortcut">⌘D</span></div>
+        <div data-zz="menu-item" data-state="selected"><i data-icon="panel-bottom"></i>Split down<span class="zz-shortcut">⇧⌘D</span></div>
+        <div data-zz="menu-item"><i data-icon="window-maximize"></i>Zoom</div>
+        <div class="zz-separator"></div>
+        <div data-zz="menu-item" data-state="disabled"><i data-icon="xmark"></i>Close pane<span class="zz-shortcut">⌘W</span></div>
+      </div>
+      <div class="stack">
+        <span data-zz="tooltip">Split right <span class="zz-muted">⌘D</span></span>
+        <div class="line">
+          <span data-zz="badge">default</span>
+          <span data-zz="badge" data-tone="primary">primary</span>
+          <span data-zz="badge" data-tone="success">running</span>
+          <span data-zz="badge" data-tone="warning">waiting</span>
+          <span data-zz="badge" data-tone="danger">failed</span>
+        </div>
+        <div class="line"><kbd data-zz="keycap">⌘</kbd><kbd data-zz="keycap">K</kbd><kbd data-zz="keycap">esc</kbd></div>
+        <div class="line"><span class="zz-switch" data-on></span><span class="zz-switch"></span><span class="zz-check" data-on><i data-icon="check"></i></span><span class="zz-check"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Glass over a backdrop</h2>
+    <div class="backdrop apart">
+      <div data-zz="popover" class="zz-menu" style="width: 220px">
+        <div data-zz="menu-item"><i data-icon="terminal"></i>Terminal</div>
+        <div data-zz="menu-item" data-state="selected"><i data-icon="globe"></i>Browser</div>
+        <div data-zz="menu-item"><i data-icon="sparkle"></i>Agent</div>
+      </div>
+      <div data-zz="dialog">
+        <div class="zz-title">Close this window?</div>
+        <div class="zz-description">2 panes are still running. Their processes stop when the window closes.</div>
+        <div class="zz-footer">
+          <button data-zz="button">Cancel</button>
+          <button data-zz="button" data-prominent data-tone="danger">Close</button>
+        </div>
+      </div>
+      <div data-zz="phone.pill">
+        <button data-zz="phone.button"><i data-icon="panel-left"></i></button>
+        <button data-zz="phone.button"><i data-icon="terminal"></i></button>
+        <button data-zz="phone.button"><i data-icon="plus"></i></button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Toast</h2>
+    <div data-zz="toast"><i data-icon="circle-check" style="color: var(--zz-success); margin-top: 2px"></i><div><div class="zz-title" style="line-height: 18px">Copied</div>3 lines from the pane</div></div>
+  </section>
+
+  <section>
+    <h2>Window: flush panes</h2>
+    <div class="zz-window demo-window" data-zz="window">
+      <div class="zz-lights"><i></i><i></i><i></i></div>
+      <nav data-zz="sidebar">
+        <div class="zz-strip">
+          <button data-zz="chrome.button" title="New session"><i data-icon="plus"></i></button>
+          <button data-zz="chrome.button" title="Settings"><i data-icon="settings"></i></button>
+        </div>
+        <div data-zz="sidebar.row" style="--depth: 0"><span class="zz-marker"><i data-icon="laptop"></i></span><span class="zz-label">macbook</span></div>
+        <div data-zz="sidebar.row" style="--depth: 1"><span class="zz-marker"><i data-icon="chevron-down" class="zz-muted"></i></span><span class="zz-label">zz</span></div>
+        <div data-zz="sidebar.row" style="--depth: 2" aria-current="true"><span class="zz-marker"><i data-icon="terminal"></i></span><span class="zz-label">editor</span></div>
+        <div data-zz="sidebar.row" style="--depth: 2"><span class="zz-marker"><i data-icon="globe"></i></span><span class="zz-label">docs</span></div>
+        <div data-zz="sidebar.row" style="--depth: 0" data-state="hover"><span class="zz-marker"><i data-icon="server"></i></span><span class="zz-label">desktop</span></div>
+      </nav>
+      <header data-zz="titlebar">
+        <div data-zz="titlebar.window-tab" aria-selected="true"><i data-icon="terminal"></i>editor</div>
+        <div data-zz="titlebar.window-tab"><i data-icon="globe"></i>docs</div>
+        <span style="flex: 1"></span>
+        <div data-zz="titlebar.status-chip"><i data-icon="sparkle"></i>2 agents</div>
+      </header>
+      <div class="split">
+        <section data-zz="pane">
+          <div data-zz="pane.header"><div data-zz="pane.header.title"><i data-icon="terminal"></i>cargo</div><span style="flex: 1"></span><button data-zz="pane.header.button"><i data-icon="xmark"></i></button></div>
+          <pre class="zz-terminal">$ cargo build -p zz-ui
+   Compiling zz-ui v0.22.0
+    Finished `dev` profile in 4.12s
+$ <span style="color: var(--zz-accent)">▋</span></pre>
+        </section>
+        <section data-zz="pane">
+          <div data-zz="pane.header"><div data-zz="pane.header.title"><i data-icon="sparkle"></i>claude</div></div>
+          <div style="flex: 1"></div>
+          <div style="padding: 12px"><div data-zz="agent.composer"><div class="zz-input zz-muted">Ask about this pane</div><button data-zz="agent.send" data-prominent><i data-icon="arrow-up"></i></button></div></div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Settings</h2>
+    <div class="zz-settings" style="padding: 0">
+      <h1>Interface</h1>
+      <div>
+        <h2>Panes</h2>
+        <div data-zz="settings.card" data-ground>
+          <div class="zz-setting"><div class="zz-copy">Gaps between panes<small>Float panes apart with rounded corners.</small></div><span class="zz-switch"></span></div>
+          <div class="zz-setting"><div class="zz-copy">Pane headers<small>Show a title strip on every pane.</small></div><span class="zz-switch" data-on></span></div>
+          <div class="zz-setting"><div class="zz-copy">Theme file<small>Load a theme JSON from disk.</small></div><button data-zz="button">Choose…</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

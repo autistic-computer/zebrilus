@@ -1269,6 +1269,30 @@ impl Theme {
         )]
     }
 
+    pub fn lifted_shadows(&self) -> Vec<BoxShadow> {
+        let strength = self.contact_shadow.strength;
+        if strength <= 0.0 || self.picked_shadows {
+            return Vec::new();
+        }
+        let ink = self.shadow_color.alpha((0.1 * strength).min(1.0));
+        vec![
+            BoxShadow {
+                color: ink,
+                offset: point(px(0.), px(4.)),
+                blur_radius: px(6.),
+                spread_radius: px(-1.),
+                inset: false,
+            },
+            BoxShadow {
+                color: ink,
+                offset: point(px(0.), px(2.)),
+                blur_radius: px(4.),
+                spread_radius: px(-2.),
+                inset: false,
+            },
+        ]
+    }
+
     /// The theme's floating shadow: the contact shadow under a deep one.
     pub fn float_shadows(&self) -> Vec<BoxShadow> {
         let material = self.float_shadow;

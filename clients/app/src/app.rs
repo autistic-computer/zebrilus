@@ -26,6 +26,7 @@ use std::{
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
     drop_preview_bounds, drop_zone_at, pane_drop_command, pane_rects, predicted_drop_layout,
+    split_ratio_basis,
 };
 use zz_gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corners, DragMoveEvent, Entity,
@@ -34,9 +35,9 @@ use zz_gpui::{
     uniform_list,
 };
 use zz_protocol::{
-    ChooseBufferAction, ChooseBufferItem, ChooseTreeAction, ChooseTreeKind, ChooseTreePaneKind,
-    CommandInvocation, ConfirmAction, DisplayPanesAction, InputMessage, PaneId, PaneKindSnapshot,
-    ProtocolMessage, WindowSnapshot,
+    ChooseBufferAction, ChooseTreeAction, ChooseTreeKind, ChooseTreePaneKind, CommandInvocation,
+    ConfirmAction, DisplayPanesAction, InputMessage, PaneId, PaneKindSnapshot, ProtocolMessage,
+    WindowSnapshot,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Root, StyledExt as _,
@@ -69,52 +70,6 @@ use crate::{
 };
 use agent_lens::{AgentLens, ShowTerminal};
 pub(crate) use settings::phone;
-
-const TREE_HINTS: &[ChooserHint] = &[
-    ChooserHint {
-        keys: &["up", "down"],
-        label: "navigate",
-    },
-    ChooserHint {
-        keys: &["left", "right"],
-        label: "expand",
-    },
-    ChooserHint {
-        keys: &["enter"],
-        label: "choose",
-    },
-    ChooserHint {
-        keys: &["/"],
-        label: "search",
-    },
-    ChooserHint {
-        keys: &["escape"],
-        label: "close",
-    },
-];
-
-const BUFFER_HINTS: &[ChooserHint] = &[
-    ChooserHint {
-        keys: &["up", "down"],
-        label: "navigate",
-    },
-    ChooserHint {
-        keys: &["enter"],
-        label: "paste",
-    },
-    ChooserHint {
-        keys: &["d"],
-        label: "delete",
-    },
-    ChooserHint {
-        keys: &["/"],
-        label: "search",
-    },
-    ChooserHint {
-        keys: &["escape"],
-        label: "close",
-    },
-];
 
 #[cfg(target_os = "ios")]
 #[derive(Clone, PartialEq, zz_gpui::Action)]
@@ -1032,10 +987,7 @@ impl AppShell {
             let fade = workspace_sidebar_fade(ground, cx);
             sidebar::flat_tree(self, fade, ground, cx)
         } else {
-            let core = &self.connection.read(cx).core;
             sidebar::session_tree(
-                core.snapshot(),
-                core.attached_session(),
                 sidebar::Runtime {
                     connection: self.connection.clone(),
                     focus: self.sidebar_focus.clone(),
@@ -1861,10 +1813,7 @@ impl AppShell {
             } else {
                 Corners::all(px(frame.radius))
             };
-            let dead_label = pane.dead.then(|| {
-                pane.dead_status
-                    .map_or_else(|| "Dead".to_owned(), |status| format!("Dead · {status}"))
-            });
+            let dead_label = zz_client::terminal_view::dead_label(pane.dead, pane.dead_status);
             let lens = matches!(pane.kind, PaneKindSnapshot::Terminal)
                 .then(|| self.shown_lens(pane_id, window, cx))
                 .flatten();
@@ -2645,16 +2594,12 @@ impl AppShell {
                 .track_scroll(&self.chooser_scroll)
                 .into_any_element(),
             );
-            let (title, targets) = match state.kind {
-                ChooseTreeKind::Windows => ("Choose window", "sessions and windows"),
-                ChooseTreeKind::Panes => ("Choose pane", "sessions, windows, and panes"),
-                ChooseTreeKind::Clients => ("Choose client", "clients"),
-            };
+            let (title, targets) = zz_client::chooser::tree_title(state.kind);
             subtitle = chooser_subtitle(format!("{count} {targets}"), state.filter_no_matches);
             max_width = 600.0;
             row_count = Some(count);
             chooser_prompt = (!state.prompt.is_empty()).then_some(state.prompt.into());
-            hints = TREE_HINTS;
+            hints = zz_client::chooser::TREE_HINTS;
             (
                 title.to_owned(),
                 state.search.map(|search| ChooserSearch {
@@ -2688,7 +2633,8 @@ impl AppShell {
                         range
                             .filter_map(|index| {
                                 let item = state.items.get(index)?;
-                                let (name, preview, size, age) = buffer_row_text(item, now);
+                                let (name, preview, size, age) =
+                                    zz_client::chooser::buffer_row_text(item, now);
                                 let connection = connection.clone();
                                 Some(
                                     buffer_chooser_row(
@@ -2732,7 +2678,7 @@ impl AppShell {
             );
             subtitle = chooser_subtitle(format!("{count} buffers"), state.filter_no_matches);
             row_count = Some(count);
-            hints = BUFFER_HINTS;
+            hints = zz_client::chooser::BUFFER_HINTS;
             (
                 "Paste buffer".to_owned(),
                 state.search.map(|search| ChooserSearch {
@@ -3177,15 +3123,6 @@ struct SplitDragState {
     committed_generation: Option<u64>,
 }
 
-#[allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    reason = "the clamped ratio is converted to a bounded protocol fixed-point value"
-)]
-fn split_ratio_basis(ratio: f32) -> u16 {
-    (ratio.clamp(0.0, 1.0) * f32::from(zz_protocol::SPLIT_RATIO_BASIS)).round() as u16
-}
-
 struct SplitDragPreview;
 
 impl Render for SplitDragPreview {
@@ -3210,10 +3147,6 @@ fn update_split_ratio(node: &mut zz_protocol::LayoutNode, split: zz_protocol::Sp
             update_split_ratio(second, split, value);
         }
     }
-}
-
-fn pane_icon(kind: &PaneKindSnapshot) -> IconName {
-    zz_ui::pane::pane_kind_icon(kind)
 }
 
 fn unsupported_pane(
@@ -3299,39 +3232,6 @@ fn unsupported_pane(
         .into_any_element()
 }
 
-fn buffer_row_text(item: &ChooseBufferItem, now: u64) -> (String, String, String, String) {
-    if !item.text.is_empty() {
-        return (
-            item.text.clone(),
-            String::new(),
-            String::new(),
-            String::new(),
-        );
-    }
-    let bytes = item.size_bytes;
-    let size = if bytes < 1_024 {
-        format!("{bytes} B")
-    } else {
-        let (unit, label) = if bytes < 1_048_576 {
-            (1_024, "KiB")
-        } else if bytes < 1_073_741_824 {
-            (1_048_576, "MiB")
-        } else {
-            (1_073_741_824, "GiB")
-        };
-        let tenths = bytes.saturating_mul(10).saturating_add(unit / 2) / unit;
-        format!("{}.{:01} {label}", tenths / 10, tenths % 10)
-    };
-    let age = now.saturating_sub(item.created_unix_seconds);
-    let age = match age {
-        0..=59 => format!("{age}s"),
-        60..=3_599 => format!("{}m", age / 60),
-        3_600..=86_399 => format!("{}h", age / 3_600),
-        _ => format!("{}d", age / 86_400),
-    };
-    (item.name.clone(), item.preview.clone(), size, age)
-}
-
 fn unix_seconds() -> u64 {
     #[cfg(target_arch = "wasm32")]
     {
@@ -3398,38 +3298,5 @@ mod prefix_tests {
         assert_eq!(state.target_at(point(px(500.0), px(240.0)), &bounds), None);
         assert_eq!(state.target_at(point(px(1300.0), px(240.0)), &bounds), None);
         assert_eq!(state.target_at(point(px(1000.0), px(20.0)), &bounds), None);
-    }
-
-    #[test]
-    fn buffer_rows_show_compact_metadata_and_respect_custom_formats() {
-        let mut item = zz_protocol::ChooseBufferItem {
-            name: "buffer0".into(),
-            preview: "hello".into(),
-            size_bytes: 1_536,
-            created_unix_seconds: 10,
-            key: "0".into(),
-            text: String::new(),
-            tagged: true,
-        };
-        assert_eq!(
-            super::buffer_row_text(&item, 80),
-            (
-                "buffer0".into(),
-                "hello".into(),
-                "1.5 KiB".into(),
-                "1m".into()
-            )
-        );
-        assert_eq!(super::buffer_row_text(&item, 0).3, "0s");
-        item.text = "<<buffer0>>".into();
-        assert_eq!(
-            super::buffer_row_text(&item, 80),
-            (
-                "<<buffer0>>".into(),
-                String::new(),
-                String::new(),
-                String::new()
-            )
-        );
     }
 }

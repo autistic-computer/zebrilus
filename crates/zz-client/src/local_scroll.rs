@@ -1,7 +1,9 @@
 use std::time::Duration;
 
 use web_time::Instant;
-use zz_terminal::{ScrollbarState, TerminalMode, TerminalViewport};
+use zz_terminal::{
+    Glyph, KittyPlacement, LocalColors, ScrollbarState, TerminalMode, TerminalViewport,
+};
 
 use crate::scrollback::RetainedTerminalViewport;
 
@@ -485,6 +487,201 @@ impl LocalScrollState {
             (f64::from(target) * height - sub_row).max(0.0) as f32,
         )
     }
+}
+
+/// Which viewport rows land on which display rows of a grid.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RowProjection {
+    pub source_start: u16,
+    pub destination_start: u16,
+    pub count: u16,
+}
+
+impl RowProjection {
+    #[must_use]
+    pub fn new(viewport_rows: u16, grid_rows: u16, bottom_anchored: bool) -> Self {
+        let count = viewport_rows.min(grid_rows);
+        if bottom_anchored {
+            Self {
+                source_start: viewport_rows.saturating_sub(count),
+                destination_start: grid_rows.saturating_sub(count),
+                count,
+            }
+        } else {
+            Self {
+                source_start: 0,
+                destination_start: 0,
+                count,
+            }
+        }
+    }
+
+    #[must_use]
+    pub fn source_row(self, offset: u16) -> Option<u16> {
+        (offset < self.count).then(|| self.source_start.saturating_add(offset))
+    }
+
+    #[must_use]
+    pub fn display_row(self, source_row: u16) -> Option<usize> {
+        let offset = source_row.checked_sub(self.source_start)?;
+        (offset < self.count).then(|| usize::from(self.destination_start.saturating_add(offset)))
+    }
+}
+
+/// Where a row shown while scrolled locally comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LocalRowSource {
+    History(usize),
+    Live(u16),
+    Below(usize),
+    Shimmer,
+}
+
+#[must_use]
+pub fn local_row_source(
+    absolute_row: u32,
+    server_offset: u32,
+    live_rows: u16,
+    history_rows: usize,
+    below_rows: usize,
+) -> LocalRowSource {
+    if absolute_row >= server_offset {
+        let live_row = absolute_row - server_offset;
+        if let Some(row) = u16::try_from(live_row).ok().filter(|row| *row < live_rows) {
+            return LocalRowSource::Live(row);
+        }
+        return usize::try_from(live_row - u32::from(live_rows))
+            .ok()
+            .filter(|row| *row < below_rows)
+            .map_or(LocalRowSource::Shimmer, LocalRowSource::Below);
+    }
+
+    let position = server_offset - absolute_row;
+    usize::try_from(position)
+        .ok()
+        .and_then(|position| history_rows.checked_sub(position))
+        .map_or(LocalRowSource::Shimmer, LocalRowSource::History)
+}
+
+#[must_use]
+pub fn local_live_projection(
+    target_offset: u32,
+    server_offset: u32,
+    viewport_rows: u16,
+    grid_rows: u16,
+) -> RowProjection {
+    let display_count = u32::from(viewport_rows.min(grid_rows));
+    let display_end = target_offset.saturating_add(display_count);
+    let live_end = server_offset.saturating_add(u32::from(viewport_rows));
+    let intersection_start = target_offset.max(server_offset);
+    let intersection_end = display_end.min(live_end);
+    if intersection_start >= intersection_end {
+        return RowProjection {
+            source_start: 0,
+            destination_start: 0,
+            count: 0,
+        };
+    }
+
+    RowProjection {
+        source_start: u16::try_from(intersection_start - server_offset)
+            .expect("live projection is bounded by viewport rows"),
+        destination_start: u16::try_from(intersection_start - target_offset)
+            .expect("live projection is bounded by grid rows"),
+        count: u16::try_from(intersection_end - intersection_start)
+            .expect("live projection is bounded by viewport rows"),
+    }
+}
+
+#[must_use]
+pub fn peek_row_source(
+    top_offset: u32,
+    distance: u32,
+    server_offset: u32,
+    live_rows: u16,
+    history_rows: usize,
+) -> Option<LocalRowSource> {
+    let source = local_row_source(
+        top_offset.checked_sub(distance)?,
+        server_offset,
+        live_rows,
+        history_rows,
+        0,
+    );
+    (source != LocalRowSource::Shimmer).then_some(source)
+}
+
+/// The display row a Kitty placement's top lands on, which may be above the
+/// grid when only its lower part shows.
+#[must_use]
+pub fn kitty_display_row(
+    placement: &KittyPlacement,
+    local_scroll_target: Option<u32>,
+    projection: RowProjection,
+) -> Option<i64> {
+    let anchor = if let Some(target) = local_scroll_target {
+        i64::try_from(i128::from(placement.absolute_row) - i128::from(target)).ok()?
+    } else {
+        i64::from(placement.viewport_row)
+    };
+    let placement_end = anchor.checked_add(i64::from(placement.grid_rows))?;
+    let projected_start = i64::from(projection.source_start);
+    let projected_end = projected_start.checked_add(i64::from(projection.count))?;
+    let first_visible = anchor.max(projected_start);
+    if first_visible >= placement_end || first_visible >= projected_end {
+        return None;
+    }
+    let projected_source = u16::try_from(first_visible).ok()?;
+    let display = i64::try_from(projection.display_row(projected_source)?).ok()?;
+    display.checked_sub(first_visible.checked_sub(anchor)?)
+}
+
+/// Whether the grid hangs from the pane's bottom edge, and whether the live
+/// rows are projected from the bottom too.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GridPlacement {
+    pub bottom_anchored: bool,
+    pub project_from_bottom: bool,
+}
+
+#[must_use]
+pub fn grid_placement(
+    viewport: &TerminalViewport,
+    local: Option<&LocalColors>,
+    command_output: bool,
+    scrolled_locally: bool,
+) -> GridPlacement {
+    let anchorable = !matches!(viewport.mode, TerminalMode::View { .. }) && !command_output;
+    let at_live_bottom = viewport
+        .scrollbar
+        .offset
+        .saturating_add(viewport.scrollbar.len)
+        >= viewport.scrollbar.total;
+    let scrolled_back = scrolled_locally || !at_live_bottom;
+    let last_row_filled = last_visible_row_has_content(viewport, local, viewport.rows);
+    GridPlacement {
+        bottom_anchored: anchorable && (scrolled_back || last_row_filled),
+        project_from_bottom: anchorable && !scrolled_back && last_row_filled,
+    }
+}
+
+#[must_use]
+pub fn last_visible_row_has_content(
+    viewport: &TerminalViewport,
+    local: Option<&LocalColors>,
+    visible_rows: u16,
+) -> bool {
+    let row = visible_rows.min(viewport.rows).saturating_sub(1);
+    viewport.row(row).is_some_and(|cells| {
+        cells.iter().copied().any(|cell| {
+            !matches!(viewport.glyph(cell), Glyph::Empty)
+                || viewport.style(cell).map_or(viewport.background, |style| {
+                    local
+                        .map_or(style, |local| local.recolor(style))
+                        .background()
+                }) != viewport.background
+        })
+    })
 }
 
 fn below_rows(retained: &RetainedTerminalViewport) -> u32 {

@@ -184,13 +184,15 @@ The kept pieces are `AgentTimeline` and its rows, the permission and question ca
 with the Driver chat's target picker (inserted with its host), the field, the context ring and the
 round send button; the cards over it and the branch under it are the lens's own. The
 timeline mechanics carried over unchanged: the `TimelineStick` / `StickSpring` follow-the-tail pin
-(`agent.rs`), the display-only Markdown repair for streaming text (`zz-ui/src/mend.rs`), the
+(`agent.rs`), the display-only Markdown repair for streaming text (`zz-client/src/mend.rs`), the
 streamed-text fade (`zz-gpui-kit/src/text/veil.rs`) and the shared leased animation clock
 (`zz-gpui-kit/src/pulse.rs`).
 
 - **Desktop.** `crates/zz/src/agent` (controller and view) behind the `agent-pane` cargo feature,
   which stays on by default; without it a stub stands in.
 - **Web and iPad.** `clients/app/src/app/agent_lens.rs`.
+- **HTML client.** `clients/dom/src/agent.rs` builds the lens and Driver chat views from the
+  shared `zz-client` reducers as JSON; `clients/dom/web/js/agent.js` draws them with the design kit.
 - **Storybook.** An agent lens story replaces the Agent pane story.
 
 The lens has no project or directory picker and no provider, model or effort picker; that code was

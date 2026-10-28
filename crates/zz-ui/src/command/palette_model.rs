@@ -1,10 +1,13 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    ops::Range,
 };
 
-use zz_client::completion::{CompletionSuggestion, PaneKindAvailability};
+pub(crate) use zz_client::palette::{fuzzy_match, needs_arguments, target_kind};
+use zz_client::{
+    completion::{CompletionSuggestion, PaneKindAvailability},
+    palette::count,
+};
 use zz_gpui::SharedString;
 use zz_protocol::{
     ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, PaneId, SessionId, WindowId,
@@ -782,89 +785,6 @@ fn host_entry(host: &PaletteTreeHost) -> PaletteEntry {
         },
         PaletteAction::Host(host.id),
     )
-}
-
-pub(crate) fn target_kind(spec: &CommandSpec) -> Option<CommandValueKind> {
-    if !matches!(
-        spec.name,
-        "join-pane"
-            | "move-pane"
-            | "swap-pane"
-            | "swap-window"
-            | "move-window"
-            | "link-window"
-            | "unlink-window"
-            | "kill-pane"
-            | "kill-window"
-            | "select-pane"
-            | "select-window"
-            | "resize-pane"
-            | "capture-pane"
-            | "respawn-pane"
-            | "respawn-window"
-    ) {
-        return None;
-    }
-    if spec.name == "join-pane" {
-        return Some(CommandValueKind::Window);
-    }
-    spec.option("-t")
-        .filter(|option| option.completable && !option.unsupported)
-        .and_then(|option| option.value)
-        .filter(|kind| matches!(kind, CommandValueKind::Window | CommandValueKind::Pane))
-}
-
-pub(crate) fn needs_arguments(spec: &CommandSpec) -> bool {
-    let mut optional_depth = 0_u32;
-    spec.usage.chars().any(|character| match character {
-        '[' => {
-            optional_depth += 1;
-            false
-        }
-        ']' => {
-            optional_depth = optional_depth.saturating_sub(1);
-            false
-        }
-        character => optional_depth == 0 && !character.is_whitespace(),
-    })
-}
-
-fn count(value: usize, noun: &str) -> String {
-    format!("{value} {noun}{}", if value == 1 { "" } else { "s" })
-}
-
-pub(crate) fn fuzzy_match(query: &str, label: &str) -> Option<(usize, Vec<Range<usize>>)> {
-    let mut needle = query
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .flat_map(char::to_lowercase)
-        .peekable();
-    if needle.peek().is_none() {
-        return Some((0, Vec::new()));
-    }
-    let mut hits = Vec::new();
-    let mut first = None;
-    let mut previous = 0;
-    let mut gaps = 0;
-    for (position, (byte, character)) in label.char_indices().enumerate() {
-        if character
-            .to_lowercase()
-            .any(|ch| Some(&ch) == needle.peek())
-        {
-            needle.next();
-            if first.is_none() {
-                first = Some(position);
-            } else {
-                gaps += position - previous - 1;
-            }
-            previous = position;
-            hits.push(byte..byte + character.len_utf8());
-            if needle.peek().is_none() {
-                return Some((first.unwrap_or_default() + 2 * gaps, hits));
-            }
-        }
-    }
-    None
 }
 
 #[cfg(test)]
