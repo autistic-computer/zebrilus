@@ -1,10 +1,10 @@
 use std::{
     cell::{Cell, RefCell},
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::Arc,
 };
 
-use zz_client::completion::PaneKindAvailability;
+use zz_client::{completion::PaneKindAvailability, place::ActionKind};
 use zz_gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyDownEvent,
     Keystroke, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity,
@@ -19,13 +19,14 @@ use zz_protocol::{
 use zz_ui::{
     ActiveTheme as _, IconName, StyledExt as _,
     command::{
-        CommandPaletteSurface, CommandPaletteView, PaletteBackend, PaletteHint, PaletteHostId,
-        PaletteMode, PalettePill, PaletteRow, PaletteSettings, PaletteStatus, PaletteTarget,
-        PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
-        command_kind_badge, command_palette_empty, command_palette_entry, command_palette_input,
-        command_palette_row, command_palette_section, command_palette_tree_entry,
-        palette_shortcut_hint, unified_command_palette_input,
+        CommandPaletteSurface, CommandPaletteView, PaletteActionLevel, PaletteBackend, PaletteHint,
+        PaletteHostId, PaletteMode, PalettePill, PaletteRow, PaletteSettings, PaletteStatus,
+        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
+        PaletteTreeWindow, command_kind_badge, command_palette_empty, command_palette_entry,
+        command_palette_input, command_palette_row, command_palette_section,
+        command_palette_tree_entry, palette_shortcut_hint, unified_command_palette_input,
     },
+    files::{FilesAction, ListingSink, ListingUpdate},
     h_flex,
     input::InputState,
     target::TargetPicker,
@@ -272,10 +273,18 @@ struct StoryBackend {
     settings: PaletteSettings,
     files: Files,
     picker: RefCell<Option<WeakEntity<TargetPicker>>>,
+    sink: RefCell<Option<Rc<ListingSink>>>,
     requests: Cell<u64>,
+    me: Weak<StoryBackend>,
 }
 
 impl PaletteBackend for StoryBackend {
+    fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+        let backend: Rc<dyn PaletteBackend> = self.me.upgrade()?;
+        (kind == ActionKind::Files)
+            .then(|| Box::new(FilesAction::new(backend)) as Box<dyn PaletteActionLevel>)
+    }
+
     fn list_path(
         &self,
         host: PaletteHostId,
@@ -285,19 +294,39 @@ impl PaletteBackend for StoryBackend {
     ) -> Result<u64, SharedString> {
         let request = self.requests.get() + 1;
         self.requests.set(request);
+        let id = host;
         let host = self
             .tree
             .host(host)
             .map(|host| host.name.clone())
             .unwrap_or_default();
         let picker = self.picker.borrow().clone();
-        let files = self.files;
-        let dir = dir.to_owned();
+        let sink = self.sink.borrow().clone();
+        let updates = answer(dir, self.files);
         cx.defer(move |cx| {
-            if let Some(picker) = picker {
+            if let Some(sink) = sink {
+                for update in updates {
+                    sink(id, request, update, cx);
+                }
+            } else if let Some(picker) = picker {
                 picker
                     .update(cx, |picker, cx| {
-                        answer(picker, &host, request, &dir, files, cx);
+                        for update in updates {
+                            match update {
+                                ListingUpdate::Begin(result) => {
+                                    picker.apply_begin(&host, request, result, cx);
+                                }
+                                ListingUpdate::Chunk {
+                                    entries,
+                                    done,
+                                    truncated,
+                                } => picker
+                                    .apply_chunk(&host, request, &entries, done, truncated, cx),
+                                ListingUpdate::Git(marks) => {
+                                    picker.apply_git(&host, request, marks, cx);
+                                }
+                            }
+                        }
                     })
                     .ok();
             }
@@ -308,6 +337,15 @@ impl PaletteBackend for StoryBackend {
     fn feed_targets(&self, picker: &Entity<TargetPicker>, _: &mut App) -> Option<Subscription> {
         self.picker.replace(Some(picker.downgrade()));
         None
+    }
+
+    fn feed_listings(&self, sink: ListingSink, _: &mut App) -> Option<Subscription> {
+        self.sink.replace(Some(Rc::new(sink)));
+        None
+    }
+
+    fn home_dir(&self, _: PaletteHostId, _: &App) -> Option<String> {
+        Some("/Users/fabrico".to_owned())
     }
 
     fn snapshot(&self, _: &App) -> Arc<MuxSnapshot> {
@@ -366,7 +404,7 @@ fn backend(tree: PaletteTree, grouped: bool) -> Rc<dyn PaletteBackend> {
 }
 
 fn files_backend(tree: PaletteTree, grouped: bool, files: Files) -> Rc<dyn PaletteBackend> {
-    Rc::new(StoryBackend {
+    Rc::new_cyclic(|me| StoryBackend {
         tree,
         settings: PaletteSettings {
             grouped,
@@ -374,7 +412,9 @@ fn files_backend(tree: PaletteTree, grouped: bool, files: Files) -> Rc<dyn Palet
         },
         files,
         picker: RefCell::new(None),
+        sink: RefCell::new(None),
         requests: Cell::new(0),
+        me: me.clone(),
     })
 }
 
@@ -437,15 +477,8 @@ fn under_home(dir: &str) -> Option<&str> {
     dir.strip_prefix("~/")
 }
 
-/// What `host` answers for `dir`, the way the daemon streams it.
-fn answer(
-    picker: &mut TargetPicker,
-    host: &str,
-    request: u64,
-    dir: &str,
-    files: Files,
-    cx: &mut Context<TargetPicker>,
-) {
+/// What a host answers for `dir`, the way the daemon streams it.
+fn answer(dir: &str, files: Files) -> Vec<ListingUpdate> {
     let root = PathListRoot {
         root: format!("/Users/fabrico/{}", under_home(dir).unwrap_or(dir))
             .trim_end_matches('/')
@@ -460,17 +493,18 @@ fn answer(
             .filter(|rel| !rel.is_empty())
     };
     match files {
-        Files::Listing => {}
-        Files::Refused => picker.apply_begin(
-            host,
-            request,
-            Err("Permission denied: ~/Library/Mail".to_owned()),
-            cx,
-        ),
-        Files::Empty => {
-            picker.apply_begin(host, request, Ok(root), cx);
-            picker.apply_chunk(host, request, &Arc::from([]), true, false, cx);
-        }
+        Files::Listing => Vec::new(),
+        Files::Refused => vec![ListingUpdate::Begin(Err(
+            "Permission denied: ~/Library/Mail".to_owned(),
+        ))],
+        Files::Empty => vec![
+            ListingUpdate::Begin(Ok(root)),
+            ListingUpdate::Chunk {
+                entries: Arc::from([]),
+                done: true,
+                truncated: false,
+            },
+        ],
         Files::Listed => {
             let entries: Arc<[PathEntry]> = HOME
                 .iter()
@@ -489,9 +523,15 @@ fn answer(
                 .iter()
                 .filter_map(|(path, mark)| Some((under(path)?.to_owned(), *mark)))
                 .collect();
-            picker.apply_begin(host, request, Ok(root), cx);
-            picker.apply_chunk(host, request, &entries, true, false, cx);
-            picker.apply_git(host, request, marks, cx);
+            vec![
+                ListingUpdate::Begin(Ok(root)),
+                ListingUpdate::Chunk {
+                    entries,
+                    done: true,
+                    truncated: false,
+                },
+                ListingUpdate::Git(marks),
+            ]
         }
     }
 }
@@ -912,8 +952,8 @@ fn unified(
 }
 
 /// The palette in `@` mode with `body` typed, a file picked going into
-/// `pane`: what `prefix F` opens on a pane's folder.
-pub(super) fn target_palette(
+/// `pane`.
+fn target_palette(
     window: &mut Window,
     cx: &mut App,
     files: Files,
@@ -923,6 +963,19 @@ pub(super) fn target_palette(
     let backend = files_backend(online_tree(), true, files);
     let body = body.to_owned();
     cx.new(|cx| CommandPaletteView::new_target(backend, &body, pane, window, cx))
+}
+
+/// The palette in `&` mode in `start`, a file picked going into `pane`:
+/// what `prefix F` opens on a pane's folder.
+pub(super) fn files_palette(
+    window: &mut Window,
+    cx: &mut App,
+    files: Files,
+    start: &str,
+    pane: Option<PaneId>,
+) -> Entity<CommandPaletteView> {
+    let backend = files_backend(online_tree(), true, files);
+    cx.new(|cx| CommandPaletteView::new_target(backend, start, pane, window, cx))
 }
 
 fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {

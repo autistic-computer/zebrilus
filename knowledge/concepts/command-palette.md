@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Unified palette and tmux command completions
-description: The palette's line grammar (a place typed with tmux's sigils, then an action), chips and keys, the empty palette and recents, the written @host:target form, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
+description: The palette's line grammar (a place typed with tmux's sigils, then an action), chips and keys, the & files level that prefix F opens, the empty palette and recents, the written @host:target form, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [gpui, command-prompt, tmux, completions, ui]
 timestamp: 2026-10-27T00:00:00-03:00
@@ -70,7 +70,45 @@ the catalog's target kind unless the line has one: a pane id, a window id, or th
 `&`, `>` and `?` are levels: `PaletteBackend::action_level` supplies a `PaletteActionLevel` that gets
 an `ActionContext` (the resolved place, which levels were written, whether the host is the opening
 chip, the raw text after the sigil and the pane a path goes into), the first look at the keys, and
-draws its rows and hints. Until the files level lands, `&` falls back to the target picker below.
+draws its rows and hints. A backend with no level for `&` falls back to the target picker below.
+
+# Files
+
+`&` lists the files under a folder on one host (`zz_ui::files`: `FilesAction` is the level,
+`FilesLevel` the entity that lists and draws). It starts in a folder and writes it after the `&`
+(D5): after a pane, window or session that pane's folder (a window's or session's active pane);
+on the host you are on with nothing under it, the pane a path goes into; on another host its home.
+A pane with no folder (a browser, an editor) starts at `~/`. `prefix F` opens straight into it, on
+the `-c` folder when given, else its pane's. The folder is written under `~` where the backend
+knows the home (`PaletteBackend::home_dir`: the desktop's own machine).
+
+The text after `&` is a path with plain spaces: up to the last `/` is a folder, `/…` and `~…` as
+written and anything else under the start folder, and the rest filters (`split_rest`). The client
+folds `.` and `..` and only asks the host for absolute or `~` folders, through the pane a path
+goes into when that is a terminal there and another terminal not running ssh or the like
+otherwise (`listing_pane`). An empty filter lists the folder's own entries, folders first, and
+typing ranks everything under it with git's letter. A folder under one walked whole is listed
+from that walk without asking the host again. Backends hand it listings through
+`PaletteBackend::feed_listings`.
+
+| Key | Does |
+| --- | --- |
+| Tab, or Right with the caret at the end | Opens the highlighted folder |
+| Shift-Tab, or Left with the caret at the end and no filter | Goes to the parent, highlighting the folder it left; past `~/` once the host said where the home is |
+| Backspace right after a `/` | Goes to the parent; on an empty path it drops the `&` |
+| Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is a browser or editor |
+| Alt-Enter | Copies the plain path (absolute, `host:/abs/path` from another host, never quoted) and keeps the palette open (D10) |
+
+An insert or a copy is kept as a recent file (`RecentKey::File` with the absolute path). Enter on
+one in the empty palette writes `&<path>`, so its folder lists with the name as the filter, and
+`open_recent` inserts it as soon as its row arrives. Under a coarse pointer a tap opens a folder
+and a folder row has its own insert button.
+
+The iPad and web clients list files too: they announce `client-path-picker-v1`, so the daemon
+lists for them and sends `prefix F`'s `OpenPathPicker`. `clients/app/src/command_palette.rs`
+sends `PathListRequest`, feeds the replies from the connection's unreduced messages and pastes
+with `path_insert::insert_text`. They do not know the host's home, so their start folder is
+written in full.
 
 # The empty palette and recents
 
@@ -108,7 +146,7 @@ and `/` typed by hand do the same. Files are listed by the host that has them, t
 path goes into when it is on that host and any terminal there otherwise
 (`PaletteBackend::list_path`, `MuxClient::request_host_path_list`), so the insert style is that
 pane's: quoted for its shell, `@path` for Claude Code. A path from another host goes in as
-`host:/abs/path`.
+`host:/abs/path`. `&` lists the same way ([Files](#files)).
 
 Keys in the footer and on rows are drawn as key icons, Apple's on macOS and iOS and ISO 9995's
 elsewhere (`zz_gpui_kit::kbd::KeyGlyphs`, [design system](/designs/design-system.md)), and a

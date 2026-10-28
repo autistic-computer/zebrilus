@@ -1,17 +1,18 @@
 use std::{rc::Rc, sync::Arc};
 
-use zz_client::{completion::PaneKindAvailability, recents::Recents};
+use zz_client::{completion::PaneKindAvailability, place::ActionKind, recents::Recents};
 use zz_gpui::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_protocol::{
-    CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
-    PaneStatusState, PathEntry, PathListRoot,
+    CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneStatusState, PathEntry, PathListRoot,
 };
 use zz_ui::{
     IconName,
     command::{
-        PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus, PaletteTarget, PaletteTree,
-        PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow, target_hosts,
+        PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus,
+        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
+        PaletteTreeWindow, target_hosts,
     },
+    files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
     link::resolve_link,
     target::{TargetKind, TargetPicker},
 };
@@ -27,10 +28,6 @@ use crate::{
     },
     terminal::view::TERMINAL_FONT,
 };
-
-/// Foreground programs whose files are on another machine: the daemon will
-/// not list through a pane running one.
-const REMOTE_FOREGROUND: &[&str] = &["ssh", "mosh", "mosh-client", "tmux", "zz_cli"];
 
 pub(crate) fn init_recents(cx: &mut App) {
     let path = match zz_protocol::app_identity::palette_recents_path() {
@@ -117,37 +114,6 @@ fn host_name(host: HostId, name: &str) -> String {
     } else {
         name.to_owned()
     }
-}
-
-fn runs_remote(pane: &PaneSnapshot) -> bool {
-    pane.summary.process.iter().any(|process| {
-        let name = process.rsplit('/').next().unwrap_or(process);
-        REMOTE_FOREGROUND.contains(&name)
-    })
-}
-
-fn terminals(snapshot: &MuxSnapshot) -> impl Iterator<Item = &PaneSnapshot> {
-    snapshot
-        .sessions
-        .iter()
-        .flat_map(|session| &session.windows)
-        .flat_map(|window| window.panes.values())
-        .filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal) && !pane.dead)
-}
-
-/// The terminal on the host to list through: `anchor` when it is one there,
-/// else one not running ssh or the like.
-fn listing_pane(snapshot: &MuxSnapshot, anchor: Option<PaneId>) -> Option<PaneId> {
-    let terminals = terminals(snapshot).collect::<Vec<_>>();
-    anchor
-        .filter(|anchor| terminals.iter().any(|pane| pane.id == *anchor))
-        .or_else(|| {
-            terminals
-                .iter()
-                .find(|pane| !runs_remote(pane))
-                .or_else(|| terminals.first())
-                .map(|pane| pane.id)
-        })
 }
 
 /// What a picked file puts at a pane's cursor: its path for the pane's shell
@@ -395,6 +361,50 @@ impl PaletteBackend for MuxPalette {
                 });
             }),
         )
+    }
+
+    fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+        (kind == ActionKind::Files).then(|| {
+            Box::new(FilesAction::new(palette_backend(self.0.clone())))
+                as Box<dyn PaletteActionLevel>
+        })
+    }
+
+    fn feed_listings(&self, sink: ListingSink, cx: &mut App) -> Option<Subscription> {
+        Some(
+            cx.subscribe(&self.0, move |_, event: &HostPathListUpdate, cx| {
+                let (request_id, update) = match &event.update {
+                    PathPickerUpdate::Begin { request_id, result } => {
+                        (*request_id, ListingUpdate::Begin(result.clone()))
+                    }
+                    PathPickerUpdate::Chunk {
+                        request_id,
+                        entries,
+                        done,
+                        truncated,
+                    } => (
+                        *request_id,
+                        ListingUpdate::Chunk {
+                            entries: Arc::clone(entries),
+                            done: *done,
+                            truncated: *truncated,
+                        },
+                    ),
+                    PathPickerUpdate::Git { request_id, marks } => {
+                        (*request_id, ListingUpdate::Git(marks.clone()))
+                    }
+                    PathPickerUpdate::Open { .. } | PathPickerUpdate::Close => return,
+                };
+                sink(event.host.into(), request_id, update, cx);
+            }),
+        )
+    }
+
+    fn home_dir(&self, host: PaletteHostId, _: &App) -> Option<String> {
+        (HostId::from(host) == HostId::LOCAL)
+            .then(std::env::home_dir)
+            .flatten()
+            .and_then(|home| home.to_str().map(str::to_owned))
     }
 
     fn insert_path(
