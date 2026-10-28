@@ -26,7 +26,7 @@ pub const CHROME_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "chrome.button",
     "Chrome buttons",
-    "Icon buttons on the window chrome: sidebar toggle, settings, list view, search, the driver chat, window overflow",
+    "Icon buttons on the window chrome: sidebar toggle, settings, add host, list view, search, the driver chat, window overflow",
 )
 .with(P.ink(Ink::Rest));
 pub const WINDOW_TAB: SurfaceRole = SurfaceRole::under(
@@ -205,12 +205,6 @@ pub const DRAG_CHIP: SurfaceRole = SurfaceRole::new(
 )
 .capsule(true);
 
-pub const AGENT_STATUS: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::BADGE,
-    "agent.status",
-    "Agent status",
-    "Unused since the agent pane became a lens; kept so saved themes still load",
-);
 pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "agent.bubble",
     Kind::Card,
@@ -250,18 +244,6 @@ pub const AGENT_SEND: SurfaceRole = SurfaceRole::new(
         .hover(Highlight::Tint)
         .selected(Highlight::Tint),
 );
-pub const AGENT_PICKER: SurfaceRole = SurfaceRole::new(
-    "agent.picker",
-    Kind::Field,
-    "Agent pickers",
-    "Unused since the composer lost its pickers; kept so saved themes still load",
-)
-.with(
-    P.fill(Fill::None)
-        .outline(false)
-        .hover(Highlight::Lift)
-        .selected(Highlight::Lift),
-);
 pub const AGENT_TRAY: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "agent.tray",
@@ -285,7 +267,7 @@ pub const PANE_PICKER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "pane.picker",
     "New pane picker",
-    "Terminal, Browser, Editor and Agent in a freshly split pane",
+    "Terminal, Browser and Editor in a freshly split pane",
 );
 pub const AGENT_OPTION: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
@@ -393,7 +375,13 @@ pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
     "phone.pill",
     Kind::Button,
     "Phone pill",
-    "The pills floating at the bottom of the phone: the pane pill and the actions its menu stacks above it, the overview's session pill and its Settings and close group, and the pills the keys sit in over the keyboard",
+    "The pills floating at the bottom of the phone: the pane pill and the actions its menu stacks above it, the host pill, Message the driver and the Settings button beside it, and the pills the keys sit in over the keyboard",
+);
+pub const PHONE_DRIVER_CARD: SurfaceRole = SurfaceRole::under(
+    &PHONE_PILL,
+    "phone.driver-card",
+    "Driver card",
+    "The driver's last message on the phone's Hosts page",
 );
 pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
@@ -406,7 +394,7 @@ pub const PHONE_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "phone.button",
     "Phone buttons",
-    "Back, close, settings and keyboard on the phone",
+    "Back in the phone's Settings, and the Settings button on Hosts",
 );
 pub const PHONE_KEY: SurfaceRole = SurfaceRole::new(
     "phone.key",
@@ -446,7 +434,7 @@ pub const PHONE_ROW: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "phone.row",
     "Touch rows",
-    "Rows in phone sheets, the bindings list and the Settings index",
+    "Rows in phone drawers and the bindings list",
 )
 .with(P.selected(Highlight::None));
 pub const GRABBER: SurfaceRole = SurfaceRole::GRABBER;
@@ -461,7 +449,7 @@ pub const PICKER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DIALOG,
     "picker",
     "Pickers",
-    "Agent history, the file picker, choose-tree and choose-buffer",
+    "The file picker, choose-tree and choose-buffer",
 );
 pub const HOSTS_DRAWER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DRAWER,
@@ -479,7 +467,7 @@ pub const NEW_PANE_DRAWER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DRAWER,
     "drawer.new-pane",
     "New pane drawer",
-    "What a new pane on the phone becomes: terminal, agent or browser",
+    "What a new pane on the phone becomes: a terminal or a browser",
 );
 pub const TABS_DRAWER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DRAWER,
@@ -499,13 +487,13 @@ pub const DRIVER_DRAWER: SurfaceRole = SurfaceRole::under(
     "Driver drawer",
     "The Driver Agent's chat on the phone",
 );
-pub const PICKER_NOTICE: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::BADGE,
+
+pub const PICKER_NOTICE: SurfaceRole = SurfaceRole::new(
     "picker.notice",
+    Kind::Bar,
     "Picker notices",
-    "Strips across a picker that ask before something happens, like deleting a session",
-)
-.with(P.outline(false).shape(Shape::Square));
+    "Strips across a chooser that ask before something happens, and its key help",
+);
 
 pub const BAR_RULE: SurfaceRole = SurfaceRole::new(
     "rule.bar",
@@ -540,8 +528,8 @@ pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
 pub const CHAT_RULE: SurfaceRole = SurfaceRole::new(
     "rule.chat",
     Kind::Rule,
-    "Chat split",
-    "The line over the driver chat in the sidebar, dragged to resize it",
+    "Chat line",
+    "The line over the driver's last message in the flat sidebar",
 );
 
 /// zz's own roles, after the kit's. The theme creator lists every role
@@ -552,6 +540,7 @@ const ZZ: &[SurfaceRole] = &[
     TITLEBAR,
     PANE_HEADER,
     PHONE_BAR,
+    PICKER_NOTICE,
     AGENT_BUBBLE,
     CHAT_BUBBLE,
     CHAT_MINE,
@@ -580,6 +569,7 @@ const ZZ: &[SurfaceRole] = &[
     PANE_PICKER,
     AGENT_OPTION,
     PHONE_PILL,
+    PHONE_DRIVER_CARD,
     PHONE_KEY,
     CHROME_BUTTON,
     WINDOW_CONTROLS,
@@ -607,13 +597,10 @@ const ZZ: &[SurfaceRole] = &[
     PHONE_ADD,
     PANE_STACK,
     AGENT_COMPOSER,
-    AGENT_PICKER,
-    AGENT_STATUS,
     ADDRESS_BAR,
     STATUS_CHIP,
     PHONE_PILL_ICON,
     BROWSER_EMPTY_ICON,
-    PICKER_NOTICE,
     BAR_RULE,
     SIDEBAR_RULE,
     SPLIT_RULE,
@@ -621,6 +608,8 @@ const ZZ: &[SurfaceRole] = &[
     TREE_RULE,
     CHAT_RULE,
 ];
+
+pub const RETIRED: [&str; 2] = ["agent.status", "agent.picker"];
 
 /// Every role a theme file may name: the kit's kinds and groups, then zz's.
 pub fn all() -> impl Iterator<Item = SurfaceRole> {

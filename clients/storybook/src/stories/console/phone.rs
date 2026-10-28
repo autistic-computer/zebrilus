@@ -14,8 +14,8 @@ use zz_ui::{
         PopoverKeyTap, ToolKeys, WhichKeyList, bento_add_tile, bento_grid, compact_bar_button,
         compact_composer_pill, compact_floating_bar, compact_floating_group, compact_floating_pill,
         compact_group_dot, compact_hud, compact_pill_menu, folding_title_bar, host_tile,
-        host_tile_line, large_title, mini_pane, overview_host_empty,
-        overview_session_heading, page_dots, pill_glass_over, window_layout, window_tile,
+        host_tile_line, large_title, mini_pane, overview_host_empty, overview_session_heading,
+        page_dots, pill_glass_over, window_layout, window_tile,
     },
     pane::agent_provider_icon,
     v_flex,
@@ -258,7 +258,13 @@ fn dots(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-fn host_bar(id: &'static str, title: &str, meta: &str, page: usize, cx: &App) -> AnyElement {
+pub(crate) fn host_bar(
+    id: &'static str,
+    title: &str,
+    meta: &str,
+    page: usize,
+    cx: &App,
+) -> AnyElement {
     let placement = placement();
     let pill = compact_floating_pill(
         id,
@@ -283,7 +289,7 @@ fn host_bar(id: &'static str, title: &str, meta: &str, page: usize, cx: &App) ->
     .into_any_element()
 }
 
-fn hosts_bar(cx: &App) -> AnyElement {
+pub(crate) fn hosts_bar(cx: &App) -> AnyElement {
     let placement = placement();
     let leading = div()
         .size(px(30.0))
@@ -316,7 +322,7 @@ fn subtitle(text: &str, cx: &App) -> impl IntoElement {
         .child(text.to_owned())
 }
 
-fn hosts_page(cx: &App) -> impl IntoElement {
+pub(crate) fn hosts_page(driver: Option<AnyElement>, cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     let tiles = vec![
         (
@@ -392,6 +398,7 @@ fn hosts_page(cx: &App) -> impl IntoElement {
         .pb(px(16.0))
         .child(large_title("Hosts", cx))
         .child(subtitle("4 hosts · 2 connected", cx))
+        .children(driver.map(|card| div().px(px(BENTO_INSET)).pb(px(16.0)).child(card)))
         .child(div().px(px(BENTO_INSET)).child(bento_grid(px(GRID), tiles)))
 }
 
@@ -426,7 +433,7 @@ fn mini(
     .into_any_element()
 }
 
-fn host_page(cx: &App) -> impl IntoElement {
+pub(crate) fn host_page(cx: &App) -> impl IntoElement {
     let daemon = window_tile(
         "window-daemon",
         "window-daemon-press",
@@ -550,7 +557,7 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
         .columns(2)
         .state(
             "hosts, where you start",
-            phone(v_flex().child(hosts_page(cx)).child(hosts_bar(cx)), cx),
+            phone(v_flex().child(hosts_page(None, cx)).child(hosts_bar(cx)), cx),
         )
         .state(
             "a connected host",
@@ -656,7 +663,9 @@ fn menu_items(lens: Option<bool>) -> Vec<Vec<PillMenuItem>> {
 
 fn host_menu_items() -> Vec<Vec<PillMenuItem>> {
     vec![
-        vec![PillMenuItem::new("settings", "Settings", IconName::Settings).look(PillMenuLook::Quiet)],
+        vec![
+            PillMenuItem::new("settings", "Settings", IconName::Settings).look(PillMenuLook::Quiet),
+        ],
         vec![
             PillMenuItem::new("new-session", "New session", IconName::Layers),
             PillMenuItem::new("new-browser", "New browser", IconName::Globe),
@@ -739,10 +748,7 @@ impl Render for Menus {
                 "on a Claude Code pane: Lens view",
                 Self::from_pill(menu_items(Some(false)), cx),
             )
-            .state(
-                "on a host's page",
-                Self::from_pill(host_menu_items(), cx),
-            )
+            .state("on a host's page", Self::from_pill(host_menu_items(), cx))
             .state(
                 "tapping the prefix key over the keyboard",
                 phone(

@@ -373,17 +373,17 @@ role was meant to remove, and what became of it. Groups are as built after the 2
 
 The Agent pane was removed on 2026-10-23; these roles now style the agent lens over a Claude Code
 or Codex terminal ([agent lens](/designs/agent-lens.md)). The lens has no status pill and no
-pickers, so `agent_status_pill` and the composer pickers are deleted, and `agent.status` and
-`agent.picker` stay registered, unused, so saved themes still load. The agent history picker
-(`ui/agent/history.rs`) went too; `picker.notice` keeps its role with no user left in zz-ui.
+pickers, so `agent_status_pill` and the composer pickers are deleted. Their roles, `agent.status`
+and `agent.picker`, were retired on 2026-10-27: they are listed in `roles::RETIRED`, and a theme
+file that still names one loads with the entry dropped. The agent history picker
+(`ui/agent/history.rs`) went too; its delete banner was the last `picker.notice`, which since
+2026-10-27 draws the chooser's prompt and key help strips.
 
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `agent.bubble` | card | your messages | `ui/agent.rs:2416` | |
 | `agent.composer` | field.multiline | the composer pill the lens and the Driver chat share, a pill in every theme (a taller draft keeps the one-line corner) | `ui/agent/composer.rs` (`Composer`) | took over `chat.composer` 2026-10-26 |
 | `agent.send` | button | send, stop and queue, and the composer's `+` | `ui/agent/controls.rs` (`composer_action_button`, `composer_add_button`) | stop had no fill, send was solid; fixed, stop takes send's fill. Moved from `icon-button` to `button` 2026-10-26: themes that turn icon-button fills off (macOS, Yaru) left `+` and stop bare. Send and stop draw prominent, `+` and queue neutral, all on the composer's ground |
-| `agent.picker` | field | mode, model and folder pickers | `ui/agent/controls.rs:59` | |
-| `agent.status` | badge | Running, Waiting for you and Exited in an agent pane's header | `ui/agent.rs:3712` (`agent_status_pill`) | was a `pane.chip`, so styling the floating chips restyled it; its own role since 10-15 |
 | `agent.tray` | tab | plan and tasks chips that open the tray over the composer (the queue chip is a quiet button) | `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the tab's selected lift |
 | `agent.attachment` | card | image tiles in bubbles and the composer, their remove × | `ui/agent.rs:2105` | × has no backing |
 | `agent.option` | menu-item | answer tiles in question and permission cards, Show terminal on the card for an approval the lens cannot answer | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
@@ -438,7 +438,8 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `phone.bar` | bar | 44px nav bars (settings, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
-| `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the overview's session pill and its Settings and close group, the pill the keys sit in | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
+| `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, Message the driver and the Settings button beside it, the pill the keys sit in | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
+| `phone.driver-card` | phone.pill | the driver's last message on the Hosts page | `ui/agent/chat.rs` (`phone_chat_card`) | borrowed `phone.pill` until 10-27, so styling the pills restyled it |
 | `phone.button` | icon-button | back, close, gear | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
 | `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `ui/compact/key_row.rs:50` | |
 | `phone.card` | tile | the overview's bento tiles: hosts on the Hosts page, windows on a host's page | `ui/compact/bento.rs` (`bento_tile`) | was one card per pane in a row per window until the 2026-10-26 drill-in |
@@ -456,8 +457,8 @@ overlays name these roles over them:
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `palette` | popover | command palette, path picker | `ui/command.rs:152` | no scrim, unlike choosers |
-| `picker` | dialog | agent history, file picker, choose-tree and choose-buffer | `ui/picker.rs:34`, `ui/chooser.rs:118` | history picker copied per client and drifting; fixed, one picker in `zz_ui::agent::history` |
-| `picker.notice` | badge | strips across a picker that ask first, like the delete banner | `ui/agent/history.rs:181` | new |
+| `picker` | dialog | file picker, choose-tree and choose-buffer | `ui/picker.rs:34`, `ui/chooser.rs:118` | |
+| `picker.notice` | bar | the chooser's prompt and key help strips | `ui/chooser.rs` (`ChooserModal`) | the strips drew as the bare `bar` kind until 10-27; the role became a bar then, so the Default look kept |
 
 What the inventory found on the kinds themselves:
 

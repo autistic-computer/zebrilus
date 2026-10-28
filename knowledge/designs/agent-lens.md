@@ -143,7 +143,6 @@ card, `AgentComposer` and the task tray.
 | `claude_peers.rs`, `codex_queue.rs`, `agent_waits.rs` | terminal `agent-send`, `@agent_state`, the peer bus |
 | `claude/sessions.rs`, `claude/translate.rs`, `codex/translate.rs`, `codex/rollout.rs` (`v2_item`) | the lens readers |
 | the `agent-pane` cargo feature of crates/zz | it gates the lens view and the ACP crate; the name stays to keep packaging and scripts unchanged |
-| the `agent.picker` and `agent.status` surface roles | they style nothing now, but a theme naming an unknown role fails to parse, so saved themes would break |
 | `agent-catalog`, `agent/catalog.rs`, `agent/environment.rs` | the Providers settings work owns them |
 
 ## Agent-facing CLI against terminal agents

@@ -659,7 +659,7 @@ impl AppShell {
     fn overview_driver_card(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let chat = self.driver_chat.read(cx);
         let driver = chat.driver()?;
-        let ground = cx.theme().ground_of(roles::PHONE_PILL);
+        let ground = cx.theme().ground_of(roles::PHONE_DRIVER_CARD);
         let message = if let Some(steps) = chat.steps(cx) {
             ChatTyping::new("overview-driver-typing")
                 .steps(steps)

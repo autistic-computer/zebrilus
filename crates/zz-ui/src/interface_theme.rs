@@ -239,7 +239,8 @@ fn deserialize_roles<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<BTreeMap<String, StylePatch>, D::Error> {
     use serde::de::Error as _;
-    let roles = BTreeMap::<String, StylePatch>::deserialize(deserializer)?;
+    let mut roles = BTreeMap::<String, StylePatch>::deserialize(deserializer)?;
+    roles.retain(|id, _| !crate::roles::RETIRED.contains(&id.as_str()));
     for (id, patch) in &roles {
         let Some(role) = crate::roles::find(id) else {
             return Err(D::Error::custom(unknown_role(id)));
@@ -738,6 +739,15 @@ mod tests {
         assert!(error.contains("did you mean `agent.composer`"), "{error}");
         assert!(parse_theme(r#"{"roles":{"sparkle":{}}}"#).is_err());
         assert!(parse_theme(r#"{"roles":{"row":{"fill":"neon"}}}"#).is_err());
+    }
+
+    #[test]
+    fn retired_roles_load_and_drop() {
+        let theme = parse_theme(r#"{"roles":{"agent.status":{"fill":"tint"},"code":{}}}"#).unwrap();
+        assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["code"]);
+        for id in crate::roles::RETIRED {
+            assert_eq!(crate::roles::find(id), None, "{id}");
+        }
     }
 
     #[test]

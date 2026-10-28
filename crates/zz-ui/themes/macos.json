@@ -97,16 +97,15 @@
       "shadow": "none"
     },
     "agent.composer": {
+      "smoothing": 2.5,
       "hover": "none",
       "selected": "none"
     },
     "agent.jump": {
       "fill": "solid"
     },
-    "agent.status": {
-      "fill": "tint",
-      "outline": true,
-      "shape": "pill",
+    "agent.send": {
+      "shape": "round",
       "smoothing": 2.0
     },
     "agent.tray": {
@@ -212,8 +211,8 @@
       "selected": "tint"
     },
     "settings.card": {
-      "outline": true,
-      "shadow": "none"
+      "shadow": "none",
+      "smoothing": 2.5
     },
     "sidebar.entry": {
       "smoothing": 2.5,
@@ -229,7 +228,7 @@
       "selected": "lift"
     },
     "titlebar.window-tab": {
-      "shape": "pill",
+      "smoothing": 2.5,
       "selected": "glass"
     },
     "tooltip": {

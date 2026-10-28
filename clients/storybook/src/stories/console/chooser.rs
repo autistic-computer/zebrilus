@@ -384,25 +384,26 @@ fn search(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+pub(crate) fn confirm_prompt(id: &'static str, cx: &App) -> AnyElement {
+    tree_modal(
+        Tree {
+            id,
+            title: "Choose pane",
+            subtitle: chooser_subtitle("6 sessions, windows, and panes", false).into(),
+            rows: PANES,
+            selected: 2,
+            search: None,
+            prompt: Some("Kill 2 tagged panes? (y/n)".into()),
+            help: false,
+        },
+        cx,
+    )
+}
+
 fn notices(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     states()
-        .state(
-            "confirm prompt",
-            tree_modal(
-                Tree {
-                    id: "chooser-prompt",
-                    title: "Choose pane",
-                    subtitle: chooser_subtitle("6 sessions, windows, and panes", false).into(),
-                    rows: PANES,
-                    selected: 2,
-                    search: None,
-                    prompt: Some("Kill 2 tagged panes? (y/n)".into()),
-                    help: false,
-                },
-                cx,
-            ),
-        )
+        .state("confirm prompt", confirm_prompt("chooser-prompt", cx))
         .state(
             "help",
             tree_modal(

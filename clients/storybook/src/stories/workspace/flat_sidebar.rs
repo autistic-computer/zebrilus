@@ -700,6 +700,13 @@ impl Live {
         self
     }
 
+    pub(crate) fn cursor_and_offline(mut self) -> Self {
+        self.state.selected = Some((MACBOOK, WindowId(3)));
+        self.hosts
+            .insert(0, offline(4, "studio", HostConnection::Disconnected));
+        self
+    }
+
     fn handle(&mut self, event: FlatEvent, cx: &mut Context<Self>) {
         let changed = match event {
             FlatEvent::Open(host, window) | FlatEvent::OpenPane(host, window, _) => {

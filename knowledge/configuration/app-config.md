@@ -300,7 +300,8 @@ was meant (`` unknown field `row_inset`, did you mean `row-inset`? ``). Material
 are kebab-case while glass fields keep `GlassMaterial`'s snake_case (`light_color`,
 `edge_shadow`), which is the usual slip. A role id `zz_ui::roles::find` does not know is an error
 too, and suggests the role meant (`` unknown role `chromebutton`, did you mean `chrome.button`? ``),
-as is a prop value outside its list. Settings Import, the thin clients' Import and the storybook's
+as is a prop value outside its list. The exception is a role zz no longer draws
+(`zz_ui::roles::RETIRED`): the file loads and that entry is dropped. Settings Import, the thin clients' Import and the storybook's
 import show the same message. `look`, the nine-key format from earlier on 2026-10-13, is unknown
 the same way, so a theme file written for it loads only once it is rewritten as `materials` and
 `roles`.
