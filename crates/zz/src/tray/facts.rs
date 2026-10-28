@@ -232,6 +232,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         let mut snapshot = MuxSnapshot {
             generation: 1,
