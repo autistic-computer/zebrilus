@@ -350,6 +350,53 @@ fn digits_are_an_index_inside_the_parent() {
 }
 
 #[test]
+fn pane_digits_count_from_the_windows_pane_base_index() {
+    let snapshot = zz_protocol::WindowSnapshot {
+        id: WindowId(10),
+        index: 1,
+        name: "claude".to_owned(),
+        automatic_rename: false,
+        active_pane: PaneId(21),
+        zoomed_pane: None,
+        layout: zz_protocol::LayoutNode::Empty,
+        panes: std::collections::BTreeMap::new(),
+        layout_dump: String::new(),
+        visible_layout_dump: String::new(),
+        status_label: String::new(),
+        activity: false,
+        silence: false,
+        pane_border_status: zz_protocol::PaneBorderStatus::Off,
+        pane_border_lines: zz_protocol::PaneBorderLines::Single,
+        pane_border_indicators: zz_protocol::PaneBorderIndicators::Colour,
+        pane_order: vec![PaneId(21), PaneId(20)],
+        pane_z_order: Vec::new(),
+        floating: Vec::new(),
+        modal: None,
+        sx: 0,
+        sy: 0,
+        pane_base_index: 1,
+    };
+    let mut fleet = fleet();
+    for pane in &mut fleet.hosts[0].sessions[0].windows[0].panes {
+        pane.index = crate::navigation::pane_index(&snapshot, pane.id);
+    }
+    let pane_at = |index: &str| {
+        candidates(
+            &fleet,
+            &Place::default(),
+            &text(Level::Pane, index),
+            &no_boost,
+        )
+        .iter()
+        .map(|c| c.place)
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(pane_at("1"), vec![place(0, 3, Some(10), Some(21))]);
+    assert_eq!(pane_at("2"), vec![place(0, 3, Some(10), Some(20))]);
+    assert!(pane_at("0").is_empty());
+}
+
+#[test]
 fn a_name_searches_every_session_under_the_parent() {
     let fleet = fleet();
     let found = candidates(
