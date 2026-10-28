@@ -2,29 +2,14 @@ use crate::{
     ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, Kind, PaintState,
     Sizable as _, StyledExt as _, Surface, Tone, badge::Badge, kbd::Kbd, list::ListItem, roles,
 };
+use zz_client::chooser::SEARCH_HINTS;
+pub use zz_client::chooser::{ChooserHint, chooser_has_key_gutter, chooser_subtitle};
 use zz_gpui::{
     AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
     SharedString, Styled as _, div, prelude::*, px, relative,
 };
 
 pub const CHOOSER_ROW_HEIGHT: f32 = 40.0;
-
-const SEARCH_HINTS: &[ChooserHint] = &[
-    ChooserHint {
-        keys: &["enter"],
-        label: "accept",
-    },
-    ChooserHint {
-        keys: &["escape"],
-        label: "cancel",
-    },
-];
-
-#[derive(Clone, Copy)]
-pub struct ChooserHint {
-    pub keys: &'static [&'static str],
-    pub label: &'static str,
-}
 
 #[derive(Clone)]
 pub struct ChooserSearch {
@@ -269,24 +254,7 @@ pub enum ChooserPaneKind {
 }
 
 fn chooser_key_label(key: &str) -> SharedString {
-    if key.is_empty() {
-        SharedString::default()
-    } else {
-        SharedString::from(format!("({key})"))
-    }
-}
-
-pub fn chooser_has_key_gutter<'a>(keys: impl IntoIterator<Item = &'a str>) -> bool {
-    keys.into_iter().any(|key| !key.is_empty())
-}
-
-pub fn chooser_subtitle(summary: impl Into<String>, filter_no_matches: bool) -> String {
-    let summary = summary.into();
-    if filter_no_matches {
-        format!("{summary} · filter: no matches")
-    } else {
-        summary
-    }
+    zz_client::chooser::chooser_key_label(key).into()
 }
 
 fn chooser_key_cell(

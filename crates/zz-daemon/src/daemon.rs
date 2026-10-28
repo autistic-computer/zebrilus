@@ -76804,10 +76804,7 @@ set-option -g @alias-mixed-next yes
             )
             .expect("reload configuration");
 
-        let expected = TerminalAppearance {
-            color_scheme: TerminalColorScheme::Light,
-            ..TerminalAppearance::default()
-        };
+        let expected = TerminalAppearance::default_for(TerminalColorScheme::Light);
         assert_eq!(*shared.inner.lock().appearance, expected);
         let deadline = Instant::now() + Duration::from_secs(30);
         while live.latest_viewport().background != expected.background
@@ -76861,10 +76858,7 @@ set-option -g @alias-mixed-next yes
 
         shared.set_client_color_scheme(client, TerminalColorScheme::Light);
 
-        let expected = TerminalAppearance {
-            color_scheme: TerminalColorScheme::Light,
-            ..TerminalAppearance::default()
-        };
+        let expected = TerminalAppearance::default_for(TerminalColorScheme::Light);
         assert_eq!(*shared.inner.lock().appearance, expected);
         let deadline = Instant::now() + Duration::from_secs(30);
         while terminal.latest_viewport().background != expected.background {

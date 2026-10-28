@@ -1,4 +1,4 @@
-use std::{ops::Range, rc::Rc};
+use std::rc::Rc;
 
 mod pane_deck;
 pub use pane_deck::{StatusPaneEntry, status_pane_deck};
@@ -19,7 +19,7 @@ use super::{
     workspace_status_window,
 };
 
-pub const MAX_VISIBLE_WINDOWS: usize = 5;
+pub use zz_client::{MAX_VISIBLE_WINDOWS, visible_window_range};
 pub type StatusAction = Rc<dyn Fn(&mut Window, &mut App)>;
 
 pub struct StatusWindowActions {
@@ -32,14 +32,6 @@ pub struct StatusWindowEntry {
     pub label: SharedString,
     pub active: bool,
     pub select: StatusAction,
-}
-
-pub fn visible_window_range(total: usize, active: usize, limit: usize) -> Range<usize> {
-    if total <= limit || limit == 0 {
-        return 0..total;
-    }
-    let start = active.saturating_sub(limit / 2).min(total - limit);
-    start..start + limit
 }
 
 pub fn status_window(

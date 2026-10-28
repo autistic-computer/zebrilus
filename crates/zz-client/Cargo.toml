@@ -26,6 +26,7 @@ zz-terminal.workspace = true
 getrandom.workspace = true
 
 [dev-dependencies]
+markdown = "1.0"
 zz-daemon = { workspace = true, features = ["default"] }
 zz-daemon-client.workspace = true
 

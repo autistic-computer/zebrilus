@@ -73,26 +73,15 @@ pub const TRANSCRIPT_ATTACHMENT: Pixels = px(140.0);
 /// Side of a square attachment tile in the composer.
 pub const COMPOSER_ATTACHMENT: Pixels = px(56.0);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentToolKind {
-    Read,
-    Search,
-    Edit,
-    Execute,
-    Fetch,
-    Think,
-    Other,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AgentToolStatus {
-    Pending,
-    Running,
-    NeedsApproval,
-    Completed,
-    Failed,
-    Canceled,
-}
+#[cfg(test)]
+use zz_client::agent_timeline::duration_label;
+pub use zz_client::agent_timeline::{
+    AgentToolKind, AgentToolStatus, TimelineGroupKind, plan_progress,
+};
+use zz_client::agent_timeline::{
+    PlanItemState, StepNesting, TimelineItem, TimelineShape, TraceHeader, group_kind, plan_items,
+    split_turn,
+};
 
 #[derive(Clone, Default)]
 pub struct AgentToolText(Arc<RwLock<AgentMarkdownBuffer>>);
@@ -407,16 +396,11 @@ impl From<SharedString> for AgentMarkdown {
     }
 }
 
-struct TurnClock {
-    started: Instant,
-    finished: Option<Duration>,
-}
-
 #[derive(Default)]
 pub struct AgentTimelineStore {
     markdown: HashMap<(u64, MarkdownSlot), MarkdownState>,
     expanded: HashMap<(u64, DisclosureKind), bool>,
-    turn_clocks: HashMap<u64, TurnClock>,
+    turn_clocks: zz_client::agent_timeline::TurnClocks,
     cwd: Option<PathBuf>,
     markdown_extensions: HashMap<bool, MarkdownExtensions>,
     /// The entry still receiving deltas, whose display copy is mended.
@@ -639,23 +623,12 @@ impl AgentTimelineStore {
     }
 
     pub fn tick_turn_clocks(&mut self, live: Option<u64>) {
-        for (id, clock) in &mut self.turn_clocks {
-            if Some(*id) != live && clock.finished.is_none() {
-                clock.finished = Some(clock.started.elapsed());
-            }
-        }
-        if let Some(live) = live {
-            self.turn_clocks.entry(live).or_insert_with(|| TurnClock {
-                started: Instant::now(),
-                finished: None,
-            });
-        }
+        self.turn_clocks.tick(live);
     }
 
     #[must_use]
     pub fn turn_elapsed(&self, id: u64) -> Option<Duration> {
-        let clock = self.turn_clocks.get(&id)?;
-        Some(clock.finished.unwrap_or_else(|| clock.started.elapsed()))
+        self.turn_clocks.elapsed(id)
     }
 
     pub fn clear(&mut self, cx: &mut Context<Self>) -> bool {
@@ -731,139 +704,46 @@ impl AgentEntry {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TimelineGroupKind {
-    Turn,
-    Reply,
+impl TimelineItem for AgentEntry {
+    fn id(&self) -> u64 {
+        Self::id(self)
+    }
+
+    fn parent(&self) -> Option<u64> {
+        timeline_parent(self)
+    }
+
+    fn shape(&self) -> TimelineShape {
+        match self {
+            Self::User { .. } => TimelineShape::User,
+            Self::Assistant { aside: None, .. } => TimelineShape::Assistant,
+            Self::Assistant { aside: Some(_), .. } => TimelineShape::Notice,
+            Self::Reasoning { .. } => TimelineShape::Reasoning,
+            Self::Plan { .. } => TimelineShape::Plan,
+            Self::Tool(tool) => TimelineShape::Tool(tool.kind, tool.status),
+        }
+    }
+
+    fn label(&self) -> &str {
+        match self {
+            Self::Tool(tool) => &tool.label,
+            _ => "",
+        }
+    }
 }
 
 #[must_use]
-pub const fn timeline_group_kind(entry: &AgentEntry) -> Option<TimelineGroupKind> {
-    match entry {
-        AgentEntry::Tool(_)
-        | AgentEntry::Reasoning { .. }
-        | AgentEntry::Plan { .. }
-        | AgentEntry::Assistant { aside: None, .. } => Some(TimelineGroupKind::Turn),
-        _ => None,
-    }
+pub fn timeline_group_kind(entry: &AgentEntry) -> Option<TimelineGroupKind> {
+    group_kind(entry.shape())
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TimelineRow {
-    Single(AgentEntry),
-    Group {
-        kind: TimelineGroupKind,
-        id: u64,
-        entries: Arc<Vec<AgentEntry>>,
-    },
-}
+pub type TimelineRow = zz_client::agent_timeline::TimelineRow<AgentEntry>;
 
-impl TimelineRow {
-    #[must_use]
-    pub fn id(&self) -> u64 {
-        match self {
-            Self::Single(entry) => entry.id(),
-            Self::Group { id, .. } => *id,
-        }
-    }
-
-    #[must_use]
-    pub fn entry(&self, id: u64) -> Option<&AgentEntry> {
-        match self {
-            Self::Single(entry) => (entry.id() == id).then_some(entry),
-            Self::Group { entries, .. } => entries.iter().find(|entry| entry.id() == id),
-        }
-    }
-
-    pub fn replace_entry(&mut self, id: u64, entry: AgentEntry) -> bool {
-        if entry.id() != id {
-            return false;
-        }
-        match self {
-            Self::Single(current) if current.id() == id => {
-                *current = entry;
-                true
-            }
-            Self::Group { entries, .. } => {
-                let Some(index) = entries.iter().position(|current| current.id() == id) else {
-                    return false;
-                };
-                Arc::make_mut(entries)[index] = entry;
-                true
-            }
-            Self::Single(_) => false,
-        }
-    }
-}
-
-pub struct FoldedTimelineRows {
-    pub rows: Arc<Vec<TimelineRow>>,
-    pub entry_to_row: Vec<usize>,
-}
+pub type FoldedTimelineRows = zz_client::agent_timeline::FoldedTimelineRows<AgentEntry>;
 
 #[must_use]
 pub fn fold_timeline_rows(entries: &[AgentEntry]) -> FoldedTimelineRows {
-    let positions = entries
-        .iter()
-        .enumerate()
-        .map(|(index, entry)| (entry.id(), index))
-        .collect::<HashMap<_, _>>();
-    let roots = (0..entries.len())
-        .map(|index| step_root(entries, &positions, index))
-        .collect::<Vec<_>>();
-    let mut rows = Vec::new();
-    let mut entry_to_row = vec![0; entries.len()];
-    for (index, entry) in entries.iter().enumerate() {
-        if roots[index].is_none() {
-            entry_to_row[index] = append_timeline_row(&mut rows, entry.clone()).0;
-        }
-    }
-    for (index, entry) in entries.iter().enumerate() {
-        if let Some(root) = roots[index] {
-            let row_index = entry_to_row[root];
-            nest_in_row(&mut rows[row_index], entry.clone());
-            entry_to_row[index] = row_index;
-        }
-    }
-    FoldedTimelineRows {
-        rows: Arc::new(rows),
-        entry_to_row,
-    }
-}
-
-fn step_root(
-    entries: &[AgentEntry],
-    positions: &HashMap<u64, usize>,
-    index: usize,
-) -> Option<usize> {
-    let mut at = index;
-    for _ in 0..entries.len() {
-        match timeline_parent(&entries[at]).and_then(|parent| positions.get(&parent).copied()) {
-            Some(parent) => at = parent,
-            None => return (at != index).then_some(at),
-        }
-    }
-    None
-}
-
-fn nest_in_row(row: &mut TimelineRow, entry: AgentEntry) {
-    match row {
-        TimelineRow::Group { entries, .. } => Arc::make_mut(entries).push(entry),
-        TimelineRow::Single(previous) => {
-            let id = previous.id();
-            let kind = if matches!(previous, AgentEntry::User { .. }) {
-                TimelineGroupKind::Reply
-            } else {
-                TimelineGroupKind::Turn
-            };
-            let previous = previous.clone();
-            *row = TimelineRow::Group {
-                kind,
-                id,
-                entries: Arc::new(vec![previous, entry]),
-            };
-        }
-    }
+    zz_client::agent_timeline::fold_timeline_rows(entries)
 }
 
 #[must_use]
@@ -879,41 +759,7 @@ pub const fn timeline_parent(entry: &AgentEntry) -> Option<u64> {
 
 #[must_use]
 pub fn append_timeline_row(rows: &mut Vec<TimelineRow>, entry: AgentEntry) -> (usize, bool) {
-    if let Some(parent) = timeline_parent(&entry)
-        && let Some(row_index) = rows.iter().rposition(|row| row.entry(parent).is_some())
-    {
-        nest_in_row(&mut rows[row_index], entry);
-        return (row_index, false);
-    }
-    if let Some(kind) = timeline_group_kind(&entry)
-        && let (Some(row_index), Some(last)) = (rows.len().checked_sub(1), rows.last_mut())
-    {
-        match last {
-            TimelineRow::Single(previous) if timeline_group_kind(previous) == Some(kind) => {
-                let id = previous.id();
-                let previous = previous.clone();
-                *last = TimelineRow::Group {
-                    kind,
-                    id,
-                    entries: Arc::new(vec![previous, entry]),
-                };
-                return (row_index, false);
-            }
-            TimelineRow::Group {
-                kind: open,
-                entries,
-                ..
-            } if *open == kind => {
-                Arc::make_mut(entries).push(entry);
-                return (row_index, false);
-            }
-            TimelineRow::Single(_) | TimelineRow::Group { .. } => {}
-        }
-    }
-
-    let row_index = rows.len();
-    rows.push(TimelineRow::Single(entry));
-    (row_index, true)
+    zz_client::agent_timeline::append_timeline_row(rows, entry)
 }
 
 /// Padding above the first timeline row. It lives inside the scrolled content,
@@ -1395,25 +1241,11 @@ impl zz_gpui::RenderOnce for AgentTimeline {
 }
 
 fn final_assistant_entry_id(rows: &[TimelineRow]) -> Option<u64> {
-    rows.iter().rev().find_map(|row| match row {
-        TimelineRow::Single(AgentEntry::Assistant {
-            id, aside: None, ..
-        }) => Some(*id),
-        TimelineRow::Group { entries, .. } => entries.iter().rev().find_map(|entry| match entry {
-            AgentEntry::Assistant {
-                id, aside: None, ..
-            } => Some(*id),
-            _ => None,
-        }),
-        TimelineRow::Single(_) => None,
-    })
+    zz_client::agent_timeline::final_assistant_entry_id(rows)
 }
 
 fn is_turn_row(row: &TimelineRow) -> bool {
-    match row {
-        TimelineRow::Group { kind, .. } => *kind == TimelineGroupKind::Turn,
-        TimelineRow::Single(entry) => timeline_group_kind(entry) == Some(TimelineGroupKind::Turn),
-    }
+    zz_client::agent_timeline::is_turn_row(row)
 }
 
 fn render_timeline_row(
@@ -1478,21 +1310,16 @@ impl Trace<'_> {
         self.steps.iter().map(|index| &self.members[*index])
     }
 
-    fn tools(&self) -> impl DoubleEndedIterator<Item = &AgentToolEntry> {
-        self.entries().filter_map(|entry| match entry {
-            AgentEntry::Tool(tool) => Some(tool),
-            _ => None,
-        })
-    }
-
     fn substeps(&self, id: u64) -> usize {
-        self.nesting.steps.get(&id).map_or(0, Vec::len)
+        self.nesting.substeps(id)
     }
 
     fn ending_failure(&self) -> Option<&AgentToolEntry> {
-        self.tools()
-            .next_back()
-            .filter(|tool| tool.status == AgentToolStatus::Failed)
+        let index = zz_client::agent_timeline::ending_failure(self.members, self.steps)?;
+        match &self.members[index] {
+            AgentEntry::Tool(tool) => Some(tool),
+            _ => None,
+        }
     }
 
     fn latest_thought(&self) -> Option<SharedString> {
@@ -1503,21 +1330,6 @@ impl Trace<'_> {
             _ => None,
         })
     }
-}
-
-fn split_turn(members: &[AgentEntry], nesting: &StepNesting) -> (Vec<usize>, Vec<usize>) {
-    let mut shown = nesting
-        .top
-        .iter()
-        .copied()
-        .filter(|index| !matches!(members[*index], AgentEntry::Plan { .. }))
-        .collect::<Vec<_>>();
-    let answer_start = shown
-        .iter()
-        .rposition(|index| !matches!(members[*index], AgentEntry::Assistant { .. }))
-        .map_or(0, |last| last + 1);
-    let answer = shown.split_off(answer_start);
-    (shown, answer)
 }
 
 fn render_turn(
@@ -1664,115 +1476,46 @@ fn trace_header(
     cx: &mut App,
 ) -> (ActivityMark, SharedString) {
     let mut mark = ActivityMark::bare();
-    if live && !trace.answering {
-        if let Some(waiting) = trace
-            .tools()
-            .find(|tool| tool.status == AgentToolStatus::NeedsApproval)
-        {
+    let header = zz_client::agent_timeline::trace_header(
+        trace.members,
+        trace.nesting,
+        trace.steps,
+        trace.answering,
+        live,
+        elapsed,
+    );
+    let label = SharedString::from(header.label().to_owned());
+    match header {
+        TraceHeader::Waiting { detail } => {
             let warning = cx.theme().warning;
             mark.icon = Some(IconName::TriangleAlert);
             mark.tint = Some(warning);
             mark.label_color = Some(warning);
-            mark.detail = Some(single_line(waiting.label.clone()));
-            return (mark, "Waiting for you".into());
+            mark.detail = Some(detail.into());
         }
-        mark.spin = Some(spinner_phase(store.entity_id(), cx));
-        let label = match trace.entries().next_back() {
-            Some(AgentEntry::Tool(tool)) if tool_running(tool.status) => {
+        TraceHeader::Live { tool, .. } => {
+            mark.spin = Some(spinner_phase(store.entity_id(), cx));
+            if tool {
                 mark.label_color = Some(cx.theme().foreground);
-                single_line(tool.label.clone())
             }
-            Some(AgentEntry::Reasoning { .. }) => "Thinking".into(),
-            _ => "Working".into(),
-        };
-        return (mark, label);
+        }
+        TraceHeader::Done { counts, .. } => {
+            mark.counts = counts.iter().map(TraceCount::from).collect();
+        }
     }
-    mark.counts = trace_counts(trace);
-    let thought_only = trace.tools().next().is_none();
-    let label = match (thought_only, elapsed) {
-        (true, Some(elapsed)) => format!("Thought for {}", duration_label(elapsed)),
-        (true, None) => "Thought".to_owned(),
-        (false, Some(elapsed)) => format!("Worked {}", duration_label(elapsed)),
-        (false, None) => "Worked".to_owned(),
-    };
-    (mark, label.into())
+    (mark, label)
 }
 
+#[cfg(test)]
 fn trace_counts(trace: &Trace<'_>) -> Vec<TraceCount> {
-    let mut counts = [0_usize; 7];
-    let mut failed = 0;
-    for tool in trace.tools() {
-        if tool.status == AgentToolStatus::Failed {
-            failed += 1;
-        }
-        let slot = if trace.substeps(tool.id) > 0 {
-            6
-        } else {
-            match tool.kind {
-                AgentToolKind::Read => 0,
-                AgentToolKind::Search => 1,
-                AgentToolKind::Edit => 2,
-                AgentToolKind::Execute => 3,
-                AgentToolKind::Fetch => 4,
-                AgentToolKind::Other => 5,
-                AgentToolKind::Think => continue,
-            }
-        };
-        counts[slot] += 1;
-    }
-    const KINDS: [(IconName, (&str, &str)); 7] = [
-        (IconName::File, ("read", "reads")),
-        (IconName::Search, ("search", "searches")),
-        (IconName::Pencil, ("edit", "edits")),
-        (IconName::SquareTerminal, ("command", "commands")),
-        (IconName::Globe, ("fetch", "fetches")),
-        (IconName::Asterisk, ("tool call", "tool calls")),
-        (IconName::Bot, ("agent", "agents")),
-    ];
-    KINDS
-        .into_iter()
-        .zip(counts)
-        .map(|((icon, noun), count)| TraceCount {
-            icon,
-            count,
-            noun,
-            failed: false,
-        })
-        .chain((failed > 0).then_some(TraceCount {
-            icon: IconName::TriangleAlert,
-            count: failed,
-            noun: ("failed", "failed"),
-            failed: true,
-        }))
-        .filter(|count| count.count > 0)
+    zz_client::agent_timeline::trace_counts(trace.members, trace.nesting, trace.steps)
+        .iter()
+        .map(TraceCount::from)
         .collect()
 }
 
-fn duration_label(elapsed: Duration) -> String {
-    let seconds = elapsed.as_secs().max(1);
-    match (seconds / 3600, seconds / 60 % 60, seconds % 60) {
-        (0, 0, seconds) => format!("{seconds}s"),
-        (0, minutes, seconds) => format!("{minutes}m {seconds}s"),
-        (hours, minutes, _) => format!("{hours}h {minutes}m"),
-    }
-}
-
 fn thought_tail(text: &str) -> Option<SharedString> {
-    const KEEP: usize = 220;
-    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if flat.is_empty() {
-        return None;
-    }
-    if flat.len() <= KEEP {
-        return Some(flat.into());
-    }
-    let mut start = flat.len() - KEEP;
-    while !flat.is_char_boundary(start) {
-        start += 1;
-    }
-    let tail = &flat[start..];
-    let tail = tail.split_once(' ').map_or(tail, |(_, rest)| rest);
-    Some(format!("…{tail}").into())
+    zz_client::agent_timeline::thought_tail(text).map(Into::into)
 }
 
 fn render_trace_steps(
@@ -2046,46 +1789,6 @@ fn render_notice(
         .into_any_element()
 }
 
-struct StepNesting {
-    top: Vec<usize>,
-    steps: HashMap<u64, Vec<usize>>,
-}
-
-impl StepNesting {
-    fn new(members: &[AgentEntry]) -> Self {
-        let positions = members
-            .iter()
-            .enumerate()
-            .map(|(index, entry)| (entry.id(), index))
-            .collect::<HashMap<_, _>>();
-        let parent_of = |index: usize| {
-            timeline_parent(&members[index]).and_then(|parent| positions.get(&parent).copied())
-        };
-        let reaches_top = |index: usize| {
-            let mut visited = HashSet::new();
-            let mut at = index;
-            loop {
-                if !visited.insert(at) {
-                    return false;
-                }
-                match parent_of(at) {
-                    Some(parent) => at = parent,
-                    None => return true,
-                }
-            }
-        };
-        let mut top = Vec::new();
-        let mut steps = HashMap::<u64, Vec<usize>>::new();
-        for index in 0..members.len() {
-            match parent_of(index).filter(|_| reaches_top(index)) {
-                Some(parent) => steps.entry(members[parent].id()).or_default().push(index),
-                None => top.push(index),
-            }
-        }
-        Self { top, steps }
-    }
-}
-
 /// One attachment in the composer as a `side`-square tile that opens a full
 /// view when clicked. The size is definite whatever was pasted, so layout
 /// never consults the image; the bytes are hash-keyed in zz-gpui's asset
@@ -2153,15 +1856,10 @@ fn attachment_tile(
 }
 
 fn single_line(text: SharedString) -> SharedString {
-    if !text.contains(['\n', '\r']) {
-        return text;
+    match zz_client::agent_timeline::single_line(&text) {
+        std::borrow::Cow::Borrowed(_) => text,
+        std::borrow::Cow::Owned(line) => line.into(),
     }
-    text.split(['\n', '\r'])
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join(" · ")
-        .into()
 }
 
 fn activity_row_glyph(icon: IconName, size: f32, cx: &App) -> Div {
@@ -2225,8 +1923,30 @@ impl TraceCount {
     }
 }
 
+const TRACE_COUNT_ICONS: [IconName; 8] = [
+    IconName::File,
+    IconName::Search,
+    IconName::Pencil,
+    IconName::SquareTerminal,
+    IconName::Globe,
+    IconName::Asterisk,
+    IconName::Bot,
+    IconName::TriangleAlert,
+];
+
+impl From<&zz_client::agent_timeline::TraceCount> for TraceCount {
+    fn from(count: &zz_client::agent_timeline::TraceCount) -> Self {
+        Self {
+            icon: TRACE_COUNT_ICONS[count.slot].clone(),
+            count: count.count,
+            noun: zz_client::agent_timeline::TRACE_COUNT_NOUNS[count.slot],
+            failed: count.failed,
+        }
+    }
+}
+
 const fn tool_running(status: AgentToolStatus) -> bool {
-    matches!(status, AgentToolStatus::Pending | AgentToolStatus::Running)
+    status.running()
 }
 
 fn tool_mark(
@@ -2241,19 +1961,16 @@ fn tool_mark(
             mark.spin = Some(spinner_phase(store.entity_id(), cx));
         }
         AgentToolStatus::NeedsApproval => mark.tint = Some(cx.theme().warning),
-        AgentToolStatus::Failed => {
-            mark.tint = Some(cx.theme().danger);
-            let tag = tool
-                .exit_code
-                .filter(|code| *code != 0)
-                .map_or_else(|| "failed".to_owned(), |code| format!("exit {code}"));
-            mark.tag = Some((tag.into(), Tone::Danger));
-        }
-        AgentToolStatus::Canceled => {
-            mark.tag = Some(("canceled".into(), Tone::Neutral));
-        }
+        AgentToolStatus::Failed => mark.tint = Some(cx.theme().danger),
         _ => {}
     }
+    mark.tag =
+        zz_client::agent_timeline::tool_tag(tool.status, tool.exit_code).map(|(tag, danger)| {
+            (
+                tag.into(),
+                if danger { Tone::Danger } else { Tone::Neutral },
+            )
+        });
     mark
 }
 
@@ -2543,49 +2260,6 @@ fn rewind_button(id: u64, rewind: &TimelineRewind, message_id: SharedString, cx:
             )
             .debug_selector(|| "agent-user-rewind".to_owned()),
         )
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PlanItemState {
-    Pending,
-    InProgress,
-    Done,
-}
-
-pub(crate) fn plan_items(source: &str) -> Vec<(PlanItemState, &str)> {
-    source
-        .lines()
-        .filter_map(|line| {
-            let rest = line.trim_start().strip_prefix("- [")?;
-            let mut characters = rest.chars();
-            let state = match characters.next()? {
-                'x' | 'X' => PlanItemState::Done,
-                '~' => PlanItemState::InProgress,
-                _ => PlanItemState::Pending,
-            };
-            let text = characters.as_str().strip_prefix(']')?.trim();
-            Some((state, text))
-        })
-        .collect()
-}
-
-#[must_use]
-pub fn plan_progress(source: &str) -> (usize, usize, Option<&str>) {
-    let items = plan_items(source);
-    let done = items
-        .iter()
-        .filter(|(state, _)| *state == PlanItemState::Done)
-        .count();
-    let current = items
-        .iter()
-        .find(|(state, _)| *state == PlanItemState::InProgress)
-        .or_else(|| {
-            items
-                .iter()
-                .find(|(state, _)| *state == PlanItemState::Pending)
-        })
-        .map(|(_, text)| *text);
-    (done, items.len(), current)
 }
 
 pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {

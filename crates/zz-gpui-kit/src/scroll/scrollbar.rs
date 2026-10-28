@@ -40,7 +40,13 @@ pub fn thumb_radius(thumb_width: Pixels, cx: &App) -> Pixels {
 /// The fill of a resting or hovered scrollbar thumb.
 #[must_use]
 pub fn thumb_color(cx: &App) -> Hsla {
-    cx.theme().foreground.wash()
+    theme_thumb_color(cx.theme())
+}
+
+/// [`thumb_color`] for a theme read outside a window.
+#[must_use]
+pub fn theme_thumb_color(theme: &crate::Theme) -> Hsla {
+    theme.foreground.wash()
 }
 
 const FADE_OUT_DURATION: f32 = 3.0;

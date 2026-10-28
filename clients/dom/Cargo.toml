@@ -1,0 +1,53 @@
+[workspace]
+resolver = "3"
+
+[package]
+name = "zz-dom"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.99"
+description = "zz in the browser as HTML: zz-client's protocol core behind a small wasm API, drawn by design/kit"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "0.23.1"
+markdown = "1.0"
+serde = "1"
+serde_json = "1.0.151"
+wasm-bindgen = "=0.2.128"
+web-time = "1.1.0"
+zz-client = { path = "../../crates/zz-client" }
+zz-protocol = { path = "../../crates/zz-protocol" }
+zz-terminal = { path = "../../crates/zz-terminal", default-features = false }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -2 }
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+fn_params_excessive_bools = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+too_many_arguments = "allow"
+too_many_lines = "allow"
+type_complexity = "allow"
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

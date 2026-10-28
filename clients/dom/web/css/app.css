@@ -1,0 +1,73 @@
+@font-face {
+  font-family: "Lilex";
+  src: url(../fonts/Lilex-Regular.ttf);
+}
+
+@font-face {
+  font-family: "Lilex";
+  font-weight: 700;
+  src: url(../fonts/Lilex-Bold.ttf);
+}
+
+@font-face {
+  font-family: "Lilex";
+  font-style: italic;
+  src: url(../fonts/Lilex-Italic.ttf);
+}
+
+@font-face {
+  font-family: "Lilex";
+  font-weight: 700;
+  font-style: italic;
+  src: url(../fonts/Lilex-BoldItalic.ttf);
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-weight: 100 900;
+  src: url(../fonts/InterVariable.ttf);
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  font-weight: 100 900;
+  font-style: italic;
+  src: url(../fonts/InterVariable-Italic.ttf);
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+.app {
+  position: fixed;
+  inset: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.grow {
+  flex: 1;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.ime {
+  position: fixed;
+  left: -100px;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  resize: none;
+}
+
+.probe {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+}

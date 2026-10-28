@@ -41,14 +41,7 @@ pub fn task_kind_icon(kind: &str) -> IconName {
     }
 }
 
-pub fn task_tray_label(count: usize) -> String {
-    format!("{count} running")
-}
-
-pub fn plan_chip_label(source: &str) -> Option<(String, Option<String>)> {
-    let (done, total, current) = super::plan_progress(source);
-    (total > 0).then(|| (format!("Plan {done}/{total}"), current.map(str::to_owned)))
-}
+pub use zz_client::agent_timeline::{plan_chip_label, task_tray_label};
 
 #[allow(clippy::too_many_arguments)]
 pub fn task_tray(

@@ -1,0 +1,42 @@
+[workspace]
+resolver = "3"
+
+[package]
+name = "zz-dom-theme"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.99"
+description = "The HTML client's theme engine: zz-app's preferences and zz-ui's theme math behind a small wasm API that writes the kit's CSS tokens"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde_json = "1.0.151"
+wasm-bindgen = "=0.2.128"
+zz-gpui = { path = "../../../crates/zz-gpui", default-features = false }
+zz-app = { path = "../../app" }
+zz-protocol = { path = "../../../crates/zz-protocol" }
+zz-ui = { path = "../../../crates/zz-ui" }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -2 }
+pedantic = { level = "warn", priority = -1 }
+cast_possible_truncation = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+needless_pass_by_value = "allow"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

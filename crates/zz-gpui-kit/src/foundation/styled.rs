@@ -7,7 +7,7 @@ use super::{
 use zz_gpui::{
     AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS,
     Hsla, InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
-    StyleRefinement, Styled, div, point, px,
+    StyleRefinement, Styled, div, px,
 };
 
 use super::rems_from_px;
@@ -255,27 +255,7 @@ const CHOSEN_RING_WIDTH: Pixels = px(2.0);
 /// The small shadow of a knob riding on a control, like a switch thumb, or
 /// none when the theme picks the roles that cast shadows.
 pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
-    let strength = cx.theme().contact_shadow.strength;
-    if strength <= 0.0 || cx.theme().picked_shadows {
-        return Vec::new();
-    }
-    let ink = cx.theme().shadow_color.alpha((0.1 * strength).min(1.0));
-    vec![
-        BoxShadow {
-            color: ink,
-            offset: point(px(0.), px(4.)),
-            blur_radius: px(6.),
-            spread_radius: px(-1.),
-            inset: false,
-        },
-        BoxShadow {
-            color: ink,
-            offset: point(px(0.), px(2.)),
-            blur_radius: px(4.),
-            spread_radius: px(-2.),
-            inset: false,
-        },
-    ]
+    cx.theme().lifted_shadows()
 }
 
 /// The size scale shared by every widget in the crate: [`Size::Medium`] for

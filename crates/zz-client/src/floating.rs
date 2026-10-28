@@ -91,6 +91,208 @@ pub fn float_pixels(
     })
 }
 
+/// A float's box with its borders (`frame`) and its content box in pixels
+/// from the canvas origin, unclipped. `None` when nothing of it is on a
+/// canvas of `canvas` pixels; an empty canvas places every float.
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "window cell offsets are far below f32's exact integer range"
+)]
+pub fn float_placement(
+    float: &FloatingPaneSnapshot,
+    cell: (f32, f32),
+    canvas: (f32, f32),
+) -> Option<(PixelRect, PixelRect)> {
+    let bordered = float.border_lines != PaneBorderLines::None;
+    if canvas.0 > 0.0
+        && canvas.1 > 0.0
+        && float_pixels(FloatCells::from(float), bordered, cell, canvas).is_none()
+    {
+        return None;
+    }
+    let pad = i32::from(bordered);
+    let rect = |x: i32, y: i32, width: i32, height: i32| PixelRect {
+        x: x as f32 * cell.0,
+        y: y as f32 * cell.1,
+        width: width as f32 * cell.0,
+        height: height as f32 * cell.1,
+    };
+    Some((
+        rect(
+            float.xoff - pad,
+            float.yoff - pad,
+            i32::from(float.sx) + 2 * pad,
+            i32::from(float.sy) + 2 * pad,
+        ),
+        rect(
+            float.xoff,
+            float.yoff,
+            i32::from(float.sx),
+            i32::from(float.sy),
+        ),
+    ))
+}
+
+pub const PIP_MARGIN: f32 = 12.0;
+
+/// Where a GUI draws a floating pane as a picture in picture: scaled from
+/// the window's `window` cells onto a `canvas` of pixels, with a `header`
+/// tall title strip when the float has borders.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PipGeometry {
+    pub window: (u16, u16),
+    pub cell: (f32, f32),
+    pub canvas: (f32, f32),
+    pub lines: PaneBorderLines,
+    pub header: f32,
+}
+
+impl PipGeometry {
+    fn bordered(&self) -> bool {
+        self.lines != PaneBorderLines::None
+    }
+
+    #[must_use]
+    pub fn size(&self, cells: FloatCells) -> (f32, f32) {
+        let (width, height) = (
+            self.cell.0 * f32::from(cells.sx),
+            self.cell.1 * f32::from(cells.sy),
+        );
+        if self.bordered() {
+            (
+                width + self.cell.0 * 2.0,
+                height + self.header.max(self.cell.1) + self.cell.1,
+            )
+        } else {
+            (width, height)
+        }
+    }
+
+    #[must_use]
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "window cell offsets are far below f32's exact integer range"
+    )]
+    pub fn frame(&self, cells: FloatCells) -> PixelRect {
+        let size = self.size(cells);
+        let area = self.area();
+        let pad = i32::from(self.bordered());
+        let axis = |offset: i32, extent: u16, window: u16, frame: f32, canvas: f32, cell: f32| {
+            if window == 0 {
+                return cell * (offset - pad) as f32;
+            }
+            let free = canvas - frame;
+            if free <= 0.0 {
+                return 0.0;
+            }
+            let room = f32::from(window) - f32::from(extent) - 2.0 * pad as f32;
+            let along = if room > 0.0 {
+                ((offset - pad) as f32 / room).clamp(0.0, 1.0)
+            } else {
+                0.5
+            };
+            let margin = PIP_MARGIN.min(free / 2.0);
+            margin + (free - margin * 2.0) * along
+        };
+        PixelRect {
+            x: axis(
+                cells.xoff,
+                cells.sx,
+                self.window.0,
+                size.0,
+                area.0,
+                self.cell.0,
+            ),
+            y: axis(
+                cells.yoff,
+                cells.sy,
+                self.window.1,
+                size.1,
+                area.1,
+                self.cell.1,
+            ),
+            width: size.0,
+            height: size.1,
+        }
+    }
+
+    #[must_use]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the cell count is floored and clamped to u16 before the cast"
+    )]
+    pub fn max_cells(&self) -> (u16, u16) {
+        let area = self.area();
+        let chrome = self.size(FloatCells {
+            xoff: 0,
+            yoff: 0,
+            sx: 0,
+            sy: 0,
+        });
+        let pad = if self.bordered() { 2 } else { 0 };
+        let fit = |room: f32, chrome: f32, cell: f32, window: u16| {
+            let fits = if cell > 0.0 {
+                ((room - PIP_MARGIN * 2.0 - chrome) / cell)
+                    .floor()
+                    .clamp(1.0, f32::from(u16::MAX)) as u16
+            } else {
+                u16::MAX
+            };
+            if window == 0 {
+                fits
+            } else {
+                fits.min(window.saturating_sub(pad).max(1))
+            }
+        };
+        (
+            fit(area.0, chrome.0, self.cell.0, self.window.0),
+            fit(area.1, chrome.1, self.cell.1, self.window.1),
+        )
+    }
+
+    /// The height, borders included, of the tallest float that fits: what
+    /// Float asks `break-pane -y` for.
+    #[must_use]
+    pub fn fill_rows(&self) -> u16 {
+        self.max_cells().1 + if self.bordered() { 2 } else { 0 }
+    }
+
+    /// The canvas, or the window's own pixels while the canvas is unknown.
+    #[must_use]
+    pub fn area(&self) -> (f32, f32) {
+        if self.canvas.0 > 0.0 && self.canvas.1 > 0.0 {
+            self.canvas
+        } else {
+            (
+                self.cell.0 * f32::from(self.window.0),
+                self.cell.1 * f32::from(self.window.1),
+            )
+        }
+    }
+
+    /// The place a float whose centre lands at `centre` pixels snaps to.
+    #[must_use]
+    pub fn place_at(&self, centre: (f32, f32)) -> FloatPlace {
+        let area = self.area();
+        let fraction = |at: f32, extent: f32, cells: u16| {
+            if extent > 0.0 {
+                at / extent * f32::from(cells)
+            } else {
+                0.0
+            }
+        };
+        FloatPlace::zone(
+            (
+                fraction(centre.0, area.0, self.window.0),
+                fraction(centre.1, area.1, self.window.1),
+            ),
+            self.window,
+        )
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FloatTitle {
     pub left: String,
@@ -416,6 +618,50 @@ pub fn pane_floats(snapshot: &MuxSnapshot, pane: PaneId) -> bool {
         .iter()
         .flat_map(|session| &session.windows)
         .any(|window| window.floating.iter().any(|float| float.pane == pane))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverlayFrame {
+    pub bounds: PixelRect,
+    pub inset_x: f32,
+    pub inset_y: f32,
+}
+
+#[must_use]
+pub fn overlay_frame(
+    (left, top, width, height): (u16, u16, u16, u16),
+    (client_columns, client_rows): (u16, u16),
+    (cell_width_px, cell_height_px): (u32, u32),
+    bordered: bool,
+    (canvas_width, canvas_height): (f32, f32),
+    scale: f32,
+) -> OverlayFrame {
+    let cell_width = f32::from(u16::try_from(cell_width_px).unwrap_or(u16::MAX)) / scale;
+    let cell_height = f32::from(u16::try_from(cell_height_px).unwrap_or(u16::MAX)) / scale;
+    let grid_left = ((canvas_width - cell_width * f32::from(client_columns)) / 2.0).max(0.0);
+    let grid_top = ((canvas_height - cell_height * f32::from(client_rows)) / 2.0).max(0.0);
+    OverlayFrame {
+        bounds: PixelRect {
+            x: grid_left + cell_width * f32::from(left),
+            y: grid_top + cell_height * f32::from(top),
+            width: cell_width * f32::from(width),
+            height: cell_height * f32::from(height),
+        },
+        inset_x: if bordered { cell_width } else { 0.0 },
+        inset_y: if bordered { cell_height } else { 0.0 },
+    }
+}
+
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "a prompt's display width is far below f32's exact integer range"
+)]
+pub fn confirm_size(prompt: &str, canvas_width: f32) -> (f32, f32) {
+    let width = (zz_protocol::display_width(prompt)
+        .saturating_mul(8)
+        .saturating_add(32)) as f32;
+    (width.max(180.0).min((canvas_width - 24.0).max(180.0)), 48.0)
 }
 
 #[cfg(test)]

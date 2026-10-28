@@ -10,6 +10,14 @@ use std::{
 use crate::scroll::{MIN_THUMB_SIZE, THUMB_INSET, THUMB_WIDTH, thumb_color, thumb_radius};
 use crate::{ActiveTheme as _, Colorize as _, oklch, to_oklch};
 use smallvec::SmallVec;
+use zz_client::local_scroll::{
+    GridPlacement, LocalRowSource, RowProjection, grid_placement, kitty_display_row,
+    local_live_projection, local_row_source, peek_row_source,
+};
+#[cfg(test)]
+use zz_client::terminal_color::{contrast_ratio, is_decorative_character, oklab};
+use zz_client::terminal_color::{decorative_glyph, ensure_minimum_contrast, faint_foreground};
+pub use zz_client::terminal_view::cursor_should_blink;
 use zz_gpui::{
     App, BorderStyle, Bounds, ContentMask, Corners, Font, FontFallbacks, FontFeatures,
     FontSmoothing, FontStyle, FontWeight, GlyphRasterData, GlyphRenderOptions, Hsla, PaintQuad,
@@ -17,9 +25,9 @@ use zz_gpui::{
     TextRun, UnderlineStyle, Window, fill, font, point, px, quad, size,
 };
 use zz_terminal::{
-    AppearanceColor, CellWidth, Color, Cursor, CursorBlinkPolicy, CursorStyle, GRAPHEME_TABLE_BIT,
-    Glyph, KittyLayer, KittyPlacement, LocalColors, OVERLAY_RECTANGLE, OverlayKind, PackedCell,
-    PackedStyle, ScrollbarState, TerminalAppearance, TerminalDictionary, TerminalViewport,
+    AppearanceColor, CellWidth, Color, Cursor, CursorStyle, GRAPHEME_TABLE_BIT, Glyph, KittyLayer,
+    LocalColors, OVERLAY_RECTANGLE, OverlayKind, PackedCell, PackedStyle, ScrollbarState,
+    TerminalAppearance, TerminalDictionary, TerminalViewport,
     UnderlineStyle as TerminalUnderlineStyle,
 };
 
@@ -512,63 +520,6 @@ struct CursorCellPaint {
     cell: PackedCell,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct RowProjection {
-    source_start: u16,
-    destination_start: u16,
-    count: u16,
-}
-
-impl RowProjection {
-    fn new(viewport_rows: u16, grid_rows: u16, bottom_anchored: bool) -> Self {
-        let count = viewport_rows.min(grid_rows);
-        if bottom_anchored {
-            Self {
-                source_start: viewport_rows.saturating_sub(count),
-                destination_start: grid_rows.saturating_sub(count),
-                count,
-            }
-        } else {
-            Self {
-                source_start: 0,
-                destination_start: 0,
-                count,
-            }
-        }
-    }
-
-    fn source_row(self, offset: u16) -> Option<u16> {
-        (offset < self.count).then(|| self.source_start.saturating_add(offset))
-    }
-
-    fn display_row(self, source_row: u16) -> Option<usize> {
-        let offset = source_row.checked_sub(self.source_start)?;
-        (offset < self.count).then(|| usize::from(self.destination_start.saturating_add(offset)))
-    }
-}
-
-fn kitty_display_row(
-    placement: &KittyPlacement,
-    local_scroll_target: Option<u32>,
-    projection: RowProjection,
-) -> Option<i64> {
-    let anchor = if let Some(target) = local_scroll_target {
-        i64::try_from(i128::from(placement.absolute_row) - i128::from(target)).ok()?
-    } else {
-        i64::from(placement.viewport_row)
-    };
-    let placement_end = anchor.checked_add(i64::from(placement.grid_rows))?;
-    let projected_start = i64::from(projection.source_start);
-    let projected_end = projected_start.checked_add(i64::from(projection.count))?;
-    let first_visible = anchor.max(projected_start);
-    if first_visible >= placement_end || first_visible >= projected_end {
-        return None;
-    }
-    let projected_source = u16::try_from(first_visible).ok()?;
-    let display = i64::try_from(projection.display_row(projected_source)?).ok()?;
-    display.checked_sub(first_visible.checked_sub(anchor)?)
-}
-
 fn collect_kitty_images(
     viewport: &TerminalViewport,
     cache: &dyn TerminalImageSource,
@@ -674,112 +625,6 @@ fn collect_kitty_images(
             KittyLayer::AboveText => output.kitty_above_text.push(positioned),
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum LocalRowSource {
-    History(usize),
-    Live(u16),
-    Below(usize),
-    Shimmer,
-}
-
-fn local_row_source(
-    absolute_row: u32,
-    server_offset: u32,
-    live_rows: u16,
-    history_rows: usize,
-    below_rows: usize,
-) -> LocalRowSource {
-    if absolute_row >= server_offset {
-        let live_row = absolute_row - server_offset;
-        if let Some(row) = u16::try_from(live_row).ok().filter(|row| *row < live_rows) {
-            return LocalRowSource::Live(row);
-        }
-        return usize::try_from(live_row - u32::from(live_rows))
-            .ok()
-            .filter(|row| *row < below_rows)
-            .map_or(LocalRowSource::Shimmer, LocalRowSource::Below);
-    }
-
-    let position = server_offset - absolute_row;
-    usize::try_from(position)
-        .ok()
-        .and_then(|position| history_rows.checked_sub(position))
-        .map_or(LocalRowSource::Shimmer, LocalRowSource::History)
-}
-
-fn local_live_projection(
-    target_offset: u32,
-    server_offset: u32,
-    viewport_rows: u16,
-    grid_rows: u16,
-) -> RowProjection {
-    let display_count = u32::from(viewport_rows.min(grid_rows));
-    let display_end = target_offset.saturating_add(display_count);
-    let live_end = server_offset.saturating_add(u32::from(viewport_rows));
-    let intersection_start = target_offset.max(server_offset);
-    let intersection_end = display_end.min(live_end);
-    if intersection_start >= intersection_end {
-        return RowProjection {
-            source_start: 0,
-            destination_start: 0,
-            count: 0,
-        };
-    }
-
-    RowProjection {
-        source_start: u16::try_from(intersection_start - server_offset)
-            .expect("live projection is bounded by viewport rows"),
-        destination_start: u16::try_from(intersection_start - target_offset)
-            .expect("live projection is bounded by grid rows"),
-        count: u16::try_from(intersection_end - intersection_start)
-            .expect("live projection is bounded by viewport rows"),
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct GridPlacement {
-    bottom_anchored: bool,
-    project_from_bottom: bool,
-}
-
-fn grid_placement(
-    viewport: &TerminalViewport,
-    local: Option<&LocalColors>,
-    command_output: bool,
-    scrolled_locally: bool,
-) -> GridPlacement {
-    let anchorable =
-        !matches!(viewport.mode, zz_terminal::TerminalMode::View { .. }) && !command_output;
-    let at_live_bottom = viewport
-        .scrollbar
-        .offset
-        .saturating_add(viewport.scrollbar.len)
-        >= viewport.scrollbar.total;
-    let scrolled_back = scrolled_locally || !at_live_bottom;
-    let last_row_filled = last_visible_row_has_content(viewport, local, viewport.rows);
-    GridPlacement {
-        bottom_anchored: anchorable && (scrolled_back || last_row_filled),
-        project_from_bottom: anchorable && !scrolled_back && last_row_filled,
-    }
-}
-
-fn peek_row_source(
-    top_offset: u32,
-    distance: u32,
-    server_offset: u32,
-    live_rows: u16,
-    history_rows: usize,
-) -> Option<LocalRowSource> {
-    let source = local_row_source(
-        top_offset.checked_sub(distance)?,
-        server_offset,
-        live_rows,
-        history_rows,
-        0,
-    );
-    (source != LocalRowSource::Shimmer).then_some(source)
 }
 
 impl RowRenderCache {
@@ -1641,17 +1486,23 @@ pub fn scrollbar_strip_hit(
     scrollbar: ScrollbarState,
     position: Point<Pixels>,
 ) -> bool {
-    scrollbar.total > scrollbar.len
-        && position.x >= surface.right() - crate::scroll::GUTTER_WIDTH
-        && position.x <= surface.right()
-        && position.y >= surface.origin.y
-        && position.y <= surface.bottom()
+    zz_client::terminal_view::scrollbar_strip_hit(
+        f32::from(surface.right()),
+        f32::from(surface.origin.y),
+        f32::from(surface.bottom()),
+        f32::from(crate::scroll::GUTTER_WIDTH),
+        scrollbar,
+        f32::from(position.x),
+        f32::from(position.y),
+    )
 }
 
 pub fn scroll_fraction(surface: Bounds<Pixels>, position: Point<Pixels>) -> u32 {
-    let fraction =
-        ((position.y - surface.origin.y) / surface.size.height.max(px(1.0))).clamp(0.0, 1.0);
-    (fraction * u32::MAX as f32).round() as u32
+    zz_client::terminal_view::scroll_fraction(
+        f32::from(surface.origin.y),
+        f32::from(surface.size.height),
+        f32::from(position.y),
+    )
 }
 
 pub fn selection_autoscroll_lines(
@@ -1659,21 +1510,12 @@ pub fn selection_autoscroll_lines(
     line_height: Pixels,
     position: Point<Pixels>,
 ) -> i32 {
-    let distance = if position.y < grid.origin.y {
-        -f32::from(grid.origin.y - position.y)
-    } else if position.y > grid.bottom() {
-        f32::from(position.y - grid.bottom())
-    } else {
-        return 0;
-    };
-    let rows = (distance.abs() / f32::from(line_height.max(px(1.0))))
-        .ceil()
-        .clamp(1.0, 8.0) as i32;
-    if distance.is_sign_negative() {
-        -rows
-    } else {
-        rows
-    }
+    zz_client::terminal_view::selection_autoscroll_lines(
+        f32::from(grid.origin.y),
+        f32::from(grid.bottom()),
+        f32::from(line_height),
+        f32::from(position.y),
+    )
 }
 
 pub fn terminal_font_for_style(
@@ -1716,22 +1558,6 @@ pub fn terminal_font_for_style(
         FontStyle::Normal
     };
     font
-}
-
-pub fn cursor_should_blink(
-    cursor: Option<zz_terminal::Cursor>,
-    policy: CursorBlinkPolicy,
-    focused: bool,
-) -> bool {
-    focused
-        && cursor.is_some_and(|cursor| {
-            cursor.visible()
-                && match policy {
-                    CursorBlinkPolicy::Off => false,
-                    CursorBlinkPolicy::On => true,
-                    CursorBlinkPolicy::Terminal => cursor.blinking(),
-                }
-        })
 }
 
 fn paint_kitty_images(images: &mut Vec<PositionedKittyImage>, window: &mut Window) {
@@ -2885,21 +2711,6 @@ fn text_run(
     }
 }
 
-fn faint_foreground(style: PackedStyle, foreground: Color) -> Color {
-    if !style.faint() {
-        return foreground;
-    }
-    let background = style.background();
-    let channel = |foreground: u8, background: u8| {
-        (f32::from(foreground) * 0.58 + f32::from(background) * 0.42).round() as u8
-    };
-    Color::rgb(
-        channel(foreground.r, background.r),
-        channel(foreground.g, background.g),
-        channel(foreground.b, background.b),
-    )
-}
-
 fn style_for_dictionary(
     dictionary: &TerminalDictionary,
     default_foreground: Color,
@@ -3051,15 +2862,6 @@ fn cursor_glyph_line(
     })
 }
 
-fn decorative_glyph(glyph: Glyph<'_>) -> bool {
-    let character = match glyph {
-        Glyph::Scalar(character) => Some(character),
-        Glyph::Grapheme(text) => text.chars().next(),
-        Glyph::Empty => None,
-    };
-    character.is_some_and(is_decorative_character)
-}
-
 fn connected_light_box_drawing(glyph: Glyph<'_>) -> Option<LightBoxDrawing> {
     single_cell_character(glyph).and_then(light_box_drawing)
 }
@@ -3188,18 +2990,6 @@ fn solid_block_element(character: char) -> Option<SolidBlockElement> {
     }
 }
 
-fn is_decorative_character(character: char) -> bool {
-    matches!(
-        character as u32,
-        0x2500..=0x257f
-            | 0x2580..=0x259f
-            | 0x25a0..=0x25ff
-            | 0xe0b0..=0xe0ca
-            | 0xe0cc..=0xe0d7
-            | 0x1fb00..=0x1fbff
-    )
-}
-
 fn resolved_foreground(
     style: PackedStyle,
     appearance: &TerminalAppearance,
@@ -3233,110 +3023,6 @@ fn contrasted_foreground(foreground: Color, background: Color, minimum: f32) -> 
         cache.insert(key, color);
         color
     })
-}
-
-fn ensure_minimum_contrast(foreground: Color, background: Color, minimum: f32) -> Color {
-    if contrast_ratio(foreground, background) >= minimum {
-        return foreground;
-    }
-    let black = Color::rgb(0, 0, 0);
-    let white = Color::rgb(u8::MAX, u8::MAX, u8::MAX);
-    let lighten = contrast_ratio(white, background) > contrast_ratio(black, background);
-    let extreme = if lighten { white } else { black };
-    if contrast_ratio(extreme, background) < minimum {
-        return extreme;
-    }
-
-    let (lightness, green_red, blue_yellow) = oklab(foreground);
-    let mut near = lightness;
-    let mut far = if lighten { 1.0 } else { 0.0 };
-    for _ in 0..16 {
-        let midpoint = f32::midpoint(near, far);
-        if contrast_ratio(from_oklab(midpoint, green_red, blue_yellow), background) >= minimum {
-            far = midpoint;
-        } else {
-            near = midpoint;
-        }
-    }
-    from_oklab(far, green_red, blue_yellow)
-}
-
-fn contrast_ratio(left: Color, right: Color) -> f32 {
-    let left = relative_luminance(left);
-    let right = relative_luminance(right);
-    (left.max(right) + 0.05) / (left.min(right) + 0.05)
-}
-
-fn relative_luminance(color: Color) -> f32 {
-    let [red, green, blue] = linear_rgb(color);
-    red * 0.2126 + green * 0.7152 + blue * 0.0722
-}
-
-fn linear_rgb(color: Color) -> [f32; 3] {
-    let channel = |value: u8| {
-        let value = f32::from(value) / 255.0;
-        if value <= 0.04045 {
-            value / 12.92
-        } else {
-            ((value + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    [channel(color.r), channel(color.g), channel(color.b)]
-}
-
-fn oklab(color: Color) -> (f32, f32, f32) {
-    let [red, green, blue] = linear_rgb(color);
-    let long = (0.412_221_46 * red + 0.536_332_55 * green + 0.051_445_995 * blue).cbrt();
-    let medium = (0.211_903_5 * red + 0.680_699_5 * green + 0.107_396_96 * blue).cbrt();
-    let short = (0.088_302_46 * red + 0.281_718_85 * green + 0.629_978_7 * blue).cbrt();
-    (
-        0.210_454_26 * long + 0.793_617_8 * medium - 0.004_072_047 * short,
-        1.977_998_5 * long - 2.428_592_2 * medium + 0.450_593_7 * short,
-        0.025_904_037 * long + 0.782_771_77 * medium - 0.808_675_77 * short,
-    )
-}
-
-fn oklab_to_linear_rgb(lightness: f32, green_red: f32, blue_yellow: f32) -> [f32; 3] {
-    let long = (lightness + 0.396_337_78 * green_red + 0.215_803_76 * blue_yellow).powi(3);
-    let medium = (lightness - 0.105_561_346 * green_red - 0.063_854_17 * blue_yellow).powi(3);
-    let short = (lightness - 0.089_484_18 * green_red - 1.291_485_5 * blue_yellow).powi(3);
-    [
-        4.076_741_7 * long - 3.307_711_6 * medium + 0.230_969_94 * short,
-        -1.268_438 * long + 2.609_757_4 * medium - 0.341_319_38 * short,
-        -0.004_196_086_3 * long - 0.703_418_6 * medium + 1.707_614_7 * short,
-    ]
-}
-
-fn from_oklab(lightness: f32, green_red: f32, blue_yellow: f32) -> Color {
-    let in_gamut = |rgb: [f32; 3]| rgb.iter().all(|channel| (-1e-4..=1.0001).contains(channel));
-    let mut rgb = oklab_to_linear_rgb(lightness, green_red, blue_yellow);
-    if !in_gamut(rgb) {
-        let mut kept = 0.0_f32;
-        let mut dropped = 1.0_f32;
-        for _ in 0..12 {
-            let chroma = f32::midpoint(kept, dropped);
-            if in_gamut(oklab_to_linear_rgb(
-                lightness,
-                green_red * chroma,
-                blue_yellow * chroma,
-            )) {
-                kept = chroma;
-            } else {
-                dropped = chroma;
-            }
-        }
-        rgb = oklab_to_linear_rgb(lightness, green_red * kept, blue_yellow * kept);
-    }
-    let channel = |value: f32| {
-        let value = value.clamp(0.0, 1.0);
-        let encoded = if value <= 0.003_130_8 {
-            value * 12.92
-        } else {
-            1.055 * value.powf(1.0 / 2.4) - 0.055
-        };
-        (encoded * 255.0).round() as u8
-    };
-    Color::rgb(channel(rgb[0]), channel(rgb[1]), channel(rgb[2]))
 }
 
 fn cursor_quad(
@@ -3428,20 +3114,6 @@ fn selection_covers(viewport: &TerminalViewport, row: u16, column: u16) -> bool 
             && candidate.row == row
             && candidate.start <= column
             && column < candidate.end
-    })
-}
-
-fn last_visible_row_has_content(
-    viewport: &TerminalViewport,
-    local: Option<&LocalColors>,
-    visible_rows: u16,
-) -> bool {
-    let row = visible_rows.min(viewport.rows).saturating_sub(1);
-    viewport.row(row).is_some_and(|cells| {
-        cells.iter().copied().any(|cell| {
-            !matches!(viewport.glyph(cell), Glyph::Empty)
-                || style_for(viewport, local, cell).background() != viewport.background
-        })
     })
 }
 
@@ -3612,18 +3284,7 @@ mod overlays {
         Close,
     }
 
-    /// The find bar's match count, or why there is none.
-    #[must_use]
-    pub fn search_result_text(status: Option<SearchStatus>) -> String {
-        match status {
-            Some(status) if status.invalid_pattern() => "Invalid pattern".to_owned(),
-            Some(status) if status.pending() => "Searching…".to_owned(),
-            Some(status) if status.total > 0 => {
-                format!("{} / {}", status.current(), status.total)
-            }
-            _ => "0 matches".to_owned(),
-        }
-    }
+    pub use zz_client::terminal_view::search_result_text;
 
     /// The find bar at the top of a terminal: the query field, the match
     /// count, and the regex, case, previous, next and close buttons. It keeps
@@ -3719,11 +3380,7 @@ mod overlays {
                             FindBarAction::ToggleCase,
                         )
                         .selected(query.case == SearchCase::Sensitive)
-                        .tooltip(match query.case {
-                            SearchCase::Smart => "Smart case",
-                            SearchCase::Sensitive => "Match case",
-                            SearchCase::Insensitive => "Ignore case",
-                        }),
+                        .tooltip(zz_client::terminal_view::search_case_label(query.case)),
                     )
                     .child(
                         button(
