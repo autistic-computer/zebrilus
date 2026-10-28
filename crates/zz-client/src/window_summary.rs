@@ -578,6 +578,7 @@ mod tests {
             modal: None,
             sx: 80,
             sy: 24,
+            pane_base_index: 0,
         }
     }
 

@@ -15,7 +15,7 @@ fn payload(frame: &[u8]) -> &[u8] {
 
 #[test]
 fn protocol_version_on_this_commit_is_one_hundred_and_seven() {
-    assert_eq!(PROTOCOL_VERSION, 115);
+    assert_eq!(PROTOCOL_VERSION, 116);
 }
 
 #[test]
@@ -223,12 +223,13 @@ fn control_events_and_window_layout_fields_keep_the_frozen_wire_tail() {
         modal: None,
         sx: 80,
         sy: 24,
+        pane_base_index: 1,
     };
     assert_eq!(
         postcard::to_stdvec(&window).expect("encode window"),
         [
             1, 2, 1, b'w', 1, 3, 0, 0, 3, 0, 1, b'L', 1, b'V', 1, b'S', 1, 0, 2, 2, 3, 1, 3, 1, 3,
-            0, 0, 80, 24
+            0, 0, 80, 24, 1
         ]
     );
 }
@@ -332,7 +333,7 @@ fn dark_interactive_hello_encodes_version_instance_and_process_id_as_varints() {
     assert_eq!(
         frame,
         [
-            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x73, 0x00, 0x00, 0x73, 0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0x00, 0x00, 0x74, 0x00, 0x00, 0x00, 0x00,
             0x01, 0x01, 0x00, 0x00, 0x00, 0x07,
         ]
     );
