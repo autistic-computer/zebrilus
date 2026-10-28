@@ -10,6 +10,8 @@ mod driver_sheet;
 mod fleet;
 mod floating;
 mod hosts;
+#[cfg(target_os = "ios")]
+pub(crate) use hosts::host_title;
 mod picker;
 mod providers;
 mod settings;
@@ -311,6 +313,9 @@ fn watch_connection(
                     this.pane_layout_override = None;
                 }
                 zz_client::CoreEvent::FocusSidebar => this.focus_sidebar(window, cx),
+                zz_client::CoreEvent::OpenPathPicker { pane, start_dir } => {
+                    this.open_files_palette(*pane, start_dir.clone(), window, cx);
+                }
                 zz_client::CoreEvent::CommandPromptChanged => {
                     this.prompt_revision = this.prompt_revision.wrapping_add(1).max(1);
                 }
@@ -874,6 +879,45 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.show_palette(
+            move |backend, window, cx| CommandPaletteView::new_unified(backend, mode, window, cx),
+            window,
+            cx,
+        );
+    }
+
+    /// `prefix F`: the palette in `&` mode on `pane`'s folder, or the `-c`
+    /// folder, putting what you pick at that pane's cursor.
+    fn open_files_palette(
+        &mut self,
+        pane: zz_protocol::PaneId,
+        start_dir: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let start = start_dir
+            .filter(|dir| dir.starts_with(['/', '~']))
+            .map(|dir| zz_ui::files::start_dir(Some(&dir), None))
+            .unwrap_or_default();
+        self.show_palette(
+            move |backend, window, cx| {
+                CommandPaletteView::new_target(backend, &start, Some(pane), window, cx)
+            },
+            window,
+            cx,
+        );
+    }
+
+    fn show_palette(
+        &mut self,
+        build: impl FnOnce(
+            Rc<dyn zz_ui::command::PaletteBackend>,
+            &mut Window,
+            &mut Context<CommandPaletteView>,
+        ) -> CommandPaletteView,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let core = &self.connection.read(cx).core;
         if core.menu().is_some() || core.confirm().is_some() {
             return;
@@ -897,7 +941,7 @@ impl AppShell {
             );
         }
         let backend = self.palette_backend();
-        let palette = cx.new(|cx| CommandPaletteView::new_unified(backend, mode, window, cx));
+        let palette = cx.new(|cx| build(backend, window, cx));
         let connected = self.connection.read(cx).connected;
         palette.update(cx, |palette, cx| palette.offer_driver(connected, cx));
         self.observe_palette(&palette, window, cx);

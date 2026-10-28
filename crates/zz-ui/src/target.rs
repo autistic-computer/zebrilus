@@ -10,9 +10,8 @@
 //! `prefix F`, and the Driver chat's `@` mentions, which go out with their
 //! host written.
 
-use std::{collections::HashMap, ops::Range, rc::Rc, sync::Arc};
+use std::{ops::Range, rc::Rc, sync::Arc};
 
-use zz_client::path_rank;
 use zz_gpui::{
     Action, App, Context, Entity, EventEmitter, InteractiveElement, IntoElement, MouseButton,
     Pixels, Render, ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle,
@@ -26,6 +25,7 @@ use crate::{
         PaletteHint, PaletteHostId, PaletteRow, PaletteStatus, PaletteTarget,
         command_palette_entry, command_palette_row_height, fuzzy_match, palette_hint,
     },
+    files::{FileRow, GitMarks, Listing, file_rows, mark_letter},
     h_flex,
     input::{Enter, Escape, IndentInline, InputState, MoveDown, MoveUp},
     v_flex,
@@ -450,81 +450,6 @@ impl Place<'_> {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub(crate) struct GitMarks {
-    exact: HashMap<String, GitMark>,
-    dirs: Vec<(String, GitMark)>,
-}
-
-impl GitMarks {
-    pub(crate) fn extend(&mut self, marks: Vec<(String, GitMark)>) {
-        for (rel, mark) in marks {
-            if rel.ends_with('/') {
-                self.dirs.push((rel, mark));
-            } else {
-                self.exact.insert(rel, mark);
-            }
-        }
-    }
-
-    pub(crate) fn get(&self, rel: &str) -> Option<GitMark> {
-        self.exact.get(rel).copied().or_else(|| {
-            self.dirs
-                .iter()
-                .find(|(prefix, _)| {
-                    rel.starts_with(prefix.as_str()) || rel == prefix.trim_end_matches('/')
-                })
-                .map(|(_, mark)| *mark)
-        })
-    }
-}
-
-pub(crate) const fn mark_letter(mark: GitMark) -> &'static str {
-    match mark {
-        GitMark::Modified => "M",
-        GitMark::Added => "A",
-        GitMark::Untracked => "U",
-        GitMark::Conflicted => "C",
-    }
-}
-
-/// Everything under one folder on one host, as the daemon walks it.
-#[derive(Debug, Default)]
-struct Listing {
-    host: String,
-    /// The folder asked for, backslashes resolved.
-    dir: String,
-    request: Option<u64>,
-    root: Option<PathListRoot>,
-    chunks: Vec<Arc<[PathEntry]>>,
-    marks: Arc<GitMarks>,
-    error: Option<SharedString>,
-    done: bool,
-    truncated: bool,
-}
-
-impl Listing {
-    fn new(host: &str, dir: String) -> Self {
-        Self {
-            host: host.to_owned(),
-            dir,
-            ..Self::default()
-        }
-    }
-
-    /// Whether the listing holds `dir` on `host` whole: `dir` is its folder
-    /// or one under it, and the walk finished without stopping short.
-    fn covers(&self, host: &str, dir: &str) -> bool {
-        self.host == host
-            && dir.starts_with(&self.dir)
-            && (dir == self.dir || (self.done && !self.truncated && self.error.is_none()))
-    }
-
-    fn is_empty(&self) -> bool {
-        self.chunks.iter().all(|chunk| chunk.is_empty())
-    }
-}
-
 /// What the files level ranks off the main thread.
 struct FileQuery {
     chunks: Vec<Arc<[PathEntry]>>,
@@ -541,73 +466,30 @@ struct FileQuery {
 /// The rows under `query.dir`: its own entries, folders first, while the
 /// filter is empty, and the best matches anywhere under it once you type.
 fn file_items(query: &FileQuery) -> Vec<TargetItem> {
-    let base = query.base.as_str();
     let place = Place {
         host: &query.host,
         written: query.written,
     };
-    let entries = query
-        .chunks
-        .iter()
-        .flat_map(|chunk| chunk.iter())
-        .filter(|entry| entry.rel.len() > base.len() && entry.rel.starts_with(base))
-        .collect::<Vec<_>>();
-    let label = |entry: &PathEntry| entry.rel[base.len()..].trim_end_matches('/').to_owned();
-    let item = |entry: &PathEntry, matches| {
-        let name = label(entry);
-        let (kind, icon) = match entry.kind {
-            PathKind::Dir => (TargetKind::Dir, IconName::Folder),
-            PathKind::File => (TargetKind::File, IconName::File),
-        };
-        let mut item = TargetItem::new(
-            kind,
-            name.clone(),
-            "",
-            &place,
-            &format!("{}{}", query.dir, escape(&name)),
-            icon,
-        );
-        item.matches = matches;
-        item.mark = query.marks.get(&entry.rel);
-        item.entry = Some(entry.clone());
-        item
-    };
-    if query.filter.is_empty() {
-        let mut shown = entries
-            .into_iter()
-            .filter(|entry| !label(entry).contains('/'))
-            .collect::<Vec<_>>();
-        shown.sort_by(|left, right| {
-            path_rank::browse_order(
-                (left.rel.as_str(), left.kind == PathKind::Dir),
-                (right.rel.as_str(), right.kind == PathKind::Dir),
-            )
-        });
-        shown.truncate(TARGET_MAX_ROWS);
-        return shown
-            .into_iter()
-            .map(|entry| item(entry, Vec::new()))
-            .collect();
-    }
-    let labels = entries.iter().map(|entry| label(entry)).collect::<Vec<_>>();
-    let labels = labels.iter().map(String::as_str).collect::<Vec<_>>();
-    let filter = query.filter.as_str();
-    let kept = path_rank::rank(
-        filter,
-        &labels,
-        |index| {
-            path_rank::path_prior(
-                filter,
-                labels[index],
-                query.marks.get(&entries[index].rel).is_some(),
-            )
-        },
-        TARGET_MAX_ROWS,
-    );
-    let kept_labels = kept.iter().map(|index| labels[*index]).collect::<Vec<_>>();
-    kept.into_iter()
-        .zip(path_rank::highlights(filter, &kept_labels))
-        .map(|(index, matches)| item(entries[index], matches))
+    file_rows(&query.chunks, &query.marks, &query.base, &query.filter)
+        .into_iter()
+        .map(|row| {
+            let FileRow {
+                entry,
+                name,
+                matches,
+                mark,
+            } = row;
+            let (kind, icon) = match entry.kind {
+                PathKind::Dir => (TargetKind::Dir, IconName::Folder),
+                PathKind::File => (TargetKind::File, IconName::File),
+            };
+            let rest = format!("{}{}", query.dir, escape(&name));
+            let mut item = TargetItem::new(kind, name, "", &place, &rest, icon);
+            item.matches = matches;
+            item.mark = mark;
+            item.entry = Some(entry);
+            item
+        })
         .collect()
 }
 
@@ -1244,13 +1126,7 @@ impl TargetPicker {
         let Some(listing) = self.listing_for(host, request_id) else {
             return;
         };
-        match result {
-            Ok(root) => listing.root = Some(root),
-            Err(error) => {
-                listing.error = Some(error.into());
-                listing.done = true;
-            }
-        }
+        listing.begin(result);
         self.relist(cx);
     }
 
@@ -1266,14 +1142,7 @@ impl TargetPicker {
         let Some(listing) = self.listing_for(host, request_id) else {
             return;
         };
-        let added = !entries.is_empty();
-        if added {
-            listing.chunks.push(Arc::clone(entries));
-        }
-        let finished = done && !listing.done;
-        listing.done |= done;
-        listing.truncated |= truncated;
-        if added || finished {
+        if listing.chunk(entries, done, truncated) {
             self.relist(cx);
         }
     }
@@ -1288,7 +1157,7 @@ impl TargetPicker {
         let Some(listing) = self.listing_for(host, request_id) else {
             return;
         };
-        Arc::make_mut(&mut listing.marks).extend(marks);
+        listing.git(marks);
         self.relist(cx);
     }
 
