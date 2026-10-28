@@ -1146,7 +1146,24 @@ fn phone_frame(content: impl IntoElement, cx: &App) -> AnyElement {
 }
 
 fn overview_card(scope: &'static str, working: bool, unread: bool, cx: &App) -> AnyElement {
-    let ground = cx.theme().ground_of(roles::PHONE_PILL);
+    phone_frame(
+        div()
+            .absolute()
+            .left(px(16.0))
+            .right(px(16.0))
+            .bottom(px(24.0))
+            .child(driver_card(scope, working, unread, cx)),
+        cx,
+    )
+}
+
+pub(crate) fn driver_card(
+    scope: &'static str,
+    working: bool,
+    unread: bool,
+    cx: &App,
+) -> AnyElement {
+    let ground = cx.theme().ground_of(roles::PHONE_DRIVER_CARD);
     let message = if working {
         ChatTyping::new((scope, 0_usize))
             .steps(COMMIT_STEPS)
@@ -1165,23 +1182,20 @@ fn overview_card(scope: &'static str, working: bool, unread: bool, cx: &App) -> 
             .bg(cx.theme().accent)
             .into_any_element()
     });
-    phone_frame(
-        div()
-            .absolute()
-            .left(px(16.0))
-            .right(px(16.0))
-            .bottom(px(24.0))
-            .child(zz_ui::agent::chat::phone_chat_card(
-                (scope, 2_usize),
-                chat_header(&driver(), "xps", dot, cx),
-                message,
-                cx,
-            )),
+    zz_ui::agent::chat::phone_chat_card(
+        (scope, 2_usize),
+        chat_header(&driver(), "xps", dot, cx),
+        message,
         cx,
     )
+    .into_any_element()
 }
 
 fn phone_sheet(input: &Entity<InputState>, cx: &App) -> AnyElement {
+    phone_frame(driver_sheet(input, cx), cx)
+}
+
+pub(crate) fn driver_sheet(input: &Entity<InputState>, cx: &App) -> zz_ui::compact::BottomSheet {
     let ground = cx.theme().ground_of(roles::DRIVER_DRAWER);
     let body = div()
         .flex()
@@ -1232,26 +1246,23 @@ fn phone_sheet(input: &Entity<InputState>, cx: &App) -> AnyElement {
                     ground: Some(ground),
                 }),
         );
-    phone_frame(
-        zz_ui::compact::bottom_sheet(
-            "phone-sheet",
-            "Driver",
-            [zz_ui::compact::sheet_close("phone-sheet-close").into_any_element()],
-            body,
-            px(PHONE_SAFE_BOTTOM),
-            |_, _| {},
-        )
-        .surface_role(roles::DRIVER_DRAWER)
-        .header_role(roles::PHONE_BAR)
-        .full(px(PHONE_SAFE_TOP))
-        .heading(zz_ui::agent::chat::phone_chat_place(
-            "xps",
-            Program::by_id("claude"),
-            |_, _, _| {},
-            cx,
-        )),
-        cx,
+    zz_ui::compact::bottom_sheet(
+        "phone-sheet",
+        "Driver",
+        [zz_ui::compact::sheet_close("phone-sheet-close").into_any_element()],
+        body,
+        px(PHONE_SAFE_BOTTOM),
+        |_, _| {},
     )
+    .surface_role(roles::DRIVER_DRAWER)
+    .header_role(roles::PHONE_BAR)
+    .full(px(PHONE_SAFE_TOP))
+    .heading(zz_ui::agent::chat::phone_chat_place(
+        "xps",
+        Program::by_id("claude"),
+        |_, _, _| {},
+        cx,
+    ))
 }
 
 fn phones(state: &Phones, _: &mut Window, cx: &mut App) -> AnyElement {

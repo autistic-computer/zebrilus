@@ -1,6 +1,6 @@
 use crate::story::Story;
 
-mod chooser;
+pub(super) mod chooser;
 mod dialogs;
 mod menus;
 pub(super) mod palette;

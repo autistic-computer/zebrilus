@@ -340,17 +340,13 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
 }
 
 pub fn guides(depths: Rc<[usize]>, active_row: Option<usize>, cx: &App) -> WorkspaceIndentGuides {
-    let color = cx.theme().foreground.muted();
     WorkspaceIndentGuides::new(
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),
         px(WORKSPACE_TREE_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
         px(4.0),
-        IndentGuideColors {
-            default: cx.theme().divider_color(),
-            active: color,
-        },
+        IndentGuideColors::tree(cx),
     )
 }
 

@@ -1,6 +1,6 @@
 use crate::{
-    ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, Kind, PaintState,
-    Sizable as _, StyledExt as _, Surface, Tone, badge::Badge, kbd::Kbd, list::ListItem, roles,
+    ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, PaintState, Sizable as _,
+    StyledExt as _, Surface, Tone, badge::Badge, kbd::Kbd, list::ListItem, roles,
 };
 use zz_client::chooser::SEARCH_HINTS;
 pub use zz_client::chooser::{ChooserHint, chooser_has_key_gutter, chooser_subtitle};
@@ -106,7 +106,7 @@ impl RenderOnce for ChooserModal {
                 .flex_none()
                 .px(px(12.0))
                 .py(px(9.0))
-                .surface(Surface::new(Kind::Bar.role()).on(modal.ground), cx)
+                .surface(Surface::new(roles::PICKER_NOTICE).on(modal.ground), cx)
                 .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
                 .font_family(self.font_family.clone())
                 .text_size(crate::rems_from_px(11.0))

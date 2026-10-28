@@ -14,7 +14,7 @@ use zz_ui::{
 use zz_ui::{
     StyledExt as _,
     button::ButtonVariants as _,
-    compact::{bottom_sheet, close_sheet, floating_sheet, sheet_action, sheet_close, sheet_inset},
+    compact::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
     input::{Input, InputEvent, InputState},
     roles,
 };
@@ -598,21 +598,27 @@ impl AppShell {
         if connected && !on_screen {
             let target = target.clone();
             rows.push(
-                sheet_action("host-sheet-open", IconName::ArrowRight, "Open", cx).on_click(
-                    cx.listener(move |this, _, window, cx| {
-                        this.hosts.sheet = None;
-                        this.switch_host(&target, None, None, window, cx);
-                        this.settings = None;
-                        cx.notify();
-                    }),
-                ),
+                sheet_row(
+                    "host-sheet-open",
+                    roles::PHONE_ROW,
+                    Some(Icon::new(IconName::ArrowRight)),
+                    "Open",
+                    cx,
+                )
+                .on_click(cx.listener(move |this, _, window, cx| {
+                    this.hosts.sheet = None;
+                    this.switch_host(&target, None, None, window, cx);
+                    this.settings = None;
+                    cx.notify();
+                })),
             );
         }
         let toggle = target.clone();
         rows.push(if connected || busy {
-            sheet_action(
+            sheet_row(
                 "host-sheet-disconnect",
-                IconName::Stop,
+                roles::PHONE_ROW,
+                Some(Icon::new(IconName::Stop)),
                 if connected { "Disconnect" } else { "Cancel" },
                 cx,
             )
@@ -620,22 +626,33 @@ impl AppShell {
                 this.disconnect_host(&toggle, window, cx);
             }))
         } else {
-            sheet_action("host-sheet-connect", IconName::Server, "Connect", cx).on_click(
-                cx.listener(move |this, _, window, cx| {
-                    this.connect_host(toggle.clone(), window, cx);
-                }),
+            sheet_row(
+                "host-sheet-connect",
+                roles::PHONE_ROW,
+                Some(Icon::new(IconName::Server)),
+                "Connect",
+                cx,
             )
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.connect_host(toggle.clone(), window, cx);
+            }))
         });
         rows.push(
-            sheet_action("host-sheet-remove", IconName::Xmark, "Remove host", cx)
-                .text_color(danger)
-                .on_click(cx.listener(move |this, _, window, cx| {
-                    this.disconnect_host(&target, window, cx);
-                    this.hosts.saved.remove(&target);
-                    this.hosts.saved.save();
-                    close_sheet(HOST_SHEET, cx);
-                    cx.notify();
-                })),
+            sheet_row(
+                "host-sheet-remove",
+                roles::PHONE_ROW,
+                Some(Icon::new(IconName::Xmark)),
+                "Remove host",
+                cx,
+            )
+            .text_color(danger)
+            .on_click(cx.listener(move |this, _, window, cx| {
+                this.disconnect_host(&target, window, cx);
+                this.hosts.saved.remove(&target);
+                this.hosts.saved.save();
+                close_sheet(HOST_SHEET, cx);
+                cx.notify();
+            })),
         );
         let close =
             sheet_close("host-sheet-close").on_click(|_, _, cx| close_sheet(HOST_SHEET, cx));

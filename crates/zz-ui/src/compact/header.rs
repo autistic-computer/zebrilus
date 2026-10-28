@@ -134,7 +134,7 @@ pub fn compact_tabs_button(id: impl Into<ElementId>, count: usize, cx: &App) -> 
     Button::new(id)
         .ghost()
         .compact()
-        .surface_role(roles::PANE_HEADER_BUTTON)
+        .surface_role(roles::BROWSER_BUTTON)
         .size(PANE_HEADER_CONTROL_HEIGHT)
         .text_color(color)
         .child(

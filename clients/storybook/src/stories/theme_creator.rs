@@ -6,6 +6,7 @@ use zz_gpui::{
     prelude::*, px, relative, size,
 };
 use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
+use zz_terminal::{SearchQuery, SearchStatus};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
     agent::{agent_jump_to_bottom_button, chat::chat_button},
@@ -18,10 +19,9 @@ use zz_ui::{
         unified_command_palette_input,
     },
     compact::{
-        ArrowDirection, BENTO_INSET, BentoSpan, BottomSheet, PillLabel, ToolKeys, WhichKeyList,
-        arrow_pad_bubble, bento_grid, bottom_sheet, compact_bar_button, compact_floating_bar,
-        compact_floating_group, compact_floating_pill, compact_hud, mini_pane, overview_count,
-        overview_session_heading, page_dots, sheet_action, sheet_close, sheet_row, window_layout,
+        ArrowDirection, BottomSheet, PillLabel, ToolKeys, WhichKeyList, arrow_pad_bubble,
+        bottom_sheet, compact_bar_button, compact_floating_bar, compact_floating_pill, compact_hud,
+        overview_count, page_dots, sheet_close, sheet_row,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
@@ -42,6 +42,7 @@ use zz_ui::{
     settings::{
         SettingEntry, SettingsStack,
         appearance::{picker_tile, theme_preview},
+        panes_preview::PanesPreview,
         settings_card_ground,
     },
     shell::{
@@ -51,6 +52,7 @@ use zz_ui::{
     },
     slider::DiscreteSlider,
     switch::Switch,
+    terminal::terminal_find_bar,
     text::{TextView, TextViewStyle},
     tooltip::Tooltip,
     v_flex,
@@ -60,11 +62,15 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
-        chat::{bottom_scroll, driver_input, driver_palette},
+        chat::{bottom_scroll, driver_card, driver_input, driver_palette, driver_sheet},
         lens,
     },
     console::{
-        phone::{binding_rows, groups, key_row, placement, tool_keys},
+        chooser::confirm_prompt,
+        phone::{
+            binding_rows, groups, host_bar, host_page, hosts_bar, hosts_page, key_row, placement,
+            tool_keys,
+        },
         which_key::{prefix_header, prefix_rows},
     },
     kit::menus::{SplitRight, bind_keys, pane_menu, view_menu},
@@ -100,7 +106,7 @@ pub const STORY: Story = Story {
         Section {
             id: "flat",
             name: "Flat sidebar",
-            summary: "The flat sidebar with the driver chat under it, beside Claude Code with its lens open and two terminals. Drag the line over the chat to move the split.",
+            summary: "The flat sidebar with the driver's last message under it, beside Claude Code with its lens open and two terminals. The keyboard cursor sits on a window, and a host that is not connected offers Connect.",
             build: Flat::view,
         },
         Section {
@@ -112,8 +118,15 @@ pub const STORY: Story = Story {
         Section {
             id: "panes",
             name: "Panes",
-            summary: "Badges, the drop preview, the drag chip and a popup over panes.",
-            build: |_, cx| stateless(panes, cx),
+            summary: "The find bar, badges, the drop preview, the drag chip and a popup over panes.",
+            build: |window, cx| {
+                stateful(
+                    window,
+                    cx,
+                    |window, cx| cx.new(|cx| InputState::new(window, cx).default_value("error")),
+                    panes,
+                )
+            },
         },
         Section {
             id: "pip",
@@ -148,7 +161,7 @@ pub const STORY: Story = Story {
         Section {
             id: "phone",
             name: "Phone",
-            summary: "The phone: a terminal page with a HUD, the key row's prefix menu and arrow pad, the bindings list, the overview's pane cards and the sessions sheet.",
+            summary: "The phone: a terminal page with a HUD, the key row's prefix menu and arrow pad, the bindings list, the sessions sheet, a host's windows and the Hosts page with its Add host tile.",
             build: Phone::view,
         },
         Section {
@@ -159,7 +172,12 @@ pub const STORY: Story = Story {
                 stateful(
                     window,
                     cx,
-                    |window, cx| cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
+                    |window, cx| {
+                        (
+                            cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
+                            driver_input("", window, cx),
+                        )
+                    },
                     drawers,
                 )
             },
@@ -200,29 +218,6 @@ const SAFE_BOTTOM: f32 = 34.0;
 const DRAWER_SCREEN_HEIGHT: f32 = 480.0;
 const PHONE_PAGE_HEIGHT: f32 = 190.0;
 const KEYS_PAGE_HEIGHT: f32 = 470.0;
-const CARD_LINES: [&str; 6] = [
-    "$ cargo test",
-    "Compiling zz-ui",
-    "Finished test",
-    "ok. 214 passed",
-    "$ git status",
-    "On branch main",
-];
-const OVERVIEW: [(u32, &str, &[(IconName, &str, bool, bool)]); 2] = [
-    (
-        1,
-        "editor",
-        &[
-            (IconName::SquareTerminal, "cargo test", true, false),
-            (IconName::RobotFace, "Review sidebar", false, true),
-        ],
-    ),
-    (
-        2,
-        "docs",
-        &[(IconName::BrandChrome, "zed.dev", false, false)],
-    ),
-];
 const SESSIONS: [(&str, usize, bool); 3] =
     [("work", 3, true), ("scratch", 1, false), ("logs", 2, false)];
 const READING: &str = "Pinned tabs keep a `28px` floor, and the rest share what is left:\n\n\
@@ -285,7 +280,7 @@ struct Flat {
 
 impl Flat {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let flat = cx.new(|_| Live::new(None).driver());
+        let flat = cx.new(|_| Live::new(None).driver().cursor_and_offline());
         let agent = lens::tiled(window, cx);
         cx.new(|_| Self { flat, agent }).into()
     }
@@ -675,7 +670,7 @@ impl Render for Controls {
             window,
             vec![
                 vec![self.connect(cx)],
-                vec![self.preferences(cx)],
+                vec![self.preferences(cx), panes_preview()],
                 vec![buttons(cx), self.settings(cx)],
             ],
         )
@@ -814,6 +809,11 @@ impl Render for Floating {
                 .child(self.tooltip.clone()),
             cx,
         );
+        let chooser = plate(
+            "showcase-chooser",
+            confirm_prompt("showcase-chooser-modal", cx),
+            cx,
+        );
         let which_key = plate(
             "showcase-which-key",
             WhichKeyView::new(prefix_header(), prefix_rows()).fit(size(
@@ -833,6 +833,7 @@ impl Render for Floating {
                     vec![palette, dialog],
                 ],
             ))
+            .child(chooser)
             .child(which_key)
     }
 }
@@ -935,102 +936,25 @@ impl Phone {
     }
 
     fn overview(cx: &App) -> AnyElement {
-        let theme = cx.theme();
-        let muted = theme.foreground.muted();
-        let preview = || {
-            v_flex()
-                .px(px(6.0))
-                .font_family(theme.mono_font_family.clone())
-                .text_size(px(7.0))
-                .line_height(px(9.0))
-                .text_color(muted)
-                .children(CARD_LINES.map(|line| div().whitespace_nowrap().child(line)))
-                .into_any_element()
-        };
-        let placement = placement();
-        let bar = compact_floating_bar(
-            compact_floating_group(
-                [compact_bar_button(
-                    "showcase-overview-back",
-                    IconName::ChevronLeft,
-                )],
-                &placement,
-                cx,
-            ),
-            &placement,
-            cx,
-        )
-        .child(compact_floating_pill(
-            "showcase-overview-host",
-            PillLabel {
-                icon: IconName::Server,
-                title: "macbook".into(),
-                meta: "2 sessions".into(),
-                warning: false,
-            },
-            div(),
-            &placement,
-            cx,
-        ))
-        .child(compact_floating_group(
-            [
-                compact_bar_button("showcase-overview-new", IconName::Plus),
-                compact_bar_button("showcase-overview-chat", IconName::Chat),
-            ],
-            &placement,
-            cx,
-        ));
-        let tiles = OVERVIEW
-            .iter()
-            .map(|(index, name, panes)| {
-                let share = 1.0 / panes.len() as f32;
-                let layout = panes
-                    .iter()
-                    .enumerate()
-                    .map(|(slot, (icon, title, current, attention))| {
-                        (
-                            [share * slot as f32, 0.0, share, 1.0],
-                            mini_pane(
-                                icon.clone(),
-                                (panes.len() > 1).then(|| (*title).into()),
-                                (*icon == IconName::SquareTerminal).then(preview),
-                                theme.background,
-                                *current,
-                                *attention,
-                                cx,
-                            )
-                            .into_any_element(),
-                        )
-                    })
-                    .collect();
-                (
-                    BentoSpan::for_window(panes.len()),
-                    zz_ui::compact::window_tile(
-                        ("showcase-overview-window", *index as usize),
-                        ("showcase-overview-press", *index as usize),
-                        *index,
-                        *name,
-                        None,
-                        panes.iter().any(|pane| pane.3),
-                        window_layout(layout),
-                        cx,
-                    )
-                    .into_any_element(),
-                )
-            })
-            .collect();
-        let sections = [
-            overview_session_heading("work", cx).into_any_element(),
-            div()
-                .px(px(BENTO_INSET))
-                .child(bento_grid(px(PHONE_WIDTH - BENTO_INSET * 2.0), tiles))
-                .into_any_element(),
-        ];
         phone_frame("showcase-phone-overview", cx)
-            .bg(theme.surface(Elevation::Panel).fill)
-            .children(sections)
-            .child(div().flex_1().min_h(px(12.0)))
-            .child(bar)
+            .child(host_page(cx))
+            .child(host_bar(
+                "showcase-overview-bar",
+                "macbook",
+                "2 sessions",
+                0,
+                cx,
+            ))
+            .into_any_element()
+    }
+
+    fn hosts(cx: &App) -> AnyElement {
+        phone_frame("showcase-phone-hosts", cx)
+            .child(hosts_page(
+                Some(driver_card("showcase-driver-card", false, true, cx)),
+                cx,
+            ))
+            .child(hosts_bar(cx))
             .into_any_element()
     }
 
@@ -1111,7 +1035,7 @@ impl Render for Phone {
             vec![
                 vec![self.keys(cx), Self::bindings(cx)],
                 vec![self.terminal(cx), Self::sheet(cx)],
-                vec![Self::overview(cx)],
+                vec![Self::overview(cx), Self::hosts(cx)],
             ],
         )
     }
@@ -1159,7 +1083,11 @@ fn drawer(
     .header_role(zz_ui::roles::PHONE_BAR)
 }
 
-fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
+fn drawers(
+    (destination, driver): &(Entity<InputState>, Entity<InputState>),
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
     use zz_ui::roles;
     let cx: &App = cx;
     let muted = cx.theme().foreground.muted();
@@ -1193,15 +1121,22 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                         .child("ssh: connect to host alienware port 22: Connection refused"),
                 ),
         )
-        .child(sheet_action(
+        .child(sheet_row(
             "drawer-host-connect",
-            IconName::Server,
+            roles::PHONE_ROW,
+            Some(zz_ui::Icon::new(IconName::Server)),
             "Connect",
             cx,
         ))
         .child(
-            sheet_action("drawer-host-remove", IconName::Xmark, "Remove host", cx)
-                .text_color(cx.theme().danger),
+            sheet_row(
+                "drawer-host-remove",
+                roles::PHONE_ROW,
+                Some(zz_ui::Icon::new(IconName::Xmark)),
+                "Remove host",
+                cx,
+            )
+            .text_color(cx.theme().danger),
         );
     let note = |text: &'static str| {
         div()
@@ -1308,7 +1243,10 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                     cx,
                 ),
             ],
-            vec![drawer_screen("drawer-screen-bindings", bindings, cx)],
+            vec![
+                drawer_screen("drawer-screen-bindings", bindings, cx),
+                drawer_screen("drawer-screen-driver", driver_sheet(driver, cx), cx),
+            ],
         ],
     )
     .into_any_element()
@@ -1397,7 +1335,8 @@ fn status_bar(cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
+fn panes(find: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
     let gaps = crate::pane().gaps;
     let tags = TerminalPane::new(4, "cargo test", BUILD)
         .active(true)
@@ -1408,6 +1347,14 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
                 pane_overlay_stack(
                     PaneOverlayCorner::TopRight,
                     vec![
+                        terminal_find_bar(
+                            find,
+                            &SearchQuery::literal("error"),
+                            Some(SearchStatus::new(2, 7)),
+                            |_, _, _| {},
+                            cx,
+                        )
+                        .into_any_element(),
                         terminal_mode_indicator(Some("Copy mode"), "12 / 340", cx)
                             .into_any_element(),
                         pane_sync_badge(cx).into_any_element(),
@@ -1510,7 +1457,7 @@ fn panes(_: &mut Window, cx: &mut App) -> AnyElement {
     let layout = pane_split_surface(
         "showcase-panes-split",
         PaneSplitAxis::Horizontal,
-        0.34,
+        0.44,
         false,
         gaps,
         gap(gaps),
@@ -1688,6 +1635,19 @@ fn start_page(address: &Entity<InputState>, window: &Window, cx: &App) -> AnyEle
                 .min_h_0()
                 .child(browser_start_surface(recents)),
         )
+        .into_any_element()
+}
+
+fn panes_preview() -> AnyElement {
+    let pane = crate::pane();
+    div()
+        .id("showcase-panes-preview")
+        .w_full()
+        .child(PanesPreview {
+            gaps: pane.gaps,
+            margin: pane.margin,
+            inactive_opacity: pane.inactive,
+        })
         .into_any_element()
 }
 

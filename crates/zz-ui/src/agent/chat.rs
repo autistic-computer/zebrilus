@@ -907,7 +907,7 @@ pub fn phone_chat_card(
     message: impl IntoElement,
     cx: &App,
 ) -> zz_gpui::Stateful<zz_gpui::Div> {
-    let layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
+    let layer = cx.theme().layer(roles::PHONE_DRIVER_CARD, PaintState::Rest);
     v_flex()
         .id(id)
         .debug_selector(|| "phone-chat-card".to_owned())
