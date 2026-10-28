@@ -1102,6 +1102,17 @@ impl AppShell {
                         cx.notify();
                     })),
             ),
+            SettingEntry::new("Vim mode")
+                .description("Esc for normal mode: j k move, l into, h up")
+                .control(
+                    Switch::new("settings-palette-vim-mode")
+                        .checked(self.preferences.palette_vim_mode)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.preferences.palette_vim_mode = !this.preferences.palette_vim_mode;
+                            this.preferences.save();
+                            cx.notify();
+                        })),
+                ),
         ]
     }
 }

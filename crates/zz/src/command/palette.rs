@@ -251,6 +251,7 @@ impl PaletteBackend for MuxPalette {
             grouped: crate::config::palette_window_layout(cx)
                 == crate::config::PaletteWindowLayout::Grouped,
             show_keys: crate::config::palette_show_keys(cx),
+            vim: crate::config::palette_vim_mode(cx),
         }
     }
 

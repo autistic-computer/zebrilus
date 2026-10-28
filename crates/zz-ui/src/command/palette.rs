@@ -14,7 +14,7 @@ use crate::{
     row_corners,
 };
 
-use super::command_palette_row_height;
+use super::{command_palette_row_height, palette_vim::PaletteVimMode};
 
 const PROGRAM_PILL_TILE: f32 = 14.0;
 
@@ -110,6 +110,20 @@ fn pill(pill: PalettePill, cx: &App) -> Badge {
                 cx,
             ))
             .child(label),
+    }
+}
+
+pub fn palette_vim_badge(mode: PaletteVimMode, pending: Option<char>, cx: &App) -> Badge {
+    let label: SharedString = match pending {
+        Some(key) => format!("{} {key}", mode.label()).into(),
+        None => mode.label().into(),
+    };
+    let badge = Badge::new(label)
+        .flex_none()
+        .font_family(cx.theme().mono_font_family.clone());
+    match mode {
+        PaletteVimMode::Normal => badge.tone(Tone::Primary).emphasis(Emphasis::Solid),
+        PaletteVimMode::Insert => badge,
     }
 }
 

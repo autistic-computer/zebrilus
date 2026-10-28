@@ -218,6 +218,18 @@ pub const STORY: Story = Story {
             summary: "With no driver running, ? offers to wake it; with driver-agent off, the row says so and Enter opens Settings › Agents.",
             build: |window, cx| gui(window, cx, Some(DriverOffer::Asleep), &["?"]),
         },
+        Section {
+            id: "vim-insert",
+            name: "Vim mode, insert",
+            summary: "With palette-vim-mode on, the palette opens in insert and says so at the right of the field. Esc goes to normal.",
+            build: |window, cx| vim(window, cx, &["d", "e"]),
+        },
+        Section {
+            id: "vim-normal",
+            name: "Vim mode, normal",
+            summary: "After Esc: a block caret, the NORMAL badge, and the footer lists the normal keys. j k move, l goes in, h goes up, x is Backspace, yy copies the row, i a / or a sigil go back to insert, Esc or q close.",
+            build: |window, cx| vim(window, cx, &["d", "e", "escape", "j"]),
+        },
     ],
 };
 
@@ -1049,6 +1061,19 @@ pub(super) fn files_palette(
 ) -> Entity<CommandPaletteView> {
     let backend = files_backend(online_tree(), true, files);
     cx.new(|cx| CommandPaletteView::new_target(backend, start, pane, window, cx))
+}
+
+fn vim(window: &mut Window, cx: &mut App, keys: &'static [&'static str]) -> AnyView {
+    let backend: Rc<dyn PaletteBackend> = Rc::new_cyclic(|me| {
+        let mut backend = story_backend(me.clone(), online_tree(), true, Files::Listed);
+        backend.settings = PaletteSettings {
+            vim: true,
+            ..PaletteSettings::default()
+        };
+        backend
+    });
+    let palette = cx.new(|cx| CommandPaletteView::new_unified(backend, None, window, cx));
+    mount(window, cx, palette, 560.0, keys)
 }
 
 fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {
