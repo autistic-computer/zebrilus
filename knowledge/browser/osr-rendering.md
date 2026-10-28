@@ -16,9 +16,9 @@ payload depends on the active rendering tier:
 | Tier | Platforms | CEF callback | Mailbox payload | GPUI paint path |
 | --- | --- | --- | --- | --- |
 | Readback | Universal fallback | `on_paint` | `OsrFrame::OwnedBgra` with owned premultiplied BGRA bytes | Linux/FreeBSD update a persistent BGRA texture; other platforms use `RenderImage` through `BrowserElement::paint_image` |
-| Linux wgpu | Linux/FreeBSD where GPUI exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | GPUI `external_texture` |
+| Linux wgpu | Linux/FreeBSD where GPUI exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | `BrowserElement` through `Window::paint_external_texture` |
 | macOS Metal-IOSurface | macOS | `on_accelerated_paint` | `OsrFrame::MacGpu` with a retained zz-owned `IOSurface` | a per-pane `CALayer` under the window behind a GPUI `paint_underlay` hole, drawn by GPUI instead while glass covers it; `CVPixelBuffer` through `paint_surface` until the layer exists |
-| Windows D3D11 | Windows where GPUI exposes its DirectX context | `on_accelerated_paint` | `OsrFrame::WinGpu` with a zz-owned `ID3D11Texture2D` | GPUI `external_texture` |
+| Windows D3D11 | Windows where GPUI exposes its DirectX context | `on_accelerated_paint` | `OsrFrame::WinGpu` with a zz-owned `ID3D11Texture2D` | `BrowserElement` through `Window::paint_external_texture` |
 
 All tiers are bounded by a one-slot `FrameMailbox`: a slow consumer cannot build
 an unbounded queue, and a new frame replaces an unread stale frame. The readback
@@ -36,7 +36,10 @@ untransacted presents, and show the desktop through the hole still on screen
 (fabrico saw that flash, 2026-10-20). On release
 it sends the one new size and stays covered until a frame of that logical size
 arrives, or `RESIZE_COVER_TIMEOUT` (250 ms) passes; released at the old size it
-uncovers at once.
+uncovers at once. Every tier paints from `BrowserElement`, which decides the
+cover in its own prepaint, so a held pane never draws its last frame stretched
+to the new bounds (the Linux and Windows textures used to be a sibling
+`external_texture` element that ignored the cover).
 
 # Tier pipelines
 
@@ -62,7 +65,8 @@ dirty rectangle from each consecutive frame. It uploads the full image after
 a skipped frame, unknown damage, resize, or session change. The mailbox unions
 damage when it replaces an unread frame; the desktop still chooses a full upload
 when the generation skips. The controller keeps the CPU image for screenshots
-and recycling, and the view paints the texture through `external_texture`.
+and recycling, and `BrowserElement` paints the texture through
+`Window::paint_external_texture`.
 The CEF callback still copies the complete CPU buffer so TUI consumers and
 screenshots receive a complete frame.
 

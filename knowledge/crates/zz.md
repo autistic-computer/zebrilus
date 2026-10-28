@@ -644,9 +644,11 @@ Neither path writes Chrome's profile or transfers passwords, autofill, cache, or
 Import/clear completion is surfaced through the mounted notification layer, and successful cookie
 imports reload the page.
 
-`BrowserElement` is the browser's custom `zz_gpui::Element`: it does nothing but call
-`window.paint_image` with the `Arc<RenderImage>` handed to it and report its content bounds back to
-`BrowserView::update_content_bounds` (which resizes the CEF viewport). See
+`BrowserElement` is the browser's custom `zz_gpui::Element`: it reports its content bounds back to
+`BrowserView::update_content_bounds` (which resizes the CEF viewport or holds it during a resize),
+then paints whichever frame the view handed it: the Linux/Windows GPU texture through
+`window.paint_external_texture`, the macOS surface or underlay, or the `Arc<RenderImage>` through
+`window.paint_image`. It paints nothing while the view reports the page covered. See
 [OSR rendering](/browser/osr-rendering.md) for the CEF-side half of this pipeline.
 
 # Sidebar, tree, and native overlays
@@ -798,7 +800,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/browser/view.rs` | `BrowserView` . per-pane browser entity: toolbar, address bar, CEF frame consumption, input translation, blank-page empty state |
 | `crates/zz-chrome-import` | Google-Chrome profile/cookie/history import . extracted to its own crate; see [zz-chrome-import](/crates/zz-chrome-import.md) |
 | `crates/zz/src/browser/recent_pages.rs` | App-owned browser history global . records live visits, merges Chrome imports by newest URL visit, persists `<data dir>/zz/browser/recent-pages`, feeds the browser empty state |
-| `crates/zz/src/browser/element.rs` | `BrowserElement` . custom `Element` painting the CEF BGRA `RenderImage` |
+| `crates/zz/src/browser/element.rs` | `BrowserElement` . custom `Element` painting the browser frame (GPU texture, macOS surface, or BGRA `RenderImage`) behind the resize cover |
 | `crates/zz/src/browser/controller.rs` | `BrowserController` . owns `BrowserRuntime`, per-pane `BrowserSession`s, latest-frame mailbox, CEF pump scheduling, shutdown state machine |
 | `crates/zz/src/workspace/sidebar.rs` | `WorkspaceSidebar` . one merged tree over every fleet host, each expanding into its own session/window/pane hierarchy; direct sidebar/titlebar modes, host and session creation, target deletion, and the window split/delete overflow menu |
 | `crates/zz/src/workspace/add_host.rs` | The **Add host** dialog, opened from the final muted sidebar row: one `[user@]host[:port]` field, named after its host component, validated through `config::validate_fleet_host`, written and republished by `config::add_fleet_host` |
