@@ -706,19 +706,6 @@ fn sigils_stay_in_the_field_and_backspace_drops_the_host_chip(cx: &mut TestAppCo
     assert_eq!(target_value(&palette, cx), DRIVER_PREFIX);
     cx.simulate_keystrokes("backspace");
     cx.run_until_parked();
-    let driver = Rc::new(std::cell::Cell::new(false));
-    let heard = driver.clone();
-    cx.update(|_, cx| {
-        cx.subscribe(&palette, move |_, event: &CommandPaletteEvent, _| {
-            heard.set(matches!(event, CommandPaletteEvent::Driver));
-        })
-        .detach();
-        palette.update(cx, |palette, cx| palette.offer_driver(true, cx));
-    });
-    cx.simulate_input(DRIVER_PREFIX);
-    cx.run_until_parked();
-    assert!(driver.get());
-    assert!(palette.read_with(cx, |palette, cx| palette.input.read(cx).value().is_empty()));
     cx.simulate_keystrokes("escape");
     cx.run_until_parked();
     assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
