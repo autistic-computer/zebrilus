@@ -3536,7 +3536,9 @@ impl AcceleratedFrameProducer {
             Err(stale_frame) => return Ok(AcceleratedFrameOutcome::Stale(stale_frame)),
         }
 
+        let import_started = diagnostic_timer();
         let imported = import_accelerated_texture(gpu, info, &layout)?;
+        let import_us = diagnostic_elapsed_us(import_started);
         let width = layout.width.cast_unsigned();
         let height = layout.height.cast_unsigned();
         let format = layout.texture_format();
@@ -3562,6 +3564,7 @@ impl AcceleratedFrameProducer {
             .expect("destination textures were initialized");
         let destination_index = destinations.next;
         let destination = destinations.textures[destination_index].clone();
+        let copy_started = diagnostic_timer();
         let blit_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let mut encoder = gpu
             .device
@@ -3611,6 +3614,13 @@ impl AcceleratedFrameProducer {
         }
         destinations.next = (destination_index + 1) % destinations.textures.len();
         let expected = state.pool.expected;
+        log::trace!(
+            target: "zz_browser::diagnostics::accelerated_copy",
+            "produce callback={sequence} device={}x{} import_us={import_us} copy_us={}",
+            layout.width,
+            layout.height,
+            diagnostic_elapsed_us(copy_started),
+        );
 
         Ok(AcceleratedFrameOutcome::Frame(ProducedGpuFrame {
             logical_width: expected.logical_width,
