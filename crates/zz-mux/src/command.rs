@@ -8066,11 +8066,18 @@ impl MuxEngine {
         args: &[RawText],
     ) -> Result<Execution, ServerError> {
         let (options, positional) = parse_command_options("select-pane-kind", args)?;
-        let [selection] = positional.as_slice() else {
+        let Some((selection, command)) = positional.split_first() else {
             return Err(ServerError::CommandParse(
                 "select-pane-kind requires exactly one of: terminal, browser, editor".to_owned(),
             ));
         };
+        if selection.as_str() != "terminal"
+            && (!command.is_empty() || options.value("-c").is_some())
+        {
+            return Err(ServerError::CommandParse(
+                "select-pane-kind: -c and a command need the terminal kind".to_owned(),
+            ));
+        }
         let pane = self.resolve_pane(options.value("-t"), context.window, context.pane)?;
         let kind = match selection.as_str() {
             "terminal" => PaneKind::Terminal,
@@ -8108,8 +8115,13 @@ impl MuxEngine {
             pane,
             kind: snapshot_kind,
             inherit_cwd_from,
-            cwd: None,
-            command: None,
+            cwd: options.value("-c").map(expand_home),
+            command: (!command.is_empty()).then(|| {
+                command
+                    .iter()
+                    .map(|word| word.as_str().to_owned())
+                    .collect()
+            }),
         }))
     }
 
@@ -19506,6 +19518,17 @@ fn spawn_cwd_source(
     (inherit_cwd_from, cwd)
 }
 
+fn expand_home(path: &str) -> String {
+    let home = || std::env::var("HOME").ok().filter(|home| !home.is_empty());
+    match path.strip_prefix('~') {
+        Some("") => home().unwrap_or_else(|| path.to_owned()),
+        Some(rest) if rest.starts_with('/') => {
+            home().map_or_else(|| path.to_owned(), |home| format!("{home}{rest}"))
+        }
+        _ => path.to_owned(),
+    }
+}
+
 fn validate_spawn_kind<'a>(
     command: &str,
     options: &'a Options,
@@ -19513,7 +19536,7 @@ fn validate_spawn_kind<'a>(
 ) -> Result<&'a str, ServerError> {
     let kind = options.value("--kind").unwrap_or("terminal");
     if !(matches!(kind, "terminal" | "browser")
-        || matches!(command, "split-window" | "new-pane") && kind == "picker")
+        || matches!(command, "split-window" | "new-pane" | "new-window") && kind == "picker")
     {
         return Err(ServerError::NativeCommandParse(format!(
             "{command}: invalid pane kind {kind:?}"
@@ -28208,7 +28231,7 @@ mod tests {
             ("split-window", vec!["--kind", "picker", "-e", "A=B"]),
             ("split-window", vec!["--kind", "agent"]),
             ("split-window", vec!["--kind", "browser", "one", "two"]),
-            ("new-window", vec!["--kind", "picker"]),
+            ("new-window", vec!["--kind", "picker", "-e", "A=B"]),
             ("new-window", vec!["--kind", "agent"]),
             ("new-window", vec!["--profile", "work"]),
             ("new-window", vec!["--kind", "browser", "-e", "A=B"]),
@@ -28388,6 +28411,64 @@ mod tests {
                 ));
             }
         }
+    }
+
+    #[test]
+    fn a_picker_window_starts_a_command_in_the_chosen_directory() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "work"]))
+            .expect("session");
+        engine
+            .execute(
+                &mut context,
+                &command("new-window", &["-t", "work:", "--kind", "picker"]),
+            )
+            .expect("picker window");
+        let picker = context.pane.expect("picker pane");
+        assert!(matches!(
+            engine.state.pane(picker).map(|pane| &pane.kind),
+            Some(PaneKind::Picker { .. })
+        ));
+        let target = picker.to_string();
+        assert!(matches!(
+            engine.execute(
+                &mut context,
+                &command("select-pane-kind", &["-t", &target, "-c", "/tmp", "browser"]),
+            ),
+            Err(error) if error.to_string().contains("terminal kind")
+        ));
+        let materialized = engine
+            .execute(
+                &mut context,
+                &command(
+                    "select-pane-kind",
+                    &[
+                        "-t", &target, "-c", "/srv/zz", "terminal", "claude", "--resume",
+                    ],
+                ),
+            )
+            .expect("agent start");
+        assert!(matches!(
+            materialized.effects.first(),
+            Some(MuxEffect::PaneMaterialized {
+                pane,
+                kind: PaneKindSnapshot::Terminal,
+                cwd: Some(cwd),
+                command: Some(words),
+                ..
+            }) if *pane == picker && cwd == "/srv/zz" && words == &["claude", "--resume"]
+        ));
+    }
+
+    #[test]
+    fn a_leading_tilde_names_the_home_directory() {
+        let home = std::env::var("HOME").expect("HOME");
+        assert_eq!(expand_home("~"), home);
+        assert_eq!(expand_home("~/dev/zz"), format!("{home}/dev/zz"));
+        assert_eq!(expand_home("~other/dev"), "~other/dev");
+        assert_eq!(expand_home("/srv/zz"), "/srv/zz");
     }
 
     #[test]

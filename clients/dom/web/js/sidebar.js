@@ -18,7 +18,7 @@ guides.className = "tree-guides";
 nav.tabIndex = -1;
 
 let slideover = false;
-let flatFolds = { host: false, sessions: new Set() };
+let flatFolds = { host: false };
 
 const NODE_ICONS = { host: "hard-drive", session: "layers", window: "app-window" };
 
@@ -43,7 +43,7 @@ function applyLayout() {
   nav.hidden = !inline && !slideover;
   nav.toggleAttribute("data-divider", !(preferences.gaps && inline));
   scrim.hidden = inline || !slideover;
-  viewButton.title = preferences.flat_sidebar ? "Show the session tree" : "Show the flat window list";
+  viewButton.title = preferences.flat_sidebar ? "Show the session tree" : "Show chats";
   viewButton.querySelector("[data-icon]").dataset.icon = preferences.flat_sidebar ? "list" : "list-tree";
 }
 
@@ -284,90 +284,68 @@ function renderFlat() {
   header.querySelector(".flat-name").textContent = host.name;
   if (flatFolds.host) header.append(rollup(host.rollup, live));
   if (!live) header.insertAdjacentHTML("beforeend", `<i data-icon="circle-x" class="flat-status"></i>`);
-  if (live) header.append(addButton("layers-plus", "New session", () => state.client.sidebar_command("host", "add")));
+  if (live) header.append(addButton("chat-plus", "New agent", () => state.client.new_chat()));
   header.addEventListener("click", () => {
     flatFolds.host = !flatFolds.host;
     markTree();
   });
   rows.push(header);
   if (!flatFolds.host) {
-    const tiles = Math.max(0, ...host.sessions.filter((session) => !flatFolds.sessions.has(session.id)).flatMap((session) => session.windows.map((window) => window.tiles.length)));
-    for (const session of host.sessions) {
-      const folded = flatFolds.sessions.has(session.id);
-      const holds = session.windows.some((window) => window.current);
-      const element = document.createElement("div");
-      element.className = "flat-session";
-      element.toggleAttribute("data-current", holds);
-      element.setAttribute("role", "button");
-      element.setAttribute("aria-label", session.label);
-      element.setAttribute("aria-expanded", String(!folded));
-      element.innerHTML = `<span class="flat-session-line"><span class="flat-name" data-text></span>${session.index ? `<span class="tree-index" data-text></span>` : ""}<i data-icon="chevron-right" class="chevron"${folded ? "" : " data-open"}></i><span class="grow"></span></span>`;
-      element.querySelector(".flat-name").textContent = session.label;
-      if (session.index) element.querySelector(".tree-index").textContent = session.index;
-      const line = element.firstChild;
-      if (folded) line.append(rollup(session.rollup, live));
-      line.append(addButton("window-plus", "New window", () => state.client.sidebar_command(`session-$${session.id}`, "add")));
-      element.addEventListener("click", () => {
-        if (!flatFolds.sessions.delete(session.id)) flatFolds.sessions.add(session.id);
-        markTree();
+    const tiles = Math.max(0, ...host.chats.map((window) => window.tiles.length));
+    for (const window of host.chats) {
+      const row = document.createElement("div");
+      row.className = "flat-window";
+      const fill = document.createElement("span");
+      fill.className = "flat-fill";
+      fill.dataset.zz = "sidebar.entry";
+      row.append(fill);
+      row.addEventListener("mouseenter", () => fill.setAttribute("data-state", `${fill.dataset.state || ""} hover`.trim()));
+      row.addEventListener("mouseleave", () => {
+        const states = (fill.dataset.state || "").split(" ").filter((item) => item && item !== "hover");
+        if (states.length) fill.dataset.state = states.join(" ");
+        else delete fill.dataset.state;
       });
-      rows.push(element);
-      if (folded) continue;
-      for (const window of session.windows) {
-        const row = document.createElement("div");
-        row.className = "flat-window";
-        const fill = document.createElement("span");
-        fill.className = "flat-fill";
-        fill.dataset.zz = "sidebar.entry";
-        row.append(fill);
-        row.addEventListener("mouseenter", () => fill.setAttribute("data-state", `${fill.dataset.state || ""} hover`.trim()));
-        row.addEventListener("mouseleave", () => {
-          const states = (fill.dataset.state || "").split(" ").filter((item) => item && item !== "hover");
-          if (states.length) fill.dataset.state = states.join(" ");
-          else delete fill.dataset.state;
-        });
-        row.setAttribute("role", "button");
-        row.setAttribute("aria-label", window.title);
-        row.setAttribute("aria-description", window.description);
-        if (window.current) fill.dataset.state = "current";
-        row.toggleAttribute("data-dimmed", !live);
-        const text = document.createElement("span");
-        text.className = "flat-text";
-        text.innerHTML = `<span class="flat-title"><span class="flat-label"></span></span><span class="flat-detail"><span class="flat-parts"></span></span>`;
-        text.querySelector(".flat-label").textContent = window.title;
-        text.querySelector(".flat-label").setAttribute("aria-label", window.title);
-        text.querySelector(".flat-parts").setAttribute("aria-label", window.detail.map((part) => part.text).join(""));
-        if (window.working && live) text.querySelector(".flat-title").insertAdjacentHTML("beforeend", `<i data-icon="loader" class="spin"></i>`);
-        for (const part of window.detail) {
-          const span = document.createElement("span");
-          span.dataset.tone = part.tone;
-          span.textContent = part.text;
-          text.querySelector(".flat-parts").append(span);
-        }
-        if (window.age) {
-          const age = document.createElement("span");
-          age.className = "flat-age";
-          age.textContent = window.age;
-          text.querySelector(".flat-detail").append(age);
-        }
-        const stack = tileStack(window);
-        stack.style.width = `${28 + (Math.max(tiles, window.tiles.length, 1) > 1 ? (Math.min(Math.max(tiles, 1), 3) - 1) * 7 : 0)}px`;
-        row.append(stack, text);
-        row.addEventListener("click", () => {
-          if (slideover && state.connected) release();
-          state.client.sidebar_activate(`window-@${window.id}`);
-          flush();
-        });
-        row.addEventListener("contextmenu", (event) => {
-          event.preventDefault();
-          if (!writable()) return;
-          contextMenu(event.clientX, event.clientY, [
-            ["Rename window", () => state.client.sidebar_command(`window-@${window.id}`, "rename")],
-            ["Close window", () => state.client.sidebar_command(`window-@${window.id}`, "close")],
-          ]);
-        });
-        rows.push(row);
+      row.setAttribute("role", "button");
+      row.setAttribute("aria-label", window.title);
+      row.setAttribute("aria-description", window.description);
+      if (window.current) fill.dataset.state = "current";
+      row.toggleAttribute("data-dimmed", !live);
+      const text = document.createElement("span");
+      text.className = "flat-text";
+      text.innerHTML = `<span class="flat-title"><span class="flat-label"></span></span><span class="flat-detail"><span class="flat-parts"></span></span>`;
+      text.querySelector(".flat-label").textContent = window.title;
+      text.querySelector(".flat-label").setAttribute("aria-label", window.title);
+      text.querySelector(".flat-parts").setAttribute("aria-label", window.detail.map((part) => part.text).join(""));
+      if (window.working && live) text.querySelector(".flat-title").insertAdjacentHTML("beforeend", `<i data-icon="loader" class="spin"></i>`);
+      for (const part of window.detail) {
+        const span = document.createElement("span");
+        span.dataset.tone = part.tone;
+        span.textContent = part.text;
+        text.querySelector(".flat-parts").append(span);
       }
+      if (window.age) {
+        const age = document.createElement("span");
+        age.className = "flat-age";
+        age.textContent = window.age;
+        text.querySelector(".flat-detail").append(age);
+      }
+      const stack = tileStack(window);
+      stack.style.width = `${28 + (Math.max(tiles, window.tiles.length, 1) > 1 ? (Math.min(Math.max(tiles, 1), 3) - 1) * 7 : 0)}px`;
+      row.append(stack, text);
+      row.addEventListener("click", () => {
+        if (slideover && state.connected) release();
+        state.client.sidebar_activate(`window-@${window.id}`);
+        flush();
+      });
+      row.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        if (!writable()) return;
+        contextMenu(event.clientX, event.clientY, [
+          ["Rename window", () => state.client.sidebar_command(`window-@${window.id}`, "rename")],
+          ["Close window", () => state.client.sidebar_command(`window-@${window.id}`, "close")],
+        ]);
+      });
+      rows.push(row);
     }
   }
   list.className = "flat";

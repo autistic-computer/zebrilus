@@ -220,6 +220,7 @@ impl WorkspaceSidebar {
             if revision != observed_revision {
                 observed_revision = revision;
                 sidebar.synchronize_tree(cx);
+                sidebar.follow_chats(cx);
                 sidebar.reconcile_attention(cx);
                 cx.notify();
             }
@@ -2317,6 +2318,7 @@ mod tests {
     ) {
         let mut snapshot = snapshot_with_two_panes();
         let mut window = mux_window(21, 0, "claude", 301);
+        window.panes.get_mut(&PaneId(301)).unwrap().summary.process = vec!["claude".to_owned()];
         window.panes.get_mut(&PaneId(301)).unwrap().status = Some(PaneStatus {
             state: PaneStatusState::Blocked,
             kind: None,
@@ -2343,7 +2345,7 @@ mod tests {
         let badges = BTreeMap::from([((HostId::LOCAL, PaneId(301)), AgentBadge::NeedsInput)]);
         let lists = |hidden: Option<&str>, attached: SessionId| {
             let model = local_model(&snapshot, Some(attached)).without_session(hidden);
-            let (sessions, rollup) = flat::listed_summary(
+            let (chats, rollup) = flat::listed_summary(
                 &snapshot,
                 HostId::LOCAL,
                 hidden,
@@ -2356,7 +2358,7 @@ mod tests {
                     .map(|session| session.name.clone())
                     .collect::<Vec<_>>(),
                 node_agent_badge(&model, &badges, TreeNode::Host(HostId::LOCAL)),
-                sessions.len(),
+                chats.len(),
                 rollup.needs_you,
             )
         };
@@ -2365,18 +2367,18 @@ mod tests {
         let on = hidden(true, cx);
         assert_eq!(
             lists(on, SessionId(1)),
-            (vec!["main workspace".to_owned()], None, 1, 0)
+            (vec!["main workspace".to_owned()], None, 0, 0)
         );
         assert_eq!(
             lists(on, SessionId(2)),
-            (both.clone(), Some(AgentBadge::NeedsInput), 2, 1),
+            (both.clone(), Some(AgentBadge::NeedsInput), 1, 1),
             "the attached driver session stays listed"
         );
         let off = hidden(false, cx);
         assert_eq!(off, None);
         assert_eq!(
             lists(off, SessionId(1)),
-            (both, Some(AgentBadge::NeedsInput), 2, 1)
+            (both, Some(AgentBadge::NeedsInput), 1, 1)
         );
     }
 
