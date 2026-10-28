@@ -263,6 +263,7 @@ fn run_app(
             browser::view::init(cx);
             editor::init(cx);
             terminal::view::init(cx);
+            pane::picker::init(cx);
             workspace::init(cx);
             #[cfg(target_os = "macos")]
             macos_app::init(cx);

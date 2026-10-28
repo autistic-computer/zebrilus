@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
@@ -11,6 +11,10 @@ use zz_client::{
         tile_pane_command, zoom_pane_command,
     },
     navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
+    new_chat::{
+        AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, chat_picker_place, folder_rows,
+        open_picker_commands, recent_folders, start_agent_commands,
+    },
     pane_drop_command,
     pane_picker::{PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
     pane_separator::{SeparatorSide, pane_separator},
@@ -22,7 +26,7 @@ use zz_client::{
         tree_navigation,
     },
     split_ratio_basis, visible_window_range,
-    window_summary::{Attention, DaemonClock, PaneTag, Tone, age_label, summarize_host},
+    window_summary::{Attention, DaemonClock, PaneTag, Tone, age_label, summarize_chats},
 };
 use zz_protocol::{
     Axis, CommandInvocation, InputMessage, LayoutNode, MuxOptionKey, PaneBorderLines, PaneId,
@@ -41,6 +45,7 @@ pub struct Sidebar {
     unseen: BTreeSet<PaneId>,
     focused: bool,
     clock: DaemonClock,
+    chat_pickers: BTreeMap<PaneId, ChatPicker>,
 }
 
 #[wasm_bindgen]
@@ -599,7 +604,7 @@ impl Client {
     pub fn flat_sidebar(&self, now: f64) -> String {
         let snapshot = self.core.snapshot();
         let now = self.sidebar.clock.now(now as u64);
-        let (sessions, rollup) = summarize_host(snapshot);
+        let (chats, rollup) = summarize_chats(&snapshot.sessions);
         let current = self
             .core
             .attached_session()
@@ -610,53 +615,161 @@ impl Client {
                     .find(|session| session.id == attached)
             })
             .map(|session| snapshot.focused_window_for(session).0);
-        let sessions = sessions
-            .into_iter()
-            .map(|session| {
-                let windows = session
-                    .windows
-                    .iter()
-                    .map(|window| {
-                        let age = age_label(window.changed_at, now);
-                        let detail = window.detail.iter().map(|part| part.text.as_str()).collect::<String>();
-                        let description = [Some(detail.as_str()), attention_word(window.attention), age.as_deref()]
-                            .into_iter()
-                            .flatten()
-                            .filter(|part| !part.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        json!({
-                            "id": window.window.0,
-                            "title": window.title,
-                            "detail": window.detail.iter().map(|part| json!({ "text": part.text, "tone": tone_name(part.tone) })).collect::<Vec<_>>(),
-                            "age": age,
-                            "description": description,
-                            "working": window.attention == Attention::Working,
-                            "current": current == Some(window.window.0),
-                            "tiles": window.tiles.iter().map(|tile| json!({
-                                "pane": tile.pane.0,
-                                "tag": tag_name(tile.tag),
-                                "label": tile.label,
-                                "program": tile.program.map(|program| program.id),
-                            })).collect::<Vec<_>>(),
-                        })
-                    })
-                    .collect::<Vec<_>>();
+        let chats = chats
+            .iter()
+            .map(|window| {
+                let age = age_label(window.changed_at, now);
+                let detail = window.detail.iter().map(|part| part.text.as_str()).collect::<String>();
+                let description = [Some(detail.as_str()), attention_word(window.attention), age.as_deref()]
+                    .into_iter()
+                    .flatten()
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 json!({
-                    "id": session.session.0,
-                    "label": session.label.text,
-                    "index": session.label.index,
-                    "rollup": rollup_json(&session.rollup),
-                    "windows": windows,
+                    "id": window.window.0,
+                    "title": window.title,
+                    "detail": window.detail.iter().map(|part| json!({ "text": part.text, "tone": tone_name(part.tone) })).collect::<Vec<_>>(),
+                    "age": age,
+                    "description": description,
+                    "working": window.attention == Attention::Working,
+                    "current": current == Some(window.window.0),
+                    "tiles": window.tiles.iter().map(|tile| json!({
+                        "pane": tile.pane.0,
+                        "tag": tag_name(tile.tag),
+                        "label": tile.label,
+                        "program": tile.program.map(|program| program.id),
+                    })).collect::<Vec<_>>(),
                 })
             })
             .collect::<Vec<_>>();
         json!({
             "name": "zz daemon",
             "rollup": rollup_json(&rollup),
-            "sessions": sessions,
+            "chats": chats,
         })
         .to_string()
+    }
+
+    pub fn new_chat(&mut self) {
+        if self.core.attached_read_only() {
+            return;
+        }
+        for command in open_picker_commands(self.core.snapshot(), self.core.attached_session()) {
+            self.invoke(command);
+        }
+    }
+
+    pub fn chat_picker(&mut self, pane: f64) -> String {
+        let pane = pane_id(pane);
+        let snapshot = self.core.snapshot();
+        if chat_picker_place(snapshot, pane).is_none() {
+            self.sidebar.chat_pickers.remove(&pane);
+            return "null".to_owned();
+        }
+        let folders = recent_folders(snapshot);
+        let picker = self.sidebar.chat_pickers.entry(pane).or_default();
+        json!({
+            "stage": match picker.stage {
+                ChatStage::Agents => "agents",
+                ChatStage::Folders => "folders",
+            },
+            "selected": picker.selected,
+            "folder": picker.folder(&folders),
+            "query": picker.query,
+            "folders": folder_rows(&picker.query, &folders, &[]).iter().map(|row| json!({
+                "path": row.path,
+                "note": row.note,
+            })).collect::<Vec<_>>(),
+            "agents": AGENT_CHOICES.iter().map(|agent| json!({
+                "title": agent.title(),
+                "shortcut": agent.shortcut,
+                "program": agent.program,
+            })).collect::<Vec<_>>(),
+        })
+        .to_string()
+    }
+
+    pub fn chat_picker_key(
+        &mut self,
+        pane: f64,
+        key: &str,
+        shift: bool,
+        control: bool,
+        alt: bool,
+        meta: bool,
+    ) -> bool {
+        if self
+            .core
+            .claims_prefix_input(&key_input(key, shift, control, alt, meta))
+        {
+            return false;
+        }
+        let pane = pane_id(pane);
+        let folders = recent_folders(self.core.snapshot());
+        let picker = self.sidebar.chat_pickers.entry(pane).or_default();
+        let rows = folder_rows(&picker.query, &folders, &[]);
+        let text = (key.chars().count() == 1).then_some(key);
+        let outcome = picker.key(&browser_key_name(key), text, control || alt || meta, &rows);
+        self.settle_chat(pane, outcome)
+    }
+
+    pub fn chat_picker_click(&mut self, pane: f64, target: &str, index: usize) {
+        let pane = pane_id(pane);
+        let folders = recent_folders(self.core.snapshot());
+        let picker = self.sidebar.chat_pickers.entry(pane).or_default();
+        let outcome = match target {
+            "folder-line" => {
+                picker.open(ChatStage::Folders);
+                ChatKey::Changed
+            }
+            "folder" => {
+                if let Some(row) = folder_rows(&picker.query, &folders, &[]).get(index) {
+                    picker.pick(&row.path);
+                }
+                ChatKey::Changed
+            }
+            "agent" => AGENT_CHOICES
+                .get(index)
+                .map_or(ChatKey::Ignored, |agent| ChatKey::Start(*agent)),
+            _ => {
+                picker.selected = index;
+                ChatKey::Changed
+            }
+        };
+        self.settle_chat(pane, outcome);
+    }
+}
+
+impl Client {
+    fn settle_chat(&mut self, pane: PaneId, outcome: ChatKey) -> bool {
+        match outcome {
+            ChatKey::Start(agent) if !self.core.attached_read_only() => {
+                let folders = recent_folders(self.core.snapshot());
+                let folder = self
+                    .sidebar
+                    .chat_pickers
+                    .get(&pane)
+                    .map(|picker| picker.folder(&folders).to_owned())
+                    .unwrap_or_default();
+                for command in start_agent_commands(self.core.snapshot(), pane, &folder, agent) {
+                    self.invoke(command);
+                }
+                true
+            }
+            ChatKey::ChooseFolder => {
+                if let Some(picker) = self.sidebar.chat_pickers.get_mut(&pane) {
+                    picker.open(ChatStage::Folders);
+                }
+                true
+            }
+            ChatKey::Close => {
+                self.pane_action(pane.0 as f64, "close", 0);
+                true
+            }
+            ChatKey::Changed => true,
+            ChatKey::Start(_) | ChatKey::Ignored => false,
+        }
     }
 }
 

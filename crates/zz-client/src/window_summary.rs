@@ -201,12 +201,7 @@ pub fn summarize_window(window: &WindowSnapshot) -> WindowSummary {
                 .copied()
                 .filter(|pane| pane.id != window.active_pane),
         )
-        .map(|pane| PaneTile {
-            pane: pane.id,
-            tag: pane_tag(&pane.kind),
-            label: pane_label(pane),
-            program: pane_program(pane),
-        })
+        .map(pane_tile)
         .collect();
     WindowSummary {
         window: window.id,
@@ -222,6 +217,83 @@ pub fn summarize_window(window: &WindowSnapshot) -> WindowSummary {
             .max()
             .unwrap_or_default(),
     }
+}
+
+fn pane_tile(pane: &PaneSnapshot) -> PaneTile {
+    PaneTile {
+        pane: pane.id,
+        tag: pane_tag(&pane.kind),
+        label: pane_label(pane),
+        program: pane_program(pane),
+    }
+}
+
+#[must_use]
+pub fn summarize_chat(window: &WindowSnapshot) -> Option<WindowSummary> {
+    let panes = ordered_panes(window);
+    let runs_agent = |pane: &&PaneSnapshot| pane_agent(pane).is_some();
+    let attention = panes
+        .iter()
+        .map(|pane| pane_attention(pane))
+        .max()
+        .unwrap_or_default();
+    let Some(agent) = panes
+        .iter()
+        .copied()
+        .filter(runs_agent)
+        .find(|pane| pane.id == window.active_pane)
+        .or_else(|| panes.iter().copied().find(runs_agent))
+    else {
+        let picking = !panes.is_empty()
+            && panes
+                .iter()
+                .all(|pane| matches!(pane.kind, PaneKindSnapshot::Picker));
+        return picking.then(|| WindowSummary {
+            window: window.id,
+            index: window.index,
+            headline: window.active_pane,
+            title: "New agent".to_owned(),
+            detail: vec![part("Pick a CLI", Tone::Muted)],
+            changed_at: 0,
+            tiles: panes.iter().copied().map(pane_tile).collect(),
+            attention,
+        });
+    };
+    let title = window_title(window, Some(agent), Some(agent));
+    let quiet = agent.status.is_none() && !agent.summary.unseen && !agent.dead;
+    let detail = match (quiet, location(agent), pane_program(agent)) {
+        (true, None, Some(program)) => vec![part(program.name, Tone::Muted)],
+        _ => pane_detail(window, agent, &title),
+    };
+    Some(WindowSummary {
+        window: window.id,
+        index: window.index,
+        headline: agent.id,
+        detail,
+        title,
+        changed_at: agent.summary.changed_at,
+        tiles: std::iter::once(agent)
+            .chain(panes.iter().copied().filter(|pane| pane.id != agent.id))
+            .map(pane_tile)
+            .collect(),
+        attention,
+    })
+}
+
+#[must_use]
+pub fn summarize_chats<'a>(
+    sessions: impl IntoIterator<Item = &'a SessionSnapshot>,
+) -> (Vec<WindowSummary>, AttentionRollup) {
+    let chats = sessions
+        .into_iter()
+        .flat_map(|session| &session.windows)
+        .filter_map(summarize_chat)
+        .collect::<Vec<_>>();
+    let mut rollup = AttentionRollup::default();
+    for chat in &chats {
+        rollup.add(chat);
+    }
+    (chats, rollup)
 }
 
 #[must_use]
@@ -1159,5 +1231,84 @@ mod tests {
         assert_eq!(label("api", vec![zz(1)]), "api");
         assert_eq!(label("", vec![zz(1)]), "zz");
         assert_eq!(label("", Vec::new()), "session $1");
+    }
+
+    #[test]
+    fn a_chat_keeps_its_agent_in_front_of_the_panes_it_split() {
+        let browser = pane(
+            3,
+            PaneKindSnapshot::Browser(BrowserDescriptor::single(
+                "http://localhost:4321/docs".to_owned(),
+                "default".to_owned(),
+            )),
+        );
+        let mut window = window(
+            1,
+            vec![
+                terminal(1, "npm run dev"),
+                agent(2, "Copy mode docs"),
+                browser,
+            ],
+        );
+        window.active_pane = PaneId(3);
+        let chat = summarize_chat(&window).expect("a window running claude is a chat");
+        assert_eq!(chat.headline, PaneId(2));
+        assert_eq!(chat.title, "Copy mode docs");
+        assert_eq!(
+            chat.tiles
+                .iter()
+                .map(|tile| tile.pane.0)
+                .collect::<Vec<_>>(),
+            [2, 1, 3]
+        );
+        assert_eq!(summarize_window(&window).tiles[0].pane, PaneId(3));
+        assert_eq!(texts(&chat), [("Claude Code", Tone::Muted)]);
+    }
+
+    #[test]
+    fn only_agents_and_pickers_make_chats() {
+        assert_eq!(summarize_chat(&window(1, vec![terminal(1, "zsh")])), None);
+        let picking = summarize_chat(&window(2, vec![pane(5, PaneKindSnapshot::Picker)]))
+            .expect("a window of pickers is a chat being started");
+        assert_eq!(picking.title, "New agent");
+        assert_eq!(texts(&picking), [("Pick a CLI", Tone::Muted)]);
+        assert_eq!(picking.tiles[0].tag, PaneTag::Picker);
+        let split = window(
+            3,
+            vec![terminal(1, "zsh"), pane(2, PaneKindSnapshot::Picker)],
+        );
+        assert_eq!(summarize_chat(&split), None);
+    }
+
+    #[test]
+    fn chats_flatten_sessions_and_roll_up_only_chats() {
+        let session = |id, windows| SessionSnapshot {
+            id: SessionId(id),
+            name: id.to_string(),
+            active_window: WindowId(1),
+            windows,
+            viewers: Vec::new(),
+        };
+        let blocked = with_status(
+            agent(2, "Release"),
+            status(PaneStatusState::Blocked, None, "push the tag?"),
+        );
+        let failing = with_status(
+            terminal(3, "make"),
+            status(PaneStatusState::Error, None, ""),
+        );
+        let sessions = [
+            session(1, vec![window(1, vec![blocked]), window(2, vec![failing])]),
+            session(2, vec![window(3, vec![agent(4, "Docs")])]),
+        ];
+        let (chats, rollup) = summarize_chats(&sessions);
+        assert_eq!(
+            chats
+                .iter()
+                .map(|chat| chat.title.as_str())
+                .collect::<Vec<_>>(),
+            ["Release", "Docs"]
+        );
+        assert_eq!((rollup.needs_you, rollup.failed), (1, 0));
     }
 }

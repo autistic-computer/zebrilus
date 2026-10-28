@@ -1410,6 +1410,111 @@ pub fn pane_picker_row(
     enabled: bool,
     cx: &App,
 ) -> Stateful<zz_gpui::Div> {
+    picker_item(
+        id,
+        title.into(),
+        icon,
+        None,
+        Some(shortcut),
+        selected,
+        enabled,
+        cx,
+    )
+}
+
+pub fn pane_picker_folder_row(
+    id: impl Into<ElementId>,
+    path: impl Into<SharedString>,
+    note: Option<SharedString>,
+    shortcut: Option<&'static str>,
+    selected: bool,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
+    picker_item(
+        id,
+        path.into(),
+        crate::IconName::Folder,
+        note,
+        shortcut,
+        selected,
+        true,
+        cx,
+    )
+}
+
+pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
+    div()
+        .flex_none()
+        .px(px(12.0))
+        .pt(px(8.0))
+        .pb(px(2.0))
+        .text_size(crate::rems_from_px(11.0))
+        .font_weight(FontWeight::SEMIBOLD)
+        .text_color(cx.theme().foreground.muted())
+        .child(text.into())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChatPickerTarget {
+    FolderLine,
+    Agent(usize, zz_client::new_chat::AgentChoice),
+}
+
+pub enum ChatPickerRow {
+    Label(zz_gpui::Div),
+    Item(ChatPickerTarget, Stateful<zz_gpui::Div>),
+}
+
+pub fn chat_picker_rows(
+    pane: u64,
+    picker: &zz_client::new_chat::ChatPicker,
+    recents: &[zz_client::new_chat::FolderChoice],
+    enabled: bool,
+    cx: &App,
+) -> Vec<ChatPickerRow> {
+    use zz_client::new_chat::AGENT_CHOICES;
+    let mut rows = vec![
+        ChatPickerRow::Label(pane_picker_label("Folder", cx)),
+        ChatPickerRow::Item(
+            ChatPickerTarget::FolderLine,
+            pane_picker_folder_row(
+                ElementId::NamedInteger("chat-picker-folder".into(), pane),
+                picker.folder(recents).to_owned(),
+                None,
+                Some("tab"),
+                false,
+                cx,
+            ),
+        ),
+        ChatPickerRow::Label(pane_picker_label("Agent", cx)),
+    ];
+    rows.extend(AGENT_CHOICES.iter().enumerate().map(|(index, agent)| {
+        ChatPickerRow::Item(
+            ChatPickerTarget::Agent(index, *agent),
+            pane_picker_row(
+                ElementId::NamedInteger(format!("chat-picker-{}", agent.program).into(), pane),
+                agent.title(),
+                agent_provider_icon(agent.provider()),
+                agent.shortcut,
+                picker.selected == index,
+                enabled,
+                cx,
+            ),
+        )
+    }));
+    rows
+}
+
+fn picker_item(
+    id: impl Into<ElementId>,
+    title: SharedString,
+    icon: crate::IconName,
+    note: Option<SharedString>,
+    shortcut: Option<&'static str>,
+    selected: bool,
+    enabled: bool,
+    cx: &App,
+) -> Stateful<zz_gpui::Div> {
     let state = crate::picker::row_state(selected, enabled);
     let ground = cx.theme().layer(roles::PANE_PICKER, state).ground;
     let ink = cx
@@ -1439,18 +1544,22 @@ pub fn pane_picker_row(
             .text_size(crate::rems_from_px(12.0))
             .child(title),
     )
-    .child(
+    .children(note.map(|note| {
+        div()
+            .flex_none()
+            .text_size(crate::rems_from_px(11.0))
+            .text_color(ink)
+            .child(note)
+    }))
+    .children(shortcut.map(|shortcut| {
         crate::kbd::Kbd::new(
             zz_gpui::Keystroke::parse(shortcut).expect("static pane picker shortcut"),
         )
         .lowercase()
-        .on(ground),
-    )
+        .on(ground)
+    }))
 }
 
-/// A freshly split pane asking what it should become: `rows` centered in
-/// the pane, rounded into the pane's corners. The caller wires focus, keys
-/// and clicks.
 pub fn pane_picker_surface(
     id: impl Into<ElementId>,
     radii: Corners<Pixels>,

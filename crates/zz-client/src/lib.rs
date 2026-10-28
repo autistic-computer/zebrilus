@@ -30,6 +30,7 @@ pub mod local_scroll;
 pub mod mend;
 mod menu;
 pub mod navigation;
+pub mod new_chat;
 pub mod palette;
 pub mod pane_picker;
 pub mod pane_separator;

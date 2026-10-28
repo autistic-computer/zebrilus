@@ -871,7 +871,6 @@ on("attached", () => {
 });
 
 on("preferences", () => {
-  Object.assign(preferences, DEFAULTS, stored());
   markTree();
 });
 
@@ -903,6 +902,46 @@ on("focus", () => {
   for (const pane of panes.values()) markPane(pane.id);
 });
 
+const AGENT_ICONS = { claude: "asterisk", codex: "braces" };
+
+function chatRows(pane, list, chat, view) {
+  const row = (target, index, icon, title, note, shortcut, selected) => {
+    const element = el("div", { class: "picker-row", "data-zz": "pane.picker" });
+    if (selected) element.dataset.state = "current";
+    element.innerHTML = `<i data-icon="${icon}"></i><span class="picker-title"></span>${note ? `<span class="picker-note zz-muted"></span>` : ""}${shortcut ? `<span data-zz="keycap"><span data-text></span></span>` : ""}`;
+    element.querySelector(".picker-title").textContent = title;
+    if (note) element.querySelector(".picker-note").textContent = note;
+    if (shortcut) element.querySelector("[data-zz='keycap'] > span").textContent = shortcut;
+    element.addEventListener("mousemove", () => {
+      if (target !== "folder-line" && !selected) {
+        state.client.chat_picker_click(pane.id, "hover", index);
+        view.update();
+      }
+    });
+    element.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+      if (!writable()) return;
+      state.client.chat_picker_click(pane.id, target, index);
+      flush();
+      view.update();
+    });
+    return element;
+  };
+  const label = (text) => el("div", { class: "picker-label zz-muted" }, text);
+  const rows = [label("Folder")];
+  if (chat.stage === "agents") {
+    rows.push(row("folder-line", 0, "folder", chat.folder, null, "tab", false), label("Agent"));
+    chat.agents.forEach((agent, index) => rows.push(row("agent", index, AGENT_ICONS[agent.program] || "bot", agent.title, null, agent.shortcut, chat.selected === index)));
+  } else {
+    const query = el("div", { class: "picker-query" }, `<i data-icon="search"></i><span class="picker-title"></span><i class="picker-caret"></i>`);
+    query.querySelector(".picker-title").textContent = chat.query || "Type a path, or pick one";
+    query.toggleAttribute("data-empty", !chat.query);
+    rows.push(query);
+    chat.folders.forEach((folder, index) => rows.push(row("folder", index, "folder", folder.path, folder.note, chat.query && chat.selected === index ? "tab" : null, chat.selected === index)));
+  }
+  list.replaceChildren(...rows);
+}
+
 function picker(pane) {
   const choices = JSON.parse(state.client.picker_choices());
   pane.body.innerHTML = `<div class="pane-picker"><div class="picker-choices"></div></div>`;
@@ -910,6 +949,11 @@ function picker(pane) {
   const view = {
     selected: 0,
     update() {
+      const chat = JSON.parse(state.client.chat_picker(pane.id));
+      if (chat) {
+        chatRows(pane, list, chat, view);
+        return;
+      }
       list.replaceChildren(
         ...choices.map((choice, index) => {
           const row = el("div", { class: "picker-row", "data-zz": "pane.picker" });
@@ -956,6 +1000,13 @@ onKey((event) => {
   if (!window || event.isComposing || event.target.closest?.("input, textarea, select, [contenteditable]")) return false;
   const view = pickers.get(window.activePane);
   if (!view) return false;
+  if (JSON.parse(state.client.chat_picker(window.activePane))) {
+    if (!state.client.chat_picker_key(window.activePane, event.key, event.shiftKey, event.ctrlKey, event.altKey, event.metaKey)) return false;
+    event.preventDefault();
+    flush();
+    view.update();
+    return true;
+  }
   const result = state.client.picker_key(window.activePane, view.selected, event.key, event.shiftKey, event.ctrlKey, event.altKey, event.metaKey);
   if (result === -2) return false;
   event.preventDefault();

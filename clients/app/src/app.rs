@@ -112,6 +112,7 @@ pub struct AppShell {
     #[cfg(target_os = "ios")]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
+    folder_pick: Option<(zz_gpui::WeakEntity<picker::PanePicker>, String)>,
     sidebar: bool,
     slideover: bool,
     settings: Option<SettingsSection>,
@@ -358,6 +359,7 @@ impl AppShell {
             #[cfg(target_os = "ios")]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
+            folder_pick: None,
             sidebar: preferences.sidebar,
             slideover: false,
             settings: None,
@@ -868,6 +870,26 @@ impl AppShell {
         );
     }
 
+    fn open_folder_palette(
+        &mut self,
+        picker: zz_gpui::WeakEntity<picker::PanePicker>,
+        start: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let body = zz_ui::files::start_dir(Some(start), None);
+        let pick: zz_ui::command::FolderPick = Rc::new(move |_, folder, window, cx| {
+            let _ = picker.update(cx, |picker, cx| picker.pick_folder(&folder, window, cx));
+        });
+        self.show_palette(
+            move |backend, window, cx| {
+                CommandPaletteView::new_folder_pick(backend, &body, pick, window, cx)
+            },
+            window,
+            cx,
+        );
+    }
+
     fn show_palette(
         &mut self,
         build: impl FnOnce(
@@ -1372,7 +1394,16 @@ impl AppShell {
             .entry(pane)
             .or_insert_with(|| {
                 let connection = self.connection.clone();
-                cx.new(|cx| picker::PanePicker::new(pane, connection, cx))
+                let picker = cx.new(|cx| picker::PanePicker::new(pane, connection, cx));
+                cx.subscribe(
+                    &picker,
+                    |shell, picker, choose: &picker::ChooseFolder, cx| {
+                        shell.folder_pick = Some((picker.downgrade(), choose.start.clone()));
+                        cx.notify();
+                    },
+                )
+                .detach();
+                picker
             })
             .clone()
     }
@@ -2869,6 +2900,9 @@ impl AppShell {
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.sync_driver_hosts(cx);
+        if let Some((picker, start)) = self.folder_pick.take() {
+            self.open_folder_palette(picker, &start, window, cx);
+        }
         if self.settings.is_none() {
             self.settings_picked = false;
             self.settings_leaving = false;

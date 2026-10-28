@@ -124,14 +124,14 @@ pub fn workspace_add_host_button(id: impl Into<ElementId>) -> Button {
     workspace_chrome_button(id, IconName::ServerPlus, "Add host")
 }
 
-/// Switches the sidebar between the session tree and the flat window list;
+/// Switches the sidebar between the session tree and the chats;
 /// its icon shows the one on screen.
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
     if flat {
         workspace_chrome_button(id, IconName::List, "Show the session tree")
     } else {
-        workspace_chrome_button(id, IconName::ListTree, "Show the flat window list")
+        workspace_chrome_button(id, IconName::ListTree, "Show chats")
     }
 }
 

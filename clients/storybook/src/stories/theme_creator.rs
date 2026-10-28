@@ -137,7 +137,7 @@ pub const STORY: Story = Story {
         Section {
             id: "start",
             name: "Start",
-            summary: "The workspace before its first session, the first run with no host, and a new split asking what it should become.",
+            summary: "The workspace before its first session, the first run with no host, a new split asking what it should become, and a new chat asking which agent to start and where.",
             build: |_, cx| stateless(start, cx),
         },
         Section {
@@ -1488,7 +1488,7 @@ fn start(window: &mut Window, cx: &mut App) -> AnyElement {
         vec![
             vec![empty_session(cx)],
             vec![first_run(cx)],
-            vec![new_pane(cx)],
+            vec![new_pane(cx), new_agent(cx)],
         ],
     )
     .into_any_element()
@@ -1576,6 +1576,28 @@ fn new_pane(cx: &App) -> AnyElement {
     );
     window_tile(
         "showcase-new-pane",
+        div().size_full().p(gap(gaps)).child(pane),
+        cx,
+    )
+}
+
+fn new_agent(cx: &App) -> AnyElement {
+    let gaps = crate::pane().gaps;
+    let picker = crate::stories::workspace::panes::chat_picker_surface(
+        "showcase-new-agent-picker",
+        &zz_client::new_chat::ChatPicker::default(),
+        true,
+        cx,
+    );
+    let pane = pane_surface(
+        "showcase-new-agent-surface",
+        picker,
+        Vec::new(),
+        chrome(true, false, gaps, cx),
+        cx,
+    );
+    window_tile(
+        "showcase-new-agent",
         div().size_full().p(gap(gaps)).child(pane),
         cx,
     )

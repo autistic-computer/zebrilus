@@ -112,10 +112,10 @@ mode a client draws over the pane: `clock-mode`, `switch-mode`, `options-mode` (
 float and its own size ([floating panes](/designs/floating-panes.md)). `status` and `summary` are
 described under [pane status, summary and time](#pane-status-summary-and-time).
 
-`Picker` is a durable, runtime-free pane state used by the native split-window --kind picker flow. It occupies a real
+`Picker` is a durable, runtime-free pane state used by the native `split-window --kind picker` and `new-window --kind picker` flows. It occupies a real
 layout leaf and survives GUI detach/reattach, but the daemon owns no PTY and the GUI owns no CEF
 session for it. `select-pane-kind` with `terminal`, `browser`, or `editor` materializes the
-same `PaneId` and advances the snapshot generation.
+same `PaneId` and advances the snapshot generation; a terminal can take `-c` and a command.
 
 `Editor(EditorDescriptor)` is the daemon-owned restore metadata for an Editor pane: the open file's
 absolute `path` (`None` for a scratch pane) and the pane's `cwd`. Buffer bytes, cursor position, and

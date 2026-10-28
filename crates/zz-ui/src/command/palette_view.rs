@@ -18,7 +18,7 @@ use zz_gpui::{
 use zz_protocol::{
     ChooseTreeAction, ChooseTreeState, ChooseTreeTarget, CommandInvocation, CommandPromptAction,
     CommandPromptKind, CommandPromptMode, CommandPromptState, CommandPromptType, InputMessage,
-    MAX_COMMAND_PROMPT_BYTES, MuxSnapshot, PaneId, PathEntry, PathListRoot,
+    MAX_COMMAND_PROMPT_BYTES, MuxSnapshot, PaneId, PathEntry, PathKind, PathListRoot,
 };
 
 use super::{
@@ -273,6 +273,8 @@ pub const DRIVER_PREFIX: &str = "?";
 
 impl EventEmitter<CommandPaletteEvent> for CommandPaletteView {}
 
+pub type FolderPick = Rc<dyn Fn(PaletteHostId, String, &mut Window, &mut App)>;
+
 pub struct CommandPaletteView {
     backend: Rc<dyn PaletteBackend>,
     input: Entity<InputState>,
@@ -302,6 +304,7 @@ pub struct CommandPaletteView {
     /// The pane a picked file goes into: the one `prefix F` came from, else
     /// the active one.
     insert_pane: Option<PaneId>,
+    pick_folder: Option<FolderPick>,
     level: Option<(ActionKind, Box<dyn PaletteActionLevel>)>,
     vim: Option<PaletteVim>,
 }
@@ -421,6 +424,7 @@ impl CommandPaletteView {
             driver: None,
             target: None,
             insert_pane: None,
+            pick_folder: None,
             level: None,
             vim: None,
         };
@@ -492,6 +496,19 @@ impl CommandPaletteView {
     ) -> Self {
         let mut palette = Self::new_unified(backend, None, window, cx);
         palette.insert_pane = pane;
+        palette.set_files_body(body, window, cx);
+        palette
+    }
+
+    pub fn new_folder_pick(
+        backend: Rc<dyn PaletteBackend>,
+        body: &str,
+        pick: FolderPick,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut palette = Self::new_unified(backend, None, window, cx);
+        palette.pick_folder = Some(pick);
         palette.set_files_body(body, window, cx);
         palette
     }
@@ -1126,6 +1143,22 @@ impl CommandPaletteView {
         let (Some(root), Some(entry)) = (root, item.entry.as_ref()) else {
             return;
         };
+        if let Some(pick) = self.pick_folder.clone() {
+            let rel = entry.rel.trim_end_matches('/');
+            let rel = match entry.kind {
+                PathKind::Dir => rel,
+                PathKind::File => rel.rsplit_once('/').map_or("", |(parent, _)| parent),
+            };
+            let base = root.display_root.trim_end_matches('/');
+            let folder = if rel.is_empty() {
+                root.display_root.clone()
+            } else {
+                format!("{base}/{rel}")
+            };
+            self.close(cx);
+            pick(item.host_id, folder, window, cx);
+            return;
+        }
         let Some(pane) = self.insert_pane.or_else(|| self.backend.active_pane(cx)) else {
             return;
         };
