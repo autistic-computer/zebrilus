@@ -1,6 +1,7 @@
 use std::{fmt, rc::Rc};
 
 pub(crate) use zz_client::fuzzy::fuzzy_match;
+pub(crate) use zz_client::palette::{count, needs_arguments, target_kind};
 use zz_client::{
     completion::{CompletionSuggestion, PaneKindAvailability},
     place::{Fleet, Place},
@@ -607,55 +608,6 @@ fn pane_entry(
             label: format!("{} / {} / {}", session.name, window.name, pane.label),
         },
     )
-}
-
-pub(crate) fn target_kind(spec: &CommandSpec) -> Option<CommandValueKind> {
-    if !matches!(
-        spec.name,
-        "join-pane"
-            | "move-pane"
-            | "swap-pane"
-            | "swap-window"
-            | "move-window"
-            | "link-window"
-            | "unlink-window"
-            | "kill-pane"
-            | "kill-window"
-            | "select-pane"
-            | "select-window"
-            | "resize-pane"
-            | "capture-pane"
-            | "respawn-pane"
-            | "respawn-window"
-    ) {
-        return None;
-    }
-    if spec.name == "join-pane" {
-        return Some(CommandValueKind::Window);
-    }
-    spec.option("-t")
-        .filter(|option| option.completable && !option.unsupported)
-        .and_then(|option| option.value)
-        .filter(|kind| matches!(kind, CommandValueKind::Window | CommandValueKind::Pane))
-}
-
-pub(crate) fn needs_arguments(spec: &CommandSpec) -> bool {
-    let mut optional_depth = 0_u32;
-    spec.usage.chars().any(|character| match character {
-        '[' => {
-            optional_depth += 1;
-            false
-        }
-        ']' => {
-            optional_depth = optional_depth.saturating_sub(1);
-            false
-        }
-        character => optional_depth == 0 && !character.is_whitespace(),
-    })
-}
-
-pub(crate) fn count(value: usize, noun: &str) -> String {
-    format!("{value} {noun}{}", if value == 1 { "" } else { "s" })
 }
 
 #[cfg(test)]

@@ -56,6 +56,8 @@ function launch(width, height, scale) {
         "--hide-scrollbars",
         "--no-first-run",
         "--no-default-browser-check",
+        "--use-mock-keychain",
+        "--password-store=basic",
         `--window-size=${width},${height}`,
         `--force-device-scale-factor=${scale}`,
         "about:blank",

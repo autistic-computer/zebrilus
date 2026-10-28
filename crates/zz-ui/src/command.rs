@@ -377,49 +377,8 @@ pub fn tmux_shortcut(shortcut: &SharedString, ground: crate::Ground, cx: &App) -
 /// drawing in the platform's glyphs. `None` for a key GPUI cannot name.
 #[must_use]
 pub fn tmux_keystroke(spelling: &str) -> Option<Keystroke> {
-    let key = zz_client::ChromeKey::parse(spelling)?;
-    let base = match key.base.as_str() {
-        " " | "Space" => "space",
-        "Enter" => "enter",
-        "Escape" => "escape",
-        "Tab" => "tab",
-        "BSpace" => "backspace",
-        "DC" => "delete",
-        "Up" => "up",
-        "Down" => "down",
-        "Left" => "left",
-        "Right" => "right",
-        "Home" => "home",
-        "End" => "end",
-        "PPage" | "PageUp" => "pageup",
-        "NPage" | "PageDown" => "pagedown",
-        "-" => "minus",
-        other if other.chars().count() == 1 => other,
-        _ => return None,
-    };
-    let mut source = String::new();
-    if key.command {
-        source.push_str("cmd-");
-    }
-    if key.control {
-        source.push_str("ctrl-");
-    }
-    if key.alt {
-        source.push_str("alt-");
-    }
-    let mut characters = base.chars();
-    match (characters.next(), characters.next()) {
-        (Some(character), None) if character.is_ascii_uppercase() => {
-            source.push_str("shift-");
-            source.extend(character.to_lowercase());
-        }
-        _ => {
-            if key.shift {
-                source.push_str("shift-");
-            }
-            source.push_str(base);
-        }
-    }
+    let (source, base) = zz_client::palette::tmux_keystroke_source(spelling)?;
+    let base = base.as_str();
     let mut keystroke = Keystroke::parse(&source).ok()?;
     if base == "minus" {
         keystroke.key = "-".into();

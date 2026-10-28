@@ -184,7 +184,7 @@ impl DriverChat {
             self.read = read;
         }
         for item in items {
-            self.track_usage(&item);
+            zz_client::agent_lens::track_usage(&mut self.usage, &item);
             if let Ok(payload) = serde_json::from_value::<AgentStreamPayload>(item) {
                 self.log.apply(payload);
             }
@@ -192,32 +192,6 @@ impl DriverChat {
         self.applied = newest;
         self.stamp();
         true
-    }
-
-    fn track_usage(&mut self, item: &Value) {
-        if matches!(
-            item.get("item").and_then(Value::as_str),
-            Some("sessionReset" | "sessionSwitched")
-        ) {
-            self.usage = None;
-            for update in item
-                .get("replay")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                self.track_usage(update);
-            }
-        }
-        let update = item.get("update").unwrap_or(item);
-        if update.get("sessionUpdate").and_then(Value::as_str) == Some("usage_update")
-            && let (Some(used), Some(size)) = (
-                update.get("used").and_then(Value::as_u64),
-                update.get("size").and_then(Value::as_u64),
-            )
-        {
-            self.usage = Some((used, size));
-        }
     }
 
     fn stamp(&mut self) {

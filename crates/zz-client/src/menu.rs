@@ -311,6 +311,84 @@ fn menu_page_down(items: &[Option<MenuItem>], selected: Option<usize>) -> Option
     Some(choice)
 }
 
+#[must_use]
+pub fn menu_hit_cell(
+    state: &MenuState,
+    surface: crate::floating::PixelRect,
+    rows: crate::floating::PixelRect,
+    tops: &[f32],
+    (x, y): (f32, f32),
+) -> (u16, u16) {
+    let inside = |rect: crate::floating::PixelRect| {
+        x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height
+    };
+    let column = state.left.saturating_add(1);
+    if inside(rows) {
+        let index = tops.iter().rposition(|top| *top <= y).unwrap_or_default();
+        let index = u16::try_from(index).unwrap_or(u16::MAX);
+        return (column, state.top.saturating_add(1).saturating_add(index));
+    }
+    if inside(surface) {
+        return (column, state.top);
+    }
+    (u16::MAX, 0)
+}
+
+pub const MENU_LIST_PADDING: f32 = 4.0;
+pub const MENU_LINE_HEIGHT: f32 = 16.0;
+pub const MENU_TITLE_HEIGHT: f32 = 21.0;
+pub const MENU_SEPARATOR_HEIGHT: f32 = 5.0;
+pub const MENU_WINDOW_MARGIN: f32 = 8.0;
+
+#[must_use]
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "menu item counts are far below f32's exact integer range"
+)]
+pub fn menu_row_height(
+    state: &MenuState,
+    titled: bool,
+    room_height: f32,
+    natural: f32,
+    inset_rows: bool,
+) -> f32 {
+    let rows = state.items.iter().flatten().count();
+    if rows == 0 {
+        return natural;
+    }
+    let gaps = if inset_rows {
+        2.0 * state.items.len().saturating_sub(1) as f32
+    } else {
+        0.0
+    };
+    let fixed = MENU_WINDOW_MARGIN * 2.0
+        + MENU_LIST_PADDING * 2.0
+        + if titled { MENU_TITLE_HEIGHT } else { 0.0 }
+        + MENU_SEPARATOR_HEIGHT * (state.items.len() - rows) as f32
+        + gaps;
+    let fit = (room_height - fixed) / f32::from(u16::try_from(rows).unwrap_or(u16::MAX));
+    natural.min(fit.floor()).max(MENU_LINE_HEIGHT)
+}
+
+#[must_use]
+pub fn confirm_accepts(
+    confirm_key: u8,
+    default_yes: bool,
+    key: &str,
+    key_char: Option<&str>,
+    (control, platform, function): (bool, bool, bool),
+) -> bool {
+    if key == "enter" {
+        return default_yes && !platform && !function;
+    }
+    if control || platform || function {
+        return false;
+    }
+    key_char.is_some_and(|value| {
+        value.len() == 1 && value.as_bytes().first().copied() == Some(confirm_key)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use zz_protocol::PopupBorderLines;

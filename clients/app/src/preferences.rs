@@ -369,7 +369,7 @@ impl Preferences {
     }
 
     #[cfg(target_family = "wasm")]
-    const STORAGE_KEY: &str = if zz_protocol::app_identity::DEVELOPMENT {
+    pub const STORAGE_KEY: &str = if zz_protocol::app_identity::DEVELOPMENT {
         "zz-dev-web-preferences"
     } else {
         "zz-web-preferences"

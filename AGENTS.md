@@ -28,6 +28,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-hotreload` - Subsecond hot-reload launcher for `just hot linux`
 - `clients/app` - `zz-app`: the thin-client app web and iOS share (shell, sidebar, status bar, settings, palette, overlays, panes, connection reducer, image cache, iOS transport and browser pane)
 - `clients/web` - `zz-web-client`: the WASM entry point around zz-app, with its own Cargo workspace
+- `clients/dom` - `zz-dom`: an HTML thin client, `zz-client` in wasm drawn with `design/kit`, served by `just design client`
 - `clients/ios` - `zz-ios`: the iOS entry point around zz-app and zz-gpui-platform's iOS backend, the bundle files, and a terminal example (`ZZ_GPUI_DEMO=terminal`); `just ios`
 - `crates/zz-xtask` — build tooling: CEF bundling, packaging (`cargo xtask`)
 - `compat/` — tmux compat campaign: differential harness (`run.sh`), gap registry (`tmux-gaps.json`), dispatch-board client (`board.py`), progress meter, orchestration handoff (`orchestration/`)
@@ -36,6 +37,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `knowledge/` — OKF knowledge bundle for the whole system (start at `index.md`)
 - `scripts/` — build, packaging, and profiling scripts
 - `bench/` — terminal throughput benchmark harness
+- `design/` - HTML mockups painted with the real theme: `crates/zz-ui/src/theme_css.rs` writes every role's look as CSS (`just design tokens`), `just design serve` shows them; see `design/README.md`
 - `site/` — zzmux.sh landing page and docs (Astro)
 - `third_party/` — vendored code (`ghostty/`, a trimmed Ghostty synced with `just vendor ghostty <rev>`; the libghostty-vt and CEF crates under `rust/`) and pinned reference material
 - `packaging/` — Arch package, AUR/cask templates

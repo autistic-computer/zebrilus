@@ -190,21 +190,15 @@ impl TerminalPaneAction {
         pane: zz_protocol::PaneId,
         float_rows: Option<u16>,
     ) -> Vec<zz_protocol::CommandInvocation> {
-        let split = |axis: &str| {
-            zz_protocol::CommandInvocation::new(
-                "split-window",
-                [
-                    "--kind".to_owned(),
-                    "picker".to_owned(),
-                    axis.to_owned(),
-                    "-t".to_owned(),
-                    pane.to_string(),
-                ],
-            )
-        };
         match self {
-            Self::SplitBottom => vec![split("-v")],
-            Self::SplitRight => vec![split("-h")],
+            Self::SplitBottom => vec![zz_client::picker_split_command(
+                pane,
+                zz_protocol::Axis::Vertical,
+            )],
+            Self::SplitRight => vec![zz_client::picker_split_command(
+                pane,
+                zz_protocol::Axis::Horizontal,
+            )],
             Self::Float => zz_client::floating::float_pane_commands(pane, float_rows).to_vec(),
             Self::Tile => vec![zz_client::floating::tile_pane_command(pane)],
             Self::Zoom => vec![zz_client::floating::zoom_pane_command(pane)],

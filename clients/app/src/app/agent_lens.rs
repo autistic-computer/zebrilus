@@ -4,23 +4,23 @@ use std::{
     sync::Arc,
 };
 
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde_json::Value;
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, active_command_hint, bare_command_name, completion_query,
     meaningful_command_description, pane_commands, ranked_completions,
 };
-use zz_client::agent_transcript::{
-    AgentPermissionKind, AgentThreadEntry, AgentToolKindModel, AgentToolStatusModel,
-    AgentTranscript, ToolPayload, is_zz_command, rewind_command,
+use zz_client::agent_lens::{
+    LensEmpty, LensTranscript, PendingPermission, accepts_prompt, conversation_changed, lens_empty,
+    lens_placeholder, pending_permissions, restore_reclaim_id, restored_prompts, track_usage,
+    turn_running,
 };
+use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
 use zz_gpui::{
     AnyElement, App, Context, Corners, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
     ListAlignment, ListState, Pixels, Render, Subscription, Window, div, prelude::*, px,
 };
 use zz_protocol::{
-    AgentConnectionPhase, AgentImage, AgentProvider, AgentQuestionAnswer, PaneId, PaneSnapshot,
-    ProtocolMessage, agent_stream::AgentQuestion,
+    AgentConnectionPhase, AgentImage, AgentQuestionAnswer, PaneId, PaneSnapshot, ProtocolMessage,
 };
 use zz_ui::{
     Disableable as _,
@@ -94,13 +94,10 @@ impl AgentLens {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let agent = connection
-            .read(cx)
-            .terminal_agent(pane)
-            .map_or("the agent", AgentProvider::label);
+        let placeholder = lens_placeholder(connection.read(cx).terminal_agent(pane));
         let input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder(format!("Message {agent}…"))
+                .placeholder(placeholder)
                 .auto_grow(1, 8)
                 .submit_on_enter(true)
                 .context_menu(true)
@@ -248,12 +245,7 @@ impl AgentLens {
             .read(cx)
             .core
             .agent_state(self.pane)
-            .is_some_and(|state| {
-                matches!(
-                    state.phase,
-                    AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission
-                )
-            });
+            .is_some_and(|state| turn_running(&state.phase));
         let streaming = running
             .then(|| self.transcript.entries.last().map(AgentEntry::id))
             .flatten();
@@ -452,13 +444,10 @@ impl AgentLens {
         let connection = self.connection.read(cx);
         let allowed = connection.connected
             && !connection.core.attached_read_only()
-            && connection.core.agent_state(self.pane).is_some_and(|state| {
-                matches!(
-                    state.phase,
-                    AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission
-                ) || (state.phase == AgentConnectionPhase::Ready
-                    && state.pending_permission.is_none())
-            });
+            && connection
+                .core
+                .agent_state(self.pane)
+                .is_some_and(accepts_prompt);
         if !allowed || (text.trim().is_empty() && images.is_empty()) {
             return false;
         }
@@ -482,12 +471,10 @@ impl AgentLens {
             return false;
         }
         let command = connection.agent_verbs_supported(self.pane) && is_zz_command(text);
-        let queueing = connection.core.agent_state(self.pane).is_some_and(|state| {
-            matches!(
-                state.phase,
-                AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission
-            )
-        });
+        let queueing = connection
+            .core
+            .agent_state(self.pane)
+            .is_some_and(|state| turn_running(&state.phase));
         if !queueing && !command {
             self.transcript.local_prompt(text, images);
             self.transcript_dirty = true;
@@ -513,26 +500,6 @@ impl AgentLens {
             .update(cx, |input, cx| input.set_value("", window, cx));
         self.stick.engage(&self.scroll, cx.reduce_motion());
         cx.notify();
-    }
-
-    fn track_usage(&mut self, update: &Value) {
-        if matches!(
-            update.get("item").and_then(Value::as_str),
-            Some("sessionReset" | "sessionSwitched")
-        ) {
-            self.usage = None;
-            for update in update
-                .get("replay")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                self.track_usage(update);
-            }
-        }
-        if let Some(usage) = usage_from_update(update) {
-            self.usage = Some(usage);
-        }
     }
 
     fn synchronize(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -571,22 +538,16 @@ impl AgentLens {
                     .map(|value| (*sequence, value))
             })
             .collect();
-        let conversation_changed = updates.iter().any(|(_, update)| {
-            matches!(
-                update.get("item").and_then(Value::as_str),
-                Some("sessionReset" | "sessionSwitched")
-            )
-        });
-        if conversation_changed {
+        let switched = updates
+            .iter()
+            .any(|(_, update)| conversation_changed(update));
+        if switched {
             self.permission_answered.clear();
         }
         for (sequence, update) in updates {
             self.restore_prompts(&update, window, cx);
-            self.track_usage(&update);
-            if matches!(
-                update.get("item").and_then(Value::as_str),
-                Some("sessionReset" | "sessionSwitched")
-            ) {
+            track_usage(&mut self.usage, &update);
+            if conversation_changed(&update) {
                 self.timeline.update(cx, |timeline, cx| {
                     timeline.clear(cx);
                 });
@@ -600,7 +561,7 @@ impl AgentLens {
         let folded = fold_timeline_rows(&self.transcript.entries);
         self.rows = folded.rows;
         self.entry_to_row = folded.entry_to_row;
-        if conversation_changed
+        if switched
             || self.transcript.entries.first().map(AgentEntry::id) != old_first
             || self.rows.len() < old_count
         {
@@ -635,14 +596,9 @@ impl AgentLens {
     }
 
     fn restore_prompts(&mut self, update: &Value, window: &mut Window, cx: &mut Context<Self>) {
-        let item = update.get("item").and_then(Value::as_str);
-        if !matches!(item, Some("promptsReclaimed" | "promptsRestored")) {
+        let Some(reclaim_id) = restore_reclaim_id(update) else {
             return;
-        }
-        let reclaim_id = update
-            .get("reclaim_id")
-            .or_else(|| update.get("reclaimId"))
-            .and_then(Value::as_u64);
+        };
         if reclaim_id.is_some_and(|id| id <= self.last_reclaim_id) {
             return;
         }
@@ -692,53 +648,14 @@ impl AgentLens {
     }
 
     fn pending_permissions(&self, cx: &App) -> Vec<PendingPermission> {
-        let mut requests = self
-            .transcript
-            .model
-            .permissions()
-            .iter()
-            .map(|request| PendingPermission {
-                request_id: request.request_id,
-                title: request.title.clone(),
-                questions: request.questions.clone(),
-                options: request
-                    .options
-                    .iter()
-                    .map(|option| PermissionChoice {
-                        id: option.id.clone(),
-                        name: option.name.clone(),
-                        allow: Some(matches!(
-                            option.kind,
-                            AgentPermissionKind::AllowOnce | AgentPermissionKind::AllowAlways
-                        )),
-                    })
-                    .collect(),
-            })
-            .collect::<Vec<_>>();
-        if let Some(permission) = self
-            .connection
-            .read(cx)
-            .core
-            .agent_state(self.pane)
-            .and_then(|state| state.pending_permission.as_ref())
-            && !requests
-                .iter()
-                .any(|request| request.request_id == permission.request_id)
-        {
-            let payload = serde_json::from_str::<Value>(&permission.payload).unwrap_or_default();
-            requests.push(PendingPermission {
-                request_id: permission.request_id,
-                title: payload
-                    .pointer("/tool_call/title")
-                    .or_else(|| payload.pointer("/toolCall/title"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("This agent needs your permission")
-                    .to_owned(),
-                options: permission_choices(&payload),
-                questions: permission_questions(&payload),
-            });
-        }
-        requests
+        pending_permissions(
+            self.transcript.lens.model.permissions(),
+            self.connection
+                .read(cx)
+                .core
+                .agent_state(self.pane)
+                .and_then(|state| state.pending_permission.as_ref()),
+        )
     }
 
     fn current_permission(&self, cx: &App) -> Option<PendingPermission> {
@@ -1032,7 +949,7 @@ impl AgentLens {
     }
 
     fn tool_row(&self, tool_call_id: &str) -> Option<usize> {
-        let entry = self.transcript.model.tool_entry(tool_call_id)?;
+        let entry = self.transcript.lens.model.tool_entry(tool_call_id)?;
         let index = self
             .transcript
             .entries
@@ -1190,10 +1107,7 @@ impl Render for AgentLens {
             .unwrap_or_default();
         let connected = self.connection.read(cx).connected;
         let writable = connected && !self.connection.read(cx).core.attached_read_only();
-        let running = matches!(
-            state.phase,
-            AgentConnectionPhase::Running | AgentConnectionPhase::AwaitingPermission
-        );
+        let running = turn_running(&state.phase);
         let ready = writable
             && matches!(
                 state.phase,
@@ -1406,39 +1320,15 @@ impl Render for AgentLens {
         let provider = self
             .terminal(cx)
             .and_then(zz_client::window_summary::pane_agent);
-        let agent = provider.map_or("the agent", AgentProvider::label);
-        let empty = self.rows.is_empty().then(|| {
-            let empty_message = if connected {
-                match state.phase {
-                    AgentConnectionPhase::Starting => format!("Reading {agent}’s transcript…"),
-                    AgentConnectionPhase::Ready => match provider {
-                        Some(provider) => return lens_welcome(provider, cx),
-                        None => format!("{agent} is waiting for its first prompt."),
-                    },
-                    AgentConnectionPhase::Running => {
-                        format!("Waiting for {agent}’s first update…")
+        let empty =
+            self.rows
+                .is_empty()
+                .then(|| match lens_empty(connected, &state.phase, provider) {
+                    LensEmpty::Welcome(provider) => lens_welcome(provider, cx),
+                    LensEmpty::Message { text, busy } => {
+                        empty_state(text, busy, cx.entity_id(), cx)
                     }
-                    AgentConnectionPhase::AwaitingPermission => {
-                        "The agent needs your permission.".to_owned()
-                    }
-                    AgentConnectionPhase::Failed { .. } => {
-                        format!("Could not read {agent}’s transcript.")
-                    }
-                }
-            } else {
-                "The agent is offline.".to_owned()
-            };
-            empty_state(
-                empty_message,
-                connected
-                    && matches!(
-                        state.phase,
-                        AgentConnectionPhase::Starting | AgentConnectionPhase::Running
-                    ),
-                cx.entity_id(),
-                cx,
-            )
-        });
+                });
         let timeline = AgentTimeline::new(
             self.rows.clone(),
             self.scroll.clone(),
@@ -1526,57 +1416,6 @@ impl Render for AgentLens {
     }
 }
 
-#[derive(Clone)]
-struct PendingPermission {
-    request_id: u64,
-    title: String,
-    options: Vec<PermissionChoice>,
-    questions: Vec<AgentQuestion>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct PermissionChoice {
-    id: String,
-    name: String,
-    allow: Option<bool>,
-}
-
-fn permission_choices(payload: &Value) -> Vec<PermissionChoice> {
-    payload
-        .get("options")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|option| {
-            let id = option
-                .get("optionId")
-                .or_else(|| option.get("id"))?
-                .as_str()?
-                .to_owned();
-            Some(PermissionChoice {
-                name: option
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .unwrap_or(&id)
-                    .to_owned(),
-                allow: match option.get("kind").and_then(Value::as_str) {
-                    Some("allow_once" | "allow_always") => Some(true),
-                    Some("reject_once" | "reject_always") => Some(false),
-                    _ => None,
-                },
-                id,
-            })
-        })
-        .collect()
-}
-
-fn permission_questions(payload: &Value) -> Vec<AgentQuestion> {
-    payload
-        .get("questions")
-        .and_then(|questions| serde_json::from_value(questions.clone()).ok())
-        .unwrap_or_default()
-}
-
 fn decode_transcript_image(format: &str, data: Vec<u8>) -> Option<Arc<zz_gpui::Image>> {
     let image = AgentImage {
         format: format.to_owned(),
@@ -1593,69 +1432,29 @@ fn preview_image(image: &AgentImage) -> Option<Arc<zz_gpui::Image>> {
     )))
 }
 
-fn restored_prompts(
-    update: &Value,
-    client: Option<zz_protocol::ClientInstanceId>,
-) -> Vec<(String, Vec<AgentImage>)> {
-    update
-        .get("prompts")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|prompt| {
-            let owner = match prompt.get("owner") {
-                Some(owner) => {
-                    serde_json::from_value::<zz_protocol::ClientInstanceId>(owner.clone()).ok()?
-                }
-                None => zz_protocol::ClientInstanceId::default(),
-            };
-            if owner.0 != 0 && Some(owner) != client {
-                return None;
-            }
-            let text =
-                String::from_utf8(BASE64.decode(prompt.get("text")?.as_str()?).ok()?).ok()?;
-            let images = prompt
-                .get("images")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-                .map(|image| {
-                    Some(AgentImage {
-                        format: image.get("format")?.as_str()?.to_owned(),
-                        data: BASE64.decode(image.get("data")?.as_str()?).ok()?,
-                    })
-                })
-                .collect::<Option<Vec<_>>>()?;
-            Some((text, images))
-        })
-        .collect()
-}
-
 struct Transcript {
-    model: AgentTranscript<Arc<zz_gpui::Image>>,
+    lens: LensTranscript<Arc<zz_gpui::Image>>,
     entries: Vec<AgentEntry>,
     markdown: HashMap<u64, AgentMarkdown>,
     tool_payloads: HashMap<(u64, usize), AgentToolPayload>,
     revision: u64,
-    session_reset: bool,
 }
 
 impl Default for Transcript {
     fn default() -> Self {
         Self {
-            model: AgentTranscript::new(decode_transcript_image),
+            lens: LensTranscript::new(decode_transcript_image),
             entries: Vec::new(),
             markdown: HashMap::new(),
             tool_payloads: HashMap::new(),
             revision: 0,
-            session_reset: false,
         }
     }
 }
 
 impl Transcript {
     fn local_prompt(&mut self, text: &str, images: &[AgentImage]) {
-        self.model.begin_prompt(
+        self.lens.model.begin_prompt(
             text.to_owned(),
             images.iter().filter_map(preview_image).collect(),
         );
@@ -1663,14 +1462,14 @@ impl Transcript {
     }
 
     fn synchronize(&mut self) {
-        let changed = self.model.changed_entries(self.revision);
-        let indices = changed.unwrap_or_else(|| (0..self.model.entries().len()).collect());
+        let model = &self.lens.model;
+        let changed = model.changed_entries(self.revision);
+        let indices = changed.unwrap_or_else(|| (0..model.entries().len()).collect());
         for index in indices {
-            let source = &self.model.entries()[index];
-            let parent = self
-                .model
+            let source = &model.entries()[index];
+            let parent = model
                 .tool_parent(source.id())
-                .and_then(|parent| self.model.tool_entry(parent));
+                .and_then(|parent| model.tool_entry(parent));
             let entry =
                 ui_entry_with_markdown(source, parent, &mut self.markdown, &mut self.tool_payloads);
             if index < self.entries.len() {
@@ -1679,85 +1478,15 @@ impl Transcript {
                 self.entries.push(entry);
             }
         }
-        self.revision = self.model.revision();
+        self.revision = model.revision();
     }
 
     fn apply(&mut self, _sequence: u64, item: &Value) {
-        match item.get("item").and_then(Value::as_str).unwrap_or_default() {
-            "sessionReset" => {
-                *self = Self::default();
-                self.session_reset = true;
-            }
-            "sessionReady" => {
-                self.session_reset = false;
-                self.model.finish_replay();
-                self.model.finish_turn();
-            }
-            "sessionSwitched" => {
-                if !self.session_reset {
-                    *self = Self::default();
-                }
-                for update in item
-                    .get("replay")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                {
-                    if let Ok(update) = serde_json::from_value(update.clone()) {
-                        self.model.apply_update(update);
-                    }
-                }
-                self.session_reset = false;
-                self.model.finish_replay();
-            }
-            "update" => {
-                if let Some(update) = item.get("update")
-                    && let Ok(update) = serde_json::from_value(update.clone())
-                {
-                    self.model.apply_update(update);
-                }
-            }
-            "permissionRequested" => {
-                if let (Some(request_id), Some(tool), Some(options)) = (
-                    item.get("request_id").and_then(Value::as_u64),
-                    item.get("tool_call"),
-                    item.get("options"),
-                ) && let (Ok(tool), Ok(options)) = (
-                    serde_json::from_value(tool.clone()),
-                    serde_json::from_value(options.clone()),
-                ) {
-                    self.model.request_questions(
-                        request_id,
-                        tool,
-                        options,
-                        permission_questions(item),
-                    );
-                }
-            }
-            "permissionResolved" => {
-                if let Some(request_id) = item.get("request_id").and_then(Value::as_u64) {
-                    self.model.resolve_permission(
-                        request_id,
-                        item.get("canceled")
-                            .and_then(Value::as_bool)
-                            .unwrap_or(false),
-                    );
-                }
-            }
-            "promptFinished" => {
-                if item.pointer("/outcome/outcome").and_then(Value::as_str) == Some("failed") {
-                    self.model.fail_inflight();
-                } else if item.pointer("/outcome/stop_reason").and_then(Value::as_str)
-                    == Some("cancelled")
-                {
-                    self.model.cancel_inflight();
-                } else {
-                    self.model.finish_turn();
-                }
-                self.model.finish_replay();
-            }
-            "paneFailed" => self.model.fail_inflight(),
-            _ => {}
+        if self.lens.apply(item) {
+            self.entries.clear();
+            self.markdown.clear();
+            self.tool_payloads.clear();
+            self.revision = 0;
         }
         self.synchronize();
     }
@@ -1848,27 +1577,8 @@ fn ui_entry_with_markdown(
             });
             AgentEntry::Tool(AgentToolEntry {
                 id: *id,
-                kind: match kind {
-                    AgentToolKindModel::Read => AgentToolKind::Read,
-                    AgentToolKindModel::Search => AgentToolKind::Search,
-                    AgentToolKindModel::Edit
-                    | AgentToolKindModel::Delete
-                    | AgentToolKindModel::Move => AgentToolKind::Edit,
-                    AgentToolKindModel::Execute => AgentToolKind::Execute,
-                    AgentToolKindModel::Fetch => AgentToolKind::Fetch,
-                    AgentToolKindModel::Think => AgentToolKind::Think,
-                    AgentToolKindModel::SwitchMode | AgentToolKindModel::Other => {
-                        AgentToolKind::Other
-                    }
-                },
-                status: match status {
-                    AgentToolStatusModel::Pending => AgentToolStatus::Pending,
-                    AgentToolStatusModel::Running => AgentToolStatus::Running,
-                    AgentToolStatusModel::NeedsApproval => AgentToolStatus::NeedsApproval,
-                    AgentToolStatusModel::Completed => AgentToolStatus::Completed,
-                    AgentToolStatusModel::Failed => AgentToolStatus::Failed,
-                    AgentToolStatusModel::Canceled => AgentToolStatus::Canceled,
-                },
+                kind: AgentToolKind::from(*kind),
+                status: AgentToolStatus::from(*status),
                 label: zz_gpui::SharedString::from(label.clone()),
                 location: location.clone().map(zz_gpui::SharedString::from),
                 input: input
@@ -1945,16 +1655,12 @@ fn retained_tool_payload(
     next
 }
 
-fn usage_from_update(update: &Value) -> Option<(u64, u64)> {
-    let update = update.get("update").unwrap_or(update);
-    (update.get("sessionUpdate").and_then(Value::as_str) == Some("usage_update"))
-        .then(|| Some((update.get("used")?.as_u64()?, update.get("size")?.as_u64()?)))?
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
     use serde_json::json;
+    use zz_client::agent_lens::permission_questions;
 
     #[test]
     fn replayed_image_only_messages_and_text_chunks_share_the_user_row() {
@@ -2050,7 +1756,7 @@ mod tests {
             panic!()
         };
         assert_eq!(tool.status, AgentToolStatus::NeedsApproval);
-        assert_eq!(transcript.model.permissions().len(), 1);
+        assert_eq!(transcript.lens.model.permissions().len(), 1);
         transcript.apply(
             3,
             &json!({"item":"permissionResolved","request_id":7,"canceled":true}),
@@ -2059,7 +1765,7 @@ mod tests {
             panic!()
         };
         assert_eq!(tool.status, AgentToolStatus::Canceled);
-        assert!(transcript.model.permissions().is_empty());
+        assert!(transcript.lens.model.permissions().is_empty());
     }
 
     #[test]
@@ -2072,7 +1778,7 @@ mod tests {
         let mut transcript = Transcript::default();
         transcript.apply(1, &json!({"item":"permissionRequested","request_id":9,
             "tool_call":{"toolCallId":"ask","title":"Which fruit?"},"options":[],"questions":questions}));
-        let pending = transcript.model.permissions();
+        let pending = transcript.lens.model.permissions();
         let asked = &pending[0].questions[0];
         assert_eq!(asked.header.as_deref(), Some("Snack"));
         assert_eq!(asked.options[1].description.as_deref(), Some("green"));
@@ -2216,20 +1922,6 @@ mod tests {
     }
 
     #[test]
-    fn usage_reads_live_and_history_updates() {
-        let update = json!({"sessionUpdate":"usage_update","used":400,"size":1000});
-        assert_eq!(usage_from_update(&update), Some((400, 1000)));
-        assert_eq!(
-            usage_from_update(&json!({"item":"update","update":update})),
-            Some((400, 1000))
-        );
-        assert_eq!(
-            usage_from_update(&json!({"sessionUpdate":"usage_update","used":1})),
-            None
-        );
-    }
-
-    #[test]
     fn submitted_prompt_is_visible_without_a_provider_echo_and_not_duplicated_by_one() {
         let mut transcript = Transcript::default();
         transcript.local_prompt("hello world", &[]);
@@ -2242,22 +1934,6 @@ mod tests {
         transcript.apply(4, &json!({"item":"promptFinished"}));
         transcript.apply(5, &json!({"item":"update","update":{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"another client"}}}));
         assert_eq!(transcript.entries.len(), 2);
-    }
-
-    #[test]
-    fn restored_drafts_keep_unicode_images_and_only_the_owners_prompts() {
-        let update = json!({"item":"promptsRestored","prompts":[
-            {"owner":7,"text":BASE64.encode("héllo"),"images":[{"format":"image/png","data":BASE64.encode([1,2,3])}]},
-            {"owner":8,"text":BASE64.encode("someone else's draft"),"images":[]},
-            {"owner":0,"text":BASE64.encode("legacy"),"images":[]},
-            {"owner":"bad","text":BASE64.encode("invalid owner"),"images":[]}
-        ]});
-        let prompts = restored_prompts(&update, Some(zz_protocol::ClientInstanceId(7)));
-        assert_eq!(prompts.len(), 2);
-        assert_eq!(prompts[0].0, "héllo");
-        assert_eq!(prompts[0].1[0].data, [1, 2, 3]);
-        assert_eq!(prompts[1].0, "legacy");
-        assert_eq!(restored_prompts(&update, None).len(), 1);
     }
 
     #[test]
@@ -2305,6 +1981,6 @@ mod tests {
         assert_eq!(tool.status, AgentToolStatus::Completed);
         transcript.apply(3, &json!({"item":"sessionReset"}));
         assert!(transcript.entries.is_empty());
-        assert!(transcript.model.permissions().is_empty());
+        assert!(transcript.lens.model.permissions().is_empty());
     }
 }

@@ -742,10 +742,7 @@ impl AppShell {
             return div().size_full().into_any_element();
         };
         let can_focus = current && self.compact_can_focus(window, cx);
-        let dead = pane.dead.then(|| {
-            pane.dead_status
-                .map_or_else(|| "Dead".to_owned(), |status| format!("Dead · {status}"))
-        });
+        let dead = zz_client::terminal_view::dead_label(pane.dead, pane.dead_status);
         let mut background = cx.theme().background;
         let mut rows_above = false;
         let lens = matches!(pane.kind, PaneKindSnapshot::Terminal)

@@ -160,63 +160,9 @@ pub fn tree_action_strip(
         .into_any_element()
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TreeNavigationRow {
-    pub depth: u8,
-    pub parent: Option<usize>,
-    pub expandable: bool,
-    pub expanded: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TreeNavigation {
-    Up,
-    Down,
-    First,
-    Last,
-    Left,
-    Right,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TreeNavigationResult {
-    Select(usize),
-    Toggle(usize),
-    None,
-}
-
-pub fn tree_navigation(
-    rows: &[TreeNavigationRow],
-    selected: Option<usize>,
-    direction: TreeNavigation,
-) -> TreeNavigationResult {
-    use TreeNavigationResult::{None, Select, Toggle};
-    if rows.is_empty() {
-        return None;
-    }
-    if selected.is_none() && matches!(direction, TreeNavigation::Left | TreeNavigation::Right) {
-        return None;
-    }
-    let index = selected.unwrap_or(0).min(rows.len() - 1);
-    let row = rows[index];
-    match direction {
-        TreeNavigation::Up => Select(index.saturating_sub(1)),
-        TreeNavigation::Down => Select((index + 1).min(rows.len() - 1)),
-        TreeNavigation::First => Select(0),
-        TreeNavigation::Last => Select(rows.len() - 1),
-        TreeNavigation::Left if row.expandable && row.expanded => Toggle(index),
-        TreeNavigation::Left => row.parent.map_or(None, Select),
-        TreeNavigation::Right if row.expandable && !row.expanded => Toggle(index),
-        TreeNavigation::Right
-            if rows
-                .get(index + 1)
-                .is_some_and(|child| child.depth == row.depth + 1) =>
-        {
-            Select(index + 1)
-        }
-        TreeNavigation::Right => None,
-    }
-}
+pub use zz_client::sidebar::{
+    TreeNavigation, TreeNavigationResult, TreeNavigationRow, tree_navigation,
+};
 
 #[cfg(test)]
 mod tests {

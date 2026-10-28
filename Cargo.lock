@@ -11269,6 +11269,7 @@ dependencies = [
  "base64 0.23.1",
  "foldhash",
  "getrandom 0.4.3",
+ "markdown",
  "neo_frizbee",
  "parking_lot",
  "serde",

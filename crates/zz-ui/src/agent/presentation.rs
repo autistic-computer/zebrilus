@@ -46,8 +46,8 @@ pub fn welcome_state(
 pub fn lens_welcome(provider: zz_protocol::AgentProvider, cx: &App) -> Div {
     welcome_state(
         Icon::new(crate::pane::agent_provider_icon(provider)).size(px(40.0)),
-        format!("{} is waiting for its first prompt", provider.label()),
-        "What you send here is typed into the terminal.",
+        zz_client::agent_lens::lens_welcome_title(provider),
+        zz_client::agent_lens::LENS_WELCOME_DETAIL,
         cx,
     )
 }

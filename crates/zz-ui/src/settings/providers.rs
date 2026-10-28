@@ -4,7 +4,7 @@ use zz_gpui::{
     App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
-use zz_protocol::{AgentProvider, ProviderStatus, ProviderTask, ProvidersReport};
+use zz_protocol::{AgentProvider, ProviderStatus, ProvidersReport};
 
 use super::{SettingEntry, SettingsStack, settings_card_ground};
 use crate::{
@@ -15,7 +15,11 @@ use crate::{
     spinner::Spinner,
 };
 
-pub const PROVIDERS: [AgentProvider; 2] = [AgentProvider::ClaudeCode, AgentProvider::Codex];
+pub use zz_client::providers::PROVIDERS;
+use zz_client::providers::{
+    NoteTone, ProviderAction as Action, provider_action, provider_description, provider_notes,
+    version_current, version_text as version_label,
+};
 
 type ProviderAction = Rc<dyn Fn(AgentProvider, &mut Window, &mut App)>;
 
@@ -65,12 +69,7 @@ fn provider_entry(
 ) -> SettingEntry {
     let provider = status.provider;
     let mut entry = SettingEntry::new(provider.label())
-        .description(
-            status
-                .path
-                .as_deref()
-                .map_or_else(|| "Not installed".to_owned(), home_relative),
-        )
+        .description(provider_description(status))
         .title_icon(Icon::new(agent_provider_icon(provider)))
         .control(
             h_flex()
@@ -79,74 +78,33 @@ fn provider_entry(
                 .child(version_text(status, cx))
                 .children(action(id, status, checking, on_update, cx)),
         );
-    if let Some(manual) = status.manual.as_ref().filter(|_| stale(status)) {
-        let muted = cx.theme().foreground.muted();
-        entry = match &manual.command {
-            Some(command) => entry
-                .child(task_line(
-                    format!("Installed by {}. Update it with:", manual.owner),
-                    muted,
-                    cx,
-                ))
-                .child(task_line(command.clone(), cx.theme().foreground, cx)),
-            None => entry.child(task_line(
-                format!("Installed by {}. Update it there.", manual.owner),
-                muted,
-                cx,
-            )),
+    for (note, tone) in provider_notes(status) {
+        let color = match tone {
+            NoteTone::Muted => cx.theme().foreground.muted(),
+            NoteTone::Foreground => cx.theme().foreground,
+            NoteTone::Warning => cx.theme().warning,
         };
-    }
-    match &status.task {
-        ProviderTask::Running { output } if !output.is_empty() => {
-            entry = entry.child(task_line(output.clone(), cx.theme().foreground.muted(), cx));
-        }
-        ProviderTask::Failed { message } => {
-            entry = entry.child(task_line(message.clone(), cx.theme().warning, cx));
-        }
-        ProviderTask::Running { .. } | ProviderTask::Idle => {}
+        entry = entry.child(task_line(note, color, cx));
     }
     entry
 }
 
-fn home_relative(path: &str) -> String {
-    ["/Users/", "/home/"]
-        .iter()
-        .find_map(|root| {
-            let rest = path.strip_prefix(root)?;
-            let tail = rest.find('/').map_or("", |slash| &rest[slash..]);
-            Some(format!("~{tail}"))
-        })
-        .unwrap_or_else(|| path.to_owned())
-}
-
 fn version_text(status: &ProviderStatus, cx: &App) -> impl IntoElement {
     let muted = cx.theme().foreground.muted();
-    let text: SharedString = match (&status.version, &status.latest) {
-        (Some(version), Some(latest)) if status.outdated() => {
-            format!("{version} → {latest}").into()
-        }
-        (Some(version), _) => version.clone().into(),
-        (None, Some(latest)) if !status.installed() => format!("Latest {latest}").into(),
-        (None, _) if status.installed() => "Unknown version".into(),
-        (None, _) => SharedString::default(),
-    };
     h_flex()
         .flex_none()
         .gap(px(5.0))
         .font_family(cx.theme().mono_font_family.clone())
         .text_size(crate::rems_from_px(11.0))
         .text_color(muted)
-        .when(
-            status.installed() && !status.outdated() && status.latest.is_some(),
-            |this| {
-                this.child(
-                    Icon::new(IconName::Check)
-                        .small()
-                        .text_color(cx.theme().success),
-                )
-            },
-        )
-        .child(text)
+        .when(version_current(status), |this| {
+            this.child(
+                Icon::new(IconName::Check)
+                    .small()
+                    .text_color(cx.theme().success),
+            )
+        })
+        .child(SharedString::from(version_label(status)))
 }
 
 fn action(
@@ -157,48 +115,34 @@ fn action(
     cx: &App,
 ) -> Option<Button> {
     let provider = status.provider;
-    let installed = status.installed();
     let id = SharedString::from(format!("providers-{id}-{}", provider.as_str()));
-    if matches!(status.task, ProviderTask::Running { .. }) {
-        return Some(
-            Button::new(id)
-                .loading(true)
-                .disabled(true)
-                .label(if installed { "Updating" } else { "Installing" })
-                .on(settings_card_ground(cx)),
-        );
-    }
-    if installed && !stale(status) {
-        return None;
-    }
-    if let Some(manual) = &status.manual {
-        let command = manual.command.clone()?;
-        return Some(
-            Button::new(id)
-                .icon(IconName::Copy)
-                .label("Copy command")
+    Some(match provider_action(status, checking)? {
+        Action::Busy { label } => Button::new(id)
+            .loading(true)
+            .disabled(true)
+            .label(label)
+            .on(settings_card_ground(cx)),
+        Action::Copy { command } => Button::new(id)
+            .icon(IconName::Copy)
+            .label("Copy command")
+            .on(settings_card_ground(cx))
+            .on_click(move |_, _, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(command.clone()));
+            }),
+        Action::Update {
+            label,
+            primary,
+            disabled,
+        } => {
+            let on_update = Rc::clone(on_update);
+            let button = Button::new(id)
+                .label(label)
+                .disabled(disabled)
                 .on(settings_card_ground(cx))
-                .on_click(move |_, _, cx| {
-                    cx.write_to_clipboard(ClipboardItem::new_string(command.clone()));
-                }),
-        );
-    }
-    let label = if installed { "Update" } else { "Install" };
-    let on_update = Rc::clone(on_update);
-    let button = Button::new(id)
-        .label(label)
-        .disabled(checking && status.latest.is_none() && installed)
-        .on(settings_card_ground(cx))
-        .on_click(move |_, window, cx| on_update(provider, window, cx));
-    Some(if !installed || status.outdated() {
-        button.primary()
-    } else {
-        button
+                .on_click(move |_, window, cx| on_update(provider, window, cx));
+            if primary { button.primary() } else { button }
+        }
     })
-}
-
-fn stale(status: &ProviderStatus) -> bool {
-    status.outdated() || status.latest.is_none()
 }
 
 fn task_line(text: impl Into<SharedString>, color: zz_gpui::Hsla, cx: &App) -> impl IntoElement {
