@@ -29,7 +29,7 @@ matches fuzzily:
 | `^` | host | its name |
 | `$` | session | the label the row shows (`zz 3`, `Working on foo`), or the tmux name exactly when you type only digits |
 | `@` | window | `index name`, then the programs in it; digits only are the index inside the parent session |
-| `%` | pane | `index title`, then its program; digits only are the index inside the parent window |
+| `%` | pane | `index title`, then its program; digits only are the index inside the parent window, counted from the window's `pane-base-index` as tmux numbers panes |
 
 `#N` after a sigil pins an id (`$#3`, `@#41`, `%#52`). A skipped level is a wildcard
 (`^xps@editor` finds windows named editor in every session on xps), while digits stay inside the

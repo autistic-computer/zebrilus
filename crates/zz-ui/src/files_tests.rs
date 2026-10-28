@@ -135,6 +135,7 @@ fn window(id: u64, active: u64, panes: Vec<(PaneId, PaneSnapshot)>) -> WindowSna
         modal: None,
         sx: 0,
         sy: 0,
+        pane_base_index: 0,
     }
 }
 

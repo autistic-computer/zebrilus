@@ -69,7 +69,9 @@ pub fn pane_index(window: &WindowSnapshot, pane: PaneId) -> u32 {
                 .position(|candidate| candidate.id == pane)
         })
         .unwrap_or_default();
-    u32::try_from(position).unwrap_or(u32::MAX)
+    u32::try_from(position)
+        .unwrap_or(u32::MAX)
+        .saturating_add(window.pane_base_index)
 }
 
 #[must_use]

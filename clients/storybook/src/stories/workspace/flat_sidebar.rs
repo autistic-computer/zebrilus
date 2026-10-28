@@ -230,6 +230,7 @@ fn window(id: u64, name: Option<&str>, panes: Vec<PaneSnapshot>) -> WindowSnapsh
         modal: None,
         sx: 120,
         sy: 40,
+        pane_base_index: 0,
     }
 }
 

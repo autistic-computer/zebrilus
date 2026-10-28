@@ -26324,6 +26324,10 @@ mod tests {
         assert_eq!(engine.pane_index(window, first), Some(1));
         assert_eq!(engine.pane_index(window, second), Some(2));
         assert_eq!(
+            engine.state.snapshot().sessions[0].windows[0].pane_base_index,
+            1
+        );
+        assert_eq!(
             engine
                 .resolve_pane(Some("work:0.1"), Some(window), Some(second))
                 .unwrap(),
@@ -26381,6 +26385,10 @@ mod tests {
             )
             .expect("window pane base");
         assert_eq!(engine.pane_index(window, first), Some(3));
+        assert_eq!(
+            engine.state.snapshot().sessions[0].windows[0].pane_base_index,
+            3
+        );
         let quiet = engine
             .execute(
                 &mut context,

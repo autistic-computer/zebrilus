@@ -4655,6 +4655,7 @@ impl MuxState {
             }),
             sx,
             sy,
+            pane_base_index,
         }
     }
 

@@ -4933,6 +4933,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         let attached = SessionId(1);
         let session = zz_protocol::SessionSnapshot {
@@ -5222,6 +5223,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         MuxSnapshot {
             generation,
@@ -7191,6 +7193,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         MuxSnapshot {
             generation: 10 + active.0 + generation_bias,
@@ -8894,6 +8897,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
 
         assert!(pending.still_predicts(Some(&window), 12));
