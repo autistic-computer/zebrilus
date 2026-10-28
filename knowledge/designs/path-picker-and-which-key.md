@@ -23,6 +23,11 @@ timestamp: 2026-10-13T00:00:00Z
 > ranks with `path_rank` and pastes with `path_insert::insert_text`. Alt-Enter's forced absolute path
 > went with the old view. Sections below that describe `PathPickerView`, its placement under the
 > cursor and its keys are history.
+>
+> **2026-10-27:** `prefix F` opens the palette's `&` files mode instead, with the folder written
+> after the `&` and Alt-Enter copying the plain path ([command palette, Files](/concepts/command-palette.md#files)).
+> The listing and insert path are the same. The web and iOS clients now announce
+> `client-path-picker-v1` and list, insert and open `prefix F` the same way.
 
 Two features from the [terminal augmentation survey](../research/2026-09-25-terminal-augmentation-survey.md):
 

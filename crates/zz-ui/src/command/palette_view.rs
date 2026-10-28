@@ -32,6 +32,7 @@ use super::{
 };
 use crate::{
     WindowExt as _,
+    files::ListingSink,
     input::{
         Backspace, Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight,
         MoveUp, OutdentInline,
@@ -93,6 +94,14 @@ pub trait PaletteBackend {
         _entry: &PathEntry,
         _cx: &mut App,
     ) {
+    }
+    /// Hand `sink` every listing reply while the subscription lives.
+    fn feed_listings(&self, _sink: ListingSink, _cx: &mut App) -> Option<Subscription> {
+        None
+    }
+    /// `host`'s home folder, when this client knows it.
+    fn home_dir(&self, _host: PaletteHostId, _cx: &App) -> Option<String> {
+        None
     }
 }
 
@@ -1161,7 +1170,7 @@ impl CommandPaletteView {
         cx.notify();
     }
 
-    fn notify_action(message: String, window: &mut Window, cx: &mut App) {
+    pub(crate) fn notify_action(message: String, window: &mut Window, cx: &mut App) {
         window.push_notification(
             Notification::new()
                 .message(message)

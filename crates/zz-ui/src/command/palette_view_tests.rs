@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use zz_client::recents::RecentKey;
 use zz_gpui::{TestAppContext, VisualTestContext};
-use zz_protocol::{ChooseTreeItem, ChooseTreeKind, SessionId, WindowId};
+use zz_protocol::{ChooseTreeItem, ChooseTreeKind, PathKind, SessionId, WindowId};
 
 use super::*;
 use crate::{
@@ -11,6 +11,7 @@ use crate::{
         ActionContext, PaletteStatus, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
         PaletteTreeWindow, record_recent,
     },
+    files::{ListingSink, ListingUpdate},
 };
 
 const LOCAL: PaletteHostId = PaletteHostId(0);
@@ -27,6 +28,7 @@ enum Call {
 }
 
 type Calls = Rc<RefCell<Vec<Call>>>;
+type Sink = Rc<RefCell<Option<ListingSink>>>;
 
 struct FakeBackend {
     calls: Calls,
@@ -34,6 +36,10 @@ struct FakeBackend {
     tree: PaletteTree,
     availability: PaneKindAvailability,
     levels: Option<Rc<RefCell<Vec<String>>>>,
+    host: Option<&'static MuxSnapshot>,
+    active: PaneId,
+    sink: Sink,
+    files: Option<std::rc::Weak<FakeBackend>>,
 }
 
 struct FakeLevel(Rc<RefCell<Vec<String>>>);
@@ -70,7 +76,7 @@ impl PaletteBackend for FakeBackend {
     }
 
     fn host_snapshot<'a>(&self, _: PaletteHostId, _: &'a App) -> Option<&'a MuxSnapshot> {
-        None
+        self.host
     }
 
     fn tree(&self, _: &App) -> PaletteTree {
@@ -104,7 +110,7 @@ impl PaletteBackend for FakeBackend {
     }
 
     fn active_pane(&self, _: &App) -> Option<PaneId> {
-        Some(PaneId(0))
+        Some(self.active)
     }
 
     fn execute(&self, host: PaletteHostId, command: CommandInvocation, _: &mut App) {
@@ -115,7 +121,12 @@ impl PaletteBackend for FakeBackend {
         self.calls.borrow_mut().push(Call::Connect(host));
     }
 
-    fn action_level(&self, _: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+    fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+        if let Some(backend) = self.files.as_ref().and_then(std::rc::Weak::upgrade) {
+            return (kind == ActionKind::Files).then(|| {
+                Box::new(crate::files::FilesAction::new(backend)) as Box<dyn PaletteActionLevel>
+            });
+        }
         self.levels
             .as_ref()
             .map(|log| Box::new(FakeLevel(Rc::clone(log))) as Box<dyn PaletteActionLevel>)
@@ -151,6 +162,15 @@ impl PaletteBackend for FakeBackend {
             .borrow_mut()
             .push(Call::Insert(pane, entry.rel.clone()));
     }
+
+    fn feed_listings(&self, sink: ListingSink, _: &mut App) -> Option<Subscription> {
+        self.sink.replace(Some(sink));
+        None
+    }
+
+    fn home_dir(&self, _: PaletteHostId, _: &App) -> Option<String> {
+        Some("/home/me".to_owned())
+    }
 }
 
 fn fake_backend(
@@ -164,8 +184,84 @@ fn fake_backend(
         tree,
         availability,
         levels: None,
+        host: None,
+        active: PaneId(0),
+        sink: Sink::default(),
+        files: None,
     };
     (Rc::new(backend), calls)
+}
+
+/// A backend that hands out the real `&` level, whose host has terminals in
+/// `~/one`, `~/two` and `~/three`, pane 10 focused, and whose listings the
+/// test feeds through the sink.
+fn files_backend() -> (Rc<dyn PaletteBackend>, Calls, Sink) {
+    let snapshot: &'static MuxSnapshot = Box::leak(Box::new(crate::files::tests::snapshot()));
+    let calls = Calls::default();
+    let sink = Sink::default();
+    let backend = Rc::new_cyclic(|me| FakeBackend {
+        calls: Rc::clone(&calls),
+        snapshot: Arc::new(snapshot.clone()),
+        tree: online_tree(),
+        availability: PaneKindAvailability::default(),
+        levels: None,
+        host: Some(snapshot),
+        active: PaneId(10),
+        sink: Rc::clone(&sink),
+        files: Some(me.clone()),
+    });
+    (backend, calls, sink)
+}
+
+fn feed(cx: &mut VisualTestContext, sink: &Sink, update: ListingUpdate) {
+    cx.update(|_, cx| (sink.borrow().as_ref().expect("fed"))(LOCAL, 1, update, cx));
+    cx.run_until_parked();
+}
+
+fn entry(rel: &str, kind: PathKind) -> PathEntry {
+    PathEntry {
+        rel: rel.to_owned(),
+        kind,
+        symlink: false,
+    }
+}
+
+fn list(cx: &mut VisualTestContext, sink: &Sink, root: &str, entries: Vec<PathEntry>) {
+    feed(
+        cx,
+        sink,
+        ListingUpdate::Begin(Ok(PathListRoot {
+            root: root.to_owned(),
+            display_root: root.replacen("/home/me", "~", 1),
+            cwd: Some("/home/me/one".to_owned()),
+            insert: zz_protocol::InsertStyle::Shell(zz_protocol::ShellKind::Posix),
+        })),
+    );
+    feed(
+        cx,
+        sink,
+        ListingUpdate::Chunk {
+            entries: entries.into(),
+            done: true,
+            truncated: false,
+        },
+    );
+}
+
+fn list_one(cx: &mut VisualTestContext, sink: &Sink) {
+    list(
+        cx,
+        sink,
+        "/home/me/one",
+        vec![
+            entry("assets/", PathKind::Dir),
+            entry("crates/", PathKind::Dir),
+            entry("README.md", PathKind::File),
+            entry("crates/zz/", PathKind::Dir),
+            entry("crates/zz/src/", PathKind::Dir),
+            entry("crates/zz/src/main.rs", PathKind::File),
+        ],
+    );
 }
 
 fn level_backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Rc<RefCell<Vec<String>>>) {
@@ -179,6 +275,10 @@ fn level_backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Rc<RefCell<Vec<S
             editor: true,
         },
         levels: Some(Rc::clone(&log)),
+        host: None,
+        active: PaneId(0),
+        sink: Sink::default(),
+        files: None,
     };
     (Rc::new(backend), log)
 }
@@ -890,6 +990,282 @@ fn prefix_f_lists_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppCo
             PaneId(10),
             "crates/zz/src/main.rs".to_owned()
         ))
+    );
+}
+
+#[zz_gpui::test]
+fn prefix_f_opens_files_on_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls, sink) = files_backend();
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_target(backend, "", Some(PaneId(20)), window, cx)
+    });
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/two/");
+    assert_eq!(
+        *calls.borrow(),
+        [Call::List(LOCAL, "~/two/".to_owned(), Some(PaneId(20)))]
+    );
+    list_one(cx, &sink);
+    cx.simulate_input("mainrs");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+    assert_eq!(
+        calls.borrow().last(),
+        Some(&Call::Insert(
+            PaneId(20),
+            "crates/zz/src/main.rs".to_owned()
+        ))
+    );
+}
+
+#[zz_gpui::test]
+fn files_open_folders_and_go_back_up_to_the_folder_left(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls, sink) = files_backend();
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.simulate_input("&");
+    cx.run_until_parked();
+    assert_eq!(
+        target_value(&palette, cx),
+        "&~/one/",
+        "& starts in the focused pane's folder"
+    );
+    list_one(cx, &sink);
+
+    cx.simulate_keystrokes("down tab");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/one/crates/");
+    cx.simulate_keystrokes("shift-tab");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/one/");
+    cx.simulate_keystrokes("tab");
+    cx.run_until_parked();
+    assert_eq!(
+        target_value(&palette, cx),
+        "&~/one/crates/",
+        "going up highlights the folder left"
+    );
+    cx.simulate_keystrokes("left");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/one/");
+    cx.simulate_keystrokes("right");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/one/crates/");
+    cx.simulate_keystrokes("backspace");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/one/");
+
+    cx.simulate_input("cr");
+    cx.simulate_keystrokes("left");
+    cx.run_until_parked();
+    assert_eq!(
+        target_value(&palette, cx),
+        "&~/one/cr",
+        "Left moves the caret while there is a filter"
+    );
+    cx.simulate_keystrokes("right backspace backspace backspace");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), "&~/");
+    assert_eq!(
+        *calls.borrow(),
+        [
+            Call::List(LOCAL, "~/one/".to_owned(), Some(PaneId(10))),
+            Call::List(LOCAL, "~/".to_owned(), Some(PaneId(10))),
+        ],
+        "folders under a finished walk are not listed again"
+    );
+}
+
+#[zz_gpui::test]
+fn alt_enter_copies_the_plain_path_and_keeps_it_as_a_recent(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls, sink) = files_backend();
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.simulate_input("&");
+    cx.run_until_parked();
+    list_one(cx, &sink);
+    cx.simulate_keystrokes("down alt-enter");
+    cx.run_until_parked();
+    assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
+    assert_eq!(
+        cx.read_from_clipboard().and_then(|item| item.text()),
+        Some("/home/me/one/crates".to_owned())
+    );
+    assert!(
+        !calls
+            .borrow()
+            .iter()
+            .any(|call| matches!(call, Call::Insert(..)))
+    );
+    let recent = cx.update(|_, cx| {
+        crate::command::palette_recents(cx)
+            .top(zz_client::recents::RecentKind::File, 3, u64::MAX)
+            .into_iter()
+            .map(|recent| (recent.key.clone(), recent.label.clone()))
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(
+        recent,
+        [(
+            RecentKey::File {
+                host: "local".to_owned(),
+                path: "/home/me/one/crates".to_owned(),
+                dir: true,
+            },
+            "~/one/crates".to_owned()
+        )]
+    );
+}
+
+#[zz_gpui::test]
+fn a_recent_file_goes_into_the_pane_once_its_folder_is_listed(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let path = "/home/me/one/crates/zz/src/main.rs";
+    cx.update(|cx| {
+        record_recent(
+            RecentKey::File {
+                host: "local".to_owned(),
+                path: path.to_owned(),
+                dir: false,
+            },
+            "~/one/crates/zz/src/main.rs",
+            cx,
+        );
+    });
+    let (backend, calls, sink) = files_backend();
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(target_value(&palette, cx), format!("&{path}"));
+    assert_eq!(
+        *calls.borrow(),
+        [Call::List(
+            LOCAL,
+            "/home/me/one/crates/zz/src/".to_owned(),
+            Some(PaneId(10))
+        )]
+    );
+    assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
+    list(
+        cx,
+        &sink,
+        "/home/me/one/crates/zz/src",
+        vec![
+            entry("lib.rs", PathKind::File),
+            entry("main.rs", PathKind::File),
+        ],
+    );
+    assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
+    assert_eq!(
+        calls.borrow().last(),
+        Some(&Call::Insert(PaneId(10), "main.rs".to_owned()))
+    );
+}
+
+fn files_context(
+    rest: &str,
+    pane: Option<PaneId>,
+    written: zz_client::place::LevelSet,
+) -> ActionContext {
+    ActionContext {
+        kind: ActionKind::Files,
+        fleet: Rc::new(zz_client::place::Fleet {
+            hosts: Vec::new(),
+            here: 0,
+        }),
+        place: zz_client::place::Place {
+            host: None,
+            session: None,
+            window: None,
+            pane,
+        },
+        written,
+        host_auto: true,
+        rest: rest.to_owned(),
+        rest_range: 1..1 + rest.len(),
+        insert_pane: Some(PaneId(10)),
+    }
+}
+
+fn set_rest(effect: LevelEffect) -> Option<String> {
+    match effect {
+        LevelEffect::SetRest(rest) => Some(rest),
+        _ => None,
+    }
+}
+
+fn files_update(
+    action: &mut crate::files::FilesAction,
+    context: &ActionContext,
+    cx: &mut VisualTestContext,
+) -> Option<String> {
+    set_rest(cx.update(|window, cx| action.update(context, window, cx)))
+}
+
+fn files_key(
+    action: &mut crate::files::FilesAction,
+    key: ActionKey,
+    cx: &mut VisualTestContext,
+) -> Option<String> {
+    cx.update(|window, cx| action.key(key, window, cx))
+        .and_then(set_rest)
+}
+
+#[zz_gpui::test]
+fn files_start_in_the_written_place_and_rewrite_their_text(cx: &mut TestAppContext) {
+    use zz_client::place::{Level, LevelSet};
+
+    cx.update(crate::init);
+    let (backend, calls, sink) = files_backend();
+    let mut action = crate::files::FilesAction::new(Rc::clone(&backend));
+    let (_, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    let here = LevelSet::default();
+    assert_eq!(
+        files_update(&mut action, &files_context("", None, here), cx).as_deref(),
+        Some("~/one/"),
+        "this host alone: the pane a path goes into"
+    );
+    assert_eq!(
+        files_update(&mut action, &files_context("~/one/", None, here), cx),
+        None
+    );
+    list_one(cx, &sink);
+    assert_eq!(files_key(&mut action, ActionKey::Down, cx), None);
+    assert_eq!(
+        files_key(&mut action, ActionKey::Tab, cx).as_deref(),
+        Some("~/one/crates/")
+    );
+    files_update(&mut action, &files_context("~/one/crates/", None, here), cx);
+    assert_eq!(
+        files_key(&mut action, ActionKey::Backspace, cx).as_deref(),
+        Some("~/one/")
+    );
+    let pane = files_context("", Some(PaneId(21)), here.with(Level::Pane));
+    assert_eq!(
+        files_update(&mut action, &pane, cx).as_deref(),
+        Some("~/three/"),
+        "a written pane: its folder"
+    );
+    let pane = files_context("~/three/", Some(PaneId(21)), here.with(Level::Pane));
+    files_update(&mut action, &pane, cx);
+    assert_eq!(
+        *calls.borrow(),
+        [
+            Call::List(LOCAL, "~/one/".to_owned(), Some(PaneId(10))),
+            Call::List(LOCAL, "~/three/".to_owned(), Some(PaneId(10))),
+        ]
     );
 }
 
