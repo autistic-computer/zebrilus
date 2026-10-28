@@ -6156,7 +6156,7 @@ impl Window {
     ///
     /// This method should only be called as part of the paint phase of element drawing.
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    pub(crate) fn paint_external_texture(
+    pub fn paint_external_texture(
         &mut self,
         bounds: Bounds<Pixels>,
         corner_radii: Corners<Pixels>,
@@ -6182,7 +6182,7 @@ impl Window {
     ///
     /// This method should only be called as part of the paint phase of element drawing.
     #[cfg(target_os = "windows")]
-    pub(crate) fn paint_external_texture(
+    pub fn paint_external_texture(
         &mut self,
         bounds: Bounds<Pixels>,
         corner_radii: Corners<Pixels>,

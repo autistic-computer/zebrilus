@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
+#[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+use zz_gpui::ExternalTextureHandle;
 use zz_gpui::{
     App, Bounds, ContentMask, Context, Corners, Element, ElementId, ElementInputHandler, Entity,
     EntityInputHandler, FocusHandle, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
@@ -39,6 +41,8 @@ impl BrowserSurfaceHost for BrowserView {
 pub(crate) struct BrowserElement<V: BrowserSurfaceHost> {
     view: Entity<V>,
     image: Option<Arc<RenderImage>>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+    texture: Option<ExternalTextureHandle>,
     #[cfg(target_os = "macos")]
     surface: Option<CVPixelBuffer>,
     #[cfg(target_os = "macos")]
@@ -55,12 +59,20 @@ impl<V: BrowserSurfaceHost> BrowserElement<V> {
         Self {
             view,
             image,
+            #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+            texture: None,
             #[cfg(target_os = "macos")]
             surface: None,
             #[cfg(target_os = "macos")]
             underlay: None,
             corner_radii,
         }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+    pub(crate) fn texture(mut self, texture: Option<ExternalTextureHandle>) -> Self {
+        self.texture = texture;
+        self
     }
 
     #[cfg(target_os = "macos")]
@@ -87,6 +99,8 @@ impl<V: BrowserSurfaceHost> IntoElement for BrowserElement<V> {
 pub(crate) struct BrowserPaintState {
     paints_page: bool,
     image: Option<Arc<RenderImage>>,
+    #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+    texture: Option<ExternalTextureHandle>,
     #[cfg(target_os = "macos")]
     surface: Option<CVPixelBuffer>,
     #[cfg(target_os = "macos")]
@@ -140,6 +154,8 @@ impl<V: BrowserSurfaceHost> Element for BrowserElement<V> {
         BrowserPaintState {
             paints_page,
             image: self.image.clone(),
+            #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+            texture: self.texture.clone(),
             #[cfg(target_os = "macos")]
             surface: self.surface.clone(),
             #[cfg(target_os = "macos")]
@@ -180,6 +196,11 @@ impl<V: BrowserSurfaceHost> Element for BrowserElement<V> {
                 }
             }
             if !state.paints_page {
+                return;
+            }
+            #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
+            if let Some(texture) = state.texture.take() {
+                window.paint_external_texture(bounds, self.corner_radii, texture);
                 return;
             }
             #[cfg(target_os = "macos")]

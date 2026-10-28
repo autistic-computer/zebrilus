@@ -8,9 +8,9 @@ use crate::{
 /// wgpu backends, and the texture itself on DirectX, where the shader resource
 /// view is created per draw.
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-type ExternalTextureHandle = wgpu::TextureView;
+pub type ExternalTextureHandle = wgpu::TextureView;
 #[cfg(target_os = "windows")]
-type ExternalTextureHandle = windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
+pub type ExternalTextureHandle = windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
 /// An element that paints a texture created on GPUI's device.
 pub struct ExternalTexture {
