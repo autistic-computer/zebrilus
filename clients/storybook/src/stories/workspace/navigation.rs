@@ -22,7 +22,7 @@ use zz_ui::{
 use super::{
     fixtures::stateful,
     tree::{
-        Badge, Node, TreeState, chrome_controls, guides, host_only, render_node, sidebar,
+        Badge, Node, TreeState, chrome_controls, guides, host_only, numbered, render_node, sidebar,
         tree_list, workspace_tree,
     },
 };
@@ -38,7 +38,7 @@ pub const STORY: Story = Story {
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "workspace_sidebar_surface around the tree the thin client builds from a mux snapshot. Unfocused, the active pane is bold; with keyboard focus it fills and the cursor gets its own fill; disconnected, the host warns and every row goes muted.",
+            summary: "workspace_sidebar_surface around the tree the thin client builds from a mux snapshot. Unfocused, the active pane is bold; with keyboard focus it fills and the cursor gets its own fill; disconnected, the host warns and every row goes muted. Holding the window shortcuts' modifier puts each window's key at the right of its row (workspace_tree_shortcut), outside the actions that show on hover, collapsed windows included.",
             build: |window, cx| stateful(window, cx, |_, _| sidebar_scrolls(), sidebars),
         },
         Section {
@@ -80,7 +80,7 @@ pub const STORY: Story = Story {
     ],
 };
 
-fn sidebar_scrolls() -> [UniformListScrollHandle; 3] {
+fn sidebar_scrolls<const N: usize>() -> [UniformListScrollHandle; N] {
     std::array::from_fn(|_| UniformListScrollHandle::new())
 }
 
@@ -98,7 +98,7 @@ fn sidebar_frame(
         .child(sidebar(tree_list(nodes, state, scroll, cx), false, cx))
 }
 
-fn sidebars(scrolls: &[UniformListScrollHandle; 3], _: &mut Window, cx: &mut App) -> AnyElement {
+fn sidebars(scrolls: &[UniformListScrollHandle; 4], _: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .columns(3)
         .state(
@@ -135,6 +135,16 @@ fn sidebars(scrolls: &[UniformListScrollHandle; 3], _: &mut Window, cx: &mut App
                     ..TreeState::CONNECTED
                 },
                 &scrolls[2],
+                cx,
+            ),
+        )
+        .state(
+            "holding the window shortcuts' modifier",
+            sidebar_frame(
+                "sidebar-shortcuts",
+                numbered(workspace_tree()),
+                TreeState::CONNECTED,
+                &scrolls[3],
                 cx,
             ),
         )

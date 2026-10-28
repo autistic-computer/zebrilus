@@ -16,8 +16,7 @@ use zz_gpui::{
     SharedString, Subscription, Window, WindowControlArea, div, img, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, Sizable as _,
-    ThemeMode, WindowExt as _,
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, WindowExt as _,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
     h_flex,
@@ -39,7 +38,6 @@ use crate::{
         client::MuxClient,
         hosts::{HostId, HostState},
     },
-    theme::ThemeModeSetting,
     window::{drag::window_drag_handle, toast},
     workspace::add_host,
 };
@@ -51,8 +49,8 @@ use zz_ui::feedback::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::appearance::{
     SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
-    corner_radius_slider, picker_tile, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
-    window_opacity_slider,
+    corner_radius_slider, picker_tile, theme_mode_control, theme_picker, tint_hue_slider,
+    tint_slider, ui_font_select, window_opacity_slider,
 };
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
@@ -918,22 +916,14 @@ impl SettingsView {
     }
 
     fn theme_mode_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let setting = resolved.theme_mode;
-        SettingEntry::new("Mode").control(div().flex().flex_none().gap(px(10.0)).children(
-            ThemeModeSetting::ALL.into_iter().map(|mode| {
-                picker_tile(
-                    format!("settings-theme-mode-{}", mode.as_str()).into(),
-                    mode.title(),
-                    theme_preview(mode, &config::shown_theme(cx), cx),
-                    mode == setting.value,
-                    cx,
-                )
-                .on_click(move |_, _, cx| {
-                    if let Err(error) = set_config_key(ConfigKey::ThemeMode, mode.as_str()) {
-                        report_write_error("set", ConfigKey::ThemeMode.as_str(), &error, cx);
-                    }
-                })
-            }),
+        SettingEntry::new("Mode").control(theme_mode_control(
+            resolved.theme_mode.value,
+            |mode, _, cx| {
+                if let Err(error) = set_config_key(ConfigKey::ThemeMode, mode.as_str()) {
+                    report_write_error("set", ConfigKey::ThemeMode.as_str(), &error, cx);
+                }
+            },
+            cx,
         ))
     }
 
@@ -988,16 +978,14 @@ impl SettingsView {
 
     fn themes_setting(cx: &Context<Self>) -> SettingEntry {
         let title = AppearancePageItem::Themes.title().unwrap_or_default();
-        let mode = cx.theme().mode;
-        let strip = with_theme_picks(cx, |picks| {
+        let picker = with_theme_picks(cx, |picks| {
             let ids = picks
                 .themes
                 .iter()
                 .map(|(id, theme)| (id.clone(), theme.materials.font.is_some()))
                 .collect::<Vec<_>>();
-            themes_strip(
+            theme_picker(
                 picks,
-                mode,
                 move |index, _, cx| {
                     let (id, sets_font) = &ids[index];
                     written(
@@ -1006,49 +994,16 @@ impl SettingsView {
                         cx,
                     );
                 },
+                |menu, _, _| {
+                    menu.item(
+                        PopupMenuItem::new("Import from clipboard")
+                            .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
+                    )
+                },
                 cx,
             )
         });
-        SettingEntry::new(title)
-            .title_actions(
-                h_flex()
-                    .flex_none()
-                    .gap(px(8.0))
-                    .child(
-                        Button::new("settings-themes-save")
-                            .ghost()
-                            .small()
-                            .label("Save")
-                            .tooltip("Save the look on screen as a theme and use it")
-                            .on(settings_card_ground(cx))
-                            .on_click(|_, _, cx| {
-                                let mut theme = config::shown_theme(cx);
-                                let font = config::ui_font_family(cx);
-                                if font.provenance == ConfigProvenance::Override {
-                                    theme.materials.font = font.value.map(SharedString::from);
-                                }
-                                save_and_select_theme(
-                                    theme,
-                                    &[
-                                        ConfigKey::ChromeAccent,
-                                        ConfigKey::ChromeTint,
-                                        ConfigKey::ChromeTintHue,
-                                    ],
-                                    cx,
-                                );
-                            }),
-                    )
-                    .child(
-                        Button::new("settings-themes-import")
-                            .ghost()
-                            .small()
-                            .label("Import")
-                            .tooltip("Save the theme on the clipboard and use it")
-                            .on(settings_card_ground(cx))
-                            .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
-                    ),
-            )
-            .child(strip)
+        SettingEntry::new(title).control(picker)
     }
 
     fn app_icon_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
@@ -1393,7 +1348,15 @@ impl SettingsView {
                         ConfigKey::PaletteShowKeys,
                         "Command shortcuts",
                         resolved.palette_show_keys,
-                    )),
+                    ))
+                    .child(
+                        Self::boolean_setting(
+                            ConfigKey::PaletteVimMode,
+                            "Vim mode",
+                            resolved.palette_vim_mode,
+                        )
+                        .description("Esc for normal mode: j k move, l into, h up"),
+                    ),
             )
             .when(crate::profile::profile(cx).has_tray, |column| {
                 column.child(
@@ -2182,7 +2145,7 @@ fn search_provider_subscription(
 
 /// The themes Settings offers, the built-in ones first, with the active one
 /// picked and the overrides `zz/config` sets over it.
-fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
+pub(crate) fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
     let themes = config::themes(cx);
     let choices = interface_theme::builtin_themes()
         .iter()
@@ -2202,7 +2165,7 @@ fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
 }
 
 /// Reports a failed write, or shows a successful one at once.
-fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App) {
+pub(crate) fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App) {
     match result {
         Ok(()) => refresh_settings_preview(key, cx),
         Err(error) => report_write_error("set", key.as_str(), &error, cx),
@@ -2346,6 +2309,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::WindowBackgroundOpacity
                 | ConfigKey::PaletteWindowLayout
                 | ConfigKey::PaletteShowKeys
+                | ConfigKey::PaletteVimMode
                 | ConfigKey::PickerFocusSidebar
                 | ConfigKey::WhichKeyDelay
                 | ConfigKey::StatusBadges
@@ -2360,11 +2324,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
     {
         return;
     }
-    let stamp = config::ConfigFileStamp::detect(&config::config_candidates());
-    let parsed = stamp.path.as_deref().map(config::load_config);
-    config::install_config(stamp.path.as_deref(), parsed, cx);
-    crate::theme::refresh_current_theme(cx);
-    cx.refresh_windows();
+    config::reload(cx);
 }
 
 fn synchronize_f32_input(
@@ -2459,6 +2419,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         ConfigKey::UseSystemTitlebar
         | ConfigKey::PaletteWindowLayout
         | ConfigKey::PaletteShowKeys
+        | ConfigKey::PaletteVimMode
         | ConfigKey::PickerFocusSidebar
         | ConfigKey::WindowBackgroundBlur
         | ConfigKey::Animations
@@ -2494,19 +2455,6 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
             unreachable!("only numeric settings use numeric inputs")
         }
     }
-}
-
-fn theme_preview(mode: ThemeModeSetting, theme: &InterfaceTheme, cx: &App) -> zz_gpui::Div {
-    zz_ui::settings::appearance::theme_preview(
-        match mode {
-            ThemeModeSetting::System => None,
-            ThemeModeSetting::Light => Some(ThemeMode::Light),
-            ThemeModeSetting::Dark => Some(ThemeMode::Dark),
-        },
-        &theme.colors(ThemeMode::Light),
-        &theme.colors(ThemeMode::Dark),
-        cx,
-    )
 }
 
 fn platform() -> String {
@@ -2562,7 +2510,7 @@ fn import_theme_from_clipboard(cx: &mut App) {
         .and_then(|item| item.text())
         .unwrap_or_default();
     match interface_theme::parse_theme(&source) {
-        Ok(theme) => save_and_select_theme(theme, &[], cx),
+        Ok(theme) => save_and_select_theme(theme, cx),
         Err(error) => toast::push(
             Notification::error(format!(
                 "The clipboard holds no theme: {error}. Copy one with Copy JSON in the storybook."
@@ -2572,18 +2520,14 @@ fn import_theme_from_clipboard(cx: &mut App) {
     }
 }
 
-/// Writes `theme` to the next free `themes/theme-N.json`, selects it and
-/// drops `folded`, the keys it now carries. A theme without a name of its
-/// own is named after its file.
-fn save_and_select_theme(mut theme: InterfaceTheme, folded: &[ConfigKey], cx: &mut App) {
+/// Writes `theme` to the next free `themes/theme-N.json` and selects it. A
+/// theme without a name of its own is named after its file.
+fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
     let saved = config::themes::themes_directory().and_then(|directory| {
         let name = config::themes::next_theme_name(&directory);
         theme.name_after(&name);
         let path = config::themes::save_theme(&directory, &name, &theme.to_json())?;
         set_interface_theme(&name, theme.materials.font.is_some())?;
-        for key in folded {
-            remove_config_key(*key)?;
-        }
         Ok(path)
     });
     match saved {

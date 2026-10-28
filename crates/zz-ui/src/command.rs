@@ -1,22 +1,35 @@
+mod ask_level;
 pub mod floating;
+mod gui_level;
+mod level;
 mod palette;
 mod palette_model;
+mod palette_places;
 mod palette_view;
+mod palette_vim;
 
+pub use ask_level::AskLevel;
+pub use gui_level::{GuiLevel, theme_offer};
+pub use level::{
+    ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,
+    palette_recents, record_recent,
+};
 pub use palette::{
     PalettePill, PaletteRow, PaletteStatus, command_palette_empty, command_palette_entry,
     command_palette_section, command_palette_tree_entry, unified_command_palette_input,
 };
 pub use palette_model::{
-    PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost,
-    PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+    DriverOffer, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree,
+    PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
 };
+pub use palette_places::palette_fleet;
 pub use palette_view::{
-    CommandPaletteEvent, CommandPaletteView, DRIVER_PREFIX, PaletteBackend, target_hosts,
+    CommandPaletteEvent, CommandPaletteView, DRIVER_PREFIX, GuiEvent, PaletteBackend, target_hosts,
     target_picker,
 };
 
 pub(crate) use palette_model::fuzzy_match;
+pub use palette_vim::PaletteVimMode;
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, PaintState, Sizable as _, StyledExt as _,

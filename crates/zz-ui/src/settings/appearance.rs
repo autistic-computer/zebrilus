@@ -1,14 +1,17 @@
 use super::{SettingsSelectItem, StackPosition};
+use crate::button::{Button, ButtonVariants as _};
 use crate::interface_theme::{
     ACCENTS, BUILTIN_THEMES, InterfaceTheme, MAX_CORNER_RADIUS, ThemeOverrides,
 };
-use crate::scroll::{GUTTER_WIDTH, Scrollbar, ScrollbarShow};
+use crate::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
+use crate::segmented::SegmentedControl;
 use crate::select::{SelectItem as _, SelectState};
 use crate::slider::Slider;
-use crate::{ActiveTheme as _, Colorize as _, StyledExt as _, ThemeColor, ThemeMode};
+use crate::{ActiveTheme as _, Colorize as _, IconName, StyledExt as _, ThemeColor, ThemeMode};
 use std::{rc::Rc, sync::Arc};
+use zz_client::appearance::ThemeModeSetting;
 use zz_gpui::{
-    AnyElement, App, Entity, FocusHandle, IntoElement, ScrollHandle, SharedString, Window, div,
+    Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Window, div,
     prelude::*, px,
 };
 
@@ -17,11 +20,8 @@ const THEME_PREVIEW_HEIGHT: f32 = 56.0;
 const THEME_PREVIEW_SIDEBAR_WIDTH: f32 = 20.0;
 
 const PAGE_ROW_GAP: f32 = 8.0;
-const TILE_GAP: f32 = 6.0;
-const STRIP_INSET: f32 = super::SETTINGS_STACK_PADDING;
 const TILE_FRAME_PADDING: f32 = 2.0;
 const TILE_RING: f32 = 2.0;
-const TILE_FRAME: f32 = TILE_FRAME_PADDING + TILE_RING;
 const TILE_HALO_GAP: f32 = 1.0;
 const TILE_HALO: f32 = TILE_RING + TILE_HALO_GAP + 1.0;
 
@@ -92,7 +92,7 @@ impl AppearancePageItem {
             Self::TintHue => "Tint",
             Self::Tint => "Tint strength",
             Self::ProgramColors => "Program colors",
-            Self::Themes => "Themes",
+            Self::Themes => "Theme",
             Self::CornerRadius => "Corner radius",
             Self::ChromeContrast => "Contrast",
             Self::WindowBackgroundOpacity => "Window blur opacity",
@@ -185,24 +185,129 @@ impl ThemePicks<'_> {
     }
 }
 
-/// The built-in themes and the saved ones as tiles, each as it draws on its
-/// own. Reports the picked theme's index in [`ThemePicks::themes`].
-pub fn themes_strip(
-    picks: &ThemePicks,
-    mode: ThemeMode,
-    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+pub fn theme_mode_control(
+    selected: ThemeModeSetting,
+    on_pick: impl Fn(ThemeModeSetting, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> PickerStrip {
-    PickerStrip::new("settings-themes", picks.selected)
-        .tiles(picks.themes.iter().map(|(id, theme)| {
-            let label = if theme.name.is_empty() {
-                id.clone()
+) -> SegmentedControl {
+    let modes = ThemeModeSetting::ALL;
+    SegmentedControl::new("settings-theme-mode", modes.map(ThemeModeSetting::title))
+        .selected(modes.iter().position(|mode| *mode == selected).unwrap_or(0))
+        .on(super::settings_card_ground(cx))
+        .on_select(move |index, window, cx| on_pick(modes[index], window, cx))
+}
+
+pub fn theme_labels(picks: &ThemePicks) -> Vec<SharedString> {
+    let names = picks
+        .themes
+        .iter()
+        .map(|(id, theme)| {
+            if theme.name.is_empty() {
+                id.to_string()
             } else {
-                SharedString::from(theme.name.clone())
+                theme.name.clone()
+            }
+        })
+        .collect::<Vec<_>>();
+    names
+        .iter()
+        .zip(&picks.themes)
+        .enumerate()
+        .map(|(index, (name, (id, _)))| {
+            if names[..index].contains(name) {
+                format!("{name} ({id})").into()
+            } else {
+                name.clone().into()
+            }
+        })
+        .collect()
+}
+
+const ACCENT_DOT: f32 = 10.0;
+
+fn accent_label(accent: zz_gpui::Hsla, label: SharedString, cx: &App) -> zz_gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .child(
+            div()
+                .flex_none()
+                .size(px(ACCENT_DOT))
+                .rounded(cx.theme().swatch_radius().min(px(ACCENT_DOT / 2.0)))
+                .bg(accent),
+        )
+        .child(
+            div()
+                .flex_none()
+                .line_height(zz_gpui::relative(1.0))
+                .child(label),
+        )
+}
+
+pub fn theme_picker(
+    picks: &ThemePicks,
+    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+    more: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    cx: &App,
+) -> zz_gpui::Div {
+    let theme_mode = cx.theme().mode;
+    let live = cx.theme().accent;
+    let selected = picks.selected;
+    let themes = theme_labels(picks)
+        .into_iter()
+        .zip(&picks.themes)
+        .enumerate()
+        .map(|(index, (label, (_, theme)))| {
+            let accent = if index == selected {
+                live
+            } else {
+                theme.colors(theme_mode).accent
             };
-            (label, interface_theme_preview(theme, mode, cx))
-        }))
-        .on_select(on_pick)
+            (label, accent)
+        })
+        .collect::<Vec<_>>();
+    let current = themes
+        .get(selected)
+        .map(|(label, _)| label.clone())
+        .unwrap_or_default();
+    let on_pick = Rc::new(on_pick);
+    let ground = super::settings_card_ground(cx);
+    div()
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(4.0))
+        .child(
+            Button::new("settings-theme")
+                .child(accent_label(live, current, cx))
+                .dropdown_caret(true)
+                .on(ground)
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                    themes
+                        .iter()
+                        .enumerate()
+                        .fold(menu, |menu, (index, (label, accent))| {
+                            let on_pick = Rc::clone(&on_pick);
+                            let (label, accent) = (label.clone(), *accent);
+                            menu.item(
+                                PopupMenuItem::element(move |_, _, cx| {
+                                    accent_label(accent, label.clone(), cx)
+                                })
+                                .checked(index == selected)
+                                .on_click(move |_, window, cx| on_pick(index, window, cx)),
+                            )
+                        })
+                }),
+        )
+        .child(
+            Button::new("settings-theme-more")
+                .ghost()
+                .icon(IconName::Ellipsis)
+                .tooltip("More")
+                .on(ground)
+                .dropdown_menu_with_anchor(Anchor::TopRight, more),
+        )
 }
 
 pub const SWATCH: f32 = 18.0;
@@ -669,151 +774,6 @@ fn around(radius: zz_gpui::Pixels, inset: f32) -> zz_gpui::Pixels {
     }
 }
 
-/// A row of picker tiles that scrolls sideways once it outgrows the page and
-/// bleeds to the row's edges. Clicking a tile or pressing the left and right
-/// arrows while the strip has focus reports the tile's index to `on_select`.
-#[derive(IntoElement)]
-pub struct PickerStrip {
-    id: &'static str,
-    selected: Option<usize>,
-    tiles: Vec<(SharedString, AnyElement)>,
-    on_select: Option<Rc<dyn Fn(usize, &mut Window, &mut App)>>,
-}
-
-impl PickerStrip {
-    pub fn new(id: &'static str, selected: impl Into<Option<usize>>) -> Self {
-        Self {
-            id,
-            selected: selected.into(),
-            tiles: Vec::new(),
-            on_select: None,
-        }
-    }
-
-    #[must_use]
-    pub fn tile(mut self, label: impl Into<SharedString>, preview: impl IntoElement) -> Self {
-        self.tiles.push((label.into(), preview.into_any_element()));
-        self
-    }
-
-    #[must_use]
-    pub fn tiles<L: Into<SharedString>, E: IntoElement>(
-        mut self,
-        tiles: impl IntoIterator<Item = (L, E)>,
-    ) -> Self {
-        for (label, preview) in tiles {
-            self = self.tile(label, preview);
-        }
-        self
-    }
-
-    #[must_use]
-    pub fn on_select(mut self, on_select: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
-        self.on_select = Some(Rc::new(on_select));
-        self
-    }
-}
-
-impl RenderOnce for PickerStrip {
-    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let scroll = window
-            .use_keyed_state((self.id, 0usize), cx, |_, _| ScrollHandle::default())
-            .read(cx)
-            .clone();
-        let focus = window
-            .use_keyed_state((self.id, 1usize), cx, |_, cx| cx.focus_handle())
-            .read(cx)
-            .clone();
-        let focused = focus.is_focused(window);
-        let count = self.tiles.len();
-        let selected = self
-            .selected
-            .map(|selected| selected.min(count.saturating_sub(1)));
-        let on_select = self.on_select;
-        let select = Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
-            if let Some(on_select) = &on_select {
-                on_select(index, window, cx);
-            }
-        });
-        let id = self.id;
-        let edge = || {
-            div().flex_none().w(px(STRIP_INSET + TILE_FRAME
-                - TILE_FRAME_PADDING
-                - TILE_HALO
-                - TILE_GAP))
-        };
-        let key_scroll = scroll.clone();
-        let key_select = Rc::clone(&select);
-        let tiles = div()
-            .id(id)
-            .track_focus(&focus)
-            .track_scroll(&scroll)
-            .flex()
-            .gap(px(TILE_GAP))
-            .overflow_x_scroll()
-            .restrict_scroll_to_axis()
-            .on_key_down(move |event, window, cx| {
-                let next = match (event.keystroke.key.as_str(), selected) {
-                    ("left", Some(selected)) => selected.checked_sub(1),
-                    ("right", Some(selected)) => (selected + 1 < count).then_some(selected + 1),
-                    ("left" | "right", None) => (count > 0).then_some(0),
-                    _ => return,
-                };
-                cx.stop_propagation();
-                if let Some(next) = next {
-                    key_scroll.scroll_to_item(next + 1);
-                    key_select(next, window, cx);
-                }
-            })
-            .child(edge())
-            .children(
-                self.tiles
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, (label, preview))| {
-                        let select = Rc::clone(&select);
-                        tile(
-                            format!("{id}-{index}").into(),
-                            label,
-                            preview,
-                            selected == Some(index),
-                            focused && selected == Some(index),
-                            cx,
-                        )
-                        .on_click(move |_, window, cx| select(index, window, cx))
-                    }),
-            )
-            .child(edge());
-
-        let coarse = crate::touch::CoarsePointer::get(cx);
-        div()
-            .flex()
-            .flex_col()
-            .mx(px(-STRIP_INSET))
-            .when(!coarse, |strip| strip.mb(px(-8.0)))
-            .child(
-                div()
-                    .relative()
-                    .child(tiles)
-                    .child(crate::compact::yield_back_swipe((id, 3usize), &scroll)),
-            )
-            .when(!coarse, |strip| {
-                strip.child(
-                    div()
-                        .relative()
-                        .flex_none()
-                        .h(GUTTER_WIDTH)
-                        .mx(px(STRIP_INSET))
-                        .child(
-                            Scrollbar::horizontal(&scroll)
-                                .id((id, 2usize))
-                                .scrollbar_show(ScrollbarShow::Always),
-                        ),
-                )
-            })
-    }
-}
-
 #[allow(
     clippy::disallowed_methods,
     reason = "previews draw another theme's colors, not the live one's"
@@ -1079,117 +1039,29 @@ fn theme_preview_split_background(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
-    use zz_gpui::{
-        Context, Modifiers, Render, ScrollDelta, ScrollWheelEvent, TestAppContext,
-        VisualTestContext, point,
-    };
 
-    type Picked = Rc<Cell<Option<(u8, usize)>>>;
-
-    struct StripsTest {
-        picked: Picked,
-    }
-
-    fn strip(id: &'static str, which: u8, first: &'static str, picked: Picked) -> PickerStrip {
-        PickerStrip::new(id, 1)
-            .tiles((0..8).map(move |index| {
-                (
-                    "tile",
-                    div().w(px(84.0)).h(px(56.0)).when(index == 0, |this| {
-                        this.debug_selector(move || first.to_string())
-                    }),
-                )
-            }))
-            .on_select(move |index, _, _| picked.set(Some((which, index))))
-    }
-
-    impl Render for StripsTest {
-        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-            div()
-                .w(px(300.0))
-                .h(px(400.0))
-                .flex()
-                .flex_col()
-                .gap(px(20.0))
-                .px(px(STRIP_INSET))
-                .child(
-                    div()
-                        .debug_selector(|| "first-strip-container".to_string())
-                        .child(strip(
-                            "first-strip",
-                            0,
-                            "first-strip-tile",
-                            self.picked.clone(),
-                        )),
-                )
-                .child(strip(
-                    "second-strip",
-                    1,
-                    "second-strip-tile",
-                    self.picked.clone(),
-                ))
-        }
-    }
-
-    fn draw(cx: &mut VisualTestContext) {
-        cx.run_until_parked();
-        cx.update(|window, cx| {
-            _ = window.draw(cx);
-        });
-    }
-
-    #[zz_gpui::test]
-    fn strips_scroll_and_navigate_independently(cx: &mut TestAppContext) {
-        cx.update(crate::init);
-        let picked: Picked = Rc::default();
-        let (_, cx) = cx.add_window_view(|_, _| StripsTest {
-            picked: picked.clone(),
-        });
-        let cx: &mut VisualTestContext = cx;
-        draw(cx);
-
-        let first_before = cx.debug_bounds("first-strip-tile").unwrap();
-        let second_before = cx.debug_bounds("second-strip-tile").unwrap();
-        assert_eq!(first_before.origin.x, px(STRIP_INSET + TILE_FRAME));
-        cx.simulate_event(ScrollWheelEvent {
-            position: first_before.center(),
-            delta: ScrollDelta::Pixels(point(px(-120.0), px(0.0))),
-            ..Default::default()
-        });
-        draw(cx);
-        assert!(cx.debug_bounds("first-strip-tile").unwrap().origin.x < first_before.origin.x);
+    #[test]
+    fn theme_labels_tell_apart_themes_that_share_a_name() {
+        let named = |name: &str| InterfaceTheme {
+            name: name.to_owned(),
+            ..crate::interface_theme::default_theme().clone()
+        };
+        let (yaru, copy, macos, unnamed) =
+            (named("Yaru"), named("Yaru"), named("macOS"), named(""));
+        let overrides = ThemeOverrides::default();
+        let picks = ThemePicks {
+            themes: vec![
+                ("yaru".into(), &yaru),
+                ("theme-2".into(), &copy),
+                ("theme-1".into(), &macos),
+                ("theme-3".into(), &unnamed),
+            ],
+            selected: 0,
+            overrides: &overrides,
+        };
         assert_eq!(
-            cx.debug_bounds("second-strip-tile").unwrap().origin.x,
-            second_before.origin.x
+            theme_labels(&picks),
+            ["Yaru", "Yaru (theme-2)", "macOS", "theme-3"]
         );
-        cx.simulate_event(ScrollWheelEvent {
-            position: second_before.center(),
-            delta: ScrollDelta::Pixels(point(px(0.0), px(-120.0))),
-            ..Default::default()
-        });
-        draw(cx);
-        assert_eq!(
-            cx.debug_bounds("second-strip-tile").unwrap().origin.x,
-            second_before.origin.x
-        );
-
-        cx.simulate_click(second_before.center(), Modifiers::default());
-        draw(cx);
-        assert_eq!(picked.get(), Some((1, 0)));
-        cx.simulate_keystrokes("right");
-        assert_eq!(picked.get(), Some((1, 2)));
-        cx.simulate_keystrokes("left");
-        assert_eq!(picked.get(), Some((1, 0)));
-
-        let first_scrolled = cx.debug_bounds("first-strip-tile").unwrap();
-        let first_strip = cx.debug_bounds("first-strip-container").unwrap();
-        cx.simulate_click(
-            point(first_strip.left() + px(4.0), first_strip.bottom() - px(1.0)),
-            Modifiers::default(),
-        );
-        draw(cx);
-        assert!(cx.debug_bounds("first-strip-tile").unwrap().left() > first_scrolled.left());
-        assert_eq!(picked.get(), Some((1, 0)));
     }
 }

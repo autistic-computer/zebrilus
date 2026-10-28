@@ -17,6 +17,11 @@ Logic the gpui client decided outside of drawing moved into `zz-client` and both
   rows and `@` target grammar, because those types carry gpui types. Move the palette model and
   target grammar into `zz-client` with plain types, point zz-ui, the desktop palette, `clients/app`
   and the storybook at it, then delete the copy.
+- The copy predates main's place palette: sigil chips (`^ $ @ %`), recents, the `&` files level,
+  `>` GUI actions, `?` ask and vim mode. The parser, resolver and recents already live in
+  `zz_client::place` and `zz_client::recents`, so port the DOM palette onto them.
+- Settings' Theme group on gpui is now a Mode segmented control and a theme picker with Import and
+  Delete in a more menu; the DOM page still draws mode tiles and a theme strip (Save is gone).
 - A split pane reports about 2 fewer terminal columns than gpui for the same width, so long lines
   wrap earlier. Check the column math in `terminal.js` against `clients/app/src/terminal.rs`
   (padding, scrollbar gutter, rounding).

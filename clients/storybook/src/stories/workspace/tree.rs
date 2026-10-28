@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use zz_client::program::Program;
 use zz_gpui::{
-    AnyElement, App, Hsla, IntoElement, ListSizingBehavior, ParentElement as _, Stateful,
-    Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
+    AnyElement, App, Hsla, IntoElement, Keystroke, ListSizingBehavior, ParentElement as _,
+    Stateful, Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
@@ -19,7 +19,7 @@ use zz_ui::{
         workspace_add_host_button, workspace_layout_button, workspace_settings_button,
         workspace_sidebar_footer, workspace_sidebar_footer_controls, workspace_sidebar_surface,
         workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
-        workspace_tree_disclosure, workspace_tree_row,
+        workspace_tree_disclosure, workspace_tree_row, workspace_tree_shortcut,
     },
     program::program_mark,
     scroll::ScrollableElement as _,
@@ -65,6 +65,7 @@ pub struct Node {
     pub bell: bool,
     pub badge: Option<Badge>,
     pub program: Option<&'static str>,
+    pub shortcut: Option<u8>,
 }
 
 impl Node {
@@ -87,6 +88,7 @@ impl Node {
             bell: false,
             badge: None,
             program: None,
+            shortcut: None,
         }
     }
 
@@ -173,6 +175,17 @@ pub fn workspace_tree() -> Vec<Node> {
             .running("docker"),
         Node::new("scratch", Kind::Session, IconName::Layers, "scratch").collapsed(),
     ]
+}
+
+pub fn numbered(mut nodes: Vec<Node>) -> Vec<Node> {
+    for (node, key) in nodes
+        .iter_mut()
+        .filter(|node| node.kind == Kind::Window)
+        .zip(1..=9)
+    {
+        node.shortcut = Some(key);
+    }
+    nodes
 }
 
 pub fn host_only() -> Vec<Node> {
@@ -292,21 +305,26 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
     } else {
         marker
     };
-    let row = workspace_tree_row(
-        format!("tree-row-{key}"),
-        node.depth,
-        active,
-        state.focused && state.selected == Some(key),
-        state.focused,
-        state.connected,
-        node.expandable || state.connected && !is_host,
-        !is_host,
-        group.into(),
-        marker,
-        div().min_w_0().text_color(color).child(node.label),
-        actions,
+    let row = workspace_tree_shortcut(
+        workspace_tree_row(
+            format!("tree-row-{key}"),
+            node.depth,
+            active,
+            state.focused && state.selected == Some(key),
+            state.focused,
+            state.connected,
+            node.expandable || state.connected && !is_host,
+            !is_host,
+            group.into(),
+            marker,
+            div().min_w_0().text_color(color).child(node.label),
+            actions,
+            cx.theme().ground(),
+            cx,
+        ),
+        node.shortcut
+            .and_then(|key| Keystroke::parse(&format!("secondary-{key}")).ok()),
         cx.theme().ground(),
-        cx,
     );
     let rename = match node.kind {
         Kind::Host => None,

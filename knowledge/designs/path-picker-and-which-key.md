@@ -15,14 +15,19 @@ timestamp: 2026-10-13T00:00:00Z
 
 # Summary
 
-> **2026-10-26:** the picker's view is gone. `prefix F` now opens the command palette's `@` mode on
-> the pane's folder, which shares its grammar, rows and keys with the palette and the Driver chat's
+> **2026-10-26:** the picker's view is gone. `prefix F` now opens the command palette on the pane's
+> folder (in `@` mode until 2026-10-27, on `&` since), which shares its grammar, rows and keys with the palette and the Driver chat's
 > mentions ([command palette, Targets](/concepts/command-palette.md#targets)). Its listing goes
 > through `MuxClient::request_host_path_list` with the pane as the anchor, so the daemon side below
 > (`choose-path`, `OpenPathPicker`, the walker, the insert style) is unchanged, and the client still
 > ranks with `path_rank` and pastes with `path_insert::insert_text`. Alt-Enter's forced absolute path
 > went with the old view. Sections below that describe `PathPickerView`, its placement under the
 > cursor and its keys are history.
+>
+> **2026-10-27:** `prefix F` opens the palette's `&` files mode instead, with the folder written
+> after the `&` and Alt-Enter copying the plain path ([command palette, Files](/concepts/command-palette.md#files)).
+> The listing and insert path are the same. The web and iOS clients now announce
+> `client-path-picker-v1` and list, insert and open `prefix F` the same way.
 
 Two features from the [terminal augmentation survey](../research/2026-09-25-terminal-augmentation-survey.md):
 

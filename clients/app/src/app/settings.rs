@@ -5,11 +5,11 @@ use zz_gpui::{
     TextInputMode, Window, canvas, div, prelude::*, px,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _, Theme, ThemeMode, UiZoom,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme as _, Colorize as _, IconName, Theme, ThemeMode, UiZoom,
     color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
     input::{InputEvent, InputState, NumberInput},
-    interface_theme::{self, ThemeModeSetting},
+    interface_theme,
+    menu::PopupMenuItem,
     select::{Select, SelectEvent, SelectState},
     settings::{
         SettingEntry, SettingsFold, SettingsScrollColumn, SettingsSection, SettingsSelectItem,
@@ -17,7 +17,7 @@ use zz_ui::{
         appearance::{
             AppearancePageItem, SWATCH, ThemePicks, accent_swatches, appearance_page,
             appearance_page_items, contrast_slider, corner_radius_slider, percent_slider,
-            picker_tile, theme_preview, themes_strip, tint_hue_slider, tint_slider, ui_font_select,
+            theme_mode_control, theme_picker, tint_hue_slider, tint_slider, ui_font_select,
             zoom_slider,
         },
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
@@ -392,7 +392,7 @@ impl Controls {
 }
 
 impl AppShell {
-    fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_controls
             .sync_theme_inputs(&self.preferences, window, cx);
         self.preferences.save();
@@ -782,33 +782,18 @@ impl AppShell {
     ) -> AnyElement {
         let entry = match item {
             AppearancePageItem::ThemeMode => {
-                let theme = self.preferences.shown_theme();
-                let light = theme.colors(ThemeMode::Light);
-                let dark = theme.colors(ThemeMode::Dark);
-                let tiles = div().flex().flex_none().flex_wrap().gap(px(8.0)).children(
-                    ThemeModeSetting::ALL.map(|mode| {
-                        picker_tile(
-                            format!("settings-theme-{}", mode.as_str()).into(),
-                            mode.title(),
-                            theme_preview(
-                                interface_theme::pinned_theme_mode(mode),
-                                &light,
-                                &dark,
-                                cx,
-                            ),
-                            self.preferences.theme_mode() == mode,
-                            cx,
-                        )
-                        .on_click(cx.listener(
-                            move |this, _, window, cx| {
-                                this.preferences.mode = Some(mode.as_str().into());
-                                this.preferences.save();
-                                this.preferences.apply(&this.connection, window, cx);
-                            },
-                        ))
-                    }),
-                );
-                with_control(SettingEntry::new("Mode"), tiles, narrow)
+                let view = cx.entity().downgrade();
+                SettingEntry::new("Mode").control(theme_mode_control(
+                    self.preferences.theme_mode(),
+                    move |mode, window, cx| {
+                        let _ = view.update(cx, |this, cx| {
+                            this.preferences.mode = Some(mode.as_str().into());
+                            this.preferences.save();
+                            this.preferences.apply(&this.connection, window, cx);
+                        });
+                    },
+                    cx,
+                ))
             }
             AppearancePageItem::UiFontFamily => SettingEntry::new("UI font").control(font_select(
                 &self.settings_controls.ui_font,
@@ -956,9 +941,13 @@ impl AppShell {
                     .map(|(id, _)| id.clone())
                     .collect::<Vec<_>>();
                 let view = cx.entity().downgrade();
-                let strip = themes_strip(
+                let menu_view = view.clone();
+                let saved = self
+                    .preferences
+                    .saved_theme(self.preferences.theme_id())
+                    .is_some();
+                SettingEntry::new(title).control(theme_picker(
                     &picks,
-                    cx.theme().mode,
                     move |index, window, cx| {
                         let id = ids[index].clone();
                         let _ = view.update(cx, |this, cx| {
@@ -966,62 +955,29 @@ impl AppShell {
                             this.theme_changed(window, cx);
                         });
                     },
+                    move |menu, _, _| {
+                        let import = menu_view.clone();
+                        let delete = menu_view.clone();
+                        menu.item(PopupMenuItem::new("Import from clipboard").on_click(
+                            move |_, window, cx| {
+                                let _ = import.update(cx, |this, cx| this.import_theme(window, cx));
+                            },
+                        ))
+                        .when(saved, |menu| {
+                            menu.separator()
+                                .item(PopupMenuItem::new("Delete theme").on_click(
+                                    move |_, window, cx| {
+                                        let _ = delete.update(cx, |this, cx| {
+                                            let id = this.preferences.theme_id().to_owned();
+                                            this.preferences.delete_theme(&id);
+                                            this.theme_changed(window, cx);
+                                        });
+                                    },
+                                ))
+                        })
+                    },
                     cx,
-                );
-                let selected = self.preferences.theme_id();
-                let saved = self.preferences.saved_theme(selected).is_some();
-                let actions = div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .gap(px(4.0))
-                    .when(!narrow, |actions| {
-                        actions
-                            .child(
-                                Button::new("settings-themes-save")
-                                    .ghost()
-                                    .small()
-                                    .label("Save")
-                                    .tooltip("Save the look on screen as a theme and use it")
-                                    .on(settings_card_ground(cx))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        let saved = this.preferences.duplicate_theme();
-                                        this.theme_saved(saved, window, cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("settings-themes-import")
-                                    .ghost()
-                                    .small()
-                                    .label("Import")
-                                    .tooltip("Save the theme on the clipboard and use it")
-                                    .on(settings_card_ground(cx))
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.import_theme(window, cx);
-                                    })),
-                            )
-                    })
-                    .when(saved, |actions| {
-                        actions.child(
-                            Button::new("settings-themes-delete")
-                                .ghost()
-                                .small()
-                                .label("Delete")
-                                .tooltip("Delete this saved theme and use the default one")
-                                .on(settings_card_ground(cx))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    let id = this.preferences.theme_id().to_owned();
-                                    this.preferences.delete_theme(&id);
-                                    this.theme_changed(window, cx);
-                                })),
-                        )
-                    });
-                let entry = SettingEntry::new(title);
-                if narrow {
-                    entry.child(strip).when(saved, |entry| entry.child(actions))
-                } else {
-                    entry.title_actions(actions).child(strip)
-                }
+                ))
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
@@ -1146,6 +1102,17 @@ impl AppShell {
                         cx.notify();
                     })),
             ),
+            SettingEntry::new("Vim mode")
+                .description("Esc for normal mode: j k move, l into, h up")
+                .control(
+                    Switch::new("settings-palette-vim-mode")
+                        .checked(self.preferences.palette_vim_mode)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.preferences.palette_vim_mode = !this.preferences.palette_vim_mode;
+                            this.preferences.save();
+                            cx.notify();
+                        })),
+                ),
         ]
     }
 }
@@ -1240,7 +1207,7 @@ fn custom_accent(preferences: &Preferences) -> Option<zz_gpui::Hsla> {
 
 /// The themes the Theme rows offer, the built-in first, with the active one
 /// picked and the overrides set over it.
-fn theme_picks(preferences: &Preferences) -> ThemePicks<'_> {
+pub(super) fn theme_picks(preferences: &Preferences) -> ThemePicks<'_> {
     let themes = interface_theme::builtin_themes()
         .iter()
         .map(|(id, theme)| (SharedString::from(*id), theme))

@@ -1,12 +1,11 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-};
+use std::{fmt, rc::Rc};
 
-pub(crate) use zz_client::palette::{fuzzy_match, needs_arguments, target_kind};
+pub(crate) use zz_client::fuzzy::fuzzy_match;
+pub(crate) use zz_client::palette::{count, needs_arguments, target_kind};
 use zz_client::{
     completion::{CompletionSuggestion, PaneKindAvailability},
-    palette::count,
+    place::{Fleet, Place},
+    recents::RecentKey,
 };
 use zz_gpui::SharedString;
 use zz_protocol::{
@@ -14,7 +13,7 @@ use zz_protocol::{
     command_specs,
 };
 
-use super::{PalettePill, PaletteRow, PaletteStatus};
+use super::{PalettePill, PaletteRow, PaletteStatus, palette_places::Chip};
 use crate::IconName;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,15 +38,6 @@ impl PaletteMode {
         match self {
             Self::Command => ":",
             Self::Target => "@",
-        }
-    }
-
-    #[must_use]
-    pub fn from_prefix(value: &str) -> Option<Self> {
-        match value {
-            ":" => Some(Self::Command),
-            "@" => Some(Self::Target),
-            _ => None,
         }
     }
 }
@@ -76,6 +66,7 @@ impl fmt::Display for PaletteTarget {
 pub struct PaletteSettings {
     pub grouped: bool,
     pub show_keys: bool,
+    pub vim: bool,
 }
 
 impl Default for PaletteSettings {
@@ -83,6 +74,7 @@ impl Default for PaletteSettings {
         Self {
             grouped: true,
             show_keys: true,
+            vim: false,
         }
     }
 }
@@ -121,6 +113,7 @@ impl PaletteTreeHost {
 pub struct PaletteTreeSession {
     pub id: SessionId,
     pub name: String,
+    pub tmux_name: String,
     pub active: bool,
     pub windows: Vec<PaletteTreeWindow>,
 }
@@ -144,17 +137,22 @@ impl PaletteTreeWindow {
 #[derive(Clone, Debug)]
 pub struct PaletteTreePane {
     pub id: PaneId,
+    pub index: u32,
     pub label: String,
     pub detail: SharedString,
     /// The program in the foreground, such as Claude Code.
     pub program: Option<SharedString>,
     pub icon: IconName,
     pub running: bool,
+    pub needs_you: bool,
+    pub terminal: bool,
+    pub cwd: String,
 }
 
 #[derive(Clone)]
 pub(crate) enum PaletteAction {
-    Host(PaletteHostId),
+    Place(Place),
+    Recent(RecentKey),
     Target {
         host: PaletteHostId,
         target: PaletteTarget,
@@ -164,6 +162,7 @@ pub(crate) enum PaletteAction {
     History(String),
     Completion(CompletionSuggestion),
     ChooseWindow(u32),
+    Ask,
 }
 
 #[derive(Clone)]
@@ -175,7 +174,7 @@ pub(crate) struct PaletteEntry {
 }
 
 impl PaletteEntry {
-    fn row(row: PaletteRow, action: PaletteAction) -> Self {
+    pub(crate) fn row(row: PaletteRow, action: PaletteAction) -> Self {
         Self {
             row,
             action: Some(action),
@@ -184,7 +183,7 @@ impl PaletteEntry {
         }
     }
 
-    fn header(label: impl Into<SharedString>, hint: &'static str) -> Self {
+    pub(crate) fn header(label: impl Into<SharedString>, hint: &'static str) -> Self {
         Self {
             row: PaletteRow {
                 label: label.into(),
@@ -209,13 +208,22 @@ impl PaletteEntry {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DriverOffer {
+    Ready,
+    Asleep,
+    Off,
+}
+
 pub(crate) struct UnifiedPalette {
     pub mode: Option<PaletteMode>,
     pub host: Option<PaletteHostId>,
     pub command: Option<&'static CommandSpec>,
+    pub chips: Vec<Chip>,
+    pub fleet: Rc<Fleet>,
+    pub driver: Option<DriverOffer>,
     pub tree: PaletteTree,
     pub rows: Vec<PaletteEntry>,
-    expanded: BTreeMap<(PaletteHostId, PaletteTarget), bool>,
     chooser_current_window: Option<u32>,
     pub grouped: bool,
     pub show_keys: bool,
@@ -228,9 +236,11 @@ impl UnifiedPalette {
             mode,
             host: None,
             command: None,
+            chips: Vec::new(),
+            fleet: Rc::default(),
+            driver: None,
             tree: PaletteTree::default(),
             rows: Vec::new(),
-            expanded: BTreeMap::new(),
             chooser_current_window: None,
             grouped: settings.grouped,
             show_keys: settings.show_keys,
@@ -267,10 +277,6 @@ impl UnifiedPalette {
         Some(indices[next])
     }
 
-    pub fn is_navigation_tree(&self) -> bool {
-        self.command.is_none() && self.mode.is_none()
-    }
-
     pub fn initial_selection(&self) -> Option<usize> {
         self.rows
             .iter()
@@ -295,22 +301,6 @@ impl UnifiedPalette {
             .or_else(|| self.rows.iter().position(|entry| entry.action.is_some()))
     }
 
-    pub fn set_expanded(&mut self, index: usize, expanded: bool) -> bool {
-        let Some(entry) = self.rows.get(index) else {
-            return false;
-        };
-        if entry.row.expanded.is_none_or(|current| current == expanded) {
-            return false;
-        }
-        match entry.action {
-            Some(PaletteAction::Target { host, target, .. }) => {
-                self.expanded.insert((host, target), expanded);
-            }
-            _ => return false,
-        }
-        true
-    }
-
     pub fn parent_index(&self, index: usize) -> Option<usize> {
         let depth = self.rows.get(index)?.row.indent;
         self.rows[..index]
@@ -332,6 +322,9 @@ impl UnifiedPalette {
     }
 
     pub fn pills(&self) -> Vec<PalettePill> {
+        if self.is_places() {
+            return self.place_pills();
+        }
         let mut pills = Vec::new();
         if let Some(host) = self.host.and_then(|id| self.tree.host(id)) {
             pills.push(PalettePill::Host {
@@ -352,6 +345,9 @@ impl UnifiedPalette {
     }
 
     pub fn placeholder(&self) -> String {
+        if self.is_places() {
+            return self.place_placeholder();
+        }
         if let Some(command) = self.command {
             return if target_kind(command) == Some(CommandValueKind::Window) {
                 "Target window"
@@ -481,100 +477,44 @@ impl UnifiedPalette {
     }
 
     fn navigation_entries(&self, query: &str) -> Vec<PaletteEntry> {
-        let tree = self.grouped && query.is_empty() && self.is_navigation_tree();
-        let target_kind = self.command.and_then(target_kind);
-        let pane_only = target_kind == Some(CommandValueKind::Pane);
-        let window_only = target_kind == Some(CommandValueKind::Window);
-        let scope = self
-            .host
-            .or_else(|| self.command.map(|_| self.tree.attached));
-        let show_host = scope.is_none() && self.tree.hosts.len() > 1;
+        let window_only = self.command.and_then(target_kind) == Some(CommandValueKind::Window);
+        let scope = self.host.unwrap_or(self.tree.attached);
         let mut rows = Vec::new();
         for host in self
             .tree
             .hosts
             .iter()
-            .filter(|host| host.connected() && scope.is_none_or(|scope| scope == host.id))
+            .filter(|host| host.connected() && host.id == scope)
         {
-            let host_prefix = if show_host {
-                format!("{} / ", host.name)
-            } else {
-                String::new()
-            };
             for session in &host.sessions {
-                let session_open = self
-                    .expanded
-                    .get(&(host.id, PaletteTarget::Session(session.id)))
-                    .copied()
-                    .unwrap_or(session.active);
-                if !pane_only && !window_only {
-                    let mut entry = session_entry(host, session);
-                    entry.row.label = format!("{host_prefix}{}", session.name).into();
-                    entry.row.muted_prefix = host_prefix.len();
-                    entry.row.expanded =
-                        (tree && !session.windows.is_empty()).then_some(session_open);
-                    let metadata = format!("{} {}", session.id, entry.row.detail);
-                    if let Some(entry) = entry.matching(query, &metadata) {
-                        rows.push(entry);
-                    }
-                }
-                if tree && !session_open {
-                    continue;
-                }
                 for window in &session.windows {
-                    let window_open = self
-                        .expanded
-                        .get(&(host.id, PaletteTarget::Window(window.id)))
-                        .copied()
-                        .unwrap_or(false);
-                    if !pane_only {
-                        let mut entry = window_entry(host, session, window, tree);
-                        if !tree {
-                            entry.row.label = format!("{host_prefix}{}", entry.row.label).into();
-                            entry.row.muted_prefix += host_prefix.len();
-                        }
-                        entry.row.indent = if tree { 18.0 } else { 0.0 };
-                        entry.row.expanded =
-                            (tree && !window.panes.is_empty()).then_some(window_open);
+                    if window_only {
+                        let entry = window_entry(host, session, window);
                         let metadata = format!("{} {} {}", session.id, window.id, entry.row.detail);
-                        if let Some(entry) = entry.matching(query, &metadata) {
-                            rows.push(entry);
-                        }
-                    }
-                    if window_only || (tree && !window_open) {
+                        rows.extend(entry.matching(query, &metadata));
                         continue;
                     }
                     for pane in &window.panes {
                         let mut entry = pane_entry(host, session, window, pane);
-                        if tree {
-                            entry.row.indent = 36.0;
-                        } else {
-                            let prefix =
-                                format!("{host_prefix}{} / {} / ", session.name, window.name);
-                            entry.row.label = format!("{prefix}{}", pane.label).into();
-                            entry.row.muted_prefix = prefix.len();
-                        }
+                        let prefix = format!("{} / {} / ", session.name, window.name);
+                        entry.row.label = format!("{prefix}{}", pane.label).into();
+                        entry.row.muted_prefix = prefix.len();
                         let metadata = format!(
                             "{} {} {} {}",
                             session.id, window.id, pane.id, entry.row.detail
                         );
-                        if let Some(entry) = entry.matching(query, &metadata) {
-                            rows.push(entry);
-                        }
+                        rows.extend(entry.matching(query, &metadata));
                     }
                 }
             }
         }
-        if !tree {
-            rows.sort_by_key(|entry| entry.score);
-        }
+        rows.sort_by_key(|entry| entry.score);
         rows
     }
 
     pub fn rebuild(
         &mut self,
         query: &str,
-        history: &[String],
         tree: PaletteTree,
         availability: PaneKindAvailability,
         shortcut: &dyn Fn(&str) -> Option<SharedString>,
@@ -585,94 +525,15 @@ impl UnifiedPalette {
         self.rows.clear();
         if self.command.is_some() {
             self.rows = self.navigation_entries(query);
-            return;
-        }
-        let show_keys = self.show_keys;
-        let shortcut = move |name: &str| show_keys.then(|| shortcut(name)).flatten();
-        match self.mode {
-            Some(PaletteMode::Target) => {}
-            Some(PaletteMode::Command) => {
-                self.rows = command_entries(query, availability, &shortcut);
-            }
-            None => {
-                let mut rows = Vec::new();
-                append_section(
-                    &mut rows,
-                    if query.is_empty() {
-                        "Workspace"
-                    } else {
-                        "Navigation"
-                    },
-                    "@",
-                    self.navigation_entries(query),
-                );
-                if query.is_empty() {
-                    let mut seen_commands = BTreeSet::new();
-                    append_section(
-                        &mut rows,
-                        "Recent commands",
-                        ":",
-                        history
-                            .iter()
-                            .map(|value| (value, value.split_whitespace().next().unwrap_or(value)))
-                            .filter(|(_, name)| availability.allows_command(name))
-                            .filter(|(_, name)| seen_commands.insert(*name))
-                            .take(3)
-                            .map(|(value, name)| {
-                                let spec = zz_protocol::catalog_command_spec(name);
-                                PaletteEntry::row(
-                                    PaletteRow {
-                                        label: name.to_owned().into(),
-                                        icon: Some(IconName::Terminal),
-                                        detail: spec.map_or("", |spec| spec.description).into(),
-                                        ..Default::default()
-                                    },
-                                    spec.map_or_else(
-                                        || PaletteAction::History(value.clone()),
-                                        PaletteAction::Command,
-                                    ),
-                                )
-                            })
-                            .collect(),
-                    );
-                } else {
-                    append_section(
-                        &mut rows,
-                        "Commands",
-                        ":",
-                        command_entries(query, availability, &shortcut),
-                    );
-                }
-                if self.host.is_none() {
-                    let mut hosts: Vec<_> = self
-                        .tree
-                        .hosts
-                        .iter()
-                        .filter_map(|host| host_entry(host).matching(query, ""))
-                        .collect();
-                    hosts.sort_by_key(|entry| entry.score);
-                    append_section(&mut rows, "Hosts", "@", hosts);
-                }
-                self.rows = rows;
-            }
+        } else if self.mode == Some(PaletteMode::Command) {
+            let show_keys = self.show_keys;
+            let shortcut = move |name: &str| show_keys.then(|| shortcut(name)).flatten();
+            self.rows = command_entries(query, availability, &shortcut);
         }
     }
 }
 
-fn append_section(
-    rows: &mut Vec<PaletteEntry>,
-    label: &'static str,
-    hint: &'static str,
-    entries: Vec<PaletteEntry>,
-) {
-    if entries.is_empty() {
-        return;
-    }
-    rows.push(PaletteEntry::header(label, hint));
-    rows.extend(entries);
-}
-
-fn command_entries(
+pub(crate) fn command_entries(
     query: &str,
     availability: PaneKindAvailability,
     shortcut: &dyn Fn(&str) -> Option<SharedString>,
@@ -697,41 +558,17 @@ fn command_entries(
     entries
 }
 
-fn session_entry(host: &PaletteTreeHost, session: &PaletteTreeSession) -> PaletteEntry {
-    PaletteEntry::row(
-        PaletteRow {
-            label: session.name.clone().into(),
-            detail: count(session.windows.len(), "window").into(),
-            right: if session.active { "current" } else { "" }.into(),
-            icon: Some(IconName::Folder),
-            running: session.windows.iter().any(PaletteTreeWindow::running),
-            ..Default::default()
-        },
-        PaletteAction::Target {
-            host: host.id,
-            target: PaletteTarget::Session(session.id),
-            label: format!("{} on {}", session.name, host.name),
-        },
-    )
-}
-
 fn window_entry(
     host: &PaletteTreeHost,
     session: &PaletteTreeSession,
     window: &PaletteTreeWindow,
-    grouped: bool,
 ) -> PaletteEntry {
     let prefix = format!("{} / ", session.name);
     let label = format!("{prefix}{}", window.name);
     PaletteEntry::row(
         PaletteRow {
-            label: if grouped {
-                window.name.clone()
-            } else {
-                label.clone()
-            }
-            .into(),
-            muted_prefix: if grouped { 0 } else { prefix.len() },
+            label: label.clone().into(),
+            muted_prefix: prefix.len(),
             detail: count(window.panes.len(), "pane").into(),
             right: if window.active { "current" } else { "" }.into(),
             icon: Some(IconName::PanelsTopLeft),
@@ -770,20 +607,6 @@ fn pane_entry(
             target: PaletteTarget::Pane(pane.id),
             label: format!("{} / {} / {}", session.name, window.name, pane.label),
         },
-    )
-}
-
-fn host_entry(host: &PaletteTreeHost) -> PaletteEntry {
-    PaletteEntry::row(
-        PaletteRow {
-            label: host.name.clone().into(),
-            detail: host.detail.clone().into(),
-            icon: Some(IconName::HardDrive),
-            right: host.right.clone().into(),
-            status: Some(host.status),
-            ..Default::default()
-        },
-        PaletteAction::Host(host.id),
     )
 }
 

@@ -72,7 +72,6 @@ pub fn theme_action(json: &str, action: &str, argument: &str) -> Result<String, 
             preferences.set_interface_theme(argument);
             Ok(None)
         }
-        "save" => preferences.duplicate_theme().map(Some),
         "import" => preferences.import_theme(argument).map(Some),
         "delete" => {
             preferences.delete_theme(argument);

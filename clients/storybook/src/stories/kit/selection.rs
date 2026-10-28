@@ -4,6 +4,7 @@ use zz_gpui::{
 };
 use zz_ui::{
     Disableable as _, IndexPath, Sizable as _, h_flex,
+    segmented::SegmentedControl,
     select::{Select, SelectState},
     slider::DiscreteSlider,
     switch::Switch,
@@ -16,7 +17,7 @@ pub const STORY: Story = Story {
     id: "choices",
     name: "Choices",
     group: "Kit",
-    summary: "Controls that pick a value: the dropdown Select, the Switch and the DiscreteSlider.",
+    summary: "Controls that pick a value: the dropdown Select, the SegmentedControl, the Switch and the DiscreteSlider.",
     sections: &[
         Section {
             id: "select",
@@ -29,6 +30,12 @@ pub const STORY: Story = Story {
             name: "Select, open",
             summary: "Focus plus the Confirm action opens the menu: a scrollable PopupMenu as wide as the trigger, with the picked row checked.",
             build: |window, cx| OpenSelect::view(window, cx),
+        },
+        Section {
+            id: "segmented",
+            name: "Segmented control",
+            summary: "One of a few short choices in a field-styled track. The picked one sits on a quiet button's selected fill, rounded concentric with the track, which slides to the next pick.",
+            build: |window, cx| Segmented::view(window, cx),
         },
         Section {
             id: "switch",
@@ -126,6 +133,38 @@ impl Render for OpenSelect {
             "open",
             h_flex().child(Select::new(&self.state).w(px(200.0))),
         ))
+    }
+}
+
+struct Segmented {
+    picked: [usize; 2],
+}
+
+impl Segmented {
+    fn view(_: &mut Window, cx: &mut App) -> AnyView {
+        cx.new(|_| Self { picked: [0, 1] }).into()
+    }
+}
+
+impl Render for Segmented {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let control = |id: &'static str, segments: &[&'static str], at: usize| {
+            let pick = cx.listener(move |this, index: &usize, _, cx| {
+                this.picked[at] = *index;
+                cx.notify();
+            });
+            row().child(
+                SegmentedControl::new(id, labels(segments))
+                    .selected(self.picked[at])
+                    .on_select(move |index, window, cx| pick(&index, window, cx)),
+            )
+        };
+        states()
+            .state(
+                "three, press one to slide",
+                control("segmented-modes", &["System", "Light", "Dark"], 0),
+            )
+            .state("two", control("segmented-two", &["Tiled", "Floating"], 1))
     }
 }
 

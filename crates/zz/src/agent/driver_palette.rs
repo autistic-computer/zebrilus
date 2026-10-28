@@ -95,6 +95,13 @@ impl DriverPalette {
         }
     }
 
+    pub(crate) fn prefill(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        if !text.is_empty() {
+            self.input
+                .update(cx, |input, cx| input.set_value(text.to_owned(), window, cx));
+        }
+    }
+
     pub(crate) fn focus(&self, cx: &zz_gpui::App) -> FocusHandle {
         self.input.read(cx).focus_handle(cx)
     }

@@ -497,7 +497,6 @@ function appearancePage() {
   const actions = h(
     "div",
     { class: "setting-actions" },
-    quiet("Save", "Save the look on screen as a theme and use it", () => themeSaved(preferences.themeAction("save"))),
     quiet("Import", "Save the theme on the clipboard and use it", importTheme),
     selectedSaved && quiet("Delete", "Delete this saved theme and use the default one", () => preferences.themeAction("delete", picks.selected)),
   );

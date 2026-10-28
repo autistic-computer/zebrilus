@@ -236,7 +236,10 @@ The creation/visibility activity window keeps BeginFrames flowing until the
 first OSR paint. Linux/FreeBSD derive the display ceiling from GPUI's reported
 refresh rates, with a 60 FPS fallback when none are available; `ZZ_BROWSER_FPS`
 overrides that ceiling. Their opt-in default is deliberate because an invalid external
-clock can leave a pane blank on an unvalidated display backend.
+clock can leave a pane blank on an unvalidated display backend. Measured on NVIDIA
+under headless gamescope ([Linux browser pacing](/research/2026-10-28-linux-browser-pacing.md)),
+the external clock gained nothing over CEF's timer at 60 or 120 Hz and collapsed to
+single-digit frame rates in two of eight runs.
 
 Hot panes can additionally use a per-pane adaptive divisor behind the exact
 `ZZ_BROWSER_BF_ADAPTIVE=1` opt-in. Over roughly one-second samples the

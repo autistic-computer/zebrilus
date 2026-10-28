@@ -100,9 +100,12 @@ removes it. The key does not show in `list-keys` or the which-key sheet, which r
 tables.
 
 The desktop binds `Cmd+1` through `Cmd+9` on macOS and `Ctrl+1` through `Ctrl+9`
-on Linux to `ui:select-window-1` through `ui:select-window-9`. Each number selects
-that position in the attached session's displayed window order, including windows
-beyond the visible titlebar range. Missing positions do nothing. The workspace
+on Linux to `ui:select-window-1` through `ui:select-window-9`. The numbers run
+through the windows the sidebar lists, top to bottom across sessions and connected
+hosts, folded sessions included, so a window keeps its number while you move
+around; a number in another session or host switches there and focuses that window.
+Holding the modifier for 300ms puts each number's key on its window row in both
+sidebars, in place of the age. Missing positions do nothing. The workspace
 intercepts these shortcuts before pane shortcuts, including browser tab selection.
 Dialogs, popups, menus, local palettes, and Settings retain their keyboard handling.
 For example, `chrome-keybind = ui:D-2=select-window-4` selects the fourth window
@@ -154,7 +157,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `ui-font-family` | System default | Installed font family, or `.SystemUIFont` | Interface text across desktop windows; applies live and stays separate from terminal and editor fonts |
 | `theme-mode` | `system` | `system`, `light`, `dark` | Follow the OS appearance, or pin one mode |
 | `app-icon` | `automatic` | `automatic`, `light`, `dark` | Which render of `assets/zz.icon` the macOS Dock tile wears; `automatic` defers to the bundle's compiled icon when packaged (so tinted/clear dock styles work) and follows the OS appearance in bare builds, independently of `theme-mode` |
-| `driver-agent` | `false` | `true` or `false` | Whether zz keeps a Driver Agent: it follows the first Claude Code or Codex terminal in a session named `driver` on any connected host, and when there is none it runs `zz driver recover`: a live driver on any host is followed, and otherwise one starts on this machine from the newest copy of its chat when most hosts answer ([durable driver chat](/designs/durable-driver-chat.md)); it also starts `zz driver keep` on each connected host. Its chat is the command palette's Driver mode (`>` in an empty palette); the sidebar shows its last message. On, the sidebar, the command palette's tree, the Switch Session menu and the tray leave `driver` sessions out unless you are attached to one ([durable driver chat](/designs/durable-driver-chat.md)). Off, a driver already running keeps running. Settings › Agents › Driver sets it |
+| `driver-agent` | `false` | `true` or `false` | Whether zz keeps a Driver Agent: it follows the first Claude Code or Codex terminal in a session named `driver` on any connected host, and when there is none it runs `zz driver recover`: a live driver on any host is followed, and otherwise one starts on this machine from the newest copy of its chat when most hosts answer ([durable driver chat](/designs/durable-driver-chat.md)); it also starts `zz driver keep` on each connected host. Its chat is the command palette's Driver mode (`?` in an empty palette); the sidebar shows its last message. On, the sidebar, the command palette's tree, the Switch Session menu and the tray leave `driver` sessions out unless you are attached to one ([durable driver chat](/designs/durable-driver-chat.md)). Off, a driver already running keeps running. Settings › Agents › Driver sets it |
 | `driver-model` | `claude` | `claude`, `opus`, `sonnet`, `fable`, `codex` | What zz starts the driver with: Claude Code on its own default model or with `--model`, or Codex on the model its config names. Applies at the driver's next start |
 | `driver-effort` | `default` | `default`, `low`, `medium`, `high`, `xhigh`, `max` | The driver's `--effort` for Claude Code, or `model_reasoning_effort` for Codex, which takes `max` as `xhigh`; `default` passes nothing. Applies at the driver's next start |
 | `driver-hosts` | empty | host names from `zz/config`, `local` for this machine, separated by commas or spaces | Where a new Driver Agent starts when none runs: the first of these hosts that answered `zz driver recover`, this machine when none did or the list is empty. File-only. |
@@ -376,18 +379,17 @@ applies as usual. A broken file that is not selected keeps its last good version
 only logs a warning. When zz starts with a broken selected file there is nothing to keep, so it
 draws `default` and says so in the same toast once the window opens.
 
-Settings > Interface > Themes shows the built-in Default, macOS and Yaru and then the saved themes as tiles.
-Save writes the look on screen (`config::shown_theme`: the theme with its radius,
-accent and tint keys) and an explicit UI font to the first free `themes/theme-N.json` and selects
-it, so nothing on screen changes and the theme can be edited further in that file. Before it
-selects the copy it removes `chrome-accent`, `chrome-tint` and `chrome-tint-hue`, which are now in
-the file, so the tint is not applied twice; selecting it removes the radius key and the retired keys
-as any theme pick does. A saved or imported theme whose name is empty or a built-in's is saved under its file name
-(`theme-N`), so Settings never shows two tiles called Default. Import reads a theme from the clipboard (the storybook's
-theme creator copies one with Copy JSON), saves it the same way and selects it. Thin clients (web,
-iOS) never read this folder: they keep their own saved themes in their preferences, with the same
-Save and Import (Import uses the browser's async clipboard read on web) and a Delete for the
-selected saved theme. A stored theme the build cannot read, one with an unknown key included, is
+Settings > Interface > Theme lists the built-in Default, macOS and Yaru and then the saved themes,
+each with a dot in its accent (the one in use shows the accent on screen). Import from clipboard,
+in the row's more menu, reads a theme from the clipboard (the storybook's theme creator copies one
+with Copy JSON), writes it to the first free `themes/theme-N.json` and selects it; selecting it
+removes the radius key and the retired keys as any theme pick does. An imported theme whose name is
+empty or a built-in's is saved under its file name (`theme-N`), so Settings never lists two themes
+called Default; two others that share a name are told apart by the later one's id,
+`Yaru (theme-2)`. Settings has no Save: a new theme is made in the theme creator or by copying a
+file in `themes/`. Thin clients (web, iOS) never read this folder: they keep their own saved themes
+in their preferences, with the same Import (the browser's async clipboard read on web) and a Delete
+theme for the selected saved theme, both in the Theme row's more menu. A stored theme the build cannot read, one with an unknown key included, is
 skipped without touching the other preferences.
 
 Chrome colors come from the theme and the keys above, never from the terminal's palette: there
@@ -764,7 +766,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 
 | Page | Groups |
 | --- | --- |
-| Interface | **Theme** (`theme-mode` as Mode, three drawn window previews, `interface-theme` as Themes, a strip of built-in and saved themes with Save and Import, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
+| Interface | **Theme** (`theme-mode` as Mode, a System, Light and Dark segmented control, `interface-theme` as Theme, a button listing the built-in and saved themes with their accents beside a more menu with Import from clipboard, `chrome-accent` as Accent swatches with a custom color picker, then `chrome-tint-hue` as Tint and `chrome-tint` as Tint strength, two sliders) · **Advanced**, collapsed until opened (`widget-corner-radius` as Corner radius and `chrome-contrast` as Contrast, two sliders, `UI font`, transient `UI zoom`, macOS `app-icon` as three icon tiles, `animations`, `window-background-blur` as "Window blur" and `window-background-opacity` as "Window blur opacity", a slider dimmed while the blur is off, where the platform profile has it, Linux `window-corner-radius` and `use-system-titlebar`) |
 | Status bar | Title-bar items shown when the sidebar is retracted (`status-badges`, `status-host`, `status-update`; `status-show-session` and `status-agents` were removed and are reported if present) |
 | Browser | **Network** (`browser-egress`) · **Agents** (`browser-remote-debugging-port` as an on/off switch that writes `9222`) · **Search** (`browser-search-provider`) · **Shortcuts** (`browser-element-selector-hotkey`) |
 | Editor | **Typography** (`editor-font-size`) · **Display** (`editor-line-numbers`, `editor-relative-line-numbers`, `editor-soft-wrap`, `editor-vim-mode`) |

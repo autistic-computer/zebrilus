@@ -18,14 +18,22 @@ pub fn recent_pages_path() -> io::Result<PathBuf> {
     Ok(browser_data_dir()?.join("recent-pages"))
 }
 
+pub fn palette_recents_path() -> io::Result<PathBuf> {
+    Ok(app_data_dir()?.join("palette-recents.json"))
+}
+
 pub fn browser_data_dir() -> io::Result<PathBuf> {
+    Ok(app_data_dir()?.join("browser"))
+}
+
+fn app_data_dir() -> io::Result<PathBuf> {
     let data = platform_data_dir().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
             "could not resolve the current user's application-data directory",
         )
     })?;
-    Ok(data.join(DIRECTORY).join("browser"))
+    Ok(data.join(DIRECTORY))
 }
 
 #[cfg(target_os = "linux")]

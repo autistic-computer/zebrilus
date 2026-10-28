@@ -134,7 +134,7 @@ pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
 }
 
 #[cfg(any(target_os = "ios", test))]
-pub(super) fn host_title(endpoint: &str) -> String {
+pub(crate) fn host_title(endpoint: &str) -> String {
     let Some(rest) = endpoint.strip_prefix("ssh://") else {
         return std::path::Path::new(endpoint)
             .file_stem()

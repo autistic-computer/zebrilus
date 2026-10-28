@@ -9,14 +9,15 @@ use crate::{
     InteractiveSurfaceExt as _, Layer, PaintState, Shape, Sizable as _, StyledExt as _, Surface,
     SurfaceRole, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
+    kbd::Kbd,
     rems_from_px, roles,
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
 };
 use zz_gpui::{
-    AnyElement, App, CursorStyle, ElementId, Hsla, IntoElement, MouseButton, MouseDownEvent,
-    ParentElement as _, Pixels, SharedString, Stateful, StatefulInteractiveElement as _,
-    Styled as _, Window, div, prelude::*, px,
+    AnyElement, App, CursorStyle, ElementId, Hsla, IntoElement, Keystroke, MouseButton,
+    MouseDownEvent, ParentElement as _, Pixels, SharedString, Stateful,
+    StatefulInteractiveElement as _, Styled as _, Window, div, prelude::*, px,
 };
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
@@ -606,6 +607,25 @@ pub fn workspace_tree_row(
         .child(marker)
         .child(workspace_tree_row_label(label))
         .child(trailing)
+}
+
+#[must_use]
+pub fn window_shortcut_cap(stroke: Keystroke, ground: Ground) -> Kbd {
+    Kbd::new(stroke).small().on(ground)
+}
+
+#[must_use]
+pub fn workspace_tree_shortcut(
+    row: Stateful<zz_gpui::Div>,
+    stroke: Option<Keystroke>,
+    ground: Ground,
+) -> Stateful<zz_gpui::Div> {
+    row.children(stroke.map(|stroke| {
+        div()
+            .flex_none()
+            .pl(px(6.0))
+            .child(window_shortcut_cap(stroke, ground))
+    }))
 }
 
 #[must_use]

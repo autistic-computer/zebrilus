@@ -25,7 +25,7 @@ use zz_client::{
 use zz_gpui::{
     AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView, AnyWindowHandle, App,
     Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle,
-    IntoElement, KeyUpEvent, Keystroke, MouseButton, MouseDownEvent, MouseExitEvent,
+    IntoElement, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent,
     MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
     Window, anchored, div, ease_out_quint, point, prelude::*, px,
 };
@@ -75,7 +75,10 @@ use crate::{
     command::{
         confirm::ConfirmView,
         menu::MenuView,
-        palette::{CommandPaletteEvent, CommandPaletteView, PaletteMode, palette_backend},
+        palette::{
+            CommandPaletteEvent, CommandPaletteView, DriverOffer, GuiEvent, PaletteMode,
+            palette_backend, palette_backend_with,
+        },
     },
     config::{self, frame_content_corner_radius},
     diagnostics,
@@ -86,14 +89,14 @@ use crate::{
             KeyTableChanged, MuxClient, PathPickerUpdate, RemoteInstallOffer, SshPromptRequest,
         },
         hosts::HostId,
-        nav::{TreeTarget, kill_target_command, select_window_command},
+        nav::{TreeTarget, kill_target_command},
         prefix::{binds_input, is_all_keys_input, is_sidebar_picker_input, terminal_key_input},
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
     pane::picker::PanePickerView,
     terminal::view::TerminalView,
-    window::corners::WindowCorners,
+    window::{corners::WindowCorners, drag::window_drag_handle},
 };
 
 const DROP_PREVIEW_MORPH: Duration = Duration::from_millis(180);
@@ -220,17 +223,11 @@ fn attached_focused_window(
         .map(|session| snapshot.focused_window_for(session))
 }
 
-fn window_at_position(
-    snapshot: &MuxSnapshot,
-    attached: Option<SessionId>,
-    position: u8,
-) -> Option<WindowId> {
-    snapshot
-        .sessions
-        .iter()
-        .find(|session| Some(session.id) == attached)
-        .and_then(|session| session.windows.get(usize::from(position)))
-        .map(|window| window.id)
+const WINDOW_SHORTCUT_HINT_DELAY: Duration = Duration::from_millis(300);
+
+fn window_shortcut_modifiers(cx: &App) -> Option<Modifiers> {
+    let chord = crate::keymap::chord_for(cx, zz_client::UI_TABLE, ChromeAction::SelectWindow(0))?;
+    Keystroke::parse(&chord).ok().map(|stroke| stroke.modifiers)
 }
 
 fn browser_metadata_command(
@@ -579,7 +576,7 @@ impl TerminalHeaderView {
 }
 
 impl Render for TerminalHeaderView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let Some(state) = self.state.clone() else {
             return div().w_full().into_any_element();
         };
@@ -625,6 +622,11 @@ impl Render for TerminalHeaderView {
                 }
             });
         });
+        let header = if state.floats {
+            header
+        } else {
+            window_drag_handle(("pane-header-window-drag", pane.0), header, window, cx)
+        };
         pane_header_frame(header, state.radii, state.opacity).into_any_element()
     }
 }
@@ -692,22 +694,6 @@ enum OverlayKind {
 /// A folder as the palette's `@` mode types it: under `home` as `~/`, with
 /// its spaces escaped and a `/` at its end, or the home folder when there is
 /// none.
-fn path_target(dir: Option<&str>, home: Option<std::path::PathBuf>) -> String {
-    let Some(dir) = dir.filter(|dir| dir.starts_with(['/', '~'])) else {
-        return "~/".to_owned();
-    };
-    let home = home.and_then(|home| {
-        home.to_str()
-            .map(|home| home.trim_end_matches('/').to_owned())
-    });
-    let dir = match home.as_deref().and_then(|home| dir.strip_prefix(home)) {
-        Some("") => "~".to_owned(),
-        Some(rest) if rest.starts_with('/') => format!("~{rest}"),
-        _ => dir.to_owned(),
-    };
-    format!("{}/", zz_ui::target::escape(dir.trim_end_matches('/')))
-}
-
 fn pane_in_session(snapshot: &MuxSnapshot, session: Option<SessionId>, pane: PaneId) -> bool {
     snapshot
         .sessions
@@ -753,6 +739,7 @@ pub struct AppView {
     local_palette_prompt_revision: Option<u64>,
     local_palette_chooser_revision: Option<u64>,
     pending_palette_chooser_close: Option<u64>,
+    gui_previewing: bool,
     pane_indicators: BTreeMap<PaneId, PaneIndicator>,
     focused_pane: Option<(PaneId, EntityId)>,
     focused_overlay: Option<OverlayKind>,
@@ -784,6 +771,7 @@ pub struct AppView {
     which_key: Option<WhichKeySheet>,
     which_key_timer: Option<Task<()>>,
     which_key_generation: u64,
+    window_shortcut_timer: Option<Task<()>>,
 }
 
 impl AppView {
@@ -918,6 +906,9 @@ impl AppView {
                 mux.set_client_window_focused(window_active);
             });
             view.input_router.event(InputEvent::WindowDeactivated);
+            if !window_active {
+                view.hide_window_shortcuts(cx);
+            }
             if !window_active
                 && view
                     .float_drag
@@ -1170,6 +1161,7 @@ impl AppView {
             local_palette_prompt_revision: None,
             local_palette_chooser_revision: None,
             pending_palette_chooser_close: None,
+            gui_previewing: false,
             pane_indicators: BTreeMap::new(),
             focused_pane: None,
             focused_overlay: None,
@@ -1201,7 +1193,40 @@ impl AppView {
             which_key: None,
             which_key_timer: None,
             which_key_generation: 0,
+            window_shortcut_timer: None,
         }
+    }
+
+    pub(crate) fn on_window_shortcut_modifiers(
+        &mut self,
+        modifiers: Modifiers,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let held = window_shortcut_modifiers(cx) == Some(modifiers);
+        if !held {
+            self.hide_window_shortcuts(cx);
+            return;
+        }
+        if self.window_shortcut_timer.is_some() {
+            return;
+        }
+        self.window_shortcut_timer = Some(cx.spawn_in(window, async move |view, cx| {
+            cx.background_executor()
+                .timer(WINDOW_SHORTCUT_HINT_DELAY)
+                .await;
+            view.update(cx, |view, cx| {
+                view.sidebar
+                    .update(cx, |sidebar, cx| sidebar.show_window_shortcuts(true, cx));
+            })
+            .ok();
+        }));
+    }
+
+    fn hide_window_shortcuts(&mut self, cx: &mut Context<Self>) {
+        self.window_shortcut_timer = None;
+        self.sidebar
+            .update(cx, |sidebar, cx| sidebar.show_window_shortcuts(false, cx));
     }
 
     fn intercept_keystroke(
@@ -1220,6 +1245,9 @@ impl AppView {
         }
         if !(event.is_held && self.mux.read(cx).prefix_armed()) {
             self.hide_which_key(cx);
+        }
+        if !self.sidebar.read(cx).window_shortcuts_shown() {
+            self.window_shortcut_timer = None;
         }
         if self.reconcile_dialog_prefix(window, cx) {
             return;
@@ -1418,12 +1446,10 @@ impl AppView {
                 return;
             }
             ChromeAction::SelectWindow(position) => {
-                let mux = self.mux.read(cx);
-                if mux.is_connected()
-                    && let Some(target) =
-                        window_at_position(&mux.snapshot(), mux.attached_session(), position)
+                if self
+                    .sidebar
+                    .update(cx, |sidebar, cx| sidebar.open_window_shortcut(position, cx))
                 {
-                    mux.execute(select_window_command(target));
                     self.focus_active_pane(window, cx);
                 }
                 return;
@@ -1601,18 +1627,14 @@ impl AppView {
                 action: zz_protocol::ChooseTreeAction::Close,
             });
         }
-        let palette = cx.new(|cx| build(palette_backend(mux), window, cx));
+        let offers = crate::command::gui::offers(&self.sidebar, cx);
         #[cfg(feature = "agent-pane")]
-        {
-            let driver = self
-                .sidebar
-                .read(cx)
-                .driver_chat()
-                .read(cx)
-                .driver()
-                .is_some();
-            palette.update(cx, |palette, cx| palette.offer_driver(driver, cx));
-        }
+        let driver = Some(self.driver_offer(cx));
+        #[cfg(not(feature = "agent-pane"))]
+        let driver = None;
+        let backend = palette_backend_with(mux, offers, driver);
+        let palette = cx.new(|cx| build(backend, window, cx));
+        palette.update(cx, |palette, cx| palette.offer_driver(driver, cx));
         self.observe_command_palette(&palette, window, cx);
         palette.read(cx).focus(cx).focus(window, cx);
         self.command_palette = Some(palette);
@@ -1620,6 +1642,73 @@ impl AppView {
         self.synchronized_signature = None;
         cx.notify();
     }
+
+    fn on_gui_event(&mut self, event: &GuiEvent, cx: &mut Context<Self>) {
+        match event {
+            GuiEvent::Preview { action, value } => {
+                self.gui_previewing = true;
+                crate::command::gui::preview(action, value, cx);
+            }
+            GuiEvent::Revert => {
+                if std::mem::take(&mut self.gui_previewing) {
+                    crate::command::gui::revert(cx);
+                }
+            }
+            GuiEvent::Apply { action, value } => {
+                self.gui_previewing = false;
+                crate::command::gui::apply(action, value, &self.sidebar, cx);
+            }
+        }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn driver_offer(&self, cx: &App) -> DriverOffer {
+        let ready = self
+            .sidebar
+            .read(cx)
+            .driver_chat()
+            .read(cx)
+            .driver()
+            .is_some();
+        let on = config::resolved_config(cx).driver_agent.value;
+        match (ready, on) {
+            (true, _) => DriverOffer::Ready,
+            (false, true) => DriverOffer::Asleep,
+            (false, false) => DriverOffer::Off,
+        }
+    }
+
+    #[cfg(feature = "agent-pane")]
+    fn ask_driver(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let chat = self.sidebar.read(cx).driver_chat();
+        if chat.read(cx).driver().is_some() {
+            self.open_driver_palette(window, cx);
+            if let Some(palette) = &self.driver_palette {
+                palette.update(cx, |palette, cx| palette.prefill(text, window, cx));
+            }
+            return;
+        }
+        self.command_palette = None;
+        self.focused_overlay = None;
+        self.synchronized_signature = None;
+        if config::resolved_config(cx).driver_agent.value {
+            chat.update(cx, crate::agent::driver::DriverChat::wake);
+            self.focus_active_pane(window, cx);
+        } else {
+            self.sidebar
+                .update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
+            if let Some(settings) = self.sidebar.read(cx).settings_view() {
+                settings.update(cx, |settings, cx| {
+                    settings.set_section(zz_ui::settings::SettingsSection::Agents, window, cx);
+                });
+                settings.read(cx).focus().focus(window, cx);
+            }
+        }
+        cx.notify();
+    }
+
+    #[cfg(not(feature = "agent-pane"))]
+    fn ask_driver(&mut self, _: &str, _: &mut Window, _: &mut Context<Self>) {}
 
     /// Open the palette in Driver mode: the driver chat in the palette's surface.
     /// Does nothing while there is no driver or another overlay holds input.
@@ -1709,6 +1798,10 @@ impl AppView {
         cx: &mut Context<Self>,
     ) {
         cx.subscribe_in(palette, window, |view, palette, event, window, cx| {
+            if let CommandPaletteEvent::Gui(event) = event {
+                view.on_gui_event(event, cx);
+                return;
+            }
             if view.command_palette.as_ref() != Some(palette) || palette.read(cx).is_finished() {
                 return;
             }
@@ -1723,10 +1816,14 @@ impl AppView {
                     view.synchronized_signature = None;
                     cx.notify();
                 }
-                #[cfg(feature = "agent-pane")]
-                CommandPaletteEvent::Driver => view.open_driver_palette(window, cx),
-                #[cfg(not(feature = "agent-pane"))]
-                CommandPaletteEvent::Driver => {}
+                CommandPaletteEvent::Driver { text } => view.ask_driver(text, window, cx),
+                CommandPaletteEvent::Gui(_) => {}
+            }
+        })
+        .detach();
+        cx.observe_release_in(palette, window, |view, _, _, cx| {
+            if std::mem::take(&mut view.gui_previewing) {
+                crate::command::gui::revert(cx);
             }
         })
         .detach();
@@ -1765,7 +1862,7 @@ impl AppView {
         }
     }
 
-    /// `prefix F`: the palette in `@` mode on `pane`'s folder, or the `-c`
+    /// `prefix F`: the palette in `&` mode on `pane`'s folder, or the `-c`
     /// folder, putting what you pick at that pane's cursor.
     fn open_path_palette(
         &mut self,
@@ -1788,21 +1885,16 @@ impl AppView {
         if !pane_in_session(&snapshot, attached, pane) {
             return;
         }
-        let cwd = start_dir
+        let home = local.then(std::env::home_dir).flatten();
+        let body = start_dir
             .filter(|dir| dir.starts_with(['/', '~']))
-            .map(str::to_owned)
-            .or_else(|| {
-                snapshot
-                    .sessions
-                    .iter()
-                    .flat_map(|session| &session.windows)
-                    .find_map(|window| window.panes.get(&pane))
-                    .map(|pane| pane.summary.cwd.clone())
-            });
-        let body = path_target(cwd.as_deref(), local.then(std::env::home_dir).flatten());
+            .map(|dir| {
+                zz_ui::files::start_dir(Some(dir), home.as_ref().and_then(|home| home.to_str()))
+            })
+            .unwrap_or_default();
         self.show_command_palette(
             move |backend, window, cx| {
-                CommandPaletteView::new_target(backend, body, Some(pane), window, cx)
+                CommandPaletteView::new_target(backend, &body, Some(pane), window, cx)
             },
             window,
             cx,
@@ -4841,6 +4933,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         let attached = SessionId(1);
         let session = zz_protocol::SessionSnapshot {
@@ -5130,6 +5223,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         MuxSnapshot {
             generation,
@@ -5946,32 +6040,6 @@ mod tests {
             cx.run_until_parked();
             assert!(cx.update(|window, cx| settings_focus.contains_focused(window, cx)));
         }
-    }
-
-    #[test]
-    fn window_shortcuts_follow_position_within_the_attached_session() {
-        let mut snapshot = one_pane_snapshot(1);
-        let mut attached = snapshot.sessions[0].clone();
-        attached.id = SessionId(42);
-        attached.windows = [(71, 4), (12, 10), (99, 90)]
-            .into_iter()
-            .map(|(id, index)| {
-                let mut window = attached.windows[0].clone();
-                window.id = WindowId(id);
-                window.index = index;
-                window
-            })
-            .collect();
-        snapshot.sessions.push(attached);
-        for (position, id) in [(0, 71), (1, 12), (2, 99)] {
-            assert_eq!(
-                window_at_position(&snapshot, Some(SessionId(42)), position),
-                Some(WindowId(id))
-            );
-        }
-        assert_eq!(window_at_position(&snapshot, Some(SessionId(42)), 3), None);
-        assert_eq!(window_at_position(&snapshot, Some(SessionId(100)), 0), None);
-        assert_eq!(window_at_position(&snapshot, None, 0), None);
     }
 
     #[zz_gpui::test]
@@ -7125,6 +7193,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         MuxSnapshot {
             generation: 10 + active.0 + generation_bias,
@@ -8828,6 +8897,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
 
         assert!(pending.still_predicts(Some(&window), 12));
@@ -9045,7 +9115,7 @@ mod tests {
         assert!(terminal_is_focused(&workspace, cx));
         input.borrow_mut().clear();
         publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("~/"));
+        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("&~/"));
         assert!(
             input
                 .borrow()
@@ -9146,24 +9216,6 @@ mod tests {
         );
         assert!(!open("@%99", cx));
         assert!(!open("plain words", cx));
-    }
-
-    #[test]
-    fn a_folder_opens_as_a_target_under_home() {
-        let home = Some(std::path::PathBuf::from("/home/me"));
-        assert_eq!(
-            path_target(Some("/home/me/dev/zz"), home.clone()),
-            "~/dev/zz/"
-        );
-        assert_eq!(path_target(Some("/home/me"), home.clone()), "~/");
-        assert_eq!(path_target(Some("/home/meow"), home.clone()), "/home/meow/");
-        assert_eq!(
-            path_target(Some("/srv/My Files/"), home.clone()),
-            r"/srv/My\ Files/"
-        );
-        assert_eq!(path_target(Some(""), home.clone()), "~/");
-        assert_eq!(path_target(None, home), "~/");
-        assert_eq!(path_target(Some("/etc"), None), "/etc/");
     }
 
     #[test]
