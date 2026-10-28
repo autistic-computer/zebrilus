@@ -263,6 +263,16 @@ impl WorkspaceSidebar {
         }
     }
 
+    pub(crate) const fn is_flat(&self) -> bool {
+        self.flat
+    }
+
+    pub(crate) fn set_flat(&mut self, flat: bool, cx: &mut Context<Self>) {
+        if self.flat != flat {
+            self.toggle_flat(cx);
+        }
+    }
+
     pub(super) fn toggle_flat(&mut self, cx: &mut Context<Self>) {
         self.flat = !self.flat;
         let value = if self.flat { "true" } else { "false" };

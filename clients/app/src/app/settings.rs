@@ -392,7 +392,7 @@ impl Controls {
 }
 
 impl AppShell {
-    fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.settings_controls
             .sync_theme_inputs(&self.preferences, window, cx);
         self.preferences.save();
@@ -1196,7 +1196,7 @@ fn custom_accent(preferences: &Preferences) -> Option<zz_gpui::Hsla> {
 
 /// The themes the Theme rows offer, the built-in first, with the active one
 /// picked and the overrides set over it.
-fn theme_picks(preferences: &Preferences) -> ThemePicks<'_> {
+pub(super) fn theme_picks(preferences: &Preferences) -> ThemePicks<'_> {
     let themes = interface_theme::builtin_themes()
         .iter()
         .map(|(id, theme)| (SharedString::from(*id), theme))

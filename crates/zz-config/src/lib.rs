@@ -1879,6 +1879,18 @@ pub fn write_interface_theme_at(path: &Path, name: &str, theme_sets_font: bool) 
         Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
         Err(error) => return Err(error),
     };
+    let edited = interface_theme_source(&source, name, theme_sets_font);
+    if edited.len() > MAX_CONFIG_BYTES {
+        return Err(io::Error::new(
+            ErrorKind::InvalidData,
+            format!("configuration edit exceeds the {MAX_CONFIG_BYTES}-byte limit"),
+        ));
+    }
+    atomic_write(path, edited.as_bytes())
+}
+
+#[must_use]
+pub fn interface_theme_source(source: &str, name: &str, theme_sets_font: bool) -> String {
     let decided = |key: &str| {
         ConfigKey::THEME_PICKS
             .iter()
@@ -1897,18 +1909,11 @@ pub fn write_interface_theme_at(path: &Path, name: &str, theme_sets_font: bool) 
             without_decided.push_str(line);
         }
     }
-    let edited = edit_config_source(
+    edit_config_source(
         &without_decided,
         ConfigKey::InterfaceTheme.as_str(),
         Some(name),
-    );
-    if edited.len() > MAX_CONFIG_BYTES {
-        return Err(io::Error::new(
-            ErrorKind::InvalidData,
-            format!("configuration edit exceeds the {MAX_CONFIG_BYTES}-byte limit"),
-        ));
-    }
-    atomic_write(path, edited.as_bytes())
+    )
 }
 
 pub fn set_config_key_name(key: &str, value: &str) -> io::Result<()> {
@@ -2063,6 +2068,29 @@ pub fn config_overrides_for_host(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_palette_gui_value_is_one_the_config_reads() {
+        use zz_client::gui_actions::{GUI_ACTIONS, GuiValues};
+        for action in &GUI_ACTIONS {
+            let Some(key) = action.config_key else {
+                continue;
+            };
+            assert!(ConfigKey::parse(key).is_some(), "{key}");
+            let values: Vec<&str> = match action.values {
+                GuiValues::Fixed(choices) => choices.iter().map(|choice| choice.value).collect(),
+                GuiValues::Listed => BUILTIN_THEMES.to_vec(),
+            };
+            for value in values {
+                let parsed = parse_config(&format!("{key} = {value}\n"), "monospace");
+                assert!(
+                    parsed.diagnostics.is_empty(),
+                    "{key} = {value}: {:?}",
+                    parsed.diagnostics
+                );
+            }
+        }
+    }
 
     #[test]
     fn the_driver_is_off_until_turned_on_and_takes_a_model_and_effort() {

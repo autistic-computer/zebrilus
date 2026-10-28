@@ -5,6 +5,7 @@ use zz_client::{
         CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion,
         complete_command, completion_insertion,
     },
+    gui_actions::GuiAction,
     place::{ActionKind, parse},
     recents::now_secs,
 };
@@ -25,8 +26,8 @@ use super::{
     command_palette_row, command_palette_row_height, command_palette_section,
     command_palette_tree_entry,
     palette_model::{
-        PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget,
-        PaletteTree, UnifiedPalette, needs_arguments, target_kind,
+        DriverOffer, PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings,
+        PaletteTarget, PaletteTree, UnifiedPalette, needs_arguments, target_kind,
     },
     palette_recents, unified_command_palette_input,
 };
@@ -203,9 +204,26 @@ impl Global for RecentPaletteCommands {}
 
 pub enum CommandPaletteEvent {
     ReturnToDefault,
-    /// [`DRIVER_PREFIX`] typed into an empty palette while there is a driver:
-    /// the app swaps the palette for its Driver mode.
-    Driver,
+    /// `?` or the Ask row: the app swaps the palette for its Driver mode with
+    /// `text` in the composer, wakes a sleeping driver, or shows where to
+    /// turn it on.
+    Driver {
+        text: String,
+    },
+    Gui(GuiEvent),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GuiEvent {
+    Preview {
+        action: &'static GuiAction,
+        value: String,
+    },
+    Revert,
+    Apply {
+        action: &'static GuiAction,
+        value: String,
+    },
 }
 
 /// The footer's keys in `@` mode, Enter's saying what it does to the row.
@@ -238,7 +256,7 @@ fn target_hints(item: Option<&crate::target::TargetItem>, typed: &str) -> Vec<Pa
 }
 
 /// What switches the palette to its Driver mode, typed into an empty palette.
-pub const DRIVER_PREFIX: &str = ">";
+pub const DRIVER_PREFIX: &str = "?";
 
 impl EventEmitter<CommandPaletteEvent> for CommandPaletteView {}
 
@@ -265,7 +283,7 @@ pub struct CommandPaletteView {
     chooser_activation: Option<ChooseTreeTarget>,
     local: bool,
     changing_input: bool,
-    driver: bool,
+    driver: Option<DriverOffer>,
     /// The `@` mode's picker while the palette is in it.
     target: Option<(Entity<TargetPicker>, Subscription)>,
     /// The pane a picked file goes into: the one `prefix F` came from, else
@@ -386,7 +404,7 @@ impl CommandPaletteView {
             chooser_search: ChooserSearch::default(),
             chooser_activation: None,
             changing_input: false,
-            driver: false,
+            driver: None,
             target: None,
             insert_pane: None,
             level: None,
@@ -473,8 +491,9 @@ impl CommandPaletteView {
         &self.last_input
     }
 
-    /// Whether [`DRIVER_PREFIX`] switches to Driver mode: while there is a driver.
-    pub fn offer_driver(&mut self, offer: bool, cx: &mut Context<Self>) {
+    /// What the driver can do now, for the footer's [`DRIVER_PREFIX`] key and
+    /// the Ask row a search offers.
+    pub fn offer_driver(&mut self, offer: Option<DriverOffer>, cx: &mut Context<Self>) {
         if self.driver != offer {
             self.driver = offer;
             cx.notify();
@@ -659,6 +678,7 @@ impl CommandPaletteView {
             unified.rebuild_window_chooser(state, &self.last_input);
         } else if unified.is_places() {
             let backend = Rc::clone(&self.backend);
+            unified.driver = self.driver;
             unified.rebuild_places(
                 &self.last_input,
                 &history,
@@ -880,18 +900,6 @@ impl CommandPaletteView {
                 state.items.get(index as usize).map(|item| item.target)
             });
         }
-        if self.driver
-            && self.last_input.is_empty()
-            && value == DRIVER_PREFIX
-            && self
-                .unified
-                .as_ref()
-                .is_some_and(|unified| unified.mode.is_none() && unified.command.is_none())
-        {
-            self.set_query(String::new(), window, cx);
-            cx.emit(CommandPaletteEvent::Driver);
-            return;
-        }
         if self.commit_typed(&value, window, cx) {
             return;
         }
@@ -1088,7 +1096,7 @@ impl CommandPaletteView {
                     Self::notify_action(format!("Switched to {label}"), window, cx);
                 }
             }
-            PaletteAction::Place(_) | PaletteAction::Recent(_) => {}
+            PaletteAction::Place(_) | PaletteAction::Recent(_) | PaletteAction::Ask => {}
         }
     }
 
@@ -1221,6 +1229,7 @@ impl CommandPaletteView {
                 PaletteAction::Completion(_) => "complete",
                 PaletteAction::Place(_) => "go",
                 PaletteAction::Recent(_) => "open",
+                PaletteAction::Ask => "ask",
             });
         let usage = if let Some(rest) = &command_rest {
             selected
@@ -1398,7 +1407,7 @@ impl CommandPaletteView {
                             label: "clear host",
                         });
                     }
-                    if self.driver && self.last_input.is_empty() {
+                    if self.driver == Some(DriverOffer::Ready) && self.last_input.is_empty() {
                         hints.push(PaletteHint {
                             key: DRIVER_PREFIX,
                             label: "driver",
@@ -1707,6 +1716,12 @@ impl CommandPaletteView {
         cx.stop_propagation();
     }
 
+    /// A key for the active level from outside the field, such as a click
+    /// on one of its rows.
+    pub fn press_level(&mut self, key: ActionKey, window: &mut Window, cx: &mut Context<Self>) {
+        self.level_key(key, window, cx);
+    }
+
     pub fn apply_level_effect(
         &mut self,
         effect: LevelEffect,
@@ -1717,6 +1732,10 @@ impl CommandPaletteView {
             LevelEffect::Stay => {}
             LevelEffect::Close => self.close(cx),
             LevelEffect::Emit(event) => cx.emit(event),
+            LevelEffect::Finish(event) => {
+                cx.emit(event);
+                self.close(cx);
+            }
             LevelEffect::Copied(text) => Self::notify_action(format!("Copied {text}"), window, cx),
             LevelEffect::SetRest(rest) => {
                 let value = self.input.read(cx).value().to_string();
@@ -2066,3 +2085,7 @@ mod places;
 #[cfg(test)]
 #[path = "palette_view_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "gui_level_tests.rs"]
+mod gui_level_tests;
