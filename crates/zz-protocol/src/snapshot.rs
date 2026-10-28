@@ -660,6 +660,8 @@ pub struct WindowSnapshot {
     pub sx: u16,
     #[serde(default)]
     pub sy: u16,
+    #[serde(default)]
+    pub pane_base_index: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -866,6 +868,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         let first = WindowId(1);
         let second = WindowId(2);
@@ -922,6 +925,7 @@ mod tests {
             modal: None,
             sx: 0,
             sy: 0,
+            pane_base_index: 0,
         };
         let boundary = window("x".repeat(MAX_WINDOW_STATUS_LABEL_BYTES));
         let encoded = postcard::to_stdvec(&boundary).expect("encode boundary label");

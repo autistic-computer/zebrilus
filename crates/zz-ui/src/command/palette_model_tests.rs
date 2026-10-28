@@ -173,11 +173,15 @@ fn navigation_tree() -> PaletteTree {
             .enumerate()
             .map(|(index, label)| PaletteTreePane {
                 id: PaneId(id * 10 + index as u64),
+                index: 0,
                 label: (*label).to_owned(),
                 detail: "Terminal".into(),
                 program: None,
                 icon: IconName::SquareTerminal,
                 running: false,
+                needs_you: false,
+                terminal: true,
+                cwd: String::new(),
             })
             .collect(),
     };
@@ -193,6 +197,7 @@ fn navigation_tree() -> PaletteTree {
                 PaletteTreeSession {
                     id: SessionId(1),
                     name: "dev".to_owned(),
+                    tmux_name: "dev".to_owned(),
                     active: true,
                     windows: vec![
                         window(1, "editor", true, &["nvim", "cargo watch"]),
@@ -202,24 +207,11 @@ fn navigation_tree() -> PaletteTree {
                 PaletteTreeSession {
                     id: SessionId(2),
                     name: "scratch".to_owned(),
+                    tmux_name: "scratch".to_owned(),
                     active: false,
                     windows: vec![window(3, "experiments", false, &["python hidden"])],
                 },
             ],
-        }],
-    }
-}
-
-fn offline_tree() -> PaletteTree {
-    PaletteTree {
-        attached: LOCAL,
-        hosts: vec![PaletteTreeHost {
-            id: LOCAL,
-            name: "local".to_owned(),
-            detail: "This computer".to_owned(),
-            right: "offline".to_owned(),
-            status: PaletteStatus::Offline,
-            sessions: Vec::new(),
         }],
     }
 }
@@ -233,43 +225,10 @@ fn row_labels(state: &UnifiedPalette) -> Vec<&str> {
 }
 
 #[test]
-fn default_tree_expands_current_session_and_preserves_local_branch_choices() {
-    let mut state = UnifiedPalette::new(None);
+fn a_target_command_lists_the_hosts_panes_or_windows_flat() {
+    let mut state = UnifiedPalette::new(Some(PaletteMode::Command));
     state.tree = navigation_tree();
-    state.rows = state.navigation_entries("");
-    assert_eq!(row_labels(&state), ["dev", "editor", "logs", "scratch"]);
-    assert_eq!(state.initial_selection(), Some(1));
-    assert_eq!(state.rows[0].row.expanded, Some(true));
-    assert_eq!(state.rows[1].row.expanded, Some(false));
-    assert_eq!(state.rows[3].row.expanded, Some(false));
-    assert!(state.set_expanded(1, true));
-    state.rows = state.navigation_entries("");
-    assert_eq!(
-        row_labels(&state),
-        ["dev", "editor", "nvim", "cargo watch", "logs", "scratch"]
-    );
-    assert_eq!(state.rows[2].row.indent, 36.0);
-    assert_eq!(state.rows[2].row.right, "current");
-    assert_eq!(state.child_index(1), Some(2));
-    assert_eq!(state.parent_index(2), Some(1));
-    assert_eq!(state.parent_index(1), Some(0));
-    assert!(!state.set_expanded(2, true));
-    assert!(state.set_expanded(0, false));
-    state.rows = state.navigation_entries("");
-    assert_eq!(row_labels(&state), ["dev", "scratch"]);
-    assert_eq!(state.initial_selection(), Some(0));
-    assert!(state.set_expanded(0, true));
-    state.rows = state.navigation_entries("");
-    assert_eq!(
-        row_labels(&state),
-        ["dev", "editor", "nvim", "cargo watch", "logs", "scratch"]
-    );
-}
-
-#[test]
-fn search_finds_hidden_descendants() {
-    let mut state = UnifiedPalette::new(None);
-    state.tree = navigation_tree();
+    state.command = zz_protocol::catalog_command_spec("kill-pane");
     state.rows = state.navigation_entries("python");
     assert_eq!(
         row_labels(&state),
@@ -279,25 +238,12 @@ fn search_finds_hidden_descendants() {
         state.rows[0].row.muted_prefix,
         "scratch / experiments / ".len()
     );
-    assert!(state.rows[0].row.expanded.is_none());
-    assert_eq!(state.parent_index(0), None);
     assert!(!state.rows[0].row.matches.is_empty());
     state.rows = state.navigation_entries("%30");
     assert_eq!(
         row_labels(&state),
         ["scratch / experiments / python hidden"]
     );
-    state.rows = state.navigation_entries("scratch");
-    assert_eq!(
-        row_labels(&state),
-        [
-            "scratch",
-            "scratch / experiments",
-            "scratch / experiments / python hidden"
-        ]
-    );
-    state.rows = state.navigation_entries("");
-    assert_eq!(row_labels(&state), ["dev", "editor", "logs", "scratch"]);
     state.command = zz_protocol::catalog_command_spec("join-pane");
     state.rows = state.navigation_entries("");
     assert_eq!(
@@ -311,42 +257,6 @@ fn search_finds_hidden_descendants() {
             ..
         })
     )));
-}
-
-#[test]
-fn default_recent_commands_are_unique_and_precede_hosts() {
-    let history = [
-        "rename-window one",
-        "rename-window two",
-        "new-window",
-        "list-panes",
-        "kill-pane",
-    ]
-    .map(str::to_owned);
-    let mut state = UnifiedPalette::new(None);
-    state.rebuild(
-        "",
-        &history,
-        offline_tree(),
-        PaneKindAvailability::default(),
-        &|_| None,
-    );
-    let headers = state
-        .rows
-        .iter()
-        .filter(|entry| entry.action.is_none())
-        .map(|entry| entry.row.label.as_ref())
-        .collect::<Vec<_>>();
-    assert_eq!(headers, ["Recent commands", "Hosts"]);
-    let commands = state
-        .rows
-        .iter()
-        .filter_map(|entry| match entry.action {
-            Some(PaletteAction::Command(spec)) => Some(spec.name),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(commands, ["rename-window", "new-window", "list-panes"]);
 }
 
 #[test]
@@ -397,13 +307,9 @@ fn backspace_pops_exactly_one_palette_layer() {
 }
 
 #[test]
-fn colon_opens_commands_and_at_opens_targets() {
-    assert_eq!(PaletteMode::from_prefix(":"), Some(PaletteMode::Command));
-    assert_eq!(PaletteMode::from_prefix("@"), Some(PaletteMode::Target));
+fn modes_name_their_pills() {
+    assert_eq!(PaletteMode::Command.prefix(), ":");
     assert_eq!(PaletteMode::Target.label(), "Go to");
-    for freed in ["%", "~", "#"] {
-        assert_eq!(PaletteMode::from_prefix(freed), None, "{freed}");
-    }
 }
 
 #[test]
@@ -411,7 +317,10 @@ fn navigation_skips_headers_and_wraps_from_the_initial_selection() {
     let mut state = UnifiedPalette::new(None);
     state.rows = vec![
         PaletteEntry::header("Windows", "@"),
-        PaletteEntry::row(PaletteRow::default(), PaletteAction::Host(LOCAL)),
+        PaletteEntry::row(
+            PaletteRow::default(),
+            PaletteAction::History("new-window".to_owned()),
+        ),
         PaletteEntry::header("Commands", ":"),
         PaletteEntry::row(
             PaletteRow::default(),

@@ -177,7 +177,7 @@ web page or the daemon's synchronized-input path:
 
 The desktop workspace claims Cmd+1–9 on macOS and Ctrl+1–9 on Linux for window
 selection before browser bindings run. These select the first through ninth windows
-in the attached session's displayed order. Ctrl+Tab and Ctrl+Shift+Tab still cycle
+the sidebar lists, across sessions and connected hosts. Ctrl+Tab and Ctrl+Shift+Tab still cycle
 browser tabs. Removing a numbered `ui` binding with `chrome-unbind` restores its
 browser binding.
 

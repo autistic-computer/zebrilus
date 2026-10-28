@@ -58,6 +58,7 @@ fn window() -> WindowSnapshot {
         }),
         sx: 80,
         sy: 300,
+        pane_base_index: 1,
     }
 }
 
@@ -96,7 +97,7 @@ fn empty_layout_holds_tag_two() {
 fn window_snapshot_appends_floating_modal_then_size() {
     let window = window();
     let bytes = postcard::to_stdvec(&window).unwrap();
-    assert!(bytes.ends_with(&FLOATING_MODAL_AND_SIZE_TAIL));
+    assert!(bytes[..bytes.len() - 1].ends_with(&FLOATING_MODAL_AND_SIZE_TAIL));
     assert_eq!(
         postcard::from_bytes::<WindowSnapshot>(&bytes).unwrap(),
         window
@@ -150,6 +151,43 @@ fn a_window_size_change_alone_sends_the_layout() {
             .iter()
             .any(|op| matches!(op, TreeOp::WindowLayout { sy: 300, .. }))
     );
+    let mut applied = before;
+    delta.apply(&mut applied).unwrap();
+    assert_eq!(applied.sessions, after.sessions);
+}
+
+#[test]
+fn window_snapshot_appends_pane_base_index() {
+    let window = window();
+    let bytes = postcard::to_stdvec(&window).unwrap();
+    assert!(bytes.ends_with(&[80, 172, 2, 1]));
+    assert_eq!(
+        postcard::from_bytes::<WindowSnapshot>(&bytes).unwrap(),
+        window
+    );
+    let mut json = serde_json::to_value(&window).unwrap();
+    json.as_object_mut().unwrap().remove("pane_base_index");
+    let old = serde_json::from_value::<WindowSnapshot>(json).unwrap();
+    assert_eq!(old.pane_base_index, 0);
+}
+
+#[test]
+fn a_pane_base_index_change_alone_sends_the_window_flags() {
+    let mut before = window();
+    before.pane_base_index = 0;
+    let before = snapshot(before);
+    let after = snapshot(window());
+    let delta = TreeDelta::between(&before, &after);
+    let [
+        op @ TreeOp::WindowFlags {
+            pane_base_index: 1, ..
+        },
+    ] = delta.ops.as_slice()
+    else {
+        panic!("expected one WindowFlags op, got {:?}", delta.ops);
+    };
+    let bytes = postcard::to_stdvec(op).unwrap();
+    assert_eq!(&postcard::from_bytes::<TreeOp>(&bytes).unwrap(), op);
     let mut applied = before;
     delta.apply(&mut applied).unwrap();
     assert_eq!(applied.sessions, after.sessions);

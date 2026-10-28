@@ -2215,6 +2215,7 @@ mod tests {
                             modal: None,
                             sx: 0,
                             sy: 0,
+                            pane_base_index: 0,
                         }],
                     }],
                     focused_window: Some(WindowId(1)),

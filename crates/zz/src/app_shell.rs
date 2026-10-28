@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use zz_gpui::{
-    AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent, Render,
-    StyleRefinement, Window, div, prelude::*, px,
+    AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent,
+    ModifiersChangedEvent, Render, StyleRefinement, Window, div, prelude::*, px,
 };
 use zz_ui::shell::{app_shell_surface, app_titlebar_strip, titlebar_over_panes};
 use zz_ui::{
@@ -436,6 +436,13 @@ impl Render for AppShell {
             WindowCorners::for_window(window).round_div(shell, frame_content_corner_radius(cx))
         })
         .on_drag_move::<SidebarResizeDrag>(cx.listener(Self::on_sidebar_resize_drag_move))
+        .on_modifiers_changed(
+            cx.listener(|shell, event: &ModifiersChangedEvent, window, cx| {
+                shell.workspace.update(cx, |workspace, cx| {
+                    workspace.on_window_shortcut_modifiers(event.modifiers, window, cx);
+                });
+            }),
+        )
         .capture_key_up(cx.listener(|shell, event: &KeyUpEvent, window, cx| {
             shell.workspace.update(cx, |workspace, cx| {
                 workspace.on_claim_key_up(event, window, cx);

@@ -40,6 +40,7 @@ pub struct Preferences {
     pub pane_margin: f32,
     pub palette_grouped: bool,
     pub palette_show_keys: bool,
+    pub palette_vim_mode: bool,
     pub extend_bottom_safe_area: bool,
     pub keep_screen_awake: bool,
     pub system_text_size: bool,
@@ -72,6 +73,7 @@ impl Default for Preferences {
             pane_margin: 6.0,
             palette_grouped: true,
             palette_show_keys: true,
+            palette_vim_mode: false,
             extend_bottom_safe_area: false,
             keep_screen_awake: false,
             system_text_size: true,
@@ -155,6 +157,7 @@ impl Preferences {
         zz_ui::command::PaletteSettings {
             grouped: self.palette_grouped,
             show_keys: self.palette_show_keys,
+            vim: self.palette_vim_mode,
         }
     }
 
@@ -205,18 +208,6 @@ impl Preferences {
         if self.interface_theme().materials.font.is_some() {
             self.ui_font_family.clear();
         }
-    }
-
-    /// Saves the look on screen as a theme, with every override and the UI
-    /// font folded in, selects the copy and drops the overrides.
-    pub fn duplicate_theme(&mut self) -> Result<String, String> {
-        let mut theme = self.shown_theme();
-        if !self.ui_font_family.is_empty() {
-            theme.materials.font = Some(self.ui_font_family.clone().into());
-        }
-        let id = self.save_theme(theme)?;
-        self.overrides = ThemeOverrides::default();
-        Ok(id)
     }
 
     /// Saves the theme file on the clipboard and selects it.
@@ -681,7 +672,7 @@ mod tests {
             theme: Some("macos".into()),
             ..Preferences::default()
         };
-        glass.duplicate_theme().unwrap();
+        glass.save_theme(glass.shown_theme()).unwrap();
         let restored = Preferences::decode(&serde_json::to_string(&glass).unwrap()).unwrap();
         assert_eq!(restored.theme_id(), "theme-1");
         assert!(restored.interface_theme().materials.glass.is_some());
@@ -743,42 +734,6 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_keeps_what_is_on_screen() {
-        let overrides = ThemeOverrides {
-            radius: Some(7.0),
-            accent: Some("green".into()),
-            tint: Some(0.5),
-            tint_hue: Some(145.0),
-        };
-        let mut preferences = Preferences {
-            theme: Some("default".into()),
-            overrides: overrides.clone(),
-            ui_font_family: "Lilex".into(),
-            ..Preferences::default()
-        };
-        let shown = preferences.shown_theme();
-        assert_eq!(preferences.duplicate_theme().unwrap(), "theme-1");
-        let copy = preferences.saved_theme("theme-1").unwrap().clone();
-        let mut expected = interface_theme::default_theme().clone();
-        overrides.apply_to(&mut expected);
-        expected.materials.font = Some("Lilex".into());
-        expected.name = "theme-1".into();
-        assert_eq!(copy, expected);
-        assert_eq!(preferences.theme_id(), "theme-1");
-        assert_eq!(preferences.overrides, ThemeOverrides::default());
-        assert!(preferences.ui_font_family.is_empty());
-        assert_eq!(preferences.shown_theme(), copy);
-        assert_eq!(
-            (
-                preferences.shown_theme().dark.background,
-                preferences.widget_corner_radius(),
-                preferences.shown_ui_font()
-            ),
-            (shown.dark.background, 7.0, "Lilex")
-        );
-    }
-
-    #[test]
     fn import_names_built_in_and_nameless_themes_after_their_id() {
         let mut preferences = Preferences::default();
         preferences.import_theme(r#"{"name":"Default"}"#).unwrap();
@@ -806,7 +761,6 @@ mod tests {
         }
         preferences.overrides.accent = Some("green".into());
         assert!(preferences.import_theme(NEON).is_err());
-        assert!(preferences.duplicate_theme().is_err());
         assert_eq!(preferences.themes.len(), super::MAX_SAVED_THEMES);
         assert_eq!(preferences.overrides.accent.as_deref(), Some("green"));
     }

@@ -53,7 +53,7 @@ deserializer so hostile nesting is rejected before it can exhaust the receiving 
 | `MuxSnapshot` | `generation: u64`, `sessions: Vec<SessionSnapshot>`, `focused_window: Option<WindowId>` |
 | `SessionSnapshot` | `id: SessionId`, `name: String`, `active_window: WindowId`, `windows: Vec<WindowSnapshot>`, `viewers: Vec<SessionViewer>` |
 | `SessionViewer` | `name: String`, `window: WindowId`, `is_self: bool` |
-| `WindowSnapshot` | `id: WindowId`, `index: u32`, `name: String`, `automatic_rename: bool`, `active_pane: PaneId`, `zoomed_pane: Option<PaneId>`, `layout: LayoutNode`, `panes: BTreeMap<PaneId, PaneSnapshot>`, `layout_dump: String`, `visible_layout_dump: String`, `status_label: String`, `activity: bool`, `silence: bool`, `pane_border_status: PaneBorderStatus`, `pane_border_lines: PaneBorderLines`, `pane_border_indicators: PaneBorderIndicators`, `pane_order: Vec<PaneId>`, `pane_z_order: Vec<PaneId>`, `floating: Vec<FloatingPaneSnapshot>`, `modal: Option<ModalPaneSnapshot>`, `sx: u16`, `sy: u16` |
+| `WindowSnapshot` | `id: WindowId`, `index: u32`, `name: String`, `automatic_rename: bool`, `active_pane: PaneId`, `zoomed_pane: Option<PaneId>`, `layout: LayoutNode`, `panes: BTreeMap<PaneId, PaneSnapshot>`, `layout_dump: String`, `visible_layout_dump: String`, `status_label: String`, `activity: bool`, `silence: bool`, `pane_border_status: PaneBorderStatus`, `pane_border_lines: PaneBorderLines`, `pane_border_indicators: PaneBorderIndicators`, `pane_order: Vec<PaneId>`, `pane_z_order: Vec<PaneId>`, `floating: Vec<FloatingPaneSnapshot>`, `modal: Option<ModalPaneSnapshot>`, `sx: u16`, `sy: u16`, `pane_base_index: u32` |
 | `FloatingPaneSnapshot` | `pane: PaneId`, `xoff: i32`, `yoff: i32`, `sx: u16`, `sy: u16`, `visible: bool`, `border_lines: PaneBorderLines`, `border_status: PaneBorderStatus` |
 | `ModalPaneSnapshot` | `pane: PaneId`, `capture_keys: bool`, `close_on_click: bool`, `close_on_cancel: bool` |
 | `PaneSnapshot` | `id: PaneId`, `title: String`, `kind: PaneKindSnapshot`, `synchronized_input: bool`, `bell: bool`, `dead: bool`, `dead_status: Option<u32>`, `border_colour: Option<TmuxColour>`, `active_border_colour: Option<TmuxColour>`, `border_status_text: String`, `mode: Option<PaneMode>`, `status: Option<PaneStatus>`, `summary: PaneSummary` |
@@ -72,7 +72,8 @@ Every field after `activity` on `WindowSnapshot`, and after `active_border_colou
 so an older decoder still fails on a newer frame, and the protocol version gates the mix.
 
 `generation` is the version stamp for the whole tree; `WindowSnapshot.index` is the tmux-style window
-number; `automatic_rename` tells presentation surfaces whether the active pane may supply the tab
+number; `pane_base_index` (appended at v116) is the window's effective `pane-base-index`, so a
+pane's tmux number is its position in `pane_order` plus it, and `TreeOp::WindowFlags` carries it; `automatic_rename` tells presentation surfaces whether the active pane may supply the tab
 label; `zoomed_pane` records a temporarily maximized pane; `synchronized_input` marks panes receiving
 mirrored keystrokes; `bell` is latched until the pane is read after a BEL. A retained terminal exit
 sets `dead`; `dead_status` contains only a normal exit code and is empty for signals and worker
@@ -302,7 +303,7 @@ let snapshot = MuxSnapshot {
             status_label: "0:edit".into(),
             activity: false,
             // silence, the pane border fields, pane_order, pane_z_order, floating, modal,
-            // sx and sy omitted
+            // sx, sy and pane_base_index omitted
         }],
         // stamped per recipient: this copy went to "laptop"
         viewers: vec![

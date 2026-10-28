@@ -290,6 +290,38 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
     }
 }
 
+pub(crate) fn reload(cx: &mut App) {
+    let stamp = ConfigFileStamp::detect(&config_candidates());
+    let parsed = stamp.path.as_deref().map(load_config);
+    install_config(stamp.path.as_deref(), parsed, cx);
+    crate::theme::refresh_current_theme(cx);
+    cx.refresh_windows();
+}
+
+pub(crate) fn preview_interface_theme(name: &str, theme_sets_font: bool, cx: &mut App) {
+    let path = match ConfigFileStamp::detect(&config_candidates()).path {
+        Some(path) => path,
+        None => match config_path_for_write() {
+            Ok(path) => path,
+            Err(_) => return,
+        },
+    };
+    let source = match read_config_source(&path) {
+        Ok(source) => source,
+        Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
+        Err(_) => return,
+    };
+    let mut parsed = zz_config::parse_config(
+        &interface_theme_source(&source, name, theme_sets_font),
+        zz_gpui::Font::default().family.as_ref(),
+    );
+    let loaded = load_themes(&path, &mut parsed, themes(cx));
+    cx.set_global(AppConfig(parsed.config));
+    cx.set_global(UiFontConfig(parsed.ui_font));
+    cx.set_global(loaded);
+    crate::theme::refresh_current_theme(cx);
+}
+
 pub(crate) fn show_theme_error(cx: &mut App) {
     if let Some(error) = themes(cx).error.clone() {
         crate::window::toast::push(Notification::error(error), cx);
@@ -428,6 +460,10 @@ pub(crate) fn palette_window_layout(cx: &App) -> PaletteWindowLayout {
 
 pub(crate) fn palette_show_keys(cx: &App) -> bool {
     resolved_config(cx).palette_show_keys.value
+}
+
+pub(crate) fn palette_vim_mode(cx: &App) -> bool {
+    resolved_config(cx).palette_vim_mode.value
 }
 
 /// Whether the experimental editor pane is enabled. Blocks creating new editor

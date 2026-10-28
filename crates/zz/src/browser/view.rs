@@ -24,6 +24,8 @@ use zz_browser::{
 use zz_client::{BROWSER_TABLE, ChromeAction};
 #[cfg(target_os = "macos")]
 use zz_gpui::PromptLevel;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use zz_gpui::wgpu;
 use zz_gpui::{
     Anchor, AnyElement, AnyView, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString,
     Context, Corners, CursorStyle, DismissEvent, Entity, EntityInputHandler, FocusHandle,
@@ -32,10 +34,6 @@ use zz_gpui::{
     Render, RenderImage, ScrollWheelEvent, SharedString, StyleRefinement, Subscription,
     UTF16Selection, WeakEntity, Window, anchored, deferred, div, point, prelude::*, px,
 };
-#[cfg(target_os = "windows")]
-use zz_gpui::{ObjectFit, external_texture};
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use zz_gpui::{ObjectFit, external_texture, wgpu};
 use zz_protocol::{
     BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
     InputMessage, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
@@ -80,7 +78,10 @@ use crate::{
         nav::{TreeTarget, kill_target_command},
         prefix::terminal_key_input,
     },
-    window::corners::{WindowCorners, round_div_radii},
+    window::{
+        corners::{WindowCorners, round_div_radii},
+        drag::window_drag_handle,
+    },
     workspace::ClosePane,
 };
 
@@ -3706,6 +3707,26 @@ impl Render for BrowserChromeView {
             }
             None => tabs,
         };
+        let tabs = div()
+            .id("browser-tab-strip-drag")
+            .flex()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .child(tabs);
+        let tabs = if self.state.floats {
+            tabs
+        } else {
+            window_drag_handle(
+                (
+                    "browser-header-window-drag",
+                    self.browser.entity_id().as_u64(),
+                ),
+                tabs,
+                window,
+                cx,
+            )
+        };
         let actions = div().flex().flex_none().items_center().gap_1().children(
             zz_ui::pane::pane_header_actions(self.state.floats)
                 .iter()
@@ -3923,44 +3944,22 @@ impl Render for BrowserView {
             .on_scroll_wheel(cx.listener(Self::on_page_scroll))
             .on_key_down(cx.listener(Self::on_page_key_down))
             .on_key_up(cx.listener(Self::on_page_key_up));
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-        let browser_surface = browser_surface.children(
-            self.gpu_texture
-                .clone()
-                .filter(|_| !shows_native_state)
-                .map(|texture| {
-                    round_div_radii(
-                        external_texture(texture)
-                            .object_fit(ObjectFit::Fill)
-                            .absolute()
-                            .inset_0(),
-                        surface_radii,
-                    )
-                }),
-        );
-        #[cfg(target_os = "windows")]
-        let browser_surface = browser_surface.children(
-            self.win_gpu_texture
-                .clone()
-                .filter(|_| !shows_native_state)
-                .map(|texture| {
-                    round_div_radii(
-                        external_texture(texture)
-                            .object_fit(ObjectFit::Fill)
-                            .absolute()
-                            .inset_0(),
-                        surface_radii,
-                    )
-                }),
-        );
         let visible_image = if shows_native_state {
             None
         } else {
             self.image.clone()
         };
-        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-        let visible_image = visible_image.filter(|_| self.gpu_texture.is_none());
         let browser_element = BrowserElement::new(cx.entity(), visible_image, surface_radii);
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let browser_element = browser_element.texture(
+            self.gpu_texture
+                .as_ref()
+                .filter(|_| !shows_native_state)
+                .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default())),
+        );
+        #[cfg(target_os = "windows")]
+        let browser_element =
+            browser_element.texture(self.win_gpu_texture.clone().filter(|_| !shows_native_state));
         #[cfg(target_os = "macos")]
         let browser_element = browser_element
             .surface(if shows_native_state {

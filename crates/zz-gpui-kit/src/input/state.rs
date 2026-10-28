@@ -103,6 +103,7 @@ pub struct InputState {
     input_mode: TextInputMode,
     submit_on_enter: bool,
     enable_context_menu: bool,
+    normal_mode: bool,
 
     pub(super) disabled: bool,
     pub(super) loading: bool,
@@ -176,6 +177,7 @@ impl InputState {
             input_mode: TextInputMode::default(),
             submit_on_enter: false,
             enable_context_menu: false,
+            normal_mode: false,
             disabled: false,
             loading: false,
             size: Size::default(),
@@ -334,6 +336,25 @@ impl InputState {
         self.reset_scroll = true;
         self.follow_cursor = false;
         cx.notify();
+    }
+
+    /// vi's normal mode: a block caret, and the field takes no typed or
+    /// composed text while its actions still edit it.
+    pub fn set_normal_mode(&mut self, normal: bool, cx: &mut Context<Self>) {
+        if self.normal_mode == normal {
+            return;
+        }
+        self.normal_mode = normal;
+        if normal {
+            self.end_composition(cx);
+        }
+        self.pause_blink(cx);
+        cx.notify();
+    }
+
+    #[must_use]
+    pub const fn is_normal_mode(&self) -> bool {
+        self.normal_mode
     }
 
     /// Show or hide the trailing spinner.
@@ -1552,6 +1573,9 @@ impl EntityInputHandler for InputState {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.normal_mode {
+            return;
+        }
         let range = self.edit_target(range_utf16);
         let kind = if new_text.is_empty() {
             EditKind::Delete
@@ -1571,7 +1595,7 @@ impl EntityInputHandler for InputState {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.disabled {
+        if self.disabled || self.normal_mode {
             return;
         }
 
@@ -1659,7 +1683,7 @@ impl EntityInputHandler for InputState {
     }
 
     fn accepts_text_input(&self, _: &mut Window, _: &mut Context<Self>) -> bool {
-        !self.disabled
+        !self.disabled && !self.normal_mode
     }
 
     fn text_input_configuration(

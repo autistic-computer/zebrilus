@@ -28,6 +28,7 @@ pub mod overlay;
 pub mod popover;
 pub mod pulse;
 pub mod scroll;
+pub mod segmented;
 pub mod select;
 pub mod separator;
 pub mod sheet;

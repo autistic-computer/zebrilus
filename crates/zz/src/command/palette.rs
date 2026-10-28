@@ -1,22 +1,27 @@
 use std::{rc::Rc, sync::Arc};
 
-use zz_client::completion::PaneKindAvailability;
+use zz_client::{
+    completion::PaneKindAvailability, gui_actions::GuiOffer, place::ActionKind, recents::Recents,
+};
 use zz_gpui::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_protocol::{
-    CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
-    PathEntry, PathListRoot,
+    CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneStatusState, PathEntry, PathListRoot,
 };
 use zz_ui::{
     IconName,
     command::{
-        PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus, PaletteTarget, PaletteTree,
-        PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow, target_hosts,
+        AskLevel, GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
+        PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
+        PaletteTreeSession, PaletteTreeWindow, target_hosts,
     },
+    files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
     link::resolve_link,
     target::{TargetKind, TargetPicker},
 };
 
-pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, PaletteMode};
+pub(crate) use zz_ui::command::{
+    CommandPaletteEvent, CommandPaletteView, DriverOffer, GuiEvent, PaletteMode,
+};
 
 use crate::{
     mux::{
@@ -28,18 +33,55 @@ use crate::{
     terminal::view::TERMINAL_FONT,
 };
 
-/// Foreground programs whose files are on another machine: the daemon will
-/// not list through a pane running one.
-const REMOTE_FOREGROUND: &[&str] = &["ssh", "mosh", "mosh-client", "tmux", "zz_cli"];
+pub(crate) fn init_recents(cx: &mut App) {
+    let path = match zz_protocol::app_identity::palette_recents_path() {
+        Ok(path) => path,
+        Err(error) => {
+            log::warn!(target: "zz::palette", "palette recents are not persisted: {error}");
+            return;
+        }
+    };
+    let recents = std::fs::read_to_string(&path)
+        .map_or_else(|_| Recents::default(), |text| Recents::from_json(&text));
+    zz_ui::command::install_recents(
+        recents,
+        move |recents, cx| {
+            let path = path.clone();
+            let json = recents.to_json();
+            cx.background_executor()
+                .spawn(async move {
+                    if let Some(parent) = path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    let temporary = path.with_extension("json.tmp");
+                    if let Err(error) = std::fs::write(&temporary, json)
+                        .and_then(|()| std::fs::rename(&temporary, &path))
+                    {
+                        log::warn!(target: "zz::palette", "saving palette recents failed: {error}");
+                    }
+                })
+                .detach();
+        },
+        cx,
+    );
+}
 
 pub(crate) fn palette_backend(mux: Entity<MuxClient>) -> Rc<dyn PaletteBackend> {
-    Rc::new(MuxPalette(mux))
+    Rc::new(MuxPalette::new(mux))
+}
+
+pub(crate) fn palette_backend_with(
+    mux: Entity<MuxClient>,
+    gui: Vec<GuiOffer>,
+    driver: Option<DriverOffer>,
+) -> Rc<dyn PaletteBackend> {
+    Rc::new(MuxPalette { mux, gui, driver })
 }
 
 /// Go to what the zz link `address` names: attach its host, switch to its
 /// session, window or pane, or paste its path into the active pane.
 pub(crate) fn open_link(mux: &Entity<MuxClient>, address: &str, cx: &mut App) -> bool {
-    let backend = MuxPalette(mux.clone());
+    let backend = MuxPalette::new(mux.clone());
     let Some(link) = resolve_link(address, &target_hosts(&backend.tree(cx))) else {
         return false;
     };
@@ -74,7 +116,21 @@ pub(crate) fn open_link(mux: &Entity<MuxClient>, address: &str, cx: &mut App) ->
     }
 }
 
-struct MuxPalette(Entity<MuxClient>);
+struct MuxPalette {
+    mux: Entity<MuxClient>,
+    gui: Vec<GuiOffer>,
+    driver: Option<DriverOffer>,
+}
+
+impl MuxPalette {
+    const fn new(mux: Entity<MuxClient>) -> Self {
+        Self {
+            mux,
+            gui: Vec::new(),
+            driver: None,
+        }
+    }
+}
 
 /// A host's name in the palette and in targets: its fleet name, or this
 /// machine's own.
@@ -84,37 +140,6 @@ fn host_name(host: HostId, name: &str) -> String {
     } else {
         name.to_owned()
     }
-}
-
-fn runs_remote(pane: &PaneSnapshot) -> bool {
-    pane.summary.process.iter().any(|process| {
-        let name = process.rsplit('/').next().unwrap_or(process);
-        REMOTE_FOREGROUND.contains(&name)
-    })
-}
-
-fn terminals(snapshot: &MuxSnapshot) -> impl Iterator<Item = &PaneSnapshot> {
-    snapshot
-        .sessions
-        .iter()
-        .flat_map(|session| &session.windows)
-        .flat_map(|window| window.panes.values())
-        .filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal) && !pane.dead)
-}
-
-/// The terminal on the host to list through: `anchor` when it is one there,
-/// else one not running ssh or the like.
-fn listing_pane(snapshot: &MuxSnapshot, anchor: Option<PaneId>) -> Option<PaneId> {
-    let terminals = terminals(snapshot).collect::<Vec<_>>();
-    anchor
-        .filter(|anchor| terminals.iter().any(|pane| pane.id == *anchor))
-        .or_else(|| {
-            terminals
-                .iter()
-                .find(|pane| !runs_remote(pane))
-                .or_else(|| terminals.first())
-                .map(|pane| pane.id)
-        })
 }
 
 /// What a picked file puts at a pane's cursor: its path for the pane's shell
@@ -131,13 +156,26 @@ pub(crate) fn path_insert_text(root: &PathListRoot, entry: &PathEntry) -> Option
 }
 
 impl PaletteBackend for MuxPalette {
+    fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+        match kind {
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
+            ActionKind::Ask => self
+                .driver
+                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Files => Some(Box::new(FilesAction::new(palette_backend(
+                self.mux.clone(),
+            )))),
+            ActionKind::Command => None,
+        }
+    }
+
     fn snapshot(&self, cx: &App) -> Arc<MuxSnapshot> {
-        self.0.read(cx).snapshot()
+        self.mux.read(cx).snapshot()
     }
 
     fn host_snapshot<'a>(&self, host: PaletteHostId, cx: &'a App) -> Option<&'a MuxSnapshot> {
         let host = HostId::from(host);
-        self.0
+        self.mux
             .read(cx)
             .fleet_hosts()
             .find(|(id, ..)| *id == host)
@@ -145,7 +183,7 @@ impl PaletteBackend for MuxPalette {
     }
 
     fn tree(&self, cx: &App) -> PaletteTree {
-        let mux = self.0.read(cx);
+        let mux = self.mux.read(cx);
         let attached = mux.attached_host();
         PaletteTree {
             attached: attached.into(),
@@ -183,6 +221,7 @@ impl PaletteBackend for MuxPalette {
                         .map(|session| PaletteTreeSession {
                             id: session.id,
                             name: session.label.to_string(),
+                            tmux_name: session.name.clone(),
                             active: session.active,
                             windows: session
                                 .windows
@@ -212,6 +251,7 @@ impl PaletteBackend for MuxPalette {
             grouped: crate::config::palette_window_layout(cx)
                 == crate::config::PaletteWindowLayout::Grouped,
             show_keys: crate::config::palette_show_keys(cx),
+            vim: crate::config::palette_vim_mode(cx),
         }
     }
 
@@ -223,7 +263,7 @@ impl PaletteBackend for MuxPalette {
     }
 
     fn command_shortcut(&self, command: &str, cx: &App) -> Option<SharedString> {
-        let mux = self.0.read(cx);
+        let mux = self.mux.read(cx);
         mux.prefix_bindings()
             .iter()
             .find(|binding| binding.commands.len() == 1 && binding.commands[0].name == command)
@@ -243,11 +283,11 @@ impl PaletteBackend for MuxPalette {
     }
 
     fn send_input(&self, input: InputMessage, cx: &mut App) {
-        self.0.read(cx).send_input(input);
+        self.mux.read(cx).send_input(input);
     }
 
     fn send_key(&self, pane: PaneId, event: &KeyDownEvent, cx: &mut App) {
-        self.0.read(cx).send_input(InputMessage::Key {
+        self.mux.read(cx).send_input(InputMessage::Key {
             pane,
             input: terminal_key_input(&event.keystroke, zz_terminal::KeyAction::Press),
             text_follows: false,
@@ -255,20 +295,20 @@ impl PaletteBackend for MuxPalette {
     }
 
     fn active_pane(&self, cx: &App) -> Option<PaneId> {
-        self.0.read(cx).active_pane()
+        self.mux.read(cx).active_pane()
     }
 
     fn execute(&self, host: PaletteHostId, command: CommandInvocation, cx: &mut App) {
-        self.0.read(cx).execute_on_host(host.into(), command);
+        self.mux.read(cx).execute_on_host(host.into(), command);
     }
 
     fn connect_host(&self, host: PaletteHostId, cx: &mut App) {
-        self.0
+        self.mux
             .update(cx, |mux, cx| mux.install_or_retry_host(host.into(), cx));
     }
 
     fn activate(&self, host: PaletteHostId, target: PaletteTarget, cx: &mut App) -> bool {
-        let mux = self.0.read(cx);
+        let mux = self.mux.read(cx);
         let target = match target {
             PaletteTarget::Session(id) => TreeTarget::Session(id),
             PaletteTarget::Window(id) => TreeTarget::Window(id),
@@ -281,7 +321,20 @@ impl PaletteBackend for MuxPalette {
         ) else {
             return false;
         };
-        crate::mux::nav::activate_nav(&self.0, activation, cx);
+        crate::mux::nav::activate_nav(&self.mux, activation, cx);
+        true
+    }
+
+    fn activate_host(&self, host: PaletteHostId, cx: &mut App) -> bool {
+        let mux = self.mux.read(cx);
+        let Some(activation) = MuxTreeModel::from_mux(mux).activation_for_node(
+            TreeNode::Host(host.into()),
+            mux.attached_host(),
+            mux.attached_session(),
+        ) else {
+            return false;
+        };
+        crate::mux::nav::activate_nav(&self.mux, activation, cx);
         true
     }
 
@@ -294,7 +347,7 @@ impl PaletteBackend for MuxPalette {
     ) -> Result<u64, SharedString> {
         let host = HostId::from(host);
         let pane = {
-            let mux = self.0.read(cx);
+            let mux = self.mux.read(cx);
             let Some((_, name, _, snapshot)) = mux.fleet_hosts().find(|(id, ..)| *id == host)
             else {
                 return Err("No such host".into());
@@ -306,7 +359,7 @@ impl PaletteBackend for MuxPalette {
             (pane, name)
         };
         let (pane, name) = pane;
-        self.0
+        self.mux
             .update(cx, |mux, _| {
                 mux.request_host_path_list(host, pane, dir.to_owned())
             })
@@ -314,7 +367,7 @@ impl PaletteBackend for MuxPalette {
     }
 
     fn cancel_path(&self, host: PaletteHostId, request_id: u64, cx: &mut App) {
-        self.0.update(cx, |mux, _| {
+        self.mux.update(cx, |mux, _| {
             mux.cancel_host_path_list(host.into(), request_id);
         });
     }
@@ -322,7 +375,7 @@ impl PaletteBackend for MuxPalette {
     fn feed_targets(&self, picker: &Entity<TargetPicker>, cx: &mut App) -> Option<Subscription> {
         let picker = picker.downgrade();
         Some(
-            cx.subscribe(&self.0, move |mux, event: &HostPathListUpdate, cx| {
+            cx.subscribe(&self.mux, move |mux, event: &HostPathListUpdate, cx| {
                 let Some(host) = mux
                     .read(cx)
                     .fleet_hosts()
@@ -350,6 +403,43 @@ impl PaletteBackend for MuxPalette {
         )
     }
 
+    fn feed_listings(&self, sink: ListingSink, cx: &mut App) -> Option<Subscription> {
+        Some(
+            cx.subscribe(&self.mux, move |_, event: &HostPathListUpdate, cx| {
+                let (request_id, update) = match &event.update {
+                    PathPickerUpdate::Begin { request_id, result } => {
+                        (*request_id, ListingUpdate::Begin(result.clone()))
+                    }
+                    PathPickerUpdate::Chunk {
+                        request_id,
+                        entries,
+                        done,
+                        truncated,
+                    } => (
+                        *request_id,
+                        ListingUpdate::Chunk {
+                            entries: Arc::clone(entries),
+                            done: *done,
+                            truncated: *truncated,
+                        },
+                    ),
+                    PathPickerUpdate::Git { request_id, marks } => {
+                        (*request_id, ListingUpdate::Git(marks.clone()))
+                    }
+                    PathPickerUpdate::Open { .. } | PathPickerUpdate::Close => return,
+                };
+                sink(event.host.into(), request_id, update, cx);
+            }),
+        )
+    }
+
+    fn home_dir(&self, host: PaletteHostId, _: &App) -> Option<String> {
+        (HostId::from(host) == HostId::LOCAL)
+            .then(std::env::home_dir)
+            .flatten()
+            .and_then(|home| home.to_str().map(str::to_owned))
+    }
+
     fn insert_path(
         &self,
         pane: PaneId,
@@ -358,7 +448,7 @@ impl PaletteBackend for MuxPalette {
         entry: &PathEntry,
         cx: &mut App,
     ) {
-        let mux = self.0.read(cx);
+        let mux = self.mux.read(cx);
         let host = HostId::from(host);
         let text = if host == mux.attached_host() {
             path_insert_text(root, entry)
@@ -407,6 +497,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
         .flatten();
     PaletteTreePane {
         id: pane.id,
+        index: pane.index,
         label: pane.label.clone(),
         program: pane.program.map(|program| program.name.into()),
         detail: match pane.kind {
@@ -429,5 +520,11 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Editor => IconName::File,
         },
         running: attention == Some(zz_client::AgentAttentionStatus::Working),
+        needs_you: matches!(
+            pane.status,
+            Some(PaneStatusState::Blocked | PaneStatusState::Error)
+        ),
+        terminal: pane.kind == MuxTreePaneKind::Terminal,
+        cwd: pane.cwd.clone(),
     }
 }

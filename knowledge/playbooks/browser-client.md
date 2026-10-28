@@ -113,7 +113,7 @@ timeline and composer under the terminal header. The lens has no project, histor
 or effort picker, and the daemon refuses images sent through it. Composer actions share the
 desktop presentation. Appearance preferences for the
 browser live in local storage: system/light/dark mode, the interface theme (Default or one saved
-in the browser by Save or Import), zoom, animations, and what Interface sets over the theme: the
+in the browser by Import), zoom, animations, and what Interface sets over the theme: the
 style, the corner radius, the accent and the tint. Picking a theme clears the style and radius;
 the accent and tint stay.
 The animation switch respects the platform’s reduced-motion preference. Terminal color schemes

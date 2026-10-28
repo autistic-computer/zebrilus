@@ -1,44 +1,101 @@
-use std::{rc::Rc, sync::Arc};
-
-use zz_client::completion::PaneKindAvailability;
-use zz_client::navigation::{ordered_panes, pane_label, session_label};
-use zz_client::{AgentAttentionStatus, ClientCore, agent_attention_status};
-use zz_gpui::{App, Entity, KeyDownEvent, SharedString};
-use zz_protocol::{
-    CommandInvocation, InputMessage, MuxOptionKey, MuxSnapshot, PaneId, PaneKindSnapshot,
-    ProtocolMessage,
-};
-use zz_ui::{
-    ActiveTheme as _, IconName,
-    command::{
-        PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus, PaletteTarget, PaletteTree,
-        PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+use std::{
+    rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
     },
 };
 
-pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, PaletteMode};
+use zz_client::completion::PaneKindAvailability;
+use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
+use zz_client::{
+    AgentAttentionStatus, ClientCore, CoreEvent, agent_attention_status, gui_actions::GuiOffer,
+    place::ActionKind,
+};
+use zz_gpui::{App, Entity, KeyDownEvent, SharedString, Subscription};
+use zz_protocol::{
+    CommandInvocation, InputMessage, MuxOptionKey, MuxSnapshot, PaneId, PaneKindSnapshot,
+    PathEntry, PathListRoot, ProtocolMessage,
+};
+use zz_terminal::TerminalViewAction;
+use zz_ui::{
+    ActiveTheme as _, IconName,
+    command::{
+        AskLevel, GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
+        PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
+        PaletteTreeSession, PaletteTreeWindow,
+    },
+    files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
+};
+
+pub(crate) use zz_ui::command::{
+    CommandPaletteEvent, CommandPaletteView, DriverOffer, PaletteMode,
+};
 
 use crate::connection::Connection;
 
 const HOST: PaletteHostId = PaletteHostId(0);
+
+#[cfg(target_os = "ios")]
+fn host_name(connection: &Connection) -> String {
+    connection
+        .endpoint()
+        .map_or_else(|| "host".to_owned(), crate::app::host_title)
+}
+
+#[cfg(not(target_os = "ios"))]
+fn host_name(_: &Connection) -> String {
+    "local".to_owned()
+}
+
+/// Listing request ids, unique across palettes on this connection.
+static PATH_LISTS: AtomicU64 = AtomicU64::new(0);
 
 #[must_use]
 pub fn palette_backend(
     connection: Entity<Connection>,
     settings: PaletteSettings,
 ) -> Rc<dyn PaletteBackend> {
+    palette_backend_with(connection, settings, Vec::new(), None)
+}
+
+#[must_use]
+pub fn palette_backend_with(
+    connection: Entity<Connection>,
+    settings: PaletteSettings,
+    gui: Vec<GuiOffer>,
+    driver: Option<DriverOffer>,
+) -> Rc<dyn PaletteBackend> {
     Rc::new(ConnectionPalette {
         connection,
         settings,
+        gui,
+        driver,
     })
 }
 
 struct ConnectionPalette {
     connection: Entity<Connection>,
     settings: PaletteSettings,
+    gui: Vec<GuiOffer>,
+    driver: Option<DriverOffer>,
 }
 
 impl PaletteBackend for ConnectionPalette {
+    fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+        match kind {
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
+            ActionKind::Ask => self
+                .driver
+                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Files => Some(Box::new(FilesAction::new(palette_backend(
+                self.connection.clone(),
+                self.settings,
+            )))),
+            ActionKind::Command => None,
+        }
+    }
+
     fn snapshot(&self, cx: &App) -> Arc<MuxSnapshot> {
         Arc::clone(self.connection.read(cx).core.snapshot())
     }
@@ -61,6 +118,7 @@ impl PaletteBackend for ConnectionPalette {
                     PaletteTreeSession {
                         id: session.id,
                         name: session_label(session).to_string(),
+                        tmux_name: session.name.clone(),
                         active,
                         windows: session
                             .windows
@@ -73,7 +131,7 @@ impl PaletteBackend for ConnectionPalette {
                                 active_pane: window.active_pane,
                                 panes: ordered_panes(window)
                                     .into_iter()
-                                    .map(|pane| tree_pane(pane, core))
+                                    .map(|pane| tree_pane(window, pane, core))
                                     .collect(),
                             })
                             .collect(),
@@ -87,7 +145,7 @@ impl PaletteBackend for ConnectionPalette {
             attached: HOST,
             hosts: vec![PaletteTreeHost {
                 id: HOST,
-                name: "zz daemon".to_owned(),
+                name: host_name(connection),
                 detail: "Daemon host".to_owned(),
                 right: if connection.connected {
                     format!(
@@ -235,14 +293,118 @@ impl PaletteBackend for ConnectionPalette {
         });
         true
     }
+
+    fn list_path(
+        &self,
+        _: PaletteHostId,
+        dir: &str,
+        anchor: Option<PaneId>,
+        cx: &mut App,
+    ) -> Result<u64, SharedString> {
+        let connection = self.connection.read(cx);
+        if !connection.connected {
+            return Err("Not connected".into());
+        }
+        let pane = listing_pane(connection.core.snapshot(), anchor)
+            .ok_or_else(|| SharedString::from("No terminal to list files through"))?;
+        let request_id = PATH_LISTS.fetch_add(1, Ordering::Relaxed) + 1;
+        self.send(
+            ProtocolMessage::PathListRequest {
+                request_id,
+                pane,
+                dir: Some(dir.to_owned()),
+            },
+            cx,
+        );
+        Ok(request_id)
+    }
+
+    fn cancel_path(&self, _: PaletteHostId, request_id: u64, cx: &mut App) {
+        self.send(ProtocolMessage::PathListCancel { request_id }, cx);
+    }
+
+    fn feed_listings(&self, sink: ListingSink, cx: &mut App) -> Option<Subscription> {
+        Some(
+            cx.subscribe(&self.connection, move |_, event: &CoreEvent, cx| {
+                if let CoreEvent::Message(message) = event
+                    && let Some((request_id, update)) = listing_update(message)
+                {
+                    sink(HOST, request_id, update, cx);
+                }
+            }),
+        )
+    }
+
+    fn insert_path(
+        &self,
+        pane: PaneId,
+        _: PaletteHostId,
+        root: &PathListRoot,
+        entry: &PathEntry,
+        cx: &mut App,
+    ) {
+        if let Some(text) = zz_client::path_insert::insert_text(
+            &root.root,
+            &entry.rel,
+            entry.kind,
+            root.cwd.as_deref(),
+            root.insert,
+            false,
+        ) {
+            self.send_input(
+                InputMessage::TerminalView {
+                    pane,
+                    action: TerminalViewAction::Paste(text),
+                },
+                cx,
+            );
+        }
+    }
 }
 
-fn tree_pane(pane: &zz_protocol::PaneSnapshot, core: &ClientCore) -> PaletteTreePane {
+impl ConnectionPalette {
+    fn send(&self, message: ProtocolMessage, cx: &mut App) {
+        self.connection
+            .update(cx, |connection, cx| connection.send(message, cx));
+    }
+}
+
+fn listing_update(message: &ProtocolMessage) -> Option<(u64, ListingUpdate)> {
+    Some(match message {
+        ProtocolMessage::PathListBegin { request_id, result } => {
+            (*request_id, ListingUpdate::Begin(result.clone()))
+        }
+        ProtocolMessage::PathListChunk {
+            request_id,
+            entries,
+            done,
+            truncated,
+        } => (
+            *request_id,
+            ListingUpdate::Chunk {
+                entries: entries.clone().into(),
+                done: *done,
+                truncated: *truncated,
+            },
+        ),
+        ProtocolMessage::PathListGit { request_id, marks } => {
+            (*request_id, ListingUpdate::Git(marks.clone()))
+        }
+        _ => return None,
+    })
+}
+
+fn tree_pane(
+    window: &zz_protocol::WindowSnapshot,
+    pane: &zz_protocol::PaneSnapshot,
+    core: &ClientCore,
+) -> PaletteTreePane {
     let attention = matches!(pane.kind, PaneKindSnapshot::Terminal)
         .then(|| core.agent_state(pane.id).map(agent_attention_status))
         .flatten();
     PaletteTreePane {
         id: pane.id,
+        index: pane_index(window, pane.id),
         label: pane_label(pane),
         program: zz_client::window_summary::pane_program(pane).map(|program| program.name.into()),
         detail: match &pane.kind {
@@ -265,5 +427,161 @@ fn tree_pane(pane: &zz_protocol::PaneSnapshot, core: &ClientCore) -> PaletteTree
             PaneKindSnapshot::Editor(_) => IconName::File,
         },
         running: attention == Some(AgentAttentionStatus::Working),
+        needs_you: pane.status.as_ref().is_some_and(|status| {
+            matches!(
+                status.state,
+                zz_protocol::PaneStatusState::Blocked | zz_protocol::PaneStatusState::Error
+            )
+        }),
+        terminal: matches!(pane.kind, PaneKindSnapshot::Terminal),
+        cwd: pane.summary.cwd.clone(),
+    }
+}
+
+#[cfg(all(test, not(target_family = "wasm")))]
+mod tests {
+    use std::cell::RefCell;
+
+    use zz_gpui::{AppContext as _, TestAppContext};
+    use zz_protocol::{
+        Event, EventPayload, InsertStyle, LayoutNode, PaneSnapshot, PaneSummary, PathKind,
+        SessionId, SessionSnapshot, ShellKind, WindowId, WindowSnapshot,
+    };
+
+    use super::*;
+
+    fn snapshot(pane: PaneId) -> MuxSnapshot {
+        MuxSnapshot {
+            generation: 1,
+            sessions: vec![SessionSnapshot {
+                id: SessionId(1),
+                name: "work".into(),
+                active_window: WindowId(1),
+                viewers: Vec::new(),
+                windows: vec![WindowSnapshot {
+                    id: WindowId(1),
+                    index: 0,
+                    name: "zsh".into(),
+                    automatic_rename: true,
+                    active_pane: pane,
+                    zoomed_pane: None,
+                    layout: LayoutNode::Pane(pane),
+                    panes: [(
+                        pane,
+                        PaneSnapshot {
+                            id: pane,
+                            title: "zsh".into(),
+                            kind: PaneKindSnapshot::Terminal,
+                            synchronized_input: false,
+                            bell: false,
+                            dead: false,
+                            dead_status: None,
+                            border_colour: None,
+                            active_border_colour: None,
+                            border_status_text: String::new(),
+                            mode: None,
+                            status: None,
+                            summary: PaneSummary {
+                                cwd: "/home/me/src".to_owned(),
+                                ..PaneSummary::default()
+                            },
+                        },
+                    )]
+                    .into(),
+                    layout_dump: String::new(),
+                    visible_layout_dump: String::new(),
+                    status_label: String::new(),
+                    activity: false,
+                    silence: false,
+                    pane_border_status: zz_protocol::PaneBorderStatus::default(),
+                    pane_border_lines: zz_protocol::PaneBorderLines::default(),
+                    pane_border_indicators: zz_protocol::PaneBorderIndicators::default(),
+                    pane_order: vec![pane],
+                    pane_z_order: vec![pane],
+                    floating: Vec::new(),
+                    modal: None,
+                    sx: 0,
+                    sy: 0,
+                    pane_base_index: 0,
+                }],
+            }],
+            focused_window: Some(WindowId(1)),
+        }
+    }
+
+    #[zz_gpui::test]
+    fn files_are_listed_through_a_terminal_and_pasted_into_the_pane(cx: &mut TestAppContext) {
+        let pane = PaneId(1);
+        let connection = cx.new(Connection::new);
+        let sent = connection.update(cx, |connection, cx| {
+            let sent = connection.record_input_for_test();
+            connection.connected = true;
+            connection.handle_message_for_test(
+                ProtocolMessage::Event(Event {
+                    sequence: 1,
+                    payload: EventPayload::Snapshot(snapshot(pane)),
+                }),
+                cx,
+            );
+            sent
+        });
+        let backend = palette_backend(connection.clone(), PaletteSettings::default());
+        let fed = Rc::new(RefCell::new(Vec::new()));
+        let seen = Rc::clone(&fed);
+        let _feed = cx.update(|cx| {
+            backend.feed_listings(
+                Box::new(move |host, request, update, _| {
+                    seen.borrow_mut().push((host, request, update));
+                }),
+                cx,
+            )
+        });
+        let request = cx
+            .update(|cx| backend.list_path(HOST, "~/src/", Some(PaneId(9)), cx))
+            .expect("listed");
+        assert_eq!(
+            sent.borrow().last(),
+            Some(&ProtocolMessage::PathListRequest {
+                request_id: request,
+                pane,
+                dir: Some("~/src/".to_owned()),
+            }),
+            "a pane that is not a terminal here lists through one that is"
+        );
+
+        let root = PathListRoot {
+            root: "/home/me/src".to_owned(),
+            display_root: "~/src".to_owned(),
+            cwd: Some("/home/me/src".to_owned()),
+            insert: InsertStyle::Shell(ShellKind::Posix),
+        };
+        connection.update(cx, |connection, cx| {
+            connection.handle_message_for_test(
+                ProtocolMessage::PathListBegin {
+                    request_id: request,
+                    result: Ok(root.clone()),
+                },
+                cx,
+            );
+        });
+        cx.run_until_parked();
+        assert!(matches!(
+            fed.borrow().as_slice(),
+            [(HOST, id, ListingUpdate::Begin(Ok(_)))] if *id == request
+        ));
+
+        let entry = PathEntry {
+            rel: "my notes.txt".to_owned(),
+            kind: PathKind::File,
+            symlink: false,
+        };
+        cx.update(|cx| backend.insert_path(pane, HOST, &root, &entry, cx));
+        assert_eq!(
+            sent.borrow().last(),
+            Some(&ProtocolMessage::Input(InputMessage::TerminalView {
+                pane,
+                action: TerminalViewAction::Paste("'my notes.txt' ".to_owned()),
+            }))
+        );
     }
 }

@@ -645,6 +645,7 @@ fn browser_tab_pill(
             this.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
         })
         .on_click(move |_, window, cx| activate(id, window, cx))
+        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
         .on_mouse_down(MouseButton::Middle, move |_, window, cx| {
             close_middle(id, window, cx);
         })
