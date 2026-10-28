@@ -332,7 +332,7 @@ host once per connection while `driver-agent` is on.
 
 The chat lives in the command palette's Driver mode, as wide as the other modes (560px) and never
 shorter than the palette with its rows full (`driver_palette_thread_least`, from
-`command_palette_full_height`), so `>` keeps the palette's size: `driver_palette_body` on top (the
+`command_palette_full_height`), so `?` keeps the palette's size: `driver_palette_body` on top (the
 thread, its newest message on the input, scrolling, up to 78% of the window less the palette's
 chrome and any approval card, then the approval waiting on you, or the error of a message that did
 not go through), a `ChatComposer` at the bottom like a messaging app's
@@ -343,7 +343,7 @@ works and the field is empty), and the footer: where the driver runs on the left
 driver's terminal) and `driver_palette_hints` on the right. The thread opens from nothing in 280 ms (ease-out), so when Driver mode opens the input
 slides from the palette's top to its bottom. The sidebar keeps only the driver's last word under its list (`chat_latest`): the driver's
 header, then its last answer cut to four lines (`ChatBubble::lines`) or `ChatTyping` while it
-works, with a dot in the header while an approval waits. A click on it opens Driver mode, as `>` in an
+works, with a dot in the header while an approval waits. A click on it opens Driver mode, as `?` in an
 empty palette does, and in titlebar mode the title bar's chat button (`workspace_chat_button`,
 dotted with `chat_button` in the color of what waits). The parts are in
 `crates/zz-ui/src/agent/chat.rs` and the storybook's Agent › Driver chat story shows each one:
@@ -440,8 +440,9 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   approval waiting in the driver shows as the lens's permission card under the thread; a digit in an
   empty field picks an option.
 - **Where.** Driver mode, a view of its own over the panes (`agent/driver_palette.rs`), opens in either
-  layout: `>` typed into an empty command palette switches to it while there is a driver (the
-  palette's footer then shows the key), a click on the driver's last message in the sidebar opens it
+  layout: `?` typed into an empty command palette switches to it while there is a driver (the
+  palette's footer then shows the key), the palette's Ask row opens it with the typed text in the
+  composer ([command palette](/concepts/command-palette.md#asking-the-driver)), a click on the driver's last message in the sidebar opens it
   (`SidebarOpenDriver`), in titlebar mode the title bar's chat button opens it too, and so does
   `prefix A` in the desktop app (the `open-driver-chat` chrome action in the client's `prefix`
   table, which does nothing while there is no driver). Esc closes it
@@ -478,7 +479,7 @@ disk yet (`crates/zz/src/agent/driver.rs`):
   phone the Hosts page shows the driver's last answer, cut to two lines, in `phone_chat_card` over
   the hosts (or `ChatTyping` while it works, with a dot while something new waits), its bar has a
   Message the driver field, and a host's page and every pane have a chat button, dotted in the
-  accent while the driver works or has news and amber while it waits on you; all open the drawer, as do Driver chat in the prefix menu, `>` in an empty palette
+  accent while the driver works or has news and amber while it waits on you; all open the drawer, as do Driver chat in the prefix menu, `?` in an empty palette
   and the `open-driver-chat` menu command. The chat button stays while no driver runs, so the
   drawer is always reachable: it says the driver is asleep and offers Wake, which asks the attached
   host's daemon to run `zz driver recover` (`run-shell -b`, the way the desktop starts keepers).

@@ -19,12 +19,12 @@ use zz_protocol::{
 use zz_ui::{
     ActiveTheme as _, IconName, StyledExt as _,
     command::{
-        CommandPaletteSurface, CommandPaletteView, PaletteBackend, PaletteHint, PaletteHostId,
-        PaletteMode, PalettePill, PaletteRow, PaletteSettings, PaletteStatus, PaletteTarget,
-        PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
-        command_kind_badge, command_palette_empty, command_palette_entry, command_palette_input,
-        command_palette_row, command_palette_section, command_palette_tree_entry,
-        palette_shortcut_hint, unified_command_palette_input,
+        CommandPaletteSurface, CommandPaletteView, DriverOffer, PaletteBackend, PaletteHint,
+        PaletteHostId, PaletteMode, PalettePill, PaletteRow, PaletteSettings, PaletteStatus,
+        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
+        PaletteTreeWindow, command_kind_badge, command_palette_empty, command_palette_entry,
+        command_palette_input, command_palette_row, command_palette_section,
+        command_palette_tree_entry, palette_shortcut_hint, unified_command_palette_input,
     },
     h_flex,
     input::InputState,
@@ -166,6 +166,57 @@ pub const STORY: Story = Story {
             summary: "A query nothing matches.",
             build: |window, cx| command_query(window, cx, "qxqz"),
         },
+        Section {
+            id: "gui-mode",
+            name: "GUI actions",
+            summary: "> lists settings and app actions, each with its value now on the right. Enter flips an on-off one, Tab or Enter opens the values of the rest.",
+            build: |window, cx| gui(window, cx, Some(DriverOffer::Ready), &[">"]),
+        },
+        Section {
+            id: "gui-search",
+            name: "GUI search",
+            summary: "Typing matches actions and their values, so >theme mac lands on the theme itself.",
+            build: |window, cx| {
+                gui(
+                    window,
+                    cx,
+                    Some(DriverOffer::Ready),
+                    &[">", "t", "h", "e", "m", "e", "m", "a", "c"],
+                )
+            },
+        },
+        Section {
+            id: "gui-values",
+            name: "Theme values",
+            summary: "Enter on Theme lists the themes, starting on the one in use. A highlighted theme shows at once and goes back however the palette closes; Enter keeps it.",
+            build: |window, cx| {
+                gui(
+                    window,
+                    cx,
+                    Some(DriverOffer::Ready),
+                    &[">", "t", "h", "e", "m", "e", "enter"],
+                )
+            },
+        },
+        Section {
+            id: "ask",
+            name: "Ask the driver",
+            summary: "Text ending in ? keeps searching with the Ask row first; Enter opens the Driver chat with the text in its composer. ? alone, or after a place, opens the chat at once with the place as a mention.",
+            build: |window, cx| {
+                gui(
+                    window,
+                    cx,
+                    Some(DriverOffer::Ready),
+                    &["w", "h", "y", "space", "r", "e", "d", "?"],
+                )
+            },
+        },
+        Section {
+            id: "ask-asleep",
+            name: "Driver asleep",
+            summary: "With no driver running, ? offers to wake it; with driver-agent off, the row says so and Enter opens Settings › Agents.",
+            build: |window, cx| gui(window, cx, Some(DriverOffer::Asleep), &["?"]),
+        },
     ],
 };
 
@@ -273,9 +324,27 @@ struct StoryBackend {
     files: Files,
     picker: RefCell<Option<WeakEntity<TargetPicker>>>,
     requests: Cell<u64>,
+    gui: Vec<zz_client::gui_actions::GuiOffer>,
+    driver: Option<DriverOffer>,
 }
 
 impl PaletteBackend for StoryBackend {
+    fn action_level(
+        &self,
+        kind: zz_client::place::ActionKind,
+        _: &mut App,
+    ) -> Option<Box<dyn zz_ui::command::PaletteActionLevel>> {
+        use zz_client::place::ActionKind;
+        use zz_ui::command::{AskLevel, GuiLevel, PaletteActionLevel};
+        match kind {
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
+            ActionKind::Ask => self
+                .driver
+                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Command | ActionKind::Files => None,
+        }
+    }
+
     fn list_path(
         &self,
         host: PaletteHostId,
@@ -366,7 +435,11 @@ fn backend(tree: PaletteTree, grouped: bool) -> Rc<dyn PaletteBackend> {
 }
 
 fn files_backend(tree: PaletteTree, grouped: bool, files: Files) -> Rc<dyn PaletteBackend> {
-    Rc::new(StoryBackend {
+    Rc::new(story_backend(tree, grouped, files))
+}
+
+fn story_backend(tree: PaletteTree, grouped: bool, files: Files) -> StoryBackend {
+    StoryBackend {
         tree,
         settings: PaletteSettings {
             grouped,
@@ -375,7 +448,9 @@ fn files_backend(tree: PaletteTree, grouped: bool, files: Files) -> Rc<dyn Palet
         files,
         picker: RefCell::new(None),
         requests: Cell::new(0),
-    })
+        gui: Vec::new(),
+        driver: None,
+    }
 }
 
 /// Everything under the home folder of every host, as the daemon walks it:
@@ -928,6 +1003,44 @@ pub(super) fn target_palette(
 fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {
     let palette = target_palette(window, cx, Files::Listed, body, None);
     mount(window, cx, palette, 560.0, &[])
+}
+
+fn gui(
+    window: &mut Window,
+    cx: &mut App,
+    driver: Option<DriverOffer>,
+    keys: &'static [&'static str],
+) -> AnyView {
+    use zz_client::gui_actions::{
+        GuiOffer, GuiOption, PANE_GAPS, SIDEBAR_LAYOUT, THEME, TITLEBAR_MODE, WINDOW_BLUR,
+    };
+    let themes = [("default", "Default"), ("macos", "macOS"), ("yaru", "Yaru")]
+        .map(|(value, title)| GuiOption {
+            value: value.to_owned(),
+            title: title.to_owned(),
+        })
+        .to_vec();
+    let gui = [
+        GuiOffer::fixed(TITLEBAR_MODE, "sidebar"),
+        GuiOffer::toggle(PANE_GAPS, true),
+        GuiOffer::toggle(WINDOW_BLUR, false),
+        GuiOffer::listed(THEME, "macos", themes),
+        GuiOffer::toggle(SIDEBAR_LAYOUT, false),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    let backend = Rc::new(StoryBackend {
+        gui,
+        driver,
+        ..story_backend(online_tree(), true, Files::Listed)
+    });
+    let palette = cx.new(|cx| {
+        let mut palette = CommandPaletteView::new_unified(backend, None, window, cx);
+        palette.offer_driver(driver, cx);
+        palette
+    });
+    mount(window, cx, palette, 560.0, keys)
 }
 
 fn command_query(window: &mut Window, cx: &mut App, query: &str) -> AnyView {

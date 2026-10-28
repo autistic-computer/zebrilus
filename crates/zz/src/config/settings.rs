@@ -2137,7 +2137,7 @@ fn search_provider_subscription(
 
 /// The themes Settings offers, the built-in ones first, with the active one
 /// picked and the overrides `zz/config` sets over it.
-fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
+pub(crate) fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
     let themes = config::themes(cx);
     let choices = interface_theme::builtin_themes()
         .iter()
@@ -2157,7 +2157,7 @@ fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
 }
 
 /// Reports a failed write, or shows a successful one at once.
-fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App) {
+pub(crate) fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App) {
     match result {
         Ok(()) => refresh_settings_preview(key, cx),
         Err(error) => report_write_error("set", key.as_str(), &error, cx),
@@ -2315,11 +2315,7 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
     {
         return;
     }
-    let stamp = config::ConfigFileStamp::detect(&config::config_candidates());
-    let parsed = stamp.path.as_deref().map(config::load_config);
-    config::install_config(stamp.path.as_deref(), parsed, cx);
-    crate::theme::refresh_current_theme(cx);
-    cx.refresh_windows();
+    config::reload(cx);
 }
 
 fn synchronize_f32_input(

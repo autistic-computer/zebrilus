@@ -3,6 +3,7 @@ use std::{rc::Rc, sync::Arc};
 use zz_client::completion::PaneKindAvailability;
 use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
 use zz_client::{AgentAttentionStatus, ClientCore, agent_attention_status};
+use zz_client::{gui_actions::GuiOffer, place::ActionKind};
 use zz_gpui::{App, Entity, KeyDownEvent, SharedString};
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxOptionKey, MuxSnapshot, PaneId, PaneKindSnapshot,
@@ -11,12 +12,15 @@ use zz_protocol::{
 use zz_ui::{
     ActiveTheme as _, IconName,
     command::{
-        PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus, PaletteTarget, PaletteTree,
-        PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+        AskLevel, GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
+        PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
+        PaletteTreeSession, PaletteTreeWindow,
     },
 };
 
-pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, PaletteMode};
+pub(crate) use zz_ui::command::{
+    CommandPaletteEvent, CommandPaletteView, DriverOffer, PaletteMode,
+};
 
 use crate::connection::Connection;
 
@@ -39,18 +43,42 @@ pub fn palette_backend(
     connection: Entity<Connection>,
     settings: PaletteSettings,
 ) -> Rc<dyn PaletteBackend> {
+    palette_backend_with(connection, settings, Vec::new(), None)
+}
+
+#[must_use]
+pub fn palette_backend_with(
+    connection: Entity<Connection>,
+    settings: PaletteSettings,
+    gui: Vec<GuiOffer>,
+    driver: Option<DriverOffer>,
+) -> Rc<dyn PaletteBackend> {
     Rc::new(ConnectionPalette {
         connection,
         settings,
+        gui,
+        driver,
     })
 }
 
 struct ConnectionPalette {
     connection: Entity<Connection>,
     settings: PaletteSettings,
+    gui: Vec<GuiOffer>,
+    driver: Option<DriverOffer>,
 }
 
 impl PaletteBackend for ConnectionPalette {
+    fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
+        match kind {
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
+            ActionKind::Ask => self
+                .driver
+                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Command | ActionKind::Files => None,
+        }
+    }
+
     fn snapshot(&self, cx: &App) -> Arc<MuxSnapshot> {
         Arc::clone(self.connection.read(cx).core.snapshot())
     }

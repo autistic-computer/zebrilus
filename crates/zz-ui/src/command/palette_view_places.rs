@@ -460,6 +460,11 @@ impl CommandPaletteView {
                 self.run_place_command(command, None, window, cx);
             }
             Some(PaletteAction::Recent(key)) if !complete => self.open_recent(&key, window, cx),
+            Some(PaletteAction::Ask) if !complete => {
+                cx.emit(super::CommandPaletteEvent::Driver {
+                    text: line.search.unwrap_or_default().trim().to_owned(),
+                });
+            }
             None if !complete => {
                 if let Some(place) = self.line_place()
                     && place != Place::default()
@@ -582,6 +587,13 @@ impl CommandPaletteView {
             hints.push(PaletteHint {
                 key: "backspace",
                 label: "back",
+            });
+        }
+        if self.driver == Some(super::DriverOffer::Ready) && self.input.read(cx).value().is_empty()
+        {
+            hints.push(PaletteHint {
+                key: super::DRIVER_PREFIX,
+                label: "driver",
             });
         }
         hints.push(PaletteHint {

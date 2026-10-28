@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Unified palette and tmux command completions
-description: The palette's line grammar (a place typed with tmux's sigils, then an action), chips and keys, the empty palette and recents, the written @host:target form, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
+description: The palette's line grammar (a place typed with tmux's sigils, then an action), chips and keys, the empty palette and recents, the written @host:target form, `>` GUI actions with a live theme preview, `?` to ask the Driver Agent, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [gpui, command-prompt, tmux, completions, ui]
 timestamp: 2026-10-27T00:00:00-03:00
@@ -123,6 +123,57 @@ Successful local navigation and command requests use the app's existing notifica
 The fuzzy matcher (`zz_client::fuzzy::fuzzy_match`) ignores query whitespace and case. It scores an
 ordered subsequence by the first matching character's position plus twice the skipped characters
 between matches, and returns UTF-8 byte ranges for text highlights.
+
+# GUI actions
+
+`>` lists settings and app actions, each with its value now on the right. The list is data in
+`zz_client::gui_actions` (`GUI_ACTIONS`): an id, a title, aliases, its values (fixed, or listed by
+the client, like the themes) and whether a highlighted value previews. `>` is the `GuiLevel`
+(`crates/zz-ui/src/command/gui_level.rs`) each client's `PaletteBackend::action_level` returns,
+built with the actions that client has and their values when the palette opens
+(`palette_backend_with` on desktop and in `clients/app`). The level emits `GuiEvent`s through
+`CommandPaletteEvent::Gui`, and each client writes what its own Settings writes: config keys on
+desktop (`crates/zz/src/command/gui.rs`), `Preferences` on iPad and web
+(`clients/app/src/app/gui.rs`). Themes are named by `theme_offer`, which uses the Theme picker's
+`theme_labels`. A test in `zz-config` checks that every value an action writes is one the config
+reads.
+
+| Action | Values | Desktop writes | iPad and web |
+| --- | --- | --- | --- |
+| Titlebar mode | Sidebar, Title bar | the sidebar's mode, as Toggle Sidebar flips it | `sidebar`, wide windows only |
+| Pane gaps | On, Off | `pane-gaps` | `gaps` |
+| Window blur | On, Off | `window-background-blur`, where the platform has blur | not offered |
+| Theme | the built-in and saved themes | `interface-theme`, as Settings picks one | `theme` |
+| Sidebar layout | List, Tree | `flat-sidebar` | `flat_sidebar` |
+
+Typing matches titles, aliases and every value (`Theme › macOS`). Enter on an action with two values
+flips it; Enter or Tab on the others opens their values under the action's header with the one in
+use highlighted, and Enter there applies one and closes (`LevelEffect::Finish`). Backspace on an
+empty field or Shift-Tab goes back to the actions. A search that matches nothing ends with the Ask
+row. Each apply is recorded as `RecentKey::Gui("id=value")`, labelled like `Theme › Yaru`; Enter on
+it in the empty palette opens `>` and applies that value again (`open_recent`).
+
+Theme previews: the highlighted theme shows at once (`GuiEvent::Preview`). It goes back when the
+highlight returns to the theme in use or Backspace leaves the themes (`GuiEvent::Revert`), and
+whenever the palette closes without Enter, by Esc, a click outside or being replaced: each client
+reverts when the palette entity is released (`observe_release_in`), since a level that is closing
+cannot emit. On
+desktop a preview reads the config file, applies the theme edit in memory
+(`zz_config::interface_theme_source`), and installs only the parsed look and theme globals
+(`config::preview_interface_theme`); nothing is written until Enter, and a revert reloads the file.
+On iPad and web a preview applies a copy of `Preferences` without saving it.
+
+# Asking the driver
+
+`?` is the `AskLevel` (`crates/zz-ui/src/command/ask_level.rs`). While there is a driver it swaps
+the palette for the Driver chat as soon as it is typed (`CommandPaletteEvent::Driver`), with the
+composer filled: the place as a mention when one was typed (`$foo?` gives `@macbook:$7 `, from
+`place::written`), then what followed the `?` (all of it when the line was pasted). A search that
+matches nothing ends with an Ask row, and text ending in `?` puts it first (`why is ci red?` still
+searches, D12); Enter on it opens the chat with the typed text in the composer, where Enter sends. With no driver running the row reads Wake the driver, which
+runs the same recovery as the sidebar's Wake, and with `driver-agent` off it reads Driver Agent is
+off and opens Settings › Agents. `prefix A`, the sidebar's last message and the title bar's chat
+button still open the chat directly.
 
 # Settings
 
