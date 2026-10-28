@@ -44,6 +44,7 @@ pub enum LevelEffect {
     SetRest(String),
     Copied(String),
     Emit(CommandPaletteEvent),
+    Finish(CommandPaletteEvent),
 }
 
 pub trait PaletteActionLevel {

@@ -159,6 +159,7 @@ pub(crate) enum PaletteAction {
     History(String),
     Completion(CompletionSuggestion),
     ChooseWindow(u32),
+    Ask,
 }
 
 #[derive(Clone)]
@@ -204,12 +205,20 @@ impl PaletteEntry {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DriverOffer {
+    Ready,
+    Asleep,
+    Off,
+}
+
 pub(crate) struct UnifiedPalette {
     pub mode: Option<PaletteMode>,
     pub host: Option<PaletteHostId>,
     pub command: Option<&'static CommandSpec>,
     pub chips: Vec<Chip>,
     pub fleet: Rc<Fleet>,
+    pub driver: Option<DriverOffer>,
     pub tree: PaletteTree,
     pub rows: Vec<PaletteEntry>,
     chooser_current_window: Option<u32>,
@@ -226,6 +235,7 @@ impl UnifiedPalette {
             command: None,
             chips: Vec::new(),
             fleet: Rc::default(),
+            driver: None,
             tree: PaletteTree::default(),
             rows: Vec::new(),
             chooser_current_window: None,

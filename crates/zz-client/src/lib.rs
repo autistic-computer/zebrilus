@@ -19,6 +19,7 @@ pub mod driver_log;
 pub mod element_picker;
 pub mod floating;
 pub mod fuzzy;
+pub mod gui_actions;
 mod input;
 mod layout;
 pub mod local_scroll;

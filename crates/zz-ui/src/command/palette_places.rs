@@ -398,6 +398,13 @@ impl UnifiedPalette {
                     .collect();
                 section(&mut rows, "Hosts", "^", hosts);
             }
+            if search.trim_end().ends_with('?') {
+                let mut asked = super::ask_level::ask_entries(self.driver, search);
+                asked.append(&mut rows);
+                rows = asked;
+            } else if rows.is_empty() {
+                rows = super::ask_level::ask_entries(self.driver, search);
+            }
             self.rows = rows;
             return;
         }

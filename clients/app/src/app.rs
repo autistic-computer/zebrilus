@@ -9,6 +9,7 @@ mod driver_sheet;
 #[cfg(target_os = "ios")]
 mod fleet;
 mod floating;
+mod gui;
 mod hosts;
 #[cfg(target_os = "ios")]
 pub(crate) use hosts::host_title;
@@ -65,7 +66,9 @@ use zz_ui::{
 };
 
 use crate::{
-    command_palette::{CommandPaletteEvent, CommandPaletteView, palette_backend},
+    command_palette::{
+        CommandPaletteEvent, CommandPaletteView, DriverOffer, palette_backend, palette_backend_with,
+    },
     connection::Connection,
     terminal::TerminalPane,
 };
@@ -178,6 +181,7 @@ pub struct AppShell {
     chooser_revision: u64,
     local_palette_revisions: Option<(u64, u64)>,
     modal_open: bool,
+    gui_previewing: bool,
     chooser_scroll: UniformListScrollHandle,
     chooser_selection: Option<(bool, u32)>,
     chooser_keys: BTreeSet<String>,
@@ -427,6 +431,7 @@ impl AppShell {
             chooser_revision: 1,
             local_palette_revisions: None,
             modal_open: false,
+            gui_previewing: false,
             chooser_scroll: UniformListScrollHandle::new(),
             chooser_selection: None,
             chooser_keys: BTreeSet::new(),
@@ -940,10 +945,19 @@ impl AppShell {
                 cx,
             );
         }
-        let backend = self.palette_backend();
+        let driver = self
+            .connection
+            .read(cx)
+            .connected
+            .then_some(DriverOffer::Ready);
+        let backend = palette_backend_with(
+            self.connection.clone(),
+            self.preferences.palette_settings(),
+            self.gui_offers(window),
+            driver,
+        );
         let palette = cx.new(|cx| build(backend, window, cx));
-        let connected = self.connection.read(cx).connected;
-        palette.update(cx, |palette, cx| palette.offer_driver(connected, cx));
+        palette.update(cx, |palette, cx| palette.offer_driver(driver, cx));
         self.observe_palette(&palette, window, cx);
         palette.read(cx).focus(cx).focus(window, cx);
         self.prompt = Some(palette);
@@ -975,12 +989,20 @@ impl AppShell {
                     palette.update(cx, |palette, cx| palette.return_to_default(window, cx));
                     cx.notify();
                 }
-                CommandPaletteEvent::Driver => {
+                CommandPaletteEvent::Driver { text } => {
                     this.prompt = None;
                     this.open_driver_chat(window, cx);
+                    if let Some(sheet) = &this.driver_sheet {
+                        sheet.update(cx, |sheet, cx| sheet.prefill(text, window, cx));
+                    }
                 }
+                CommandPaletteEvent::Gui(event) => this.on_gui_event(event, window, cx),
             },
         )
+        .detach();
+        cx.observe_release_in(palette, window, |this, _, window, cx| {
+            this.revert_gui_preview(window, cx);
+        })
         .detach();
     }
 
