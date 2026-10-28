@@ -1780,6 +1780,7 @@ mod browser {
             capabilities: vec![
                 ClientHello::CLIENT_TERMINAL_CAPABILITY.into(),
                 ClientHello::CLIENT_UTF8_CAPABILITY.into(),
+                ClientHello::CLIENT_PATH_PICKER_CAPABILITY.into(),
             ],
             color_scheme: None,
             origin: None,

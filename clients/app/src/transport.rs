@@ -90,7 +90,7 @@ impl Connection {
                         &endpoint,
                         Some(TerminalColorScheme::Dark),
                         Some(prompts),
-                        &[],
+                        &[zz_protocol::ClientHello::CLIENT_PATH_PICKER_CAPABILITY],
                         session.map(zz_protocol::AttachOperation::Session),
                         !native_ui,
                     )
