@@ -94,7 +94,7 @@ use crate::{
     },
     pane::display::DisplayPanesView,
     pane::layout::{SeparatorSide, pane_separator},
-    pane::picker::PanePickerView,
+    pane::picker::{AgentChosen, ChooseFolder, PanePickerView},
     terminal::view::TerminalView,
     window::{corners::WindowCorners, drag::window_drag_handle},
 };
@@ -726,6 +726,7 @@ pub struct AppView {
     inline_browser: Entity<crate::browser::inline::InlineBrowser>,
     agents: BTreeMap<PaneId, Entity<AgentView>>,
     lenses: BTreeSet<PaneId>,
+    pending_lenses: BTreeSet<PaneId>,
     editors: BTreeMap<PaneId, Entity<EditorView>>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
     menu: Option<Entity<MenuView>>,
@@ -1148,6 +1149,7 @@ impl AppView {
             inline_browser,
             agents: BTreeMap::new(),
             lenses: BTreeSet::new(),
+            pending_lenses: BTreeSet::new(),
             editors: BTreeMap::new(),
             command_output: None,
             menu: None,
@@ -1901,6 +1903,39 @@ impl AppView {
         );
     }
 
+    fn open_folder_palette(
+        &mut self,
+        picker: &Entity<PanePickerView>,
+        start: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.command_palette.is_some() || self.sidebar.read(cx).route() != WorkspaceRoute::App {
+            return;
+        }
+        let host = self.mux.read(cx).attached_host();
+        let home = (host == HostId::LOCAL).then(std::env::home_dir).flatten();
+        let body =
+            zz_ui::files::start_dir(Some(start), home.as_ref().and_then(|home| home.to_str()));
+        let picker = picker.downgrade();
+        let pick: zz_ui::command::FolderPick = Rc::new(move |picked, folder, window, cx| {
+            if HostId::from(picked) != host {
+                return;
+            }
+            let _ = picker.update(cx, |picker, cx| {
+                picker.pick_folder(&folder, cx);
+                picker.focus().focus(window, cx);
+            });
+        });
+        self.show_command_palette(
+            move |backend, window, cx| {
+                CommandPaletteView::new_folder_pick(backend, &body, pick, window, cx)
+            },
+            window,
+            cx,
+        );
+    }
+
     // Reached from the app shell's ClosePane action.
     pub(crate) fn close_active_pane(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(pane) = self.active_pane(cx) else {
@@ -2117,6 +2152,7 @@ impl AppView {
         let mut wanted_browsers = BTreeSet::new();
         let mut wanted_agents = BTreeSet::new();
         let mut wanted_editors = BTreeSet::new();
+        self.promote_pending_lenses(&snapshot, attached);
         let lensed = self.lensed_panes(&snapshot, attached);
         let open = lensed.keys().copied().collect::<BTreeSet<_>>();
         #[cfg(feature = "agent-pane")]
@@ -2147,6 +2183,22 @@ impl AppView {
                                 let mux = self.mux.clone();
                                 let pane = *pane;
                                 let view = cx.new(|cx| PanePickerView::new(pane, mux, cx));
+                                cx.subscribe_in(
+                                    &view,
+                                    window,
+                                    |this, _, chosen: &AgentChosen, _, cx| {
+                                        this.on_agent_chosen(chosen, cx);
+                                    },
+                                )
+                                .detach();
+                                cx.subscribe_in(
+                                    &view,
+                                    window,
+                                    |this, picker, choose: &ChooseFolder, window, cx| {
+                                        this.open_folder_palette(picker, &choose.start, window, cx);
+                                    },
+                                )
+                                .detach();
                                 self.pickers.insert(pane, view);
                             }
                         }
@@ -2713,6 +2765,41 @@ impl AppView {
                 });
             }
         }
+    }
+
+    fn on_agent_chosen(&mut self, chosen: &AgentChosen, cx: &mut Context<Self>) {
+        self.pending_lenses.insert(chosen.pane);
+        let host = self.mux.read(cx).attached_host();
+        self.sidebar.update(cx, |sidebar, _| {
+            sidebar.follow_moved_window(host, chosen.window, chosen.from);
+        });
+    }
+
+    fn promote_pending_lenses(&mut self, snapshot: &MuxSnapshot, attached: Option<SessionId>) {
+        let panes = snapshot
+            .sessions
+            .iter()
+            .flat_map(|session| {
+                session.windows.iter().flat_map(move |window| {
+                    window.panes.values().map(move |pane| (session.id, pane))
+                })
+            })
+            .filter(|(_, pane)| self.pending_lenses.contains(&pane.id))
+            .map(|(session, pane)| {
+                let ready = Some(session) == attached
+                    && matches!(pane.kind, PaneKindSnapshot::Terminal)
+                    && zz_client::window_summary::pane_agent(pane).is_some();
+                (pane.id, ready)
+            })
+            .collect::<Vec<_>>();
+        self.pending_lenses
+            .retain(|pane| panes.iter().any(|(id, ready)| id == pane && !ready));
+        self.lenses.extend(
+            panes
+                .into_iter()
+                .filter(|(_, ready)| *ready)
+                .map(|(id, _)| id),
+        );
     }
 
     fn lensed_panes(

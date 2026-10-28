@@ -126,7 +126,7 @@ pub fn session_label(session: &SessionSnapshot) -> SessionLabel {
     }
 }
 
-fn session_place(session: &SessionSnapshot) -> Option<&str> {
+pub(crate) fn session_place(session: &SessionSnapshot) -> Option<&str> {
     let active = session
         .windows
         .iter()
@@ -152,7 +152,7 @@ fn session_place(session: &SessionSnapshot) -> Option<&str> {
         .map(|(place, _)| place)
 }
 
-fn pane_place(pane: &PaneSnapshot) -> Option<&str> {
+pub(crate) fn pane_place(pane: &PaneSnapshot) -> Option<&str> {
     [&pane.summary.repo, &pane.summary.cwd]
         .into_iter()
         .map(String::as_str)

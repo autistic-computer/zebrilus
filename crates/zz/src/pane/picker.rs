@@ -1,13 +1,29 @@
-use zz_gpui::{
-    App, Context, FocusHandle, Focusable, IntoElement, KeyDownEvent, Keystroke, MouseButton,
-    Render, Window, prelude::*,
+use zz_client::new_chat::{
+    AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place, folder_start,
+    recent_folders, start_agent_commands,
 };
-use zz_protocol::{CommandInvocation, PaneId};
-use zz_ui::IconName;
+use zz_gpui::{
+    AnyElement, App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyBinding,
+    KeyDownEvent, Keystroke, MouseButton, NoAction, Render, Window, prelude::*,
+};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
+use zz_ui::{
+    IconName,
+    pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row},
+};
 
 use crate::mux::client::MuxClient;
 use crate::window::corners::WindowCorners;
 use crate::{browser, config};
+
+const PICKER_KEY_CONTEXT: &str = "PanePicker";
+
+pub(crate) fn init(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("tab", NoAction, Some(PICKER_KEY_CONTEXT)),
+        KeyBinding::new("shift-tab", NoAction, Some(PICKER_KEY_CONTEXT)),
+    ]);
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaneChoice {
@@ -107,6 +123,30 @@ fn wrapping_step(selected: usize, delta: isize, len: usize) -> usize {
     (selected + len).wrapping_add_signed(delta) % len
 }
 
+pub(crate) struct ChooseFolder {
+    pub(crate) start: String,
+}
+
+pub(crate) struct AgentChosen {
+    pub(crate) pane: PaneId,
+    pub(crate) window: WindowId,
+    pub(crate) from: SessionId,
+}
+
+struct Chat {
+    window: WindowId,
+    session: SessionId,
+    folders: Vec<FolderChoice>,
+}
+
+fn chat_picker(snapshot: &MuxSnapshot, pane: PaneId) -> Option<Chat> {
+    chat_picker_place(snapshot, pane).map(|(session, window)| Chat {
+        window,
+        session,
+        folders: recent_folders(snapshot),
+    })
+}
+
 fn materialize_command(pane: PaneId, choice: PaneChoice) -> CommandInvocation {
     CommandInvocation::new(
         "select-pane-kind",
@@ -132,7 +172,12 @@ pub(crate) struct PanePickerView {
     focus_handle: FocusHandle,
     selected: usize,
     window_corners: WindowCorners,
+    chat: ChatPicker,
 }
+
+impl EventEmitter<AgentChosen> for PanePickerView {}
+
+impl EventEmitter<ChooseFolder> for PanePickerView {}
 
 impl PanePickerView {
     pub(crate) fn new(
@@ -146,6 +191,7 @@ impl PanePickerView {
             focus_handle: cx.focus_handle(),
             selected: 0,
             window_corners: WindowCorners::NONE,
+            chat: ChatPicker::default(),
         }
     }
 
@@ -173,7 +219,95 @@ impl PanePickerView {
         self.mux.read(cx).execute(close_command(self.pane));
     }
 
+    fn chat(&self, cx: &App) -> Option<Chat> {
+        chat_picker(&self.mux.read(cx).snapshot(), self.pane)
+    }
+
+    fn start(&self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
+        let mux = self.mux.read(cx);
+        let folder = self.chat.folder(&chat.folders);
+        for command in start_agent_commands(&mux.snapshot(), self.pane, folder, agent) {
+            mux.execute(command);
+        }
+        cx.emit(AgentChosen {
+            pane: self.pane,
+            window: chat.window,
+            from: chat.session,
+        });
+    }
+
+    fn settle(&mut self, outcome: ChatKey, chat: &Chat, cx: &mut Context<Self>) -> bool {
+        match outcome {
+            ChatKey::Start(agent) => self.start(chat, agent, cx),
+            ChatKey::ChooseFolder => self.choose_folder(chat, cx),
+            ChatKey::Close => self.close(cx),
+            ChatKey::Changed => cx.notify(),
+            ChatKey::Ignored => return false,
+        }
+        true
+    }
+
+    pub(crate) fn pick_folder(&mut self, folder: &str, cx: &mut Context<Self>) {
+        self.chat.pick(folder);
+        cx.notify();
+    }
+
+    fn choose_folder(&self, chat: &Chat, cx: &mut Context<Self>) {
+        cx.emit(ChooseFolder {
+            start: folder_start(self.chat.folder(&chat.folders)),
+        });
+    }
+
+    fn chat_rows(&self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        chat_picker_rows(self.pane.0, &self.chat, &chat.folders, true, cx)
+            .into_iter()
+            .map(|row| match row {
+                ChatPickerRow::Label(label) => label.into_any_element(),
+                ChatPickerRow::Item(target, row) => {
+                    let view = cx.entity();
+                    let hover_view = view.clone();
+                    row.on_mouse_move(move |_, _, cx| {
+                        hover_view.update(cx, |picker, cx| {
+                            let ChatPickerTarget::Agent(index, _) = target else {
+                                return;
+                            };
+                            if picker.chat.selected != index {
+                                picker.chat.selected = index;
+                                cx.notify();
+                            }
+                        });
+                    })
+                    .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                        view.update(cx, |picker, cx| {
+                            let Some(chat) = picker.chat(cx) else {
+                                return;
+                            };
+                            match target {
+                                ChatPickerTarget::FolderLine => picker.choose_folder(&chat, cx),
+                                ChatPickerTarget::Agent(_, agent) => picker.start(&chat, agent, cx),
+                            }
+                        });
+                        cx.stop_propagation();
+                    })
+                    .into_any_element()
+                }
+            })
+            .collect()
+    }
+
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if let Some(chat) = self.chat(cx) {
+            let keystroke = &event.keystroke;
+            let modifiers = keystroke.modifiers;
+            let modified = modifiers.control || modifiers.alt || modifiers.platform;
+            let outcome =
+                self.chat
+                    .key(&keystroke.key, keystroke.key_char.as_deref(), modified, &[]);
+            if self.settle(outcome, &chat, cx) {
+                cx.stop_propagation();
+            }
+            return;
+        }
         let choices = choices(cx);
         match picker_action(&event.keystroke, &choices) {
             Some(PickerAction::Activate(choice)) => self.activate(choice, cx),
@@ -196,7 +330,7 @@ impl PanePickerView {
         let selected = self.selected == index;
         let view = cx.entity();
         let hover_view = view.clone();
-        zz_ui::pane::pane_picker_row(
+        pane_picker_row(
             (choice.element_id(), self.pane.0),
             choice.title(),
             choice.icon(),
@@ -231,19 +365,24 @@ impl Render for PanePickerView {
         let focus_handle = self.focus_handle.clone();
         let select_mux = self.mux.clone();
         let pane = self.pane;
-        let choices = choices(cx);
-        self.selected = self.selected.min(choices.len() - 1);
-        let rows = choices
-            .iter()
-            .enumerate()
-            .map(|(index, choice)| self.row(index, *choice, cx).into_any_element())
-            .collect::<Vec<_>>();
+        let rows = if let Some(chat) = self.chat(cx) {
+            self.chat_rows(&chat, cx)
+        } else {
+            let choices = choices(cx);
+            self.selected = self.selected.min(choices.len() - 1);
+            choices
+                .iter()
+                .enumerate()
+                .map(|(index, choice)| self.row(index, *choice, cx).into_any_element())
+                .collect::<Vec<_>>()
+        };
         zz_ui::pane::pane_picker_surface(
             ("pane-picker", self.pane.0),
             config::pane_content_radii(cx, self.window_corners),
             rows,
             cx,
         )
+        .key_context(PICKER_KEY_CONTEXT)
         .track_focus(&self.focus_handle)
         .on_key_down(cx.listener(Self::on_key_down))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {

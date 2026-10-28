@@ -3,8 +3,9 @@ use std::rc::Rc;
 use zz_client::{
     program::{Program, resolve},
     window_summary::{
+        AttentionRollup,
         PaneTag::{self, Browser, Editor, Picker, Terminal},
-        PaneTile, age_label, summarize_host,
+        PaneTile, WindowSummary, age_label, summarize_chats, summarize_host,
     },
 };
 use zz_gpui::{
@@ -41,20 +42,20 @@ use crate::story::{Section, Story, row, stateless, states};
 
 pub const STORY: Story = Story {
     id: "flat-sidebar",
-    name: "Flat sidebar",
+    name: "Chat sidebar",
     group: "Workspace",
-    summary: "The flat session sidebar: host and session headers over one two-line row per window, every row drawn from the window summary the daemon's pane statuses produce.",
+    summary: "Chat mode's sidebar: each machine over one two-line row per agent, drawn from the window the agent runs in. The agent's tile leads the pane stack and the panes it split stay behind it; sessions and windows without an agent stay in the session tree.",
     sections: &[
         Section {
             id: "sidebar",
             name: "Sidebar",
-            summary: "Two hosts built from mux snapshots and run through summarize_host. Click a row to make it current, click a host or session header to fold it; hover is real state, so the row fill and the brighter session label follow the pointer; a right click opens the row's menu. A host header's button opens a new session and a session header's opens a new window; nas is connected with no sessions; hover it for New session. The footer adds a host and switches between the session tree and this list.",
+            summary: "Two hosts built from mux snapshots and run through summarize_chats: only windows running Claude Code or Codex make rows, and a window holding only a picker is a chat being started. Click a row to make it current, click a host header to fold it; hover is real state; a right click opens the row's menu. Pointing at a host shows New agent; nas is connected with no agents. The footer adds a host and switches between the session tree and the chats.",
             build: |_, cx| cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT))).into(),
         },
         Section {
             id: "shortcuts",
             name: "Window shortcuts",
-            summary: "Holding the window shortcuts' modifier (⌘ on macOS, Ctrl elsewhere) for a moment puts a key on each window it reaches, in place of the age: the first nine windows of the connected hosts, top to bottom across sessions, so a window keeps its number while you move around. A folded session's windows keep their numbers too.",
+            summary: "Holding the window shortcuts' modifier (⌘ on macOS, Ctrl elsewhere) for a moment puts a key on each chat it reaches, in place of the age: the first nine chats of the connected hosts, top to bottom, so a chat keeps its number while you move around.",
             build: |_, cx| {
                 cx.new(|_| Live::new(Some(SIDEBAR_HEIGHT)).shortcuts())
                     .into()
@@ -81,7 +82,7 @@ pub const STORY: Story = Story {
         Section {
             id: "hosts",
             name: "Hosts",
-            summary: "Folded sessions and hosts keep a rollup of what needs you on the right. A connected host shows New session at its right edge on hover. A host that is not connected shows a status icon, with Connect, Retry or Upgrade when there is something to do; hover the icon for the reason. Its rows dim and keep their last known state, with no spinners.",
+            summary: "A folded host keeps a rollup of what needs you on the right. A connected host shows New agent at its right edge on hover. A host that is not connected shows a status icon, with Connect, Retry or Upgrade when there is something to do; hover the icon for the reason. Its rows dim and keep their last known state, with no spinners.",
             build: |_, cx| stateless(hosts, cx),
         },
     ],
@@ -246,7 +247,30 @@ fn session(id: u64, name: &str, windows: Vec<WindowSnapshot>) -> SessionSnapshot
 
 type Running<'a> = &'a [(u64, &'a [&'a str])];
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Rows {
+    Chats,
+    Windows,
+}
+
+fn summaries(snapshot: &MuxSnapshot, rows: Rows) -> (Vec<WindowSummary>, AttentionRollup) {
+    match rows {
+        Rows::Chats => summarize_chats(&snapshot.sessions),
+        Rows::Windows => {
+            let (sessions, rollup) = summarize_host(snapshot);
+            (
+                sessions
+                    .into_iter()
+                    .flat_map(|session| session.windows)
+                    .collect(),
+                rollup,
+            )
+        }
+    }
+}
+
 fn host(
+    rows: Rows,
     id: PaletteHostId,
     name: &str,
     remote: bool,
@@ -259,12 +283,8 @@ fn host(
         sessions,
         focused_window: None,
     };
-    let (mut sessions, rollup) = summarize_host(&snapshot);
-    for tile in sessions
-        .iter_mut()
-        .flat_map(|session| &mut session.windows)
-        .flat_map(|window| &mut window.tiles)
-    {
+    let (mut windows, rollup) = summaries(&snapshot, rows);
+    for tile in windows.iter_mut().flat_map(|window| &mut window.tiles) {
         if let Some((_, process)) = running.iter().find(|(pane, _)| PaneId(*pane) == tile.pane) {
             tile.program = resolve(process.iter().copied());
         }
@@ -274,15 +294,16 @@ fn host(
         name,
         remote,
         connection,
-        (sessions, rollup),
+        (windows, rollup),
         |changed_at| age_label(changed_at, NOW),
     )
 }
 
-fn macbook() -> FlatHost {
+fn macbook(rows: Rows) -> FlatHost {
     use PaneStatusKind::{Permission, Question};
     use PaneStatusState::{Blocked, Done, Error, Working};
     host(
+        rows,
         MACBOOK,
         "macbook",
         false,
@@ -404,9 +425,10 @@ fn macbook() -> FlatHost {
     )
 }
 
-fn ubuntu() -> FlatHost {
+fn ubuntu(rows: Rows) -> FlatHost {
     use PaneStatusState::{Done, Working};
     host(
+        rows,
         UBUNTU,
         "ubuntu",
         true,
@@ -423,6 +445,8 @@ fn ubuntu() -> FlatHost {
                             claude(1, "Daemon flaky tests")
                                 .status(Working, None, "Running cargo test -p zz-daemon")
                                 .ago(12),
+                            terminal(8, "cargo test -p zz-daemon").at("/home/fabrico/zz", "main"),
+                            browser(9, "CI", "https://github.com/zz/actions"),
                         ],
                     ),
                     window(
@@ -450,6 +474,7 @@ fn ubuntu() -> FlatHost {
                         None,
                         vec![terminal(7, "docker compose logs -f").ago(2 * HOUR)],
                     ),
+                    window(6, None, vec![pane(10, "", PaneKindSnapshot::Picker)]),
                 ],
             ),
             session(
@@ -483,8 +508,9 @@ fn ubuntu() -> FlatHost {
     )
 }
 
-fn extras() -> FlatHost {
+fn extras(rows: Rows) -> FlatHost {
     host(
+        rows,
         EXTRAS,
         "extras",
         false,
@@ -563,8 +589,9 @@ fn extras() -> FlatHost {
     )
 }
 
-fn devbox() -> FlatHost {
+fn devbox(rows: Rows) -> FlatHost {
     host(
+        rows,
         DEVBOX,
         "devbox",
         true,
@@ -627,11 +654,20 @@ fn devbox() -> FlatHost {
 }
 
 fn offline(id: u32, name: &str, connection: HostConnection) -> FlatHost {
-    host(PaletteHostId(id), name, true, connection, Vec::new(), &[])
+    host(
+        Rows::Chats,
+        PaletteHostId(id),
+        name,
+        true,
+        connection,
+        Vec::new(),
+        &[],
+    )
 }
 
 fn empty(id: u32, name: &str) -> FlatHost {
     host(
+        Rows::Chats,
         PaletteHostId(id),
         name,
         true,
@@ -642,7 +678,7 @@ fn empty(id: u32, name: &str) -> FlatHost {
 }
 
 pub(crate) fn sidebar_hosts() -> Vec<FlatHost> {
-    vec![macbook(), ubuntu(), empty(9, "nas")]
+    vec![macbook(Rows::Chats), ubuntu(Rows::Chats), empty(9, "nas")]
 }
 
 fn window_menu() -> FlatMenu {
@@ -657,9 +693,8 @@ fn noop() -> FlatHandler {
 }
 
 fn find(host: &FlatHost, id: u64) -> &FlatWindow {
-    host.sessions
+    host.chats
         .iter()
-        .flat_map(|session| &session.windows)
         .find(|window| window.summary.window == WindowId(id))
         .expect("fixture window")
 }
@@ -712,22 +747,8 @@ impl Live {
                 }
                 true
             }
-            FlatEvent::FoldSession(host, session) => {
-                if let Some(session) = self
-                    .hosts
-                    .iter_mut()
-                    .find(|item| item.id == host)
-                    .and_then(|host| host.sessions.iter_mut().find(|item| item.id == session))
-                {
-                    session.folded = !session.folded;
-                }
-                true
-            }
             FlatEvent::Hover(target, hovered) => self.state.hover(target, hovered),
-            FlatEvent::NewSession(_)
-            | FlatEvent::NewWindow(..)
-            | FlatEvent::Connect(_)
-            | FlatEvent::Upgrade(_) => false,
+            FlatEvent::NewChat(_) | FlatEvent::Connect(_) | FlatEvent::Upgrade(_) => false,
         };
         if changed {
             cx.notify();
@@ -804,11 +825,7 @@ fn numbered(hosts: &[FlatHost]) -> Vec<FlatHost> {
         .iter_mut()
         .filter(|host| host.connection == HostConnection::Connected)
     {
-        for window in host
-            .sessions
-            .iter_mut()
-            .flat_map(|session| &mut session.windows)
-        {
+        for window in &mut host.chats {
             window.shortcut = keys.next();
         }
     }
@@ -826,7 +843,12 @@ fn row_frame(index: usize, content: impl IntoElement) -> AnyElement {
 fn rows(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     let handler = noop();
-    let (mac, ubuntu, extras, devbox) = (macbook(), ubuntu(), extras(), devbox());
+    let (mac, ubuntu, extras, devbox) = (
+        macbook(Rows::Windows),
+        ubuntu(Rows::Windows),
+        extras(Rows::Windows),
+        devbox(Rows::Windows),
+    );
     let rest = FlatRowState::default();
     let current = FlatRowState {
         current: true,
@@ -1102,38 +1124,33 @@ fn host_frame(id: &'static str, content: impl IntoElement, cx: &App) -> AnyEleme
 fn hosts(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
     let handler = noop();
-    let mut mac = macbook();
-    for session in &mut mac.sessions[1..] {
-        session.folded = true;
-    }
-    let mut ubuntu = ubuntu();
+    let mac = macbook(Rows::Chats);
+    let mut ubuntu = ubuntu(Rows::Chats);
     ubuntu.folded = true;
     let folding = [mac, ubuntu];
     let folding_state = FlatState {
         current: Some((MACBOOK, WindowId(1))),
-        hovered: Some(FlatTarget::Session(MACBOOK, SessionId(1))),
+        hovered: Some(FlatTarget::Host(UBUNTU)),
         ..FlatState::default()
     };
     let refused = "ssh: connect to host studio port 22: Connection refused";
     let connections = [
-        devbox(),
+        devbox(Rows::Chats),
         offline(4, "studio", HostConnection::Unreachable(refused.into())),
         offline(5, "pi", HostConnection::Incompatible("zz 0.15".into())),
         offline(6, "alienware", HostConnection::Connecting),
         offline(7, "mini", HostConnection::Disconnected),
     ];
-    let mut stale = devbox();
+    let mut stale = devbox(Rows::Chats);
     stale.folded = true;
-    let mut lost = devbox();
+    let mut lost = devbox(Rows::Chats);
     lost.id = PaletteHostId(8);
     lost.name = "buildbox".into();
     lost.connection = HostConnection::Unreachable(refused.into());
     lost.folded = true;
     let folded = [stale, lost];
-    let mut quiet = macbook();
-    for session in &mut quiet.sessions {
-        session.folded = true;
-    }
+    let mut quiet = macbook(Rows::Chats);
+    quiet.folded = true;
     let adding = [quiet, empty(9, "nas")];
     let adding_state = FlatState {
         hovered: Some(FlatTarget::Host(MACBOOK)),

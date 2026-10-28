@@ -4,15 +4,14 @@ use std::{
 };
 
 use zz_client::window_summary::{
-    Attention, AttentionRollup, PaneTag, PaneTile, SessionSummary, Tone as DetailTone,
-    WindowSummary,
+    Attention, AttentionRollup, PaneTag, PaneTile, Tone as DetailTone, WindowSummary,
 };
 use zz_gpui::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures,
     FontWeight, HighlightStyle, Hsla, IntoElement, Keystroke, ParentElement as _, Pixels, Role,
     SharedString, Stateful, StyledText, Window, div, font, prelude::*, px,
 };
-use zz_protocol::{PaneId, SessionId, WindowId};
+use zz_protocol::{PaneId, WindowId};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Ground, Highlight, Icon, IconName, PaintState,
@@ -54,11 +53,6 @@ const HOST_GLYPH: f32 = 16.0;
 const HOST_NAME_SIZE: f32 = 13.0;
 const HOST_LINE: f32 = 16.0;
 const HOST_SPACING: f32 = 8.0;
-const SESSION_TOP: f32 = 6.0;
-const SESSION_BOTTOM: f32 = 2.0;
-const SESSION_LINE: f32 = 18.0;
-const SESSION_SIZE: f32 = 12.0;
-const SESSION_SPACING: f32 = 6.0;
 const ADD_BUTTON_SIZE: f32 = 18.0;
 const ADD_BUTTON_ICON: f32 = 14.0;
 const CHEVRON_SIZE: f32 = 10.0;
@@ -91,31 +85,12 @@ pub struct FlatWindow {
     pub shortcut: Option<Keystroke>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FlatSession {
-    pub id: SessionId,
-    pub label: SharedString,
-    pub rollup: AttentionRollup,
-    pub folded: bool,
-    pub windows: Vec<FlatWindow>,
-}
-
-impl FlatSession {
-    pub fn new(summary: SessionSummary, age: impl Fn(u64) -> Option<String>) -> Self {
+impl FlatWindow {
+    pub fn new(summary: WindowSummary, age: impl Fn(u64) -> Option<String>) -> Self {
         Self {
-            id: summary.session,
-            label: summary.label.text.into(),
-            rollup: summary.rollup,
-            folded: false,
-            windows: summary
-                .windows
-                .into_iter()
-                .map(|window| FlatWindow {
-                    age: age(window.changed_at).map(Into::into),
-                    summary: window,
-                    shortcut: None,
-                })
-                .collect(),
+            age: age(summary.changed_at).map(Into::into),
+            summary,
+            shortcut: None,
         }
     }
 }
@@ -128,7 +103,7 @@ pub struct FlatHost {
     pub connection: HostConnection,
     pub folded: bool,
     pub rollup: AttentionRollup,
-    pub sessions: Vec<FlatSession>,
+    pub chats: Vec<FlatWindow>,
 }
 
 impl FlatHost {
@@ -137,7 +112,7 @@ impl FlatHost {
         name: impl Into<SharedString>,
         remote: bool,
         connection: HostConnection,
-        (sessions, rollup): (Vec<SessionSummary>, AttentionRollup),
+        (chats, rollup): (Vec<WindowSummary>, AttentionRollup),
         age: impl Fn(u64) -> Option<String>,
     ) -> Self {
         Self {
@@ -147,9 +122,9 @@ impl FlatHost {
             connection,
             folded: false,
             rollup,
-            sessions: sessions
+            chats: chats
                 .into_iter()
-                .map(|session| FlatSession::new(session, &age))
+                .map(|chat| FlatWindow::new(chat, &age))
                 .collect(),
         }
     }
@@ -162,7 +137,6 @@ impl FlatHost {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FlatTarget {
     Host(PaletteHostId),
-    Session(PaletteHostId, SessionId),
     Window(PaletteHostId, WindowId),
 }
 
@@ -171,9 +145,7 @@ pub enum FlatEvent {
     Open(PaletteHostId, WindowId),
     OpenPane(PaletteHostId, WindowId, PaneId),
     FoldHost(PaletteHostId),
-    FoldSession(PaletteHostId, SessionId),
-    NewSession(PaletteHostId),
-    NewWindow(PaletteHostId, SessionId),
+    NewChat(PaletteHostId),
     Connect(PaletteHostId),
     Upgrade(PaletteHostId),
     Hover(FlatTarget, bool),
@@ -763,12 +735,12 @@ pub fn flat_host_header(
                 None => spinner(STATUS_ICON, HOST_NAME_SIZE, note.color, cx),
             })
     });
-    let new_session = (host.live() && (hovered || coarse)).then(|| {
+    let new_chat = (host.live() && (hovered || coarse)).then(|| {
         add_button(
-            ElementId::from(("flat-new-session", id.0)),
-            IconName::LayersPlus,
-            "New session",
-            FlatEvent::NewSession(id),
+            ElementId::from(("flat-new-chat", id.0)),
+            IconName::ChatPlus,
+            "New agent",
+            FlatEvent::NewChat(id),
             handler,
             cx,
         )
@@ -832,7 +804,7 @@ pub fn flat_host_header(
                 header_button(("flat-host-action", id.0), label, event, handler)
             }),
         )
-        .children(new_session)
+        .children(new_chat)
 }
 
 fn add_button(
@@ -844,10 +816,6 @@ fn add_button(
     cx: &App,
 ) -> impl IntoElement + use<> {
     let handler = handler.clone();
-    let selector = match event {
-        FlatEvent::NewSession(_) => "flat-new-session",
-        _ => "flat-new-window",
-    };
     let button = workspace_row_action(
         icon_button(id.clone(), icon, ADD_BUTTON_ICON),
         cx.theme().ground(),
@@ -855,7 +823,7 @@ fn add_button(
         cx,
     )
     .size(px(ADD_BUTTON_SIZE))
-    .debug_selector(move || selector.into())
+    .debug_selector(|| "flat-new-chat".into())
     .hit_slop(
         (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
         (TOUCH_TARGET - ADD_BUTTON_SIZE) / 2.0,
@@ -866,88 +834,6 @@ fn add_button(
         handler(event, window, cx);
     });
     motion::appear(ElementId::from((id, "appear")), button)
-}
-
-pub fn flat_session_header(
-    host: &FlatHost,
-    session: &FlatSession,
-    holds_current: bool,
-    hovered: bool,
-    handler: &FlatHandler,
-    cx: &App,
-) -> Stateful<Div> {
-    let theme = cx.theme();
-    let coarse = CoarsePointer::get(cx);
-    let hovered = hovered && !coarse;
-    let host_id = host.id;
-    let session_id = session.id;
-    let target = FlatTarget::Session(host_id, session_id);
-    let rollup = session
-        .folded
-        .then(|| flat_rollup(&session.rollup, host.live(), cx));
-    let new_window = (hovered || coarse).then(|| {
-        add_button(
-            ElementId::from(("flat-new-window", session_id.0)),
-            IconName::WindowPlus,
-            "New window",
-            FlatEvent::NewWindow(host_id, session_id),
-            handler,
-            cx,
-        )
-    });
-    let hover = handler.clone();
-    let click = handler.clone();
-    div()
-        .id(ElementId::NamedInteger(
-            format!("flat-session-{}", host_id.0).into(),
-            session_id.0,
-        ))
-        .role(Role::Button)
-        .aria_label(session.label.clone())
-        .aria_expanded(!session.folded)
-        .flex_none()
-        .pt(px(SESSION_TOP))
-        .pb(px(SESSION_BOTTOM))
-        .px(header_inset(cx))
-        .cursor_pointer()
-        .on_hover(move |hovered, window, cx| hover(FlatEvent::Hover(target, *hovered), window, cx))
-        .on_click(move |_, window, cx| {
-            click(FlatEvent::FoldSession(host_id, session_id), window, cx);
-        })
-        .child(
-            h_flex()
-                .h(px(SESSION_LINE))
-                .gap(px(SESSION_SPACING))
-                .text_size(px(SESSION_SIZE))
-                .line_height(px(SESSION_LINE))
-                .font_semibold()
-                .text_color(if holds_current || hovered {
-                    theme.foreground
-                } else {
-                    theme.foreground.muted()
-                })
-                .child(
-                    div()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .whitespace_nowrap()
-                        .text_fade(crate::LABEL_FADE)
-                        .child(session.label.clone()),
-                )
-                .children(chevron(
-                    ElementId::NamedInteger(
-                        format!("flat-session-fold-{}", host_id.0).into(),
-                        session_id.0,
-                    ),
-                    session.folded,
-                    hovered,
-                    SESSION_SIZE,
-                    cx,
-                ))
-                .child(div().flex_1())
-                .children(rollup)
-                .children(new_window),
-        )
 }
 
 pub fn flat_sidebar(
@@ -961,10 +847,8 @@ pub fn flat_sidebar(
     let stack_tiles = hosts
         .iter()
         .filter(|host| !host.folded)
-        .flat_map(|host| &host.sessions)
-        .filter(|session| !session.folded)
-        .flat_map(|session| &session.windows)
-        .map(|window| window.summary.tiles.len())
+        .flat_map(|host| &host.chats)
+        .map(|chat| chat.summary.tiles.len())
         .max()
         .unwrap_or_default();
     let mut list = v_flex()
@@ -986,58 +870,32 @@ pub fn flat_sidebar(
             continue;
         }
         let dimmed = !host.live();
-        for session in &host.sessions {
-            let holds_current = state.current.is_some_and(|(current_host, window)| {
-                current_host == host.id
-                    && session
-                        .windows
-                        .iter()
-                        .any(|candidate| candidate.summary.window == window)
-            });
-            list = list.child(motion::enter(
+        list = list.children(host.chats.iter().map(|chat| {
+            let key = Some((host.id, chat.summary.window));
+            let row = flat_window_row(
+                host.id,
+                chat,
+                FlatRowState {
+                    current: state.current == key,
+                    selected: state.selected == key,
+                    hovered: state.hovered
+                        == Some(FlatTarget::Window(host.id, chat.summary.window)),
+                    dimmed,
+                    ground: Some(ground),
+                    stack_tiles,
+                },
+                handler,
+                menu,
+                cx,
+            );
+            motion::enter(
                 ElementId::NamedInteger(
-                    format!("flat-session-enter-{}", host.id.0).into(),
-                    session.id.0,
+                    format!("flat-window-enter-{}", host.id.0).into(),
+                    chat.summary.window.0,
                 ),
-                flat_session_header(
-                    host,
-                    session,
-                    holds_current,
-                    state.hovered == Some(FlatTarget::Session(host.id, session.id)),
-                    handler,
-                    cx,
-                ),
-            ));
-            if session.folded {
-                continue;
-            }
-            list = list.children(session.windows.iter().map(|window| {
-                let key = Some((host.id, window.summary.window));
-                let row = flat_window_row(
-                    host.id,
-                    window,
-                    FlatRowState {
-                        current: state.current == key,
-                        selected: state.selected == key,
-                        hovered: state.hovered
-                            == Some(FlatTarget::Window(host.id, window.summary.window)),
-                        dimmed,
-                        ground: Some(ground),
-                        stack_tiles,
-                    },
-                    handler,
-                    menu,
-                    cx,
-                );
-                motion::enter(
-                    ElementId::NamedInteger(
-                        format!("flat-window-enter-{}", host.id.0).into(),
-                        window.summary.window.0,
-                    ),
-                    row,
-                )
-            }));
-        }
+                row,
+            )
+        }));
     }
     list
 }
@@ -1060,7 +918,6 @@ mod tests {
                     .size(WORKSPACE_CHROME_BUTTON_SIZE)
             };
             let host = PaletteHostId(0);
-            let session = SessionId(1);
             let hosts = [FlatHost {
                 id: host,
                 name: "macbook".into(),
@@ -1068,16 +925,10 @@ mod tests {
                 connection: HostConnection::Connected,
                 folded: false,
                 rollup: AttentionRollup::default(),
-                sessions: vec![FlatSession {
-                    id: session,
-                    label: "zz".into(),
-                    rollup: AttentionRollup::default(),
-                    folded: false,
-                    windows: Vec::new(),
-                }],
+                chats: Vec::new(),
             }];
             let state = FlatState {
-                hovered: Some(FlatTarget::Session(host, session)),
+                hovered: Some(FlatTarget::Host(host)),
                 ..FlatState::default()
             };
             let handler: FlatHandler = Rc::new(|_, _, _| {});
@@ -1115,15 +966,15 @@ mod tests {
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
-        let new_window = cx.debug_bounds("flat-new-window").unwrap();
+        let new_chat = cx.debug_bounds("flat-new-chat").unwrap();
         let toggle = cx.debug_bounds("toggle").unwrap();
         let eye = cx.debug_bounds("eye").unwrap();
-        assert_eq!(toggle.center().x, new_window.center().x);
-        assert_eq!(eye.center().x, new_window.center().x);
+        assert_eq!(toggle.center().x, new_chat.center().x);
+        assert_eq!(eye.center().x, new_chat.center().x);
         let rows = cx.debug_bounds("rows").unwrap();
         let inset = cx.update(|_, cx| header_inset(cx));
         assert_eq!(
-            new_window.right(),
+            new_chat.right(),
             rows.right() - WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER - inset
         );
     }

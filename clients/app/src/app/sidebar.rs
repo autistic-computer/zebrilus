@@ -3,19 +3,20 @@ use crate::connection::Connection;
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     ChromeAction,
+    new_chat::open_picker_commands,
     sidebar::{
         SidebarBadge, SidebarNode, SidebarRow as TreeRow, navigation_rows, sidebar_activation,
         sidebar_active, sidebar_add_command, sidebar_close_command, sidebar_rename_command,
         sidebar_rows,
     },
-    window_summary::{DaemonClock, PaneTag, age_label, summarize_host},
+    window_summary::{DaemonClock, PaneTag, age_label, summarize_chats},
 };
 use zz_gpui::{
     AnyElement, App, Context, Entity, FocusHandle, Hsla, ListSizingBehavior, MouseButton,
     ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
-use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId};
+use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     command::PaletteHostId,
@@ -323,7 +324,6 @@ pub(super) struct Flat {
     pub clock: DaemonClock,
     state: FlatState,
     folded_host: bool,
-    folded_sessions: BTreeSet<SessionId>,
     scroll: ScrollHandle,
 }
 
@@ -355,13 +355,10 @@ pub(super) fn flat_tree(
         "zz daemon",
         false,
         host_connection(connection),
-        summarize_host(snapshot),
+        summarize_chats(&snapshot.sessions),
         |changed_at| age_label(changed_at, now),
     );
     host.folded = view.flat.folded_host;
-    for session in &mut host.sessions {
-        session.folded = view.flat.folded_sessions.contains(&session.id);
-    }
     let current = snapshot
         .sessions
         .iter()
@@ -435,25 +432,16 @@ fn flat_event(
             cx.notify();
             return;
         }
-        FlatEvent::FoldSession(_, session) => {
-            if !view.flat.folded_sessions.remove(&session) {
-                view.flat.folded_sessions.insert(session);
-            }
-            cx.notify();
-            return;
-        }
-        FlatEvent::NewSession(_) => {
+        FlatEvent::NewChat(_) => {
             if writable(connection.read(cx)) {
                 connection.update(cx, |connection, cx| {
-                    connection.command("new-session", Vec::new(), cx);
-                });
-            }
-            return;
-        }
-        FlatEvent::NewWindow(_, session) => {
-            if writable(connection.read(cx)) {
-                connection.update(cx, |connection, cx| {
-                    connection.command("new-window", vec!["-t".into(), session.to_string()], cx);
+                    let commands = open_picker_commands(
+                        connection.core.snapshot(),
+                        connection.core.attached_session(),
+                    );
+                    for command in commands {
+                        connection.invoke(command, cx);
+                    }
                 });
             }
             return;

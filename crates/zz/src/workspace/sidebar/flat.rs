@@ -4,12 +4,15 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use zz_client::window_summary::{AttentionRollup, SessionSummary, age_label, summarize_sessions};
+use zz_client::{
+    new_chat::open_picker_commands,
+    window_summary::{AttentionRollup, WindowSummary, age_label, summarize_chats},
+};
 use zz_gpui::{
     AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
     ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
-use zz_protocol::{MuxSnapshot, SessionId, WindowId};
+use zz_protocol::{MuxSnapshot, PaneKindSnapshot, SessionId, WindowId};
 use zz_ui::{
     command::PaletteHostId,
     menu::PopupMenuItem,
@@ -27,17 +30,16 @@ use super::{WorkspaceSidebar, activate_sidebar};
 use crate::mux::{
     client::MuxClient,
     hosts::{HostId, HostState},
-    nav::{
-        MuxTreeHost, TreeNode, TreeTarget, kill_target_command, lists_session, new_window_command,
-    },
+    nav::{MuxTreeHost, TreeNode, TreeTarget, kill_target_command, lists_session},
 };
 
 #[derive(Default)]
 pub(super) struct FlatView {
     state: FlatState,
     folded_hosts: BTreeSet<HostId>,
-    folded_sessions: BTreeSet<(HostId, SessionId)>,
     scroll: ScrollHandle,
+    awaiting: Option<(HostId, BTreeSet<WindowId>)>,
+    moving: Option<(HostId, WindowId, SessionId)>,
 }
 
 fn connection(state: &HostState, loaded: bool) -> HostConnection {
@@ -72,8 +74,8 @@ pub(super) fn listed_summary(
     host: HostId,
     hidden: Option<&str>,
     attached: (HostId, Option<SessionId>),
-) -> (Vec<SessionSummary>, AttentionRollup) {
-    summarize_sessions(snapshot.sessions.iter().filter(|session| {
+) -> (Vec<WindowSummary>, AttentionRollup) {
+    summarize_chats(snapshot.sessions.iter().filter(|session| {
         lists_session(hidden, &session.name, attached == (host, Some(session.id)))
     }))
 }
@@ -150,16 +152,13 @@ impl WorkspaceSidebar {
                     |changed| age_label(changed, now),
                 );
                 host.folded = self.flat_view.folded_hosts.contains(&id);
-                for session in &mut host.sessions {
-                    session.folded = self.flat_view.folded_sessions.contains(&(id, session.id));
-                    for window in &mut session.windows {
-                        window.shortcut = shortcuts
-                            .iter()
-                            .find(|(host, window_id, _)| {
-                                (*host, *window_id) == (id, window.summary.window)
-                            })
-                            .map(|(.., stroke)| stroke.clone());
-                    }
+                for chat in &mut host.chats {
+                    chat.shortcut = shortcuts
+                        .iter()
+                        .find(|(host, window_id, _)| {
+                            (*host, *window_id) == (id, chat.summary.window)
+                        })
+                        .map(|(.., stroke)| stroke.clone());
                 }
                 host
             })
@@ -238,19 +237,7 @@ impl WorkspaceSidebar {
                 }
                 cx.notify();
             }
-            FlatEvent::FoldSession(host, session) => {
-                let key = (HostId::from(host), session);
-                if !self.flat_view.folded_sessions.remove(&key) {
-                    self.flat_view.folded_sessions.insert(key);
-                }
-                cx.notify();
-            }
-            FlatEvent::NewSession(host) => self.mux.read(cx).new_session(host.into()),
-            FlatEvent::NewWindow(host, session) => {
-                self.mux
-                    .read(cx)
-                    .execute_on_host(host.into(), new_window_command(session));
-            }
+            FlatEvent::NewChat(host) => self.new_chat(host.into(), cx),
             FlatEvent::Connect(host) | FlatEvent::Upgrade(host) => {
                 self.mux
                     .update(cx, |mux, cx| mux.install_or_retry_host(host.into(), cx));
@@ -260,6 +247,90 @@ impl WorkspaceSidebar {
                     cx.notify();
                 }
             }
+        }
+    }
+
+    fn new_chat(&mut self, host: HostId, cx: &mut Context<Self>) {
+        let mux = self.mux.read(cx);
+        let Some(snapshot) = mux.host_snapshot(host) else {
+            return;
+        };
+        let attached = (host == mux.attached_host())
+            .then(|| mux.attached_session())
+            .flatten();
+        let known = snapshot
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .map(|window| window.id)
+            .collect();
+        for command in open_picker_commands(snapshot, attached) {
+            mux.execute_on_host(host, command);
+        }
+        self.flat_view.awaiting = Some((host, known));
+    }
+
+    pub(crate) fn follow_moved_window(&mut self, host: HostId, window: WindowId, from: SessionId) {
+        self.flat_view.moving = Some((host, window, from));
+    }
+
+    pub(super) fn follow_chats(&mut self, cx: &mut Context<Self>) {
+        let mux = self.mux.read(cx);
+        let session_of = |host: HostId, window: WindowId| {
+            mux.host_snapshot(host).and_then(|snapshot| {
+                snapshot
+                    .sessions
+                    .iter()
+                    .find(|session| {
+                        session
+                            .windows
+                            .iter()
+                            .any(|candidate| candidate.id == window)
+                    })
+                    .map(|session| session.id)
+            })
+        };
+        let target = if let Some((host, known)) = &self.flat_view.awaiting {
+            mux.host_snapshot(*host)
+                .and_then(|snapshot| {
+                    snapshot
+                        .sessions
+                        .iter()
+                        .flat_map(|session| &session.windows)
+                        .find(|window| {
+                            !known.contains(&window.id)
+                                && !window.panes.is_empty()
+                                && window
+                                    .panes
+                                    .values()
+                                    .all(|pane| matches!(pane.kind, PaneKindSnapshot::Picker))
+                        })
+                })
+                .map(|window| (*host, window.id))
+        } else if let Some((host, window, from)) = self.flat_view.moving {
+            match session_of(host, window) {
+                Some(session) if session == from => None,
+                Some(_) => Some((host, window)),
+                None => {
+                    self.flat_view.moving = None;
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let Some((host, window)) = target else {
+            return;
+        };
+        let (attached_host, attached) = (mux.attached_host(), mux.attached_session());
+        self.flat_view.awaiting = None;
+        self.flat_view.moving = None;
+        if let Some(activation) = self.tree_model.activation_for_node(
+            TreeNode::Target(host, TreeTarget::Window(window)),
+            attached_host,
+            attached,
+        ) {
+            activate_sidebar(&self.mux, activation, cx);
         }
     }
 
