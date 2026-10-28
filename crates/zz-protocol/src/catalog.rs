@@ -1679,7 +1679,7 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "new-window",
         aliases: &["neww"],
         description: "Create a window",
-        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser] [--profile NAME] [shell-command [argument ...]]",
+        usage: "[-abdEkPS] [-c start-directory] [-e environment] [-F format] [-n window-name] [-t target-window] [--kind terminal|browser|picker] [--profile NAME] [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("--kind", PaneKind, "pane kind").native(),
             CommandOptionSpec::value("--profile", FreeForm, "browser profile").native(),
@@ -1924,10 +1924,13 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "select-pane-kind",
         aliases: &[],
         description: "Materialize a pending pane as a terminal, browser, or editor",
-        usage: "[-t target-pane] pane-kind",
-        options: &[CommandOptionSpec::value("-t", Pane, "target pane")],
+        usage: "[-c start-directory] [-t target-pane] pane-kind [shell-command [argument ...]]",
+        options: &[
+            CommandOptionSpec::value("-t", Pane, "target pane"),
+            CommandOptionSpec::value("-c", FreeForm, "start a terminal in this directory"),
+        ],
         positionals: &[PaneKind],
-        variadic: None,
+        variadic: Some(FreeForm),
     },
     CommandSpec {
         name: "break-pane",

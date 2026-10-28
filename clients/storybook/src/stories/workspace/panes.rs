@@ -1,3 +1,4 @@
+use zz_client::new_chat::{ChatPicker, FolderChoice};
 use zz_gpui::{
     AnyElement, AnyView, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::*, px, relative,
@@ -6,12 +7,13 @@ use zz_protocol::{AgentProvider, DisplayPanesState, PaneId, PaneIndicator, TmuxC
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     pane::{
-        FloatingSurface, PaneDragOverlayState, PaneLens, PaneOverlayCorner, PaneSplitAxis,
-        PaneSplitHighlight, PaneSplitSide, pane_drag_chip, pane_drag_overlay, pane_drop_preview,
-        pane_indicator, pane_indicator_overlay, pane_overlay_stack, pane_picker_choices,
-        pane_picker_row, pane_picker_surface, pane_split_surface, pane_status_badge,
-        pane_sync_badge, pane_unzoom_control, pane_waiting_state, terminal_link_popup,
-        terminal_mode_indicator, terminal_search_prompt, terminal_status_popup,
+        ChatPickerRow, FloatingSurface, PaneDragOverlayState, PaneLens, PaneOverlayCorner,
+        PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, chat_picker_rows, pane_drag_chip,
+        pane_drag_overlay, pane_drop_preview, pane_indicator, pane_indicator_overlay,
+        pane_overlay_stack, pane_picker_choices, pane_picker_row, pane_picker_surface,
+        pane_split_surface, pane_status_badge, pane_sync_badge, pane_unzoom_control,
+        pane_waiting_state, terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
+        terminal_status_popup,
     },
     pip::PipSurface,
     settings::panes_preview::PanesPreview,
@@ -84,6 +86,12 @@ pub const STORY: Story = Story {
             name: "New pane picker",
             summary: "A freshly split pane asks what it should become: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states.",
             build: |_, cx| stateless(picker, cx),
+        },
+        Section {
+            id: "new-agent",
+            name: "New agent picker",
+            summary: "The picker a new chat opens: alone in its own window, chat_picker_rows offers Claude Code and Codex under the folder they will start in. The folder starts as the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, and the folder picked there (or the folder of a file picked) is where the agent starts.",
+            build: |_, cx| stateless(chat_picker, cx),
         },
         Section {
             id: "preview",
@@ -1018,6 +1026,78 @@ fn picker(_: &mut Window, cx: &mut App) -> AnyElement {
                         .into_any_element()
                     },
                 ))),
+        )
+        .into_any_element()
+}
+
+pub(crate) fn chat_folders() -> Vec<FolderChoice> {
+    [("~/dev/zz", 2), ("~/dev/clairvo", 1), ("~/notes", 0)]
+        .into_iter()
+        .map(|(path, agents)| FolderChoice {
+            path: path.to_owned(),
+            agents,
+        })
+        .collect()
+}
+
+pub(crate) fn chat_picker_surface(
+    id: &'static str,
+    picker: &ChatPicker,
+    enabled: bool,
+    cx: &App,
+) -> zz_gpui::Stateful<zz_gpui::Div> {
+    let rows = chat_picker_rows(7, picker, &chat_folders(), enabled, cx)
+        .into_iter()
+        .map(|row| match row {
+            ChatPickerRow::Label(label) => label.into_any_element(),
+            ChatPickerRow::Item(_, row) => row.into_any_element(),
+        })
+        .collect::<Vec<_>>();
+    pane_picker_surface(id, radii(true, cx), rows, cx)
+}
+
+fn chat_picker_pane(
+    id: &'static str,
+    picker: &ChatPicker,
+    enabled: bool,
+    cx: &App,
+) -> impl IntoElement {
+    sized(
+        id,
+        260.0,
+        zz_ui::pane::pane_surface(
+            "pane",
+            chat_picker_surface("picker", picker, enabled, cx),
+            Vec::new(),
+            super::fixtures::chrome(true, false, true, cx),
+            cx,
+        ),
+    )
+}
+
+fn chat_picker(_: &mut Window, cx: &mut App) -> AnyElement {
+    states()
+        .columns(2)
+        .state(
+            "Claude Code selected, in the folder agents used last",
+            chat_picker_pane("chat-picker-claude", &ChatPicker::default(), true, cx),
+        )
+        .state(
+            "Codex selected, in a folder picked from the file picker",
+            chat_picker_pane(
+                "chat-picker-codex",
+                &ChatPicker {
+                    selected: 1,
+                    folder: Some("~/notes".to_owned()),
+                    ..ChatPicker::default()
+                },
+                true,
+                cx,
+            ),
+        )
+        .state(
+            "read-only client: rows dim and stop taking clicks",
+            chat_picker_pane("chat-picker-readonly", &ChatPicker::default(), false, cx),
         )
         .into_any_element()
 }

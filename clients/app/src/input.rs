@@ -54,9 +54,11 @@ pub fn wire_modifiers(modifiers: zz_gpui::Modifiers) -> Modifiers {
 }
 
 #[must_use]
-pub fn raw_key_bindings() -> [zz_gpui::KeyBinding; 2] {
+pub fn raw_key_bindings() -> [zz_gpui::KeyBinding; 4] {
     [
         zz_gpui::KeyBinding::new("tab", zz_gpui::NoAction, Some("Terminal")),
         zz_gpui::KeyBinding::new("shift-tab", zz_gpui::NoAction, Some("Terminal")),
+        zz_gpui::KeyBinding::new("tab", zz_gpui::NoAction, Some("PanePicker")),
+        zz_gpui::KeyBinding::new("shift-tab", zz_gpui::NoAction, Some("PanePicker")),
     ]
 }

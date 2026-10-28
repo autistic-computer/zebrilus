@@ -24,8 +24,8 @@ pub use palette_model::{
 };
 pub use palette_places::palette_fleet;
 pub use palette_view::{
-    CommandPaletteEvent, CommandPaletteView, DRIVER_PREFIX, GuiEvent, PaletteBackend, target_hosts,
-    target_picker,
+    CommandPaletteEvent, CommandPaletteView, DRIVER_PREFIX, FolderPick, GuiEvent, PaletteBackend,
+    target_hosts, target_picker,
 };
 
 pub(crate) use palette_model::fuzzy_match;
