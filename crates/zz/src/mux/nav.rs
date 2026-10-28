@@ -114,7 +114,10 @@ impl MuxTreeModel {
                                                 TreeTarget::Pane(pane.id),
                                             ));
                                         }
-                                        MuxTreePane::from_snapshot(pane)
+                                        MuxTreePane {
+                                            index: pane_index(window, pane.id),
+                                            ..MuxTreePane::from_snapshot(pane)
+                                        }
                                     })
                                     .collect();
                                 MuxTreeWindow {
@@ -514,7 +517,9 @@ impl MuxTreeWindow {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MuxTreePane {
     pub id: PaneId,
+    pub index: u32,
     pub label: String,
+    pub cwd: String,
     pub kind: MuxTreePaneKind,
     /// A BEL rang here and nobody has been back since.
     pub bell: bool,
@@ -533,7 +538,9 @@ impl MuxTreePane {
         };
         Self {
             id: pane.id,
+            index: 0,
             label: pane_label(pane),
+            cwd: pane.summary.cwd.clone(),
             kind,
             bell: pane.bell,
             status: pane.status.as_ref().map(|status| status.state),
@@ -547,7 +554,7 @@ impl MuxTreePane {
     }
 }
 
-pub use zz_client::navigation::{ordered_panes, pane_label};
+pub use zz_client::navigation::{ordered_panes, pane_index, pane_label};
 
 #[derive(Clone, Debug)]
 pub enum TreeNodeKind {

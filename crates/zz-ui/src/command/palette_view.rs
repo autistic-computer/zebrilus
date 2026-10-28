@@ -1,13 +1,17 @@
 use std::{ops::Range, rc::Rc, sync::Arc, time::Duration};
 
-use zz_client::completion::{
-    CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion, complete_command,
-    completion_insertion,
+use zz_client::{
+    completion::{
+        CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion,
+        complete_command, completion_insertion,
+    },
+    place::{ActionKind, parse},
+    recents::now_secs,
 };
 use zz_gpui::{
-    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, Global,
-    IntoElement, KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString, Subscription,
-    UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+    App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    Global, IntoElement, KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString,
+    Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_protocol::{
     ChooseTreeAction, ChooseTreeState, ChooseTreeTarget, CommandInvocation, CommandPromptAction,
@@ -16,20 +20,22 @@ use zz_protocol::{
 };
 
 use super::{
-    CommandPaletteSurface, PaletteHint, PaletteRow, command_kind_badge, command_palette_empty,
-    command_palette_input, command_palette_row, command_palette_row_height,
-    command_palette_section, command_palette_tree_entry,
+    ActionKey, CommandPaletteSurface, CopyAddress, LevelEffect, PaletteActionLevel, PaletteHint,
+    PaletteRow, command_kind_badge, command_palette_empty, command_palette_input,
+    command_palette_row, command_palette_row_height, command_palette_section,
+    command_palette_tree_entry,
     palette_model::{
         PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget,
         PaletteTree, UnifiedPalette, needs_arguments, target_kind,
     },
-    unified_command_palette_input,
+    palette_recents, unified_command_palette_input,
 };
 use crate::{
     WindowExt as _,
+    files::ListingSink,
     input::{
         Backspace, Escape, IndentInline, InputEvent, InputState, MoveDown, MoveLeft, MoveRight,
-        MoveUp,
+        MoveUp, OutdentInline,
     },
     notification::Notification,
     target::{
@@ -52,6 +58,9 @@ pub trait PaletteBackend {
     fn execute(&self, host: PaletteHostId, command: CommandInvocation, cx: &mut App);
     fn connect_host(&self, host: PaletteHostId, cx: &mut App);
     fn activate(&self, host: PaletteHostId, target: PaletteTarget, cx: &mut App) -> bool;
+    fn activate_host(&self, _host: PaletteHostId, _cx: &mut App) -> bool {
+        false
+    }
     /// Ask `host` for everything under `dir`, an absolute or `~` path,
     /// through `anchor` when that is one of its terminals. `Err` where this
     /// client cannot list files.
@@ -65,6 +74,13 @@ pub trait PaletteBackend {
         Err("Files are listed in the desktop app".into())
     }
     fn cancel_path(&self, _host: PaletteHostId, _request_id: u64, _cx: &mut App) {}
+    fn action_level(
+        &self,
+        _kind: ActionKind,
+        _cx: &mut App,
+    ) -> Option<Box<dyn PaletteActionLevel>> {
+        None
+    }
     /// Feed `picker` the listings it asks for while it keeps the subscription.
     fn feed_targets(&self, _picker: &Entity<TargetPicker>, _cx: &mut App) -> Option<Subscription> {
         None
@@ -78,6 +94,14 @@ pub trait PaletteBackend {
         _entry: &PathEntry,
         _cx: &mut App,
     ) {
+    }
+    /// Hand `sink` every listing reply while the subscription lives.
+    fn feed_listings(&self, _sink: ListingSink, _cx: &mut App) -> Option<Subscription> {
+        None
+    }
+    /// `host`'s home folder, when this client knows it.
+    fn home_dir(&self, _host: PaletteHostId, _cx: &App) -> Option<String> {
+        None
     }
 }
 
@@ -256,6 +280,7 @@ pub struct CommandPaletteView {
     /// The pane a picked file goes into: the one `prefix F` came from, else
     /// the active one.
     insert_pane: Option<PaneId>,
+    level: Option<(ActionKind, Box<dyn PaletteActionLevel>)>,
 }
 
 #[derive(Default)]
@@ -373,13 +398,36 @@ impl CommandPaletteView {
             driver: false,
             target: None,
             insert_pane: None,
+            level: None,
         };
+        cx.on_release(|palette, cx| {
+            if let Some((_, mut level)) = palette.level.take() {
+                level.closing(cx);
+            }
+        })
+        .detach();
         palette.recompute_suggestions();
         palette.refresh(window, cx);
         palette
     }
 
     pub fn new_unified(
+        backend: Rc<dyn PaletteBackend>,
+        mode: Option<PaletteMode>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let mut palette = Self::new_local(backend, None, window, cx);
+        let field = match mode {
+            Some(PaletteMode::Command) => ":",
+            Some(PaletteMode::Target) => "@",
+            None => "",
+        };
+        palette.start_places(field, window, cx);
+        palette
+    }
+
+    fn new_local(
         backend: Rc<dyn PaletteBackend>,
         mode: Option<PaletteMode>,
         window: &mut Window,
@@ -409,18 +457,18 @@ impl CommandPaletteView {
         palette
     }
 
-    /// The palette in `@` mode on `body`, putting a file or folder you pick
-    /// at `pane`'s cursor: what `prefix F` opens.
+    /// The palette on `&` and `body`, putting a file or folder you pick at
+    /// `pane`'s cursor: what `prefix F` opens.
     pub fn new_target(
         backend: Rc<dyn PaletteBackend>,
-        body: String,
+        body: &str,
         pane: Option<PaneId>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut palette = Self::new_unified(backend, Some(PaletteMode::Target), window, cx);
+        let mut palette = Self::new_unified(backend, None, window, cx);
         palette.insert_pane = pane;
-        palette.set_query(body, window, cx);
+        palette.set_files_body(body, window, cx);
         palette
     }
 
@@ -457,7 +505,7 @@ impl CommandPaletteView {
         self.selected = None;
         self.navigation_engaged = false;
         self.send_tree(ChooseTreeAction::Close, cx);
-        self.refresh(window, cx);
+        self.start_places("", window, cx);
         cx.notify();
     }
 
@@ -468,7 +516,7 @@ impl CommandPaletteView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut palette = Self::new_unified(backend, Some(PaletteMode::Target), window, cx);
+        let mut palette = Self::new_local(backend, Some(PaletteMode::Target), window, cx);
         palette.local = false;
         palette.synchronize_window_chooser(state, revision, window, cx);
         palette
@@ -587,6 +635,7 @@ impl CommandPaletteView {
     }
 
     pub fn refresh(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let places = self.places();
         let Some(unified) = &mut self.unified else {
             return;
         };
@@ -594,8 +643,14 @@ impl CommandPaletteView {
             .selected
             .and_then(|index| unified.rows.get(index))
             .and_then(|entry| match entry.action {
-                Some(PaletteAction::Target { host, target, .. }) => Some((host, Some(target))),
-                Some(PaletteAction::Host(host)) => Some((host, None)),
+                Some(PaletteAction::Target { host, target, .. }) => Some((host, target)),
+                _ => None,
+            });
+        let selected_place = self
+            .selected
+            .and_then(|index| unified.rows.get(index))
+            .and_then(|entry| match entry.action {
+                Some(PaletteAction::Place(place)) => Some(place),
                 _ => None,
             });
         unified.apply_settings(self.backend.settings(cx));
@@ -611,57 +666,76 @@ impl CommandPaletteView {
         }
         if let Some(state) = &self.window_chooser {
             unified.rebuild_window_chooser(state, &self.last_input);
+        } else if unified.is_places() {
+            let backend = Rc::clone(&self.backend);
+            unified.rebuild_places(
+                &self.last_input,
+                &history,
+                &palette_recents(cx),
+                now_secs(),
+                self.backend.tree(cx),
+                self.availability,
+                &|name| backend.command_shortcut(name, cx),
+            );
         } else {
             let backend = Rc::clone(&self.backend);
             unified.rebuild(
                 &self.last_input,
-                &history,
                 self.backend.tree(cx),
                 self.availability,
                 &|name| backend.command_shortcut(name, cx),
             );
         }
-        if unified.mode == Some(PaletteMode::Command)
-            && unified.command.is_none()
-            && has_command_arguments(&self.last_input)
+        let command_input = if places {
+            parse(&self.last_input)
+                .action
+                .filter(|action| action.kind == ActionKind::Command)
+                .map(|action| {
+                    let start = action.rest_range().start;
+                    (action.rest, self.last_cursor.saturating_sub(start))
+                })
+        } else {
+            (unified.mode == Some(PaletteMode::Command) && unified.command.is_none())
+                .then(|| (self.last_input.clone(), self.last_cursor))
+        };
+        if let Some((input, cursor)) =
+            command_input.filter(|(input, _)| has_command_arguments(input))
         {
-            let snapshot = unified
-                .host
+            let host = unified.host.or_else(|| {
+                places
+                    .then(|| unified.scope().host.map(PaletteHostId))
+                    .flatten()
+            });
+            let snapshot = host
                 .and_then(|host| self.backend.host_snapshot(host, cx))
                 .unwrap_or(&self.snapshot);
-            unified.rows = complete_command(
-                &self.last_input,
-                self.last_cursor,
-                &history,
-                snapshot,
-                self.availability,
-            )
-            .into_iter()
-            .map(|suggestion| PaletteEntry {
-                row: PaletteRow {
-                    label: if suggestion.kind == CompletionKind::Value
-                        && suggestion.label.starts_with(['$', '@', '%'])
-                    {
-                        suggestion.detail.clone()
-                    } else {
-                        suggestion.label.clone()
-                    }
-                    .into(),
-                    detail: if suggestion.kind == CompletionKind::Value
-                        && suggestion.label.starts_with(['$', '@', '%'])
-                    {
-                        String::new()
-                    } else {
-                        suggestion.detail.clone()
-                    }
-                    .into(),
-                    ..Default::default()
-                },
-                action: Some(PaletteAction::Completion(suggestion)),
-                hint: "",
-                score: 0,
-            })
-            .collect();
+            unified.rows = complete_command(&input, cursor, &history, snapshot, self.availability)
+                .into_iter()
+                .map(|suggestion| PaletteEntry {
+                    row: PaletteRow {
+                        label: if suggestion.kind == CompletionKind::Value
+                            && suggestion.label.starts_with(['$', '@', '%'])
+                        {
+                            suggestion.detail.clone()
+                        } else {
+                            suggestion.label.clone()
+                        }
+                        .into(),
+                        detail: if suggestion.kind == CompletionKind::Value
+                            && suggestion.label.starts_with(['$', '@', '%'])
+                        {
+                            String::new()
+                        } else {
+                            suggestion.detail.clone()
+                        }
+                        .into(),
+                        ..Default::default()
+                    },
+                    action: Some(PaletteAction::Completion(suggestion)),
+                    hint: "",
+                    score: 0,
+                })
+                .collect();
         }
         let placeholder = if self.window_chooser.is_some() {
             "Search sessions, windows, panes".to_owned()
@@ -669,11 +743,14 @@ impl CommandPaletteView {
             unified.placeholder()
         };
         if let Some(node) = selected_node {
-            self.selected = unified.rows.iter().position(|entry| match entry.action {
-                Some(PaletteAction::Target { host, target, .. }) => node == (host, Some(target)),
-                Some(PaletteAction::Host(host)) => node == (host, None),
-                _ => false,
+            self.selected = unified.rows.iter().position(|entry| {
+                matches!(entry.action, Some(PaletteAction::Target { host, target, .. }) if node == (host, target))
             });
+        }
+        if let Some(place) = selected_place {
+            self.selected = unified.rows.iter().position(
+                |entry| matches!(entry.action, Some(PaletteAction::Place(row)) if row == place),
+            );
         }
         self.selected = self
             .selected
@@ -684,7 +761,7 @@ impl CommandPaletteView {
                     .is_some_and(|row| row.action.is_some())
             })
             .or_else(|| {
-                if self.last_input.trim().is_empty() {
+                if self.last_input.trim().is_empty() && !places {
                     unified.initial_selection()
                 } else {
                     unified.rows.iter().position(|row| row.action.is_some())
@@ -695,17 +772,14 @@ impl CommandPaletteView {
         }
         self.input
             .update(cx, |input, cx| input.set_placeholder(placeholder, cx));
+        self.sync_level(window, cx);
         self.sync_target(window, cx);
     }
 
     /// Keep the `@` mode's picker while the palette is in that mode, on what
     /// is typed.
     fn sync_target(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let targeting = self.window_chooser.is_none()
-            && self
-                .unified
-                .as_ref()
-                .is_some_and(|unified| unified.mode == Some(PaletteMode::Target));
+        let targeting = self.places() && self.level.is_none() && self.files_body().is_some();
         if !targeting {
             self.target = None;
             return;
@@ -721,7 +795,7 @@ impl CommandPaletteView {
             self.target = Some((picker.clone(), events));
             picker
         };
-        let body = self.last_input.clone();
+        let body = self.files_body().unwrap_or_default();
         let anchor = self.insert_pane.or_else(|| self.backend.active_pane(cx));
         picker.update(cx, |picker, cx| {
             picker.set_anchor(anchor);
@@ -827,14 +901,7 @@ impl CommandPaletteView {
             cx.emit(CommandPaletteEvent::Driver);
             return;
         }
-        if self.last_input.is_empty()
-            && let Some(unified) = &mut self.unified
-            && unified.mode.is_none()
-            && unified.command.is_none()
-            && let Some(mode) = PaletteMode::from_prefix(&value)
-        {
-            unified.mode = Some(mode);
-            self.set_query(String::new(), window, cx);
+        if self.commit_typed(&value, window, cx) {
             return;
         }
         self.last_input.clone_from(&value);
@@ -912,7 +979,7 @@ impl CommandPaletteView {
             self.backend.connect_host(item.host_id, cx);
         }
         if open || item.kind == TargetKind::Host {
-            self.set_query(item.completion(), window, cx);
+            self.set_files_body(&item.completion(), window, cx);
             return;
         }
         if let Some(target) = item.target {
@@ -936,6 +1003,10 @@ impl CommandPaletteView {
     fn activate_unified(&mut self, complete: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.target.is_some() {
             self.activate_target(complete, window, cx);
+            return;
+        }
+        if self.places() {
+            self.activate_places(complete, window, cx);
             return;
         }
         let Some(unified) = &self.unified else {
@@ -1005,24 +1076,6 @@ impl CommandPaletteView {
                     self.set_query(completed, window, cx);
                 }
             }
-            PaletteAction::Host(host) => {
-                let Some((connected, name)) = self
-                    .unified
-                    .as_ref()
-                    .and_then(|state| state.tree.host(host))
-                    .map(|host| (host.connected(), host.name.clone()))
-                else {
-                    return;
-                };
-                if !connected {
-                    self.backend.connect_host(host, cx);
-                }
-                if let Some(unified) = &mut self.unified {
-                    unified.mode = Some(PaletteMode::Target);
-                    unified.command = None;
-                }
-                self.set_query(format!("{name}:"), window, cx);
-            }
             PaletteAction::Target {
                 host,
                 target,
@@ -1044,6 +1097,7 @@ impl CommandPaletteView {
                     Self::notify_action(format!("Switched to {label}"), window, cx);
                 }
             }
+            PaletteAction::Place(_) | PaletteAction::Recent(_) => {}
         }
     }
 
@@ -1116,7 +1170,7 @@ impl CommandPaletteView {
         cx.notify();
     }
 
-    fn notify_action(message: String, window: &mut Window, cx: &mut App) {
+    pub(crate) fn notify_action(message: String, window: &mut Window, cx: &mut App) {
         window.push_notification(
             Notification::new()
                 .message(message)
@@ -1139,6 +1193,16 @@ impl CommandPaletteView {
                 picker.selected_item().cloned()
             })
         });
+        let level_view = self
+            .level
+            .as_mut()
+            .map(|(_, level)| (level.rows(window, cx), level.hints(cx)));
+        let places = self.places();
+        let command_rest = places
+            .then(|| parse(&self.last_input).action)
+            .flatten()
+            .filter(|action| action.kind == ActionKind::Command)
+            .map(|action| action.rest);
         let Some(unified) = &self.unified else {
             return div().into_any_element();
         };
@@ -1162,21 +1226,37 @@ impl CommandPaletteView {
                         ChooseTreeTarget::Pane(_) => "focus pane",
                         ChooseTreeTarget::Client(_) => "choose",
                     }),
-                PaletteAction::Host(_) => "scope host",
                 PaletteAction::Command(_) | PaletteAction::History(_) => "run command",
                 PaletteAction::Completion(_) => "complete",
+                PaletteAction::Place(_) => "go",
+                PaletteAction::Recent(_) => "open",
             });
-        let usage = unified.usage(selected).or_else(|| {
-            (unified.mode == Some(PaletteMode::Command))
-                .then(|| {
-                    self.last_input
-                        .split_whitespace()
+        let usage = if let Some(rest) = &command_rest {
+            selected
+                .and_then(|index| unified.rows.get(index))
+                .and_then(|entry| match entry.action {
+                    Some(PaletteAction::Command(spec)) => Some(spec.usage),
+                    _ => None,
+                })
+                .or_else(|| {
+                    rest.split_whitespace()
                         .next()
                         .and_then(zz_protocol::catalog_command_spec)
                         .map(|spec| spec.usage)
                 })
-                .flatten()
-        });
+        } else {
+            unified.usage(selected).or_else(|| {
+                (unified.mode == Some(PaletteMode::Command))
+                    .then(|| {
+                        self.last_input
+                            .split_whitespace()
+                            .next()
+                            .and_then(zz_protocol::catalog_command_spec)
+                            .map(|spec| spec.usage)
+                    })
+                    .flatten()
+            })
+        };
         let entries = Arc::new(unified.rows.clone());
         let palette = cx.entity();
         let rows_palette = palette.clone();
@@ -1208,12 +1288,11 @@ impl CommandPaletteView {
                                     ("unified-palette-row", index),
                                     &entry.row,
                                     selected == Some(index),
-                                    move |_, window, cx| {
+                                    move |_, _, cx| {
                                         toggle_palette.update(cx, |palette, cx| {
                                             palette.selected = Some(index);
                                             palette.change_tree_expansion(
                                                 !expanded.unwrap_or(false),
-                                                window,
                                                 cx,
                                             );
                                         });
@@ -1241,7 +1320,13 @@ impl CommandPaletteView {
         )
         .h(px(list_height))
         .track_scroll(&self.scroll_handle);
-        let mut hints = if unified.command.is_some() {
+        let mut hints = if let Some((_, hints)) = &level_view {
+            hints.clone()
+        } else if self.target.is_some() && places {
+            target_hints(target_item.as_ref(), &self.files_body().unwrap_or_default())
+        } else if places {
+            self.place_hints(enter_hint, cx)
+        } else if unified.command.is_some() {
             vec![
                 PaletteHint {
                     key: "up down",
@@ -1352,7 +1437,9 @@ impl CommandPaletteView {
         if let Some(usage) = usage {
             surface = surface.usage(usage);
         }
-        surface = if let Some((picker, _)) = &self.target {
+        surface = if let Some((rows, _)) = level_view {
+            surface.rows(rows)
+        } else if let Some((picker, _)) = &self.target {
             surface.rows(picker.clone())
         } else if unified.rows.is_empty() {
             surface.rows(command_palette_empty(cx))
@@ -1374,12 +1461,15 @@ impl CommandPaletteView {
             .pt(window.viewport_size().height * 0.12)
             .track_focus(&focus)
             .capture_action(cx.listener(Self::complete))
+            .capture_action(cx.listener(Self::outdent))
             .capture_action(cx.listener(Self::move_up))
             .capture_action(cx.listener(Self::move_down))
             .capture_action(cx.listener(Self::leave_layer))
             .capture_action(cx.listener(Self::dismiss))
             .capture_action(cx.listener(Self::collapse_host))
             .capture_action(cx.listener(Self::open_host))
+            .capture_action(cx.listener(Self::copy_address))
+            .capture_key_down(cx.listener(Self::on_copy_key))
             .capture_key_down(cx.listener(Self::on_raw_key))
             .on_key_down(cx.listener(Self::on_key_down))
             .on_key_up(|_, _, cx| cx.stop_propagation())
@@ -1509,6 +1599,9 @@ impl CommandPaletteView {
             return;
         }
         self.finishing = true;
+        if let Some((_, mut level)) = self.level.take() {
+            level.closing(cx);
+        }
         if self.window_chooser.is_some() {
             self.send_tree(ChooseTreeAction::Close, cx);
         } else if !self.local {
@@ -1526,14 +1619,24 @@ impl CommandPaletteView {
         cx.stop_propagation();
     }
 
-    fn move_up(&mut self, _: &MoveUp, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate(-1, cx);
+    fn move_up(&mut self, _: &MoveUp, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.level_key(ActionKey::Up, window, cx) {
+            self.navigate(-1, cx);
+        }
         cx.stop_propagation();
     }
 
-    fn move_down(&mut self, _: &MoveDown, _: &mut Window, cx: &mut Context<Self>) {
-        self.navigate(1, cx);
+    fn move_down(&mut self, _: &MoveDown, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.level_key(ActionKey::Down, window, cx) {
+            self.navigate(1, cx);
+        }
         cx.stop_propagation();
+    }
+
+    fn outdent(&mut self, _: &OutdentInline, window: &mut Window, cx: &mut Context<Self>) {
+        if self.places() && self.shift_tab_places(window, cx) {
+            cx.stop_propagation();
+        }
     }
 
     fn leave_layer(&mut self, _: &Backspace, window: &mut Window, cx: &mut Context<Self>) {
@@ -1548,10 +1651,16 @@ impl CommandPaletteView {
         if self.target.is_some()
             && !selecting
             && cursor == value.len()
-            && let Some(up) = pop_level(&value)
+            && let Some(up) = self.files_body().as_deref().and_then(pop_level)
         {
-            self.set_query(up, window, cx);
+            self.set_files_body(&up, window, cx);
             cx.stop_propagation();
+            return;
+        }
+        if self.places() {
+            if self.backspace_places(window, cx) {
+                cx.stop_propagation();
+            }
             return;
         }
         if !value.is_empty() {
@@ -1572,27 +1681,105 @@ impl CommandPaletteView {
         }
     }
 
+    fn address(&self, cx: &App) -> Option<String> {
+        if let Some((picker, _)) = &self.target {
+            let item = picker.read(cx).selected_item()?;
+            return match (item.kind, item.target) {
+                (TargetKind::Host, _) => Some(format!("@{}", item.host)),
+                (_, Some(target)) => Some(format!("@{}:{target}", item.host)),
+                _ => None,
+            };
+        }
+        let unified = self.unified.as_ref()?;
+        match unified.rows.get(self.selected?)?.action.as_ref()? {
+            PaletteAction::Target { host, target, .. } => {
+                Some(format!("@{}:{target}", unified.tree.host(*host)?.name))
+            }
+            _ => None,
+        }
+    }
+
+    fn copy_address(&mut self, _: &CopyAddress, window: &mut Window, cx: &mut Context<Self>) {
+        if self.level_key(ActionKey::Copy, window, cx) {
+            cx.stop_propagation();
+            return;
+        }
+        let text = self
+            .level
+            .as_ref()
+            .and_then(|(_, level)| level.copy_text(cx))
+            .or_else(|| self.place_address());
+        if let Some(address) = text.or_else(|| self.address(cx)) {
+            cx.write_to_clipboard(ClipboardItem::new_string(address.clone()));
+            Self::notify_action(format!("Copied {address}"), window, cx);
+        }
+        cx.stop_propagation();
+    }
+
+    pub fn apply_level_effect(
+        &mut self,
+        effect: LevelEffect,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match effect {
+            LevelEffect::Stay => {}
+            LevelEffect::Close => self.close(cx),
+            LevelEffect::Emit(event) => cx.emit(event),
+            LevelEffect::Copied(text) => Self::notify_action(format!("Copied {text}"), window, cx),
+            LevelEffect::SetRest(rest) => {
+                let value = self.input.read(cx).value().to_string();
+                if let Some(action) = parse(&value).action {
+                    let range = action.rest_range();
+                    let value = format!("{}{rest}{}", &value[..range.start], &value[range.end..]);
+                    self.set_query(value, window, cx);
+                }
+            }
+        }
+    }
+
+    fn on_copy_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        let modifiers = event.keystroke.modifiers;
+        if self.unified.is_some()
+            && event.keystroke.key == "enter"
+            && modifiers.alt
+            && !modifiers.platform
+            && !modifiers.control
+            && !modifiers.shift
+        {
+            self.copy_address(&CopyAddress, window, cx);
+        }
+    }
+
     fn dismiss(&mut self, _: &Escape, _: &mut Window, cx: &mut Context<Self>) {
         self.close(cx);
         cx.stop_propagation();
     }
 
     fn collapse_host(&mut self, _: &MoveLeft, window: &mut Window, cx: &mut Context<Self>) {
-        self.move_in_tree(false, window, cx);
+        if self.caret_at_end(cx) && self.level_key(ActionKey::Left, window, cx) {
+            cx.stop_propagation();
+            return;
+        }
+        self.move_in_tree(false, cx);
     }
 
     fn open_host(&mut self, _: &MoveRight, window: &mut Window, cx: &mut Context<Self>) {
-        self.move_in_tree(true, window, cx);
+        if self.caret_at_end(cx) && self.level_key(ActionKey::Right, window, cx) {
+            cx.stop_propagation();
+            return;
+        }
+        self.move_in_tree(true, cx);
     }
 
-    fn move_in_tree(&mut self, expand: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn move_in_tree(&mut self, expand: bool, cx: &mut Context<Self>) {
         if !self.last_input.is_empty() {
             return;
         }
         let Some(unified) = &self.unified else {
             return;
         };
-        if self.window_chooser.is_none() && !unified.is_navigation_tree() {
+        if self.window_chooser.is_none() {
             return;
         }
         let Some(index) = self.selected else {
@@ -1603,7 +1790,7 @@ impl CommandPaletteView {
             .get(index)
             .is_some_and(|entry| entry.row.expanded == Some(!expand))
         {
-            self.change_tree_expansion(expand, window, cx);
+            self.change_tree_expansion(expand, cx);
         } else if let Some(next) = if expand {
             unified.child_index(index)
         } else {
@@ -1618,7 +1805,7 @@ impl CommandPaletteView {
         cx.stop_propagation();
     }
 
-    fn change_tree_expansion(&mut self, expand: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn change_tree_expansion(&mut self, expand: bool, cx: &mut Context<Self>) {
         if self.chooser_search.pending.is_some() || !self.last_input.is_empty() {
             return;
         }
@@ -1649,12 +1836,6 @@ impl CommandPaletteView {
                 },
                 cx,
             );
-        } else if unified.set_expanded(index, expand) {
-            self.navigation_engaged = true;
-            self.refresh(window, cx);
-            self.scroll_handle
-                .scroll_to_item(index, ScrollStrategy::Nearest);
-            cx.notify();
         }
     }
 
@@ -1887,6 +2068,9 @@ fn has_command_arguments(input: &str) -> bool {
         .find(char::is_whitespace)
         .is_some_and(|index| zz_protocol::catalog_command_spec(&input[..index]).is_some())
 }
+
+#[path = "palette_view_places.rs"]
+mod places;
 
 #[cfg(test)]
 #[path = "palette_view_tests.rs"]

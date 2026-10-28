@@ -258,6 +258,7 @@ fn run_app(
             window::background::detect_compositor_support(cx);
             browser::recent_pages::init(cx);
             zz_ui::init(cx);
+            command::palette::init_recents(cx);
             ui_scale::init(cx);
             browser::view::init(cx);
             editor::init(cx);

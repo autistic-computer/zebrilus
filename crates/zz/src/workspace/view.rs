@@ -691,22 +691,6 @@ enum OverlayKind {
 /// A folder as the palette's `@` mode types it: under `home` as `~/`, with
 /// its spaces escaped and a `/` at its end, or the home folder when there is
 /// none.
-fn path_target(dir: Option<&str>, home: Option<std::path::PathBuf>) -> String {
-    let Some(dir) = dir.filter(|dir| dir.starts_with(['/', '~'])) else {
-        return "~/".to_owned();
-    };
-    let home = home.and_then(|home| {
-        home.to_str()
-            .map(|home| home.trim_end_matches('/').to_owned())
-    });
-    let dir = match home.as_deref().and_then(|home| dir.strip_prefix(home)) {
-        Some("") => "~".to_owned(),
-        Some(rest) if rest.starts_with('/') => format!("~{rest}"),
-        _ => dir.to_owned(),
-    };
-    format!("{}/", zz_ui::target::escape(dir.trim_end_matches('/')))
-}
-
 fn pane_in_session(snapshot: &MuxSnapshot, session: Option<SessionId>, pane: PaneId) -> bool {
     snapshot
         .sessions
@@ -1802,7 +1786,7 @@ impl AppView {
         }
     }
 
-    /// `prefix F`: the palette in `@` mode on `pane`'s folder, or the `-c`
+    /// `prefix F`: the palette in `&` mode on `pane`'s folder, or the `-c`
     /// folder, putting what you pick at that pane's cursor.
     fn open_path_palette(
         &mut self,
@@ -1825,21 +1809,16 @@ impl AppView {
         if !pane_in_session(&snapshot, attached, pane) {
             return;
         }
-        let cwd = start_dir
+        let home = local.then(std::env::home_dir).flatten();
+        let body = start_dir
             .filter(|dir| dir.starts_with(['/', '~']))
-            .map(str::to_owned)
-            .or_else(|| {
-                snapshot
-                    .sessions
-                    .iter()
-                    .flat_map(|session| &session.windows)
-                    .find_map(|window| window.panes.get(&pane))
-                    .map(|pane| pane.summary.cwd.clone())
-            });
-        let body = path_target(cwd.as_deref(), local.then(std::env::home_dir).flatten());
+            .map(|dir| {
+                zz_ui::files::start_dir(Some(dir), home.as_ref().and_then(|home| home.to_str()))
+            })
+            .unwrap_or_default();
         self.show_command_palette(
             move |backend, window, cx| {
-                CommandPaletteView::new_target(backend, body, Some(pane), window, cx)
+                CommandPaletteView::new_target(backend, &body, Some(pane), window, cx)
             },
             window,
             cx,
@@ -9056,7 +9035,7 @@ mod tests {
         assert!(terminal_is_focused(&workspace, cx));
         input.borrow_mut().clear();
         publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("~/"));
+        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("&~/"));
         assert!(
             input
                 .borrow()
@@ -9157,24 +9136,6 @@ mod tests {
         );
         assert!(!open("@%99", cx));
         assert!(!open("plain words", cx));
-    }
-
-    #[test]
-    fn a_folder_opens_as_a_target_under_home() {
-        let home = Some(std::path::PathBuf::from("/home/me"));
-        assert_eq!(
-            path_target(Some("/home/me/dev/zz"), home.clone()),
-            "~/dev/zz/"
-        );
-        assert_eq!(path_target(Some("/home/me"), home.clone()), "~/");
-        assert_eq!(path_target(Some("/home/meow"), home.clone()), "/home/meow/");
-        assert_eq!(
-            path_target(Some("/srv/My Files/"), home.clone()),
-            r"/srv/My\ Files/"
-        );
-        assert_eq!(path_target(Some(""), home.clone()), "~/");
-        assert_eq!(path_target(None, home), "~/");
-        assert_eq!(path_target(Some("/etc"), None), "/etc/");
     }
 
     #[test]

@@ -5,7 +5,7 @@ use zz_gpui::{
 use zz_protocol::PaneId;
 use zz_ui::command::CommandPaletteView;
 
-use super::palette::{Files, mount, target_palette};
+use super::palette::{Files, files_palette, mount};
 use crate::story::{Section, Story, states};
 
 const PANE: Option<PaneId> = Some(PaneId(10));
@@ -14,25 +14,25 @@ pub const STORY: Story = Story {
     id: "path-picker",
     name: "prefix F",
     group: "Commands",
-    summary: "prefix F puts a path into the pane it came from. It opens the command palette in its @ mode with the pane's folder typed in, so the folder lists at once and git's letter marks what changed. Typing after the last / searches everything under that folder, Tab opens a folder, Backspace on a folder's edge goes up one, and Enter puts the highlighted path at that pane's cursor.",
+    summary: "prefix F puts a path into the pane it came from. It opens the command palette in its & mode with the pane's folder typed after the &, so the folder lists at once and git's letter marks what changed. Typing after the last / searches everything under that folder, Tab or Right opens a folder, Shift-Tab, Left or Backspace on a folder's edge goes up one, Enter puts the highlighted path at that pane's cursor and Alt-Enter copies it.",
     sections: &[
         Section {
             id: "browse",
             name: "Browse",
             summary: "prefix F on a pane in ~/dev/zz: its folders first, then its files, with git letters on the right.",
-            build: |window, cx| single(window, cx, "~/dev/zz/"),
+            build: |window, cx| single(window, cx, "~/dev/zz/", &[]),
         },
         Section {
             id: "query",
             name: "Query",
             summary: "~/dev/zz/pal: typing after the last / ranks paths from every depth under the folder and highlights the matched letters.",
-            build: |window, cx| single(window, cx, "~/dev/zz/pal"),
+            build: |window, cx| single(window, cx, "~/dev/zz/", &["p", "a", "l"]),
         },
         Section {
             id: "nested",
             name: "Nested folder",
             summary: "A deeper folder, as Tab leaves it after opening crates, zz-ui and src in turn.",
-            build: |window, cx| single(window, cx, "~/dev/zz/crates/zz-ui/src/"),
+            build: |window, cx| single(window, cx, "~/dev/zz/crates/zz-ui/src/", &[]),
         },
         Section {
             id: "states",
@@ -43,9 +43,14 @@ pub const STORY: Story = Story {
     ],
 };
 
-fn single(window: &mut Window, cx: &mut App, body: &str) -> AnyView {
-    let palette = target_palette(window, cx, Files::Listed, body, PANE);
-    mount(window, cx, palette, 560.0, &[])
+fn single(
+    window: &mut Window,
+    cx: &mut App,
+    start: &str,
+    keys: &'static [&'static str],
+) -> AnyView {
+    let palette = files_palette(window, cx, Files::Listed, start, PANE);
+    mount(window, cx, palette, 560.0, keys)
 }
 
 struct ListingStates {
@@ -60,7 +65,7 @@ impl ListingStates {
             ("empty folder", Files::Empty, "~/dev/zz/target/"),
         ]
         .into_iter()
-        .map(|(caption, files, body)| (caption, target_palette(window, cx, files, body, PANE)))
+        .map(|(caption, files, start)| (caption, files_palette(window, cx, files, start, PANE)))
         .collect();
         Self { palettes }
     }

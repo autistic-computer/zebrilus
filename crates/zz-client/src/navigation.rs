@@ -1,8 +1,8 @@
 use std::{collections::BTreeSet, fmt};
 
 use zz_protocol::{
-    CommandInvocation, PaneKindSnapshot, PaneSnapshot, SessionId, SessionSnapshot, WindowId,
-    WindowSnapshot,
+    CommandInvocation, PaneId, PaneKindSnapshot, PaneSnapshot, SessionId, SessionSnapshot,
+    WindowId, WindowSnapshot,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -55,6 +55,21 @@ pub fn ordered_panes(window: &WindowSnapshot) -> Vec<&PaneSnapshot> {
         }
     }
     panes
+}
+
+#[must_use]
+pub fn pane_index(window: &WindowSnapshot, pane: PaneId) -> u32 {
+    let position = window
+        .pane_order
+        .iter()
+        .position(|id| *id == pane)
+        .or_else(|| {
+            ordered_panes(window)
+                .iter()
+                .position(|candidate| candidate.id == pane)
+        })
+        .unwrap_or_default();
+    u32::try_from(position).unwrap_or(u32::MAX)
 }
 
 #[must_use]
