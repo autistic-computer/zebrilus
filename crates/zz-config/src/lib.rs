@@ -85,6 +85,7 @@ pub const DEFAULT_EXPERIMENTAL_EDITOR_PANE: bool = false;
 pub enum ConfigKey {
     PaletteWindowLayout,
     PaletteShowKeys,
+    PaletteVimMode,
     PickerFocusSidebar,
     WhichKeyDelay,
     UseSystemTitlebar,
@@ -138,6 +139,7 @@ impl ConfigKey {
         match self {
             Self::PaletteWindowLayout => "palette-window-layout",
             Self::PaletteShowKeys => "palette-show-keys",
+            Self::PaletteVimMode => "palette-vim-mode",
             Self::PickerFocusSidebar => "picker-focus-sidebar",
             Self::WhichKeyDelay => "which-key-delay",
             Self::UseSystemTitlebar => "use-system-titlebar",
@@ -191,6 +193,7 @@ impl ConfigKey {
         match key {
             "palette-window-layout" => Some(Self::PaletteWindowLayout),
             "palette-show-keys" => Some(Self::PaletteShowKeys),
+            "palette-vim-mode" => Some(Self::PaletteVimMode),
             "picker-focus-sidebar" => Some(Self::PickerFocusSidebar),
             "which-key-delay" => Some(Self::WhichKeyDelay),
             "use-system-titlebar" => Some(Self::UseSystemTitlebar),
@@ -263,6 +266,7 @@ impl ConfigKey {
             Self::UseSystemTitlebar
             | Self::PaletteWindowLayout
             | Self::PaletteShowKeys
+            | Self::PaletteVimMode
             | Self::PickerFocusSidebar
             | Self::WindowBackgroundBlur
             | Self::Animations
@@ -484,6 +488,7 @@ impl DriverEffort {
 pub struct AppConfig {
     pub palette_window_layout: ConfigValue<PaletteWindowLayout>,
     pub palette_show_keys: ConfigValue<bool>,
+    pub palette_vim_mode: ConfigValue<bool>,
     pub picker_focus_sidebar: ConfigValue<bool>,
     pub which_key_delay: ConfigValue<f32>,
     pub use_system_titlebar: ConfigValue<bool>,
@@ -535,6 +540,7 @@ impl Default for AppConfig {
         Self {
             palette_window_layout: ConfigValue::from_default(PaletteWindowLayout::Grouped),
             palette_show_keys: ConfigValue::from_default(true),
+            palette_vim_mode: ConfigValue::from_default(false),
             picker_focus_sidebar: ConfigValue::from_default(false),
             which_key_delay: ConfigValue::from_default(DEFAULT_WHICH_KEY_DELAY),
             use_system_titlebar: ConfigValue::from_default(DEFAULT_USE_SYSTEM_TITLEBAR),
@@ -594,6 +600,7 @@ impl AppConfig {
     fn boolean_value_mut(&mut self, key: ConfigKey) -> Option<&mut ConfigValue<bool>> {
         match key {
             ConfigKey::PaletteShowKeys => Some(&mut self.palette_show_keys),
+            ConfigKey::PaletteVimMode => Some(&mut self.palette_vim_mode),
             ConfigKey::PickerFocusSidebar => Some(&mut self.picker_focus_sidebar),
             ConfigKey::UseSystemTitlebar => Some(&mut self.use_system_titlebar),
             ConfigKey::WindowBackgroundBlur => Some(&mut self.window_background_blur),
@@ -1256,6 +1263,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             ConfigKey::UseSystemTitlebar
             | ConfigKey::PaletteWindowLayout
             | ConfigKey::PaletteShowKeys
+            | ConfigKey::PaletteVimMode
             | ConfigKey::PickerFocusSidebar
             | ConfigKey::WindowBackgroundBlur
             | ConfigKey::Animations
@@ -2126,8 +2134,10 @@ mod tests {
             PaletteWindowLayout::Grouped
         );
         assert!(defaults.config.palette_show_keys.value);
+        assert!(!defaults.config.palette_vim_mode.value);
 
-        let source = "palette-window-layout = flat\npalette-show-keys = off\n";
+        let source =
+            "palette-window-layout = flat\npalette-show-keys = off\npalette-vim-mode = on\n";
         let parsed = parse_config(source, "monospace");
         assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
         assert_eq!(
@@ -2135,12 +2145,14 @@ mod tests {
             PaletteWindowLayout::Flat
         );
         assert!(!parsed.config.palette_show_keys.value);
+        assert!(parsed.config.palette_vim_mode.value);
 
         let invalid = parse_config(
-            "palette-window-layout = grid\npalette-show-keys = maybe\n",
+            "palette-window-layout = grid\npalette-show-keys = maybe\npalette-vim-mode = maybe\n",
             "monospace",
         );
-        assert_eq!(invalid.diagnostics.len(), 2);
+        assert_eq!(invalid.diagnostics.len(), 3);
+        assert!(!invalid.config.palette_vim_mode.value);
         assert_eq!(
             invalid.config.palette_window_layout.value,
             PaletteWindowLayout::Grouped

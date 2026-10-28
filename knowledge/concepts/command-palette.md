@@ -215,16 +215,51 @@ button still open the chat directly.
 
 # Settings
 
-Settings > Advanced > Command palette exposes two preferences:
+Settings > Advanced > Command palette exposes three preferences:
 
 | Config key | Values | Default |
 | --- | --- | --- |
 | `palette-window-layout` | `grouped`, `flat` | `grouped` (the daemon window chooser's tree) |
 | `palette-show-keys` | `true`, `false` | `true` |
+| `palette-vim-mode` | `true`, `false` | `false` |
+
+The iPad and web clients keep the same three in their own preferences
+(`Preferences::palette_settings` in `clients/app/src/preferences.rs`); the iPhone hides the group.
 
 The `open-command-palette` chrome action lives in the UI key table and can be remapped.
 Its default shortcuts replace the terminal Clear History bindings on those same keys.
 Clear History remains available through the menu and custom bindings.
+
+# Vim mode
+
+With `palette-vim-mode` on, the unified palette, `prefix :` and the `prefix s`/`prefix w` chooser
+have vi's insert and normal modes. Daemon value prompts and raw-key prompts do not. Every open
+starts in insert; the chooser going back to the default view keeps the mode. A badge at the right
+of the field names the mode, NORMAL in the accent, and normal mode draws a block caret.
+
+| Normal key | Does |
+| --- | --- |
+| `j` `k` | Down, Up |
+| `l` `→` | Tab: into the highlighted row |
+| `h` `←` | Shift-Tab: up a level, keeping the chip |
+| `x` | Backspace: a character, then the last chip once the field is empty, or a typed sigil's chip back into its text |
+| `yy` | Alt-Enter (`CopyAddress`): copy the row as `@host:target`, or an action level's `copy_text` |
+| `gg` `G` | first, last row, asking an action level first (`ActionKey::First`, `Last`) |
+| `i` `a` | insert at, after the caret |
+| `/` | clear the text after the chips and any action sigil, insert |
+| a sigil (`^ $ @ % : > & ?`) | insert, then type it |
+| Esc, `ctrl-[`, `q` | close |
+
+In insert, Esc and `ctrl-[` go to normal. Keys that have a plain twin dispatch the twin's action
+(`CommandPaletteView::dispatch_twin`), so the two cannot drift apart. The reducer is pure
+(`crates/zz-ui/src/command/palette_vim.rs`) and matches the typed character, falling back to the
+key on layouts without Latin letters, so `@` typed with Option still counts as a sigil. Sigils are
+`zz_client::place::is_sigil`.
+
+Normal mode puts the field in `InputState::set_normal_mode`: it reports that it takes no text, so
+macOS stops routing letters to a CJK input method first and Wayland turns text-input off, and it
+drops text that still arrives through the input handler. The field's actions still edit it, which
+is how `x` deletes.
 
 # Daemon prompts
 
