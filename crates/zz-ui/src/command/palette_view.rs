@@ -634,8 +634,7 @@ impl CommandPaletteView {
             .selected
             .and_then(|index| unified.rows.get(index))
             .and_then(|entry| match entry.action {
-                Some(PaletteAction::Target { host, target, .. }) => Some((host, Some(target))),
-                Some(PaletteAction::Host(host)) => Some((host, None)),
+                Some(PaletteAction::Target { host, target, .. }) => Some((host, target)),
                 _ => None,
             });
         let selected_place = self
@@ -673,7 +672,6 @@ impl CommandPaletteView {
             let backend = Rc::clone(&self.backend);
             unified.rebuild(
                 &self.last_input,
-                &history,
                 self.backend.tree(cx),
                 self.availability,
                 &|name| backend.command_shortcut(name, cx),
@@ -736,10 +734,8 @@ impl CommandPaletteView {
             unified.placeholder()
         };
         if let Some(node) = selected_node {
-            self.selected = unified.rows.iter().position(|entry| match entry.action {
-                Some(PaletteAction::Target { host, target, .. }) => node == (host, Some(target)),
-                Some(PaletteAction::Host(host)) => node == (host, None),
-                _ => false,
+            self.selected = unified.rows.iter().position(|entry| {
+                matches!(entry.action, Some(PaletteAction::Target { host, target, .. }) if node == (host, target))
             });
         }
         if let Some(place) = selected_place {
@@ -1071,24 +1067,6 @@ impl CommandPaletteView {
                     self.set_query(completed, window, cx);
                 }
             }
-            PaletteAction::Host(host) => {
-                let Some((connected, name)) = self
-                    .unified
-                    .as_ref()
-                    .and_then(|state| state.tree.host(host))
-                    .map(|host| (host.connected(), host.name.clone()))
-                else {
-                    return;
-                };
-                if !connected {
-                    self.backend.connect_host(host, cx);
-                }
-                if let Some(unified) = &mut self.unified {
-                    unified.mode = Some(PaletteMode::Target);
-                    unified.command = None;
-                }
-                self.set_query(format!("{name}:"), window, cx);
-            }
             PaletteAction::Target {
                 host,
                 target,
@@ -1239,7 +1217,6 @@ impl CommandPaletteView {
                         ChooseTreeTarget::Pane(_) => "focus pane",
                         ChooseTreeTarget::Client(_) => "choose",
                     }),
-                PaletteAction::Host(_) => "scope host",
                 PaletteAction::Command(_) | PaletteAction::History(_) => "run command",
                 PaletteAction::Completion(_) => "complete",
                 PaletteAction::Place(_) => "go",
@@ -1302,12 +1279,11 @@ impl CommandPaletteView {
                                     ("unified-palette-row", index),
                                     &entry.row,
                                     selected == Some(index),
-                                    move |_, window, cx| {
+                                    move |_, _, cx| {
                                         toggle_palette.update(cx, |palette, cx| {
                                             palette.selected = Some(index);
                                             palette.change_tree_expansion(
                                                 !expanded.unwrap_or(false),
-                                                window,
                                                 cx,
                                             );
                                         });
@@ -1707,7 +1683,6 @@ impl CommandPaletteView {
         }
         let unified = self.unified.as_ref()?;
         match unified.rows.get(self.selected?)?.action.as_ref()? {
-            PaletteAction::Host(host) => Some(format!("@{}", unified.tree.host(*host)?.name)),
             PaletteAction::Target { host, target, .. } => {
                 Some(format!("@{}:{target}", unified.tree.host(*host)?.name))
             }
@@ -1777,7 +1752,7 @@ impl CommandPaletteView {
             cx.stop_propagation();
             return;
         }
-        self.move_in_tree(false, window, cx);
+        self.move_in_tree(false, cx);
     }
 
     fn open_host(&mut self, _: &MoveRight, window: &mut Window, cx: &mut Context<Self>) {
@@ -1785,17 +1760,17 @@ impl CommandPaletteView {
             cx.stop_propagation();
             return;
         }
-        self.move_in_tree(true, window, cx);
+        self.move_in_tree(true, cx);
     }
 
-    fn move_in_tree(&mut self, expand: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn move_in_tree(&mut self, expand: bool, cx: &mut Context<Self>) {
         if !self.last_input.is_empty() {
             return;
         }
         let Some(unified) = &self.unified else {
             return;
         };
-        if self.window_chooser.is_none() && !unified.is_navigation_tree() {
+        if self.window_chooser.is_none() {
             return;
         }
         let Some(index) = self.selected else {
@@ -1806,7 +1781,7 @@ impl CommandPaletteView {
             .get(index)
             .is_some_and(|entry| entry.row.expanded == Some(!expand))
         {
-            self.change_tree_expansion(expand, window, cx);
+            self.change_tree_expansion(expand, cx);
         } else if let Some(next) = if expand {
             unified.child_index(index)
         } else {
@@ -1821,7 +1796,7 @@ impl CommandPaletteView {
         cx.stop_propagation();
     }
 
-    fn change_tree_expansion(&mut self, expand: bool, window: &mut Window, cx: &mut Context<Self>) {
+    fn change_tree_expansion(&mut self, expand: bool, cx: &mut Context<Self>) {
         if self.chooser_search.pending.is_some() || !self.last_input.is_empty() {
             return;
         }
@@ -1852,12 +1827,6 @@ impl CommandPaletteView {
                 },
                 cx,
             );
-        } else if unified.set_expanded(index, expand) {
-            self.navigation_engaged = true;
-            self.refresh(window, cx);
-            self.scroll_handle
-                .scroll_to_item(index, ScrollStrategy::Nearest);
-            cx.notify();
         }
     }
 
