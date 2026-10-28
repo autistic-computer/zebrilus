@@ -15,20 +15,10 @@ use crate::{
 
 use super::composer::{COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, composer_ground};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ComposerAction {
-    Send,
-    Queue,
-    Stop,
-}
-
-pub const fn composer_action(active_turn: bool, has_content: bool) -> ComposerAction {
-    match (active_turn, has_content) {
-        (false, _) => ComposerAction::Send,
-        (true, true) => ComposerAction::Queue,
-        (true, false) => ComposerAction::Stop,
-    }
-}
+pub use zz_client::agent_timeline::{
+    ComposerAction, composer_action, context_usage_fraction, context_usage_tooltip,
+    git_file_count_label,
+};
 
 /// The round send, queue or stop button at the composer's end, on the
 /// composer's ground so its fill shows against the pill.
@@ -93,14 +83,6 @@ pub fn agent_queue_chip(
     )
 }
 
-pub fn git_file_count_label(count: u32) -> String {
-    if count == 1 {
-        "1 file".to_owned()
-    } else {
-        format!("{count} files")
-    }
-}
-
 pub fn git_summary_footer(
     id: impl Into<ElementId>,
     branch: Option<SharedString>,
@@ -110,9 +92,11 @@ pub fn git_summary_footer(
     cx: &App,
 ) -> AnyElement {
     let files = git_file_count_label(changed_files);
-    let tooltip = format!(
-        "{}: {files}, +{additions} additions, -{deletions} deletions",
-        branch.as_deref().unwrap_or("Detached HEAD"),
+    let tooltip = zz_client::agent_timeline::git_summary_tooltip(
+        branch.as_deref(),
+        changed_files,
+        additions,
+        deletions,
     );
     h_flex()
         .id(id)
@@ -165,26 +149,6 @@ pub fn git_summary_footer(
 
 const CONTEXT_USAGE_RING_SIZE: f32 = 16.0;
 const CONTEXT_USAGE_STROKE_WIDTH: f32 = 2.0;
-
-#[allow(clippy::cast_precision_loss)]
-pub fn context_usage_fraction(used: u64, size: u64) -> f64 {
-    if size == 0 {
-        0.0
-    } else {
-        (used.min(size) as f64 / size as f64).clamp(0.0, 1.0)
-    }
-}
-
-pub fn context_usage_tooltip(used: u64, size: u64) -> String {
-    if size == 0 {
-        "Context window usage unavailable".to_owned()
-    } else {
-        format!(
-            "{used} of {size} context tokens used ({:.0}%)",
-            context_usage_fraction(used, size) * 100.0
-        )
-    }
-}
 
 #[allow(clippy::cast_possible_truncation)]
 pub fn context_usage_meter(

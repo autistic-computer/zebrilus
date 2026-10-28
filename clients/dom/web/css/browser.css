@@ -1,0 +1,59 @@
+.browser-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 6px;
+  box-shadow: inset 0 -1px var(--zz-divider);
+}
+
+.browser-cluster {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.browser-toolbar [data-zz="browser.button"] {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  --zz-icon-size: 14px;
+}
+
+.browser-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.browser-message {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--zz-bg);
+  --zz-icon-size: 26px;
+}
+
+.browser-title {
+  font-size: 16px;
+}
+
+.browser-message .reason {
+  max-width: 400px;
+  font-size: 12px;
+}
+
+.browser-open > span {
+  display: block;
+  line-height: 13px;
+}

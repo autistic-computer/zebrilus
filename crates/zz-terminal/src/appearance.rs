@@ -792,6 +792,29 @@ impl Default for TerminalAppearance {
 }
 
 impl TerminalAppearance {
+    #[must_use]
+    pub fn default_for(color_scheme: TerminalColorScheme) -> Self {
+        match color_scheme {
+            TerminalColorScheme::Dark => Self::default(),
+            TerminalColorScheme::Light => {
+                let foreground = Color::rgb(0x1f, 0x23, 0x29);
+                Self {
+                    color_scheme,
+                    foreground,
+                    background: Color::rgb(0xfb, 0xfb, 0xfc),
+                    cursor_color: Color::rgb(0x2f, 0x5f, 0xc4),
+                    selection_foreground: foreground,
+                    selection_background: AppearanceColor::rgba(0x3b, 0x6f, 0xd8, 0x40),
+                    search_match_color: AppearanceColor::rgba(0xe0, 0xab, 0x38, 0x80),
+                    search_current_color: AppearanceColor::rgba(0xf5, 0xa6, 0x23, 0xb3),
+                    link_color: Color::rgb(0x0a, 0x63, 0xc9),
+                    copy_cursor_color: AppearanceColor::rgba(0x3b, 0x6f, 0xd8, 0x59),
+                    ..Self::default()
+                }
+            }
+        }
+    }
+
     /// Validate all dimensions and bounded variable-length fields received over IPC.
     pub fn validate(&self) -> Result<(), AppearanceValidationError> {
         if self.font_families.is_empty() || self.font_families.len() > MAX_FONT_FAMILIES {
@@ -959,10 +982,7 @@ impl AppearanceLoad {
     /// Build a load result containing only built-in defaults for `color_scheme`.
     #[must_use]
     pub fn defaults_for(color_scheme: TerminalColorScheme) -> Self {
-        let appearance = TerminalAppearance {
-            color_scheme,
-            ..TerminalAppearance::default()
-        };
+        let appearance = TerminalAppearance::default_for(color_scheme);
         Self {
             appearance,
             provenance: AppearanceProvenance::default(),
@@ -2380,6 +2400,18 @@ fn hash_palette(palette: &[Color; 256]) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn light_defaults_put_dark_text_on_a_light_ground() {
+        let light = AppearanceLoad::defaults_for(TerminalColorScheme::Light).appearance;
+        let dark = AppearanceLoad::defaults_for(TerminalColorScheme::Dark).appearance;
+        let level = |color: Color| u32::from(color.r) + u32::from(color.g) + u32::from(color.b);
+        assert_eq!(light.color_scheme, TerminalColorScheme::Light);
+        assert!(level(light.background) > level(light.foreground));
+        assert!(level(dark.background) < level(dark.foreground));
+        assert_eq!(dark, TerminalAppearance::default());
+        assert_eq!(light.palette, dark.palette);
+    }
+
     use super::*;
 
     #[test]

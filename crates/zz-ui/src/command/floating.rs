@@ -14,12 +14,11 @@ use crate::{
     v_flex,
 };
 
-const LIST_PADDING: Pixels = px(4.0);
+const LIST_PADDING: Pixels = px(zz_client::MENU_LIST_PADDING);
 const ROW_PADDING: Pixels = px(8.0);
-const LINE_HEIGHT: Pixels = px(16.0);
-const TITLE_HEIGHT: Pixels = px(21.0);
-const SEPARATOR_HEIGHT: Pixels = px(5.0);
-const WINDOW_MARGIN: Pixels = px(8.0);
+const LINE_HEIGHT: Pixels = px(zz_client::MENU_LINE_HEIGHT);
+const TITLE_HEIGHT: Pixels = px(zz_client::MENU_TITLE_HEIGHT);
+const WINDOW_MARGIN: Pixels = px(zz_client::MENU_WINDOW_MARGIN);
 
 #[derive(Debug, Default)]
 pub struct MenuHits {
@@ -235,46 +234,36 @@ fn menu_title(title: &str, inks: &MenuInks, cx: &App) -> Div {
 }
 
 fn menu_row_height(state: &MenuState, titled: bool, room: Size<Pixels>, cx: &App) -> Pixels {
-    let theme = cx.theme();
     let natural = if CoarsePointer::get(cx) {
-        px(TOUCH_TARGET)
+        TOUCH_TARGET
     } else {
-        px(26.0)
+        26.0
     };
-    let rows = state.items.iter().flatten().count();
-    if rows == 0 {
-        return natural;
-    }
-    let gaps = if theme.inset_rows() {
-        px(2.0) * state.items.len().saturating_sub(1)
-    } else {
-        Pixels::ZERO
-    };
-    let fixed = WINDOW_MARGIN * 2.0
-        + LIST_PADDING * 2.0
-        + if titled { TITLE_HEIGHT } else { Pixels::ZERO }
-        + SEPARATOR_HEIGHT * (state.items.len() - rows)
-        + gaps;
-    let fit = (room.height - fixed) / f32::from(u16::try_from(rows).unwrap_or(u16::MAX));
-    natural.min(fit.floor()).max(LINE_HEIGHT)
+    px(zz_client::menu_row_height(
+        state,
+        titled,
+        f32::from(room.height),
+        natural,
+        cx.theme().inset_rows(),
+    ))
 }
 
 #[must_use]
 pub fn menu_hit_cell(state: &MenuState, hits: &MenuHits, at: Point<Pixels>) -> (u16, u16) {
-    let column = state.left.saturating_add(1);
-    if hits.rows.contains(&at) {
-        let index = hits
-            .tops
-            .iter()
-            .rposition(|top| *top <= at.y)
-            .unwrap_or_default();
-        let index = u16::try_from(index).unwrap_or(u16::MAX);
-        return (column, state.top.saturating_add(1).saturating_add(index));
-    }
-    if hits.surface.contains(&at) {
-        return (column, state.top);
-    }
-    (u16::MAX, 0)
+    let rect = |bounds: Bounds<Pixels>| zz_client::floating::PixelRect {
+        x: f32::from(bounds.origin.x),
+        y: f32::from(bounds.origin.y),
+        width: f32::from(bounds.size.width),
+        height: f32::from(bounds.size.height),
+    };
+    let tops: Vec<f32> = hits.tops.iter().map(|top| f32::from(*top)).collect();
+    zz_client::menu_hit_cell(
+        state,
+        rect(hits.surface),
+        rect(hits.rows),
+        &tops,
+        (f32::from(at.x), f32::from(at.y)),
+    )
 }
 
 pub fn confirm_prompt(
@@ -295,15 +284,17 @@ pub fn confirm_prompt(
 }
 
 pub fn confirm_accepts(confirm_key: u8, default_yes: bool, keystroke: &Keystroke) -> bool {
-    if keystroke.key == "enter" {
-        return default_yes && !keystroke.modifiers.platform && !keystroke.modifiers.function;
-    }
-    if keystroke.modifiers.control || keystroke.modifiers.platform || keystroke.modifiers.function {
-        return false;
-    }
-    keystroke.key_char.as_deref().is_some_and(|value| {
-        value.len() == 1 && value.as_bytes().first().copied() == Some(confirm_key)
-    })
+    zz_client::confirm_accepts(
+        confirm_key,
+        default_yes,
+        &keystroke.key,
+        keystroke.key_char.as_deref(),
+        (
+            keystroke.modifiers.control,
+            keystroke.modifiers.platform,
+            keystroke.modifiers.function,
+        ),
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -327,25 +318,21 @@ pub fn floating_frame(
     canvas: Size<Pixels>,
     scale: f32,
 ) -> FloatingFrame {
-    let cell_width = px(f32::from(u16::try_from(cell_width_px).unwrap_or(u16::MAX)) / scale);
-    let cell_height = px(f32::from(u16::try_from(cell_height_px).unwrap_or(u16::MAX)) / scale);
-    let grid_width = cell_width * usize::from(client_columns);
-    let grid_height = cell_height * usize::from(client_rows);
-    let grid_left = ((canvas.width - grid_width) / 2.0).max(Pixels::ZERO);
-    let grid_top = ((canvas.height - grid_height) / 2.0).max(Pixels::ZERO);
+    let frame = zz_client::floating::overlay_frame(
+        (left, top, width, height),
+        (client_columns, client_rows),
+        (cell_width_px, cell_height_px),
+        bordered,
+        (f32::from(canvas.width), f32::from(canvas.height)),
+        scale,
+    );
     FloatingFrame {
         bounds: Bounds::new(
-            point(
-                origin.x + grid_left + cell_width * usize::from(left),
-                origin.y + grid_top + cell_height * usize::from(top),
-            ),
-            size(
-                cell_width * usize::from(width),
-                cell_height * usize::from(height),
-            ),
+            point(origin.x + px(frame.bounds.x), origin.y + px(frame.bounds.y)),
+            size(px(frame.bounds.width), px(frame.bounds.height)),
         ),
-        inset_x: if bordered { cell_width } else { Pixels::ZERO },
-        inset_y: if bordered { cell_height } else { Pixels::ZERO },
+        inset_x: px(frame.inset_x),
+        inset_y: px(frame.inset_y),
     }
 }
 

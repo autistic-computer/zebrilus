@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use web_time::{Duration, Instant};
-use zz_client::floating::{FloatCells, FloatPlace};
+use zz_client::floating::{FloatCells, FloatPlace, PipGeometry};
 use zz_gpui::{
     AnyElement, App, Bounds, ClickEvent, ElementId, GlassMaterial, Hsla, IntoElement,
     ParentElement as _, Pixels, Point, Size, Styled as _, Window, div, point, prelude::*, px,
@@ -11,7 +11,7 @@ use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
 use crate::{ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, roles};
 
 const GROUP: &str = "pip";
-const MARGIN: f32 = 12.0;
+const MARGIN: f32 = zz_client::floating::PIP_MARGIN;
 const FROST: f32 = 24.0;
 const STACK_DEPTH: usize = 3;
 const PEEK: f32 = 60.0;
@@ -74,148 +74,51 @@ pub struct PipLayout {
 }
 
 impl PipLayout {
-    fn bordered(&self) -> bool {
-        self.lines != PaneBorderLines::None
-    }
-
-    #[must_use]
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "window cell offsets are far below f32's exact integer range"
-    )]
-    pub fn size(&self, cells: FloatCells) -> Size<Pixels> {
-        let (width, height) = (
-            self.cell.width * f32::from(cells.sx),
-            self.cell.height * f32::from(cells.sy),
-        );
-        if self.bordered() {
-            zz_gpui::size(
-                width + self.cell.width * 2.0,
-                height + self.header.max(self.cell.height) + self.cell.height,
-            )
-        } else {
-            zz_gpui::size(width, height)
+    fn geometry(&self) -> PipGeometry {
+        PipGeometry {
+            window: self.window,
+            cell: (f32::from(self.cell.width), f32::from(self.cell.height)),
+            canvas: (f32::from(self.canvas.width), f32::from(self.canvas.height)),
+            lines: self.lines,
+            header: f32::from(self.header),
         }
     }
 
     #[must_use]
-    #[allow(
-        clippy::cast_precision_loss,
-        reason = "window cell offsets are far below f32's exact integer range"
-    )]
+    pub fn size(&self, cells: FloatCells) -> Size<Pixels> {
+        let (width, height) = self.geometry().size(cells);
+        zz_gpui::size(px(width), px(height))
+    }
+
+    #[must_use]
     pub fn frame(&self, cells: FloatCells) -> Bounds<Pixels> {
-        let size = self.size(cells);
-        let area = self.area();
-        let pad = i32::from(self.bordered());
-        let axis = |offset: i32, extent: u16, window: u16, frame: Pixels, canvas: Pixels, cell| {
-            if window == 0 {
-                return cell * (offset - pad) as f32;
-            }
-            let free = canvas - frame;
-            if free <= Pixels::ZERO {
-                return Pixels::ZERO;
-            }
-            let room = f32::from(window) - f32::from(extent) - 2.0 * pad as f32;
-            let along = if room > 0.0 {
-                ((offset - pad) as f32 / room).clamp(0.0, 1.0)
-            } else {
-                0.5
-            };
-            let margin = px(MARGIN).min(free / 2.0);
-            margin + (free - margin * 2.0) * along
-        };
+        let frame = self.geometry().frame(cells);
         Bounds::new(
-            point(
-                axis(
-                    cells.xoff,
-                    cells.sx,
-                    self.window.0,
-                    size.width,
-                    area.width,
-                    self.cell.width,
-                ),
-                axis(
-                    cells.yoff,
-                    cells.sy,
-                    self.window.1,
-                    size.height,
-                    area.height,
-                    self.cell.height,
-                ),
-            ),
-            size,
+            point(px(frame.x), px(frame.y)),
+            zz_gpui::size(px(frame.width), px(frame.height)),
         )
     }
 
     #[must_use]
-    #[allow(
-        clippy::cast_possible_truncation,
-        clippy::cast_sign_loss,
-        reason = "the cell count is floored and clamped to u16 before the cast"
-    )]
     pub fn max_cells(&self) -> (u16, u16) {
-        let area = self.area();
-        let chrome = self.size(FloatCells {
-            xoff: 0,
-            yoff: 0,
-            sx: 0,
-            sy: 0,
-        });
-        let pad = if self.bordered() { 2 } else { 0 };
-        let fit = |room: Pixels, chrome: Pixels, cell: Pixels, window: u16| {
-            let fits = if cell > Pixels::ZERO {
-                ((room - px(MARGIN) * 2.0 - chrome) / cell)
-                    .floor()
-                    .clamp(1.0, f32::from(u16::MAX)) as u16
-            } else {
-                u16::MAX
-            };
-            if window == 0 {
-                fits
-            } else {
-                fits.min(window.saturating_sub(pad).max(1))
-            }
-        };
-        (
-            fit(area.width, chrome.width, self.cell.width, self.window.0),
-            fit(area.height, chrome.height, self.cell.height, self.window.1),
-        )
+        self.geometry().max_cells()
     }
 
     /// The height, borders included, of the tallest float that fits: what Float
     /// asks `break-pane -y` for.
     #[must_use]
     pub fn fill_rows(&self) -> u16 {
-        self.max_cells().1 + if self.bordered() { 2 } else { 0 }
+        self.geometry().fill_rows()
     }
 
     fn area(&self) -> Size<Pixels> {
-        if self.canvas.width > Pixels::ZERO && self.canvas.height > Pixels::ZERO {
-            self.canvas
-        } else {
-            zz_gpui::size(
-                self.cell.width * f32::from(self.window.0),
-                self.cell.height * f32::from(self.window.1),
-            )
-        }
+        let (width, height) = self.geometry().area();
+        zz_gpui::size(px(width), px(height))
     }
 
     fn place_at(&self, centre: Point<Pixels>) -> FloatPlace {
-        let area = self.area();
-        let fraction = |at: Pixels, extent: Pixels, cells: u16| {
-            if extent > Pixels::ZERO {
-                at / extent * f32::from(cells)
-            } else {
-                0.0
-            }
-        };
-        FloatPlace::zone(
-            (
-                fraction(centre.x, area.width, self.window.0),
-                fraction(centre.y, area.height, self.window.1),
-            ),
-            self.window,
-        )
+        self.geometry()
+            .place_at((f32::from(centre.x), f32::from(centre.y)))
     }
 }
 

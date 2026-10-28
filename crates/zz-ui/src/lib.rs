@@ -51,6 +51,7 @@ pub mod shell;
 pub mod target;
 pub mod terminal;
 pub mod terminal_images;
+pub mod theme_css;
 pub mod which_key;
 
 pub use program::Assets;

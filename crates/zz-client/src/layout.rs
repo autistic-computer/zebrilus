@@ -234,6 +234,37 @@ pub fn same_arrangement(left: &LayoutNode, right: &LayoutNode) -> bool {
     }
 }
 
+/// A split's ratio as the protocol's fixed point, for `ResizeSplit`.
+#[must_use]
+#[allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the clamped ratio is converted to a bounded protocol fixed-point value"
+)]
+pub fn split_ratio_basis(ratio: f32) -> u16 {
+    (ratio.clamp(0.0, 1.0) * f32::from(zz_protocol::SPLIT_RATIO_BASIS)).round() as u16
+}
+
+/// Splits `pane` along `axis` into a pane picker that asks what the new
+/// pane should be.
+#[must_use]
+pub fn picker_split_command(pane: PaneId, axis: Axis) -> CommandInvocation {
+    CommandInvocation::new(
+        "split-window",
+        [
+            "--kind".to_owned(),
+            "picker".to_owned(),
+            match axis {
+                Axis::Horizontal => "-h",
+                Axis::Vertical => "-v",
+            }
+            .to_owned(),
+            "-t".to_owned(),
+            pane.to_string(),
+        ],
+    )
+}
+
 pub fn pane_box(slot: PaneRect, divider: f32) -> PaneRect {
     let left = if slot.x > 0.0 { divider } else { 0.0 };
     let top = if slot.y > 0.0 { divider } else { 0.0 };

@@ -6,6 +6,7 @@ use zz_client::{
         complete_command, completion_insertion,
     },
     gui_actions::GuiAction,
+    palette::has_command_arguments,
     place::{ActionKind, parse},
     recents::now_secs,
 };
@@ -2267,12 +2268,6 @@ fn byte_index_for_char(value: &str, cursor: u32) -> Option<usize> {
         .nth(cursor)
         .map(|(index, _)| index)
         .or_else(|| (cursor == value.chars().count()).then_some(value.len()))
-}
-
-fn has_command_arguments(input: &str) -> bool {
-    input
-        .find(char::is_whitespace)
-        .is_some_and(|index| zz_protocol::catalog_command_spec(&input[..index]).is_some())
 }
 
 #[path = "palette_view_places.rs"]

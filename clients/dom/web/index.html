@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zz</title>
+<link rel="stylesheet" href="kit/zz.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/sidebar.css">
+<link rel="stylesheet" href="css/workspace.css">
+<link rel="stylesheet" href="css/terminal.css">
+<link rel="stylesheet" href="css/overlays.css">
+<link rel="stylesheet" href="css/palette.css">
+<link rel="stylesheet" href="css/settings.css">
+<link rel="stylesheet" href="css/agent.css">
+<link rel="stylesheet" href="css/browser.css">
+<script src="kit/kit.js"></script>
+</head>
+<body>
+<div class="zz-window app" data-zz="window">
+  <nav data-zz="sidebar">
+    <div class="zz-strip">
+      <span data-zz="badge" data-tone="primary" id="prefix" hidden>prefix</span>
+      <span class="grow"></span>
+      <button data-zz="chrome.button" id="toggle-sidebar" title="Toggle sidebar"><i data-icon="panel-left"></i></button>
+    </div>
+    <div id="tree"></div>
+    <span class="grow"></span>
+    <div class="footer">
+      <button data-zz="chrome.button" id="open-settings" title="Settings"><i data-icon="settings"></i></button>
+      <span class="grow zz-muted" id="status">Connecting…</span>
+      <button data-zz="chrome.button" id="flat-list" title="Show the flat window list"><i data-icon="list"></i></button>
+    </div>
+  </nav>
+  <main id="workspace"></main>
+</div>
+<div id="overlays"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc};
 
 use zz_client::{
     MenuBox, MenuKeyResult, MenuPointerKind,
-    floating::{FloatCells, float_pixels, float_title},
+    floating::{FloatCells, float_title},
     resolve_menu_mouse,
 };
 use zz_gpui::{
@@ -180,12 +180,9 @@ impl AppShell {
             );
         }
         let state = core.confirm()?;
-        let width = px((zz_protocol::display_width(&state.prompt)
-            .saturating_mul(8)
-            .saturating_add(32)) as f32)
-        .max(px(180.0))
-        .min((canvas.width - px(24.0)).max(px(180.0)));
-        let height = px(48.0);
+        let (width, height) =
+            zz_client::floating::confirm_size(&state.prompt, f32::from(canvas.width));
+        let (width, height) = (px(width), px(height));
         Some(
             div()
                 .absolute()
@@ -659,48 +656,25 @@ pub(super) struct FloatPlacement {
     pub content: Bounds<Pixels>,
 }
 
-#[allow(
-    clippy::cast_precision_loss,
-    reason = "window cell offsets are far below f32's exact integer range"
-)]
 pub(super) fn float_placement(
     float: &FloatingPaneSnapshot,
     cell: (f32, f32),
     canvas: zz_gpui::Size<Pixels>,
 ) -> Option<FloatPlacement> {
-    let bordered = float.border_lines != PaneBorderLines::None;
-    if canvas.width > Pixels::ZERO
-        && canvas.height > Pixels::ZERO
-        && float_pixels(
-            FloatCells::from(float),
-            bordered,
-            cell,
-            (f32::from(canvas.width), f32::from(canvas.height)),
-        )
-        .is_none()
-    {
-        return None;
-    }
-    let pad = i32::from(bordered);
-    let rect = |x: i32, y: i32, width: i32, height: i32| {
+    let bounds = |rect: zz_client::floating::PixelRect| {
         Bounds::new(
-            point(px(x as f32 * cell.0), px(y as f32 * cell.1)),
-            size(px(width as f32 * cell.0), px(height as f32 * cell.1)),
+            point(px(rect.x), px(rect.y)),
+            size(px(rect.width), px(rect.height)),
         )
     };
+    let (frame, content) = zz_client::floating::float_placement(
+        float,
+        cell,
+        (f32::from(canvas.width), f32::from(canvas.height)),
+    )?;
     Some(FloatPlacement {
-        frame: rect(
-            float.xoff - pad,
-            float.yoff - pad,
-            i32::from(float.sx) + 2 * pad,
-            i32::from(float.sy) + 2 * pad,
-        ),
-        content: rect(
-            float.xoff,
-            float.yoff,
-            i32::from(float.sx),
-            i32::from(float.sy),
-        ),
+        frame: bounds(frame),
+        content: bounds(content),
     })
 }
 

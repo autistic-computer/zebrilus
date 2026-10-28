@@ -6,6 +6,7 @@ use std::{
 };
 
 use zz_client::agent_completion::AgentCommand;
+use zz_client::agent_lens::{AgentCursor, MAX_AGENT_HISTORY_BYTES, MAX_AGENT_HISTORY_ITEMS};
 use zz_client::{
     ClientCore, CoreEvent, Outbound,
     scrollback::{DeferredBackfill, HISTORY_BACKFILL_QUIET, HistoryFollowUp, HistoryPacer},
@@ -29,167 +30,6 @@ fn history_core() -> ClientCore {
     let mut core = ClientCore::new();
     core.retain_history();
     core
-}
-
-const MAX_AGENT_HISTORY_BYTES: usize = 32 * 1024 * 1024;
-const MAX_AGENT_HISTORY_ITEMS: usize = 10_000;
-
-#[derive(Default)]
-struct AgentCursor {
-    last_seq: u64,
-    replay_pending: bool,
-    bytes: usize,
-    history_supported: bool,
-    session_load_supported: bool,
-    session_delete_supported: bool,
-    verbs_supported: bool,
-    watch: bool,
-    commands: Arc<[AgentCommand]>,
-    command_session_reset: bool,
-}
-
-#[derive(serde::Deserialize)]
-struct AgentEnvelope<'a> {
-    seq: u64,
-    #[serde(borrow)]
-    item: &'a str,
-    #[serde(default)]
-    restoring: bool,
-    #[serde(default)]
-    capabilities: AgentCapabilities,
-    #[serde(default)]
-    update: Option<AgentCommandUpdate>,
-    #[serde(default)]
-    replay: Vec<AgentCommandUpdate>,
-}
-
-#[derive(serde::Deserialize)]
-struct AgentCommandUpdate {
-    #[serde(default, rename = "sessionUpdate")]
-    kind: serde_json::Value,
-    #[serde(default, rename = "availableCommands")]
-    commands: serde_json::Value,
-}
-
-#[derive(Default, serde::Deserialize)]
-struct AgentCapabilities {
-    #[serde(default)]
-    list: bool,
-    #[serde(default)]
-    load: bool,
-    #[serde(default)]
-    delete: bool,
-    #[serde(default)]
-    verbs: bool,
-    #[serde(default)]
-    watch: bool,
-}
-
-impl AgentCursor {
-    fn apply(
-        &mut self,
-        journal: &mut Vec<(u64, Vec<u8>)>,
-        first_seq: u64,
-        items: &[Vec<u8>],
-    ) -> (Option<u64>, bool) {
-        let mut accepted = false;
-        let mut invalid = false;
-        for (offset, bytes) in items.iter().enumerate() {
-            let positional = first_seq.saturating_add(offset as u64);
-            let Ok(item) = serde_json::from_slice::<AgentEnvelope<'_>>(bytes) else {
-                if positional > self.last_seq.saturating_add(1) {
-                    let request = (!self.replay_pending).then_some(self.last_seq);
-                    self.replay_pending = true;
-                    return (request, true);
-                }
-                self.last_seq = self.last_seq.max(positional);
-                invalid = true;
-                continue;
-            };
-            if item.seq <= self.last_seq {
-                continue;
-            }
-            if item.item == "sessionReset" && item.restoring {
-                self.last_seq = item.seq.saturating_sub(1);
-            }
-            if item.seq > self.last_seq.saturating_add(1) {
-                let request = (!self.replay_pending).then_some(self.last_seq);
-                self.replay_pending = true;
-                return (request, invalid);
-            }
-            if item.item == "ready" {
-                self.history_supported = item.capabilities.list;
-                self.session_load_supported = item.capabilities.load;
-                self.session_delete_supported = item.capabilities.delete;
-                self.verbs_supported = item.capabilities.verbs;
-                self.watch = item.capabilities.watch;
-            }
-            if item.item == "sessionReset" {
-                journal.clear();
-                self.bytes = 0;
-                self.commands = Arc::from([]);
-                self.command_session_reset = true;
-            } else if item.item == "sessionReady" {
-                self.command_session_reset = false;
-            } else if item.item == "sessionSwitched" {
-                if !self.command_session_reset {
-                    self.commands = Arc::from([]);
-                }
-                self.command_session_reset = false;
-            }
-            for update in item.update.iter().chain(&item.replay) {
-                if update.kind.as_str() == Some("available_commands_update") {
-                    self.commands = update
-                        .commands
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .take(zz_protocol::MAX_AGENT_AVAILABLE_COMMANDS)
-                        .filter_map(|command| {
-                            Some(AgentCommand {
-                                name: command.get("name")?.as_str()?.to_owned(),
-                                description: command
-                                    .get("description")
-                                    .and_then(serde_json::Value::as_str)
-                                    .unwrap_or_default()
-                                    .to_owned(),
-                                input_hint: command
-                                    .pointer("/input/hint")
-                                    .and_then(serde_json::Value::as_str)
-                                    .map(ToOwned::to_owned),
-                            })
-                        })
-                        .collect::<Vec<_>>()
-                        .into();
-                }
-            }
-            journal.push((item.seq, bytes.clone()));
-            self.bytes = self.bytes.saturating_add(bytes.len());
-            self.last_seq = item.seq;
-            accepted = true;
-        }
-        if accepted {
-            self.replay_pending = false;
-        }
-        (None, invalid)
-    }
-
-    fn trim(
-        &mut self,
-        journal: &mut Vec<(u64, Vec<u8>)>,
-        byte_limit: usize,
-        item_limit: usize,
-    ) -> bool {
-        let mut remove = 0;
-        while remove < journal.len()
-            && (self.bytes > byte_limit || journal.len() - remove > item_limit)
-        {
-            self.bytes = self.bytes.saturating_sub(journal[remove].1.len());
-            remove += 1;
-        }
-        journal.drain(..remove);
-        remove > 0
-    }
 }
 
 #[cfg(target_os = "ios")]
@@ -1098,11 +938,7 @@ impl Connection {
                 CoreEvent::Clipboard { text, .. } => {
                     cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(text.clone()));
                 }
-                CoreEvent::OpenUri { uri, .. }
-                    if uri.starts_with("https://")
-                        || uri.starts_with("http://")
-                        || uri.starts_with("mailto:") =>
-                {
+                CoreEvent::OpenUri { uri, .. } if zz_client::terminal_view::openable_uri(uri) => {
                     cx.open_url(uri);
                 }
                 CoreEvent::OpenUri { uri, .. } => {
@@ -1384,9 +1220,7 @@ impl Connection {
     }
 
     fn request_agent_replay(&mut self, pane: PaneId, cx: &mut Context<Self>) {
-        let cursor = self.agent_cursors.entry(pane).or_default();
-        cursor.replay_pending = true;
-        let from_seq = cursor.last_seq;
+        let from_seq = self.agent_cursors.entry(pane).or_default().replay_from();
         self.send(ProtocolMessage::AgentReplay { pane, from_seq }, cx);
     }
 
@@ -1802,7 +1636,7 @@ mod tests {
     };
 
     use super::{
-        AgentCursor, ProtocolMessage,
+        ProtocolMessage,
         inbox::{self, SocketEvent},
     };
 
@@ -1844,59 +1678,6 @@ mod tests {
         ));
     }
 
-    fn reset(seq: u64, restoring: bool) -> Vec<u8> {
-        format!(r#"{{"seq":{seq},"item":"sessionReset","restoring":{restoring}}}"#).into_bytes()
-    }
-
-    #[test]
-    fn agent_commands_survive_history_trimming_and_follow_session_replays() {
-        let catalog = |name| {
-            serde_json::json!({
-                "sessionUpdate":"available_commands_update",
-                "availableCommands":[{"name":name,"description":"Review changes","input":{"hint":"branch or files"}}]
-            })
-        };
-        let message = |seq, update| {
-            serde_json::to_vec(&serde_json::json!({"seq":seq,"item":"update","update":update}))
-                .unwrap()
-        };
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        let initial = message(1, catalog("review"));
-        assert_eq!(
-            cursor.apply(&mut journal, 1, std::slice::from_ref(&initial)),
-            (None, false)
-        );
-        assert_eq!(cursor.commands[0].name, "review");
-        assert_eq!(
-            cursor.commands[0].input_hint.as_deref(),
-            Some("branch or files")
-        );
-        assert!(cursor.trim(&mut journal, 0, 0));
-        assert!(journal.is_empty());
-        assert_eq!(cursor.commands[0].name, "review");
-        cursor.apply(&mut journal, 2, &[reset(2, true)]);
-        assert!(cursor.commands.is_empty());
-        cursor.apply(&mut journal, 3, &[message(3, catalog("explain"))]);
-        cursor.apply(
-            &mut journal,
-            4,
-            &[br#"{"seq":4,"item":"sessionSwitched","replay":[]}"#.to_vec()],
-        );
-        assert_eq!(cursor.commands[0].name, "explain");
-        cursor.apply(&mut journal, 1, &[initial]);
-        assert_eq!(cursor.commands[0].name, "explain");
-        let switched = serde_json::to_vec(
-            &serde_json::json!({"seq":5,"item":"sessionSwitched","replay":[catalog("test")]}),
-        )
-        .unwrap();
-        cursor.apply(&mut journal, 5, &[switched]);
-        assert_eq!(cursor.commands.len(), 1);
-        assert_eq!(cursor.commands[0].name, "test");
-        cursor.apply(&mut journal, 6, &[message(6, serde_json::json!({"sessionUpdate":"available_commands_update","availableCommands":[]}))]);
-        assert!(cursor.commands.is_empty());
-    }
-
     fn ready<T>(future: impl Future<Output = T>) -> T {
         let mut future = pin!(future);
         match future
@@ -1906,157 +1687,6 @@ mod tests {
             Poll::Ready(value) => value,
             Poll::Pending => panic!("expected a ready queue operation"),
         }
-    }
-
-    #[test]
-    fn agent_replay_accepts_sequence_one_and_deduplicates_overlap() {
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        assert_eq!(
-            cursor.apply(&mut journal, 1, &[blob(1), blob(2)]),
-            (None, false)
-        );
-        assert_eq!(
-            cursor.apply(&mut journal, 1, &[blob(1), blob(2), blob(3)]),
-            (None, false)
-        );
-        assert_eq!(
-            journal.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
-            [1, 2, 3]
-        );
-        assert_eq!(cursor.last_seq, 3);
-        assert_eq!(
-            cursor.bytes,
-            journal.iter().map(|(_, bytes)| bytes.len()).sum::<usize>()
-        );
-    }
-
-    #[test]
-    fn agent_gap_requests_one_inclusive_replay_until_it_closes() {
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        cursor.apply(&mut journal, 1, &[blob(1)]);
-        assert_eq!(cursor.apply(&mut journal, 4, &[blob(4)]), (Some(1), false));
-        assert_eq!(cursor.apply(&mut journal, 5, &[blob(5)]), (None, false));
-        assert_eq!(cursor.apply(&mut journal, 1, &[blob(1)]), (None, false));
-        assert!(cursor.replay_pending);
-        assert_eq!(
-            cursor.apply(&mut journal, 1, &[blob(1), blob(2), blob(3), blob(4)]),
-            (None, false)
-        );
-        assert!(!cursor.replay_pending);
-        assert_eq!(cursor.last_seq, 4);
-        assert_eq!(cursor.apply(&mut journal, 7, &[blob(7)]), (Some(4), false));
-    }
-
-    #[test]
-    fn evicted_agent_history_accepts_a_restoring_reset_at_a_new_sequence() {
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        cursor.apply(&mut journal, 1, &[blob(1), blob(2)]);
-        assert_eq!(
-            cursor.apply(&mut journal, 40, &[reset(40, true), blob(41)]),
-            (None, false)
-        );
-        assert_eq!(
-            journal.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
-            [40, 41]
-        );
-        assert_eq!(cursor.last_seq, 41);
-        assert!(!cursor.replay_pending);
-        assert_eq!(
-            cursor.bytes,
-            journal.iter().map(|(_, bytes)| bytes.len()).sum::<usize>()
-        );
-        assert_eq!(
-            cursor.apply(&mut journal, 80, &[reset(80, false)]),
-            (Some(41), false)
-        );
-    }
-
-    #[test]
-    fn session_switch_completion_keeps_streamed_history() {
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        let switched = br#"{"seq":3,"item":"sessionSwitched","replay":[]}"#.to_vec();
-        cursor.apply(&mut journal, 1, &[reset(1, true), blob(2), switched]);
-        assert_eq!(
-            journal.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
-            [1, 2, 3]
-        );
-    }
-
-    #[test]
-    fn agent_capabilities_survive_session_reset_and_transcript_eviction() {
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        assert!(!cursor.history_supported);
-        assert!(!cursor.session_load_supported);
-        assert!(!cursor.session_delete_supported);
-        let ready =
-            br#"{"seq":1,"item":"ready","capabilities":{"list":true,"load":true,"delete":true}}"#
-                .to_vec();
-        assert_eq!(
-            cursor.apply(&mut journal, 1, &[ready.clone(), reset(2, false), blob(3)]),
-            (None, false)
-        );
-        assert!(cursor.history_supported);
-        assert!(cursor.session_load_supported);
-        assert!(cursor.session_delete_supported);
-        assert_eq!(journal[0].0, 2);
-        cursor.trim(&mut journal, 0, 0);
-        assert!(cursor.history_supported);
-        assert!(cursor.session_load_supported);
-        assert!(cursor.session_delete_supported);
-        assert!(journal.is_empty());
-        let unsupported = br#"{"seq":4,"item":"ready","capabilities":{"list":false}}"#.to_vec();
-        cursor.apply(&mut journal, 4, &[unsupported]);
-        cursor.apply(&mut journal, 1, &[ready]);
-        assert!(!cursor.history_supported);
-        assert!(!cursor.session_load_supported);
-        assert!(!cursor.session_delete_supported);
-    }
-
-    #[test]
-    fn agent_history_limits_bytes_and_items_without_rewinding_replay() {
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        cursor.apply(&mut journal, 1, &[blob(1), blob(2), blob(3)]);
-        let limit = blob(2).len() + blob(3).len();
-        assert!(cursor.trim(&mut journal, limit, 10));
-        assert_eq!(
-            journal.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
-            [2, 3]
-        );
-        assert_eq!(cursor.bytes, limit);
-        assert_eq!(cursor.last_seq, 3);
-        assert!(cursor.trim(&mut journal, limit, 1));
-        assert_eq!(journal[0].0, 3);
-        assert_eq!(
-            cursor.apply(&mut journal, 3, &[blob(3), blob(4)]),
-            (None, false)
-        );
-        assert_eq!(
-            journal.iter().map(|(seq, _)| *seq).collect::<Vec<_>>(),
-            [3, 4]
-        );
-    }
-
-    #[test]
-    fn invalid_agent_items_do_not_skip_an_unseen_gap() {
-        let mut cursor = AgentCursor::default();
-        let mut journal = Vec::new();
-        assert_eq!(
-            cursor.apply(&mut journal, 3, &[b"invalid".to_vec()]),
-            (Some(0), true)
-        );
-        assert_eq!(cursor.last_seq, 0);
-        assert_eq!(
-            cursor.apply(&mut journal, 1, &[b"invalid".to_vec(), blob(2)]),
-            (None, true)
-        );
-        assert_eq!(cursor.last_seq, 2);
-        assert_eq!(journal[0].0, 2);
     }
 
     #[test]

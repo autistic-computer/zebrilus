@@ -7,6 +7,10 @@ use zz_client::{
         LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
     },
     scrollback::RetainedTerminalViewport,
+    terminal_view::{
+        PointerGrid, accumulate_scroll, mode_text as terminal_mode_text, pasted_image_number,
+        presented_uri, search_key_action, status_text as terminal_status_text, terminal_shortcut,
+    },
 };
 use zz_gpui::{
     AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, Context, Corners, ElementInputHandler,
@@ -19,8 +23,8 @@ use zz_protocol::{InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
     AppearanceConfigKey, AppearanceSource, KeyAction, KeyCode, KeyInput, LocalColors,
     PointerCellEvent, SearchCase, SearchDirection, SearchMode, SearchQuery, SearchStatus,
-    SessionStatus, TerminalAppearance, TerminalMode, TerminalMouseButton, TerminalMouseInput,
-    TerminalMousePhase, TerminalPalette, TerminalViewAction, TerminalViewport,
+    TerminalAppearance, TerminalMode, TerminalMouseButton, TerminalMouseInput, TerminalMousePhase,
+    TerminalPalette, TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
     ActiveTheme, IconName,
@@ -830,34 +834,24 @@ impl TerminalPane {
         button: Option<TerminalMouseButton>,
         count: usize,
     ) -> TerminalMouseInput {
-        let x = f32::from(position.x - self.bounds.origin.x)
-            .clamp(0., f32::from(self.bounds.size.width));
-        let y = f32::from(position.y - self.bounds.origin.y)
-            .clamp(0., f32::from(self.bounds.size.height));
-        let column = (x / f32::from(self.cell_width)) as u16;
-        let row =
-            ((y - f32::from(self.content_offset)).max(0.) / f32::from(self.line_height)) as u16;
-        TerminalMouseInput::new(
+        PointerGrid {
+            left: f32::from(self.bounds.origin.x),
+            top: f32::from(self.bounds.origin.y),
+            width: f32::from(self.bounds.size.width),
+            height: f32::from(self.bounds.size.height),
+            cell_width: f32::from(self.cell_width),
+            line_height: f32::from(self.line_height),
+            content_offset: f32::from(self.content_offset),
+            scale: self.scale,
+            columns: self.geometry.map_or(0, |(grid, _)| grid.columns),
+            rows: self.geometry.map_or(0, |(grid, _)| grid.rows),
+        }
+        .input(
+            f32::from(position.x),
+            f32::from(position.y),
             phase,
             button,
-            PointerCellEvent {
-                column: column.min(
-                    self.geometry
-                        .map_or(0, |(grid, _)| grid.columns.saturating_sub(1)),
-                ),
-                row: row.min(
-                    self.geometry
-                        .map_or(0, |(grid, _)| grid.rows.saturating_sub(1)),
-                ),
-                click_count: count.min(3) as u8,
-                rectangle: modifiers.alt,
-            },
-            (x * self.scale).round() as u32,
-            (y * self.scale).round() as u32,
-            (f32::from(self.bounds.size.width) * self.scale).round() as u32,
-            (f32::from(self.bounds.size.height) * self.scale).round() as u32,
-            (f32::from(self.cell_width) * self.scale).round().max(1.) as u32,
-            (f32::from(self.line_height) * self.scale).round().max(1.) as u32,
+            count,
             wire_modifiers(modifiers),
             modifiers.shift || self.force_local_selection,
         )
@@ -2046,80 +2040,6 @@ impl EntityInputHandler for TerminalPane {
     }
 }
 
-fn pasted_image_number(uri: &str) -> Option<u32> {
-    uri.strip_prefix(zz_terminal::IMAGE_PLACEHOLDER_SCHEME)?
-        .strip_prefix("://")?
-        .parse()
-        .ok()
-}
-
-fn search_key_action(query: &mut SearchQuery, input: &KeyInput) -> Option<TerminalViewAction> {
-    match input.key {
-        KeyCode::Character('r' | 'R') if input.modifiers.alt() => {
-            query.mode = match query.mode {
-                SearchMode::Literal => SearchMode::Regex,
-                SearchMode::Regex => SearchMode::Literal,
-            };
-            Some(TerminalViewAction::SearchUpdate(query.clone()))
-        }
-        KeyCode::Character('c' | 'C') if input.modifiers.alt() => {
-            query.case = match query.case {
-                SearchCase::Smart => SearchCase::Sensitive,
-                SearchCase::Sensitive => SearchCase::Insensitive,
-                SearchCase::Insensitive => SearchCase::Smart,
-            };
-            Some(TerminalViewAction::SearchUpdate(query.clone()))
-        }
-        _ => None,
-    }
-}
-
-fn presented_uri(uri: &str) -> String {
-    let mut characters = uri.chars();
-    let mut presented = characters.by_ref().take(240).collect::<String>();
-    if characters.next().is_some() {
-        presented.push('…');
-    }
-    presented
-}
-
-fn terminal_mode_text(
-    mode: TerminalMode,
-    unseen_output: u32,
-) -> Option<(Option<&'static str>, String)> {
-    match mode {
-        TerminalMode::Live if unseen_output > 0 => Some((None, format!("+{unseen_output} output"))),
-        TerminalMode::Live => None,
-        TerminalMode::Copy {
-            position,
-            total,
-            hide_position,
-        } => Some((
-            Some("Copy mode"),
-            match (hide_position, unseen_output) {
-                (true, 0) => String::new(),
-                (true, unseen) => format!("+{unseen} output"),
-                (false, 0) => format!("{position} / {total}"),
-                (false, unseen) => format!("{position} / {total} · +{unseen} output"),
-            },
-        )),
-        TerminalMode::View { position, total } => {
-            Some((Some("View mode"), format!("{position} / {total}")))
-        }
-    }
-}
-
-fn terminal_status_text(status: &SessionStatus) -> Option<String> {
-    match status {
-        SessionStatus::Starting | SessionStatus::Running => None,
-        SessionStatus::Exited(exit) => Some(exit.signal.as_ref().map_or_else(
-            || format!("shell exited ({})", exit.code),
-            |signal| format!("shell exited: {signal}"),
-        )),
-        SessionStatus::Failed(error) => Some(error.as_ref().clone()),
-    }
-}
-
 fn sticky_keystroke(text: &str, cx: &mut App) -> Option<zz_gpui::Keystroke> {
     let mut characters = text.chars();
     let (Some(character), None) = (characters.next(), characters.next()) else {
@@ -2141,20 +2061,6 @@ fn sticky_keystroke(text: &str, cx: &mut App) -> Option<zz_gpui::Keystroke> {
         key_char: Some(text.to_owned()),
     };
     Some(zz_ui::compact::StickyModifiers::apply(&keystroke, cx))
-}
-
-fn terminal_shortcut(
-    keymaps: [&ChromeKeymap; 2],
-    claims_prefix: bool,
-    modal_capture: Option<PaneId>,
-    input: &KeyInput,
-) -> Option<ChromeAction> {
-    if claims_prefix || modal_capture.is_some() {
-        return None;
-    }
-    keymaps
-        .into_iter()
-        .find_map(|keymap| keymap.resolve(TERMINAL_TABLE, input))
 }
 
 #[must_use]
@@ -2240,13 +2146,6 @@ fn mouse_button(button: MouseButton) -> Option<TerminalMouseButton> {
     }
 }
 
-fn accumulate_scroll(remainder: &mut f32, delta: f32) -> i32 {
-    *remainder += delta;
-    let lines = *remainder as i32;
-    *remainder -= lines as f32;
-    lines
-}
-
 #[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
@@ -2260,6 +2159,7 @@ mod tests {
             PaneSnapshot, PaneSummary, ProtocolMessage, SessionId, SessionSnapshot, WindowId,
             WindowSnapshot,
         };
+        use zz_terminal::SessionStatus;
 
         cx.update(zz_ui::init);
         let connection_slot = Rc::new(std::cell::RefCell::new(None));

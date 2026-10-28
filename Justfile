@@ -1,6 +1,7 @@
 import "scripts/just/settings.just"
 
 mod compat "scripts/just/compat.just"
+mod design "scripts/just/design.just"
 mod install "scripts/just/install.just"
 mod ios "scripts/just/ios.just"
 mod package "scripts/just/package.just"
