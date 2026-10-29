@@ -1,5 +1,3 @@
-//! Raw-terminal presentation client for daemon-owned zz sessions.
-
 mod app;
 pub mod browser;
 mod clipboard;
@@ -61,7 +59,6 @@ impl Default for RunOptions {
     }
 }
 
-/// A TUI run request with an optional client-local browser-frame source.
 pub struct RunRequest<'a> {
     options: &'a RunOptions,
     browser_provider: Option<fn() -> Option<Box<dyn BrowserFrameProvider>>>,
@@ -71,7 +68,6 @@ pub struct RunRequest<'a> {
 }
 
 impl RunOptions {
-    /// Adds a main-thread-owned browser provider to this attach request.
     #[must_use]
     pub fn with_browser_provider(
         &self,
@@ -96,7 +92,6 @@ impl<'a> From<&'a RunOptions> for RunRequest<'a> {
 }
 
 impl<'a> RunRequest<'a> {
-    /// Supplies the launcher used after a verified stale local daemon is terminated.
     #[must_use]
     pub fn with_local_reconnect(
         mut self,
@@ -426,12 +421,6 @@ fn resolve_endpoint(
 mod tests {
     use super::*;
 
-    /// The raw-terminal client writes a `CommandResponse` output as the bytes
-    /// the daemon sent, the way the plain CLI does. Measured against the pin
-    /// on 2026-09-04: `show-environment -g ZZBYTES` after
-    /// `set-environment -g ZZBYTES a<0xff>b` answers
-    /// `5a5a42595445533d61ff620a`, and a lossy `&str` sink answered
-    /// `5a5a42595445533d61efbfbd620a` instead.
     #[test]
     fn command_output_reaches_the_terminal_as_bytes() {
         let mut sink = Vec::new();

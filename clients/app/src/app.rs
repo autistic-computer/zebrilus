@@ -838,8 +838,6 @@ impl AppShell {
         );
     }
 
-    /// `prefix F`: the palette in `&` mode on `pane`'s folder, or the `-c`
-    /// folder, putting what you pick at that pane's cursor.
     fn open_files_palette(
         &mut self,
         pane: zz_protocol::PaneId,

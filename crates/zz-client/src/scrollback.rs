@@ -243,23 +243,13 @@ fn compact_history_plane_start(
 pub struct RetainedTerminalViewport {
     pub viewport: TerminalViewport,
     pub history: HistoryRing,
-    /// Rows newer than the viewport's last row, nearest first: the rows a
-    /// scroll back moved out past its bottom, kept while the server shows a
-    /// view of history.
     pub below: HistoryRing,
     pub history_scrollbar: ScrollbarState,
-    /// Bumped when a live patch may have shifted the ring's absolute rows, or
-    /// dropped the ring. A `HistoryChunk` applies only when this still matches
-    /// the value snapshotted at request time.
     pub history_mutations: u64,
-    /// Bumped only when the ring is dropped, which is what retires the
-    /// local-scroll overlay.
     pub history_invalidations: u64,
     pub row_revisions: Box<[u64]>,
     pub row_revision_epoch: u64,
     pub revision_scratch: Vec<u16>,
-    /// Bumped each time a selection this pane served lands in the system
-    /// clipboard.
     pub copy_generation: u64,
 }
 
@@ -378,10 +368,6 @@ fn drop_retained_history(retained: &mut RetainedTerminalViewport) {
     retained.history_invalidations = retained.history_invalidations.wrapping_add(1);
 }
 
-/// The rows that end up below the viewport when it moves `delta` rows back
-/// into history, nearest first: the bottom of the current viewport and,
-/// past a whole screen, the retained rows between the two views. None when
-/// the retained rows cannot fill that gap.
 fn rows_leaving_below(
     retained: &RetainedTerminalViewport,
     delta: u32,

@@ -1,19 +1,3 @@
-"""Attach a client on a real pty that answers a Kitty graphics probe.
-
-Same step protocol as ``chooser-drive.py`` - ``size COLS ROWS``, ``keys
-HEXBYTES``, ``snap NAME``, ``quit`` - with one addition: the drain thread
-answers the terminal queries the client writes at startup the way a Kitty
-terminal would, so the client's graphics bridge enables itself.
-
-The raw TUI writes ``ESC _ G i=<id>,...,a=q,...;<payload> ESC \\`` for the
-direct probe and again for the file probe, then a DA1 request and a cell-size
-request. A Kitty terminal answers a graphics query with ``ESC _ G i=<id>;OK
-ESC \\`` when it can take the image and ``ESC _ G i=<id>;E<message> ESC \\``
-when it cannot. Answering OK to the direct probe and an error to the file probe
-enables graphics with the inline transport, which is the shape the placement
-assertions want.
-"""
-
 import fcntl
 import os
 import pty

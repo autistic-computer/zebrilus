@@ -51,10 +51,6 @@ const PANE_TITLE_GROUP: &str = "pane-title";
 const PANE_TITLE_ICON_SIZE: f32 = 14.0;
 const PANE_TITLE_MAX_WIDTH: f32 = 168.0;
 
-/// A pane header's title as a button: dragged, it moves the pane; pointed at,
-/// its icon turns into the move arrows and its X shows at the right end. A
-/// coarse pointer, which never hovers, always shows the X. The title fits its
-/// label up to a cap, and a label too long for it fades out before the X.
 #[derive(IntoElement)]
 pub struct PaneTitle {
     id: ElementId,
@@ -183,8 +179,6 @@ pub struct PaneLens {
 }
 
 impl TerminalPaneAction {
-    /// What the action sends for `pane`. Float makes a float `float_rows` tall,
-    /// the most [`crate::pip::PipLayout::fill_rows`] says fits.
     pub fn commands(
         self,
         pane: zz_protocol::PaneId,
@@ -373,8 +367,6 @@ pub fn pane_header(
         )
 }
 
-/// A terminal header over the pane's `background`, rounded into the pane's
-/// top corners and faded to `opacity` while the pane is inactive.
 pub fn pane_header_frame(
     header: impl IntoElement,
     radii: Corners<Pixels>,
@@ -390,9 +382,6 @@ pub fn pane_header_frame(
 
 const PANE_ARRIVAL: web_time::Duration = web_time::Duration::from_millis(140);
 
-/// The panes of the window on screen that appeared after it was first drawn,
-/// so a split's new pane fades in instead of popping. Keyed by pane, not by
-/// element, because a split moves its old pane under a new split node too.
 #[derive(Default)]
 pub struct PaneArrivals {
     window: Option<zz_protocol::WindowId>,
@@ -401,8 +390,6 @@ pub struct PaneArrivals {
 }
 
 impl PaneArrivals {
-    /// Notes the panes `window` holds at `now`: one it did not hold the last
-    /// time fades in, while switching to another window fades nothing.
     pub fn observe(
         &mut self,
         window: zz_protocol::WindowId,
@@ -422,7 +409,6 @@ impl PaneArrivals {
         self.known = panes;
     }
 
-    /// How far `pane` has faded in at `now`: 1 once it has settled.
     #[must_use]
     pub fn shown(&self, pane: zz_protocol::PaneId, now: web_time::Instant) -> f32 {
         self.arrived.get(&pane).map_or(1.0, |since| {
@@ -434,7 +420,6 @@ impl PaneArrivals {
         })
     }
 
-    /// Whether a pane is still fading in, so the window wants another frame.
     #[must_use]
     pub fn fading(&self) -> bool {
         !self.arrived.is_empty()
@@ -478,9 +463,6 @@ impl PaneChrome {
         self
     }
 
-    /// The glass the pane draws as its frame and fill, from
-    /// [`Theme::pane_frame`](crate::Theme::pane_frame); `None` leaves the
-    /// pane flush, its content painting its own fill.
     #[must_use]
     pub const fn frame(mut self, frame: Option<GlassMaterial>) -> Self {
         self.frame = frame;
@@ -598,9 +580,6 @@ fn pane_frame_rim(radii: Corners<Pixels>, rim: GlassMaterial) -> impl IntoElemen
     .inset_0()
 }
 
-/// The frame's edge without glass, or where the window cannot sample its
-/// backdrop and glass paints only its fill: a hairline the width of the
-/// glint, over the content as a border would be.
 fn pane_frame_hairline(
     radii: Corners<Pixels>,
     width: Pixels,
@@ -690,8 +669,6 @@ impl FloatingSurface {
         self
     }
 
-    /// Fills, inks and edges the float in colors a popup style sets, over
-    /// the floating pane role's own.
     #[must_use]
     pub const fn colors(mut self, background: Hsla, foreground: Hsla, border_color: Hsla) -> Self {
         self.background = Some(background);
@@ -700,8 +677,6 @@ impl FloatingSurface {
         self
     }
 
-    /// Edges the float in `color`, such as the accent of the active pane,
-    /// keeping the role's fill and ink.
     #[must_use]
     pub const fn edge_color(mut self, color: Hsla) -> Self {
         self.border_color = Some(color);
@@ -795,18 +770,11 @@ fn forced_edge_width(cx: &App) -> Pixels {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneDragOverlayState {
-    /// The prefix is armed: every pane is a handle waiting to be picked up.
     Armed,
-    /// This pane is the one in flight. It renders in place and recedes.
     Source,
-    /// Another pane is in flight. This one only takes the pointer and shows
-    /// as it is, so the drop preview is all that draws over it.
     Target,
 }
 
-/// The occluding pane layer used while the tmux prefix is armed or a pane is
-/// being dragged. The armed veil is the drop zone's tint even where the
-/// theme makes drop zones glass, so the panes under it stay sharp.
 pub fn pane_drag_overlay(
     id: impl Into<ElementId>,
     state: PaneDragOverlayState,
@@ -854,9 +822,6 @@ fn pane_drag_source_veil(cx: &App) -> Hsla {
         .opacity(PANE_DRAG_SOURCE_FADE)
 }
 
-/// The rectangle a dragged pane lands in if it is dropped now. Positioning and
-/// animation belong to the caller; pass the target pane's own radius and border
-/// width so the preview's arcs land on the pane's.
 pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> ala::Div {
     let layer = cx.theme().layer(roles::DROP_ZONE, PaintState::Selected);
     let border_width = if layer.border_width > Pixels::ZERO {
@@ -871,8 +836,6 @@ pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> ala:
     })
 }
 
-/// The chip that follows the pointer while a pane is being dragged, carrying
-/// the pane's name rather than a copy of its contents.
 pub fn pane_drag_chip(
     pane: impl Into<SharedString>,
     title: impl Into<SharedString>,
@@ -944,16 +907,11 @@ impl PaneSplitHighlight {
     }
 }
 
-/// The space a split keeps between its two children: the configured gap, or a
-/// 1px hairline slot when there is none. Anything reconstructing pane boxes
-/// from slot geometry must use this too.
 #[must_use]
 pub fn pane_split_slot(gap: Pixels) -> Pixels {
     px(f32::from(gap).max(PANE_SPLIT_DIVIDER_THICKNESS))
 }
 
-/// Draggable hit target for a pane split. The caller attaches the drag
-/// callbacks to the returned element.
 pub fn pane_split_hit_target(
     id: impl Into<ElementId>,
     axis: PaneSplitAxis,
@@ -986,9 +944,6 @@ pub fn pane_split_hit_target(
         })
 }
 
-/// Split composition. The slot between the children is the single inter-pane
-/// gap: `gap` wide when a pane margin is configured, a 1px hairline otherwise.
-/// The hit target centers on the slot.
 pub fn pane_split_surface(
     id: impl Into<ElementId>,
     axis: PaneSplitAxis,
@@ -1109,13 +1064,10 @@ pub fn pane_split_surface(
         .child(hit_target)
 }
 
-/// A pending-entity placeholder shown as a top-right status tag while a pane
-/// waits for its backing terminal, browser, or agent to attach.
 pub fn pane_waiting_state(label: impl IntoElement, cx: &App) -> ala::Div {
     pane_status_badge(IconName::Clock, label, cx)
 }
 
-/// Warns that keyboard input is mirrored to every pane in a synchronized group.
 pub fn pane_sync_badge(cx: &App) -> ala::Div {
     pane_status_badge(IconName::Layers, "Sync", cx)
 }
@@ -1150,16 +1102,12 @@ pub fn pane_indicator_overlay(indicator: impl IntoElement) -> ala::Div {
         .child(indicator)
 }
 
-/// Which corner a [`pane_overlay_stack`] anchors to. Both right-align their
-/// tags and differ only in whether the column grows down or up.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaneOverlayCorner {
     TopRight,
     BottomRight,
 }
 
-/// A right-aligned column of status tags pinned to one corner of a pane. The
-/// caller passes the already-built tags in visual order.
 pub fn pane_overlay_stack(
     corner: PaneOverlayCorner,
     tags: impl IntoIterator<Item = AnyElement>,
@@ -1181,12 +1129,6 @@ pub fn pane_overlay_stack(
 const DISPLAY_PANES_COLOUR: zz_protocol::TmuxColour = zz_protocol::TmuxColour::Theme(7);
 const DISPLAY_PANES_ACTIVE_COLOUR: zz_protocol::TmuxColour = zz_protocol::TmuxColour::Theme(6);
 
-/// The pane-selection chip for tmux `display-panes`: the key that picks the
-/// pane, or its index in muted ink when it has none, beside the
-/// `display-panes-format` caption, on the popover surface. The active pane is
-/// ringed in the accent. `display-panes-colour` and
-/// `display-panes-active-colour` take over the glyph and ring only when set
-/// away from their defaults.
 pub fn pane_indicator(
     id: impl Into<ElementId>,
     state: &zz_protocol::DisplayPanesState,
@@ -1334,8 +1276,6 @@ pub fn terminal_mode_indicator(
     )
 }
 
-/// The find prompt, shown as a focused status tag in the pane's bottom-right
-/// overlay stack. Borrows the focus ring so it reads as the active input.
 pub fn terminal_search_prompt(
     message: impl Into<SharedString>,
     caret: usize,
@@ -1360,8 +1300,6 @@ pub fn terminal_search_prompt(
         })
 }
 
-/// A transient status line (copy confirmations, search errors) for the pane's
-/// bottom-right overlay stack.
 pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> ala::Div {
     let quiet = overlay_paint(cx).muted_at(PaintState::Rest);
     overlay_line(PaintState::Rest, cx)
@@ -1369,8 +1307,6 @@ pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> ala::Div {
         .child(message)
 }
 
-/// A preview of the URI under the pointer, shown in the pane's bottom-right
-/// overlay stack.
 pub fn terminal_link_popup(uri: impl IntoElement, cx: &App) -> ala::Div {
     overlay_line(PaintState::Rest, cx)
         .overflow_hidden()
@@ -1389,7 +1325,6 @@ fn pane_chip(state: PaintState, cx: &App) -> ala::Div {
         })
 }
 
-/// A line in the pane's bottom-right overlay stack.
 fn overlay_line(state: PaintState, cx: &App) -> ala::Div {
     pane_chip(state, cx)
         .flex()

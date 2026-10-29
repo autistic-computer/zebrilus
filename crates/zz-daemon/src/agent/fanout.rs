@@ -1,12 +1,3 @@
-//! The lane between an agent pane's runtime and the clients watching it:
-//! per-pane coalescing, the wire sequence, the in-memory replay ring, and the
-//! small typed pane state.
-//!
-//! The host stamps its own per-pane counter, but the wire sequence is minted
-//! here: request replies (session listings, turn diffs) leave the stream
-//! entirely, and a replay that outruns the ring synthesizes fresh items, so
-//! only this side can promise the numbering a client replays against.
-
 use std::{
     collections::{BTreeMap, VecDeque},
     sync::{
@@ -37,11 +28,7 @@ use crate::agent::{
     stream::{AgentPrompt, AgentStreamItem, AgentStreamPayload},
 };
 
-/// How long items are gathered before one frame leaves. An ACP turn bursts
-/// hundreds of small updates; a client only ever needs them at frame rate.
 const BATCH_WINDOW: Duration = Duration::from_millis(25);
-/// What one pane keeps replayable in memory. Past it a reattaching client is
-/// served from the journal instead.
 const MAX_REPLAY_RING_BYTES: usize = 2 * MAX_AGENT_UPDATES_BYTES;
 const MAX_AGENT_FRAME_BYTES: usize = MAX_AGENT_RESULT_BYTES;
 const MAX_RECLAIMED_PROMPTS: usize = MAX_AGENT_QUEUED_PROMPTS + 1;
@@ -58,12 +45,7 @@ pub(crate) enum AgentRequestReply {
     Sessions { client: ClientId, result: String },
 }
 
-/// What the daemon does with everything an agent pane produces. The fanout
-/// knows nothing about mailboxes, sessions, or visibility; this is the whole
-/// surface it reaches the daemon through.
 pub(crate) trait AgentPublisher: Send + Sync + 'static {
-    /// One coalesced frame to every client the pane is visible to, plus
-    /// `also` — the client whose replay produced it, visible or not.
     fn publish_agent_updates(
         &self,
         generation: u64,
@@ -91,7 +73,6 @@ pub(crate) trait AgentPublisher: Send + Sync + 'static {
     fn send_agent_reply(&self, generation: u64, pane: PaneId, reply: AgentRequestReply);
 }
 
-/// The daemon's handle on the agent runtime: one host, one lane per pane.
 pub(crate) struct AgentRuntime {
     host: AgentHost,
     fanout: Arc<AgentFanout>,
@@ -169,8 +150,6 @@ impl AgentRuntime {
         self.prompt_with_waiter(pane, prompt, None)
     }
 
-    /// Dispatch a prompt whose reply somebody is blocking on; the waiter is
-    /// settled when the turn ends, or when the prompt is handed back.
     pub(crate) fn prompt_with_waiter(
         &self,
         pane: PaneId,
@@ -190,7 +169,6 @@ impl AgentRuntime {
     }
 
     pub(crate) fn prewarm(&self) {
-        // No test downloads an adapter package to warm a cache it never uses.
         if cfg!(test) {
             return;
         }
@@ -202,13 +180,11 @@ impl AgentRuntime {
         self.host.reconfigure(config);
     }
 
-    /// What the next pane this runtime opens would be spawned with.
     #[cfg(test)]
     pub(crate) fn spawn_config(&self) -> AgentSpawnConfig {
         self.host.config()
     }
 
-    /// What a client needs to render the pane without the stream.
     pub(crate) fn wire_state(&self, pane: PaneId) -> Option<AgentPaneWire> {
         self.fanout
             .published_state(pane)
@@ -272,13 +248,10 @@ impl Drop for AgentRuntime {
     }
 }
 
-/// Everything one pane's stream carries between the host and the wire.
 struct PaneLane {
     generation: u64,
     provider: AgentProvider,
     next_seq: u64,
-    /// Highest sequence the ring has dropped, so a replay knows when it has
-    /// fallen behind what memory still holds.
     evicted_seq: u64,
     batch: Vec<Vec<u8>>,
     batch_bytes: usize,
@@ -298,8 +271,6 @@ struct PaneLane {
     reclaimed_bytes: usize,
     next_reclaim_id: u64,
     tool_calls: BTreeMap<String, AgentToolCall>,
-    /// Bumped whenever a blob the pane state carries is replaced, so the
-    /// per-item comparison never copies a quarter-megabyte of JSON.
     blobs: u64,
     fingerprint: Option<StateFingerprint>,
     state: Option<AgentPaneWire>,
@@ -420,7 +391,6 @@ impl PaneLane {
         }
     }
 
-    /// Everything gathered so far, split so no frame outgrows the wire bound.
     fn take_batch(&mut self) -> Vec<(u64, Vec<Vec<u8>>)> {
         self.deadline = None;
         self.batch_bytes = 0;
@@ -429,7 +399,6 @@ impl PaneLane {
     }
 }
 
-/// One pane's state as the wire sees it, cheap enough to compare per item.
 #[derive(PartialEq, Eq)]
 struct StateFingerprint {
     phase: AgentConnectionPhase,
@@ -583,8 +552,6 @@ impl AgentFanout {
         true
     }
 
-    /// One item from a pane, plus the pane state it left behind. A state-only
-    /// call (no item) is how a queued prompt reaches the badges.
     fn accept(
         &self,
         pane: PaneId,
@@ -764,8 +731,6 @@ impl AgentFanout {
         let Some(publisher) = self.publisher.upgrade() else {
             return;
         };
-        // The lane stays locked across the sends: a concurrent flush would
-        // otherwise land newer sequences ahead of the replay they follow.
         let mut lanes = self.lanes.lock();
         let Some(lane) = lanes.get_mut(&pane) else {
             return;
@@ -964,9 +929,6 @@ impl PaneLane {
         self.evicted_seq = self.evicted_seq.max(reclaimed.last_seq);
     }
 
-    /// Stamp, encode, and queue one payload. An item too large for a single
-    /// frame is dropped rather than stamped: the wire cannot carry it, and a
-    /// sequence spent on it would look like loss to every client.
     fn enqueue(&mut self, pane: PaneId, payload: AgentStreamPayload) {
         _ = self.enqueue_with_seq(pane, payload);
     }
@@ -1067,8 +1029,6 @@ impl PaneLane {
         Some((seq, encoded))
     }
 
-    /// The pane state to publish, or `None` when nothing a client renders
-    /// moved.
     fn refresh_state(&mut self, state: &AgentPaneState) -> Option<AgentPaneWire> {
         let fingerprint = StateFingerprint {
             phase: state.phase,
@@ -1105,9 +1065,6 @@ impl PaneLane {
     }
 }
 
-/// The one clock the lane runs. Every window it closes is decided under the
-/// lane lock, so an item queued while a frame is in flight cannot be missed,
-/// and nothing ticks while no pane has anything gathered.
 fn run_flusher(fanout: &Weak<AgentFanout>) {
     loop {
         let Some(fanout) = fanout.upgrade() else {
@@ -1152,8 +1109,6 @@ fn run_flusher(fanout: &Weak<AgentFanout>) {
     }
 }
 
-/// Greedily pack encoded items into frames inside the wire bound. The items
-/// are consecutive, so each frame's first sequence follows from the split.
 fn split_frames(first_seq: u64, items: Vec<Vec<u8>>) -> Vec<(u64, Vec<Vec<u8>>)> {
     let mut frames = Vec::new();
     let mut current: Vec<Vec<u8>> = Vec::new();
@@ -1193,7 +1148,6 @@ fn encode_reply(payload: &AgentStreamPayload) -> Option<String> {
     Some(encoded)
 }
 
-/// The host's pane state as a client renders it.
 fn wire(state: &AgentPaneState) -> AgentPaneWire {
     let phase = match state.phase {
         AgentConnectionPhase::Starting | AgentConnectionPhase::Restoring => {
@@ -1287,7 +1241,6 @@ mod tests {
             broadcast + direct
         }
 
-        /// Every item any client was sent, in delivery order.
         fn payloads(&self) -> Vec<AgentStreamItem> {
             let mut items = self
                 .broadcast
@@ -1636,8 +1589,6 @@ mod tests {
         });
         fixture.recorder.wait_for_items(2);
 
-        // Overrun the ring: every item is stamped, so the first ones are the
-        // ones memory drops.
         let filler = "x".repeat(MAX_AGENT_UPDATES_BYTES - 4096);
         let filler_count = MAX_REPLAY_RING_BYTES / filler.len() + 2;
         for _ in 0..filler_count {

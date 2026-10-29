@@ -1,8 +1,3 @@
-//! Every distinct piece of zz's UI a theme can style. Each role names the
-//! group it belongs to, a kit kind or a group within one, and how its
-//! built-in look differs from that group's, so the Default theme draws zz
-//! as it always has; a theme file changes any of them by id.
-
 use penna::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
 
 const P: StylePatch = StylePatch::EMPTY;
@@ -501,8 +496,6 @@ pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
     "The lines that join a tree's children",
 );
 
-/// zz's own roles, after the kit's. The theme creator lists every role
-/// under its kind and group, in this order.
 const ZZ: &[SurfaceRole] = &[
     WINDOW,
     SIDEBAR,
@@ -583,17 +576,14 @@ pub const RETIRED: [&str; 7] = [
     "rule.chat",
 ];
 
-/// Every role a theme file may name: the kit's kinds and groups, then zz's.
 pub fn all() -> impl Iterator<Item = SurfaceRole> {
     SurfaceRole::KIT.into_iter().chain(ZZ.iter().copied())
 }
 
-/// The role a theme file calls `id`.
 pub fn find(id: &str) -> Option<SurfaceRole> {
     all().find(|role| role.id == id)
 }
 
-/// The roles directly in `group`, in the order the theme creator lists them.
 pub fn members(group: SurfaceRole) -> impl Iterator<Item = SurfaceRole> {
     all().filter(move |role| role.group() == Some(group))
 }

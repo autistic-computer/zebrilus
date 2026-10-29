@@ -1,10 +1,3 @@
-//! Which row shortcut spellings `display-menu` turns into a key.
-//!
-//! The pin runs every spelling through `key_string_lookup_string` and renders
-//! nothing when it answers `KEYC_UNKNOWN` (menu.c `menu_add_item`). zz answers
-//! the same question with the vocabulary its own clients speak, so a spelling
-//! the pin parses but no attached client can press is no key here either.
-
 #![cfg(unix)]
 
 mod overlay;
@@ -13,8 +6,6 @@ use zz_protocol::{CommandInvocation, InputMessage, MenuAction};
 
 use overlay::Overlays;
 
-/// `name`, the spelling handed to `display-menu`, and the key the descriptor
-/// should carry.
 const ROWS: &[(&str, &str, Option<&str>)] = &[
     ("plain", "a", Some("a")),
     ("upper", "A", Some("A")),

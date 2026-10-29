@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Runs one command corpus against zz and pinned tmux, comparing topology and
-# geometry after every command.
 set -euo pipefail
 while IFS= read -r credential; do unset "$credential"; done < <(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL')
 set +B
@@ -54,9 +52,6 @@ esac
 if grep -Eq '^[[:space:]]*shim:[[:space:]]*$' "$SCENARIO_FILE"; then
   SMOKE_MODE=1
 fi
-# An installed layout scenario runs through the `zz` symlink on PATH with
-# no --socket and no ZZ_SOCKET, the default socket under a scratch
-# XDG_RUNTIME_DIR, and no harness `tmux` wrapper in front of the panes.
 LAUNCHER_MODE=0
 if grep -Eq '^[[:space:]]*launcher:[[:space:]]*$' "$SCENARIO_FILE"; then
   SMOKE_MODE=1
@@ -134,14 +129,6 @@ die() {
   exit 2
 }
 
-# Both CLIs infer state from the invoking environment: a "current pane" (tmux
-# via TMUX_PANE in cmd_find_inside_pane, zz via ZZ_PANE) and, for tmux, the
-# mode-keys/status-keys defaults (tmux.c sniffs vi out of VISUAL/EDITOR).
-# Running the harness from a shell that carries any of those would leak the
-# developer's context into the scratch servers, so both sides run scrubbed.
-# Jobs and panes also resolve a bare `tmux` through PATH, so the pinned build
-# goes first on both sides: a machine's own tmux, or none at all, must not
-# decide what a run-shell on the tmux side talks to.
 zz_command() {
   if [ "$LAUNCHER_MODE" -eq 1 ]; then
     env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
@@ -338,10 +325,6 @@ extract_config_warnings() {
   sed -n '/^%config-error /p' "$source" | LC_ALL=C sort -u >"$destination"
 }
 
-# Empty %begin/%end pairs are collapsed: the pin frames every config line as
-# its own block through a control client's source-file while zz runs the whole
-# file in one block (ledgered framing divergence). %error pairs are kept — an
-# empty %error body is the pin's exec-time config-failure signal.
 normalize_control_stdout() {
   local source="$1"
   local destination="$2"
@@ -662,8 +645,6 @@ fi
 
 run_setup zz "zz new-session -d -s w" new-session -d -s w ||
   die "could not create zz scenario session"
-# Window 0's default name is process-derived in tmux and index-derived in zz;
-# pin it so #{window_name} diffs mean something.
 run_setup zz "zz rename-window -t w:0 main" rename-window -t w:0 main ||
   die "could not rename the zz scenario window"
 

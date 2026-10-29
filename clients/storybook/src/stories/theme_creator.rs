@@ -1751,8 +1751,6 @@ fn card(id: &'static str, cx: &App) -> ala::Stateful<ala::Div> {
         .bg(cx.theme().background)
 }
 
-/// Floating surfaces sit on a plate that shows the backdrop knob behind
-/// them, the way they float over panes in zz.
 fn plate(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
     let backdrop = crate::backdrop::backdrop(crate::knobs().backdrop, cx);
     div()

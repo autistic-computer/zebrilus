@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Fetches the pinned tmux plugin corpus used by alias smoke scenarios.
-# ZZ_COMPAT_CORPUS may provide a directory containing the eight checkouts.
 set -euo pipefail
 
 COMPAT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

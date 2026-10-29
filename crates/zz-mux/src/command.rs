@@ -255,9 +255,6 @@ const DEFAULT_NEW_SESSION_FORMAT: &str = "#{session_name}:";
 const DEFAULT_PANE_CREATION_FORMAT: &str = "#{session_name}:#{window_index}.#{pane_index}";
 const COMMAND_ITEM_CONTEXT_FORMATS: &[&str] = &["command"];
 const ROW_CONTEXT_FORMATS: &[&str] = &["line"];
-/// The `window_copy_formats` names the daemon answers from the client view
-/// holding the copy session. The rest of that producer's vocabulary stays in
-/// the accepted-native partition.
 const COPY_MODE_CONTEXT_FORMATS: &[&str] = &[
     "copy_cursor_line",
     "copy_cursor_word",
@@ -894,9 +891,6 @@ pub struct ExecutionContext {
     spawn_pane_options: Vec<(String, String)>,
 }
 
-/// `struct mouse_event` as much of it as a bound mouse key carries: the pane
-/// and window `cmd_mouse_pane` would answer, the cell the event landed on and
-/// the divider axis a `Border` gesture grabbed.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MouseEventTarget {
     pub pane: Option<PaneId>,
@@ -904,15 +898,8 @@ pub struct MouseEventTarget {
     pub column: u16,
     pub row: u16,
     pub border: Option<Axis>,
-    /// The pane input this gesture carries, encoded by the client that owns
-    /// the pointer. `send-keys -M` hands it to the pane the event landed on,
-    /// which is what `window_pane_key(wp, tc, s, wl, m->key, m)` does.
     pub view_action: Option<TerminalViewAction>,
-    /// The press this gesture was latched from, the pin's `m->lx`/`m->ly`.
-    /// `copy-mode -M` anchors its selection there.
     pub press_action: Option<TerminalViewAction>,
-    /// `sr->start` for the status range the gesture landed in, which is where
-    /// `cmd_display_menu_get_pos` puts `-x W`.
     pub status_range_start: Option<u16>,
     pub press: Option<(u16, u16)>,
     pub drag: Option<MouseDrag>,
@@ -966,9 +953,6 @@ fn armed_mouse_drag(kind: MouseDragKind, pane: PaneId, mouse: &MouseEventTarget)
 }
 
 impl MouseEventTarget {
-    /// The id spelling `=` and `{mouse}` resolve to. A pane id answers every
-    /// target kind, because a pane names its window and its session; a status
-    /// gesture has no pane and answers with its window instead.
     #[must_use]
     pub fn target_spelling(&self) -> Option<String> {
         self.pane
@@ -977,9 +961,6 @@ impl MouseEventTarget {
     }
 }
 
-/// The same resolution for a command the daemon owns rather than the mux
-/// engine: `cmd_find_target` runs before every command, not only the ones the
-/// engine keeps.
 #[must_use]
 pub fn resolve_invoking_mouse_targets(
     command: &CommandInvocation,
@@ -990,12 +971,6 @@ pub fn resolve_invoking_mouse_targets(
         .and_then(|target| resolve_mouse_targets(command, &target))
 }
 
-/// `cmd_find_target`: a bare `=` or `{mouse}` in a target slot names the pane,
-/// window and session the invoking mouse event landed on. The daemon has
-/// already retargeted the context to that event, so the id the event carries
-/// is what the spelling stands for, and every resolver reads it. A `=` that is
-/// not a target's value is left alone, and with no mouse event in the tree the
-/// spelling stays the quiet miss both binaries answer with.
 fn resolve_mouse_targets(command: &CommandInvocation, target: &str) -> Option<CommandInvocation> {
     let is_mouse_slot = |command: &CommandInvocation, index: usize| {
         index > 0
@@ -1233,9 +1208,6 @@ impl ExecutionContext {
         self.repeat_binding = repeat;
     }
 
-    /// The key whose binding queued this command, the way `cmdq_get_event`
-    /// answers the key event of the item `send-keys -K` runs under. A
-    /// `send-keys -K` with no positional key replays it.
     #[must_use]
     pub fn invoking_key(&self) -> Option<&str> {
         self.invoking_key.as_deref()
@@ -1245,10 +1217,6 @@ impl ExecutionContext {
         self.invoking_key = key;
     }
 
-    /// `cmdq_get_event(item)->m`: the mouse event a bound mouse key was
-    /// invoked from. `cmd_find_target` resolves `=` and `{mouse}` from it and
-    /// `resize-pane -M` reads its cell; without one both stay what they are
-    /// with no mouse in the tree.
     #[must_use]
     pub fn invoking_mouse(&self) -> Option<&MouseEventTarget> {
         self.invoking_mouse.as_ref()
@@ -1303,8 +1271,6 @@ impl ExecutionContext {
         self.spawns_popup = popup;
     }
 
-    /// Pane options `new-pane` sets on the pane it creates before the daemon
-    /// spawns its process, so a command that exits at once already sees them.
     pub fn set_spawn_pane_options(&mut self, options: Vec<(String, String)>) {
         self.spawn_pane_options = options;
     }
@@ -1334,17 +1300,12 @@ pub enum CommandPromptTemplate {
     Commands(Vec<CommandInvocation>),
 }
 
-/// One `-p` label with the `-I` input that seeds it. `command-prompt` splits
-/// both on commas and walks the pairs in order, so a chain is a list of these.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandPromptStep {
     pub label: String,
     pub input: String,
 }
 
-/// `args_make_commands_get_command`: the name a bare prompt puts in its
-/// parentheses. A typed template answers with its first command's catalog
-/// name, a string template with everything before its first space or comma.
 fn command_prompt_template_name(template: &CommandPromptTemplate) -> &str {
     match template {
         CommandPromptTemplate::Commands(commands) => commands
@@ -1356,9 +1317,6 @@ fn command_prompt_template_name(template: &CommandPromptTemplate) -> &str {
     }
 }
 
-/// What a `source-file -` request reads. The pin's `file_read` hands the
-/// caller's stream to the first `-` of an invocation; a later `-` reopens a
-/// stream the caller already gave away and gets `EBADF` for it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SourceStream {
     Bytes(RawText),
@@ -1396,11 +1354,6 @@ pub enum MuxEffect {
         active_session: Option<SessionId>,
         format_client: FormatClient,
     },
-    /// `split-window -W`. `cmd_split_window_exec` parks its own queue item on
-    /// the new pane (`new_wp->wait_item`) and returns `CMD_RETURN_WAIT`;
-    /// `window_pane_wait_finish` hands the child's exit status, or 128 plus
-    /// its signal, back to an unattached client before the pane is retained or
-    /// removed.
     PaneWaitForExit {
         pane: PaneId,
     },
@@ -1411,13 +1364,9 @@ pub enum MuxEffect {
         from: SessionId,
         to: SessionId,
     },
-    /// `window_fire_pane_moved` for a pane `join-pane` or `move-pane` placed
-    /// again inside its own window, which no before-and-after diff can see.
     PaneMovedInWindow {
         pane: PaneId,
     },
-    /// `window_push_zoom` then `window_pop_zoom` on a zoomed window: one
-    /// `window-unzoomed` and one `window-zoomed` though the zoom ends as it began.
     ZoomCycled {
         window: WindowId,
     },
@@ -1426,11 +1375,6 @@ pub enum MuxEffect {
         keys: Vec<KeyToken>,
         repeat: u32,
     },
-    /// `send-keys -K`. `cmd_send_keys_inject_key` ignores the target pane
-    /// entirely and hands each key to `server_client_handle_key` on the target
-    /// client, so the client's own key table decides whether the key fires a
-    /// binding or reaches the pane it is looking at. A `-K` whose target
-    /// client does not resolve is a no-op.
     SendClientKeys {
         target_client: Option<String>,
         keys: Vec<KeyToken>,
@@ -1439,14 +1383,6 @@ pub enum MuxEffect {
     ResetPane {
         pane: PaneId,
     },
-    /// `copy-mode -k`. window.c stores the flag on the mode entry as
-    /// `wme->kill` and `window_pane_reset_mode` kills the pane once the mode
-    /// is torn down, so the effect only arms the bit; the kill runs when the
-    /// copy session actually ends. `window_pane_set_mode` returns before that
-    /// assignment when the pane already holds the mode, so this effect is
-    /// emitted before the entry and refuses to arm a pane already in the mode.
-    /// `window_copy_init` reads `wme->swp`: the next copy-mode entry on
-    /// `pane` clones `source`'s screen instead of the target's own.
     ArmCopyModeSource {
         pane: PaneId,
         source: PaneId,
@@ -1458,18 +1394,12 @@ pub enum MuxEffect {
         pane: PaneId,
         count: u32,
         target_client: Option<String>,
-        /// `send-keys -X` answers `not in a mode` at status 1 before it reaches
-        /// the mode command whenever the pane has no mode entry carrying one.
-        /// Every other copy-mode entry point skips that check. A `count` of
-        /// zero leaves the pending count alone, which is what a bare
-        /// `send-keys -X` with no `-N` and no action does on the pin.
         require_mode: bool,
     },
     TerminalView {
         pane: PaneId,
         action: TerminalViewAction,
         target_client: Option<String>,
-        /// See [`MuxEffect::CopyModeRepeat::require_mode`].
         require_mode: bool,
     },
     TerminalUi {
@@ -1483,16 +1413,12 @@ pub enum MuxEffect {
         prompt_type: CommandPromptType,
         mode: CommandPromptMode,
         no_freeze: bool,
-        /// `-P`: the pane `window_pane_set_prompt` hangs the prompt on, so the
-        /// client draws it over that pane instead of on the status row.
         pane: Option<PaneId>,
     },
     ChooseTree {
         pane: PaneId,
         preview: ChooserPreviewSize,
         kind: ChooseTreeKind,
-        /// `choose-client -i`: the client mode opens on `window_client_draw_info`
-        /// rather than on the preview.
         info_preview: bool,
         sessions_only: bool,
         filter: Option<String>,
@@ -1549,19 +1475,15 @@ pub enum MuxEffect {
         freeze: bool,
     },
     BufferLimitChanged(usize),
-    /// `None` updates every session that inherits the global value.
     WordSeparatorsChanged {
         session: Option<SessionId>,
     },
-    /// `None` updates every window after the global default changes.
     ModeKeysChanged {
         window: Option<WindowId>,
     },
     AggressiveResizeChanged {
         window: Option<WindowId>,
     },
-    /// A `monitor-silence` write landed at any scope; the daemon re-arms every
-    /// window's silence deadline, the pin's `alerts_reset_all`.
     MonitorSilenceChanged,
     WindowSizeChanged {
         window: Option<WindowId>,
@@ -1575,7 +1497,6 @@ pub enum MuxEffect {
         pane: Option<PaneId>,
     },
     ClientTerminalChanged,
-    /// `session` scopes a session-effective write; `None` is a global write.
     MuxOptionChanged {
         option: MuxOptionKey,
         session: Option<SessionId>,
@@ -1589,8 +1510,6 @@ pub enum MuxEffect {
     Attach {
         session: SessionId,
         detach_others: bool,
-        /// `attach-session -x` and `new-session -X`: evict peers with the
-        /// parent-hangup exit action instead of an ordinary detach.
         detach_others_hangup: bool,
         read_only: bool,
         flags: Option<String>,
@@ -1606,11 +1525,8 @@ pub enum MuxEffect {
         parse_only: bool,
         verbose: bool,
         context: ExecutionContext,
-        /// What `-` reads, when `path` is `-` and the caller brought a stream.
         stdin: Option<SourceStream>,
     },
-    /// Write the caller's standard input into a pane that holds no process, the
-    /// way `display-message -I` and `split-window -I` do on the pin.
     PaneStreamInput {
         pane: PaneId,
         bytes: RawText,
@@ -1625,11 +1541,7 @@ pub enum MuxEffect {
     KillServer,
     SuppressAfterHook,
     SnapshotChanged,
-    /// `mode-style` or a `copy-mode-*-style` changed; the daemon refreshes the
-    /// published appearance so client copy-mode chrome picks the styles up.
     ModeStylesChanged,
-    /// A user option was written or unset; the daemon signals the `wait-for`
-    /// channel `<name>@<target>` so a script can block on the change.
     UserOptionChanged {
         channel: String,
     },
@@ -1673,10 +1585,7 @@ pub struct DisplayPanesOptions {
 pub struct DetachRequest {
     pub target_client: Option<String>,
     pub scope: DetachScope,
-    /// `detach-client -E`: replace each victim with this shell command instead
-    /// of detaching it.
     pub exec: Option<String>,
-    /// `detach-client -P`: use the parent-hangup exit action.
     pub parent_hangup: bool,
 }
 
@@ -1905,8 +1814,6 @@ impl<H: StatusHooks> StatusHooks for CommandItemHooks<'_, H> {
         self.inner.client_terminal_environment()
     }
 
-    /// `cmdq_merge_formats` puts `command` in `ft->tree` for every queue item,
-    /// which is why `format_each` prints it after the whole table.
     fn tree_entries(&mut self) -> Vec<(String, String)> {
         let mut entries = self.inner.tree_entries();
         if let Some(command) = self.command
@@ -2190,9 +2097,6 @@ pub(crate) enum TmuxOptionTarget {
     Pane(PaneId),
 }
 
-/// The subscribed set of a `set-hook -B name:what:format` monitor, from
-/// `monitor_parse`: `%*` all panes, `%N` one pane, `@*` all windows, `@N` one
-/// window, and anything else the session.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FormatMonitorScope {
     Session,
@@ -2202,7 +2106,6 @@ pub enum FormatMonitorScope {
     AllWindows,
 }
 
-/// One object a monitor's format is re-expanded against on each tick.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FormatMonitorTarget {
     pub session: Option<SessionId>,
@@ -2210,7 +2113,6 @@ pub struct FormatMonitorTarget {
     pub pane: Option<PaneId>,
 }
 
-/// A live monitor as the daemon's tick sees it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FormatMonitor {
     pub id: u64,
@@ -2291,8 +2193,6 @@ fn format_monitor_scope(what: &str) -> FormatMonitorScope {
     FormatMonitorScope::Session
 }
 
-/// `monitor_parse`: split on the first two colons into name, what and format,
-/// and fail without both colons.
 fn parse_format_monitor(value: &str) -> Option<(String, FormatMonitorScope, String)> {
     let mut fields = value.splitn(3, ':');
     let name = fields.next()?;
@@ -2305,8 +2205,6 @@ fn parse_format_monitor(value: &str) -> Option<(String, FormatMonitorScope, Stri
     ))
 }
 
-/// `notify_monitor_to_string`: the subscription read back as
-/// `name:what:format`.
 fn format_monitor_display(name: &str, scope: FormatMonitorScope, format: &str) -> String {
     let what = match scope {
         FormatMonitorScope::Session => String::new(),
@@ -2328,8 +2226,6 @@ type UserOptions = BTreeMap<String, RawText>;
 
 type SharedUserOptions = Arc<UserOptions>;
 
-/// What format expansion reads without holding the engine: `#{pane_kind}` and
-/// `#{@name}` readback, keyed by the ids a `StatusContext` already carries.
 #[derive(Clone, Debug, Default)]
 pub struct FormatFacts {
     pane_kinds: BTreeMap<String, &'static str>,
@@ -2354,8 +2250,6 @@ impl FormatFacts {
         self.browser_urls.get(pane).map(String::as_str)
     }
 
-    /// A user option as `#{@name}` sees it: pane, then the pane's window,
-    /// session, global window, global session, server.
     #[must_use]
     pub fn user_option(&self, pane: &str, window: &str, session: &str, name: &str) -> Option<&str> {
         self.user_option_bytes(pane, window, session, name)
@@ -2781,11 +2675,7 @@ pub struct TerminalWorkerOptions {
     pub scroll_on_clear: bool,
     pub erase_byte: Option<u8>,
     pub verase_byte: u8,
-    /// `mode-keys` for the pane's window; window-copy.c reads it live in the
-    /// cursor geometry, so the worker carries it as a knob.
     pub mode_keys_vi: bool,
-    /// The unexpanded `remain-on-exit-format` a retained pane draws after its
-    /// child exits; empty when the pane is not retained at all.
     pub remain_on_exit_format: String,
     pub wrap_search: bool,
     pub cursor_style: &'static str,
@@ -2796,23 +2686,18 @@ pub struct TerminalWorkerOptions {
     pub pane_colours: Vec<(u8, String)>,
 }
 
-/// Explicit `pane-border-style` / `pane-active-border-style` values resolved
-/// pane -> window -> global; `None` means unset everywhere (theme fallback).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PaneBorderStyleValues {
     pub border: Option<String>,
     pub active_border: Option<String>,
 }
 
-/// Explicit `window-style` / `window-active-style` values resolved
-/// pane -> window -> global; `None` means unset everywhere.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WindowStyleValues {
     pub style: Option<String>,
     pub active_style: Option<String>,
 }
 
-/// Explicit global `mode-style` and copy-mode match styles; `None` means unset.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CopyModeStyleValues {
     pub mode: Option<String>,
@@ -2913,7 +2798,6 @@ impl StatusRowVariables {
     }
 }
 
-/// What an agent pane's daemon-owned adapter is started with.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AgentOptions {
     pub command: String,
@@ -3415,7 +3299,6 @@ impl MuxEngine {
     }
 
     #[must_use]
-    /// The `status-*` options a client's status line is rendered from.
     pub const fn status_formats(&self) -> &StatusFormats {
         &self.status
     }
@@ -3936,10 +3819,6 @@ impl MuxEngine {
         }
     }
 
-    /// The `pane-colours` entries `colour_palette_from_option` would copy into
-    /// this pane's default palette: the nearest array in pane -> window ->
-    /// global-window order, keeping only the numeric indices below 256 that
-    /// `options_array_getv(o, "%u", i)` reaches.
     #[must_use]
     pub fn pane_colours_for_pane(&self, pane: PaneId) -> Vec<(u8, String)> {
         let Some((array, _)) =
@@ -4107,10 +3986,6 @@ impl MuxEngine {
             .unwrap_or(VisualBell::Off)
     }
 
-    /// `prompt_set_options`: the prompt reads `status-keys` and
-    /// `word-separators` off the session that raised it, or the global session
-    /// options when there is no session, and keeps them for its whole life.
-    /// `prompt_set_options` for a prompt a pane's own mode raises.
     #[must_use]
     pub fn pane_prompt_keys_are_vi(&self, pane: PaneId) -> bool {
         let session = self
@@ -4383,9 +4258,6 @@ impl MuxEngine {
             .unwrap_or(self.global_window_options.window_size)
     }
 
-    /// `window_get_pane_status`: the window's `pane-border-status`, with
-    /// `top-floating` and `bottom-floating` folded back to off because no
-    /// tiled pane ever sees them.
     #[must_use]
     pub fn pane_border_status(&self, window: WindowId) -> PaneBorderStatus {
         self.scalar_option_effective(TmuxOptionTarget::Window(window), "pane-border-status")
@@ -4418,9 +4290,6 @@ impl MuxEngine {
         }
     }
 
-    /// `window_pane_get_pane_lines` reads `wp->window->options` for every pane
-    /// that is not floating, so a tiled pane takes the window value and the
-    /// pane-scoped one it inherits from is never consulted.
     #[must_use]
     pub fn pane_border_lines(&self, window: WindowId) -> PaneBorderLines {
         let mut values = self.global_pane_options.clone();
@@ -4485,9 +4354,6 @@ impl MuxEngine {
         self.pane_knobs(pane).allow_set_title
     }
 
-    /// `input_key` turns an unmodified `BSpace` into one byte named by the
-    /// server-scope `backspace` option, and `spawn.c` forces the child's
-    /// `VERASE` to the same key.
     #[must_use]
     pub fn backspace_byte(&self) -> Option<u8> {
         let value = self.server_options.backspace.as_str();
@@ -4523,9 +4389,6 @@ impl MuxEngine {
         }
     }
 
-    /// `spawn.c` writes the `backspace` key straight into the child's
-    /// `VERASE` unless the key code carries a flag or a modifier, which every
-    /// code at or above `0x7f` does; those fall back to `0x7f`.
     #[must_use]
     pub fn verase_byte(&self) -> u8 {
         let value = self.server_options.backspace.as_str();
@@ -4551,9 +4414,6 @@ impl MuxEngine {
         }
     }
 
-    /// `screen_write_vnputs` draws the expanded `remain-on-exit-format` into a
-    /// retained pane after the child exits; the raw template is a store-only
-    /// scalar resolved pane -> window -> global.
     #[must_use]
     pub fn remain_on_exit_format_for_pane(&self, pane: PaneId) -> String {
         let Some(option) = exact_tmux_option("remain-on-exit-format") else {
@@ -4797,9 +4657,6 @@ impl MuxEngine {
         substitute_command_prompt_invocations(commands, inputs)
     }
 
-    /// `args_make_commands`: one `cmd_template_replace` pass per answer, in
-    /// answer order, so an earlier answer's text is itself rewritten by a
-    /// later pass.
     #[must_use]
     pub fn substitute_command_prompt_template<S: AsRef<str>>(
         template: &str,
@@ -4890,9 +4747,6 @@ impl MuxEngine {
         .into()
     }
 
-    /// [`Self::expand_pane_format`] for a consumer that opens what it gets: a
-    /// path is bytes on Unix, and `#{...}` can hand it a value the environment
-    /// store keeps as bytes.
     pub fn expand_pane_format_bytes(
         &self,
         format: &str,
@@ -5593,28 +5447,22 @@ impl MuxEngine {
         }
     }
 
-    /// The `mouse` value effective for one attached session, or the global
-    /// value for an unattached client.
     #[must_use]
     pub fn effective_mouse(&self, session: Option<SessionId>) -> bool {
         session.map_or(self.global_mouse, |session| self.mouse_for_session(session))
     }
 
-    /// `focus-follows-mouse` as the pin resolves it: `s->options` for a client
-    /// attached to `session`, the global session table for one that is not.
     #[must_use]
     pub fn effective_focus_follows_mouse(&self, session: Option<SessionId>) -> bool {
         let target = session.map_or(TmuxOptionTarget::GlobalSession, TmuxOptionTarget::Session);
         self.scalar_option_effective(target, "focus-follows-mouse") == Some("on")
     }
 
-    /// What the daemon starts an agent pane's adapter with.
     #[must_use]
     pub const fn agent_options(&self) -> &AgentOptions {
         &self.agent
     }
 
-    /// The history limit a newly created pane inherits.
     pub fn history_limit_for_pane(&self, pane: PaneId) -> Result<usize, ServerError> {
         let window = self
             .state
@@ -5714,7 +5562,6 @@ impl MuxEngine {
         )
     }
 
-    /// The effective word-separator string for a pane's session.
     pub fn word_separators_for_pane(&self, pane: PaneId) -> Result<&str, ServerError> {
         let window = self
             .state
@@ -5926,15 +5773,11 @@ impl MuxEngine {
         environment.into_iter().collect()
     }
 
-    /// The environment a shell job inherits: the global overlay, then the
-    /// session overlay when the job has one. Hidden entries and child-unset
-    /// markers come through as `None` so the spawner removes them.
     pub fn job_environment(&self, session: Option<SessionId>) -> Vec<(RawText, Option<RawText>)> {
         let retained = session.and_then(|session| self.session_environments.get(&session));
         self.job_environment_with_retained_session(retained)
     }
 
-    /// The effective native copy-mode key table for a pane's window.
     pub fn copy_mode_table_for_pane(&self, pane: PaneId) -> Result<&'static str, ServerError> {
         let window = self
             .state
@@ -5950,7 +5793,6 @@ impl MuxEngine {
             .unwrap_or(self.global_mode_keys)
     }
 
-    /// Resolve the panes that should receive input originating at `source`.
     pub fn synchronized_input_targets(&self, source: PaneId) -> Result<Vec<PaneId>, ServerError> {
         self.state.synchronized_input_targets(source)
     }
@@ -6023,7 +5865,6 @@ impl MuxEngine {
         Ok(true)
     }
 
-    /// Apply one parsed command and return side effects for the daemon adapter.
     pub fn execute(
         &mut self,
         context: &mut ExecutionContext,
@@ -9112,8 +8953,6 @@ impl MuxEngine {
         Ok(execution)
     }
 
-    /// The pin's `window_pane_is_visible`: everything is visible until a zoom,
-    /// and a zoomed window shows only its active pane (window.c).
     fn pane_is_visible(&self, pane: PaneId) -> bool {
         self.state
             .window_for_pane(pane)
@@ -9610,12 +9449,6 @@ impl MuxEngine {
         Ok(Execution::default())
     }
 
-    /// `resize_pane_mouse_update`: the border the drag grabbed follows the
-    /// pointer, so the pane it belongs to ends at the cell the event landed on.
-    /// The pin registers a drag callback and reads every later motion through
-    /// it; the raw TUI latches the border on the button-down instead and sends
-    /// `MouseDrag1Border` for each motion, so each one lands here with the
-    /// axis the divider had and the cell it is now over.
     fn resize_pane_from_mouse(
         &mut self,
         context: &ExecutionContext,
@@ -10663,11 +10496,6 @@ impl MuxEngine {
         Ok(execution)
     }
 
-    /// `window_copy_command`: every `send -X` run from a mouse binding that is
-    /// not a wheel moves the copy cursor to the event's cell first, which is
-    /// what `window_copy_move_mouse` does. The cell travels with the event as
-    /// the pane input the client encoded, so a wheel is the one whose stored
-    /// action is a scroll and carries no cell to move to.
     fn mouse_cursor_move(context: &ExecutionContext, pane: PaneId) -> Vec<MuxEffect> {
         let Some(mouse) = context.invoking_mouse() else {
             return Vec::new();
@@ -11077,9 +10905,6 @@ impl MuxEngine {
         }))
     }
 
-    /// `cmd_choose_tree_exec` for `cmd_choose_client_entry`: the same mode
-    /// tree over `window_client_mode`, whose sort sequence starts at name and
-    /// whose `-i` opens on the info view.
     fn choose_client(
         &self,
         context: &ExecutionContext,
@@ -11291,9 +11116,6 @@ impl MuxEngine {
             .value("-d")
             .map(|value| parse_strtonum(value, 0, i64::from(u32::MAX), "delay"))
             .transpose()?;
-        // `cmd_display_message_exec` runs format_each and returns before it
-        // looks at the template, so -a ignores -l, -d and -p alike and prints
-        // through cmdq_print whether or not -p was given.
         if options.has("-a") && !json {
             let mut listing = String::new();
             for (name, value) in format_listing(self, format_context, hooks) {
@@ -11301,10 +11123,6 @@ impl MuxEngine {
             }
             return Ok(Execution::output(listing.trim_end_matches('\n').to_owned()));
         }
-        // format_log1 gates only on `ft->item != NULL` and FORMAT_VERBOSE, so
-        // the trace reaches the command's stdout through cmdq_print ahead of
-        // the result whether or not -p was given, and -l skips the expansion
-        // that would have written it.
         let mut trace = Vec::new();
         let text = if options.has("-l") {
             RawText::from(format)
@@ -11440,12 +11258,6 @@ impl MuxEngine {
         }
     }
 
-    /// The pin's `CMD_FIND_CANFAIL` residue: a missed target keeps whatever
-    /// `cmd_find_target` filled in before it gave up, and `format_defaults`
-    /// then completes a retained session with its current window and active
-    /// pane. A colon-less window component that names neither a window nor a
-    /// session clears the session too, so nothing is retained; the marked
-    /// alias is one of those, because the pin only reads it as a whole target.
     fn resolve_display_message_partial_context(
         &self,
         context: &ExecutionContext,
@@ -11499,9 +11311,6 @@ impl MuxEngine {
         let parsed_options = parse_tmux_command_options(spec, invocation)?;
         let positional_start = args.len().saturating_sub(parsed_options.positionals.len());
         let (options, positional) = parse_command_options("display-panes", args)?;
-        // `args_make_commands_prepare` with `select-pane -t "%%%"` as the
-        // default: the optional argument follows ARGS_PARSE_COMMANDS_OR_STRING,
-        // so a `{ ... }` block keeps its parsed command list.
         let template = positional
             .first()
             .map(|template| {
@@ -12355,7 +12164,6 @@ impl MuxEngine {
         )
     }
 
-    /// The live `set-hook -B` subscriptions, for the daemon's one-second tick.
     #[must_use]
     pub fn format_monitors(&self) -> Vec<FormatMonitor> {
         self.format_monitors
@@ -12370,9 +12178,6 @@ impl MuxEngine {
             .collect()
     }
 
-    /// `monitor_check_value`: the first sample of an object records the
-    /// baseline and reports nothing, and a later sample reports the previous
-    /// string only when the new one differs.
     pub fn record_format_monitor_sample(
         &mut self,
         id: u64,
@@ -12397,9 +12202,6 @@ impl MuxEngine {
         }
     }
 
-    /// `monitor_sweep_all_panes` and `monitor_sweep_all_windows`: an all-panes
-    /// or all-windows subscription forgets the baseline of every object the
-    /// scan did not see.
     pub fn sweep_format_monitor_targets(&mut self, id: u64, seen: &BTreeSet<FormatMonitorTarget>) {
         let Some(monitor) = self
             .format_monitors
@@ -12417,8 +12219,6 @@ impl MuxEngine {
         monitor.previous.retain(|target, _| seen.contains(target));
     }
 
-    /// `notify_insert_hook`: a monitor's hook body is the value of its own
-    /// option on the store the subscription was created against.
     #[must_use]
     pub fn format_monitor_hook_body(&self, id: u64) -> Option<String> {
         let monitor = self
@@ -12432,8 +12232,6 @@ impl MuxEngine {
         Some(value.to_string())
     }
 
-    /// `notify_parse_hook` with `expand` set, which `notify_monitor_add` always
-    /// asks for: a monitor body is format-expanded and only then parsed.
     #[must_use]
     pub fn parse_monitor_hook_body(&self, body: &str) -> Option<Vec<Vec<CommandInvocation>>> {
         if body.is_empty() {
@@ -12443,8 +12241,6 @@ impl MuxEngine {
         Some(vec![commands])
     }
 
-    /// `notify_monitor_cb`: the nine names a monitor's hook body sees, each
-    /// left out where the change's scope has no such object.
     #[must_use]
     pub fn format_monitor_hook_variables(
         &self,
@@ -13566,10 +13362,6 @@ impl MuxEngine {
         Ok(self.user_option_changed(context, target, option))
     }
 
-    /// A user option changed: signal its `wait-for` channel and, when one is
-    /// set for the target, run the `@option-changed` user hook with
-    /// `hook_option` and `hook_target` in scope. Commands already running
-    /// from a hook do not fire it again.
     fn user_option_changed(
         &self,
         context: &ExecutionContext,
@@ -14117,8 +13909,6 @@ impl MuxEngine {
         Some((parent, true))
     }
 
-    /// The user options stored directly on one window, which is exactly what
-    /// `format_add_window_neighbour` copies out of `wl->window->options`.
     pub(crate) fn format_window_user_options(&self, window: WindowId) -> Vec<(String, String)> {
         self.window_user_options
             .get(&window)
@@ -14813,10 +14603,6 @@ impl MuxEngine {
         Ok(Execution::default())
     }
 
-    /// The `terminal-features` array, which `tty_term_create` walks with
-    /// `fnmatch` against the client's TERM to decide which features to turn on
-    /// before it interrogates the terminal. It is a server option, so the
-    /// global session store is the only place it lives.
     #[must_use]
     pub fn editor_option(&self) -> String {
         self.global_tmux_option_value("editor")
@@ -15108,10 +14894,6 @@ impl MuxEngine {
         }))
     }
 
-    /// The pin resolves an option target with `CMD_FIND_CANFAIL` and then lets
-    /// `options_scope_from_flags` name the slot the option's own scope needs,
-    /// echoing the raw `-t` argument rather than the target parser's message
-    /// (options.c).
     fn resolve_tmux_option_target(
         &self,
         context: &ExecutionContext,
@@ -16786,8 +16568,6 @@ impl MuxEngine {
         })
     }
 
-    /// Re-point a connection's context at live ids. Any command path that
-    /// returns before [`MuxEngine::execute`] reaches this must call it itself.
     pub fn repair_context(&self, context: &mut ExecutionContext) {
         if let Some(pane) = context.pane
             && let Some(valid) = ExecutionContext::for_pane(&self.state, pane)
@@ -16872,9 +16652,6 @@ fn remove_option_override<K: Copy + Ord, O: Copy + Ord>(
     }
 }
 
-/// `options_push_changes` rebuilds every pane's default palette whenever
-/// `pane-colours` changes at any scope, and skips the push when an unset found
-/// nothing stored there.
 fn server_option_execution(option: ServerOption) -> Execution {
     let mux_option = match option {
         ServerOption::Backspace => {
@@ -16916,10 +16693,6 @@ fn stored_array_execution(name: &str, changed: bool) -> Execution {
     Execution::default()
 }
 
-/// The `theme` choice plus the twenty `dark-theme-*` and `light-theme-*` slots
-/// that fill it. `theme` picks a half and every other name is one slot of one
-/// half, which is why the prefix test is the whole roster: the option catalog
-/// is pinned name for name against the oracle.
 fn is_theme_option(name: &str) -> bool {
     name == "theme" || name.starts_with("dark-theme-") || name.starts_with("light-theme-")
 }
@@ -17050,8 +16823,6 @@ fn tmux_option_is_implemented(option: TmuxOption) -> bool {
         || PaneOption::from_name(option.name).is_some()
 }
 
-/// environ.c keeps entries in a name-ordered tree and `environ_first` walks it
-/// whole, so a hidden or removed entry still owns a row.
 fn format_environment_rows(environment: &Environment) -> Vec<FormatEnvironRow> {
     environment
         .iter()
@@ -17305,8 +17076,6 @@ fn push_shown_array(
     }
 }
 
-/// `cmdq_print` ends every line with a newline, which the output joining
-/// drops except after a final empty line.
 fn printed_lines(lines: &[String]) -> String {
     let mut output = lines.join("\n");
     if lines.last().is_some_and(String::is_empty) {
@@ -17499,9 +17268,6 @@ fn extend_job_environment(target: &mut BTreeMap<RawText, Option<RawText>>, sourc
     }
 }
 
-/// `environ_print`'s two spellings, written as bytes: tmux stores an
-/// environment name and value as a C string, so a byte past ASCII reaches
-/// `show-environment` unchanged and the `-s` form quotes around it.
 fn environment_line(
     name: &RawText,
     entry: &EnvironmentEntry,
@@ -17893,8 +17659,6 @@ fn validate_word_separators(value: &str) -> Result<(), ServerError> {
     Ok(())
 }
 
-/// How a split verb spells the size of the pane it creates: `-p` is always a
-/// percentage, `-l` is cells unless it carries a `%` suffix.
 #[derive(Clone, Copy)]
 enum SplitSize<'a> {
     Percentage(&'a str),
@@ -18000,15 +17764,6 @@ fn implied_window_extent(measured: u16, window: u16, pane: u16) -> u16 {
     u16::try_from(rounded).unwrap_or(u16::MAX)
 }
 
-/// The window extent a client's report of one pane implies. tmux never does
-/// this - a client's tty sizes the window and `layout_fix_panes` hands each
-/// pane its cell - so it is zz's own inverse, and it is only sound axis by
-/// axis. On an axis the pane spans in full the inverse is exact: the pane and
-/// the window differ by the border row `layout_add_horizontal_border` carved
-/// out, so the extent is the report plus that constant. On an axis the pane
-/// shares with siblings the inverse is a ratio, and a report one cell off a
-/// ten-column pane of a two-hundred-column window would move the window by
-/// twenty, so `guard` swallows a single cell of measurement drift there.
 fn back_solved_window_extent(
     layout: &CellLayout,
     pane: PaneId,
@@ -18399,14 +18154,6 @@ fn tmux_key_base_identity(base: &str) -> Option<(u32, u8, u8)> {
     mouse_key_identity(base)
 }
 
-/// `m->ignore`. `server_client_check_mouse` sets it on one event and one only,
-/// the one `server_client_click_timer` replays under a `DoubleClick` name once
-/// the third press it was waiting for did not arrive, and `input_key_mouse`
-/// drops an ignored event. So a `send -M` from a `DoubleClick` binding writes
-/// nothing to the pane: the press that double click was made of reached it
-/// already, when the binding for the second press did not claim it. The drop
-/// belongs to the pane's own input, which `window_pane_key` reaches only after
-/// a pane holding a mode has already answered the key.
 #[must_use]
 pub fn mouse_key_is_a_replayed_double_click(key: &str) -> bool {
     key.rsplit_once('-')
@@ -18467,11 +18214,6 @@ fn mouse_key_identity(base: &str) -> Option<(u32, u8, u8)> {
     None
 }
 
-/// Fold one tmux key spelling into the name the key tables carry, or `None`
-/// when nothing in `key_string_lookup_string`'s vocabulary spells it. Callers
-/// outside the tables — `display-menu` row shortcuts, for one — need the same
-/// answer the pin's parser gives before they decide what a row can be pressed
-/// with.
 pub fn parse_tmux_key(value: &str) -> Option<String> {
     if value.eq_ignore_ascii_case("none") {
         return Some("None".to_owned());
@@ -18930,8 +18672,6 @@ fn key_table(options: &Options) -> &str {
         .unwrap_or(if options.has("-n") { "root" } else { "prefix" })
 }
 
-/// `cmd_command_prompt_exec`'s mode ladder: the first flag present wins in the
-/// order `-1`, `-N`, `-i`, `-k`, `-e`, and `-C` is orthogonal to all of them.
 fn command_prompt_mode(options: &Options) -> CommandPromptMode {
     if options.has("-1") {
         CommandPromptMode::Single
@@ -19200,9 +18940,6 @@ fn reject_positionals(command: &str, positional: &[RawText]) -> Result<(), Serve
     }
 }
 
-/// The pin's `args_strtonum` (arguments.c) over OpenBSD `strtonum`: a leading
-/// sign and digits only, with `invalid` for anything unparseable and
-/// `too small`/`too large` for both range and overflow rejections.
 fn percentage_value(value: &str, minimum: i64, maximum: i64, current: i64) -> Result<i64, String> {
     let strtonum = |value: &str, minimum: i64, maximum: i64| {
         parse_strtonum(value, minimum, maximum, "").map_err(|error| match error {
@@ -19419,19 +19156,11 @@ fn pane_kind_snapshot(kind: &PaneKind) -> PaneKindSnapshot {
     }
 }
 
-/// Where a freshly created window lands: an explicit index makes the command
-/// fail when that slot is taken, `None` takes the lowest free index.
 struct WindowDestination {
     session: SessionId,
     index: Option<u32>,
 }
 
-/// tmux's target-window-with-index resolution, the form `new-window -t` and
-/// `break-pane -t` use: the index need not exist yet, and a bare numeric
-/// target is a window index in the current session before anything else —
-/// even when a session shares that name (cmd-find.c tries the window part
-/// first and only falls back to a session lookup when every window
-/// interpretation fails).
 fn window_destination(
     state: &MuxState,
     target: Option<&str>,
@@ -19644,12 +19373,6 @@ fn key_token(value: &str) -> KeyToken {
     }
 }
 
-/// tmux's `send-keys -H` is strtol(16) clamped to one byte, written raw to the
-/// pane as `KEYC_LITERAL|n`. `cmd_send_keys_inject_string` drops the argument
-/// without an error whenever the string is empty, is not entirely hexadecimal,
-/// or falls outside 0..=0xff, so a bad code is a silent skip and never a
-/// command failure. Bytes above 0x7f cannot ride `KeyToken::Literal`, whose
-/// UTF-8 text would re-encode them, so they take the raw byte token instead.
 fn hex_key_token(value: &str) -> Option<KeyToken> {
     let digits = value
         .strip_prefix("0x")
@@ -19760,18 +19483,12 @@ pub fn send_keys_is_read_only_safe(args: &[RawText]) -> Result<bool, ServerError
         .is_none_or(copy_mode_action_is_read_only_safe))
 }
 
-/// The `-c` target client `send-keys` selects. cmd-send-keys.c carries
-/// `CMD_CLIENT_CFLAG|CMD_CLIENT_CANFAIL`, so the read-only guard follows this
-/// client rather than the invoker, and a target that matches nothing leaves the
-/// guard with no client at all.
 pub fn send_keys_target_client(args: &[RawText]) -> Result<Option<String>, ServerError> {
     let spec = command_spec("send-keys").expect("send-keys has catalog metadata");
     let (options, _) = parse_options_for_spec(args, spec)?;
     Ok(options.value("-c").map(str::to_owned))
 }
 
-/// The action a bare `-X <command>` maps to, with the one mandatory argument
-/// supplied for the names that require one.
 pub(crate) fn copy_mode_probe_action(command: &str) -> Option<CopyModeAction> {
     let arguments: Vec<RawText> = match command {
         "goto-line" => vec!["1".into()],
@@ -19970,9 +19687,6 @@ fn copy_mode_action(
     Ok(action)
 }
 
-/// Where the search string sits among an action's own arguments. The pin
-/// reads it as `args_string(cs->wargs, 0)`, after the action's flags and the
-/// `--` its stock bindings carry, so the expansion has to skip both.
 fn send_keys_search_string_index(arguments: &[RawText]) -> Option<usize> {
     let mut index = 0;
     while let Some(argument) = arguments.get(index) {
@@ -19988,11 +19702,6 @@ fn send_keys_search_string_index(arguments: &[RawText]) -> Option<usize> {
     None
 }
 
-/// `send-keys -F` reaches exactly one place in the pin:
-/// `window_copy_expand_search_string` runs the search string through
-/// `format_single` in the target pane's context. Every other key argument is
-/// untouched by the flag, and the two `-incremental` spellings never call that
-/// helper.
 const SEND_KEYS_FORMAT_EXPANDED_ACTIONS: &[&str] = &[
     "search-backward",
     "search-backward-text",
@@ -20000,10 +19709,6 @@ const SEND_KEYS_FORMAT_EXPANDED_ACTIONS: &[&str] = &[
     "search-forward-text",
 ];
 
-/// `window_copy_cmd_search_forward` and its three plain siblings: the string is
-/// the one optional argument, the `-text` spellings clear `data->searchregex`,
-/// and a missing or empty string is `window_copy_expand_search_string`
-/// answering zero, which leaves the mode alone.
 fn copy_search_action(command: &str, argument: Option<&RawText>) -> CopyModeAction {
     CopyModeAction::Search(Box::new(CopyModeSearch {
         text: argument.map(ToString::to_string).unwrap_or_default(),
@@ -20017,12 +19722,6 @@ fn copy_search_action(command: &str, argument: Option<&RawText>) -> CopyModeActi
     }))
 }
 
-/// `window_copy_cmd_search_forward_incremental` reads the first character of
-/// its mandatory argument as the prefix `command-prompt -i` prepended: `=`
-/// searches the spelling's own way, `+` down and `-` up in the forward
-/// spelling, and the two swap in the backward one. A prefix that is none of
-/// the three runs no search at all, and the rest of the argument is the
-/// string, which may be empty.
 fn copy_incremental_search_action(
     command: &str,
     argument: Option<&RawText>,
@@ -20133,8 +19832,6 @@ fn copy_line_action(action: CopyModeAction) -> CopyModeAction {
     CopyModeAction::CopyLine(copy)
 }
 
-/// `None` is the pin's silent no-op for a name it does not recognise, which
-/// leaves the live selection unit alone.
 fn copy_selection_mode(argument: Option<&str>) -> Option<CopySelectionMode> {
     match argument {
         None => Some(CopySelectionMode::Char),
@@ -20161,8 +19858,6 @@ fn copy_goto_line_action(arguments: &[RawText]) -> Option<CopyModeAction> {
     })
 }
 
-/// The pin's `strtonum` grammar: `strtoll` base ten over the whole string,
-/// leading whitespace and one sign allowed, then an inclusive range test.
 fn pinned_strtonum(value: &str, minimum: i64, maximum: i64) -> Option<i64> {
     let bytes = value.as_bytes();
     let mut index = 0;
@@ -20250,8 +19945,6 @@ fn copy_selection_action(
     })
 }
 
-// Accepted divergence: opaque blocks expand against the live global environment when
-// reparsed, so a mutation after config load can change the payload.
 fn bound_commands(
     engine: &MuxEngine,
     owner: &CommandInvocation,
@@ -20897,10 +20590,6 @@ fn parse_command_alias_group(
     Ok(Some(parsed.commands))
 }
 
-/// Render a stored command the way the pin's `cmd_print` does (`arguments.c`
-/// `args_print`): the canonical name, value-less flags merged into one group in
-/// flag order, valued flags in flag order with `args_escape`d values, then the
-/// positionals.
 fn tmux_command_print(command: &CommandInvocation) -> String {
     if let Some(body) = command_alias_group_body(command) {
         return body.to_owned();
@@ -23449,15 +23138,6 @@ mod tests {
         ));
     }
 
-    /// `environ_set` stores a name and a value as C strings and `environ_print`
-    /// writes them back byte for byte. Measured on 2026-09-04 against pinned
-    /// tmux d77c9dc6 on a throwaway server: `set-environment -g ZZBYTES` with
-    /// `a<0xff>b` then `show-environment -g ZZBYTES` answers
-    /// `5a 5a 42 59 54 45 53 3d 61 ff 62 0a`, the `-s` form answers
-    /// `ZZBYTES="a\xffb"; export ZZBYTES;` with the byte raw inside the quotes,
-    /// a non-UTF-8 name round-trips as `N\xff=plain`, and a session-scoped store
-    /// behaves the same. The trailing newline in those readings is the client's,
-    /// not the line's, so the expectations below stop at the line.
     #[test]
     fn environment_stores_and_prints_non_utf8_names_and_values_as_bytes() {
         let mut engine = MuxEngine::default();
@@ -27387,9 +27067,6 @@ mod tests {
         ));
     }
 
-    /// `-C` is the pin's `no_freeze` argument to `status_message_set` and `-d`
-    /// its `delay`: `-1` (absent) falls back to `display-time`, zero installs no
-    /// timer, and the bounds are `strtonum(value, 0, UINT_MAX)`.
     #[test]
     fn display_message_takes_the_pins_no_freeze_flag_and_delay_value() {
         let mut engine = MuxEngine::default();
@@ -29522,9 +29199,6 @@ mod tests {
                 "{action} accepted {flag}"
             );
         }
-        // A bare -X still runs cmd_send_keys_exec's mode guard, which answers
-        // `not in a mode` at status 1 on the pin, but carries no count and no
-        // action of its own.
         let execution = engine
             .execute(&mut context, &command("send-keys", &["-X"]))
             .unwrap();
@@ -35560,9 +35234,6 @@ mod tests {
             )
         );
 
-        // format_skip1's bracket counter is signed, so the unmatched `}` in a
-        // modifier argument fails the whole list and the body is expanded as a
-        // plain format instead.
         let literal = engine
             .execute(
                 &mut context,
@@ -35590,7 +35261,6 @@ mod tests {
             )
         );
 
-        // -l skips the expansion the trace would have been written by.
         assert_eq!(
             engine
                 .execute(
@@ -47851,14 +47521,6 @@ mod tests {
         assert!(engine.state.validate().is_ok());
     }
 
-    /// `window_tree_swap` moves `curw` through `session_set_current`, which
-    /// drops the destination slot off the last stack and pushes the slot the
-    /// current window vacated. Measured on the pin (`d77c9dc6`) with an
-    /// attached client, windows `1:w0 2:w1 3:w2`, `select-window 2` then
-    /// `select-window 1`, and `C-o g j j K`:
-    /// `#{?window_active,*,}#{?window_last_flag,-,}` reads
-    /// `1:w1- 2:w0* 3:w2`, so the swapped-away window is last and never the
-    /// current one.
     #[test]
     fn chooser_swap_leaves_the_other_window_of_the_pair_as_last() {
         let mut engine = MuxEngine::default();

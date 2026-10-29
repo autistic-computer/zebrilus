@@ -246,7 +246,6 @@ fn argument_context(spec: &'static CommandSpec, tokens: &[Token]) -> ArgumentCon
             context.used_options.insert(option.name);
             expecting_value = option.value;
         } else if token.value.starts_with('-') {
-            // Unknown options remain parser-owned and do not change positional context.
         } else {
             context.positional_index += 1;
         }

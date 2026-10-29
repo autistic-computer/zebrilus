@@ -12,12 +12,6 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # Validates the tag and opens the empty draft the platform legs upload into,
-  # so the three builds run side by side instead of queueing behind macOS. The
-  # release is born a draft and stays one until every platform has uploaded.
-  # Drafts are invisible to the unauthenticated releases API, so install.sh
-  # keeps resolving the previous version rather than naming this one and then
-  # 404ing on a Linux tarball that is still building.
   draft:
     name: Draft release
     runs-on: ubuntu-24.04
@@ -27,9 +21,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # The DMG carries the numeric core as CFBundleShortVersionString while the
-      # cask carries the full SemVer tag. A mismatch would leave brew convinced
-      # the installed app is the wrong version.
       - name: Check the tag against the workspace version
         shell: bash
         run: |
@@ -101,9 +92,6 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: brew install just
 
-      # codesign and notarytool both read the default keychain, so the release
-      # runs against one throwaway keychain holding the Developer ID identity
-      # and the notary credentials.
       - name: Load the signing and notary credentials
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
@@ -126,8 +114,6 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$password" "$keychain"
           security default-keychain -s "$keychain"
-          # Prepend rather than replace: dropping the runner's own keychains from
-          # the search list breaks unrelated tooling for the rest of the job.
           # shellcheck disable=SC2046
           security list-keychains -d user -s "$keychain" \
             $(security list-keychains -d user | tr -d '"')
@@ -136,8 +122,6 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" \
             "$keychain" >/dev/null
 
-          # notarytool wants --issuer for a Team API key and rejects it for an
-          # Individual one, so it follows the secret being set.
           issuer=()
           if [[ -n "$APPLE_API_ISSUER_ID" ]]; then
             issuer=(--issuer "$APPLE_API_ISSUER_ID")
@@ -179,9 +163,6 @@ jobs:
         if: ${{ always() && env.ZZ_KEYCHAIN != '' }}
         run: security delete-keychain "$ZZ_KEYCHAIN"
 
-  # The draft job owns validating the tag and creating the release object, so
-  # this job and the Windows one below only upload. The aarch64 leg rides
-  # GitHub's arm runners, which are free only while the repository is public.
   linux:
     name: Linux ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
@@ -250,10 +231,6 @@ jobs:
 
       - name: Package the tarball, AppImage, and deb
         shell: bash
-        # The runner's distribution is what dpkg-shlibdeps resolves the bundle's
-        # libraries against, so the published deb targets Ubuntu 24.04 and up.
-        # A release artifact is worth the slow compression level the local
-        # `just package deb` skips.
         env:
           ZZ_DEB_COMPRESSION_LEVEL: 19
         run: |
@@ -289,12 +266,6 @@ jobs:
       contents: write
     env:
       CEF_PATH: ${{ github.workspace }}/.cef-cache
-      # Provision these repository secrets to sign the release. Without them
-      # every signing step below is skipped and the artifacts ship unsigned,
-      # which costs users a SmartScreen warning but nothing else.
-      #   WINDOWS_CERTIFICATE_PFX_BASE64  base64 of the code-signing PKCS#12
-      #   WINDOWS_CERTIFICATE_PASSWORD    its password
-      # See scripts/sign-windows.ps1 for where such a certificate comes from.
       WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
@@ -307,7 +278,6 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           {
             echo "ZZ_VERSION=$version"
-            # VersionInfoVersion in the installer rejects a prerelease suffix.
             echo "ZZ_VERSION_INFO=${version%%-*}"
             echo "ZZ_ZIP=dist/zz-$version-windows-x64.zip"
             echo "ZZ_SETUP=dist/zz-$version-windows-x64-setup.exe"
@@ -327,15 +297,10 @@ jobs:
       - name: Build the CEF bundle
         run: cargo xtask bundle-cef --release --output dist/zz
 
-      # Signing the payload before packaging, then the installer afterwards, is
-      # the order Authenticode wants: the installer's signature covers files
-      # that already carry their own.
       - name: Sign the bundled executables
         if: ${{ env.WINDOWS_CERTIFICATE_PFX_BASE64 != '' }}
         shell: pwsh
         run: |
-          # Only zz's own binaries: signing the CEF DLLs would assert authorship
-          # of code we redistribute, and SmartScreen only reads the entry point.
           $binaries = @('dist/zz/zz.exe', 'dist/zz/zz.dll') |
             Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
           ./scripts/sign-windows.ps1 @binaries
@@ -371,9 +336,6 @@ jobs:
           (cd dist && sha256sum "$(basename "$ZZ_SETUP")" > "$(basename "$ZZ_SETUP").sha256")
           cat "$ZZ_ZIP.sha256" "$ZZ_SETUP.sha256"
 
-      # The winget and scoop templates in packaging/windows still carry
-      # placeholder versions and hashes; publishing them is manual until a
-      # bucket and a winget-pkgs fork exist.
       - name: Attach the artifacts to the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -382,11 +344,6 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" \
             "$ZZ_ZIP" "$ZZ_ZIP.sha256" "$ZZ_SETUP" "$ZZ_SETUP.sha256" --clobber
 
-  # The one gate that makes the release real. It waits for every platform leg
-  # to finish, so their assets are attached before the draft flips, but only
-  # macOS and Linux can hold it back. Windows is second-class support: a broken
-  # Windows leg ships the release without its zip and installer rather than
-  # stranding every other platform in a draft nobody can install.
   publish:
     name: Publish
     runs-on: ubuntu-24.04
@@ -396,17 +353,12 @@ jobs:
       contents: write
 
     steps:
-      # No checkout, so gh needs the repository named outright.
       - name: Take the release out of draft
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: gh release edit "$GITHUB_REF_NAME" --draft=false --repo "$GITHUB_REPOSITORY"
 
-  # Two casks, two channels: prereleases publish only to `zz@beta`, so
-  # `brew upgrade` never hands a stable user an rc, while a stable release
-  # refreshes both so beta users move up to it. This waits on the release being
-  # live because a cask pointing into a draft downloads nothing.
   homebrew:
     name: Homebrew tap
     runs-on: ubuntu-24.04
@@ -425,8 +377,6 @@ jobs:
         run: |
           version="${GITHUB_REF_NAME#v}"
 
-          # The DMG was built on a runner that is long gone, so the cask's
-          # checksum comes from the sidecar that shipped beside it.
           sums="$RUNNER_TEMP/sums"
           mkdir -p "$sums"
           gh release download "$GITHUB_REF_NAME" --dir "$sums" \
@@ -440,8 +390,6 @@ jobs:
 
           install -m 600 /dev/null "$key"
           printf '%s\n' "$TAP_DEPLOY_KEY" > "$key"
-          # Pinned from api.github.com/meta rather than ssh-keyscan: trust on
-          # first use authenticates nothing on a runner that is always first use.
           printf '%s %s\n' github.com \
             'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' \
             > "$known_hosts"
@@ -465,11 +413,6 @@ jobs:
             commit --message "zz $version"
           git -C "$tap" push
 
-  # Two packages, two channels, mirroring the tap: prereleases publish only
-  # to zz-beta-bin, stable releases refresh zz-bin and zz-beta-bin both.
-  # Publishing needs an SSH key registered on the AUR account, stored as the
-  # AUR_SSH_PRIVATE_KEY secret; until it is provisioned the step below skips
-  # and the AUR packages stay at their previous versions.
   aur:
     name: AUR
     runs-on: ubuntu-24.04
@@ -500,9 +443,6 @@ jobs:
           trap 'rm -f "$key" "$known_hosts"' EXIT
           install -m 600 /dev/null "$key"
           printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$key"
-          # Pinned from archlinux/infrastructure docs/ssh-hostkeys.txt: trust
-          # on first use authenticates nothing on a runner that is always
-          # first use.
           printf '%s %s\n' aur.archlinux.org \
             'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEuBKrPzbawxA/k2g6NcyV5jmqwJ2s+zpgZGZ7tpLIcN' \
             > "$known_hosts"
@@ -513,8 +453,6 @@ jobs:
           for channel in "${channels[@]}"; do
             package=zz-bin
             [[ "$channel" == stable ]] || package=zz-beta-bin
-            # The clone is empty (with a warning) until the first push creates
-            # the package base.
             pkg="$RUNNER_TEMP/$package"
             git clone "ssh://aur@aur.archlinux.org/$package.git" "$pkg"
             scripts/render-aur.sh "$version" "$x86_64_sha256" "$aarch64_sha256" "$pkg" "$channel"

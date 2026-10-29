@@ -421,15 +421,11 @@ impl Connection {
         self.reconnect(cx);
     }
 
-    /// Connects to `endpoint` without attaching: the host's sessions,
-    /// windows and panes arrive, but no terminal output, until
-    /// [`Self::bring_forward`].
     #[cfg(any(target_os = "ios", target_os = "android"))]
     pub fn connect_background(&mut self, endpoint: String, cx: &mut Context<Self>) {
         self.dial(endpoint, true, cx);
     }
 
-    /// Whether a connection is on its way: signing in, or waiting to retry.
     #[must_use]
     pub fn busy_or_connecting(&self) -> bool {
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -458,8 +454,6 @@ impl Connection {
         })
     }
 
-    /// Detaches and keeps only the host's tree, for a host that is
-    /// connected but not on screen.
     pub fn send_to_background(&mut self, cx: &mut Context<Self>) {
         if self.background {
             return;
@@ -477,7 +471,6 @@ impl Connection {
         cx.notify();
     }
 
-    /// Attaches to `session`, or to the session it was last on.
     pub fn bring_forward(&mut self, session: Option<SessionId>, cx: &mut Context<Self>) {
         let was_background = std::mem::replace(&mut self.background, false);
         #[cfg(any(target_os = "ios", target_os = "android"))]

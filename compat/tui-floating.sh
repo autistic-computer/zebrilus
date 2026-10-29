@@ -1,51 +1,4 @@
 #!/usr/bin/env bash
-# Whole-screen differential for floating panes in the raw TUI against tmux 3.8.
-#
-# Both binaries attach inside ONE outer pinned tmux, one window each, and the
-# outer tmux decodes what each inner client drew: `capture-pane -p` gives every
-# cell's glyph, row by row, and the cursor tuple is the one the inner client left
-# in the outer terminal. The glyphs are the contract here: where each float sits,
-# which float covers which, the border lines and corners, the status text on a
-# float's top border, and what is left of the panes underneath.
-#
-# The pane list (size, position, floating, active and modal flags) is compared
-# too, except while display-popup is up: tmux 3.8's popup is a client overlay
-# and zz's is a modal pane (tmux master 34cd5da4), so only the screen is the
-# contract there.
-#
-# THE POPUP TITLE COLUMN. tmux 3.8 draws a display-popup title with
-# screen_write_box at the box's x + 2; zz's popup is tmux master's modal pane
-# (34cd5da4), whose title is pane-border-format drawn at the pane's xoff + 2,
-# one column further right. On the popup-titled checkpoint only, the dashes
-# around the title on its top border are dropped from both captures before the
-# compare, so the box, its corners and the title text are still asserted.
-#
-# Cases (catch-up item float.clients, knowledge/designs/floating-panes.md):
-#   overlap          two overlapping floats over a vertical split
-#   raised           select-pane raises the back float over the front one
-#   click-overlap    a click on the overlap activates the front float
-#   titled           a -T float under pane-border-status top-floating
-#   borderless       a float with pane-border-lines none
-#   popup-zoomed     display-popup over a zoomed pane
-#   no-tiled         a window with no tiled pane and two floats
-#   modal-click      a click outside a modal changes nothing
-#   modal-close      a click outside a new-pane -O -C modal kills it
-#   popup-titled     display-popup -T over a split, with the per-pane styles
-#                    display-popup sets (pane-border-style, window-style)
-#   clipped          a float pushed past the left and top window edges shows
-#                    its own columns and rows from the clipped offset on
-#   clipped-update   a clipped float's later output lands on its visible rows
-#   clipped-clock    clock-mode in a float past the left edge is cropped, not
-#                    centred again in what is left
-#   cursor-covered   a tiled pane's cursor under a float is hidden
-#
-# CONTROLLED VALUES, set on both sides: status-right '' and status-left L (the
-# clock and the host are not this surface's), window-status-current-format and
-# window-status-format '#I:#W' (tmux 3.8's display-popup is a client overlay and
-# raises no window flag, while zz's is a modal pane and raises O as 3.8 does for
-# new-pane -O; the flag belongs to the status row, not to the float), automatic-
-# rename off, default-shell /bin/sh, mouse on, and an inner shell with no rc file
-# and a bare '$ ' prompt.
 set -eEuo pipefail
 
 usage() {
@@ -274,7 +227,6 @@ send_bytes() {
   tmux_outer_command send-keys -t "=$OUTER_SESSION:$side" -H $hex ||
     die "the outer tmux refused send-keys -H for $side"
 }
-# A left press and release at a 0-based client cell, as SGR 1006 reports.
 click_both() {
   local column="$1" row="$2" side
   for side in zz tmux; do
@@ -428,11 +380,6 @@ panes_floats_case() {
   COMPARE_FACTS=1
 }
 
-# window_panes_draw_screen blanks each float's frame (clipped to the screen)
-# before it draws the float, so a float pushed past the left or top edge, which
-# window_panes_get_geometry refuses to draw, still leaves a blank where it sits;
-# a float is a status-line edge cell only by layout_cell_is_top's tree walk; and
-# -Z keeps the window unzoomed, so the mode scales the window into the pane.
 panes_host_in_mode() {
   [ "$(side_command "$1" display-message -p -t "=$INNER_SESSION:0.${PANES_HOST:-0}" '#{pane_in_mode}' 2>/dev/null)" = 1 ]
 }

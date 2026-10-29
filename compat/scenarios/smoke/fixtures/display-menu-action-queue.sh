@@ -115,10 +115,6 @@ if [ -z "$client" ]; then
 fi
 sleep 0.5
 
-# tmux 3.8 returns from display-menu once the menu is up
-# (cmd-display-menu.c:556), so the rest of the chain runs at once and only the
-# chosen action waits for the client. The d77c9dc6 pin returned CMD_RETURN_WAIT
-# and held MENU_AFTER at pending until the client left the menu.
 main_client set-environment -g MENU_ITEM pending
 main_client set-environment -g MENU_AFTER pending
 main_client display-menu -c "$client" -T '' \
@@ -134,7 +130,6 @@ wait "$menu_pid" >/dev/null 2>&1 || true
 check_equal item-ran chosen "$(value MENU_ITEM)"
 check_equal chain-continued after "$(value MENU_AFTER)"
 
-# Leaving the menu without choosing continues the chain and runs nothing.
 main_client set-environment -g MENU_ITEM pending
 main_client set-environment -g MENU_AFTER pending
 main_client display-menu -c "$client" -T '' \
@@ -148,8 +143,6 @@ wait "$menu_pid" >/dev/null 2>&1 || true
 check_equal cancel-runs-nothing pending "$(value MENU_ITEM)"
 check_equal cancel-continues-chain after "$(value MENU_AFTER)"
 
-# menu_add_item expands every row and every row command against the menu's own
-# client, so a client format in an action names that client.
 main_client set-environment -g MENU_CTX pending
 main_client display-menu -c "$client" -T '' \
     ctx q 'set-environment -g MENU_CTX #{client_name}' &
@@ -160,8 +153,6 @@ sleep 1.2
 wait "$menu_pid" >/dev/null 2>&1 || true
 check_equal action-client-context "$client" "$(value MENU_CTX)"
 
-# The menu is gone before its action runs, so an action that opens a second
-# menu gets the client to itself.
 main_client set-environment -g MENU_NESTED pending
 main_client display-menu -c "$client" -T '' \
     outer q "display-menu -T '' second s 'set-environment -g MENU_NESTED nested'" &
@@ -174,11 +165,6 @@ sleep 1.2
 wait "$menu_pid" >/dev/null 2>&1 || true
 check_equal nested-menu-ran nested "$(value MENU_NESTED)"
 
-# A row command that fails neither fails display-menu nor stops the chain, and
-# the client is told either way: cmdq_error puts the message on that client's
-# status line with the first letter raised, for a run-time failure and a parse
-# failure alike. The probe reads a prefix because each client clips the line to
-# the room its own status chrome leaves.
 main_client set-environment -g MENU_AFTER pending
 rm -f "$work/exit"
 (

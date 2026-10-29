@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Export and summarize the zz-owned rows in a macOS Metal trace."""
 
 from __future__ import annotations
 

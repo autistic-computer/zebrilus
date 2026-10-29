@@ -11,9 +11,6 @@ pub enum PastePreparationError {
     OutputTooLarge,
 }
 
-/// Prepares buffer bytes under tmux's `paste-buffer` rules: newlines become
-/// `separator`, and unless `literal`, unsafe bytes are visibly encoded the way
-/// tmux's `VIS_SAFE | VIS_NOSLASH` does.
 pub fn prepare_paste_buffer(
     data: &[u8],
     separator: &[u8],

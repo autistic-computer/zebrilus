@@ -92,10 +92,6 @@ names() {
     cut -d= -f1 "$work/$1"
 }
 
-# The 63 table names whose callback returns NULL for a pane with no client, and
-# the 34 of those that stay NULL once a client is attached. tmux 3.8 added the
-# pane_command_*, pane_last_*_time and window_modal_pane names to both; the
-# d77c9dc6 pin had 56 and 28.
 declines_without_client='buffer_created buffer_full buffer_name buffer_sample buffer_size client_activity client_cell_height client_cell_width client_colours client_control_mode client_created client_discarded client_flags client_height client_key_table client_last_session client_name client_pid client_prefix client_readonly client_session client_termfeatures client_termname client_termtype client_theme client_tty client_uid client_user client_utf8 client_width client_written mouse_hyperlink mouse_line mouse_pane mouse_status_line mouse_status_range mouse_word mouse_x mouse_y pane_command_duration pane_command_end_time pane_command_start_time pane_command_status pane_dead_signal pane_dead_status pane_dead_time pane_last_output_time pane_last_prompt_time pane_mode pane_pipe_pid session_active session_attached_list session_group session_group_attached session_group_attached_list session_group_list session_group_many_attached session_group_size window_active_clients_list window_bigger window_modal_pane window_offset_x window_offset_y'
 declines_with_client='buffer_created buffer_full buffer_name buffer_sample buffer_size client_last_session mouse_hyperlink mouse_line mouse_pane mouse_status_line mouse_status_range mouse_word mouse_x mouse_y pane_command_duration pane_command_end_time pane_command_start_time pane_command_status pane_dead_signal pane_dead_status pane_dead_time pane_last_output_time pane_last_prompt_time pane_mode pane_pipe_pid session_group session_group_attached session_group_attached_list session_group_list session_group_many_attached session_group_size window_modal_pane window_offset_x window_offset_y'
 
@@ -108,34 +104,20 @@ absent_names() {
 }
 
 main_client kill-session -t "=$session" >/dev/null 2>&1 || true
-# The pane runs cat, not a shell: tmux 3.8 lists pane_last_output_time once the
-# pane has written anything (format_cb_pane_last_output_time), so a shell's
-# prompt would race the listings below, and zz's shell integration would add
-# pane_last_prompt_time on top.
 main_client new-session -d -s "$session" -x 80 -y 24 cat
 pane="$(main_client list-panes -t "=$session" -F '#{pane_id}' | sed -n '1p')"
 
 listing base
 names base >"$work/base.names"
 
-# format_each walks the 214-entry table in declaration order, which is
-# alphabetical, skipping every NULL callback, and then the command's own tree:
-# 151 names and `command` in tmux 3.8, where the d77c9dc6 pin's 198-entry table
-# gave 143 lines here and 172 with a client attached.
 check_equal base-count 152 "$(grep -c . "$work/base")"
 check_equal base-stderr '' "$(cat "$work/base.err")"
 check_equal base-table-sorted same \
     "$(if [ "$(sed '$d' "$work/base.names")" = "$(sed '$d' "$work/base.names" | sort)" ]; then echo same; else echo differs; fi)"
 check_equal base-tree-last command=display-message "$(tail -n 1 "$work/base")"
 
-# The declining set is exactly the pin's, name by name.
 check_equal base-declines "$declines_without_client " "$(absent_names base "$declines_without_client")"
 
-# A few values both binaries own outright, to prove the walk carries values and
-# not just names. The two values that carry further `=` characters are
-# client_mode_format and tree_mode_format, whose values belong to their own
-# tracked gaps, so the shape is checked instead: every line is name=value split
-# at the first `=`.
 check_equal base-wrap "wrap_flag=1" "$(grep '^wrap_flag=' "$work/base")"
 check_equal base-grouped "session_grouped=0" "$(grep '^session_grouped=' "$work/base")"
 check_equal base-pipe "pane_pipe=0" "$(grep '^pane_pipe=' "$work/base")"
@@ -144,8 +126,6 @@ check_equal base-last-attached "session_last_attached=0" "$(grep '^session_last_
 check_equal base-pane-index "pane_index=0" "$(grep '^pane_index=' "$work/base")"
 check_equal base-line-shape 152 "$(grep -c '^[a-z_0-9][a-z_0-9]*=' "$work/base")"
 
-# -a runs before the template is looked at, so -l, a message and the missing -p
-# all leave the listing alone, while the -F conflict is still refused first.
 check_equal without-p 152 "$(main_client display-message -a -t "$pane" 2>/dev/null | grep -c .)"
 check_equal literal 152 "$(main_client display-message -a -l -p -t "$pane" | grep -c .)"
 check_equal with-message 152 "$(main_client display-message -a -p -t "$pane" hello | grep -c .)"
@@ -160,21 +140,11 @@ env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
 client_pid=$!
 await_clients 1 || { echo "format-listing-$side: attach"; exit 0; }
 
-# Before any reply neither side carries a theme. c->theme is THEME_UNKNOWN and
-# format_cb_client_theme returns NULL for that, so #{client_theme} is empty and
-# the name is absent from the -a listing entirely. zz used to answer dark from
-# the moment the client attached, measured 2026-09-06 and accepted as native
-# 2026-09-07 as semantic:harness-theme-steering on
-# options.client-terminal-negotiation; the raw TUI now subscribes to theme
-# changes and reports what its terminal answers, so both sides start unknown.
 check_equal theme-unsteered '' \
     "$(main_client display-message -p -t "$pane" '#{client_theme}')"
 check_equal theme-unsteered-listed 0 \
     "$(main_client display-message -a -p -t "$pane" | grep -c '^client_theme=')"
 
-# c->theme is THEME_UNKNOWN until the terminal answers the query, and
-# format_cb_client_theme returns NULL for that, so the client reports dark the
-# way a terminal that supports \033[?2031h does.
 drive "keys 1b5b3f3939373b316e"
 sleep 0.6
 check_equal theme dark "$(main_client display-message -p -t "$pane" '#{client_theme}')"
@@ -187,7 +157,6 @@ check_equal attached-table-sorted same \
 check_equal attached-tree-last command=display-message "$(tail -n 1 "$work/attached")"
 check_equal attached-declines "$declines_with_client " "$(absent_names attached "$declines_with_client")"
 
-# The 29 names an attached client adds back are exactly the difference.
 sort "$work/base.names" >"$work/base.sorted"
 sort "$work/attached.names" >"$work/attached.sorted"
 check_equal added-back \

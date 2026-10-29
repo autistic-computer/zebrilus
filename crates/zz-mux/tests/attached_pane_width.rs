@@ -1,19 +1,3 @@
-//! `rendering.geometry-residue`'s daemon-side probe.
-//!
-//! An Interactive client under `latest`, `largest` or `smallest` measures its
-//! pane in pixels and reports the floored grid. tmux never learns a pane size
-//! that way: a client's tty sizes the window, `layout_fix_panes` hands every
-//! pane its cell, and `window_pane_resize` moves that cell, the pane's screen
-//! and the pty together, so on pinned tmux d77c9dc6 a pane's `stty size` is
-//! always `#{pane_height} #{pane_width}` - measured on a 199x49 window split
-//! `-h`, where both panes report 99x49 and both shells see `49 99`.
-//!
-//! zz has no tty size for a GUI client, only the per-pane grid, so it
-//! back-solves the window extent from the report. That inverse is exact on an
-//! axis the pane spans in full and a ratio on an axis it shares with siblings,
-//! where one cell of drift on a narrow pane would move the window by many, so
-//! the shared axis swallows a single cell.
-
 use zz_mux::{ExecutionContext, MuxEngine};
 use zz_protocol::CommandInvocation;
 

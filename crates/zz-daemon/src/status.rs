@@ -1,5 +1,3 @@
-//! Turning the `status-*` options into the text clients render.
-
 use std::{
     borrow::Cow,
     collections::{BTreeMap, BTreeSet},
@@ -115,9 +113,6 @@ fn format_second() -> i64 {
 }
 
 pub(crate) const LIST_CLIENTS_CONTEXT_FORMATS: [&str; 1] = ["line"];
-/// The `window_copy_formats` names zz answers. tmux adds them to the format
-/// tree from the pane's mode entry; zz reads them off the client view that
-/// holds the copy session, because copy mode is per client here.
 pub(crate) const COPY_MODE_CONTEXT_FORMATS: [&str; 19] = [
     "copy_cursor_line",
     "copy_cursor_word",
@@ -178,11 +173,6 @@ pub(crate) struct StatusRequest {
     pub(crate) startup: bool,
     pub(crate) context: Arc<StatusContext<'static>>,
     pub(crate) facts: Arc<FormatHookFacts>,
-    /// What this client's terminal reported, for the `theme detect` arm. The
-    /// pin keeps `c->theme` `THEME_UNKNOWN` until the terminal answers its theme
-    /// query and falls back to the background it can see; the daemon records a
-    /// scheme only for a client that reported one, so `None` here is the pin's
-    /// unknown and resolves dark.
     pub(crate) client_scheme: Option<TerminalColorScheme>,
     pub(crate) message_styles: Arc<(String, String)>,
     pub(crate) modes: Vec<ModeRequest>,
@@ -855,9 +845,6 @@ fn mode_presentation(
     }
 }
 
-/// The ten theme slots in `colour_theme_table` order (colour.c:35): the option
-/// suffix each slot reads and the ANSI index the pin falls back to under
-/// `theme terminal` (`colour_theme_terminal_colour`).
 const THEME_SLOTS: [(&str, u8); zz_protocol::COLOUR_THEME_COUNT] = [
     ("black", 0),
     ("white", 7),
@@ -925,18 +912,6 @@ pub(crate) fn status_line_templates<'a>(
     .chain(theme_formats().iter().map(String::as_str))
 }
 
-/// `server_client_update_theme_colours` (server-client.c:1173), per client and
-/// per status line rather than on a client field, because that is where the
-/// daemon has the format tree the pin expands each option value through.
-///
-/// The `theme` option picks the half: `terminal` answers the fixed ANSI indices
-/// and reads no option at all, `light` and `dark` force their half, and
-/// `detect` follows what the client reported. Every other value is expanded as
-/// a FORMAT before it is parsed, which is not decoration - every default in the
-/// roster is `#{?#{e|>=:#{client_colours},256},<x11 name>,<basic name>}`, so an
-/// unexpanded value would parse as nothing. A value that does not parse, or one
-/// that names a theme colour and would resolve to itself, leaves the slot at
-/// colour 8, which is what the pin leaves it at.
 fn resolve_theme_colours(
     request: &StatusRequest,
     hooks: &mut DaemonFormatHooks<'_>,
@@ -972,22 +947,14 @@ pub(crate) struct FormatHookFacts {
     pub(crate) pane_pipes: Arc<BTreeMap<PaneId, u32>>,
     pub(crate) session_attachments: Arc<BTreeMap<SessionId, (usize, String)>>,
     pub(crate) session_last_attached: Arc<BTreeMap<SessionId, u64>>,
-    /// The panes carrying the pin's `PANE_UNSEENCHANGES`.
     pub(crate) unseen_changes: Arc<BTreeSet<PaneId>>,
-    /// Every window some client's own current window is, with that client's
-    /// name, in client order.
     pub(crate) window_clients: Arc<BTreeMap<WindowId, Vec<String>>>,
     pub(crate) buffer: Option<BufferFormatFacts>,
     pub(crate) client: Option<ClientFormatFacts>,
     pub(crate) clients: Arc<Vec<FormatClientRow>>,
-    /// The environment of the client this expansion was created for, which is
-    /// the invoking client for a command and the rendering client for a status
-    /// line. `#{Vc:}` reads it.
     pub(crate) client_environment: Option<Arc<ClientEnvironmentBlob>>,
     pub(crate) message: Option<MessageFormatFacts>,
     pub(crate) mux: Arc<zz_mux::FormatFacts>,
-    /// Every pane some client holds a live copy session on, with that client's
-    /// name beside the facts, ordered by client id.
     pub(crate) copy_modes: Arc<BTreeMap<PaneId, Vec<(String, Arc<CopyModeFacts>)>>>,
     pub(crate) pane_modes: Arc<BTreeMap<PaneId, (usize, &'static str)>>,
 }
@@ -1116,25 +1083,16 @@ pub(crate) struct ClientFormatFacts {
     pub(crate) written: String,
     pub(crate) line: usize,
     pub(crate) environment: Option<Arc<ClientEnvironmentBlob>>,
-    /// The `struct tty_term` tmux would build for this client, which is what
-    /// `#{I/c:}` and `#{I/f:}` interrogate. Absent for a client with no tty,
-    /// which is `format_replace`'s null-term early exit.
     pub(crate) terminal: Option<Arc<TtyTerm>>,
     pub(crate) viewport: Option<ClientViewportFacts>,
 }
 
-/// tty.c `tty_window_offset1`: the client's viewport over its own current
-/// window, with the cursor of the pane that window is showing. `sx`/`sy` are
-/// the tty minus the status lines, which is what the pin compares against the
-/// window before it centres anything.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct ClientViewportFacts {
     pub(crate) columns: u16,
     pub(crate) rows: u16,
     pub(crate) window_width: u16,
     pub(crate) window_height: u16,
-    /// The active pane's cursor in window coordinates, `wp->xoff + cx` and
-    /// `wp->yoff + cy`, absent while `MODE_CURSOR` is off.
     pub(crate) cursor: Option<(u16, u16)>,
 }
 
@@ -1143,8 +1101,6 @@ impl ClientViewportFacts {
         self.columns < self.window_width || self.rows < self.window_height
     }
 
-    /// The `else` half of `tty_window_offset1`, which zz reaches with no pan
-    /// window because `refresh-client -U/-D/-L/-R` is not implemented here.
     pub(crate) fn offsets(self) -> Option<(u16, u16)> {
         if !self.bigger() {
             return None;
@@ -1170,19 +1126,9 @@ impl ClientViewportFacts {
     }
 }
 
-/// window.c `window_create` and `window_resize`: a window keeps the cell pixel
-/// size of the client that sized it, and falls back to `DEFAULT_XPIXEL` and
-/// `DEFAULT_YPIXEL` when no client reports one, which is what a pty client
-/// leaves the pin reporting.
 const DEFAULT_XPIXEL: u32 = 16;
 const DEFAULT_YPIXEL: u32 = 32;
 
-/// `tty_term_read_list` on the pin sets up the terminfo entry for the client's
-/// TERM and writes each capability it finds as a `name=value` string. zz has no
-/// curses linkage, so it reads the same entry through `infocmp -x`, which is
-/// the only portable reader that also prints the extended section the tmux
-/// capability names live in. The result depends on nothing but the TERM name,
-/// so it is read once per name for the life of the process.
 type TerminfoEntries = BTreeMap<String, Option<Arc<Vec<String>>>>;
 static TERMINFO_ENTRIES: OnceLock<Mutex<TerminfoEntries>> = OnceLock::new();
 
@@ -1240,12 +1186,6 @@ fn read_terminfo_entries(
     Some(parse_infocmp_entries(&text))
 }
 
-/// `infocmp -1` prints a string capability as `name=value` in the terminfo
-/// source spelling, a number as `name#value` (hex under ncurses 6.1 and later
-/// once it passes 255), a boolean as a bare `name` and a cancelled capability
-/// as `name@`. `tty_term_read_list` carries the three live forms as
-/// `name=value` with the string decoded the way `tigetstr` hands it back and
-/// the number printed `%d`, and never sees a cancelled one.
 fn parse_infocmp_entries(text: &str) -> Vec<String> {
     let mut entries = Vec::new();
     for line in text.lines() {
@@ -1276,10 +1216,6 @@ fn parse_infocmp_entries(text: &str) -> Vec<String> {
     entries
 }
 
-/// terminfo(5) string escapes as `tigetstr` decodes them: `\E` and `\e` for
-/// ESC, `^X` for a control character, `\NNN` octal, the C escapes, and the
-/// backslashed punctuation the source syntax needs (`\,` `\:` `\^` `\\`).
-/// `\0` is `\200` because terminfo has no NUL.
 fn decode_terminfo_string(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -1342,9 +1278,6 @@ fn decode_terminfo_string(value: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// Read and cache the terminfo entry for `term` without building anything from
-/// it. Reading the database is a subprocess, so registration warms the cache
-/// while the state lock is down and the format path only ever reads it back.
 pub(crate) fn warm_terminfo_entries(environment: &[RawText]) {
     warm_terminfo_entries_using(environment, &|mut command| command.output_unmasked().ok());
 }
@@ -1372,7 +1305,6 @@ struct CachedTtyTerm {
 
 const TTY_TERM_CACHE_ENTRIES: usize = 64;
 
-/// The `struct tty_term` the pin would build for a client on `term`.
 pub(crate) fn client_terminal_facts(
     term: &str,
     colour_term: Option<&str>,
@@ -1416,8 +1348,6 @@ pub(crate) fn client_terminal_facts(
     built
 }
 
-/// A client's own process environment as `#{Vc:}` rows. A client store has no
-/// hidden or removed entries: the client sends what it has.
 pub(crate) fn client_environment_rows(
     environment: Option<&Arc<ClientEnvironmentBlob>>,
 ) -> Vec<FormatEnvironRow> {
@@ -1436,8 +1366,6 @@ pub(crate) fn client_environment_rows(
 }
 
 impl ClientFormatFacts {
-    /// The client formats an `L` row answers with, keyed the way the format
-    /// engine looks them up.
     pub(crate) fn loop_row(&self, activity: u64) -> FormatClientRow {
         FormatClientRow {
             name: self.name.clone(),
@@ -2202,8 +2130,6 @@ fn render(
         ),
         right: wrap_status_style(
             &request.formats,
-            // Wave B may re-trim status-right client-side to keep the clock visible;
-            // the wire remains pin-faithful.
             &trim_status_left(&right, usize::from(request.formats.right_length)),
             &request.formats.right_style,
         ),
@@ -2240,9 +2166,6 @@ const PANE_OUTPUT_FORMATS: &[&str] = &[
     "pane_private_modes",
 ];
 
-/// `format_cb_pane_output_generation`, the OSC 133 command callbacks and
-/// `format_cb_pane_private_modes`: a time or status the pane never recorded
-/// answers null, as the pin's callbacks do.
 fn pane_output_variable(name: &str, facts: &TerminalFacts, now: u64) -> Option<String> {
     let output = &facts.output;
     let time = |value: u64| (value != 0).then(|| value.to_string());
@@ -2268,8 +2191,6 @@ fn pane_output_variable(name: &str, facts: &TerminalFacts, now: u64) -> Option<S
     }
 }
 
-/// The pin's window-scope availability rule: `format_cb_window_cell_width` and
-/// its height twin answer null unless a window is in the format's context.
 fn window_scoped(context: &StatusContext) -> bool {
     !context.window_id.is_empty()
         || context
@@ -2300,9 +2221,6 @@ fn window_cell_pixels(client: Option<&ClientFormatFacts>, width: bool) -> String
         .to_string()
 }
 
-/// `MAX_STATUS_TEXT_BYTES` is the wire bound `StatusLine` enforces on its own
-/// rows, so it belongs here rather than on every finished format expansion: a
-/// command-facing expansion never rides this message.
 fn clamp_status_text(mut value: String) -> String {
     if value.len() <= MAX_STATUS_TEXT_BYTES {
         return value;
@@ -2650,8 +2568,6 @@ impl<'a> DaemonFormatHooks<'a> {
 }
 
 impl DaemonFormatHooks<'_> {
-    /// The clients holding a live copy session on this context's pane, in
-    /// client order.
     fn copy_mode_rows(
         &self,
         context: &StatusContext,
@@ -2659,10 +2575,6 @@ impl DaemonFormatHooks<'_> {
         self.facts.copy_modes().get(&context.pane_id.parse().ok()?)
     }
 
-    /// tmux reads `window_copy_formats` off the pane's single mode entry. zz
-    /// keeps copy mode on the client's terminal view, so the format tree
-    /// answers from the client it carries when that client is in the mode on
-    /// this pane, and from the earliest client in the mode otherwise.
     fn copy_mode_view(&self, context: &StatusContext) -> Option<&CopyModeFacts> {
         let rows = self.copy_mode_rows(context)?;
         let client = self.facts.client().map(|client| client.name.as_str());
@@ -2746,7 +2658,6 @@ impl DaemonFormatHooks<'_> {
     }
 }
 
-/// `get_timer`'s millisecond clock for `format_cycle`, anchored at first use.
 fn cycle_clock_ms() -> u64 {
     static ANCHOR: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);
     u64::try_from(ANCHOR.elapsed().as_millis()).unwrap_or(u64::MAX)
@@ -2769,13 +2680,6 @@ impl StatusHooks for DaemonFormatHooks<'_> {
         true
     }
 
-    /// Byte parity with the pin requires the PLATFORM's strftime: tmux's
-    /// `format_strftime` is plain libc strftime, and libcs disagree about
-    /// unknown `%` sequences (glibc passes them through, BSD eats them), so a
-    /// reimplementation cannot match both. Zero return maps to empty output,
-    /// mirroring format.c's too-long/empty handling. This is the workspace's
-    /// only unsafe block; it exists because matching the platform means
-    /// calling the platform.
     #[cfg(unix)]
     #[allow(unsafe_code)]
     fn strftime(&mut self, literal: &str) -> String {
@@ -2899,9 +2803,6 @@ impl StatusHooks for DaemonFormatHooks<'_> {
         )
     }
 
-    /// `cmdq_merge_formats` copies the queue item's own entries into `ft->tree`
-    /// before any command runs, which is `command` for every command and the
-    /// hook variables on top of it inside a hook body.
     fn tree_entries(&mut self) -> Vec<(String, String)> {
         self.expect_facts();
         let mut entries = self
@@ -3105,8 +3006,6 @@ impl StatusHooks for DaemonFormatHooks<'_> {
             "client_flags" => Some(self.facts.client()?.flags.clone()),
             "client_height" => Some(self.facts.client()?.height.clone()),
             "client_key_table" => Some(self.facts.client()?.key_table.clone()),
-            // format_cb_client_last_session declines unless the client has a
-            // last session that is still alive.
             "client_last_session" => Some(self.facts.client()?.last_session.clone())
                 .filter(|session| !session.is_empty()),
             "client_name" => Some(self.facts.client()?.name.clone()),
@@ -3126,8 +3025,6 @@ impl StatusHooks for DaemonFormatHooks<'_> {
             "client_termfeatures" => Some(self.facts.client()?.termfeatures.clone()),
             "client_termname" => Some(self.facts.client()?.termname.clone()),
             "client_termtype" => Some(self.facts.client()?.termtype.clone()),
-            // THEME_UNKNOWN is a NULL in format_cb_client_theme: the pin waits
-            // for the terminal to report, and so does the daemon.
             "client_theme" => {
                 Some(self.facts.client()?.theme.clone()).filter(|theme| !theme.is_empty())
             }
@@ -3347,9 +3244,6 @@ impl StatusHooks for DaemonFormatHooks<'_> {
     }
 }
 
-/// `wp->base.progress_bar`, which lives on the pane's own screen: a pane with
-/// no terminal worker has seen no OSC 9;4 and answers the defaults a fresh
-/// screen carries.
 fn pane_progress_bar(facts: &dyn FormatFactSource, pane: &str) -> Option<ProgressBar> {
     let pane = pane.parse().ok()?;
     Some(
@@ -3765,8 +3659,6 @@ mod tests {
         let pane = PaneId(1);
         let facts = FormatHookFacts {
             session_last_attached: Arc::new(BTreeMap::from([(session, 1)])),
-            // pane_pipe_pid declines unless a pipe is attached, the way
-            // format_cb_pane_pipe_pid gates on wp->pipe_fd.
             pane_pipes: Arc::new(BTreeMap::from([(pane, 4242)])),
             buffer: Some(BufferFormatFacts {
                 name: String::new(),
@@ -3774,13 +3666,8 @@ mod tests {
                 created: UNIX_EPOCH,
             }),
             client: Some(ClientFormatFacts {
-                // client_last_session and client_theme decline when empty, the
-                // way format_cb_client_last_session and format_cb_client_theme
-                // do, so the inventory has to give them something.
                 last_session: "last".to_owned(),
                 theme: "dark".to_owned(),
-                // The offsets only answer while the window is bigger than the
-                // client viewport, which is the state this inventory needs.
                 viewport: Some(ClientViewportFacts {
                     columns: 80,
                     rows: 23,
@@ -4088,8 +3975,6 @@ mod tests {
             ])
         );
 
-        // A value that does not name a colour leaves the slot at colour 8,
-        // which is what server_client_update_theme_colours leaves it at.
         execute(
             &mut engine,
             &mut context,
@@ -4518,9 +4403,6 @@ mod tests {
         assert!(status.left.is_char_boundary(status.left.len()));
     }
 
-    /// The engine no longer clamps a finished expansion, because the pin has no
-    /// output cap, so every `StatusLine` field this message owns has to hold the
-    /// bound itself. Each of these formats expands well past it.
     #[test]
     fn oversized_row_title_and_base_style_stay_inside_the_wire_limit() {
         let overflow = "#{R:x,9000}";
@@ -4643,14 +4525,6 @@ mod tests {
         );
     }
 
-    /// `format_cb_window_cell_width` and its height twin publish `w->xpixel`
-    /// and `w->ypixel`, which `window_create` and `window_resize` default to
-    /// `DEFAULT_XPIXEL` and `DEFAULT_YPIXEL` when no client reports a cell size
-    /// and `default_window_size` otherwise fills from `c->tty.xpixel`. Measured
-    /// live against the pin on a throwaway server, both a CLI `display-message`
-    /// with no client and one beside a pty client answer 16 and 32, and a
-    /// `list-windows -F` row answers the same, while a format with no window in
-    /// context answers null.
     #[test]
     fn window_cell_metrics_default_to_the_pin_size_and_follow_a_reporting_client() {
         let format = "#{window_cell_width}|#{window_cell_height}";
@@ -5169,11 +5043,6 @@ mod terminfo_tests {
         assert!(term.has_feature("bpaste"));
     }
 
-    /// Measured on the pin on 2026-09-02 with COLORTERM unset and one pty
-    /// client per TERM, against the stock `terminal-features` and
-    /// `terminal-overrides` arrays: the entries without XT still get the
-    /// VT100-like features off a decoded clear, the stock `linux*:AX@` row
-    /// removes AX, and the stock `rxvt*:ignorefkeys` row cancels kf1.
     #[test]
     fn the_stock_arrays_move_the_other_terms_the_way_the_pin_does() {
         let engine = zz_mux::MuxEngine::default();
@@ -5201,8 +5070,6 @@ mod terminfo_tests {
         }
     }
 
-    /// ncurses 6.1 and later print a number past 255 in hex, and every string
-    /// in the terminfo source spelling; `tty_term_read_list` sees neither.
     #[test]
     fn the_infocmp_reader_speaks_both_ncurses_generations() {
         let entries = parse_infocmp_entries(

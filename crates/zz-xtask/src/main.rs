@@ -68,22 +68,16 @@ const MACOS_ICON_NAME: &str = zz_protocol::app_identity::DIRECTORY;
 const MACOS_LOCAL_SIGN_IDENTITY_ENV: &str = "MACOS_LOCAL_SIGN_IDENTITY";
 #[cfg(target_os = "macos")]
 const MACOS_BUILD_VERSION_ENV: &str = "ZZ_MACOS_BUILD_VERSION";
-/// CEF's prebuilt windowed launcher. Renamed to `zz.exe`, which is how it finds
-/// `zz.dll`: it derives the client library from its own file name.
 #[cfg(target_os = "windows")]
 const WINDOWS_BOOTSTRAP_NAME: &str = "bootstrap.exe";
 #[cfg(target_os = "windows")]
 const WINDOWS_ICON_SOURCE: &str = "assets/windows/zz.ico";
-/// The icon group id `LoadImage(module, MAKEINTRESOURCE(1), IMAGE_ICON, ..)`
-/// resolves, which is how ala asks the executable for its window icon.
 #[cfg(target_os = "windows")]
 const WINDOWS_MAIN_ICON_ID: u32 = 1;
-/// The name `editpe` files a new icon group under.
 #[cfg(target_os = "windows")]
 const WINDOWS_EDITPE_ICON_GROUP: &str = "MAINICON";
 #[cfg(target_os = "windows")]
 const WINDOWS_DPI_AWARENESS: &str = "PerMonitorV2";
-/// CEF's manifest plus the per-monitor DPI declaration ala needs.
 #[cfg(target_os = "windows")]
 const WINDOWS_APP_MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
@@ -554,11 +548,6 @@ fn configure_macos_main_app(app: &Path) -> Result<(), Box<dyn Error>> {
             fs::copy(icons.join(name), app.join("Contents/Resources").join(name))?;
         }
     }
-    // Assets.car reaches Resources/ through the packaging/mac resource copy.
-    // It is compiled from assets/zz.icon by scripts/compile-macos-icon.sh and
-    // committed: actool renders the layered icon through the GPU and does so
-    // only unreliably on virtualized CI runners. The bundle validation below
-    // still requires it, so a missing artifact fails loudly.
     Ok(())
 }
 

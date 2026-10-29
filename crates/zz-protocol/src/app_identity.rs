@@ -13,7 +13,6 @@ pub const MACOS_BUNDLE_ID: &str = if DEVELOPMENT {
     "dev.zz.app"
 };
 
-/// The file storing the browser's recently visited page list, beside its CEF root.
 pub fn recent_pages_path() -> io::Result<PathBuf> {
     Ok(browser_data_dir()?.join("recent-pages"))
 }
@@ -42,7 +41,6 @@ pub fn platform_data_dir() -> Option<PathBuf> {
         .or_else(|| absolute_env_path("HOME").map(|home| home.join(".local").join("share")))
 }
 
-/// iOS keeps the same layout, inside the app container `HOME` points at.
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 pub fn platform_data_dir() -> Option<PathBuf> {
     absolute_env_path("HOME").map(|home| home.join("Library").join("Application Support"))

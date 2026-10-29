@@ -54,9 +54,6 @@ unsafe impl objc::Encode for UIEdgeInsets {
     }
 }
 
-/// Where the web view sits and what floats over it: its frame, its lower
-/// corners, how much of its bottom edge app UI covers, and the cutouts that
-/// UI shows through, all in window points.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BrowserMount {
     pub bounds: Bounds<Pixels>,
@@ -481,8 +478,6 @@ impl BrowserView {
         }
     }
 
-    /// Snapshots the whole page as it shows, for the pane to paint while
-    /// something drawn over it has the web view hidden.
     pub fn snapshot_still(&self) {
         let Some(bounds) = self.mounted.borrow().as_ref().map(|mount| mount.bounds) else {
             return;

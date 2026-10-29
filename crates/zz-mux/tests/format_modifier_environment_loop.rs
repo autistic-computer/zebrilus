@@ -1,11 +1,3 @@
-//! The `V` modifier's store selection, against stores the test controls.
-//!
-//! Two cases a daemon cannot stage: an expansion with no session at all, and
-//! two attached clients whose environments differ, which one host's GUI clients
-//! never have. format.c `format_loop_environ` reads `ft->s->environ`,
-//! `global_environ`, or `ft->client->environ`, and returns an empty string when
-//! the flag word names none of them.
-
 use std::collections::BTreeMap;
 
 use zz_mux::{
@@ -64,8 +56,6 @@ fn an_expansion_with_no_session_has_no_session_store_to_walk() {
         clients: Vec::new(),
         selected: vec![row("PATH", "/bin")],
     };
-    // The session store is a lookup, not a fallback: without a session there is
-    // nothing to walk, while the selected client still answers.
     assert_eq!(expand(&mut stores, "[#{V:x}]"), "[]");
     assert_eq!(expand(&mut stores, "[#{Vs:x}]"), "[]");
     assert_eq!(expand(&mut stores, "[#{Vc:<#{environ_name}>}]"), "[<PATH>]");
@@ -88,8 +78,6 @@ fn a_client_row_selects_that_rows_environment_for_the_client_store() {
         ),
         "<one:first><two:second>"
     );
-    // Row cardinality follows the row's own store, and the outer selection comes
-    // back after the loop.
     assert_eq!(expand(&mut stores, "#{L:[#{n:#{Vc:x}}]}"), "[2][1]");
     assert_eq!(expand(&mut stores, "#{Vc:<#{environ_value}>}"), "<outer>");
 }

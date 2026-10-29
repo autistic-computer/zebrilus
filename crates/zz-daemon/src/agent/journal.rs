@@ -17,27 +17,15 @@ use zz_daemon_client::user_data::{restrict_directory_to_current_user, restrict_t
 
 const JOURNAL_EXTENSION: &str = "jsonl";
 
-/// Ceiling on one session's journal. Past it appends are refused rather than
-/// rotated: a truncated head would replay a conversation that never happened.
 const MAX_JOURNAL_BYTES: u64 = 2 * 9 * 1024 * 1024;
 const MAX_JOURNAL_RECORDS: usize = 4_096;
 
-/// Descriptors held across appends. Updates arrive in bursts, so re-opening per
-/// line would be wasteful, but a long-lived app must not keep one descriptor
-/// per session it ever touched.
 const MAX_OPEN_JOURNALS: usize = 16;
 
-/// Longest file stem taken from a session id before it is truncated and tagged.
 const MAX_STEM_BYTES: usize = 96;
 
-/// Ceiling on one coalesced record, flushed the moment it is reached whatever
-/// arrives next. It bounds the memory a runaway single message can hold, and
-/// keeps the merged record clear of the 1 MiB per-update payload cap the replay
-/// path enforces even when every byte of the text escapes to six.
 const MAX_PENDING_RECORD_BYTES: u64 = 256 * 1024;
 
-/// The `session/update` kinds that arrive token by token and are worth merging.
-/// Everything else, `user_message_chunk` included, is one record per update.
 const COALESCED_KINDS: [&str; 2] = ["agent_message_chunk", "agent_thought_chunk"];
 
 const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
@@ -48,8 +36,6 @@ pub(crate) enum JournalError {
     Io(#[from] io::Error),
     #[error("journal encode: {0}")]
     Encode(#[from] serde_json::Error),
-    /// The refusal a caller surfaces: the turn keeps streaming, it just stops
-    /// being replayable past this point.
     #[error("journal is full at {bytes} bytes and {records} records")]
     Full { bytes: u64, records: usize },
 }
@@ -66,7 +52,6 @@ struct JournalRecord<'a> {
     body: RecordBody<'a>,
 }
 
-/// The record's payload and, through the variant name, the key that tags it.
 #[derive(Clone, Copy, Serialize)]
 #[serde(rename_all = "lowercase")]
 enum RecordBody<'a> {
@@ -80,8 +65,6 @@ struct StoredRecord {
     body: StoredBody,
 }
 
-/// A record is read shape-first and typed second: an event kind this build does
-/// not know about costs its own record, never the seq of the ones around it.
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum StoredBody {
@@ -89,21 +72,9 @@ enum StoredBody {
     Task(Value),
 }
 
-/// A record whose seq, record slot and byte budget are already reserved but
-/// whose line is not on disk yet, because the next update may still be another
-/// chunk of the same message.
-///
-/// Constraint: a daemon killed while a record is pending loses it. That is the
-/// same loss class as the torn trailing line every reader already skips - the
-/// tail of one message goes missing, never the head of a conversation - and it
-/// is what buys the O(messages) journal. Everything that can observe the file
-/// flushes first, so the loss window is a hard kill and nothing else.
 struct PendingRecord {
     seq: u64,
     update: Value,
-    /// Exact bytes this record will occupy once written, leading and trailing
-    /// newline included, tracked incrementally so a merge stays O(added text)
-    /// instead of re-encoding the whole message per chunk.
     line_len: u64,
 }
 
@@ -117,8 +88,6 @@ struct OpenJournal {
 }
 
 impl OpenJournal {
-    /// Take one update into the journal and answer the seq of the record it
-    /// belongs to, writing whatever that forces out first.
     fn record(&mut self, update: &Value) -> Result<u64, JournalError> {
         let Some(chunk) = text_chunk(update) else {
             self.flush_pending()?;
@@ -134,10 +103,6 @@ impl OpenJournal {
         Ok(seq)
     }
 
-    /// Merge `next` into the open record when it continues the same stream.
-    /// `None` means it does not and the caller must start a fresh record; the
-    /// byte cap is charged here so a merge can be refused before it is taken,
-    /// never after.
     fn extend_pending(&mut self, next: &TextChunk<'_>) -> Result<Option<u64>, JournalError> {
         let committed = self.bytes;
         let records = self.records;
@@ -166,10 +131,6 @@ impl OpenJournal {
         Ok(Some(pending.seq))
     }
 
-    /// Reserve a seq, a record slot and the byte budget for a new coalescable
-    /// record. Reserving up front is what lets the flush be infallible against
-    /// the caps: a buffered record can never be refused after `append` already
-    /// answered `Ok`, so it can never overshoot `MAX_JOURNAL_BYTES`.
     fn open_pending(&mut self, update: &Value) -> Result<u64, JournalError> {
         let seq = self.next_seq;
         let line_len = self.line_length(seq, update)?;
@@ -202,8 +163,6 @@ impl OpenJournal {
         Ok(())
     }
 
-    /// Put the open record on disk. Every path that lets an outsider observe
-    /// the file - replay, handle eviction, drop - goes through here first.
     fn flush_pending(&mut self) -> Result<(), JournalError> {
         let Some(pending) = self.pending.take() else {
             return Ok(());
@@ -212,8 +171,6 @@ impl OpenJournal {
         self.commit(&line)
     }
 
-    /// Forget the open record without writing it, for the two callers that are
-    /// about to delete the file underneath it.
     fn discard_pending(&mut self) {
         self.pending = None;
     }
@@ -247,15 +204,10 @@ impl OpenJournal {
         Ok(line)
     }
 
-    /// Reserved through `encode` rather than alongside it, so the budget a
-    /// record claims is by construction the length the flush will write.
     fn line_length(&self, seq: u64, update: &Value) -> Result<u64, JournalError> {
         Ok(u64::try_from(self.encode(seq, RecordBody::Update(update))?.len()).unwrap_or(u64::MAX))
     }
 
-    /// A half-written line leaves the cached seq, length and newline state
-    /// wrong, so an error here costs the caller its handle and the next append
-    /// rescans the tail.
     fn commit(&mut self, line: &[u8]) -> Result<(), JournalError> {
         self.file.write_all(line)?;
         self.file.flush()?;
@@ -267,8 +219,6 @@ impl OpenJournal {
     }
 }
 
-/// Losing a handle must not lose the record it was holding, so eviction, prune
-/// and the journal's own drop all land here.
 impl Drop for OpenJournal {
     fn drop(&mut self) {
         if self.pending.is_none() {
@@ -283,8 +233,6 @@ impl Drop for OpenJournal {
     }
 }
 
-/// The pieces of a chunk update that decide whether it may be merged into the
-/// record before it.
 struct TextChunk<'a> {
     kind: &'a str,
     message_id: Option<&'a str>,
@@ -294,10 +242,6 @@ struct TextChunk<'a> {
 }
 
 impl TextChunk<'_> {
-    /// The client reducer keys a message on `(role, messageId)`, and an id-less
-    /// chunk extends whatever entry the same role last wrote. Merging is
-    /// allowed exactly where both rules agree the two chunks already land in
-    /// one entry, so a concatenated record reduces to what it replaced.
     fn continues(&self, next: &TextChunk<'_>) -> bool {
         self.kind == next.kind
             && self.message_id == next.message_id
@@ -306,14 +250,6 @@ impl TextChunk<'_> {
     }
 }
 
-/// The one update shape safe to merge: a streamed agent message or thought
-/// carrying a plain text content block and nothing the reducer reads
-/// positionally.
-///
-/// Anything else - a tool call, an image or annotated block, a non-string id,
-/// an unknown top-level key - answers `None` and is journalled verbatim. The
-/// bar is deliberately low: a shape this does not recognise costs records, a
-/// shape it merges wrongly costs a transcript.
 fn text_chunk(update: &Value) -> Option<TextChunk<'_>> {
     let object = update.as_object()?;
     let kind = object.get("sessionUpdate")?.as_str()?;
@@ -357,9 +293,6 @@ fn text_chunk(update: &Value) -> Option<TextChunk<'_>> {
     })
 }
 
-/// Bytes `text` adds to an encoded record when appended to a JSON string,
-/// mirroring `serde_json`'s escape table so the reserved budget is exact rather
-/// than merely safe.
 fn escaped_length(text: &str) -> u64 {
     text.bytes()
         .map(|byte| match byte {
@@ -377,7 +310,6 @@ struct JournalTail {
     needs_newline: bool,
 }
 
-/// Append-only JSONL store, one file per ACP session id.
 pub(crate) struct AgentJournal {
     directory: PathBuf,
     handles: Mutex<HashMap<String, OpenJournal>>,
@@ -395,10 +327,6 @@ impl AgentJournal {
         })
     }
 
-    /// Record one `session/update` payload; returns the seq of the record it
-    /// landed in. A chunk merged into the record already open answers that
-    /// record's seq, so the value stays the answer to "where does replay find
-    /// this update" rather than a count of calls.
     pub(crate) fn append_for(
         &self,
         provider: AgentProvider,
@@ -467,9 +395,6 @@ impl AgentJournal {
             .contains(&journal_key(provider, session_id))
     }
 
-    /// Every recorded entry in order, torn or malformed lines skipped. A
-    /// reader sees everything appended so far, so the record still being
-    /// coalesced is written out before the file is read.
     pub(crate) fn replay_for(
         &self,
         provider: AgentProvider,
@@ -492,7 +417,6 @@ impl AgentJournal {
         read_records(&self.directory.join(journal_file_name(&key)))
     }
 
-    /// Seq of the last recorded update, 0 when nothing is journalled.
     #[cfg(test)]
     pub(crate) fn last_seq_for(
         &self,
@@ -547,8 +471,6 @@ impl AgentJournal {
         self.remove_for(AgentProvider::Codex, session_id)
     }
 
-    /// Drop journals untouched for longer than `retain_days`; returns how many
-    /// files went.
     pub(crate) fn prune(&self, retain_days: u64) -> Result<usize, JournalError> {
         let horizon = Duration::from_secs(retain_days.saturating_mul(SECONDS_PER_DAY));
         let Some(cutoff) = SystemTime::now().checked_sub(horizon) else {
@@ -600,10 +522,6 @@ fn journal_file_name(session_id: &str) -> String {
     format!("{}.{JOURNAL_EXTENSION}", file_stem(session_id))
 }
 
-/// Session ids are adapter-controlled strings, so they never reach the
-/// filesystem unfiltered: anything outside `[A-Za-z0-9_-]` is replaced, and an
-/// id that needed filtering (or was too long) carries a digest of the original
-/// so two different ids cannot land in one file.
 fn file_stem(session_id: &str) -> String {
     let jailed: String = session_id
         .chars()
@@ -623,8 +541,6 @@ fn file_stem(session_id: &str) -> String {
     format!("{truncated}-{digest:016x}")
 }
 
-/// FNV-1a, not `DefaultHasher`: the digest lands in a file name, so it has to
-/// survive a toolchain bump.
 fn digest(value: &str) -> u64 {
     const OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
     const PRIME: u64 = 0x0000_0100_0000_01b3;
@@ -634,8 +550,6 @@ fn digest(value: &str) -> u64 {
     })
 }
 
-/// Seq, size and newline state of an existing journal, read from the tail so a
-/// full file is never parsed just to find where to resume.
 fn scan(path: &Path) -> Result<JournalTail, JournalError> {
     let bytes = match fs::read(path) {
         Ok(bytes) => bytes,
@@ -713,7 +627,6 @@ mod tests {
         }
     }
 
-    /// A chunk that never coalesces with another, because its id is its text.
     fn update(text: &str) -> Value {
         json!({
             "sessionUpdate": "agent_message_chunk",
@@ -775,15 +688,10 @@ mod tests {
         )))
     }
 
-    /// What is on disk right now, read past `replay_for` so a test can tell a
-    /// record that was flushed from one a reader would have flushed for it.
     fn stored(directory: &Path, session_id: &str) -> Vec<(u64, JournalEntry)> {
         read_records(&journal_path(directory, session_id)).expect("read records")
     }
 
-    /// The client reducer's grouping, at the JSON level: a chunk with an id
-    /// joins the entry that id already owns, an id-less chunk extends the entry
-    /// the same kind last wrote, and anything else ends the run.
     fn reduce(records: &[(u64, JournalEntry)]) -> Vec<(String, Option<String>, String)> {
         let mut entries: Vec<(String, Option<String>, String)> = Vec::new();
         let mut by_id: HashMap<(String, String), usize> = HashMap::new();

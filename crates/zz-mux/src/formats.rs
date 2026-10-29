@@ -918,9 +918,6 @@ impl std::fmt::Debug for FormatUniverseRef<'_> {
     }
 }
 
-/// One attached client as the `L` modifier sees it: the client formats that
-/// replace the outer client context, the environment `#{Vc:}` reads inside the
-/// row, plus the facts the loop orders rows by.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FormatClientRow {
     pub name: String,
@@ -929,8 +926,6 @@ pub struct FormatClientRow {
     pub environment: Vec<FormatEnvironRow>,
 }
 
-/// One environment entry as the `V` modifier sees it. A removed entry is a name
-/// the store keeps with no value, which the pin still walks.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FormatEnvironRow {
     pub name: String,
@@ -3587,12 +3582,6 @@ const fn bool_string(value: bool) -> &'static str {
     if value { "1" } else { "0" }
 }
 
-/// `format_create`'s `tag`, which `format_job_cmp` compares ahead of the
-/// command when it looks a `#()` job up in the per-client tree. The status tree
-/// is `FORMAT_NONE`, so `status-left` and `status-right` share one job for one
-/// command; a `#{W:}` body runs under `FORMAT_WINDOW|w->id` and a `#{P:}` body
-/// under `FORMAT_PANE|wp->id`, so each looped window or pane owns its own job.
-/// Session, client, option and environment loops all stay `FORMAT_NONE`.
 #[derive(Clone, Debug, Default, Eq, Ord, PartialEq, PartialOrd)]
 pub enum FormatJobTag {
     #[default]
@@ -3607,15 +3596,10 @@ pub trait StatusHooks {
     fn strftime(&mut self, literal: &str) -> String;
     fn shell(&mut self, command: &str, tag: &FormatJobTag) -> String;
 
-    /// The millisecond clock `format_cycle` divides into frames; `None`
-    /// outside status and border formats, where the modifier expands to
-    /// nothing.
     fn cycle_clock(&mut self) -> Option<u64> {
         None
     }
 
-    /// A cycle with more than one frame was drawn, so the line has to be
-    /// redrawn every [`FORMAT_CYCLE_PERIOD_MS`].
     fn cycle_animates(&mut self) {}
 
     fn stable_option_lookups(&self) -> bool {
@@ -3660,33 +3644,22 @@ pub trait StatusHooks {
         0
     }
 
-    /// Every attached client eligible for an `L` loop row, in the order the
-    /// clients connected.
     fn client_loop_rows(&mut self, _context: &StatusContext) -> Vec<FormatClientRow> {
         Vec::new()
     }
 
-    /// The selected client's environment, which `#{Vc:}` walks in store order.
     fn client_environment_rows(&mut self) -> Vec<FormatEnvironRow> {
         Vec::new()
     }
 
-    /// The `struct tty_term` the format tree's own client would carry, which
-    /// `#{I/c:}` and `#{I/f:}` interrogate. `None` is `format_replace`'s early
-    /// exit on a null client, a null tty term, or `CLIENT_UNATTACHEDFLAGS`.
     fn client_tty_term(&mut self) -> Option<Arc<TtyTerm>> {
         None
     }
 
-    /// The format tree's own client's environment. `#{I/e:}` reads
-    /// `ft->c->environ`, which for a `-c` command is the target client, where
-    /// `#{Vc:}` reads the invoking client's store instead.
     fn client_terminal_environment(&mut self) -> Vec<FormatEnvironRow> {
         Vec::new()
     }
 
-    /// The entries the command itself put in `ft->tree`, which `format_each`
-    /// walks after the table in RB, that is key, order.
     fn tree_entries(&mut self) -> Vec<(String, String)> {
         Vec::new()
     }
@@ -3721,10 +3694,6 @@ pub fn expand_status(
     expander.expand(format, 0).into()
 }
 
-/// The byte-clean twin of [`expand_format_values`], for the sinks that print an
-/// expansion straight to a client: a value the environment store keeps as bytes
-/// reaches the client as those bytes, the way `format_expand` hands `char *` to
-/// `server_client_print`.
 pub fn expand_format_bytes(
     format: &str,
     context: &StatusContext,
@@ -3797,10 +3766,6 @@ pub(crate) fn expand_format(format: &str, engine: &MuxEngine, context: FormatCon
     expand_format_with_hooks(format, engine, context, &mut hooks).into()
 }
 
-/// The names whose pin callback answers NULL for a reason the value alone
-/// cannot show. `mouse_*` need `ft->m.valid`, which only a mouse binding sets;
-/// the session group names need `session_group_contains`, and zz has no session
-/// groups at all.
 const LISTING_NEVER_ANSWERED: [&str; 14] = [
     "mouse_hyperlink",
     "mouse_line",
@@ -3818,20 +3783,12 @@ const LISTING_NEVER_ANSWERED: [&str; 14] = [
     "session_group_size",
 ];
 
-/// `format_cb_session_attached_list` and `format_cb_window_active_clients_list`
-/// build an evbuffer and return NULL when nothing went into it, and
-/// `format_cb_window_modal_pane` returns NULL for a window with no modal pane.
 const LISTING_EMPTY_LIST_DECLINES: [&str; 3] = [
     "session_attached_list",
     "window_active_clients_list",
     "window_modal_pane",
 ];
 
-/// `format_each` prints a `FORMAT_TABLE_TIME` entry as `tv->tv_sec`, so a zero
-/// time is `0` in the listing where `format_find` turns the same entry into
-/// NULL and the expansion is empty. These are the time entries whose callback
-/// answers whenever its scope object exists; `buffer_created` and
-/// `pane_dead_time` are the two that really do return NULL.
 const LISTING_ZERO_TIMES: [&str; 7] = [
     "client_activity",
     "client_created",
@@ -3842,18 +3799,10 @@ const LISTING_ZERO_TIMES: [&str; 7] = [
     "window_activity",
 ];
 
-/// `format_cb_client_name` answers exactly when `ft->c` is set, which is the
-/// witness the walk uses to decide the whole client family at once.
 const LISTING_CLIENT_WITNESS: &str = "client_name";
 
-/// The one Client-scope name whose callback reads a global option instead of
-/// `ft->c`, so it answers with no client at all, exactly like
-/// `buffer_mode_format`.
 const LISTING_CLIENTLESS_CLIENT_NAME: &str = "client_mode_format";
 
-/// format.c `format_each`: walk the 214-entry table in declaration order,
-/// skipping every entry whose callback would return NULL, then the command's
-/// own tree in key order.
 pub(crate) fn format_listing(
     engine: &MuxEngine,
     context: FormatContext,
@@ -3869,10 +3818,6 @@ pub(crate) fn format_listing(
             rows.push((spec.name.to_owned(), value));
         }
     }
-    // `format_find` reads the table before `ft->tree`, so a tree entry that
-    // repeats a table name is unreachable and the pin never adds one; zz seeds
-    // a couple of table values through the same variable map, and those belong
-    // to the table pass they already answered.
     let mut tree = hooks.tree_entries();
     tree.retain(|(name, _)| format_variable(name).is_none());
     tree.sort();
@@ -3917,8 +3862,6 @@ fn listing_value(
             return None;
         }
     }
-    // format_cb_pane_dead_signal, _status and _time all gate on the exit status
-    // the pin only records once the pane is dead.
     if matches!(
         spec.name,
         "pane_dead_signal" | "pane_dead_status" | "pane_dead_time"
@@ -3926,7 +3869,6 @@ fn listing_value(
     {
         return None;
     }
-    // format_cb_session_active needs both ft->s and ft->c.
     if spec.name == "session_active"
         && resolved
             .values
@@ -3947,10 +3889,6 @@ pub(crate) fn expand_format_with_hooks(
     expand_format_inner(format, engine, context, hooks, false, false).0
 }
 
-/// The pin's `format_expand_time` surface: the whole string passes through
-/// strftime at every expansion level before `#{}` parsing, so `%` sequences
-/// are subject to the platform's strftime exactly like display-message is in
-/// tmux (cmd-display-message.c uses `format_expand_time`).
 pub(crate) fn expand_format_time_with_hooks(
     format: &str,
     engine: &MuxEngine,
@@ -3960,9 +3898,6 @@ pub(crate) fn expand_format_time_with_hooks(
     expand_format_inner(format, engine, context, hooks, true, false).0
 }
 
-/// `display-message -v`: the same expansion as the ordinary path, plus
-/// `format_log1`'s ordered parse and replacement trace, each line already
-/// carrying its `#` and its `es->loop` indent.
 pub(crate) fn expand_format_time_traced(
     format: &str,
     engine: &MuxEngine,
@@ -4186,8 +4121,6 @@ impl<V: FormatVariables + ?Sized, H: StatusHooks> Expander<'_, V, H> {
         self.trace.is_some()
     }
 
-    /// `format_log1`: `#`, then `es->loop` spaces taken from a ten-space
-    /// literal, then the message.
     fn log(&mut self, depth: usize, message: &str) {
         if let Some(trace) = self.trace.as_deref_mut() {
             let indent = depth.min(FORMAT_LOOP_LIMIT);
@@ -4195,9 +4128,6 @@ impl<V: FormatVariables + ?Sized, H: StatusHooks> Expander<'_, V, H> {
         }
     }
 
-    /// `format_cycle`: a status or border format shows one frame of the
-    /// comma-separated list for `count` periods of 100 ms each, and anything
-    /// else expands the modifier to nothing.
     fn expand_cycle(&mut self, frames: &str, count: u64) -> String {
         if frames.is_empty() {
             return String::new();
@@ -4541,10 +4471,6 @@ impl<V: FormatVariables + ?Sized, H: StatusHooks> Expander<'_, V, H> {
         literal.clear();
     }
 
-    /// `E:` and `T:` run the value back through `format_expand`, which is the
-    /// identity when the value holds no format token. The expander walks text,
-    /// so a value that is not UTF-8 goes in lossy; when the walk changed
-    /// nothing the original bytes are the answer the pin gives.
     fn reexpand(&mut self, value: RawText, depth: usize) -> RawText {
         let expanded = self.expand(&value, depth);
         if expanded.as_str() == value.as_str() {
@@ -4737,10 +4663,6 @@ impl<V: FormatVariables + ?Sized, H: StatusHooks> Expander<'_, V, H> {
             .map_or_else(String::new, |value| value.to_string())
     }
 
-    /// `format_replace`'s client capability, feature and environment lookup.
-    /// The body is a literal name, never expanded, and the three checks run in
-    /// the fixed source order c, f, e with each overwriting the last, so a flag
-    /// word naming several of them answers the last one that ran.
     fn expand_interrogate(&mut self, copy: &str, word: &str) -> RawText {
         let Some(terminal) = self.hooks.client_tty_term() else {
             return RawText::default();
@@ -5076,8 +4998,6 @@ impl<V: FormatVariables + ?Sized, H: StatusHooks> Expander<'_, V, H> {
         output
     }
 
-    /// format.c `format_loop_environ`: the flag word names one environment
-    /// store outright, and anything it does not spell leaves no store to walk.
     fn expand_environment_loop(&mut self, copy: &str, depth: usize, loop_flags: &str) -> String {
         let outer = self.context;
         let context = outer.values();
@@ -5272,10 +5192,6 @@ impl<V: FormatVariables + ?Sized, H: StatusHooks> Expander<'_, V, H> {
         }
     }
 
-    /// format.c `format_find`'s environment tail: after every option, table
-    /// and tree lookup misses, the session store answers first and the global
-    /// one second, and a name the session store keeps with no value masks the
-    /// global entry instead of falling through to it.
     fn environment_value(&mut self, key: &str) -> Option<RawText> {
         let session = self
             .universe
@@ -5655,8 +5571,6 @@ enum Comparison<'a> {
     Match(&'a str),
 }
 
-/// The modifier spelling `format_replace` logs beside a comparison, which is
-/// `cmp->modifier` and never the flag word an `m` carries.
 const fn comparison_text(comparison: Comparison<'_>) -> &'static str {
     match comparison {
         Comparison::Equal => "==",
@@ -5920,9 +5834,6 @@ impl<'a> ModifierFlags<'a> {
     }
 }
 
-/// `format_add_window_neighbour` walks the neighbour window's own options
-/// object, so only a user option stored directly on that window is copied under
-/// the prefix. An inherited value of the same name is not the window's.
 fn insert_window_neighbour_user_options(
     dynamic: &mut BTreeMap<String, String>,
     universe: &FormatUniverseRef<'_>,
@@ -5937,18 +5848,12 @@ fn insert_window_neighbour_user_options(
     }
 }
 
-/// The client formats an `L` row owns outright: inside a row they answer for
-/// the row's client, never the client the outer format was expanded for.
 fn client_loop_scoped(name: &str) -> bool {
     format_variable(name).is_some_and(|spec| {
         spec.scope == FormatScope::Client && spec.backing == FormatBacking::StatusHook
     })
 }
 
-/// sort.c `sort_qsort`: the default order leaves the rows in the order the
-/// clients connected and `r` only reverses that list. Name and activity go
-/// through `sort_client_cmp`, where the name breaks ties and `r` negates the
-/// finished comparison, tie-break included.
 fn sort_client_loop_rows(rows: &mut [FormatClientRow], sort: Option<LoopSort>, reversed: bool) {
     if !matches!(sort, Some(LoopSort::Name | LoopSort::Activity)) {
         if reversed {
@@ -6362,10 +6267,6 @@ fn find_measured_style_end(bytes: &[u8], start: usize) -> Option<usize> {
     None
 }
 
-/// `format_skip1`'s bracket accounting, whose counter is signed: a `}` with no
-/// opening `#{` drives it below zero and no later terminator is ever at depth
-/// zero again, so the whole modifier list fails to parse and the body falls
-/// through to a plain format.
 fn find_modifier_argument(text: &str, start: usize, wrapper: u8) -> Option<usize> {
     let bytes = text.as_bytes();
     let mut depth = 0isize;
@@ -7154,10 +7055,6 @@ fn expand_substitution(replacement: &str, captures: &Captures<'_>) -> String {
     output
 }
 
-/// One unit of format-draw.c `format_width`'s walk, which need not be UTF-8:
-/// its byte length, the columns it occupies, and whether `format_trim_left`
-/// keeps it. A byte that opens no complete sequence and is not printable ASCII
-/// is skipped there, so it is zero columns wide and the trim drops it.
 fn next_format_unit(value: &[u8], index: usize) -> (usize, usize, bool) {
     let byte = value[index];
     let size = match byte {
@@ -7181,12 +7078,6 @@ fn next_format_unit(value: &[u8], index: usize) -> (usize, usize, bool) {
     }
 }
 
-/// utf8.c `utf8_sanitize`, which `server_client_print` runs over a message
-/// bound for a client that never raised `CLIENT_UTF8`. A complete UTF-8
-/// sequence becomes one underscore per column it would have taken, so a wide
-/// character becomes two and a zero-width one disappears; printable ASCII
-/// passes; every other byte, a control byte and a byte no sequence opens alike,
-/// becomes one underscore.
 #[must_use]
 pub fn utf8_sanitize(value: &[u8]) -> String {
     let mut output = String::with_capacity(value.len());
@@ -7207,10 +7098,6 @@ pub fn utf8_sanitize(value: &[u8]) -> String {
     output
 }
 
-/// The pin answers a listing with one `cmdq_print` per row and sanitizes each
-/// message on its own, so a row separator never reaches `utf8_sanitize`. zz
-/// answers one command with one output, so the sanitizer runs per line and the
-/// separators stay separators.
 #[must_use]
 pub fn sanitize_client_output(output: &RawText) -> RawText {
     let mut sanitized = Vec::with_capacity(output.byte_len());
@@ -7822,13 +7709,6 @@ mod tests {
         assert_eq!(values["pane_kind"], "agent");
     }
 
-    /// utf8.c `utf8_sanitize`, measured on tmux d77c9dc6 through a client whose
-    /// `LC_ALL`, `LC_CTYPE` and `LANG` are all C and whose `$TMUX` is unset:
-    /// `a<0xff>b` answers `a_b`, `x<U+6F22>y` answers `x__y` because the wide
-    /// character is two columns, `e<U+0301>z` answers `ez` because a combining
-    /// mark is none, and a tab answers `_`. The pin prints a listing one row per
-    /// `cmdq_print` and sanitizes each on its own, so a row separator survives
-    /// where a newline inside one message would not.
     #[test]
     fn the_client_sanitizer_spends_one_underscore_per_column_the_pin_would_have_drawn() {
         assert_eq!(utf8_sanitize(b"a\xffb"), "a_b");
@@ -7846,14 +7726,6 @@ mod tests {
         );
     }
 
-    /// A byte no UTF-8 sequence opens rides `format_expand` in the pin, which
-    /// is `char *` end to end, and format-draw.c is what counts it: it opens no
-    /// sequence and is not printable ASCII, so `format_width` gives it no
-    /// column, `format_trim_left` rebuilds the value out of what it counted and
-    /// drops it, `format_trim_right` returns the whole string untouched when it
-    /// already fits, `utf8_padcstr` pads against the same width, and the length
-    /// modifier is `strlen` over the raw bytes. Measured on tmux d77c9dc6 with
-    /// `set-environment -g ZZBYTES $(printf 'a\377b')`.
     #[test]
     fn an_environment_value_no_utf8_holds_is_counted_the_way_format_draw_counts_it() {
         let value = RawText::from_bytes(b"a\xffb".to_vec());
@@ -8651,10 +8523,6 @@ mod tests {
         assert_eq!(expand("before#{R:#{R:x,5000},10000}after"), "before");
     }
 
-    /// The pin has no output cap. Measured on the pin, `#{p-9000:#{l:tail}}`
-    /// prints 9000 bytes ending in `tail` and `#{R:x,10000}` prints 10000, both
-    /// far past the 4096-byte `StatusLine` wire bound zz used to apply to every
-    /// finished expansion.
     #[test]
     fn expansion_output_keeps_every_byte_past_the_status_wire_bound() {
         let padded = expand("#{p-9000:#{l:tail}}");
@@ -8668,9 +8536,6 @@ mod tests {
         );
     }
 
-    /// The pin threads `FORMAT_LOOP_LIMIT` as a recursion depth: `es->loop` is
-    /// incremented on entry to `format_expand1` and decremented on the way out,
-    /// so a hundred sibling expansions cost one level, not a hundred.
     #[test]
     fn the_loop_limit_counts_recursion_depth_and_not_a_running_total() {
         let siblings = "#{l:x}".repeat(200);
@@ -8845,11 +8710,6 @@ mod tests {
         assert_eq!(expand(&hostile), "");
     }
 
-    /// format.c hands every loop expander the same `format_expand_state`, so a
-    /// loop body's own parse lines land in the trace beside the outer ones. The
-    /// client loop is the only one the compat corpus cannot reach: every
-    /// scenario server is detached, so its roster is empty and the body never
-    /// runs.
     #[test]
     fn the_client_loop_body_traces_through_the_shared_sink() {
         struct Roster;

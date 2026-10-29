@@ -122,9 +122,7 @@ impl RenderOnce for Row {
     }
 }
 
-/// The edge of a frame that stands in for a window or a device on the page.
 pub trait Framed: Styled + Sized {
-    /// The story's own framing, not part of the look, so every theme draws it.
     #[allow(
         clippy::disallowed_methods,
         reason = "a story frame stands in for a window's edge on the page, not for an edge of the look"

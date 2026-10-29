@@ -1,7 +1,4 @@
 #!/bin/sh
-# `split-window -W` parks the queue item that made the pane until the pane's
-# command exits, then hands an unattached client that command's exit status, or
-# 128 plus its signal, and only then lets the rest of the queue run.
 set -eu
 
 export LC_ALL=C
@@ -52,17 +49,12 @@ run_case success split-window -d -W -t "=$session:" true
 run_case signal split-window -d -W -t "=$session:" 'kill -TERM $$'
 run_case printed split-window -d -P -F '#{pane_index}' -W -t "=$session:" 'exit 5'
 
-# A non-zero status keeps the item's after hook: the hook was inserted at exec
-# and window_pane_wait_finish only sets c->retval, so the hook runs, the rest of
-# the queue runs, and only the client's status carries the child's.
 main_client set-hook -g after-split-window 'display-message -p HOOK'
 main_client set-hook -g command-error 'display-message -p CMDERR'
 run_case hooked split-window -d -P -W -t "=$session:" 'exit 2' \; display-message -p AFTER
 main_client set-hook -gu after-split-window
 main_client set-hook -gu command-error
 
-# The rest of the queue runs after the pane's command is gone, so the marker the
-# pane writes is already there when the next command in the same queue prints.
 marker="$work/ordered"
 rm -f "$marker"
 set +e
@@ -74,7 +66,6 @@ printf 'ordered rc=%s marker=%s\n' "$rc" "$([ -e "$marker" ] && echo present || 
 sed 's/^/ordered | /' "$work/ordered.out"
 sed 's/^/ordered ! /' "$work/ordered.err"
 
-# While the item is parked the pane is alive and the client has not returned.
 rm -f "$work/parked.exit" "$work/parked.ready" "$work/parked.release"
 (
     set +e

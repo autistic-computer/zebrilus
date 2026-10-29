@@ -12,9 +12,7 @@ use crate as config;
 
 #[derive(Debug, Default)]
 pub struct ImportReport {
-    /// Number of appearance keys copied from the Ghostty config into `zz/config`.
     pub ghostty_keys: usize,
-    /// Where the appearance keys were written, when any were.
     pub config_path: Option<PathBuf>,
 }
 
@@ -24,8 +22,6 @@ impl ImportReport {
     }
 }
 
-/// Import only the Ghostty appearance into `zz/config`, leaving `zz/mux.conf`
-/// alone. Re-running overwrites the keys a previous import wrote.
 pub fn import_ghostty_config(scheme: TerminalColorScheme) -> io::Result<ImportReport> {
     discover_ghostty_config().map_or_else(
         || Ok(ImportReport::default()),
@@ -63,8 +59,6 @@ pub fn import_ghostty_config_from(
     Ok(report)
 }
 
-/// The `zz/config` lines a loaded Ghostty appearance imports as: every key the
-/// donor set, directly or through its `theme` directive, as concrete values.
 pub fn ghostty_import_values(
     load: &zz_terminal::AppearanceLoad,
 ) -> io::Result<Vec<(AppearanceConfigKey, Vec<String>)>> {

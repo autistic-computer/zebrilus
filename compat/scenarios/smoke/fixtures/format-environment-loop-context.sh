@@ -73,7 +73,6 @@ await_clients() {
 main_client kill-session -t "=$session" >/dev/null 2>&1 || true
 main_client new-session -d -s "$session"
 
-# Start from a store this fixture owns outright, so the row positions are exact.
 main_client show-environment -t "$session" | sed -e 's/^-//' -e 's/=.*//' |
     while IFS= read -r name; do
         [ -n "$name" ] || continue
@@ -86,8 +85,6 @@ main_client set-environment -t "$session" GAMMA ''
 
 row='#{V:<#{environ_name}|#{environ_value}|#{environ_hidden}|#{environ_removed}|#{loop_index}|#{loop_last_flag}>}'
 
-# Every row carries its own entry and its own zero-based position, in the store
-# order, and an empty value is not a removed one.
 check_equal rows \
     '<ALPHA|one|0|0|0|0><BETA|two|0|0|1|0><GAMMA||0|0|2|1>' \
     "$(expand "$row")"
@@ -99,17 +96,14 @@ main_client set-environment -t "$session" -h HIDDEN seen
 main_client set-environment -t "$session" -r REMOVED
 main_client set-environment -t "$session" EMPTY ''
 
-# A removed entry keeps its name and loses its value; a hidden one keeps both.
 check_equal flags \
     '<EMPTY||0|0|0|0><HIDDEN|seen|1|0|1|0><REMOVED||0|1|2|1>' \
     "$(expand "$row")"
 
-# The global store carries the same six formats for its own entries.
 main_client set-environment -g ENVCTX_GLOBAL g
 check_equal global-row '<ENVCTX_GLOBAL=g:00>' \
     "$(expand '#{Vg:#{?#{==:#{environ_name},ENVCTX_GLOBAL},<#{environ_name}=#{environ_value}:#{environ_hidden}#{environ_removed}>,}}')"
 
-# So does the client store of the connection running the command.
 check_equal client-row '<ENVCTX_CLIENT=c:00>' \
     "$(ENVCTX_CLIENT=c expand '#{Vc:#{?#{==:#{environ_name},ENVCTX_CLIENT},<#{environ_name}=#{environ_value}:#{environ_hidden}#{environ_removed}>,}}')"
 
@@ -119,7 +113,6 @@ main_client set-environment -t "$session" -u EMPTY
 main_client set-environment -t "$session" OUTER o
 main_client set-environment -t "$session" PLAIN p
 
-# A nested loop owns all six names only for the length of its own rows.
 check_equal nested-environment \
     '[OUTER0(OUTER0)(PLAIN1)OUTER0][PLAIN1(OUTER0)(PLAIN1)PLAIN1]' \
     "$(expand '#{V:[#{environ_name}#{loop_index}#{V:(#{environ_name}#{loop_index})}#{environ_name}#{loop_index}]}')"
@@ -127,7 +120,6 @@ check_equal nested-window \
     '[OUTER<01>OUTER][PLAIN<01>PLAIN]' \
     "$(expand '#{V:[#{environ_name}#{W:<#{loop_index}#{loop_last_flag}>}#{environ_name}]}')"
 
-# None of the six answer anywhere else.
 check_equal no-leak '[|||||]' \
     "$(expand '[#{environ_name}|#{environ_value}|#{environ_hidden}|#{environ_removed}|#{loop_index}|#{loop_last_flag}]')"
 check_equal no-leak-after 'xx[]' \
@@ -143,7 +135,6 @@ env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
 attach_pid=$!
 await_clients 1 || { echo "format-environment-loop-context-$side: attach"; exit 0; }
 
-# Inside a client row the session store still answers with its own six formats.
 session_names="$(expand '#{V:#{environ_name}}')"
 check_equal client-nested "[$session_names]" "$(expand '#{L:[#{V:#{environ_name}}]}')"
 

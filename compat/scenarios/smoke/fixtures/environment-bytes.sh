@@ -1,8 +1,6 @@
 #!/bin/sh
 set -eu
 
-# tmux takes a UTF-8 client from LC_ALL, LC_CTYPE or LANG and sanitizes byte
-# output to a non-UTF-8 client, so pin the locale rather than inherit one.
 export LC_ALL=C.UTF-8
 
 if [ -n "${ZZ_SMOKE_ZZ_BIN:-}" ]; then
@@ -24,9 +22,6 @@ root="$HOME/environment-bytes-$side"
 rm -rf "$root"
 mkdir -p "$root"
 
-# One byte no UTF-8 string can hold. tmux keeps an environment name and value as
-# a C string, so it rides argv into the store and comes back out of
-# show-environment unchanged.
 value=$(printf 'a\377b')
 name=$(printf 'N\377')
 session_value=$(printf 'x\377y')
@@ -43,14 +38,6 @@ main_client show-environment -g "$name" >"$root/name" 2>&1 || :
 main_client set-environment ZZSESS "$session_value"
 main_client show-environment ZZSESS >"$root/session" 2>&1 || :
 
-# format.c is char * end to end, so a format that expands the byte value
-# answers the bytes, and so does every sink that prints an expansion. The
-# modifier family the value rides through counts it the way format-draw.c
-# does: format_width gives an invalid byte no column at all, format_trim_left
-# rebuilds the value out of what it counted and so drops the byte even when
-# the value was short enough to keep whole, format_trim_right hands back the
-# whole string in that case and keeps it, n: is strlen over the bytes, and a
-# conditional only asks whether the value is non-empty.
 fmt() {
     main_client display-message -p "$1" >"$root/fmt-$2" 2>&1 || :
 }
@@ -65,8 +52,6 @@ fmt '#{p5:#{ZZBYTES}}' padded
 fmt '#{q:#{ZZBYTES}}' quoted
 main_client list-panes -a -F '#{ZZBYTES}' >"$root/fmt-list" 2>&1 || :
 
-# The spawn environment a later pane inherits: the pane's own shell reads the
-# variable back out of its process environment and reports it.
 cat >"$root/inherit.sh" <<INHERIT
 #!/bin/sh
 LC_ALL=C.UTF-8 "$binary" $prefix_args set-environment -g ZZINHERIT "\${ZZBYTES-unset}"
@@ -83,16 +68,10 @@ while [ "$attempt" -lt 80 ]; do
     sleep 0.25
 done
 
-# The control client's own command block: server_client_print writes the bytes
-# straight to the client, so a control client sees what the plain CLI sees. The
-# command rides argv rather than stdin so the control client runs it instead of
-# the default new-session and leaves no session behind.
 # shellcheck disable=SC2086
 "$binary" $prefix_args -C show-environment -g ZZBYTES </dev/null 2>/dev/null \
     | LC_ALL=C sed -n '/^ZZBYTES=/p' >"$root/control" || :
 
-# The attach shape: a real client on a pty whose own environment holds the byte,
-# with update-environment naming it beside a plain neighbour.
 main_client set-option -g update-environment "ZZBYTES ZZPLAIN"
 ZZBYTES="$value" ZZPLAIN=neighbour \
     ZZ_ENVBYTES_BIN="$binary" ZZ_ENVBYTES_ARGS="$prefix_args" ZZ_ENVBYTES_ROOT="$root" \

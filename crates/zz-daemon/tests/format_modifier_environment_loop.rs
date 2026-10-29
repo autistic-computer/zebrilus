@@ -1,11 +1,3 @@
-//! The `V` format modifier over the three environment stores.
-//!
-//! format.c `format_loop_environ` reads the flag word as one exact spelling:
-//! nothing or `s` is the session's store, `g` the global one, `c` the selected
-//! client's, and anything else leaves no store and therefore no rows. Whatever
-//! store it lands on it walks whole, in the name order environ.c keeps, hidden
-//! and removed entries included.
-
 #![cfg(unix)]
 
 mod clients;
@@ -24,8 +16,6 @@ fn wrap(lines: &[String]) -> String {
     })
 }
 
-/// `show-environment` prints `NAME=value` for a live entry and `-NAME` for a
-/// removed one, in the same store order the loop walks.
 fn stored(clients: &mut Clients, args: &[&str]) -> Vec<String> {
     clients
         .commands
@@ -69,8 +59,6 @@ fn the_default_and_the_session_flag_walk_the_sessions_own_store() {
         wrap(&names)
     );
 
-    // Store order is name order, and an empty value is a live entry rather than
-    // a removed one.
     let mut sorted = names.clone();
     sorted.sort();
     assert_eq!(names, sorted);
@@ -103,7 +91,6 @@ fn hidden_and_removed_entries_keep_their_rows() {
         clients.format("base", row),
         "<ZZ_LOOP_HIDDEN=secret:10><ZZ_LOOP_PLAIN=kept:00><ZZ_LOOP_REMOVED=:01>"
     );
-    // show-environment hides the hidden entry; the loop still walks it.
     assert!(!stored(&mut clients, &["-t", "base"]).contains(&"ZZ_LOOP_HIDDEN".to_owned()));
 }
 
@@ -129,8 +116,6 @@ fn each_flag_word_reads_its_own_store_when_the_names_collide() {
     assert_eq!(clients.format("base", &pick("")), "<session>");
     assert_eq!(clients.format("base", &pick("s")), "<session>");
     assert_eq!(clients.format("base", &pick("g")), "<global>");
-    // The client store is the attached client's own process environment, which
-    // never learned the name.
     assert_eq!(clients.format("base", &pick("c")), "\n");
 
     let path = std::env::var("PATH").expect("the test process has a PATH");
@@ -146,8 +131,6 @@ fn each_flag_word_reads_its_own_store_when_the_names_collide() {
 #[test]
 fn the_client_store_is_the_invoking_clients_own_environment() {
     let mut clients = Clients::start("environ-loop-client", &["base"]);
-    // cmd-display-message.c creates the tree with cmdq_get_client, so the store
-    // is the connection that ran the command, not whoever is attached.
     let detached = clients.format("base", "#{Vc:<#{environ_name}>}");
     assert!(
         !detached.is_empty(),
@@ -159,7 +142,6 @@ fn the_client_store_is_the_invoking_clients_own_environment() {
     clients.detach(attached);
     assert_eq!(clients.format("base", "#{Vc:<#{environ_name}>}"), detached);
 
-    // The store is that client's process environment, in name order.
     let path = std::env::var("PATH").expect("the test process has a PATH");
     assert_eq!(
         clients.format(
@@ -176,7 +158,6 @@ fn the_client_store_is_the_invoking_clients_own_environment() {
     let mut sorted = names.clone();
     sorted.sort();
     assert_eq!(names, sorted);
-    // No hidden or removed entries: a client sends only what it has.
     assert_eq!(
         clients.format("base", "#{Vc:#{environ_hidden}#{environ_removed}}"),
         "00".repeat(names.len())
@@ -195,8 +176,6 @@ fn an_unspelled_flag_word_leaves_no_store_and_no_rows() {
         ))
         .expect("set a global entry");
 
-    // The pin compares the whole word, so no combination and no unknown letter
-    // selects a store.
     for flags in ["z", "gs", "sg", "sc", "gc", "S", "G", "C", "gg", "cs", " s"] {
         assert_eq!(
             clients.format("base", &format!("[#{{V{flags}:x}}]")),
@@ -204,7 +183,6 @@ fn an_unspelled_flag_word_leaves_no_store_and_no_rows() {
             "V{flags}"
         );
     }
-    // The three the pin does spell keep their rows.
     for flags in ["", "s", "g", "c"] {
         assert_ne!(
             clients.format("base", &format!("[#{{V{flags}:x}}]")),
@@ -229,8 +207,6 @@ fn an_emptied_session_store_produces_no_rows_while_the_global_one_keeps_its_own(
 
     assert_eq!(clients.format("base", "[#{V:x}]"), "[]");
     assert_eq!(clients.format("base", "[#{Vs:x}]"), "[]");
-    // The session store is looked up, never fallen back on: the global store
-    // still has rows of its own.
     assert_ne!(clients.format("base", "[#{Vg:x}]"), "[]");
 }
 
@@ -246,19 +222,15 @@ fn nested_and_malformed_environment_loops_keep_the_pinned_fallback() {
         .expect("set the entry");
     let rows = clients.format("base", "#{n:#{V:x}}");
 
-    // A window loop inside an environment row still sees the outer session.
     assert_eq!(
         clients.format("base", "#{n:#{V:#{W:x}}}"),
         rows,
         "one window per row"
     );
-    // Environment loops nest, and the inner rows do not disturb the outer ones.
     assert_eq!(
         clients.format("base", "#{n:#{V:#{V:x}}}"),
         (rows.parse::<usize>().expect("a row count").pow(2)).to_string()
     );
-    // The inner row's name wins inside the inner loop and the outer name comes
-    // back afterwards.
     assert_eq!(
         clients.format(
             "base",
@@ -267,7 +239,6 @@ fn nested_and_malformed_environment_loops_keep_the_pinned_fallback() {
         ),
         "[inZZ_LOOP_NEST]"
     );
-    // An empty body runs the rows and contributes nothing.
     assert_eq!(clients.format("base", "#{V:}"), "\n");
 }
 
@@ -283,7 +254,6 @@ fn the_row_formats_stay_empty_outside_a_loop() {
         ),
         "[|||]"
     );
-    // And a loop leaves nothing behind for the text after it.
     assert_eq!(
         clients.format("base", "#{V:x}[#{environ_name}#{environ_hidden}]"),
         format!(

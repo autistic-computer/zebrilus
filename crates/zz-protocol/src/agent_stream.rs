@@ -1,11 +1,3 @@
-//! What an agent pane emits. One JSON-serializable item per runtime event:
-//! this is simultaneously the journal record, the wire payload the clients
-//! deserialize, and the only thing the host hands its sink.
-//!
-//! Postcard cannot carry the ACP SDK's JSON-shaped types, so everything the
-//! adapter produces verbatim (`session/update` payloads, permission options,
-//! config options) rides as an opaque `Value` and is re-typed client-side.
-
 use std::path::PathBuf;
 
 use crate::{AgentPaneWire, AgentTaskWire, ClientId, ClientInstanceId};
@@ -21,8 +13,6 @@ pub struct AgentCatalogResult {
     pub error: Option<String>,
 }
 
-/// One stamped item of a pane's stream. `seq` counts from 1 per pane and never
-/// repeats, so a reattaching client replays from the last one it applied.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct AgentStreamItem {
     pub seq: u64,
@@ -33,7 +23,6 @@ pub struct AgentStreamItem {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "item")]
 pub enum AgentStreamPayload {
-    /// The adapter answered `initialize`; nothing about a session yet.
     Ready {
         agent_name: String,
         agent_key: String,
@@ -80,7 +69,6 @@ pub enum AgentStreamPayload {
         client: ClientId,
         message: String,
     },
-    /// A raw `session/update` payload, the transcript's atom.
     Update {
         update: Value,
     },
@@ -91,12 +79,9 @@ pub enum AgentStreamPayload {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         questions: Vec<AgentQuestion>,
     },
-    /// The agent's background tasks, the whole set after a change.
     TasksChanged {
         tasks: Vec<AgentTaskWire>,
     },
-    /// The agent is working on a turn nobody here started, such as a
-    /// background task reporting back, or has gone idle again.
     Activity {
         busy: bool,
     },
@@ -133,8 +118,6 @@ pub enum AgentStreamPayload {
     PaneFailed {
         message: String,
     },
-    /// Prompts the pane had queued and is handing back, so the composer can
-    /// refill: a prompt is either sent or visible in the draft again.
     PromptsReclaimed {
         prompts: Vec<AgentPrompt>,
     },
@@ -147,8 +130,6 @@ pub enum AgentStreamPayload {
     },
 }
 
-/// A question the agent asks the user, answered from a card rather than a
-/// permission option list: one or more choices, or typed text.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentQuestion {
@@ -203,8 +184,6 @@ impl AgentPrompt {
     }
 }
 
-/// A prompt attachment as it crosses process boundaries: the MIME format the
-/// adapter is told about, plus the encoded bytes.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentImage {
@@ -246,8 +225,6 @@ pub struct AgentSessionSummary {
     pub updated_at: Option<String>,
 }
 
-/// Image bytes are JSON only because the whole stream is; base64 keeps a
-/// screenshot from becoming a megabyte-long array of decimal numbers.
 mod base64_bytes {
     use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
     use serde::{Deserialize as _, Deserializer, Serializer, de::Error as _};

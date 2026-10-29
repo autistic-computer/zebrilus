@@ -1,6 +1,3 @@
-# zz Bash shell integration. This file is generated into a private cache and
-# sourced through Bash's POSIX ENV startup path.
-
 [[ $- == *i* ]] || builtin return 0
 [[ -z ${__ZZ_TITLE_INTEGRATION_INSTALLED-} ]] || builtin return 0
 __ZZ_TITLE_INTEGRATION_INSTALLED=1
@@ -63,9 +60,6 @@ __zz_write_working_directory() {
   builtin printf '\e]7;file://%s%s\a' "${HOSTNAME-}" "$__zz_value"
 }
 
-# The idle title goes first in PROMPT_COMMAND, so a title the shell's own
-# prompt sets (Arch's /etc/bash.bashrc sends OSC 0 for TERM=tmux*) lands after
-# it and is the one the pane keeps, the way it is under tmux.
 __zz_prompt_begin() {
   builtin local __zz_status=$?
   __zz_prompt_ready=0
@@ -93,8 +87,6 @@ __zz_prompt_debug() {
 
 __zz_title_precmd() {
   __zz_write_working_directory
-  # DECSCUSR default: the prompt restores the configured cursor style instead of
-  # imposing one, so a program that exits without resetting cannot keep its shape.
   builtin printf '\e[0 q'
   [[ $PS1 == *'\[\e]133;B\a\]' ]] || PS1+='\[\e]133;B\a\]'
   builtin printf '\e]133;A\a'
@@ -115,10 +107,10 @@ __zz_title_preexec() {
 }
 
 if (( BASH_VERSINFO[0] > 5 || (BASH_VERSINFO[0] == 5 && BASH_VERSINFO[1] >= 3) )); then
-  # shellcheck disable=SC2016 # Bash expands this when PS0 is displayed.
+  # shellcheck disable=SC2016
   [[ $PS0 == *'__zz_title_preexec'* ]] || PS0='${ __zz_title_preexec; }'"${PS0-}"
 elif (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
-  # shellcheck disable=SC2016 # Bash expands this when PS0 is displayed.
+  # shellcheck disable=SC2016
   [[ $PS0 == *'__zz_title_preexec'* ]] || PS0='$(__zz_title_preexec >/dev/tty)'"${PS0-}"
 fi
 

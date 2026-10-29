@@ -63,15 +63,9 @@ pub(crate) trait ChooserSpec: Default + 'static {
     }
     fn synchronize_local(&mut self, _: &Self::State, _: &MuxClient) {}
     fn search(state: &Self::State) -> Option<ChooserSearch<'_>>;
-    /// The single-key confirmation the daemon's chooser session owns. Every key
-    /// still goes to the daemon while it stands, so a client that does not draw
-    /// it answers a kill the viewer never saw.
     fn prompt(_: &Self::State) -> Option<&str> {
         None
     }
-    /// `mtd->help`: the help screen the mode raises, which swallows the next
-    /// key of any kind. A client that draws nothing here eats that key
-    /// silently.
     fn help(_: &Self::State) -> bool {
         false
     }
@@ -172,7 +166,6 @@ impl<S: ChooserSpec> Chooser<S> {
             && !modifiers.platform
             && !modifiers.alt
         {
-            // The IME input handler owns typed search text.
             return;
         }
         let input = terminal_key_input(keystroke, KeyAction::Press);

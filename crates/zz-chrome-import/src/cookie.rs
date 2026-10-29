@@ -107,12 +107,10 @@ struct RawChromeCookie {
 }
 
 struct ChromiumKeys {
-    /// AES-128-CBC keys derived from the platform credential store.
     #[cfg(not(target_os = "windows"))]
     v10: DerivedKeys,
     #[cfg(not(target_os = "windows"))]
     v11: DerivedKeys,
-    /// Windows keeps one AES-256-GCM master key in `Local State` instead.
     #[cfg(target_os = "windows")]
     master: Zeroizing<[u8; AES_GCM_KEY_BYTES]>,
     credential_unavailable: bool,
@@ -127,8 +125,6 @@ pub const fn automatic_import_supported() -> bool {
     ))
 }
 
-/// Imports every usable cookie from one installed Chrome profile, read-only.
-/// The caller picks the destination zz profile when it hands the batch to CEF.
 pub fn import_all_cookies(
     source_profile: &str,
 ) -> Result<CookieImportBatch, ChromeCookieImportError> {
@@ -204,7 +200,6 @@ fn import_cookie_database(
         let value = if !row.value.is_empty() || row.encrypted_value.is_empty() {
             row.value.clone()
         } else if is_app_bound_value(&row.encrypted_value) {
-            // Skipped before the credential store opens: no key here decrypts it.
             app_bound = app_bound.saturating_add(1);
             batch.skipped = batch.skipped.saturating_add(1);
             continue;
@@ -369,8 +364,6 @@ fn raw_chrome_cookie(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawChromeCooki
     })
 }
 
-/// Collapses cookies onto CEF's narrower name/domain/path identity, keeping the
-/// later expiry. Chrome's own key also covers the source scheme and port.
 fn deduplicate_normalized_cookies(cookies: Vec<BrowserCookie>) -> (Vec<BrowserCookie>, usize) {
     let original_len = cookies.len();
     let mut unique = BTreeMap::new();
@@ -401,8 +394,6 @@ fn deduplicate_normalized_cookies(cookies: Vec<BrowserCookie>) -> (Vec<BrowserCo
     (unique.into_values().collect(), duplicates)
 }
 
-/// Normalizes in chunks under the public parser's 10,000-row / 8 MiB cap, so a
-/// large profile reaches CEF as one batch instead of being truncated.
 #[cfg(test)]
 fn normalize_cookie_records(
     records: &[Value],
@@ -543,8 +534,6 @@ fn cookie_json(row: &RawChromeCookie, value: String) -> Value {
     Value::Object(record)
 }
 
-/// Chrome 127 and newer re-seal Windows cookies with app-bound encryption, and
-/// unwrapping a `v20` value needs Chrome's own elevated service. Skip them.
 #[cfg(target_os = "windows")]
 fn is_app_bound_value(encrypted: &[u8]) -> bool {
     encrypted.starts_with(APP_BOUND_PREFIX)
@@ -664,7 +653,6 @@ fn linux_safe_storage_secret() -> Option<Zeroizing<Vec<u8>>> {
     })
 }
 
-// Chrome tags the `Local State` master key with the API protecting it.
 #[cfg(target_os = "windows")]
 const DPAPI_KEY_TAG: &[u8] = b"DPAPI";
 #[cfg(target_os = "windows")]
@@ -682,8 +670,6 @@ fn load_chromium_keys() -> Result<ChromiumKeys, ChromeCookieImportError> {
     })
 }
 
-/// `Local State` carries `OSCrypt`'s master key as base64 of `"DPAPI" || blob`,
-/// which only the logged-in user can unwrap.
 #[cfg(target_os = "windows")]
 fn local_state_master_key() -> Option<Zeroizing<[u8; AES_GCM_KEY_BYTES]>> {
     use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
@@ -701,7 +687,6 @@ fn local_state_master_key() -> Option<Zeroizing<[u8; AES_GCM_KEY_BYTES]>> {
     ))
 }
 
-/// Chrome's Windows cookie layout: `"v10" || 12-byte nonce || ciphertext || tag`.
 #[cfg(target_os = "windows")]
 fn decrypt_cookie_value(
     encrypted: &[u8],
@@ -714,7 +699,6 @@ fn decrypt_cookie_value(
     } else if is_app_bound_value(encrypted) {
         return None;
     } else {
-        // Values older than the `v10` prefix are raw DPAPI, and never host-bound.
         (dpapi_unprotect(encrypted)?, false)
     };
     let value = if host_bound {
@@ -737,7 +721,6 @@ fn decrypt_aes_gcm(sealed: &[u8], key: &[u8; AES_GCM_KEY_BYTES]) -> Option<Zeroi
         .map(Zeroizing::new)
 }
 
-/// DPAPI decryption for the logged-in user: the master key and pre-`v10` blobs.
 #[cfg(target_os = "windows")]
 #[allow(
     unsafe_code,
@@ -754,22 +737,15 @@ fn dpapi_unprotect(protected: &[u8]) -> Option<Zeroizing<Vec<u8>>> {
         pbData: protected.as_ptr().cast_mut(),
     };
     let mut output = CRYPT_INTEGER_BLOB::default();
-    // SAFETY: `input` describes a buffer that outlives the call and that
-    // CryptUnprotectData only reads, and `output` is a live local. Success
-    // means it wrote a LocalAlloc'd plaintext buffer into `output`.
     unsafe { CryptUnprotectData(&raw const input, None, None, None, None, 0, &raw mut output) }
         .ok()?;
     let length = usize::try_from(output.cbData).unwrap_or_default();
     let plaintext = (!output.pbData.is_null() && length > 0).then(|| {
-        // SAFETY: on success the API reports exactly `cbData` readable bytes at
-        // `pbData`, and the copy finishes before the buffer is released.
         Zeroizing::new(unsafe { std::slice::from_raw_parts(output.pbData, length) }.to_vec())
     });
     if !output.pbData.is_null() && length > 0 {
         unsafe { std::slice::from_raw_parts_mut(output.pbData, length) }.zeroize();
     }
-    // SAFETY: `pbData` is the LocalAlloc'd buffer CryptUnprotectData returned,
-    // and nothing references it once the copy above is done.
     let _ = unsafe { LocalFree(Some(HLOCAL(output.pbData.cast()))) };
     plaintext
 }

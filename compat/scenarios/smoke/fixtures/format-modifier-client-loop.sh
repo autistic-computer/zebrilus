@@ -92,7 +92,6 @@ wrapped() {
 main_client kill-session -t "=$session" >/dev/null 2>&1 || true
 main_client new-session -d -s "$session"
 
-# A server nobody has attached to has no rows at all.
 check_equal empty-rows '[]' "$(expand '[#{L:<#{client_name}>}]')"
 check_equal empty-count 0 "$(expand '#{n:#{L:x}}')"
 expand '#{L:}' >"$work/empty-body"
@@ -113,8 +112,6 @@ ascending="$(names_sorted | wrapped)"
 descending="$(names_sorted | sed '1!G;h;$!d' | wrapped)"
 window="$(expand '#{window_index}')"
 
-# Default and i keep the attach order and r reverses it; n sorts by name and r
-# negates that comparison.
 check_equal order-default "$attached" "$(expand '#{L:<#{client_name}>}')"
 check_equal order-index "$attached" "$(expand '#{Li:<#{client_name}>}')"
 check_equal order-name "$ascending" "$(expand '#{Ln:<#{client_name}>}')"
@@ -122,23 +119,19 @@ check_equal order-reversed "$attached_reversed" "$(expand '#{Lr:<#{client_name}>
 check_equal order-index-reversed "$attached_reversed" "$(expand '#{Lir:<#{client_name}>}')"
 check_equal order-name-reversed "$descending" "$(expand '#{Lnr:<#{client_name}>}')"
 
-# An order letter the pin does not know falls back to the default order.
 check_equal order-unknown "$attached" "$(expand '#{Lz:<#{client_name}>}')"
 check_equal order-unknown-reversed "$attached_reversed" "$(expand '#{Lzr:<#{client_name}>}')"
 
-# The row replaces the client and keeps the outer session, window, and pane.
 check_equal row-context \
     "<$session:$window:0><$session:$window:0>" \
     "$(expand '#{L:<#{session_name}:#{window_index}:#{pane_index}>}')"
 check_equal row-tty "$attached" "$(expand '#{L:<#{client_tty}>}')"
 
-# Loops nest in both directions and the inner one keeps the outer row's client.
 check_equal nested-window "[$window][$window]" "$(expand '#{L:[#{window_index}]}')"
 check_equal nested-window-client "$attached" "$(expand '#{L:#{W:<#{client_name}>}}')"
 check_equal nested-client '[xx][xx]' "$(expand '#{L:[#{L:x}]}')"
 check_equal nested-count 2 "$(expand '#{n:#{L:x}}')"
 
-# Detaching takes the row away; the survivor keeps its own.
 kill "$second_pid" >/dev/null 2>&1 || true
 wait "$second_pid" >/dev/null 2>&1 || true
 second_pid=""

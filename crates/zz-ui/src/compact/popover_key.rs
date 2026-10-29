@@ -221,13 +221,10 @@ impl PopoverKey {
         self.open.is_some()
     }
 
-    /// Where the key last painted, in window coordinates.
     pub fn bounds(&self) -> Bounds<Pixels> {
         self.face.get()
     }
 
-    /// Opens the card as a tap does: it stays until a pick or a press
-    /// outside it.
     pub fn open(&mut self, cx: &mut Context<Self>) {
         if !self.items.is_empty() {
             self.open = Some(Open::Pinned);

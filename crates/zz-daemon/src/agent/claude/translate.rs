@@ -90,8 +90,6 @@ impl Translator {
         }
     }
 
-    /// A message you typed while Claude worked. Claude Code records it as a
-    /// queued command once the running turn takes it in.
     fn queued_prompt(&self, entry: &Value) -> Vec<Value> {
         let attachment = &entry["attachment"];
         if attachment["type"] != "queued_command"

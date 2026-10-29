@@ -1,22 +1,3 @@
-//! Agent attention: one transition detector per pane, two outputs.
-//!
-//! [`AgentAttentionTracker`] is the single place that watches per-pane agent
-//! status change. From the same edges it emits (a) a chime, (b) the
-//! finished-but-unseen badge state the workspace chrome renders, and (c) the
-//! per-pane edges a desktop notification is posted from.
-//!
-//! Chime rules: a `Request` on any transition into needs-input or failed, a
-//! `Done` on the working -> idle edge or on any transition into a program's
-//! `done`, all silent while the user is already watching that pane. A pane's first observation only seeds the baseline, so
-//! restoring a session never rings. Playback drops a chime that comes within two
-//! seconds of the last one, so a program flipping its status cannot ring on repeat.
-//!
-//! Playback synthesizes two short PCM WAVs in code, materializes each into the
-//! temp dir once, and hands the file to the platform's own player (`afplay`,
-//! or the first of `paplay`/`pw-play`/`aplay`) on a background thread with a
-//! kill deadline. No audio dependency, no bundled assets. `ZZ_AGENT_SOUND=0`
-//! disables it.
-
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsStr,
@@ -127,11 +108,6 @@ impl<K> Default for AgentAttentionTracker<K> {
 }
 
 impl<K: Copy + Ord> AgentAttentionTracker<K> {
-    /// `watched` is the pane the user is demonstrably looking at (focused pane
-    /// of an active window), the single gate for both suppressing chimes and
-    /// clearing the finished-but-unseen badge. Returns every unwatched edge;
-    /// [`loudest`] picks the batch's one chime, so several panes settling
-    /// together do not stack and a question outranks a completion.
     pub(crate) fn observe(
         &mut self,
         statuses: &BTreeMap<K, AgentPaneStatus>,
@@ -282,7 +258,6 @@ fn player_command(program: &str, args: &[&str], path: &Path) -> Option<std::proc
         .ok()
 }
 
-/// `(hz, milliseconds)`; a zero frequency is silence.
 const fn segments(chime: Chime) -> &'static [(f32, u32)] {
     match chime {
         Chime::Request => &[(1318.0, 70), (0.0, 60), (1318.0, 70)],

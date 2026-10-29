@@ -11,7 +11,6 @@ pub(crate) use desktop::{
     DesktopTray, focus_pane, hide, hide_or_quit, init_desktop, quit_requested, set_active, show,
 };
 
-/// What a tray interaction asks of the app.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum TrayEvent {
     Toggle,
@@ -25,7 +24,6 @@ pub(crate) enum TrayEvent {
     RestartDaemon,
 }
 
-/// A live tray icon. Dropping it removes the icon.
 pub(crate) struct Tray {
     #[cfg(target_os = "linux")]
     _backend: linux::Service,
@@ -57,7 +55,6 @@ impl Tray {
     }
 }
 
-/// What clicking the tray icon should do.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ToggleAction {
     Hide,
@@ -65,7 +62,6 @@ pub(crate) enum ToggleAction {
     Show,
 }
 
-/// Maps window visibility and activation to what a tray click should do.
 pub(crate) const fn toggle_action(visible: bool, active: bool) -> ToggleAction {
     match (visible, active) {
         (true, true) => ToggleAction::Hide,

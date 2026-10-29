@@ -71,8 +71,6 @@ impl Completion {
         self.finish(exit_code, false);
     }
 
-    /// `window_pane_wait_finish` on a pane destroyed before its status was
-    /// ready: a `-W` waiter answers `128 + SIGHUP`, a `wait-pane --exit` 0.
     pub(super) fn kill(&self) {
         self.finish(0, true);
     }

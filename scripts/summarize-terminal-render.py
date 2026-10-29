@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Summarize opt-in terminal-render diagnostics from a profiling run."""
 
 from __future__ import annotations
 

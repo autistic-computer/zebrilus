@@ -1,11 +1,3 @@
-//! How `display-menu` fits its rows into the cells a client has.
-//!
-//! The pin builds every row against `c->tty.sx - 4` (menu.c `menu_add_item`):
-//! an action key is annotated when its bracketed form fits a quarter of that
-//! room or the whole name still fits beside it, an overlong name is trimmed by
-//! `format_trim_right` and marked with `>`, and a row keeps its action key even
-//! when the annotation is dropped.
-
 #![cfg(unix)]
 
 mod overlay;
@@ -16,8 +8,6 @@ use overlay::Overlays;
 
 const CLIENT_COLUMNS: u16 = 40;
 
-/// Resize the attached client and wait until the window extent a menu is laid
-/// out against reports the new width.
 fn settle_columns(overlays: &mut Overlays, columns: u16) {
     overlays.resize(columns, 24);
     let client = overlays.client_name.clone();

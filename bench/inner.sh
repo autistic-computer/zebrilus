@@ -20,10 +20,6 @@ WARMUP="${ZZ_BENCH_WARMUP:-1}"
 DOOM_SECONDS="${ZZ_BENCH_DOOM_SECONDS:-30}"
 TESTS="${ZZ_BENCH_TESTS:-cat-ascii,cat-unicode,doom-fire}"
 
-# Pin the producer: aliases never reach scripts but PATH does (GNU coreutils
-# shadows cat with gcat), and the upstream numbers were made with stock
-# /bin/cat. NEVER benchmark by typing `cat` in an interactive shell: an alias
-# like cat='bat' measures the alias, not the terminal.
 CAT_BIN=/bin/cat
 [ -x "$CAT_BIN" ] || CAT_BIN="$(command -v cat)"
 
@@ -64,9 +60,6 @@ rm -f "$DONE_MARKER"
 
 note() { printf '[%s] %s\n' "$LABEL" "$*" >>"$LOG"; }
 
-# Never `tput cols` here: inside a command substitution tput's stdout is a
-# pipe, its TIOCGWINSZ fails, and it silently returns terminfo's static 80x24
-# instead of the real grid. stty asks a real tty.
 read_grid() {
 	local size=""
 	[ -r /dev/tty ] && size="$(stty size </dev/tty 2>/dev/null)"
@@ -82,10 +75,6 @@ read_grid() {
 
 if [ -t 1 ]; then
 	IS_TTY=true
-	# A terminal resizes the pty a beat after the child starts, so an immediate
-	# read returns the pre-resize default (80x24 out of Ghostty), mislabels every
-	# row and misjudges whether DOOM-fire fits. Wait that out, then require two
-	# agreeing reads.
 	sleep "${ZZ_BENCH_SETTLE:-2}"
 	read_grid
 	settle_prev="${COLS}x${LINES_}"
@@ -106,7 +95,6 @@ fi
 HW_MODEL="$(sysctl -n hw.model 2>/dev/null || uname -m)"
 OS_VERSION="$(sw_vers -productVersion 2>/dev/null || uname -r)"
 
-# hyperfine is only usable with jq: per-run times come out of its JSON export.
 if command -v hyperfine >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
 	TIMER_TOOL="hyperfine"
 elif [ -x /usr/bin/time ]; then
@@ -138,7 +126,6 @@ json_escape() {
 	printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g'
 }
 
-# median <numbers...>
 median() {
 	printf '%s\n' "$@" | sort -g | awk '
 		{ v[NR] = $1 }
@@ -149,8 +136,6 @@ median() {
 		}'
 }
 
-# emit_result <test> <extra-json-fields...>
-# A single printf so the O_APPEND write stays atomic across concurrent panes.
 emit_result() {
 	local test_name="$1"
 	shift
@@ -174,18 +159,11 @@ emit_skip() {
 	note "skipped $test_name: $reason"
 }
 
-# Both timers fill RUN_TIMES (milliseconds) rather than printing it. The
-# measured command's stdout MUST stay attached to the terminal, so neither
-# timer may be called inside a command substitution; that would swallow all
-# 150 MiB into a pipe and measure nothing at all.
 RUN_TIMES=()
 
 time_with_hyperfine() {
 	local fixture="$1" json="$RESULTS_DIR/.hyperfine.$$.json" list
 	rm -f "$json"
-	# --show-output gives the child its own stdout instead of /dev/null (the
-	# default), which is the entire point here; it excludes --style.
-	# --shell=none execs cat directly so no shell startup lands in the sample.
 	if ! hyperfine --shell=none --show-output \
 		--warmup "$WARMUP" --runs "$RUNS" \
 		--export-json "$json" \
@@ -205,7 +183,6 @@ time_with_loop() {
 	RUN_TIMES=()
 	for ((i = 0; i < WARMUP; i++)); do "$CAT_BIN" "$fixture"; done
 	for ((i = 0; i < RUNS; i++)); do
-		# stdout stays on the terminal; only /usr/bin/time's report is captured.
 		{ /usr/bin/time -p "$CAT_BIN" "$fixture"; } 2>"$tmp"
 		out="$(awk '/^real/ { printf "%.3f", $2 * 1000 }' "$tmp")"
 		RUN_TIMES+=("${out:-0}")
@@ -252,8 +229,6 @@ run_cat_test() {
 }
 
 reset_terminal() {
-	# DOOM-fire dies to SIGTERM, so its own cleanup (leave alt screen, show
-	# cursor) never runs. Undo it by hand.
 	printf '\033[?1049l\033[?25h\033[0m'
 	[ -t 0 ] && stty sane 2>/dev/null
 	return 0
@@ -273,16 +248,11 @@ run_doom_test() {
 		emit_skip "$test_name" "no script(1) on PATH"
 		return
 	fi
-	# Upstream blocks on a "Continue?" prompt below 120x22.
 	if [ "$COLS" -lt 120 ] || [ "$LINES_" -lt 22 ]; then
 		emit_skip "$test_name" "terminal is ${COLS}x${LINES_}; DOOM-fire needs at least 120x22"
 		return
 	fi
 
-	# DOOM-fire prints its running fps at the end of every frame, so the value
-	# only exists in the byte stream. Capture it with script(1), which is a pty
-	# hop every terminal pays equally, and keep just the tail: a 30s run emits
-	# multiple GB and writing all of it to disk would dominate the measurement.
 	local fifo="$RESULTS_DIR/.doom.$$.fifo"
 	local tail_log="$RESULTS_DIR/$LABEL.doom-tail.bin"
 	rm -f "$fifo"
@@ -293,9 +263,6 @@ run_doom_test() {
 	LC_ALL=C tail -c 4194304 <"$fifo" >"$tail_log" &
 	local reader=$!
 
-	# stty inside the pty pins its geometry to this terminal's, so the inner
-	# pty and the visible window always agree (script(1) only copies the size
-	# when its own stdin is a tty).
 	local payload="stty rows $LINES_ cols $COLS 2>/dev/null; exec '$TIMEOUT_BIN' $DOOM_SECONDS '$DOOM_BIN'"
 	note "doom-fire: ${DOOM_SECONDS}s at ${COLS}x${LINES_}"
 	if script --version 2>/dev/null | grep -qi util-linux; then
@@ -337,6 +304,5 @@ note "done"
 
 if [ "$IS_TTY" = true ]; then
 	printf '\n\033[1;32m%s finished.\033[0m results appended to %s\n' "$LABEL" "$JSONL"
-	# Give the harness a beat to notice the marker before the window closes.
 	sleep 1
 fi

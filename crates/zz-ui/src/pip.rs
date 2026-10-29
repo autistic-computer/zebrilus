@@ -104,8 +104,6 @@ impl PipLayout {
         self.geometry().max_cells()
     }
 
-    /// The height, borders included, of the tallest float that fits: what Float
-    /// asks `break-pane -y` for.
     #[must_use]
     pub fn fill_rows(&self) -> u16 {
         self.geometry().fill_rows()

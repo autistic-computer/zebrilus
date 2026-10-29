@@ -60,9 +60,6 @@ main_client new-session -d -s "$session"
 window="$(main_client list-windows -t "=$session" -F '#{window_index}' | sed -n '1p')"
 pane="$(main_client list-panes -t "=$session" -F '#{pane_id}' | sed -n '1p')"
 
-# cmd_find_target reads @, {active} and {current} off cmdq_get_client(item),
-# whose session is NULL for a command client, so all three are a loud miss that
-# still runs the command under CMD_FIND_CANFAIL.
 for alias in '@' '{active}' '{current}'; do
     rc="$(probe "$alias")"
     check_equal "loud-$alias-exit" 1 "$rc"
@@ -70,7 +67,6 @@ for alias in '@' '{active}' '{current}'; do
     check_equal "loud-$alias-stdout" 'S=|W=|P=' "$(cat "$work/out")"
 done
 
-# The whole-target aliases that are not client-scoped stay quiet misses.
 for alias in '{last}' '{marked}' '~'; do
     rc="$(probe "$alias")"
     check_equal "quiet-$alias-exit" 0 "$rc"
@@ -78,15 +74,11 @@ for alias in '{last}' '{marked}' '~'; do
     check_equal "quiet-$alias-stdout" 'S=|W=|P=' "$(cat "$work/out")"
 done
 
-# In a componentwise target the same spelling is a pane slot, not a client
-# alias: cmd_find_get_pane_with_window misses, cmd_find_get_window resolves the
-# window instead, and fs->wp falls back to that window's active pane.
 rc="$(probe "$session:$window.@")"
 check_equal componentwise-exit 0 "$rc"
 check_equal componentwise-stderr "" "$(cat "$work/err")"
 check_equal componentwise-stdout "S=$session|W=$window|P=$pane" "$(cat "$work/out")"
 
-# The diagnostic does not stop the rest of the sequence.
 main_client set-environment -g DM_CHAIN pending
 chain_rc=0
 main_client display-message -p -t '@' 'S=#{session_name}' \; \

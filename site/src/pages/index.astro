@@ -1,6 +1,4 @@
 ---
-// Landing page. The only script on it is the one the hero shell brings; every
-// other interactive thing here is a checked radio and a CSS selector.
 import WorkspaceDemo from '../components/zz/WorkspaceDemo.astro';
 import AgentPane from '../components/zz/AgentPane.astro';
 import BrowserPane from '../components/zz/BrowserPane.astro';
@@ -13,16 +11,12 @@ import type { ZzNode } from '../components/zz/Sidebar.astro';
 const base = import.meta.env.BASE_URL.replace(/\/$/, '');
 const gh = 'https://github.com/autistic-computer/zz';
 
-// Social card. Starlight emits og:* for the docs pages on its own; this page is
-// hand-rolled, so it carries the full set. Absolute URLs are required — a
-// scraper has no base to resolve against. og.png is rendered from og-card.html.
 const title = 'zz · terminal and browser. one mux.';
 const description =
 	'zz is a terminal multiplexer with shell and Chromium panes under one tmux-compatible layout, one set of keys, one GPU surface.';
 const canonical = new URL(base + '/', Astro.site).href;
 const ogImage = new URL(base + '/og.png', Astro.site).href;
 
-// Bench tables by host. `null` = crashed / timed out. Re-run summarize.sh to refresh.
 const benchMetrics = [
 	{ label: 'cat-ascii', unit: 'MB/s' },
 	{ label: 'cat-unicode', unit: 'MB/s' },
@@ -77,8 +71,6 @@ function benchWins(rows: BenchRow[]): (number | null)[] {
 	});
 }
 
-// The fleet stage shows the real Sidebar component, so this is the same ZzNode
-// tree the hero demo feeds it — three hosts, the active path lit.
 const fleetTree: ZzNode[] = [
 	{
 		kind: 'host',
@@ -123,9 +115,6 @@ const fleetTree: ZzNode[] = [
 	},
 ];
 
-// Benefit-led; the mechanism lives in the stage visuals and the docs. The two
-// numbers here are checkable: knowledge/protocol/terminal-lanes.md (row patch
-// cost) and wire-protocol.md (the 16-byte ClientHello example).
 const featPoints = [
 	{
 		id: 'fleet',
@@ -224,8 +213,6 @@ const featPoints = [
 			<p class="note">macOS and Linux · MIT / Apache-2.0</p>
 		</header>
 
-		{/* The hero is the workspace itself: HTML and CSS, not a capture of it.
-		    Click the tree, drag a gap, randomize the look. */}
 		<figure class="shot">
 			<WorkspaceDemo fit="hero" />
 		</figure>
@@ -309,7 +296,6 @@ const featPoints = [
 			</p>
 		</section>
 
-		{/* ── Screen Studio split: list + media ── */}
 		<section class="sec sec-split">
 			<div class="sec-intro">
 				<h2>One surface. Many machines.</h2>
@@ -412,7 +398,6 @@ const featPoints = [
 			<a class="doc" href={`${base}/docs/getting-started/`}>docs <span>→</span></a>
 		</section>
 
-		{/* ── Chromium pane: the canvas, two real panes in it ── */}
 		<section class="sec sec-center">
 			<h2>Chromium is a pane</h2>
 			<p>
@@ -421,8 +406,6 @@ const featPoints = [
 				the same URL.
 			</p>
 
-			{/* The canvas as the app lays it out: one margin of gap plane around two
-			    panes, each drawing its own border and radius. */}
 			<div class="zz-embed pair-embed" aria-hidden="true">
 				<div class="pair">
 					<Pane>
@@ -451,8 +434,6 @@ const featPoints = [
 					</Pane>
 
 					<Pane focused>
-						{/* zz's own docs on the pane rendering them. Every line is from
-						    knowledge/browser/osr-rendering.md. */}
 						<BrowserPane url="https://zzmux.sh/docs/browser/">
 							<div class="docspage">
 								<div class="docs-head">
@@ -489,10 +470,6 @@ const featPoints = [
 			<a class="doc" href={`${base}/docs/browser/`}>browser <span>→</span></a>
 		</section>
 
-		{/* ── Reverse split: the two donor configs ──
-		    tmux lands in zz/mux.conf verbatim; every appearance key the Ghostty
-		    file set (directly or through its theme) lands in zz/config as a
-		    concrete value (config/import.rs:133). */}
 		<section class="sec sec-reverse">
 			<div class="reverse-visual" aria-hidden="true">
 				<div class="donor">
@@ -567,8 +544,6 @@ const featPoints = [
 		--ease: cubic-bezier(0.2, 0, 0, 1);
 		--wrap: min(1120px, calc(100% - 48px));
 	}
-	/* Same as zz.css: every rounded quad is a superellipse (Chrome 139+;
-	   plain border-radius remains the fallback elsewhere). */
 	* { margin: 0; box-sizing: border-box; corner-shape: squircle; }
 	html { background: var(--bg); }
 	body {
@@ -584,7 +559,6 @@ const featPoints = [
 	a { color: inherit; text-decoration: none; }
 	a:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; border-radius: 10px; }
 
-	/* Soft top wash: white light, no chroma. Fades before the fold ends. */
 	.bloom {
 		position: absolute;
 		inset: -80px 0 auto;
@@ -638,9 +612,6 @@ const featPoints = [
 		max-width: 820px;
 		margin: 0 auto;
 	}
-	/* Element-scoped, not bare: the hero shell renders zz's own chrome inside
-	   this page, and it has a `.url`, a `.split`, `kbd`s and `h1`s of its own
-	   that these rules would otherwise repaint. */
 	.hero h1 {
 		font-size: clamp(36px, 5.6vw, 56px);
 		font-weight: 700;
@@ -699,9 +670,6 @@ const featPoints = [
 	.btn:active { transform: scale(0.96); }
 	.note { margin-top: 14px; font-size: 13px; color: var(--mute); }
 
-	/* Wider than --wrap on purpose. The shell inside sizes itself off its own
-	   scale ladder and carries its own corner and shadow, so this is only the
-	   band it is centred in. */
 	.shot {
 		position: relative;
 		z-index: 1;
@@ -872,7 +840,6 @@ const featPoints = [
 	}
 	.bench-foot .miss { font-size: 13px; }
 
-	/* shared section chrome */
 	.sec {
 		position: relative;
 		z-index: 1;
@@ -901,7 +868,6 @@ const featPoints = [
 	.doc:hover { color: var(--fg); }
 	.doc:hover span { transform: translateX(3px); }
 
-	/* ── split: list + stage ── */
 	.sec-intro { max-width: 720px; margin-bottom: 48px; }
 	.sec-intro p {
 		margin-top: 16px;
@@ -978,8 +944,6 @@ const featPoints = [
 		padding: 28px;
 		display: grid;
 	}
-	/* Pure fade carrier: the card look belongs to the component embed inside,
-	   so the stage backdrop plus one frame is all the chrome a preview gets. */
 	.stage-panel {
 		grid-area: 1 / 1;
 		align-self: center;
@@ -998,12 +962,6 @@ const featPoints = [
 		pointer-events: auto;
 	}
 
-	/* ── real components as stage previews ──────────────────────────────────
-	   The fleet/wire/egress panels mount the hero demo's own Sidebar,
-	   TerminalPane, and BrowserPane. Their tokens live on :root in zz.css, so
-	   the only context the frame supplies is the box-sizing and type reset the
-	   shell normally carries — deliberately not `.zz-scope`, whose focus rule
-	   would grey the traffic lights of an embed that is never focused. */
 	.embed-wrap {
 		display: flex;
 		flex-direction: column;
@@ -1024,8 +982,6 @@ const featPoints = [
 		line-height: normal;
 		letter-spacing: normal;
 		text-align: left;
-		/* The sidebar rounds its left edge to the window rim; the frame here owns
-		   the corners instead. */
 		--zz-frame-radius: 0px;
 	}
 	.zz-embed,
@@ -1034,12 +990,9 @@ const featPoints = [
 	.zz-embed :global(*::after) {
 		box-sizing: border-box;
 	}
-	/* 34px strip + 9 tree rows at 32px, plus the empty run the real sidebar
-	   keeps below its tree. */
 	.sidebar-embed { height: 396px; }
 	.term-embed, .browser-embed, .agent-embed { width: 100%; height: 250px; }
 
-	/* The one terminal row the patch carried, with its price tag. */
 	.row-hot {
 		position: relative;
 		margin: 0 -8px;
@@ -1062,7 +1015,6 @@ const featPoints = [
 		letter-spacing: 0.05em;
 	}
 
-	/* What desktop's dev server serves, rendered inside the pane. */
 	.devpage {
 		flex: 1;
 		display: flex;
@@ -1085,8 +1037,6 @@ const featPoints = [
 	}
 	.devpage code { color: var(--fg); }
 
-	/* Two panes on the canvas. The gap and the surrounding inset are both one
-	   pane margin, which is how the app spaces a split (zz-ui/src/pane.rs:231). */
 	.pair-embed {
 		width: min(920px, calc(100% - 48px));
 		height: 412px;
@@ -1102,8 +1052,6 @@ const featPoints = [
 		background: var(--zz-bg);
 	}
 
-	/* The zz docs in the browser pane: web content, so it brings its own type
-	   and palette rather than any zz chrome token. */
 	.docspage {
 		flex: 1;
 		min-width: 0;
@@ -1138,7 +1086,6 @@ const featPoints = [
 		line-height: 1.6;
 	}
 
-	/* The delivery table, one row per platform. */
 	.docs-tiers {
 		display: grid;
 		grid-template-columns: max-content minmax(0, 1fr);
@@ -1174,7 +1121,6 @@ const featPoints = [
 		background: #4a5262;
 	}
 
-	/* ── centered manifesto ── */
 	.sec-center {
 		text-align: center;
 		padding-top: 160px;
@@ -1189,8 +1135,6 @@ const featPoints = [
 		margin-left: auto;
 		margin-right: auto;
 	}
-	/* The link is a flex box the width of the copy column, so its own content
-	   needs centering too. */
 	.sec-center .doc { justify-content: center; }
 	.sec-center > p {
 		margin-top: 16px;
@@ -1198,7 +1142,6 @@ const featPoints = [
 		color: var(--dim);
 		text-wrap: pretty;
 	}
-	/* ── reverse split ── */
 	.sec-reverse {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1220,8 +1163,6 @@ const featPoints = [
 		color: #d4d4d8;
 		white-space: nowrap;
 	}
-	/* One stage, no card inside it: the two donor listings sit straight on the
-	   backdrop, split by a hairline. */
 	.reverse-visual {
 		display: flex;
 		flex-direction: column;
@@ -1248,7 +1189,6 @@ const featPoints = [
 	.donor-row { display: flex; align-items: center; gap: 6px; }
 	.donor-row + .donor-row { margin-top: 10px; }
 	.donor-row span { margin-left: 6px; color: var(--dim); }
-	/* The app's own kbd pill, so the keys read as zz renders them. */
 	.donor-row :global(.zz-kbd) {
 		min-width: 24px;
 		padding: 4px 6px;
@@ -1267,7 +1207,6 @@ const featPoints = [
 	.donor-key { color: var(--mute); }
 	.donor-val { color: var(--dim); }
 
-	/* install */
 	.sec-install {
 		text-align: center;
 		padding: 160px 0 48px;

@@ -1,15 +1,3 @@
-<#
-.SYNOPSIS
-Validate a Windows CEF bundle and pack it into a distributable zip.
-
-.DESCRIPTION
-The zip carries the bundle's contents at its root, so unpacking it anywhere
-yields a runnable zz.exe. Scoop installs it exactly that way, and the Inno
-Setup installer packs the same directory.
-
-.EXAMPLE
-powershell.exe -File scripts\package-windows.ps1 dist\zz dist\zz-windows.zip
-#>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$BundleDir,
@@ -27,8 +15,6 @@ if (-not (Test-Path -LiteralPath $BundleDir -PathType Container)) {
 }
 $BundleDir = (Resolve-Path -LiteralPath $BundleDir).Path
 
-# A subset of what `cargo xtask verify-cef-bundle` checks: enough to catch a
-# half-copied bundle without duplicating xtask's layout decisions here.
 foreach ($required in 'zz.exe', 'libcef.dll', 'icudtl.dat', 'resources.pak',
     'locales\en-US.pak', 'CREDITS.html', 'CEF_LICENSE.txt') {
     $path = Join-Path $BundleDir $required
@@ -50,9 +36,6 @@ if (Test-Path -LiteralPath $Output) {
     Remove-Item -LiteralPath $Output -Force
 }
 
-# 7-Zip ships with the GitHub runner image and with most dev setups, and it
-# packs the ~1 GB bundle several times faster than Compress-Archive. The
-# built-in is the fallback so the script works on a bare Windows install.
 $sevenZip = Get-Command 7z -ErrorAction SilentlyContinue
 if ($sevenZip) {
     & $sevenZip.Path a -tzip -mx=5 -bso0 -bsp0 -- $Output "$BundleDir\*"

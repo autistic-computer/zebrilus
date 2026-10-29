@@ -58,14 +58,6 @@ apply_once() {
     wait_for_order
 }
 
-# Twelve equal-cost branches apply in file order. Neither binary is
-# deterministic on a loaded box - the pin dispatches in the order its event
-# loop collected the finished jobs, and that collection races - so the
-# assertion is not one run's permutation but whether file order is reachable.
-# Twelve branches are what makes that discriminating: an apply that runs each
-# finished branch on its own thread has to win a twelve-way race to land in
-# order, and before this group's fix zz did not reach it once in eight
-# attempts, where the pin and the fixed zz answer it on the first.
 ordered_round() {
     label=$1
     config="$work/$label.conf"
@@ -81,9 +73,6 @@ ordered_round() {
     printf '%s=never-file-order-in-%s\n' "$label" "$attempts" >>"$transcript"
 }
 
-# A branch whose condition really is slower applies after the ones that beat
-# it. Only that is asserted: the eleven fast branches' order among themselves
-# is the same collection race, and 0.3 s sits far outside it on both binaries.
 slow_first_round() {
     config="$work/slow-first.conf"
     write_config "$config" "'sleep 0.3'"

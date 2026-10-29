@@ -80,8 +80,6 @@ drive() {
     return 0
 }
 
-# One bracketed paste, written to the client's own pty the way a terminal
-# delivers one.
 paste() {
     drive "keys $(printf '\033[200~%s\033[201~' "$1" | od -An -tx1 | tr -d ' \n')"
     sleep 1.0
@@ -96,11 +94,6 @@ open_menu() {
     sleep 1.0
 }
 
-# tmux 3.8 returns from display-menu as soon as the menu is up
-# (cmd-display-menu.c:556), so whether the menu is still there is read off the
-# client: a full redraw draws the menu's rows only while it is up. The d77c9dc6
-# pin held the display-menu command until the menu closed, and this fixture
-# used to ask whether that command was still running.
 check_menu() {
     drive "snap flush-$step"
     main_client refresh-client -t "$client"
@@ -152,8 +145,6 @@ if [ -z "$client" ]; then
 fi
 sleep 0.8
 
-# A run with no row key and no navigation key leaves the menu up and reaches
-# nothing: every key of the paste goes to the overlay first.
 open_menu
 paste 'ZW'
 check_menu inert-run-leaves-the-menu-up alive
@@ -165,7 +156,6 @@ wait "$menu_pid" >/dev/null 2>&1 || true
 menu_pid=""
 check_equal inert-run-still-reaches-no-pane '' "$(pane_text)"
 
-# The cancel key inside a paste closes the menu without running a row.
 open_menu
 paste 'q'
 sleep 0.5
@@ -174,8 +164,6 @@ check_equal cancel-key-runs-nothing 'DISPLAY_MENU_PASTE_ROW=pending' "$(chosen)"
 wait "$menu_pid" >/dev/null 2>&1 || true
 menu_pid=""
 
-# A row key inside a paste runs that row, and the characters after it arrive at
-# the pane as ordinary keys: the bracket markers were consumed by the overlay.
 open_menu
 paste 'ZaXY'
 sleep 0.8

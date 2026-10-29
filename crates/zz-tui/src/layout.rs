@@ -91,14 +91,8 @@ pub(crate) fn resolve_floating(spec: FloatingSpec, bounds: Rect) -> Option<Float
 pub(crate) struct PaneRect {
     pub pane: PaneId,
     pub rect: Rect,
-    /// `pane-border-status` decides whether a row of the pane's box is spent on
-    /// a status row at all, and where. `layout_fix_panes` reserves nothing
-    /// while the option is `off`, leaves `yoff` alone and only shrinks `sy`
-    /// under `bottom`, and moves `yoff` down one row under `top`.
     pub border_status: PaneBorderStatus,
     pub status_on_border: bool,
-    /// The pane's own cell at the rect's top-left: a float clipped by the
-    /// window's left or top edge starts that many columns or rows in.
     pub source: (u16, u16),
     pub whole: Option<(u16, u16)>,
 }
@@ -150,9 +144,6 @@ impl PaneRect {
     }
 }
 
-/// The border glyph tables `window_get_border_cell` picks from, indexed by the
-/// `CELL_*` cell type `redraw_get_cell_type` computes: inside, UD, LR, RD, LD,
-/// RU, LU, LRD, LRU, URD, ULD, LRUD, none.
 const SINGLE_BORDERS: [&str; 13] = [
     " ", "\u{2502}", "\u{2500}", "\u{250c}", "\u{2510}", "\u{2514}", "\u{2518}", "\u{252c}",
     "\u{2534}", "\u{251c}", "\u{2524}", "\u{253c}", "\u{00b7}",
@@ -176,9 +167,6 @@ pub(crate) const CELL_UD: usize = 1;
 pub(crate) const CELL_LR: usize = 2;
 pub(crate) const CELL_NONE: usize = 12;
 
-/// `window_get_border_cell`: the glyph for one border cell. `number` draws the
-/// owning pane's index instead of a line, except on `CELL_NONE`, which keeps
-/// the single-line bullet.
 pub(crate) fn border_glyph(lines: PaneBorderLines, cell_type: usize, index: Option<u32>) -> String {
     let cell_type = cell_type.min(CELL_NONE);
     match lines {
@@ -202,8 +190,6 @@ pub(crate) const BORDER_R: u8 = 2;
 pub(crate) const BORDER_U: u8 = 4;
 pub(crate) const BORDER_D: u8 = 8;
 
-/// `redraw_get_cell_type`: the cell type a border cell takes from the mask of
-/// the directions in which it continues.
 pub(crate) const fn cell_type_of(mask: u8) -> usize {
     match mask {
         m if m == BORDER_L | BORDER_R | BORDER_U | BORDER_D => 11,
@@ -246,9 +232,6 @@ struct BorderOwners {
 }
 
 impl BorderOwners {
-    /// `redraw_build_scene` walks `w->z_index` in reverse and each pane
-    /// overwrites the side it owns, so the pane earliest in that order wins a
-    /// tie. `rank` is the pane's position in it.
     fn mark(&mut self, side: BorderSide, pane: PaneId, rank: usize) {
         let owner = match side {
             BorderSide::Top => &mut self.top,
@@ -276,11 +259,6 @@ impl BorderOwners {
             .map(|(_, pane)| pane)
     }
 
-    /// `redraw_mark_two_pane_colours`: with exactly two tiled panes and
-    /// `pane-border-indicators` on `colour` or `both`, the divider carries each
-    /// pane's own style over the half of it that pane sits on, and that choice
-    /// outranks the active pane the way `style_wp` outranks `active` in
-    /// `redraw_get_pane_for_border_style`.
     fn two_pane_colour(self, axis: Axis, bounds: Rect, position: u16) -> Option<PaneId> {
         let (near, far, midpoint) = match axis {
             Axis::Horizontal => (
@@ -315,11 +293,6 @@ impl ResolvedLayout {
     }
 }
 
-/// A visible floating pane as `redraw_mark_pane_borders` marks it for one
-/// client: the content box and the box with its borders, both clipped to the
-/// window, and which border sides are drawn. A side that falls outside the
-/// window is not drawn, and the row or column it would have used is clamped
-/// to the window edge (`screen-redraw.c`).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct FloatFrame {
     pub pane: PaneId,
@@ -336,12 +309,10 @@ impl FloatFrame {
     pub const TOP: usize = 2;
     pub const BOTTOM: usize = 3;
 
-    /// `window_pane_contains`: a float with borders owns its border cells.
     pub const fn hit_rect(&self) -> Rect {
         self.frame
     }
 
-    /// Every border cell with the `CELL_*` type its merged mask gives it.
     pub fn border_cells(&self) -> Vec<(u16, u16, usize)> {
         if self.lines == PaneBorderLines::None || self.frame.width == 0 || self.frame.height == 0 {
             return Vec::new();
@@ -389,9 +360,6 @@ impl FloatFrame {
     }
 }
 
-/// Places one float of the snapshot inside `canvas`, the client's view of the
-/// window. Offsets are window cells and may be negative; everything outside
-/// the window is clipped. `None` when no cell of it is on the window.
 pub(crate) fn resolve_float(
     float: &FloatingPaneSnapshot,
     canvas: Rect,
@@ -728,11 +696,6 @@ fn resolved_ratio(ratio: f32) -> f32 {
 mod tests {
     use super::*;
 
-    /// `layout_fix_panes` reserves a pane status row only while
-    /// `pane-border-status` is on: `off` leaves the whole box to the pane,
-    /// `bottom` leaves `yoff` alone and only shrinks `sy`, and `top` moves
-    /// `yoff` down one row. The mouse route has to read the same box the
-    /// renderer paints.
     #[test]
     fn the_pane_status_row_costs_a_row_only_while_pane_border_status_is_on() {
         let rect = Rect {

@@ -46,7 +46,6 @@ fn host_name(_: &Connection) -> String {
     "local".to_owned()
 }
 
-/// Listing request ids, unique across palettes on this connection.
 static PATH_LISTS: AtomicU64 = AtomicU64::new(0);
 
 #[must_use]

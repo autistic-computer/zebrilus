@@ -1,7 +1,3 @@
-//! The thin-client app the web and iOS clients share: shell, sidebar, status bar,
-//! settings, command palette, overlays, panes, and the connection reducer. Each
-//! client owns its entry point, fonts, window lifecycle, and platform backend.
-
 #[cfg(target_os = "android")]
 pub mod android_browser;
 pub mod app;

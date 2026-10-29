@@ -2,7 +2,7 @@ import "settings.just"
 
 set working-directory := "../.."
 
-# Install the toolchain used by the browser client.
+[doc("Install the toolchain used by the browser client.")]
 setup:
     rustup toolchain install nightly --profile minimal --component rustfmt --component clippy
     rustup target add --toolchain nightly wasm32-unknown-unknown

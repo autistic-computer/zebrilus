@@ -67,9 +67,6 @@ pub trait PaletteBackend {
     fn activate_host(&self, _host: PaletteHostId, _cx: &mut App) -> bool {
         false
     }
-    /// Ask `host` for everything under `dir`, an absolute or `~` path,
-    /// through `anchor` when that is one of its terminals. `Err` where this
-    /// client cannot list files.
     fn list_path(
         &self,
         _host: PaletteHostId,
@@ -90,11 +87,9 @@ pub trait PaletteBackend {
     fn verbs(&self, cx: &App) -> Vec<Verb> {
         verbs::verbs(self.availability(cx), &[], true, "")
     }
-    /// Feed `picker` the listings it asks for while it keeps the subscription.
     fn feed_targets(&self, _picker: &Entity<TargetPicker>, _cx: &mut App) -> Option<Subscription> {
         None
     }
-    /// Put `entry`, listed under `root` on `host`, at `pane`'s cursor.
     fn insert_path(
         &self,
         _pane: PaneId,
@@ -104,18 +99,14 @@ pub trait PaletteBackend {
         _cx: &mut App,
     ) {
     }
-    /// Hand `sink` every listing reply while the subscription lives.
     fn feed_listings(&self, _sink: ListingSink, _cx: &mut App) -> Option<Subscription> {
         None
     }
-    /// `host`'s home folder, when this client knows it.
     fn home_dir(&self, _host: PaletteHostId, _cx: &App) -> Option<String> {
         None
     }
 }
 
-/// The fleet as targets name it, from the palette's tree: the host the window
-/// is attached to is the one a target without a host means.
 #[must_use]
 pub fn target_hosts(tree: &PaletteTree) -> Vec<TargetHost> {
     tree.hosts
@@ -194,8 +185,6 @@ impl TargetBackend for PaletteTargets {
     }
 }
 
-/// A target picker over the fleet `backend` sees, fed the listings it asks
-/// for: the palette's `@` mode, or with a `composer` the `@` mentions in it.
 pub fn target_picker(
     backend: &Rc<dyn PaletteBackend>,
     composer: Option<Entity<InputState>>,
@@ -237,7 +226,6 @@ pub enum GuiEvent {
     },
 }
 
-/// The footer's keys in `@` mode, Enter's saying what it does to the row.
 fn target_hints(item: Option<&crate::target::TargetItem>, typed: &str) -> Vec<PaletteHint> {
     let enter = match item.map(|item| item.kind) {
         Some(TargetKind::Host) => "open",
@@ -293,10 +281,7 @@ pub struct CommandPaletteView {
     chooser_activation: Option<ChooseTreeTarget>,
     local: bool,
     changing_input: bool,
-    /// The `@` mode's picker while the palette is in it.
     target: Option<(Entity<TargetPicker>, Subscription)>,
-    /// The pane a picked file goes into: the one `prefix F` came from, else
-    /// the active one.
     insert_pane: Option<PaneId>,
     pick_folder: Option<FolderPick>,
     level: Option<(ActionKind, Box<dyn PaletteActionLevel>)>,
@@ -477,8 +462,6 @@ impl CommandPaletteView {
         palette
     }
 
-    /// The palette on `&` and `body`, putting a file or folder you pick at
-    /// `pane`'s cursor: what `prefix F` opens.
     pub fn new_target(
         backend: Rc<dyn PaletteBackend>,
         body: &str,
@@ -509,7 +492,6 @@ impl CommandPaletteView {
         self.local
     }
 
-    /// What is typed after the palette's mode.
     #[must_use]
     pub fn query(&self) -> &str {
         &self.last_input
@@ -808,7 +790,6 @@ impl CommandPaletteView {
         self.sync_target(window, cx);
     }
 
-    /// The vim mode the palette is in, while `palette-vim-mode` is on.
     #[must_use]
     pub fn vim_mode(&self) -> Option<PaletteVimMode> {
         self.vim.as_ref().map(PaletteVim::mode)
@@ -924,8 +905,6 @@ impl CommandPaletteView {
         cx.notify();
     }
 
-    /// Keep the `@` mode's picker while the palette is in that mode, on what
-    /// is typed.
     fn sync_target(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let targeting = self.places() && self.level.is_none() && self.files_body().is_some();
         if !targeting {
@@ -1094,9 +1073,6 @@ impl CommandPaletteView {
         cx.notify();
     }
 
-    /// Act on the `@` picker's highlighted row: with `open`, or for a host,
-    /// list what is under it; else go to a session, window or pane, or put a
-    /// file or folder at the pane's cursor.
     fn activate_target(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
         let Some((picker, _)) = &self.target else {
             return;
@@ -1918,8 +1894,6 @@ impl CommandPaletteView {
         cx.stop_propagation();
     }
 
-    /// A key for the active level from outside the field, such as a click
-    /// on one of its rows.
     pub fn press_level(&mut self, key: ActionKey, window: &mut Window, cx: &mut Context<Self>) {
         self.level_key(key, window, cx);
     }
@@ -2071,11 +2045,6 @@ impl CommandPaletteView {
         cx.stop_propagation();
     }
 
-    /// `-1`, `-N` and `-k` are decided key by key inside the daemon, so the
-    /// palette stops being a text field and becomes a relay: the keystroke
-    /// travels on the pane-targeted key path and never reaches the input
-    /// widget. `-e` needs the same interception for exactly one key, because a
-    /// backspace on an empty field edits nothing and would otherwise be silent.
     fn on_raw_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.finishing {
             return;
@@ -2107,10 +2076,6 @@ impl CommandPaletteView {
         )
     }
 
-    /// A prompt that reads keys has no text for the completion engine to work
-    /// with, and an incremental prompt runs its template on every edit, so a
-    /// tab-completion that rewrites the buffer would fire a command nobody asked
-    /// for.
     const fn completes(&self) -> bool {
         matches!(
             self.mode,

@@ -117,11 +117,6 @@ main_client send-keys -t "$pane" -X cursor-up
 main_client send-keys -t "$pane" -X cursor-up
 check_equal cursor-is-on-the-middle-line 'delta epsilon' "$(value copy_cursor_line)"
 
-# window_copy_do_copy_line copies the whole logical line whatever column the
-# cursor is in and needs no selection, then puts cx, cy and oy back and clears
-# the selection it made.
-# The pin's cursor-up keeps a desired column that zz's does not, so anchor the
-# column before stepping into the line.
 main_client send-keys -t "$pane" -X start-of-line
 main_client send-keys -t "$pane" -X cursor-right
 main_client send-keys -t "$pane" -X cursor-right
@@ -135,8 +130,6 @@ check_equal copy-line-restores-the-row "$before_y" "$(value copy_cursor_y)"
 check_equal copy-line-clears-the-selection 0 "$(value selection_present)"
 check_equal copy-line-stays-in-the-mode 1 "$(value pane_in_mode)"
 
-# `for (; np > 1; np--) window_copy_cursor_down(wme, 0)` before the end of line,
-# so the count reaches down past the cursor's own line.
 main_client send-keys -t "$pane" -N 2 -X copy-line
 check_equal counted-copy-line-copies-two 'delta epsilon
 zeta' "$(main_client show-buffer)"
@@ -146,8 +139,6 @@ await_file "$work/pipe.txt"
 check_equal copy-pipe-line-feeds-the-command 'delta epsilon' "$(cat "$work/pipe.txt" 2>/dev/null)"
 check_equal copy-pipe-line-stays-in-the-mode 1 "$(value pane_in_mode)"
 
-# window_copy_command sets wme->prefix back to 1 whether or not a command ran,
-# so a count spent on a name the table does not carry is gone.
 main_client send-keys -t "$pane" -N 5
 main_client send-keys -t "$pane" -X bogus-action
 unknown_y="$(value copy_cursor_y)"

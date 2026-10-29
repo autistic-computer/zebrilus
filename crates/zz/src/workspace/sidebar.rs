@@ -383,7 +383,6 @@ impl WorkspaceSidebar {
             .collect()
     }
 
-    /// The pane the user is demonstrably watching: focused in an active window.
     fn watched_pane(&self, cx: &App) -> Option<PaneId> {
         cx.active_window()?;
         let mux = self.mux.read(cx);
@@ -436,14 +435,10 @@ impl WorkspaceSidebar {
         self.route == WorkspaceRoute::App && !self.docked(cx)
     }
 
-    /// Whether the sidebar looks docked beside the panes: in sidebar mode,
-    /// and while it slides out after the window switched to the status bar.
     fn docked(&self, cx: &App) -> bool {
         self.mode == ChromeMode::Sidebar || self.slide(cx) < 1.0
     }
 
-    /// How far the sidebar has slid since the mode last changed, eased from
-    /// 0 to 1: 1 once it has settled, or right away while motion is reduced.
     pub(crate) fn slide(&self, cx: &App) -> f32 {
         let Some(since) = self.mode_changed else {
             return 1.0;
@@ -470,8 +465,6 @@ impl WorkspaceSidebar {
         )
     }
 
-    /// What rows and buttons in the sidebar sit on: the window, or the
-    /// slideover's surface.
     fn content_ground(&self, cx: &App) -> Ground {
         workspace_sidebar_ground(cx.theme().ground(), self.slides_over(cx), cx)
     }
@@ -881,8 +874,6 @@ fn active_pane_for_split(snapshot: &MuxSnapshot, attached: Option<SessionId>) ->
     }
 }
 
-/// Bubbled like [`MuxTreeModel::has_pending_bell`]: a collapsed host, session,
-/// or window still carries the most urgent badge hidden below it.
 fn node_agent_badge(
     tree_model: &MuxTreeModel,
     badges: &BTreeMap<(HostId, PaneId), AgentBadge>,
@@ -1355,8 +1346,6 @@ fn tree_disclosure_id(node: TreeNode) -> SharedString {
     format!("workspace-tree-disclosure-{}", node.tree_id()).into()
 }
 
-/// When the row at `index` came into view by an ancestor opening, so it can
-/// drop in: the latest instant any of its ancestors opened.
 fn tree_row_opened(entries: &[VisibleTreeEntry], index: usize, cx: &mut App) -> Option<Instant> {
     let mut parent = entries.get(index)?.parent;
     let mut opened = None;
@@ -1635,8 +1624,6 @@ fn render_node_marker(
     )
 }
 
-/// This machine's name, which the sidebar, the palette and targets show for
-/// the local host.
 pub(crate) fn local_hostname() -> SharedString {
     static NAME: std::sync::OnceLock<SharedString> = std::sync::OnceLock::new();
     NAME.get_or_init(|| sidebar_hostname(sysinfo::System::host_name().as_deref()))

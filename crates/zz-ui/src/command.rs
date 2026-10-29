@@ -47,24 +47,17 @@ pub const COMMAND_PALETTE_INSET: f32 = 8.0;
 pub const COMMAND_PALETTE_ROW_HEIGHT: f32 = 28.0;
 pub const COMMAND_PALETTE_INPUT_HEIGHT: f32 = 40.0;
 pub const COMMAND_PALETTE_FOOTER_HEIGHT: f32 = 32.0;
-/// The tallest the rows grow, about sixteen of them.
 const COMMAND_PALETTE_LIST_MAX: f32 = 440.0;
 
-/// How tall the palette's rows may grow in a window `viewport` tall: up to
-/// [`COMMAND_PALETTE_LIST_MAX`] and short of the window's bottom, less a line
-/// when the palette shows a command's `usage`.
 pub fn command_palette_list_height(viewport: Pixels, usage: bool) -> f32 {
     (f32::from(viewport) * 0.88 - if usage { 175.0 } else { 140.0 })
         .clamp(40.0, COMMAND_PALETTE_LIST_MAX)
 }
 
-/// The height of a palette row at the theme's density.
 pub fn command_palette_row_height() -> f32 {
     px(COMMAND_PALETTE_ROW_HEIGHT).as_f32()
 }
 
-/// The palette surface's radius: its role's, opened by
-/// [`COMMAND_PALETTE_INSET`] to stay concentric with the children's corners.
 pub fn command_palette_radius(cx: &App) -> Pixels {
     crate::picker::outer_radius(
         &cx.theme().layer(crate::roles::PALETTE, PaintState::Rest),
@@ -104,8 +97,6 @@ pub fn command_palette_input(
         )
 }
 
-/// A completion row. The caller attaches event handlers to the returned
-/// `ListItem`.
 pub fn command_palette_row(
     id: impl Into<ala::ElementId>,
     label: impl Into<SharedString>,
@@ -138,7 +129,6 @@ pub fn command_kind_badge(
         .text_size(crate::rems_from_px(9.0))
 }
 
-/// The palette surface. Input and virtualized rows are caller-supplied slots.
 #[derive(IntoElement)]
 pub struct CommandPaletteSurface {
     input: AnyElement,
@@ -167,23 +157,18 @@ impl CommandPaletteSurface {
         }
     }
 
-    /// Put `element` at the left of the footer, before the keys.
     #[must_use]
     pub fn footer_leading(mut self, element: impl IntoElement) -> Self {
         self.footer_leading = Some(element.into_any_element());
         self
     }
 
-    /// Float `element` over the rows, its bottom on the input's top edge and
-    /// as wide as the palette, such as a picker for what is being typed.
-    /// Only with [`Self::input_last`].
     #[must_use]
     pub fn over_input(mut self, element: impl IntoElement) -> Self {
         self.over_input = Some(element.into_any_element());
         self
     }
 
-    /// Put the input under the rows, the way a chat keeps its composer.
     #[must_use]
     pub fn input_last(mut self) -> Self {
         self.input_last = true;
@@ -314,9 +299,6 @@ impl RenderOnce for CommandPaletteSurface {
     }
 }
 
-/// A footer hint: its keys in the platform's glyphs, then what they do.
-/// `hint.key` holds ala keystrokes apart by spaces or `/`, such as
-/// `up down` or `ctrl-c`.
 pub(crate) fn palette_hint(hint: PaletteHint, cx: &App) -> impl IntoElement {
     div()
         .flex()
@@ -340,8 +322,6 @@ pub(crate) fn palette_hint(hint: PaletteHint, cx: &App) -> impl IntoElement {
         .child(hint.label)
 }
 
-/// A shortcut in tmux's spelling (`C-b c`) as one cap per key in the
-/// platform's glyphs, or as written when a key does not parse.
 pub fn tmux_shortcut(shortcut: &SharedString, ground: crate::Ground, cx: &App) -> AnyElement {
     let keys: Option<Vec<Keystroke>> = shortcut.split_whitespace().map(tmux_keystroke).collect();
     match keys {
@@ -361,8 +341,6 @@ pub fn tmux_shortcut(shortcut: &SharedString, ground: crate::Ground, cx: &App) -
     }
 }
 
-/// A key in tmux's spelling (`C-b`, `M-Up`, `%`, `L`) as a ala keystroke, for
-/// drawing in the platform's glyphs. `None` for a key ala cannot name.
 #[must_use]
 pub fn tmux_keystroke(spelling: &str) -> Option<Keystroke> {
     let (source, base) = zz_client::palette::tmux_keystroke_source(spelling)?;
@@ -382,11 +360,6 @@ pub fn tmux_keystroke(spelling: &str) -> Option<Keystroke> {
     Some(keystroke)
 }
 
-/// Keyboard shortcut hint styling, shared with palette-adjacent surfaces.
-///
-/// # Panics
-///
-/// If a key is not a parseable [`Keystroke`].
 pub fn palette_shortcut_hint(
     keys: impl IntoIterator<Item = &'static str>,
     label: impl Into<SharedString>,

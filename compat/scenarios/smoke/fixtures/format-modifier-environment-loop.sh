@@ -85,8 +85,6 @@ mine='#{V:#{?#{m:ENVLOOP_*,#{environ_name}},<#{environ_name}=#{environ_value}:#{
 mine_global='#{Vg:#{?#{m:ENVLOOP_*,#{environ_name}},<#{environ_name}=#{environ_value}>,}}'
 mine_session='#{Vs:#{?#{m:ENVLOOP_*,#{environ_name}},<#{environ_name}=#{environ_value}>,}}'
 
-# The session store keeps every entry it holds, in name order, with hidden and
-# removed rows intact and an empty value distinct from a removed one.
 check_equal session-rows \
     '<ENVLOOP_COLLIDE=from-session:00><ENVLOOP_EMPTY=:00><ENVLOOP_HIDDEN=secret:10><ENVLOOP_PLAIN=kept:00><ENVLOOP_REMOVED=:01>' \
     "$(expand "$mine")"
@@ -94,11 +92,9 @@ check_equal session-flag \
     '<ENVLOOP_COLLIDE=from-session><ENVLOOP_EMPTY=><ENVLOOP_HIDDEN=secret><ENVLOOP_PLAIN=kept><ENVLOOP_REMOVED=>' \
     "$(expand "$mine_session")"
 
-# show-environment hides the hidden entry, the loop does not.
 check_equal hidden-not-listed '' \
     "$(main_client show-environment -t "$session" | grep '^ENVLOOP_HIDDEN' || true)"
 
-# The global store is a different object, and a colliding name reads its own.
 check_equal global-rows \
     '<ENVLOOP_COLLIDE=from-global><ENVLOOP_GLOBAL=global>' \
     "$(expand "$mine_global")"
@@ -107,7 +103,6 @@ check_equal collide-session from-session \
 check_equal collide-global from-global \
     "$(expand '#{Vg:#{?#{==:#{environ_name},ENVLOOP_COLLIDE},#{environ_value},}}')"
 
-# Row cardinality matches the store the flag word names.
 session_rows="$(expand '#{n:#{V:x}}')"
 check_equal session-count "$session_rows" "$(expand '#{n:#{Vs:x}}')"
 check_equal global-differs-from-session skip skip
@@ -115,14 +110,10 @@ if [ "$session_rows" = "$(expand '#{n:#{Vg:x}}')" ]; then
     record_failure global-count-matches-session
 fi
 
-# The pin compares the whole flag word, so a combination selects nothing.
 for flags in z gs sg sc gc S G C gg cs; do
     check_equal "flagword-$flags" '[]' "$(expand "[#{V$flags:x}]")"
 done
 
-# The client store is the store of the client that ran the command, so the
-# variable exported into this invocation shows up and the session's own names do
-# not. Attaching somebody else does not change that.
 client_probe='#{Vc:#{?#{==:#{environ_name},ENVLOOP_CLIENT},<#{environ_value}>,}}'
 check_equal client-invoking '<invoking>' \
     "$(ENVLOOP_CLIENT=invoking expand "$client_probe")"
@@ -142,20 +133,16 @@ env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
 attach_pid=$!
 await_clients 1 || { echo "format-modifier-environment-loop-$side: attach"; exit 0; }
 
-# The attached client's own variable stays out of the invoking client's store.
 check_equal client-attached-not-selected '' "$(expand "$client_probe")"
 check_equal client-attached-in-loop '<attached>' \
     "$(expand '#{L:#{Vc:#{?#{==:#{environ_name},ENVLOOP_CLIENT},<#{environ_value}>,}}}')"
 
-# Nesting: a window loop inside a row keeps the outer session, and environment
-# loops nest without disturbing the outer row.
 check_equal nested-window "$session_rows" "$(expand '#{n:#{V:#{W:x}}}')"
 check_equal nested-inner \
     '[inENVLOOP_PLAIN]' \
     "$(expand '#{V:#{?#{==:#{environ_name},ENVLOOP_PLAIN},[#{V:#{?#{==:#{environ_name},ENVLOOP_PLAIN},in,}}#{environ_name}],}}')"
 check_equal empty-body '' "$(expand '#{V:}')"
 
-# The row formats answer nowhere else.
 check_equal no-leak '[|||]' \
     "$(expand '[#{environ_name}|#{environ_value}|#{environ_hidden}|#{environ_removed}]')"
 

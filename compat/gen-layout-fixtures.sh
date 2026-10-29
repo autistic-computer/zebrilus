@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Regenerates crates/zz-mux/tests/fixtures/layout-pin.txt from the pinned tmux
-# binary. Run after a pin bump, then review the diff like any golden update.
 set -euo pipefail
 
 COMPAT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

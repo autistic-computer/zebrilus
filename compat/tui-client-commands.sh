@@ -1,150 +1,4 @@
 #!/usr/bin/env bash
-# The stock client-command roster: exact stdout, stderr and exit status of every
-# remaining client-side command, plus the attached client's screen and session
-# state after each one.
-#
-# TUI-011 clause 1 asks for a finite command-and-flag roster, clause 2 for a
-# comparison of each entry's three CLI channels and its two attached channels.
-# This file IS that roster: the table below names every entry, what pinned tmux
-# d77c9dc6 does with it, what zz does today, and which of the three dispositions
-# the entry takes - PROVED here, DECLARED with its reason, or handed to a child
-# obligation. Every PROVED entry is a case below whose five channels are
-# asserted; every DECLARED entry is a case whose divergence is printed and
-# recorded with the accepted gap that owns it; every CHILD entry is recorded and
-# named in the child obligation that will close it.
-#
-# THE ROSTER
-# ---------------------------------------------------------------------------
-# entry                     pin d77c9dc6                     zz today                        disposition
-# choose-client [-hikNrZ]   window_pane_set_mode, client      opens the same client mode on
-#   [-F -f -K -O -t] [tmpl]   mode on the target pane           the attached client, and a     PROVED (CLI errors)
-#                                                               clientless CLI answers the     + DECLARED (the
-#                                                               attached-client error          clientless entry)
-# clock-mode [-t]           window_clock_mode on the target   the same pane mode, drawn by   PROVED
-#                             pane, redrawn every second        every attached client, with
-#                                                               clock-mode-colour and the
-#                                                               four clock-mode-style faces
-# switch-mode [-kswZ]       window_switch_mode on the target  the same pane mode, its rows   PROVED (the mode it
-#   [-F -t] [command]         pane: one row per session or       expanded from the same         opens, its movement
-#                             window over a (search) prompt      default format, over the       keys, the incremental
-#                                                                same prompt                    fuzzy filter and the
-#                                                                                               Enter target)
-# server-access [-adglrw]   socket access control list, and    every lookup, ordering and     PROVED (-l and every
-#   [-t] [user|group]         the lookups, orderings and         refusal; the socket admits     refusal) + DECLARED
-#                             refusals around it                 its owner alone, so adding     (admitting a second
-#                                                                a second identity is           identity),
-#                                                                refused                        protocol.socket-acl
-# lock-server               locks every client, runs          validates, empty execution,    PROVED (CLI) +
-#                             lock-command on each tty          after-lock-server fires       DECLARED (screen),
-# lock-session [-t]         locks that session's clients      same                           PROVED + DECLARED
-# lock-client [-t]          locks that one client             same                           PROVED + DECLARED
-# refresh-client            status jobs rerun, redraw         status render published        PROVED
-# refresh-client -S         status jobs rerun, status redraw  status render published        PROVED
-# refresh-client -f -F      client flags set                  client flags set               PROVED
-# refresh-client -A -B -C   control-client only               control-client only            PROVED
-# refresh-client -t         target client, missing-client     same                           PROVED
-# refresh-client -l         OSC 52 query to the client's      same, and the answer becomes   PROVED
-#                             terminal, answer stored as a      a new automatic buffer
-#                             new automatic buffer
-# refresh-client -c -D -L   pans a terminal client's view     loudly unsupported             DECLARED
-#   -R -U -r [adjust]                                                                         clients.interactive-refresh
-# capture-pane -p -S -E     the requested line range, one     same                           PROVED
-#                             line per row of it
-# capture-pane -J -q -T     join, quiet, trailing positions   same                           PROVED
-# capture-pane -b           fills a named buffer              same                           PROVED
-# capture-pane -e           the range with SGR, trimmed       same                           PROVED
-# capture-pane (no -S -E)   every visible row, trailing       same                           PROVED
-#                             blanks included
-# capture-pane -N           each line out to the cells its    same                           PROVED
-#                             grid row has allocated, which
-#                             grid_expand_line rounds up to
-#                             a quarter, a half or the whole
-#                             width; -T takes it back to the
-#                             cells the row used
-# capture-pane -M           the mode screen, the pane when    same                           PROVED
-#                             there is no mode
-# capture-pane -a           `no alternate screen`, and one    same                           PROVED
-#                             empty line under -q
-# capture-pane -F -H        line flags, each line's links     same                           PROVED
-# load-buffer -             caller stdin into a buffer        adopted, same                  PROVED
-# save-buffer - / -a -      buffer bytes to caller stdout     adopted, same                  PROVED
-# show-buffer [-b]          buffer bytes to stdout            same                           PROVED
-# source-file -             caller stdin as a config file     adopted, same                  PROVED
-# display-message -I        caller stdin into the pane        adopted, same                  PROVED
-# split-window -I           caller stdin into the new pane    adopted, same                  PROVED
-# show-hooks [-Bgpw] [-t]   the hook table                    same                           PROVED
-# show-messages             the server log                    same shape and the same tty    DECLARED, the log
-#                                                               for an attached client, but a  carries client
-#                                                               clientless CLI is device-<n>   identity
-#                                                               and the pin reprints a
-#                                                               command through args_print
-# show-messages -J          the running format jobs           the same table, empty and      PROVED
-#                                                               with one job armed
-# show-messages -T          Terminal <n>: <term> for          the same 237 lines             PROVED
-#                             <client>, flags=0x<n>, then
-#                             tty_term_describe per code
-# show-messages -T -t       that client's terminal, and a     same                           PROVED
-#                             name that matches nothing
-#                             leaves every terminal in
-# ---------------------------------------------------------------------------
-#
-# THE DRIVER is tui-choosers.sh's, which is tui-indicators.sh's widened: both
-# binaries attach one client each inside ONE outer pinned tmux, one window per
-# side, and the outer tmux decodes both screens with `capture-pane -p -e`, so
-# attribute order, batching and cursor-movement spelling collapse while the
-# colour class does not. Every command under test is invoked CLIENTLESS from
-# outside, the way a script invokes it, and the attached client is then read.
-#
-# FIVE CHANNELS PER CASE. exit status, stdout bytes and stderr bytes come from
-# the clientless invocation; the screen is the whole decoded screen plus the
-# cursor of the attached client; the state is a fixed set of list-* formats.
-# `same` asserts all five. `cli` asserts the three CLI channels and records the
-# two attached ones with a reason. `record` asserts nothing and has to say why.
-# A recorded case keeps its clause open; a DECLARED entry is recorded with the
-# accepted gap that owns it and is not counted as parity.
-#
-# CONTROLLED DYNAMIC VALUES, set identically on both sides:
-#   status-right ''      the default ends in a clock and a locale-expanded date;
-#                        that belongs to status-row.sh.
-#   status-left L        a fixed literal.
-#   automatic-rename off plus -n on every window: the default name follows the
-#                        running command and would race a checkpoint.
-#   select-pane -T ptitle on every pane: the pin seeds a pane title from
-#                        gethostname.
-#   lock-command true    the pin spawns it on the client's tty. `true` returns
-#                        at once, so the lock cases cannot wedge the run; what
-#                        the pin draws while it runs is the declared part.
-#   the inner shell      ENV= PS1='$ ' exec /bin/sh: no rc file, and a prompt
-#                        with no host, user, path or clock.
-# DECLARED, NOT PINNED: the server log names its clients. The pin names any
-#   tty-bearing client by that tty and a clientless CLI by client-<pid>; zz now
-#   names a tty-bearing client by its tty too, and keeps device-<n> for a client
-#   with no tty of its own. The pin also reprints a command through its own
-#   argument printer. show-messages is recorded for exactly that pair and
-#   nothing else is masked.
-#
-# NORMALIZED, ON BOTH SIDES: a pts number, a job's fd and a job's pid are
-#   handed out by the kernel to one process, so no two servers can print the
-#   same one and two runs of the pin cannot either. A case that prints one sets
-#   CASE_NORMALIZE and the same substitution runs over both sides before the
-#   comparison. Nothing else in the line moves, and the self-check plants a
-#   difference that survives the substitution to prove it.
-#
-# SETTLING. A command that draws nothing still has to be given the chance to
-# draw: after every invocation each screen is polled until it is unchanged
-# between two consecutive polls, and only then compared. Where the pin opens a
-# mode the case waits, bounded, for the pin's own needle first and gives zz the
-# same bounded wait made soft. The live-job case also waits for the pending-job
-# placeholder on each status row: a running job first expands to empty text,
-# then to the placeholder on a later timer tick. That case temporarily sets
-# status-interval to one second so the bounded wait reaches that tick.
-# No wait in this file is a sleep.
-#
-# --self-check runs the driver against a deliberate one-sided difference in each
-# channel - stdout, stderr with the exit status, the screen and the session
-# state - and requires the comparison to catch each one in that channel, plus
-# two equivalences it must NOT report. A fixture that only passes has proved
-# nothing.
 set -eEuo pipefail
 
 usage() {
@@ -317,8 +171,6 @@ grid_cells_of() {
     sed -n -e 's/^\(G [0-9]*x[0-9]*\).*/\1/p' -e '/^[[:space:]]*C /{s/ flags=[^ ]*//;p;}'
 }
 
-# The session state a command may move, read the same way from both servers.
-# The client's own name is its tty and is never in here; see the header.
 state_of() {
   local side="$1"
   side_command "$side" list-sessions \
@@ -348,10 +200,6 @@ active_pane() {
   side_command "$1" list-panes -t "=$INNER_SESSION" -F '#{pane_active} #{pane_id}' |
     awk '$1 == 1 { print $2; exit }'
 }
-# Polled a varying number of times and on one side only in the needle cases,
-# so it runs no command that fires an after- hook: display-message and
-# list-panes both do (CMD_AFTERHOOK), if-shell does not. The false branch is a
-# command neither binary knows, so the exit status carries the answer.
 pane_in_mode() {
   local in_mode=0
   side_command "$1" if-shell -F -t "=$INNER_SESSION:" '#{pane_in_mode}' '' zzcc-not-in-mode \
@@ -448,12 +296,6 @@ attach_both_at() {
   settle_screen tmux ''
 }
 
-# --- settling and comparison ------------------------------------------------
-#
-# A screen is settled when two consecutive polls are equal. The pin's side is a
-# hard wait: a pin that never settles is a broken fixture. The zz side is the
-# same bounded wait made soft, so a zz screen that never settles is reported
-# and compared rather than killing the run.
 settle_screen() {
   local side="$1"
   local before="$2"
@@ -482,29 +324,13 @@ CASE_STDIN=''
 CASE_GRID_CELLS=0
 CASE_EXPECT_EQUAL=0
 
-# Two spellings a command prints belong to the process that printed them and no
-# two servers can share them: the pts number the kernel gave a client, and the
-# fd and pid of a job's own child. A case that prints either sets
-# CASE_NORMALIZE, and the SAME substitution runs over both sides, so nothing
-# one-sided is hidden - the text around the number is still compared byte for
-# byte, which the self-check's normalized-stdout sabotage proves.
 CASE_NORMALIZE=''
 PER_PROCESS_NUMBERS='s|/dev/pts/[0-9][0-9]*|/dev/pts/N|g;s|fd=[0-9][0-9]*|fd=N|g;s|pid=[0-9][0-9]*|pid=N|g'
-# window_clock_timer_callback redraws the face on the whole second and both
-# servers wake on the same boundary, so a capture pair taken across one would
-# compare two faces rather than two renderings of the same face. Wait for the
-# second to turn over, then settle, so the comparison that follows runs inside a
-# second that has just started. This is a wall clock, not a fixture event: the
-# boundary is what is being waited for, and the wait is bounded at four seconds.
 align_clock_face() {
   local start now attempt
   start="$(date +%S)"
   for ((attempt = 0; attempt < 400; attempt++)); do
     now="$(date +%S)"
-    # A fresh second, and one far enough from the minute that the whole
-    # comparison finishes inside it: the two faces change once a minute, and
-    # reading five formats and four screens off two servers under load takes
-    # longer than the tail of a second.
     if [ "$now" != "$start" ] && [ "$((10#$now))" -le 55 ]; then
       break
     fi
@@ -515,10 +341,6 @@ align_clock_face() {
   settle_screen zz ''
 }
 
-# Run the same clientless invocation against both servers and read all five
-# channels. CLIENT and PANE stand for each side's own attached client and
-# active pane, whose spellings are the one thing a command's arguments cannot
-# share.
 run_both() {
   local side argument client pane rc
   local -a arguments
@@ -789,10 +611,6 @@ owner_tally() {
   printf 'owners %s' "${entries[*]}"
 }
 
-# NAME MODE REASON -- command...
-#   same    all five channels asserted
-#   cli     exit, stdout and stderr asserted; screen and state recorded
-#   record  nothing asserted, the reason says why
 case_run() {
   local name="$1"
   local mode="$2"
@@ -870,14 +688,6 @@ case_run() {
   CASE_CLOCK_FACE=0
 }
 
-# A mode command leaves a mode open on the pane, and the lock draws over the
-# client. q ends a mode, and the screen both sides show once everything has
-# settled is asserted: whichever side opened one has to give the pane back
-# exactly, and a side that opened nothing has to be where it already was.
-# Escape first and q only if the mode is still up: mode_tree_key answers q and
-# a prompt inside a mode answers Escape, and a q typed at a shell prompt that
-# already came back would be a change of its own. Either side can be the one
-# holding a mode now that clock-mode opens the pin's own pane mode on zz too.
 end_mode() {
   local side="$1"
   local attempt poll key
@@ -924,16 +734,11 @@ restore_case() {
   fi
 }
 
-# `server-access -g -a` is the one form zz refuses, so the pin alone came away
-# with an access entry. It is dropped on the pin before anything reads the list
-# again, and the restore then asserts both sides back in the same place.
 drop_pin_access_entry() {
   tmux_inner_command server-access -g -d "$SERVER_GROUP" >/dev/null 2>&1 || true
   restore_case "$1"
 }
 
-# `split-window -I` builds a pane on both sides, so both extra panes are killed
-# before the next case reads the state.
 restore_extra_panes() {
   local name="$1"
   CASE_LABEL="$name"
@@ -1312,12 +1117,6 @@ customize_long_prompt_self_checks() {
   CASE_GRID_CELLS=0
 }
 
-# `prompt_set_options`: every prompt a mode tree raises is created through it,
-# so each one keeps the session's `status-keys` for its whole life and
-# `prompt_key` runs its keys through the vi table first. With `status-keys vi`
-# Escape does NOT close a mode prompt: it puts it in command mode with the
-# cursor stepped back, which is where `h`, `x`, `0`, `D` and the rest of the vi
-# table act, and `message-command-style` paints the row while it sits there.
 customize_prompt_vi_cases() {
   customize_scene
   run_on_both set-option -g status-keys vi
@@ -1348,12 +1147,6 @@ customize_prompt_vi_cases() {
   CASE_GRID_CELLS=0
 }
 
-# 3.8 mode-tree prompts are server prompts. `prompt_key` walks the server's
-# history list for the prompt's type on Up and Down and Enter adds a non-empty
-# answer to it, and mode-tree.c raises its search and filter prompts as
-# PROMPT_TYPE_SEARCH, so a filter prompt recalls the search typed before it.
-# An answer an add prompt refuses is a status message (`status_message_set`)
-# on the status row, not a command.
 customize_prompt_history_cases() {
   customize_scene
   CASE_NEEDLE_MODE=1
@@ -1370,8 +1163,6 @@ customize_prompt_history_cases() {
   CASE_GRID_CELLS=0
 }
 
-# `prompt_set_options` copies `status-keys` ONCE, when the prompt is created, so
-# the sabotage has to change the option before the prompt is raised, not after.
 customize_prompt_vi_self_checks() {
   local CASE_EXPECT_EQUAL=1
   customize_scene
@@ -1598,7 +1389,6 @@ customize_screen_self_checks() {
   CASE_GRID_CELLS=0
 }
 
-# --- the roster's cases -----------------------------------------------------
 INTERACTIVE_REFRESH='clients.interactive-refresh, accepted: every zz client renders itself from published frames, so the pan and redraw-adjustment family stays loudly unsupported'
 LOCK_PROGRAM='DECIDED options.lock-program: decided 2026-09-14 by fabrico under the superset principle; the desktop session owns locking. The pin runs lock-command on the client tty; zz accepts the CLI and stores lock-command and lock-after-time without arming a terminal locker'
 RICH_CAPTURE='capture.rich-transports, accepted: zz captures the terminal worker retained UTF-8 text snapshot, not the pin grid and input parser'
@@ -1868,15 +1658,6 @@ message_hook_cases() {
   message_live_job_cases
 }
 
-# A -J table that is not empty. What puts a row in the pin's is format_job_get:
-# one job tree per client plus one for a clientless expansion, keyed by the
-# format tag and the command, and job_print_summary walks job.c `all_jobs` over
-# all of them. One #() in status-left with one client attached is therefore ONE
-# row on the pin, and arming the same one on zz is the only way to compare a
-# live table. The job's fd and pid belong to its own child, so they go through
-# the same PER_PROCESS_NUMBERS substitution on both sides; the command beside
-# them does not. `sleep` outlives the case, so what the status draws is the
-# pin's own `<'cmd' not ready>` placeholder on both sides.
 LIVE_JOB_COMMAND='#(sleep 40; echo zzcc-job)'
 
 job_rows_are() {
@@ -2168,10 +1949,6 @@ run_cases() {
   message_hook_cases
   lock_cases
   client_tool_cases
-  # LAST, and nothing may follow it: cmd-detach-client.c sends SIGTSTP to the
-  # client process, so the pin's attached client stops and its session loses
-  # its client for the rest of the run. The measurement is worth a case; a
-  # stopped client underneath every later case is not.
   SUSPENDED_ZZ_PID="$(zz_command list-clients -F '#{client_pid}')"
   case_run suspend-client same '' -- suspend-client
   wait_for 'the raw client is stopped' client_process_stopped "$SUSPENDED_ZZ_PID"
@@ -2197,7 +1974,6 @@ report_cases() {
     "$CHECKS" "$RECORDS" "$SIBLINGS" "$(owner_tally)"
 }
 
-# --- self-check -------------------------------------------------------------
 SELF_CHECK_FAILURES=0
 
 self_check_expect() {
@@ -2312,9 +2088,6 @@ run_self_check() {
   printf 'self-check: one deliberate one-sided difference per channel, plus two equivalences\n'
   attach_both_at 80 24
 
-  # The equivalence first: with nothing planted the same command on both sides
-  # must report nothing, or every sabotage below would be satisfied by a
-  # comparison that always reports.
   self_check_run equivalence-before display-message -p -t PANE '#{window_index}.#{pane_index}'
   self_check_expect 'equivalence: the same command on both sides' \
     exit=0 stdout=0 stderr=0 screen=0 state=0
@@ -2369,19 +2142,10 @@ run_self_check() {
     fi
   done
 
-  # stdout: a buffer that exists on the zz side only, listed by name. The exit
-  # status and stderr are the same on both sides and must not be reported.
   zz_command set-buffer -b zzcc-sabotage SABOTAGE >/dev/null || die 'zz refused set-buffer'
   self_check_run stdout-sabotage list-buffers -F '#{buffer_name}'
   self_check_expect 'stdout, a buffer on one side only' exit=0 stdout=1 stderr=0
 
-  # exit status and stderr: showing that same buffer, which one side does not
-  # have. stdout differs too - that is what an error instead of a payload
-  # means - and the two channels under test have to be reported by themselves.
-  # stdout again, with no buffer behind it: an access entry the pin alone holds,
-  # listed by server-access -l. Adding one is the single form zz refuses, so the
-  # entry can only be planted on the pin, and a zz -l that answered the wrong
-  # owner would be caught here rather than by the buffer sabotage above.
   tmux_inner_command server-access -g -a "$SERVER_GROUP" >/dev/null ||
     die 'the pin refused server-access -a'
   self_check_run access-sabotage server-access -l
@@ -2400,9 +2164,6 @@ run_self_check() {
   self_check_expect 'exit and stderr, a buffer missing on one side' exit=1 stderr=1
   zz_command delete-buffer -b zzcc-sabotage >/dev/null || die 'zz refused delete-buffer'
 
-  # session state: a second session on the zz side only. It is in no status
-  # row of the attached session, so the screen must not be reported and the
-  # three CLI channels of an unrelated command must not move.
   zz_command new-session -d -s zzcc-sab -x 80 -y 24 "$INNER_SHELL" >/dev/null ||
     die 'zz refused new-session'
   self_check_run state-sabotage display-message -p -t PANE '#{window_index}.#{pane_index}'
@@ -2410,12 +2171,6 @@ run_self_check() {
     exit=0 stdout=0 stderr=0 screen=0 state=1
   zz_command kill-session -t zzcc-sab >/dev/null || die 'zz refused kill-session'
 
-  # the attached screen and the session state together: window_clock_mode open
-  # on the zz pane alone. The pin's pane stays live, so the mode surface has to
-  # be reported through the screen and `#{pane_in_mode}`/`#{pane_mode}` through
-  # the state, while the three CLI channels of an unrelated command stay still.
-  # Ending it with one key is `window_clock_key`, so the same sabotage proves
-  # the key route the mode is torn down by.
   zz_command clock-mode -t "$(active_pane zz)" >/dev/null || die 'zz refused clock-mode'
   wait_for 'the one-sided clock' pane_in_mode zz 1
   self_check_run clock-sabotage display-message -p -t PANE '#{window_index}.#{pane_index}'
@@ -2470,10 +2225,6 @@ run_self_check() {
     exit=0 stdout=1 stderr=0 screen=0 state=1
   run_both copy-mode -q -t PANE
 
-  # the same for the other pane mode, which is not a clock: window_switch_mode
-  # on the zz pane alone, whose rows and prompt are a different surface over the
-  # same per-pane state. Escape ends it, which is the one key window_switch_key
-  # answers with window_pane_reset_mode rather than swallowing into its prompt.
   zz_command switch-mode -t "$(active_pane zz)" >/dev/null || die 'zz refused switch-mode'
   wait_for 'the one-sided switch mode' pane_in_mode zz 1
   self_check_run switch-sabotage display-message -p -t PANE '#{window_index}.#{pane_index}'
@@ -2522,9 +2273,6 @@ run_self_check() {
     exit=1 stdout=0 stderr=1 screen=0 state=0
   run_on_both set-option -gu @review-identity
 
-  # the attached screen: one space typed at the zz client's prompt. capture-pane
-  # trims trailing blanks, so this reaches the comparison through the cursor,
-  # which is part of the same channel. Nothing else moves.
   local zz_before
   zz_before="$(cursor_tuple zz)"
   tmux_outer_command send-keys -t "=$OUTER_SESSION:zz" Space ||
@@ -2537,9 +2285,6 @@ run_self_check() {
     die 'the outer tmux refused send-keys'
   wait_for 'the space withdrawn' zz_cursor_is "$zz_before"
 
-  # The normalizer, in three steps. Each client sits on its own pts, so the
-  # same format really does print two different numbers, the comparison has to
-  # report that without CASE_NORMALIZE, and CASE_NORMALIZE has to collapse it.
   self_check_run normalize-off list-clients -F 'tty #{client_tty}'
   self_check_expect 'two pts numbers differ while nothing normalizes them' \
     exit=0 stdout=1 stderr=0 screen=0 state=0
@@ -2549,8 +2294,6 @@ run_self_check() {
   self_check_expect 'the same two numbers compare equal once normalized' \
     exit=0 stdout=0 stderr=0 screen=0 state=0
 
-  # And the substitution must not swallow the line it sits in: a session only
-  # the zz side has, printed beside a pts path the substitution does collapse.
   zz_command new-session -d -s zzcc-norm -x 80 -y 24 "$INNER_SHELL" >/dev/null ||
     die 'zz refused new-session'
   CASE_NORMALIZE="$PER_PROCESS_NUMBERS"
@@ -2561,11 +2304,6 @@ run_self_check() {
     exit=0 stdout=1 stderr=0
   zz_command kill-session -t zzcc-norm >/dev/null || die 'zz refused kill-session'
 
-  # The live -J table: one #() armed in status-left on the zz side alone. The
-  # two tables then hold a different number of rows, and PER_PROCESS_NUMBERS
-  # collapses the fd and the pid but not the command beside them, so the
-  # difference has to reach stdout. The status draws the job on one side too,
-  # which is the screen channel doing its own job.
   local interval
   interval="$(zz_command show-options -gv status-interval)"
   zz_command set-option -g status-interval 1 >/dev/null ||

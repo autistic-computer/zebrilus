@@ -21,16 +21,13 @@ pub struct Preferences {
     pub dark: bool,
     #[serde(default)]
     pub mode: Option<String>,
-    /// The built-in or saved theme by id; `None` is the default theme.
     pub theme: Option<String>,
-    /// Themes saved on this device by Duplicate or Import, by id.
     #[serde(deserialize_with = "saved_themes")]
     pub themes: Vec<(String, InterfaceTheme)>,
     pub ui_font_family: String,
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
     pub zoom: f32,
-    /// What Settings sets over the theme. Picking a theme clears the radius.
     #[serde(flatten)]
     pub overrides: ThemeOverrides,
     pub contrast: f32,
@@ -82,8 +79,6 @@ impl Default for Preferences {
 }
 
 impl Preferences {
-    /// How far panes stand in from the window's edges: the pane margin while
-    /// gaps are on, none while panes sit flush.
     #[must_use]
     pub fn margin(&self) -> ala::Pixels {
         ala::px(if self.gaps { self.pane_margin } else { 0.0 })
@@ -198,10 +193,6 @@ impl Preferences {
         interface_theme::is_builtin_theme(id) || self.saved_theme(id).is_some()
     }
 
-    /// Selects the built-in or saved theme `id`, or the default for any other
-    /// id, and drops the overrides of what the theme decides: its radius,
-    /// and the UI font when it sets one, so it shows as designed.
-    /// The accent and the tint stay.
     pub fn set_interface_theme(&mut self, id: &str) {
         self.theme = self.knows_theme(id).then(|| id.to_owned());
         self.overrides.pick_theme();
@@ -210,7 +201,6 @@ impl Preferences {
         }
     }
 
-    /// Saves the theme file on the clipboard and selects it.
     pub fn import_theme(&mut self, clipboard: &str) -> Result<String, String> {
         let theme = if clipboard.len() > MAX_THEME_BYTES {
             Err(format!("it is over {} KB", MAX_THEME_BYTES / 1024))
@@ -241,8 +231,6 @@ impl Preferences {
         Ok(id)
     }
 
-    /// Deletes the saved theme `id`, and selects the default theme when it
-    /// was the selected one.
     pub fn delete_theme(&mut self, id: &str) {
         self.themes.retain(|(saved, _)| saved != id);
         if self.theme.as_deref() == Some(id) {
@@ -250,8 +238,6 @@ impl Preferences {
         }
     }
 
-    /// The UI font: the one picked on this device, else the theme's, or `""`
-    /// for the system font.
     #[must_use]
     pub fn shown_ui_font(&self) -> &str {
         if self.ui_font_family.is_empty() {
@@ -265,7 +251,6 @@ impl Preferences {
         }
     }
 
-    /// The active theme with the overrides set here: the look on screen.
     #[must_use]
     pub fn shown_theme(&self) -> InterfaceTheme {
         let mut theme = self.interface_theme().clone();
@@ -375,8 +360,6 @@ impl Preferences {
     };
 }
 
-/// Reads the saved themes, skipping any this build cannot read instead of
-/// losing every preference over one theme.
 fn saved_themes<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Vec<(String, InterfaceTheme)>, D::Error> {

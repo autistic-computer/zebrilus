@@ -12,38 +12,25 @@ pub const COMPOSER_FOOTER_HEIGHT: f32 = 28.0;
 pub const COMPOSER_OUTER_PADDING: f32 = 12.0;
 pub const COMPOSER_SECTION_GAP: f32 = 8.0;
 pub const COMPOSER_MAX_WIDTH: f32 = AGENT_CONTENT_MAX_WIDTH + 2.0;
-/// The round buttons in the composer, and the line you type, which sits on
-/// their center.
 pub const COMPOSER_BUTTON: f32 = 28.0;
-/// The gap between the composer's edge and its buttons, the same all round.
 pub const COMPOSER_INSET: f32 = 6.0;
-/// The composer with one line typed.
 pub const COMPOSER_HEIGHT: f32 = COMPOSER_BUTTON + 2.0 * COMPOSER_INSET;
-/// The corner a one-line pill has, which a taller draft keeps.
 const COMPOSER_RADIUS: f32 = COMPOSER_HEIGHT / 2.0;
 const COMPOSER_TEXT: f32 = 13.0;
 const COMPOSER_TEXT_PADDING: f32 = (COMPOSER_BUTTON - COMPOSER_TEXT * 1.25) / 2.0;
 
-/// What the composer's controls and attachments sit on.
 pub fn composer_ground(cx: &App) -> Ground {
     cx.theme().ground_of(roles::AGENT_COMPOSER)
 }
 
-/// The box you write in on the agent lens: a pill
-/// with a round button at its start (`+`), the field, the context ring and the
-/// round send button, each inset the same from the edge. A longer draft grows
-/// the pill and keeps the buttons on its last line.
 #[derive(IntoElement)]
 pub struct Composer {
     pub input: Entity<InputState>,
     pub leading: Option<AnyElement>,
     pub usage: Option<AnyElement>,
     pub action: AnyElement,
-    /// What goes with the message, over the line you type.
     pub attachments: Option<AnyElement>,
-    /// What the slash command being typed does, under the line you type.
     pub command_hint: Option<SharedString>,
-    /// The paint the pill sits on, when it is not the window's.
     pub ground: Option<Ground>,
 }
 
@@ -111,9 +98,6 @@ impl RenderOnce for Composer {
     }
 }
 
-/// The agent lens's composer: what waits on you over it (an approval, the
-/// queue, the task tray, an error, the slash menu), the [`Composer`], and the
-/// branch with its changes under it.
 #[derive(IntoElement)]
 pub struct AgentComposer {
     pub composer: Composer,

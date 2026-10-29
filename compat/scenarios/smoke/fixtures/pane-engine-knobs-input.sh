@@ -96,8 +96,6 @@ await_raw_ready "$work/raw.ready"
 rename_pane="$(pane_of "=$session:renamer")"
 main_client set-option -w -t "$rename_pane" automatic-rename on
 
-# input_exit_rename returns before touching the window when allow-rename is
-# off, and the collected string never reaches the screen either way.
 main_client send-keys -t "$rename_pane" -H 1b 6b
 main_client send-keys -t "$rename_pane" -l RENOFF
 main_client send-keys -t "$rename_pane" -H 1b 5c
@@ -122,8 +120,6 @@ check_equal allow-rename-on-clears-automatic-rename 0 \
 check_equal allow-rename-on-prints-nothing "" \
     "$(main_client capture-pane -p -t "$rename_pane" | tr -d ' \n')"
 
-# An empty string removes the window's own automatic-rename entry instead of
-# setting a name, so the option falls back to the global default.
 main_client send-keys -t "$rename_pane" -H 1b 6b 1b 5c
 sleep 0.5
 check_equal allow-rename-empty-restores-automatic-rename 1 \
@@ -139,8 +135,6 @@ check_equal allow-rename-off-again-leaves-the-name untouched \
     "$(named "$(main_client display-message -p -t "$rename_pane" '#{window_name}')" RENAGAIN)"
 main_client set-option -p -t "$rename_pane" allow-rename on
 
-# BEL does not terminate the rename string: the pin's rename state waits for
-# ST, so the name is still the one the last ST committed.
 main_client send-keys -t "$rename_pane" -H 1b 6b
 main_client send-keys -t "$rename_pane" -l BELNAME
 main_client send-keys -t "$rename_pane" -H 07
@@ -149,13 +143,9 @@ check_equal allow-rename-ignores-bel untouched \
     "$(named "$(main_client display-message -p -t "$rename_pane" '#{window_name}')" BELNAME)"
 main_client send-keys -t "$rename_pane" -H 1b 5c
 sleep 0.5
-# The rename table drops every C0 byte but its terminators, so the BEL never
-# joins the name and the ST commits BELNAME.
 check_equal allow-rename-drops-bel-from-the-name BELNAME \
     "$(main_client display-message -p -t "$rename_pane" '#{window_name}')"
 
-# Every exit from the rename state runs input_exit_rename: an ESC commits the
-# collected name and starts its own sequence, and CAN commits it too.
 main_client send-keys -t "$rename_pane" -H 1b 6b
 main_client send-keys -t "$rename_pane" -l ESCCSI
 main_client send-keys -t "$rename_pane" -H 1b 5b 30 6d
@@ -169,8 +159,6 @@ sleep 0.5
 check_equal allow-rename-commits-on-can CAN \
     "$(main_client display-message -p -t "$rename_pane" '#{window_name}')"
 
-# input_exit_rename writes the name with window_set_name, so the rename raises
-# window-renamed and never the after-rename-window command hook.
 main_client set-environment -g RENHOOK none
 main_client set-environment -g RENEVENT none
 main_client set-hook -g after-rename-window 'set-environment -g RENHOOK after'
@@ -202,9 +190,6 @@ await_line "$bspace_pane" '\^W'
 check_equal backspace-writes-one-byte-per-key '^?^H^W' \
     "$(main_client capture-pane -p -t "$bspace_pane" | tr -d ' \n')"
 
-# spawn.c writes the backspace key into the child's VERASE, but only a key
-# code below 0x7f survives: C-h carries a modifier bit and lands on 0x7f,
-# while the 0x08 spelling is a bare code and reaches the child.
 probe_verase() {
     main_client set-option -s backspace "$2"
     main_client new-window -t "=$session" -n "$1" "sh $HOME/pane-erase-probe.sh"
@@ -224,8 +209,6 @@ await_line "$erase_default" 'ERASE'
 check_equal verase-follows-the-default 'ERASE[^?]' \
     "$(main_client capture-pane -p -t "$erase_default" | tr -d ' \n')"
 
-# input_key writes the option's own byte for an unmodified BSpace even when
-# VERASE could not take it.
 main_client set-option -s backspace 0x41
 rm -f "$work/visible.ready"
 main_client new-window -t "=$session" -n bsliteral "$visible"

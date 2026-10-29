@@ -8,9 +8,6 @@ pub enum MenuKeyResult {
     Consumed,
 }
 
-/// One pointer report as `menu_key_cb` classifies it. A motion with no button
-/// held is its own kind because the pin's `move` is `MOUSE_DRAG && MOUSE_RELEASE`
-/// and such a report must never select or close.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MenuPointerKind {
     Press,
@@ -20,8 +17,6 @@ pub enum MenuPointerKind {
     Wheel,
 }
 
-/// The drawn box a pointer report is measured against: `md->px`, `md->py` and
-/// the `menu->width + 4` by `menu->count + 2` screen `screen_write_box` fills.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct MenuBox {
     pub left: u16,
@@ -30,8 +25,6 @@ pub struct MenuBox {
     pub items: usize,
 }
 
-/// What a pasted run does to a live menu: the selection it leaves behind, the
-/// first action it fires, and the text that arrives after the menu is gone.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuPasteResult {
     pub selection: Option<usize>,
@@ -40,10 +33,6 @@ pub struct MenuPasteResult {
 }
 
 impl MenuBox {
-    /// `menu_key_cb`'s hit box: `px .. px + 4 + width` by
-    /// `py + 1 .. py + 1 + count - 1`, so the title row in the top border and
-    /// the bottom border sit outside it while the column one past the right
-    /// border sits inside.
     #[must_use]
     pub fn contains(self, column: u16, row: u16) -> bool {
         let last_row = self
@@ -63,18 +52,8 @@ impl MenuBox {
     }
 }
 
-/// The pin's `MOUSE_BUTTON_1`, which `MOUSE_BUTTONS(b)` answers for a button-1
-/// press and for a drag with button 1 held.
 pub const MOUSE_BUTTON_1: u8 = 0;
 
-/// `menu_key_cb`'s mouse arm. A menu the pin marked `MENU_NOMOUSE` - every
-/// `display-menu` without `-M` and without an invoking mouse event - answers
-/// only button 1, which it ignores, and leaves on any other button, so a
-/// release, a motion, a wheel and a button-2 or button-3 press all close it
-/// with nothing chosen. Otherwise a press or a motion moves the highlight, a
-/// release chooses the row the highlight already sits on, and a release outside
-/// the box closes a menu that is not stay-open. A stay-open menu instead closes
-/// on any report that is neither a release, a wheel nor a drag.
 #[must_use]
 pub fn resolve_menu_mouse(
     state: &MenuState,
@@ -120,12 +99,6 @@ pub fn resolve_menu_mouse(
     }
 }
 
-/// The pin has no paste path while a menu owns the client's keys:
-/// `server_client_handle_key0` hands `c->overlay_key` every key of a bracketed
-/// paste, so the two bracket markers fall through `menu_key_cb` and are
-/// swallowed while each pasted character is answered exactly as if it had been
-/// typed. Once a character closes the menu, the rest of the run reaches the
-/// pane as ordinary keys.
 #[must_use]
 pub fn resolve_menu_paste(
     state: &MenuState,

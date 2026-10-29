@@ -383,8 +383,6 @@ pub fn rows(tables: &[KeyTableSnapshot], table: &str, prefix: &str) -> Vec<Which
     build_rows(tables, table, prefix, true)
 }
 
-/// Like [`rows`], but never merges different commands into one row, so each
-/// row can run its own first key.
 #[must_use]
 pub fn action_rows(tables: &[KeyTableSnapshot], table: &str, prefix: &str) -> Vec<WhichKeyRow> {
     build_rows(tables, table, prefix, false)

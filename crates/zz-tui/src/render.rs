@@ -36,7 +36,6 @@ mod pane_mode;
 
 pub(crate) use zz_client::ViewportDamage as FrameDamage;
 
-/// Folds a coalesced frame's damage into the damage already pending for a pane.
 pub(crate) fn merge_damage(damage: &mut FrameDamage, incoming: FrameDamage) {
     match (&mut *damage, incoming) {
         (FrameDamage::All, _) | (_, FrameDamage::All) => *damage = FrameDamage::All,
@@ -60,7 +59,6 @@ struct StyledLine {
     segments: Vec<StyledSegment>,
 }
 
-/// The rows `window_tree_help` lists, which `F1` and `C-h` put on the screen.
 const CHOOSE_TREE_HELP: &[&str] = &[
     "Up, k          Move up",
     "Down, j        Move down",
@@ -79,7 +77,6 @@ const CHOOSE_TREE_HELP: &[&str] = &[
     "F1, C-h        This help",
 ];
 
-/// The rows `window_buffer_help` lists.
 const CHOOSE_BUFFER_HELP: &[&str] = &[
     "Up, k          Move up",
     "Down, j        Move down",
@@ -123,18 +120,6 @@ impl StyledLine {
         }
     }
 
-    /// Every `themeX` colour in this line, replaced by the colour the daemon
-    /// resolved for THIS client. `server_client_update_theme_colours` resolves
-    /// the ten slots per client from the `theme` option and the roster, so a
-    /// client that resolved them from a table of its own could not follow a
-    /// user-set `dark-theme-green` and could not follow `theme light` at all.
-    /// The class survives the substitution, which is the point of carrying
-    /// `TmuxColour` on the wire: `colour124` leaves as `\e[48;5;124m`.
-    ///
-    /// The status row only. Every other surface that can name a theme colour -
-    /// a pane border, the sidebar's own chrome - keeps zz's theme under the
-    /// recorded presentation:tui-status-row-theme-defaults decision, whose
-    /// scope is exactly that.
     fn resolve_theme(&mut self, theme: &ThemeColours) {
         for segment in &mut self.segments {
             for slot in [
@@ -333,9 +318,6 @@ impl Renderer {
         }
     }
 
-    /// `tty_update_features` invalidates the whole terminal when a reply
-    /// raises what it takes, because every cell already on it was written for
-    /// the old answer.
     fn note_terminal_colours(&mut self) {
         let colours = crate::tty::terminal_colours();
         if self.terminal_colours != colours {
@@ -676,8 +658,6 @@ impl Renderer {
         }
     }
 
-    /// Moves the queued control bytes into this paint, keeping a copy in case
-    /// the paint is dropped.
     fn emit_queued_control(&mut self) {
         self.control_replay.extend_from_slice(&self.queued_control);
         self.output.append(&mut self.queued_control);
@@ -741,12 +721,6 @@ impl Renderer {
         }
     }
 
-    /// Throws away whatever the writer has not painted yet.
-    ///
-    /// The client calls this when its event loop ends, before the terminal is
-    /// restored: a paint still in the queue belongs to a pane that is about to
-    /// disappear, and writing it after the alternate screen is gone would put
-    /// pane bytes on the user's shell.
     pub fn discard_queued_paints(&mut self) {
         self.tty = None;
         self.settled = None;
@@ -1036,8 +1010,6 @@ impl Renderer {
         }
     }
 
-    /// `redraw_mark_pane_borders` for a float: its own box, drawn over
-    /// whatever is under it, in the pane's border style.
     fn paint_float_border(&mut self, float: &FloatFrame, model: &Model) {
         let style = model.pane_border_style(float.pane);
         let fallback = if float.active {
@@ -1071,9 +1043,6 @@ impl Renderer {
         write_border_runs(&mut self.output, &border, model.size.columns);
     }
 
-    /// A window with no tiled pane leaves its whole area to
-    /// `REDRAW_SPAN_EMPTY`, which tmux 3.8 fills with the inside cell of the
-    /// default `fill-character`.
     fn paint_empty_window(&mut self, model: &Model) {
         let Some(window) = model.window() else {
             return;
@@ -1580,9 +1549,6 @@ impl Renderer {
         }
     }
 
-    /// `window_make_pane_status` fills the row with border cells first and then
-    /// lets `format_draw` write the expanded `pane-border-format` over it,
-    /// starting two columns right of the pane's left edge (`wp->xoff + 2`).
     fn paint_border_status_row(
         &mut self,
         rect: Rect,
@@ -2061,9 +2027,6 @@ impl Renderer {
         self.sidebar_rows = rows;
     }
 
-    /// `redraw_draw_pane_prompt`: one row of the pane's own default cells with
-    /// the prompt drawn over it in `message-style`, written after the pane's
-    /// content so a frame never leaves half a prompt on screen.
     fn paint_pane_prompt(&mut self, model: &Model) {
         let Some((prompt, content)) = pane_prompt_target(model) else {
             return;
@@ -2208,8 +2171,6 @@ impl Renderer {
         }
     }
 
-    /// `mode_tree_display_help`: the mode's help screen takes the row area
-    /// until the next key of any kind closes it.
     fn draw_chooser_help(&mut self, model: &Model, start_row: u16, lines: &[&str]) {
         for (index, line) in lines.iter().enumerate() {
             let row = start_row + u16::try_from(index).unwrap_or(u16::MAX);
@@ -2791,8 +2752,6 @@ fn viewport_row(viewport: &TerminalViewport, row: u16, width: u16) -> Option<&[P
         .map(|cells| &cells[..cells.len().min(usize::from(width))])
 }
 
-/// The part of a pane's grid a clipped float shows: its rows and columns
-/// from `source` on, so the window edge crops the pane instead of moving it.
 fn source_viewport(
     viewport: &TerminalViewport,
     source: (u16, u16),
@@ -2839,8 +2798,6 @@ fn source_viewport(
     std::borrow::Cow::Owned(cropped)
 }
 
-/// Damage rows are pane rows; a float clipped by the window's top edge
-/// shows pane row `top` on its first visible row.
 fn source_damage(damage: FrameDamage, top: u16) -> FrameDamage {
     match damage {
         FrameDamage::Rows(rows) if top != 0 => FrameDamage::Rows(
@@ -2852,8 +2809,6 @@ fn source_damage(damage: FrameDamage, top: u16) -> FrameDamage {
     }
 }
 
-/// The kitty placements a clipped float still shows, moved to its visible
-/// grid. An image that starts in the clipped-away part is not placed.
 fn source_placements(
     placements: &[zz_terminal::KittyPlacement],
     source: (u16, u16),
@@ -2907,11 +2862,6 @@ fn divider_cells(dividers: &[Divider]) -> BTreeSet<(u16, u16)> {
     cells
 }
 
-/// `redraw_mark_border_arrows` marks one cell on each side of every pane, at
-/// `xoff + 1` on the rows above and below it and at `yoff + 1` on the columns
-/// left and right of it, and `redraw_draw_border_arrow` then draws an arrow
-/// there only when the active pane is one of that cell's owners, pointing at
-/// it: left owner is a left arrow, then right, then top, then bottom.
 fn border_arrow(
     model: &Model,
     indicators: PaneBorderIndicators,
@@ -3059,36 +3009,16 @@ struct StatusOverlay {
     fill: Option<TmuxColour>,
 }
 
-/// A message on the status row takes the cursor off the screen. Measured
-/// 2026-09-10 against the pin inside one outer tmux: with `display-message` up,
-/// the pin reports `cursor_flag` 0 at the pane cursor's own position and the raw
-/// TUI reported 1, so the two screens differed in the cursor for as long as the
-/// message lasted. `server_client_reset_state` drops `MODE_CURSOR` for a client
-/// whose status screen is the one being drawn and which has no prompt; a prompt
-/// keeps its cursor, which is why this is checked after the prompt branch. It
-/// still calls `tty_cursor`, so the hidden cursor stays AT the pane cursor and
-/// does not park wherever the last write left it - which is why the caller
-/// places the pane cursor first and only then hides it. The guard mirrors
-/// `status_overlay`: with the sidebar up and no command output the message is a
-/// sidebar row and the status row is untouched, so the cursor is not this
-/// message's to take.
 fn client_message_hides_the_cursor(model: &Model) -> bool {
     model.client_message.is_some() && !model.sidebar_visible()
 }
 
-/// `cmd_command_prompt_exec`'s `-P`: the prompt hangs on a pane rather than on
-/// the client, so `redraw_draw_pane_prompt` draws it over that pane and
-/// `status_redraw` keeps the status row. The pane has to be on this client's
-/// screen for the prompt to have a row; a pane prompt whose pane is not laid
-/// out here keeps the status row instead of vanishing.
 fn pane_prompt_target(model: &Model) -> Option<(&zz_protocol::CommandPromptState, Rect)> {
     let prompt = model.command_prompt.as_ref()?;
     let content = model.pane_rect(prompt.pane?)?.content();
     (content.width > 0 && content.height > 0).then_some((prompt, content))
 }
 
-/// `redraw_draw_pane_prompt`: the pane's last row, or its first when the status
-/// block is on top.
 fn pane_prompt_row_y(model: &Model, content: Rect) -> u16 {
     if model.status_top() {
         content.y
@@ -3114,8 +3044,6 @@ fn prompt_cursor(model: &Model) -> zz_protocol::PromptCursor {
     mode_prompt_cursor(model).unwrap_or_default()
 }
 
-/// `mode_tree_draw_prompt` and the switch mode's prompt: `prompt_draw` gives
-/// the mode screen the prompt's cursor style and colour while it is open.
 fn mode_prompt_cursor(model: &Model) -> Option<zz_protocol::PromptCursor> {
     let chooser_prompt = |prompt: &str, search: bool| !prompt.is_empty() || search;
     if let Some(state) = &model.choose_tree {
@@ -3298,9 +3226,6 @@ fn base_status_left(model: &Model) -> StyledLine {
     left
 }
 
-/// Width of the shortcut gutter, empty when no row has one. `mode_tree_draw`
-/// sizes it from the widest key plus the two parentheses and a trailing space,
-/// and rows without a key pad to the same column.
 fn chooser_key_column<'a>(keys: impl Iterator<Item = &'a str>) -> usize {
     keys.filter(|key| !key.is_empty())
         .map(|key| key.chars().count() + 3)
@@ -3330,9 +3255,6 @@ fn append_status_label(line: &mut StyledLine, value: &str) {
     line.append(&label);
 }
 
-/// The mode badge for the status row. `copy-mode -H` suppresses the position
-/// and nothing else, matching the `!data->hide_position` guard that decides
-/// whether `window_copy_write_line` draws `copy-mode-position-format` at all.
 fn mode_indicator(mode: TerminalMode) -> String {
     match mode {
         TerminalMode::Live => String::new(),
@@ -3347,11 +3269,6 @@ fn mode_indicator(mode: TerminalMode) -> String {
     }
 }
 
-/// The mode and search badges, without the armed-prefix hint. status.c redraws
-/// the status row from the same formats whether or not the prefix is armed and
-/// no default format reads `#{client_prefix}`, so the pin paints nothing there
-/// while a user holds the prefix. The status ROW is the row the pin also draws,
-/// so it carries these two and not the hint.
 fn mode_indicators(model: &Model) -> String {
     let mut indicators = String::new();
     let viewport = model
@@ -3376,9 +3293,6 @@ fn mode_indicators(model: &Model) -> String {
     indicators
 }
 
-/// The sidebar's indicator row: the mode badges plus the armed-prefix hint. The
-/// sidebar is client-local chrome with no counterpart in the pin and only
-/// focus-sidebar or a user binding shows it, so the hint lives here.
 fn status_indicators(model: &Model) -> String {
     let mut indicators = mode_indicators(model);
     if model.prefix_armed {
@@ -3793,12 +3707,6 @@ enum Ground {
     Background,
 }
 
-/// `tty_colours_fg` and `tty_colours_bg`: a named or indexed colour reaches the
-/// terminal as the `setaf`/`setab` capability for that index, so the viewer's
-/// own palette decides what green is, and only an RGB colour is sent as
-/// truecolor. On `xterm-256color` those capabilities expand to `3n`/`4n` below
-/// 8, `9n`/`10n` below 16 and `38;5;n`/`48;5;n` above. `default` and
-/// `terminal` reset the ground, the way `tty_colours` sends `39` and `49`.
 fn write_ground(output: &mut Vec<u8>, colour: Option<TmuxColour>, fallback: Color, ground: Ground) {
     let Some(colour) = colour else {
         write_default_ground(output, ground);
@@ -3842,10 +3750,6 @@ fn write_default_ground(output: &mut Vec<u8>, ground: Ground) {
     });
 }
 
-/// `tty_check_codeset`: a cell below `0x7f` is always fine, and so is any cell
-/// for a client whose terminal takes UTF-8. For a client without `CLIENT_UTF8`
-/// the pin sends `data.width` underscores instead of the codepoint, so a wide
-/// cell leaves as two and a combining sequence as one.
 fn write_glyph(output: &mut Vec<u8>, glyph: Glyph<'_>, width: u16) {
     match glyph {
         Glyph::Empty => output.push(b' '),
@@ -3897,14 +3801,6 @@ fn write_rgb_ground(output: &mut Vec<u8>, colour: Color, ground: Ground) {
 
 const RGB_COLOURS: u32 = 16_777_216;
 
-/// `tty_check_fg` and `tty_check_bg` after the palette: a 256-colour index a
-/// terminal with fewer colours cannot take drops to its nearest of sixteen
-/// (`colour_256to16`), and one below sixteen on a terminal with fewer drops
-/// its aixterm half. A cell already inside the terminal's range is written as
-/// it stands. The pin's last step, turning an aixterm colour back into a plain
-/// one plus the bright attribute for a terminal under sixteen colours, and its
-/// black-on-black dodge, both need the other ground and the cell's attributes,
-/// which this writer does not carry; neither is driven.
 fn downgrade_palette(index: u8, colours: u32) -> u8 {
     if colours >= 256 || (index < 16 && colours >= 16) {
         return index;
@@ -3913,7 +3809,6 @@ fn downgrade_palette(index: u8, colours: u32) -> u8 {
     if colours >= 16 { mapped } else { mapped & 7 }
 }
 
-/// `colour_256to16`.
 fn colour_256to16(index: u8) -> u8 {
     #[rustfmt::skip]
     const TABLE: [u8; 256] = [
@@ -3937,8 +3832,6 @@ fn colour_256to16(index: u8) -> u8 {
     TABLE[usize::from(index)]
 }
 
-/// `colour_find_rgb`: the nearest entry of the 6x6x6 cube or of the grey ramp,
-/// whichever is closer, as a 256-colour index.
 fn colour_find_rgb(colour: Color) -> u8 {
     const Q2C: [i32; 6] = [0x00, 0x5f, 0x87, 0xaf, 0xd7, 0xff];
     let (r, g, b) = (
@@ -3966,7 +3859,6 @@ fn colour_find_rgb(colour: Color) -> u8 {
     }
 }
 
-/// `colour_to_6cube`.
 fn colour_to_6cube(value: i32) -> i32 {
     if value < 48 {
         0
@@ -3977,18 +3869,10 @@ fn colour_to_6cube(value: i32) -> i32 {
     }
 }
 
-/// `colour_dist_sq`.
 fn colour_distance(red: i32, green: i32, blue: i32, r: i32, g: i32, b: i32) -> i32 {
     (red - r) * (red - r) + (green - g) * (green - g) + (blue - b) * (blue - b)
 }
 
-/// The dark half of `colour_theme_table`, resolved the way
-/// `server_client_update_theme_colours` resolves it for a client that reports
-/// 256 colours or more: each `dark-theme-*` option's default expands to the
-/// X11 name here, and `colour_fromstring` turns that into an RGB colour. The
-/// raw TUI already assumes a terminal that takes truecolor, which is a
-/// stronger assumption than 256 colours, and `theme` defaults to `detect`
-/// with a dark terminal.
 const DARK_THEME_COLOURS: [&str; 10] = [
     "gray5",
     "gray90",
@@ -4496,13 +4380,6 @@ mod tests {
         assert_eq!(wide_fill, "a界 ");
     }
 
-    /// `tty_colours_fg` sends a named or indexed colour as the `setaf`
-    /// capability for that index and only an RGB colour as truecolor, so the
-    /// viewer's palette decides what red is. On `xterm-256color` that expands
-    /// to `\x1b[31m` for red, `\x1b[38;5;42m` for colour42 and `\x1b[92m` for
-    /// brightgreen. `#[bg=default]` is not tested here: `apply_colour` folds
-    /// it back to the base style's colour, the way `style_apply` does, so it
-    /// never reaches the writer as `TmuxColour::Default`.
     #[test]
     fn styled_lines_send_named_and_indexed_colours_the_way_the_pin_does() {
         let appearance = TerminalAppearance::default();

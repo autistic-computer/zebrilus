@@ -20,8 +20,6 @@ pub use zz_client::agent_timeline::{
     git_file_count_label,
 };
 
-/// The round send, queue or stop button at the composer's end, on the
-/// composer's ground so its fill shows against the pill.
 pub fn composer_action_button(
     id: impl Into<ElementId>,
     action: ComposerAction,
@@ -43,7 +41,6 @@ pub fn composer_action_button(
         .disabled(!enabled)
 }
 
-/// The round `+` at the composer's start, the size of its send button.
 pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, cx: &App) -> Button {
     Button::compact_icon(id, IconName::Plus)
         .size(crate::rems_from_px(COMPOSER_BUTTON))
@@ -57,8 +54,6 @@ pub fn agent_chrome_button(id: impl Into<ElementId>) -> Button {
     Button::new(id).ghost().small().h(px(24.0)).px_2()
 }
 
-/// How many prompts wait behind the live turn, as a chip that hands them back
-/// to the composer when clicked.
 pub fn agent_queue_chip(
     id: impl Into<ElementId>,
     queued: impl std::fmt::Display,

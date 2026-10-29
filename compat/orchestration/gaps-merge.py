@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""Three-way merge of compat/tmux-gaps.json at the record level.
-
-usage: gaps-merge.py BASE OURS THEIRS OUT
-Records are keyed by id inside gaps[] and closed[]; a record changed on one side
-only takes that side, a record changed identically on both is fine, and a record
-changed differently on both is a conflict that fails the merge loudly.
-"""
 import json, sys
 
 base, ours, theirs, out = sys.argv[1:5]

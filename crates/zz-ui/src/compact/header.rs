@@ -19,13 +19,10 @@ const FROST_BLUR: f32 = 20.0;
 const FROST_TINT: f32 = 0.72;
 const FROST_SATURATION: f32 = 1.8;
 
-/// How far a page has scrolled down, in points.
 pub fn scrolled(scroll: &ScrollHandle) -> f32 {
     (-f32::from(scroll.offset().y)).max(0.0)
 }
 
-/// A page's title as the first row it scrolls, large and bold, for a
-/// [`folding_title_bar`] to take over once it scrolls away.
 pub fn large_title(title: impl Into<SharedString>, cx: &App) -> Div {
     div()
         .debug_selector(|| "large-title".to_owned())
@@ -49,10 +46,6 @@ pub fn large_title(title: impl Into<SharedString>, cx: &App) -> Div {
         )
 }
 
-/// The bar over a page that opens with a [`large_title`], `top_inset` under
-/// the window's top. Clear while the large title shows, it frosts over
-/// what scrolls under it and takes the title, small and centered, once the
-/// page has `scrolled` the large one away.
 pub fn folding_title_bar(
     title: impl Into<SharedString>,
     scrolled: f32,
@@ -123,8 +116,6 @@ pub fn folding_title_bar(
         })
 }
 
-/// A pane header button showing how many tabs a page holds, the count in a
-/// rounded square; it opens the page's tab drawer.
 #[allow(
     clippy::disallowed_methods,
     reason = "the box is a glyph in the button's text color, not a surface edge"

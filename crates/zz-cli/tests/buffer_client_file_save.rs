@@ -1,10 +1,3 @@
-//! `save-buffer` writes through the client that asked for it.
-//!
-//! `file_write` in file.c is `file_read`'s twin: the server expands the path
-//! once, then hands the absolute path and the bytes to the invoking client
-//! unless that client is attached, so the file lands on the caller's host and
-//! `-a` appends there.
-
 #![cfg(unix)]
 
 mod client_file;

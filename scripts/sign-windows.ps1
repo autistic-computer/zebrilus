@@ -1,24 +1,3 @@
-<#
-.SYNOPSIS
-Authenticode-sign the Windows executables and the installer.
-
-.DESCRIPTION
-Reads the certificate from the environment so the release workflow can hand it
-over as a secret and never write it to the repository:
-
-  WINDOWS_CERTIFICATE_PFX_BASE64  base64 of the PKCS#12 file (required)
-  WINDOWS_CERTIFICATE_PASSWORD    its password (required)
-  WINDOWS_TIMESTAMP_URL           RFC 3161 timestamp server (optional)
-
-No certificate exists yet. Provision one before a signed release: OV and EV
-code-signing certificates have been hardware-bound since June 2023, so the
-realistic sources are a cloud signing service (Azure Trusted Signing, SignPath,
-ssl.com eSigner) or a token whose provider exposes a PFX for CI. Every one of
-them still drives signtool.exe, so only how the key material arrives changes.
-
-.EXAMPLE
-powershell.exe -File scripts\sign-windows.ps1 dist\zz\zz.exe dist\zz\zz.dll
-#>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, ValueFromRemainingArguments = $true)][string[]]$Paths
@@ -50,8 +29,6 @@ foreach ($path in $Paths) {
     }
 }
 
-# signtool.exe ships with the Windows SDK and is not on PATH there, so take the
-# newest x64 copy the SDK installed.
 $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
 if ($signtool) {
     $signtoolPath = $signtool.Path

@@ -68,9 +68,6 @@ impl Default for ClientFocusState {
     }
 }
 
-/// One status-line message. Daemon-timed messages carry the `message_id` the
-/// daemon can retire them by and the duration it published; messages the TUI
-/// raises itself carry neither and stay up until something replaces them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ClientMessage {
     pub text: String,
@@ -87,7 +84,6 @@ impl ClientMessage {
         }
     }
 
-    /// A zero duration is the pin's `delay == 0`: no timer, dismissed by a key.
     pub fn timed(text: String, id: Option<u64>, duration_ms: Option<u32>, now: Instant) -> Self {
         Self {
             text,
@@ -99,9 +95,6 @@ impl ClientMessage {
     }
 }
 
-/// Presentation state plus cheap caches of the reduced protocol state that
-/// [`ClientCore`] owns. Caches are refreshed from the core when its events
-/// arrive so painting and input never take the core lock.
 pub(crate) struct Model {
     pub host_label: String,
     pub current_endpoint: Endpoint,
@@ -140,24 +133,9 @@ pub(crate) struct Model {
     pub last_sent_geometry: HashMap<PaneId, (u16, u16, u32, u32)>,
     pub last_sent_command_output_geometry: Option<(u16, u16, u32, u32)>,
     pub mouse_option: bool,
-    /// Every mouse key name the server's tables carry a binding for, in the
-    /// pin's own spelling. A pointer gesture whose name is in here runs that
-    /// binding instead of the client's own pointer handling.
     pub mouse_bindings: std::collections::HashSet<String>,
-    /// The same, for the two copy tables. A pointer event reaches them only
-    /// while the pane it landed on holds a mode, which is the condition
-    /// `server_client_handle_key` puts on the mode table.
     pub copy_mouse_bindings: std::collections::HashSet<String>,
-    /// `c->tty.mouse_drag_flag` and `mouse_last_pane`: once a button goes down
-    /// the location that press resolved to owns every drag and the release
-    /// that follow it, however far the pointer travels. Without the latch a
-    /// drag off a divider resolves inside the pane it lands in and the border
-    /// gesture the press started is lost.
     pub mouse_drag: Option<MouseDragLatch>,
-    /// `CLIENT_DOUBLECLICK`, `CLIENT_TRIPLECLICK` and `c->click_event`: the
-    /// press sequence a pointer is in the middle of, and the event the
-    /// `KEYC_CLICK_TIMEOUT` timer replays as a `DoubleClick` when it expires
-    /// with no third press behind it.
     pub click: Option<ClickSequence>,
     pub focus_follows_mouse: bool,
     pub mouse_arming: crate::tty::MouseArming,
@@ -167,16 +145,9 @@ pub(crate) struct Model {
     fleet_hosts: Vec<HostEntry>,
 }
 
-/// The pin's click sequence, which lives on the client because the pointer
-/// does: a press is a `MouseDown`, a second press inside `KEYC_CLICK_TIMEOUT`
-/// on the same button, location and pane is a `SecondClick`, a third is a
-/// `TripleClick`, and a timer that expires after a `SecondClick` with no third
-/// press behind it replays the stored event as a `DoubleClick`.
 #[derive(Clone, Debug)]
 pub struct ClickSequence {
     pub deadline: std::time::Instant,
-    /// `CLIENT_TRIPLECLICK`: the second press was taken, so the next one is a
-    /// `TripleClick` and an expiring timer is a `DoubleClick`.
     pub triple: bool,
     pub button: crate::terminal_event::MouseButton,
     pub location: String,
@@ -193,18 +164,8 @@ pub struct MouseDragLatch {
     pub pane: Option<PaneId>,
     pub window: Option<zz_protocol::WindowId>,
     pub border: Option<zz_protocol::Axis>,
-    /// `c->tty.mouse_drag_flag`, which `server_client_check_mouse` raises on
-    /// the first MOUSEDRAG and reads on the release: a release that ends a
-    /// drag is `MouseDragEnd`, and a release that ends nothing is `MouseUp`.
     pub dragging: bool,
-    /// `c->tty.mouse_drag_update`: a drag whose name a binding claimed owns the
-    /// release that ends it, so the `MouseDragEnd` goes to the server whatever
-    /// the client last saw of the pane's mode - the drag itself is what may
-    /// have put the pane in one.
     pub bound: bool,
-    /// Where the press landed, in the client's own screen and in pixels:
-    /// `m->lx`/`m->ly` on the pin's event record, which is the anchor
-    /// `copy-mode -M` starts its selection from.
     pub press: (u16, u16, u32, u32),
 }
 
@@ -278,8 +239,6 @@ impl Model {
         model
     }
 
-    /// Reseeds the caches from a freshly handshaken core and drops the
-    /// presentation state that belonged to the previous connection.
     pub fn reset_connection(&mut self, core: &ClientCore) {
         self.input_event(InputEvent::Detached);
         self.reset_client_focus_attach();
@@ -476,9 +435,6 @@ impl Model {
         self.menu_action_pending = action_pending;
     }
 
-    /// The box `menu_key_cb` measures a pointer report against: the origin and
-    /// size `menu_draw_cb` gives `screen_write_box`, resolved against this
-    /// client's own viewport.
     pub fn menu_box(&self) -> Option<zz_client::MenuBox> {
         let menu = self.menu.as_ref()?;
         let layout = resolve_floating(
@@ -515,9 +471,6 @@ impl Model {
         })
     }
 
-    /// Adopts a fresh status publication. Returns whether the block's
-    /// geometry — row count, position, or suppression — changed, which the
-    /// caller must treat as a layout event.
     pub fn set_status(&mut self, status: StatusLine) -> bool {
         let previous = (self.status_block_rows(), self.status_top());
         self.status = Arc::new(status);
@@ -528,8 +481,6 @@ impl Model {
         changed
     }
 
-    /// Rows the tmux status block occupies: the published row count, or zero
-    /// when status is off or the terminal cannot keep one pane-content row.
     pub fn status_block_rows(&self) -> u16 {
         let rows = u16::try_from(self.status.rows.len()).unwrap_or(u16::MAX);
         if rows == 0 || self.size.rows < rows.saturating_add(2) {
@@ -551,7 +502,6 @@ impl Model {
         }
     }
 
-    /// The main columns the status block spans: everything beside the sidebar.
     pub fn status_area(&self) -> (u16, u16) {
         let x = if self.sidebar_visible() {
             sidebar::WIDTH
@@ -563,9 +513,6 @@ impl Model {
         (x, self.size.columns.saturating_sub(x))
     }
 
-    /// Drop the message once its published duration has run out. The daemon
-    /// owns the authoritative timer for `display-message` and clears by
-    /// identity; this covers the producers that publish only a duration.
     pub fn expire_client_message(&mut self, now: Instant) -> bool {
         let expired = self
             .client_message
@@ -578,9 +525,6 @@ impl Model {
         expired
     }
 
-    /// Retire a message the daemon cleared, but only while the identity still
-    /// matches what is on screen: an old timer must never take down the
-    /// message that replaced it.
     pub fn clear_client_message(&mut self, message_id: u64) -> bool {
         let matches = self
             .client_message
@@ -598,9 +542,6 @@ impl Model {
             .and_then(|message| message.expires_at)
     }
 
-    /// The screen row client messages and the command prompt replace: the
-    /// block's `message_line` row, or one virtual row at the configured
-    /// position while a message or prompt is active with the block hidden.
     pub fn message_row_y(&self) -> Option<u16> {
         let block = self.status_block_rows();
         if block > 0 {
@@ -632,8 +573,6 @@ impl Model {
             .then(|| usize::from(row - origin))
     }
 
-    /// `sr->start` for the status range a column lands in, in the composed
-    /// row's own columns. `cmd_display_menu_get_pos` puts `-x W` on it.
     pub fn status_hit_range_start(&self, index: usize, column: u16) -> Option<u16> {
         let (_, width) = self.status_area();
         let row = self.status.rows.get(index)?;
@@ -913,7 +852,6 @@ impl Model {
             .map_or(PaneBorderStatus::Off, |window| window.pane_border_status)
     }
 
-    /// `window_pane_get_pane_lines`: a float reads its own value.
     pub fn pane_lines(&self, pane: PaneId) -> PaneBorderLines {
         self.layout
             .float(pane)
@@ -942,7 +880,6 @@ impl Model {
             })
     }
 
-    /// The pin's `window_pane_index`: the pane's position in `w->panes`.
     pub fn pane_index(&self, pane: PaneId) -> Option<u32> {
         let position = self
             .window()?
@@ -970,8 +907,6 @@ impl Model {
         crate::mode_view::resolved_style(&border.style, &self.status.theme)
     }
 
-    /// `tty_default_colours`: the pane's grounds from `window-style`, each
-    /// replaced by `window-active-style`'s where the active pane sets one.
     pub fn pane_window_style(&self, pane: PaneId) -> zz_protocol::TmuxStyle {
         let Some(border) = self
             .status
@@ -1004,9 +939,6 @@ impl Model {
             .copied()
     }
 
-    /// `window_get_active_at`: with a modal only the modal answers; otherwise
-    /// visible floats front to back, their borders included, then the tiled
-    /// panes.
     pub fn pane_at(&self, column: u16, row: u16) -> Option<PaneRect> {
         if let Some(modal) = self.window().and_then(|window| window.modal) {
             return self
@@ -1031,8 +963,6 @@ impl Model {
             .copied()
     }
 
-    /// Whether a float drawn above `pane` covers the cell, which hides the
-    /// pane's cursor there as tmux 3.8's scene does.
     pub fn covered_above(&self, pane: PaneId, column: u16, row: u16) -> bool {
         let tiled = self.layout.tiled().len();
         let front = self
@@ -1593,10 +1523,6 @@ mod tests {
         }
     }
 
-    /// Two retirement paths, one rule: a message goes away on its own duration
-    /// or on a clear whose identity still matches. A stale clear must not take
-    /// down the message that replaced it, and the TUI must stop pinning timed
-    /// messages forever.
     #[test]
     fn a_timed_message_expires_on_its_duration_and_clears_only_by_identity() {
         let mut model = make_model(80, 24);

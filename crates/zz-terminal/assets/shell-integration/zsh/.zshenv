@@ -1,6 +1,3 @@
-# zz zsh startup bridge. Restore the user's ZDOTDIR before zsh proceeds to
-# .zprofile/.zshrc, while sourcing the title hooks from zz's private cache.
-
 typeset -g __zz_integration_dir=$ZZ_SHELL_INTEGRATION_DIR
 if [[ -n ${ZZ_ZSH_ZDOTDIR+x} ]]; then
   builtin export ZDOTDIR=$ZZ_ZSH_ZDOTDIR

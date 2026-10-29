@@ -49,9 +49,6 @@ const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
 const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
 const ACTIVITY_ROW_HEIGHT: f32 = 28.0;
 const ACTIVITY_ROW_FONT_SIZE: f32 = 13.0;
-/// Tall enough to clear the system font's ascent-plus-descent at
-/// [`ACTIVITY_ROW_FONT_SIZE`] (15.31px), so `overflow_hidden` never clips a
-/// descender.
 const ACTIVITY_ROW_LINE_HEIGHT: f32 = 16.0;
 const ACTIVITY_DISCLOSURE_SIZE: f32 = 12.0;
 const FIGURE_CACHE_CAPACITY: usize = 16;
@@ -63,14 +60,10 @@ const MARKDOWN_PREVIEW_MAX_LINES: usize = 512;
 const MARKDOWN_PREVIEW_HEIGHT: f32 = 420.0;
 const MARKDOWN_PREVIEW_MARKER: &str =
     "\n\n… [large message preview stopped; copy the full message below]";
-/// Where a link whose URL is still streaming is pointed. The renderer refuses
-/// to open `data:` URLs, which is what keeps the mend sentinel inert.
 const INERT_LINK_URL: &str = "data:,";
 pub const AGENT_CONTENT_MAX_WIDTH: f32 = 680.0;
 const TURN_GAP: f32 = 16.0;
-/// Side of a square attachment tile in a sent message.
 pub const TRANSCRIPT_ATTACHMENT: Pixels = px(140.0);
-/// Side of a square attachment tile in the composer.
 pub const COMPOSER_ATTACHMENT: Pixels = px(56.0);
 
 #[cfg(test)]
@@ -403,7 +396,6 @@ pub struct AgentTimelineStore {
     turn_clocks: zz_client::agent_timeline::TurnClocks,
     cwd: Option<PathBuf>,
     markdown_extensions: HashMap<bool, MarkdownExtensions>,
-    /// The entry still receiving deltas, whose display copy is mended.
     streaming: Option<u64>,
     owner: Option<u64>,
 }
@@ -467,9 +459,6 @@ impl AgentTimelineStore {
         state
     }
 
-    /// Name the entry that is still streaming, so its display copy is mended
-    /// while markers hang. The entry that leaves the slot settles back to its
-    /// raw text: a completed entry always renders exactly what it holds.
     pub fn set_streaming(&mut self, id: Option<u64>, cx: &mut Context<Self>) {
         if self.streaming == id {
             return;
@@ -568,8 +557,6 @@ impl AgentTimelineStore {
         update
     }
 
-    /// Session working directory, used to resolve relative file links in
-    /// message bodies. Changing it reparses every retained `TextView`.
     pub fn set_cwd(&mut self, cwd: Option<PathBuf>, cx: &mut Context<Self>) {
         if self.cwd == cwd {
             return;
@@ -649,7 +636,6 @@ pub enum AgentEntry {
     User {
         id: u64,
         markdown: AgentMarkdown,
-        /// Images sent with the message, shown above its text as tiles.
         images: Arc<[Arc<Image>]>,
         rewind_id: Option<SharedString>,
     },
@@ -762,20 +748,11 @@ pub fn append_timeline_row(rows: &mut Vec<TimelineRow>, entry: AgentEntry) -> (u
     zz_client::agent_timeline::append_timeline_row(rows, entry)
 }
 
-/// Padding above the first timeline row. It lives inside the scrolled content,
-/// so a caller measuring the distance to the end has to account for it.
 pub const AGENT_TIMELINE_TOP_PADDING: f32 = 16.0;
-/// Treat the timeline as exactly pinned within this distance of the end.
 pub const AGENT_AT_BOTTOM_PX: f32 = 2.0;
-/// Offer the jump-to-bottom pill beyond this distance from the end.
 pub const AGENT_JUMP_TO_BOTTOM_PX: f32 = 320.0;
-/// Teleport when farther than this many viewports from the end, then glide the
-/// rest — a full-history jump would otherwise spend seconds scrolling.
 pub const AGENT_GLIDE_MAX_VIEWPORTS: f32 = 2.5;
-/// Keep the spring loop warm this long after landing, so a pause between
-/// streamed chunks resumes at cruise instead of re-accelerating from zero.
 pub const AGENT_SPRING_SETTLE_GRACE: Duration = Duration::from_millis(500);
-/// Re-engage the pin when a user scroll returns within this many px of the end.
 const AGENT_STICK_THRESHOLD_PX: f32 = 70.0;
 
 const SPRING_DAMPING: f32 = 0.7;
@@ -787,21 +764,10 @@ const SPRING_GROWTH_EMA: f32 = 0.12;
 const SPRING_CHASE_MAX_LEAD: f32 = 32.0;
 const SPRING_CHASE_LEAD_FRAMES: f32 = 9.0;
 
-/// Whether a user scroll should re-engage the bottom pin: inside the stick band
-/// *and* moving toward the end. Direction matters — a small wheel-up notch from
-/// the pinned bottom stays inside the band, and resticking on it would snap the
-/// view straight back, making the pin impossible to break.
 pub fn agent_should_restick(distance: f32, previous: f32) -> bool {
     distance <= AGENT_STICK_THRESHOLD_PX && distance < previous
 }
 
-/// Pure stick-to-bottom spring stepper. Velocity relaxes toward
-/// `(damping·v + stiffness·diff)/mass` per 60fps sub-frame, position advances
-/// by `v + target_vel` where `target_vel` is a feed-forward EMA of target
-/// growth in px per frame, and the chase point sits up to
-/// [`SPRING_CHASE_MAX_LEAD`] px above the true end in proportion to that
-/// growth — so a streaming tail is followed at its own speed instead of being
-/// hauled after a target that has already moved again.
 #[derive(Debug, Clone, Copy)]
 pub struct StickSpring {
     velocity: f32,
@@ -825,27 +791,20 @@ impl StickSpring {
         }
     }
 
-    /// Park the spring; the next step starts cold.
     pub fn reset(&mut self) {
         *self = Self::new();
     }
 
-    /// Whether the residual motion is below the settle threshold.
     #[must_use]
     pub fn is_idle(&self) -> bool {
         self.velocity < 0.05 && self.target_vel < 0.05
     }
 
-    /// `elapsed` in 60fps frames, capped so a hitch catches up over a few
-    /// sub-steps rather than teleporting a frame's worth of stalled time.
     #[must_use]
     pub fn frames(elapsed: Duration) -> f32 {
         (elapsed.as_secs_f32() * 1000.0 / SPRING_FRAME_MS).min(SPRING_MAX_CATCHUP_FRAMES)
     }
 
-    /// Advance one tick. `pos` and `target` are scroll offsets in px, larger
-    /// meaning closer to the end. Never overshoots `target`, is monotone while
-    /// approaching, and snaps exactly once within half a pixel.
     #[must_use]
     pub fn step(&mut self, mut pos: f32, target: f32, mut frames: f32) -> f32 {
         let grew = self.last_target.map_or(0.0, |last| target - last);
@@ -877,10 +836,6 @@ impl StickSpring {
     }
 }
 
-/// The jump-to-bottom disc, an arrow-down mirror of the composer's send
-/// button. Paint it as an overlay: it must not take part in the timeline's
-/// layout, or appearing would resize the scroll viewport and move the very
-/// content it is offering to reveal.
 pub fn agent_jump_to_bottom_button(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::compact_icon(id, IconName::ArrowDown)
         .secondary()
@@ -889,13 +844,6 @@ pub fn agent_jump_to_bottom_button(id: impl Into<ElementId>, cx: &App) -> Button
         .tooltip("Jump to latest")
 }
 
-/// The timeline's tail pin: a spring that chases the end of the transcript
-/// instead of teleporting to it on every streamed token.
-///
-/// The pin belongs to the caller, not to the list, so [`FollowMode::Tail`]
-/// stays off unless reduced motion is on — ala's tail mode both snaps on every
-/// layout and re-engages itself from scroll *position*, which would make a
-/// deliberate scroll-up impossible to hold while the agent is still writing.
 pub struct TimelineStick {
     pinned: bool,
     spring: StickSpring,
@@ -933,17 +881,10 @@ impl TimelineStick {
         self.show_jump
     }
 
-    /// The list's own bottom padding, which the caller recomputes from whatever
-    /// chrome overlaps the end of the transcript.
     pub fn set_bottom_padding(&mut self, padding: f32) {
         self.bottom_padding = padding;
     }
 
-    /// The end of the scrollable range and the current distance to it, or
-    /// `None` while the content is shorter than the viewport.
-    ///
-    /// `max_offset_for_scrollbar` measures the items alone, but the list also
-    /// scrolls through its own padding, so the true end sits that much lower.
     fn bottom(&self, list: &ListState) -> Option<(f32, f32)> {
         let measured = f32::from(list.max_offset_for_scrollbar().y);
         if measured <= 0.0 {
@@ -958,8 +899,6 @@ impl TimelineStick {
         self.bottom(list).map_or(0.0, |(_, distance)| distance)
     }
 
-    /// Re-arm the driver without disturbing the position: content grew, or the
-    /// pin was just taken.
     pub fn wake(&mut self) {
         self.settled_at = None;
         self.kick = true;
@@ -974,8 +913,6 @@ impl TimelineStick {
         list.set_follow_mode(FollowMode::Normal);
     }
 
-    /// Take the pin and land on the end immediately — for a transcript that is
-    /// being replaced wholesale, where there is no motion to show.
     pub fn engage_now(&mut self, list: &ListState, reduce_motion: bool) {
         self.pinned = true;
         self.show_jump = false;
@@ -992,9 +929,6 @@ impl TimelineStick {
         }
     }
 
-    /// Take the pin and glide to the end. A jump longer than
-    /// [`AGENT_GLIDE_MAX_VIEWPORTS`] teleports most of the way first, so a
-    /// whole-history return still lands in one gesture's worth of motion.
     pub fn engage(&mut self, list: &ListState, reduce_motion: bool) {
         if reduce_motion {
             self.engage_now(list, reduce_motion);
@@ -1022,10 +956,6 @@ impl TimelineStick {
         });
     }
 
-    /// Wheel or drag input. This is the *only* path that can break the pin: the
-    /// list calls its scroll handler from its input path alone, so content
-    /// growth — which moves the distance to the end just as far — never reaches
-    /// here. Reports whether the jump-button state changed.
     pub fn on_user_scroll(&mut self, list: &ListState, reduce_motion: bool) -> bool {
         let distance = self.distance_from_bottom(list);
         let previous = std::mem::replace(&mut self.last_distance, distance);
@@ -1042,8 +972,6 @@ impl TimelineStick {
         changed
     }
 
-    /// Whether the driver should schedule a frame. False while one is already
-    /// in flight, so the loop can never run more than one callback at a time.
     pub fn wants_frame(&self, list: &ListState) -> bool {
         self.pinned
             && !self.scheduled
@@ -1053,13 +981,10 @@ impl TimelineStick {
                 || self.distance_from_bottom(list) > 0.5)
     }
 
-    /// Claim the one frame slot; pair with [`Self::step`], which releases it.
     pub fn arm(&mut self) {
         self.scheduled = true;
     }
 
-    /// One spring frame, reporting whether the view needs another. Call it
-    /// after layout, so the measurements it reads are the current frame's.
     pub fn step(&mut self, list: &ListState) -> bool {
         self.scheduled = false;
         self.kick = false;
@@ -1789,10 +1714,6 @@ fn render_notice(
         .into_any_element()
 }
 
-/// One attachment in the composer as a `side`-square tile that opens a full
-/// view when clicked. The size is definite whatever was pasted, so layout
-/// never consults the image; the bytes are hash-keyed in ala's asset
-/// cache, so decoding is shared.
 pub fn agent_attachment_thumbnail(
     id: impl Into<ElementId>,
     image: Arc<Image>,
@@ -1802,7 +1723,6 @@ pub fn agent_attachment_thumbnail(
     attachment_tile(id, image, side, composer::composer_ground(cx), cx)
 }
 
-/// A composer attachment with the button that removes it.
 pub fn composer_attachment(
     id: impl Into<ElementId>,
     remove: impl Into<ElementId>,
@@ -1983,10 +1903,6 @@ enum RowEnd {
     Open,
 }
 
-/// The one row shape every activity wears: the trace line, a thought, a tool
-/// call. One builder so the font, the metrics and the hover can never drift
-/// apart between the callers. It draws no fill: a clickable row brightens its
-/// muted ink under the pointer.
 fn activity_row_marked(
     id: impl Into<ElementId>,
     mark: ActivityMark,
@@ -2105,7 +2021,6 @@ const TRACE_COUNT_BADGE_OVERHANG: f32 =
     TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
-/// What the transcript sits on: the window, which shows through its pane.
 fn transcript_ground(cx: &App) -> Ground {
     let theme = cx.theme();
     Ground {
@@ -2169,16 +2084,12 @@ const USER_ENTRY_GROUP: &str = "agent-user-entry";
 const ASSISTANT_ENTRY_GROUP: &str = "agent-assistant-entry";
 const FIGURE_GROUP: &str = "agent-figure";
 
-/// An icon action on a message, a code block or a diagram: no fill, its ink
-/// muted until pointed at.
 fn message_action(button: Button, cx: &App) -> Button {
     button
         .surface_role(crate::roles::AGENT_ACTION)
         .text_color(timeline_affordance_color(cx))
 }
 
-/// A slot that shows its actions only while `group` is pointed at, or always
-/// under a coarse pointer, where nothing hovers.
 fn shown_on_hover(group: &'static str, cx: &App) -> Div {
     div()
         .flex_none()
@@ -3962,8 +3873,6 @@ mod workspace_link_tests {
         assert_eq!(resolve_workspace_link(cwd, ""), None);
     }
 
-    /// The half-streamed link a mend rewrites must never open anything, with or
-    /// without a working directory to resolve against.
     #[test]
     fn the_pending_link_sentinel_is_made_inert() {
         for cwd in [Some(Path::new(CRATE_DIR)), None] {
@@ -5620,8 +5529,6 @@ mod tests {
         source.inspect(|preview, _, _| assert_eq!(preview, "short again"));
     }
 
-    /// A hanging marker is closed for the reader while the entry streams, and
-    /// the settle hands back exactly the bytes the thread holds.
     #[ala::test]
     fn a_streaming_entry_renders_mended_and_settles_raw(cx: &mut TestAppContext) {
         cx.update(crate::init);
@@ -5707,8 +5614,6 @@ mod tests {
         );
     }
 
-    /// The prefix fast path survives the mend: appends are diffed against the
-    /// raw text, so an entry that never hangs a marker never reparses.
     #[ala::test]
     fn streaming_appends_without_hanging_markers_stay_incremental(cx: &mut TestAppContext) {
         cx.update(crate::init);
@@ -5784,9 +5689,6 @@ mod tests {
         });
         assert!(stick.distance_from_bottom(&state) <= AGENT_AT_BOTTOM_PX);
 
-        // Whatever the list's padding is, the distance to the end has to equal
-        // the travel the list itself just performed; measuring the items alone
-        // would report the padding short.
         let landed = scroll_position(&state);
         state.scroll_by(px(-500.0));
         let moved = landed - scroll_position(&state);
@@ -5813,9 +5715,6 @@ mod tests {
             _ = window.draw(cx);
         });
 
-        // The end ran away from the viewport — the same position change a
-        // wheel notch would make — and the pin is untouched, with a frame
-        // asked for to chase it.
         assert!(stick.distance_from_bottom(&state) > AGENT_AT_BOTTOM_PX);
         assert!(stick.is_pinned());
         assert!(!stick.shows_jump_button());

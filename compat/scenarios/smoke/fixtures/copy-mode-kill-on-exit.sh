@@ -66,14 +66,10 @@ await_clients() {
     return 1
 }
 
-# Pane ids depend on what the harness server already created, so the checks
-# compare the session's pane list by index rather than by a fixed id.
 panes() {
     main_client list-panes -t "=$session" -F '#{pane_index}' 2>/dev/null | tr '\n' ' '
 }
 
-# window_pane_reset_mode kills the pane after the mode is torn down, so the
-# kill lands when copy mode ends, not when the command runs.
 settle() {
     attempt=0
     while [ "$attempt" -lt 200 ]; do
@@ -107,8 +103,6 @@ second="$(main_client list-panes -t "=$session" -F '#{pane_id}' | sed -n 2p)"
 third="$(main_client list-panes -t "=$session" -F '#{pane_id}' | sed -n 3p)"
 fourth="$(main_client list-panes -t "=$session" -F '#{pane_id}' | sed -n 4p)"
 
-# cmd-copy-mode.c accepts -k and never reads it there; window.c stores it on
-# the mode entry, so an entry without it leaves the pane alone at cancel.
 main_client copy-mode -t "$first"
 main_client send-keys -t "$first" -X cancel
 settle '0 1 2 3 '
@@ -119,8 +113,6 @@ main_client send-keys -t "$first" -X cancel
 settle '0 1 2 '
 check_equal kill-cancel-removes-the-pane '0 1 2 ' "$(panes)"
 
-# window_pane_set_mode returns before the wme->kill assignment when the pane
-# already holds the mode, so a re-entry neither arms nor clears the bit.
 main_client copy-mode -k -t "$second"
 main_client copy-mode -t "$second"
 main_client send-keys -t "$second" -X cancel
@@ -133,8 +125,6 @@ main_client send-keys -t "$third" -X cancel
 settle '0 1 '
 check_equal re-entry-never-arms-the-kill '0 1 ' "$(panes)"
 
-# copy-mode -q tears the mode down the same way, so -k takes the pane with it,
-# and the last pane of the last window takes the session.
 main_client copy-mode -k -t "$fourth"
 main_client send-keys -t "$fourth" -X cancel
 settle '0 '
@@ -151,7 +141,6 @@ done
 check_equal last-pane-takes-the-session 1 \
     "$(main_client has-session -t "=$session" >/dev/null 2>&1 && echo 0 || echo 1)"
 
-# bind-key parses the flag where zz used to answer `unsupported command`.
 main_client bind-key -T root F9 copy-mode -k
 check_equal bind-key-renders-the-flag 'copy-mode -k' \
     "$(main_client list-keys -T root 2>/dev/null | sed -n 's/.*F9  *//p' | head -n 1)"

@@ -21,16 +21,9 @@ main_client() {
 root="$HOME/client-non-utf8-cwd-$side"
 rm -rf "$root"
 mkdir -p "$root"
-# One byte the daemon cannot carry as UTF-8 text. The client's cwd is the fact
-# under test, so the directory name holds it and every probe below is a
-# relative path resolved against that cwd.
 work="$root/$(printf 'cwd-\377-dir')"
 encoding=bytes
 if ! mkdir "$work" 2>/dev/null; then
-    # APFS and every other filesystem that enforces UTF-8 file names refuses
-    # the 0xff byte with EILSEQ before either binary is involved. Detect the
-    # refusal once, take the UTF-8 control name on both sides, and record which
-    # name ran so the two outputs stay identical either way.
     encoding=utf8-control
     work="$root/cwd-utf8-dir"
     mkdir "$work"

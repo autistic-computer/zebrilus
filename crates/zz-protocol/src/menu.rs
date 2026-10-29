@@ -1,15 +1,9 @@
 use unicode_width::UnicodeWidthChar;
 
-/// Cells a menu box adds around its widest row: two border columns and one
-/// padding column on each side.
 pub const MENU_ROW_MARGIN: u16 = 4;
 
-/// Cells the parenthesised action-key annotation adds to a row: the separating
-/// space and the two brackets.
 const MENU_ANNOTATION_MARGIN: usize = 3;
 
-/// One laid-out menu row: the drawn name and the action-key annotation the row
-/// has room to show.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct MenuRowLayout {
     pub name: String,
@@ -78,8 +72,6 @@ fn pieces(value: &str) -> Vec<Piece<'_>> {
     pieces
 }
 
-/// Visible width of a menu row, skipping `#[...]` style runs the way the pin's
-/// `format_width` does.
 #[must_use]
 pub fn menu_row_width(value: &str) -> usize {
     pieces(value)
@@ -92,8 +84,6 @@ pub fn menu_row_width(value: &str) -> usize {
         .sum()
 }
 
-/// Keep the last `limit` visible cells of a menu row, carrying every `#[...]`
-/// style run through, the way the pin's `format_trim_right` does.
 #[must_use]
 pub fn trim_menu_row(value: &str, limit: usize) -> String {
     let total = menu_row_width(value);
@@ -123,11 +113,6 @@ pub fn trim_menu_row(value: &str, limit: usize) -> String {
     trimmed
 }
 
-/// Lay one menu row out against the cells a client has room for, following
-/// `menu_add_item`: an action key is annotated when its bracketed form fits in
-/// a quarter of the room or the whole name still fits beside it, an overlong
-/// name is trimmed and marked with `>`, and the row keeps its action key even
-/// when the annotation is dropped.
 #[must_use]
 pub fn layout_menu_row(name: &str, key: Option<&str>, max_width: usize) -> MenuRowLayout {
     let mut room = max_width;
@@ -156,7 +141,6 @@ pub fn layout_menu_row(name: &str, key: Option<&str>, max_width: usize) -> MenuR
     }
 }
 
-/// Cells one laid-out row occupies, including its annotation.
 #[must_use]
 pub fn menu_row_cells(name: &str, annotation: Option<&str>) -> usize {
     menu_row_width(name)

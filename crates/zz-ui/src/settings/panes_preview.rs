@@ -16,9 +16,6 @@ use ala::{
 };
 use zz_protocol::{AgentProvider, PaneId};
 
-/// The Panes page's preview: a terminal, Claude Code in a terminal with its
-/// lens, and a browser, drawn with the headers, toolbar and dimming the
-/// workspace gives them. Clicking a pane makes it the active one.
 #[derive(Clone, Copy, IntoElement)]
 pub struct PanesPreview {
     pub gaps: bool,

@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Download the pinned appimagetool and type-2 runtime for this machine's
-# architecture and verify their checksums. Inside GitHub Actions ($GITHUB_ENV
-# set) the APPIMAGETOOL/APPIMAGE_RUNTIME paths land in the job environment;
-# elsewhere they print as export lines to eval.
 set -euo pipefail
 
 APPIMAGETOOL_VERSION=1.9.1

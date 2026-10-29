@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Renders bench/results/results.jsonl as a markdown report.
-#
-#   bench/summarize.sh                 # default results file
-#   bench/summarize.sh path/to.jsonl   # any JSONL produced by inner.sh
-#
-# The last record wins for a given (label, test) pair, so re-running one
-# terminal updates the table without needing --fresh.
 set -euo pipefail
 
 BENCH_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

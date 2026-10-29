@@ -39,20 +39,14 @@ const RUNTIME_COMMAND_CAPACITY: usize = 32;
 const RUNTIME_CONTROL_CAPACITY: usize = 32;
 const RUNTIME_EVENT_CAPACITY: usize = 64;
 
-/// Where every item a pane produces goes, with the pane state it left behind.
-/// A call carrying no item is a state-only change — a queued prompt, say —
-/// which a badge still has to see.
 pub(crate) type AgentStreamSink =
     Box<dyn Fn(PaneId, u64, AgentPaneState, Option<AgentStreamItem>) + Send + Sync>;
 
 #[derive(Debug)]
 pub(crate) enum HostCommand {
     Prompt(QueuedPrompt),
-    /// Type into the turn running now, which the CLI takes as steering;
-    /// with none running it is a prompt.
     Steer(AgentPrompt),
     Cancel,
-    /// Hand the queued prompts back so the composer can refill.
     Unqueue,
     RespondPermission {
         response: PermissionResponse,
@@ -96,7 +90,6 @@ pub(crate) enum HostCommand {
 pub(crate) const MAX_AGENT_TURN_REPLY_BYTES: usize = 1024 * 1024;
 const MAX_AGENT_FINAL_REPLY_BYTES: usize = 256 * 1024;
 
-/// What a turn said back, for whoever submitted its prompt and waited.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct AgentTurnReply {
     pub(crate) text: String,
@@ -206,8 +199,6 @@ pub(crate) struct AgentTurnWaiter {
     pub(crate) audit: Arc<Mutex<Vec<String>>>,
 }
 
-/// A prompt on its way to a pane, with the waiter that wants its reply. The
-/// prompt itself stays the wire type; the waiter never leaves the process.
 #[derive(Debug)]
 pub(crate) struct QueuedPrompt {
     pub(crate) prompt: AgentPrompt,
@@ -236,7 +227,6 @@ impl From<AgentPrompt> for QueuedPrompt {
     }
 }
 
-/// What an agent pane is opened against.
 #[derive(Clone, Debug)]
 pub(crate) struct AgentPaneSpec {
     pub(crate) provider: AgentProvider,
@@ -283,8 +273,6 @@ pub(crate) struct AgentPendingPermission {
     pub(crate) questions: Vec<AgentQuestion>,
 }
 
-/// The pane state a client needs without replaying the stream: enough for a
-/// badge, a status line, and a permission prompt.
 #[derive(Clone, Debug)]
 pub(crate) struct AgentPaneState {
     pub(crate) phase: AgentConnectionPhase,
@@ -370,8 +358,6 @@ pub(crate) struct AgentHost {
     runner_factory: Mutex<Option<PaneRunnerFactory>>,
 }
 
-/// What a pane's runtime is handed when its thread starts. Boxed so tests can
-/// swap the adapter child for an in-process fixture.
 pub(crate) struct RuntimeChannels {
     pub(crate) auto_approve: Arc<Mutex<AgentAutoApprove>>,
     pub(crate) permission_ids: Arc<AtomicU64>,
@@ -405,14 +391,10 @@ pub(crate) type PaneRunner = Box<
         + 'static,
 >;
 
-/// Builds the runner a pane's thread drives. Tests swap the adapter child for
-/// an in-process fixture through it; the daemon never sets one.
 #[cfg(test)]
 pub(crate) type PaneRunnerFactory = Box<dyn Fn(&AgentPaneSpec) -> PaneRunner + Send + Sync>;
 
 impl AgentHost {
-    /// A host with an explicit journal, so tests never reach the daemon's data
-    /// directory.
     pub(crate) fn with_journal(
         config: AgentSpawnConfig,
         sink: AgentStreamSink,
@@ -429,21 +411,15 @@ impl AgentHost {
         }
     }
 
-    /// Open every pane against an in-process fixture instead of an adapter
-    /// child.
     #[cfg(test)]
     pub(crate) fn set_runner_factory(&self, factory: PaneRunnerFactory) {
         *self.runner_factory.lock() = Some(factory);
     }
 
-    /// Snapshot the login shell's PATH and warm the adapter package cache off
-    /// the spawn path, so the first pane doesn't pay for either.
     pub(crate) fn prewarm(&self) {
         warm_adapter_cache(&self.config.lock().commands());
     }
 
-    /// Adopt new adapter commands. Panes already running keep the child they
-    /// have; the next one to open uses the new configuration.
     pub(crate) fn reconfigure(&self, config: AgentSpawnConfig) {
         *self.config.lock() = config;
     }
@@ -611,9 +587,6 @@ impl AgentHost {
             })
     }
 
-    /// Stop a pane's runtime. The returned handle is the pane's thread, which
-    /// settles once the adapter has been told to close; callers that care join
-    /// it, the daemon's own teardown does not.
     pub(crate) fn close(&self, pane: PaneId) -> Option<JoinHandle<()>> {
         let handle = self.registry.panes.lock().remove(&pane)?;
         handle.close.close();
@@ -643,8 +616,6 @@ impl Drop for AgentHost {
     }
 }
 
-/// A pane's whole life on one thread: the ACP connection, the forwarder that
-/// hands its payloads to the pump, and the pump itself.
 async fn run_pane(
     pane: PaneId,
     generation: u64,
@@ -687,9 +658,6 @@ async fn run_pane(
         )
         .await;
         *runtime_outcome.lock() = Some(result);
-        // The runtime is done, so nothing may keep the payload channel open:
-        // the forwarder below ends on its close, and only then is the pane's
-        // outcome final.
         closer.close();
     };
 
@@ -738,8 +706,6 @@ async fn run_pane(
     .await;
 }
 
-/// The host-side half of a pane: what the desktop controller did between its
-/// runtime and its reducer.
 struct PanePump {
     pane: PaneId,
     generation: u64,
@@ -806,7 +772,6 @@ impl GitRefreshGate {
     }
 }
 
-/// What an observed payload asks the pump to do once it has been emitted.
 enum FollowUp {
     None,
     DrainQueue,
@@ -1358,9 +1323,6 @@ impl PanePump {
         }
     }
 
-    /// Send the prompt, or queue it behind the turn already running. A queued
-    /// prompt is dispatched when that turn settles on its own; a turn the user
-    /// stops, or one the runtime loses, hands the queue back to the composer.
     fn prompt(&mut self, mut queued: QueuedPrompt) {
         if queued.prompt.is_empty() {
             queued.settle(Err(AgentTurnFailure::Reclaimed));
@@ -1416,10 +1378,6 @@ impl PanePump {
         self.publish_queue_depth();
     }
 
-    /// Type `prompt` into the turn running now as the runtime's `/steer`,
-    /// which the lens types into the CLI and Claude Code and Codex take as
-    /// steering. With no turn running, a permission waiting, images, or a
-    /// runtime that cannot steer, it is an ordinary prompt.
     fn steer(&mut self, prompt: AgentPrompt) {
         let steerable = {
             let state = self.state.lock();
@@ -1488,7 +1446,6 @@ impl PanePump {
         }
     }
 
-    /// Start the next queued prompt now that the pane accepts prompts again.
     fn dispatch_next(&mut self) {
         let Some(queued) = self.queue.pop_front() else {
             return;
@@ -1497,9 +1454,6 @@ impl PanePump {
         self.dispatch(queued);
     }
 
-    /// Hand every queued prompt back. The at-least-once rule: a prompt the
-    /// user typed is either sent or offered back to the composer, never
-    /// silently dropped — images included.
     fn reclaim_queue(&mut self) {
         if self.queue.is_empty() {
             return;
@@ -1855,7 +1809,6 @@ fn append_reply_tail(buffer: &mut String, text: &str, cap: usize) -> bool {
     true
 }
 
-/// A turn is over: nothing the agent still owes an answer for survives it.
 fn settle_turn(state: &mut AgentPaneState) {
     state.pending_permissions.clear();
 }
@@ -1993,8 +1946,6 @@ mod tests {
             self.items().into_iter().map(|item| item.payload).collect()
         }
 
-        /// Wait for a payload the predicate accepts, returning everything
-        /// recorded up to that point.
         fn wait<F>(&self, what: &str, accept: F) -> Vec<AgentStreamPayload>
         where
             F: Fn(&AgentStreamPayload) -> bool,

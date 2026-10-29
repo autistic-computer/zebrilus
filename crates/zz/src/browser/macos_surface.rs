@@ -69,7 +69,6 @@ impl MacBrowserSurfaceCache {
     }
 }
 
-/// Copy a shared-texture frame back to the CPU so `capture-browser` can encode it.
 #[allow(
     unsafe_code,
     reason = "CoreVideo exposes a locked IOSurface's pixels as a raw base address"
@@ -84,9 +83,6 @@ pub(crate) fn read_pixel_buffer(pixel_buffer: &CVPixelBuffer) -> Result<Screensh
     let stride = pixel_buffer.get_bytes_per_row();
     let height = pixel_buffer.get_height();
     let width = pixel_buffer.get_width();
-    // SAFETY: the buffer is locked for reading until `unlock_base_address`
-    // below, and CoreVideo guarantees `stride * height` readable bytes behind
-    // the base address of a non-planar buffer.
     let copied = unsafe {
         let base = pixel_buffer.get_base_address();
         if base.is_null() {
@@ -114,8 +110,6 @@ pub(crate) fn read_pixel_buffer(pixel_buffer: &CVPixelBuffer) -> Result<Screensh
 )]
 fn create_pixel_buffer(io_surface: &MacIoSurface) -> Result<CVPixelBuffer, MacBrowserSurfaceError> {
     let mut pixel_buffer: CVPixelBufferRef = null_mut();
-    // SAFETY: MacIoSurface retains the IOSurface for this call, the output
-    // pointer is valid, and CoreVideo accepts null pixel-buffer attributes.
     let status = unsafe {
         CVPixelBufferCreateWithIOSurface(
             kCFAllocatorDefault,
@@ -127,8 +121,6 @@ fn create_pixel_buffer(io_surface: &MacIoSurface) -> Result<CVPixelBuffer, MacBr
     if status != kCVReturnSuccess {
         return Err(MacBrowserSurfaceError::Create(status));
     }
-    // SAFETY: a successful CoreVideo create-rule call returned a non-null +1
-    // CVPixelBuffer reference owned by the caller.
     let pixel_buffer = unsafe { CVPixelBuffer::wrap_under_create_rule(pixel_buffer) };
     let actual = pixel_buffer.get_pixel_format();
     if actual != kCVPixelFormatType_32BGRA {

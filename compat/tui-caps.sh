@@ -1,233 +1,4 @@
 #!/usr/bin/env bash
-# Outer-terminal capability differential for the raw TUI.
-#
-# tui-screen-diff.sh compares the decoded screen an attached client paints.
-# Nothing in the campaign ever compared the OTHER half of an attached client's
-# contract with the terminal it runs in: the modes it arms, the capabilities it
-# negotiates, the client facts its own daemon then records, and the colour
-# class it puts on the wire to the outer terminal. This fixture attaches both
-# binaries inside one outer pinned tmux and compares that half.
-#
-# THE OUTER PINNED TMUX IS THE DECODER, HERE TOO. It decodes each inner
-# client's mode-setting sequences into its own pane state and publishes them as
-# formats (format.c format_cb_pane_key_mode and the mode flag table), so
-# `\e[?1049h`, `\e[?2004h`, `\e[?1002h`, `\e[?1003h`, `\e[?7l`, smkx and
-# `\e[>4;1m` are compared as DECODED MODES rather than as bytes. Spelling,
-# order and batching collapse; the mode a side did or did not arm does not.
-# The colour case reads the same decoder's grid through `capture-pane -p -e`,
-# where the colour CLASS survives: a named cell, an indexed cell and an RGB
-# cell stay three different cells.
-#
-# THE DECLARED CAPABILITY MATRIX. Every channel of the client/terminal contract
-# is named here. `driven` means this fixture drives it and compares both sides;
-# `named` means it is not driven and is not silently absent.
-#
-#   channel                        how                                  status
-#   ---------------------------------------------------------------------------
-#   alternate screen               alternate_on, attached and detached   driven
-#   alternate-screen restoration   the whole mode tuple after detach     driven
-#   clear-on-attach off            alternate_on attached and detached,   driven
-#                                  and the outer pane's history_size
-#   bracketed paste                bracket_paste_flag                    driven
-#   cursor visibility              cursor_flag                           driven
-#   cursor shape                   cursor_shape                          driven
-#   autowrap (DECAWM)              wrap_flag                             driven
-#   origin mode                    origin_flag                           driven
-#   synchronized output            synchronized_output_flag              driven
-#   application keypad             keypad_flag, keypad_cursor_flag       driven
-#   mouse arming                   the five mouse flags, mouse on, and    driven
-#                                  the any-event arming
-#                                  `focus-follows-mouse` forces
-#   mouse arming under a menu      the whole mode tuple while a menu      driven
-#                                  raised from a key binding is up, with
-#                                  and without `-M` and with `mouse` on
-#                                  and off
-#   legacy keys                    pane_key_mode with extended-keys off  driven
-#   extended keys                  pane_key_mode with extended-keys on   driven
-#   client terminal name           client_termname                       driven
-#   client feature negotiation     client_termfeatures, client_colours,   driven
-#                                  on the outer decoder and on a terminal
-#                                  that answers nothing
-#   client UTF-8 from a locale     client_utf8, client_flags under a     driven
-#                                  UTF-8 LANG and LC_ALL
-#   client UTF-8 from the flag     client_utf8, client_flags under -u    driven
-#   global flag -2                 accepted, and its own-side delta      driven
-#   global flag -u                 accepted, and its own-side delta      driven
-#   global flag -T                 accepted, and its own-side delta      driven
-#   -T RGB and -2 on a silent      each flag's own-side roster delta     driven
-#     terminal                     where neither baseline carries 256
-#                                  or RGB (see write_silent_terminal)
-#   extended keys, silent          pane_key_mode with extended-keys on,  driven
-#     terminal                     where the terminal names no extkeys
-#   extended keys named by a       pane_key_mode on a silent terminal     driven
-#     flag                         handed -T extkeys
-#   the -2 screen effect, silent   the colour sample with and without    driven
-#     terminal                     -2 under TERM=xterm, including the two
-#                                  aixterm cells `38;5;12` and `38;5;9` that
-#                                  a terminal under sixteen colours folds
-#                                  into their low half, where tty.c
-#                                  tty_check_fg masks `fg &= 7`
-#   flag diagnostics               missing argument, unknown option      driven
-#   colour class, stock palette    a named, an indexed and an RGB        driven
-#                                  cell and a named background
-#   colour class, palette change   the same four cells after OSC 4 on a  driven
-#                                  named entry, after OSC 4 on an
-#                                  indexed entry, and after OSC 104
-#   colour class, an OSC 4 that    the pin substitutes any SET entry;     named
-#     sets an entry to exactly     zz sees a palette entry only when it
-#     its configured value         differs from the configured one,
-#                                  because libghostty-vt exposes the
-#                                  current and the default palette and no
-#                                  override mask. Not driven.
-#   colour class, pane-colours     an RGB entry and an indexed entry on   driven
-#                                  the window, an OSC 4 over the option
-#                                  and OSC 104 back to it, an entry the
-#                                  option leaves untouched, and the
-#                                  array unset
-#   colour class, OSC 10/11 and    the sample after OSC 10, OSC 110,      driven
-#     window-style defaults        OSC 11 and OSC 111, and under
-#                                  window-style with indexed grounds, with
-#                                  RGB and indexed grounds, and unset: a
-#                                  cell that names no colour leaves as the
-#                                  pane's default ground in that ground's
-#                                  own class (tty.c tty_default_colours)
-#   colour class, OSC 10 under     the pin's window-style wins over the   named
-#     a window-style foreground    pane's OSC 10 colour (tty.c
-#                                  tty_window_default_style, then
-#                                  style_add); zz applies window-style as
-#                                  the terminal's configured default and
-#                                  OSC 10 overrides it, for the GUI as
-#                                  well. Not driven.
-#   theme reply                    client_theme before any reply         driven
-#   focus reporting                the pin publishes no pane format for      named
-#                                  focus mode, so this decoder cannot see
-#                                  either side arm it. Read from source
-#                                  instead, and equal since 2026-09-13:
-#                                  tty.c tty_start_tty arms Enfcs only when
-#                                  `focus-events` is on and its default is
-#                                  0 (options-table.c), and tty.rs
-#                                  TerminalGuard::enter now reads the same
-#                                  server option the same once. What each
-#                                  side then DOES with a focus report is
-#                                  driven by compat/tui-mouse.sh.
-#   user keys                      a user-keys entry sent through the    driven
-#                                  outer decoder fires `bind -n User3`
-#   terminal-overrides Tc          the colour sample on a silent          driven
-#                                  xterm-256color terminal with
-#                                  `,*:Tc`: the RGB cell stays RGB
-#   Unicode widths                 the outer cursor column and the       driven
-#                                  decoded line after a wide CJK pair, a
-#                                  combining sequence and an emoji, with
-#                                  UTF-8 clients on both sides, with
-#                                  neither, and with one
-#   ACS for a client that takes    tty.c tty_check_codeset maps a cell to     named
-#     no UTF-8                     an ACS key before it falls back to
-#                                  underscores (tty-acs.c
-#                                  tty_acs_reverse_get) and writes it under
-#                                  GRID_ATTR_CHARSET; the raw TUI has no
-#                                  charset attribute on its cell writer and
-#                                  writes the underscores. Nothing this
-#                                  fixture draws is in that table, and the
-#                                  chrome that is is compared by
-#                                  compat/tui-screen-diff.sh under UTF-8
-#                                  clients only. Not driven.
-#   capability-string overrides    `,*:Eneks@` stops the pin's extended-  named
-#                                  key request and not the raw TUI's,
-#                                  which writes a fixed sequence set;
-#                                  open on options.client-terminal-
-#                                  negotiation. Not driven.
-#   extkeys named by the           the daemon hands the raw TUI the       named
-#     terminal-features array      roster tty_term_create would build,
-#                                  extkeys included; the pin arms on its
-#                                  query timeout and this fixture has no
-#                                  settle for that. Proved by
-#                                  a_terminal_features_entry_hands_the_raw_tui_extkeys.
-#                                  Not driven.
-#   secondary and extended DA      the same colour sample on a terminal  driven
-#     replies                      that answers them and on one that
-#                                  answers nothing: the reply names the
-#                                  terminal, the name carries 256 and RGB,
-#                                  and those decide whether a cell keeps
-#                                  its class or drops to the nearest
-#                                  colour the terminal takes
-#   OSC 10/11 replies              the reply path reaches the pin's       named
-#                                  theme and its feature set; the theme
-#                                  reply itself is measured by
-#                                  compat/scenarios/smoke/fixtures/format-listing.sh
-#
-# RECORDED DIVERGENCES. A recorded row prints its two measured values and does
-# not fail the run; its disposition is per case and fixed in the driver below,
-# never discovered at runtime. Nothing was recorded here from 2026-09-13 until
-# the 3.8 pin, whose DECRQM ?2026 query kept the client_termfeatures rows
-# recorded until the raw TUI asked it too (pin.formats-options-2, 2026-10-09);
-# known_drift names each row recorded since, with its owner, and is empty. The
-# last three causes closed together with the v102 capability wire (a client
-# reports what its terminal answered after the hello and the daemon folds it
-# with the terminfo-derived base set for the TERM), the client's own UTF-8 flag
-# reaching the raw TUI's cell writer as tty_check_codeset reads it, and the
-# extended-key request waiting for a terminal that carries extkeys. What this
-# fixture does NOT drive is named in the matrix above with its reason, which is
-# not the same thing as a recorded difference.
-#
-# CONTROLLED DYNAMIC VALUES, set on both sides and never left to chance:
-#   the inner shell     ENV= PS1='$ ' exec /bin/sh, handed to new-session as
-#                       the pane command: no rc file, and a prompt with no
-#                       host, user, path or clock.
-#   TERM, LANG, LC_ALL  named per case and identical on both sides. C is the
-#                       default here and it matters: the pin's own locale
-#                       fallback would set CLIENT_UTF8 on this box (LC_TIME is
-#                       pt_BR.UTF-8) and hide what -u does. The two cases that
-#                       need UTF-8 clients name C.UTF-8 explicitly.
-#   mouse               left at its default, which is `on` on both binaries.
-#   runtime and sockets XDG_RUNTIME_DIR is a directory inside the scratch
-#                       directory for every zz process, the env -i attach
-#                       scripts included, and the CLI diagnostics run with
-#                       TMUX_TMPDIR there too. The CLI diagnostics name no
-#                       socket, and a scrubbed environment without
-#                       XDG_RUNTIME_DIR resolves zz's default socket to
-#                       /tmp/zz-user/default.sock (with the caller's, to the
-#                       user's real one), so a connecting command there would
-#                       autostart a daemon outside the run. Inside the scratch
-#                       directory it cannot, and the cleanup stops it and reaps
-#                       every process whose environment names the scratch
-#                       directory, on a normal exit and on SIGINT or SIGTERM.
-#   the outer decoder   status off, and `extended-keys on` so the decoder
-#                       records an inner client's extended-key request at all
-#                       (input.c INPUT_CSI_MODSET returns early when its own
-#                       option is off). The outer server has no client, so the
-#                       option changes nothing it emits.
-#
-# SETTLED CHECKPOINTS. Every reading is taken after `printf 'MARK-%s\n' NAME`
-# has reached the side's screen AND that screen has stopped changing between
-# two polls. No wait here is a sleep.
-#
-# COLOUR CLASSES. The pane body keeps the class the program wrote: a named
-# colour leaves the raw TUI as 3n/4n or 9n/10n, an indexed one as 38;5;n or
-# 48;5;n, an RGB one as 38;2, and a default ground as 39/49, which is what
-# tty_colours_fg and tty_colours_bg send through xterm-256color's setaf and
-# setab. Once an OSC 4 entry exists for an index the pin resolves the cell
-# through the pane palette and sends RGB, and after OSC 104 it sends the index
-# again; zz does the same from the frame's per-style colour class (PROTOCOL
-# 101). Every cell of every colour stage asserts.
-#
-# --self-check drives deliberate one-sided differences and requires the
-# comparison to report each in the channel that was sabotaged: one-sided client
-# flags (-u and -T sixel on the pin only, and -2 on the pin only over a
-# terminal that answers nothing, which is the only terminal where -2 adds
-# anything), a client whose terminal answers nothing against one whose
-# terminal does, a named cell spelled as the RGB
-# colour it resolves to on one side, a one-sided palette entry, an OSC 4 on an
-# indexed entry sent to one side, an OSC 104 sent to one side, pane-colours set
-# on one side, a pane-colours entry the other stage leaves untouched named on
-# one side, the legacy-terminal case and an extended key driven with extended
-# keys on one side, -T extkeys on one side of a silent terminal, a one-sided
-# unknown CLI option, a one-sided -u under a C locale, and a one-sided wide
-# codepoint. Several more cases are CONTROLS that sabotage nothing and must
-# stay quiet. A fixture that only passes has proved nothing.
-#
-# ZZ_CAPS_DIAGNOSTICS_DIR names the directory a bounded wait that runs out
-# copies its evidence into; without it a fresh /tmp directory is made and named
-# on stderr.
 set -eEuo pipefail
 
 usage() {
@@ -294,16 +65,9 @@ RECORDED=0
 CASE_DIFFS=0
 ASSERT_MODE=count
 INNER_SHELL="ENV= PS1='\$ ' exec /bin/sh"
-# The locale both sides attach under. C by default, so the pin's own locale
-# fallback cannot set CLIENT_UTF8 behind the -u measurement's back; the two
-# cases that want UTF-8 clients set it around themselves.
 CASE_LOCALE=C
 ZZ_PANE=""
 TMUX_PANE_ID=""
-# 1 while a case attaches both clients to a silent terminal (see
-# write_silent_terminal); 0 for the outer pinned tmux itself. SILENT_SIDE names
-# the one side that gets the relay when only one is meant to, which is the
-# sabotage for the reply-driven half of a client's feature roster.
 SILENT_TERMINAL=0
 SILENT_SIDE=""
 WIDTH_RUN=0
@@ -311,8 +75,6 @@ PYTHON="$(command -v python3)"
 mkdir -p "$ZZ_HOME/config" "$TMUX_HOME/config" "$OUTER_HOME/config" "$ZZ_LOG_DIR" "$RUNTIME_DIR"
 chmod 700 "$RUNTIME_DIR"
 
-# Every mode the outer decoder publishes for its own pane, plus the key mode.
-# The pin's own format names are the row names; nothing is invented here.
 MODE_NAMES=(
   alternate_on bracket_paste_flag cursor_flag cursor_shape wrap_flag
   mouse_all_flag mouse_any_flag mouse_button_flag mouse_sgr_flag
@@ -320,11 +82,7 @@ MODE_NAMES=(
   keypad_flag keypad_cursor_flag pane_key_mode
 )
 MODE_FORMAT='#{alternate_on}|#{bracket_paste_flag}|#{cursor_flag}|#{cursor_shape}|#{wrap_flag}|#{mouse_all_flag}|#{mouse_any_flag}|#{mouse_button_flag}|#{mouse_sgr_flag}|#{mouse_standard_flag}|#{mouse_utf8_flag}|#{synchronized_output_flag}|#{origin_flag}|#{keypad_flag}|#{keypad_cursor_flag}|#{pane_key_mode}'
-# Rows the two sides are measured to disagree on. Each one is explained in the
-# header block above and written into TUI-009's evidence.
 MODE_RECORDED=""
-# Every mode row but the named ones, for a sabotage that has to report through
-# the rows it names and no other.
 modes_except() {
   local keep=" $* " name out=""
   for name in "${MODE_NAMES[@]}"; do
@@ -336,17 +94,6 @@ modes_except() {
 
 FACT_NAMES=(client_termname client_utf8 client_flags client_colours client_termfeatures client_theme)
 FACT_FORMAT='#{client_termname}|#{client_utf8}|#{client_flags}|#{client_colours}|#{client_termfeatures}|#{client_theme}'
-# Each global flag adds its own rows: what the flag CHANGED on its own side,
-# against that side's own unflagged baseline. That delta is the flag's
-# disposition, and it is what makes an ignored flag visible instead of hidden
-# inside a roster the two sides never shared anyway. The delta is compared
-# over the items both baselines agree on: an item only one baseline carries
-# (the pin negotiates 256, RGB and progressbar from its terminal's replies,
-# zz derives osc7 and sync from TERM) is the recorded client_termfeatures row,
-# and a flag re-adding it on one side is that same difference, not a new one.
-# A flag that names features adds a second row, whether each named feature is
-# in the side's roster after the flag, which is what -2 does on a terminal
-# whose pin baseline already carries 256.
 BASELINE_ZZ=""
 BASELINE_PIN=""
 
@@ -385,12 +132,6 @@ side_pane() {
   esac
 }
 
-# Every process this run starts carries the scratch directory in its
-# environment: the daemon, the attach clients and their children through HOME,
-# and a client without a socket selector through XDG_RUNTIME_DIR too. That is
-# the reap list, so a daemon a stray client autostarted, an attach client the
-# outer server left behind or anything a sabotage spawned goes with the run,
-# and nothing else on the box is touched.
 scratch_pids() {
   local entry
   for entry in /proc/[0-9]*; do
@@ -449,9 +190,6 @@ diagnostics_dir() {
   printf '%s\n' "$DIAGNOSTICS_DIR"
 }
 
-# Every command below is allowed to fail: a wait can run out before a session
-# exists, and a diagnostic that cannot be taken must not replace the timeout
-# with its own error.
 dump_diagnostics() {
   local label="$1"
   local dir side log
@@ -518,11 +256,6 @@ outer_screen() {
   tmux_outer_command capture-pane -p -e -t "$(outer_window "$1")" 2>/dev/null
 }
 
-# The marker reaches the screen only as the inner shell's own output: the typed
-# command carries MARK-%s, so a copy of the command line cannot satisfy it. The
-# stability half is what makes the reading safe to take: a repaint the case
-# asked for travels to the outer grid through the same ordered stream, and two
-# identical polls mean it has arrived.
 wait_settled() {
   local side="$1" marker="$2"
   local attempt current previous=""
@@ -602,9 +335,6 @@ record_row() {
   fi
   [ -z "$reason" ] || printf '      recorded, not asserted: %s\n' "$reason"
 }
-# A row's disposition is fixed by the case that drives it, not discovered at
-# runtime: `recorded` is a space-delimited list of ROW names the header block
-# explains, and every row outside it asserts.
 compare_row() {
   local recorded="$1" row="$2" label="$3" zz_value="$4" pin_value="$5"
   if [[ " $recorded " == *" $row "* ]]; then
@@ -635,8 +365,6 @@ compare_tuple() {
   done
 }
 
-# A sabotage sets this to an escape zz's outer pane is given just before zz's
-# client starts on it; it is empty for every driven case.
 ZZ_ATTACH_PREFIX=""
 write_attach() {
   local side="$1" destination="$2" term="$3"
@@ -657,18 +385,6 @@ write_attach() {
   chmod +x "$destination"
 }
 
-# A SILENT TERMINAL. The outer pinned tmux answers every query a client sends
-# (DA, DA2, XTVERSION), and the pin learns its features from those replies
-# (tty-keys.c tty_keys_device_attributes2 and
-# tty_keys_extended_device_attributes, tty-features.c tty_default_features:
-# a "tmux" reply adds 256, RGB, extkeys and more). A terminal that answers
-# nothing, such as script(1) or a serial line, leaves the pin with the
-# features its TERM, COLORTERM and flags give it. This relay is that terminal:
-# the client runs on a pty of its own, everything it writes is copied to the
-# outer pane, where the pin decodes it as usual, and nothing the outer pane
-# answers or is sent ever reaches the client. The relay's own tty is raw so the
-# outer pane's replies are not echoed back onto the decoded screen, and the
-# client's pty is sized to the outer pane before the client starts.
 write_silent_terminal() {
   cat >"$SCRATCH_DIR/silent-terminal.py" <<'PY'
 import fcntl
@@ -697,9 +413,6 @@ os.waitpid(pid, 0)
 PY
 }
 
-# Both sides attach with the same TERM and the same extra flags unless a
-# sabotage names different ones. The two windows are made fresh for every case
-# so a mode a previous case armed cannot leak into the next reading.
 open_case() {
   local name="$1" term="$2" zz_flags="$3" tmux_flags="$4"
   local side
@@ -741,8 +454,6 @@ detach_case() {
   done
 }
 
-# --- the driven cases ------------------------------------------------------
-
 case_modes() {
   local name="$1" term="$2" zz_flags="$3" tmux_flags="$4" recorded="${5:-$MODE_RECORDED}"
   open_case "$name" "$term" "$zz_flags" "$tmux_flags"
@@ -750,12 +461,6 @@ case_modes() {
   compare_tuple "$name" "$recorded" "$(read_modes zz)" "$(read_modes tmux)" "${MODE_NAMES[@]}"
 }
 
-# An extended key through the outer decoder. With an inner client's mode 2
-# armed, the outer tmux sends C-Enter as \e[27;5;13~ and the client has to
-# decode it; without mode 2 the key arrives as a plain Enter. A root binding on
-# each inner server records what its client decoded, and F9, bound on both and
-# sent after it through the same path, is the settle: once F9's binding has run
-# on a side, C-Enter has been handled there too.
 case_extended_key() {
   local name="$1" side
   for side in zz tmux; do
@@ -784,7 +489,6 @@ extended_done() {
   [ "$(side_command "$1" show-options -gqv @extdone 2>/dev/null)" = 1 ]
 }
 
-# Items in the second comma list that the first does not carry.
 list_delta() {
   local base="$1" now="$2" item out=""
   local IFS=,
@@ -796,8 +500,6 @@ list_delta() {
   done
   printf '%s\n' "${out:-none}"
 }
-# Items of the first comma list that the second does not carry, where `none`
-# is the empty list.
 list_without() {
   local list="$1" exclude="$2" item out=""
   [ "$list" = none ] && list=""
@@ -810,7 +512,6 @@ list_without() {
   done
   printf '%s\n' "${out:-none}"
 }
-# Whether each named feature is in a roster, as name:yes or name:no.
 features_present() {
   local roster="$1" names="$2" name out=""
   local IFS=,
@@ -859,9 +560,6 @@ case_facts() {
     "$(features_present "$(tuple_field "$pin_tuple" 4)" "$named")"
 }
 
-# Restoration is the one place a detached client is the subject: the outer pane
-# has to be back on its primary screen with autowrap, the cursor and every
-# mouse mode where the client found them. Every row asserts here.
 case_restore() {
   open_case restore xterm '' ''
   checkpoint restore
@@ -872,12 +570,6 @@ case_restore() {
   compare_tuple "restore/detached" "" "$zz_tuple" "$pin_tuple" "${MODE_NAMES[@]}"
 }
 
-# 3.8's clear-on-attach off: tty_start_tty skips the alternate screen and
-# scrolls one line more than the client's height into the outer terminal's
-# history instead, and tty_stop_tty clears rather than leaving an alternate
-# screen it never entered. Both decoded halves assert: the mode tuple (with
-# alternate_on) attached and detached, and the outer pane's history_size,
-# which only the scroll grows.
 case_clear_on_attach_off() {
   local side
   for side in zz tmux; do
@@ -896,12 +588,7 @@ case_clear_on_attach_off() {
   done
 }
 
-# The colour case reads the decoder's own grid, where the class survives. The
-# sample line carries one named cell, one indexed cell, one RGB cell and one
-# named background, and every stage asserts all four cells and the whole line.
 COLOUR_SAMPLE="printf 'CLR \\033[31mR\\033[0m \\033[38;5;42mI\\033[0m \\033[38;2;10;20;30mX\\033[0m \\033[41mB\\033[0m \\033[38;5;12mA\\033[0m \\033[38;5;9mQ\\033[0m END\\n'"
-# The same line with the named cell spelled as the RGB colour it resolves to on
-# a stock xterm palette: the same colour in a different class.
 COLOUR_SAMPLE_RGB="printf 'CLR \\033[38;2;205;0;0mR\\033[0m \\033[38;5;42mI\\033[0m \\033[38;2;10;20;30mX\\033[0m \\033[41mB\\033[0m \\033[38;5;12mA\\033[0m \\033[38;5;9mQ\\033[0m END\\n'"
 PALETTE_NAMED='\033]4;1;rgb:00/ff/00\033\\'
 PALETTE_INDEXED='\033]4;42;rgb:ff/00/ff\033\\'
@@ -916,17 +603,11 @@ colour_line() {
 strip_escapes() {
   printf '%s' "$1" | sed -e $'s/\033\\[[0-9;]*m//g'
 }
-# The SGR run the decoder left immediately in front of one glyph of the sample,
-# which is that cell's colour class as the outer grid holds it. `CLR ` carries
-# an R that no SGR precedes, so the pattern cannot pick it up.
 cell_class() {
   local line="$1" glyph="$2" found
   found="$(printf '%s' "$line" | grep -ao $'\033\\[[0-9;]*m'"$glyph" | tail -n 1 | cat -v)"
   printf '%s\n' "${found:-none}"
 }
-# One stage: each side runs its own escape (an OSC 4, an OSC 104 or nothing),
-# clears and prints its sample, and every cell of the line is compared. The
-# clear keeps a one-sided command line off the compared screen.
 colour_stage() {
   local stage="$1" zz_escape="$2" pin_escape="$3" zz_sample="$4" pin_sample="$5"
   local row="${6:-assert_row}"
@@ -945,26 +626,6 @@ colour_stage() {
     "$(printf '%s' "$pin_line" | cat -v)"
 }
 
-# THE SILENT-TERMINAL CASES. -T and -2 name features, and the flag-features and
-# delta rows of the outer tmux's cases cannot see what a flag adds beside them:
-# the pin's replied roster already carries 256 and RGB there. On a silent
-# terminal under TERM=xterm neither baseline carries them, so each flag's delta
-# is exactly what the flag added on its side: RGB alone for -T RGB (the pin's
-# tty_feature_rgb is one bit, whatever colours it implies) and 256 for -2.
-# The colour line with and without -2 asserts here: a terminal that answered
-# nothing carries the eight colours TERM=xterm gives it, so both writers turn
-# the indexed cell into 32 and the RGB cell into 30 (tty.c tty_check_fg over
-# colour_find_rgb and colour_256to16), and -2 raises both to 256, where the
-# indexed cell keeps its index and the RGB cell becomes 38;5;233. pane_key_mode
-# with extended-keys on is measured here and recorded: the pin arms no extended
-# keys for a terminal it learned nothing about and the raw TUI arms them anyway
-# (see RECORDED DIVERGENCES).
-# One colour sample on a silent terminal. The flags are per side so a sabotage
-# can hand -2 to one of them, which is the whole question the downgrade asks:
-# 256 colours instead of the eight TERM=xterm carries.
-# The two sabotages the mode rows need. Neither invents a channel: the first
-# hands zz's terminal one mode before its client reaches it, the second takes
-# one client away.
 case_one_sided_autowrap() {
   ZZ_ATTACH_PREFIX='\033[?7l'
   case_modes 'sc/one-sided-autowrap' xterm '' '' "$(modes_except wrap_flag)"
@@ -975,17 +636,6 @@ pin_theme_known() {
   [ -n "$(tuple_field "$(read_facts tmux)" 5)" ]
 }
 
-# The arming a MENU leaves up. `menu.c` `menu_prepare` raises
-# `MODE_MOUSE_ALL|MODE_MOUSE_BUTTON` on the menu's own overlay screen only
-# behind `~md->flags & MENU_NOMOUSE`, and `cmd-display-menu.c` sets that flag
-# for a menu raised with neither `-M` nor an invoking mouse event, which is
-# every menu a key binding raises. `server_client_reset_state` then takes the
-# overlay's mode as the client's, so the common menu leaves the client on
-# button tracking and only `-M` pins any-event tracking up; with `mouse` off
-# the plain menu asks for nothing at all and `-M` still arms. The menu is
-# raised with a REAL prefix key driven onto the client's own stdin through the
-# outer decoder, never through a command, so what is read back is the arming a
-# user would be left with. Every row asserts.
 case_menu_arming() {
   local name="$1" zz_flag="$2" pin_flag="$3" recorded="${4:-$MODE_RECORDED}" side
   side_command zz bind-key -T prefix E display-menu -x 4 -y 8 -T CAPSMENU $zz_flag \
@@ -1017,7 +667,6 @@ menu_on_screen() {
 menu_gone() {
   [[ "$(outer_screen "$1")" != *CAPSMENU* ]]
 }
-# `mouse off` for the two menu cases that name it, and back on after them.
 case_menu_arming_mouse_off() {
   local name="$1" zz_flag="$2" pin_flag="$3" recorded="${4:-$MODE_RECORDED}" side
   for side in zz tmux; do
@@ -1029,9 +678,6 @@ case_menu_arming_mouse_off() {
   done
 }
 
-# `focus-follows-mouse` on one side or both, read back through the mode tuple.
-# The option lives in the inner session's options, so it outlives the attach
-# the case opens and both clients pick it up on their first redraw.
 case_one_sided_focus_follows_mouse() {
   local who="$1" recorded="$2" side
   for side in zz tmux; do
@@ -1134,13 +780,6 @@ case_silent() {
   BASELINE_PIN=""
 }
 
-# THE STAGES CLAUSE 3 NAMES. stock: the pin keeps each class it was given.
-# palette: once an OSC 4 entry exists for colour 1 the pin resolves the cell
-# through the pane palette (tty.c tty_check_fg and tty_check_bg over
-# colour_palette_get) and sends RGB, for the foreground AND the background the
-# entry paints, while the indexed cell keeps its index. indexed: the same for
-# an indexed entry. reset: OSC 104 clears every entry and both cells go back to
-# their index. A sabotage names the one thing it hands the pin's side alone.
 case_colours() {
   local sabotage="${1:-none}"
   local pin_sample="$COLOUR_SAMPLE" pin_named="$PALETTE_NAMED"
@@ -1192,12 +831,6 @@ case_colours() {
   colour_stage window-style-unset '' '' "$COLOUR_SAMPLE" "$pin_sample"
 }
 
-# A pane's default grounds: OSC 10 and OSC 11 set them (input.c input_osc_10
-# and input_osc_11 into the pane palette's fg and bg), OSC 110 and OSC 111 put
-# them back, and window-style overrides them (tty.c tty_style_changed). The pin
-# paints every cell that names no colour, and clears, in that ground: an OSC
-# colour as RGB, colour2 as 32, colour200 as 48;5;200. An empty style unsets
-# the window option on that side.
 window_style_set() {
   local side="$1" style="${2:-}"
   if [ -n "$style" ]; then
@@ -1207,12 +840,6 @@ window_style_set() {
   fi
 }
 
-# pane-colours is the pane's configured palette, the layer an OSC 4 entry sits
-# on (colour.c colour_palette_from_option and colour_palette_get). A cell whose
-# index the option names leaves the pin as the option's own colour in that
-# colour's own class: #123456 as 38;2;18;52;86 and colour200 as 38;5;200. An
-# index the option does not name keeps its class. Each call replaces the whole
-# window array on one side with the INDEX=COLOUR entries it is given.
 pane_colours_set() {
   local side="$1" entry
   shift
@@ -1223,15 +850,6 @@ pane_colours_set() {
   done
 }
 
-# Unicode widths reach the outer terminal as the column the inner mux left its
-# cursor in. The sample is a wide CJK pair, a base letter with a combining
-# acute, and an astral emoji, so a side that gave any of the three the wrong
-# width lands the cursor somewhere else. Both clients attach under a UTF-8
-# locale, because a non-UTF-8 client changes what the pin puts on the wire for
-# these bytes and that is the -u channel's subject, not this one. The typed
-# command carries W%s so only the shell's own output can satisfy the settle,
-# and each run prints its own number: the inner pane keeps the previous case's
-# output, so a marker shared between cases would settle before the command ran.
 WIDTH_SUFFIX=" \344\270\226\347\225\214 | e\314\201 | \360\237\230\200 |"
 case_widths() {
   local zz_suffix="${1:-$WIDTH_SUFFIX}" pin_suffix="${2:-$WIDTH_SUFFIX}"
@@ -1255,12 +873,6 @@ case_widths() {
     "$(outer_screen tmux | grep -a "$marker" | head -n 1 | sed "s/$marker/W/" | cat -v)"
 }
 
-# The flag diagnostics need no terminal at all: they are what each binary
-# prints and returns before it ever opens one. Two things are normalised and
-# nothing else is: the program name, because zz is not called tmux, and the
-# version line, because zz answers `tmux 3.8-zz` where the pin answers
-# `tmux 3.8` - which is also what keeps a release bump from turning this
-# row red.
 normalise_diagnostic() {
   sed -e 's/^tmux: /PROG: /' -e 's/^zz: /PROG: /' \
     -e 's/^usage: tmux /usage: PROG /' -e 's/^usage: zz /usage: PROG /' \
@@ -1288,8 +900,6 @@ case_cli() {
       "$(run_cli tmux $tmux_extra "${arguments[@]}")"
   done
 }
-
-# --- driver ----------------------------------------------------------------
 
 write_silent_terminal
 zz_command -f /dev/null daemon >"$SCRATCH_DIR/zz-daemon.out" 2>"$SCRATCH_DIR/zz-daemon.err" &
@@ -1334,10 +944,6 @@ if [ "$SELF_CHECK" -eq 0 ]; then
   case_facts 'facts/-2' xterm -2 -2 '' '' 256
   case_facts 'facts/-u' xterm -u -u
   case_facts 'facts/-T' xterm '-T sixel' '-T sixel' '' '' sixel
-  # A UTF-8 locale, where zz's fallback and the pin's are the same fallback:
-  # both clients have to come up UTF-8 without any flag at all. It is the other
-  # half of the -u measurement, and it says the gap is the flag and not the
-  # rule behind it.
   CASE_LOCALE=C.UTF-8
   case_facts 'facts/utf8-locale' xterm '' ''
   case_widths
@@ -1361,11 +967,6 @@ if [ "$SELF_CHECK" -eq 0 ]; then
   exit 0
 fi
 
-# --- self-check ------------------------------------------------------------
-#
-# Each sabotage drives the same driver with ONE deliberate one-sided difference
-# and requires the comparison to report a difference in an asserted row. The
-# recorded rows cannot satisfy a sabotage: they never fail.
 SELF_CHECK_FAILURES=0
 ASSERT_MODE=probe
 
@@ -1389,63 +990,33 @@ self_check_case() {
 
 printf 'self-check: one deliberate one-sided difference per channel\n'
 
-# The control: the same case with nothing sabotaged has to be quiet, or a
-# sabotage that "catches" would prove nothing.
 self_check_case 'control, facts with no sabotage' quiet \
   case_facts 'sc/control' xterm '' '' '' baseline
 
-# A one-sided flag. -u is the flag whose own-side effect the pin publishes as a
-# client fact, so giving it to the pin alone has to show up in client_utf8,
-# client_flags and delta-client_flags, all asserted rows.
 self_check_case 'a one-sided flag, -u on the pin only' catches \
   case_facts 'sc/one-sided-u' xterm '' -u
 
-# -T on one side: delta-client_termfeatures and flag-features have to catch it.
 self_check_case 'a one-sided -T sixel on the pin only' catches \
   case_facts 'sc/one-sided-T' xterm '' '-T sixel' '' '' sixel
 
-# The default grounds on one side: an OSC 10 sent to zz alone has to turn zz's
-# uncoloured cells red while the pin's stay default, and window-style set on
-# zz alone has to do the same with 32 and 44. The osc-10 and window-style
-# stages catch them.
 self_check_case 'an OSC 10 sent to zz only' catches case_colours osc-foreground
 self_check_case 'window-style set on zz only' catches case_colours window-style
 
-# The silent terminal's control and the -T RGB delta. The sabotage is the
-# shape of the bug it guards: a side whose roster gains 256 beside the RGB it
-# was asked for. Handing the pin -T 256,RGB against zz's -T RGB has to show up
-# in delta-client_termfeatures, which the silent baseline leaves free of both.
 SILENT_TERMINAL=1
 self_check_case 'control, a silent terminal with no sabotage' quiet \
   case_facts 'sc/silent-control' xterm '' '' '' baseline
 self_check_case 'a one-sided 256 beside -T RGB on the pin, silent terminal' catches \
   case_facts 'sc/silent-T' xterm '-T RGB' '-T 256,RGB' '' '' RGB
 
-# -2 belongs on the silent terminal too, and only there: on the outer decoder
-# both rosters already carry 256 and RGB out of the tmux reply, so -2 adds
-# nothing on either side and the pin's own flag is the no-op. With no reply to
-# learn from, -2 on the pin alone has to report through client_colours,
-# client_termfeatures, delta-client_termfeatures and flag-features.
 self_check_case 'a one-sided -2 on the pin only, silent terminal' catches \
   case_facts 'sc/silent-2' xterm '' -2 '' '' 256
 
-# THE CAPABILITY WIRE ITSELF. A client's roster is half what its TERM and its
-# flags give it and half what its terminal answered after the hello, so the
-# sabotage is a terminal that answers on one side and not on the other: zz
-# behind the relay against the pin on the outer decoder has to leave zz with
-# the bare xterm base while the pin takes tmux's own tty_default_features, and
-# client_termfeatures and client_colours are the rows that carry it. With the
-# relay on neither side and on both the same case is a control.
 SILENT_SIDE=zz
 self_check_case 'a terminal that answers for the pin alone' catches \
   case_facts 'sc/one-sided-replies' xterm '' ''
 SILENT_SIDE=""
 SILENT_TERMINAL=0
 
-# THE EXTENDED-KEY REQUEST'S OWN CONDITION. tty_update_features writes Eneks
-# only while the terminal carries extkeys, which a silent TERM=xterm-256color
-# does not, so naming it for zz alone with -T has to arm zz's mode 2 against
-# the pin's VT10x and report through pane_key_mode and no other row.
 SILENT_TERMINAL=1
 side_command zz set-option -s extended-keys on >/dev/null
 side_command tmux set-option -s extended-keys on >/dev/null
@@ -1458,10 +1029,6 @@ side_command zz set-option -s extended-keys off >/dev/null
 side_command tmux set-option -s extended-keys off >/dev/null
 SILENT_TERMINAL=0
 
-# The silent terminal's colour downgrade, in both directions. -2 is what raises
-# a silent terminal from the eight colours TERM=xterm carries to 256, so the
-# side that gets it alone has to keep the indexed cell at 38;5;42 and write the
-# RGB cell as 38;5;233 while the other side writes 32 and 30.
 self_check_case 'control, the silent colour sample with no sabotage' quiet \
   case_silent_colours 'sc/silent-colours' sc-silent '' ''
 self_check_case 'a one-sided -2 on the pin only, silent terminal' catches \
@@ -1477,32 +1044,14 @@ self_check_case 'control, a user key on both sides' quiet \
 self_check_case 'user-keys set on the pin only' catches \
   case_user_key 'sc/user-key-pin' '' "$USER_KEY_SEQUENCE"
 
-# THE MODE ROWS READ THE LIVE ATTACH. Autowrap is the one mode neither client
-# touches: tty.c tty_start_tty never writes DECAWM and neither does
-# TerminalGuard::enter, so turning it off on zz's outer pane just before zz's
-# client starts on it has to leave wrap_flag at 0 there against the pin's 1.
-# Every other mode row is recorded for that run, so wrap_flag is the only row
-# that can report.
 self_check_case 'autowrap turned off on zz side before it attaches' catches \
   case_one_sided_autowrap
 
-# THE MOUSE ARMING. `focus-follows-mouse` is the option that decides between
-# the pin's two mouse trackings without any pane asking for one
-# (server-client.c server_client_reset_state), so turning it on for the pin
-# alone has to raise MODE_MOUSE_ALL there and leave MODE_MOUSE_BUTTON on zz.
-# Those two rows are the only ones that can report, and with the option on
-# both sides the same case has to be quiet.
 self_check_case 'control, focus-follows-mouse on both sides' quiet \
   case_one_sided_focus_follows_mouse both ''
 self_check_case 'focus-follows-mouse on the pin only' catches \
   case_one_sided_focus_follows_mouse tmux "$(modes_except mouse_all_flag mouse_button_flag)"
 
-# A MENU's own arming. `-M` is the whole difference between a menu that pins
-# any-event tracking and one that leaves the option to decide, so raising the
-# `-M` menu on zz alone against the pin's plain one has to report through
-# mouse_all_flag and mouse_button_flag and through no other row. This is the
-# channel the 2026-09-13 gate fix moved: the raw TUI read every menu as
-# any-event before it, where the pin reads MENU_NOMOUSE.
 self_check_case 'control, the plain menu on both sides' quiet \
   case_menu_arming 'sc/menu-nomouse-both' '' ''
 self_check_case 'the -M menu on zz only' catches \
@@ -1512,78 +1061,41 @@ self_check_case 'the -M menu on zz only, mouse off' catches \
   case_menu_arming_mouse_off 'sc/menu-one-sided-M-mouse-off' -M '' \
   "$(modes_except mouse_all_flag mouse_any_flag mouse_button_flag mouse_sgr_flag)"
 
-# The keypad rows are 1 only while a client that armed smkx is attached, so
-# detaching zz alone has to drop keypad_flag and keypad_cursor_flag there
-# against the pin's, and those two are the only rows that can report.
 self_check_case 'zz detached while the pin stays attached' catches \
   case_one_sided_detach
 
-# The theme reply. Neither terminal answers an OSC 11 query in this fixture:
-# the outer decoder declines while its own pane carries no background of its
-# own (input.c input_osc_11 over window_pane_get_bg), so both clients stay
-# theme-unknown and client_theme asserts empty on both. Giving the pin's outer
-# window a background alone makes that decoder answer the pin's next request
-# (tty.c tty_repeat_requests), and client_theme has to report it.
 self_check_case 'a theme reply the pin alone can get' catches \
   case_one_sided_theme_reply
 
-# The colour class itself: the pin's side writes the named cell as the RGB
-# colour it resolves to, the same colour in another class, and the stock stage
-# has to report it.
 self_check_case 'a named cell spelled as its RGB colour on the pin only' catches \
   case_colours named-as-rgb
 
-# A one-sided palette entry. Both sides resolve a set palette entry to the same
-# RGB, so setting a different entry on one side has to break the palette line.
 self_check_case 'a one-sided palette entry' catches case_colours named-entry
 
-# An indexed entry set on one side only: zz's indexed cell has to leave its
-# class for RGB while the pin's keeps 38;5;42, and the indexed stage catches it.
 self_check_case 'an OSC 4 on an indexed entry sent to zz only' catches \
   case_colours indexed-entry
 
-# A reset on one side only: zz's named and indexed cells go back to their
-# index while the pin's stay RGB, and the reset stage catches it.
 self_check_case 'an OSC 104 sent to zz only' catches case_colours reset
 
-# pane-colours on zz alone: zz's named, indexed and background cells take the
-# option's colours while the pin's keep their index, and the pane stage
-# catches it.
 self_check_case 'pane-colours set on zz only' catches case_colours pane-entry
 
-# An entry the other stage leaves untouched, named on the pin alone: zz's named
-# cell has to keep 31 while the pin's goes RGB, and the untouched stage
-# catches it.
 self_check_case 'pane-colours naming the untouched entry on the pin only' catches \
   case_colours pane-untouched
 
-# The legacy-terminal case driven with extended keys on one side. With
-# extended-keys off on both, pane_key_mode is VT10x on both and asserts; turning
-# it on for the pin alone makes the pin arm Eneks and the decoder record Ext 1.
 side_command tmux set-option -s extended-keys on >/dev/null
 self_check_case 'the legacy case driven with extended keys on the pin' catches \
   case_modes 'sc/legacy-extended' xterm '' ''
-# The decode channel: with extended keys on the pin alone, only the pin's client
-# arms mode 2 and receives C-Enter as \e[27;5;13~, so only its binding fires.
 self_check_case 'an extended key with extended keys on the pin only' catches \
   case_extended_key 'sc/extended-key'
 side_command tmux set-option -s extended-keys off >/dev/null
 
-# A one-sided CLI flag, on the channel that needs no terminal.
 self_check_case 'a one-sided unknown CLI option' catches case_cli '' -W
 
-# A one-sided width. One extra wide codepoint on the pin's sample has to move
-# its cursor away from zz's and change its decoded line.
 CASE_LOCALE=C.UTF-8
 self_check_case 'a one-sided wide codepoint' catches \
   case_widths "$WIDTH_SUFFIX" "$WIDTH_SUFFIX\344\270\226"
 CASE_LOCALE=C
 
-# THE CODESET. Under a C locale neither client takes UTF-8 and both draw each
-# non-ASCII cell as data.width underscores, which is the driven
-# widths/non-utf8 case; -u handed to zz alone has to put the codepoints back on
-# zz's line and leave the pin's underscores, and the cursor column is the same
-# either way because the underscores fill the cells the glyph would.
 self_check_case 'a one-sided -u under a C locale' catches \
   case_widths "$WIDTH_SUFFIX" "$WIDTH_SUFFIX" sc/one-sided-codeset -u ''
 

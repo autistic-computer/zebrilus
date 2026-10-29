@@ -1,4 +1,3 @@
-//! Client half of the zz daemon: endpoints, ssh tunnels, the command and interactive clients, and the transport, paths, and process facts the server shares.
 #![cfg_attr(
     test,
     allow(
@@ -58,7 +57,6 @@ pub mod transport;
 pub mod unmasked;
 pub mod user_data;
 
-/// Only unix and Windows spawn ssh, so only they carry the askpass helper.
 #[cfg(any(unix, windows))]
 pub use askpass::run_helper;
 pub use askpass::{ASKPASS_SOCKET_ENV, AskpassPrompt, AskpassPromptKind, AskpassReply, SshPrompts};
@@ -103,7 +101,6 @@ pub use terminal_features::{
 };
 pub use transport::default_socket_path;
 
-/// Every failure a client can see from the daemon, whether it hosts one or only talks to one.
 #[derive(Debug, Error)]
 pub enum DaemonError {
     #[error("daemon I/O error: {0}")]
@@ -144,8 +141,6 @@ fn incompatible_daemon_message(daemon: Option<u16>, client: u16) -> String {
     }
 }
 
-/// The text `strerror` would give for an IO failure. Rust appends its own
-/// `(os error N)` tail, which no tmux message carries.
 pub fn strerror_text(error: &io::Error) -> String {
     let text = error.to_string();
     text.split_once(" (os error ")
@@ -153,8 +148,6 @@ pub fn strerror_text(error: &io::Error) -> String {
         .to_owned()
 }
 
-/// Classify a failed local handshake as a stale daemon when the wire error or guarded identity
-/// provides enough evidence. Unrelated protocol failures are returned unchanged.
 #[must_use]
 pub fn classify_local_connect_error(socket_path: &Path, error: DaemonError) -> DaemonError {
     let mut source: &(dyn std::error::Error + 'static) = &error;

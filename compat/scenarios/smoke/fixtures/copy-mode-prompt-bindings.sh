@@ -158,9 +158,6 @@ probe copy-mode -t "$pane"
 top
 check_equal 'vi-entry' '0,0' "$(xy)"
 
-# '/' and '?' raise the prompt whose answer runs `send-keys -X search-forward`
-# or `-X search-backward` with the typed string. The prompt is the pin's
-# `command-prompt -P`, which both engines draw over the target pane's last row.
 drive 2f
 drive 7a657461
 drive 0d
@@ -173,9 +170,6 @@ drive 0d
 check_equal 'vi-question-search-up' '5,5' "$(xy)"
 check_equal 'vi-question-match' '1|alpha' "$(match)"
 
-# The `#` and `*` bindings are `send-keys -FX search-backward` and
-# `search-forward` with `#{copy_cursor_word}`, so the word under the cursor is
-# expanded into the search string before the action runs.
 top
 drive 2a
 check_equal 'vi-star-cursor-word' '6,1' "$(xy)"
@@ -185,8 +179,6 @@ drive 23
 check_equal 'vi-hash-cursor-word' '5,5' "$(xy)"
 check_equal 'vi-hash-match' '1|alpha' "$(match)"
 
-# 'f', 't', 'F' and 'T' are single-key prompts: the first key pressed is the
-# whole answer, and it becomes the jump target.
 top
 drive 66
 drive 67
@@ -202,9 +194,6 @@ drive 54
 drive 61
 check_equal 'vi-jump-to-backward' '5,0' "$(xy)"
 
-# The armed count survives the prompt the way wme->prefix does: the pin's
-# numeric prompt hands the first non-digit key on with send-keys -N already
-# run, and window_copy_command resets the prefix only after the answer ran.
 top
 drive 33
 drive 66
@@ -218,9 +207,6 @@ drive 0d
 check_equal 'vi-counted-slash-search' '5,2' "$(xy)"
 probe send-keys -t "$pane" -X cancel
 
-# 'C-s' and 'C-r' are the incremental prompts: the search runs on every
-# keystroke, before Enter, and the prefix the prompt prepends picks the
-# direction the -incremental action searches in.
 probe set-window-option -t "=cmpb" mode-keys emacs
 probe copy-mode -t "$pane"
 top
@@ -237,10 +223,6 @@ check_equal 'emacs-incremental-up-match' '1|alpha' "$(match)"
 drive 0d
 check_equal 'emacs-incremental-up-answered' '0,0' "$(xy)"
 
-# The emacs table binds the same four jump prompts, and this probe answers the
-# same four columns the vi table does: window_copy_cursor_jump_to_back's
-# `onemore` right step only shows up at the end of a row, which none of these
-# jumps reach.
 top
 drive 66
 drive 67
@@ -257,10 +239,6 @@ drive 61
 check_equal 'emacs-jump-to-backward' '5,0' "$(xy)"
 probe send-keys -t "$pane" -X cancel
 
-# ':' and 'g' raise the goto-line prompt. Forty more lines put history behind
-# the screen so the answer moves the view, which is what goto-line does with
-# line numbers off. copy_cursor_y is not compared because the attached pane is
-# not the same height on the two engines.
 seq 1 40 | sed 's/^/L/' >"$work/long.txt"
 probe load-buffer -b cmpb2 "$work/long.txt"
 probe paste-buffer -b cmpb2 -t "$pane"

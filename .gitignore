@@ -9,38 +9,27 @@
 .DS_Store
 .agents/launch.json
 
-# Release signing material: Developer ID key/p12, notary API key, tap deploy
-# key. Feeds the Actions secrets consumed by .github/workflows/release.yml.
 /.zz-signing*
 *.log
 
-# Development run logs (just run defaults ZZ_LOG_DIR here)
 /logs/
 
-# Terminal IO-throughput bench harness scratch (see bench/README.md):
-# third-party clones/builds, 150 MiB fixtures, and captured results.
 /bench/.cache/
 /bench/fixtures/
 /bench/results/
 
-# Reference checkouts read but never built; the UPSTREAM.md records are the tracked part.
 /third_party/.cache/
 
-# Zig unpacks Ghostty's packages next to its build.zig.zon.
 /third_party/ghostty/zig-pkg/
 /third_party/ghostty/.zig-cache/
 
-# tmux differential compatibility harness scratch and captured results.
 /compat/.cache/
 /compat/results/*
 !/compat/results/summary.md
 
-# Browser-rendering bench (see bench/browser-rendering/README.md):
-# screen captures are large and machine-specific; results are derived from them.
 /bench/browser-rendering/captures/
 /bench/browser-rendering/results/
 
-# Generated single-page render of the knowledge bundle; the markdown is the source.
 /knowledge/site.html
 
 node_modules/
@@ -48,10 +37,8 @@ node_modules/
 crash.log
 __pycache__/
 
-# gh CLI state written when XDG_STATE_HOME pointed at the checkout.
 /.local/
 
-# agent benchmark outputs
 bench/agents/browser/out/
 bench/agents/browser/out-site.log
 bench/agents/browser/out-site.pid

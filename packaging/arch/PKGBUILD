@@ -1,12 +1,3 @@
-# This is a local-development PKGBUILD. Use `just package arch` or
-# `just install arch` from the repository root so dist/zz is built first.
-# The published AUR package is its sibling in aur/, rendered per release by
-# scripts/render-aur.sh; keep the two in sync.
-#
-# The name carries the AUR's -bin suffix because this packages an already-built
-# bundle rather than compiling one, and because plain `zz` on the AUR belongs to
-# an unrelated project.
-
 pkgname=zz-bin
 _workspace_version="$(sed -nE 's/^version = "([^"]+)"$/\1/p' "$startdir/../../Cargo.toml" | head -1)"
 pkgver="${_workspace_version//-/_}"
@@ -44,8 +35,6 @@ depends=(
     'wayland'
 )
 optdepends=('org.freedesktop.secrets: import encrypted Chrome cookies')
-# /usr/bin/zz and /usr/lib/zz can only have one owner, including the package
-# this one used to be called.
 provides=('zz')
 conflicts=('zz')
 options=('!debug')

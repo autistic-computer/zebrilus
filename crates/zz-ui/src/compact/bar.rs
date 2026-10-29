@@ -24,8 +24,6 @@ const PILL_INSET_MAX: f32 = 20.0;
 const INK_CONTRAST: f32 = 4.5;
 const TINT_MAX: f32 = 0.95;
 
-/// The radius of a corner set `gap` inside one of `radius`, so the two
-/// share a center. A full round stays full.
 pub(super) fn concentric(radius: Pixels, gap: Pixels) -> Pixels {
     if radius >= FULL_CORNER_RADIUS {
         FULL_CORNER_RADIUS
@@ -34,11 +32,6 @@ pub(super) fn concentric(radius: Pixels, gap: Pixels) -> Pixels {
     }
 }
 
-/// Where the floating pill sits. On a screen with rounded corners it sits in
-/// from the sides and the bottom by one distance, at most 20pt so the bar
-/// spans the screen, and rounds by the screen's radius less that distance,
-/// following the screen's corners; elsewhere it clears the safe area and
-/// keeps its role's corners.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PillPlacement {
     pub inset: Pixels,
@@ -47,8 +40,6 @@ pub struct PillPlacement {
     pub glass: Option<PillGlass>,
 }
 
-/// The floating pill's glass over a page: the tint it takes and the color it
-/// then shows, from [`pill_glass_over`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PillGlass {
     pub tint: Hsla,
@@ -77,21 +68,15 @@ impl PillPlacement {
         }
     }
 
-    /// The height of the strip the pill floats in, from the gap above it to
-    /// the bottom of the screen.
     pub fn zone(&self) -> Pixels {
         px(PILL_GAP + COMPACT_PILL_HEIGHT) + self.bottom
     }
 
-    /// How far the pill's top sits below the top of that strip.
     pub fn pill_top(&self) -> Pixels {
         px(PILL_GAP)
     }
 }
 
-/// The strip the floating pill sits in at the bottom of a phone page. It
-/// paints nothing, so the page shows around the pill; a
-/// [`compact_floating_group`] added after the pill sits at its other end.
 pub fn compact_floating_bar(pill: impl IntoElement, placement: &PillPlacement, cx: &App) -> Div {
     let theme = cx.theme();
     div()
@@ -109,8 +94,6 @@ pub fn compact_floating_bar(pill: impl IntoElement, placement: &PillPlacement, c
         .child(pill)
 }
 
-/// How a floating pill or group paints: [`roles::PHONE_PILL`] at rest,
-/// rounded by the placement's concentric radius unless the role is square.
 pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
     let theme = cx.theme();
     let resting = theme.layer(roles::PHONE_PILL, PaintState::Rest);
@@ -141,9 +124,6 @@ pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
     }
 }
 
-/// The floating pill's glass over `backdrop`, the color under it. The pill
-/// keeps its ink whatever the page, as Safari's bar does; the glass deepens
-/// its tint instead, only as far as the ink needs to read at 4.5:1.
 pub fn pill_glass_over(backdrop: Hsla, cx: &App) -> Option<PillGlass> {
     let layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
     let tint = layer.glass.filter(GlassMaterial::reads_backdrop)?.tint;
@@ -194,8 +174,6 @@ fn contrast(left: Hsla, right: Hsla) -> f32 {
     (left.max(right) + 0.05) / (left.min(right) + 0.05)
 }
 
-/// Buttons in a capsule beside the floating pill, painted and rounded as the
-/// pill is, so it runs concentric with the screen's other corner.
 pub fn compact_floating_group(
     buttons: impl IntoIterator<Item = Button>,
     placement: &PillPlacement,
@@ -214,8 +192,6 @@ pub fn compact_floating_group(
         .children(buttons.into_iter().map(|button| button.on(ground)))
 }
 
-/// A button on the phone's bars, drawn as [`roles::PHONE_BUTTON`]: back,
-/// close and settings.
 pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
     Button::new(id)
         .ghost()
@@ -226,8 +202,6 @@ pub fn compact_bar_button(id: impl Into<ElementId>, icon: IconName) -> Button {
         .child(Icon::new(icon).size(rems_from_px(BUTTON_ICON)))
 }
 
-/// A 44pt bar across the top of a phone page, drawn as [`roles::PHONE_BAR`]:
-/// the settings bar.
 pub fn compact_nav_bar(cx: &App) -> Div {
     div()
         .flex()
@@ -239,8 +213,6 @@ pub fn compact_nav_bar(cx: &App) -> Div {
         .surface(roles::PHONE_BAR, cx)
 }
 
-/// What a phone pill says: its icon, title and the line under it, amber
-/// when the page needs attention.
 pub struct PillLabel {
     pub icon: IconName,
     pub title: SharedString,
@@ -248,9 +220,6 @@ pub struct PillLabel {
     pub warning: bool,
 }
 
-/// The pill floating at the bottom of a phone page, drawn as
-/// [`roles::PHONE_PILL`], in a [`compact_floating_bar`] with the same
-/// placement.
 pub fn compact_floating_pill(
     id: impl Into<ElementId>,
     label: PillLabel,
@@ -279,8 +248,6 @@ pub fn compact_floating_pill(
         .child(pill_row(label, dots, &pill, cx))
 }
 
-/// What the floating pill holds, without the pill: the icon tile, the title
-/// and the line under it, laid out as the pill lays them out.
 pub fn compact_pill_label(
     label: PillLabel,
     dots: impl IntoElement,

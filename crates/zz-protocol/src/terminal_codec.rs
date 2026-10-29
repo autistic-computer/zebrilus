@@ -68,7 +68,6 @@ impl postcard::ser_flavors::Flavor for FrameFlavor<'_> {
     }
 }
 
-/// Encode a protocol message, selecting the compact terminal lane for viewport events.
 pub fn encode_protocol_message(message: &ProtocolMessage) -> Result<Vec<u8>, ProtocolError> {
     let mut output = Vec::new();
     encode_protocol_message_into(message, &mut output)?;
@@ -114,9 +113,6 @@ pub fn encode_terminal_patch_event_into(
     result
 }
 
-/// Encode a protocol message into a caller-owned frame buffer.
-///
-/// Existing capacity is retained and reused. On failure the output is left empty.
 pub fn encode_protocol_message_into(
     message: &ProtocolMessage,
     output: &mut Vec<u8>,
@@ -295,13 +291,11 @@ fn serialize_control_into(
     Ok(())
 }
 
-/// Decode a complete protocol frame from either the control or terminal lane.
 pub fn decode_protocol_frame(frame: &[u8]) -> Result<ProtocolMessage, ProtocolError> {
     let (lane, payload) = decode_enveloped(frame)?;
     decode_protocol_payload(lane, payload.as_ref())
 }
 
-/// Write and flush a protocol message using its appropriate lane.
 pub fn write_protocol_message(
     writer: &mut impl Write,
     message: &ProtocolMessage,
@@ -311,15 +305,11 @@ pub fn write_protocol_message(
     Ok(())
 }
 
-/// Read a protocol message from either the control or terminal lane.
 pub fn read_protocol_message(reader: &mut impl Read) -> Result<ProtocolMessage, ProtocolError> {
     let mut frame = Vec::new();
     read_protocol_message_into(reader, &mut frame)
 }
 
-/// Read a protocol message through a caller-owned transport buffer.
-///
-/// Existing capacity is retained and the envelope payload is decoded directly from that buffer.
 pub fn read_protocol_message_into(
     reader: &mut impl Read,
     frame: &mut Vec<u8>,

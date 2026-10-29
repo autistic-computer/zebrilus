@@ -99,8 +99,6 @@ attach_client() {
     return 1
 }
 
-# Restore the two-pane source window so every probe starts from the same shape
-# without disturbing the client attached to the session.
 reset_window() {
     count="$(main_client list-panes -t "=$session:0" -F '#{pane_id}' | wc -l)"
     while [ "$count" -lt 2 ]; do
@@ -120,8 +118,6 @@ reset_window() {
 
 mine="#{==:#{session_name},$session}"
 
-# Open the chooser with C-o, press one key inside it, and report which panes the
-# invoking window still has once the chooser is gone.
 probe() {
     label="$1"
     key="$2"
@@ -141,8 +137,6 @@ attach_client || exit 0
 sleep 0.5
 reset_window
 
-# window_pane_reset_mode kills the pane the mode was entered on when the mode
-# carried -k, whichever way the chooser is left.
 main_client bind-key -n C-o choose-tree -k -f "$mine"
 probe kill-on-cancel 71 "$other_pane "
 reset_window
@@ -152,9 +146,6 @@ main_client set-environment -g CHOOSER_KILL_RAN no
 probe kill-on-enter 0d "$other_pane "
 check_equal kill-on-enter-template "CHOOSER_KILL_RAN=yes" \
     "$(main_client show-environment -g CHOOSER_KILL_RAN 2>/dev/null || true)"
-# The template runs after the kill: mode_tree_run_command only appends it, and
-# window_pane_reset_mode's server_kill_pane is synchronous, so the template
-# sees the window already down to one pane.
 reset_window
 rm -f "$work/panes-at-template"
 main_client bind-key -n C-o choose-tree -k -f "$mine" \
@@ -173,7 +164,6 @@ reset_window
 main_client bind-key -n C-o choose-tree -k -f "$mine"
 probe kill-on-shortcut 30 "$other_pane "
 
-# Without -k the same exits leave the pane alone.
 reset_window
 main_client bind-key -n C-o choose-tree -f "$mine"
 probe keep-on-cancel 71 "$source_pane $other_pane "
@@ -181,8 +171,6 @@ reset_window
 main_client bind-key -n C-o choose-tree -f "$mine"
 probe keep-on-enter 0d "$source_pane $other_pane "
 
-# The buffer chooser closes once its last buffer is deleted, and -k kills the
-# pane it was entered on when it does.
 reset_window
 for name in $(main_client list-buffers -F '#{buffer_name}' 2>/dev/null); do
     main_client delete-buffer -b "$name" >/dev/null 2>&1 || true
@@ -192,7 +180,6 @@ main_client bind-key -n C-o choose-buffer -k
 probe kill-on-empty-after-delete 64 "$other_pane "
 check_equal empty-after-delete-buffers "" "$(main_client list-buffers 2>/dev/null || true)"
 
-# Detaching the client is not leaving the chooser, so the pane survives.
 reset_window
 main_client bind-key -n C-o choose-tree -k -f "$mine"
 drive "keys 0f"

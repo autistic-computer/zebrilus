@@ -1,35 +1,19 @@
-//! Appearance settings every client shares: the light or dark mode, the app
-//! icon, the built-in interface themes by id, and hex color parsing.
-
-/// The interface themes compiled into every client, by the id
-/// `interface-theme` names. Each one bundles a look with its light and dark
-/// colors.
 pub const BUILTIN_THEMES: [&str; 3] = ["default", "macos", "yaru"];
 
-/// The theme a fresh install uses.
 pub const DEFAULT_THEME: &str = "default";
 
-/// How fast interface motion runs, as a share of its designed speed:
-/// `animation-speed` takes 0.25 (four times slower) to 2 (twice as fast).
 pub const DEFAULT_ANIMATION_SPEED: f32 = 1.0;
 pub const MIN_ANIMATION_SPEED: f32 = 0.25;
 pub const MAX_ANIMATION_SPEED: f32 = 2.0;
 
-/// The roundest corner radius `widget-corner-radius` takes.
 pub const MAX_CORNER_RADIUS: f32 = 25.0;
 
-/// The named accents `chrome-accent` takes besides a `#rrggbb` color, each
-/// tuned for light and for dark.
 pub const ACCENTS: [&str; 8] = [
     "blue", "purple", "pink", "red", "orange", "yellow", "green", "graphite",
 ];
 
-/// The hue `chrome-tint` leans toward until `chrome-tint-hue` picks one, in
-/// Oklch degrees: a cool blue.
 pub const DEFAULT_TINT_HUE: f32 = 260.0;
 
-/// What `chrome-accent` sets: the theme's own accent, one of [`ACCENTS`], or
-/// a color for both modes.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum AccentSetting {
     #[default]
@@ -50,7 +34,6 @@ impl AccentSetting {
         }
     }
 
-    /// How `zz/config` spells it.
     pub fn spelled(self) -> String {
         match self {
             Self::Theme => "theme".to_owned(),
@@ -109,10 +92,8 @@ impl ThemeModeSetting {
     }
 }
 
-/// What `app-icon` selects.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum AppIconSetting {
-    /// Follow the OS appearance.
     #[default]
     Automatic,
     Light,
@@ -150,7 +131,6 @@ pub fn parse_hex(value: &str) -> Result<[f32; 4], String> {
     if !digits.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err("expected hexadecimal digits".to_owned());
     }
-    // `#rgb` is the CSS shorthand: each digit doubles into a byte.
     let component = |index: usize, width: usize| -> f32 {
         let slice = &digits[index * width..(index + 1) * width];
         let byte = u8::from_str_radix(slice, 16).unwrap_or_default();

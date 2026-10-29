@@ -77,8 +77,6 @@ pub struct StackTile {
     pub select: Option<StackAction>,
 }
 
-/// The corner radius of a `tile` tall stack tile inside something `around`
-/// tall: the role's corners, kept concentric with what holds them.
 pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     let theme = cx.theme();
     let radius = theme.layer(roles::PANE_STACK, PaintState::Rest).radius;
@@ -133,17 +131,12 @@ impl PaneStack {
         }
     }
 
-    /// Holds room beside a row stack for `tiles` tiles, or for its own when
-    /// it shows more, so the labels of a list of stacks line up.
     #[must_use]
     pub fn room(mut self, tiles: usize) -> Self {
         self.room = tiles;
         self
     }
 
-    /// Lays `content` out `gap` after the stack. Open, the stack's tiles run
-    /// over the start of it, and its text is hidden under them and fades back
-    /// in past them.
     #[must_use]
     pub fn beside(mut self, content: impl IntoElement, gap: Pixels) -> Self {
         self.beside = Some((content.into_any_element(), gap));
@@ -398,7 +391,6 @@ impl PaneStack {
 }
 
 impl PaneStack {
-    /// How far the open stack's tiles reach past its leading edge.
     fn reach(&self) -> Pixels {
         let size = self.size;
         let count = self.tiles.len() as f32;
@@ -485,9 +477,6 @@ impl RenderOnce for PaneStack {
     }
 }
 
-/// Paints `child` with the text in it hidden up to `reach` from its leading
-/// edge, where an open stack's tiles end, fading back in over the next
-/// [`crate::LABEL_FADE`].
 struct UnderTiles {
     child: AnyElement,
     reach: Pixels,

@@ -48,10 +48,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# cmd_send_keys_inject_string parses -H with strtol base 16 and injects
-# KEYC_LITERAL|n, which input_key writes to the pane as one raw byte. A string
-# that is empty, not entirely hexadecimal, or outside 0..0xff is dropped
-# without an error, so every bad code below is a silent skip at status 0.
 send_case() {
     label="$1"
     shift
@@ -89,17 +85,13 @@ send_case high -t "$pane" -H 80
 send_case top -t "$pane" -H ff
 send_case prefixed -t "$pane" -H 0x42
 
-# strtol failures and out-of-range codes are dropped, one argument at a time.
 send_case not-hex -t "$pane" -H zz
 send_case out-of-range -t "$pane" -H 100
 send_case empty -t "$pane" -H ''
 send_case mixed -t "$pane" -H 43 zz 44
 
-# -N repeats the whole argument list.
 send_case repeated -N 3 -t "$pane" -H 45
 
-# 0x04 is the tty's EOF: the first one hands cat the pending bytes, the second
-# ends its input so the redirect is complete.
 send_case flush -t "$pane" -H 04
 check_count=$((check_count + 1))
 if ! await_bytes '41 80 ff 42 43 44 45 45 45' delivered; then

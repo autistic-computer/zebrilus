@@ -1,6 +1,3 @@
-//! Inert stand-ins compiled when the `editor-pane` feature is off.
-
-// Stub methods keep the real API's `self` receivers without reading them.
 #![allow(clippy::unused_self)]
 
 use ala::{App, Context, Window, div, prelude::*};
@@ -11,7 +8,6 @@ use crate::mux::client::MuxClient;
 
 pub fn init(_cx: &mut App) {}
 
-/// Placeholder for an editor pane this build cannot host.
 pub(crate) struct EditorView {
     focus_handle: ala::FocusHandle,
 }

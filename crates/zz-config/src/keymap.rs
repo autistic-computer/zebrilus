@@ -1,7 +1,5 @@
 use zz_client::{CHROME_TABLES, ChromeAction, ChromeKey};
 
-/// A `zz/config` chrome override, validated while the file is parsed so the
-/// keymap only ever sees chords and actions it can honour.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ChromeOverride {
     Bind {

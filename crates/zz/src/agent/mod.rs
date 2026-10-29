@@ -1,13 +1,9 @@
-//! The agent lens over terminal panes, behind the `agent-pane` cargo feature.
-
 pub(crate) mod attachment;
 
 #[cfg(feature = "agent-pane")]
 pub(crate) mod controller;
 #[cfg(feature = "agent-pane")]
 pub(crate) mod notify;
-/// Unconditional: the workspace chrome renders agent badges in every build,
-/// and without the feature the status map is simply always empty.
 pub(crate) mod sound;
 #[cfg(feature = "agent-pane")]
 mod view;

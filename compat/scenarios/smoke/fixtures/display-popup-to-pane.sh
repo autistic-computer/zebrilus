@@ -77,8 +77,6 @@ drive() {
     return 0
 }
 
-# The cursor position the client wrote before the popup's top-left corner
-# glyph, which is where the box is drawn from.
 corner() {
     python3 -c 'import re, sys
 data = open(sys.argv[1], "rb").read()
@@ -161,8 +159,6 @@ column="${opened#*,}"
 check_equal the-window-starts-with-one-pane 1 \
     "$(main_client list-panes -t "=$session:" -F '#{pane_id}' | wc -l | tr -d ' ')"
 
-# Button 3 outside the popup raises its menu; 'h' is To Horizontal Pane, which
-# hands the popup's job and screen to a freshly split pane.
 drive "$(sgr 2 $((column + 40)) $((row + 12)))"
 sleep 0.8
 drive "snap menu"

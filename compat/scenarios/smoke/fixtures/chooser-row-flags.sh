@@ -82,8 +82,6 @@ chosen_row() {
     printf '%s' "${row#CHOOSER_ROW=}"
 }
 
-# Open the chooser from the attached client with C-o, press one key inside it,
-# and report which row ran the template.
 probe() {
     label="$1"
     key="$2"
@@ -150,8 +148,6 @@ if [ -z "$client" ]; then
 fi
 sleep 0.5
 
-# Without -h every pane of every window has a row, and the invoking pane is the
-# one the chooser starts on (window_tree_init seeds the current pane).
 main_client bind-key -n C-o choose-tree -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 probe plain-row0 30 "=$session:"
@@ -162,8 +158,6 @@ probe plain-row4 34 "=$session:1."
 probe plain-row5 35 "=$session:1.$pane2"
 probe plain-enter 0d "=$session:0.$pane0"
 
-# -h drops the invoking pane's own row while its window and session rows stay,
-# and the selection the hidden row would have taken falls back to the first row.
 main_client bind-key -n C-o choose-tree -h -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 probe hide-row0 30 "=$session:"
@@ -173,16 +167,12 @@ probe hide-row3 33 "=$session:1."
 probe hide-row4 34 "=$session:1.$pane2"
 probe hide-enter 0d "=$session:"
 
-# window_tree_build_window counts the filtered panes before it drops the hidden
-# one, so a window whose only match is the invoking pane keeps its own row.
 main_client bind-key -n C-o choose-tree -h -f "$mine_source" \
     'set-environment -g CHOOSER_ROW %%'
 probe hide-filter-row0 30 "=$session:"
 probe hide-filter-row1 31 "=$session:0."
 probe hide-filter-enter 0d "=$session:"
 
-# A single-pane invoking window keeps the window row it started on, so -h moves
-# nothing but its own pane row.
 main_client select-window -t "=$session:1"
 sleep 0.4
 main_client bind-key -n C-o choose-tree -f "$mine" \
@@ -197,8 +187,6 @@ main_client select-window -t "=$session:0"
 main_client select-pane -t "=$session:0.0"
 sleep 0.4
 
-# -F is expanded once per visible row in that row's own context and becomes the
-# text the row draws, while the shortcut key still runs the same row.
 main_client bind-key -n C-o choose-tree -F 'ZZTREE<#{pane_id}>' -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 main_client set-environment -g CHOOSER_ROW pending
@@ -219,7 +207,6 @@ check_equal format-tree-pane0 yes "$(marker_seen tree-format "ZZTREE<$pane0>")"
 check_equal format-tree-pane1 yes "$(marker_seen tree-format "ZZTREE<$pane1>")"
 check_equal format-tree-pane2 yes "$(marker_seen tree-format "ZZTREE<$pane2>")"
 
-# Without -F the same rows draw no such text.
 main_client bind-key -n C-o choose-tree -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 drive "keys 0f"
@@ -229,7 +216,6 @@ drive "keys 71"
 sleep 0.4
 check_equal format-tree-absent no "$(marker_seen tree-plain 'ZZTREE<')"
 
-# The buffer chooser reads its own -F in each row's paste-buffer context.
 main_client set-buffer -b zzbufalpha alpha
 main_client set-buffer -b zzbufbeta beta
 main_client bind-key -n C-o choose-buffer -F 'ZZBUF<#{buffer_name}>' \

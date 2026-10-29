@@ -74,8 +74,6 @@ impl HostState {
         }
     }
 
-    /// What to tell someone looking at a failed host row, or `None` for the
-    /// states with nothing to explain.
     pub fn failure_detail(&self) -> Option<String> {
         match self {
             Self::Unreachable { reason } => Some(reason.clone()),

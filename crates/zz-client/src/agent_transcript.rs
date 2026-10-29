@@ -223,8 +223,6 @@ impl<I> AgentTranscript<I> {
         &self.entries
     }
 
-    /// The tool call a subagent's tool row belongs to, by the parent's tool
-    /// call ID, when the driver said so.
     pub fn tool_parent(&self, entry_id: u64) -> Option<&str> {
         self.tool_parents.get(&entry_id).map(String::as_str)
     }
@@ -340,9 +338,6 @@ impl<I> AgentTranscript<I> {
         self.entry_changes.push_back((revision, index));
     }
 
-    /// The first user chunk of a turn [`Self::begin_prompt`] opened echoes
-    /// the prompt already shown, and so does any chunk of that message. A
-    /// user chunk under another message id is one typed mid-turn.
     fn apply_message_chunk(&mut self, role: StreamRole, chunk: ContentChunk) {
         if role == StreamRole::User && self.suppress_user_echo {
             let message_id = chunk.message_id.as_ref().map(|id| id.0.to_string());

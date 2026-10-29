@@ -219,7 +219,6 @@ pub(super) struct Controls {
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
     zoom: FocusHandle,
-    /// Whether the Interface page lists the knobs under Advanced.
     advanced: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -382,8 +381,6 @@ impl Controls {
         }
     }
 
-    /// Shows the custom accent and UI font the preferences resolve to,
-    /// after a theme change or a reset.
     fn sync_theme_inputs(&self, preferences: &Preferences, window: &mut Window, cx: &mut App) {
         let accent = custom_accent(preferences);
         self.accent
@@ -1201,8 +1198,6 @@ pub(super) fn finish_field(window: &mut Window, cx: &mut App) {
     }
 }
 
-/// The color the custom accent picker holds: a hex accent, or none while
-/// the accent is the theme's or a named one.
 fn custom_accent(preferences: &Preferences) -> Option<ala::Hsla> {
     preferences
         .overrides
@@ -1212,8 +1207,6 @@ fn custom_accent(preferences: &Preferences) -> Option<ala::Hsla> {
         .and_then(|accent| interface_theme::accent_color(accent, ThemeMode::Dark))
 }
 
-/// The themes the Theme rows offer, the built-in first, with the active one
-/// picked and the overrides set over it.
 pub(super) fn theme_picks(preferences: &Preferences) -> ThemePicks<'_> {
     let themes = interface_theme::builtin_themes()
         .iter()

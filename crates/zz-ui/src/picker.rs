@@ -12,14 +12,10 @@ use ala::{
 };
 
 const PICKER_ROW_HEIGHT: Pixels = px(26.0);
-/// The height of a row in a pane's own lists: the new-session actions, the
-/// pane picker, recent pages and answer options.
 pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
 const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
 pub use penna::{list_row, muted_on, row_state, row_surface};
 
-/// The radius of a surface drawn as `layer` whose rows sit `inset` inside
-/// it, so the two stay concentric. Square and pill shapes keep theirs.
 pub fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
     if layer.radius > px(0.0) && layer.radius < FULL_CORNER_RADIUS {
         layer.radius + inset
@@ -77,7 +73,6 @@ pub fn picker_search(input: &Entity<InputState>, cx: &App) -> Div {
     picker_search_on(input, roles::PICKER, cx)
 }
 
-/// The search field of a picker drawn as `role`, on its ground.
 pub fn picker_search_on(input: &Entity<InputState>, role: SurfaceRole, cx: &App) -> Div {
     div().w_full().child(
         Input::new(input)

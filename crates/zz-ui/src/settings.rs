@@ -29,7 +29,6 @@ use ala::{
 
 type EntryClick = Rc<dyn Fn(&ala::ClickEvent, &mut Window, &mut App)>;
 
-/// A page in the settings sidebar, in sidebar order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
     Appearance,
@@ -45,8 +44,6 @@ pub enum SettingsSection {
     About,
 }
 
-/// A run of related pages in the settings sidebar, set apart from the next
-/// run by a gap.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsNavigationGroup {
     Appearance,
@@ -117,9 +114,6 @@ impl SettingsSection {
     }
 }
 
-/// A settings-section navigation button. The caller attaches behavior. It
-/// draws as [`roles::SIDEBAR_ROW`], the role of the session tree's rows, so a
-/// theme styles both sidebars at once.
 pub fn settings_navigation_button(section: SettingsSection, selected: bool, cx: &App) -> Button {
     Button::new(section.title())
         .w_full()
@@ -134,7 +128,6 @@ pub fn settings_navigation_button(section: SettingsSection, selected: bool, cx: 
         .when(selected, crate::StyledExt::font_medium)
 }
 
-/// The row that leaves the settings route, above the section list.
 pub fn settings_navigation_back_button(id: impl Into<ElementId>) -> Button {
     Button::new(id)
         .w_full()
@@ -146,7 +139,6 @@ pub fn settings_navigation_back_button(id: impl Into<ElementId>) -> Button {
         .child(div().flex_1())
 }
 
-/// Holds the back button at the workspace tree's row height.
 pub fn settings_navigation_back_row(button: Button) -> ala::Div {
     div()
         .flex()
@@ -156,14 +148,10 @@ pub fn settings_navigation_back_row(button: Button) -> ala::Div {
         .child(button)
 }
 
-/// The space between two navigation groups in the settings sidebar.
 pub fn settings_navigation_group_gap() -> ala::Div {
     div().flex_none().h(px(12.0))
 }
 
-/// The settings root on a narrow screen: the sidebar's groups as stacks of
-/// touch rows. `meta` puts a short value at the end of a row, and tapping a
-/// row hands its section to `on_pick`.
 pub fn settings_section_index(
     sections: &[SettingsSection],
     meta: impl Fn(SettingsSection) -> Option<SharedString>,
@@ -637,7 +625,6 @@ mod tests {
 const SETTINGS_CONTENT_MAX_WIDTH: f32 = 760.0;
 const SETTINGS_PAGE_PADDING: f32 = 14.0;
 
-/// Centered, bounded content shared by every settings page.
 pub fn settings_page_content() -> ala::Div {
     div()
         .flex()
@@ -648,19 +635,14 @@ pub fn settings_page_content() -> ala::Div {
         .mx_auto()
 }
 
-/// The heading of `section`'s page.
 pub fn settings_page_title(section: SettingsSection, cx: &App) -> ala::Div {
     settings_page_heading(section.title(), cx)
 }
 
-/// How far a phone settings page has scrolled its large title away, written by
-/// the page's column as it renders and read by the [`settings_title_bar`] over
-/// it.
 #[derive(Clone, Debug, Default)]
 pub struct SettingsFold(Rc<Cell<f32>>);
 
 impl SettingsFold {
-    /// Points the large title has moved up from where it rests.
     #[must_use]
     pub fn scrolled(&self) -> f32 {
         self.0.get()
@@ -673,10 +655,6 @@ fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
         .mt(px(-SETTINGS_PAGE_PADDING))
 }
 
-/// The bar over a phone settings page that opens with a large title: `back`
-/// at its start, and the title, small and centered, once `fold` says the
-/// large one has scrolled under the bar. Lay it out after the page, so it
-/// reads the page's scroll from the same frame.
 pub fn settings_title_bar(
     title: impl Into<SharedString>,
     fold: &SettingsFold,
@@ -708,8 +686,6 @@ impl RenderOnce for SettingsTitleBar {
     }
 }
 
-/// A settings page's title. Under a coarse pointer it leaves the title to the
-/// sidebar or the bar above the page.
 pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
     let title = title.into();
     div()
@@ -724,8 +700,6 @@ pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::D
         })
 }
 
-/// Room a host keeps clear below the last row of every settings page, such as
-/// an iOS home indicator the page draws under. Unset means none.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SettingsBottomInset(pub Pixels);
 
@@ -738,9 +712,6 @@ impl SettingsBottomInset {
     }
 }
 
-/// A settings page: a scrolling column of [`SettingsStack`]s, with the shared
-/// scrollbar overlaid. `id` keys the scroll handle, so each page keeps its own
-/// position.
 #[must_use]
 pub fn settings_scroll_column(id: &'static str) -> SettingsScrollColumn {
     SettingsScrollColumn {
@@ -758,8 +729,6 @@ pub struct SettingsScrollColumn {
 }
 
 impl SettingsScrollColumn {
-    /// Opens the page with `title`, large, and keeps `fold` up to date with
-    /// how far the page has scrolled it.
     #[must_use]
     pub fn large_title(mut self, title: impl Into<SharedString>, fold: &SettingsFold) -> Self {
         self.large_title = Some((title.into(), fold.clone()));
@@ -854,10 +823,6 @@ const SETTINGS_LIST_OVERDRAW: f32 = 24.0;
 
 type SettingsItemRenderer = Box<dyn FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static>;
 
-/// A settings page that paints only rows in or around the viewport. Every row
-/// is measured once per width, so a fling reaches the real end of the page.
-/// Rows keep [`settings_scroll_column`]'s bounded content width, but each owns
-/// the space beneath it, so a glued run of entries stays glued.
 #[must_use]
 pub fn settings_virtual_column(
     id: &'static str,
@@ -883,17 +848,12 @@ pub struct SettingsVirtualColumn {
 }
 
 impl SettingsVirtualColumn {
-    /// The focus handle of each row's text field. A row whose field holds focus
-    /// keeps painting after it leaves the viewport, so scrolling or a soft
-    /// keyboard covering it does not take its input away.
     #[must_use]
     pub fn row_focus(mut self, handles: impl IntoIterator<Item = Option<FocusHandle>>) -> Self {
         self.row_focus = handles.into_iter().collect();
         self
     }
 
-    /// Opens the page with `title`, large, as a row ahead of the others, and
-    /// keeps `fold` up to date with how far the page has scrolled it.
     #[must_use]
     pub fn large_title(mut self, title: impl Into<SharedString>, fold: &SettingsFold) -> Self {
         self.large_title = Some((title.into(), fold.clone()));
@@ -996,9 +956,6 @@ const REVEAL_STAGGER: Duration = Duration::from_millis(30);
 const REVEAL_DROP: f32 = 10.0;
 const DISCLOSURE_PRESS_INSET: f32 = 6.0;
 
-/// A group heading that shows or hides the rows after it, as a standalone
-/// row in [`settings_virtual_column`]. Its chevron turns as it opens and
-/// closes, and a touch lights it.
 pub fn settings_list_disclosure_header(
     id: &'static str,
     title: &'static str,
@@ -1094,8 +1051,6 @@ impl RenderOnce for SettingsDisclosure {
     }
 }
 
-/// `row`, the `order`th row the disclosure `id` shows while `expanded`,
-/// fading in and settling into place while the disclosure opens.
 pub fn settings_disclosure_reveal(
     id: &'static str,
     expanded: bool,
@@ -1121,7 +1076,6 @@ pub fn settings_disclosure_reveal(
         .into_any_element()
 }
 
-/// Group heading used as a standalone row in [`settings_virtual_column`].
 pub fn settings_list_group_header(title: &'static str, cx: &App) -> ala::Div {
     div()
         .pt(px(10.0))
@@ -1130,8 +1084,6 @@ pub fn settings_list_group_header(title: &'static str, cx: &App) -> ala::Div {
 
 const SETTINGS_STACK_PADDING: f32 = 12.0;
 
-/// A run of settings sharing one surface, divided by hairlines. Fill it with
-/// [`SettingEntry`].
 #[derive(IntoElement)]
 pub struct SettingsStack {
     title: Option<SharedString>,
@@ -1140,7 +1092,6 @@ pub struct SettingsStack {
 }
 
 impl SettingsStack {
-    /// An untitled stack, for a run that needs no heading of its own.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -1158,15 +1109,12 @@ impl SettingsStack {
         }
     }
 
-    /// A line under the title saying why the stack's rows are off. Keep
-    /// settings help on the rows, with [`SettingEntry::description`].
     #[must_use]
     pub fn note(mut self, note: impl Into<SharedString>) -> Self {
         self.note = Some(note.into());
         self
     }
 
-    /// Append an entry. The stack assigns its [`StackPosition`] on render.
     #[must_use]
     pub fn child(mut self, entry: SettingEntry) -> Self {
         self.entries.push(entry);
@@ -1210,25 +1158,16 @@ impl RenderOnce for SettingsStack {
     }
 }
 
-/// Where a [`SettingEntry`] sits in its run: which corners it rounds, and
-/// whether a rule separates it from the entry above. [`SettingsStack`] assigns
-/// this; a virtualized page has to assign it by hand.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum StackPosition {
-    /// The only entry in its run: rounds all four corners.
     Only,
-    /// Rounds the top corners, and draws no rule above.
     First,
     #[default]
     Middle,
-    /// Rounds the bottom corners.
     Last,
 }
 
 impl StackPosition {
-    /// The position implied by which ends of the run an entry is on. This is
-    /// the form a virtualized page needs, where a run is bounded by whatever is
-    /// not an entry rather than by a comparable index.
     #[must_use]
     pub const fn new(is_first: bool, is_last: bool) -> Self {
         match (is_first, is_last) {
@@ -1239,14 +1178,11 @@ impl StackPosition {
         }
     }
 
-    /// The position of item `index` in a run whose last index is `last`.
     #[must_use]
     pub const fn at(index: usize, last: usize) -> Self {
         Self::new(index == 0, index == last)
     }
 
-    /// Whether the run stops here. The entry rounds its bottom corners, and a
-    /// virtualized page owes it the gap before whatever comes next.
     #[must_use]
     pub const fn ends_run(self) -> bool {
         matches!(self, Self::Only | Self::Last)
@@ -1265,9 +1201,6 @@ impl StackPosition {
     }
 }
 
-/// One setting inside a [`SettingsStack`]: its title, and a description when
-/// one helps, on the left, its control centered at the right edge, and room beneath for a full-width control. Each
-/// entry draws its own share of the run's surface. See [`StackPosition`].
 #[derive(IntoElement)]
 pub struct SettingEntry {
     title: SharedString,
@@ -1296,15 +1229,12 @@ impl SettingEntry {
         }
     }
 
-    /// A short line under the title: live state, a unit or range the control
-    /// does not show, or what a terse title means. Most rows need none.
     #[must_use]
     pub fn description(mut self, description: impl Into<SharedString>) -> Self {
         self.description = Some(description.into());
         self
     }
 
-    /// Make the whole row a pressable link, like a settings index row.
     #[must_use]
     pub fn on_click(
         mut self,
@@ -1315,39 +1245,30 @@ impl SettingEntry {
         self
     }
 
-    /// A state glyph drawn before the title; see [`SettingCopy::title_icon`].
     #[must_use]
     pub fn title_icon(mut self, icon: impl Into<Icon>) -> Self {
         self.title_icon = Some(icon.into());
         self
     }
 
-    /// Which end of its run the entry sits on. [`SettingsStack`] sets this;
-    /// call it directly only on a virtualized page.
     #[must_use]
     pub fn position(mut self, position: StackPosition) -> Self {
         self.position = position;
         self
     }
 
-    /// Widgets that sit beside the title rather than with the control.
     #[must_use]
     pub fn title_actions(mut self, actions: impl IntoElement) -> Self {
         self.title_actions = Some(actions.into_any_element());
         self
     }
 
-    /// **Must be bounded.** The control keeps its natural width while the copy
-    /// column shrinks, so one that grows with its content squeezes the copy to
-    /// a character per line. Give it a width, or a menu trigger.
     #[must_use]
     pub fn control(mut self, control: impl IntoElement) -> Self {
         self.control = Some(control.into_any_element());
         self
     }
 
-    /// Dim the row and make it inert, for a setting the current configuration
-    /// has no effect on.
     #[must_use]
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
@@ -1554,8 +1475,6 @@ impl SettingCopy {
         self
     }
 
-    /// A state glyph drawn before the title, sized to the title's line. Color
-    /// it before passing.
     #[must_use]
     pub fn title_icon(mut self, icon: impl Into<Icon>) -> Self {
         self.title_icon = Some(icon.into());
@@ -1595,16 +1514,11 @@ impl RenderOnce for SettingCopy {
     }
 }
 
-/// The ground of a settings card, for the controls mounted on it, so their
-/// fills step up from the card instead of dissolving into it.
 #[must_use]
 pub fn settings_card_ground(cx: &App) -> Ground {
     cx.theme().ground_of(roles::SETTINGS_CARD)
 }
 
-/// A preview well in Settings, around `fill`, the color of what it shows:
-/// [`roles::SETTINGS_PREVIEW`]'s edge, corners and shadow, clipping what it
-/// holds.
 #[must_use]
 pub fn settings_preview(fill: Hsla, cx: &App) -> ala::Div {
     let layer = cx.theme().layer(roles::SETTINGS_PREVIEW, PaintState::Rest);
@@ -1635,7 +1549,6 @@ impl SettingsSelectItem {
         }
     }
 
-    /// Draw the row in the font family its value names.
     #[must_use]
     pub fn preview_font(mut self) -> Self {
         self.font = true;

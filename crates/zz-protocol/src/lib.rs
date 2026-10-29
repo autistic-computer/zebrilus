@@ -1,5 +1,3 @@
-//! Versioned, renderer-neutral protocol shared by zz clients and the daemon.
-
 pub mod agent_stream;
 pub mod app_identity;
 mod browser_cookie;

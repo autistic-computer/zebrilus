@@ -212,8 +212,6 @@ impl BrowserPane {
         self.header_touch_drag_handler = Some(Rc::new(handler));
     }
 
-    /// Called as the shown page scrolls by hand: how far its content moved
-    /// toward its end, and whether it reached its top.
     pub(super) fn set_page_scroll_handler(
         &mut self,
         handler: impl Fn(f32, bool, &mut Window, &mut App) + 'static,
@@ -228,9 +226,6 @@ impl BrowserPane {
         self.notice_handler = Some(Rc::new(handler));
     }
 
-    /// The phone's floating pill over the page: how much of the page's
-    /// bottom it covers and where it sits in the window, with its corner
-    /// radius.
     pub(super) fn set_pill(
         &mut self,
         covered_bottom: Pixels,
@@ -244,8 +239,6 @@ impl BrowserPane {
         }
     }
 
-    /// Holds the page as a still while something drawn over the pane needs
-    /// the web view hidden, so the page shows dimmed under it, not blank.
     pub(super) fn set_frozen(&mut self, frozen: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.frozen == frozen {
             return;
@@ -259,7 +252,6 @@ impl BrowserPane {
         cx.notify();
     }
 
-    /// Whether the still of the page is ready to stand in for the web view.
     pub(super) fn still_ready(&self) -> bool {
         self.still
             .as_ref()

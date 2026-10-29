@@ -28,8 +28,8 @@ RESULTS = HERE / "results"
 DECODE_JSONL = RESULTS / "decode.jsonl"
 ENGINE_JSONL = RESULTS / "engine.jsonl"
 
-SAMPLES_PER_BAR = 3  # sample each bar 3x and keep the middle: tolerates a sloppy crop
-MIN_CONTRAST = 40    # 8-bit levels between black and white bars before we distrust the crop
+SAMPLES_PER_BAR = 3
+MIN_CONTRAST = 40
 
 
 def die(msg):
@@ -76,11 +76,6 @@ def probe(path):
 
 
 def autocrop(path, meta, samples=12, analysis_w=240, thresh=0.40):
-    """Find the flickering region by per-pixel range across sampled frames.
-
-    Bit 0 flips every frame, so the bars have maximal variance and static app
-    chrome none: the bounding box of high-variance pixels is the page viewport.
-    """
     duration = meta["duration"]
     if duration <= 0:
         die("cannot autocrop: ffprobe reports no duration; pass --crop W:H:X:Y")
@@ -134,7 +129,6 @@ def autocrop(path, meta, samples=12, analysis_w=240, thresh=0.40):
     cy = int(round(y0 * sy))
     cw = max(1, int(round((x1 + 1) * sx)) - cx)
     ch = max(1, int(round((y1 + 1) * sy)) - cy)
-    # ffmpeg's crop filter wants even offsets for some pixel formats; harmless here.
     return (cw, ch, cx, cy)
 
 
@@ -149,7 +143,6 @@ def parse_crop(text):
 
 
 def bar_samples(path, crop, bars):
-    """One byte per bar per video frame, sampled at the bar centres."""
     wide = bars * SAMPLES_PER_BAR
     vf = "crop=%d:%d:%d:%d,scale=%d:1:flags=area" % (crop[0], crop[1], crop[2], crop[3], wide)
     raw = run([
@@ -194,8 +187,6 @@ def analyse(centres, bars, capture_fps):
 
     flat = sorted(v for row in centres for v in row)
     black, white = flat[0], flat[-1]
-    # Marker bar is white while running and mid-grey while idle, so 75% of the
-    # way to white separates them with a wide margin either side.
     marker_gate = black + 0.75 * (white - black)
     running = [row[0] >= marker_gate for row in centres]
 
@@ -208,8 +199,6 @@ def analyse(centres, bars, capture_fps):
             "run): the crop is misaligned with the bars; check it with `decode.py crop`"
             % (total_running - length, total_running))
 
-    # Re-derive the levels from the run region only: a capture that is mostly
-    # idle grey would otherwise drag the black reference up.
     region = centres[start:start + length]
     data_vals = sorted(v for row in region for v in row[1:])
     black = percentile(data_vals, 0.005)
@@ -245,7 +234,6 @@ def analyse(centres, bars, capture_fps):
     if ambiguous:
         warnings.append("%d ambiguous index jumps (>= half the %d-frame wrap window)" % (ambiguous, modulus))
 
-    # How long each presented frame stayed on screen, in captured frames.
     holds = []
     hold = 1
     changes = 0
@@ -409,8 +397,6 @@ def cmd_summarize(args):
 
     for label, load in keys:
         eng = engine.get((label, load), {})
-        # A capture has no load dimension of its own; it joins to the plain run.
-        # Capture a loaded run under its own label (zz-load4) to get its own row.
         dec = decoded.get(label, {}) if load == 0 else {}
         pi = dec.get("present_interval_ms", {})
         lines.append("| %s%s | %sms | %s | %s | %s | %s | %s | %s | %s |" % (
@@ -433,8 +419,6 @@ def cmd_summarize(args):
     for (label, _load), row in sorted(engine.items()):
         for reason in row.get("tainted") or []:
             notes.append("%s: TAINTED, %s" % (label, reason))
-        # The page counts its own rAF calls; the video counts index advances:
-        # two independent measurements of the same thing.
         if _load == 0 and label in decoded:
             reported = row.get("engine_fps") or 0
             observed = decoded[label].get("engine_fps_observed") or 0

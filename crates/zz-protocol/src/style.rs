@@ -14,25 +14,11 @@ pub enum TmuxColour {
     Theme(u8),
 }
 
-/// The ten `colour_theme_table` slots (colour.c:35) in the pin's own order,
-/// `themeblack` through `thememagenta`, resolved for one client. The pin keeps
-/// each slot's COLOUR CLASS: `set -s dark-theme-green colour124` leaves as
-/// `\e[48;5;124m` and not as truecolor, so this carries `TmuxColour` and never
-/// an RGB triple. `server_client_update_theme_colours` never stores a
-/// theme-flagged colour in a slot, so neither does this: `StatusLine::validate`
-/// rejects one, which is also what keeps `TmuxColour::Theme` resolution from
-/// looping.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ThemeColours(pub [TmuxColour; COLOUR_THEME_COUNT]);
 
 pub const COLOUR_THEME_COUNT: usize = 10;
 
-/// The pin's `dark-theme-*` defaults, resolved the way
-/// `server_client_update_theme_colours` resolves them for a client that reports
-/// 256 colours or more: each option's default expands to an X11 name and
-/// `colour_fromstring` turns that into an RGB colour. A client that has not had
-/// a status line published yet keeps exactly this, which is what the raw TUI
-/// hard-coded before the theme reached the wire.
 pub const DEFAULT_DARK_THEME_COLOURS: [TmuxColour; COLOUR_THEME_COUNT] = [
     TmuxColour::Rgb(0x000d_0d0d),
     TmuxColour::Rgb(0x00e5_e5e5),
@@ -53,13 +39,11 @@ impl Default for ThemeColours {
 }
 
 impl ThemeColours {
-    /// The colour in one slot, or `None` for an index the pin has no slot for.
     #[must_use]
     pub fn slot(&self, index: u8) -> Option<TmuxColour> {
         self.0.get(usize::from(index)).copied()
     }
 
-    /// Whether any slot carries a theme colour, which would resolve to itself.
     #[must_use]
     pub fn is_circular(&self) -> bool {
         self.0
@@ -624,9 +608,6 @@ fn set_all_attributes(attributes: &mut TmuxAttributes, state: TmuxAttributeState
     attributes.noattr = state;
 }
 
-/// Applies one parsed style delta onto a cumulative style, resolving `default`
-/// colours against `base` — the same folding [`parse_styled_segments`] uses,
-/// exposed for walkers that need the transition at every marker.
 pub fn apply_style(current: &mut TmuxStyle, delta: &TmuxStyle, base: &TmuxStyle) {
     if delta.reset {
         current.fg = base.fg;

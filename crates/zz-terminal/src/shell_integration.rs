@@ -501,7 +501,6 @@ fn write_resource(path: &Path, contents: &[u8]) -> io::Result<()> {
         .open(&temporary)?;
     let result = (|| {
         file.write_all(contents)?;
-        // Windows opens files without FILE_SHARE_DELETE, so close before renaming.
         drop(file);
         fs::rename(&temporary, path)
     })();

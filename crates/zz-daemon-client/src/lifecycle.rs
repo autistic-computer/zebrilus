@@ -130,7 +130,6 @@ impl Drop for DaemonIdentityGuard {
     }
 }
 
-/// A daemon stopped through the guarded incompatible-protocol path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RecoveredDaemon {
     pid: u32,
@@ -157,9 +156,6 @@ pub enum DaemonRecoveryError {
     EndpointReplaced(u32),
 }
 
-/// Stop the process that owns `socket_path` after a versioned protocol handshake failed.
-///
-/// Checks the target's owner, command line, and start time before it signals.
 pub fn terminate_incompatible_daemon(
     socket_path: &Path,
 ) -> Result<RecoveredDaemon, DaemonRecoveryError> {
@@ -315,7 +311,6 @@ fn daemon_executable_name_matches(name: &OsStr) -> bool {
     let Some(name) = name.to_str() else {
         return false;
     };
-    // Linux /proc names a replaced executable `cli (deleted)`.
     #[cfg(unix)]
     let name = name.strip_suffix(" (deleted)").unwrap_or(name);
     #[cfg(windows)]
@@ -369,10 +364,6 @@ fn read_identity_file(socket_path: &Path) -> Result<Option<IdentityFile>, Daemon
     }))
 }
 
-/// Read the protocol version recorded by the daemon at `socket_path`.
-///
-/// The outer option distinguishes a valid identity from a missing, unreadable, or malformed one.
-/// The inner option is `None` for a valid legacy v1 identity, which had no protocol field.
 #[must_use]
 pub fn daemon_identity_protocol_version(socket_path: &Path) -> Option<Option<u16>> {
     read_identity_file(socket_path)

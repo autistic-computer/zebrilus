@@ -1,11 +1,3 @@
-//! One ACP connection, driven by commands and answering in stream payloads.
-//!
-//! This is the runtime half of the desktop's agent controller, moved into the
-//! daemon: it owns the adapter child, the ACP session, the permission
-//! responders, and the journal, and it never knows what renders the result.
-//! One connection serves exactly one pane, so nothing here routes by pane —
-//! the host stamps that on the way out.
-
 use std::{
     collections::{HashMap, HashSet},
     future::Future,
@@ -73,8 +65,6 @@ const MAX_PENDING_PERMISSIONS: usize = 64;
 const MAX_PENDING_PERMISSION_BYTES: usize = MAX_PENDING_PERMISSIONS * MAX_AGENT_PERMISSION_BYTES;
 const JOURNAL_RETENTION_DAYS: u64 = 30;
 
-/// What a pane's runtime is asked to do. Everything a client sends arrives
-/// here, plus the follow-ups the host derives (queued prompts, shutdown).
 #[derive(Debug)]
 pub(crate) enum RuntimeCommand {
     Open {
@@ -153,9 +143,6 @@ struct PromptControls {
     last_consumed: u64,
 }
 
-/// Which sessions this connection still speaks for. A session leaves the moment
-/// it is superseded, so the late updates of a switched-away session are dropped
-/// instead of landing in the pane that moved on.
 #[derive(Default)]
 struct RuntimeRouting {
     live_sessions: HashSet<String>,
@@ -167,9 +154,6 @@ struct RuntimeRouting {
     user_echo_turn: Option<(String, u64)>,
     permissions: HashMap<u64, PendingPermissionResponder>,
     pending_permission_bytes: usize,
-    /// Sessions whose updates are recorded. A session only enters once its
-    /// transcript has settled in the pane, so the burst an agent replays out of
-    /// `session/load` is never journalled on top of what it already replays.
     journaled: HashSet<String>,
 }
 
@@ -257,8 +241,6 @@ impl RuntimeRouting {
     }
 }
 
-/// Everything a pane's adapter child needs to exist: what to run, whether it
-/// may approve itself, and the workspace identity it is told about.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct AgentSpawnConfig {
     pub(crate) command: String,
@@ -324,8 +306,6 @@ pub(crate) async fn run_agent_runtime(
     .map_err(|error| runtime_failure_message(provider.label(), &error, stderr.snapshot()))
 }
 
-/// Rolling tail of the adapter's stderr, kept so an unexpected exit can say
-/// what the child complained about instead of shrugging.
 #[derive(Clone, Default)]
 pub(crate) struct StderrTail(Arc<Mutex<std::collections::VecDeque<String>>>);
 
@@ -369,9 +349,6 @@ fn runtime_failure_message(adapter: &str, error: &str, tail: Option<String>) -> 
     }
 }
 
-/// Recover the child's exit status from the ACP crate's process error, which
-/// reads `Process exited with <status>[: <stderr>]`. The crate owns the child,
-/// so this string is the only handle on the status we get.
 fn exit_status_detail(error: &str) -> Option<String> {
     let status = error.split_once("exited with ")?.1;
     let status = status
@@ -392,7 +369,6 @@ fn load_session_request(session_id: AcpSessionId, cwd: PathBuf) -> LoadSessionRe
     LoadSessionRequest::new(session_id, cwd)
 }
 
-/// The daemon's journal, opened once and pruned on the way in.
 pub(crate) fn load_persistent_journal() -> Option<Arc<AgentJournal>> {
     let journal = crate::agent::paths::journal_directory().and_then(|directory| {
         AgentJournal::open(&directory).map_err(|error| std::io::Error::other(error.to_string()))
@@ -421,8 +397,6 @@ pub(crate) fn load_persistent_journal() -> Option<Arc<AgentJournal>> {
     Some(Arc::new(journal))
 }
 
-/// A journal failure never interrupts a turn: the transcript keeps streaming,
-/// it just stops being replayable. The first one is loud, the rest are not.
 pub(crate) fn report_journal_error(session_id: &str, error: &str) {
     static REPORTED: AtomicBool = AtomicBool::new(false);
 
@@ -475,9 +449,6 @@ impl ReplayItem {
     }
 }
 
-/// The journalled transcript of `session_id`, in the order it was recorded, as
-/// items the reducer replays exactly like the ones an agent sends out of
-/// `session/load`.
 fn journal_replay(
     journal: Option<&AgentJournal>,
     provider: AgentProvider,
@@ -1706,8 +1677,6 @@ async fn await_rpc<T>(
     .await
 }
 
-/// The ACP types are JSON by construction, so an encode failure is a bug, not
-/// a runtime condition; it still travels as an ACP error rather than a panic.
 fn json_of(value: &impl serde::Serialize) -> Result<Value, agent_client_protocol::Error> {
     serde_json::to_value(value).map_err(|error| {
         agent_client_protocol::Error::internal_error()
@@ -1764,11 +1733,6 @@ fn auth_method_model(method: &AuthMethod) -> AgentAuthMethod {
     }
 }
 
-/// Whether the pane's tier lets this request be answered without a human.
-/// `Reads` judges the ACP tool kind the adapter declared: reading, searching,
-/// fetching, and thinking are answered daemon-side, and anything that can
-/// change the machine — plus an absent kind, plus the catch-all `Other` an
-/// unknown kind deserializes into — waits for the wizard.
 pub(crate) fn tier_approves(tier: AgentAutoApprove, kind: Option<ToolKind>) -> bool {
     match tier {
         AgentAutoApprove::Off => false,
@@ -1780,10 +1744,6 @@ pub(crate) fn tier_approves(tier: AgentAutoApprove, kind: Option<ToolKind>) -> b
     }
 }
 
-/// A permission request is a QUESTION rather than a tool approval when any
-/// option carries a kind outside the allow/reject set — that is how agents
-/// relay user-facing choices. Repeated kinds are not a question signal:
-/// codex-acp sends two `allow_always` options on every exec approval.
 pub(crate) fn is_user_question(options: &[PermissionOption]) -> bool {
     options.iter().any(|option| {
         !matches!(
@@ -1796,9 +1756,6 @@ pub(crate) fn is_user_question(options: &[PermissionOption]) -> bool {
     })
 }
 
-/// The option an unattended approval picks: `allow_always` over `allow_once`,
-/// and never a reject — a request with no allow option falls through to the
-/// permission UI rather than being silently denied.
 fn preferred_allow_option(options: &[PermissionOption]) -> Option<String> {
     let by_kind = |kind: PermissionOptionKind| {
         options
@@ -1859,8 +1816,6 @@ fn capped(mut text: String, max_bytes: usize) -> String {
     text
 }
 
-/// Cut `text` to `max_bytes` on a char boundary, leaving a visible marker. The
-/// marker is budgeted inside the cap, so the result never exceeds it.
 fn truncate_payload(text: &mut String, max_bytes: usize) {
     if text.len() <= max_bytes {
         return;

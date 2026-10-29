@@ -143,10 +143,6 @@ await_mode() {
     check_equal "$1" "$3" "$(mode_of "$2")"
 }
 
-# 3.8 (1a02c995) makes display-panes a mode of the target pane: the command
-# returns at once, so the rest of the chain runs before any key, the pane is
-# zoomed while the mode is up, and window_panes_key substitutes the chosen
-# pane's %id for %%% when a digit selects it.
 main_client select-pane -t "$pane0"
 main_client set-environment -g DP_CHOSEN pending
 main_client set-environment -g DP_AFTER pending
@@ -162,9 +158,6 @@ drive "keys 31"
 await_mode template-mode-closed "$pane0" :0
 check_equal template-substituted "chose-$pane1" "$(value DP_CHOSEN)"
 
-# window_pane_set_mode returns at once when the pane already shows this mode,
-# so a second display-panes neither replaces the first nor restarts it, and the
-# key still runs the first template.
 main_client select-pane -t "$pane0"
 main_client set-environment -g DP_CHOSEN pending
 main_client set-environment -g DP_SECOND pending
@@ -179,7 +172,6 @@ await_mode first-mode-closed "$pane0" :0
 check_equal first-template-ran "first-$pane1" "$(value DP_CHOSEN)"
 check_equal second-template-unrun pending "$(value DP_SECOND)"
 
-# The omitted template is `select-pane -t "%%%"`.
 main_client select-pane -t "$pane0"
 main_client display-panes -d 0
 await_mode default-mode "$pane0" panes-mode:1
@@ -188,14 +180,12 @@ await_mode default-mode-closed "$pane0" :0
 check_equal default-template-selects "$pane1" \
     "$(main_client list-panes -t "=$session" -F '#{?pane_active,#{pane_id},}' | tr -d '\n')"
 
-# -b went with the client overlay.
 background_rc=0
 main_client display-panes -b -d 0 >/dev/null 2>"$work/background.err" || background_rc=$?
 check_equal background-refused 1 "$background_rc"
 check_equal background-error "command display-panes: unknown flag -b" \
     "$(tr -d '\r' <"$work/background.err")"
 
-# A template that fails at run time ends the mode and leaves the panes alone.
 main_client select-pane -t "$pane0"
 main_client display-panes -d 0 'kill-pane -t nosuchpanename'
 await_mode failing-mode "$pane0" panes-mode:1
@@ -204,8 +194,6 @@ await_mode failing-mode-closed "$pane0" :0
 check_equal failing-left-the-panes-alone "$pane0 $pane1" \
     "$(main_client list-panes -t "=$session" -F '#{pane_id}' | tr '\n' ' ' | sed 's/ $//')"
 
-# The mode's own timer ends it with the template unrun, and -Z leaves the
-# window unzoomed.
 main_client set-environment -g DP_TIMEOUT pending
 main_client display-panes -Z -t "$pane0" -d 700 \
     "set-environment -g DP_TIMEOUT 'timed-%%%'"
@@ -214,8 +202,6 @@ sleep 1.2
 check_equal timeout-closed ":0" "$(mode_of "$pane0")"
 check_equal timeout-ran-nothing pending "$(value DP_TIMEOUT)"
 
-# -N swallows a digit instead of choosing, so only q, Escape or the timer end
-# the mode.
 main_client select-pane -t "$pane0"
 main_client display-panes -N -d 0 "set-environment -g DP_TIMEOUT 'silent-%%%'"
 await_mode silent-mode "$pane0" panes-mode:1
@@ -226,8 +212,6 @@ drive "keys 71"
 await_mode silent-closed-by-q "$pane0" :0
 check_equal silent-ran-nothing pending "$(value DP_TIMEOUT)"
 
-# window_panes_key and the timer end the mode through window_pane_reset_mode,
-# so the 3.8 pane-mode hooks see a chosen pane, q and the timer close it.
 main_client set -g @dph ''
 main_client set-hook -g pane-mode-exited \
     "set -gaF @dph '#{hook_pane}/#{hook_previous_mode}/#{hook_current_mode}/#{hook_mode_entered},'"
@@ -249,7 +233,6 @@ check_equal hooks-exits "$pane0/panes-mode//0,$pane0/panes-mode//0,$pane0/panes-
 main_client set-hook -gu pane-mode-exited
 main_client set -gu @dph
 
-# A key that is not a pane index ends the mode, and -k kills the pane with it.
 main_client select-pane -t "$pane1"
 main_client display-panes -k -d 0
 await_mode kill-mode "$pane1" panes-mode:1
@@ -258,8 +241,6 @@ sleep 0.6
 check_equal kill-removed-the-pane "$pane0" \
     "$(main_client list-panes -t "=$session" -F '#{pane_id}' | tr '\n' ' ' | sed 's/ $//')"
 
-# The mode needs no client: a detached session's pane takes it too, and a
-# single pane cannot zoom.
 main_client new-session -d -s "$session-detached"
 main_client display-panes -t "=$session-detached:" -d 0
 check_equal detached-mode panes-mode:0 "$(mode_of "=$session-detached:")"

@@ -35,14 +35,11 @@ impl BrowserProfilePaths {
         egress_profile_name(profile, egress_host)
     }
 
-    /// Create and restrict the CEF root and persistent profile directories.
     pub fn ensure(&self) -> Result<(), BrowserProfileError> {
         self.ensure_profile(DEFAULT_BROWSER_PROFILE)?;
         Ok(())
     }
 
-    /// Resolve, create, and restrict a named zz-owned CEF profile. Every profile
-    /// directory stays an immediate child of the CEF root.
     pub fn ensure_profile(&self, name: &str) -> Result<(String, PathBuf), BrowserProfileError> {
         let name = normalize_browser_profile_name(name)?;
         let profile = self.profile_path_for_normalized(&name);
@@ -52,7 +49,6 @@ impl BrowserProfilePaths {
         Ok((name, profile))
     }
 
-    /// Resolve a profile path without creating it.
     pub fn profile_path(&self, name: &str) -> Result<PathBuf, BrowserProfileNameError> {
         let name = normalize_browser_profile_name(name)?;
         Ok(self.profile_path_for_normalized(&name))
@@ -116,12 +112,9 @@ fn hex_encode(bytes: &[u8]) -> String {
     encoded
 }
 
-/// Resolve the private zz CEF root and its immediate-child profile path.
 pub fn resolve_profile_paths() -> io::Result<BrowserProfilePaths> {
     let root = zz_protocol::app_identity::browser_data_dir()?.join("root");
     Ok(BrowserProfilePaths {
-        // CEF only accepts persistent profiles that are immediate children of
-        // root_cache_path.
         profile: root.join("zz-default"),
         root,
     })

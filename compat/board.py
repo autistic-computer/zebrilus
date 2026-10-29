@@ -100,7 +100,6 @@ def parse_lease(s):
 
 
 def parse_comment(body):
-    """Return (verb, arg, fields) or None when the comment is not board input."""
     lines = body.replace("\r\n", "\n").split("\n")
     lines = [l for l in lines if not l.strip().startswith("```")]
     while lines and not lines[0].strip():
@@ -187,7 +186,6 @@ class Board:
                 f.free()
 
     def zones_busy(self, front, asof):
-        """Return conflicts between `front` and every actively claimed front."""
         conflicts = []
         for other in self.fronts.values():
             if other.id == front.id or not other.active(asof):

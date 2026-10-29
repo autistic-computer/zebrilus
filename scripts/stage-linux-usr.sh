@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Stage the Linux CEF bundle, desktop entry, icons, and licenses as a usr/
-# tree under the destination directory. This is the single source of the
-# installed layout: the AppImage AppDir (package-appimage.sh), the release
-# tarball (package-linux-tarball.sh), and the Arch packages all carry it.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

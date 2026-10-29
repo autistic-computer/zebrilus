@@ -14,19 +14,14 @@ BENCH_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CACHE_DIR="$BENCH_DIR/.cache"
 FIXTURE_DIR="$BENCH_DIR/fixtures"
 
-# 150 MiB, byte-exact, matching the upstream benchmark this reproduces.
 FIXTURE_BYTES=157286400
-# Pinned so a regenerated unicode fixture is byte-identical.
 UTF8_SEED=42
 
-# Pinned upstream revisions. Override to re-pin without editing this file.
 GHOSTTY_REPO="${GHOSTTY_REPO:-https://github.com/ghostty-org/ghostty}"
 GHOSTTY_REF="${GHOSTTY_REF:-40ab02e3389fe9ff59c3ea682a48359c68ecaf4a}"
 DOOM_REPO="${DOOM_REPO:-https://github.com/const-void/DOOM-fire-zig}"
 DOOM_REF="${DOOM_REF:-eb0631b141b5778eefc6f5767bb45f8974c1be71}"
 
-# ghostty needs the same Zig the zz workspace pins; DOOM-fire-zig is stuck on
-# the pre-Writergate standard library.
 GHOSTTY_ZIG="${GHOSTTY_ZIG:-0.16.0}"
 DOOM_ZIG="${DOOM_ZIG:-0.14.1}"
 
@@ -82,8 +77,6 @@ zig_for() {
 	return 1
 }
 
-# Full history with lazy blobs, so re-pinning to an older revision never needs
-# a second clone.
 clone_pinned() {
 	local repo="$1" ref="$2" dest="$3"
 	if [ ! -d "$dest/.git" ]; then
@@ -112,16 +105,13 @@ if [ ! -x "$GEN_BIN" ]; then
 	log "building ghostty-gen with zig $GHOSTTY_ZIG (this takes a few minutes)"
 	(
 		cd "$GHOSTTY_DIR"
-		# `-Dapp-runtime=none` keeps this to the generator: the default install
-		# step also builds the terminal, which on Linux drags in GTK4/libadwaita.
-		# shellcheck disable=SC2086 # GHOSTTY_ZIG_CMD is a deliberate word list
+		# shellcheck disable=SC2086
 		$GHOSTTY_ZIG_CMD build -Demit-bench -Doptimize=ReleaseFast \
 			-Demit-macos-app=false -Dapp-runtime=none
 	)
 fi
 [ -x "$GEN_BIN" ] || die "ghostty-gen was not produced at $GEN_BIN"
 
-# generate <output> <ghostty-gen args...>
 generate() {
 	local out="$1"
 	shift
@@ -130,8 +120,6 @@ generate() {
 		return 0
 	fi
 	log "generating $(basename "$out") ($FIXTURE_BYTES bytes)"
-	# ghostty-gen streams forever; head closes the pipe and the generator
-	# treats BrokenPipe as a clean stop.
 	"$GEN_BIN" "$@" 2>/dev/null | head -c "$FIXTURE_BYTES" >"$out.part" || true
 	local got
 	got="$(file_size "$out.part")"
@@ -139,14 +127,10 @@ generate() {
 	mv "$out.part" "$out"
 }
 
-# `+ascii` has no --seed upstream (its Options struct is empty), so it is
-# time-seeded: the cached file plus its recorded sha256 keep one session
-# self-consistent, but cross-machine byte equality is lost. `+utf8` is pinned.
 generate "$FIXTURE_DIR/150MB_ascii.txt" +ascii
 generate "$FIXTURE_DIR/150MB_unicode.txt" +utf8 "--seed=$UTF8_SEED"
 
 if [ "$EXTRA" -eq 1 ]; then
-	# Unused by any test; see "Out of scope" in bench/README.md.
 	generate "$FIXTURE_DIR/150MB_osc.txt" +osc "--seed=$UTF8_SEED"
 	generate "$FIXTURE_DIR/150MB_kitty.txt" +kitty "--seed=$UTF8_SEED"
 fi
@@ -162,9 +146,6 @@ build_doom() {
 		return 1
 	}
 
-	# Upstream ends its intro demo with a blocking "Press return to continue".
-	# Unattended runs cannot answer it, so drop the intro entirely; the fps
-	# counter only covers the fire loop anyway (t_start is set in initBuf).
 	if ! grep -q 'zz-bench' "$DOOM_DIR/src/main.zig"; then
 		log "patching DOOM-fire-zig to skip its interactive intro"
 		sed -i.zzbak \
@@ -183,9 +164,6 @@ build_doom() {
 		if $zigcmd build -Doptimize=ReleaseFast >/dev/null 2>&1 && [ -x "$DOOM_BIN" ]; then
 			exit 0
 		fi
-		# On macOS 27 with SDK 26.x, zig 0.14's build runner fails to link
-		# libSystem for the native target ("undefined symbol: _free"). build-exe
-		# with an explicit macOS version in the triple sidesteps the runner.
 		local arch
 		arch="$(uname -m)"
 		[ "$arch" = "arm64" ] && arch="aarch64"

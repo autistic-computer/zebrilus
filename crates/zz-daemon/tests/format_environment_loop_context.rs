@@ -1,11 +1,3 @@
-//! The six formats a `V` row carries.
-//!
-//! format.c `format_loop_environ` adds `environ_name`, `environ_value`,
-//! `environ_hidden`, `environ_removed`, `loop_last_flag`, and `loop_index` to
-//! each row before it fills the rest from the outer context. A removed entry
-//! keeps its name with an empty value, a hidden one keeps its value, and the
-//! position counts the store from zero however many entries it holds.
-
 #![cfg(unix)]
 
 mod clients;
@@ -18,7 +10,6 @@ const ROW: &str = "#{V:<#{environ_name}|#{environ_value}|#{environ_hidden}\
 
 fn start(name: &str) -> Clients {
     let mut clients = Clients::start(name, &["base"]);
-    // Start from a store this test owns outright.
     for stored in clients
         .commands
         .execute(CommandInvocation::new("show-environment", ["-t", "base"]))
@@ -72,8 +63,6 @@ fn hidden_and_removed_entries_report_their_own_flags() {
     set(&mut clients, &["-t", "base", "-r", "REMOVED"]);
     set(&mut clients, &["-t", "base", "EMPTY", ""]);
 
-    // A removed entry keeps its name and loses its value; an empty value is not
-    // removed; a hidden entry keeps its value in the loop.
     assert_eq!(
         clients.format("base", ROW),
         "<EMPTY||0|0|0|0><HIDDEN|seen|1|0|1|0><REMOVED||0|1|2|1>"
@@ -106,12 +95,10 @@ fn the_global_and_client_stores_carry_the_same_six_formats() {
         format!("<PATH={path}:00>")
     );
 
-    // The session store here holds one entry, so its position is the only one.
     assert_eq!(
         clients.format("base", "#{V:<#{loop_index}#{loop_last_flag}>}"),
         "<01>"
     );
-    // The global store holds more, so its last flag lands elsewhere.
     assert!(
         clients
             .format("base", "#{Vg:#{loop_last_flag}}")
@@ -126,8 +113,6 @@ fn a_nested_loop_owns_the_row_formats_only_while_its_rows_run() {
     set(&mut clients, &["-t", "base", "OUTER", "o"]);
     set(&mut clients, &["-t", "base", "PLAIN", "p"]);
 
-    // The inner loop replaces all six names and the outer row's values come back
-    // after it.
     assert_eq!(
         clients.format(
             "base",
@@ -135,8 +120,6 @@ fn a_nested_loop_owns_the_row_formats_only_while_its_rows_run() {
         ),
         "[OUTER0(OUTER0)(PLAIN1)OUTER0][PLAIN1(OUTER0)(PLAIN1)PLAIN1]"
     );
-    // A window loop inside an environment row keeps the outer session's windows
-    // and takes over only the position.
     assert_eq!(
         clients.format(
             "base",
@@ -144,8 +127,6 @@ fn a_nested_loop_owns_the_row_formats_only_while_its_rows_run() {
         ),
         "[OUTER<01>OUTER][PLAIN<01>PLAIN]"
     );
-    // And an environment loop inside a client row still walks the session store,
-    // which attaching re-seeds from the update-environment list.
     clients.attach_interactive("base");
     let names = clients.format("base", "#{V:#{environ_name}}");
     assert!(names.contains("OUTERPLAIN"), "{names}");
@@ -175,7 +156,6 @@ fn none_of_the_six_formats_answer_outside_a_loop() {
         ),
         "x[]"
     );
-    // A conditional reads them the same way the plain replacement does.
     assert_eq!(
         clients.format(
             "base",

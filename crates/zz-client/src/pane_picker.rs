@@ -1,5 +1,3 @@
-//! A freshly split pane asking what it should become.
-
 use zz_protocol::{CommandInvocation, PaneId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,7 +20,6 @@ const CHOICES: &[PaneChoice] = &[
     },
 ];
 
-/// What a picker offers: a browser only where the client can draw one.
 #[must_use]
 pub fn pane_choices(browser: bool) -> &'static [PaneChoice] {
     if browser { CHOICES } else { &CHOICES[..1] }
@@ -36,8 +33,6 @@ pub enum PanePickerKey {
     Ignored,
 }
 
-/// What a key pressed in a picker of `choices` with `selected` lit does. A
-/// key with Control, Alt or the platform key held is not the picker's.
 #[must_use]
 pub fn pane_picker_key(
     choices: &[PaneChoice],

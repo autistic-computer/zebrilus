@@ -25,7 +25,6 @@ use crate::{
     cef_runtime::{AcceleratedPoolLayout, ExpectedFrameSize, StalePoolFrame},
 };
 
-// Five: ala's flip-model swap chain can still be sampling four published frames.
 const DESTINATION_POOL_SLOT_COUNT: usize = 5;
 
 #[derive(Clone)]
@@ -102,7 +101,6 @@ pub(super) enum D3d11FrameError {
 
 impl D3d11Context {
     fn new(gpu: BrowserGpuContext) -> Result<Self, D3d11FrameError> {
-        // Only ID3D11Device1's `OpenSharedResource1` accepts Chromium's NT handles.
         let device = gpu
             .device
             .cast::<ID3D11Device1>()
@@ -118,8 +116,6 @@ impl D3d11Context {
         reason = "querying D3D11 device state is an unsafe COM call"
     )]
     fn check_device(&self) -> Result<(), D3d11FrameError> {
-        // SAFETY: the device interface is live for the lifetime of this
-        // context; the call only reads driver state.
         unsafe { self.device.GetDeviceRemovedReason() }
             .map_err(|error| D3d11FrameError::DeviceRemoved(error.to_string()))
     }
@@ -132,8 +128,6 @@ impl D3d11Context {
         &self,
         handle: *mut core::ffi::c_void,
     ) -> Result<ID3D11Texture2D, D3d11FrameError> {
-        // SAFETY: `handle` is CEF's shared-texture NT handle, non-null and valid
-        // for the paint callback; D3D11 returns an owned +1 interface reference.
         unsafe {
             self.device
                 .OpenSharedResource1::<ID3D11Texture2D>(HANDLE(handle))
@@ -147,8 +141,6 @@ impl D3d11Context {
     )]
     fn describe(texture: &ID3D11Texture2D) -> D3D11_TEXTURE2D_DESC {
         let mut desc = D3D11_TEXTURE2D_DESC::default();
-        // SAFETY: `texture` is a live interface and `desc` is a valid,
-        // fully-initialized destination D3D11 only writes to.
         unsafe { texture.GetDesc(&raw mut desc) };
         desc
     }
@@ -171,15 +163,11 @@ impl D3d11Context {
                 Quality: 0,
             },
             Usage: D3D11_USAGE_DEFAULT,
-            // `CopyResource` needs no usage flag; ala only binds as a shader resource.
             BindFlags: D3D11_BIND_SHADER_RESOURCE.0.cast_unsigned(),
             CPUAccessFlags: 0,
             MiscFlags: 0,
         };
         let mut texture = None;
-        // SAFETY: the descriptor is fully initialized, `None` initial data is
-        // valid for a default-usage texture, and `texture` is a valid output
-        // slot D3D11 fills with an owned +1 reference on success.
         unsafe {
             self.device
                 .CreateTexture2D(&raw const desc, None, Some(&raw mut texture))
@@ -197,9 +185,6 @@ impl D3d11Context {
         reason = "recording and submitting D3D11 device-context work is unsafe"
     )]
     fn copy_and_flush(&self, destination: &ID3D11Texture2D, source: &ID3D11Texture2D) {
-        // SAFETY: both interfaces are live 2D textures of identical dimensions and
-        // format, as CopyResource requires, and ala's immediate context is only
-        // ever touched from the main thread that drives CEF's pump.
         unsafe {
             self.device_context.CopyResource(destination, source);
             self.device_context.Flush();
@@ -323,7 +308,6 @@ impl D3d11FrameProducer {
                 actual_format: source.Format,
             });
         }
-        // `CopyResource` requires identical formats, so take the source's.
         let format = supported_destination_format(source.Format)?;
 
         if state
@@ -348,7 +332,6 @@ impl D3d11FrameProducer {
         let expected = state.expected;
 
         context.copy_and_flush(&destination, &imported);
-        // CEF returns the resource to its pool when the callback returns.
         drop(imported);
 
         Ok(D3d11FrameOutcome::Frame(ProducedD3d11Frame {

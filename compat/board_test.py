@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Offline fold regression tests for compat/board.py. Run: python3 compat/board_test.py"""
 
 import importlib.util
 import pathlib

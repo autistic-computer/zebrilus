@@ -2,11 +2,9 @@ use std::sync::Arc;
 
 use crate::ImeCharacterBounds;
 
-/// Identifies one immutable CEF browser generation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub u64);
 
-/// Browser cursor shapes that ala can represent directly.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BrowserCursor {
     #[default]
@@ -27,7 +25,6 @@ pub enum BrowserCursor {
     None,
 }
 
-/// Clipboard edits Chromium reports as available at the click target.
 #[allow(
     clippy::struct_excessive_bools,
     reason = "one field per Chromium edit-state flag keeps the menu mapping literal"
@@ -40,13 +37,8 @@ pub struct EditFlags {
     pub can_select_all: bool,
 }
 
-/// Owned snapshot of Chromium's context-menu parameters. CEF frees the
-/// originals when the callback returns, so nothing here borrows from them.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ContextMenuRequest {
-    /// Pane-local logical coordinates, in the same space as [`PointerEvent`].
-    ///
-    /// [`PointerEvent`]: crate::PointerEvent
     pub x: i32,
     pub y: i32,
     pub link_url: Option<Arc<str>>,
@@ -55,7 +47,6 @@ pub struct ContextMenuRequest {
     pub edit_flags: EditFlags,
 }
 
-/// Owned browser-domain events emitted by a session.
 #[derive(Clone, Debug, PartialEq)]
 pub enum BrowserEvent {
     Created {
@@ -105,8 +96,6 @@ pub enum BrowserEvent {
     ElementPicked {
         session: SessionId,
         text: Arc<str>,
-        /// PNG bytes of the area around the pick, absent whenever the capture
-        /// could not be produced.
         screenshot: Option<Arc<[u8]>>,
     },
     ElementPickCancelled {

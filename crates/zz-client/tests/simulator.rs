@@ -1,11 +1,3 @@
-//! Randomized convergence harness: a real in-process daemon, two `ClientCore`
-//! reducers, seed-driven traffic, and content oracles.
-//!
-//! Every failure prints its seed; rerun with the same seed for the same client
-//! action sequence. PTY output timing is real, so the oracles are quiescence
-//! properties (retained state equals freshly-requested state) rather than
-//! byte-identical transcripts.
-
 #![cfg(unix)]
 
 use std::{
@@ -86,8 +78,6 @@ impl SimClient {
         }
     }
 
-    /// Feed every already-received message into the core; true if anything
-    /// beyond the daemon's periodic status clock arrived.
     fn pump(&mut self) -> bool {
         let mut received = false;
         while let Ok(message) = self.inbox.try_recv() {
@@ -160,7 +150,6 @@ fn terminal_panes(snapshot: &MuxSnapshot) -> Vec<PaneId> {
     panes
 }
 
-/// Per-client stamps (focused window, viewer identity, generation) stripped.
 fn normalized_snapshot(
     snapshot: &MuxSnapshot,
 ) -> Vec<(String, Vec<(String, String, Vec<String>)>)> {
@@ -192,10 +181,6 @@ fn normalized_snapshot(
         .collect()
 }
 
-/// Rendering-equivalent content: resolved glyph text and style values per
-/// cell, plus geometry and cursor. Style ids and dictionary layout renumber
-/// between a patched viewport and a fresh full frame, so equality must
-/// compare resolved values, never raw ids.
 fn content_signature(
     viewport: &TerminalViewport,
 ) -> (u16, u16, Vec<(String, Option<PackedStyle>)>, String) {
@@ -283,7 +268,6 @@ impl Simulation {
         received
     }
 
-    /// Pump until no client received anything for [`QUIESCENT_WINDOW`].
     fn quiesce(&mut self) {
         let deadline = Instant::now() + QUIESCENCE_DEADLINE;
         let mut quiet_since = Instant::now();
@@ -353,7 +337,6 @@ impl Simulation {
         self.quiesce();
     }
 
-    /// Every client's normalized snapshot matches every other's.
     fn assert_snapshots_converged(&self) {
         let reference = normalized_snapshot(self.clients[0].core.snapshot());
         for (index, client) in self.clients.iter().enumerate().skip(1) {
@@ -365,7 +348,6 @@ impl Simulation {
         }
     }
 
-    /// Every retained pane viewport matches across clients.
     fn assert_viewports_converged(&self) {
         let panes = terminal_panes(self.clients[0].core.snapshot());
         for pane in panes {
@@ -385,7 +367,6 @@ impl Simulation {
         }
     }
 
-    /// The patch-accumulated viewport equals a freshly requested full frame.
     fn assert_patch_full_duality(&mut self) {
         let panes = terminal_panes(self.clients[0].core.snapshot());
         for pane in panes {
@@ -413,7 +394,6 @@ impl Simulation {
         }
     }
 
-    /// A resync converges back to the same normalized snapshot.
     fn assert_resync_soundness(&mut self) {
         let before = normalized_snapshot(self.clients[0].core.snapshot());
         self.clients[0]

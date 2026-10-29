@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-/// tmux's default separator set: printable non-alphanumeric ASCII, no underscore.
 pub const DEFAULT_WORD_SEPARATORS: &str = "!\"#$%&'()*+,-./:;<=>?@[\\]^`{|}~";
 
 const WORD_WHITESPACE_CODEPOINTS: &[char] = &[
@@ -9,8 +8,6 @@ const WORD_WHITESPACE_CODEPOINTS: &[char] = &[
     '\u{2009}', '\u{200a}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}', '\u{3000}',
 ];
 
-/// Precompiled word-separator lookup shared by live selection and copy mode.
-/// Boundaries always include NUL, tab, and space, as tmux does.
 #[repr(C)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WordSeparators {
@@ -54,7 +51,6 @@ impl WordSeparators {
         }
     }
 
-    /// Whether a non-whitespace codepoint is a configured separator.
     #[must_use]
     pub fn contains_separator(&self, character: char) -> bool {
         let codepoint = u32::from(character);
@@ -65,19 +61,16 @@ impl WordSeparators {
         self.separator_codepoints.binary_search(&character).is_ok()
     }
 
-    /// The configured non-whitespace separators.
     #[must_use]
     pub fn separator_codepoints(&self) -> &[char] {
         &self.separator_codepoints
     }
 
-    /// The precompiled boundary list libghostty selection expects.
     #[must_use]
     pub fn boundary_codepoints(&self) -> &[char] {
         &self.boundary_codepoints
     }
 
-    /// Every `char::is_whitespace` codepoint, plus NUL for empty cells.
     #[must_use]
     pub const fn whitespace_codepoints() -> &'static [char] {
         WORD_WHITESPACE_CODEPOINTS

@@ -15,19 +15,18 @@ mod tools "scripts/just/tools.just"
 mod vendor "scripts/just/vendor.just"
 mod web "scripts/just/web.just"
 
-# Launch a fresh debug instance; append --verbose for continuous diagnostics.
+[doc("Launch a fresh debug instance; append --verbose for continuous diagnostics.")]
 run platform *args:
     @ZZ_ZIG_VERSION="{{ zig_version }}" scripts/run.sh {{ platform }} {{ args }}
 
-# Rebuild and relaunch the development app whenever workspace sources change.
+[doc("Rebuild and relaunch the development app whenever workspace sources change.")]
 watch platform *args:
     @scripts/run-watch.sh {{ platform }} {{ args }}
 
 hot platform *args:
     @scripts/run-hot.sh {{ platform }} {{ args }}
 
-# Build a release bundle for a supported platform (must run on that platform).
-# Extra args after `--` pass through to bundle-cef.
+[doc("Extra args after `--` pass through to bundle-cef.")]
 build platform *args:
     @if [[ "{{ platform }}" != "mac" && "{{ platform }}" != "linux" && "{{ platform }}" != "windows" ]]; then echo "unsupported build platform: {{ platform }} (expected: mac|linux|windows)" >&2; exit 2; fi
     @if [[ "{{ platform }}" == "mac" && "$(uname -s)" != "Darwin" ]]; then echo "just build mac requires macOS" >&2; exit 2; fi
@@ -55,7 +54,7 @@ headless platform *args:
     cargo build --release -p zz-cli {{ args }}
     scripts/package-headless.sh target/release/zz_cli "dist/zz-$version-headless-$os-$arch.tar.gz"
 
-# Serve the landing page + docs site with live reload (localhost:4321/zz).
+[doc("Serve the landing page + docs site with live reload (localhost:4321/zz).")]
 site:
     npm --prefix site install
     npm --prefix site run dev

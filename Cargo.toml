@@ -229,8 +229,6 @@ too_many_lines = "allow"
 result_large_err = "allow"
 assert_is_empty = "allow"
 unused_async_trait_impl = "allow"
-# Pixel math casts between f32/u32/i32 on every screen, and exact f32
-# equality is the UI's change-detection idiom; clippy 1.97 warns on both.
 cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 cast_precision_loss = "allow"
@@ -238,8 +236,6 @@ cast_sign_loss = "allow"
 float_cmp = "allow"
 struct_excessive_bools = "allow"
 type_complexity = "allow"
-# ala idioms: `_subscriptions`/`_task` fields held for RAII get reassigned,
-# and view methods take &self for organization before they need it.
 used_underscore_binding = "allow"
 unused_self = "allow"
 

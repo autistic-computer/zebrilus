@@ -1,100 +1,4 @@
 #!/usr/bin/env bash
-# Prolonged terminal backpressure: does an attached client stay live, stay
-# bounded, and hand the terminal back clean?
-#
-# compat/scenarios/smoke/tui-client-input-backpressure.txt already asks the
-# short question: with the pty saturated for a second or two, does a bound key
-# still act? Both binaries pass it. tui.client-output-queue-budget is the long
-# question the smoke scenario cannot ask, because its undrained window is
-# derived from the kernel's pty buffer and stops well short of the client's own
-# queue: with a terminal that reads NOTHING for tens of seconds, does the client
-# keep answering keys, and what does it cost in memory to do so?
-#
-# THE TERMINAL THAT STOPS READING. An outer pinned tmux always drains its
-# panes, so the fixture puts compat/tui-output-relay.py between the two: the
-# relay runs in the outer pane, hands the client a pty at the pane's size, and
-# copies both directions until SIGUSR1 tells it to stop copying master to
-# stdout. Keys keep flowing while it holds, so what is undrained is the
-# client's terminal and not its input. SIGUSR2 resumes and everything the
-# client wrote reaches the outer pane, which decodes it: the final screen of
-# this fixture is a decoded screen like every other one in the campaign, and
-# the relay is transparent to it.
-#
-# THE REFERENCE. tty.c is the behaviour being matched, not guessed at:
-# tty_block_maybe discards the whole out buffer once it holds more than
-# TTY_BLOCK_START (1 + sx*sy*8 bytes, 15361 at 80x24), sets TTY_BLOCK so every
-# later tty_puts is dropped too, and arms a 100 ms timer; tty_timer_callback
-# sets CLIENT_ALLREDRAWFLAGS every interval and, once less than TTY_BLOCK_STOP
-# (1 + sx*sy/8) was discarded in one interval, clears the flag and calls
-# tty_invalidate, which repaints from the screen. The pin therefore never waits
-# on its tty from its event loop, pays a constant amount of memory for a viewer
-# who is not reading, and shows a correct screen when reading resumes. Those
-# three are what this fixture asserts, on both binaries, with the same driver.
-#
-# DECLARED PARAMETERS, printed by every run:
-#   --undrained SECONDS   how long the relay holds, default 45, the window the
-#                         cycle-18 residual measurement used and the one the
-#                         registry records zz failing at.
-#   --deadline SECONDS    the response bound for a bound key delivered while
-#                         undrained, default 1.000. Derivation: the registry
-#                         records pinned tmux d77c9dc6 acting on F5 in 0.050 s
-#                         at 45 s undrained, and the same pin runs here as a
-#                         side of this fixture, so the deadline is 20x the
-#                         reference latency and the pin's own column proves on
-#                         every run that it is achievable on this box.
-#   --rss-growth KB       how much RSS a side may gain between its drained
-#                         baseline and the end of the undrained window,
-#                         default 16384. The client's paint queue is bounded by
-#                         crates/zz-tui/src/writer.rs QUEUE_BUDGET, 4 MiB; the
-#                         bound here is four times that, which is loose enough
-#                         that allocator behaviour is not the subject and tight
-#                         enough that an unbounded queue cannot pass.
-#   --key-timeout SECONDS how long a press is waited for before it is a
-#                         non-answer, default 12, the registry's number.
-# The two sides are run one after the other, never at once: the flood is CPU
-# work and a shared box would otherwise put one side's latency inside the
-# other's.
-#
-# WHAT IS ASSERTED PER SIDE
-#   drained key      acts within the deadline (the canary: a binding that never
-#                    worked would make the undrained press meaningless).
-#   undrained key    acts within the deadline, after --undrained seconds of a
-#                    terminal reading nothing.
-#   memory           RSS growth over the same window stays under --rss-growth.
-#   final screen     after the relay resumes and the pane is put back to a
-#                    fixed marker, both sides' screens are compared cell for
-#                    cell through the outer tmux, plus the asserted cursor
-#                    tuple. Cursor shape, blink and colour are RECORDED, the
-#                    standing divergence tui-screen-diff.sh records too, and so
-#                    is the status row: see compare_final_screens for the
-#                    measurement that puts that row's one spelling difference
-#                    before this fixture's change rather than in it.
-#   teardown         detach while undrained, resume, and then two things: the
-#                    outer pane after the client exits holds exactly the
-#                    relay's RELAY-DONE and nothing else, twice, a second
-#                    apart, so a paint that outlived the client is a row of its
-#                    own; and the client wrote no ESCAPE byte after it left the
-#                    alternate screen, so a paint that outlived the terminal
-#                    restoration is caught even though the relay's own clear
-#                    would have wiped it off the grid. Both binaries print a
-#                    detach line after the restore, which is text and not a
-#                    paint, so the assertion counts escapes and not bytes.
-#
-# SETTLES. Every wait is bounded and on an observable. The undrained window is
-# a declared parameter, not a settle. The pty being full is not slept for
-# either: the relay publishes FIONREAD on the master into its status file, and
-# the fixture waits for that to go flat, which is the kernel saying the client
-# is blocked. The final screen settles the way tui-screen-diff.sh settles, on
-# the marker being present AND the screen unchanged between two polls.
-#
-# --self-check sabotages the two assertions this fixture adds that no other
-# fixture makes: it runs the teardown case with the relay writing a paint after
-# the restoration (which the teardown assertion must catch) and the undrained
-# case with the deadline set below the latency just measured (which the
-# response assertion must catch). A fixture that only passes has proved
-# nothing. The third sabotage is not in here because it is a different binary:
-# run this fixture against a build from before the drop path and the undrained
-# key never lands.
 set -eEuo pipefail
 
 usage() {
@@ -297,8 +201,6 @@ recorded_cursor_tuple() {
   tmux_outer_command display-message -p -t "=$OUTER_SESSION:$1" "$CURSOR_RECORDED_FORMAT"
 }
 
-# The settle tui-screen-diff.sh proved out: the marker on the screen AND the
-# screen unchanged between two polls, both observable, the whole thing bounded.
 wait_settled() {
   local side="$1"
   local marker="$2"
@@ -386,9 +288,6 @@ active_pane() {
     awk '$1 == 1 { print $2; exit }'
 }
 
-# The pty is full when the kernel stops handing the relay more bytes to hold:
-# FIONREAD on the master, flat between two polls, with the flood still running.
-# That is the observable this fixture waits on instead of sleeping.
 wait_for_full_pty() {
   local side="$1"
   local previous=-1
@@ -487,8 +386,6 @@ attach_side() {
   side_command "$side" select-pane -t "=$INNER_SESSION:0.0" -T "$PANE_TITLE" ||
     die "$side refused select-pane -T"
 }
-
-# --- the measured window ---------------------------------------------------
 
 run_undrained_case() {
   local side="$1"
@@ -590,17 +487,6 @@ compare_final_screens() {
   printf '        tmux: %s\n' "$(recorded_cursor_tuple tmux)"
   printf '        zz:   %s\n' "$(recorded_cursor_tuple zz)"
 
-  # THE STATUS ROW IS RECORDED, NOT ASSERTED, and this is measured rather than
-  # waived by omission. At 80x24 with status-left L and status-right empty,
-  # both binaries paint the same characters in the same colours and differ in
-  # ONE spelling: after the reset that ends the window name, zz re-states the
-  # default foreground (\e[38;2;13;13;13m) before the background and the pin
-  # states only the background. That is the recorded explicit-default-
-  # foreground divergence of the daemon's frame representation, which has no
-  # owner this cycle; measured 2026-09-09 on this box against a build from
-  # BEFORE this fixture's drop path and again after it, byte for byte the same
-  # difference, so it is not something recovery introduced. Everything above
-  # the status row is asserted.
   status=$((ROWS_UNDER_TEST - 1))
   if [ "${zz_rows[status]-}" = "${tmux_rows[status]-}" ]; then
     printf 'note  status row after recovery identical, the record can close\n'
@@ -638,17 +524,12 @@ compare_final_screens() {
   printf '      asserted cursor zz:   %s\n' "$zz_cursor"
 }
 
-# --- detach under backlog --------------------------------------------------
-
 relay_exited() {
   [ "$(relay_status_field "$1" exited)" = 1 ]
 }
 non_empty_rows() {
   capture_plain "$1" | sed -e 's/\r$//' -e 's/[[:space:]]*$//' | grep -v '^$' || true
 }
-# The restored screen carries no style of its own, so any SGR at all in the
-# decoded capture is a paint that outlived the restoration even when it painted
-# nothing but coloured blanks.
 styled_rows() {
   capture_screen "$1" | grep -c $'\033' || true
 }
@@ -694,13 +575,6 @@ run_teardown_case() {
     printf '      %s left %s styled rows on the terminal the relay had cleared\n' "$side" "$styled"
   fi
 
-  # The escape count is a byte-level observable on purpose: "after the terminal
-  # was handed back" has no expression in the decoded grid, because the outer
-  # tmux would have decoded a late paint into the same cells the relay then
-  # cleared. Both binaries print a detach line after the restore and that is
-  # text, not a paint; a paint carries escapes. Measured 2026-09-09: pinned
-  # tmux d77c9dc6 never leaves an alternate screen at all (restores=0), so its
-  # stream has no restoration point to be after and its tail is recorded.
   if [[ "$restores" =~ ^[0-9]+$ ]] && [ "$restores" -gt 0 ]; then
     if [ "$escapes" -ne 0 ]; then
       tail_caught=1
@@ -744,8 +618,6 @@ run_side() {
   settle_final_screen "$side"
 }
 
-# --- run -------------------------------------------------------------------
-
 zz_command -f /dev/null daemon >"$SCRATCH_DIR/zz-daemon.out" 2>"$SCRATCH_DIR/zz-daemon.err" &
 ZZ_PID=$!
 wait_for "zz daemon socket" test -S "$ZZ_SOCKET"
@@ -756,9 +628,6 @@ printf 'undrained=%s s deadline=%s s rss-growth-bound=%s kB key-timeout=%s s siz
 
 if [ "$SELF_CHECK" -eq 1 ]; then
   printf 'self-check: two deliberate sabotages, each caught in its own assertion\n'
-  # The teardown sabotage runs on zz because it is the side with a restoration
-  # to be after: the pin leaves no alternate screen, so its escape tail has no
-  # starting point and the fixture records it instead of asserting it.
   create_inner_session zz
   attach_side zz 1
   run_teardown_case zz sabotaged

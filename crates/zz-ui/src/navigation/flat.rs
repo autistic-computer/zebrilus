@@ -153,7 +153,6 @@ pub enum FlatEvent {
 
 pub type FlatHandler = Rc<dyn Fn(FlatEvent, &mut Window, &mut App)>;
 
-/// Fills a window row's menu, opened by a right click or a long press.
 pub type FlatMenu = Rc<
     dyn Fn(PaletteHostId, WindowId, PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu,
 >;
@@ -184,10 +183,7 @@ pub struct FlatRowState {
     pub selected: bool,
     pub hovered: bool,
     pub dimmed: bool,
-    /// What the row sits on; the window when unset.
     pub ground: Option<Ground>,
-    /// The most tiles any row in its list shows, so their labels line up;
-    /// 0 holds room for the row's own.
     pub stack_tiles: usize,
 }
 
@@ -300,14 +296,10 @@ fn row_height() -> Pixels {
     px(ROW_HEIGHT)
 }
 
-/// Where a row's trailing text ends: the spinner centers on the column the
-/// headers' + button and the sidebar's chrome buttons do.
 fn row_trailing_inset(cx: &App) -> Pixels {
     cx.theme().row_inset + super::WORKSPACE_ROW_ACTION_CENTER - px(SPINNER_SIZE / 2.0)
 }
 
-/// A tile's corners: concentric with the row's when its role is round, a
-/// circle when it is a pill.
 fn tile_radius(size: StackSize, cx: &App) -> Pixels {
     match cx.theme().style(roles::PANE_STACK).shape {
         Shape::Square => Pixels::ZERO,

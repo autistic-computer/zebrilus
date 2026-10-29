@@ -59,12 +59,10 @@ use workspace::AppView;
 
 pub use profile::{AppProfile, LocalHostPolicy, SettingsSection};
 
-/// Windows runs the application out of `zz.dll`, where `main.rs` never executes.
 #[cfg(windows)]
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-/// Start the native executable on Linux and macOS.
 #[cfg(not(target_os = "windows"))]
 #[must_use]
 pub fn run() -> ExitCode {
@@ -101,7 +99,6 @@ pub fn run() -> ExitCode {
     ))
 }
 
-/// Serve the Windows command line. Only the bundled `zz.exe` can open the window.
 #[cfg(target_os = "windows")]
 #[must_use]
 pub fn run() -> ExitCode {
@@ -127,8 +124,6 @@ pub fn run() -> ExitCode {
     }
 }
 
-/// The entry point CEF's bootstrap executable calls in `zz.dll`, for the browser
-/// process and for every `--type=` subprocess it relaunches itself as.
 #[cfg(target_os = "windows")]
 #[allow(
     unsafe_code,

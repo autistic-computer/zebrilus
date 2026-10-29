@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# tasks.sh MODEL zz|own TASK  - one agent-driven browser task through the Antigravity CLI (agy)
-# against a zz browser pane over CDP or agent-browser's own Chromium. Appends a row to out/tasks.tsv.
 set -uo pipefail
 MODEL=$1 BACKEND=$2 TASK=$3
 HERE=$(cd "$(dirname "$0")" && pwd)

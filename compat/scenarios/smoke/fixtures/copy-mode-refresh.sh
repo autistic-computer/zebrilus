@@ -100,12 +100,9 @@ env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
 viewer_pid=$!
 await_clients 1 || { echo "copy-mode-refresh-$side: attach"; exit 0; }
 
-# The pane has to have scrolled before the frozen view can fall behind it.
 await_output 'tick 0080' || { echo "copy-mode-refresh-$side: output"; exit 0; }
 
 main_client copy-mode -t "$pane"
-# window_copy_refresh_timer only follows new output when the view is at the
-# bottom with the cursor on the last row, so step off that row first.
 main_client send-keys -t "$pane" -X cursor-up
 
 frozen="$(value scroll_position)"
@@ -116,9 +113,6 @@ sleep 1
 check_equal refresh-is-off-at-entry "$frozen" "$(value scroll_position)"
 check_equal frozen-view-keeps-its-line "$line" "$(value copy_cursor_line)"
 
-# window_copy_do_refresh re-clones the backing and keeps the view on the row it
-# was already showing, so the distance to the bottom grows while the cursor
-# line does not move.
 main_client send-keys -t "$pane" -X refresh-on
 sleep 1
 running="$(value scroll_position)"
@@ -134,8 +128,6 @@ main_client send-keys -t "$pane" -X refresh-toggle
 sleep 1
 check_equal refresh-toggle-restarts 1 "$(climbed "$stopped" "$(value scroll_position)")"
 
-# The tick is skipped while a selection is live, so the view holds even with
-# the refresh running.
 main_client send-keys -t "$pane" -X begin-selection
 main_client send-keys -t "$pane" -X cursor-right
 selecting="$(value scroll_position)"
@@ -150,8 +142,6 @@ off="$(value scroll_position)"
 sleep 1
 check_equal refresh-off-freezes "$off" "$(value scroll_position)"
 
-# oy == 0 with the cursor on the last row is the follow case, so the view rides
-# the new output instead of falling behind it.
 main_client send-keys -t "$pane" -X history-bottom
 main_client send-keys -t "$pane" -X bottom-line
 main_client send-keys -t "$pane" -X refresh-on
@@ -160,8 +150,6 @@ check_equal follow-stays-at-the-bottom 0 "$(value scroll_position)"
 main_client send-keys -t "$pane" -X refresh-off
 main_client send-keys -t "$pane" -X cancel
 
-# Both stock tables bind r to the pin's stored send-keys shape: refresh-now in
-# tmux 3.8 (key-bindings.c:599 and 709), refresh-toggle at the d77c9dc6 pin.
 check_equal emacs-r-binding 'send-keys -X refresh-now' \
     "$(main_client list-keys -T copy-mode 2>/dev/null | sed -n 's/^bind-key  *-T copy-mode  *r  *//p' | head -n 1)"
 check_equal vi-r-binding 'send-keys -X refresh-now' \

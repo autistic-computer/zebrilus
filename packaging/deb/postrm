@@ -1,8 +1,4 @@
 #!/bin/sh
-# Unload the profile so a removed package leaves no rule loaded in the kernel.
-# On `remove` the conffile is still on disk, which is what apparmor_parser -R
-# needs to name the profile; on `purge` it is already gone and the earlier
-# removal has done the work.
 set -e
 
 case "$1" in

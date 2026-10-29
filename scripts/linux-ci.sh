@@ -1,15 +1,4 @@
 #!/usr/bin/env bash
-# Run pieces of the Linux CI leg in a local container instead of burning a
-# 30-minute Actions round trip: clippy findings and compile errors that live
-# in linux-only cfg branches never surface in a macOS cargo run.
-#
-# With no arguments this mirrors the Lint steps (fmt --check, then clippy with
-# -D warnings); any arguments run verbatim in the container instead:
-#     scripts/linux-ci.sh cargo test -p zz-daemon --lib
-#     scripts/linux-ci.sh bash
-# The image is built on first use (REBUILD=1 forces it). The cargo registry,
-# target dir, and CEF distribution persist in the zz-linux-ci-state volume, so
-# the first run downloads a lot and later runs are incremental.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

@@ -1,5 +1,3 @@
-//! Shared in-app fuzzy path picker.
-
 use std::{
     collections::VecDeque,
     path::{Path, PathBuf},

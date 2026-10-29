@@ -1,11 +1,3 @@
-//! `load-buffer` reads through the client that asked for it.
-//!
-//! The pin expands the path once in the server — a leading `~/` against the
-//! server's own home, anything else relative against the invoking client's
-//! working directory — and then hands the absolute path to that client
-//! (`file_get_path` and `file_read` in file.c), because a command client may
-//! not share a filesystem with the server at all.
-
 #![cfg(unix)]
 
 mod client_file;

@@ -52,13 +52,11 @@ pub fn home_directory() -> Option<PathBuf> {
     std::env::var_os("HOME").map(PathBuf::from)
 }
 
-// Windows has no `HOME`: `USERPROFILE` is the real home, `HOME` only a shell fallback.
 #[cfg(windows)]
 pub fn home_directory() -> Option<PathBuf> {
     nonempty_env("USERPROFILE").or_else(|| nonempty_env("HOME"))
 }
 
-/// Ordered candidate locations for `zz/mux.conf`, matching the client's `zz/config` order.
 #[must_use]
 pub fn mux_config_candidates() -> Vec<PathBuf> {
     let [xdg_config_home, home, appdata, local_appdata, user_profile] = environment_paths();
@@ -124,7 +122,6 @@ fn push_candidate_path(candidates: &mut Vec<PathBuf>, base: &Path) {
     }
 }
 
-/// First existing `zz/mux.conf` candidate, sourced at startup and on `reload-config`.
 #[must_use]
 pub fn default_mux_config() -> Option<PathBuf> {
     mux_config_candidates()

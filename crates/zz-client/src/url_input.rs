@@ -13,7 +13,6 @@ pub enum UrlInputError {
     Invalid,
 }
 
-/// The engine an address-field entry that is not a URL is searched on.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum SearchProvider {
     #[default]
@@ -62,9 +61,6 @@ impl SearchProvider {
     }
 }
 
-/// Turn an address-field entry into a navigation target the way an omnibox
-/// does: a URL when the entry looks like one, a `provider` search otherwise.
-/// An explicit scheme the runtime cannot open is an error, not a query.
 pub fn resolve_address(input: &str, provider: SearchProvider) -> Result<String, UrlInputError> {
     let input = input.trim();
     if input.is_empty() {
@@ -108,7 +104,6 @@ fn looks_like_host(input: &str) -> bool {
     !name.is_empty() && tld.chars().count() >= 2 && tld.chars().all(char::is_alphabetic)
 }
 
-/// Normalize an address-field value into an allowed browser URL.
 pub fn normalize_url(input: &str) -> Result<String, UrlInputError> {
     let input = input.trim();
     if input.is_empty() {
@@ -172,7 +167,6 @@ fn defaults_to_http(url: &Url) -> bool {
     }
 }
 
-/// Remove URL components that should never appear in diagnostics.
 #[must_use]
 pub fn diagnostic_url(input: &str) -> String {
     let Ok(mut parsed) = Url::parse(input) else {

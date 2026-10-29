@@ -66,10 +66,6 @@ await_clients() {
     return 1
 }
 
-# cmd_send_keys_exec runs one guard before it reaches the mode command:
-# `if (wme == NULL || wme->mode->command == NULL) { cmdq_error("not in a mode") }`
-# at status 1. It covers every -X spelling, including a bare -X with no action
-# and an -N count paired with -X, and it does not cover a bare -N count.
 expect_case() {
     label="$1"
     want_status="$2"
@@ -102,7 +98,6 @@ expect_case before-counted 1 'not in a mode' -t "$pane" -N 3 -X
 expect_case before-unknown 1 'not in a mode' -t "$pane" -X bogus-action
 expect_case before-selection 1 'not in a mode' -t "$pane" -X begin-selection
 
-# The bare count has no -X, so it skips the guard even with no mode entry.
 expect_case before-count 0 '' -t "$pane" -N 3
 
 main_client copy-mode -t "$pane"

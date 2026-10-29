@@ -4,10 +4,6 @@
 )]
 use std::process::Command;
 
-/// A `zz` that cannot see the developer's own `~/.config/zz/mux.conf`: an
-/// explicit `-f` still layers it, the accepted
-/// semantic:explicit-config-keeps-mux-conf-layer, and cycle 17 watched it
-/// reach the tests that never said where home is.
 fn isolated_zz() -> (tempfile::TempDir, Command) {
     let root = if cfg!(unix) {
         std::path::PathBuf::from("/tmp")
@@ -771,10 +767,6 @@ mod daemon_autostart {
             }
         }
 
-        /// An explicit `-f` still layers `zz/mux.conf` on top, the accepted
-        /// semantic:explicit-config-keeps-mux-conf-layer, so a developer's own
-        /// `~/.config/zz/mux.conf` reaches any test that does not say where
-        /// home is. Every command a fixture builds says.
         fn command_from(&self, executable: &Path) -> Command {
             let mut command = Command::new(executable);
             command
@@ -944,21 +936,10 @@ mod daemon_autostart {
         }
     }
 
-    /// Wider than the 109 columns the raw TUI used to take as its cue to show
-    /// the sidebar. Width never invokes it now, so a status assertion that
-    /// reads the block's own geometry attaches here to prove the block still
-    /// starts at column 1 and spans the whole terminal, the way `status.c`
-    /// draws it. Only `focus-sidebar` or a user binding moves it right.
     const WIDE_COLUMNS: u16 = 120;
 
-    /// What `ssh -t host zz attach` gets from a stock terminal, and the width
-    /// `compat/tui-pane-geometry.sh` measures pinned tmux at.
     const STOCK_COLUMNS: u16 = 80;
 
-    /// Pinned tmux d77c9dc6 hands an 80x24 client's pane 23 rows: 24 less the
-    /// one row `status on` spends, and nothing for pane chrome while
-    /// `pane-border-status` is off. Measured on both binaries by
-    /// `compat/tui-pane-geometry.sh`.
     const STOCK_PANE_ROWS: &str = "23";
 
     fn open_pty() -> io::Result<(File, File)> {
@@ -3580,14 +3561,6 @@ mod daemon_autostart {
         assert!(!captured.windows(6).any(|window| window == b"0:main"));
     }
 
-    /// `status.c` draws `status-left`, the window list and `status-right` in
-    /// one row at every width, and `layout_fix_panes` reserves nothing for
-    /// pane chrome while `pane-border-status` is off. A stock 80-column
-    /// terminal, where the raw TUI has no sidebar to keep `status-left` in,
-    /// has to draw all three in the pin's order and leave the pane
-    /// `STOCK_PANE_ROWS` rows. Both numbers come from
-    /// `compat/tui-pane-geometry.sh` and `compat/status-row.sh` measuring
-    /// pinned tmux d77c9dc6 beside zz.
     #[test]
     fn stock_eighty_column_attach_draws_the_whole_status_row() {
         let fixture = Fixture::new();

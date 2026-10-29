@@ -44,11 +44,9 @@ const UNBLURRED_WINDOW_BACKGROUND: WindowBackgroundAppearance = WindowBackground
 pub struct AppConfig(pub zz_config::AppConfig);
 impl Global for AppConfig {}
 
-/// The theme `interface-theme` selects and the saved themes beside it.
 #[derive(Clone, Debug)]
 pub(crate) struct Themes {
     pub(crate) active: InterfaceTheme,
-    /// The built-in id or saved name `active` was loaded from.
     pub(crate) selected: SharedString,
     pub(crate) saved: Vec<(SharedString, InterfaceTheme)>,
     pub(crate) error: Option<SharedString>,
@@ -417,23 +415,18 @@ pub(crate) fn themes(cx: &App) -> &Themes {
     cx.try_global::<Themes>().unwrap_or(&DEFAULT)
 }
 
-/// Radius of the app-drawn window frame, visible only under Linux client-side
-/// decorations. Every other platform shapes the window natively.
 pub(crate) fn window_corner_radius(cx: &App) -> Pixels {
     px(resolved_config(cx).window_corner_radius.value)
 }
 
-/// Whether quitting the app stops the daemon even when live sessions remain.
 pub(crate) fn quit_daemon_on_exit(cx: &App) -> bool {
     resolved_config(cx).quit_daemon_on_exit.value
 }
 
-/// Whether the GUI should replace a stale local daemon without asking first.
 pub(crate) fn auto_restart_stale_daemon(cx: &App) -> bool {
     resolved_config(cx).auto_restart_stale_daemon.value
 }
 
-/// Whether the GUI looks up the newest release once a day and offers it.
 pub(crate) fn check_for_updates(cx: &App) -> bool {
     resolved_config(cx).check_for_updates.value
 }
@@ -446,8 +439,6 @@ pub(crate) fn notifications_enabled(cx: &App) -> bool {
     resolved_config(cx).notifications.value
 }
 
-/// Whether a browser pane attached to a remote ssh host routes its traffic
-/// through that host. Client-local: it never crosses the wire.
 pub(crate) fn browser_egress_enabled(cx: &App) -> bool {
     resolved_config(cx).browser_egress.value
 }
@@ -464,9 +455,6 @@ pub(crate) fn palette_vim_mode(cx: &App) -> bool {
     resolved_config(cx).palette_vim_mode.value
 }
 
-/// Whether the experimental editor pane is enabled. Blocks creating new editor
-/// panes while off; existing ones keep rendering. Always false without the
-/// `editor-pane` cargo feature.
 pub(crate) fn editor_pane_enabled(cx: &App) -> bool {
     cfg!(feature = "editor-pane") && resolved_config(cx).experimental_editor_pane.value
 }
@@ -499,16 +487,12 @@ pub(crate) fn pane_margin(cx: &App) -> Pixels {
     ))
 }
 
-/// The active theme with everything `zz/config` sets over it: the theme on
-/// screen.
 pub(crate) fn shown_theme(cx: &App) -> InterfaceTheme {
     let mut theme = themes(cx).active.clone();
     theme_overrides(cx).apply_to(&mut theme);
     theme
 }
 
-/// What `zz/config` sets over the active theme: each key the file sets, and
-/// nothing for the keys it leaves to the theme.
 pub(crate) fn theme_overrides(cx: &App) -> interface_theme::ThemeOverrides {
     theme_overrides_from(&resolved_config(cx))
 }
@@ -531,8 +515,6 @@ pub(crate) fn chrome_contrast(cx: &App) -> f32 {
     resolved_config(cx).chrome_contrast.value
 }
 
-/// Editor pane type size. The family is not a knob: the editor inherits the
-/// terminal's mono family through the zz-ui theme.
 #[cfg(feature = "editor-pane")]
 pub(crate) fn editor_font_size(cx: &App) -> Pixels {
     px(resolved_config(cx).editor_font_size.value)
@@ -543,8 +525,6 @@ pub(crate) fn editor_line_numbers(cx: &App) -> bool {
     resolved_config(cx).editor_line_numbers.value
 }
 
-/// Number the gutter by distance from the cursor line. Only visible while
-/// `editor-line-numbers` is on.
 #[cfg(feature = "editor-pane")]
 pub(crate) fn editor_relative_line_numbers(cx: &App) -> bool {
     resolved_config(cx).editor_relative_line_numbers.value
@@ -555,7 +535,6 @@ pub(crate) fn editor_soft_wrap(cx: &App) -> bool {
     resolved_config(cx).editor_soft_wrap.value
 }
 
-/// The editor's vim layer. Off restores plain editing byte-for-byte.
 #[cfg(feature = "editor-pane")]
 pub(crate) fn editor_vim_mode(cx: &App) -> bool {
     resolved_config(cx).editor_vim_mode.value
@@ -565,8 +544,6 @@ pub(crate) fn theme_mode(cx: &App) -> ThemeModeSetting {
     resolved_config(cx).theme_mode.value
 }
 
-/// Which dock icon the app wears. Follows the OS appearance by default, even
-/// when `theme-mode` pins the chrome to one palette.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub(crate) fn app_icon_setting(cx: &App) -> AppIconSetting {
     resolved_config(cx).app_icon.value
@@ -576,7 +553,6 @@ const fn effective_pane_geometry(gaps_enabled: bool, value: f32) -> f32 {
     if gaps_enabled { value } else { 0.0 }
 }
 
-/// Per-corner radii for the pane surface.
 pub(crate) fn pane_content_radii(cx: &App, corners: WindowCorners) -> Corners<Pixels> {
     let config = resolved_config(cx);
     let base = if config.pane_gaps.value {
@@ -620,9 +596,6 @@ fn apply_animations(cx: &mut App) {
     cx.set_animation_speed(speed);
 }
 
-/// The titlebar every zz window opens with: a transparent strip, nothing else.
-/// The macOS traffic lights keep their native size, on the title bar's center
-/// line.
 pub(crate) fn titlebar_options(cx: &App) -> ala::TitlebarOptions {
     zz_ui::TitleBar::title_bar_options(zz_ui::Theme::global(cx).title_bar_height())
 }
@@ -832,8 +805,6 @@ pub(crate) fn import_tmux_config(path: &Path) -> Result<String, String> {
         .map_err(|error| error.to_string())
 }
 
-/// Ask the daemon to re-source `zz/mux.conf` after an import. A no-op with no
-/// armed interactive client: the daemon reads the file at its next startup.
 pub fn request_daemon_reload(cx: &App) {
     let Some(client) = cx
         .try_global::<ConfigOverrideTransport>()

@@ -1,12 +1,3 @@
-//! zz's storybook: every piece of `zz-ui` in its states, on one web page.
-//!
-//! The page (`web/`) renders the navigation, prose and knobs as HTML from the
-//! registry in [`stories`]. Each section of the story on screen is its own
-//! ala window, mounted into that section's element and sized to its content,
-//! so people and agents get real page structure around live zz UI. The
-//! sections' accessibility trees are mirrored into the page, and
-//! `globalThis.ala` drives them.
-
 mod backdrop;
 mod host;
 mod knobs;
@@ -97,8 +88,6 @@ pub fn glass_presets_json() -> String {
     .to_string()
 }
 
-/// Every built-in theme's knob values by id, with its name, for the page to
-/// load: what each knob resets to while that theme is picked.
 pub fn interface_themes_json() -> String {
     json!(
         zz_ui::interface_theme::builtin_themes()
@@ -123,14 +112,10 @@ pub fn interface_themes_json() -> String {
     .to_string()
 }
 
-/// The theme the knobs describe, as a theme file.
 pub fn theme_file_json() -> String {
     knobs().interface_theme().to_json()
 }
 
-/// zz's roles by kind, for the creator's Roles step: each kind, then the
-/// roles in it with how deep in its groups they sit, each role's patch from
-/// the theme, what it inherits and from where, and the style it resolves to.
 pub fn roles_json() -> String {
     fn walk(group: zz_ui::SurfaceRole, depth: usize, out: &mut Vec<(usize, zz_ui::SurfaceRole)>) {
         out.push((depth, group));
@@ -184,8 +169,6 @@ pub fn roles_json() -> String {
     .to_string()
 }
 
-/// Flashes a ring around every surface of the role or kind `id` in the open
-/// story: it holds, then fades out. An empty `id` clears it.
 pub fn inspect(id: &str, cx: &mut App) {
     let inspect = (!id.is_empty()).then(|| ala::SharedString::from(id.to_owned()));
     let flash = inspect.is_some().then(|| {
@@ -218,13 +201,11 @@ fn ring(strength: f32, cx: &mut App) {
     }
 }
 
-/// The knob values a theme file describes; see [`knobs::theme_knobs`].
 pub fn import_theme(json: &str) -> Result<String, String> {
     let theme = zz_ui::interface_theme::parse_theme(json)?;
     Ok(serde_json::Value::Object(knobs::theme_knobs(&theme)).to_string())
 }
 
-/// Loads a font file and names the families it added.
 pub fn add_font(bytes: Vec<u8>, cx: &mut App) -> Result<Vec<String>, String> {
     let before = cx.text_system().all_font_names();
     cx.text_system()

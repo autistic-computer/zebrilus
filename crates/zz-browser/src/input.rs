@@ -164,7 +164,6 @@ pub enum PointerButton {
     Right,
 }
 
-/// Editing commands routed to the focused frame.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Deserialize)]
 pub enum EditCommand {
     Undo,
@@ -233,7 +232,6 @@ pub enum BrowserKey {
 }
 
 impl BrowserKey {
-    /// Chromium's cross-platform virtual-key representation.
     #[must_use]
     pub fn windows_key_code(self) -> i32 {
         match self {

@@ -21,17 +21,11 @@ pub const BROWSER_OMNIBOX_KEY_CONTEXT: &str = "BrowserOmnibox";
 const BROWSER_CONTROL_HEIGHT: f32 = 28.0;
 const COMPACT_BAR_HEIGHT: f32 = 52.0;
 const COMPACT_CONTROL_HEIGHT: f32 = 40.0;
-/// The header's first row: the title, the tabs and New tab, the tabs as
-/// tall as the address bar and as far in from the pane's top as a pane
-/// header's controls.
 const BROWSER_TAB_ROW_HEIGHT: f32 = BROWSER_CONTROL_HEIGHT + 2.0 * crate::CHROME_GAP;
 const BROWSER_TAB_MAX_WIDTH: f32 = 180.0;
-/// A tab narrowed to its favicon alone.
 const BROWSER_TAB_MIN_WIDTH: f32 = 36.0;
-/// Below this width a tab drops its label and shows only its favicon.
 const BROWSER_TAB_LABEL_WIDTH: f32 = 84.0;
 const BROWSER_TAB_GAP: f32 = 4.0;
-/// Room around the tabs, inside the row's clip, for the active tab's rim.
 const BROWSER_TAB_RIM_ROOM: f32 = 2.0;
 const SITE_CONTROLS_INSET: Pixels = px(1.5);
 const ADDRESS_EDGE_WIDTH: Pixels = px(1.0);
@@ -45,7 +39,6 @@ pub struct BrowserHeader {
 }
 
 impl BrowserHeader {
-    /// The tab row, then the toolbar with the header's inset below it.
     pub const HEIGHT: Pixels =
         px(BROWSER_TAB_ROW_HEIGHT + BROWSER_CONTROL_HEIGHT + crate::CHROME_GAP);
 
@@ -117,9 +110,6 @@ impl RenderOnce for BrowserHeader {
     }
 }
 
-/// The phone's browser bar: one row with the address field, the tabs button
-/// and the element picker. Back and forward are edge swipes on the page, and
-/// closing the pane is in the pill's menu.
 #[derive(IntoElement)]
 pub struct CompactBrowserBar {
     address: AnyElement,
@@ -183,8 +173,6 @@ pub struct BrowserToolbar {
 }
 
 impl BrowserToolbar {
-    /// Fixed toolbar height. A host mounting the toolbar behind a cached-view
-    /// boundary must give the wrapper this exact height.
     pub const HEIGHT: Pixels = px(BROWSER_CONTROL_HEIGHT);
 
     pub fn new(
@@ -367,11 +355,8 @@ pub fn browser_site_menu(
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct BrowserTabInfo {
-    /// Stable per-pane tab id, chosen by the caller.
     pub id: u64,
-    /// Short pill text, typically the page host.
     pub label: SharedString,
-    /// Pill tooltip, typically the page title or the full URL.
     pub detail: SharedString,
     pub favicon: Option<Arc<[u8]>>,
 }
@@ -394,10 +379,6 @@ impl BrowserTabInfo {
 
 type BrowserTabAction = Rc<dyn Fn(u64, &mut Window, &mut App)>;
 
-/// A browser pane's tabs, sharing the row's width like a desktop browser's:
-/// each as wide as it can be up to its full width, down to its favicon
-/// alone, with New tab right after the last one. Given a [`Self::title`], the pane's
-/// title leads the row.
 #[derive(IntoElement)]
 pub struct BrowserTabStrip {
     tabs: Vec<BrowserTabInfo>,
@@ -420,9 +401,6 @@ impl BrowserTabStrip {
         }
     }
 
-    /// Leads the row with the pane's title, the way other panes title their
-    /// header: dragged by `drag`, its X closes the pane through
-    /// `on_close_pane`.
     #[must_use]
     pub fn title(
         mut self,
@@ -706,7 +684,6 @@ pub fn browser_start_surface(content: impl IntoElement) -> ala::Div {
         .child(content)
 }
 
-/// Blank-browser hint shown before any recent pages exist.
 #[derive(IntoElement)]
 pub struct BrowserEmptyHint;
 
@@ -1059,8 +1036,6 @@ impl BrowserMenuActions {
     }
 }
 
-/// The browser action-menu hierarchy. The caller provides state and callbacks.
-// Both by value: their fields move into the item callbacks.
 #[allow(clippy::needless_pass_by_value)]
 pub fn browser_action_menu(
     menu: PopupMenu,
@@ -1255,7 +1230,6 @@ pub fn browser_action_menu(
     )
 }
 
-/// Inline alert shown in place of a page that failed. The caller supplies the optional retry control.
 #[derive(IntoElement)]
 pub struct BrowserErrorPanel {
     message: SharedString,
@@ -1286,7 +1260,6 @@ impl RenderOnce for BrowserErrorPanel {
     }
 }
 
-/// Status pill overlaid while the browser element picker is active.
 #[derive(IntoElement)]
 pub struct BrowserPickStatus {
     message: SharedString,

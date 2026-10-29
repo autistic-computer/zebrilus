@@ -1,7 +1,3 @@
-//! A headless daemon with real attached clients, for the format loops that
-//! only have rows once somebody is attached: `#{L:}` over the client roster and
-//! `#{Vc:}` over the selected client's environment.
-
 #![allow(dead_code)]
 
 use std::{
@@ -28,7 +24,6 @@ pub struct Clients {
 }
 
 impl Clients {
-    /// Start a daemon carrying one detached session per name.
     pub fn start(name: &str, sessions: &[&str]) -> Self {
         set_client_terminal_flags(ClientTerminalFlags {
             utf8: true,
@@ -55,7 +50,6 @@ impl Clients {
         }
     }
 
-    /// Attach an interactive client and wait for the roster to grow.
     pub fn attach_interactive(&mut self, session: &str) -> usize {
         let client = InteractiveClient::connect_with_color_scheme_and_terminal(
             &self.socket,
@@ -67,7 +61,6 @@ impl Clients {
         self.push_attached(client)
     }
 
-    /// Attach a control-mode client and wait for the roster to grow.
     pub fn attach_control(&mut self, session: &str) -> usize {
         let client = InteractiveClient::connect_control(&self.socket).expect("connect control");
         client.attach(session).expect("attach control");
@@ -81,7 +74,6 @@ impl Clients {
         expected - 1
     }
 
-    /// Disconnect one attached client and wait for the roster to shrink.
     pub fn detach(&mut self, index: usize) {
         let client = self.attached.remove(index);
         let _ = client.detach();
@@ -89,8 +81,6 @@ impl Clients {
         self.await_client_count(self.attached.len());
     }
 
-    /// Terminal input from an attached client, which is what moves the client's
-    /// activity ahead of every other client's.
     pub fn note_activity(&mut self, index: usize, session: &str) {
         let pane = self.pane(session);
         self.attached[index]
@@ -114,7 +104,6 @@ impl Clients {
             .expect("the session's pane")
     }
 
-    /// `display-message -p`, the shortest path from a format to its expansion.
     pub fn format(&mut self, target: &str, format: &str) -> String {
         self.commands
             .execute(CommandInvocation::new(
@@ -124,7 +113,6 @@ impl Clients {
             .expect("expand the format")
     }
 
-    /// One line per attached client, in the roster's own order.
     pub fn listed(&mut self, format: &str) -> Vec<String> {
         self.commands
             .execute(CommandInvocation::new("list-clients", ["-F", format]))

@@ -1,5 +1,3 @@
-//! Platform plumbing for `window-background-blur`.
-
 use ala::{App, Global, Pixels, Window, WindowBackgroundAppearance};
 
 struct CompositorBlurSupport(bool);
@@ -11,8 +9,6 @@ pub(crate) fn compositor_supports_blur(cx: &App) -> bool {
         .is_none_or(|support| support.0)
 }
 
-/// Probes the platform once at startup and records whether a backdrop blur
-/// request can land. Everything downstream keys off this answer.
 pub fn detect_compositor_support(cx: &mut App) {
     let supported = probe_compositor();
     if !supported {
@@ -45,7 +41,6 @@ pub(crate) const fn native_appearance(
 ) -> WindowBackgroundAppearance {
     #[cfg(target_os = "macos")]
     if matches!(requested, WindowBackgroundAppearance::Blurred) {
-        // ala's NSVisualEffectView Selection material stopped blurring on macOS 27.
         return WindowBackgroundAppearance::Transparent;
     }
 
@@ -223,8 +218,6 @@ mod macos {
         let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
             return Err(BlurError::UnexpectedWindowHandle);
         };
-        // SAFETY: raw-window-handle guarantees this is a live NSView for the lifetime of
-        // `handle`, and this function only runs on ala's AppKit main thread.
         let view = unsafe { Retained::<NSView>::retain(handle.ns_view.as_ptr().cast()) }
             .ok_or(BlurError::MissingView)?;
         let native_window = view.window().ok_or(BlurError::MissingWindow)?;
@@ -233,8 +226,6 @@ mod macos {
             .filter(|id| *id != 0)
             .ok_or(BlurError::MissingWindow)?;
         let radius = if enabled { BLUR_RADIUS } else { 0 };
-        // SAFETY: both ids are plain integers owned by this process's WindowServer connection;
-        // the call has no memory effects and reports failure through its status code.
         let status =
             unsafe { CGSSetWindowBackgroundBlurRadius(CGSMainConnectionID(), window_id, radius) };
         if status == 0 {
@@ -245,9 +236,6 @@ mod macos {
     }
 }
 
-// Test builds on other unixes compile this module so backend changes
-// type-check from a mac; Windows cannot join in because wayland-sys does not
-// compile there at all.
 #[cfg(any(target_os = "linux", all(test, unix)))]
 mod linux {
     use std::{fmt, sync::OnceLock};
@@ -336,9 +324,6 @@ mod linux {
         Ok(())
     }
 
-    /// Whether the running compositor can honor a blur request. Wayland answers
-    /// through advertised registry globals, X11 through KWin's blur atom on the
-    /// root window. picom stays undetected: its blur is local config only.
     pub(super) fn probe_compositor() -> bool {
         let wayland = ["WAYLAND_DISPLAY", "WAYLAND_SOCKET"]
             .iter()

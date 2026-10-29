@@ -78,13 +78,10 @@ session_id="$(main_client display-message -p -t "=$session:0.0" '#{session_id}')
 window_id="$(main_client display-message -p -t "=$session:0.0" '#{window_id}')"
 pane_id="$(main_client display-message -p -t "=$session:0.0" '#{pane_id}')"
 
-# Outside a monitor fire none of the nine names answer.
 check_equal quiescent '<|||||||| >' \
     "$(main_client display-message -p -t "=$session" \
         '<#{hook}|#{hook_value}|#{hook_last}|#{hook_window}|#{hook_window_name}|#{hook_window_index}|#{hook_session}|#{hook_session_name}|#{hook_pane} >')"
 
-# An all-windows subscription arms without firing, and stays quiet while the
-# value it watches does not move.
 main_client set-hook -B "@watch:@*:#{window_name}" "set -g @fired \"$names\""
 sleep 2.2
 check_equal window-arm-quiet '' "$(read_option @fired)"
@@ -94,11 +91,8 @@ check_equal window-fire \
     "hook=@watch value=renamed last=first window=$window_id window_name=renamed window_index=0 session=$session_id session_name=montest pane=" \
     "$(await_option @fired)"
 
-# The subscription reads back as name:what:format.
 check_equal show-one "@watch:@*:#{window_name}" "$(main_client show-hooks -B)"
 
-# A session subscription carries the session names and leaves the window and
-# pane names empty.
 main_client set-hook -B "@sess::#{session_name}" "set -g @sessfired \"$names\""
 sleep 1.8
 main_client rename-session -t "=$session" montest2
@@ -107,7 +101,6 @@ check_equal session-fire \
     "hook=@sess value=montest2 last=montest window= window_name= window_index= session=$session_id session_name=montest2 pane=" \
     "$(await_option @sessfired)"
 
-# An all-panes subscription carries the pane as well.
 main_client select-pane -t "=$session:0.0" -T before
 main_client set-hook -B "@panes:%*:#{pane_title}" "set -g @panefired \"$names\""
 sleep 1.8
@@ -116,7 +109,6 @@ check_equal pane-fire \
     "hook=@panes value=after last=before window=$window_id window_name=renamed window_index=0 session=$session_id session_name=montest2 pane=$pane_id" \
     "$(await_option @panefired)"
 
-# Every subscribed object of an all-windows subscription is polled on its own.
 main_client new-window -t "=$session" -n second
 main_client set-hook -B "@each:@*:#{window_name}" \
     'set -ga @each_fired "[#{hook_window_index}:#{hook_value}]"'
@@ -134,11 +126,9 @@ while [ "$attempt" -lt 60 ]; do
 done
 check_equal each-window '[0:firstwin][1:secondwin]' "$(read_option @each_fired)"
 
-# A subscription with no body still creates its own empty option.
 main_client set-hook -B "@bodyless:@*:#{window_name}"
 check_equal bodyless-option '' "$(main_client show-options -qv @bodyless)"
 
-# show-hooks -B lists the live subscriptions in name order, one per line.
 check_equal show-all \
     "@bodyless:@*:#{window_name}
 @each:@*:#{window_name}
@@ -148,14 +138,11 @@ check_equal show-all \
     "$(main_client show-hooks -B)"
 check_equal show-named "@sess::#{session_name}" "$(main_client show-hooks -B @sess)"
 
-# monitor_parse needs both colons, and the name must be a user option.
 probe missing-colons set-hook -B nocolons "set -g @x y"
 probe one-colon set-hook -B one:colon "set -g @x y"
 probe bad-name set-hook -B "noat:@*:#{window_name}" "set -g @x y"
 probe show-unknown show-hooks -B @nomonitor
 
-# -B takes a value, so -Bu swallows the u and removes nothing; -u -B does
-# remove the subscription.
 probe swallowed-u set-hook -Bu @watch
 check_equal swallowed-u-survives "@watch:@*:#{window_name}" \
     "$(main_client show-hooks -B @watch)"
@@ -163,7 +150,6 @@ main_client set-hook -u -B @watch
 check_equal removed '' "$(main_client show-hooks -B @watch)"
 main_client set-hook -u -B @never
 
-# A removed subscription stops firing.
 main_client set-option -gu @fired
 main_client rename-window -t "=$session:0" thirdwin
 sleep 2.2

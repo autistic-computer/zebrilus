@@ -113,20 +113,15 @@ attach_pid=$!
 await_clients 1 || { echo "buffer-clipboard-write-$side: attach"; exit 0; }
 viewer="$(main_client list-clients -t "=$session" -F '#{client_name}' | head -n 1)"
 
-# The pin writes the selection from cmd-set-buffer.c straight to the target
-# client's tty, so set-clipboard off does not suppress it.
 main_client set-buffer -w -b one -t "$viewer" alpha-one
 expect alpha-one set-buffer-w
 
-# Without -w the buffer is stored and nothing reaches the client. The next
-# write proves the silence rather than a sleep.
 main_client set-buffer -b two -t "$viewer" plain-two
 
 printf 'bravo-three' >"$work/bravo"
 main_client load-buffer -w -b three -t "$viewer" "$work/bravo"
 expect bravo-three load-buffer-w
 
-# CMD_CLIENT_CANFAIL: an unresolvable -t is silent and still stores the buffer.
 set +e
 main_client set-buffer -w -b four -t no-such-client charlie-four \
     >"$work/canfail.out" 2>"$work/canfail.err"
@@ -136,17 +131,13 @@ check_equal canfail-status 0 "$canfail_status"
 check_equal canfail-stdout '' "$(cat "$work/canfail.out")"
 check_equal canfail-stderr '' "$(cat "$work/canfail.err")"
 
-# No -t at all resolves the current client.
 main_client set-buffer -w -b five echo-five
 expect echo-five set-buffer-w-current
 
-# set-clipboard on changes nothing for the buffer write.
 main_client set-option -g set-clipboard on
 main_client set-buffer -w -b six -t "$viewer" foxtrot-six
 expect foxtrot-six set-buffer-w-clipboard-on
 
-# A control client has no started tty, so it is the clipboard-disabled target:
-# the command still succeeds and stores the buffer, and nothing is written.
 : >"$work/control.raw"
 env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
     TERM=xterm-256color \

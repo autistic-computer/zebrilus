@@ -24,31 +24,19 @@ pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
 pub const WORKSPACE_TREE_CONTENT_INSET: f32 = 8.0;
 pub const WORKSPACE_TREE_MARKER_SLOT_WIDTH: f32 = 18.0;
-/// Icon size for a tree row's node marker. Matches `Size::Medium` in `icon/mod.rs`.
 pub const WORKSPACE_TREE_NODE_ICON_SIZE: f32 = 14.0;
 pub const WORKSPACE_TREE_MARKER_LABEL_GAP: f32 = 6.0;
 const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
 pub const WORKSPACE_SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
-/// How far a window tab's close button sits in from the tab's trailing edge.
 const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
-/// Where a sidebar row's trailing actions (+, …, ×) center, in from the
-/// trailing edge of the row's fill. The sidebar toggle and the view switch
-/// center on the same line.
 pub const WORKSPACE_ROW_ACTION_CENTER: Pixels = px(19.0);
-/// How far the sidebar's rows stop short of its trailing edge past the row
-/// inset, so the scrollbar's thumb (8px at its widest, 2px in) runs beside
-/// them instead of over them.
 pub const WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER: Pixels = px(8.0);
 const WORKSPACE_SIDEBAR_FOOTER_TOP: f32 = 4.0;
 const WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
-/// The titlebar's window tabs and status chips: the largest controls in the
-/// chrome, a step up from the sidebar's buttons.
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
-/// The sidebar toggle, settings and view switch: icon buttons as tall as the
-/// window tabs beside them, with 17px glyphs.
 pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = WORKSPACE_STATUS_PILL_HEIGHT;
 const WORKSPACE_STATUS_WINDOW_TEXT_SIZE: f32 = 14.0;
 const WORKSPACE_CHROME_ICON_SIZE: Pixels = px(17.0);
@@ -79,7 +67,6 @@ pub struct WorkspaceStatusWindowState {
 }
 
 impl WorkspaceStatusWindowState {
-    /// How the window's pill paints: current while it is the active window.
     #[must_use]
     pub const fn paint_state(self) -> PaintState {
         if self.active {
@@ -119,8 +106,6 @@ pub fn workspace_add_host_button(id: impl Into<ElementId>) -> Button {
     workspace_chrome_button(id, IconName::ServerPlus, "Add host")
 }
 
-/// Switches the sidebar between the session tree and the chats;
-/// its icon shows the one on screen.
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
     if flat {
@@ -130,7 +115,6 @@ pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Bu
     }
 }
 
-/// The footer's trailing controls: Add host, then the view toggle.
 #[must_use]
 pub fn workspace_sidebar_footer_controls(
     add_host: impl IntoElement,
@@ -271,8 +255,6 @@ pub fn workspace_status_window(
 }
 
 #[must_use]
-/// The sidebar's top strip: its controls sit at the trailing edge, clear of
-/// the traffic lights.
 pub fn workspace_sidebar_titlebar(
     id: impl Into<ElementId>,
     controls: impl IntoElement,
@@ -291,21 +273,15 @@ pub fn workspace_sidebar_titlebar(
         .child(controls)
 }
 
-/// How far the sidebar's leading buttons sit in from its edges, so their
-/// centers fall on a pane header's center line: half a header in from the
-/// window's edges past the pane margin.
 fn workspace_chrome_inset(cx: &App) -> Pixels {
     (cx.theme().pane_header_height() - WORKSPACE_CHROME_BUTTON_SIZE) / 2.0
 }
 
-/// How far the sidebar's trailing buttons sit in from its trailing edge, so
-/// they center on the column its rows' actions do.
 fn workspace_sidebar_trailing_inset(cx: &App) -> Pixels {
     WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER + cx.theme().row_inset + WORKSPACE_ROW_ACTION_CENTER
         - WORKSPACE_CHROME_BUTTON_SIZE / 2.0
 }
 
-/// The trailing inset of a tree row's action buttons.
 fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
     cx.theme().row_inset + WORKSPACE_ROW_ACTION_CENTER - px(COMPACT_ICON_BUTTON_SIZE / 2.0)
 }
@@ -314,10 +290,6 @@ fn workspace_row_action_gap() -> Pixels {
     px(WORKSPACE_ROW_ACTION_GAP)
 }
 
-/// The strip under the sidebar's navigation: settings on the leading edge,
-/// the view switch on the trailing edge under the sidebar toggle, both
-/// centered as far from the window's bottom as the traffic lights are from
-/// its top.
 pub fn workspace_sidebar_footer(
     id: impl Into<ElementId>,
     leading: impl IntoElement,
@@ -341,9 +313,6 @@ pub fn workspace_sidebar_footer(
         .children(trailing)
 }
 
-/// Full-height sidebar interior on the window, with its edge rule. Native
-/// callers attach window dragging to the titlebar slot and wrap the surface
-/// with resize handling.
 #[must_use]
 pub fn workspace_sidebar_surface(
     id: impl Into<ElementId>,
@@ -363,9 +332,6 @@ pub fn workspace_sidebar_surface(
     )
 }
 
-/// [`workspace_sidebar_surface`] on `ground`, what the sidebar sits on, with
-/// its edge rule only while `divider` is set: panes with gaps stand apart
-/// without one.
 #[must_use]
 pub fn workspace_sidebar_panel(
     id: impl Into<ElementId>,
@@ -403,9 +369,6 @@ pub fn workspace_sidebar_panel(
         )
 }
 
-/// The strip along the sidebar's trailing edge that resizes it. Without a
-/// divider, pointing at it shows the edge it drags. The caller attaches the
-/// drag.
 #[must_use]
 pub fn workspace_sidebar_resize_handle(
     id: impl Into<ElementId>,
@@ -426,8 +389,6 @@ pub fn workspace_sidebar_resize_handle(
         })
 }
 
-/// What a sidebar sliding over the panes floats on: the popover surface,
-/// square against the window's edge.
 #[must_use]
 pub fn workspace_slideover_layer(cx: &App) -> Layer {
     Layer {
@@ -436,8 +397,6 @@ pub fn workspace_slideover_layer(cx: &App) -> Layer {
     }
 }
 
-/// The sidebar sliding over the panes: `sidebar` on its own surface, over a
-/// scrim that calls `on_dismiss` when pressed.
 #[must_use]
 pub fn workspace_sidebar_slideover(
     id: impl Into<ElementId>,
@@ -466,8 +425,6 @@ pub fn workspace_sidebar_slideover(
         )
 }
 
-/// What the sidebar sits on: `window`, the plane of its column, or the
-/// slideover's surface while it slides over the panes.
 #[must_use]
 pub fn workspace_sidebar_ground(window: Ground, slideover: bool, cx: &App) -> Ground {
     if slideover {
@@ -477,8 +434,6 @@ pub fn workspace_sidebar_ground(window: Ground, slideover: bool, cx: &App) -> Gr
     }
 }
 
-/// The color the sidebar's list fades into at its bottom edge: the sidebar's
-/// own fill over `ground`, what it sits on.
 #[must_use]
 pub fn workspace_sidebar_fade(ground: Ground, cx: &App) -> Hsla {
     let sidebar = cx
@@ -487,10 +442,6 @@ pub fn workspace_sidebar_fade(ground: Ground, cx: &App) -> Hsla {
     ground.fill.blend(sidebar.fill)
 }
 
-/// The fill behind a sidebar row drawn as `role` on `ground`, in `lit`. A
-/// resting row takes its hover look while the pointer is anywhere in
-/// `hover_group`. `radius`, when set, replaces the radius a round shape
-/// resolves to; square and pill corners stay.
 pub fn workspace_row_fill(
     id: &ElementId,
     role: SurfaceRole,
@@ -539,7 +490,6 @@ pub fn workspace_row_fill(
     std::iter::once(fill.into_any_element()).chain(press.map(IntoElement::into_any_element))
 }
 
-// Six independent row states, not a config object waiting to be extracted.
 #[must_use]
 #[allow(clippy::fn_params_excessive_bools)]
 pub fn workspace_tree_row(
@@ -641,9 +591,6 @@ pub fn workspace_tree_action_button(
     )
 }
 
-/// Draws `button` as an action that shows on a row under the pointer (+, ×,
-/// …, the layout menu), sitting on `ground`, the row's fill: muted ink until
-/// pointed at, faint while `disabled`.
 #[must_use]
 pub fn workspace_row_action(button: Button, ground: Ground, disabled: bool, cx: &App) -> Button {
     let ink = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Ghost);
@@ -714,8 +661,6 @@ fn workspace_tree_turn(disclosure: ElementId) -> ElementId {
     ElementId::from((disclosure, "turn"))
 }
 
-/// When the open row whose [`workspace_tree_disclosure`] is `id` last opened,
-/// or `None` if it was open when first drawn.
 pub fn workspace_tree_opened(
     id: impl Into<ElementId>,
     cx: &mut App,
@@ -723,9 +668,6 @@ pub fn workspace_tree_opened(
     crate::motion::turned(workspace_tree_turn(id.into()), true, cx)
 }
 
-/// The expand/collapse affordance an expandable row hangs on its marker slot:
-/// the node's own icon, swapped for a chevron while the row is hovered. The
-/// caller wires the click and passes the [`workspace_tree_marker`] it built.
 #[must_use]
 pub fn workspace_tree_disclosure(
     id: impl Into<ElementId>,

@@ -1,5 +1,3 @@
-//! zz's theme overrides, layered over zz-ui's base palette.
-
 use std::sync::Arc;
 
 use ala::{App, Entity, Global, Hsla, SharedString, Window};
@@ -36,7 +34,6 @@ pub(crate) fn chrome_blur(cx: &App) -> bool {
         && crate::window::background::compositor_supports_blur(cx)
 }
 
-/// The chrome planes' fill: translucent while the blur is on, the base plane otherwise.
 pub fn chrome_background(cx: &App) -> Hsla {
     let opacity = config::resolved_config(cx).window_background_opacity.value;
     zz_ui::shell::chrome_background(
@@ -79,7 +76,6 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
     cx.refresh_windows();
 }
 
-/// Sync the zz-ui theme with the OS appearance, then reapply zz's overrides.
 pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
     let system_mode = window
         .as_ref()

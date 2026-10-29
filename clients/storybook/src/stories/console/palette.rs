@@ -310,7 +310,6 @@ const SHORTCUTS: &[(&str, &str)] = &[
     ("select-layout", "C-b Space"),
 ];
 
-/// What a host answers when the palette asks it for a folder.
 #[derive(Clone, Copy)]
 pub(super) enum Files {
     Listed,
@@ -495,8 +494,6 @@ fn story_backend(
     }
 }
 
-/// Everything under the home folder of every host, as the daemon walks it:
-/// folders end in `/`.
 const HOME: &[&str] = &[
     "Downloads/",
     "dev/",
@@ -549,12 +546,10 @@ const MARKS: &[(&str, GitMark)] = &[
     ("dev/zz/crates/zz-ui/src/target.rs", GitMark::Added),
 ];
 
-/// `dir` under the home folder, or `None` for a folder outside it.
 fn under_home(dir: &str) -> Option<&str> {
     dir.strip_prefix("~/")
 }
 
-/// What a host answers for `dir`, the way the daemon streams it.
 fn answer(dir: &str, files: Files) -> Vec<ListingUpdate> {
     let root = PathListRoot {
         root: format!("/Users/fabrico/{}", under_home(dir).unwrap_or(dir))
@@ -1032,8 +1027,6 @@ fn unified(
     mount(window, cx, palette, 560.0, keys)
 }
 
-/// The palette on the insert path verb with `body` typed, a file picked going into
-/// `pane`.
 fn target_palette(
     window: &mut Window,
     cx: &mut App,
@@ -1046,8 +1039,6 @@ fn target_palette(
     cx.new(|cx| CommandPaletteView::new_target(backend, &body, pane, window, cx))
 }
 
-/// The palette on the insert path verb in `start`, a file picked going into `pane`:
-/// what `prefix F` opens on a pane's folder.
 pub(super) fn files_palette(
     window: &mut Window,
     cx: &mut App,

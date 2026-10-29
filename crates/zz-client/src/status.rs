@@ -1,8 +1,3 @@
-//! The shared status-row compositor: lays one daemon-expanded status row out
-//! to a fixed display width the way tmux's `format_draw` does — alignment
-//! sections, the window/pane/session list with focus-preserving truncation and
-//! `<`/`>` markers, `fill=`, and the hit ranges mouse input routes through.
-
 use std::ops::Range;
 
 use unicode_width::UnicodeWidthChar as _;
@@ -21,15 +16,12 @@ const LIST_RIGHT: usize = 6;
 const AFTER: usize = 7;
 const TOTAL: usize = 8;
 
-/// One clickable span of a composed row, in display columns of that row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StatusHitRange {
     pub columns: Range<u16>,
     pub target: TmuxRange,
 }
 
-/// One status row composed to a fixed width: styled runs whose display widths
-/// sum to exactly that width, plus the hit ranges `format_draw` would report.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ComposedStatusRow {
     pub segments: Vec<StyledSegment>,
@@ -46,18 +38,12 @@ impl ComposedStatusRow {
     }
 }
 
-/// Composes one daemon-expanded status row. An empty or unparseable
-/// `base_style` means the theme default, never an error.
 #[must_use]
 pub fn compose_status_row(expanded: &str, width: u16, base_style: &str) -> ComposedStatusRow {
     let base = parse_style(base_style).unwrap_or_default();
     compose(expanded, usize::from(width), &base, &[])
 }
 
-/// Composes one row over a per-column underlay whose length is the row width.
-/// A column the format never writes keeps its underlay text instead of a
-/// blank, the way `window_make_pane_status` fills the pane status screen with
-/// border cells before `format_draw` writes `pane-border-format` over it.
 #[must_use]
 pub fn compose_status_row_over(
     expanded: &str,
@@ -354,9 +340,6 @@ fn to_isize(value: usize) -> isize {
     isize::try_from(value).unwrap_or(isize::MAX)
 }
 
-/// A centre offset whose subtraction underflowed: tmux's `u_int` wraps and
-/// `screen_write_cursormove` clamps to the last column, so the section is
-/// clipped at the right edge and never overlaps the left.
 fn clamped_offset(offset: Option<usize>, available: usize) -> usize {
     offset.unwrap_or_else(|| available.saturating_sub(1))
 }

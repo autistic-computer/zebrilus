@@ -1,45 +1,4 @@
 #!/usr/bin/env bash
-# Launch surface differential: what a packaged binary does when it is run.
-#
-# The campaign's screen fixtures all start from a session somebody else made
-# and a client that is already attached. Nothing measured the LAUNCH: the bare
-# invocation, the attach that finds no server, the new-session that finds one,
-# and what each of them leaves on the terminal. This fixture runs both binaries
-# the way a user runs them and compares three things per case: the exact bytes
-# each wrote to stdout and stderr with its exit status, the server facts each
-# left behind, and, where the case attaches, every decoded cell of the screen
-# inside one outer pinned tmux (the driver shape tui-screen-diff.sh
-# established).
-#
-# CLEAN CONFIG ROOTS ON BOTH SIDES. Each side owns a scratch HOME and a scratch
-# XDG_CONFIG_HOME, and the config cases plant files inside them: config
-# discovery is first-existing-file-wins, so a fixture that pins only one of the
-# two is reading the box's real files.
-#
-# CONTROLLED DYNAMIC VALUES, on both sides before any screen is compared:
-#   status-right ''      the default carries a clock and a locale-expanded date.
-#   status-left L        fixed literal.
-#   automatic-rename off the default name follows the running command.
-#   default-command      "ENV= PS1='$ ' exec /bin/sh": the launcher's own
-#                        session runs the default command, which is the only
-#                        way a bare launch's pane can be pinned at all.
-#   the styles below     every surface a case paints, in RGB, which is the one
-#                        colour class both binaries pass through unchanged.
-# Nothing else is masked.
-#
-# RECORDED, NOT ASSERTED. Two launch behaviours are recorded product decisions
-# and this fixture measures them rather than judging them:
-#   * semantic:bare-launcher-attach-current (presentation.native-status): zz's
-#     bare launch is `new-session -A`, so on a server that already has a session
-#     it ATTACHES where the pin makes a second session.
-#   * semantic:explicit-config-keeps-mux-conf-layer (presentation.native-status,
-#     fabrico 2026-09-05): an explicit `-f` replaces the pin's tmux candidates
-#     on both sides, and zz still layers `zz/mux.conf` after it.
-# Each prints both sides' measured values on every run.
-#
-# --self-check drives one deliberate one-sided difference per channel and
-# requires the comparison to catch it in that channel, plus one difference it
-# must NOT report. A fixture that only passes has proved nothing.
 set -eEuo pipefail
 
 usage() {
@@ -127,8 +86,6 @@ tmux_outer_command() {
   scrubbed HOME="$OUTER_HOME" XDG_CONFIG_HOME="$OUTER_HOME/config" \
     "$TMUX_BIN" -L "$OUTER_SOCKET_NAME" "$@"
 }
-# The two launchers, run exactly as a user runs them: no wrapper, no extra
-# flag, only the socket each side needs to stay off the box's own servers.
 zz_command() {
   scrubbed HOME="$ZZ_HOME" XDG_CONFIG_HOME="$ZZ_HOME/config" ZZ_LOG_DIR="$ZZ_LOG_DIR" \
     "$ZZ_BIN" --socket "$ZZ_SOCKET" "$@"
@@ -189,14 +146,6 @@ wait_for() {
   die "$label did not happen within 10 seconds"
 }
 
-# --- the daemon under test -------------------------------------------------
-#
-# zz keeps a daemon, the pin forks a server from the first client, and a
-# launcher case must not measure the difference between "no server yet" and
-# "server already running". Both sides therefore start each case with a running
-# server and NO sessions: zz's daemon is started once and its sessions are
-# killed between cases; the pin's server is started with `start-server` and
-# killed with its last session, so it is restarted the same way.
 start_zz_daemon() {
   zz_command -f /dev/null daemon >"$SCRATCH_DIR/zz-daemon.out" 2>"$SCRATCH_DIR/zz-daemon.err" &
   ZZ_PID=$!
@@ -220,11 +169,6 @@ reset_pair() {
   plant_controlled_config tmux
 }
 
-# The controlled values live in the file each side reads on its own: the pin's
-# ~/.tmux.conf and zz's zz/mux.conf under its XDG config root. They cannot be
-# `set-option`d instead: the pin's server exits with its last session and comes
-# back with its defaults, and a launcher case creates its session itself, so a
-# value set from outside would never reach the pane the launcher spawns.
 plant_controlled_config() {
   local side="$1"
   local entry
@@ -245,8 +189,6 @@ plant_controlled_config() {
     done
   } >"$file"
 }
-
-# --- comparison ------------------------------------------------------------
 
 report() {
   local name="$1"
@@ -275,9 +217,6 @@ report() {
   return 0
 }
 
-# One invocation per side, captured whole: stdout, stderr and the exit status.
-# `-t` is never added and no wrapper interprets the arguments, so what runs is
-# what a user typed.
 run_pair() {
   local name="$1"
   local mode="$2"
@@ -301,9 +240,6 @@ run_pair() {
   report "$name" "$mode" cli "${outputs[zz]}" "${outputs[tmux]}" "$reason"
 }
 
-# A server with no sessions answers on stderr and exits non-zero on both sides,
-# and that answer is part of what a launcher case compares, so the status is
-# swallowed here and the bytes are kept.
 side_facts() {
   {
     side_command "$1" list-sessions \
@@ -321,8 +257,6 @@ compare_facts() {
     >"$CAPTURE_DIR/$name.facts.txt"
   report "$name" "$mode" facts "$zz_facts" "$tmux_facts" "$reason"
 }
-
-# --- the attached half -----------------------------------------------------
 
 write_launcher() {
   local side="$1"
@@ -379,8 +313,6 @@ side_attached() {
   [ -n "$(side_command "$1" list-clients -F '#{client_session}' 2>/dev/null)" ]
 }
 
-# Launch each side in its own outer window with the SAME argument list, wait
-# for both panes to reach the size under test, and settle.
 launch_both() {
   local -a arguments=("$@")
   tmux_outer_command kill-server >/dev/null 2>&1 || true
@@ -430,29 +362,19 @@ compare_screens() {
   report "$name" "$mode" cursor "$(cursor_tuple zz)" "$(cursor_tuple tmux)" "$reason"
 }
 
-# --- cases -----------------------------------------------------------------
-
 run_cli_cases() {
-  # An attach with no server session at all. The client has nowhere to go and
-  # its refusal is the whole contract: the bytes and the status.
   reset_pair
   run_pair attach-empty same '' attach-session
 
-  # A detached session by name, then the same name again, then an attach that
-  # names a session the server does not have. The server holds a session for
-  # that last one on purpose: with none at all the pin answers `no sessions`
-  # and the missing NAME is never reached.
   reset_pair
   run_pair new-detached same '' new-session -d -s launch
   run_pair attach-missing-target same '' attach-session -t nosuch
   run_pair new-duplicate same '' new-session -d -s launch
   compare_facts new-duplicate same
 
-  # -A on an existing name attaches instead of failing, detached or not.
   run_pair new-attach-existing-detached same '' new-session -A -d -s launch
   compare_facts new-attach-existing-detached same
 
-  # A window and a split from a command client, against a named target.
   run_pair new-window-detached same '' new-window -d -t '=launch:'
   run_pair split-detached same '' split-window -d -t '=launch:0.0'
   compare_facts split-window same
@@ -463,8 +385,6 @@ run_cli_cases() {
 }
 
 run_attached_cases() {
-  # attach-session against a live detached session: the screen after the
-  # client is up is the launch surface a user sees.
   reset_pair
   side_command zz new-session -d -s live -x "$COLUMNS_UNDER_TEST" -y "$ROWS_UNDER_TEST" \
     "$INNER_SHELL" || die 'zz refused new-session'
@@ -497,7 +417,6 @@ run_attached_cases() {
   side_command zz set-option -g status-left L
   side_command tmux set-option -g status-left L
 
-  # new-session with no -d: create and attach in one invocation.
   reset_pair
   launch_both new-session -s fresh -n win -x "$COLUMNS_UNDER_TEST" -y "$ROWS_UNDER_TEST"
   wait_for "zz attached to the new session" side_attached zz
@@ -505,12 +424,6 @@ run_attached_cases() {
   compare_screens new-session-attached same
   compare_facts new-session-attached same
 
-  # The bare launcher on a server with nothing in it. Measured 2026-09-09 on
-  # Linux: `tmux` with no arguments creates a session and paints it in the
-  # terminal it was run from, while `zz` with no arguments starts the native
-  # desktop client, which attaches to the daemon and leaves the terminal to its
-  # own diagnostics. Both leave an attached session behind, which is what this
-  # case asserts; the terminal it leaves is recorded.
   reset_pair
   launch_both
   wait_for "zz attached from the bare launcher" side_attached zz
@@ -518,9 +431,6 @@ run_attached_cases() {
   compare_screens bare-empty record "$BARE_LAUNCH_REASON"
   compare_facts bare-empty same
 
-  # The bare launcher on a server that already has a session. This is the
-  # recorded decision: the pin makes a second session, zz attaches to the one
-  # that is there.
   reset_pair
   side_command zz new-session -d -s existing -x "$COLUMNS_UNDER_TEST" -y "$ROWS_UNDER_TEST" \
     "$INNER_SHELL" || die 'zz refused new-session'
@@ -532,12 +442,6 @@ run_attached_cases() {
   compare_facts bare-existing record \
     'semantic:bare-launcher-attach-current: zz launches new-session -A, the pin launches new-session'
 
-  # THE TERMINAL A LAUNCH LEAVES BEHIND. A client that logs to stderr writes
-  # over the screen it is about to paint, and the pin writes no diagnostics at
-  # all. What is asserted is the count of log records above the painted screen,
-  # which is the contract; the raw scrollback of both sides is kept whenever a
-  # capture directory is named, because the rest of that region is each
-  # binary's own alternate-screen behaviour and not this fixture's business.
   reset_pair
   launch_both new-session -s quiet -n win -x "$COLUMNS_UNDER_TEST" -y "$ROWS_UNDER_TEST"
   wait_for "zz attached for the quiet case" side_attached zz
@@ -558,8 +462,6 @@ run_attached_cases() {
     "${records[zz]}" "${records[tmux]}" ''
 }
 
-# Config roots. Every case starts a fresh pair of servers with the file planted
-# and reads one option back, so the answer is the file the server loaded.
 plant() {
   local side="$1"
   local path="$2"
@@ -568,8 +470,6 @@ plant() {
   mkdir -p "$(dirname -- "$absolute")"
   printf '%s\n' "$content" >"$absolute"
 }
-# The config cases own the roots outright, the controlled values included: a
-# case that measures which file a server read cannot leave another file behind.
 clear_roots() {
   local side="$1"
   rm -f -- "$(side_home "$side")/.tmux.conf" \
@@ -587,8 +487,6 @@ config_value() {
 run_config_cases() {
   local side
 
-  # zz reads only its own zz/mux.conf; tmux reads ~/.tmux.conf. The same
-  # option planted in each side's own file must reach the launched server.
   for side in zz tmux; do
     clear_roots "$side"
     kill_every_session "$side"
@@ -601,8 +499,6 @@ run_config_cases() {
   tmux_value="$(config_value tmux new-session -d -s c1)"
   report config-own-file same option "$zz_value" "$tmux_value" ''
 
-  # A tmux file zz never imported must not reach zz; tmux still reads its
-  # own. Both sides then agree only after zz imports it.
   for side in zz tmux; do
     clear_roots "$side"
     kill_every_session "$side"
@@ -617,7 +513,6 @@ run_config_cases() {
   zz_value="$(config_value zz display-message -p imported)"
   report config-imported-tmux-conf same option "$zz_value" "$tmux_value" ''
 
-  # An explicit -f replaces the default file on both sides.
   for side in zz tmux; do
     clear_roots "$side"
     kill_every_session "$side"
@@ -629,8 +524,6 @@ run_config_cases() {
   tmux_value="$(config_value tmux -f "$TMUX_HOME/explicit.conf" new-session -d -s c3)"
   report config-explicit-file same option "$zz_value" "$tmux_value" ''
 
-  # zz/mux.conf layers after an explicit -f. The pin has no such layer, so this
-  # case is the recorded decision and prints both sides every run.
   for side in zz tmux; do
     clear_roots "$side"
     kill_every_session "$side"
@@ -643,7 +536,6 @@ run_config_cases() {
   report config-mux-conf-layer record option "$zz_value" "$tmux_value" \
     'semantic:explicit-config-keeps-mux-conf-layer, fabrico 2026-09-05: zz layers zz/mux.conf after an explicit -f'
 
-  # -f /dev/null: the pin loads nothing at all, zz still layers mux.conf.
   for side in zz tmux; do
     clear_roots "$side"
     kill_every_session "$side"
@@ -662,8 +554,6 @@ run_config_cases() {
   done
   reset_servers
 }
-
-# --- self-check ------------------------------------------------------------
 
 SELF_CHECK_FAILURES=0
 self_check_case() {
@@ -686,17 +576,14 @@ self_check_case() {
 run_self_check() {
   printf 'self-check: one deliberate one-sided difference per channel, plus one the fixture must not report\n'
 
-  # cli: one side answers a command the other refuses.
   reset_pair
   side_command zz new-session -d -s only-zz >/dev/null 2>&1 || die 'zz refused new-session'
   run_pair sabotage-cli record 'deliberate' attach-session -t '=only-zz'
   self_check_case 'cli: a session that exists on one side only' differs
 
-  # facts: an extra session on one side.
   compare_facts sabotage-facts record 'deliberate'
   self_check_case 'facts: an extra session on one side' differs
 
-  # screen: one side's pane runs a different command.
   reset_pair
   side_command zz new-session -d -s live -x "$COLUMNS_UNDER_TEST" -y "$ROWS_UNDER_TEST" \
     "ENV= PS1='\$ ' exec /bin/sh" || die 'zz refused new-session'
@@ -710,8 +597,6 @@ run_self_check() {
   compare_screens sabotage-screen record 'deliberate'
   self_check_case 'screen: a different prompt on one side, the cursor unmoved' screen
 
-  # none: the same command through its alias on one side. What is compared is
-  # the answer, never the spelling.
   reset_pair
   side_command zz new-session -d -s alias >/dev/null 2>&1 || die 'zz refused new-session'
   side_command tmux new-session -d -s alias >/dev/null 2>&1 || die 'tmux refused new-session'
@@ -728,8 +613,6 @@ run_self_check() {
   printf 'self-check complete: every sabotage was caught in its own channel and the equivalence passed\n'
   return 0
 }
-
-# --- run -------------------------------------------------------------------
 
 plant_controlled_config zz
 plant_controlled_config tmux

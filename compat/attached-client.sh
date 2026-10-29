@@ -667,8 +667,6 @@ wait_for_pane_in_mode() {
   fixture_failure "$side pane_in_mode did not become $expected_value within 10 seconds; last state: ${LAST_MODE_STATE:-<empty>}"
 }
 
-# #{pane_in_mode} is the fact both binaries answer for copy mode, so both sides
-# wait on it; zz additionally names the key table its per-client view installs.
 wait_for_mode_state() {
   local side="$1"
   local expected="$2"
@@ -685,16 +683,6 @@ wait_for_mode_state() {
   fi
 }
 
-# Command-output mode has NO fact both binaries answer, and this states that
-# instead of leaving each side to assert whichever one it happens to have.
-# Measured 2026-09-06: the pin opens a view-mode ON THE PANE, so
-# #{pane_in_mode} answers 1 while #{client_key_table} stays root, because tmux
-# looks a mode's keys up through the pane's mode and never through the client's
-# table. zz's mode is per client, so #{client_key_table} answers the copy table
-# while #{pane_in_mode} stays 0, because run-shell output goes to the invoking
-# client's overlay and opens no pane mode. Both sides now assert BOTH facts
-# with their own measured values; before, each asserted one and never looked at
-# the other. The split is the run-shell routing under clients.interactive-refresh.
 wait_for_output_mode() {
   local side="$1"
   local table="$2"
@@ -825,10 +813,6 @@ wait_for_current_marker() {
   fixture_failure "$side current screen did not show $marker within 10 seconds"
 }
 
-# tmux 3.8's popup_draw_cb starts the title one cell after the corner. zz runs
-# display-popup as a modal pane (display-popup.modal-pane, ruled 2026-10-09), so
-# the title sits in the pane's top border after the two-cell lead every pane
-# border title takes.
 popup_title_lead() {
   if [ "$1" = zz ]; then
     printf '──'
@@ -837,12 +821,6 @@ popup_title_lead() {
   fi
 }
 
-# tmux 3.8's popup_key_cb swallows the terminal's focus reports while a popup
-# is up, and a dead close-on-any-key popup closes on the first of them. zz's
-# popup is a modal pane (display-popup.modal-pane): it is the active pane, so a
-# focus report reaches its application like any focus-events pane's, and its
-# dead -k form is remain-on-exit key, which a key closes and a focus report
-# does not.
 send_popup_focus_pair() {
   tmux_outer_command send-keys -l -t "$OUTER_SESSION:$1" $'\033[O\033[I'
 }
@@ -1074,12 +1052,6 @@ assert_popup_underlay_result() {
   fi
 }
 
-# Both sides are waited on. The pin routes focus-out and focus-in to the pane a
-# display-popup covers, so its underlay prints the pair and the wait is a
-# positive one. zz routes no focus event to a covered pane, so its side states
-# that absence with a deadline instead of skipping the step; the byte assertion
-# alone used to pass on zz precisely BECAUSE nothing arrived. The divergence is
-# semantic:popup-underlay-focus-events under clients.read-only-and-focus.
 wait_for_popup_underlay_focus() {
   local side="$1"
   local direction="$2"
@@ -1694,9 +1666,6 @@ printf "ATTACHED_POPUP_UNDERLAY_%s\n" DRAINED
     -x 2 -y 18 -w 24 -h 6 -T "$updated_title" \
     /bin/bash -c 'printf "POPUP_A_REPLACEMENT_WRONG\n"' ||
     fixture_failure "$side could not modify its live popup"
-  # tmux 3.8's popup_modify retitles the live popup in place. zz's popup is
-  # master's modal pane (display-popup.modal-pane), and a display-popup on a
-  # window that already has one leaves it alone, title included.
   if [ "$side" = zz ]; then
     updated_title="$title"
   fi
@@ -1748,8 +1717,6 @@ printf "ATTACHED_POPUP_UNDERLAY_%s\n" DRAINED
   popup_column=$((cursor_column + 3))
   popup_row=$((cursor_row + 2))
 
-  # Popup B's application reads its paste first, so the focus pair, which
-  # popup A already proves on both sides, goes only to the pin here.
   if [ "$side" = tmux ]; then
     send_popup_focus_pair tmux
   fi
@@ -1781,10 +1748,6 @@ printf "ATTACHED_POPUP_UNDERLAY_%s\n" DRAINED
   wait_for_popup_underlay_focus "$side" OUT 3
   wait_for_current_popup_title "$side" "$title"
   wait_for_current_marker "$side" "POPUP_C_DEAD_$side"
-  # tmux 3.8 holds the display-popup command until the dead popup closes and
-  # then exits with the command's status (popup.c:278). zz's modal pane
-  # answers the waiting command client with that status as soon as the command
-  # exits, while the dead pane stays up for its key (display-popup.modal-pane).
   if [ "$side" = zz ]; then
     wait_for_display_popup_exit zz 3
     assert_current_marker_stays zz "$title"
@@ -3502,14 +3465,6 @@ probe_attached_client_sizing() {
   wait_for_client_state "$side" root
 }
 
-# --- TUI-010 clause 3: client lifecycle -------------------------------------
-#
-# Three things this file did not look at before: what two clients of DIFFERENT
-# sizes do to a window under each window-size rule, what a read-only client is
-# actually allowed to do, and whether a detach and reattach puts the client back
-# where it was. Every case here asserts the same literal on both binaries, so
-# the assertion is the comparison.
-
 outer_window_target() {
   printf '=%s:%s\n' "$OUTER_SESSION" "$1"
 }
@@ -3542,10 +3497,6 @@ wait_for_outer_window_marker() {
   fixture_failure "outer window $target did not show $marker within 10 seconds"
 }
 
-# #{client_readonly} is the one read-only fact both binaries answer for a named
-# tty. The flags string differs - the pin's -r implies ignore-size and zz's does
-# not - and that divergence already has a home in probe_requested_client_flags,
-# so it is not re-litigated here.
 wait_for_tty_client_readonly() {
   local side="$1"
   local client_tty="$2"
@@ -3609,9 +3560,6 @@ inner_window_count() {
     grep -c . || true
 }
 
-# Earlier probes in this file leave the session on whichever window they were
-# using, and every case below is about what a client is LOOKING AT, so each one
-# starts by naming the window and the pane rather than inheriting them.
 select_lifecycle_view() {
   local side="$1"
 
@@ -3623,13 +3571,6 @@ select_lifecycle_view() {
     display-message -p '#{session_name}:#{window_index}.#{pane_index}'
 }
 
-# Two clients, neither of them the same size, and the window under each rule
-# the pin has. MEASURED against tmux d77c9dc6's own options-table.c: window-size
-# defaults to WINDOW_SIZE_LATEST, not smallest, so the untouched default follows
-# the most recently used client and only an explicit `smallest` takes the
-# componentwise minimum. The sizes are deliberately crossed - 90x20 and 70x30 -
-# so smallest is 70x20 and largest is 90x30 and neither answer is a client that
-# exists: a rule that just picked one client would fail here.
 probe_simultaneous_client_sizes() {
   local side="$1"
   local second_window="sizes-$side-second"
@@ -3658,11 +3599,6 @@ probe_simultaneous_client_sizes() {
     fixture_failure "$side could not attach its second simultaneous client"
   wait_for_session_client_sizes "$side" "$INNER_SESSION" $'70x30\n90x20'
 
-  # The default rule, untouched on both sides: the window follows whichever
-  # client was used last, and a key press is what makes a client the last one.
-  # server-client.c updates w->latest at the `out:` label of every key it
-  # handles, so the key does not have to be bound to anything; Escape is used
-  # precisely because it is bound to nothing and leaves the key table at root.
   tmux_outer_command send-keys -t "$second_target" Escape ||
     fixture_failure "$side could not make its second client the latest"
   wait_for_side_output "$side" 70x30 "latest simultaneous sizing follows the second client" \
@@ -3681,8 +3617,6 @@ probe_simultaneous_client_sizes() {
   wait_for_side_output "$side" 90x30 "largest simultaneous sizing" \
     display-message -p -t "$INNER_WINDOW_TARGET" '#{window_width}x#{window_height}'
 
-  # Both clients keep their own geometry whatever the window does, and the pane
-  # each of them is looking at is the window's, not their own.
   side_command "$side" set-window-option -t "$INNER_WINDOW_TARGET" window-size smallest ||
     fixture_failure "$side could not reselect smallest simultaneous sizing"
   wait_for_session_client_sizes "$side" "$INNER_SESSION" $'70x30\n90x20'
@@ -3703,19 +3637,6 @@ probe_simultaneous_client_sizes() {
   wait_for_client_state "$side" root
 }
 
-# The pin's read-only contract is exact and worth asserting in all four of its
-# parts. tmux.1: "When a client is read-only, only keys bound to the
-# detach-client or switch-client commands have any effect", and server-client.c
-# gates the pane key at the CLIENT_READONLY check before window_pane_key and the
-# command at the CMD_READONLY check before cmdq_get_command. So: typing never
-# reaches the pane, a binding that runs anything else never runs, a binding to
-# switch-client does run, and the screen stays live throughout.
-#
-# NOTHING HERE IS SLEPT FOR. The refusals are proved in order: the read-only
-# client's input is sent first, then the read-write client types a witness
-# through the same server, and the absence is only asserted once that witness is
-# on the pane. An absence asserted after a positive that was sent later is an
-# absence with a bound on it.
 probe_read_only_client() {
   local side="$1"
   local window="readonly-$side"
@@ -3756,21 +3677,6 @@ probe_read_only_client() {
   wait_for_tty_client_readonly "$side" "$client_tty" 1
   windows_before="$(inner_window_count "$side")"
 
-  # THE LIVE SCREEN IS CHECKED FIRST, BEFORE ANY REFUSED KEY. A refused key
-  # puts "Client is read-only" on the client's message line, and status.c
-  # status_message_set sets TTY_FREEZE on that client's terminal for the whole
-  # of display-time: for the length of the message the pin draws nothing at all
-  # to that client, and earlier probes in this file leave display-time at 20
-  # seconds. Measured 2026-09-09: with the order reversed this check waits for a
-  # marker that the pin is deliberately not painting yet.
-  #
-  # The pane is cleared so the marker lands on the home row. A client whose
-  # terminal is smaller than the window sees the top-left of it, and a
-  # read-only client is the one client here that cannot influence the window's
-  # size, so a marker at the bottom of a tall window would be off its screen.
-  # -c names the read-write client on purpose. cmd-send-keys.c refuses when the
-  # client it resolved is read-only, and with a read-only client attached the
-  # one cmd_find picks for a command-line caller can be that one.
   side_command "$side" send-keys -c "$primary_tty" -t "$INNER_PANE_TARGET" \
     "printf '\\033[2J\\033[3J\\033[H%s\\n' $live" Enter ||
     fixture_failure "$side could not drive its pane for the read-only screen"
@@ -3781,11 +3687,6 @@ probe_read_only_client() {
   tmux_outer_command send-keys -t "$target" Enter F7 C-b c ||
     fixture_failure "$side could not send refused keys to its read-only client"
 
-  # The witness is a bound key pressed by the READ-WRITE client, so what is
-  # waited for is a file the server touched and not a cell on a screen: a
-  # read-only client that was wrongly allowed to run C-b c would have moved the
-  # session's current window, and a witness typed into a pane would then be
-  # waited for in the wrong place and the failure would name the wrong thing.
   tmux_outer_command send-keys -t "=$OUTER_SESSION:$side" F9 ||
     fixture_failure "$side could not press its read-only witness key"
   wait_for_existing_path "$side" "$witness_mark" "read-only witness key"
@@ -3818,8 +3719,6 @@ probe_read_only_client() {
   wait_for_client_state "$side" root
 }
 
-# Puts the client back on the outer pane it already left. respawn_attached_client
-# detaches first and there is nothing to detach here.
 reattach_attached_client() {
   local side="$1"
   local attach_script
@@ -3834,13 +3733,6 @@ reattach_attached_client() {
   wait_for_client_state "$side" root
 }
 
-# Detach and reattach, three times, and a detach the SERVER starts rather than
-# the client: detach-client against the tty is the transport being closed under
-# a client that did not ask for it, which is the recovery both binaries support.
-# What has to survive is the selected target, the client's geometry, the focus
-# flag and the screen. The marker on the pane is what the reattached client has
-# to show, and it is on the pane before the first detach, so a client that came
-# back with an empty screen fails here.
 probe_detach_reattach_cycle() {
   local side="$1"
   local marker=ATTACHED_REATTACH_MARKER

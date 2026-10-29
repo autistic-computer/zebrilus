@@ -66,13 +66,6 @@ def rule_wire(text):
 
 
 def rule_parses(text):
-    """A runner that does not parse wastes a launch and a permission prompt.
-
-    Earned by cycle 9: the compose script emitted `const SLOTS` twice, the lint
-    passed because it only reads prose, and the Workflow tool rejected the
-    script at launch. Checking the prose without checking the syntax is half a
-    check.
-    """
     import shutil
     import tempfile
     node = shutil.which("node")
@@ -116,14 +109,6 @@ def rule_cargo_wrapper(text):
 
 
 def rule_compile_parallelism(text):
-    """Two cargo slots are not two compiles.
-
-    Earned by cycle 11: the documented wrapper ends `cargo ... --jobs 3`, so the
-    two-slot flock still allowed six concurrent rustc. With five lanes up on the
-    15 GB alienware box, free memory fell to 491 MB, memory pressure spiked, and
-    the harness killed the orchestrator's background waits to reclaim memory.
-    Peak compile parallelism is slots x jobs, and a runner has to say so.
-    """
     jobs = re.search(r"--jobs[ =](\d+)", text)
     if jobs is None:
         return False, "the cargo wrapper must pin --jobs; without it cargo uses every core"

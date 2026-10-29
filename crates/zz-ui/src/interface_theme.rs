@@ -1,8 +1,3 @@
-//! Interface themes: the materials a theme draws with (radius, outlines,
-//! shadows, glass), how each piece of UI uses them (its roles), and the
-//! colors for each mode, bundled in one file so a theme can imitate a whole
-//! app. The light, dark or system mode only picks which color set applies.
-
 use std::{collections::BTreeMap, sync::LazyLock};
 
 use ala::{GlassMaterial, Hsla, SharedString, px};
@@ -16,67 +11,37 @@ pub use zz_client::appearance::{
 
 use crate::{PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Theme, ThemeColor, ThemeMode};
 
-/// What each treatment looks like, in logical pixels where it is a length.
-/// Missing keys take [`Materials::default`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Materials {
     pub radius: f32,
-    /// The corner radius of buttons, fields, tabs and other controls; `None`
-    /// follows `radius`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub control_radius: Option<f32>,
-    /// How the corners of every role curve, unless the theme sets another
-    /// for the role.
     pub smoothing: Smoothing,
-    /// Only the roles the theme sets a smoothing for curve that way; every
-    /// other role a theme could smooth draws plain circular corners.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub picked_smoothing: bool,
-    /// The width of every outline; 0 draws none.
     pub outline: f32,
-    /// Only the roles the theme turns the outline on for draw it; every
-    /// built-in outline is off.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub picked_outlines: bool,
-    /// How far list rows sit in from their list's edges; 0 makes them
-    /// square bands that touch.
     pub row_inset: f32,
     pub primary: PrimaryStyle,
-    /// Hovered and selected surfaces that would rise wash a step deeper
-    /// instead, with no outline or shadow.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub flat_highlights: bool,
-    /// Cards, panes and floating surfaces rise toward white in light mode
-    /// instead of darkening.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub bright_surfaces: bool,
-    /// How far a tint or lift highlight washes from the resting fill: 1 is
-    /// the built-in step, 0 none.
     pub highlight_strength: f32,
-    /// The interface font family; `None` keeps the platform's.
     pub font: Option<SharedString>,
-    /// What surfaces whose role takes glass become; `None` fills them
-    /// plainly. A theme file names a preset, or a preset with the fields it
-    /// changes.
     #[serde(deserialize_with = "deserialize_glass")]
     pub glass: Option<GlassMaterial>,
-    /// The glass in light mode, where a light glint on a light fill shows
-    /// nothing; `None` keeps `glass`. A theme file writes the fields it
-    /// changes from `glass`.
     #[serde(
         deserialize_with = "deserialize_glass",
         skip_serializing_if = "Option::is_none"
     )]
     pub light_glass: Option<GlassMaterial>,
-    /// Only the roles the theme gives a shadow cast one; every built-in
-    /// shadow is off.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub picked_shadows: bool,
-    /// The tight shadow of things resting on the window.
     #[serde(deserialize_with = "deserialize_contact")]
     pub contact: ShadowMaterial,
-    /// The deep shadow of things floating over it.
     #[serde(deserialize_with = "deserialize_float")]
     pub float: ShadowMaterial,
 }
@@ -131,8 +96,6 @@ impl Materials {
     }
 }
 
-/// The named accents, each tuned for light and for dark so it reads at any
-/// tint: `(name, light, dark)`.
 const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
     ("blue", "#146ae3", "#76abfd"),
     ("purple", "#8a4fd7", "#bd97fe"),
@@ -144,8 +107,6 @@ const ACCENT_COLORS: [(&str, &str, &str); ACCENTS.len()] = [
     ("graphite", "#6f6f6f", "#aaaaaa"),
 ];
 
-/// The accent `value` names in `mode`: one of [`ACCENTS`], or a hex color for
-/// both modes.
 pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
     let value = value.trim();
     match ACCENT_COLORS.iter().find(|(name, ..)| *name == value) {
@@ -154,19 +115,13 @@ pub fn accent_color(value: &str, mode: ThemeMode) -> Option<Hsla> {
     }
 }
 
-/// What Settings sets over the active theme, each `None` while it follows
-/// the theme. Picking a theme clears the radius; the accent and the tint
-/// stay.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case")]
 pub struct ThemeOverrides {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub radius: Option<f32>,
-    /// One of [`ACCENTS`] or a hex color.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accent: Option<String>,
-    /// How far the background, and a fraction as far the text, lean toward
-    /// `tint-hue`, from 0 to 1.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tint: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -174,7 +129,6 @@ pub struct ThemeOverrides {
 }
 
 impl ThemeOverrides {
-    /// `theme` with every override set here.
     pub fn apply_to(&self, theme: &mut InterfaceTheme) {
         if let Some(radius) = self.radius {
             theme.materials.radius = radius;
@@ -201,13 +155,11 @@ impl ThemeOverrides {
         }
     }
 
-    /// Follow a newly picked theme's radius.
     pub fn pick_theme(&mut self) {
         self.radius = None;
     }
 }
 
-/// A JSON object over `base`: the fields it names, `base` for the rest.
 fn over<'de, T, D>(base: T, deserializer: D) -> Result<T, D::Error>
 where
     T: Serialize + serde::de::DeserializeOwned,
@@ -234,7 +186,6 @@ fn deserialize_float<'de, D: Deserializer<'de>>(
     over(ShadowMaterial::FLOAT, deserializer)
 }
 
-/// A theme's role styles, keyed by role ids the UI knows.
 fn deserialize_roles<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<BTreeMap<String, StylePatch>, D::Error> {
@@ -300,9 +251,6 @@ fn deserialize_glass<'de, D: Deserializer<'de>>(
     }
 }
 
-/// One mode's colors. The six roots fall back to the built-in palette for
-/// the mode; `on-accent` and `shadow-color` fall back to what the palette
-/// derives.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ThemeColors {
@@ -318,11 +266,8 @@ pub struct ThemeColors {
     pub warning: Option<Hsla>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub danger: Option<Hsla>,
-    /// Text on an accent fill.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_accent: Option<Hsla>,
-    /// The ink of drop shadows; its alpha is a floating surface's shadow at
-    /// full strength.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shadow_color: Option<Hsla>,
 }
@@ -349,15 +294,11 @@ impl ThemeColors {
     }
 }
 
-/// Materials, roles and colors in both modes: one `themes/<name>.json` file.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct InterfaceTheme {
-    /// What Settings calls it.
     pub name: String,
     pub materials: Materials,
-    /// How the theme changes each kind and role, by id; what it leaves out
-    /// draws as built in.
     #[serde(
         skip_serializing_if = "BTreeMap::is_empty",
         deserialize_with = "deserialize_roles"
@@ -375,15 +316,12 @@ impl InterfaceTheme {
         }
     }
 
-    /// Draws `theme` in this theme's materials and roles, and in its colors
-    /// for the mode `theme` is already in.
     pub fn apply(&self, theme: &mut Theme) {
         theme.colors = self.colors(theme.mode);
         self.materials.apply(theme);
         self.apply_roles(theme);
     }
 
-    /// Hands the theme's role styles to `theme`.
     pub fn apply_roles(&self, theme: &mut Theme) {
         theme.styles = self
             .roles
@@ -396,8 +334,6 @@ impl InterfaceTheme {
         serde_json::to_string_pretty(self).unwrap_or_default()
     }
 
-    /// Names a theme saved as `id` after it when it has no name of its own
-    /// or a built-in's, so Settings never shows two tiles called Default.
     pub fn name_after(&mut self, id: &str) {
         if self.name.trim().is_empty()
             || builtin_themes()
@@ -409,8 +345,6 @@ impl InterfaceTheme {
     }
 }
 
-/// Reads a theme file. Missing keys keep [`Materials::default`], the
-/// built-in role styles and the built-in palette.
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
     let mut value =
         serde_json::from_str::<serde_json::Value>(source).map_err(|error| error.to_string())?;
@@ -421,8 +355,6 @@ pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
     serde_json::from_value(value).map_err(|error| with_spelling_hint(error.to_string()))
 }
 
-/// Lays the fields a theme file's `light-glass` names over its `glass`,
-/// unless it starts from a preset of its own.
 fn light_glass_over_glass(theme: &mut serde_json::Value) {
     use serde_json::Value;
     let Some(materials) = theme.get_mut("materials").and_then(Value::as_object_mut) else {
@@ -479,7 +411,6 @@ static BUILTINS: LazyLock<Vec<(&'static str, InterfaceTheme)>> = LazyLock::new(|
         .collect()
 });
 
-/// The themes every client ships, by id, in the order Settings lists them.
 pub fn builtin_themes() -> &'static [(&'static str, InterfaceTheme)] {
     &BUILTINS
 }

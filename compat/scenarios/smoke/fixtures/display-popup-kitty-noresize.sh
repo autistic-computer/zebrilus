@@ -107,11 +107,6 @@ data = open(sys.argv[1], "rb").read()
 sys.stdout.write("yes" if b"\x1b_Ga=d,d=i," in data else "no")' "$snaps/$1"
 }
 
-# The image the last placement in a snapshot names. Every popup paint suspends
-# the bridge and re-places, so a delete plus a place says nothing about whether
-# the popup replaced its image; the id the placement carries does. The bridge
-# maps each (pane, terminal image id) to its own outer id, so a second image
-# reaches the terminal under a second outer id.
 placed_id() {
     python3 -c 'import re, sys
 data = open(sys.argv[1], "rb").read()
@@ -143,12 +138,6 @@ names_id() {
     esac
 }
 
-# Where the placement sits relative to the popup box. The box is drawn from its
-# frame origin and the placement from the content origin inside the border, so
-# a placement one row down and one column right of the corner is anchored the
-# way the renderer intends. With no resize driving a full repaint the corner and
-# the placement need not land in the same frame, so both are read against the
-# absolute cursor positions the client wrote before them.
 anchor() {
     python3 -c 'import re, sys
 data = open(sys.argv[1], "rb").read()
@@ -213,9 +202,6 @@ sleep 1.2
 main_client display-popup -c "$client" -x 5 -y 5 -w 40 -h 14 "sh $work/popup.sh" &
 popup_pid=$!
 sleep 4.0
-# No resize anywhere in this scenario. A user who prints an image in a popup and
-# never touches the client's window is the ordinary case, and the popup's images
-# have to reach the client on the publishes the popup's own output drives.
 drive "snap opened"
 check_equal popup-content-reaches-the-client yes "$(drawn opened POPUPMARK)"
 check_equal image-is-placed-inside-the-popup "$want_place" "$(placed opened)"

@@ -1,10 +1,3 @@
-//! A folder on a host as the daemon walks it, and the rows a filter picks
-//! from it: the folder's own entries while the filter is empty, the best
-//! matches anywhere under it once you type, with git's letter on each.
-//! [`FilesLevel`] is the palette's `&`: it starts in the place's folder,
-//! reads the text after `&` as a path, opens folders and goes up, and puts
-//! a pick at the pane's cursor or on the clipboard.
-
 use std::{collections::HashMap, ops::Range, rc::Rc, sync::Arc};
 
 use ala::{
@@ -74,11 +67,9 @@ pub(crate) const fn mark_letter(mark: GitMark) -> &'static str {
     }
 }
 
-/// Everything under one folder on one host, as the daemon walks it.
 #[derive(Debug, Default)]
 pub(crate) struct Listing {
     pub(crate) host: String,
-    /// The folder asked for, backslashes resolved.
     pub(crate) dir: String,
     pub(crate) request: Option<u64>,
     pub(crate) root: Option<PathListRoot>,
@@ -98,8 +89,6 @@ impl Listing {
         }
     }
 
-    /// Whether the listing holds `dir` on `host` whole: `dir` is its folder
-    /// or one under it, and the walk finished without stopping short.
     pub(crate) fn covers(&self, host: &str, dir: &str) -> bool {
         self.host == host
             && dir.starts_with(&self.dir)
@@ -120,7 +109,6 @@ impl Listing {
         }
     }
 
-    /// Take a chunk of entries. Whether the rows may have changed.
     pub(crate) fn chunk(
         &mut self,
         entries: &Arc<[PathEntry]>,
@@ -142,19 +130,14 @@ impl Listing {
     }
 }
 
-/// One file or folder a filter kept.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FileRow {
     pub entry: PathEntry,
-    /// Its path under the folder listed, without a trailing `/`.
     pub name: String,
     pub matches: Vec<Range<usize>>,
     pub mark: Option<GitMark>,
 }
 
-/// The rows under `base`, a folder relative to the listing's own: its
-/// entries, folders first, while `filter` is empty, and the best matches
-/// anywhere under it once you type.
 pub(crate) fn file_rows(
     chunks: &[Arc<[PathEntry]>],
     marks: &GitMarks,
@@ -211,21 +194,13 @@ pub(crate) fn file_rows(
         .collect()
 }
 
-/// What the text after `&` lists.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FilesPath {
-    /// The folder to ask the host for: absolute or under `~`, `.` and `..`
-    /// folded, ending in `/`.
     pub dir: String,
-    /// The text up to and with the last `/`, as typed.
     pub typed: String,
-    /// What follows the last `/`.
     pub filter: String,
 }
 
-/// Read `rest`, the text after `&`, against `start`. A folder starting with
-/// `/` or `~` is taken as written; any other is under `start`. Spaces are
-/// plain characters.
 #[must_use]
 pub fn split_rest(rest: &str, start: &str) -> FilesPath {
     let (typed, filter) = match rest.rfind('/') {
@@ -245,8 +220,6 @@ pub fn split_rest(rest: &str, start: &str) -> FilesPath {
     }
 }
 
-/// `dir` with `.` and `..` folded and each `/` single, ending in `/`. A `..`
-/// above `/` stays at `/`; one above `~` is kept for the host to resolve.
 #[must_use]
 pub fn normalize_dir(dir: &str) -> String {
     let (anchor, rest) = if let Some(rest) = dir.strip_prefix('/') {
@@ -274,8 +247,6 @@ pub fn normalize_dir(dir: &str) -> String {
     normal
 }
 
-/// The folder above `dir`, or `None` at `/`. `root` is where the host
-/// says `dir` is, which takes `~/` up to the folder holding the home.
 #[must_use]
 pub fn parent_dir(dir: &str, root: Option<&str>) -> Option<String> {
     if dir == "/" {
@@ -290,14 +261,11 @@ pub fn parent_dir(dir: &str, root: Option<&str>) -> Option<String> {
     Some(up)
 }
 
-/// The last folder name in `dir`, for highlighting it after going up.
 fn last_name(dir: &str) -> Option<String> {
     let name = dir.trim_end_matches('/').rsplit('/').next()?;
     (!name.is_empty() && !name.starts_with('~') && name != "..").then(|| name.to_owned())
 }
 
-/// A picked path as the clipboard takes it: absolute, and `host:` in front
-/// when the file is on another host. Never quoted.
 #[must_use]
 pub fn plain_path(root: &str, rel: &str, host: Option<&str>) -> String {
     let path = format!(
@@ -311,8 +279,6 @@ pub fn plain_path(root: &str, rel: &str, host: Option<&str>) -> String {
     }
 }
 
-/// The folder `&` starts in for a pane whose folder is `cwd`, under `~`
-/// when that is in `home`, and the home when there is none.
 #[must_use]
 pub fn start_dir(cwd: Option<&str>, home: Option<&str>) -> String {
     let Some(cwd) = cwd.filter(|cwd| cwd.starts_with(['/', '~'])) else {
@@ -329,7 +295,6 @@ pub fn start_dir(cwd: Option<&str>, home: Option<&str>) -> String {
     normalize_dir(&dir)
 }
 
-/// A place as `&` reads it: its host and the parts written under it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FilesPlace {
     pub host: PaletteHostId,
@@ -354,8 +319,6 @@ impl FilesPlace {
     }
 }
 
-/// The pane a place starts in: the pane, else the window's active pane,
-/// else the session's active window's.
 fn place_pane(snapshot: &MuxSnapshot, place: &FilesPlace) -> Option<PaneId> {
     if place.pane.is_some() {
         return place.pane;
@@ -385,9 +348,6 @@ fn pane_folder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&str> {
         .filter(|cwd| !cwd.is_empty())
 }
 
-/// Where `&` starts after `place`: a pane, window or session's folder; on
-/// the host you are on with nothing under it, `insert`'s folder; on another
-/// host, or for a pane with no folder, the home there.
 #[must_use]
 pub fn start_folder(
     place: &FilesPlace,
@@ -407,8 +367,6 @@ pub fn start_folder(
     start_dir(cwd, home)
 }
 
-/// Foreground programs whose files are on another machine: the daemon will
-/// not list through a pane running one.
 const REMOTE_FOREGROUND: &[&str] = &["ssh", "mosh", "mosh-client", "tmux", "zz_cli"];
 
 fn runs_remote(pane: &PaneSnapshot) -> bool {
@@ -428,8 +386,6 @@ fn terminals(snapshot: &MuxSnapshot) -> impl Iterator<Item = &PaneSnapshot> {
 }
 
 #[must_use]
-/// The terminal on the host to list through: `anchor` when it is one there,
-/// else one not running ssh or the like.
 pub fn listing_pane(snapshot: &MuxSnapshot, anchor: Option<PaneId>) -> Option<PaneId> {
     let terminals = terminals(snapshot).collect::<Vec<_>>();
     anchor
@@ -443,7 +399,6 @@ pub fn listing_pane(snapshot: &MuxSnapshot, anchor: Option<PaneId>) -> Option<Pa
         })
 }
 
-/// A listing reply from a host, for [`PaletteBackend::feed_listings`].
 #[derive(Clone, Debug)]
 pub enum ListingUpdate {
     Begin(Result<PathListRoot, String>),
@@ -455,20 +410,14 @@ pub enum ListingUpdate {
     Git(Vec<(String, GitMark)>),
 }
 
-/// Where a backend sends the listing replies it gets: the host, the request
-/// and the reply.
 pub type ListingSink = Box<dyn Fn(PaletteHostId, u64, ListingUpdate, &mut App)>;
 
 pub enum FilesEvent {
-    /// A row was clicked: open the folder, or with `open` false pick it.
     Picked { open: bool },
 }
 
 impl EventEmitter<FilesEvent> for FilesLevel {}
 
-/// The palette's `&`: the files under a folder on one host. Its owner hands
-/// it the text after `&` with [`Self::set_rest`] and applies the text its
-/// keys give back.
 pub struct FilesLevel {
     backend: Rc<dyn PaletteBackend>,
     host: PaletteHostId,
@@ -491,9 +440,6 @@ pub struct FilesLevel {
 }
 
 impl FilesLevel {
-    /// `&` after `place`, putting what you pick into `insert_pane`, the pane
-    /// `prefix F` came from or the focused one. `start` overrides the folder
-    /// the place gives, as `choose-path -c` does.
     pub fn new(
         backend: Rc<dyn PaletteBackend>,
         place: FilesPlace,
@@ -558,7 +504,6 @@ impl FilesLevel {
         }
     }
 
-    /// The folder `&` starts in, which its owner writes after the `&`.
     #[must_use]
     pub fn start(&self) -> &str {
         &self.start
@@ -579,13 +524,11 @@ impl FilesLevel {
         self.rows.get(self.selected)
     }
 
-    /// Show only as many rows as fit in `room`.
     pub fn fit(&mut self, room: Pixels) {
         let rows = (f32::from(room) / command_palette_row_height()).floor();
         self.visible = rows.max(1.0) as usize;
     }
 
-    /// The text after `&`: list the folder it names and filter it.
     pub fn set_rest(&mut self, rest: &str, cx: &mut Context<Self>) {
         let path = split_rest(rest, &self.start);
         if path == self.path && self.listing.is_some() {
@@ -727,8 +670,6 @@ impl FilesLevel {
         cx.notify();
     }
 
-    /// Pick `path`, absolute on this level's host, as soon as it is listed:
-    /// what a recent file does.
     pub fn want(&mut self, path: String) {
         self.wanted = Some(path);
     }
@@ -754,7 +695,6 @@ impl FilesLevel {
         }
     }
 
-    /// The first or, with `last`, the last row.
     pub fn select_edge(&mut self, last: bool, cx: &mut Context<Self>) {
         self.selected = if last {
             self.rows.len().saturating_sub(1)
@@ -766,7 +706,6 @@ impl FilesLevel {
         cx.notify();
     }
 
-    /// Up or Down: move the highlight, wrapping.
     pub fn navigate(&mut self, direction: isize, cx: &mut Context<Self>) {
         let count = self.rows.len();
         if count == 0 {
@@ -782,8 +721,6 @@ impl FilesLevel {
         cx.notify();
     }
 
-    /// Tab or Right: the text that opens the highlighted folder, `None` on a
-    /// file or an empty list.
     #[must_use]
     pub fn open(&self) -> Option<String> {
         let row = self
@@ -792,8 +729,6 @@ impl FilesLevel {
         Some(format!("{}{}/", self.path.typed, row.name))
     }
 
-    /// Shift-Tab, Left or Backspace: the text that lists the folder above,
-    /// with the one you leave highlighted once it lands. `None` at `/`.
     pub fn up(&mut self) -> Option<String> {
         let root = self.absolute_dir();
         let parent = parent_dir(&self.path.dir, root.as_deref())?;
@@ -801,7 +736,6 @@ impl FilesLevel {
         Some(parent)
     }
 
-    /// Where the listed folder is on its host, once the host said.
     fn absolute_dir(&self) -> Option<String> {
         let listing = self.listing.as_ref()?;
         let root = listing.root.as_ref()?;
@@ -809,9 +743,6 @@ impl FilesLevel {
         Some(format!("{}/{under}", root.root.trim_end_matches('/')))
     }
 
-    /// Whether Enter puts the pick at the pane's cursor: there is a pane and
-    /// it is not one known to take no text, such as a browser. Otherwise
-    /// Enter copies it.
     #[must_use]
     pub fn inserts(&self, cx: &App) -> bool {
         let Some(pane) = self.insert_pane else {
@@ -826,7 +757,6 @@ impl FilesLevel {
             .is_none_or(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal) && !pane.dead)
     }
 
-    /// Enter: put the highlighted path at the pane's cursor. Whether it went.
     pub fn insert(&self, cx: &mut App) -> bool {
         let (Some(pane), Some(row), Some(root)) = (
             self.insert_pane,
@@ -862,7 +792,6 @@ impl FilesLevel {
         })
     }
 
-    /// Alt-Enter: the highlighted path as the clipboard takes it.
     #[must_use]
     pub fn copy_text(&self) -> Option<String> {
         let row = self.selected_row()?;
@@ -874,7 +803,6 @@ impl FilesLevel {
         ))
     }
 
-    /// Put the highlighted path on the clipboard, and give it.
     pub fn copy(&self, cx: &mut App) -> Option<String> {
         let text = self.copy_text()?;
         cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
@@ -882,7 +810,6 @@ impl FilesLevel {
         Some(text)
     }
 
-    /// Keep the highlighted path among the palette's recent files.
     fn remember(&self, cx: &mut App) {
         let (Some(row), Some(root)) = (
             self.selected_row(),
@@ -903,7 +830,6 @@ impl FilesLevel {
         );
     }
 
-    /// The footer's keys, Enter's saying what it does.
     #[must_use]
     pub fn hints(&self, cx: &App) -> Vec<PaletteHint> {
         let inserts = self.inserts(cx);
@@ -1058,8 +984,6 @@ impl Render for FilesLevel {
     }
 }
 
-/// `&` as a palette action level: a [`FilesLevel`] for the place, fed the
-/// text after the sigil.
 pub struct FilesAction {
     backend: Rc<dyn PaletteBackend>,
     level: Option<(Entity<FilesLevel>, FilesPlace)>,
@@ -1067,9 +991,6 @@ pub struct FilesAction {
     clicks: Option<Subscription>,
 }
 
-/// Enter, or Tab with `open`, on `level`'s highlighted row: open a folder,
-/// put the path at the pane's cursor, or copy it when the pane takes no
-/// text.
 fn pick(
     level: &Entity<FilesLevel>,
     open: bool,
@@ -1100,7 +1021,6 @@ impl FilesAction {
         }
     }
 
-    /// Act on a clicked row through the palette, as the keys do.
     fn follow_clicks(&mut self, level: &Entity<FilesLevel>, window: &Window, cx: &mut App) {
         let Some(palette) = self.palette.clone() else {
             return;
@@ -1129,8 +1049,6 @@ impl FilesAction {
     }
 }
 
-/// The parts of `context`'s place that were written, which pick where `&`
-/// starts.
 fn files_place(context: &ActionContext) -> FilesPlace {
     let Place {
         host,

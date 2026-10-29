@@ -151,9 +151,6 @@ impl PanePicker {
         ("pane-picker-sheet", self.pane.0).into()
     }
 
-    /// The choices as a drawer over the phone's page: a pick slides it away
-    /// and turns the pane into what was picked; sliding it away without a
-    /// pick closes the pane.
     pub(super) fn sheet(&self, bottom_inset: Pixels, cx: &mut Context<Self>) -> Option<AnyElement> {
         if self.sheet_closed {
             return None;

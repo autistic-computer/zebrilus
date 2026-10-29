@@ -1,11 +1,3 @@
-//! Daemon-owned agent runtime: adapter children, the session journal, and the
-//! stream the clients replay and tail. See knowledge/designs/agent-daemon-runtime.md.
-//!
-//! [`host::AgentHost`] opens panes and owns one thread per pane;
-//! [`fanout::AgentRuntime`] is what the daemon holds, pairing that host with
-//! the coalescing lane, the replay ring, and the publisher the daemon
-//! implements.
-
 pub(crate) mod catalog;
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod chat;

@@ -1,5 +1,3 @@
-//! `Shell_NotifyIcon` on a real window: `TaskbarCreated` skips message-only windows.
-
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     mpsc,
@@ -35,21 +33,16 @@ const TRAY_ICON_ICO: &[u8] = include_bytes!(concat!(
     "/../../assets/windows/zz.ico"
 ));
 
-// `WM_APP`, not `WM_USER`: that range is private to controls.
 const WM_TRAY: u32 = WM_APP + 1;
 const WM_ATTENTION: u32 = WM_APP + 2;
 const MENU_ACTION_BASE: usize = 1;
 const TRAY_ICON_ID: u32 = 1;
 
-/// A live notification icon. Dropping it removes the icon and ends the tray
-/// thread.
 pub(super) struct NotifyIcon {
     hwnd: isize,
     thread: Option<JoinHandle<()>>,
 }
 
-// SAFETY: the handle is only ever turned back into an `HWND` for
-// `PostMessageW`, which is documented cross-thread.
 #[allow(
     unsafe_code,
     reason = "a Send assertion for a raw handle has no safe form"
@@ -59,7 +52,6 @@ unsafe impl Send for NotifyIcon {}
 impl NotifyIcon {
     #[allow(unsafe_code, reason = "posting an icon update to the owning thread")]
     pub(super) fn set_attention(&self, count: usize) {
-        // SAFETY: the window lives until Drop and PostMessageW supports other threads.
         unsafe {
             let _ = PostMessageW(
                 Some(HWND(self.hwnd as _)),
@@ -77,8 +69,6 @@ impl Drop for NotifyIcon {
             unsafe_code,
             reason = "no safe binding posts to a foreign thread's window"
         )]
-        // SAFETY: the window outlives every drop path: it is destroyed only by
-        // this message, and the join below outwaits the teardown.
         unsafe {
             let _ = PostMessageW(Some(HWND(self.hwnd as _)), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
@@ -153,8 +143,6 @@ pub(super) fn spawn(sender: Sender<TrayEvent>, source: Source) -> Option<NotifyI
     reason = "win32 window and shell-icon calls have no safe binding"
 )]
 fn pump(sender: Sender<TrayEvent>, source: Source, ready: mpsc::Sender<Option<isize>>) {
-    // SAFETY: plain win32 setup on this thread's own windows; the state Box
-    // handed to `WM_NCCREATE` is reclaimed in `WM_NCDESTROY` below.
     let created = unsafe {
         let instance = match GetModuleHandleW(None) {
             Ok(instance) => instance,
@@ -170,7 +158,6 @@ fn pump(sender: Sender<TrayEvent>, source: Source, ready: mpsc::Sender<Option<is
             lpszClassName: w!("zz-tray"),
             ..Default::default()
         };
-        // A zero atom means the class already exists, which is not fatal.
         RegisterClassW(&class);
 
         let state = Box::new(TrayState {
@@ -205,8 +192,6 @@ fn pump(sender: Sender<TrayEvent>, source: Source, ready: mpsc::Sender<Option<is
         }
     };
 
-    // SAFETY: `hwnd` was created just above on this thread and `state` was
-    // stashed by `WM_NCCREATE`.
     let added = unsafe {
         let state =
             &*(GetWindowLongPtrW(hwnd, windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA)
@@ -215,7 +200,6 @@ fn pump(sender: Sender<TrayEvent>, source: Source, ready: mpsc::Sender<Option<is
     };
     if !added {
         log::warn!(target: "zz::tray", "the shell rejected the notification icon");
-        // SAFETY: same-thread window teardown; `WM_NCDESTROY` frees the state.
         unsafe {
             let _ = DestroyWindow(hwnd);
         }
@@ -224,7 +208,6 @@ fn pump(sender: Sender<TrayEvent>, source: Source, ready: mpsc::Sender<Option<is
     }
     let _ = ready.send(Some(hwnd.0 as isize));
 
-    // SAFETY: the canonical pump, on the thread that owns the window.
     unsafe {
         let mut message = MSG::default();
         while GetMessageW(&mut message, None, 0, 0).as_bool() {
@@ -243,9 +226,6 @@ unsafe extern "system" fn window_procedure(
 ) -> LRESULT {
     use windows::Win32::UI::WindowsAndMessaging::{CREATESTRUCTW, GWLP_USERDATA};
 
-    // SAFETY: `GWLP_USERDATA` only ever holds the `TrayState` box installed at
-    // `WM_NCCREATE` and reclaimed at `WM_NCDESTROY`; between the two it is
-    // this thread's alone.
     unsafe {
         if message == WM_NCCREATE {
             let create = &*(lparam.0 as *const CREATESTRUCTW);
@@ -304,7 +284,6 @@ unsafe extern "system" fn window_procedure(
 
 #[allow(unsafe_code, reason = "menus have no safe binding")]
 fn show_menu(hwnd: HWND, state: &TrayState) {
-    // SAFETY: menu creation and tracking on the window's own thread.
     unsafe {
         let Ok(menu) = CreatePopupMenu() else {
             return;
@@ -341,8 +320,6 @@ fn show_menu(hwnd: HWND, state: &TrayState) {
 
         let mut cursor = Default::default();
         let _ = GetCursorPos(&mut cursor);
-        // Without this the notification-icon menu cannot be dismissed by
-        // clicking away.
         let _ = SetForegroundWindow(hwnd);
         let picked = TrackPopupMenu(
             menu,
@@ -362,7 +339,6 @@ fn show_menu(hwnd: HWND, state: &TrayState) {
     }
 }
 
-// `CreateIconIndirect` requires a mask bitmap but ignores it at 32bpp.
 #[allow(unsafe_code, reason = "GDI bitmaps have no safe binding")]
 fn tray_icon(attention: bool) -> HICON {
     let Ok(decoded) = image::load_from_memory_with_format(TRAY_ICON_ICO, image::ImageFormat::Ico)
@@ -392,8 +368,6 @@ fn tray_icon(attention: bool) -> HICON {
         .collect();
     let mask = vec![0xffu8; (width as usize).div_ceil(8) * height as usize];
 
-    // SAFETY: both bitmaps are built from exactly-sized local buffers and
-    // released after `CreateIconIndirect` copies them.
     unsafe {
         let color = CreateBitmap(width as i32, height as i32, 1, 32, Some(bgra.as_ptr() as _));
         let monochrome = CreateBitmap(width as i32, height as i32, 1, 1, Some(mask.as_ptr() as _));

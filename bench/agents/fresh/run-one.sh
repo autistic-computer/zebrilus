@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# run-one.sh MODEL ARM TASK [REP]
-#   MODEL claude-* | gpt-*;  ARM bare | hooks | trusted (codex only) | strict | pane;  TASK n0..n8
-#   ZZ_BINARY (default /opt/homebrew/bin/zz), AUTO = agent-auto-approve (default reads), REMOTE_HOST for n8, RESULTS (default out/results.tsv)
 set -uo pipefail
 MODEL=$1 ARM=$2 TASK=$3 REP=${4:-1}
 S=$(cd "$(dirname "$0")" && pwd)

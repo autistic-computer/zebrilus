@@ -23,79 +23,46 @@ use crate::{
     },
 };
 
-/// Client and daemon must match this exactly. The handshake rejects any
-/// mismatch instead of negotiating down.
 pub const PROTOCOL_VERSION: u16 = 117;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
 pub const CLIENT_NESTED_CAPABILITY: &str = "client-nested-v1";
-/// Value-token prefix naming the caller's controlling tty, `client-tty-v1:/dev/ttys007`.
 pub const CLIENT_TTY_CAPABILITY_PREFIX: &str = "client-tty-v1:";
-/// Value-token prefix naming the caller's terminal size, `client-size-v1:80x24`.
 pub const CLIENT_SIZE_CAPABILITY_PREFIX: &str = "client-size-v1:";
 pub const CLIENT_CELL_CAPABILITY_PREFIX: &str = "client-cell-v1:";
 pub const SERVER_OPTION_CAPABILITY_PREFIX: &str = "server-option-v1:";
 pub const CLIENT_FEATURES_CAPABILITY_PREFIX: &str = "client-features-v1:";
-/// Most feature names one [`ProtocolMessage::ClientTerminalFeatures`] may carry:
-/// the pin's own table holds twenty-one and a client reports the union of what
-/// its replies named.
 pub const MAX_CLIENT_TERMINAL_FEATURES: usize = 64;
-/// Longest single feature name in that message.
 pub const MAX_CLIENT_TERMINAL_FEATURE_BYTES: usize = 64;
-/// Longest terminal name one [`ProtocolMessage::ClientTerminalType`] may carry;
-/// `tty_keys_extended_device_attributes` reads the reply into a 128-byte buffer.
 pub const MAX_CLIENT_TERMINAL_TYPE_BYTES: usize = 128;
 pub const SPLIT_RATIO_BASIS: u16 = 10_000;
 pub const MAX_COMMAND_PROMPT_BYTES: usize = 64 * 1024;
 pub const MAX_CHOOSE_TREE_QUERY_BYTES: usize = 4 * 1024;
 pub const MAX_CHOOSE_BUFFER_QUERY_BYTES: usize = 4 * 1024;
 pub const MAX_BROWSER_KEY_REPEAT: u32 = 9_999;
-/// Longest either half of a rendered status line may be.
 pub const MAX_STATUS_TEXT_BYTES: usize = 4096;
-/// Most personalized status rows one client may be shown.
 pub const MAX_STATUS_ROWS: usize = 5;
-/// Longest expanded `display-panes-format` label one pane indicator may carry.
 pub const MAX_PANE_INDICATOR_LABEL_BYTES: usize = 1024;
-/// Longest shortcut key spelling one chooser row may carry.
 pub const MAX_CHOOSE_ITEM_KEY_BYTES: usize = 64;
 pub const MAX_CHOOSE_ITEM_TEXT_BYTES: usize = 512;
-/// Longest payload `agent-send` may push into a GUI-owned composer or prompt.
 pub const MAX_AGENT_SEND_BYTES: usize = 1024 * 1024;
-/// Longest path or human-readable message carried by a GUI request or its reply.
 pub const MAX_GUI_TEXT_BYTES: usize = 64 * 1024;
 pub const MAX_CLIENT_WORKING_DIRECTORY_BYTES: usize = 16 * 1024;
 pub const MAX_CLIENT_ENVIRONMENT_ENTRIES: usize = 4096;
 pub const MAX_CLIENT_ENVIRONMENT_ENTRY_BYTES: usize = 16_367;
 pub const MAX_CLIENT_ENVIRONMENT_BYTES: usize = 4 * 1024 * 1024;
-/// Most `~` user names one Control line may ask the daemon to resolve at once,
-/// and the longest name in that batch: the config parser already refuses a name
-/// past 1,022 encoded bytes.
 pub const MAX_HOME_DIRECTORY_USERS: usize = 1024;
 pub const MAX_HOME_DIRECTORY_USER_BYTES: usize = 1024;
-/// Longest home directory the daemon may report for one of those names.
 pub const MAX_HOME_DIRECTORY_BYTES: usize = 16 * 1024;
-/// Most `$NAME` variables one Control line may ask the daemon to read out of
-/// its global environment at once, and the longest name in that batch. The
-/// pin's `yylex_is_var` accepts letters, digits and `_`, so a name is short.
 pub const MAX_ENVIRONMENT_NAMES: usize = 1024;
 pub const MAX_ENVIRONMENT_NAME_BYTES: usize = 1024;
-/// Longest value the daemon may report for one of those names. `environ_set`
-/// takes whatever `set-environment` was given, so this matches the home
-/// directory ceiling rather than a name ceiling.
 pub const MAX_ENVIRONMENT_VALUE_BYTES: usize = 16 * 1024;
-/// Longest absolute path the daemon may hand a client to open for
-/// `load-buffer` or `save-buffer`.
 pub const MAX_CLIENT_FILE_PATH_BYTES: usize = 16 * 1024;
-/// Most bytes one `load-buffer` or `save-buffer` may move through a client,
-/// matching the daemon's own paste-buffer ceiling.
 pub const MAX_CLIENT_FILE_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES: usize = 1024;
 pub const MAX_STARTUP_CONFIG_CAUSE_BYTES: usize = 64 * 1024;
 pub const MAX_STARTUP_CONFIG_CAUSES_BYTES: usize = 1024 * 1024;
-/// Largest complete agent prompt: its text plus every attached image. Clients
-/// normalize prompt images the way pasted ones are, so this mirrors
-/// [`MAX_PASTE_UPLOAD_BYTES`].
 pub const MAX_AGENT_PROMPT_BYTES: usize = 6 * 1024 * 1024;
 pub const MAX_AGENT_PROMPT_IMAGES: usize = 64;
 pub const MAX_AGENT_QUEUED_PROMPTS: usize = 4;
@@ -106,32 +73,18 @@ pub const MAX_AGENT_CONFIG_OPTIONS: usize = 64;
 pub const MAX_AGENT_CONFIG_CHOICES: usize = 128;
 pub const MAX_AGENT_MODES: usize = 64;
 pub const MAX_AGENT_TOOL_CONTENT_ITEMS: usize = 128;
-/// Longest encoded-format label one prompt image may name.
 pub const MAX_AGENT_IMAGE_FORMAT_BYTES: usize = 64;
-/// Longest option, mode, or authentication-method identifier on the agent lane.
 pub const MAX_AGENT_OPTION_BYTES: usize = 4 * 1024;
-/// Longest agent session identifier, matching what an agent pane descriptor accepts.
 pub const MAX_AGENT_SESSION_ID_BYTES: usize = 16 * 1024;
 pub const MAX_AGENT_SESSION_DIRECTORIES: usize = 256;
-/// Largest batch of journal items one `AgentUpdates` event may carry. The
-/// daemon splits a longer coalescing window across frames.
 pub const MAX_AGENT_UPDATES_BYTES: usize = 9 * 1024 * 1024;
-/// Largest JSON blob one [`AgentPaneWire`] field may carry.
 pub const MAX_AGENT_STATE_BLOB_BYTES: usize = 256 * 1024;
-/// Largest pending permission request payload carried by [`AgentPaneWire`].
 pub const MAX_AGENT_PERMISSION_BYTES: usize = 64 * 1024;
-/// Background tasks one agent pane reports at once.
 pub const MAX_AGENT_TASKS: usize = 64;
-/// Questions answered by one reply, and choices per question.
 pub const MAX_AGENT_QUESTION_ANSWERS: usize = 32;
-/// One answer to an agent's question, typed or chosen.
 pub const MAX_AGENT_ANSWER_BYTES: usize = 16 * 1024;
-/// Largest JSON reply to an agent session listing or turn-diff request.
 pub const MAX_AGENT_RESULT_BYTES: usize = 1024 * 1024;
-/// Largest complete image one paste upload may carry. Clients normalize
-/// pasted images to 5 MiB first, so this leaves that cap headroom.
 pub const MAX_PASTE_UPLOAD_BYTES: u32 = 6 * 1024 * 1024;
-/// Largest single chunk of a paste upload.
 pub const MAX_PASTE_UPLOAD_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_ARTIFACT_BYTES: u32 = 16 * 1024 * 1024;
 pub const MAX_ARTIFACT_CHUNK_BYTES: usize = 1024 * 1024;
@@ -139,12 +92,9 @@ pub const MAX_ARTIFACT_TOKEN_BYTES: usize = 64;
 pub const MAX_ARTIFACT_PATH_BYTES: usize = 4096;
 pub const MAX_ARTIFACT_MIME_BYTES: usize = 128;
 pub const MAX_ARTIFACT_REPLY_BYTES: usize = 64 * 1024;
-/// Largest decoded premultiplied BGRA Kitty image carried by the control lane.
 pub const MAX_KITTY_IMAGE_BYTES: u32 = 16 * 1024 * 1024;
-/// Largest ordered slice of one decoded Kitty image.
 pub const MAX_KITTY_IMAGE_CHUNK_BYTES: usize = 1024 * 1024;
 pub const MAX_KITTY_IMAGE_REMOVALS: usize = 512;
-/// Longest file extension a paste upload may name.
 pub const MAX_PASTE_UPLOAD_EXTENSION_BYTES: usize = 8;
 pub(crate) const MAX_SERVER_CAPABILITIES: usize = 64;
 pub(crate) const MAX_SERVER_CAPABILITY_BYTES: usize = 256;
@@ -154,27 +104,16 @@ pub(crate) const MAX_CONFIG_OVERRIDE_KEY_BYTES: usize = 128;
 pub(crate) const MAX_CONFIG_OVERRIDE_VALUE_BYTES: usize = 64 * 1024;
 pub(crate) const MAX_MUX_OPTION_VALUE_BYTES: usize = 64 * 1024;
 
-/// The commands an agent pane spawns: the user's own `codex` (driven over
-/// `codex app-server`) and `claude` (driven over its stream-json protocol). A
-/// command whose program is neither runs as an ACP adapter.
 pub const DEFAULT_AGENT_COMMAND: &str = "codex";
 pub const DEFAULT_AGENT_CLAUDE_CODE_COMMAND: &str = "claude";
 pub const DEFAULT_AGENT_AUTO_APPROVE: AgentAutoApprove = AgentAutoApprove::Reads;
-/// Longest adapter command line an agent mux option may carry.
 pub const MAX_AGENT_COMMAND_BYTES: usize = 4 * 1024;
 
-/// How far an agent pane may answer its own permission requests. The tier is
-/// the tool's ACP kind, not the tool's name: `Reads` lets a read-only kind
-/// through and parks everything else — an exec, an edit, a delete, or a kind
-/// the adapter did not declare — on the permission wizard.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AgentAutoApprove {
-    /// Every request waits for a human.
     Off,
-    /// Only read-only tool kinds are answered daemon-side.
     #[default]
     Reads,
-    /// Any kinded request is answered daemon-side.
     All,
 }
 
@@ -188,9 +127,6 @@ impl AgentAutoApprove {
         }
     }
 
-    /// The canonical spellings plus the flag spellings this option shipped
-    /// with, so an existing `agent-auto-approve = on` keeps meaning "approve
-    /// anything" instead of failing to parse.
     #[must_use]
     pub fn parse(value: &str) -> Option<Self> {
         let value = value.trim();
@@ -214,7 +150,6 @@ impl AgentAutoApprove {
 
 pub type ConfigOverrideEntry = (String, String);
 
-/// One daemon-owned mux option exposed through the native settings surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum MuxOptionKey {
     Prefix,
@@ -225,7 +160,6 @@ pub enum MuxOptionKey {
     SetClipboard,
     BufferLimit,
     SynchronizePanes,
-    // Postcard tags variants by index: append new keys, never reorder.
     ExperimentalEditorPane,
     HistoryTrickle,
     AgentCommand,
@@ -345,7 +279,6 @@ impl MuxOptionKey {
     }
 }
 
-/// The last writer of one effective daemon-owned mux option.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MuxOptionSource {
     #[default]
@@ -355,7 +288,6 @@ pub enum MuxOptionSource {
     RuntimeCommand,
 }
 
-/// One effective mux option value and its last-writer provenance.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MuxOptionValue {
     #[serde(deserialize_with = "deserialize_mux_option_value")]
@@ -363,7 +295,6 @@ pub struct MuxOptionValue {
     pub source: MuxOptionSource,
 }
 
-/// Canonically ordered, complete map of daemon-owned mux option state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct MuxOptions(BTreeMap<MuxOptionKey, MuxOptionValue>);
@@ -434,7 +365,6 @@ impl MuxOptions {
         Ok(())
     }
 
-    /// Ensure a wire payload contains exactly one bounded value for every supported key.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.0.len() != MuxOptionKey::ALL.len()
             || MuxOptionKey::ALL
@@ -516,7 +446,6 @@ pub enum ClientMessageKind {
     Error,
 }
 
-/// Where the status block sits relative to the main canvas.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StatusPosition {
     Top,
@@ -534,8 +463,6 @@ impl StatusPosition {
     }
 }
 
-/// One rendered tmux status line, expanded by the daemon. Text, never formats:
-/// a `#()` command runs once on the daemon's host, not once per client.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusLine {
     #[serde(deserialize_with = "deserialize_status_text")]
@@ -551,12 +478,6 @@ pub struct StatusLine {
     pub position: StatusPosition,
     pub message_line: u8,
     pub customized: bool,
-    /// The ten theme slots resolved for the client this line was rendered for,
-    /// the way `server_client_update_theme_colours` resolves them: the `theme`
-    /// option picks the dark or the light half of the roster, each chosen
-    /// option's value is expanded as a format, and the result keeps its colour
-    /// class. A client resolves `TmuxColour::Theme` through this and not
-    /// through a table of its own.
     pub theme: crate::ThemeColours,
     #[serde(deserialize_with = "deserialize_status_text")]
     pub message_style: String,
@@ -644,15 +565,11 @@ fn style_or_empty_parses(value: &str) -> bool {
 }
 
 impl StatusLine {
-    /// Whether the status block is off: zero published rows. Blank rows still
-    /// count — they consume geometry and paint `base_style`.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
 
-    /// Ensure a wire payload stays inside its byte, row, style, and
-    /// message-line bounds.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.left.len() > MAX_STATUS_TEXT_BYTES
             || self.right.len() > MAX_STATUS_TEXT_BYTES
@@ -1028,8 +945,6 @@ where
 #[path = "wire_bytes_tests.rs"]
 mod wire_bytes_tests;
 
-/// Total wire bytes an `AgentUpdates` batch carries, saturating rather than
-/// wrapping so a forged length can never appear small.
 #[must_use]
 pub fn agent_update_batch_bytes(items: &[Vec<u8>]) -> usize {
     items
@@ -1037,8 +952,6 @@ pub fn agent_update_batch_bytes(items: &[Vec<u8>]) -> usize {
         .fold(0_usize, |total, item| total.saturating_add(item.len()))
 }
 
-/// Whether `extension` can safely suffix a daemon-written file name. The daemon
-/// interpolates it into a path, so only lowercase ASCII alphanumerics pass.
 #[must_use]
 pub fn paste_upload_extension_is_valid(extension: &str) -> bool {
     !extension.is_empty()
@@ -1048,16 +961,12 @@ pub fn paste_upload_extension_is_valid(extension: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
 }
 
-/// What the daemon should do after it assembles one pasted-image upload.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PasteUploadPurpose {
-    /// Write the bytes on the daemon host and paste the resulting path.
     PastePath,
-    /// Keep the encoded image until the terminal prints its numbered placeholder.
     RecordPastedImage,
 }
 
-/// Encoded formats accepted by the pasted-image preview cache.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PastedImageFormat {
     Png,
@@ -1220,11 +1129,6 @@ where
     Ok(text)
 }
 
-/// Text that is a byte string on the wire. A Unix argument, environment entry
-/// and command output are bytes, not UTF-8, so the wire keeps them verbatim
-/// while every reader that wants text sees the lossy view through [`Deref`].
-/// Equality, ordering and hashing all run on the bytes, so two values that
-/// share a lossy rendering but differ in a byte stay distinct.
 #[derive(Clone, Default)]
 pub struct RawText {
     text: String,
@@ -1276,7 +1180,6 @@ impl RawText {
         std::ffi::OsString::from(self.text.clone())
     }
 
-    /// The stored bytes, verbatim.
     #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.bytes.as_deref().unwrap_or(self.text.as_bytes())
@@ -1287,13 +1190,11 @@ impl RawText {
         self.bytes.unwrap_or_else(|| self.text.into_bytes())
     }
 
-    /// The lossy text view. Identical to the bytes when they are UTF-8.
     #[must_use]
     pub fn as_str(&self) -> &str {
         &self.text
     }
 
-    /// The bytes as UTF-8, or `None` when they are not.
     #[must_use]
     pub fn to_utf8(&self) -> Option<&str> {
         self.bytes.is_none().then_some(self.text.as_str())
@@ -1309,14 +1210,12 @@ impl RawText {
         self.as_bytes().len()
     }
 
-    /// Appends `bytes` verbatim.
     pub fn push_bytes(&mut self, bytes: &[u8]) {
         let mut current = std::mem::take(self).into_bytes();
         current.extend_from_slice(bytes);
         *self = Self::from_bytes(current);
     }
 
-    /// Joins `parts` with `separator`, keeping every byte of every part.
     #[must_use]
     pub fn join(parts: &[Self], separator: &[u8]) -> Self {
         let mut bytes = Vec::new();
@@ -1329,7 +1228,6 @@ impl RawText {
         Self::from_bytes(bytes)
     }
 
-    /// Splits on the first `separator` byte, keeping both halves as bytes.
     #[must_use]
     pub fn split_once_byte(&self, separator: u8) -> Option<(Self, Self)> {
         let bytes = self.as_bytes();
@@ -1376,8 +1274,6 @@ impl PartialOrd for RawText {
 }
 
 impl Ord for RawText {
-    /// Lossy text first so the order agrees with `str`'s wherever a `&str`
-    /// borrow indexes a map of these, then bytes to keep distinct values apart.
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.text
             .cmp(&other.text)
@@ -1519,9 +1415,6 @@ impl<'de> Deserialize<'de> for RawText {
     }
 }
 
-/// A client-reported absolute path carried as the client's own OS bytes. A Unix
-/// path is a byte string, not text, so the wire keeps it verbatim and the daemon
-/// rebuilds the exact `PathBuf`; every other platform carries UTF-8 bytes.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientPath(
     #[serde(
@@ -1532,10 +1425,6 @@ pub struct ClientPath(
 );
 
 impl ClientPath {
-    /// The wire form of `path`, or `None` when this platform cannot represent it.
-    /// A client that gets `None`, or a path past
-    /// [`MAX_CLIENT_WORKING_DIRECTORY_BYTES`], omits the fact instead of failing
-    /// its connection.
     #[must_use]
     pub fn from_path(path: &Path) -> Option<Self> {
         #[cfg(unix)]
@@ -1698,8 +1587,6 @@ pub struct ClientHello {
     #[serde(deserialize_with = "deserialize_capabilities")]
     pub capabilities: Vec<String>,
     pub color_scheme: Option<TerminalColorScheme>,
-    /// The pane the client was invoked from (`$ZZ_PANE`). Untargeted commands
-    /// resolve against it, matching tmux's `$TMUX_PANE`.
     pub origin: Option<PaneId>,
     pub working_directory: Option<ClientPath>,
     #[serde(deserialize_with = "deserialize_client_environment")]
@@ -1738,11 +1625,6 @@ impl ClientHello {
     pub const CLIENT_CELL_CAPABILITY_PREFIX: &'static str = CLIENT_CELL_CAPABILITY_PREFIX;
     pub const CLIENT_FEATURES_CAPABILITY_PREFIX: &'static str = CLIENT_FEATURES_CAPABILITY_PREFIX;
     pub const STARTUP_CONFIG_OWNER_CAPABILITY: &'static str = "startup-config-owner-v1";
-    /// The client's terminal takes UTF-8, so the server hands it bytes
-    /// untouched. tmux.c raises `CLIENT_UTF8` from `-u`, from `$TMUX` being set
-    /// at all, or from the first of `LC_ALL`, `LC_CTYPE` and `LANG` that is set
-    /// and non-empty naming UTF-8; a client that says nothing is one
-    /// `server_client_print` sanitizes for.
     pub const CLIENT_UTF8_CAPABILITY: &'static str = "client-utf8-v1";
 }
 
@@ -1758,34 +1640,22 @@ pub struct ServerHello {
     pub appearance_provenance: AppearanceProvenance,
     pub mux_options: MuxOptions,
     pub status: StatusLine,
-    /// Every key table at attach time, refreshed by
-    /// [`EventPayload::KeyTablesChanged`].
     pub key_tables: Vec<KeyTableSnapshot>,
     #[serde(default)]
     pub clock: u64,
 }
 
-/// One key table flattened for the wire, so clients can label key hints,
-/// render binding help, and detect conflicts against the daemon's real
-/// bindings.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyTableSnapshot {
-    /// The table name: `root`, `prefix`, `copy-mode`, `copy-mode-vi`, or a
-    /// custom `-T` table.
     pub name: String,
     pub bindings: Vec<KeyBindingSnapshot>,
 }
 
-/// One binding in a published key table.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyBindingSnapshot {
-    /// The key in tmux-grammar spelling (`|`, `C-o`, `M-1`). Convert before display.
     pub key: String,
-    /// The bound command sequence, with canonical names rather than aliases.
     pub commands: Vec<CommandInvocation>,
-    /// Whether the binding repeats without leaving its table (`bind -r`).
     pub repeat: bool,
-    /// The `bind -N` annotation, when one was given.
     pub note: Option<String>,
 }
 
@@ -1918,10 +1788,6 @@ pub struct CommandInvocation {
     pub source: Option<SourceSpan>,
     command_blocks: Vec<u32>,
     expanded_alias_group: bool,
-    /// The caller's standard input, appended in v103. A command with a stream
-    /// sink carries the bytes here instead of in `args`, because for those
-    /// commands the payload is not an argument; `format_command` never prints
-    /// it. See `knowledge/designs/command-stream-channel.md`.
     stdin: Option<RawText>,
     #[serde(skip)]
     stdin_spent: bool,
@@ -1947,7 +1813,6 @@ impl CommandInvocation {
         }
     }
 
-    /// Attach the caller's standard input to this invocation.
     pub fn set_stdin(&mut self, stdin: impl Into<RawText>) {
         self.stdin = Some(stdin.into());
         self.stdin_spent = false;
@@ -1995,9 +1860,6 @@ impl CommandInvocation {
         self
     }
 
-    /// Mark an invocation as the grouped result of a `command-alias` expansion.
-    /// Only alias expansion calls this, so no parsed configuration, command
-    /// line, or Control line can produce the shape however it spells the name.
     #[must_use]
     pub fn into_expanded_alias_group(mut self) -> Self {
         self.expanded_alias_group = true;
@@ -2063,9 +1925,6 @@ impl CommandInvocation {
     }
 }
 
-/// tmux's `cmd_parse_from_arguments` word grammar: a word's trailing
-/// unescaped `;` ends a command (a bare `;` word ends one with no argument),
-/// while a trailing `\;` keeps a literal `;` in the word.
 #[must_use]
 pub fn split_command_words(words: impl IntoIterator<Item = RawText>) -> Vec<Vec<RawText>> {
     split_tagged_command_words(words.into_iter().map(|word| (word, ())))
@@ -2126,22 +1985,11 @@ pub enum PreparedCommandResult {
     Error(ServerError),
 }
 
-/// Which of the pin's two stdout writers claimed the command client's stream
-/// while this response's `output` was produced. `cmdq_print` and `file_write`
-/// both `dup` that stream once and then close it, so the first writer owns it:
-/// a `Raw` claim means the bytes are already exactly what the client must put
-/// on stdout, and any later print in the same run was dropped by the server.
-/// Inferring the claim from the bytes cannot work, because a raw buffer whose
-/// own last byte is a newline looks exactly like a print.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StdoutClaim {
-    /// Nothing wrote to the client's stdout, so `output` is empty.
     #[default]
     None,
-    /// `cmdq_print`: the server owns line termination and the client adds the
-    /// trailing newline the pin's `file_vprint` would have added.
     Print,
-    /// `file_write` on `-`: the bytes are the whole write, terminator included.
     Raw,
 }
 
@@ -2152,8 +2000,6 @@ pub enum CommandResponse {
         output: RawText,
         exit_code: u8,
         stderr: String,
-        /// Appended in v99 so the command client stops inferring the claim from
-        /// whether `output` ends in a newline.
         stdout_claim: StdoutClaim,
     },
     Error {
@@ -2244,9 +2090,6 @@ impl ServerError {
 pub enum KeyToken {
     Literal(String),
     Named(String),
-    /// One raw byte written straight to the pane, the way tmux emits
-    /// `KEYC_LITERAL` for `send-keys -H`. Bytes above 0x7f cannot ride
-    /// `Literal`, whose UTF-8 text would re-encode them.
     Raw(u8),
 }
 
@@ -2259,7 +2102,6 @@ pub enum InputMessage {
     Key {
         pane: PaneId,
         input: KeyInput,
-        /// Whether a committed-text message from the input method follows this key.
         text_follows: bool,
     },
     BrowserSurfaceText {
@@ -2269,7 +2111,6 @@ pub enum InputMessage {
     BrowserSurfaceKey {
         pane: PaneId,
         input: KeyInput,
-        /// Whether a committed-text message from the input method follows this key.
         text_follows: bool,
     },
     ResizeTerminal {
@@ -2304,8 +2145,6 @@ pub enum InputMessage {
     CommandPrompt {
         action: CommandPromptAction,
     },
-    /// Commits a split-divider drag. The ratio spans the split's full logical
-    /// extent in units of [`SPLIT_RATIO_BASIS`].
     ResizeSplit {
         window: WindowId,
         split: SplitId,
@@ -2314,8 +2153,6 @@ pub enum InputMessage {
     CancelPrefix {
         request_id: u64,
     },
-    /// The v107 per-client popup's input. Kept for its tag, never sent; it
-    /// goes at the next protocol version.
     #[serde(rename = "Popup")]
     RetiredPopup {
         action: PopupAction,
@@ -2326,8 +2163,6 @@ pub enum InputMessage {
     Confirm {
         action: ConfirmAction,
     },
-    /// The client's outer terminal was resized (`SIGWINCH`). The TUI emits it
-    /// after each resize; the daemon stores the facts per client.
     ClientTerminalSize {
         columns: u16,
         rows: u16,
@@ -2336,36 +2171,15 @@ pub enum InputMessage {
         focused: bool,
     },
     DismissClientMessage,
-    /// `server_client_check_mouse` resolved on the client: a decoded pointer
-    /// event that carries one of the pin's mouse key names, with the pane and
-    /// window it landed on and its cell in the client's own screen. The daemon
-    /// runs that key's binding with this record as its target.
     MouseKey {
         key: String,
         pane: Option<PaneId>,
         window: Option<WindowId>,
         column: u16,
         row: u16,
-        /// The axis of the divider a `Border` gesture grabbed, latched from
-        /// the button-down for the rest of the drag the way
-        /// `c->tty.mouse_drag_flag` latches it. `resize-pane -M` reads it.
         border: Option<Axis>,
-        /// What this same gesture would have handed the pane had no binding
-        /// claimed it. `window_pane_key` re-encodes `m` for the pane when a
-        /// binding runs `send -M`, and the client is the side that owns the
-        /// cell grid and the pixel geometry the encoding needs, so it travels
-        /// with the event and `send-keys -M` replays it.
         view_action: Option<TerminalViewAction>,
-        /// The same, for the press this gesture was latched from, which is
-        /// `m->lx`/`m->ly` on the pin's own event record. `copy-mode -M`
-        /// anchors its selection there (`cmd_mouse_at(wp, m, &x, &y, 1)`)
-        /// before the current cell extends it.
         press_action: Option<TerminalViewAction>,
-        /// The first column of the status range this gesture landed in, in the
-        /// client's own screen columns, absent anywhere else.
-        /// `cmd_display_menu_get_pos` reads `sr->start` off the target
-        /// client's own status entries for `-x W`; the client composes the row
-        /// and owns its ranges, so the start travels with the event.
         #[serde(default)]
         status_range_start: Option<u16>,
         #[serde(default)]
@@ -2394,15 +2208,8 @@ pub enum InputMessage {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandPromptAction {
-    /// Persists locally edited text without echoing a prompt event back.
-    Update {
-        input: String,
-        cursor: u32,
-    },
-    /// Submits the final value through the daemon-owned command path.
-    Submit {
-        input: String,
-    },
+    Update { input: String, cursor: u32 },
+    Submit { input: String },
     Close,
 }
 
@@ -2414,8 +2221,6 @@ pub enum BrowserCommand {
     Forward,
     SendKeys(Vec<KeyToken>),
     Key(KeyInput),
-    /// Writes the pane's latest frame to `path` as a PNG, then answers
-    /// `request_id` with [`GuiResponse`]. The daemon blocks the CLI until it replies.
     Screenshot {
         request_id: u64,
         #[serde(deserialize_with = "deserialize_gui_text")]
@@ -2427,8 +2232,6 @@ pub enum BrowserCommand {
     },
 }
 
-/// One image attached to an agent prompt, in the encoded form the daemon
-/// converts into an ACP content block.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentImage {
     #[serde(deserialize_with = "deserialize_agent_image_format")]
@@ -2440,7 +2243,6 @@ pub struct AgentImage {
     pub data: Vec<u8>,
 }
 
-/// One session-management request against a pane's daemon-owned adapter.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentSessionOpKind {
     List {
@@ -2464,7 +2266,6 @@ pub enum AgentSessionOpKind {
     },
 }
 
-/// The adapter connection phase a client renders without reading the stream.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AgentConnectionPhase {
     #[default]
@@ -2478,18 +2279,13 @@ pub enum AgentConnectionPhase {
     },
 }
 
-/// The permission request parked in the daemon, so a late-attaching client
-/// sees the same prompt the running client does.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentPermissionWire {
     pub request_id: u64,
-    /// JSON: the tool call plus its options, shaped like the reducer's input.
     #[serde(deserialize_with = "deserialize_agent_permission_payload")]
     pub payload: String,
 }
 
-/// Background work an agent is running: a shell command, a subagent, a
-/// monitor. The pane state carries the whole set, replaced on each change.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentTaskWire {
@@ -2503,7 +2299,6 @@ pub struct AgentTaskWire {
     pub tool_call_id: Option<String>,
 }
 
-/// One answer to an agent's question: the chosen labels, or typed text.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentQuestionAnswer {
     #[serde(deserialize_with = "deserialize_agent_option_text")]
@@ -2521,9 +2316,6 @@ pub struct AgentGitSummary {
     pub deletions: u32,
 }
 
-/// One agent pane's live state, small enough to publish to every client
-/// attached to the session. Postcard cannot carry the ACP SDK's JSON-shaped
-/// types, so auth methods, config options, and modes cross as JSON blobs.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AgentPaneWire {
     pub phase: AgentConnectionPhase,
@@ -2547,7 +2339,6 @@ pub struct AgentPaneWire {
 }
 
 impl AgentPaneWire {
-    /// Ensure a wire payload stays inside the agent state byte limits.
     pub fn validate(&self) -> Result<(), &'static str> {
         if let AgentConnectionPhase::Failed { message } = &self.phase
             && message.len() > MAX_AGENT_STATE_BLOB_BYTES
@@ -2613,8 +2404,6 @@ impl AgentPaneWire {
     }
 }
 
-/// The GUI's answer to one daemon-issued request, correlated by `request_id`.
-/// The only client-to-daemon reply in the protocol.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GuiResponse {
     Success {
@@ -2637,7 +2426,6 @@ impl GuiResponse {
         }
     }
 
-    /// Ensure a wire payload stays inside [`MAX_GUI_TEXT_BYTES`].
     pub fn validate(&self) -> Result<(), &'static str> {
         let text = match self {
             Self::Success { output, .. } => output,
@@ -2662,7 +2450,6 @@ pub enum CommandPromptKind {
     Value,
 }
 
-/// Which prompt history and completion family a prompt belongs to (`-T`).
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandPromptType {
@@ -2671,7 +2458,6 @@ pub enum CommandPromptType {
     Search,
 }
 
-/// How the prompt consumes keys before it submits.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CommandPromptMode {
@@ -2688,18 +2474,12 @@ pub enum CommandPromptMode {
 pub struct CommandPromptState {
     pub prompt: String,
     pub input: String,
-    /// Cursor position measured in Unicode scalar values, not bytes.
     pub cursor: u32,
     pub kind: CommandPromptKind,
-    /// Oldest-to-newest bounded history, populated only for command prompts.
     pub history: Vec<String>,
     pub prompt_type: CommandPromptType,
     pub mode: CommandPromptMode,
     pub no_freeze: bool,
-    /// `-P`: `window_pane_set_prompt` hangs the prompt on a pane rather than on
-    /// the client, and `redraw_draw_pane_prompt` draws it over that pane's last
-    /// row - its first under `status-position top` - leaving the status row
-    /// alone. `None` is the client prompt `status_prompt_set` raises.
     pub pane: Option<PaneId>,
     pub command_mode: bool,
     pub prompt_cursor: PromptCursor,
@@ -2716,9 +2496,6 @@ pub struct PromptCursor {
 pub enum ChooseTreeKind {
     Windows,
     Panes,
-    /// `window_client_mode`: the flat list of attached clients `choose-client`
-    /// opens, which shares the mode tree with the session tree and differs in
-    /// its rows, its sort sequence, its preview and its own keys.
     Clients,
 }
 
@@ -2757,11 +2534,8 @@ pub struct ChooseTreeItem {
     pub depth: u8,
     pub flags: u8,
     pub pane_kind: Option<ChooseTreePaneKind>,
-    /// The row's shortcut key in tmux-grammar spelling, empty for none.
     #[serde(deserialize_with = "deserialize_choose_item_key")]
     pub key: String,
-    /// The expanded `-F` row text, empty when the command carried no format
-    /// and the client draws its own row from `label` and `detail`.
     #[serde(deserialize_with = "deserialize_choose_item_text")]
     pub text: String,
 }
@@ -2784,7 +2558,6 @@ impl ChooseTreeItem {
     pub const EXPANDED: u8 = 1 << 0;
     pub const HAS_CHILDREN: u8 = 1 << 1;
     pub const ACTIVE: u8 = 1 << 2;
-    /// `mode_tree_item.tagged`: the row `t` marked, which `X` kills as a set.
     pub const TAGGED: u8 = 1 << 3;
 
     #[must_use]
@@ -2821,14 +2594,8 @@ pub struct ChooseTreeState {
     pub selected: u32,
     pub kind: ChooseTreeKind,
     pub filter_no_matches: bool,
-    /// `mtd->prompt`: the confirm prompt the chooser owns and draws in its own
-    /// screen, empty when none is open. It answers keys before the chooser's
-    /// own vocabulary does.
     #[serde(default, deserialize_with = "deserialize_choose_item_text")]
     pub prompt: String,
-    /// `mtd->help`: the help screen `F1` and `C-h` raise, which swallows the
-    /// next key of any kind and closes. A client that draws neither the screen
-    /// nor a marker eats a key its viewer meant for a row.
     #[serde(default)]
     pub help: bool,
 }
@@ -2846,63 +2613,34 @@ pub enum ChooseTreeAction {
     Activate,
     Select(u32),
     ActivateIndex(u32),
-    SearchStart {
-        reverse: bool,
-    },
+    SearchStart { reverse: bool },
     SearchAppend(String),
     SearchBackspace,
     SearchAccept,
     SearchCancel,
-    SearchNext {
-        reverse: bool,
-    },
+    SearchNext { reverse: bool },
     Close,
-    /// A raw key press the daemon resolves through the `choose-tree` key
-    /// table, so bindings stay rebindable and identical for every client.
     Key(KeyInput),
-    /// `t`: tag the current row, untagging every parent and child of it first.
     Tag,
-    /// `T`: untag every row.
     TagNone,
-    /// `C-t`: tag every row whose parent is absent and untag every other.
     TagAll,
-    /// `x`: raise the chooser's own `Kill session/window/pane?` prompt, or run
-    /// the kill outright when `choose-tree -y` armed the accept.
     KillCurrent,
-    /// `X`: the same for every tagged row, inert when nothing is tagged.
     KillTagged,
-    /// `K`: `mode_tree_swap(-1)`, which trades the current window row with the
-    /// sibling above it.
     SwapUp,
-    /// `J`: `mode_tree_swap(1)`, the same downwards.
     SwapDown,
-    /// `O`: `sort_next_order` over `window_tree_order_seq`.
     SortNext,
-    /// `r`: flip `sort_crit.reversed` and rebuild.
     SortReverse,
-    /// `F1` and `C-h`: `mode_tree_display_help`.
     Help,
-    /// `M--`: collapse every top-level item, not the current one.
     CollapseAll,
-    /// `M-+`: expand every top-level item.
     ExpandAll,
-    /// `m`: `server_set_marked` on the pane the row resolves to.
     Mark,
-    /// `M`: `server_clear_marked`.
     MarkClear,
-    /// `:`: the chooser's own command prompt, headed `(%u tagged) ` or
-    /// `(current) `, whose text runs against every tagged row or the current
-    /// one.
     CommandPrompt,
     PreviewCycle,
     FilterPrompt,
     ClearFilter,
-    /// `d` in `window_client_key`: detach the client the current row names.
     ClientDetach,
-    /// `D`: the same for every tagged client row.
     ClientDetachTagged,
-    /// `i`: swap the client mode's preview between the pane view and
-    /// `window_client_draw_info`.
     ClientInfo,
 }
 
@@ -2912,15 +2650,10 @@ pub struct ChooseBufferItem {
     pub preview: String,
     pub size_bytes: u64,
     pub created_unix_seconds: u64,
-    /// The row's shortcut key in tmux-grammar spelling, empty for none.
     #[serde(deserialize_with = "deserialize_choose_item_key")]
     pub key: String,
-    /// The expanded `-F` row text, empty when the command carried no format
-    /// and the client draws its own row from `name`, size, and `preview`.
     #[serde(deserialize_with = "deserialize_choose_item_text")]
     pub text: String,
-    /// `mode_tree_item.tagged`: the row `t` marked, which `D` deletes and `P`
-    /// pastes as a set.
     #[serde(default)]
     pub tagged: bool,
 }
@@ -2937,9 +2670,6 @@ pub struct ChooseBufferState {
     pub search: Option<ChooseBufferSearchState>,
     pub selected: u32,
     pub filter_no_matches: bool,
-    /// `mtd->help`, the same screen `F1` and `C-h` raise over the tree. Buffer
-    /// mode raises no prompt of its own: `window_buffer_do_delete` deletes
-    /// outright, which is why `choose-tree -y` has no counterpart here.
     #[serde(default)]
     pub help: bool,
     #[serde(default)]
@@ -2995,21 +2725,14 @@ pub enum ChooserPreview {
     Text {
         lines: Vec<String>,
     },
-    /// `window_client_draw`: the chosen client's current pane above a rule and
-    /// a copy of that client's own status rows, which is what the preview box
-    /// of the client mode holds.
     Client {
         #[serde(with = "crate::pane_frame::optional_viewport_bytes")]
         viewport: Option<TerminalViewport>,
         status: Vec<String>,
         status_style: String,
-        /// The previewed client's own width, which its status screen was
-        /// composed at before the box copies the first columns of it.
         status_width: u32,
         border_style: String,
     },
-    /// `window_client_draw_info`: the info view `i` raises, already expanded
-    /// into the pin's own styled lines.
     Markup {
         lines: Vec<String>,
     },
@@ -3036,41 +2759,23 @@ pub enum ChooseBufferAction {
     Delete,
     Select(u32),
     PasteIndex(u32),
-    SearchStart {
-        reverse: bool,
-    },
+    SearchStart { reverse: bool },
     SearchAppend(String),
     SearchBackspace,
     SearchAccept,
     SearchCancel,
-    SearchNext {
-        reverse: bool,
-    },
+    SearchNext { reverse: bool },
     Close,
-    /// A raw key press the daemon resolves through the `choose-buffer` key
-    /// table, so bindings stay rebindable and identical for every client.
     Key(KeyInput),
-    /// `t`: tag the current row. The buffer tree is flat, so no row has a
-    /// parent or a child to untag first.
     Tag,
-    /// `T`: untag every row.
     TagNone,
-    /// `C-t`: tag every row, every one of which has an absent parent here.
     TagAll,
-    /// `O`: `sort_next_order` over `window_buffer_order_seq`.
     SortNext,
-    /// `r`: flip `sort_crit.reversed` and rebuild.
     SortReverse,
-    /// `F1` and `C-h`: `mode_tree_display_help`.
     Help,
-    /// `M--`: `mode_tree_build` over a flat tree, which changes nothing.
     CollapseAll,
-    /// `M-+`: the same.
     ExpandAll,
-    /// `D`: `window_buffer_do_delete` over every tagged row.
     DeleteTagged,
-    /// `P`: `window_buffer_do_paste` over every tagged row, which closes the
-    /// chooser the way a single paste does.
     PasteTagged,
     PreviewCycle,
     FilterPrompt,
@@ -3081,11 +2786,8 @@ pub enum ChooseBufferAction {
 pub struct PaneIndicator {
     pub pane: PaneId,
     pub index: u32,
-    /// ASCII key that selects this pane, or zero when the pane has no shortcut.
     pub select_key: u8,
     pub flags: u8,
-    /// The expanded `display-panes-format` product for this pane, empty until
-    /// the daemon publishes it.
     #[serde(deserialize_with = "deserialize_pane_indicator_label")]
     pub label: String,
 }
@@ -3206,19 +2908,12 @@ pub enum PopupAction {
     },
     TerminalView(TerminalViewAction),
     Close,
-    /// One pointer event in the owning client's own cell grid, plus the
-    /// terminal action the client would have handed the popup's job for it.
-    /// tmux keeps the border, drag, and menu policy in `popup_key_cb`, so the
-    /// client reports the press and the daemon decides which of the two runs.
     Pointer {
         pointer: PopupPointer,
         view: Option<TerminalViewAction>,
     },
 }
 
-/// A pointer event as `popup_key_cb` reads one: a cell in the client's grid,
-/// the button, whether the report carried the drag or release flag, and
-/// whether meta was held.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PopupPointer {
     pub column: u16,
@@ -3241,10 +2936,7 @@ pub enum PopupPointerButton {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MenuItem {
     pub name: String,
-    /// Action key the row answers to, kept even when the row has no room to
-    /// annotate it.
     pub key: Option<String>,
-    /// Action key the row has room to draw beside its name.
     pub annotation: Option<String>,
     pub enabled: bool,
 }
@@ -3267,9 +2959,6 @@ pub struct MenuState {
     pub items: Vec<Option<MenuItem>>,
     pub selected: Option<u32>,
     pub stay_open: bool,
-    /// `display-menu` without `-M` and without an invoking mouse event is
-    /// `MENU_NOMOUSE` on the pin: it answers only button 1, and any other
-    /// button leaves it.
     #[serde(default)]
     pub mouse_keys: bool,
 }
@@ -3307,20 +2996,15 @@ pub enum DetachReason {
     ServerStopping,
 }
 
-/// What the presentation process does once it stops attending a session, the
-/// way the pin picks between `MSG_DETACH`, `MSG_DETACHKILL`, and `MSG_EXEC`.
-// Postcard tags variants by index: append new actions, never reorder.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientExitAction {
-    /// Print the ordinary detach notice and exit.
     #[default]
     Exit,
-    /// Print the SIGHUP detach notice, then send `SIGHUP` to the client
-    /// process's parent, as `detach-client -P` asks in cmd-detach-client.c.
     ParentHangup,
-    /// Replace the client process with `shell -c command`, as
-    /// `detach-client -E` asks through `server_client_exec`.
-    Exec { command: String, shell: String },
+    Exec {
+        command: String,
+        shell: String,
+    },
 }
 
 impl ClientExitAction {
@@ -3468,22 +3152,10 @@ where
     deserializer.deserialize_seq(StartupConfigCausesVisitor)
 }
 
-/// Which of the pin's two OSC 52 writers produced one clipboard event.
-///
-/// The pin keeps them apart by construction. `window_copy_copy_buffer`,
-/// `cmd-set-buffer -w` and `cmd-load-buffer -w` all hand the terminal an empty
-/// `clip` field, which asks it for its own default target; `input_osc_52`
-/// forwards whatever field the application named, filtered through
-/// `cpqs01234567`. zz publishes both as one event, so the producer has to ride
-/// the event: every zz publication carried `request_id` 0 except a
-/// client-issued `CopySelection`, and a raw client could not tell the pin's
-/// two writers apart from that alone.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClipboardProducer {
-    /// The server wrote the selection itself, with the pin's empty field.
     #[default]
     Server,
-    /// An application in the pane asked for this write and named the field.
     Application,
 }
 
@@ -3514,8 +3186,6 @@ pub enum EventPayload {
         request_id: u64,
         target: ClipboardTarget,
         text: String,
-        /// Appended in v99. Which of the pin's two OSC 52 producers wrote this
-        /// selection, which is what decides the field a raw client names.
         producer: ClipboardProducer,
     },
     BrowserCommand {
@@ -3564,8 +3234,6 @@ pub enum EventPayload {
         uri: String,
     },
     FocusSidebar,
-    /// The receiving client's prefix sequence armed or cleared, so the client
-    /// can claim those keys from focus contexts the daemon never sees.
     PrefixArmed {
         armed: bool,
     },
@@ -3573,9 +3241,6 @@ pub enum EventPayload {
         session: SessionId,
         by: Option<String>,
         reason: DetachReason,
-        /// What the receiving client does after it stops attending. Appended in
-        /// v91 so `detach-client -E` and `-P` can reach the presentation
-        /// process the way `MSG_EXEC` and `MSG_DETACHKILL` do.
         action: ClientExitAction,
     },
     HistoryChunk {
@@ -3587,14 +3252,9 @@ pub enum EventPayload {
         rows: Vec<Vec<PackedCell>>,
         dictionary: TerminalDictionary,
     },
-    // Postcard tags variants by index: append new payloads, never reorder.
-    /// A program rang BEL in `pane` and the bell was not already showing. The
-    /// latched state rides [`PaneSnapshot::bell`].
     Bell {
         pane: PaneId,
     },
-    /// The full replacement key tables, mirroring
-    /// [`ServerHello::key_tables`].
     KeyTablesChanged {
         tables: Vec<KeyTableSnapshot>,
     },
@@ -3617,9 +3277,6 @@ pub enum EventPayload {
         pane: PaneId,
         image_ids: Vec<u32>,
     },
-    /// One coalesced batch of JSON agent stream items, numbered from the
-    /// pane's journal sequence. `first_seq` names the first item; the rest
-    /// follow it one by one.
     AgentUpdates {
         pane: PaneId,
         first_seq: u64,
@@ -3633,8 +3290,6 @@ pub enum EventPayload {
         pane: PaneId,
         state: AgentPaneWire,
     },
-    /// The client's agent lane overflowed and was cleared; the client answers
-    /// with [`ProtocolMessage::AgentReplay`] from `next_seq`.
     AgentLagged {
         pane: PaneId,
         next_seq: u64,
@@ -3655,8 +3310,6 @@ pub enum EventPayload {
     PrefixCancelled {
         request_id: u64,
     },
-    /// The v107 per-client popup. Kept for its tag, never sent; it goes at
-    /// the next protocol version.
     #[serde(rename = "Popup")]
     RetiredPopup {
         state: Option<PopupState>,
@@ -3704,10 +3357,6 @@ pub enum EventPayload {
         pane: Option<PaneId>,
         value: String,
     },
-    /// The daemon retired the identified timed message: its duration ran out,
-    /// or a key dismissed it. Surfaces drop the message only while the identity
-    /// still matches what they are showing, so a retired message's timer can
-    /// never take down the message that replaced it.
     TimedClientMessageCleared {
         message_id: u64,
     },
@@ -3727,9 +3376,6 @@ pub enum EventPayload {
     ControlCommandOutput {
         output: String,
     },
-    /// One configuration diagnostic, typed by where it was raised rather than by
-    /// its prose, so Control can route it to `%config-error` the way
-    /// `cfg_add_cause` decides in the pin.
     ControlConfigError {
         text: String,
     },
@@ -3869,7 +3515,6 @@ pub enum ProtocolMessage {
     },
     Input(InputMessage),
     Event(Event),
-    /// Reply to a `BrowserCommand::Screenshot`.
     GuiResponse(GuiResponse),
     Resync,
     RequestFull {
@@ -3880,8 +3525,6 @@ pub enum ProtocolMessage {
         start: u32,
         count: u32,
     },
-    /// Starts streaming one pasted image to the host `pane` lives on. `purpose`
-    /// decides whether completion pastes a file path or records preview bytes.
     PasteUploadBegin {
         upload_id: u64,
         pane: PaneId,
@@ -3891,8 +3534,6 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_paste_upload_total")]
         total_bytes: u32,
     },
-    /// One ordered slice of the upload `upload_id` announced. No offsets, no end
-    /// marker: the upload completes at the declared `total_bytes`.
     PasteUploadChunk {
         upload_id: u64,
         #[serde(
@@ -3925,7 +3566,6 @@ pub enum ProtocolMessage {
         pane: PaneId,
         number: u32,
     },
-    // Postcard tags variants by index: append new messages, never reorder.
     AgentPrompt {
         pane: PaneId,
         #[serde(deserialize_with = "deserialize_agent_prompt_text")]
@@ -3936,13 +3576,9 @@ pub enum ProtocolMessage {
     AgentCancel {
         pane: PaneId,
     },
-    /// Reclaim the pane's queued prompts; the daemon returns them inside the
-    /// stream so the composer refills.
     AgentUnqueue {
         pane: PaneId,
     },
-    /// Answer a parked permission request. `None` cancels it, and the first
-    /// answer wins: a late one is a no-op.
     AgentRespondPermission {
         pane: PaneId,
         request_id: u64,
@@ -3970,9 +3606,6 @@ pub enum ProtocolMessage {
         pane: PaneId,
         op: AgentSessionOpKind,
     },
-    /// Replay the pane's journal from `from_seq`, then tail it. Sent on
-    /// attach, after [`EventPayload::AgentLagged`], and when a pane becomes
-    /// visible.
     AgentReplay {
         pane: PaneId,
         from_seq: u64,
@@ -3992,68 +3625,35 @@ pub enum ProtocolMessage {
     SetTerminalPreview {
         enabled: bool,
     },
-    /// Ask the invoking command client to do one bounded file operation on its
-    /// own host, the way the pin's `file_read`/`file_write` hand `MSG_READ_OPEN`
-    /// and `MSG_WRITE_OPEN` to an unattached client instead of touching the
-    /// server's filesystem.
     ClientFileRequest(ClientFileRequest),
-    /// The answer to exactly one [`ProtocolMessage::ClientFileRequest`].
     ClientFileResponse(ClientFileResponse),
-    /// Ask the daemon to resolve the `~` user names one Control line needs, the
-    /// way the pin's own parser reads them from the server's environment and the
-    /// server host's passwd database. The empty name is a bare `~`.
     HomeDirectoryRequest {
         request_id: u64,
         #[serde(deserialize_with = "deserialize_home_directory_users")]
         users: Vec<String>,
     },
-    /// The answer to exactly one [`ProtocolMessage::HomeDirectoryRequest`], one
-    /// entry per requested name in the order asked. `None` is a failed lookup.
     HomeDirectoryResponse {
         request_id: u64,
         #[serde(deserialize_with = "deserialize_home_directories")]
         homes: Vec<Option<String>>,
     },
-    /// The daemon parked this client's command queue on `request_id`: nothing
-    /// else the client queued runs until that request resumes, the way a
-    /// `CMD_RETURN_WAIT` item holds `cmdq_next`. A Control client whose input
-    /// already reached end of file stops waiting here, which is what frees the
-    /// pin's queue when the client exits.
     CommandQueueParked {
         request_id: u64,
     },
-    /// Ask the daemon to read the `$NAME` variables one Control line needs out
-    /// of its global environment, the way the pin's `yylex_token_variable`
-    /// reads them through `environ_find(global_environ, name)` while the server
-    /// parses that line. Appended in v99.
     EnvironmentRequest {
         request_id: u64,
         #[serde(deserialize_with = "deserialize_environment_names")]
         names: Vec<String>,
     },
-    /// The answer to exactly one [`ProtocolMessage::EnvironmentRequest`], one
-    /// entry per requested name in the order asked. `None` is an unset name,
-    /// which the pin expands to nothing. Appended in v99.
     EnvironmentResponse {
         request_id: u64,
         #[serde(deserialize_with = "deserialize_environment_values")]
         values: Vec<Option<String>>,
     },
-    /// The terminal features a client learned from its own terminal after the
-    /// hello, the way `tty_keys_device_attributes`, `tty_keys_device_attributes2`
-    /// and `tty_keys_extended_device_attributes` reach `c->term_features` once
-    /// the replies arrive. The daemon folds them into the client's feature bits
-    /// for `#{client_termfeatures}` and `#{client_colours}`; a name it does not
-    /// know is dropped and the rest of the batch still lands. Appended in v102.
     ClientTerminalFeatures {
         #[serde(deserialize_with = "deserialize_client_terminal_features")]
         features: Vec<String>,
     },
-    /// The terminal's own name, as `tty_keys_extended_device_attributes` reads
-    /// it out of the XTVERSION reply and stores it in `c->term_type`. The
-    /// daemon answers `#{client_termtype}` from it, and
-    /// `window_client_draw_info` draws that as `Terminal Type`. Appended in
-    /// v103.
     ClientTerminalType {
         #[serde(deserialize_with = "deserialize_client_terminal_type")]
         term_type: String,
@@ -4129,14 +3729,12 @@ pub enum ProtocolMessage {
     TtyInputClosed {
         handoff: u64,
     },
-    /// Answer an agent's question card. First answer wins, like a permission.
     AgentAnswerQuestion {
         pane: PaneId,
         request_id: u64,
         #[serde(deserialize_with = "deserialize_agent_question_answers")]
         answers: Vec<AgentQuestionAnswer>,
     },
-    /// Stop one background task the pane state lists.
     AgentStopTask {
         pane: PaneId,
         #[serde(deserialize_with = "deserialize_agent_option_text")]
@@ -4182,8 +3780,6 @@ pub enum ProtocolMessage {
         #[serde(deserialize_with = "deserialize_artifact_reply")]
         text: String,
     },
-    /// Type text into the turn the pane is running, which Claude Code and
-    /// Codex take as steering. With no turn running it is a prompt.
     AgentSteer {
         pane: PaneId,
         #[serde(deserialize_with = "deserialize_agent_prompt_text")]
@@ -4322,7 +3918,6 @@ where
     Ok(homes)
 }
 
-/// What the daemon wants the client to do with the file it named.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClientFileOperation {
     Read,
@@ -4340,9 +3935,6 @@ pub enum ClientFileOperation {
     ReadStdinChunk,
 }
 
-/// One file operation the daemon asks its invoking client to perform. `path` is
-/// already absolute: the daemon expanded it in its own format context and
-/// against the client's own working directory, exactly as `file_get_path` does.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientFileRequest {
     pub request_id: u64,
@@ -4351,9 +3943,6 @@ pub struct ClientFileRequest {
     pub operation: ClientFileOperation,
 }
 
-/// The result of one [`ClientFileRequest`]: `error` carries the client's own
-/// failure text when the operation did not complete, and `data` carries the
-/// bytes a read produced.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientFileResponse {
     pub request_id: u64,

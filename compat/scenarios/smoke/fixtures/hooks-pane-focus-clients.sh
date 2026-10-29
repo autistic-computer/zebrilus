@@ -145,10 +145,6 @@ await_clients 2
 sleep 0.9
 mark attached
 
-# The pane flag is the OR across attached, focused, overlay-free clients, so
-# only the last client to lose focus and the first to regain it move it, and
-# window_update_focus runs before the client-focus-out notify and after the
-# client-focus-in one.
 drive first "keys $focus_out"
 mark first-out
 drive second "keys $focus_out"
@@ -160,9 +156,6 @@ mark second-in
 drive second "keys $focus_out"
 mark second-out-again
 
-# server_client_set_overlay and server_client_clear_overlay evaluate the
-# client's current window unconditionally, and the only focused client left is
-# the one taking the overlay.
 first_tty="$(probe list-clients -t "=pf" -F '#{client_tty}' | sed -n '1p')"
 probe display-panes -t "$first_tty" -d 0 'select-pane -t %%' >/dev/null 2>&1 &
 sleep 1.2
@@ -170,8 +163,6 @@ mark overlay-open
 drive first "keys 30"
 mark overlay-closed
 
-# server_client_set_session evaluates the old session's window and then the new
-# one, both ahead of the client-session-changed notify.
 probe switch-client -c "$first_tty" -t other
 sleep 0.9
 mark switch-away

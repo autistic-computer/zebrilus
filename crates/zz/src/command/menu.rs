@@ -57,14 +57,6 @@ impl MenuView {
         self.mux.read(cx).send_input(InputMessage::Menu { action });
     }
 
-    /// One pointer report, answered by `menu_key_cb`'s whole mouse arm rather
-    /// than by the desktop. A `MENU_NOMOUSE` menu never hears a bare motion,
-    /// because the pin leaves motion reporting off for it; it swallows a
-    /// button-1 press and leaves on anything else, wherever the pointer is. A
-    /// menu that took the mouse moves its highlight under a press or a motion,
-    /// chooses the highlighted row when a release lands inside the box, closes
-    /// when a release lands outside it, and, when it is stay-open, closes
-    /// instead on any report that is neither a release, a wheel nor a drag.
     pub(crate) fn pointer(
         &mut self,
         kind: MenuPointerKind,

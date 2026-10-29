@@ -1,5 +1,3 @@
-// mcp-call.mjs "<server command>" list | call <tool> '<json args>' [...more call pairs]
-// Minimal MCP stdio client: starts the server, initializes, then lists tools or calls them in order.
 import { spawn } from 'node:child_process';
 const [serverCommand, ...rest] = process.argv.slice(2);
 if (!serverCommand) { console.error('usage: mcp-call.mjs "<server command>" list | call <tool> <json> ...'); process.exit(2); }

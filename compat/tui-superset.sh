@@ -1,86 +1,4 @@
 #!/usr/bin/env bash
-# The zz-only commands beside ordinary terminal behaviour.
-#
-# tui-screen-diff.sh compares two screens driven the same way. This fixture is
-# for the twenty-five verbs the pin has no counterpart for: it drives them on
-# the raw TUI, records what each one DRAWS or REFUSES, and then checks that the
-# terminal around them is still the pin's.
-#
-# WHAT A REFUSAL IS. `zz agent-send` answers `agent commands require the zz app`
-# in a raw TUI. The pin has no agent-send at all, so that answer is a DECLARED
-# case with no counterpart, not a divergence. What would be a divergence is a
-# zz verb that changes what an ordinary tmux command means, leaves a canvas the
-# pin would not draw, or takes a key away from the pane that owns it. The three
-# clauses below are ordered that way: what the verbs do, what the terminal does
-# around them, and what a second client sees.
-#
-# REACHABLE BY THE DECLARED NAME. crates/zz-protocol/src/catalog.rs
-# NATIVE_COMMAND_NAMES is the list, and `names` below walks it from the same
-# source of truth rather than from a copy: every name has to resolve to a
-# command, which is the opposite of `unknown command: NAME`. No compatibility
-# profile, no activation mode and no width invokes any of them; the only paths
-# are the CLI and a user binding, and every verb here is driven through both.
-#
-# THE TWO PATHS. Every verb is driven from the CLI, where its answer is stdout,
-# stderr and an exit status, and through an ordinary `bind-key -n` binding,
-# where its answer is the client's message row. A verb that answers nothing
-# visible is bound as a sequence, `verb ; rename-window TOKEN`, and the case
-# waits for the token on that same row: a bound sequence runs its second command
-# on both binaries even when the first one failed, so the rename alone proves
-# nothing, but a zz client message stays on the row indefinitely, so a verb that
-# refused keeps its message where the status row would be and the token never
-# arrives. A message longer than the client is cut at the client's width, and
-# the two that are asserted whole rather than cut.
-#
-# WHAT CLAUSE 2 DRIVES AROUND EACH SURFACE: create (new-window), select
-# (select-window, select-pane), split, resize, detach and reattach, the same
-# commands against the same explicit targets on both sides. A pane surface
-# survives a reattach because a pane is session state; the sidebar and the
-# command-output overlay do not, because they are the client's.
-#
-# THE DECODED SCREEN IS THE CONTRACT. Every screen comparison reads the outer
-# pinned tmux's own grid through `capture-pane -p -e`, so attribute order,
-# batching and cursor spelling collapse on both sides before anything is
-# compared, and the colour class does not. The cursor is read whole from the
-# outer pane. A wait is always a bounded wait_for or wait_settled on an
-# observable; no wait in this file is a sleep.
-#
-# CONTROLLED DYNAMIC VALUES, set on both sides before the first comparison:
-#   status-right ''      the default ends in a clock and in a strftime date.
-#   status-left L        fixed literal, so the left of the row is asserted.
-#   automatic-rename off plus rename-window win.
-#   select-pane -T title on every pane before a canvas comparison.
-#   the inner shell      ENV= PS1='$ ' exec /bin/sh: no rc file, and a prompt
-#                        that carries no host, user, path or clock.
-#   HOME and XDG_CONFIG_HOME per side, inside the scratch directory, so
-#   import-tmux-config really has no tmux configuration to find and the sidebar
-#   tree has no user hosts in it.
-# A canvas comparison is always preceded by a clear and a marker on both sides,
-# because a zz verb that splits and un-splits reflows the pane and the pin's
-# untouched pane never did.
-#
-# THE SIDEBAR TAKES COLUMNS FROM THE SESSION. focus-sidebar makes the client
-# report 120 - 28 - 1 = 91 usable columns, so the shared window becomes 91 wide
-# for every client on that session, exactly as an ordinary 91-column tmux client
-# would. Clause 3 therefore gives the second client 91 columns on BOTH sides:
-# with a client WIDER than the window, the pin fills the leftover area with a
-# border and middle dots (screen-redraw.c) and the raw TUI leaves it blank.
-# MEASURED 2026-09-13 with two PLAIN clients, 120 and 91 columns, and no zz verb
-# anywhere: the pin's 120-column client draws `│` at column 91 and `·` across
-# columns 92..119 on every window row, the raw TUI draws spaces. That gap is the
-# ordinary multi-client canvas, not a superset command, so it is recorded in
-# TUI-012's evidence for the client-inventory obligation and is deliberately
-# not a case of this file: sizing the second client to the window keeps every
-# cell of clause 3 asserted instead of waiving a band of columns.
-#
-# --self-check drives one deliberate fault per channel: a name the catalog does
-# not carry, a refusal message that does not match, a surface that never drew,
-# a canvas that stayed different after the surface withdrew, and a key the
-# sidebar was supposed to swallow. A fixture that only passes has proved nothing.
-#
-# ZZ_SUPERSET_CAPTURE_DIR, when set, keeps every capture as text. A bounded wait
-# that runs out dumps diagnostics into ZZ_SUPERSET_DIAGNOSTICS_DIR or a fresh
-# /tmp directory it names.
 set -eEuo pipefail
 
 usage() {
@@ -158,10 +76,6 @@ scrubbed() {
     -u XDG_STATE_HOME -u ZZ_LOG_DIR \
     TMUX_TMPDIR=/tmp "$@"
 }
-# Every one-shot command is bounded. A client command that never answers is a
-# fixture error in twenty seconds instead of a run that stalls until the
-# harness kills it; the daemon itself is started with the bound disabled,
-# which is what a duration of 0 means to timeout(1).
 ZZ_CALL_TIMEOUT=20
 tmux_outer_command() {
   scrubbed HOME="$OUTER_HOME" XDG_CONFIG_HOME="$OUTER_HOME/config" \
@@ -196,9 +110,6 @@ cleanup() {
     wait "$ZZ_PID" >/dev/null 2>&1
   fi
   rm -f -- "$ZZ_SOCKET" "/tmp/tmux-$(id -u)/$OUTER_SOCKET_NAME" "/tmp/tmux-$(id -u)/$INNER_SOCKET_NAME"
-  # /tmp is a tmpfs on the campaign box and the daemon can still be writing its
-  # ring log while the tree comes down, so the removal is retried rather than
-  # leaving a scratch directory behind.
   local attempt
   for ((attempt = 0; attempt < 20; attempt++)); do
     rm -rf -- "$SCRATCH_DIR" 2>/dev/null && break
@@ -224,8 +135,6 @@ diagnostics_dir() {
   printf '%s\n' "$DIAGNOSTICS_DIR"
 }
 
-# A timeout is a failed check, and a failed check has to say what it was waiting
-# for and what the screen showed at that moment.
 dump_diagnostics() {
   local label="$1"
   local dir window log
@@ -264,8 +173,6 @@ dump_diagnostics() {
   ls -1 -- "$dir" >&2 || true
 }
 
-# The reporting form of wait_for: a case that owns the failure message uses this
-# and prints its own, where wait_for's own timeout is a fixture error.
 wait_for_quietly() {
   local attempt
   for ((attempt = 0; attempt < WAIT_ATTEMPTS; attempt++)); do
@@ -312,19 +219,10 @@ capture_plain() {
 cursor_tuple() {
   tmux_outer_command display-message -p -t "=$OUTER_SESSION:$1" "$CURSOR_FORMAT"
 }
-# The client's message row is the pin's message row: the last row of the
-# client, in place of the status line, is where a command's answer lands when
-# the command came from a key rather than from the CLI.
 client_message_row() {
   capture_plain "$1" | tail -1
 }
 
-# Every zz verb in this file runs through here: the combined output and the
-# status are kept so a case can assert the exact message and nothing else has
-# to re-run the command.
-# Standard input is closed for every one of them: agent-send and send-text read
-# it when no text is on the command line, and a one-shot that blocks on an
-# inherited terminal is a hang, not a measurement.
 run_zz() {
   set +e
   LAST_OUTPUT="$(zz_command "$@" 2>&1 </dev/null)"
@@ -347,9 +245,6 @@ record() {
   printf 'note  %s %s recorded, not asserted: %s\n' "$CASE_GROUP" "$1" "$2"
 }
 
-# A refusal is asserted whole: the status has to be non-zero AND the message has
-# to be the exact declared one, so a verb that starts answering something else
-# is caught even while it keeps refusing.
 refuses() {
   local name="$1"
   local expected="$2"
@@ -377,7 +272,6 @@ accepts() {
   pass "$name"
 }
 
-# Bounded, never a sleep: the text has to reach the decoded screen.
 WAIT_ATTEMPTS=240
 wait_text() {
   local side="$1"
@@ -435,9 +329,6 @@ screen_lacks() {
     fail "$name" "the $side screen still carries: $text"
   fi
 }
-# A message longer than the client is cut at the client's width before it
-# reaches the row, so a case whose message does not fit asserts the cut text
-# rather than a prefix it chose: that asserts the truncation too.
 message_row_is_truncated() {
   local name="$1"
   local side="$2"
@@ -516,11 +407,6 @@ send_both() {
 clear_both() {
   send_both "printf '\\033[2J\\033[3J\\033[H'"
 }
-# The clear and the marker are ONE command line. Sent as two, the second line's
-# echo can interleave with the first's before the shell has read it: measured
-# 2026-09-13 right after the command-output overlay closed, where the pane's
-# own grid read `pprintf 'MARK-%s\n' closedrintf '\033[2J...'` and neither
-# command ran. One line cannot interleave with itself.
 clear_and_mark() {
   send_both "printf '\\033[2J\\033[3J\\033[HMARK-%s\\n' $1"
   settle_both "MARK-$1" "$1"
@@ -541,8 +427,6 @@ pane_holds_marker() {
   [ -n "$pane" ] || return 1
   side_command "$1" capture-pane -p -S -20 -t "$pane" 2>/dev/null | grep -Fq "$2"
 }
-# A checkpoint is settled when the marker is on the screen AND the screen has
-# not changed between two polls. Both halves are observable and bounded.
 wait_settled() {
   local window="$1"
   local marker="$2"
@@ -571,7 +455,6 @@ settle_both() {
   [ "$PIN_ATTACHED" -eq 0 ] ||
     wait_settled tmux "$1" "$2 settled on the tmux screen" tmux
 }
-# Rows first, then the cursor, over the whole decoded screen of both windows.
 diff_screens() {
   local name="$1"
   local left="$2"
@@ -616,9 +499,6 @@ diff_screens() {
   printf '      cursor %s: %s\n' "$left" "$left_cursor"
   return 1
 }
-# The canvas the pin would draw, cell for cell, after the surface withdrew.
-# Both sides are cleared and marked first: a verb that splits and un-splits
-# reflows its pane and the pin's untouched pane never did.
 canvas_is_the_pin() {
   local name="$1"
   pin_pane_titles
@@ -629,8 +509,6 @@ canvas_is_the_pin() {
     fail "$name" "the canvas is not the one the pin draws"
   fi
 }
-
-# --- attaching -------------------------------------------------------------
 
 write_attach() {
   local side="$1"
@@ -657,8 +535,6 @@ client_count_is() {
   [ "$(side_command "$1" list-clients -F '#{client_session}' 2>/dev/null | grep -c "^$INNER_SESSION$")" = "$2" ]
 }
 
-# One outer window per client. The zz session always exists; the pin session and
-# its clients only where a case compares canvases.
 open_client() {
   local window="$1"
   local side="$2"
@@ -673,8 +549,6 @@ open_client() {
     outer_pane_is "=$OUTER_SESSION:$window" "${columns}x$ROWS_UNDER_TEST"
 }
 
-# A fresh pair of sessions and a fresh outer server for every group, so an
-# option or a pane a group left behind cannot reach the next one.
 fresh_group() {
   local label="$1"
   local with_pin="$2"
@@ -713,9 +587,6 @@ attach_default_clients() {
   fi
 }
 
-# A verb reached through a user binding, which is the second path the contract
-# names. -n keeps the key out of every prefix table, and the key is sent to the
-# CLIENT through its outer pane, never to the inner pane.
 bind_and_press() {
   local key="$1"
   shift
@@ -725,13 +596,6 @@ bind_and_press() {
 press() {
   tmux_outer_command send-keys -t "=$OUTER_SESSION:${CLIENT_WINDOW:-zz}" "$@"
 }
-# Bounded, and it passes only when the pane's own grid holds the text, which no
-# amount of re-sending can produce while a surface owns the keyboard.
-# An Escape and the next character merge into one Alt- key at the terminal
-# parser, so the Escape that unfocuses a surface and the key that has to reach
-# the pane are sent in separate rounds, each round ending in a bounded poll on
-# the only observable there is: the pane's own grid. Nothing here can pass while
-# a surface owns the keyboard, because a focused surface never hands the key on.
 press_until_pane() {
   local pane="$1"
   local text="$2"
@@ -758,8 +622,6 @@ CLIENT_WINDOW=zz
 SIDEBAR_MARKER='zz at '
 PICKER_MARKER='Select pane kind'
 CARD_FOOTER='open in the zz app'
-
-# --- clause 1: the verbs ----------------------------------------------------
 
 native_names() {
   awk '/^pub static NATIVE_COMMAND_NAMES/,/^\];/' "$CATALOG" |
@@ -841,28 +703,18 @@ run_sidebar_verbs() {
   local pane
   pane="$(first_pane zz)"
 
-  # The CLI is not an interactive client, so the daemon refuses the way the pin
-  # refuses a client command with no client.
   refuses direct 'focus-sidebar requires an interactive client' focus-sidebar
 
   bind_and_press F8 focus-sidebar
   screen_has binding zz "$SIDEBAR_MARKER"
   equals window-columns "$((COLUMNS_UNDER_TEST - 29))x$((ROWS_UNDER_TEST - 1))" "$(window_size zz)"
 
-  # INPUT OWNERSHIP, ordered without a sleep: both keys travel the same client
-  # input stream, so once the withdrawal the second key asked for is on the
-  # screen the first key has already been handled. j belongs to the sidebar
-  # table (crates/zz-client/src/chrome.rs TUI_SIDEBAR_DEFAULTS) and the pane
-  # must never see it.
   press j
   press q
   wait_for 'the sidebar withdrawn by q' sidebar_down
   pane_grid_lacks focused-key-is-the-sidebars "$pane" j
   equals window-columns-restored "${COLUMNS_UNDER_TEST}x$((ROWS_UNDER_TEST - 1))" "$(window_size zz)"
 
-  # SHOWN BUT NOT FOCUSED. Escape is SidebarCancel: the tree stays drawn and the
-  # pane owns the keyboard again, which is the contract's rule that local chrome
-  # consumes ordinary keys only inside the input context that owns them.
   press F8
   wait_for 'the sidebar shown again' sidebar_up
   if press_until_pane "$pane" ZKEY Escape; then
@@ -894,15 +746,11 @@ run_picker_verbs() {
   screen_has card-editor zz 'Editor (e)'
   screen_has card-keys zz '↑/↓ or j/k · Enter · Esc'
 
-  # The Editor choice is refused by the daemon and the card stays up. The
-  # message is the product's own experimental gate, not a parity switch: the
-  # other three kinds need no flag at all.
   press e
   message_row_has editor-refused zz \
     'editor panes are experimental; enable experimental-editor-pane in Settings → Advanced first'
   screen_has survives-a-refusal zz "$PICKER_MARKER"
 
-  # Esc is the picker's cancel and it runs kill-pane.
   press Escape
   wait_for 'the picker cancelled' pane_count_is zz 1
   screen_lacks cancelled zz "$PICKER_MARKER"
@@ -917,8 +765,6 @@ run_picker_verbs() {
   run_zz kill-pane -t "$(active_pane zz)"
   wait_for 'the materialized pane killed' pane_count_is zz 1
 
-  # select-pane-kind is the verb the picker's own keys run, and a picker pane
-  # is the only pane awaiting a kind: on any other pane the daemon says so.
   local picker_pane terminal_pane
   terminal_pane="$(first_pane zz)"
   refuses kind-needs-a-choice \
@@ -956,8 +802,6 @@ run_browser_verbs() {
   screen_has card-url zz 'about:blank'
   screen_has card-footer zz "$CARD_FOOTER"
 
-  # No Kitty graphics reach a pane inside the pinned tmux, so the card is what
-  # the raw TUI draws for a browser and there is no frame to screenshot.
   refuses screenshot-in-a-raw-tui 'browser screenshots require the zz app' \
     capture-browser -t "$browser_pane" -o /tmp/zz-superset-never-written.png
   accepts url set-browser-url -t "$browser_pane" https://example.invalid/
@@ -1020,8 +864,6 @@ run_output_verbs() {
   local pane
   pane="$(first_pane zz)"
 
-  # A pane id carries a %, so the message is built with the id as an argument
-  # rather than as part of a format.
   refuses show-needs-marks "$(marks_message "$pane" show-last-output)" show-last-output -t "$pane"
   refuses send-needs-marks "$(marks_message "$pane" send-last-output)" send-last-output -t "$pane"
 
@@ -1034,8 +876,6 @@ run_output_verbs() {
 
   bind_and_press F9 tools
   screen_has tools-overlay zz '# Workspace tools'
-  # The overlay owns the keyboard while it is up, and both keys travel the same
-  # client stream, so the pane must not have seen the first one.
   press z
   press Escape
   wait_for 'the overlay closed' overlay_closed
@@ -1071,24 +911,9 @@ run_misc_verbs() {
   accepts reload reload-config
   bind_and_press F1 reload-config
 
-  # HOME and XDG_CONFIG_HOME are inside the scratch directory, so there really
-  # is no tmux configuration to import and the refusal is the declared one.
   refuses import-with-nothing-to-import 'no tmux configuration found' import-tmux-config
 }
 
-# EVERY declared verb through a user binding, which is the second of the two
-# paths the contract names. One key is rebound before each case, so the case
-# that follows cannot inherit the one before it.
-#
-# A verb that answers nothing visible is bound as a SEQUENCE, `verb ; rename-window
-# TOKEN`, and the case waits for the token on the client's message row. Both
-# halves of that were measured on 2026-09-13 rather than assumed: a bound
-# sequence runs its second command on BOTH binaries even when the first one
-# failed, so the rename alone proves nothing, and a zz client message stays on
-# the row indefinitely (still there after eleven seconds), so a verb that
-# refused keeps its message where the status row would be and the token never
-# arrives. The token is therefore a positive observable for `the verb ran and
-# said nothing`.
 BOUND_KEY=F8
 bind_the_key() {
   zz_command bind-key -n "$BOUND_KEY" "$@" || die "zz refused bind-key -n $BOUND_KEY $*"
@@ -1108,23 +933,10 @@ bound_screen() {
   bind_the_key "$@"
   screen_has "$name" zz "$text"
 }
-# The verb that answers nothing at all. The binding is a sequence whose second
-# command reports on the client's own message row, so the case asserts that the
-# key ran the verb through the binding; WHAT the verb answered is asserted on
-# the direct path, where the answer is stdout, stderr and an exit status. That
-# split is deliberate and measured: a bound sequence runs its later commands on
-# both binaries even when an earlier one failed, and a status repaint overwrites
-# a message that a failure had just put on the row, so a token here cannot tell
-# success from failure and is not asked to.
 bound_reaches_the_verb() {
   local name="$1"
   shift
   local token="BOUND-$name"
-  # The reporter is the FIRST command of the sequence, not the last: the verb
-  # this form is for takes free-form arguments and swallows the `;` separator
-  # along with everything after it. The sequence still runs in order and zz does
-  # not stop at a failure, so the token says the binding fired and the verb ran
-  # after it.
   bind_the_key display-message "$token" ';' "$@"
   message_row_has "$name" zz "$token"
 }
@@ -1135,8 +947,6 @@ run_binding_pass() {
   local pane picker_pane browser_pane
   pane="$(first_pane zz)"
 
-  # The two that answer nothing go first, while the message row is still the
-  # status row and no earlier refusal is sitting on it.
   bound_reaches_the_verb debug-marker debug-marker bound-pass-marker
   bound_message reload-config 'Reloaded zz configuration' reload-config
 
@@ -1204,8 +1014,6 @@ run_binding_pass() {
   wait_for 'the bound browser window killed' window_count_is zz 1
 }
 
-# --- clause 2: the terminal around the surfaces -----------------------------
-
 both() {
   side_command zz "$@" || die "zz refused $1"
   side_command tmux "$@" || die "tmux refused $1"
@@ -1213,9 +1021,6 @@ both() {
 pane_widths() {
   side_command "$1" list-panes -t "=$INNER_SESSION" -F '#{pane_width}' | sort -u | tr '\n' ' '
 }
-# The same ordinary commands on both sides, every one against an explicit
-# target so neither binary has to agree about what a loose target means while
-# one of them has a zz surface up.
 ordinary_sequence() {
   both new-window -d -n extra "$INNER_SHELL"
   both select-window -t "=$INNER_SESSION:0"
@@ -1238,8 +1043,6 @@ ordinary_commands_agree() {
   equals "$name-pin-panes-fill-the-window" \
     "$(side_command tmux display-message -p -t "=$INNER_SESSION:0" '#{window_width} ')" \
     "$(pane_widths tmux)"
-  # The window a surface is not in has to be the pin's too, name, size, active
-  # flag and all, except for the columns the sidebar takes from the session.
   if [ "$(window_size zz)" = "$(window_size tmux)" ]; then
     equals "$name-windows" "$(window_inventory tmux)" "$(window_inventory zz)"
   else
@@ -1278,8 +1081,6 @@ run_terminal_around_the_sidebar() {
   wait_for 'the sidebar withdrawn' sidebar_down
   canvas_is_the_pin withdrawn
 
-  # Client-local state does not survive the client: a reattached client draws
-  # the canvas the pin draws, with no sidebar and the full window width.
   press F8
   wait_for 'the sidebar up again' sidebar_up
   detach_and_reattach
@@ -1291,9 +1092,6 @@ run_terminal_around_the_sidebar() {
   canvas_is_the_pin one-pane-again
 }
 
-# A pane surface is removed rather than withdrawn, so the pin gets the same
-# pane arithmetic: an ordinary split where zz gets the zz kind, and a kill on
-# both sides afterwards.
 run_terminal_around_a_pane_surface() {
   local label="$1"
   local kind="$2"
@@ -1308,8 +1106,6 @@ run_terminal_around_a_pane_surface() {
   screen_has surface zz "$marker"
   equals layout "$(pane_geometry tmux)" "$(pane_geometry zz)"
 
-  # A pane is session state, so it is still there for the client that comes
-  # back, and the layout it comes back to is the pin's.
   detach_and_reattach
   screen_has surface-survives-a-reattach zz "$marker"
   equals layout-after-a-reattach "$(pane_geometry tmux)" "$(pane_geometry zz)"
@@ -1317,9 +1113,6 @@ run_terminal_around_a_pane_surface() {
   both select-pane -t "=$INNER_SESSION:0.0"
   both resize-pane -t "=$INNER_SESSION:0.0" -D 3
   equals layout-after-ordinary-commands "$(pane_geometry tmux)" "$(pane_geometry zz)"
-  # The picker's card is drawn for the ACTIVE pane only (render.rs draws the
-  # picker arm under `if active`), so the surface is selected again before the
-  # marker is asked for; a browser or Agent card draws either way.
   both select-pane -t "=$INNER_SESSION:0.1"
   screen_has surface-after-ordinary-commands zz "$marker"
 
@@ -1336,16 +1129,12 @@ run_terminal_around_the_overlay() {
   bind_and_press F9 tools
   screen_has overlay zz '# Workspace tools'
 
-  # The overlay is client state, not session state: it does not survive the
-  # client, and the canvas the next client draws is the pin's.
   detach_and_reattach
   screen_lacks overlay-does-not-survive-a-reattach zz '# Workspace tools'
   canvas_is_the_pin reattached
   bind_and_press F9 tools
   screen_has overlay-again zz '# Workspace tools'
 
-  # A command that does not move the layout leaves the overlay up and means
-  # exactly what it means on the pin.
   both rename-window -t "=$INNER_SESSION:0" renamed
   both set-option -g status-left Q
   both select-pane -t "=$INNER_SESSION:0.0"
@@ -1354,10 +1143,6 @@ run_terminal_around_the_overlay() {
   both set-option -g status-left L
   both rename-window -t "=$INNER_SESSION:0" "$WINDOW_NAME"
 
-  # MEASURED 2026-09-13: the first command that moves the layout withdraws the
-  # overlay by itself. Nothing is pressed to close it, and that matters: with
-  # the overlay already gone, an Escape sent to close it reaches the pane
-  # instead and the pane's terminal eats the next typed line with it.
   ordinary_commands_agree with-the-overlay-up
   wait_for 'the overlay withdrawn by a layout change' overlay_closed
   pass withdrawn-by-a-layout-change
@@ -1366,11 +1151,6 @@ run_terminal_around_the_overlay() {
   canvas_is_the_pin one-pane-again
 }
 
-# --- clause 3: a second client ---------------------------------------------
-#
-# Every client here is as wide as the window the sidebar leaves, so no client is
-# wider than its window and every cell of both second clients is asserted. See
-# the header for the measurement that made that the honest shape.
 SECOND_COLUMNS=62
 FIRST_COLUMNS=91
 
@@ -1415,9 +1195,6 @@ run_second_client() {
       'withdrawing the sidebar in one client changed the other'
   fi
 
-  # A pane, unlike the sidebar, is session state: both clients draw the card.
-  # Neither draws a frame, because no Kitty graphics reach a pane inside the
-  # pinned tmux, and the screenshot verb says so in the message a raw TUI gives.
   local browser_pane
   side_command zz split-window --kind browser -t "=$INNER_SESSION:0.0" || die 'zz refused split-window --kind browser'
   wait_for 'the browser pane' pane_count_is zz 2
@@ -1428,13 +1205,6 @@ run_second_client() {
     capture-browser -t "$browser_pane" -o /tmp/zz-superset-never-written.png
   CLIENT_WINDOW=zz
 }
-
-# --- self-check -------------------------------------------------------------
-#
-# One deliberate fault per channel this file asserts in, each one required to be
-# reported by the same code the real cases use. A sabotage is run with the
-# fixture's own counters saved and restored, so a self-check run reports only
-# what the sabotages proved.
 
 expect_report() {
   local name="$1"
@@ -1460,8 +1230,6 @@ run_self_check() {
   local pane
   pane="$(first_pane zz)"
 
-  # The reachability channel: a name the server does not know answers exactly
-  # the way run_names requires a declared name not to.
   run_zz zz-not-a-declared-verb
   if [ "$LAST_OUTPUT" = 'unknown command: zz-not-a-declared-verb' ]; then
     printf 'ok    self-check an undeclared name answers unknown command\n'
@@ -1482,14 +1250,10 @@ run_self_check() {
     message_row_is_truncated sabotage zz \
     'a message no zz verb ever prints, written long enough that the row would have to cut it at the client width before it could ever match'
 
-  # The binding channel: the key the case bound is not the key it presses, so
-  # the verb never runs and the row never carries its token.
   zz_command bind-key -n F8 display-message BOUND-sabotage >/dev/null
   expect_report 'a bound verb whose key was never pressed' \
     message_row_has sabotage zz BOUND-sabotage
 
-  # The input-ownership channel: the key really does reach the pane when it is
-  # typed into the pane, so pane_grid_lacks has to report it.
   zz_command send-keys -t "$pane" 'ZSABOTAGE' Enter >/dev/null
   wait_for 'the sabotage key in the pane' pane_grid_has zz "$pane" ZSABOTAGE
   expect_report 'a key the pane really did take' \
@@ -1510,13 +1274,10 @@ run_self_check() {
   expect_report 'a window that never reaches its required size' \
     window_has_size sabotage zz '1x1'
 
-  # The canvas channel: one side's status row is painted red and nothing else
-  # changes, so the whole-screen comparison has to report it.
   zz_command set-option -g status-style bg=red >/dev/null
   expect_report 'a canvas that is not the pin' canvas_is_the_pin sabotage
   zz_command set-option -gu status-style >/dev/null
 
-  # The geometry channel: one side keeps a pane the other does not.
   zz_command split-window -v -t "=$INNER_SESSION:0.0" "$INNER_SHELL" >/dev/null
   expect_report 'a layout only one side has' \
     equals sabotage "$(pane_geometry tmux)" "$(pane_geometry zz)"
@@ -1528,8 +1289,6 @@ run_self_check() {
   printf 'self-check complete: every fault was reported by the channel that owns it\n'
   return 0
 }
-
-# --- run --------------------------------------------------------------------
 
 write_attach zz "$SCRATCH_DIR/attach-zz.sh"
 write_attach tmux "$SCRATCH_DIR/attach-tmux.sh"
@@ -1543,8 +1302,6 @@ if [ "$SELF_CHECK" -eq 1 ]; then
 fi
 
 printf 'superset commands beside tmux behaviour (pin %s)\n' "$(basename -- "$TMUX_BIN")"
-# ZZ_SUPERSET_ONLY names one group for a re-run of a single failure; the whole
-# file runs when it is unset, and it is unset in every recorded proof.
 run_group() {
   case "${ZZ_SUPERSET_ONLY:-}" in
   "" | "$1") shift && "$@" ;;

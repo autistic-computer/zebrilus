@@ -20,8 +20,6 @@ const TRAY_ICON_PNG: &[u8] = if zz_protocol::app_identity::DEVELOPMENT {
 
 const TRAY_ICON_SIZE: u32 = 48;
 
-/// A live `StatusNotifierItem`. Dropping it shuts the service down, which is what
-/// removes the icon.
 pub(super) struct Service {
     handle: ksni::blocking::Handle<SniTray>,
 }
@@ -111,8 +109,6 @@ impl ksni::Tray for SniTray {
         self.icon.clone()
     }
 
-    // GNOME's AppIndicator extension opens the menu on every click instead of
-    // delivering this, so the menu repeats the toggle as its first item.
     fn activate(&mut self, _x: i32, _y: i32) {
         self.send(TrayEvent::Toggle);
     }
@@ -142,7 +138,6 @@ impl ksni::Tray for SniTray {
     }
 }
 
-// SNI pixel data is ARGB32 in network byte order.
 fn tray_icon() -> Vec<ksni::Icon> {
     let Ok(decoded) = image::load_from_memory_with_format(TRAY_ICON_PNG, image::ImageFormat::Png)
     else {

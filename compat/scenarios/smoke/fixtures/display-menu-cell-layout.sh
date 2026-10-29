@@ -166,17 +166,10 @@ while [ "$count" -lt 10 ]; do
     count=$((count + 1))
 done
 
-# A name far past the room a 40-column client has still opens a menu, because
-# the row is trimmed to fit instead of shedding the whole descriptor.
 probe overlong 40 "$overlong" a 61 alpha
-# The bracketed M-Enter outruns a quarter of the room and the name no longer
-# fits beside it, so the row draws no annotation and still answers the press.
 probe hidden-annotation 40 "$wide" M-Enter 1b0d alpha
-# The same key annotates once the whole name fits beside it.
 probe shown-annotation 40 "$narrow" M-Enter 1b0d alpha
-# The trim follows the room down to a much narrower client.
 probe narrow-client 24 "$overlong" a 61 alpha
-# A short row is untouched either way.
 probe short 40 SHORT a 61 alpha
 
 if [ "$check_count" -ne 10 ]; then

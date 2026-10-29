@@ -1,156 +1,4 @@
 #!/usr/bin/env bash
-# Whole-screen differential for the chooser and command-output surfaces.
-#
-# tui-stock-keys.sh proves that prefix s, prefix w, prefix = and prefix f reach
-# the right command and end in the right state. It never looked at what the
-# chooser DRAWS: the pin's mode tree - the row layout with its key column and
-# tree glyphs, the selection bar, the preview box under the rows, the help box,
-# the chooser's own search and filter prompts - against zz's own chooser. This
-# fixture compares every decoded cell of both screens plus the cursor at named
-# settled checkpoints while those surfaces are up, and again once they are gone.
-#
-# THE DECODED SCREEN IS THE CONTRACT, NOT THE BYTE STREAM. Both binaries attach
-# inside ONE outer pinned tmux, one window each, and the outer tmux is the
-# decoder: `capture-pane -p -e` re-emits SGR from its own grid, so attribute
-# order, batching, redundant resets and cursor-movement spelling collapse on
-# both sides, while the colour CLASS does not. The driver is tui-indicators.sh's,
-# which is status-row.sh's widened to the whole screen.
-#
-# THE SCENE, built identically on both sides before the first checkpoint:
-#   session cho     window 0 `win`, the one attached, and window 1 `two`
-#                   split in two. The attached window is deliberately a single
-#                   pane: its borders would carry the border colour that
-#                   tui-screen-diff.sh records under someone else's decision,
-#                   and every restoration here is asserted whole. The split
-#                   window is reached through the tree and its preview.
-#   session many    MANY_WINDOWS windows m00..m11, so the window tree is longer
-#                   than the rows the pin gives it and has to scroll
-#   session other   one window `far`
-#   every pane      titled ptitle and running INNER_SHELL, with one line of
-#                   fixed output, so the preview boxes carry known cells
-#   two buffers     alpha and beta, for the buffer tree
-#
-# CONTROLLED DYNAMIC VALUES, set on both sides and never left to chance:
-#   status-right ''      the default ends in a clock and in %d-%b-%y, which the
-#                        pin expands through libc strftime and zz expands
-#                        locale-independently. That belongs to status-row.sh.
-#   status-left L        a fixed literal, so the left of the row is asserted.
-#   automatic-rename off plus a -n name on every window: the default name follows
-#                        the running command and would race a checkpoint.
-#   select-pane -T ptitle on EVERY pane: the pin seeds a pane title from
-#                        gethostname and the default tree row and preview label
-#                        both print it. zz reports the shell name through its
-#                        shell integration, the recorded pane.runtime-facts
-#                        decision, not a divergence of this screen.
-#   buffer creation time the pin's buffer row format is `#{t/p:buffer_created}:
-#                        #{buffer_sample}`, and t/p prints HH:MM for a buffer
-#                        younger than a day. Both sides create their buffers in
-#                        the same wall-clock minute: the fixture waits, bounded,
-#                        until the clock is at least BUFFER_MINUTE_MARGIN
-#                        seconds away from the next minute before it creates
-#                        them, and the comparison of those cells is then exact.
-#   copy-mode-position-format
-#                        the pin's default begins with #{t/p:top_line_time},
-#                        and run-shell's view mode draws it. Pinned on both
-#                        sides to the rest of that default, as tui-indicators.sh
-#                        pins it, so the indicator draws and carries no clock.
-#   the inner shell      ENV= PS1='$ ' exec /bin/sh: no rc file, and a prompt
-#                        that carries no host, user, path or clock.
-# MASKED, BECAUSE IT CANNOT BE PINNED: choose-client lists each client by its
-#   tty (`server_client_dispatch_identify` names a client after its ttyname and
-#   nothing renames it), and the two inner clients sit on two different outer
-#   ptys. The client case, and only it, therefore compares through
-#   `client_row_mask`: each side's own client name, read from that side's
-#   `list-clients`, becomes one fixed token, and on the rows that carried it the
-#   run of box fill that follows collapses, because a name of a different width
-#   moves the fill by a column, and the `HH:MM` of
-#   `#{t/p:client_activity}` becomes `NN:NN`. ONE ROW, AND ONLY IT, LOSES THE
-#   TAIL OF ITS TITLE: the tree title row with another box drawn over it. At
-#   100x40 `mode_tree_draw_help` centres a 42-column box at column 29
-#   (measured 2026-09-14), so `┌ <name> (sort: name) (view: preview) ` is cut
-#   there and a tty whose number carries one more digit leaves one title
-#   character fewer standing. That row is recognised by the preview box's own
-#   top-left corner opening it with the name right after, and the span between
-#   the name and the covering box's edge is truncated to a fixed 13 columns -
-#   what a five-digit pty number leaves - rather than replaced. So the sort
-#   label inside it is still compared, and no other row is touched: a client
-#   row followed by a box edge keeps every cell it had. The title is asserted
-#   whole on every checkpoint where no box covers it. That clock is each client's own
-#   last activity time, stamped by its own server from its own key press: this
-#   driver types into zz and then into the pin, so a minute boundary between the
-#   two sends leaves the two rows a minute apart, and no option can pin it the
-#   way `make_buffers` pins the buffer clock. Its position and the text around
-#   it are still asserted. Every other cell of those screens - the row's
-#   key column, its text, the whole preview box, the copied status row, the
-#   selection colours and the cursor - is asserted whole.
-# Nothing else is masked. Anything not in those lists is compared.
-#
-# ONE CELL IN THIS SCENE IS INTERMITTENT AND IS NOT MASKED, because it is a
-# real divergence and masking it would hide one: the window tree's pane row
-# prints `#{pane_current_command}`, and for the scene's `ENV= PS1='$ ' exec
-# /bin/sh` the pin always answers `sh` while zz answers `sh` most runs and
-# `bash` in some, which shows up as a failed `filter-cleared` or another
-# window-tree checkpoint. Measured 2026-09-14: the pin runs osdep_get_name on
-# every expansion, reading /proc/<pgid>/cmdline and taking its first argument
-# through parse_window_name, and falls back to the pane's own argv and then to
-# its shell when that read comes back empty (format.c:941-949). zz reads the
-# process name once per change of the pane's foreground pid, and execve does
-# not change a pid, so a read that landed before `exec /bin/sh` keeps answering
-# with the login shell's name for the pane's whole life. Reading
-# /proc/<pgid>/cmdline per publish instead was tried the same day and reverted:
-# it makes this fixture green but publishes an empty command whenever the
-# foreground pgid is a child that has already gone, and three zz-daemon tests
-# then fail under parallel load on `pane runtime facts did not settle`. The
-# pin's fallback chain is the missing half of that fix.
-#
-# SETTLED CHECKPOINTS. A chooser swallows every key typed into it, so, as in
-# tui-indicators.sh, each phase marks FIRST - `printf 'MARK-%s\n' NAME` into the
-# pane, settled on both screens - and only then opens its surface. After that,
-# every step types its keys into both clients and waits, bounded, on each screen
-# for three things: the screen differs from the one captured just before the
-# keys went in, it carries the step's needle (text the PIN's surface is known to
-# draw at that step), and it is unchanged between two polls. The change and the
-# stillness are judged on the STYLED capture, because a selection or a tag can
-# move nothing but colours; the needle is matched on the plain one, because a
-# row's text crosses colour changes. The pin's side is a
-# hard wait: a pin that never reaches its own needle is a broken fixture and the
-# run dies with diagnostics. The zz side is the same bounded wait made soft: a zz
-# screen that never draws the pin's needle is a divergence, not a hang, so the
-# wait runs out, says so, and the comparison that follows reports the cells. A
-# zz screen that changed and then held still for two seconds without the needle
-# has settled on something else, and the soft wait stops there. A needle never
-# ends in a blank: capture-pane trims trailing blanks. No wait in this file is a
-# sleep.
-#
-# THE CURSOR is read with `display-message -p` against each OUTER pane, so it is
-# the cursor the inner client left in the outer terminal. mode_tree_draw hides
-# it on the selected row (mode-tree.c:1035) and a chooser prompt shows it where
-# the prompt's caret is (mode-tree.c:1063), and both are compared.
-#
-# `z`: the pin's mode tree has no z key (mode_tree_key, mode-tree.c). What makes
-# the tree take the whole window is the -Z every stock binding passes -
-# choose-tree -Zs, choose-tree -Zw, choose-buffer -Z, choose-client -Z,
-# find-window -Z - which zooms the pane for the mode's lifetime and puts Z in
-# the window's flags. The status row is part of every screen compared here, so
-# the zoom is asserted at every checkpoint, and `v` (preview off, big, normal)
-# is driven as the key that resizes the tree itself. Every case but zoom_case
-# opens its chooser in the single-pane attached window, where window_zoom
-# refuses (window.c, one pane) and the -Z shows nothing; zoom_case splits that
-# window so the zoom, the Z flag and the release on exit are all on screen.
-#
-# MODES. `same` asserts the whole decoded screen and the cursor. `text` asserts
-# every glyph, every column and the cursor and records only the styles. `record`
-# asserts nothing and has to say why. A reason that starts `SIBLING:<lane> `
-# names the sibling lane of this cycle whose landing the case waits on; any
-# other recorded case keeps its clause open.
-#
-# --self-check runs the driver against a deliberate one-sided difference in each
-# channel - a tree row, a preview cell, a tag mark, the cursor, the -Z zoom, the
-# chooser's own prompt row and the one title span a mask truncates - and
-# requires the comparison to catch each in that channel, plus equivalences
-# it must NOT report. The info mask also compares counter widths across an SGR
-# reset and checks that colours, labels, alignment and borders still differ.
-# A fixture that only passes has proved nothing.
 set -eEuo pipefail
 
 usage() {
@@ -479,7 +327,6 @@ attach_both_at() {
   done
 }
 
-# THE SETTLE, see the header. $2 is hard for the pin and soft for zz.
 wait_screen() {
   local side="$1"
   local hardness="$2"
@@ -513,7 +360,6 @@ wait_screen() {
   printf 'note  %s: the %s screen never settled on it within 10 seconds\n' "$label" "$side"
 }
 
-# Type the same keys into both clients and settle each screen on NEEDLE.
 step() {
   local needle="$1"
   shift
@@ -525,7 +371,6 @@ step() {
   wait_screen zz soft "$CASE_LABEL: $needle on the zz screen" "$before_zz" "$needle"
 }
 
-# prefix then KEY, with the armed prefix observed on both clients first.
 prefix_step() {
   local needle="$1"
   local key="$2"
@@ -542,12 +387,6 @@ mark_both() {
   wait_screen tmux hard "MARK-$name on the tmux screen" '' "MARK-$name"
 }
 
-# The masked comparison, see the header. Reads one side's rows on stdin and
-# writes them back with that side's own client name replaced by a fixed token,
-# and with the box fill that follows it on the same row collapsed. The one row
-# whose title another box cuts - the preview box's title row with the help box
-# over it - keeps a fixed 13 columns of that title; every other row carrying
-# the name keeps all of its text.
 client_row_mask() {
   local name
   name="$(client_name "$1")"
@@ -570,24 +409,6 @@ for line in sys.stdin.read().split("\n"):
 '
 }
 
-# THE INFO VIEW'S MASK, the client mask plus the four values `i` puts on screen
-# that two servers cannot agree on: the client's own PID, the absolute and
-# relative `#{t:client_created}` and `#{t:client_activity}` of two clients
-# attached one after the other, and `#{client_written}`, which counts the bytes
-# each binary's own renderer has sent. Each becomes a fixed token, and the run
-# of box fill that immediately follows one of those tokens collapses, because a
-# token of a different width moves the box's right edge by a column. Only that
-# run: the label column every value is aligned against is compared as it
-# stands, so a view whose columns sit a few cells off is a difference, not a
-# fill. The relative half is
-# masked whole rather than digit by digit: the driver attaches one client and
-# then the other, so the two ages differ by the second between the attaches
-# (measured 2026-09-14: `Mon Sep 14 07:51:48 2026 (13s)` against
-# `Mon Sep 14 07:51:47 2026 (15s)`), and `format_relative_time` expands to
-# nothing at all for a stamp that is not yet in the past, which one run caught
-# on the pin's own side. Every other cell of the view - the labels, the acs
-# rules, the session, the terminal type, TERM, the size, the feature grid and
-# the box - is asserted whole.
 client_info_mask() {
   local name
   name="$(client_name "$1")"
@@ -714,13 +535,6 @@ verdict() {
   return 0
 }
 
-# --- the cases -------------------------------------------------------------
-#
-# THE SESSION TREE, prefix s: choose-tree -Zs. Sessions only, collapsed, the
-# attached session selected, and its windows side by side in the preview box
-# (window_tree_draw_session). j moves to the next session and the preview
-# follows it; Right expands it into its windows. q ends the mode and the
-# pane underneath has to come back exactly.
 session_tree_case() {
   CASE_LABEL=session-tree
   mark_both sessions
@@ -734,22 +548,6 @@ session_tree_case() {
   verdict session-tree-closed same
 }
 
-# THE WINDOW TREE, prefix w: choose-tree -Zw. Every session expanded into its
-# windows, the current window selected, its panes side by side in the preview
-# (window_tree_draw_window). Then the mode-tree vocabulary, one key a
-# checkpoint: t tags the current row and moves down (mode-tree.c, case 't'),
-# T untags everything, O cycles the sort order, / opens the chooser's own search
-# prompt at the foot of its screen, v cycles the preview off, big and back to
-# normal.
-#
-# HELP THAT DOES NOT FIT. F1 sets mtd->help, and mode_tree_draw_help returns
-# without drawing anything when the box is taller than the screen
-# (mode-tree.c:1402, `sy < box_h`): the window tree's help is the twenty shared
-# lines, the tree's own and Exit mode, far more than 23 rows. The pin then
-# swallows the next key whole. So at 80x24 F1 shows nothing, the j after it
-# moves nothing, and the / after that opens the search prompt over a selection
-# that never moved: one checkpoint proves all three. The help box itself is
-# compared at a size it fits, in tall_case.
 window_tree_case() {
   CASE_LABEL=window-tree
   mark_both windows
@@ -777,10 +575,6 @@ window_tree_case() {
   verdict window-tree-closed same
 }
 
-# THE HELP BOX, at 100x40 where it fits: mode_tree_draw_help centres a
-# tree-mode-border-style box over the tree, the shared lines, the mode's own
-# lines from its help callback, and Exit mode. Any key closes it and is
-# swallowed. Once for the window tree, once for the buffer tree.
 tall_case() {
   CASE_LABEL=tall
   attach_both_at 100 40
@@ -811,23 +605,6 @@ tall_case() {
   verdict tall-closed same
 }
 
-# FILTER, f: the chooser's own `(filter) ` prompt (mode-tree.c, case 'f'), whose
-# answer is a format the window tree keeps a row for when it expands true. The
-# box title then carries `(filter: active)`. `c` is the pin's undo for it
-# (mode-tree.c, case 'c'): mode_tree_clear_prompt then mode_tree_clear_filter,
-# which rebuilds the tree from every row again and drops `(filter: active)`
-# from the title while mode_tree_set_current keeps the selected row. The prompt
-# is a server prompt of PROMPT_TYPE_SEARCH, so Up brings back the filter Enter
-# just added to the search history and Down walks back to an empty line; the
-# search prompt is one too, so a search answer is what Up brings back next. It
-# edits the way prompt_key does, at a cursor: Left and Right, C-a and Home, C-e
-# and End, C-k, C-d and DC, BSpace before the cursor, C-w (which stops at the
-# session's word-separators) and C-u. prompt_set_options also hands it the
-# session's status-keys, so with vi Escape takes the line into command mode
-# (drawn in message-command-style), h, x, 0 and i are vi commands there, and q
-# closes the prompt. A line wider than the screen scrolls so the cursor stays
-# on it, the way prompt_draw offsets it, and the search prompt edits the same
-# way.
 FILTER_FORMAT='#{==:#{window_name},two}'
 LONG_FILTER=0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789
 LONG_FILTER_EDITED="${LONG_FILTER:0:98}${LONG_FILTER:99}"
@@ -910,9 +687,6 @@ filter_case() {
   verdict filter-closed same
 }
 
-# SCROLLING. The window tree holds 3 sessions and 3 + MANY_WINDOWS windows, more
-# rows than mode_tree_set_height gives the list above the preview, so G has to
-# scroll the list and g has to bring it back (mode_tree_check_selected).
 scroll_case() {
   CASE_LABEL=scroll
   mark_both scroll
@@ -925,10 +699,6 @@ scroll_case() {
   verdict tree-scroll-closed same
 }
 
-# THE BUFFER TREE, prefix =: choose-buffer -Z. Rows are
-# `#{t/p:buffer_created}: #{buffer_sample}` behind the buffer name, newest
-# in creation order, and the preview is the selected buffer's content
-# (window_buffer_draw).
 buffer_case() {
   CASE_LABEL=buffer-tree
   mark_both buffers
@@ -942,12 +712,6 @@ buffer_case() {
   verdict buffer-tree-closed same
 }
 
-# THE BUFFER FILTER, f and c inside choose-buffer. mode_tree_key is one
-# function for every mode-tree mode, so the buffer tree takes the same `f` and
-# `c` as the window tree, and the shared help box it draws says so
-# (mode_tree_help_start, `f  Filter %1s`). The filter is expanded per buffer
-# with format_defaults_paste_buffer (window-buffer.c), so a #{buffer_name} test
-# names one of the two buffers; `c` brings the other back.
 BUFFER_FILTER_FORMAT='#{==:#{buffer_name},alpha}'
 buffer_filter_case() {
   CASE_LABEL=buffer-filter
@@ -965,10 +729,6 @@ buffer_filter_case() {
   verdict buffer-filter-closed same
 }
 
-# FIND-WINDOW, prefix f: command-prompt { find-window -Z -- '%%' }, the one
-# stock chooser prompt with no -P, so it stays on the status row on both sides
-# and is asserted whole. The answer opens the window tree filtered to what
-# matched.
 find_window_case() {
   CASE_LABEL=find-window
   mark_both find
@@ -982,33 +742,6 @@ find_window_case() {
   verdict find-window-closed same
 }
 
-# COMMAND OUTPUT, the second acceptance clause. run-shell's output reaches the
-# pin as a view-mode pane grid (window_view_mode, cmd-run-shell.c) and the raw
-# TUI as its command-output surface. Driven fully - the long output, C-s to the
-# stock `(search down)` prompt, a submitted search, a selection, and M-w, which
-# in the stock emacs table is copy-selection-and-cancel and so is also the way
-# back to the pane - with the grid, the submitted search and the restoration
-# asserted and the copied text compared as a note.
-# The whole run is asserted: the view surface, the pane prompt the stock search
-# raises, the submitted search and the selection that drops its marks.
-#
-# THE PANE PROMPT. Both stock search bindings are `command-prompt -P`
-# (key-bindings.c:569-570 and 654), and -P is window_pane_set_prompt, whose
-# prompt redraw_draw_pane_prompt (screen-redraw.c:1524) draws over the pane's
-# LAST row - its first under status-position top - leaving the status row
-# alone. The raw TUI carries -P and the pane it targets on the wire
-# (CommandPromptState.pane, v103) and paints that row itself, so both sides put
-# `(search down) ` on row 22 in message-style over the pane's own default cells
-# and keep the status row. Closed 2026-09-14.
-#
-# THE SEARCH MARK UNDER A SELECTION. window_copy_command clears
-# `data->searchmark` for every command that is not `search-*` unless the
-# command's clear column says never (window-copy.c:3767), so begin-selection
-# and cursor-right drop the marks and only the selection is painted. zz already
-# carried the rule (CopyModeAction::clears_search_marks) but painted the mode
-# snapshot's match overlays from the view's own search rather than from the
-# marks, so the retained command output kept the current-match cell under the
-# selection; the overlays now follow the marks. Closed 2026-09-14.
 OUTPUT_REASON='the copied text is compared as a note because the view surfaces above it are compared whole'
 command_output_case() {
   CASE_LABEL=command-output
@@ -1054,20 +787,6 @@ wait_soft() {
   return 1
 }
 
-# CHOOSE-CLIENT, prefix D: `choose-client -Z`, whose `window_client_mode` is
-# the same mode tree over a flat list of attached clients. One client is
-# attached on each side, so the tree is one row: its key column, the client
-# name, and `#{t/p:client_activity}: session #{session_name}` after it. The
-# preview box underneath is `window_client_draw` rather than the tree's own:
-# the chosen client's current pane over a rule, and a copy of that client's own
-# status row at the bottom of the box. The client name is the one value this
-# fixture cannot pin, so this case, and only it, compares through the mask the
-# header describes. `i` swaps that box for `window_client_draw_info`, the
-# twenty-three `window_client_info_lines` drawn down to the box's height with
-# an acs rule down column 14 and the box title reading `(view: info)`; those
-# two checkpoints compare through `client_info_mask`, which pins the four
-# values two servers cannot agree on and asserts every other cell. q ends the
-# mode and the pane comes back whole.
 client_case() {
   CASE_LABEL=client-tree
   ROW_MASK=client_row_mask
@@ -1125,15 +844,6 @@ client_case() {
   ROW_MASK=
 }
 
-# THE PREVIEW FLAGS, -N and -NN. mode_tree_start (mode-tree.c:580-589) opens
-# every mode tree with a draw callback - the window tree, the buffer tree and
-# the client tree all have one - with its preview off for one -N and with the
-# big preview, a list a quarter of the screen high, for two. Each chooser is
-# opened both ways from a prefix binding, then `v` is typed once: it cycles
-# from the state the flag set (off goes to big, big goes to normal,
-# mode-tree.c:1801-1808), so the flag has to have set the mode's own preview
-# state and not just its first draw. The client tree compares through
-# client_row_mask, as in client_case.
 PREVIEW_FLAG_KEY=Y
 preview_flag_step() {
   local command="$1" flags="$2" open_needle="$3" cycled_needle="$4" name="$5"
@@ -1159,17 +869,6 @@ preview_flags_case() {
   run_on_both unbind-key -T prefix "$PREVIEW_FLAG_KEY"
 }
 
-# THE ZOOM, -Z. mode_tree_zoom (mode-tree.c:613) reads WINDOW_ZOOMED first and
-# calls window_zoom only when the window was not zoomed already; mode_tree_free
-# unzooms only in that case. Both halves are driven here, in a window split so
-# window_zoom has something to do: prefix w over the split zooms the pane for
-# the mode's lifetime and puts Z in the window's flags on the status row, q
-# gives the split back, and over a window the user zoomed first with prefix z
-# (resize-pane -Z) the same open and close leave the zoom alone. Each of those
-# checkpoints settles on the window's flags in the status row rather than on
-# the tree, because that is the last cell the pin's own redraw of the step
-# touches; the stillness between two polls covers whichever half a client
-# draws first.
 ZOOMED_STATUS="L0:$WINDOW_NAME*Z"
 UNZOOMED_STATUS="L0:$WINDOW_NAME* 1:two"
 zoom_case() {
@@ -1209,21 +908,6 @@ zz_command -f /dev/null daemon >"$SCRATCH_DIR/zz-daemon.out" 2>"$SCRATCH_DIR/zz-
 ZZ_PID=$!
 wait_for "zz daemon socket" test -S "$ZZ_SOCKET"
 
-# TREE-MODE STYLES, at 100x40 so the help box fits. mode_tree_draw takes the
-# selected row from tree-mode-selection-style and the preview box and help box
-# from tree-mode-border-style, both read from the window's options with no
-# format context (mode-tree.c:849-851, :1477). The session and window previews
-# draw each tile's label box in tree-mode-border-style, its text in
-# tree-mode-preview-style over the border's ground, and the text itself from
-# tree-mode-preview-format, all three expanded in the tile's own format tree
-# (window-tree.c:510-520, :618-640, :766-790). The client tree's info view
-# draws its rule down column 14 and across the box in tree-mode-border-style
-# (window-client.c:295, :349). Every one of the four is set to a value unlike
-# its default on both sides, the session tree shows the attached session's two
-# window tiles, the window tree on window 1 shows its two pane tiles, the
-# client tree's info view is compared back at 80x24 (at 100x40 it also shows the
-# client feature rows, which are not this case's), and the options go back to
-# their defaults after.
 STYLED_TREE_OPTIONS=(
   tree-mode-selection-style 'bg=red,fg=white,bold'
   tree-mode-border-style 'bg=blue,fg=yellow'
@@ -1297,7 +981,6 @@ run_cases() {
     "$CHECKS" "$RECORDS" "$SIBLINGS"
 }
 
-# --- self-check ------------------------------------------------------------
 SELF_CHECK_FAILURES=0
 
 self_check_case() {
@@ -1366,16 +1049,12 @@ run_self_check() {
   self_check_info_mask_case 'border' rows "$info_short" "${info_short%│}┃"
   self_check_info_mask_case 'extra reset' rows "$info_short" "${info_short/$'\033[39m'/$'\033[0m\033[39m'}"
 
-  # The equivalence first: the same window tree opened on both sides with
-  # nothing planted must report nothing, or every sabotage below would be
-  # satisfied by a comparison that always reports.
   CASE_LABEL='self-check equivalence'
   mark_both equal
   prefix_step '┌ 0 (sort: index)' w
   compare_rows self-check-equivalence styled || true
   self_check_case 'equivalence: the same window tree on both sides' none
 
-  # A tag mark on one side only: t typed into the pin's client alone.
   CASE_LABEL='self-check tag'
   local before
   before="$(styled_screen_of tmux)"
@@ -1387,9 +1066,6 @@ run_self_check() {
   wait_screen tmux hard 'the one-sided tag withdrawn' '' '┌ 0 (sort: index)'
   step 'MARK-equal' q
 
-  # A preview cell: one line of output in the zz side's second pane of window
-  # 1 only. No tree row names pane content, so only the preview box can carry
-  # the difference.
   CASE_LABEL='self-check preview'
   side_command zz send-keys -t "=$INNER_SESSION:1.1" "printf 'PLANTED\\n'" Enter ||
     die 'zz refused send-keys'
@@ -1401,7 +1077,6 @@ run_self_check() {
   self_check_case 'preview, one cell of one previewed pane differs' rows
   step 'MARK-preview' q
 
-  # A tree row: one side's second window renamed. The row and nothing else.
   CASE_LABEL='self-check row'
   side_command zz rename-window -t "=$INNER_SESSION:1" twx || die 'zz refused rename-window'
   mark_both row
@@ -1411,8 +1086,6 @@ run_self_check() {
   step 'MARK-row' q
   side_command zz rename-window -t "=$INNER_SESSION:1" two || die 'zz refused rename-window'
 
-  # The cursor: a space typed at one side's shell prompt after the mode closed.
-  # capture-pane trims trailing blanks, so only the cursor may report it.
   CASE_LABEL='self-check cursor'
   attach_both_at 80 24
   mark_both cursor
@@ -1426,17 +1099,11 @@ run_self_check() {
   self_check_case 'cursor, one column at one prompt' cursor
   type_on_side zz BSpace
 
-  # The second equivalence: the restoration after a chooser, with nothing
-  # planted, is the same screen on both sides.
   CASE_LABEL='self-check restoration'
   wait_for 'the space withdrawn' outer_cursor_is "$zz_before"
   compare_rows self-check-restoration styled || true
   self_check_case 'equivalence: the pane restored after a chooser' none
 
-  # The client mode's own preview: i typed into the pin's client tree alone
-  # swaps `window_client_draw` for `window_client_draw_info`, which no other
-  # sabotage here reaches. The mask is on, so a difference reported here is not
-  # the two clients' names.
   CASE_LABEL='self-check client info view'
   ROW_MASK=client_row_mask
   mark_both clientinfo
@@ -1449,12 +1116,6 @@ run_self_check() {
   type_on_side tmux i
   wait_screen tmux hard 'the one-sided info view withdrawn' '' 'session cho'
 
-  # The same sabotage the other way round, which is the one that catches a
-  # wrong zz info view: the pin stays on `window_client_draw` and zz alone
-  # swaps in `window_client_draw_info`, so every info row it draws is a row the
-  # pin does not have. This half runs through `client_info_mask`, the mask the
-  # client-info-view checkpoints actually assert under, so what it proves is
-  # that mask and not its neighbour.
   ROW_MASK=client_info_mask
   before="$(styled_screen_of zz)"
   type_on_side zz i
@@ -1467,10 +1128,6 @@ run_self_check() {
   step 'MARK-clientinfo' q
   ROW_MASK=
 
-  # A zoom on one side only: the attached window split on both sides, then
-  # prefix z into the pin's client alone. The layout and the window's Z flag on
-  # the status row are the channel zoom_case asserts, and nothing else here
-  # reaches them.
   CASE_LABEL='self-check zoom'
   local side pane
   for side in zz tmux; do
@@ -1499,13 +1156,6 @@ run_self_check() {
   type_on_side tmux z
   wait_screen tmux hard 'the one-sided zoom withdrawn' "$before" "$UNZOOMED_STATUS"
 
-  # THE PANE PROMPT AND THE SEARCH MARKS, the two channels command_output_case
-  # asserts that no other sabotage here reaches. The run-shell output is raised
-  # on both sides; C-s then goes into the pin's client alone, which puts
-  # `(search down) ` on the pin's pane prompt row and leaves zz's row carrying
-  # the output line, and the submitted search that follows paints the pin's
-  # current match and nothing on zz. A comparison blind to either row would
-  # report neither.
   CASE_LABEL='self-check command output'
   attach_both_at 80 24
   mark_both outputsab
@@ -1529,8 +1179,6 @@ run_self_check() {
   type_on_side zz q
   wait_screen zz hard 'zz back on its pane' '' 'MARK-outputsab'
 
-  # The chooser's own prompt row: f typed into the pin's buffer tree alone.
-  # Only the prompt row and the cursor on it can carry the difference.
   CASE_LABEL='self-check buffer filter prompt'
   mark_both prompt
   prefix_step '(sort: creation)' =
@@ -1540,13 +1188,6 @@ run_self_check() {
   compare_rows self-check-buffer-filter-prompt styled || true
   self_check_case 'prompt, the buffer tree filter prompt on one side only' rows
 
-  # THE SPAN THE TITLE CUT COVERS, the only text `client_row_mask` drops. At
-  # 100x40 the help box lands over the middle of the tree title row, so the
-  # title is cut at a fixed column and the mask truncates what is left of it to
-  # a fixed width. The sort order is changed on the zz side alone before the box
-  # goes up - one client per side, so the rows themselves do not move - and the
-  # two titles then differ inside that span. A mask that replaced the span with
-  # one token, as this one once did on every client row, would report nothing.
   CASE_LABEL='self-check title cut'
   attach_both_at 100 40
   ROW_MASK=client_row_mask

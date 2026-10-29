@@ -489,7 +489,6 @@ impl LocalScrollState {
     }
 }
 
-/// Which viewport rows land on which display rows of a grid.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RowProjection {
     pub source_start: u16,
@@ -528,7 +527,6 @@ impl RowProjection {
     }
 }
 
-/// Where a row shown while scrolled locally comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LocalRowSource {
     History(usize),
@@ -611,8 +609,6 @@ pub fn peek_row_source(
     (source != LocalRowSource::Shimmer).then_some(source)
 }
 
-/// The display row a Kitty placement's top lands on, which may be above the
-/// grid when only its lower part shows.
 #[must_use]
 pub fn kitty_display_row(
     placement: &KittyPlacement,
@@ -636,8 +632,6 @@ pub fn kitty_display_row(
     display.checked_sub(first_visible.checked_sub(anchor)?)
 }
 
-/// Whether the grid hangs from the pane's bottom edge, and whether the live
-/// rows are projected from the bottom too.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GridPlacement {
     pub bottom_anchored: bool,

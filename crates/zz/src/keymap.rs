@@ -1,12 +1,3 @@
-//! The desktop skin's half of the chrome keymap.
-//!
-//! `zz-client` owns the chords: default tables per platform, the `bind`
-//! spelling, and one resolution semantic shared with the daemon's pane input.
-//! This module installs that keymap for the desktop profile, folds `zz/config`
-//! overrides into it, and bridges its chords to ala bindings — so every
-//! converted surface switches on a named [`ChromeAction`] and never spells a
-//! chord itself.
-
 use std::{collections::BTreeMap, rc::Rc};
 
 use ala::{App, Global, KeyBinding, Keystroke};
@@ -21,10 +12,6 @@ pub(crate) use zz_config::keymap::{ChromeOverride, ala_source};
 #[cfg(test)]
 use zz_config::keymap::{parse_bind, parse_unbind, tmux_key_name};
 
-/// One chord a surface should bind, under the action it carries. A chord an
-/// earlier configuration bound and this one does not comes back as not `live`:
-/// ala keymaps only grow, so the surface that owned the chord shadows it with
-/// `NoAction` in its own context instead of removing it.
 pub(crate) struct ChromeChord {
     action: ChromeAction,
     key: String,
@@ -37,8 +24,6 @@ impl ChromeChord {
         self.action
     }
 
-    /// The chord in the chrome spelling, for surfaces that carry it into the
-    /// action they dispatch.
     pub(crate) fn key(&self) -> &str {
         &self.key
     }
@@ -60,9 +45,6 @@ pub(crate) struct ChromeState {
 
 impl Global for ChromeState {}
 
-/// Rebuild the chrome keymap from the built-in defaults plus the current
-/// configuration, and republish it. Every surface bound through [`bind`]
-/// re-emits its bindings.
 pub(crate) fn install(overrides: &[ChromeOverride], element_selector_hotkey: &str, cx: &mut App) {
     let keymap = zz_config::keymap::configured_keymap(overrides, element_selector_hotkey);
 
@@ -92,9 +74,6 @@ pub(crate) fn install(overrides: &[ChromeOverride], element_selector_hotkey: &st
     });
 }
 
-/// Bind one chrome table into the ala keymap and keep it in step with the
-/// configuration. `build` is the surface's switch from named actions to its own
-/// ala actions.
 pub(crate) fn bind(
     cx: &mut App,
     table: &'static str,
@@ -117,20 +96,14 @@ fn apply(cx: &mut App, table: &'static str, build: fn(&[ChromeChord]) -> Vec<Key
     cx.bind_keys(bindings);
 }
 
-/// The action a press resolves to in `table`, for surfaces that read raw key
-/// events instead of dispatching ala actions.
 pub(crate) fn resolve(cx: &App, table: &str, keystroke: &Keystroke) -> Option<ChromeAction> {
     keymap(cx)?.resolve(table, &terminal_key_input(keystroke, KeyAction::Press))
 }
 
-/// The action a chord carries right now, so a surface reached through a chord
-/// can decline a binding the configuration has since replaced.
 pub(crate) fn action_for(cx: &App, table: &str, key: &str) -> Option<ChromeAction> {
     keymap(cx)?.action_for(table, key)
 }
 
-/// The chord bound to `action`, in the platform's own ala spelling, for hints
-/// that print a shortcut.
 pub(crate) fn chord_for(cx: &App, table: &str, action: ChromeAction) -> Option<String> {
     keymap(cx)?
         .table_bindings(table)
@@ -198,16 +171,12 @@ fn chords(cx: &App, table: &str) -> Vec<ChromeChord> {
     chords
 }
 
-/// How a press resolves with no configuration loaded, for surfaces that assert
-/// their built-in chrome.
 #[cfg(test)]
 pub(crate) fn test_resolve(table: &str, keystroke: &Keystroke) -> Option<ChromeAction> {
     ChromeKeymap::for_profile(ChromeProfile::DESKTOP)
         .resolve(table, &terminal_key_input(keystroke, KeyAction::Press))
 }
 
-/// The chords one table carries with no configuration loaded, for surfaces
-/// that assert their built-in keymap.
 #[cfg(test)]
 pub(crate) fn test_chords(table: &str) -> Vec<ChromeChord> {
     ChromeKeymap::for_profile(ChromeProfile::DESKTOP)
@@ -287,10 +256,6 @@ mod tests {
             .collect()
     }
 
-    /// The chords every converted surface used to spell in `KeyBinding::new`,
-    /// per platform. Both halves are asserted on every host: the point of the
-    /// keymap being data is that the platform it targets is a value, not a
-    /// `cfg`.
     #[test]
     fn desktop_defaults_bridge_to_the_chords_they_replaced() {
         assert_eq!(

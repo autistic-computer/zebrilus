@@ -77,8 +77,6 @@ const LOCAL_TERMINAL_FONT_CANDIDATES: &[&str] = &[
     "Ubuntu Mono",
 ];
 
-// CoreText backends (macOS, iOS) take font size in points; the rest take 96-DPI
-// logical pixels.
 #[cfg(target_os = "macos")]
 const ALA_UNITS_PER_FONT_POINT: f32 = 1.0;
 #[cfg(not(target_os = "macos"))]
@@ -162,9 +160,6 @@ fn terminal_key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
         .collect()
 }
 
-/// Resolve daemon-declared font stacks against the machine that actually
-/// renders them. Built-in defaults are platform-specific, while explicit
-/// stacks keep their order and promote the first locally installed fallback.
 pub(crate) fn localize_terminal_font_families(
     appearance: &mut TerminalAppearance,
     provenance: &AppearanceProvenance,
@@ -743,7 +738,6 @@ impl TerminalView {
         Self::new_surface(pane, false, mux, terminal_resize_suppressed, window, cx)
     }
 
-    /// Command output is a read-only overlay backed by the same surface.
     pub(crate) fn new_command_output(
         pane: PaneId,
         mux: Entity<MuxClient>,

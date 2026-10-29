@@ -1,11 +1,3 @@
-"""Observe what an attached client does when the server ends its attachment.
-
-Drives one real pty client per case against whichever multiplexer the smoke
-fixture selected, then prints one observation line per case. The differential
-compares those lines, so the shapes below are the pin's behaviour, not a
-verdict this script invents.
-"""
-
 import fcntl
 import os
 import pty
@@ -88,7 +80,6 @@ def notice(recorded):
 
 
 def reap(pid, deadline=20.0):
-    """Wait for one client process, reporting a stall instead of hanging."""
     limit = time.time() + deadline
     status = None
     while time.time() < limit:
@@ -148,7 +139,6 @@ def observe(label, prefix, arguments, settle=True):
 
 
 def observe_steal(label, prefix, arguments):
-    """A second client attaches with the stealing flag; the peer is evicted."""
     GOT_HANGUP["seen"] = False
     victim, recorded = attach(prefix)
     if not await_clients(prefix, 1):
@@ -178,7 +168,6 @@ def main():
     cli(prefix, "kill-session", "-t", "=" + SESSION)
     cli(prefix, "new-session", "-d", "-s", SESSION)
 
-    # An empty -E is server_client_exec's early return: nothing happens.
     observe("empty-exec", prefix, ["-E", "", "-t", "@CLIENT@"], settle=False)
     observe("plain", prefix, ["-t", "@CLIENT@"])
     observe("parent-hangup", prefix, ["-P", "-t", "@CLIENT@"])
@@ -201,11 +190,8 @@ def main():
             written = handle.read()
     print("exec-marker %s" % (written or "-"))
 
-    # -E beats -P, the way cmd_detach_client_exec tests cmd before msgtype.
     observe("exec-over-hangup", prefix, ["-P", "-E", "exit 5", "-t", "@CLIENT@"])
 
-    # attach-session -d and -x, then new-session -A -X, all evict the peer;
-    # only the hangup forms signal the evicted client's parent.
     observe_steal(
         "steal-detach", prefix, ["attach-session", "-d", "-t", "=" + SESSION]
     )

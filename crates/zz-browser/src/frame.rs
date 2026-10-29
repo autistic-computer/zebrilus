@@ -17,8 +17,6 @@ const MAX_FRAME_BYTES: usize = 512 * 1024 * 1024;
 const MAX_RECYCLED_BUFFERS: usize = 3;
 const MAX_RECYCLED_CAPACITY_SCALE: usize = 2;
 
-/// ala's renderer device, handed to zz-browser at session creation: wgpu
-/// everywhere except Windows, where ala owns a native D3D11 device.
 #[derive(Clone, Debug)]
 pub struct BrowserGpuContext {
     #[cfg(not(target_os = "windows"))]
@@ -46,8 +44,6 @@ impl BrowserGpuContext {
         Self { device, queue }
     }
 
-    /// Adopt ala's DirectX device and immediate context, bumping their COM
-    /// refcounts.
     #[cfg(target_os = "windows")]
     #[must_use]
     pub fn from_directx(context: ala::DirectXDeviceContext) -> Self {
@@ -134,7 +130,6 @@ pub struct GpuFrame {
     pub texture: wgpu::Texture,
 }
 
-/// A retained `IOSurface` that can be imported by ala's Metal device.
 #[cfg(target_os = "macos")]
 #[derive(Clone)]
 pub struct MacIoSurface {
@@ -176,8 +171,6 @@ impl PartialEq for MacIoSurface {
 #[cfg(target_os = "macos")]
 impl Eq for MacIoSurface {}
 
-// SAFETY: IOSurface objects are explicitly shareable across threads and
-// processes, and `CFRetained` keeps this immutable handle alive.
 #[cfg(target_os = "macos")]
 #[allow(
     unsafe_code,
@@ -185,8 +178,6 @@ impl Eq for MacIoSurface {}
 )]
 unsafe impl Send for MacIoSurface {}
 
-// SAFETY: IOSurface's CoreFoundation object is safe to reference concurrently;
-// access synchronization belongs to the GPU producers and consumers.
 #[cfg(target_os = "macos")]
 #[allow(
     unsafe_code,
@@ -209,13 +200,9 @@ pub struct MacGpuFrame {
     pub io_surface: MacIoSurface,
 }
 
-/// A zz-owned D3D11 destination texture on ala's device, ready for
-/// `ala::external_texture`. ala's `windows` crate version, not zz's: only the
-/// re-exported one is type-compatible with the renderer.
 #[cfg(target_os = "windows")]
 pub type WinGpuTexture = ala::windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
-/// A browser frame living in a zz-owned texture on ala's DirectX device.
 #[cfg(target_os = "windows")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WinGpuFrame {
@@ -282,7 +269,6 @@ pub(crate) struct WinGpuFrameSubmission {
     pub texture: WinGpuTexture,
 }
 
-/// The newest complete browser frame, either owned BGRA bytes or a zz-owned GPU texture.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OsrFrame {
     OwnedBgra(OwnedBgraFrame),
@@ -451,15 +437,12 @@ struct MailboxState {
     win_gpu_taken: u64,
 }
 
-/// A one-slot mailbox that replaces stale browser frames under load.
 #[derive(Clone, Default)]
 pub struct FrameMailbox {
     state: Arc<Mutex<MailboxState>>,
 }
 
 impl FrameMailbox {
-    /// Publish one complete BGRA frame and report whether the consumer needs a
-    /// wake. The pixel allocation passes through untouched, so the consumer owns it.
     pub fn publish(
         &self,
         session: SessionId,
@@ -780,7 +763,6 @@ impl FrameMailbox {
         buffer
     }
 
-    /// Return a consumed pixel buffer for reuse by a future paint callback.
     pub fn recycle(&self, bgra: Vec<u8>) {
         recycle_buffer(&mut self.state.lock(), bgra);
     }

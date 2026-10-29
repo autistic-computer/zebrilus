@@ -1,15 +1,9 @@
 ---
-// A terminal cell grid. Not chrome: the palette comes from
-// zz-terminal/src/appearance.rs:664, and the default line height is the cell
-// height itself — ratio 1.0 under CellHeightAdjustment::None (appearance.rs:314).
 interface Props {
 	background?: string;
 	foreground?: string;
-	/** 13px is the shipped default (appearance.rs:675). */
 	fontSize?: number;
-	/** Ratio. 1.0 stock; the reference capture was configured to 1.2. */
 	lineHeight?: number;
-	/** Terminal padding, all four sides (appearance.rs:682). */
 	padding?: number;
 	class?: string;
 }

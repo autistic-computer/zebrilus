@@ -111,7 +111,7 @@ pub(crate) fn enveloped_capacity(payload_capacity: usize) -> Result<usize, Proto
 fn write_envelope_header(frame: &mut Vec<u8>, lane: Lane) {
     frame.extend_from_slice(&[0; LENGTH_PREFIX_BYTES]);
     frame.push(lane as u8);
-    frame.push(0); // flags, reserved for future envelope extensions
+    frame.push(0);
     frame.extend_from_slice(&PROTOCOL_VERSION.to_le_bytes());
 }
 

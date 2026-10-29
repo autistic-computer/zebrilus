@@ -120,12 +120,8 @@ value() {
 
 main_client kill-session -t "=$session" >/dev/null 2>&1 || true
 main_client new-session -d -s "$session"
-# The prompt reads status-keys at prompt_set_options time, and an editor in the
-# environment would otherwise decide it, so pin it for every check below.
 main_client set-option -g status-keys emacs
 
-# cmd_find_current_client has no client to fall back on before the attach, so
-# an untargeted prompt is a loud miss that runs nothing.
 rm -f "$work/none.err"
 none_rc=0
 main_client command-prompt -p none 'set-environment -g CP_NOCLIENT hit' \
@@ -157,8 +153,6 @@ if [ -z "$client" ]; then
 fi
 sleep 0.5
 
-# CMD_CLIENT_TFLAG resolves the client by tty and CMD_RETURN_WAIT parks the
-# issuing queue, so a chained command waits behind the answer.
 main_client set-environment -g CP_ANSWER pending
 main_client set-environment -g CP_AFTER pending
 rm -f "$work/answer.exit"
@@ -179,9 +173,6 @@ check_equal answer-exit 0 "$(cat "$work/answer.exit" 2>/dev/null)"
 check_equal answer-substituted said-hello "$(value CP_ANSWER)"
 check_equal chain-continued after "$(value CP_AFTER)"
 
-# %% is meant for single quotes, so cmd_template_replace writes a ' in the
-# answer as '\'' and the quoted word survives it; %%% is for double quotes and
-# escapes only its own list, leaving the ' alone.
 main_client set-environment -g CP_QUOTE pending
 (
     main_client command-prompt -t "$client" -p 'quote ' \
@@ -206,7 +197,6 @@ sleep 1.2
 await_pid "$dquote_pid" dquote-parked
 check_equal double-quote-left-alone "d-it's" "$(value CP_QUOTE)"
 
-# A target that matches no client is cmd_find_client's own diagnostic.
 rm -f "$work/miss.err"
 miss_rc=0
 main_client command-prompt -t /dev/nosuchclient -p miss \
@@ -214,8 +204,6 @@ main_client command-prompt -t /dev/nosuchclient -p miss \
 check_equal miss-exit 1 "$miss_rc"
 check_equal miss-error "can't find client: /dev/nosuchclient" "$(cat "$work/miss.err")"
 
-# Escape leaves the prompt without an answer: the queue resumes at zero and
-# the template never runs.
 main_client set-environment -g CP_CANCEL pending
 rm -f "$work/cancel.exit"
 (
@@ -231,8 +219,6 @@ await_pid "$cancel_pid" cancel-parked
 check_equal cancel-exit 0 "$(cat "$work/cancel.exit" 2>/dev/null)"
 check_equal cancel-ran-nothing pending "$(value CP_CANCEL)"
 
-# -b clears the wait, so the command returns while the prompt is still up and
-# the answer runs later.
 main_client set-environment -g CP_BACKGROUND pending
 bg_rc=0
 main_client command-prompt -b -t "$client" -p 'bg ' \
@@ -240,7 +226,6 @@ main_client command-prompt -b -t "$client" -p 'bg ' \
 check_equal background-exit 0 "$bg_rc"
 check_equal background-returned-early pending "$(value CP_BACKGROUND)"
 
-# A client that already has a prompt takes no second one and blocks nothing.
 main_client set-environment -g CP_SECOND pending
 second_rc=0
 main_client command-prompt -t "$client" -p 'second ' \
@@ -251,10 +236,6 @@ sleep 1.0
 check_equal background-answered bg-one "$(value CP_BACKGROUND)"
 check_equal second-prompt-never-opened pending "$(value CP_SECOND)"
 
-# -F runs the template through format_single_from_target before the answer
-# pass, and format_expand leaves %% alone because it is not the time variant.
-# The expansion lands before cmd_template_replace, so a #{pane_id} that expands
-# to %1 is eaten by the first answer; a session name cannot collide that way.
 name="$session"
 main_client set-environment -g CP_FORMAT pending
 (
@@ -280,8 +261,6 @@ sleep 1.2
 await_pid "$plain_pid" plain-parked
 check_equal format-left-literal '#{session_name}/zed' "$(value CP_FORMAT)"
 
-# A read-only client takes the prompt but never processes its keys, so the
-# queue stays parked until the client leaves and the template never runs.
 env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
     TERM=xterm-256color \
     python3 "$HOME/pty-drive.py" "$rosteps" 80 24 \

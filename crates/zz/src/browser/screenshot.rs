@@ -1,12 +1,9 @@
-//! PNG encoding for `capture-browser`.
-
 use std::path::Path;
 
 use image::{ImageBuffer, ImageFormat, Rgba};
 
 const MAX_SCREENSHOT_PIXELS: u64 = 64 * 1024 * 1024;
 
-/// One decoded frame ready to encode: tightly packed RGBA8.
 pub(crate) struct Screenshot {
     width: u32,
     height: u32,
@@ -14,7 +11,6 @@ pub(crate) struct Screenshot {
 }
 
 impl Screenshot {
-    /// Build a screenshot from tightly packed premultiplied BGRA.
     pub(crate) fn from_bgra(width: u32, height: u32, bgra: &[u8]) -> Result<Self, String> {
         Self::from_bgra_rows(
             width,
@@ -26,7 +22,6 @@ impl Screenshot {
         )
     }
 
-    /// Build a screenshot from BGRA whose rows may be padded, as an `IOSurface`'s are.
     pub(crate) fn from_bgra_rows(
         width: u32,
         height: u32,
@@ -92,8 +87,8 @@ mod tests {
     #[test]
     fn bgra_is_swizzled_to_rgba_and_padding_is_dropped() {
         let bgra = [
-            0x11, 0x22, 0x33, 0x44, 0xff, 0xff, 0xff, 0xff, //
-            0x55, 0x66, 0x77, 0x88, 0x00, 0x00, 0x00, 0x00,
+            0x11, 0x22, 0x33, 0x44, 0xff, 0xff, 0xff, 0xff, 0x55, 0x66, 0x77, 0x88, 0x00, 0x00,
+            0x00, 0x00,
         ];
         let screenshot = Screenshot::from_bgra_rows(1, 2, 8, &bgra).expect("screenshot");
         assert_eq!(

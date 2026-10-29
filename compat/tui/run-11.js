@@ -4,18 +4,7 @@ export const meta = {
   phases: [{ title: 'Lanes' }, { title: 'Review' }, { title: 'Gate' }],
 };
 
-// Cycle 11, alienware box, 2026-09-16. Six Codex CLI lanes (gpt-6-astra, reasoning high) on
-// fabrico's instruction, the orchestrator reviewing and gating. The cycle resumes the three fix
-// passes the ubuntu box left in flight and adds the customize-mode lane fabrico ruled in.
-//
-// Lanes are launched as detached `codex exec` processes, not by this file. This file is the
-// cycle's record and the contract every lane prompt is generated from, and `lint-runner.py`
-// checks it against every lesson an earlier cycle paid for.
-
-const SLOTS = 3;        // at most three agents; the two cargo slots still cap compiles at two
-// exitcode gates FIRST: main is red without it (three asserted cases in
-// compat/tui-client-commands.sh), so no other branch can prove itself against a green main,
-// and it touches catalog.rs and message.rs which modes-12 and alias-2 also carry.
+const SLOTS = 3;
 const ORDER = ['exitcode', 'alias-2', 'modes-12', 'capture-12', 'customize',
                'capture-residuals', 'zz-knobs'];
 
@@ -63,7 +52,6 @@ and a review counted 160 added comment lines as a must-fix. knowledge/tmux/gaps.
 knowledge/tmux/tui-parity.md are generated and are only ever regenerated.
 `;
 
-// 1. The lanes, in the order their branches became available.
 const LANES = [
   {
     key: 'alias-2', obligation: 'TUI-018', from: 'campaign/tui-stream-alias-gated',

@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""Fail when committed campaign evidence carries a credential value or an environment dump.
-
-    python3 compat/evidence-secrets.py
-
-Corpus runs, probes and hook census scenarios can capture the environment of whatever process started
-them. On 2026-09-16 that put a Claude Code messaging token into evidence pushed to a public branch, and
-the prefix-based secret scans missed it because the token had no known prefix. This guard reads every
-tracked evidence file, archive members included, and rejects a credential-shaped NAME=value whose value
-is literal, plus any file that looks like a whole process environment.
-"""
 
 import io
 import re

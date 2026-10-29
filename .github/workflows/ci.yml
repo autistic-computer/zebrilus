@@ -1,8 +1,6 @@
 name: CI
 
 on:
-  # Branch pushes other than main run through their pull request, so a PR
-  # commit runs once. Tags run the release workflow instead.
   push:
     branches: [main]
   pull_request:
@@ -10,8 +8,6 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:
 
-# A newer push to a PR cancels its running check. On main the running check
-# finishes and only the newest pending one waits behind it.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -25,20 +21,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Windows takes two hours and is second-class, so it runs nightly and
-        # on demand; the release workflow builds it again at tag time.
         os: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["ubuntu-24.04","macos-15","windows-2025"]' || '["ubuntu-24.04","macos-15"]') }}
     runs-on: ${{ matrix.os }}
     env:
       CEF_PATH: ${{ github.workspace }}/.cef-cache
-      # Fat LTO with one codegen unit is most of a release build's time. Pushes
-      # build the bundle without it; the nightly run keeps the shipped profile.
       CARGO_PROFILE_RELEASE_LTO: ${{ github.event_name == 'schedule' && 'fat' || 'false' }}
       CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ github.event_name == 'schedule' && '1' || '16' }}
 
     steps:
-      # Full history: the compat summary check verifies that the commit its
-      # attached-client PASS was stamped at is an ancestor of HEAD.
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
@@ -59,9 +49,6 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install tmux
 
-      # setup-zig's own cache saved a new 118 MB entry on every run and filled
-      # the repo's 10 GB cache. libghostty-vt-sys keeps its Zig caches in its
-      # OUT_DIR, so that cache never sped up our build.
       - uses: mlugg/setup-zig@v2.2.1
         with:
           version: 0.16.0
@@ -104,9 +91,6 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo clippy -p zz-daemon -p zz-daemon-client --no-default-features --all-targets -- -D warnings
 
-      # libs/ are subtrees of the autistic-computer repos and sit outside the
-      # workspace, so the workspace lint above skips them. The kit builds
-      # against the ala in libs/, not the one on GitHub.
       - name: Lint libs
         if: runner.os == 'Linux'
         env:
@@ -124,14 +108,6 @@ jobs:
           rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
           rustup run nightly cargo check --manifest-path clients/web/Cargo.toml --target wasm32-unknown-unknown --all-targets --locked
 
-      # Windows is second-class support, so its test failures warn rather than
-      # fail the job. The workspace suite passes there, and --no-fail-fast
-      # keeps one failing crate from hiding the ones after it.
-      # Leaving the job permanently red is what let a Windows-only compile
-      # error reach a release tag unnoticed: with the tests demoted, red means
-      # Windows no longer builds or packages, which is the thing that can
-      # actually strand a release. The timeout stops a Windows-only hang from
-      # holding the runner until the six-hour job limit.
       - name: Test workspace
         continue-on-error: ${{ runner.os == 'Windows' }}
         timeout-minutes: ${{ runner.os == 'Windows' && 90 || 360 }}
@@ -166,10 +142,6 @@ jobs:
         timeout-minutes: 15
         run: cargo test --release -p zz-mux
 
-      # The full differential corpus takes about ninety minutes and belongs to
-      # the nightly workflow. A push gets the summary freshness check above,
-      # which pins the persisted corpus result to an ancestor of HEAD, plus the
-      # attached-client fixture, which drives the real attach path on this tree.
       - name: Run the attached-client fixture
         if: runner.os == 'Linux'
         timeout-minutes: 15
@@ -211,8 +183,6 @@ jobs:
           test -x target/release/zz
           tar -C target/release -czf "$binary_artifact" zz
           scripts/package-appimage.sh target/cef-bundle "$package_artifact"
-          # Built for its own validation, not uploaded: the deb is a release
-          # artifact, and finding its packaging broken at tag time is too late.
           scripts/package-deb.sh target/cef-bundle target/zz-linux.deb
 
           echo "ZZ_BINARY_ARTIFACT_PATH=$binary_artifact" >> "$GITHUB_ENV"
@@ -251,8 +221,6 @@ jobs:
           if-no-files-found: error
           archive: false
 
-      # Every leg packages now; only the loose binaries above stay Unix-only,
-      # since the Windows bundle is unusable without its DLLs beside it.
       - name: Upload distribution package
         uses: actions/upload-artifact@v7.0.1
         with:

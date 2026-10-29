@@ -115,9 +115,6 @@ enum RowError {
     Unsupported,
 }
 
-/// Parse a Cookie-Editor JSON export or Netscape `cookies.txt` file. Invalid
-/// rows and attributes CEF cannot represent are skipped and counted. No cookie
-/// value or row content reaches an error.
 pub fn parse_cookie_import(input: &str) -> Result<CookieImportBatch, CookieImportError> {
     if input.len() > MAX_COOKIE_IMPORT_BYTES {
         return Err(CookieImportError::TooLarge);

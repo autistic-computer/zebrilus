@@ -1,26 +1,4 @@
 #!/usr/bin/env bash
-# Pane-geometry differential for the raw TUI's chrome.
-#
-# The scenario harness compares daemon facts, and the daemon's pane is the size
-# the CLIENT asks for, so no campaign proof ever compared what an attached
-# client leaves for the pane. This fixture attaches both binaries inside an
-# outer pinned tmux at the size under test, runs `tput cols; tput lines` in the
-# inner pane on each side, and diffs the columns. `ssh -t host zz attach` on a
-# stock 80x24 terminal has to leave the pane as wide as pinned tmux leaves it.
-#
-# Rows are asserted at every width. The pin spends one row of 24 on its status
-# line and nothing on pane chrome while pane-border-status is off, so the pane
-# gets 23; the raw TUI has to hand over the same 23 whether its sidebar shows
-# or not.
-#
-# Every wait here is bounded, and a wait that runs out is the only way this
-# fixture reports a runtime that never answered. A bare "did not happen within
-# 10 seconds" cannot be diagnosed after the fact, and the scratch tree that
-# holds the answer is removed on exit, so a timeout now copies out everything
-# needed to explain it before that happens: which wait fired, both outer
-# screens with their escapes and their scrollback, the zz daemon's own output,
-# each client's stderr, and each server's client and pane lists. The directory
-# is printed on stderr; ZZ_GEO_DIAGNOSTICS_DIR names it instead.
 set -eEuo pipefail
 
 usage() {
@@ -45,12 +23,6 @@ resolve_binary() {
 ZZ_BIN="$(resolve_binary "$ZZ_INPUT")" || { printf 'error: zz binary not found: %s\n' "$ZZ_INPUT" >&2; exit 2; }
 TMUX_BIN="$(resolve_binary "$TMUX_INPUT")" || { printf 'error: tmux binary not found: %s\n' "$TMUX_INPUT" >&2; exit 2; }
 
-# Columns and rows are asserted at every size. 120 used to be recorded instead:
-# the raw TUI showed its sidebar on its own from 109 columns — 80 for the pane
-# plus 28 for the sidebar and 1 for its border — and took those 29 columns off
-# a wide terminal's pane. Width no longer invokes the sidebar, so a 120-column
-# terminal hands the pane all 120 the way the pin does, and the width that used
-# to be the fixture's blind spot is now its assertion.
 SIZES=(80x24 100x24 120x24)
 SCRATCH_DIR="$(mktemp -d /tmp/zzgeo.XXXXXX)"
 TOKEN="${SCRATCH_DIR##*.}"
@@ -62,10 +34,6 @@ INNER_SESSION="geo"
 ZZ_HOME="$SCRATCH_DIR/zz-home"
 TMUX_HOME="$SCRATCH_DIR/tmux-home"
 OUTER_HOME="$SCRATCH_DIR/outer-home"
-# crates/zz/src/diagnostics/mod.rs platform_log_dir reads ZZ_LOG_DIR first,
-# then XDG_STATE_HOME, then HOME. Naming it here keeps the daemon's ring log
-# inside the scratch tree whatever the caller's state directory is, and puts it
-# where a timeout can copy it out.
 ZZ_LOG_DIR="$SCRATCH_DIR/zz-logs"
 ZZ_CLIENT_STDERR="$SCRATCH_DIR/zz-client.err"
 TMUX_CLIENT_STDERR="$SCRATCH_DIR/tmux-client.err"
@@ -134,9 +102,6 @@ diagnostics_dir() {
   printf '%s\n' "$DIAGNOSTICS_DIR"
 }
 
-# Called from the only place a bounded wait gives up. Every command is allowed
-# to fail: a wait can run out before the outer session exists, and a diagnostic
-# that cannot be taken must not replace the timeout with its own error.
 dump_diagnostics() {
   local label="$1"
   local dir side log
@@ -150,9 +115,6 @@ dump_diagnostics() {
     printf 'zz socket: %s\n' "$ZZ_SOCKET"
     printf 'outer socket: %s\n' "$OUTER_SOCKET_NAME"
     printf 'inner tmux socket: %s\n' "$INNER_SOCKET_NAME"
-    # A foreground `zz daemon` logs to its own stderr rather than to the ring
-    # file, so an empty listing here means the daemon log is in
-    # zz-daemon.stderr.txt, not that a log was lost.
     printf 'ZZ_LOG_DIR (%s) holds:\n' "$ZZ_LOG_DIR"
     ls -1 -- "$ZZ_LOG_DIR" 2>&1 || true
   } >"$dir/what-fired.txt" 2>&1 || true
@@ -211,9 +173,6 @@ write_attach() {
   local side="$1"
   local destination="$2"
   printf '#!/usr/bin/env bash\n' >"$destination"
-  # The client's own stderr is one of the four things a timeout needs, and a
-  # pane merges it into the pty where the next repaint overwrites it. tee keeps
-  # the screen copy and adds a file the dump can carry out of the scratch tree.
   if [ "$side" = zz ]; then
     printf 'exec env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE -u EDITOR -u VISUAL -u XDG_STATE_HOME HOME=%q XDG_CONFIG_HOME=%q ZZ_LOG_DIR=%q TMUX_TMPDIR=/tmp %q --socket %q attach-session -t %q 2> >(tee -a %q >&2)\n' \
       "$ZZ_HOME" "$ZZ_HOME/config" "$ZZ_LOG_DIR" "$ZZ_BIN" "$ZZ_SOCKET" "=$INNER_SESSION" "$ZZ_CLIENT_STDERR" >>"$destination"
@@ -224,8 +183,6 @@ write_attach() {
   chmod +x "$destination"
 }
 
-# `tput` inside the pane reports the pty size the client negotiated, which is
-# the pane the viewer actually gets — not the size the session was created at.
 measure() {
   local side="$1"
   local out="$SCRATCH_DIR/$side.geometry"

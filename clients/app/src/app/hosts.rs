@@ -37,7 +37,6 @@ impl SavedHosts {
         &self.endpoints
     }
 
-    /// The hosts to reconnect at launch, the one last on screen first.
     pub(super) fn connected(&self) -> &[String] {
         &self.connected
     }

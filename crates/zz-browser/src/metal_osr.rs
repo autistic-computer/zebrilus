@@ -22,7 +22,6 @@ use crate::{
     popup::{PopupRect, popup_placement},
 };
 
-// Five: ala's CAMetalLayer allows three drawables in flight plus two producer writes.
 const DESTINATION_POOL_SLOT_COUNT: usize = 5;
 const MAX_IN_FLIGHT_BLITS: usize = 2;
 const SOURCE_TEXTURE_CACHE_CAPACITY: usize = 10;
@@ -83,12 +82,9 @@ struct SourceTextureCache {
 
 struct RetainedSourceSurface(CFRetained<IOSurfaceRef>);
 
-// SAFETY: Metal devices and queues are documented for concurrent command
-// creation and submission. The producer mutex serializes its own state.
 unsafe impl Send for MetalContext {}
 unsafe impl Sync for MetalContext {}
 
-// SAFETY: IOSurface is explicitly shareable across threads and processes.
 unsafe impl Send for RetainedSourceSurface {}
 unsafe impl Sync for RetainedSourceSurface {}
 
@@ -98,8 +94,6 @@ impl RetainedSourceSurface {
     }
 }
 
-// SAFETY: Metal resources and IOSurfaces support cross-thread use, and every
-// mutation of these handles is serialized by MetalFrameProducer's mutex.
 unsafe impl Send for DestinationSurface {}
 unsafe impl Sync for DestinationSurface {}
 unsafe impl Send for SourceTexture {}
@@ -180,8 +174,6 @@ impl MetalContext {
         storage_mode: MTLStorageMode,
     ) -> Option<Retained<ProtocolObject<dyn MTLTexture>>> {
         let descriptor = MTLTextureDescriptor::new();
-        // SAFETY: the validated frame dimensions fit NSUInteger and describe
-        // one non-mipmapped, single-sample 2D texture.
         unsafe {
             descriptor.setWidth(width as _);
             descriptor.setHeight(height as _);
@@ -204,8 +196,6 @@ impl MetalContext {
         let height_number = CFNumber::new_i64(i64::from(height));
         let bytes_per_element = CFNumber::new_i64(4);
         let pixel_format = CFNumber::new_i64(BGRA_PIXEL_FORMAT);
-        // SAFETY: these are immutable IOSurface framework constants available
-        // for the lifetime of the process.
         let keys = unsafe {
             [
                 kIOSurfaceWidth.as_ref(),
@@ -223,8 +213,6 @@ impl MetalContext {
                 pixel_format.as_ref(),
             ],
         );
-        // SAFETY: all required IOSurface dimensions and packed BGRA layout
-        // properties are present and remain alive for the duration of the call.
         let io_surface = unsafe { IOSurfaceRef::new(properties.as_opaque()) }
             .ok_or(MetalFrameError::DestinationTexture)?;
         let texture = self
@@ -392,9 +380,6 @@ impl MetalFrameProducer {
             device: context.device.clone(),
             queue: context.queue.clone(),
         };
-        // SAFETY: CEF guarantees this Get-rule IOSurface pointer is valid for
-        // the accelerated-paint callback. Retaining it here extends that
-        // lifetime through the asynchronous Metal completion block.
         let source_surface = RetainedSourceSurface(unsafe { CFRetained::retain(source_surface) });
         let source_storage_mode = if context.device.hasUnifiedMemory() {
             MTLStorageMode::Shared
@@ -437,8 +422,6 @@ impl MetalFrameProducer {
         let encoder = command_buffer
             .blitCommandEncoder()
             .ok_or(MetalFrameError::BlitEncoder)?;
-        // SAFETY: both textures are packed BGRA textures of the popup's size,
-        // and they remain retained until completion below.
         unsafe {
             encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 &source_texture,
@@ -462,8 +445,6 @@ impl MetalFrameProducer {
                 let _ = CFRetained::as_ptr(&source_surface.0);
             },
         );
-        // SAFETY: RcBlock owns a valid heap block for this call. Metal copies
-        // and retains it until the command buffer completes.
         unsafe {
             command_buffer.addCompletedHandler(RcBlock::as_ptr(&completion_block));
         }
@@ -527,11 +508,7 @@ impl MetalFrameProducer {
             device: context.device.clone(),
             queue: context.queue.clone(),
         };
-        // SAFETY: CEF guarantees this Get-rule IOSurface pointer is valid for
-        // the accelerated-paint callback. Retaining it here extends that
-        // lifetime through the asynchronous Metal completion block.
         let source_surface = RetainedSourceSurface(unsafe { CFRetained::retain(source_surface) });
-        // Apple-silicon GPUs reject managed textures; discrete-GPU Macs need them.
         let source_storage_mode = if context.device.hasUnifiedMemory() {
             MTLStorageMode::Shared
         } else {
@@ -591,8 +568,6 @@ impl MetalFrameProducer {
         let encoder = command_buffer
             .blitCommandEncoder()
             .ok_or(MetalFrameError::BlitEncoder)?;
-        // SAFETY: both textures are validated packed BGRA textures with the
-        // same dimensions, and they remain retained until completion below.
         unsafe {
             encoder.copyFromTexture_sourceSlice_sourceLevel_sourceOrigin_sourceSize_toTexture_destinationSlice_destinationLevel_destinationOrigin(
                 &source_texture,
@@ -644,10 +619,7 @@ impl MetalFrameProducer {
         let producer_state = Arc::clone(&self.state);
         let completion_block = RcBlock::new(
             move |command_buffer: NonNull<ProtocolObject<dyn MTLCommandBuffer>>| {
-                // Keeps CEF's source IOSurface captured until Metal finishes the blit.
                 let _ = CFRetained::as_ptr(&source_surface.0);
-                // SAFETY: Metal invokes completion handlers with the command
-                // buffer that retained and scheduled this block.
                 let command_buffer = unsafe { command_buffer.as_ref() };
                 let error = command_buffer
                     .error()
@@ -727,8 +699,6 @@ impl MetalFrameProducer {
                 completion(outcome);
             },
         );
-        // SAFETY: RcBlock owns a valid heap block for this call. Metal copies
-        // and retains it until the command buffer completes.
         unsafe {
             command_buffer.addCompletedHandler(RcBlock::as_ptr(&completion_block));
         }

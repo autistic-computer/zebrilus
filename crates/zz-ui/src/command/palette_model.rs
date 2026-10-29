@@ -23,8 +23,6 @@ use crate::IconName;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PaletteMode {
     Command,
-    /// `@`: a target in zz's grammar, a host, session, window, pane or file
-    /// ([`crate::target`]).
     Target,
 }
 
@@ -144,7 +142,6 @@ pub struct PaletteTreePane {
     pub index: u32,
     pub label: String,
     pub detail: SharedString,
-    /// The program in the foreground, such as Claude Code.
     pub program: Option<SharedString>,
     pub icon: IconName,
     pub running: bool,

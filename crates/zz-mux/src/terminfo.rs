@@ -1,18 +1,3 @@
-//! The per-client terminal `#{I/c:}` and `#{I/f:}` interrogate.
-//!
-//! tmux builds one `struct tty_term` per attached client from the terminfo
-//! entry its `TERM` names, then writes more capabilities into it from whichever
-//! features `tty_term_create` turned on. `tty_term_has_name` and
-//! `tty_feature_present` read that object, so neither answer can come from a
-//! compiled terminfo entry alone and neither can come from the feature list a
-//! multiplexer publishes about its own renderers.
-//!
-//! The capability list arrives here the way `tty_term_read_list` produces it,
-//! as `name=value` strings, because reading the terminfo database is I/O and
-//! belongs to the daemon; everything after that is the pin's own arithmetic.
-//! `TERM_NOAM` is left out of the flag set because the pin sets it on a resize
-//! rather than in `tty_term_create`, so no fresh interrogate can see it.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::model::fnmatch;
@@ -38,10 +23,6 @@ struct TtyFeature {
     flags: u32,
 }
 
-/// tty-term.c `tty_term_codes`: the 236 capability names tmux reads for a
-/// client terminal, with the type it reads each one as. `tty_term_has_name`
-/// answers 0 for every name outside this table, whatever the terminfo entry
-/// carries.
 const TTY_TERM_CODES: [(&str, CapabilityKind); 236] = [
     ("acsc", CapabilityKind::Text),
     ("am", CapabilityKind::Flag),
@@ -281,9 +262,6 @@ const TTY_TERM_CODES: [(&str, CapabilityKind); 236] = [
     ("XT", CapabilityKind::Flag),
 ];
 
-/// tty-features.c `tty_features`, in declaration order. Each row is the
-/// feature name, the capabilities `tty_apply_features` writes into the term
-/// when the feature is on, and the term flags it sets.
 const TTY_FEATURES: [TtyFeature; 23] = [
     TtyFeature {
         name: "256",
@@ -430,15 +408,8 @@ const TTY_FEATURES: [TtyFeature; 23] = [
     },
 ];
 
-/// `tigetflag` answers 0, not -1, for a standard boolean the entry omits, so
-/// `tty_term_read_list` stores it anyway and `tty_term_has` then answers 1.
-/// Only these two of the seven flag capabilities are standard booleans; the
-/// rest are tmux extensions that reach the term only from the entry's own
-/// extended section.
 const STANDARD_BOOLEAN_CAPABILITIES: [&str; 2] = ["am", "bce"];
 
-/// One client's `struct tty_term`, reduced to the questions `#{I}` asks:
-/// `tty_term_has_name` for `I/c:` and `tty_feature_present` for `I/f:`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct TtyTerm {
     codes: BTreeMap<&'static str, CodeValue>,
@@ -449,9 +420,6 @@ pub struct TtyTerm {
     client_utf8: bool,
 }
 
-/// One `struct tty_code`: the value `tty_term_string`, `tty_term_number` and
-/// `tty_term_flag` read, present only while the code's type is not
-/// `TTYCODE_NONE`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum CodeValue {
     Text(String),
@@ -460,9 +428,6 @@ enum CodeValue {
 }
 
 impl TtyTerm {
-    /// `tty_term_create` for a client whose terminfo entry produced `entries`,
-    /// each a `name=value` string the way `tty_term_read_list` writes them,
-    /// with the global `terminal-features` and `terminal-overrides` arrays.
     #[must_use]
     pub fn create(
         term_name: &str,
@@ -567,16 +532,10 @@ impl TtyTerm {
         self
     }
 
-    /// The pin's own `feat` for this client: what `tty_term_create` added from
-    /// the `terminal-features` array, `COLORTERM`, the VT100-like check and an
-    /// RGB-capable entry, which is the half of `c->term_features` a terminfo
-    /// entry decides and the whole of what `#{client_termfeatures}` lists for a
-    /// terminal that has answered nothing.
     pub fn requested_features(&self) -> impl Iterator<Item = &str> {
         self.requested.iter().map(String::as_str)
     }
 
-    /// `tty_term_has_name`.
     #[must_use]
     pub fn has_capability(&self, name: &str) -> bool {
         self.has(name)
@@ -587,7 +546,6 @@ impl TtyTerm {
         self.string(name)
     }
 
-    /// `tty_feature_present`.
     #[must_use]
     pub fn has_feature(&self, name: &str) -> bool {
         if name == "utf8" {
@@ -617,9 +575,6 @@ impl TtyTerm {
             .collect()
     }
 
-    /// The features the pin would list for this client, which is what its own
-    /// `client_termfeatures` answers. zz publishes its renderer roster under
-    /// that name instead, so this exists only to check the port.
     #[cfg(test)]
     fn feature_names(&self) -> impl Iterator<Item = &str> {
         self.features.iter().map(String::as_str)
@@ -640,9 +595,6 @@ impl TtyTerm {
         }
     }
 
-    /// `tty_term_apply`: one `:`-separated capability list, where `name@`
-    /// removes the code, `name=value` sets it and a bare `name` sets a flag;
-    /// names outside `tty_term_codes` are ignored.
     fn apply(&mut self, capabilities: &str) {
         let mut offset = 0;
         while let Some(item) = override_next(capabilities, &mut offset) {
@@ -679,10 +631,6 @@ impl TtyTerm {
         }
     }
 
-    /// `tty_term_apply_overrides`: every `terminal-overrides` row whose first
-    /// item matches the terminal name, then the term flags the capabilities
-    /// decide. `TERM_NOAM` is left out because the pin sets it on a resize
-    /// rather than here, so no fresh interrogate can see it.
     fn apply_overrides(&mut self, term_name: &str, terminal_overrides: &[String]) {
         for row in terminal_overrides {
             let mut offset = 0;
@@ -724,10 +672,6 @@ impl TtyTerm {
         self.flags & TERM_INVALID_MS != 0
     }
 
-    /// `tty_feature_present`: the feature bit, else every capability the
-    /// feature names being on the term with the feature's own term flags
-    /// already set. `ignorefkeys` is excluded by name because its capabilities
-    /// are cancels.
     fn feature_present(&self, name: &str, requested: &BTreeSet<String>) -> bool {
         let Some(feature) = TTY_FEATURES.iter().find(|feature| feature.name == name) else {
             return false;
@@ -782,7 +726,6 @@ fn code_entry(name: &str) -> Option<(&'static str, CapabilityKind)> {
         .copied()
 }
 
-/// `strtonum(value, 0, INT_MAX, ...)`: a decimal number in range, else nothing.
 fn strtonum(value: &str) -> Option<i32> {
     value
         .trim_start()
@@ -791,7 +734,6 @@ fn strtonum(value: &str) -> Option<i32> {
         .filter(|number| *number >= 0)
 }
 
-/// `tty_term_strip`: the `$<n>` padding a terminfo string carries.
 fn tiparm_takes_two_strings(format: &str) -> bool {
     let bytes = format.as_bytes();
     let mut count = 0;
@@ -865,9 +807,6 @@ fn strip_padding(value: &str) -> String {
     stripped
 }
 
-/// `tty_term_override_next`: the next `:`-separated item of an override or
-/// feature row, with `::` standing for a literal colon. `offset` moves past
-/// the separator so the caller can hand the remainder on.
 fn override_next(row: &str, offset: &mut usize) -> Option<String> {
     let bytes = row.as_bytes();
     let mut at = *offset;
@@ -892,8 +831,6 @@ fn override_next(row: &str, offset: &mut usize) -> Option<String> {
     Some(String::from_utf8_lossy(&value).into_owned())
 }
 
-/// `strunvis` over an override value, the way `tty_term_apply` decodes it;
-/// a sequence unvis rejects leaves the value as written, as the pin does.
 fn unvis(value: &str) -> String {
     let bytes = value.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
@@ -967,8 +904,6 @@ fn unvis(value: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-/// `tty_add_features`: a case-insensitive name match against the feature table,
-/// stopping at the first name the table does not carry.
 fn parse_features(
     requested: &mut BTreeSet<String>,
     removed: &mut BTreeSet<String>,
@@ -999,10 +934,6 @@ fn parse_features(
 mod tests {
     use super::*;
 
-    /// Every `name=value` string `tty_term_read_list` produces for
-    /// TERM=xterm-256color on the box the pin was measured on, keeping only the
-    /// values the build actually reads: `clear`, whose CSI start decides
-    /// `TERM_VT100LIKE`, and the numbers, which have to parse.
     const XTERM_256COLOR: [&str; 199] = [
         "acsc=x",
         "am=1",
@@ -1227,9 +1158,6 @@ mod tests {
         vec!["linux*:AX@".to_owned()]
     }
 
-    /// The default `terminal-features` and `terminal-overrides` arrays reach
-    /// the interrogate through the engine accessors, so the stock lists these
-    /// tests hard-code are the ones `tty_term_create` sees.
     #[test]
     fn the_stock_terminal_features_option_reaches_the_interrogate() {
         let engine = crate::MuxEngine::default();
@@ -1249,11 +1177,6 @@ mod tests {
         list.iter().map(|entry| (*entry).to_owned()).collect()
     }
 
-    /// Measured against pinned tmux on 2026-09-02 with COLORTERM unset and a
-    /// pty client per TERM: screen-256color and tmux-256color carry no XT but
-    /// a clear starting with CSI, so `tty_term_create` still adds bpaste, focus
-    /// and title; linux gets title the same way and loses AX to the stock
-    /// `linux*:AX@` override; rxvt loses kf1 to the `ignorefkeys` cancels.
     #[test]
     fn a_vt100_like_clear_adds_the_three_features_without_xt() {
         let screen = TtyTerm::create(
@@ -1296,10 +1219,6 @@ mod tests {
         assert!(rxvt.has_feature("ignorefkeys"));
     }
 
-    /// Measured on the pin with `set -g terminal-overrides 'xterm*:Tc'`:
-    /// `#{I/c:Tc}` answers 1, and because Tc is a flag the RGB feature follows
-    /// with setrgbf and setrgbb written in. The `Ss=\E[2 q:smcup@` row is read
-    /// off `tty_term_apply`: the string lands and the cancel removes the code.
     #[test]
     fn terminal_overrides_apply_after_the_entry_and_after_the_features() {
         let term = TtyTerm::create(
@@ -1398,8 +1317,6 @@ mod tests {
         assert_eq!(strnvis(&"x".repeat(200)).len(), 127);
     }
 
-    /// Measured against pinned tmux on 2026-09-02 with an attached 80x24 pty
-    /// client on TERM=xterm-256color and COLORTERM=truecolor, one
     #[test]
     fn terminal_features_take_a_feature_away_with_at_and_know_appesc_and_utf8() {
         let entries = vec!["clear=\u{1b}[H\u{1b}[2J".to_owned(), "cup=x".to_owned()];
@@ -1478,7 +1395,6 @@ mod tests {
         assert!(restored.has_capability("Ms"));
     }
 
-    /// `display-message -p -c <client>` per name.
     #[test]
     fn the_interrogate_matches_the_pinned_client_terminal() {
         let term = TtyTerm::create(

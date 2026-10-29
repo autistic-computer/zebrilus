@@ -1,7 +1,3 @@
-/* Docs skin. Same palette, type ramp, and corner language as the landing page
-   in src/pages/index.astro, mapped onto Starlight's token surface. Keep the two
-   in sync: every value below has a twin in that file's :root block. */
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @font-face {
@@ -33,14 +29,12 @@
 	--zz-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 	--zz-mono: 'Fantasque Sans Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
-	/* Starlight: neutral ramp, no blue cast. */
 	--sl-color-white: #fafafa;
 	--sl-color-gray-1: #ededed;
 	--sl-color-gray-2: #a3a3a3;
 	--sl-color-gray-3: #737373;
 	--sl-color-gray-4: #525252;
 	--sl-color-gray-5: #2a2a2a;
-	/* gray-6 is the code-block surface Starlight hands Expressive Code. */
 	--sl-color-gray-6: #141414;
 	--sl-color-gray-7: #111111;
 	--sl-color-black: #0a0a0a;
@@ -53,8 +47,6 @@
 	--sl-color-hairline-light: var(--zz-hair);
 	--sl-color-hairline-shade: var(--zz-hair-soft);
 
-	/* The landing page has no chroma accent left; links carry weight and an
-	   underline instead of a hue. */
 	--sl-color-accent-low: rgba(255, 255, 255, 0.1);
 	--sl-color-accent: #fafafa;
 	--sl-color-accent-high: #fafafa;
@@ -105,8 +97,6 @@
 	--sl-color-text-invert: #fbfbfa;
 }
 
-/* Same rule the landing page opens with: every rounded quad is a superellipse
-   on Chrome 139+, plain border-radius everywhere else. */
 * {
 	corner-shape: squircle;
 }
@@ -116,8 +106,6 @@ body {
 	letter-spacing: -0.006em;
 }
 
-/* The hero wash, reused. Fixed so it stays put while the content scrolls, and
-   short enough that it is gone by the second heading. */
 body::before {
 	content: '';
 	position: fixed;
@@ -133,8 +121,6 @@ body::before {
 	background: radial-gradient(50% 45% at 50% 0%, rgba(0, 0, 0, 0.035), transparent 72%);
 }
 
-/* ── top bar ─────────────────────────────────────────────────────────────── */
-
 header.header {
 	backdrop-filter: blur(14px);
 	border-bottom: 1px solid var(--zz-hair-soft);
@@ -149,7 +135,6 @@ header.header {
 	width: 22px;
 	height: 22px;
 }
-/* Search box and the icon buttons beside it, as the landing nav's pills. */
 site-search button[data-open-modal] {
 	border-radius: 999px;
 	border-color: var(--zz-hair);
@@ -175,8 +160,6 @@ starlight-lang-select select {
 	color: var(--zz-mute);
 }
 
-/* ── sidebars ────────────────────────────────────────────────────────────── */
-
 .sidebar-pane {
 	border-inline-end: 1px solid var(--zz-hair-soft);
 }
@@ -197,8 +180,6 @@ starlight-lang-select select {
 	font-weight: 500;
 	background: var(--zz-fill-hi);
 }
-/* Sidebar status badges ("Upcoming"), as the landing page's mono micro-label
-   rather than Starlight's outlined box. */
 .sidebar-content .sl-badge {
 	border: 0;
 	border-radius: 999px;
@@ -232,8 +213,6 @@ starlight-toc a[aria-current='true']:hover {
 	background: var(--zz-fill-hi);
 }
 
-/* ── page head ───────────────────────────────────────────────────────────── */
-
 .content-panel + .content-panel {
 	border-top: 0;
 }
@@ -248,8 +227,6 @@ starlight-toc a[aria-current='true']:hover {
 	text-wrap: balance;
 	color: var(--zz-fg);
 }
-
-/* ── prose ───────────────────────────────────────────────────────────────── */
 
 .sl-markdown-content {
 	color: var(--zz-dim);
@@ -266,8 +243,6 @@ starlight-toc a[aria-current='true']:hover {
 .sl-markdown-content h2 {
 	font-size: clamp(24px, 3vw, 30px);
 }
-/* The rule belongs to the wrapper, not the heading: an h2 is only as wide as
-   its text, so a border on it stops mid-column. */
 .sl-markdown-content .sl-heading-wrapper.level-h2 {
 	margin-top: 3.25rem !important;
 	padding-top: 2rem;
@@ -286,7 +261,6 @@ starlight-toc a[aria-current='true']:hover {
 	font-size: 16px;
 	letter-spacing: -0.02em;
 }
-/* The lede: first paragraph under the title, sized like the landing sub. */
 .sl-markdown-content > p:first-child {
 	font-size: 18px;
 	color: var(--zz-dim);
@@ -320,7 +294,6 @@ starlight-toc a[aria-current='true']:hover {
 	border-color: var(--zz-hair-soft);
 }
 
-/* Inline code: a hairline chip, not a filled block. */
 .sl-markdown-content code:not(:where(.not-content *)) {
 	padding: 0.15em 0.4em;
 	border-radius: 6px;
@@ -337,12 +310,6 @@ starlight-toc a[aria-current='true']:hover {
 	color: inherit;
 }
 
-/* ── tables ──────────────────────────────────────────────────────────────── */
-
-/* Starlight ships tables as `display: block; overflow: auto`, which makes them
-   scroll on small screens but also shrinks them to their content on large ones.
-   Take the full column where there is room, keep the scroll box where there
-   isn't. */
 .sl-markdown-content table:not(:where(.not-content *)) {
 	border-collapse: collapse;
 	font-size: 14px;
@@ -371,15 +338,10 @@ starlight-toc a[aria-current='true']:hover {
 .sl-markdown-content tbody tr:last-child :where(th, td) {
 	border-bottom: 0;
 }
-/* First column of a reference table is the name of the thing. */
 .sl-markdown-content tbody td:first-child code {
 	white-space: nowrap;
 }
 
-/* ── code blocks ─────────────────────────────────────────────────────────── */
-
-/* Corner and border come from expressiveCode.styleOverrides in astro.config;
-   only the affordances need nudging here. */
 .expressive-code .copy button {
 	border-radius: 8px;
 }
@@ -388,8 +350,6 @@ starlight-toc a[aria-current='true']:hover {
 	font-size: 11px;
 	letter-spacing: 0.02em;
 }
-
-/* ── asides ──────────────────────────────────────────────────────────────── */
 
 .starlight-aside {
 	border-radius: 14px;
@@ -412,8 +372,6 @@ starlight-toc a[aria-current='true']:hover {
 .starlight-aside--danger {
 	border-color: color-mix(in srgb, #ef4444 34%, transparent);
 }
-
-/* ── prev/next ───────────────────────────────────────────────────────────── */
 
 .pagination-links a {
 	border-radius: 16px;
@@ -439,9 +397,6 @@ starlight-toc a[aria-current='true']:hover {
 	color: var(--zz-fg);
 }
 
-/* ── page-local blocks (raw HTML in the markdown) ────────────────────────── */
-
-/* Card grid: the landing's hairline-on-fill card, two up. */
 .zz-cards {
 	display: grid;
 	grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -476,9 +431,6 @@ starlight-toc a[aria-current='true']:hover {
 	color: var(--zz-mute);
 }
 
-/* Key chips, borrowed from the app's own kbd pill. Deliberately `inline`, not
-   `inline-block`: an inline box takes padding without contributing height, so a
-   table row carrying two chips is exactly as tall as one carrying none. */
 .sl-markdown-content kbd {
 	padding: 3px 6px;
 	border-radius: 6px;
@@ -490,8 +442,6 @@ starlight-toc a[aria-current='true']:hover {
 	color: var(--zz-fg);
 }
 
-/* A mono micro-label above a group, same size and tracking as the bench detail
-   line on the landing page. */
 .zz-eyebrow {
 	margin-top: 2.5rem !important;
 	font-family: var(--zz-mono);

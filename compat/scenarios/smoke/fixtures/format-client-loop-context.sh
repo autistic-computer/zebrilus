@@ -85,7 +85,6 @@ position='#{L:<#{loop_index}:#{loop_last_flag}>}'
 main_client kill-session -t "=$session" >/dev/null 2>&1 || true
 main_client new-session -d -s "$session"
 
-# No rows, no positions.
 check_equal empty '' "$(expand "$position")"
 
 first_pid="$(attach one)"
@@ -95,20 +94,15 @@ check_equal one '<0:1>' "$(expand "$position")"
 second_pid="$(attach two)"
 await_clients 2 || { echo "format-client-loop-context-$side: attach-two"; exit 0; }
 
-# Two rows count from zero and only the second one is flagged, whichever order
-# the modifier walks.
 for form in 'L' 'Li' 'Ln' 'Lr' 'Lnr' 'Lt' 'Ltr' 'Lz'; do
     check_equal "order-$form" '<0:0><1:1>' \
         "$(expand "#{$form:<#{loop_index}:#{loop_last_flag}>}")"
 done
 
-# Pairing the index with the client name shows the forward and reverse orders
-# hand index 0 to different clients.
 ascending="$(expand '#{L:<#{loop_index}#{client_name}>}')"
 descending="$(expand '#{Lr:<#{loop_index}#{client_name}>}')"
 check_equal reverse-repositions skip "$(if [ "$ascending" = "$descending" ]; then echo same; else echo skip; fi)"
 
-# A nested loop owns the position only for the length of its own rows.
 check_equal nested-client '[0(00)(11)0][1(00)(11)1]' \
     "$(expand '#{L:[#{loop_index}#{L:(#{loop_index}#{loop_last_flag})}#{loop_index}]}')"
 check_equal nested-window '[0<01>][1<01>]' \
@@ -116,13 +110,11 @@ check_equal nested-window '[0<01>][1<01>]' \
 check_equal nested-outside '[0<0><1>]' \
     "$(expand '#{W:[#{loop_index}#{L:<#{loop_index}>}]}')"
 
-# Neither name answers anywhere else.
 check_equal no-leak '[|]' "$(expand '[#{loop_index}|#{loop_last_flag}]')"
 check_equal no-leak-after 'xx[]' "$(expand '#{L:x}[#{loop_index}#{loop_last_flag}]')"
 check_equal conditional 'unsetunsetset' \
     "$(expand '#{?loop_last_flag,set,unset}#{L:#{?loop_last_flag,set,unset}}')"
 
-# Detaching renumbers what is left.
 kill "$second_pid" >/dev/null 2>&1 || true
 wait "$second_pid" >/dev/null 2>&1 || true
 second_pid=""

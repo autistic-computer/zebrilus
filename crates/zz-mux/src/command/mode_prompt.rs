@@ -261,8 +261,6 @@ impl ModePrompt {
         }
     }
 
-    /// `prompt_set_options`: a prompt keeps the session's `status-keys` for its
-    /// whole life, and `prompt_key` runs its keys through the vi table first.
     #[must_use]
     pub fn with_status_keys(mut self, vi: bool) -> Self {
         self.vi_keys = vi;
@@ -285,15 +283,11 @@ impl ModePrompt {
         self.history_type
     }
 
-    /// `prompt_add_history` runs on Enter for a non-empty buffer; a single-key
-    /// prompt finishes through `prompt_done` without it.
     #[must_use]
     pub fn remembered(&self) -> Option<(CommandPromptType, String)> {
         (!self.single && !self.buffer.is_empty()).then(|| (self.history_type, self.input()))
     }
 
-    /// `PROMPT_COMMANDMODE`: `prompt_draw` paints the row with
-    /// `message-command-style` while the vi prompt sits in command mode.
     #[must_use]
     pub const fn command_mode(&self) -> bool {
         self.command_mode
@@ -313,8 +307,6 @@ impl ModePrompt {
         self.key_with_history(key, &[])
     }
 
-    /// `prompt_up_history` and `prompt_down_history` walk the server's list for
-    /// this prompt's type, newest first, from an index the prompt owns.
     pub fn key_with_history(&mut self, key: ModeKey, history: &[String]) -> PromptOutcome {
         let key = match key {
             ModeKey::Keypad(character) => ModeKey::Char(character),
@@ -475,10 +467,6 @@ impl ModePrompt {
         PromptOutcome::Handled
     }
 
-    /// `prompt_translate_key`: insert mode hands a fixed list of control keys to
-    /// the emacs handler, takes Escape or `C-[` into command mode with the
-    /// cursor stepped back, and appends everything else; command mode maps the
-    /// vi keys onto emacs keys and the `KEYC_VI` word motions and drops the rest.
     fn translate_vi(&mut self, key: ModeKey) -> ViKey {
         if !self.command_mode {
             return match key {
@@ -542,8 +530,6 @@ impl ModePrompt {
         }
     }
 
-    /// `prompt_mouse`: a button-1 press on the prompt's own row puts the cursor
-    /// on the cell it landed on, with the same scroll offset `prompt_draw` used.
     pub fn mouse(&mut self, x: usize, width: usize) -> PromptOutcome {
         if x >= width {
             return PromptOutcome::NotHandled;
@@ -636,7 +622,6 @@ impl ModePrompt {
         self.buffer.iter().copied().map(Self::cell).sum::<usize>() + usize::from(self.quote_next)
     }
 
-    /// `prompt_end_word`: forward to the last character of the next word.
     fn end_word(&mut self, separators: &str) {
         let size = self.buffer.len();
         let mut index = self.index;
@@ -700,9 +685,6 @@ impl ModePrompt {
         self.forward_word_from(false, &separators);
     }
 
-    /// `prompt_forward_word`: emacs first skips spaces, both stop at the first
-    /// space or opposite character class, and vi then lands on the start of the
-    /// next word rather than the space.
     fn forward_word_from(&mut self, vi: bool, separators: &str) {
         let size = self.buffer.len();
         let mut index = self.index;

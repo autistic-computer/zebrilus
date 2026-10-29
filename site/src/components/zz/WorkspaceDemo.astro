@@ -1,11 +1,4 @@
 ---
-// The zz workspace, rebuilt from the components in this directory and made
-// interactive: one scene per window in the sidebar tree, all of them
-// server-rendered, one small script switching which is on the canvas. Mounted by
-// the landing page hero and by /demo, so both pages run the same shell.
-//
-// Below the shell is a control strip. It is marketing chrome, not zz chrome —
-// it lives outside the window and inherits the host page's type and colors.
 import './zz.css';
 import './schemes.css';
 import AgentPane from './AgentPane.astro';
@@ -19,17 +12,11 @@ import TerminalPane from './TerminalPane.astro';
 import type { ZzNode } from './Sidebar.astro';
 
 interface Props {
-	/** `hero` caps the scale for the landing page's narrower column. */
 	fit?: 'page' | 'hero';
 }
 
 const { fit = 'page' } = Astro.props;
 
-// ── sidebar tree ──────────────────────────────────────────────────────────
-// The ✳ prefixes are pane *title* text set by the Claude Code CLI, not zz
-// glyphs — pane_label just echoes the title (zz/src/mux/nav.rs:535).
-// `scene` / `paneId` are the demo's hooks: a row attaches the canvas to that
-// scene, a pane row also focuses that pane.
 const tree: ZzNode[] = [
 	{
 		kind: 'host',
@@ -60,8 +47,6 @@ const tree: ZzNode[] = [
 							{
 								kind: 'pane',
 								pane: 'browser',
-								// A blank tab is titled "New Tab" (view.rs:240-252) and the row
-								// just echoes that title — until the demo navigates the pane.
 								label: 'New Tab',
 								scene: 'hello-world',
 								paneId: 'hw-web',
@@ -107,11 +92,6 @@ const tree: ZzNode[] = [
 	},
 ];
 
-// ── chrome presets ────────────────────────────────────────────────────────
-// zz/src/theme.rs:226 CHROME_PRESETS, in ChromePresetId::ALL order
-// (theme.rs:160-172). The value is the config spelling (theme.rs:174-188) and
-// the palette behind it is the matching block in schemes.css; Default is the
-// absence of an attribute, i.e. zz.css untouched.
 const schemes = [
 	{ id: 'tokyo-night', name: 'Tokyo Night' },
 	{ id: 'catppuccin', name: 'Catppuccin' },
@@ -126,10 +106,6 @@ const schemes = [
 	{ id: 'macos-classic', name: 'macOS Classic' },
 ];
 
-// ── terminal text ─────────────────────────────────────────────────────────
-// Rows are data, not markup: a `white-space: pre` element would print the
-// template's own indentation as terminal cells. A cell is either a plain string
-// (default foreground) or [text, class] where the class is an ANSI span.
 type Cell = string | [string, string];
 type Row = { bar?: boolean; spans: { t: string; c?: string }[] };
 
@@ -141,7 +117,6 @@ const CURSOR: Cell = ['', 'zz-cursor'];
 const BLANK = line(' ');
 const GREY = 'zz-fg-black-b';
 
-// `host:path $` — bash's default two-tone prompt.
 const prompt = (host: string, path: string): Cell[] => [
 	[host, 'zz-fg-green'],
 	[':', GREY],
@@ -151,7 +126,6 @@ const prompt = (host: string, path: string): Cell[] => [
 
 const freshShell: Row[] = [line(...prompt('macbook', '~/dev/zz'), CURSOR)];
 
-// ── Claude Code transcripts ───────────────────────────────────────────────
 const DIM = 'zz-cc-dim';
 const BRIGHT = 'zz-cc-bright';
 const LINK = 'zz-cc-link';
@@ -192,9 +166,6 @@ const transcript: Row[] = [
 	BLANK,
 ];
 
-// The desktop session's agent explaining what the reader is looking at: the
-// browser pane on the right egresses through the ssh -D tunnel, so it sees the
-// remote host's own localhost.
 const socksTranscript: Row[] = [
 	BLANK,
 	BLANK,
@@ -269,10 +240,6 @@ const chooserRows = [
 	{ icon: 'globe', label: 'Browser', key: 'b', choice: 'browser' },
 ];
 
-// ── browser start page ────────────────────────────────────────────────────
-// The recents every browser pane boots with — display_url spelling, scheme
-// kept, no query or fragment (view.rs:3186-3188). Static demo data: the app
-// accumulates these from history, this list never grows.
 const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com/tmux/tmux'];
 ---
 
@@ -282,7 +249,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 			<Sidebar slot="sidebar" tree={tree} />
 
 			<div id="canvas">
-				{/* ── hello-world: the reference capture ───────────────────────── */}
 				<div class="scene" data-scene="hello-world">
 					<div class="split" data-axis="x" style="--frac:0.5">
 						<Pane id="hw-agent" background="var(--zz-cc-bg)" focused>
@@ -311,8 +277,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 						</Pane>
 
 						<Pane id="hw-web">
-							{/* Boots on about:blank: chrome background plus the start page, and
-							    every page in the demo is one click down the recents column. */}
 							<BrowserPane url="" recents={RECENTS} />
 						</Pane>
 
@@ -320,8 +284,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 					</div>
 				</div>
 
-				{/* ── hello-socks5 (desktop): Claude explains the tunnel next to the
-				    page it tunnels ─────────────────────────────────────────────── */}
 				<div class="scene" data-scene="hello-socks5" hidden>
 					<div class="split" data-axis="x" style="--frac:0.55">
 						<Pane id="hs-agent" background="var(--zz-cc-bg)" focused>
@@ -350,9 +312,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 						</Pane>
 
 						<Pane id="hs-web">
-							{/* The page itself lives in BrowserPages, so this pane boots with an
-							    empty mount and the script clones the donor in. One copy of the
-							    markup, and the pane sits in a hidden scene at first paint. */}
 							<BrowserPane url="http://localhost:8000/" recents={RECENTS} bootPage="plain" />
 						</Pane>
 
@@ -361,8 +320,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 				</div>
 			</div>
 
-			{/* Astro scope-stamps template innards at build time. Every runtime pane
-			    and split is cloned from these donors instead of being hand-built. */}
 			<template data-tpl="pane">
 				<Pane>
 					<div class="slot" data-slot="picker">
@@ -398,8 +355,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 				</button>
 			</template>
 
-			{/* Same trick, one level down: the pages a browser pane can show are
-			    donors of their own, and their styles ride along in that component. */}
 			<BrowserPages />
 		</AppShell>
 	</div>
@@ -429,16 +384,10 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 </div>
 
 <script>
-	// Behaviour only. The server renders the boot state and scope-stamped donors,
-	// so the first paint does not wait for this script.
 	const demo = document.querySelector('.demo') as HTMLElement;
 	const stage = demo.querySelector('.stage') as HTMLElement;
 	const canvas = document.getElementById('canvas') as HTMLElement;
 	const tree = demo.querySelector('[role="tree"]') as HTMLElement;
-	// The shell root carries the pane geometry as inline custom properties, so
-	// state writes must land on that same element to override them — restyling
-	// every scene at once, including the hidden ones. ('.shell' would collide
-	// with AppShell's internal flex row; '.zz-scope' is unique to the root.)
 	const shell = demo.querySelector('.zz-scope') as HTMLElement;
 	shell.tabIndex = 0;
 	shell.style.outline = 'none';
@@ -463,8 +412,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		demo.toggleAttribute('data-armed', armed);
 	}
 
-	// The root/prefix table only runs while this window owns focus. Meta chords
-	// are never claimed, matching the app's early refusal (workspace/view.rs:754-756).
 	function syncFocusGate() {
 		demo.toggleAttribute('data-shell-focused', shell.matches(':focus-within'));
 	}
@@ -477,8 +424,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		return template.content.firstElementChild!.cloneNode(true) as HTMLElement;
 	}
 
-	// The whole state: which scene is on the canvas, and the attached pane per
-	// scene. Seeded from the markup so nothing is duplicated in JS.
 	const focus = new Map<string, string>();
 	for (const scene of canvas.children) {
 		const pane = scene.querySelector<HTMLElement>('[data-focused]');
@@ -491,7 +436,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 	}
 
 	function scenePanes(scene = activeScene()): HTMLElement[] {
-		// Sidebar rows also carry data-pane; canvas scoping is not optional here.
 		return [...scene.querySelectorAll<HTMLElement>('[data-pane]')];
 	}
 
@@ -543,9 +487,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		routeBrowserFocus();
 	}
 
-	// Rows follow the attached pane: full-strength text up the ancestor chain,
-	// weight 500 on the pane and its window (navigation.rs:287), brighter guide
-	// on the path — except the level-0 one, which never lights up (tree.rs:107).
 	function syncTree() {
 		for (const row of tree.querySelectorAll<HTMLElement>('.row')) {
 			row.dataset.tone = row.dataset.kind === 'host' ? 'bright' : 'muted';
@@ -569,8 +510,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		}
 	}
 
-	// Gaps: on = Modern, off = stock Simple (zz.css [data-gaps='off']).
-	// Scheme ids mirror the frontmatter list — that array is server-only.
 	const schemeIds = [
 		'',
 		'tokyo-night',
@@ -592,7 +531,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		else delete stage.dataset.scheme;
 		if (Math.random() < 0.5) stage.dataset.blur = 'on';
 		else delete stage.dataset.blur;
-		// Widget radius only (buttons, tabs, picker rows…) — frame/pane stay put.
 		shell.style.setProperty('--zz-radius', Math.random() < 0.5 ? '0px' : '24px');
 	}
 
@@ -607,8 +545,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		return pane ? tree.querySelector<HTMLElement>(`.row[data-pane="${pane}"]`) : null;
 	}
 
-	// The picker is pane content, not a modal, so choosing swaps the pane's own
-	// body (pane/picker.rs:259) and swaps its server-stamped sidebar donor row.
 	function pick(pane: HTMLElement, kind: string) {
 		if (kind !== 'terminal' && kind !== 'browser') return;
 		for (const slot of pane.querySelectorAll<HTMLElement>('[data-slot]')) {
@@ -624,10 +560,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		routeBrowserFocus();
 	}
 
-	// ── browser panes ─────────────────────────────────────────────────────────
-	// The pages a pane can reach. The RECENTS array is server-only, so the map is
-	// restated here — same pattern as schemeIds above — and the two have to stay
-	// in step: a recents row that resolves to nothing lands on the error page.
 	const PAGES: Record<string, { url: string; title: string }> = {
 		gpui: { url: 'https://gpui.rs/', title: 'gpui' },
 		ghostty: { url: 'https://ghostty.org/', title: 'Ghostty' },
@@ -635,7 +567,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		plain: { url: 'http://localhost:8000/', title: 'hello from desktop' },
 	};
 
-	/** One navigation in flight per pane; a second submit cancels the first. */
 	const navTimers = new WeakMap<HTMLElement, number>();
 
 	function clonePage(key: string): HTMLElement | null {
@@ -652,9 +583,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 			.replace(/\/+$/, '');
 	}
 
-	// resolve_address is an omnibox with a search fallback (url_input.rs:68-82).
-	// The demo has no results page to mock, so everything it does not recognise
-	// — queries included — lands on the DNS failure page instead.
 	function resolveAddress(input: string): string {
 		const wanted = normalizeUrl(input);
 		for (const [key, page] of Object.entries(PAGES)) {
@@ -663,7 +591,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		return 'err';
 	}
 
-	// A picker pane keeps its browser slot in the DOM, hidden, until it is chosen.
 	function browserRoot(pane: HTMLElement | null): HTMLElement | null {
 		const root = pane?.querySelector<HTMLElement>('[data-browser]');
 		return root && !root.closest('[hidden]') ? root : null;
@@ -680,9 +607,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		const host = normalizeUrl(typed).split('/')[0];
 		const url = PAGES[key]?.url ?? `https://${normalizeUrl(typed)}/`;
 
-		// Submitting hands focus back to the page (view.rs:561-565); the field
-		// shows the canonical URL immediately, with the in-flight spinner as its
-		// suffix (view.rs:989-991).
 		const field = addressInput(root);
 		field.value = url;
 		if (document.activeElement === field) shell.focus();
@@ -707,7 +631,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 				root.querySelector<HTMLElement>('[data-blank]')!.hidden = true;
 				mount.hidden = false;
 
-				// The sidebar row echoes the page title (zz/src/mux/nav.rs:535).
 				const label = sidebarRow(
 					root.closest<HTMLElement>('[data-pane]')?.dataset.pane,
 				)?.querySelector<HTMLElement>('.label');
@@ -716,9 +639,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		);
 	}
 
-	// A blank tab routes pane focus straight into the address input
-	// (pane_focus_handle, view.rs:716-724). Gated on the window already owning
-	// focus, so boot and scene restores never steal the caret from the page.
 	function routeBrowserFocus() {
 		const pane = focusedPane();
 		const active = document.activeElement;
@@ -731,16 +651,12 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		if (!root.querySelector<HTMLElement>('[data-blank]')!.hidden) addressInput(root).focus();
 	}
 
-	// Clicks inside the field's own wash, and anywhere on the blank overlay that
-	// is not a recents row, land on the address bar (view.rs:2482-2485).
 	function addressTarget(target: HTMLElement): HTMLInputElement | null {
 		if (target.closest('[data-recent-url]')) return null;
 		const root = target.closest('.address, [data-blank]')?.closest<HTMLElement>('[data-browser]');
 		return root ? addressInput(root) : null;
 	}
 
-	// The field takes text, but the client claims the prefix over any pane
-	// content — so ctrl+b arms the table from inside the input too.
 	function handleAddressKey(event: KeyboardEvent, field: HTMLInputElement): boolean {
 		if (isPrefix(event)) {
 			shell.focus();
@@ -752,12 +668,9 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 
 		switch (event.key) {
 			case 'Enter':
-				// A blank submit is ignored outright (view.rs:894-910).
 				if (field.value.trim()) navigate(root, field.value);
 				return true;
 			case 'Escape':
-				// Escape reverts the field to the current URL — empty while the tab
-				// is blank — and refocuses the page (view.rs:1856-1884).
 				field.value = root.dataset.url ?? '';
 				shell.focus();
 				return true;
@@ -789,8 +702,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		selectPickerRow(rows[next]);
 	}
 
-	// Picker navigation wraps, Enter commits, and Escape kills its pending pane
-	// (pane/picker.rs:61-134).
 	function handlePickerKey(event: KeyboardEvent, pane: HTMLElement): boolean {
 		if (event.metaKey || event.ctrlKey || event.altKey) return false;
 		const direct = [
@@ -871,8 +782,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		syncSceneState(scene);
 	}
 
-	// Removing a leaf promotes its sibling subtree into the parent, preserving
-	// every nested allocation (zz-mux/src/model.rs remove_leaf).
 	function killPane(pane = focusedPane()) {
 		const scene = activeScene();
 		if (!pane || scenePanes(scene).length <= 1) return;
@@ -895,7 +804,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		syncSceneState(scene);
 	}
 
-	// resize-pane -Z keeps the split tree intact (zz-mux/src/key.rs:74).
 	function toggleZoom() {
 		const scene = activeScene();
 		const pane = focusedPane();
@@ -909,8 +817,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		syncSceneState(scene);
 	}
 
-	// select-pane is spatial, not a walk of the split DOM. The demo uses the
-	// nearest center inside a 90-degree cone for the requested direction.
 	function focusDirectional(direction: Direction) {
 		const scene = activeScene();
 		clearZoom(scene);
@@ -956,8 +862,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		if (next) attach(current, next);
 	}
 
-	// display-panes is a one-second, pane-local overlay. Cards are cloned into
-	// the pane surfaces so Astro's scoped styles survive (workspace/view.rs:2076-2107).
 	function dismissDisplayPanes() {
 		if (displayTimer !== undefined) window.clearTimeout(displayTimer);
 		displayTimer = undefined;
@@ -1016,8 +920,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		row.scrollIntoView({ block: 'nearest' });
 	}
 
-	// focus-sidebar expands the active path before it moves keyboard focus there
-	// (workspace/sidebar.rs:371-388).
 	function enterTree() {
 		const row = sidebarRow(focus.get(current));
 		if (!row) return;
@@ -1101,8 +1003,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		return event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'b';
 	}
 
-	// One daemon-side table resolves root -> prefix -> root. Arrow bindings are
-	// repeat entries and deliberately leave the table armed (zz-mux/src/key.rs:480-527).
 	function handleArmedKey(event: KeyboardEvent): boolean {
 		if (isPrefix(event) || event.key === 'Escape') {
 			setMode('root');
@@ -1160,8 +1060,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 
 	demo.addEventListener('click', (e) => {
 		const target = e.target as HTMLElement;
-		// The address bar and the start page keep focus in the url field; every
-		// other click in the window hands it back to the shell.
 		const field = addressTarget(target);
 		if (field) field.focus();
 		else if (shell.contains(target)) shell.focus();
@@ -1196,9 +1094,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 			return;
 		}
 
-		// Recents commit on mouse-down in the app (view.rs:2491-2508); a click is
-		// close enough here. The row still attaches the pane it landed in, and
-		// navigate() then takes focus off the address bar.
 		const recent = target.closest<HTMLElement>('[data-recent-url]');
 		const pane = target.closest<HTMLElement>('#canvas [data-pane]');
 		if (pane) {
@@ -1209,9 +1104,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		if (recent) navigate(recent.closest<HTMLElement>('[data-browser]')!, recent.dataset.recentUrl!);
 	});
 
-	// Focusing the address selects the whole value (view.rs:566-576). The
-	// mouse-down has to be swallowed or the mouse-up would collapse that
-	// selection back to a caret.
 	demo.addEventListener('mousedown', (e) => {
 		const target = e.target;
 		if (!(target instanceof HTMLInputElement) || !target.classList.contains('url')) return;
@@ -1225,27 +1117,20 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		if (target instanceof HTMLInputElement && target.classList.contains('url')) target.select();
 	});
 
-	// Picker selection follows hover before click/Enter (pane/picker.rs:205).
 	demo.addEventListener('pointerover', (e) => {
 		const choice = (e.target as HTMLElement).closest<HTMLElement>('[data-choice]');
 		if (choice) selectPickerRow(choice);
 	});
 
-	// Collapse is double-click: a single-click hotspot on the marker steals
-	// attaches from clicks aimed at the row (the icon sits mid click-path).
 	demo.addEventListener('dblclick', (e) => {
 		const row = (e.target as HTMLElement).closest<HTMLElement>('.row[aria-expanded]');
 		if (!row) return;
 		toggleBranch(row);
 	});
 
-	// Root input is intentionally inert: this is no fake PTY. The only entry is
-	// Ctrl-b, and every consumed path prevents the host browser's shortcut.
 	shell.addEventListener('keydown', (e) => {
 		if (e.metaKey) return;
 
-		// A focused address bar owns its keys before any of the tables below —
-		// otherwise typing a URL would drive the picker or the tree.
 		const typing = e.target;
 		if (typing instanceof HTMLInputElement && typing.classList.contains('url')) {
 			if (handleAddressKey(e, typing)) e.preventDefault();
@@ -1272,8 +1157,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		if (consumed) e.preventDefault();
 	});
 
-	// Split drag. pane.rs:237-267 hangs a 16px hit target over the slot;
-	// --frac is the first child's share of the space the two siblings divide.
 	demo.addEventListener('pointerdown', (e) => {
 		const handle = (e.target as HTMLElement).closest<HTMLElement>('[data-handle]');
 		if (!handle) return;
@@ -1281,8 +1164,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		const horizontal = split.dataset.axis === 'x';
 		const scale = shellScale();
 		const box = split.getBoundingClientRect();
-		// The slot is whatever the split is laying out with, so a margin change
-		// cannot desynchronise the drag from the geometry it is dragging.
 		const track = getComputedStyle(split);
 		const gap = parseFloat(horizontal ? track.columnGap : track.rowGap) * scale;
 		const span = (horizontal ? box.width : box.height) - gap;
@@ -1303,8 +1184,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		);
 	});
 
-	// A pane that boots showing a page takes its markup from the same donor a
-	// navigation would clone, so the page exists in exactly one place.
 	for (const root of demo.querySelectorAll<HTMLElement>('[data-boot-page]')) {
 		const page = clonePage(root.dataset.bootPage!);
 		if (page) root.querySelector<HTMLElement>('[data-mount]')!.replaceChildren(page);
@@ -1318,8 +1197,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 </script>
 
 <style>
-	/* Scoped, not global: the landing page brings its own `.split`, `.logo`,
-	   `.url` and `h1` rules, and the shell has to be able to sit inside them. */
 	.demo {
 		display: flex;
 		flex-direction: column;
@@ -1327,15 +1204,10 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		gap: 20px;
 	}
 
-	/* Frame radius is screen px (not logical): keep the outer rim at 24px no
-	   matter what --zz-scale / --zz-zoom are doing to the contents. */
 	.stage {
 		--zz-scale: 0.62;
-		/* Larger chrome via a smaller logical window (see AppShell) — not a crop. */
 		--zz-zoom: 1.35;
 		--zz-frame-radius: 24px;
-		/* One machine, one terminal config: the capture's host paints terminals at
-		   #131313 (90% opacity ⇒ #121212) rather than the shipped #101318. */
 		--zz-term-bg: var(--zz-cc-bg);
 		--zz-term-fg: var(--zz-cc-fg);
 		position: relative;
@@ -1349,9 +1221,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 			0 12px 28px rgba(0, 0, 0, 0.3),
 			0 40px 90px -20px rgba(0, 0, 0, 0.7);
 	}
-	/* Stand-in desktop: the real app blurs the compositor; here the chrome
-	   samples this wash through backdrop-filter. Tokens come from .stage so a
-	   scheme change retints the wash, not a hardcoded palette. */
 	.stage::before {
 		content: '';
 		position: absolute;
@@ -1374,11 +1243,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 	@media (max-width: 740px) { .stage { --zz-scale: 0.24; } }
 	@media (max-width: 600px) { .stage { --zz-scale: 0.19; } }
 
-	/* The landing hero column stops at 1360px where the demo page's body keeps
-	   going, so above that breakpoint the hero takes the widest scale that still
-	   fits it: 2232 * 0.6 = 1339. Below it the ladder above already fits both,
-	   down to the point where 0.19 stops fitting a phone — the landing page
-	   clips overflow, so the hero carries two more steps of its own. */
 	@media (min-width: 1461px) {
 		.demo[data-fit='hero'] .stage { --zz-scale: 0.6; }
 	}
@@ -1389,9 +1253,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		.demo[data-fit='hero'] .stage { --zz-scale: 0.12; }
 	}
 
-	/* ── control strip ──────────────────────────────────────────────────────
-	   Page furniture, so it borrows the host page's type and palette and falls
-	   back to the demo page's own when it is mounted there. */
 	.demo-controls {
 		display: flex;
 		flex-wrap: wrap;
@@ -1477,21 +1338,11 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		[data-randomize] { transition: none; }
 	}
 
-	/* ── scenes and splits ──────────────────────────────────────────────────
-	   One scene per window; only the attached one is in the layout. A split is
-	   two children plus a 6px slot — the slot is the pane margin, and the split
-	   slot is max(margin, 1) (pane.rs:231). --frac is the first child's share of
-	   what is left after the slot, so it matches the app's ratio exactly.
-	   Defaults measured off the capture: 48.5/51.5 across, 50.2/49.8 down. */
 	#canvas { height: 100%; }
 	.scene { position: relative; height: 100%; }
 	.scene > :global([data-pane]) { width: 100%; height: 100%; }
 	.scene[hidden] { display: none; }
 
-	/* --slot has to be substituted here rather than inherited from a token: a
-	   custom property resolves its var()s where it is declared, and --zz-pane-margin
-	   is a live knob set further up the tree. Everything below reads --slot, so
-	   the split, its handle and the drag maths can never disagree. */
 	.split {
 		--slot: max(var(--zz-pane-margin), 1px);
 		position: relative;
@@ -1500,9 +1351,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		min-width: 0;
 		min-height: 0;
 		height: 100%;
-		/* The slot shows the split's own background: the gap plane while gaps are
-		   on (already the window colour), the border hairline when they are off
-		   (pane.rs:306-326). */
 		background: var(--zz-split-ink, transparent);
 	}
 	.split[data-axis='x'] {
@@ -1514,8 +1362,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 		grid-template-rows: calc((100% - var(--slot)) * var(--frac)) minmax(0, 1fr);
 	}
 
-	/* 16px thick, centred on the slot (pane.rs:237-267) — so a thinner slot widens
-	   the overhang rather than shrinking the hit target. */
 	.split-handle {
 		position: absolute;
 		z-index: 2;
@@ -1544,7 +1390,6 @@ const RECENTS = ['https://gpui.rs/', 'https://ghostty.org/', 'https://github.com
 	}
 	.slot[hidden] { display: none; }
 
-	/* display-panes uses the same centered index + key card as pane.rs:442-500. */
 	.dp-card {
 		position: absolute;
 		top: 50%;

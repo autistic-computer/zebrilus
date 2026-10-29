@@ -44,7 +44,6 @@ pub fn page_row(element: AnyElement, ends_run: bool) -> AnyElement {
         .into_any_element()
 }
 
-/// The id of the Interface page's Advanced heading.
 pub const ADVANCED_DISCLOSURE: &str = "settings-appearance-advanced";
 
 #[derive(Clone, Copy, PartialEq)]
@@ -85,7 +84,6 @@ impl AppearancePageItem {
         )
     }
 
-    /// The title of a row every client draws the same way.
     pub const fn title(self) -> Option<&'static str> {
         Some(match self {
             Self::Accent => "Accent",
@@ -103,9 +101,6 @@ impl AppearancePageItem {
     }
 }
 
-/// The Interface page: the mode and how the theme looks up front, every
-/// other knob behind the Advanced heading, listed only while `advanced` is
-/// expanded.
 pub fn appearance_page_items(
     macos: bool,
     has_window_blur: bool,
@@ -153,9 +148,6 @@ pub fn appearance_page_items(
     items
 }
 
-/// The look the Theme rows show and pick from: the themes a client offers
-/// (the built-in ones first, then saved ones), which one the overrides sit
-/// on, and the overrides.
 pub struct ThemePicks<'a> {
     pub themes: Vec<(SharedString, &'a InterfaceTheme)>,
     pub selected: usize,
@@ -170,12 +162,10 @@ impl ThemePicks<'_> {
         )
     }
 
-    /// Whether the overrides sit on a saved theme rather than a built-in.
     pub fn custom(&self) -> bool {
         self.selected >= BUILTIN_THEMES.len()
     }
 
-    /// The theme on screen with `change` made to the overrides first.
     pub fn composed(&self, change: impl FnOnce(&mut ThemeOverrides)) -> InterfaceTheme {
         let mut overrides = self.overrides.clone();
         change(&mut overrides);
@@ -315,9 +305,6 @@ const SHEET_SWATCH: f32 = 30.0;
 const SWATCH_RING_GAP: f32 = 2.0;
 const SWATCH_RING: f32 = 1.5;
 
-/// The theme's own accent, the named accents and `custom`, a color picker
-/// for any other, as swatches [`SWATCH`] across. Reports `None` for the theme's own and
-/// the name of a named one.
 #[allow(
     clippy::disallowed_methods,
     reason = "a swatch shows the accent it picks, not the live one"
@@ -424,7 +411,6 @@ fn ringed(
 const SLIDER_WIDTH: f32 = 180.0;
 const HUE_STOPS: u16 = 12;
 
-/// The tint hue as a slider over a rainbow, with a dot in the hue it picks.
 pub fn tint_hue_slider(
     hue: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
@@ -452,7 +438,6 @@ pub fn tint_hue_slider(
     slider_row(slider, dot)
 }
 
-/// How strongly the tint applies, as a slider with its percentage.
 pub fn tint_slider(
     tint: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
@@ -485,7 +470,6 @@ pub fn window_opacity_slider(
     )
 }
 
-/// The corner radius as a slider with its length.
 pub fn corner_radius_slider(
     radius: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
@@ -505,7 +489,6 @@ pub fn corner_radius_slider(
     )
 }
 
-/// The contrast, from 1 to 2, as a slider with its percentage.
 pub fn contrast_slider(
     contrast: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
@@ -525,7 +508,6 @@ pub fn contrast_slider(
     )
 }
 
-/// The animation speed, from 25% to 200%, as a slider with its percentage.
 pub fn animation_speed_slider(
     speed: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
@@ -546,7 +528,6 @@ pub fn animation_speed_slider(
     )
 }
 
-/// A scale from 50% to 300%, like UI zoom, as a slider with its percentage.
 pub fn percent_slider(
     id: &'static str,
     label: &'static str,
@@ -557,10 +538,6 @@ pub fn percent_slider(
     value_slider(percent(id, label, value, on_change), cx)
 }
 
-/// UI zoom as a [`percent_slider`] that applies once the drag lets go:
-/// zooming while dragging rescales the slider under the finger. `focus` is
-/// the row's handle; its touch sheet holds it, so the settings list keeps the
-/// row, and the sheet, painted when the new zoom moves it off screen.
 pub fn zoom_slider(
     value: f32,
     focus: &FocusHandle,
@@ -695,9 +672,6 @@ pub fn picker_tile(
     tile(id, label, preview, selected, false, cx)
 }
 
-/// A picker tile drawn as [`crate::roles::SETTINGS_TILE`], its corners
-/// concentric with the preview it frames. The chosen one takes the role's
-/// selected highlight; the keyboard focus halo stays a 1px ring outside it.
 #[allow(
     clippy::disallowed_methods,
     reason = "the focus halo is a ring around the tile, 1px in every look"
@@ -764,8 +738,6 @@ fn tile(
         )
 }
 
-/// The radius of a box `inset` outside one rounded by `radius`, so the two
-/// stay concentric. Square corners stay square.
 fn around(radius: ala::Pixels, inset: f32) -> ala::Pixels {
     if radius > px(0.0) {
         radius + px(inset)
@@ -823,8 +795,6 @@ pub fn theme_preview(
     }
 }
 
-/// A window with a menu over it, drawn in `theme`'s colors for `mode` and
-/// the way its look draws a menu, for the theme tiles.
 #[allow(
     clippy::disallowed_methods,
     reason = "previews draw another theme's colors and surfaces, not the live one's"
@@ -952,7 +922,6 @@ pub fn interface_theme_preview(
         )
 }
 
-/// Text on `colors`' accent, as a solid primary button letters it.
 fn accent_ink(colors: &ThemeColor) -> ala::Hsla {
     let mut theme = crate::Theme::from(colors);
     theme.primary = crate::PrimaryStyle::Accent;
@@ -961,7 +930,6 @@ fn accent_ink(colors: &ThemeColor) -> ala::Hsla {
         .text
 }
 
-/// The window mockup the mode and theme tiles share, painted from `colors`.
 #[allow(
     clippy::disallowed_methods,
     reason = "previews draw another palette's colors, not the live one's"

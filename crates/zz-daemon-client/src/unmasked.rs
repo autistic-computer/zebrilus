@@ -38,7 +38,6 @@ fn without_new_console(command: &mut Command) {
         unsafe_code,
         reason = "GetConsoleWindow is a raw Win32 entry point with no safe wrapper"
     )]
-    // SAFETY: no pointers are involved; the call only reports this process's console window.
     let console = unsafe { windows::Win32::System::Console::GetConsoleWindow() };
     if console.is_invalid() {
         command.creation_flags(CREATE_NO_WINDOW);

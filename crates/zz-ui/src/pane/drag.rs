@@ -93,8 +93,6 @@ pub fn pane_drag_preview(
     cx.new(|_| PaneDragPreview { pane, title, grab })
 }
 
-/// What dragging a pane by its header needs: the pane, the title its drag
-/// chip shows, whether it may move now, and what to do when a drag starts.
 pub struct PaneDragSource {
     pane: PaneId,
     title: String,
@@ -127,8 +125,6 @@ impl PaneDragSource {
         self
     }
 
-    /// Lays `overlay` over the dragged element while enabled, for a client
-    /// that drags panes with its own touch handling.
     #[must_use]
     pub fn touch(mut self, overlay: impl IntoElement) -> Self {
         self.touch = Some(overlay.into_any_element());
@@ -139,7 +135,6 @@ impl PaneDragSource {
         self.enabled
     }
 
-    /// `element`, dragging the pane while the source is enabled.
     pub fn attach(self, element: Stateful<Div>) -> Stateful<Div> {
         if !self.enabled {
             return element;

@@ -35,8 +35,6 @@ impl AppShell {
         self.connection.read(cx).endpoint() == Some(endpoint)
     }
 
-    /// Connects `endpoint` beside the hosts already connected. It goes on
-    /// screen only when nothing else is.
     pub(super) fn connect_host(
         &mut self,
         endpoint: String,
@@ -108,9 +106,6 @@ impl AppShell {
         cx.notify();
     }
 
-    /// Puts `endpoint` on screen: the host now there keeps its connection in
-    /// the background, and this one attaches to `session`, or the session it
-    /// was last on, with `pane` selected.
     pub(super) fn switch_host(
         &mut self,
         endpoint: &str,
@@ -157,8 +152,6 @@ impl AppShell {
         cx.notify();
     }
 
-    /// Forgets everything keyed by the old host's pane, window and session
-    /// ids: the next host numbers its own from the same counters.
     fn reset_host_state(&mut self) {
         self.terminals.clear();
         self.lenses.clear();
