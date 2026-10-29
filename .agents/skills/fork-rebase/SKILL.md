@@ -1,14 +1,14 @@
 ---
 name: fork-rebase
-description: Maintain zz-gpui, zz's own GPUI (crates/zz-gpui, zz-gpui-macros and zz-gpui-platform: the gpui crates split out of Zed with Zed's utility crates folded in, carrying RenderImage::into_frames, WgpuDeviceContext, the external-texture element, the window corner mask, superellipse corner smoothing, refresh_rate exposure, liquid glass, the iOS UIKit backend, and more) and the vendored native Ghostty in third_party/ghostty with its libghostty-vt crates. Use when changing zz-gpui/gpui or Ghostty, pulling an upstream Zed or Ghostty change, when the user says "bump gpui", "update zed", "bump ghostty", "sync ghostty", or "rebase forks", and before debugging weird zz-gpui build errors after a dependency change.
+description: Maintain zz-gpui, zz's own GPUI (libs/gpui/crates/zz-gpui, zz-gpui-macros and zz-gpui-platform: the gpui crates split out of Zed with Zed's utility crates folded in, carrying RenderImage::into_frames, WgpuDeviceContext, the external-texture element, the window corner mask, superellipse corner smoothing, refresh_rate exposure, liquid glass, the iOS UIKit backend, and more) and the vendored native Ghostty in third_party/ghostty with its libghostty-vt crates. Use when changing zz-gpui/gpui or Ghostty, pulling an upstream Zed or Ghostty change, when the user says "bump gpui", "update zed", "bump ghostty", "sync ghostty", or "rebase forks", and before debugging weird zz-gpui build errors after a dependency change.
 ---
 
-# zz-gpui: `crates/zz-gpui*`
+# zz-gpui: `libs/gpui/crates/zz-gpui*`
 
 zz-gpui is zz's GPUI: the gpui crates split out of Zed on 2026-10-05. They were the
 [`demfabris/gpui`](https://github.com/demfabris/gpui) repo until 2026-10-09, when they moved in
 with their history, then into `crates/` the same day
-(`git log -- 'crates/zz-gpui*' 'crates/zpui*' zpui gpui`). Later that day the 22 crates became
+(`git log -- 'libs/gpui/crates/zz-gpui*' 'crates/zz-gpui*' 'crates/zpui*' zpui gpui`). Later that day the 22 crates became
 three plus the kit: `zz-gpui` (gpui core, with Zed's utility crates as modules:
 `zz_gpui::collections`, `util`, `sum_tree`, `scheduler`, `http_client`, `refineable`),
 `zz-gpui-macros` (gpui's macros and the `Refineable` derive) and `zz-gpui-platform` (every
@@ -21,21 +21,22 @@ commits exist here with the same subjects.
 
 | Zed | zz |
 |---|---|
-| `crates/gpui/src/` | `crates/zz-gpui/src/` |
-| `crates/gpui_macros/src/` | `crates/zz-gpui-macros/src/` |
-| `crates/refineable/derive_refineable/src/` | `crates/zz-gpui-macros/src/derive_refineable.rs` |
-| `crates/gpui_platform/src/` | `crates/zz-gpui-platform/src/zz_gpui_platform.rs` |
-| `crates/gpui_<x>/src/` for `macos`, `linux`, `windows`, `web`, `wgpu` | `crates/zz-gpui-platform/src/<x>/`, root file `<x>.rs` (Linux: `linux.rs` and `linux/`) |
-| `crates/gpui_apple/src/` (Metal) | `crates/zz-gpui-platform/src/apple/` |
-| `crates/<x>/src/` for `collections`, `http_client`, `scheduler`, `sum_tree`, `refineable` | `crates/zz-gpui/src/<x>/`, root file `<x>.rs` |
-| `crates/util/src/` (the parts gpui uses) | merged into `crates/zz-gpui/src/util.rs` |
+| `crates/gpui/src/` | `libs/gpui/crates/zz-gpui/src/` |
+| `crates/gpui_macros/src/` | `libs/gpui/crates/zz-gpui-macros/src/` |
+| `crates/refineable/derive_refineable/src/` | `libs/gpui/crates/zz-gpui-macros/src/derive_refineable.rs` |
+| `crates/gpui_platform/src/` | `libs/gpui/crates/zz-gpui-platform/src/zz_gpui_platform.rs` |
+| `crates/gpui_<x>/src/` for `macos`, `linux`, `windows`, `web`, `wgpu` | `libs/gpui/crates/zz-gpui-platform/src/<x>/`, root file `<x>.rs` (Linux: `linux.rs` and `linux/`) |
+| `crates/gpui_apple/src/` (Metal) | `libs/gpui/crates/zz-gpui-platform/src/apple/` |
+| `crates/<x>/src/` for `collections`, `http_client`, `scheduler`, `sum_tree`, `refineable` | `libs/gpui/crates/zz-gpui/src/<x>/`, root file `<x>.rs` |
+| `crates/util/src/` (the parts gpui uses) | merged into `libs/gpui/crates/zz-gpui/src/util.rs` |
 | `gpui::`, `gpui_<x>::`, `collections::` | `zz_gpui::`, `zz_gpui_platform::<x>::`, `zz_gpui::collections::` (`crate::` inside the crate) |
 | `tooling/perf`, screen capture (`scap`, ScreenCaptureKit), tracy, `zlog`, `ztracing`, `util_macros` | removed 2026-10-09: skip upstream patches that only touch them |
 
-The zz-gpui crates are root workspace members. The Zed-derived ones carry Zed's relaxed
-`[lints]` table (cargo allows one shared lint set, and the workspace one is zz's pedantic set),
-and `[profile.dev.package]` in the root `Cargo.toml` optimizes them in debug builds.
-`crates/zz-gpui-kit` is zz's own widget kit and takes the workspace lints.
+The zz-gpui crates live in `libs/gpui`, a git subtree of `autistic-computer/gpui` with its own
+Cargo workspace outside zz's. They carry Zed's relaxed `[lints]` table, and `[profile.dev.package]`
+in the root `Cargo.toml` optimizes them in debug builds. Lint and test them with
+`just libs check gpui`, and send a landed change to the gpui repo with `just libs push gpui`.
+`libs/kit` is zz's own widget kit and carries zz's pedantic lints in its own manifest.
 
 ## Landing a zz-gpui change
 
@@ -51,12 +52,12 @@ and `[profile.dev.package]` in the root `Cargo.toml` optimizes them in debug bui
 
 Zed's paths and identifiers say `gpui`; ours say `zz-gpui`. Export the patch, map the paths with the
 table above, then apply it. A backend file moved down one directory, so a patch to its root file
-(`crates/gpui_wgpu/src/gpui_wgpu.rs`) needs `crates/zz-gpui-platform/src/wgpu.rs` instead, and
+(`crates/gpui_wgpu/src/gpui_wgpu.rs`) needs `libs/gpui/crates/zz-gpui-platform/src/wgpu.rs` instead, and
 `crate::` paths inside a backend become `crate::<x>::`:
 
 ```bash
 git -C <zed-checkout> format-patch -1 <sha> --stdout -- crates/gpui crates/gpui_wgpu \
-  | sed -e 's#crates/gpui_wgpu/src/#crates/zz-gpui-platform/src/wgpu/#g' -e 's#crates/gpui/#crates/zz-gpui/#g' \
+  | sed -e 's#crates/gpui_wgpu/src/#libs/gpui/crates/zz-gpui-platform/src/wgpu/#g' -e 's#crates/gpui/#libs/gpui/crates/zz-gpui/#g' \
         -e 's/\bgpui_wgpu::/zz_gpui_platform::wgpu::/g' -e 's/\bgpui::/zz_gpui::/g' > fix.patch
 git am -3 fix.patch
 ```
@@ -66,7 +67,7 @@ read it, and run the GPU tests for the renderers it touches.
 
 ## What zz changed in zz-gpui
 
-`git log -- 'crates/zz-gpui*' zz-gpui gpui` is the authority. The core five:
+`git log -- 'libs/gpui/crates/zz-gpui*' 'crates/zz-gpui*' zz-gpui gpui` is the authority. The core five:
 
   1. `RenderImage::into_frames()` — retired browser frames return their pixel
      buffers to the OSR paint pool.

@@ -22,7 +22,7 @@ few presets. Fixed items should be deleted from this page.
   never reach the SVG renderer on wasm. (`agent/mermaid`)
 - **Bold and medium weights render regular with Inter Variable.** Font ids are per face, a variable
   font has one face, and `CosmicTextSystem::render_glyph_image` builds the swash scaler without a
-  `wght` variation (`crates/zz-gpui-platform/src/wgpu/cosmic_text_system.rs`). Likely affects variable fonts
+  `wght` variation (`libs/gpui/crates/zz-gpui-platform/src/wgpu/cosmic_text_system.rs`). Likely affects variable fonts
   on Linux too. (`markdown/headings`, `agent/answer`)
 - **CJK text renders as empty boxes**: the page loads only Inter and Lilex. (`terminal-grid/wide`)
 
@@ -97,7 +97,7 @@ few presets. Fixed items should be deleted from this page.
 - Git letters in the path picker are all muted, including conflicted "C"; the add-host error uses
   the warning colour.
 
-# Kit (`crates/zz-gpui-kit`)
+# Kit (`libs/kit`)
 
 - CodeEditor: horizontally scrolled code paints over the line-number rail; `set_selected_range`
   scrolls a visible line to the top; the focus border uses `foreground.outline()` while Input uses

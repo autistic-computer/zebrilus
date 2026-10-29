@@ -4,7 +4,7 @@ The app opens the session sidebar beside the attached window's panes. It uses
 `zz-ui` for the shell, navigation, pane frames, headers, terminal painting, and
 agent interface. Web and iOS compile the same app shell, sidebar, status bar, settings,
 command palette, overlays, terminal, agent, connection reducer, and image caches
-from `clients/app` (`zz-app`). The UIKit backend is `zz_gpui_platform::ios` in `crates/zz-gpui-platform/src/ios`;
+from `clients/app` (`zz-app`). The UIKit backend is `zz_gpui_platform::ios` in `libs/gpui/crates/zz-gpui-platform/src/ios`;
 this crate (`zz-ios`) is only the entry point, the terminal example, and the bundle files.
 The sidebar is 256 points wide and respects the iOS safe area.
 

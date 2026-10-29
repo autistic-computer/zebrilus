@@ -19,15 +19,15 @@ syntax-highlighting = ["zz-ui/tree-sitter"]
 [dependencies]
 serde_json = "1"
 web-time = "1"
-zz-gpui = { path = "../../crates/zz-gpui" }
-zz-gpui-platform = { path = "../../crates/zz-gpui-platform", default-features = false }
+zz-gpui = { path = "../../libs/gpui/crates/zz-gpui" }
+zz-gpui-platform = { path = "../../libs/gpui/crates/zz-gpui-platform", default-features = false }
 zz-client = { path = "../../crates/zz-client" }
 zz-protocol = { path = "../../crates/zz-protocol" }
 zz-terminal = { path = "../../crates/zz-terminal", default-features = false }
 zz-ui = { path = "../../crates/zz-ui", features = ["agent", "editor"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-zz-gpui-platform = { path = "../../crates/zz-gpui-platform", default-features = false, features = ["font-kit", "wayland", "x11"] }
+zz-gpui-platform = { path = "../../libs/gpui/crates/zz-gpui-platform", default-features = false, features = ["font-kit", "wayland", "x11"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = "=0.2.128"
@@ -71,3 +71,6 @@ zz-ui = { opt-level = 0 }
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+
+[patch."https://github.com/autistic-computer/gpui"]
+zz-gpui = { path = "../../libs/gpui/crates/zz-gpui" }

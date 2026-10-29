@@ -9,9 +9,9 @@ timestamp: 2026-10-23T00:00:00-03:00
 
 # Overview
 
-**`zz-gpui-kit` (`crates/zz-gpui-kit`) is zz's base component layer**, re-exported by `zz-ui`. It is a full fork of `gpui-component`, not a
+**`zz-gpui-kit` (`libs/kit`) is zz's base component layer**, re-exported by `zz-ui`. It is a full fork of `gpui-component`, not a
 dependency on it: commit `7811a47` vendored the widget set and removed the upstream crate from the
-workspace entirely. The fork revision and the per-module port notes live in `crates/zz-gpui-kit/UPSTREAM.md`;
+workspace entirely. The fork revision and the per-module port notes live in `libs/kit/UPSTREAM.md`;
 read that file before widening or diverging the surface.
 
 Application chrome must use zz-ui's components and theme vocabulary rather than maintaining a
@@ -61,10 +61,10 @@ materials decide what those look like, and the theme can change any role by id. 
 1. Every application-chrome color comes from a `cx.theme()` root or a `Colorize` derivation of one.
    The palette has six roots (`background`, `foreground`, `accent`, `success`, `warning`,
    `danger`), the fixed per-mode `scrim`, the `shadow_color` every drop shadow is drawn in and an
-   optional `on_accent` text color, in `crates/zz-gpui-kit/src/foundation/theme_color.rs`; the
+   optional `on_accent` text color, in `libs/kit/src/foundation/theme_color.rs`; the
    interface theme sets them per mode. Panels, hover fills, muted text, and
    focus rings are derived at paint time by `Colorize` in
-   `crates/zz-gpui-kit/src/foundation/color.rs`. Outside the kit, chrome names what it draws
+   `libs/kit/src/foundation/color.rs`. Outside the kit, chrome names what it draws
    instead of mixing it (see [Design system](/designs/design-system.md)): a filled, tinted or
    outlined widget draws `theme.paint(tone, emphasis)`, a plane `theme.surface(elevation)`, anything
    with a fill, edge, corners or shadow its surface role (`.surface(role)` or a widget's
@@ -73,7 +73,7 @@ materials decide what those look like, and the theme can change any role by id. 
 2. Check the zz-ui widget set before hand-rolling a control. A custom GPUI
    element is appropriate only when a component cannot preserve required input routing,
    rendering, or interaction behavior. When a fork-local widget must diverge from upstream, record
-   why in `crates/zz-gpui-kit/UPSTREAM.md`.
+   why in `libs/kit/UPSTREAM.md`.
 3. `clippy.toml` enforces the chrome-color rule by disallowing calls to `zz_gpui::rgb`, `zz_gpui::rgba`,
    and `zz_gpui::hsla`, the design-system rule by disallowing `Hsla::opacity` and the mixing
    transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`,
@@ -83,7 +83,7 @@ materials decide what those look like, and the theme can change any role by id. 
    (`StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `lifted_shadow`, and
    `Theme::control_radius`, `menu_radius` and `row_radius`), so edges, corners and shadows come
    from surface roles and follow the theme. The kit builds the engine from them, so
-   `crates/zz-gpui-kit/clippy.toml` keeps only the raw-color ban. Keep any exemption narrowly
+   `libs/kit/clippy.toml` keeps only the raw-color ban. Keep any exemption narrowly
    scoped, as an `#[allow(clippy::disallowed_methods, reason = ..)]` (or
    `clippy::disallowed_types`) on the one function, and say why the color or shape is not
    application chrome: a preview of another theme, page CSS, a pane effect with its own strength
@@ -546,7 +546,7 @@ theme base before applying the factor. Browser pages remain opaque.
 
 # Related
 
-- `crates/zz-gpui-kit/UPSTREAM.md` . the fork's source revision and per-module record of what was ported,
+- `libs/kit/UPSTREAM.md` . the fork's source revision and per-module record of what was ported,
   trimmed, or rewritten
 - [GPUI revision pin](/references/zz-gpui.md) . the pinned GPUI sources
 - [`app` crate](/crates/zz.md) . the GPUI client governed by these conventions

@@ -8,7 +8,7 @@ exclude = [
     "clients/storybook",
     "clients/dom",
     "clients/web",
-    "third_party/rust/cosmic-text",
+    "libs",
     "third_party/rust/libghostty-vt",
     "third_party/rust/libghostty-vt-sys",
 ]
@@ -184,10 +184,10 @@ windows-registry = "0.6.0"
 x11rb = "0.13.2"
 zeroize = "=1.9.0"
 
-zz-gpui = { path = "crates/zz-gpui", default-features = false }
-zz-gpui-kit = { path = "crates/zz-gpui-kit" }
-zz-gpui-macros = { path = "crates/zz-gpui-macros" }
-zz-gpui-platform = { path = "crates/zz-gpui-platform", default-features = false }
+zz-gpui = { path = "libs/gpui/crates/zz-gpui", default-features = false }
+zz-gpui-kit = { path = "libs/kit" }
+zz-gpui-macros = { path = "libs/gpui/crates/zz-gpui-macros" }
+zz-gpui-platform = { path = "libs/gpui/crates/zz-gpui-platform", default-features = false }
 
 zz = { path = "crates/zz" }
 zz-app = { path = "clients/app" }
@@ -206,6 +206,9 @@ zz-tui = { path = "crates/zz-tui" }
 zz-ui = { path = "crates/zz-ui" }
 [patch.crates-io]
 cef-dll-sys = { path = "third_party/rust/cef-dll-sys" }
+
+[patch."https://github.com/autistic-computer/gpui"]
+zz-gpui = { path = "libs/gpui/crates/zz-gpui" }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

@@ -109,7 +109,7 @@ authoring rules; the short version:
 
 # Check a change
 
-Edit the component in `crates/zz-ui` or `crates/zz-gpui-kit`, let `just storybook run` rebuild,
+Edit the component in `crates/zz-ui` or `libs/kit`, let `just storybook run` rebuild,
 reload, and walk the knobs: light and dark, both built-in themes, radius 0 and 25 (where every
 button turns pill), outline 0,
 both shadow strengths at 0, row inset 0, contrast extremes, a full tint, zoom. The sections re-render live as

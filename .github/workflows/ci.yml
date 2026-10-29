@@ -104,6 +104,17 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo clippy -p zz-daemon -p zz-daemon-client --no-default-features --all-targets -- -D warnings
 
+      # libs/ are subtrees of the autistic-computer repos and sit outside the
+      # workspace, so the workspace lint above skips them. The kit builds
+      # against the gpui in libs/, not the one on GitHub.
+      - name: Lint libs
+        if: runner.os == 'Linux'
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          cargo clippy --manifest-path libs/gpui/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+          cargo clippy --manifest-path libs/kit/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/gpui\".zz-gpui.path=\"$PWD/libs/gpui/crates/zz-gpui\"" -- -D warnings
+
       - name: Check browser client
         if: runner.os == 'Linux'
         env:
@@ -126,16 +137,29 @@ jobs:
         timeout-minutes: ${{ runner.os == 'Windows' && 90 || 360 }}
         run: cargo ci-test ${{ runner.os == 'Windows' && '--no-fail-fast' || '' }}
 
+      - name: Test libs
+        continue-on-error: ${{ runner.os == 'Windows' }}
+        shell: bash
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: |
+          cargo test --manifest-path libs/gpui/Cargo.toml --workspace --all-features --exclude zz-gpui-platform
+          cargo test --manifest-path libs/kit/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/gpui\".zz-gpui.path=\"$PWD/libs/gpui/crates/zz-gpui\""
+
       - name: Test the iOS input logic
         if: runner.os != 'Linux'
-        run: cargo test -p zz-gpui-platform --all-features --test ios
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features --test ios
 
       - name: Test zz-gpui-platform on lavapipe (software Vulkan)
         if: runner.os == 'Linux'
         timeout-minutes: 20
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
           export VK_ICD_FILENAMES=$(echo /usr/share/vulkan/icd.d/lvp_icd*.json)
-          cargo test -p zz-gpui-platform --all-features
+          cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features
 
       - name: Test zz-mux release profile
         if: runner.os == 'Linux'

@@ -3,7 +3,7 @@ type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
 description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 73 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
 status: Built (2026-10-13; agent pane rows updated for the lens 2026-10-23; driver chat roles added 2026-10-24, retired with the Driver Agent 2026-10-28)
-resource: crates/zz-gpui-kit/src/foundation/surface.rs
+resource: libs/kit/src/foundation/surface.rs
 tags:
 - ui
 - theme
@@ -33,9 +33,9 @@ then to a built-in value.
 
 | Piece | Code |
 |---|---|
-| Kinds, styles, patches, `Layer` and the resolver (`Theme::style`, `Theme::layer`) | `crates/zz-gpui-kit/src/foundation/surface.rs` |
-| Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule_on`, `row_corners`, `row_radius`) | `crates/zz-gpui-kit/src/foundation/styled.rs` |
-| `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `crates/zz-gpui-kit/src/foundation/theme.rs` |
+| Kinds, styles, patches, `Layer` and the resolver (`Theme::style`, `Theme::layer`) | `libs/kit/src/foundation/surface.rs` |
+| Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule_on`, `row_corners`, `row_radius`) | `libs/kit/src/foundation/styled.rs` |
+| `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `libs/kit/src/foundation/theme.rs` |
 | zz's roles and the lookups over them (`all()`, `find()`, `members()`) | `crates/zz-ui/src/roles.rs` |
 | Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `crates/zz-ui/src/interface_theme.rs`, `crates/zz-ui/themes/*.json` |
 | The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `clients/storybook/src/knobs.rs` |
@@ -324,10 +324,10 @@ error that suggests the role it was probably meant to be (`chromebutton` gets `c
 ## Role inventory (2026-10-13)
 
 Four read-only sweeps covered every painted piece in `crates/zz`, `crates/zz-ui`,
-`crates/zz-gpui-kit` and `clients/app`: about 450 pieces, collapsed below into roles. "Where" names
+`libs/kit` and `clients/app`: about 450 pieces, collapsed below into roles. "Where" names
 the shared function that drew most instances at the time of the sweep; "Drift found" names what the
 role was meant to remove, and what became of it. Groups are as built after the 2026-10-14 regroup. Paths: `ui/` is
-`crates/zz-ui/src`, `kit/` is `crates/zz-gpui-kit/src`, `zz/` is `crates/zz/src`, `app/` is
+`crates/zz-ui/src`, `kit/` is `libs/kit/src`, `zz/` is `crates/zz/src`, `app/` is
 `clients/app/src`.
 
 ### Window and title bar

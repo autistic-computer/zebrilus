@@ -1,15 +1,13 @@
 # AGENTS.md
 
-zz is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on zz-gpui (our fork of Zed's GPUI UI framework, the `crates/zz-gpui*` crates), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL and iOS clients, and a raw-terminal attach client.
+zz is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on zz-gpui (our fork of Zed's GPUI UI framework, in `libs/gpui`), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL and iOS clients, and a raw-terminal attach client.
 
 Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (see `mise.toml`).
 
 ## Project map
 
-- `crates/zz-gpui` - zz-gpui, our GPUI: the gpui core split out of Zed, with the Zed utility code it needs as modules (`zz_gpui::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`)
-- `crates/zz-gpui-platform` - zz-gpui's backends, one module per target, each compiled only there: `macos` (with the Metal renderer in `apple`), `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit), and the `wgpu` renderer Linux, web and iOS share
-- `crates/zz-gpui-macros` - zz-gpui's proc macros, including the `Refineable` derive
-- `crates/zz-gpui-kit` - widget kit on zz-gpui (theme, primitives, widgets, icons): a maintained fork of gpui-component with no zz dependencies, usable by other apps
+- `libs/gpui` - zz-gpui, our GPUI, a git subtree of [autistic-computer/gpui](https://github.com/autistic-computer/gpui) with its own Cargo workspace: `crates/zz-gpui` (the gpui core split out of Zed, with the Zed utility code it needs as modules: `zz_gpui::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`), `crates/zz-gpui-platform` (the backends, one module per target, each compiled only there: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit), and the `wgpu` renderer Linux, web and iOS share), `crates/zz-gpui-macros` (proc macros, including the `Refineable` derive), and `third_party/cosmic-text`
+- `libs/kit` - `zz-gpui-kit`, the widget kit on zz-gpui (theme, primitives, widgets, icons), a git subtree of [autistic-computer/kit](https://github.com/autistic-computer/kit): a maintained fork of gpui-component with no zz dependencies, usable by other apps
 - `crates/zz` - desktop client: zz-gpui shell, terminal/browser/agent panes, settings, daemon client
 - `crates/zz-daemon` — the daemon: session state, PTY workers, client connections
 - `crates/zz-daemon-client` - the client half of the daemon: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, transport, paths, and process facts; client-only crates depend on it instead of `zz-daemon`
@@ -60,7 +58,7 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 
 | Command | What it does |
 |---|---|
-| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` minus zz-gpui-platform (alias in `.cargo/config.toml`). CI's Linux leg runs that crate's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json cargo test -p zz-gpui-platform --all-features` (Ubuntu `mesa-vulkan-drivers`, Arch `vulkan-swrast`; on an NVIDIA box also set `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`, or the atlas tests take NVIDIA's GL backend and fail). macOS and Windows run only its iOS input tests: `cargo test -p zz-gpui-platform --all-features --test ios` |
+| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` (alias in `.cargo/config.toml`). `libs/` sits outside the workspace; `just libs check <gpui\|kit>` lints and tests each lib the way CI does. CI's Linux leg runs zz-gpui-platform's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features` (Ubuntu `mesa-vulkan-drivers`, Arch `vulkan-swrast`; on an NVIDIA box also set `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`, or the atlas tests take NVIDIA's GL backend and fail). macOS and Windows run only its iOS input tests: `cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features --test ios` |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Lint (what CI runs) |
 | `cargo clippy -p zz-daemon -p zz-daemon-client --no-default-features --all-targets -- -D warnings` | Lint the daemon without agent support (CI runs this too) |
 | `cargo fmt --all` | Format |
@@ -69,6 +67,7 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 | `just build <platform>` | Release bundle into `dist/zz` (wraps `cargo xtask bundle-cef`) |
 | `just install mac` | Build and swap `/Applications/zz.app`; the daemon survives the swap |
 | `just ios <run\|build\|device\|bench> [iPhone\|iPad]` / `ios rig [stop]` / `ios testflight` | GPUI iOS app (iPhone by default): simulator, a paired device (release, signed, installed), a hands-free frame benchmark on the device, a throwaway daemon that `ios run` attaches to, or a signed `dev.zz.ios` TestFlight upload; `ZZ_GPUI_DEMO=terminal` selects the terminal example |
+| `just libs <check\|push\|pull> <gpui\|kit>` | Lint and test a lib alone, push zz's `libs/<lib>` commits to its autistic-computer repo, or merge that repo's commits back (git subtree) |
 | `just site` | Docs site dev server with live reload |
 | `just web run` / `web setup` / `web build [--release]` / `web serve` | Browser client dev loop / toolchain / assets / local gateway |
 | `just profile <cpu\|memory\|startup\|system\|metal\|terminal> mac …` | Capture profiling data; read it back with `just profile summary <cpu\|metal\|terminal> <run>` |
@@ -83,10 +82,18 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 Multiple agent sessions often share this checkout in parallel. Never `git stash`, hard-reset, or discard uncommitted changes you did not author — you may be destroying another session's in-flight work.
 </important>
 
+<important if="you are changing anything under libs/">
+
+- `libs/gpui` and `libs/kit` are git subtrees of [autistic-computer/gpui](https://github.com/autistic-computer/gpui) and [autistic-computer/kit](https://github.com/autistic-computer/kit), libraries other apps build on. Edit them in place and commit them with the zz code that needs the change, like any other file here.
+- They must build on their own: no zz crate dependencies and no paths outside their own directory. Each is its own Cargo workspace, excluded from zz's; zz uses them by path, and the root `[patch."https://github.com/autistic-computer/gpui"]` (repeated in `clients/web`, `clients/storybook` and `clients/dom/theme`) points the kit's git dependency on gpui at `libs/gpui`.
+- The root clippy and `cargo ci-test` skip them. Run `just libs check gpui` or `just libs check kit` when you touch one; CI runs the same.
+- Commits touching `libs/<lib>` reach its repo with `just libs push <lib>` once they are on main, carrying their commit messages along, so write those for a reader outside zz. `just libs pull <lib>` merges commits made in the lib repo; do that before pushing if the lib repo moved.
+</important>
+
 <important if="you are changing zz-gpui (our gpui)">
 
-- zz-gpui is `crates/zz-gpui`, `crates/zz-gpui-macros` and `crates/zz-gpui-platform`: our copy of the gpui crates split out of Zed, with Zed's utility crates folded into `zz-gpui` as modules and every backend folded into `zz-gpui-platform`. It is not a patch branch: there is nothing to rebase, and upstream Zed fixes come in by hand. Change zz-gpui in the same commit as the zz code that needs it.
-- They are root workspace members, so the root clippy run covers them with all features, but only for the host OS: each backend in zz-gpui-platform compiles for its own target only. Check the others from macOS with `cargo clippy --target <triple> -p zz-gpui-platform --all-features` (the `fork-rebase` skill has the zig setup that cross-compiles their C dependencies). `cargo ci-test` leaves out zz-gpui-platform's tests; CI's Linux leg runs them on lavapipe. The Wayland swapchain test (ignored) and the Metal and DirectX renderers stay unchecked in CI. Run `cargo test -p zz-gpui-platform --all-features` when you touch it, on a GPU or with lavapipe selected as above. The three carry Zed's relaxed `[lints]` table instead of the workspace's pedantic set, and `[profile.dev.package]` in the root `Cargo.toml` optimizes them in debug builds so those stay fast enough to use. `crates/zz-gpui-kit` is ours and takes the workspace lints.
+- zz-gpui is `libs/gpui`: the crates `zz-gpui`, `zz-gpui-macros` and `zz-gpui-platform`, our copy of the gpui crates split out of Zed, with Zed's utility crates folded into `zz-gpui` as modules and every backend folded into `zz-gpui-platform`. It is not a patch branch: there is nothing to rebase, and upstream Zed fixes come in by hand. Change zz-gpui in the same commit as the zz code that needs it.
+- `just libs check gpui` lints them with all features, but only for the host OS: each backend in zz-gpui-platform compiles for its own target only. Check the others from macOS with `cargo clippy --manifest-path libs/gpui/Cargo.toml --target <triple> -p zz-gpui-platform --all-features` (the `fork-rebase` skill has the zig setup that cross-compiles their C dependencies). CI's Linux leg runs zz-gpui-platform's tests on lavapipe. The Wayland swapchain test (ignored) and the Metal and DirectX renderers stay unchecked in CI. Run `cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features` when you touch it, on a GPU or with lavapipe selected as above. The three carry Zed's relaxed `[lints]` table instead of zz's pedantic set, and `[profile.dev.package]` in the root `Cargo.toml` optimizes them in debug builds so those stay fast enough to use. `libs/kit` is ours and carries zz's pedantic lints in its own manifest.
 - `clients/web` consumes zz-gpui's WASM renderer in an excluded workspace; check `just web build` after a zz-gpui change.
 - `knowledge/references/zz-gpui.md` has the full recipe; the `fork-rebase` skill covers pulling upstream Zed fixes and syncing the vendored Ghostty.
 </important>
@@ -107,7 +114,7 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 <important if="you are building or styling UI chrome or widgets">
 
 - UI conventions: `knowledge/configuration/ui-conventions.md` (chrome colors come from the theme; clippy rejects raw `rgb`/`hsla`).
-- `crates/zz-gpui-kit` is a full fork of gpui-component, not a dependency - read `crates/zz-gpui-kit/UPSTREAM.md` before touching widget internals or trying to "update" it. App-specific UI belongs in `crates/zz-ui`; the kit must not depend on zz crates.
+- `libs/kit` is a full fork of gpui-component, not a dependency - read `libs/kit/UPSTREAM.md` before touching widget internals or trying to "update" it. App-specific UI belongs in `crates/zz-ui`; the kit must not depend on zz crates.
 </important>
 
 <important if="you are adding or editing documents under knowledge/">

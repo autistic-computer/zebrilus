@@ -98,7 +98,7 @@ icon sized to that line's font and centred in it, then the same
 `cap_center_drop`. A heading with no explicit line height gets the 1.618 default,
 and an `items_start` row then parks a 14px chevron near the top of a 19px line,
 almost 3pt above the caps. Worked examples: `render_list_item_row` in
-`crates/zz-gpui-kit/src/text/node.rs`, `settings_list_disclosure_header` in
+`libs/kit/src/text/node.rs`, `settings_list_disclosure_header` in
 `crates/zz-ui/src/settings.rs`.
 
 What is left is pixel snapping. GPUI rounds the text baseline and the icon's

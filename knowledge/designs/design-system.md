@@ -3,7 +3,7 @@ type: Design Plan
 title: "Design system: tone, emphasis and ground"
 description: "How zz chrome picks colors and shapes: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, planes name an elevation, every surface takes its fill, edge, corners and shadow from its surface role, and clippy rejects hand-mixed washes, opacities, borders and shadows outside the kit."
 status: Built
-resource: crates/zz-gpui-kit/src/foundation/variant.rs
+resource: libs/kit/src/foundation/variant.rs
 tags:
 - ui
 - theme
@@ -227,12 +227,12 @@ Kit widgets on the model:
 
 # Where to look
 
-- `crates/zz-gpui-kit/src/foundation/variant.rs`: `Tone`, `Emphasis`, `Paint`, `Ground`, the recipes.
-- `crates/zz-gpui-kit/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
-- `crates/zz-gpui-kit/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule_on`, `list_inset`, `focus_ring`, `row_corners` and `row_radius`.
-- `crates/zz-gpui-kit/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows`, `outer_radius` and `inner_radius`.
+- `libs/kit/src/foundation/variant.rs`: `Tone`, `Emphasis`, `Paint`, `Ground`, the recipes.
+- `libs/kit/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
+- `libs/kit/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule_on`, `list_inset`, `focus_ring`, `row_corners` and `row_radius`.
+- `libs/kit/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows`, `outer_radius` and `inner_radius`.
 - `crates/zz-ui/src/roles.rs`: zz's roles by region.
-- `crates/zz-gpui-kit/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
+- `libs/kit/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
 - The storybook's Foundation → Design system story (`#/design-system`) draws every recipe from the same code. Its sections are:
   - tones;
   - a tone × emphasis × state matrix;

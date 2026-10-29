@@ -3064,7 +3064,7 @@ mod plan_cache_tests {
         let mut database = fontdb::Database::new();
         for _ in 0..8 {
             database.load_font_data(
-                include_bytes!("../../../../crates/zz-gpui/assets/fonts/lilex/Lilex-Regular.ttf")
+                include_bytes!("../../../crates/zz-gpui/assets/fonts/lilex/Lilex-Regular.ttf")
                     .to_vec(),
             );
         }

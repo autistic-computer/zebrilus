@@ -35,7 +35,7 @@ fi
 WEB_GATEWAY_PID=$!
 
 gpui_watch=()
-for dir in crates/zz-gpui*/; do
+for dir in libs/gpui/crates/*/ libs/kit/; do
     gpui_watch+=(--watch "$dir")
 done
 

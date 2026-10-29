@@ -16,7 +16,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 serde_json = "1.0.151"
 wasm-bindgen = "=0.2.128"
-zz-gpui = { path = "../../../crates/zz-gpui", default-features = false }
+zz-gpui = { path = "../../../libs/gpui/crates/zz-gpui", default-features = false }
 zz-app = { path = "../../app" }
 zz-protocol = { path = "../../../crates/zz-protocol" }
 zz-ui = { path = "../../../crates/zz-ui" }
@@ -40,3 +40,6 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+
+[patch."https://github.com/autistic-computer/gpui"]
+zz-gpui = { path = "../../../libs/gpui/crates/zz-gpui" }

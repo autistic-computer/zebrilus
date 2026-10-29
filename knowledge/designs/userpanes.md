@@ -382,7 +382,7 @@ up in the numbers.
 * **Web** shows a placeholder for every browser pane (`clients/app/src/app.rs:1834`). The web
   client already runs in a browser, so artifacts and previews can be live sandboxed
   `<iframe srcdoc>` frames without same-origin, placed over the canvas the way the accessibility
-  mirror places its nodes (`crates/zz-gpui-platform/src/web/a11y.rs`); no pictures needed. Single
+  mirror places its nodes (`libs/gpui/crates/zz-gpui-platform/src/web/a11y.rs`); no pictures needed. Single
   files only, since relative assets have no origin to resolve against. Later.
 
 Until then those clients show an artifact like any browser pane they can't show, and html blocks
