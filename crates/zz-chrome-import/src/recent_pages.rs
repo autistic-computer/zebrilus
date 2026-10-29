@@ -960,8 +960,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("recent-pages");
         let mut pages = RecentPages::load(Some(path.clone()));
-        let png: Arc<[u8]> =
-            Arc::from(include_bytes!("../../zz-browser/tests/fixtures/favicon.png").as_slice());
+        let png: Arc<[u8]> = Arc::from(include_bytes!("../tests/fixtures/favicon.png").as_slice());
         assert!(!pages.record_favicon("work", "https://example.com", png.clone()));
         pages.record_visit("work", "https://example.com");
         pages.record_visit("work", "https://example.com/other");
@@ -991,8 +990,7 @@ mod tests {
 
     #[test]
     fn favicon_storage_limits_size_and_retention() {
-        let png: Arc<[u8]> =
-            Arc::from(include_bytes!("../../zz-browser/tests/fixtures/favicon.png").as_slice());
+        let png: Arc<[u8]> = Arc::from(include_bytes!("../tests/fixtures/favicon.png").as_slice());
         let mut pages = pages_with(Vec::new());
         for index in 0..=MAX_FAVICONS {
             let url = format!("https://example.com/{index}");

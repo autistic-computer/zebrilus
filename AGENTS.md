@@ -8,6 +8,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 
 - `libs/ala` - ala, our GPUI, a git subtree of [autistic-computer/ala](https://github.com/autistic-computer/ala) with its own Cargo workspace: `crates/ala` (the gpui core split out of Zed, with the Zed utility code it needs as modules: `ala::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`), `crates/ala-platform` (the backends, one module per target, each compiled only there: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit), `android` (JNI and the NDK), and the `wgpu` renderer Linux, web, iOS and Android share), `crates/ala-macros` (proc macros, including the `Refineable` derive), and `third_party/cosmic-text`
 - `libs/penna` - `penna`, the widget kit on ala (theme, primitives, widgets, icons), a git subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna): a maintained fork of gpui-component with no zz dependencies, usable by other apps
+- `libs/ala-cef` - `ala-cef`, Chromium off-screen rendering for wgpu apps (CEF frames as GPU textures, input, profiles, cookies, the element picker and its TypeScript source in `picker/`), with its CEF sys adapter in `third_party/cef-dll-sys`; without features it is the pure half the thin clients' browser panes and `zz-chrome-import` use, and `zz-cli` must not link it. It is set up like the other libs, but its repo, autistic-computer/ala-cef, does not exist yet
 - `crates/zz` - desktop client: ala shell, terminal/browser/agent panes, settings, daemon client
 - `crates/zz-daemon` — the daemon: session state, PTY workers, client connections
 - `crates/zz-daemon-client` - the client half of the daemon: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, transport, paths, and process facts; client-only crates depend on it instead of `zz-daemon`
@@ -18,7 +19,6 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-machine` - the shape of zz's pure state machines: a transition returns the next state, effects and rejects, and the state says when to wake; the agent turn machine (`zz-daemon/src/agent/turn.rs`) is built on it
 - `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
 - `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
-- `crates/zz-browser` — CEF off-screen-rendering browser runtime with no zz crate dependencies (the future `ala-cef`); without features it is the pure half (cookies, profile names, element picker) that the thin clients' browser panes and `zz-chrome-import` use; `zz-cli` must not link it
 - `crates/zz-chrome-import` — Chrome profile, cookie, and history import
 - `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, settings, navigation, phone shell); re-exports the kit
 - `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)
@@ -38,7 +38,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `bench/` — terminal throughput benchmark harness
 - `design/` - HTML mockups painted with the real theme: `crates/zz-ui/src/theme_css.rs` writes every role's look as CSS (`just design tokens`), `just design serve` shows them; see `design/README.md`
 - `site/` — zzmux.sh landing page and docs (Astro)
-- `third_party/` — vendored code (`ghostty/`, a trimmed Ghostty synced with `just vendor ghostty <rev>`; the libghostty-vt and CEF crates under `rust/`) and pinned reference material
+- `third_party/` — vendored code (`ghostty/`, a trimmed Ghostty synced with `just vendor ghostty <rev>`; the libghostty-vt crates under `rust/`) and pinned reference material
 - `packaging/` — Arch package, AUR/cask templates
 
 ## Knowledge bundle
@@ -59,7 +59,7 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 
 | Command | What it does |
 |---|---|
-| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` (alias in `.cargo/config.toml`). `libs/` sits outside the workspace; `just libs check <ala\|penna>` lints and tests each lib the way CI does. CI's Linux leg runs ala-platform's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features` (Ubuntu `mesa-vulkan-drivers`, Arch `vulkan-swrast`; on an NVIDIA box also set `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`, or the atlas tests take NVIDIA's GL backend and fail). macOS and Windows run only its iOS input tests: `cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features --test ios` |
+| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` (alias in `.cargo/config.toml`). `libs/` sits outside the workspace; `just libs check <ala\|penna\|ala-cef>` lints and tests each lib the way CI does. CI's Linux leg runs ala-platform's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features` (Ubuntu `mesa-vulkan-drivers`, Arch `vulkan-swrast`; on an NVIDIA box also set `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`, or the atlas tests take NVIDIA's GL backend and fail). macOS and Windows run only its iOS input tests: `cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features --test ios` |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Lint (what CI runs) |
 | `cargo clippy -p zz-daemon -p zz-daemon-client --no-default-features --all-targets -- -D warnings` | Lint the daemon without agent support (CI runs this too) |
 | `cargo fmt --all` | Format |
@@ -69,7 +69,7 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 | `just install mac` | Build and swap `/Applications/zz.app`; the daemon survives the swap |
 | `just android <setup\|emulator\|run\|build\|device\|logs>` / `android rig [stop]` | ala Android app: install the SDK, NDK, emulator and `zz-phone` AVD, boot it, build and launch on it attached to the rig through `adb reverse`, build the APK, install a release arm64 build on a USB or wireless device, or follow its logcat |
 | `just ios <run\|build\|device\|bench> [iPhone\|iPad]` / `ios rig [stop]` / `ios testflight` | ala iOS app (iPhone by default): simulator, a paired device (release, signed, installed), a hands-free frame benchmark on the device, a throwaway daemon that `ios run` attaches to, or a signed `dev.zz.ios` TestFlight upload; `ZZ_ALA_DEMO=terminal` selects the terminal example |
-| `just libs <check\|push\|pull> <ala\|penna>` | Lint and test a lib alone, push zz's `libs/<lib>` commits to its autistic-computer repo, or merge that repo's commits back (git subtree) |
+| `just libs <check\|push\|pull> <ala\|penna\|ala-cef>` | Lint and test a lib alone, push zz's `libs/<lib>` commits to its autistic-computer repo, or merge that repo's commits back (git subtree) |
 | `just site` | Docs site dev server with live reload |
 | `just web run` / `web setup` / `web build [--release]` / `web serve` | Browser client dev loop / toolchain / assets / local gateway |
 | `just profile <cpu\|memory\|startup\|system\|metal\|terminal> mac …` | Capture profiling data; read it back with `just profile summary <cpu\|metal\|terminal> <run>` |
@@ -86,10 +86,10 @@ Multiple agent sessions often share this checkout in parallel. Never `git stash`
 
 <important if="you are changing anything under libs/">
 
-- `libs/ala` and `libs/penna` are git subtrees of [autistic-computer/ala](https://github.com/autistic-computer/ala) and [autistic-computer/penna](https://github.com/autistic-computer/penna), libraries other apps build on. Edit them in place and commit them with the zz code that needs the change, like any other file here.
+- `libs/ala` and `libs/penna` are git subtrees of [autistic-computer/ala](https://github.com/autistic-computer/ala) and [autistic-computer/penna](https://github.com/autistic-computer/penna), libraries other apps build on; `libs/ala-cef` follows the same rules and becomes a subtree of autistic-computer/ala-cef once that repo exists. Edit them in place and commit them with the zz code that needs the change, like any other file here.
 - No comments in their code, doc comments included. Third-party copyright and license notices live in each lib's `NOTICE`, and every README is the same centered `<samp>` block: the `/{>` mark over the frontmatter, padded with literal non-breaking spaces so the lines stay aligned, then a `<kbd>` link to autistic.computer.
-- They must build on their own: no zz crate dependencies and no paths outside their own directory. Each is its own Cargo workspace, excluded from zz's; zz uses them by path, and the root `[patch."https://github.com/autistic-computer/ala"]` (repeated in `clients/web`, `clients/storybook` and `clients/dom/theme`) points the kit's git dependency on ala at `libs/ala`.
-- The root clippy and `cargo ci-test` skip them. Run `just libs check ala` or `just libs check penna` when you touch one; CI runs the same.
+- They must build on their own: no zz crate dependencies and no paths outside their own directory. Each is its own Cargo workspace, excluded from zz's; zz uses them by path, and the root `[patch."https://github.com/autistic-computer/ala"]` (repeated in `clients/web`, `clients/storybook` and `clients/dom/theme`) points the kit's git dependency on ala at `libs/ala`. The root `[patch.crates-io]` points `cef-dll-sys` at ala-cef's adapter, as ala-cef's own manifest does.
+- The root clippy and `cargo ci-test` skip them. Run `just libs check <ala|penna|ala-cef>` when you touch one; CI runs the same.
 - Commits touching `libs/<lib>` reach its repo with `just libs push <lib>` once they are on main, carrying their commit messages along, so write those for a reader outside zz. `just libs pull <lib>` merges commits made in the lib repo; do that before pushing if the lib repo moved.
 </important>
 

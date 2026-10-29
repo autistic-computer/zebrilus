@@ -31,14 +31,15 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
    `ala: build the wgpu renderer against wgpu 30`) and a `wgpu = "=30.0.0"` workspace bump. Check
    the crate's changelog for a `update wgpu to vN` entry before assuming a bump is dependency-only.
 3. **Bump the workspace dependency and the adapter.** Update `cef = "=154.0.0"` in the root
-   `Cargo.toml` if the Rust package's major/minor version changed. `cef-dll-sys` is patched to
-   `third_party/rust/cef-dll-sys`, so bump its package version, its cef-rs `rev`, and
+   `Cargo.toml` and in `libs/ala-cef/Cargo.toml` (and `wgpu` with it) if the Rust package's
+   major/minor version changed. `cef-dll-sys` is patched to
+   `libs/ala-cef/third_party/cef-dll-sys`, so bump its package version, its cef-rs `rev`, and
    `generate.py`'s binding hash and function count together, and regenerate its declarations as
    its `UPSTREAM.md` describes. Then refresh both lockfiles (the lock holds two `cef-dll-sys`
    packages, so name the adapter by path):
    ```sh
-   cargo update -p cef -p 'path+file://'"$PWD"'/third_party/rust/cef-dll-sys'
-   cargo update --manifest-path third_party/rust/cef-dll-sys/Cargo.toml --workspace
+   cargo update -p cef -p 'path+file://'"$PWD"'/libs/ala-cef/third_party/cef-dll-sys'
+   cargo update --manifest-path libs/ala-cef/third_party/cef-dll-sys/Cargo.toml --workspace
    ```
    Confirm `Cargo.lock` now resolves to the new `<rust-pkg-version>+<cef-version>` string.
 4. **Fetch the new `index.json`.** Read
@@ -72,7 +73,7 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
 | File | Role |
 | --- | --- |
 | `Cargo.toml` | `cef = "=154.0.0"` workspace version constraint, and the `wgpu` pin that must match it |
-| `third_party/rust/cef-dll-sys/` | Adapter patched over `cef-dll-sys`: cef-rs `rev`, generated symbol table, `UPSTREAM.md` |
+| `libs/ala-cef/third_party/cef-dll-sys/` | Adapter patched over `cef-dll-sys`: cef-rs `rev`, generated symbol table, `UPSTREAM.md` |
 | `Cargo.lock` | Exact resolved `cef`/`cef-dll-sys` version (`<rust-pkg>+<cef-version>`) |
 | `third_party/cef/ARTIFACTS.md` | Reviewable mirror of the official per-target archive name + SHA-1 table |
 | `.github/workflows/ci.yml`, `release.yml`, `nightly-corpus.yml` | `CEF_PATH` cache keyed on the CEF version, matrix across all three OSes (CI runs Windows nightly) |

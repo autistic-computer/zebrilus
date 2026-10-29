@@ -56,7 +56,7 @@ impl BrowserGpuContext {
 
 fn diagnostic_timer() -> Option<std::time::Instant> {
     log::log_enabled!(
-        target: "zz_browser::diagnostics::frame_mailbox",
+        target: "ala_cef::diagnostics::frame_mailbox",
         log::Level::Trace
     )
     .then(std::time::Instant::now)
@@ -498,7 +498,7 @@ impl FrameMailbox {
             Some(generation)
         };
         log::trace!(
-            target: "zz_browser::diagnostics::frame_mailbox",
+            target: "ala_cef::diagnostics::frame_mailbox",
             "publish session={} generation={} width={} height={} bytes={} replaced_pending={} wake={wake:?} elapsed_us={}",
             session.0,
             generation,
@@ -710,7 +710,7 @@ impl FrameMailbox {
             Some(generation)
         };
         log::trace!(
-            target: "zz_browser::diagnostics::frame_mailbox",
+            target: "ala_cef::diagnostics::frame_mailbox",
             "{label} session={} generation={} delivery_generation={} pool_generation={} sequence={} logical={}x{} device={}x{} replaced_pending={} wake={wake:?} elapsed_us={}",
             fields.session.0,
             generation,
@@ -755,7 +755,7 @@ impl FrameMailbox {
             .map(|(index, _)| index);
         let buffer = index.map_or_else(Vec::new, |index| state.recycled.swap_remove(index));
         log::trace!(
-            target: "zz_browser::diagnostics::frame_mailbox",
+            target: "ala_cef::diagnostics::frame_mailbox",
             "take_buffer frame_bytes={frame_bytes} pool_hit={} pooled_remaining={}",
             buffer.capacity() > 0,
             state.recycled.len(),
@@ -783,7 +783,7 @@ impl FrameMailbox {
             None => {}
         }
         log::trace!(
-            target: "zz_browser::diagnostics::frame_mailbox",
+            target: "ala_cef::diagnostics::frame_mailbox",
             "take generation={} returned_generation={:?} returned_tier={:?} bytes={} elapsed_us={}",
             state.generation,
             frame.as_ref().map(OsrFrame::generation),

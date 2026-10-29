@@ -229,10 +229,10 @@ fn window_shortcut_modifiers(cx: &App) -> Option<Modifiers> {
 
 fn browser_metadata_command(
     pane: PaneId,
-    event: &zz_browser::BrowserEvent,
+    event: &ala_cef::BrowserEvent,
 ) -> Option<CommandInvocation> {
     match event {
-        zz_browser::BrowserEvent::TitleChanged { title, .. } => Some(CommandInvocation::new(
+        ala_cef::BrowserEvent::TitleChanged { title, .. } => Some(CommandInvocation::new(
             "select-pane",
             vec![
                 "-t".to_owned(),
@@ -996,7 +996,7 @@ impl AppView {
         .detach();
         let pages = mux.clone();
         cx.spawn(async move |_, cx| {
-            let requests = zz_browser::artifact_requests();
+            let requests = ala_cef::artifact_requests();
             while let Ok(request) = requests.recv().await {
                 pages.update(cx, |mux, _| mux.fetch_artifact(request));
             }
@@ -1051,9 +1051,9 @@ impl AppView {
         let replies = mux.clone();
         let inline = inline_browser.clone();
         cx.spawn(async move |_, cx| {
-            let sent = zz_browser::artifact_replies();
+            let sent = ala_cef::artifact_replies();
             while let Ok(reply) = sent.recv().await {
-                if !zz_browser::is_local_page(&reply.token) {
+                if !ala_cef::is_local_page(&reply.token) {
                     replies.update(cx, |mux, _| mux.send_artifact_reply(&reply));
                     continue;
                 }
@@ -4864,11 +4864,11 @@ mod tests {
     #[test]
     fn browser_metadata_uses_tmux_pane_titles_only() {
         let pane = PaneId(7);
-        let session = zz_browser::SessionId(11);
+        let session = ala_cef::SessionId(11);
         assert_eq!(
             browser_metadata_command(
                 pane,
-                &zz_browser::BrowserEvent::AddressChanged {
+                &ala_cef::BrowserEvent::AddressChanged {
                     session,
                     url: Arc::from("https://example.com/path"),
                 },
@@ -4878,7 +4878,7 @@ mod tests {
         assert_eq!(
             browser_metadata_command(
                 pane,
-                &zz_browser::BrowserEvent::TitleChanged {
+                &ala_cef::BrowserEvent::TitleChanged {
                     session,
                     title: Arc::from("Example Domain"),
                 },
@@ -4891,7 +4891,7 @@ mod tests {
         assert_eq!(
             browser_metadata_command(
                 pane,
-                &zz_browser::BrowserEvent::FrameReady {
+                &ala_cef::BrowserEvent::FrameReady {
                     session,
                     generation: 1,
                 },
@@ -5342,9 +5342,8 @@ mod tests {
         let workspace_slot = Rc::new(RefCell::new(None));
         let captured_workspace = Rc::clone(&workspace_slot);
         let (_, cx) = cx.add_window_view(move |window, cx| {
-            let controller = cx.new(|cx| {
-                BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
-            });
+            let controller = cx
+                .new(|cx| BrowserController::new(Err(ala_cef::BrowserError::AlreadyShutdown), cx));
             let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx
                 .new(|cx| MuxClient::new(Ok(client), zz_daemon_client::default_socket_path(), cx));
@@ -5826,9 +5825,8 @@ mod tests {
             crate::keymap::install(&[], config::DEFAULT_BROWSER_ELEMENT_SELECTOR_HOTKEY, cx);
         });
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
-            let controller = cx.new(|cx| {
-                BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
-            });
+            let controller = cx
+                .new(|cx| BrowserController::new(Err(ala_cef::BrowserError::AlreadyShutdown), cx));
             let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
@@ -5917,9 +5915,8 @@ mod tests {
             });
         });
         let (workspace, cx) = cx.add_window_view(|window, cx| {
-            let controller = cx.new(|cx| {
-                BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
-            });
+            let controller = cx
+                .new(|cx| BrowserController::new(Err(ala_cef::BrowserError::AlreadyShutdown), cx));
             let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
@@ -5962,9 +5959,8 @@ mod tests {
             crate::keymap::install(&[], config::DEFAULT_BROWSER_ELEMENT_SELECTOR_HOTKEY, cx);
         });
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
-            let controller = cx.new(|cx| {
-                BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
-            });
+            let controller = cx
+                .new(|cx| BrowserController::new(Err(ala_cef::BrowserError::AlreadyShutdown), cx));
             let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
@@ -6154,7 +6150,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -6384,7 +6380,7 @@ mod tests {
         let (_, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -6529,7 +6525,7 @@ mod tests {
         let (_, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -6727,7 +6723,7 @@ mod tests {
         let (_workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -6824,7 +6820,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -7022,7 +7018,7 @@ mod tests {
         let (_, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -7128,7 +7124,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -7188,7 +7184,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -7338,7 +7334,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -7607,7 +7603,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -7891,7 +7887,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -7971,7 +7967,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -8115,7 +8111,7 @@ mod tests {
         let (_, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -8256,7 +8252,7 @@ mod tests {
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -8423,7 +8419,7 @@ mod tests {
             );
             let controller = cx.new(|cx| {
                 crate::browser::controller::BrowserController::new(
-                    Err(zz_browser::BrowserError::AlreadyShutdown),
+                    Err(ala_cef::BrowserError::AlreadyShutdown),
                     cx,
                 )
             });
@@ -8531,9 +8527,8 @@ mod tests {
     fn pane_handle_drop_and_escape_leave_keyboard_input_alone(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let (workspace, cx) = cx.add_window_view(|window, cx| {
-            let controller = cx.new(|cx| {
-                BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
-            });
+            let controller = cx
+                .new(|cx| BrowserController::new(Err(ala_cef::BrowserError::AlreadyShutdown), cx));
             let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(
@@ -8765,9 +8760,8 @@ mod tests {
         let mux_slot = Rc::new(RefCell::new(None));
         let captured_mux = Rc::clone(&mux_slot);
         let (workspace, cx) = cx.add_window_view(move |window, cx| {
-            let controller = cx.new(|cx| {
-                BrowserController::new(Err(zz_browser::BrowserError::AlreadyShutdown), cx)
-            });
+            let controller = cx
+                .new(|cx| BrowserController::new(Err(ala_cef::BrowserError::AlreadyShutdown), cx));
             let agent_controller = cx.new(|_| AgentController::new());
             let mux = cx.new(|cx| {
                 MuxClient::new(

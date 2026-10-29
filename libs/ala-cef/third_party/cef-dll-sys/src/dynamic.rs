@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn missing_library_reports_its_path_without_publishing_functions() {
         let path = std::env::temp_dir()
-            .join(format!("zz-cef-missing-{}", std::process::id()))
+            .join(format!("ala-cef-missing-{}", std::process::id()))
             .join("libcef.so");
         let error = unsafe { Functions::open(&path) }.err().unwrap();
         assert!(error.contains(path.to_str().unwrap()));

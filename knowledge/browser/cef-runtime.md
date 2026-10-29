@@ -2,7 +2,7 @@
 type: Subsystem
 title: CEF runtime & subprocess dispatch
 description: CEF Alloy OSR bootstrap with deferred loading and initialization, platform-specific subprocess dispatch, frame-rate policy, external BeginFrames, message pumping, and safe foreground command dispatch.
-resource: crates/zz-browser/src/cef_runtime.rs
+resource: libs/ala-cef/src/cef_runtime.rs
 tags: [browser, cef, runtime, subprocess, begin-frame, frame-pacing]
 timestamp: 2026-10-29T21:18:08Z
 ---
@@ -76,14 +76,14 @@ library and reports any failure through `BrowserError`. It then calls
 and starts pumping. Terminal-only startup on Linux x86_64 and macOS does not map Chromium;
 the other targets still load its library before the first browser operation.
 
-The lifecycle log target `zz_browser::diagnostics::lifecycle` records separate
+The lifecycle log target `ala_cef::diagnostics::lifecycle` records separate
 `cold runtime prepared` and `runtime initialized` durations in microseconds.
 The initialization duration includes deferred library loading.
-See `crates/zz-browser/src/cef_runtime.rs` `bootstrap_args_with_paths` and
+See `libs/ala-cef/src/cef_runtime.rs` `bootstrap_args_with_paths` and
 `BrowserRuntime::start`, and `crates/zz/src/browser/controller.rs`
 `BrowserController::new`, `ensure_runtime_started`, and `start_runtime`.
 The adapter's pin, generator, native probe, and ARM64 qualification gap are
-documented in `third_party/rust/cef-dll-sys/UPSTREAM.md`.
+documented in `libs/ala-cef/third_party/cef-dll-sys/UPSTREAM.md`.
 
 # Initialization settings
 
@@ -356,7 +356,7 @@ See [remote browser egress](/designs/remote-browser-egress.md).
   machines and creates [named private request contexts](/browser/profile.md).
 - Feeds the [off-screen rendering pipeline](/browser/osr-rendering.md) via
   `on_paint`, and receives [translated input](/browser/input-translation.md).
-- Part of the whole [zz-browser crate](/crates/zz-browser.md) and the
+- Part of the whole [ala-cef crate](/crates/ala-cef.md) and the
   [process model](/architecture/process-model.md).
 - CEF version/artifact pins: [CEF artifacts](/references/cef-artifacts.md);
   bundling: [build a CEF bundle](/playbooks/build-cef-bundle.md).

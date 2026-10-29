@@ -98,6 +98,7 @@ jobs:
         run: |
           cargo clippy --manifest-path libs/ala/Cargo.toml --workspace --all-targets --all-features -- -D warnings
           cargo clippy --manifest-path libs/penna/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
+          cargo clippy --manifest-path libs/ala-cef/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
 
       - name: Check browser client
         if: runner.os == 'Linux'
@@ -121,6 +122,7 @@ jobs:
         run: |
           cargo test --manifest-path libs/ala/Cargo.toml --workspace --all-features --exclude ala-platform
           cargo test --manifest-path libs/penna/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
+          cargo test --manifest-path libs/ala-cef/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
 
       - name: Test the iOS input logic
         if: runner.os != 'Linux'
@@ -156,7 +158,7 @@ jobs:
         shell: bash
         run: |
           tree=$(cargo tree -p zz-cli -e normal --prefix none)
-          if grep -Eq '^(ala|ala-platform|wgpu|cef|penna|zz-ui|zz-browser|zz-chrome-import) ' <<<"$tree"; then
+          if grep -Eq '^(ala|ala-platform|ala-cef|wgpu|cef|penna|zz-ui|zz-chrome-import) ' <<<"$tree"; then
             echo "zz-cli links GUI crates"
             exit 1
           fi

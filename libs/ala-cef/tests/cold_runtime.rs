@@ -7,7 +7,7 @@
     reason = "tests spawn helper processes from threads with an empty signal mask"
 )]
 
-use zz_browser::{
+use ala_cef::{
     BrowserBootstrap, BrowserProfilePaths, RuntimeConfig, RuntimePhase,
     bootstrap_with_profile_paths,
 };
@@ -19,6 +19,7 @@ fn preparing_and_closing_a_cold_runtime_does_not_load_chromium() {
     let paths = BrowserProfilePaths {
         profile: root.join("default"),
         root,
+        named_prefix: "profile-".to_owned(),
     };
     assert!(!chromium_is_loaded());
     let BrowserBootstrap::Runtime(mut runtime) =
@@ -45,7 +46,7 @@ fn preparing_and_closing_a_cold_runtime_does_not_load_chromium() {
 #[cfg(target_os = "macos")]
 #[test]
 fn starting_without_a_framework_returns_an_error() {
-    const CHILD: &str = "ZZ_CEF_MISSING_FRAMEWORK_TEST";
+    const CHILD: &str = "ALA_CEF_MISSING_FRAMEWORK_TEST";
     if std::env::var_os(CHILD).is_none() {
         let directory = tempfile::tempdir().unwrap();
         let executable_directory = directory.path().join("bin");
@@ -76,6 +77,7 @@ fn starting_without_a_framework_returns_an_error() {
     let paths = BrowserProfilePaths {
         profile: root.join("default"),
         root,
+        named_prefix: "profile-".to_owned(),
     };
     assert!(!chromium_is_loaded());
     let BrowserBootstrap::Runtime(mut runtime) =
@@ -85,7 +87,7 @@ fn starting_without_a_framework_returns_an_error() {
     };
     assert!(matches!(
         runtime.start(),
-        Err(zz_browser::BrowserError::FrameworkLoad)
+        Err(ala_cef::BrowserError::FrameworkLoad)
     ));
     assert_eq!(runtime.phase(), RuntimePhase::Failed);
     runtime.message_pump().do_message_loop_work();

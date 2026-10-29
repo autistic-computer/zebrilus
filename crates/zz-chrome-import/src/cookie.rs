@@ -6,6 +6,10 @@ use std::{
 
 #[cfg(not(target_os = "windows"))]
 use aes::Aes128;
+use ala_cef::{
+    BrowserCookie, CookieImportBatch, CookieImportError, MAX_COOKIE_IMPORT_BYTES,
+    parse_cookie_import,
+};
 #[cfg(not(target_os = "windows"))]
 use cbc::cipher::{BlockModeDecrypt as _, KeyIvInit as _, block_padding::Pkcs7};
 #[cfg(not(target_os = "windows"))]
@@ -21,10 +25,6 @@ use url::Url;
 #[cfg(target_os = "windows")]
 use zeroize::Zeroize as _;
 use zeroize::Zeroizing;
-use zz_browser::{
-    BrowserCookie, CookieImportBatch, CookieImportError, MAX_COOKIE_IMPORT_BYTES,
-    parse_cookie_import,
-};
 
 #[cfg(target_os = "windows")]
 use crate::profiles::{MAX_LOCAL_STATE_BYTES, chrome_local_state_path};
@@ -757,11 +757,11 @@ fn load_chromium_keys() -> Result<ChromiumKeys, ChromeCookieImportError> {
 
 #[cfg(test)]
 mod tests {
+    use ala_cef::MAX_COOKIE_IMPORT_COUNT;
     #[cfg(not(target_os = "windows"))]
     use cbc::cipher::{BlockModeEncrypt as _, block_padding::Pkcs7};
     use rusqlite::params;
     use tempfile::tempdir;
-    use zz_browser::MAX_COOKIE_IMPORT_COUNT;
 
     use super::*;
 
