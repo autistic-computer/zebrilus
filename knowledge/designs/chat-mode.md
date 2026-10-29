@@ -40,9 +40,10 @@ that folder. The desktop follows the new window once it appears.
 
 A picker alone in its window offers the agents instead of pane kinds (`ChatPicker`, drawn by
 `zz_ui::pane::chat_picker_rows`): the folder line on top, and Claude Code (`c`) or Codex (`x`).
-Tab or a click on the folder opens the file picker (the command palette's `&` mode,
-`CommandPaletteView::new_folder_pick`) one folder up from the current one; the folder picked there,
-or the folder holding a picked file, is where the agent starts. The HTML client has no file picker
+Tab or a click on the folder opens the file picker (the command palette's insert path browser,
+`CommandPaletteView::new_folder_pick`) one folder up from the current one; Enter there hands the
+highlighted folder, or the folder holding a highlighted file, back to the picker as where the agent
+starts (`PaletteActionLevel::picked_folder`) instead of inserting it. The HTML client has no file picker
 yet, so its Tab lists the folders the host's panes have been in and takes a typed path
 (`folder_rows`).
 

@@ -2,8 +2,7 @@ use std::{ops::Range, rc::Rc};
 
 use zz_client::{
     AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
-    driver_chat::DRIVER_SESSION, navigation::session_label, pane_rects,
-    window_summary::summarize_window,
+    navigation::session_label, pane_rects, window_summary::summarize_window,
 };
 use zz_gpui::{
     AnyElement, App, Bounds, Context, Entity, Font, Hsla, PaintScaleExt as _, ParentElement as _,
@@ -13,18 +12,15 @@ use zz_gpui::{
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
-    agent::chat::{ChatBubble, ChatSender, ChatTyping, chat_header, phone_chat_card},
+    ActiveTheme as _, Colorize as _, IconName,
     button::{Button, ButtonVariants as _},
     compact::{
         BENTO_INSET, BentoSpan, HostState, Instant, PageDot, PagerEvent, PillLabel, PillPlacement,
-        bento_grid, compact_bar_button, compact_composer_pill, compact_floating_bar,
-        compact_floating_group, compact_floating_pill, compact_group_dot, folding_title_bar,
-        host_tile, host_tile_line, large_title, mini_pane, overview_count, overview_host_empty,
-        overview_session_heading, page_dots, scrolled, window_layout, window_tile,
+        bento_grid, compact_bar_button, compact_floating_bar, compact_floating_group,
+        compact_floating_pill, folding_title_bar, host_tile, host_tile_line, large_title,
+        mini_pane, overview_count, overview_host_empty, overview_session_heading, page_dots,
+        scrolled, window_layout, window_tile,
     },
-    program::program_tile,
-    roles,
     terminal::terminal_background,
 };
 
@@ -38,11 +34,9 @@ const PREVIEW_LINE: f32 = 4.8;
 const PREVIEW_ROWS: u16 = 40;
 const PREVIEW_COLUMNS: usize = 56;
 const HOST_GAP: f32 = 12.0;
-const DRIVER_LINES: usize = 2;
 const ZOOM_FADE_START: f32 = 0.3;
 const ZOOM_FADE_SPAN: f32 = 0.4;
 const ZOOM_RADIUS: f32 = 10.0;
-const COMPOSER_TILE: f32 = 30.0;
 const HOST_TILE_NAMES: usize = 2;
 const TILE_FALLBACK_TOP: f32 = 160.0;
 const TILE_FALLBACK_HEIGHT: f32 = 178.0;
@@ -205,9 +199,6 @@ fn host_counts(connection: &Entity<Connection>, cx: &App) -> HostCounts {
     let core = &connection.read(cx).core;
     let mut counts = HostCounts::default();
     for session in &core.snapshot().sessions {
-        if session.name == DRIVER_SESSION {
-            continue;
-        }
         counts.sessions += 1;
         counts.names.push(session_label(session).text);
         for window in &session.windows {
@@ -514,7 +505,6 @@ impl AppShell {
             overview_count(hosts.len(), "host"),
             connected
         );
-        let driver = self.overview_driver_card(cx);
         let theme = cx.theme();
         let scroll = self.compact.hosts_scroll.clone();
         div()
@@ -539,7 +529,6 @@ impl AppShell {
                             .text_color(theme.foreground.muted())
                             .child(subtitle),
                     )
-                    .children(driver.map(|card| div().px(px(BENTO_INSET)).pt(px(16.0)).child(card)))
                     .child(
                         div()
                             .px(px(BENTO_INSET))
@@ -656,54 +645,6 @@ impl AppShell {
         .into_any_element()
     }
 
-    fn overview_driver_card(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let chat = self.driver_chat.read(cx);
-        let driver = chat.driver()?;
-        let ground = cx.theme().ground_of(roles::PHONE_DRIVER_CARD);
-        let message = if let Some(steps) = chat.steps(cx) {
-            ChatTyping::new("overview-driver-typing")
-                .steps(steps)
-                .on(ground)
-                .into_any_element()
-        } else {
-            let text = chat.last_answer(cx)?.text;
-            ChatBubble::theirs("overview-driver-latest", text, "")
-                .lines(DRIVER_LINES)
-                .on(ground)
-                .into_any_element()
-        };
-        let attention = chat.unread(cx).then(|| {
-            div()
-                .size(px(7.0))
-                .rounded_full()
-                .bg(cx.theme().accent)
-                .into_any_element()
-        });
-        let sender = ChatSender {
-            name: "Driver".into(),
-            program: driver.program,
-        };
-        let header = chat_header(&sender, driver.host.clone(), attention, cx);
-        Some(
-            phone_chat_card("overview-driver", header, message, cx)
-                .on_click(cx.listener(|this, _, window, cx| this.open_driver_chat(window, cx)))
-                .into_any_element(),
-        )
-    }
-
-    pub(super) fn driver_dot(&self, cx: &App) -> Option<Hsla> {
-        let chat = self.driver_chat.read(cx);
-        chat.driver()?;
-        let theme = cx.theme();
-        if chat.permission().is_some() {
-            Some(theme.warning)
-        } else if chat.running(cx) || chat.unread(cx) {
-            Some(theme.accent)
-        } else {
-            None
-        }
-    }
-
     pub(super) fn open_settings(&mut self, cx: &mut Context<Self>) {
         self.settings = Some(zz_ui::settings::SettingsSection::Appearance);
         self.focused_pane = None;
@@ -717,47 +658,9 @@ impl AppShell {
     }
 
     fn hosts_bar(&self, placement: &PillPlacement, cx: &mut Context<Self>) -> AnyElement {
-        let program = self
-            .driver_chat
-            .read(cx)
-            .driver()
-            .and_then(|driver| driver.program);
-        let tile = px(COMPOSER_TILE);
-        let leading = div()
-            .relative()
-            .flex_none()
-            .child(match program {
-                Some(program) => program_tile(program, tile, px(56.0), 0.0, cx).into_any_element(),
-                None => div()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(tile)
-                    .child(Icon::new(IconName::Chat).size(px(20.0)))
-                    .into_any_element(),
-            })
-            .when_some(self.driver_dot(cx), |leading, color| {
-                leading.child(
-                    div()
-                        .absolute()
-                        .top(px(-3.0))
-                        .right(px(-3.0))
-                        .size(px(9.0))
-                        .rounded_full()
-                        .bg(color),
-                )
-            });
-        let composer = compact_composer_pill(
-            "hosts-composer",
-            leading,
-            "Message the driver",
-            placement,
-            cx,
-        )
-        .on_click(cx.listener(|this, _, window, cx| this.open_driver_composer(window, cx)));
         let settings = compact_bar_button("hosts-settings", IconName::Settings)
             .on_click(cx.listener(|this, _, _, cx| this.open_settings(cx)));
-        compact_floating_bar(composer, placement, cx)
+        compact_floating_bar(div().flex_1(), placement, cx)
             .child(compact_floating_group([settings], placement, cx))
             .into_any_element()
     }
@@ -807,9 +710,6 @@ impl AppShell {
                 .absolute()
                 .inset_0(),
         )
-        .when_some(self.driver_dot(cx), |pill, color| {
-            pill.child(compact_group_dot(color))
-        })
         .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(MenuFrom::Host, cx)))
         .on_scroll_wheel(cx.listener(Self::host_pill_scroll));
         compact_floating_bar(pill, placement, cx).into_any_element()
@@ -953,9 +853,6 @@ impl AppShell {
             core.snapshot()
                 .sessions
                 .iter()
-                .filter(|session| {
-                    session.name != DRIVER_SESSION || attached_session == Some(session.id)
-                })
                 .map(|session| {
                     let model = match attached_model {
                         Some(model) if attached_session == Some(session.id) => model.clone(),

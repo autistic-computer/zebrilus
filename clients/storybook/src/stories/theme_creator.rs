@@ -9,7 +9,7 @@ use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId
 use zz_terminal::{SearchQuery, SearchStatus};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
-    agent::{agent_jump_to_bottom_button, chat::chat_button},
+    agent::agent_jump_to_bottom_button,
     badge::Badge,
     browser::{BrowserHeader, browser_recent_row, browser_start_surface},
     button::{Button, ButtonVariants as _},
@@ -28,7 +28,6 @@ use zz_ui::{
     interface_theme::{ThemeModeSetting, pinned_theme_mode},
     kbd::Kbd,
     menu::PopupMenu,
-    navigation::workspace_chat_button,
     notification::Notification,
     overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
     pane::{
@@ -62,7 +61,6 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
-        chat::{bottom_scroll, driver_card, driver_input, driver_palette, driver_sheet},
         lens,
     },
     console::{
@@ -100,13 +98,13 @@ pub const STORY: Story = Story {
         Section {
             id: "workspace",
             name: "Workspace",
-            summary: "The window with the tree sidebar, and the title bar as it reads with the sidebar hidden, its chat button dotted while the driver chat waits on you.",
+            summary: "The window with the tree sidebar, and the title bar as it reads with the sidebar hidden.",
             build: Workspace::view,
         },
         Section {
             id: "flat",
             name: "Flat sidebar",
-            summary: "The flat sidebar with the driver's last message under it, beside Claude Code with its lens open and two terminals. The keyboard cursor sits on a window, and a host that is not connected offers Connect.",
+            summary: "The flat sidebar beside Claude Code with its lens open and two terminals. The keyboard cursor sits on a window, and a host that is not connected offers Connect.",
             build: Flat::view,
         },
         Section {
@@ -149,7 +147,7 @@ pub const STORY: Story = Story {
         Section {
             id: "floating",
             name: "Floating",
-            summary: "Menus, the palette and its Driver mode, a dialog, toasts and which-key over the backdrop.",
+            summary: "Menus, the palette, a dialog, toasts and which-key over the backdrop.",
             build: Floating::view,
         },
         Section {
@@ -172,12 +170,7 @@ pub const STORY: Story = Story {
                 stateful(
                     window,
                     cx,
-                    |window, cx| {
-                        (
-                            cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
-                            driver_input("", window, cx),
-                        )
-                    },
+                    |window, cx| cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
                     drawers,
                 )
             },
@@ -280,7 +273,7 @@ struct Flat {
 
 impl Flat {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let flat = cx.new(|_| Live::new(None).driver().cursor_and_offline());
+        let flat = cx.new(|_| Live::new(None).cursor_and_offline());
         let agent = lens::tiled(window, cx);
         cx.new(|_| Self { flat, agent }).into()
     }
@@ -681,8 +674,6 @@ struct Floating {
     pane_menu: Entity<PopupMenu>,
     view_menu: Entity<PopupMenu>,
     search: Entity<InputState>,
-    driver: Entity<InputState>,
-    driver_thread: zz_gpui::ScrollHandle,
     toasts: [Entity<Notification>; 2],
     tooltip: Entity<Tooltip>,
 }
@@ -707,13 +698,10 @@ impl Floating {
             ),
         ];
         let tooltip = cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None));
-        let driver = driver_input("", window, cx);
         cx.new(|_| Self {
             pane_menu,
             view_menu,
             search,
-            driver,
-            driver_thread: bottom_scroll(),
             toasts,
             tooltip,
         })
@@ -721,45 +709,42 @@ impl Floating {
     }
 
     fn palette(&self, cx: &App) -> AnyElement {
-        let row =
-            |label: &str, detail: &str, right: &str, icon: IconName, running: bool| PaletteRow {
-                label: label.to_owned().into(),
-                detail: detail.to_owned().into(),
-                right: right.to_owned().into(),
-                icon: Some(icon),
-                running,
-                ..Default::default()
-            };
+        let row = |label: &str, detail: &str, right: &str, running: bool| PaletteRow {
+            label: label.to_owned().into(),
+            muted_prefix: label.rfind(" › ").map_or(0, |at| at + " › ".len()),
+            detail: detail.to_owned().into(),
+            right: right.to_owned().into(),
+            icon: Some(IconName::SquareTerminal),
+            running,
+            ..Default::default()
+        };
         let rows = [
-            row(
-                "editor",
-                "2 panes",
-                "current",
-                IconName::PanelsTopLeft,
-                false,
-            ),
-            row("agents", "2 panes", "", IconName::PanelsTopLeft, true),
-            row("logs", "1 pane", "", IconName::PanelsTopLeft, false),
-            row("train.py", "gpu-box", "", IconName::SquareTerminal, true),
+            row("zz › 1 editor › 0 nvim", "Terminal", "current", false),
+            row("zz › 2 agents › 0 claude", "Agent · running", "", true),
+            row("logs › 1 tail › 0 tail -f", "Terminal", "", false),
         ];
         let height = px(command_palette_row_height());
         CommandPaletteSurface::new(
             unified_command_palette_input(
                 &self.search,
-                [PalettePill::Host {
-                    label: "devbox".into(),
-                    status: PaletteStatus::Online,
-                }],
+                [
+                    PalettePill::Host {
+                        label: "devbox".into(),
+                        status: PaletteStatus::Online,
+                    },
+                    PalettePill::Verb("read pane".into()),
+                ],
                 cx,
             ),
             1,
         )
+        .usage("runs  capture-pane -p -t zz:1.0")
         .rows(
             v_flex()
                 .child(
                     div()
                         .h(height)
-                        .child(command_palette_section("Windows", "zz", cx)),
+                        .child(command_palette_section("Panes on devbox", "", cx)),
                 )
                 .children(rows.iter().enumerate().map(|(index, row)| {
                     div().h(height).child(command_palette_entry(
@@ -772,12 +757,12 @@ impl Floating {
         )
         .hints([
             PaletteHint {
-                key: "up down",
-                label: "navigate",
+                key: "enter",
+                label: "pick",
             },
             PaletteHint {
-                key: "enter",
-                label: "open",
+                key: "backspace",
+                label: "back",
             },
             PaletteHint {
                 key: "escape",
@@ -794,11 +779,6 @@ impl Render for Floating {
         let menus = plate("showcase-menus", self.pane_menu.clone(), cx);
         let view = plate("showcase-view-menu", self.view_menu.clone(), cx);
         let palette = plate("showcase-palette", self.palette(cx), cx);
-        let driver = plate(
-            "showcase-driver-palette",
-            driver_palette(&self.driver, &self.driver_thread, cx),
-            cx,
-        );
         let dialog = plate("showcase-dialog", dialog(cx), cx);
         let toasts = plate(
             "showcase-toasts",
@@ -827,11 +807,7 @@ impl Render for Floating {
             .gap(px(GAP))
             .child(tiles(
                 window,
-                vec![
-                    vec![menus, driver],
-                    vec![view, toasts],
-                    vec![palette, dialog],
-                ],
+                vec![vec![menus], vec![view, toasts], vec![palette, dialog]],
             ))
             .child(chooser)
             .child(which_key)
@@ -950,10 +926,7 @@ impl Phone {
 
     fn hosts(cx: &App) -> AnyElement {
         phone_frame("showcase-phone-hosts", cx)
-            .child(hosts_page(
-                Some(driver_card("showcase-driver-card", false, true, cx)),
-                cx,
-            ))
+            .child(hosts_page(cx))
             .child(hosts_bar(cx))
             .into_any_element()
     }
@@ -1083,11 +1056,7 @@ fn drawer(
     .header_role(zz_ui::roles::PHONE_BAR)
 }
 
-fn drawers(
-    (destination, driver): &(Entity<InputState>, Entity<InputState>),
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
+fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) -> AnyElement {
     use zz_ui::roles;
     let cx: &App = cx;
     let muted = cx.theme().foreground.muted();
@@ -1243,10 +1212,7 @@ fn drawers(
                     cx,
                 ),
             ],
-            vec![
-                drawer_screen("drawer-screen-bindings", bindings, cx),
-                drawer_screen("drawer-screen-driver", driver_sheet(driver, cx), cx),
-            ],
+            vec![drawer_screen("drawer-screen-bindings", bindings, cx)],
         ],
     )
     .into_any_element()
@@ -1319,19 +1285,13 @@ fn status_bar(cx: &App) -> AnyElement {
         .rounded(cx.theme().radius)
         .framed(cx)
         .bg(cx.theme().background)
-        .child(
-            titlebar(
-                &Bar {
-                    gaps: crate::pane().gaps,
-                    ..Bar::FULL
-                },
-                cx,
-            )
-            .child(chat_button(
-                workspace_chat_button("showcase-chat"),
-                Some(cx.theme().warning),
-            )),
-        )
+        .child(titlebar(
+            &Bar {
+                gaps: crate::pane().gaps,
+                ..Bar::FULL
+            },
+            cx,
+        ))
         .into_any_element()
 }
 

@@ -1,4 +1,3 @@
-mod ask_level;
 pub mod floating;
 mod gui_level;
 mod level;
@@ -8,7 +7,6 @@ mod palette_places;
 mod palette_view;
 mod palette_vim;
 
-pub use ask_level::AskLevel;
 pub use gui_level::{GuiLevel, theme_offer};
 pub use level::{
     ActionContext, ActionKey, CopyAddress, LevelEffect, PaletteActionLevel, install_recents,
@@ -19,13 +17,13 @@ pub use palette::{
     command_palette_section, command_palette_tree_entry, unified_command_palette_input,
 };
 pub use palette_model::{
-    DriverOffer, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree,
-    PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+    PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost,
+    PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
 };
 pub use palette_places::palette_fleet;
 pub use palette_view::{
-    CommandPaletteEvent, CommandPaletteView, DRIVER_PREFIX, FolderPick, GuiEvent, PaletteBackend,
-    target_hosts, target_picker,
+    CommandPaletteEvent, CommandPaletteView, FolderPick, GuiEvent, PaletteBackend, target_hosts,
+    target_picker,
 };
 
 pub(crate) use palette_model::fuzzy_match;
@@ -58,16 +56,6 @@ const COMMAND_PALETTE_LIST_MAX: f32 = 440.0;
 pub fn command_palette_list_height(viewport: Pixels, usage: bool) -> f32 {
     (f32::from(viewport) * 0.88 - if usage { 175.0 } else { 140.0 })
         .clamp(40.0, COMMAND_PALETTE_LIST_MAX)
-}
-
-/// The palette's height with its rows full, the least Driver mode takes so
-/// switching modes keeps the palette's size.
-pub fn command_palette_full_height(viewport: Pixels) -> f32 {
-    COMMAND_PALETTE_INPUT_HEIGHT
-        + 2.0
-        + command_palette_list_height(viewport, false)
-        + COMMAND_PALETTE_INSET
-        + COMMAND_PALETTE_FOOTER_HEIGHT
 }
 
 /// The height of a palette row at the theme's density.

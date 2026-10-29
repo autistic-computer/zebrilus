@@ -35,6 +35,9 @@ function pill(value) {
       element("span", { "data-text": true, text: value.label }),
     );
   }
+  if (value.kind === "place" || value.kind === "verb") {
+    return element("span", { "data-zz": "badge", class: "zz-palette-pill", "data-kind": value.kind }, element("span", { "data-text": true, text: value.label }));
+  }
   return element("span", { "data-zz": "badge", class: "zz-palette-pill zz-palette-mono", "data-text": true, text: value.label });
 }
 
@@ -50,12 +53,7 @@ function hints(list) {
 }
 
 function sectionRow(row) {
-  return element(
-    "div",
-    { class: "zz-palette-section" },
-    element("span", { "data-text": true, text: row.header }),
-    element("span", { class: "zz-palette-mono", "data-text": true, text: row.hint }),
-  );
+  return element("div", { class: "zz-palette-section" }, element("span", { "data-text": true, text: row.header }));
 }
 
 function unifiedRow(row, index, selected) {
@@ -224,7 +222,7 @@ function render() {
     }
     return element("div", { class: "zz-palette-slot" }, node);
   });
-  const empty = palette.kind === "unified" && !rows.length;
+  const empty = palette.kind === "unified" && !rows.length && Boolean(palette.empty);
   view.rows.hidden = !rows.length && !empty;
   view.rows.dataset.empty = empty;
   view.rows.style.height = empty ? "" : `${palette.listHeight}px`;
@@ -234,7 +232,7 @@ function render() {
   else view.rows.scrollTop = 0;
 }
 
-const PALETTE_MODES = { ":": ":", "@": "@", target: "@" };
+const PALETTE_MODES = { ":": ":" };
 
 function showPalette(mode = null) {
   const client = state.client;
@@ -272,17 +270,17 @@ onKey((event) => {
     }
     const selecting = view.input && view.input.selectionStart !== view.input.selectionEnd;
     const atEnd = !view.input || view.input.selectionStart === view.input.value.length;
-    const name = event.key === "Tab" && !event.shiftKey ? "Tab" : event.key;
+    const name = event.key === "Tab" && event.shiftKey ? "ShiftTab" : event.key;
     const plain = !event.metaKey && !event.altKey && !event.ctrlKey;
-    if (plain && ["ArrowUp", "ArrowDown", "Escape", "Tab", "Enter"].includes(name)) {
+    if (plain && ["ArrowUp", "ArrowDown", "Escape", "Tab", "ShiftTab", "Enter"].includes(name)) {
       if (view.input && view.input.value !== undefined) client.palette_input(view.input.value, view.input.selectionStart ?? view.input.value.length);
-      client.palette_key(name, atEnd);
+      client.palette_key(name);
       event.preventDefault();
       after();
       return true;
     }
     if (plain && (name === "ArrowLeft" || name === "ArrowRight" || name === "Backspace") && !selecting && atEnd) {
-      if (client.palette_key(name, atEnd)) {
+      if (client.palette_key(name)) {
         event.preventDefault();
         after();
         return true;

@@ -1,6 +1,6 @@
 # Agent benchmarks
 
-Four harnesses that measure zz as a target for AI agents. All run against real agents and a real
+Three harnesses that measure zz as a target for AI agents. All run against real agents and a real
 zz, append TSV rows, and print a summary; none is part of `cargo test`.
 
 ## browser/ - capability parity for browser panes
@@ -98,14 +98,6 @@ model, arm, task, rep, pass, wall s, turns, CLI calls, failed calls, blocked, in
 tokens, cost, run id. `run-all.sh` fans out (`TASKS`, `REPS`, `CLAUDE_ARMS`, `CODEX_ARMS`, `PAR`) and
 `summary.py` pivots. Run directories stay under `/tmp/fu-runs/`; delete them afterwards. `results/`
 keeps the 2026-10-21 runs; the 0.21.0 grid there predates the `blocked` column.
-
-## driver/ - does the zz-driver skill make a good driver
-
-A Claude Code driver in a zz pane on ubuntu coordinates workers on xps, alienware and ubuntu
-through zz on four tasks (green tests on three machines, a quick fact check, an env-var
-inventory, a worker that hits a permission prompt), with the skill absent, in the system prompt,
-or installed as a project skill. `run-one.sh [MODEL/]ARM TASK`, `run-all.sh` (`JOBS` or a grid),
-`summary.py`. Layout, metrics and the iteration log: `driver/README.md`.
 
 Results and the traps the harnesses found live in
 `knowledge/playbooks/agent-benchmarks.md`.

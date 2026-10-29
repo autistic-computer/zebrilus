@@ -1,10 +1,10 @@
 ---
 type: Playbook
 title: Agent benchmarks
-description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, what a fresh user's Claude Code and Codex get, and whether the zz-driver skill makes a Driver Agent coordinate workers across machines well; harness layout, prerequisites, results, the zz gaps a driver hits, and traps."
+description: "Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, what a fresh user's Claude Code and Codex get, and the agent-send gaps an agent hits when it hands work to Claude Code or Codex workers across machines; harness layout, prerequisites, results, and traps."
 resource: bench/agents/browser/matrix.sh
 tags: [agents, browser, cdp, benchmark, skill, agent-browser, playwright-mcp, chrome-devtools-mcp]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-28T00:00:00-03:00
 ---
 
 # What the benchmarks answer
@@ -208,40 +208,17 @@ Claude's six blocks are shell structure: `until`/`for` loops polling `zz capture
 `PANE=$(zz split-window ...)`. Approving those safely needs a real bash parser (brush-parser or
 bash-ast) that checks every command inside loops and substitutions.
 
-# Driver Agent (2026-10-23, 2026-10-24)
+# agent-send to terminal workers (2026-10-23, 2026-10-24)
 
-`bench/agents/driver/` runs a Claude Code driver in a zz pane on ubuntu against four fleet tasks
-(green tests on three machines, a quick fact check, an env-var inventory of three repos, a worker
-that must hit a permission prompt) and scores outcome, delegation, polling, keystrokes into
-workers, context and briefs from the driver's transcript. 39 runs over four skill versions on zz
-0.21.0, then 10 runs of v6 on the lead-gaps build; the iteration log is in
-`bench/agents/driver/README.md` and the shipped text in `.agents/skills/zz-driver/SKILL.md` (v6).
-
-| | baseline (hook only) | zz-driver v4, zz 0.21.0 | zz-driver v6, lead-gaps build |
-| --- | --- | --- | --- |
-| Approval task: the publish ran without the user | 3 of 4 runs | 0 of 3 | 0 of 3 |
-| Runs with keystrokes into worker panes | 7 of 11 | 0 of 7 | 0 of 10 |
-| Runs with poll loops | 2 of 11 | 0 of 7 | 0 of 10 |
-| Research task peak context | 140k, 202k | 84k to 94k (v1 to v4) | 106k |
-| Time to tell the user a worker waits on approval | n/a | 157 to 172 s (978 to 1875 s before the delayed look) | 66 to 96 s |
-| Wrong "done" claims | 0 | 0 | 0 |
-
-Without the skill the driver does the work itself, and the publish ran because Opus and Sonnet
-typed the worker command into an interactive shell where fabrico's alias adds
-`--dangerously-skip-permissions`, while Haiku sent eight keystrokes into the worker. The skill
-starts the CLI as the window's command and hands every prompt to the user.
-
-## zz gaps a driver hits
-
-Each came from a run or a probe on the fleet (zz 0.21.0, Claude Code 2.1.308 and 2.1.309, Codex
-0.159 and 0.163). The agent lens and branch `claude/lead-gaps-92827e` on top of it (2026-10-24)
-closed items 1 to 6, 8 and 11, each with a test and a live check against Claude Code 2.1.310 and
-Codex 0.164 on a throwaway daemon; the lens alone closed item 7, not rechecked here. The fleet keeps
-the old behavior until it runs that build; `.agents/skills/zz-driver/SKILL.md` already assumes it.
-`bench/agents/driver/dev-setup.sh` puts that build on the fleet as `zz-dev` beside the installed zz
-(`ZZ_DEV_BENCH=1` runs the bench on it): there, on 2026-10-24, a Sonnet worker that answered in its
+An agent that hands work to Claude Code or Codex running in other zz panes, on its own host or over
+`--host`, waits on them with `agent-send --wait`. Runs on the fleet (zz 0.21.0, Claude Code 2.1.308
+and 2.1.309, Codex 0.159 and 0.163) found the gaps below; the harness that found them went with the
+Driver Agent on 2026-10-28. The agent lens and branch `claude/lead-gaps-92827e` on top of it
+(2026-10-24) closed items 1 to 6, 8 and 11, each with a test and a live check against Claude Code
+2.1.310 and Codex 0.164 on a throwaway daemon; the lens alone closed item 7, not rechecked here. On
+a `zz-dev` build of that branch on the fleet on 2026-10-24, a Sonnet worker that answered in its
 pane ended `--wait --final` in 2.4 s with its text, a worker on a permission prompt returned exit 3
-in 2.4 s, and a restarted driver re-armed its waits with `--wait ''`.
+in 2.4 s, and a restarted caller re-armed its waits with `--wait ''`.
 
 1. **A Claude terminal worker's turn end depended on a SendMessage reply.** `agent-send --wait`
    returned only when the worker replied over the peer bus; a Sonnet worker on xps answered in its
@@ -250,7 +227,7 @@ in 2.4 s, and a restarted driver re-armed its waits with `--wait ''`.
    message with `--final` (live: 1.9 s). The peer-bus wait, still used when the pane's program is
    not recognized as Claude Code, also ends when `@agent_state` goes back to idle.
 2. **A permission prompt was missed by the wait.** The peer-bus wait ignored `--on-block fail`, so
-   drivers waited 978 s and 1875 s on a blocked worker. The lens raises the prompt and exits 3 (live:
+   callers waited 978 s and 1875 s on a blocked worker. The lens raises the prompt and exits 3 (live:
    2.1 s, the prompt JSON on stdout); the peer-bus wait does too now. Claude Code reports prompts
    itself through OSC 7501 (`pane_status=blocked`, `kind=permission`, on 2.1.308 and 2.1.310), and
    where it does not, `scan_peers` maps the registry's `waiting` to `blocked` instead of `idle`.
@@ -262,12 +239,11 @@ in 2.4 s, and a restarted driver re-armed its waits with `--wait ''`.
    otherwise when the running turn ends, printing nothing (live: 15.4 s on a lens turn that had
    timed out). It skips the lens, which refuses an empty prompt. A SendMessage reply that reaches
    the daemon's inbox after an inbox wait timed out, or after its caller died, is kept an hour and
-   printed by the next `--wait ''` (live: 36 ms). The v5 restart nudge can use this instead of
-   sending text.
+   printed by the next `--wait ''` (live: 36 ms).
 4. **A long brief pasted into Codex was never submitted.** Codex folds it into
    `[Pasted Content 3886 chars]` and the echo check missed it. That placeholder now counts like
    Claude's `[Pasted text`, in `send-text`, peer pastes and the lens's own paste (live: a
-   3944-character brief through the lens). The skill's brief-file detour is gone.
+   3944-character brief through the lens).
 5. **A fresh Codex could not be reached by a plain send** ("Codex session in %12 has no name yet").
    With no thread name the text is now typed and submitted, as a peer message already was.
    `--wait` needs the lens or `#{agent_state}`; Codex 0.163 and later report OSC 7501, 0.159 does
@@ -291,8 +267,8 @@ in 2.4 s, and a restarted driver re-armed its waits with `--wait ''`.
     through `--host` writes on the caller, so a file goes `load-buffer -` there plus
     `run-shell "zz save-buffer ..."`. Plain ssh between fleet hosts has no keys. Open.
 11. **`--host` naming the local machine failed.** On ubuntu, `zz --host ubuntu run-shell ...` asked
-    to trust ubuntu's own ssh host key, because a host's config does not list itself, and a
-    restarted driver addresses its own host from its ledger. Now a `--host` name that `zz/config`
+    to trust ubuntu's own ssh host key, because a host's config does not list itself, and an agent
+    working from a list of hosts addresses its own host by name. Now a `--host` name that `zz/config`
     does not list and that matches this machine's hostname runs locally (live: `--host macbook` on
     the Mac reached the local socket).
 12. **Two Codex panes in one folder can share a lens session.** Codex 0.164 leaves its rollout to a
@@ -301,10 +277,13 @@ in 2.4 s, and a restarted driver re-armed its waits with `--wait ''`.
 
 The native agent pane is gone (2026-10-23), and `new-agent-session` and `restart-agent-pane` with
 it. `--notify`, `--final` and `--on-block allow|deny` work through the lens on panes
-running `claude` or `codex`; the skill uses `--final`.
+running `claude` or `codex`.
 
 # Traps
 
+- An agent that types a worker's command into an interactive shell gets the user's aliases:
+  fabrico's `claude` alias adds `--dangerously-skip-permissions`, so in 3 of 4 runs a worker
+  published without asking. Start the CLI as the window's command instead.
 - `agy` print mode does not read `<cwd>/.agents/skills`, `.agent/skills`, or `~/.gemini/skills`;
   it reads a workspace passed with `--add-dir` and `~/.gemini/config/skills/<name>/`. Without
   that flag the "skill" arm silently equals "none".

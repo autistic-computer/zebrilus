@@ -83,6 +83,20 @@
   color: var(--zz-accent);
 }
 
+.zz-palette-pill[data-kind] {
+  max-width: 160px;
+}
+
+.zz-palette-pill[data-kind] > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.zz-palette-pill[data-kind="verb"] {
+  color: var(--zz-accent);
+}
+
 .zz-palette-prompt {
   flex: none;
   white-space: pre;
@@ -103,7 +117,7 @@
   display: block;
   height: 16px;
   overflow: hidden;
-  white-space: nowrap;
+  white-space: pre;
   text-overflow: ellipsis;
 }
 
@@ -131,10 +145,6 @@
   font-size: 11px;
   line-height: 16px;
   color: var(--zz-muted);
-}
-
-.zz-palette-section > .zz-palette-mono {
-  font-size: 10px;
 }
 
 .zz-palette-row {

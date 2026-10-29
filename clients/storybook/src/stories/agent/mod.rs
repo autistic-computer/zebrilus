@@ -1,7 +1,6 @@
 use crate::story::{Section, Story};
 
 pub(super) mod cards;
-pub(super) mod chat;
 mod chrome;
 mod composer;
 mod fixtures;
@@ -9,7 +8,7 @@ pub(super) mod lens;
 mod timeline;
 mod transcript;
 
-pub const STORIES: &[Story] = &[STORY, chat::STORY];
+pub const STORIES: &[Story] = &[STORY];
 
 const STORY: Story = Story {
     id: "agent",
@@ -86,7 +85,7 @@ const STORY: Story = Story {
         Section {
             id: "composer",
             name: "Composer",
-            summary: "The Composer the lens and the Driver chat share: a pill with + (which starts an @ mention, as in the Driver chat), the field, the context ring and the round action button, all inset the same from its edge. A long draft grows the pill and keeps the buttons on its last line. The branch and its changes sit under it. The action button sends, queues behind a running turn, or stops it.",
+            summary: "The lens's Composer: a pill with + (which starts an @ mention), the field, the context ring and the round action button, all inset the same from its edge. A long draft grows the pill and keeps the buttons on its last line. The branch and its changes sit under it. The action button sends, queues behind a running turn, or stops it.",
             build: composer::composers,
         },
         Section {

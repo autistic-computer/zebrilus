@@ -1,107 +1,133 @@
 ---
 type: Concept
 title: Unified palette and tmux command completions
-description: The palette's line grammar (a place typed with tmux's sigils, then an action), chips and keys, the & files level that prefix F opens, the empty palette and recents, the written @host:target form, `>` GUI actions with a live theme preview, `?` to ask the Driver Agent, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
+description: The palette's words-and-verbs model (no sigils, words match places and actions, a verb asks for its slots in turn, the footer shows the tmux command, `:` for raw tmux), chips and keys, insert path and prefix F, the empty palette and recents, written @host:target places, GUI settings as verbs with a live theme preview, tmux command-alias entries as verbs, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [gpui, command-prompt, tmux, completions, ui]
-timestamp: 2026-10-27T00:00:00-03:00
+timestamp: 2026-10-28T00:00:00-03:00
 ---
 
 # Overview
 
-The desktop unified palette combines a session, window, and pane tree with command and host search.
+The desktop unified palette combines a session, window, and pane tree with actions and host search.
 `Cmd-K` and `Cmd-P` open a fresh search on macOS; `Ctrl-Shift-K` and `Ctrl-Shift-P` do so on
-other desktop platforms. View > Choose Window opens the palette in `@` mode. Daemon
-`choose-tree -s` and `choose-tree -w` requests, including `prefix s`, `prefix w`, remaps, and
-direct commands, use the same tree presentation with their daemon-selected expansion and row.
-The desktop lets the daemon resolve prefix bindings.
-The desktop and browser clients share the surface and row components in `zz-ui::command`.
-The browser retains its command-prompt adapter.
+other desktop platforms. View > Choose Window opens the same palette. Daemon `choose-tree -s` and
+`choose-tree -w` requests, including `prefix s`, `prefix w`, remaps, and direct commands, use the
+same tree presentation with their daemon-selected expansion and row. The desktop lets the daemon
+resolve prefix bindings. The desktop and browser clients share the surface and row components in
+`zz-ui::command`. The browser retains its command-prompt adapter.
 
-# Lines: a place, then an action
+# Words, places and verbs
 
-Since 2026-10-27 a line in the palette is a place followed by an action (design: the palette spec,
-decisions D1 to D12). A place is typed with tmux's sigils plus one for the host, and every part
-matches fuzzily:
+Since 2026-10-28 the palette has no grammar to learn (it replaced the 2026-10-27 sigil line). What
+you type is words, and they match two kinds of rows at once:
 
-| Sigil | Level | Matches |
+- **Places**: sessions, windows and panes under the chips, matched fuzzily on what the row shows.
+  Several words match the whole path, so `zz 2` finds window 2 of session zz
+  (`zz_client::place::search`). Digits alone still mean an index inside the current session or
+  window, the way tmux reads `:2` and `.1`. Rows rank by the fuzzy score, then nearer first (this
+  window's panes, this session, this host, other hosts), then a boost for recent picks.
+- **Actions**: verbs (`zz_client::verbs`). zz's own names come first (`read pane` for
+  `capture-pane -p`, `split right`, `split down`, `zoom pane`, `send keys`, `detach`), then
+  every tmux command spelled with spaces (`kill window`, `rename session`), the GUI settings the
+  client has, `insert path`, and the host's `command-alias` entries. A verb matches on its name,
+  then well behind that on its keywords (the tmux command name, its aliases).
+
+The section whose best row matches better comes first, so `rea` lists Actions first and `zz 2`
+Places. Without a host chip the hosts that match follow. A leading `:` still takes raw tmux with
+the command completion below; nothing else is a sigil.
+
+Enter on a place goes there (attaching or reconnecting its host). Enter on a verb starts it: the
+verb becomes an accent pill and asks for its slots in order (`verbs::Slot`):
+
+| Slot | What the palette shows | Enter |
 | --- | --- | --- |
-| `^` | host | its name |
-| `$` | session | the label the row shows (`zz 3`, `Working on foo`), or the tmux name exactly when you type only digits |
-| `@` | window | `index name`, then the programs in it; digits only are the index inside the parent session |
-| `%` | pane | `index title`, then its program; digits only are the index inside the parent window, counted from the window's `pane-base-index` as tmux numbers panes |
+| a pane, window or session | that level's places on the host, the current one first | picks it |
+| text, such as `new name` | the label as the placeholder and the typed text as a row | takes the text |
+| a value (GUI verbs) | the setting's values, the one in use highlighted | applies it |
+| a path (`insert path`) | the files browser below | inserts the path |
 
-`#N` after a sigil pins an id (`$#3`, `@#41`, `%#52`). A skipped level is a wildcard
-(`^xps@editor` finds windows named editor in every session on xps), while digits stay inside the
-chip or the current session or window, the way tmux reads `:2` and `.1`. A place sigil inside the
-field counts only when it is deeper than the part before it, so `%fabrico@xps` is one pane query,
-and `"…"` keeps sigils literal. Rows rank by the fuzzy score below, then nearer first (this
-window's panes, this session, this host, other hosts), then a boost for recent picks.
+Once every slot is filled the verb runs on the place's host and never attaches you
+(`verbs::compile`: a structured `CommandInvocation` with ids when every argument is one word, the
+line through `if-shell -F 1` otherwise). Backspace on the empty field takes the last value back,
+then drops the verb. A verb whose tmux command needs arguments the slots do not cover (`bind
+key`) switches to `:<command> `.
 
-An action ends the line and takes everything after it raw: `:` a tmux or zz command, `>` a GUI
-action, `&` files, `?` the driver. Plain text that starts the field is a search: places under the
-chips, then commands, then hosts when no host chip is set. The parser, resolver and compiler are
-sans-IO in `zz_client::place` (`parse`, `candidates`, `resolve`, `command_target`, `written`,
-`read_written`).
+The footer's usage line says what Enter runs, with names: `runs  capture-pane -p -t zz:1.0` for a
+highlighted pane in read pane's picker, `runs  select-window -t zz:2` on a window row, `gui · no
+tmux command` for a setting. The parser is `zz_client::place::parse`; rows are built in
+`crates/zz-ui/src/command/palette_places.rs` and the keys in `palette_view_places.rs`.
 
 # Chips and keys
 
-Places you enter become chips in the input (`UnifiedPalette::chips`). Cmd-K opens with the host the
-window is attached to as a chip, which filters (D3); View > Choose Window opens on `@`, `prefix F` on
-`&` and the pane's folder. Rows for an empty field are the empty palette while only that host chip
-is set, and the children of the last chip once you entered a level.
+Cmd-K opens with the host the window is attached to as a chip, which filters. Tab goes into the
+highlighted place and the path builds up as chips; there, typing lists the verbs that take a
+target first (`Actions on <place>`), and starting one fills its target from the place, so the
+place or the verb can come first. With nothing typed the rows are the empty palette while only
+the host chip is set, and the children of the last chip once you went in; a pane has none, so
+in a pane they are its actions. The footer shows the highlighted verb with that target filled in.
 
 | Key | Does |
 | --- | --- |
-| Enter | Acts on the highlighted row: goes to a place (attaching or reconnecting its host), runs a command, opens a recent. With no row, goes to the place the chips and the line name |
-| Tab | Makes the highlighted place a chip and leaves the next level's sigil in the field. Commands complete their name |
-| Shift-Tab | Drops the last chip and highlights it in its parent's list, so Tab goes back in |
-| a sigil | Takes the best match for the part before it as a chip; an action sigil does the same and hands the rest to its level. At the field's start it replaces the chips at that level and below |
-| Backspace on an empty field | Drops the last chip. Right after a typed sigil the chip turns back into what you typed (`$worki`). Dropping the host chip makes search cover every host |
+| Enter | Goes to a place, starts or runs a verb, picks a slot's row, opens a recent. With no row, goes to the place the chips name |
+| Tab, or Right with the caret at the end | Goes into the highlighted session, window or pane. Commands after `:` complete their name |
+| Shift-Tab | Drops the last chip and highlights it in its parent's list, or steps a verb back |
+| Backspace on an empty field | Takes a verb's last value back, then the verb, then the last chip. Dropping the host chip makes search cover every host |
 | Up, Down | Move, wrapping, skipping headers |
-| Alt-Enter | `CopyAddress`: copies the highlighted place as tmux writes it, `@host:%52` (D9) |
+| Alt-Enter | `CopyAddress`: copies the highlighted place as tmux writes it, `@host:%52` |
 | Esc | Closes |
 
-A command after a place runs on the place's host and never attaches you (D6), with `-t` added from
-the catalog's target kind unless the line has one: a pane id, a window id, or the session id
-(single-quoted in command text, since tmux expands `$7`); `new-window` always gets the session and
-`new-session` none. `:kill-window` with no place runs on the current window, as in tmux.
+A `:` command on a place runs on the place's host with `-t` added from the catalog's target kind
+unless the line has one: a pane id, a window id, or the session id (single-quoted in command text,
+since tmux expands `$7`); `new-window` always gets the session and `new-session` none.
 
-`&`, `>` and `?` are levels: `PaletteBackend::action_level` supplies a `PaletteActionLevel` that gets
-an `ActionContext` (the resolved place, which levels were written, whether the host is the opening
-chip, the raw text after the sigil and the pane a path goes into), the first look at the keys, and
-draws its rows and hints. A backend with no level for `&` falls back to the target picker below.
+Path and value slots are levels: `PaletteBackend::action_level` supplies a `PaletteActionLevel`
+that gets an `ActionContext` (the place, which levels were chips, the field, the pane a path goes
+into, and for GUI verbs the setting to `focus`), the first look at the keys, and draws its rows and
+hints. A backend with no files level falls back to the target picker below.
+
+# Your own verbs
+
+A tmux `command-alias` entry is a verb with the slots of the command it runs:
+`set -s command-alias[10] zoom='resize-pane -Z'` makes `zoom`, with a pane picker, since zz knows
+`resize-pane` takes a pane. An alias that names its own `-t` asks for nothing. The daemon publishes
+the server's `command-alias` array to clients as the mux option `command-alias`
+(`MuxOptionKey::CommandAlias`, one `name=command` a line, wire 117), republished when the array
+changes; tmux's six default aliases stay out of the list. Each backend builds its verbs with
+`PaletteBackend::verbs`.
 
 # Files
 
-`&` lists the files under a folder on one host (`zz_ui::files`: `FilesAction` is the level,
-`FilesLevel` the entity that lists and draws). It starts in a folder and writes it after the `&`
-(D5): after a pane, window or session that pane's folder (a window's or session's active pane);
-on the host you are on with nothing under it, the pane a path goes into; on another host its home.
-A pane with no folder (a browser, an editor) starts at `~/`. `prefix F` opens straight into it, on
-the `-c` folder when given, else its pane's. The folder is written under `~` where the backend
-knows the home (`PaletteBackend::home_dir`: the desktop's own machine).
+`insert path` lists the files under a folder on one host (`zz_ui::files`: `FilesAction` is the
+level, `FilesLevel` the entity that lists and draws). It starts in a folder and writes it into the
+field: after a pane, window or session chip that pane's folder (a window's or session's active
+pane); on the host you are on with nothing under it, the pane a path goes into; on another host
+its home. A pane with no folder (a browser, an editor) starts at `~/`. `prefix F` opens straight
+into it, on the `-c` folder when given, else its pane's. The folder is written under `~` where the
+backend knows the home (`PaletteBackend::home_dir`: the desktop's own machine). The New agent
+picker's folder line opens the same browser with `CommandPaletteView::new_folder_pick`, where
+Enter hands the highlighted folder (or a file's folder) back (`PaletteActionLevel::picked_folder`)
+instead of inserting it.
 
-The text after `&` is a path with plain spaces: up to the last `/` is a folder, `/…` and `~…` as
-written and anything else under the start folder, and the rest filters (`split_rest`). The client
-folds `.` and `..` and only asks the host for absolute or `~` folders, through the pane a path
-goes into when that is a terminal there and another terminal not running ssh or the like
-otherwise (`listing_pane`). An empty filter lists the folder's own entries, folders first, and
-typing ranks everything under it with git's letter. A folder under one walked whole is listed
-from that walk without asking the host again. Backends hand it listings through
-`PaletteBackend::feed_listings`.
+The field is a path with plain spaces: up to the last `/` is a folder, `/…` and `~…` as written
+and anything else under the start folder, and the rest filters (`split_rest`). The client folds
+`.` and `..` and only asks the host for absolute or `~` folders, through the pane a path goes into
+when that is a terminal there and another terminal not running ssh or the like otherwise
+(`listing_pane`). An empty filter lists the folder's own entries, folders first, and typing ranks
+everything under it with git's letter. A folder under one walked whole is listed from that walk
+without asking the host again. Backends hand it listings through `PaletteBackend::feed_listings`.
 
 | Key | Does |
 | --- | --- |
 | Tab, or Right with the caret at the end | Opens the highlighted folder |
 | Shift-Tab, or Left with the caret at the end and no filter | Goes to the parent, highlighting the folder it left; past `~/` once the host said where the home is |
-| Backspace right after a `/` | Goes to the parent; on an empty path it drops the `&` |
+| Backspace right after a `/` | Goes to the parent |
 | Enter | Puts the path at the cursor of `prefix F`'s pane, else the focused pane (`insert_path`), and closes; copies it instead when that pane is a browser or editor |
-| Alt-Enter | Copies the plain path (absolute, `host:/abs/path` from another host, never quoted) and keeps the palette open (D10) |
+| Alt-Enter | Copies the plain path (absolute, `host:/abs/path` from another host, never quoted) and keeps the palette open |
 
 An insert or a copy is kept as a recent file (`RecentKey::File` with the absolute path). Enter on
-one in the empty palette writes `&<path>`, so its folder lists with the name as the filter, and
-`open_recent` inserts it as soon as its row arrives. Under a coarse pointer a tap opens a folder
+one in the empty palette starts insert path on it, so its folder lists with the name as the
+filter, and `open_recent` inserts it as soon as its row arrives. Under a coarse pointer a tap opens a folder
 and a folder row has its own insert button.
 
 The iPad and web clients list files too: they announce `client-path-picker-v1`, so the daemon
@@ -113,23 +139,23 @@ written in full.
 # The empty palette and recents
 
 Needs you (a window per pane whose status is blocked or failed, on any connected host), recent
-places, recent commands, recent GUI actions and files (three each), then every host.
-`zz_client::recents` keeps one decayed score per pick (three-day half-life, at most 200), recorded
-through `record_recent`. The desktop keeps it per client in `palette-recents.json` in the app's
-data folder (`app_identity::palette_recents_path`, `command::palette::init_recents`); the iPad and
-web keep it in memory. Their only host is named after the endpoint on iOS and `local` on the web.
+places, recent actions (a verb's command, labelled the way the footer read it), recent settings
+and files (three each), then this host's sessions and the other hosts. `zz_client::recents` keeps
+one decayed score per pick (three-day half-life, at most 200), recorded through `record_recent`.
+The desktop keeps it per client in `palette-recents.json` in the app's data folder
+(`app_identity::palette_recents_path`, `command::palette::init_recents`); the iPad and web keep it
+in memory. Their only host is named after the endpoint on iOS and `local` on the web.
 
 # Written places
 
 Anything that outlives the palette writes a place the way tmux does with the host in front:
-`@xps:%52`, `@xps:@41`, `@xps:$7`, `@xps`, and files as `@xps:~/path:42`. Chat mentions and links keep
-that form (D9), and pasting either it or the chat picker's readable form (`@xps:work:2.%7`) into an
-empty palette turns it into chips.
+`@xps:%52`, `@xps:@41`, `@xps:$7`, `@xps`, and files as `@xps:~/path:42`. Pasting either it or the
+readable form (`@xps:work:2.%7`) into an empty palette turns it into chips.
 
-# Targets (chat mentions)
+# Targets (the lens composer's mentions)
 
-The Driver chat's `@` mentions and links still use `zz_ui::target::TargetPicker` and its grammar,
-tmux's `-t` with an optional host in front, or a file on a host in scp form:
+The agent lens composer's `@` mentions and the fallback path picker use `zz_ui::target::TargetPicker`
+and its grammar, tmux's `-t` with an optional host in front, or a file on a host in scp form:
 
 | Typed | Means |
 | --- | --- |
@@ -146,7 +172,7 @@ and `/` typed by hand do the same. Files are listed by the host that has them, t
 path goes into when it is on that host and any terminal there otherwise
 (`PaletteBackend::list_path`, `MuxClient::request_host_path_list`), so the insert style is that
 pane's: quoted for its shell, `@path` for Claude Code. A path from another host goes in as
-`host:/abs/path`. `&` lists the same way ([Files](#files)).
+`host:/abs/path`.
 
 Keys in the footer and on rows are drawn as key icons, Apple's on macOS and iOS and ISO 9995's
 elsewhere (`zz_gpui_kit::kbd::KeyGlyphs`, [design system](/designs/design-system.md)), and a
@@ -162,34 +188,33 @@ The fuzzy matcher (`zz_client::fuzzy::fuzzy_match`) ignores query whitespace and
 ordered subsequence by the first matching character's position plus twice the skipped characters
 between matches, and returns UTF-8 byte ranges for text highlights.
 
-# GUI actions
+# GUI settings as verbs
 
-`>` lists settings and app actions, each with its value now on the right. The list is data in
-`zz_client::gui_actions` (`GUI_ACTIONS`): an id, a title, aliases, its values (fixed, or listed by
-the client, like the themes) and whether a highlighted value previews. `>` is the `GuiLevel`
-(`crates/zz-ui/src/command/gui_level.rs`) each client's `PaletteBackend::action_level` returns,
-built with the actions that client has and their values when the palette opens
-(`palette_backend_with` on desktop and in `clients/app`). The level emits `GuiEvent`s through
+The client's settings are verbs tagged `gui`, each with its value now on the right. The list is
+data in `zz_client::gui_actions` (`GUI_ACTIONS`): an id, a title, the verb's name, aliases, its
+values (fixed, or listed by the client, like the themes) and whether a highlighted value previews.
+Starting one makes the palette's value slot a `GuiLevel` (`crates/zz-ui/src/command/gui_level.rs`)
+focused on that setting, built with the settings that client has and their values when the palette
+opens (`palette_backend_with` on desktop and in `clients/app`). The level emits `GuiEvent`s through
 `CommandPaletteEvent::Gui`, and each client writes what its own Settings writes: config keys on
 desktop (`crates/zz/src/command/gui.rs`), `Preferences` on iPad and web
 (`clients/app/src/app/gui.rs`). Themes are named by `theme_offer`, which uses the Theme picker's
 `theme_labels`. A test in `zz-config` checks that every value an action writes is one the config
 reads.
 
-| Action | Values | Desktop writes | iPad and web |
+| Verb | Values | Desktop writes | iPad and web |
 | --- | --- | --- | --- |
-| Titlebar mode | Sidebar, Title bar | the sidebar's mode, as Toggle Sidebar flips it | `sidebar`, wide windows only |
-| Pane gaps | On, Off | `pane-gaps` | `gaps` |
-| Window blur | On, Off | `window-background-blur`, where the platform has blur | not offered |
-| Theme | the built-in and saved themes | `interface-theme`, as Settings picks one | `theme` |
-| Sidebar layout | List, Tree | `flat-sidebar` | `flat_sidebar` |
+| titlebar mode | Sidebar, Title bar | the sidebar's mode, as Toggle Sidebar flips it | `sidebar`, wide windows only |
+| pane gaps | On, Off | `pane-gaps` | `gaps` |
+| window blur | On, Off | `window-background-blur`, where the platform has blur | not offered |
+| select theme | the built-in and saved themes | `interface-theme`, as Settings picks one | `theme` |
+| sidebar layout | List, Tree | `flat-sidebar` | `flat_sidebar` |
 
-Typing matches titles, aliases and every value (`Theme › macOS`). Enter on an action with two values
-flips it; Enter or Tab on the others opens their values under the action's header with the one in
-use highlighted, and Enter there applies one and closes (`LevelEffect::Finish`). Backspace on an
-empty field or Shift-Tab goes back to the actions. A search that matches nothing ends with the Ask
-row. Each apply is recorded as `RecentKey::Gui("id=value")`, labelled like `Theme › Yaru`; Enter on
-it in the empty palette opens `>` and applies that value again (`open_recent`).
+Enter on a setting with two values flips it at once; the others list their values with the one in
+use highlighted, and Enter applies one and closes (`LevelEffect::Finish`). Backspace on the empty
+field leaves the values and the verb (`LevelEffect::Leave`). Each apply is recorded as
+`RecentKey::Gui("id=value")`, labelled like `Theme › Yaru`; Enter on it in the empty palette
+applies that value again (`open_recent`).
 
 Theme previews: the highlighted theme shows at once (`GuiEvent::Preview`). It goes back when the
 highlight returns to the theme in use or Backspace leaves the themes (`GuiEvent::Revert`), and
@@ -200,18 +225,6 @@ desktop a preview reads the config file, applies the theme edit in memory
 (`zz_config::interface_theme_source`), and installs only the parsed look and theme globals
 (`config::preview_interface_theme`); nothing is written until Enter, and a revert reloads the file.
 On iPad and web a preview applies a copy of `Preferences` without saving it.
-
-# Asking the driver
-
-`?` is the `AskLevel` (`crates/zz-ui/src/command/ask_level.rs`). While there is a driver it swaps
-the palette for the Driver chat as soon as it is typed (`CommandPaletteEvent::Driver`), with the
-composer filled: the place as a mention when one was typed (`$foo?` gives `@macbook:$7 `, from
-`place::written`), then what followed the `?` (all of it when the line was pasted). A search that
-matches nothing ends with an Ask row, and text ending in `?` puts it first (`why is ci red?` still
-searches, D12); Enter on it opens the chat with the typed text in the composer, where Enter sends. With no driver running the row reads Wake the driver, which
-runs the same recovery as the sidebar's Wake, and with `driver-agent` off it reads Driver Agent is
-off and opens Settings › Agents. `prefix A`, the sidebar's last message and the title bar's chat
-button still open the chat directly.
 
 # Settings
 
@@ -242,18 +255,18 @@ of the field names the mode, NORMAL in the accent, and normal mode draws a block
 | `j` `k` | Down, Up |
 | `l` `→` | Tab: into the highlighted row |
 | `h` `←` | Shift-Tab: up a level, keeping the chip |
-| `x` | Backspace: a character, then the last chip once the field is empty, or a typed sigil's chip back into its text |
+| `x` | Backspace: a character, then a verb's last value, the verb, or the last chip once the field is empty |
 | `yy` | Alt-Enter (`CopyAddress`): copy the row as `@host:target`, or an action level's `copy_text` |
 | `gg` `G` | first, last row, asking an action level first (`ActionKey::First`, `Last`) |
 | `i` `a` | insert at, after the caret |
-| `/` | clear the text after the chips and any action sigil, insert |
-| a sigil (`^ $ @ % : > & ?`) | insert, then type it |
+| `/` | clear the search after the chips, keeping a leading `:`, insert |
+| `:` | insert, then type it |
 | Esc, `ctrl-[`, `q` | close |
 
 In insert, Esc and `ctrl-[` go to normal. Keys that have a plain twin dispatch the twin's action
 (`CommandPaletteView::dispatch_twin`), so the two cannot drift apart. The reducer is pure
 (`crates/zz-ui/src/command/palette_vim.rs`) and matches the typed character, falling back to the
-key on layouts without Latin letters, so `@` typed with Option still counts as a sigil. Sigils are
+key on layouts without Latin letters, so `:` typed with Option still counts. The one sigil is
 `zz_client::place::is_sigil`.
 
 Normal mode puts the field in `InputState::set_normal_mode`: it reports that it takes no text, so

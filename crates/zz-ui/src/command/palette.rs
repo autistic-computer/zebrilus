@@ -16,8 +16,6 @@ use crate::{
 
 use super::{command_palette_row_height, palette_vim::PaletteVimMode};
 
-const PROGRAM_PILL_TILE: f32 = 14.0;
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PaletteStatus {
     Online,
@@ -47,11 +45,8 @@ pub enum PalettePill {
         status: PaletteStatus,
     },
     Command(SharedString),
-    /// A mode named by the program behind it, such as the Driver Agent.
-    Program {
-        label: SharedString,
-        program: &'static zz_client::program::Program,
-    },
+    Place(SharedString),
+    Verb(SharedString),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -101,14 +96,9 @@ fn pill(pill: PalettePill, cx: &App) -> Badge {
         PalettePill::Command(label) => tag
             .font_family(cx.theme().mono_font_family.clone())
             .child(label),
-        PalettePill::Program { label, program } => tag
-            .child(crate::program::program_tile(
-                program,
-                px(PROGRAM_PILL_TILE),
-                px(PROGRAM_PILL_TILE),
-                0.0,
-                cx,
-            ))
+        PalettePill::Place(label) => tag.child(label),
+        PalettePill::Verb(label) => tag
+            .text_color(cx.theme().paint(Tone::Primary, Emphasis::Ghost).text)
             .child(label),
     }
 }

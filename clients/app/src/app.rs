@@ -4,8 +4,6 @@ mod authentication;
 #[cfg(target_os = "ios")]
 mod browser_pane;
 mod compact;
-mod driver_chat;
-mod driver_sheet;
 #[cfg(target_os = "ios")]
 mod fleet;
 mod floating;
@@ -68,7 +66,7 @@ use zz_ui::{
 
 use crate::{
     command_palette::{
-        CommandPaletteEvent, CommandPaletteView, DriverOffer, palette_backend, palette_backend_with,
+        CommandPaletteEvent, CommandPaletteView, palette_backend, palette_backend_with,
     },
     connection::Connection,
     terminal::TerminalPane,
@@ -156,8 +154,6 @@ pub struct AppShell {
     pane_arrivals: PaneArrivals,
     rendered_drop_preview: Rc<Cell<DropPreviewFrame>>,
     compact: compact::CompactState,
-    driver_chat: Entity<driver_chat::DriverChat>,
-    driver_sheet: Option<Entity<driver_sheet::DriverSheet>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -336,8 +332,6 @@ impl AppShell {
             }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
-        let driver_chat = cx.new(|_| driver_chat::DriverChat::new());
-        let driver_observer = cx.observe(&driver_chat, |_, _, cx| cx.notify());
         #[cfg(target_os = "ios")]
         let hosts = hosts::Hosts::new(window, cx);
         #[cfg_attr(not(target_os = "ios"), allow(unused_mut))]
@@ -407,14 +401,7 @@ impl AppShell {
             pane_arrivals: PaneArrivals::default(),
             rendered_drop_preview: Rc::default(),
             compact: compact::CompactState::default(),
-            driver_chat,
-            driver_sheet: None,
-            _subscriptions: vec![
-                key_events,
-                appearance_observer,
-                activation_observer,
-                driver_observer,
-            ],
+            _subscriptions: vec![key_events, appearance_observer, activation_observer],
         };
         this.connection.update(cx, Connection::start);
         #[cfg(target_os = "ios")]
@@ -585,13 +572,6 @@ impl AppShell {
             cx.stop_propagation();
             return;
         }
-        if self.driver_sheet.is_some() {
-            if event.keystroke.key == "escape" {
-                zz_ui::compact::close_sheet(driver_sheet::DRIVER_SHEET, cx);
-                cx.stop_propagation();
-            }
-            return;
-        }
         let input = crate::terminal::key_input(event);
         let core = &self.connection.read(cx).core;
         if self.prompt.as_ref().is_some_and(|palette| {
@@ -756,7 +736,6 @@ impl AppShell {
             ChromeAction::NewWindow => self.tmux_command("new-window", cx),
             ChromeAction::SplitRight => self.tmux_command("split-window -h", cx),
             ChromeAction::SplitDown => self.tmux_command("split-window -v", cx),
-            ChromeAction::OpenDriverChat => self.open_driver_chat(window, cx),
             _ => {}
         }
     }
@@ -922,19 +901,12 @@ impl AppShell {
                 cx,
             );
         }
-        let driver = self
-            .connection
-            .read(cx)
-            .connected
-            .then_some(DriverOffer::Ready);
         let backend = palette_backend_with(
             self.connection.clone(),
             self.preferences.palette_settings(),
             self.gui_offers(window),
-            driver,
         );
         let palette = cx.new(|cx| build(backend, window, cx));
-        palette.update(cx, |palette, cx| palette.offer_driver(driver, cx));
         self.observe_palette(&palette, window, cx);
         palette.read(cx).focus(cx).focus(window, cx);
         self.prompt = Some(palette);
@@ -965,13 +937,6 @@ impl AppShell {
                         Some((this.prompt_revision, this.chooser_revision));
                     palette.update(cx, |palette, cx| palette.return_to_default(window, cx));
                     cx.notify();
-                }
-                CommandPaletteEvent::Driver { text } => {
-                    this.prompt = None;
-                    this.open_driver_chat(window, cx);
-                    if let Some(sheet) = &this.driver_sheet {
-                        sheet.update(cx, |sheet, cx| sheet.prefill(text, window, cx));
-                    }
                 }
                 CommandPaletteEvent::Gui(event) => this.on_gui_event(event, window, cx),
             },
@@ -2899,7 +2864,6 @@ impl AppShell {
 
 impl Render for AppShell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.sync_driver_hosts(cx);
         if let Some((picker, start)) = self.folder_pick.take() {
             self.open_folder_palette(picker, &start, window, cx);
         }
@@ -3000,7 +2964,6 @@ impl Render for AppShell {
                 });
             let unobstructed = connection.connected
                 && self.settings.is_none()
-                && self.driver_sheet.is_none()
                 && !dialog
                 && !native_obscured
                 && self.prompt.is_none()
@@ -3108,7 +3071,6 @@ impl Render for AppShell {
             .pr(window.viewport_size().width - visible.right())
             .child(zz_ui::compact::coast_guard())
             .child(shell)
-            .children(self.driver_sheet_layer(cx))
     }
 }
 

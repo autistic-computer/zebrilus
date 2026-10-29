@@ -15,16 +15,15 @@ use zz_protocol::{CommandInvocation, InputMessage, MuxSnapshot, PaneId, SessionI
 use crate::{
     IconName, Root,
     command::{
-        AskLevel, CommandPaletteEvent, CommandPaletteView, DriverOffer, GuiEvent, GuiLevel,
-        PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus,
-        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
-        PaletteTreeWindow, palette_model::PaletteAction, record_recent,
+        CommandPaletteEvent, CommandPaletteView, GuiEvent, GuiLevel, PaletteActionLevel,
+        PaletteBackend, PaletteHostId, PaletteSettings, PaletteStatus, PaletteTarget, PaletteTree,
+        PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+        palette_model::PaletteAction, record_recent,
     },
 };
 
 struct Backend {
     gui: Vec<GuiOffer>,
-    driver: Option<DriverOffer>,
 }
 
 impl PaletteBackend for Backend {
@@ -106,12 +105,18 @@ impl PaletteBackend for Backend {
         true
     }
 
+    fn verbs(&self, _: &App) -> Vec<zz_client::verbs::Verb> {
+        zz_client::verbs::verbs(
+            PaneKindAvailability::default(),
+            &[PANE_GAPS, THEME],
+            false,
+            "",
+        )
+    }
+
     fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
         match kind {
-            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
-            ActionKind::Ask => self
-                .driver
-                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone()))),
             ActionKind::Command | ActionKind::Files => None,
         }
     }
@@ -132,22 +137,14 @@ fn offers() -> Vec<GuiOffer> {
 
 type Heard = Rc<RefCell<Vec<CommandPaletteEvent>>>;
 
-fn mount(
-    cx: &mut TestAppContext,
-    driver: Option<DriverOffer>,
-) -> (Entity<CommandPaletteView>, Heard, &mut VisualTestContext) {
+fn mount(cx: &mut TestAppContext) -> (Entity<CommandPaletteView>, Heard, &mut VisualTestContext) {
     cx.update(crate::init);
     let slot = Rc::new(RefCell::new(None));
     let captured = Rc::clone(&slot);
     let (_, cx) = cx.add_window_view(move |window, cx| {
-        let backend: Rc<dyn PaletteBackend> = Rc::new(Backend {
-            gui: offers(),
-            driver,
-        });
+        let backend: Rc<dyn PaletteBackend> = Rc::new(Backend { gui: offers() });
         let palette = cx.new(|cx: &mut Context<CommandPaletteView>| {
-            let mut palette = CommandPaletteView::new_unified(backend, None, window, cx);
-            palette.offer_driver(driver, cx);
-            palette
+            CommandPaletteView::new_unified(backend, None, window, cx)
         });
         palette.read(cx).focus(cx).focus(window, cx);
         captured.replace(Some(palette.clone()));
@@ -160,9 +157,6 @@ fn mount(
         cx.subscribe(&palette, move |_, event: &CommandPaletteEvent, _| {
             events.borrow_mut().push(match event {
                 CommandPaletteEvent::ReturnToDefault => CommandPaletteEvent::ReturnToDefault,
-                CommandPaletteEvent::Driver { text } => {
-                    CommandPaletteEvent::Driver { text: text.clone() }
-                }
                 CommandPaletteEvent::Gui(event) => CommandPaletteEvent::Gui(event.clone()),
             });
         })
@@ -177,18 +171,7 @@ fn gui(heard: &Heard) -> Vec<GuiEvent> {
         .iter()
         .filter_map(|event| match event {
             CommandPaletteEvent::Gui(event) => Some(event.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-fn driver(heard: &Heard) -> Vec<String> {
-    heard
-        .borrow()
-        .iter()
-        .filter_map(|event| match event {
-            CommandPaletteEvent::Driver { text } => Some(text.clone()),
-            _ => None,
+            CommandPaletteEvent::ReturnToDefault => None,
         })
         .collect()
 }
@@ -199,9 +182,9 @@ fn finished(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) ->
 
 #[zz_gpui::test]
 fn a_theme_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppContext) {
-    let (palette, heard, cx) = mount(cx, None);
+    let (palette, heard, cx) = mount(cx);
     let theme = gui_action(THEME).unwrap();
-    cx.simulate_input(">theme");
+    cx.simulate_input("theme");
     cx.run_until_parked();
     cx.simulate_keystrokes("enter");
     cx.run_until_parked();
@@ -248,8 +231,8 @@ fn a_theme_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppConte
 
 #[zz_gpui::test]
 fn enter_flips_an_on_off_action(cx: &mut TestAppContext) {
-    let (palette, heard, cx) = mount(cx, None);
-    cx.simulate_input(">gaps");
+    let (palette, heard, cx) = mount(cx);
+    cx.simulate_input("gaps");
     cx.run_until_parked();
     cx.simulate_keystrokes("enter");
     cx.run_until_parked();
@@ -265,25 +248,24 @@ fn enter_flips_an_on_off_action(cx: &mut TestAppContext) {
 
 #[zz_gpui::test]
 fn backspace_leaves_the_values_and_puts_the_theme_back(cx: &mut TestAppContext) {
-    let (palette, heard, cx) = mount(cx, None);
-    cx.simulate_input(">");
+    let (palette, heard, cx) = mount(cx);
+    cx.simulate_input("theme");
     cx.run_until_parked();
-    cx.simulate_keystrokes("down tab down");
+    cx.simulate_keystrokes("enter down");
     cx.run_until_parked();
     assert!(matches!(gui(&heard)[..], [GuiEvent::Preview { .. }]));
     cx.simulate_keystrokes("backspace");
     cx.run_until_parked();
     assert_eq!(gui(&heard).last(), Some(&GuiEvent::Revert));
-    assert_eq!(
-        palette.read_with(cx, |palette, cx| palette.input.read(cx).value().to_string()),
-        ">"
-    );
+    assert!(palette.read_with(cx, |palette, _| {
+        palette.unified.as_ref().unwrap().draft.is_none()
+    }));
     assert!(!finished(&palette, cx));
 }
 
 #[zz_gpui::test]
 fn a_recent_action_applies_its_value_again(cx: &mut TestAppContext) {
-    let (palette, heard, cx) = mount(cx, None);
+    let (palette, heard, cx) = mount(cx);
     cx.update(|window, cx| {
         record_recent(
             RecentKey::Gui("pane-gaps=true".to_owned()),
@@ -317,44 +299,6 @@ fn a_recent_action_applies_its_value_again(cx: &mut TestAppContext) {
         }]
     );
     assert!(finished(&palette, cx));
-}
-
-#[zz_gpui::test]
-fn a_question_mark_after_a_place_asks_about_it(cx: &mut TestAppContext) {
-    let (_, heard, cx) = mount(cx, Some(DriverOffer::Ready));
-    cx.simulate_input("$dev?");
-    cx.run_until_parked();
-    assert_eq!(driver(&heard), ["@local:$1 "]);
-}
-
-#[zz_gpui::test]
-fn a_question_keeps_searching_with_the_ask_row_first(cx: &mut TestAppContext) {
-    let (palette, heard, cx) = mount(cx, Some(DriverOffer::Ready));
-    cx.simulate_input("why is ci red?");
-    cx.run_until_parked();
-    assert!(palette.read_with(cx, |palette, _| {
-        let unified = palette.unified.as_ref().unwrap();
-        matches!(
-            palette
-                .selected
-                .and_then(|index| unified.rows[index].action.clone()),
-            Some(PaletteAction::Ask)
-        )
-    }));
-    cx.simulate_keystrokes("enter");
-    cx.run_until_parked();
-    assert_eq!(driver(&heard), ["why is ci red?"]);
-}
-
-#[zz_gpui::test]
-fn a_sleeping_driver_is_woken_from_its_row(cx: &mut TestAppContext) {
-    let (_, heard, cx) = mount(cx, Some(DriverOffer::Asleep));
-    cx.simulate_input("?");
-    cx.run_until_parked();
-    assert!(driver(&heard).is_empty());
-    cx.simulate_keystrokes("enter");
-    cx.run_until_parked();
-    assert_eq!(driver(&heard), [""]);
 }
 
 #[test]

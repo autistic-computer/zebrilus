@@ -118,8 +118,7 @@ CLIs in terminal panes. When a client opens the lens on one, or `agent-send --wa
 `zz-agent-{n}` thread. The runtime starts no process: it tails the CLI's transcript (Claude's session
 jsonl, the rollout Codex holds open), pastes prompts into the terminal, and lives until the pane
 closes. Pane removal and **daemon** shutdown stop it; a GUI quit does neither. The native Claude and
-Codex drivers and the ACP runtime are still in the crate for a later driver chat, but nothing opens
-them. See [agent lens](/concepts/agent-lens.md).
+Codex drivers and the ACP runtime are still in the crate, but nothing opens them. See [agent lens](/concepts/agent-lens.md).
 
 The desktop client keeps only the rendering half: the reducer, view, composer draft and permission
 cards. `zz-tui` links only

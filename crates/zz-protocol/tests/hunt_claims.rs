@@ -15,7 +15,7 @@ fn payload(frame: &[u8]) -> &[u8] {
 
 #[test]
 fn protocol_version_on_this_commit_is_one_hundred_and_seven() {
-    assert_eq!(PROTOCOL_VERSION, 116);
+    assert_eq!(PROTOCOL_VERSION, 117);
 }
 
 #[test]
@@ -260,7 +260,7 @@ fn target_lookup_errors_use_tmux_wording() {
 
 #[test]
 fn mux_option_key_has_twenty_daemon_owned_keys() {
-    assert_eq!(MuxOptionKey::ALL.len(), 20);
+    assert_eq!(MuxOptionKey::ALL.len(), 21);
     assert!(MuxOptionKey::ALL.contains(&MuxOptionKey::HistoryTrickle));
     assert!(MuxOptionKey::ALL.contains(&MuxOptionKey::Prefix2));
     assert!(MuxOptionKey::ALL.contains(&MuxOptionKey::FocusFollowsMouse));
@@ -333,7 +333,7 @@ fn dark_interactive_hello_encodes_version_instance_and_process_id_as_varints() {
     assert_eq!(
         frame,
         [
-            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x74, 0x00, 0x00, 0x74, 0x00, 0x00, 0x00, 0x00,
+            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x75, 0x00, 0x00, 0x75, 0x00, 0x00, 0x00, 0x00,
             0x01, 0x01, 0x00, 0x00, 0x00, 0x07,
         ]
     );
