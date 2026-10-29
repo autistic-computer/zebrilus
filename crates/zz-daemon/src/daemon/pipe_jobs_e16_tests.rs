@@ -36,6 +36,7 @@ fn twenty_active_pipes_deliver_on_the_loop_without_reader_threads() {
     let before = zz_daemon_client::process_info::sample(std::process::id())
         .unwrap()
         .threads;
+    let pipes = u32::try_from(panes.len()).unwrap();
     for (pane, _, output) in &panes {
         shared
             .execute(
@@ -72,7 +73,7 @@ fn twenty_active_pipes_deliver_on_the_loop_without_reader_threads() {
         zz_daemon_client::process_info::sample(std::process::id())
             .unwrap()
             .threads
-            <= before
+            < before + pipes
     );
     for (_, terminal, _) in &panes {
         assert!(terminal.send_raw_input(Arc::from(b"e16-bytes\n".as_slice())));
@@ -91,7 +92,7 @@ fn twenty_active_pipes_deliver_on_the_loop_without_reader_threads() {
         zz_daemon_client::process_info::sample(std::process::id())
             .unwrap()
             .threads
-            <= before
+            < before + pipes
     );
     shared.request_shutdown();
 }

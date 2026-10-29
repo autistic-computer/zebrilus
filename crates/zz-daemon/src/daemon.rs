@@ -122856,6 +122856,11 @@ bind - split-window -v -c "#{pane_current_path}"
 
         #[test]
         fn a_client_that_asks_for_a_replay_follows_the_pane_live_whether_attached_or_not() {
+            if !crate::daemon::solo_tests::rerun_alone(
+                "daemon::tests::agent::a_client_that_asks_for_a_replay_follows_the_pane_live_whether_attached_or_not",
+            ) {
+                return;
+            }
             let workspace = workspace(Behavior::Chunk);
             let subscribe = || {
                 let mailbox = OutboundMailbox::new();
