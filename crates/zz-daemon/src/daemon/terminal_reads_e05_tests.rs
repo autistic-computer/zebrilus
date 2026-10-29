@@ -79,6 +79,11 @@ fn capture_reply_for_a_respawned_terminal_is_rejected_before_buffer_insertion() 
 
 #[test]
 fn capture_reply_for_a_departed_client_is_dropped_before_buffer_insertion() {
+    if !crate::daemon::solo_tests::rerun_alone(
+        "daemon::terminal_reads::tests::capture_reply_for_a_departed_client_is_dropped_before_buffer_insertion",
+    ) {
+        return;
+    }
     let (shared, _watchers, client, context) = setup();
     let item = queued(&shared);
     let mut result = item.capture_pane(
