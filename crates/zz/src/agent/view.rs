@@ -2363,6 +2363,8 @@ mod completion_tests {
                 last_cursor: 0,
                 window_corners: WindowCorners::NONE,
                 floats: false,
+                chat: zz_ui::agent::chat::ChatPane::default(),
+                chat_inline: false,
                 _subscriptions: Vec::new(),
             }
         });
@@ -2450,6 +2452,8 @@ mod completion_tests {
                 last_cursor: 1,
                 window_corners: WindowCorners::NONE,
                 floats: false,
+                chat: zz_ui::agent::chat::ChatPane::default(),
+                chat_inline: false,
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);
