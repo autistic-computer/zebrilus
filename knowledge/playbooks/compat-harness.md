@@ -822,6 +822,13 @@ Check whether the persisted inventory and attached proof are current:
 compat/run.sh --check-summary
 ```
 
+`run.sh` globs the scenario files under `LC_COLLATE=C`, so the summary keeps one row order on any
+machine; before 2026-10-29 a run under a `en_US` locale reshuffled rows such as `format-window-*` and
+`formats-values`. Any change to `compat/attached-client.sh`, comments included, invalidates the stamp:
+the 2026-10-29 comment strip did, and main's Linux CI failed at this check until the summary was
+re-stamped on the ubuntu box at `e94f6284e573` (282 scenarios, 3,966 steps, nothing retried; summary
+SHA-256 `37b878dd10cdbb5b0405556cafd7a8bd5c81ee6fdf2fbb7b33e1af2b6247c7d2`).
+
 ## Startup diagnostic differential
 
 `compat/startup-diagnostics.sh` is a separate eight-case gate for clientless startup causes. Run it
