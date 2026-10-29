@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, DismissEvent, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, Length, MouseButton,
     ParentElement as _, Pixels, Render, SharedString, StatefulInteractiveElement as _,
@@ -298,7 +298,7 @@ impl<D: SelectDelegate> SelectState<D> {
         };
         let slop = crate::touch::control_slop(self.options.size);
         let toggle = move |this: &mut Self,
-                           _: &zz_gpui::MouseDownEvent,
+                           _: &ala::MouseDownEvent,
                            window: &mut Window,
                            cx: &mut Context<Self>| {
             cx.stop_propagation();
@@ -317,7 +317,7 @@ impl<D: SelectDelegate> SelectState<D> {
                     .px(size.input_px())
                     .gap(px(6.0))
                     .justify_between()
-                    .when(!disabled, zz_gpui::Styled::cursor_pointer),
+                    .when(!disabled, ala::Styled::cursor_pointer),
                 size,
             ),
             surface,
@@ -391,7 +391,7 @@ impl<D: SelectDelegate> SelectState<D> {
                         cx,
                     )
                     .debug_selector(move || format!("select-option-{ix}"))
-                    .when_some(item.font_family(), zz_gpui::Styled::font_family)
+                    .when_some(item.font_family(), ala::Styled::font_family)
                     .on_click(cx.listener(move |this, _, window, cx| this.commit(ix, window, cx))),
                 )
             })
@@ -481,33 +481,33 @@ impl<D: SelectDelegate> EventEmitter<SelectEvent<D>> for SelectState<D> {}
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::{AppContext as _, TestAppContext};
+    use ala::{AppContext as _, TestAppContext};
 
     use super::{IndexPath, SelectState};
 
     struct Preview {
-        state: zz_gpui::Entity<SelectState<Vec<String>>>,
+        state: ala::Entity<SelectState<Vec<String>>>,
         disabled: bool,
     }
 
-    impl zz_gpui::Render for Preview {
+    impl ala::Render for Preview {
         fn render(
             &mut self,
-            _: &mut zz_gpui::Window,
-            _: &mut zz_gpui::Context<Self>,
-        ) -> impl zz_gpui::IntoElement {
-            use zz_gpui::{ParentElement as _, Styled as _};
-            zz_gpui::div()
+            _: &mut ala::Window,
+            _: &mut ala::Context<Self>,
+        ) -> impl ala::IntoElement {
+            use ala::{ParentElement as _, Styled as _};
+            ala::div()
                 .flex()
-                .w(zz_gpui::px(200.0))
+                .w(ala::px(200.0))
                 .child(super::super::Select::new(&self.state).disabled(self.disabled))
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn popup_picker_preserves_pointer_keyboard_and_disabled_behavior(cx: &mut TestAppContext) {
+        use ala::Focusable as _;
         use std::{cell::RefCell, rc::Rc};
-        use zz_gpui::Focusable as _;
         cx.update(|cx| {
             crate::init(cx);
             cx.set_reduce_motion(true);
@@ -541,13 +541,13 @@ mod tests {
             _ = window.draw(cx);
         });
         let bounds = state.read_with(cx, |state, _| state.trigger_bounds);
-        assert!(bounds.size.width < zz_gpui::px(200.0));
-        cx.simulate_mouse_move(bounds.center(), None, zz_gpui::Modifiers::default());
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        assert!(bounds.size.width < ala::px(200.0));
+        cx.simulate_mouse_move(bounds.center(), None, ala::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         assert!(state.read_with(cx, |state, _| state.menu.is_some()));
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         assert!(state.read_with(cx, |state, _| state.menu.is_none()));
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         cx.simulate_keystrokes("up enter");
         assert_eq!(
             state.read_with(cx, |state, _| state.selected_value().cloned()),
@@ -561,7 +561,7 @@ mod tests {
         assert!(
             state.read_with(cx, |state, _| state.trigger_bounds.size.width) < bounds.size.width
         );
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         cx.simulate_keystrokes("down escape");
         assert_eq!(events.borrow().len(), 1);
         assert!(state.read_with(cx, |state, _| state.menu.is_none()));
@@ -572,7 +572,7 @@ mod tests {
             Some("emacs".into())
         );
         assert_eq!(events.borrow().len(), 2);
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         cx.update(|window, cx| {
             state.update(cx, |state, cx| {
                 state.set_selected_index(Some(IndexPath::new(0)), window, cx);
@@ -580,19 +580,19 @@ mod tests {
         });
         assert!(state.read_with(cx, |state, _| state.menu.is_none()));
         assert_eq!(events.borrow().len(), 2);
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         preview.update(cx, |preview, cx| {
             preview.disabled = true;
             cx.notify();
         });
         cx.run_until_parked();
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         assert!(state.read_with(cx, |state, _| state.menu.is_none()));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn space_opens_a_focused_select(cx: &mut TestAppContext) {
-        use zz_gpui::Focusable as _;
+        use ala::Focusable as _;
         cx.update(|cx| {
             crate::init(cx);
             cx.set_reduce_motion(true);
@@ -618,7 +618,7 @@ mod tests {
         assert!(state.read_with(cx, |state, _| state.menu.is_some()));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn long_popup_picker_reopens_at_the_committed_value(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::init(cx);
@@ -649,7 +649,7 @@ mod tests {
             _ = window.draw(cx);
         });
         let bounds = state.read_with(cx, |state, _| state.trigger_bounds);
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
@@ -661,7 +661,7 @@ mod tests {
             let selected = quads
                 .iter()
                 .find(|quad| {
-                    quad.background == zz_gpui::solid_background(cx.theme().selection_background())
+                    quad.background == ala::solid_background(cx.theme().selection_background())
                 })
                 .expect("selected font row");
             assert!(
@@ -680,7 +680,7 @@ mod tests {
             state.read_with(cx, |state, _| state.selected_value().cloned()),
             Some("Font 999".into())
         );
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         cx.simulate_keystrokes("down enter");
         assert_eq!(
             state.read_with(cx, |state, _| state.selected_value().cloned()),
@@ -688,7 +688,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_touch_screen_picks_from_a_sheet(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::init(cx);
@@ -707,7 +707,7 @@ mod tests {
             disabled: false,
         });
         let state = preview.read_with(cx, |preview, _| preview.state.clone());
-        let draw = |cx: &mut zz_gpui::VisualTestContext| {
+        let draw = |cx: &mut ala::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| {
                 _ = window.draw(cx);
@@ -715,13 +715,13 @@ mod tests {
         };
         draw(cx);
         let bounds = state.read_with(cx, |state, _| state.trigger_bounds);
-        cx.simulate_click(bounds.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(bounds.center(), ala::Modifiers::default());
         draw(cx);
         assert!(state.read_with(cx, |state, _| state.sheet && state.menu.is_none()));
         let row = cx
             .debug_bounds("select-option-0")
             .expect("the sheet lists the options");
-        cx.simulate_click(row.center(), zz_gpui::Modifiers::default());
+        cx.simulate_click(row.center(), ala::Modifiers::default());
         draw(cx);
         assert_eq!(
             state.read_with(cx, |state, _| state.selected_value().cloned()),
@@ -730,7 +730,7 @@ mod tests {
         assert!(state.read_with(cx, |state, _| !state.sheet));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn initial_index_seeds_the_committed_value(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -749,7 +749,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn out_of_range_initial_index_starts_empty(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();
@@ -762,7 +762,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn set_selected_value_resolves_through_the_delegate(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let cx = cx.add_empty_window();

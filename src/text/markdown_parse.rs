@@ -2,8 +2,8 @@
 
 use std::ops::Range;
 
+use ala::SharedString;
 use markdown::mdast::{self, Node};
-use zz_gpui::SharedString;
 
 use super::{
     document::ParsedDocument,
@@ -474,7 +474,7 @@ fn ast_to_node(source: &str, value: mdast::Node, cx: &mut NodeContext) -> BlockN
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::ParentElement;
+    use ala::ParentElement;
 
     use crate::text::{MarkdownExtensions, MarkdownNode, MarkdownPlugin};
 
@@ -699,10 +699,10 @@ mod tests {
         fn render(
             &self,
             node: &MarkdownNode,
-            _window: &mut zz_gpui::Window,
-            _cx: &mut zz_gpui::App,
-        ) -> impl zz_gpui::IntoElement {
-            zz_gpui::div().child(node.as_text().to_string())
+            _window: &mut ala::Window,
+            _cx: &mut ala::App,
+        ) -> impl ala::IntoElement {
+            ala::div().child(node.as_text().to_string())
         }
     }
 

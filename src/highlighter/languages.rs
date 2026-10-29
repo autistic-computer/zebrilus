@@ -1,4 +1,4 @@
-use zz_gpui::SharedString;
+use ala::SharedString;
 
 use super::LanguageConfig;
 

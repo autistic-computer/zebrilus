@@ -1,13 +1,13 @@
 [workspace]
 
 [package]
-name = "zz-gpui-kit"
+name = "penna"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.99"
-description = "Widgets for gpui: theme, primitives, widgets and icons"
-repository = "https://github.com/autistic-computer/kit"
+description = "Widgets for ala: theme, primitives, widgets and icons"
+repository = "https://github.com/autistic-computer/penna"
 publish = false
 
 [features]
@@ -43,7 +43,7 @@ tree-sitter-tmux = { version = "0.1.4", optional = true }
 tree-sitter-toml-ng = { version = "0.7.0", optional = true }
 unicode-segmentation = "1.13.3"
 web-time = "1.1.0"
-zz-gpui = { git = "https://github.com/autistic-computer/gpui", branch = "main", features = ["default"] }
+ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["default"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 rust-embed = { version = "8.12", features = ["include-exclude", "debug-embed"] }
@@ -52,7 +52,7 @@ rust-embed = { version = "8.12", features = ["include-exclude", "debug-embed"] }
 url = "=2.5.8"
 
 [dev-dependencies]
-zz-gpui = { git = "https://github.com/autistic-computer/gpui", branch = "main", features = ["test-support"] }
+ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["test-support"] }
 
 [lints.rust]
 unsafe_code = "deny"

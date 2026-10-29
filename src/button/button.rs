@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, Hsla, InteractiveElement,
     Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
     Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
@@ -537,17 +537,16 @@ impl RenderOnce for Button {
         let hover = layer_at(PaintState::Hover, cx);
         let active = layer_at(PaintState::Active, cx);
         let hover_bg = self.hover_bg;
-        let on_mouse_down =
-            move |_: &zz_gpui::MouseDownEvent, window: &mut Window, cx: &mut App| {
-                if is_disabled {
-                    cx.stop_propagation();
-                    return;
-                }
+        let on_mouse_down = move |_: &ala::MouseDownEvent, window: &mut Window, cx: &mut App| {
+            if is_disabled {
+                cx.stop_propagation();
+                return;
+            }
 
-                window.prevent_default();
+            window.prevent_default();
 
-                crate::text::suppress_text_selection(cx);
-            };
+            crate::text::suppress_text_selection(cx);
+        };
         let on_click = self.on_click.map(|on_click| {
             move |event: &ClickEvent, window: &mut Window, cx: &mut App| {
                 if !clickable {
@@ -717,9 +716,9 @@ impl RenderOnce for Button {
 mod tests {
     use super::*;
 
-    #[zz_gpui::test]
-    fn a_selected_button_keeps_tracking_hover(cx: &mut zz_gpui::TestAppContext) {
-        use zz_gpui::{
+    #[ala::test]
+    fn a_selected_button_keeps_tracking_hover(cx: &mut ala::TestAppContext) {
+        use ala::{
             Context, IntoElement, Modifiers, ParentElement as _, Render, Styled as _, point, px,
         };
 
@@ -739,7 +738,7 @@ mod tests {
 
         cx.update(crate::init);
         let (host, cx) = cx.add_window_view(|_, _| Host { selected: false });
-        let draw = |cx: &mut zz_gpui::VisualTestContext| {
+        let draw = |cx: &mut ala::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| window.draw(cx).clear(cx));
         };
@@ -771,8 +770,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn test_button_clickable_logic(_cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn test_button_clickable_logic(_cx: &mut ala::TestAppContext) {
         let clickable = Button::new("test").on_click(|_, _, _| {});
         assert!(clickable.clickable());
 
@@ -783,8 +782,8 @@ mod tests {
         assert!(!loading.clickable());
     }
 
-    #[zz_gpui::test]
-    fn test_button_hoverable_logic(_cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn test_button_hoverable_logic(_cx: &mut ala::TestAppContext) {
         assert!(!Button::new("test").hoverable());
 
         assert!(Button::new("test").on_hover(|_, _, _| {}).hoverable());
@@ -804,8 +803,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn test_button_variant_methods(_cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn test_button_variant_methods(_cx: &mut ala::TestAppContext) {
         assert!(ButtonVariant::Link.is_link());
         assert!(ButtonVariant::Text.is_text());
 
@@ -828,8 +827,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn the_shorthands_name_a_tone_and_an_emphasis(_cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn the_shorthands_name_a_tone_and_an_emphasis(_cx: &mut ala::TestAppContext) {
         let variant = |button: Button| button.variant;
         assert_eq!(
             variant(Button::new("b").primary()),

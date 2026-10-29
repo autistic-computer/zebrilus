@@ -2,8 +2,8 @@ use std::f32::consts::{FRAC_PI_2, TAU};
 use std::fmt::Write as _;
 use std::sync::LazyLock;
 
+use ala::SharedString;
 use serde_json::Value;
-use zz_gpui::SharedString;
 
 const CORNER_FRACTION: f32 = 0.45;
 const SAMPLES: usize = 16;

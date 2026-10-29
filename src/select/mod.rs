@@ -3,7 +3,7 @@ mod delegate;
 mod element;
 mod state;
 
-use zz_gpui::{App, KeyBinding};
+use ala::{App, KeyBinding};
 
 pub use delegate::{SelectDelegate, SelectItem};
 pub use element::Select;

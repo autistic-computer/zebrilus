@@ -1,4 +1,4 @@
-use zz_gpui::{App, IntoElement, RenderOnce, Window};
+use ala::{App, IntoElement, RenderOnce, Window};
 
 use crate::{Icon, Sizable, Size, spinner::Spinner};
 

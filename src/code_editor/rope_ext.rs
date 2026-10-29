@@ -1,7 +1,7 @@
 use std::ops::Range;
 
+use ala::sum_tree::Bias;
 use ropey::{LineType, Rope, RopeSlice};
-use zz_gpui::sum_tree::Bias;
 
 #[cfg(feature = "tree-sitter")]
 pub use tree_sitter::{InputEdit, Point};
@@ -300,8 +300,8 @@ impl RopeExt for Rope {
 #[cfg(test)]
 mod tests {
     use super::Point;
+    use ala::sum_tree::Bias;
     use ropey::Rope;
-    use zz_gpui::sum_tree::Bias;
 
     use crate::code_editor::{Position, RopeExt};
 

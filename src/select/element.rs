@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, ElementId, Entity, Focusable as _, InteractiveElement as _, IntoElement, Length,
     ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _,

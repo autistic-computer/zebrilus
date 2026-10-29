@@ -21,13 +21,13 @@ pub use actions::{
     SelectToNextWordEnd, SelectToPreviousWordStart, SelectToStart, SelectToStartOfLine, SelectUp,
     ShowCharacterPalette, Undo,
 };
+pub use ala::TextAlign;
 pub(crate) use field::field_text;
 pub use field::{Input, InputContentType, field_chrome, field_paint};
 pub use number::NumberInput;
 pub use state::{InputEvent, InputState};
-pub use zz_gpui::TextAlign;
 
-pub(crate) fn init(cx: &mut zz_gpui::App) {
+pub(crate) fn init(cx: &mut ala::App) {
     actions::init(cx);
     number::init(cx);
 }

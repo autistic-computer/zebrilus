@@ -1,6 +1,6 @@
 use std::{ops::Deref, sync::Arc};
 
-use zz_gpui::{HighlightStyle, Hsla};
+use ala::{HighlightStyle, Hsla};
 
 use crate::ThemeMode;
 
@@ -13,12 +13,12 @@ pub enum FontStyle {
     Underline,
 }
 
-impl From<FontStyle> for zz_gpui::FontStyle {
+impl From<FontStyle> for ala::FontStyle {
     fn from(style: FontStyle) -> Self {
         match style {
-            FontStyle::Normal => zz_gpui::FontStyle::Normal,
-            FontStyle::Underline => zz_gpui::FontStyle::Normal,
-            FontStyle::Italic => zz_gpui::FontStyle::Italic,
+            FontStyle::Normal => ala::FontStyle::Normal,
+            FontStyle::Underline => ala::FontStyle::Normal,
+            FontStyle::Italic => ala::FontStyle::Italic,
         }
     }
 }
@@ -37,18 +37,18 @@ pub enum FontWeightContent {
     Black = 900,
 }
 
-impl From<FontWeightContent> for zz_gpui::FontWeight {
+impl From<FontWeightContent> for ala::FontWeight {
     fn from(value: FontWeightContent) -> Self {
         match value {
-            FontWeightContent::Thin => zz_gpui::FontWeight::THIN,
-            FontWeightContent::ExtraLight => zz_gpui::FontWeight::EXTRA_LIGHT,
-            FontWeightContent::Light => zz_gpui::FontWeight::LIGHT,
-            FontWeightContent::Normal => zz_gpui::FontWeight::NORMAL,
-            FontWeightContent::Medium => zz_gpui::FontWeight::MEDIUM,
-            FontWeightContent::Semibold => zz_gpui::FontWeight::SEMIBOLD,
-            FontWeightContent::Bold => zz_gpui::FontWeight::BOLD,
-            FontWeightContent::ExtraBold => zz_gpui::FontWeight::EXTRA_BOLD,
-            FontWeightContent::Black => zz_gpui::FontWeight::BLACK,
+            FontWeightContent::Thin => ala::FontWeight::THIN,
+            FontWeightContent::ExtraLight => ala::FontWeight::EXTRA_LIGHT,
+            FontWeightContent::Light => ala::FontWeight::LIGHT,
+            FontWeightContent::Normal => ala::FontWeight::NORMAL,
+            FontWeightContent::Medium => ala::FontWeight::MEDIUM,
+            FontWeightContent::Semibold => ala::FontWeight::SEMIBOLD,
+            FontWeightContent::Bold => ala::FontWeight::BOLD,
+            FontWeightContent::ExtraBold => ala::FontWeight::EXTRA_BOLD,
+            FontWeightContent::Black => ala::FontWeight::BLACK,
         }
     }
 }

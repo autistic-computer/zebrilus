@@ -8,7 +8,7 @@ use std::{
     task::{Context as TaskContext, Poll},
 };
 
-use zz_gpui::{
+use ala::{
     App, AppContext as _, Bounds, Context, FocusHandle, IntoElement, ListState, ParentElement as _,
     Pixels, Point, Render, SharedString, Styled as _, Task, Window, canvas,
     prelude::FluentBuilder as _, px,
@@ -45,7 +45,7 @@ pub(super) mod parse_counters {
 
 pub struct TextViewState {
     pub(super) focus_handle: FocusHandle,
-    pub(super) entity_id: zz_gpui::EntityId,
+    pub(super) entity_id: ala::EntityId,
     pub(super) list_state: ListState,
 
     bounds: Bounds<Pixels>,
@@ -120,7 +120,7 @@ impl TextViewState {
             select_all: false,
             selectable: false,
             scrollable: false,
-            list_state: ListState::new(0, zz_gpui::ListAlignment::Top, px(1000.)).measure_all(),
+            list_state: ListState::new(0, ala::ListAlignment::Top, px(1000.)).measure_all(),
             text_view_style: TextViewStyle::default(),
             code_block_actions: None,
             code_block_body: None,
@@ -657,7 +657,7 @@ fn parse_content(
 mod tests {
     use super::*;
     use crate::text::MarkdownNode;
-    use zz_gpui::TestAppContext;
+    use ala::TestAppContext;
 
     #[test]
     fn appending_markdown_preserves_previous_document_snapshots() {
@@ -720,7 +720,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn set_text_then_push_str_appends_to_replaced_content(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("old", cx)));
@@ -749,7 +749,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn deferred_markdown_parses_after_construction(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state =
@@ -772,7 +772,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn streamed_appends_keep_the_created_prefix(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("`", cx)));
@@ -858,7 +858,7 @@ mod tests {
     }
 
     fn push_and_parse(
-        state: &zz_gpui::Entity<TextViewState>,
+        state: &ala::Entity<TextViewState>,
         chunk: &str,
         cx: &mut TestAppContext,
     ) -> ParsedUpdate {
@@ -879,7 +879,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn stream_commits_a_parse_that_a_newer_chunk_overtook(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("# Answer\n\n", cx)));
@@ -898,7 +898,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_parse_from_before_a_replacement_is_discarded(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("old", cx)));
@@ -917,7 +917,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn parses_that_arrive_together_commit_once(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("# Answer\n\n", cx)));
@@ -955,7 +955,7 @@ mod tests {
         assert!(update(1, true).superseded_by(update(2, true)).append);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_synchronous_parse_is_not_committed_again(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("one", cx)));
@@ -976,7 +976,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn select_all_returns_rendered_text(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("**quick** value", cx)));
@@ -1001,7 +1001,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn set_markdown_extensions_reparses_existing_text(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let state = cx.update(|cx| cx.new(|cx| TextViewState::markdown("$TSLA.US", cx)));

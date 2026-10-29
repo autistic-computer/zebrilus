@@ -1,6 +1,6 @@
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
-use zz_gpui::{App, KeyBinding};
+use ala::{App, KeyBinding};
 
 mod actions;
 mod dialog;

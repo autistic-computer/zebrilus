@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString,
     StyleRefinement, Styled, Window, prelude::FluentBuilder as _, px,
 };

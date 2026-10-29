@@ -1,5 +1,5 @@
+use ala::{Action, actions};
 use serde::Deserialize;
-use zz_gpui::{Action, actions};
 
 #[derive(Clone, Action, PartialEq, Eq, Deserialize)]
 #[action(namespace = zz_menu, no_json)]

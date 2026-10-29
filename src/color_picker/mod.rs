@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, Entity, EventEmitter, FocusHandle,
     Focusable, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton,
     MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Point, RenderOnce, SharedString,
@@ -66,7 +66,7 @@ impl Hsv {
         } else {
             0.0
         };
-        zz_gpui::hsla(self.hue, saturation, lightness, 1.0)
+        ala::hsla(self.hue, saturation, lightness, 1.0)
     }
 
     fn pure(self) -> Hsla {
@@ -346,7 +346,7 @@ impl ColorPicker {
             .size(px(HANDLE))
             .rounded_full()
             .border_2()
-            .border_color(zz_gpui::white())
+            .border_color(ala::white())
             .bg(hsv.color())
             .shadow(crate::lifted_shadow(cx));
         let state = state.clone();
@@ -361,7 +361,7 @@ impl ColorPicker {
             .cursor_crosshair()
             .bg(linear_gradient(
                 90.0,
-                linear_color_stop(zz_gpui::white(), 0.0),
+                linear_color_stop(ala::white(), 0.0),
                 linear_color_stop(hsv.pure(), 1.0),
             ))
             .child(
@@ -371,8 +371,8 @@ impl ColorPicker {
                     .rounded(radius)
                     .bg(linear_gradient(
                         180.0,
-                        linear_color_stop(zz_gpui::transparent_black(), 0.0),
-                        linear_color_stop(zz_gpui::black(), 1.0),
+                        linear_color_stop(ala::transparent_black(), 0.0),
+                        linear_color_stop(ala::black(), 1.0),
                     )),
             )
             .child(handle)
@@ -544,7 +544,7 @@ impl ColorPicker {
         presets: Option<AnyElement>,
         window: &Window,
         cx: &App,
-    ) -> zz_gpui::AnyElement {
+    ) -> ala::AnyElement {
         let id = self.state.entity_id();
         let dismiss = self.state.clone();
         floating_sheet(
@@ -586,7 +586,7 @@ impl Disableable for ColorPicker {
     }
 }
 
-impl zz_gpui::Styled for ColorPicker {
+impl ala::Styled for ColorPicker {
     fn style(&mut self) -> &mut StyleRefinement {
         &mut self.style
     }
@@ -641,8 +641,8 @@ impl RenderOnce for ColorPicker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ala::{Modifiers, MouseDownEvent, Render, TestAppContext, VisualTestContext, point};
     use std::{cell::RefCell, rc::Rc};
-    use zz_gpui::{Modifiers, MouseDownEvent, Render, TestAppContext, VisualTestContext, point};
 
     struct PickerTest {
         state: Entity<ColorPickerState>,
@@ -653,11 +653,11 @@ mod tests {
             div()
                 .size_full()
                 .p(px(10.0))
-                .child(ColorPicker::new(&self.state, zz_gpui::black()))
+                .child(ColorPicker::new(&self.state, ala::black()))
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn dragging_the_field_picks_saturation_and_brightness(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let changes = Rc::new(RefCell::new(Vec::new()));

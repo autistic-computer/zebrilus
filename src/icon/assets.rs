@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use zz_gpui::{AssetSource, Result, SharedString};
+use ala::{AssetSource, Result, SharedString};
 
 use super::glyphs;
 

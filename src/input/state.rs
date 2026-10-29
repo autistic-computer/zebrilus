@@ -2,8 +2,7 @@
 
 use std::{borrow::Cow, ops::Range, rc::Rc, sync::Arc};
 
-use unicode_segmentation::UnicodeSegmentation as _;
-use zz_gpui::{
+use ala::{
     App, AppContext as _, Bounds, ClipboardEntry, ClipboardItem, Context, DismissEvent, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, Hsla, Image, IntoElement,
     KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
@@ -11,6 +10,7 @@ use zz_gpui::{
     TextInputConfiguration, TextInputMode, UTF16Selection, Window, anchored, deferred, div, point,
     prelude::FluentBuilder as _, px,
 };
+use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::{
     Size,
@@ -112,7 +112,7 @@ pub struct InputState {
     pub(super) measured_rows: usize,
     pub(super) follow_cursor: bool,
     pub(super) reset_scroll: bool,
-    pub(super) revealed_viewport: Option<zz_gpui::Size<Pixels>>,
+    pub(super) revealed_viewport: Option<ala::Size<Pixels>>,
 
     blink: Entity<BlinkCursor>,
     context_menu: Option<Entity<PopupMenu>>,
@@ -1470,7 +1470,7 @@ impl Render for InputState {
         div()
             .flex_1()
             .min_w_0()
-            .when(self.mode.is_multi_line(), zz_gpui::Styled::h_full)
+            .when(self.mode.is_multi_line(), ala::Styled::h_full)
             .child(TextElement::new(cx.entity()))
             .children(menu)
     }
@@ -1773,8 +1773,8 @@ mod tests {
         assert_eq!(utf8_offset(text, 4), 6);
     }
 
-    #[zz_gpui::test]
-    fn an_idle_caret_settles_visible_and_input_restarts_it(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn an_idle_caret_settles_visible_and_input_restarts_it(cx: &mut ala::TestAppContext) {
         let blink = cx.new(|_| BlinkCursor::new());
         blink.update(cx, BlinkCursor::start);
         let steps = crate::BLINK_IDLE_TIMEOUT.as_millis() / 250 + 8;
@@ -1813,12 +1813,12 @@ mod tests {
     ];
 
     fn paste_into_a_field(
-        item: zz_gpui::ClipboardItem,
-        cx: &mut zz_gpui::TestAppContext,
+        item: ala::ClipboardItem,
+        cx: &mut ala::TestAppContext,
     ) -> (String, Vec<InputEvent>) {
         cx.update(crate::init);
         let (state, cx) = cx.add_window_view(InputState::new);
-        let cx: &mut zz_gpui::VisualTestContext = cx;
+        let cx: &mut ala::VisualTestContext = cx;
         let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         cx.update(|_, cx| {
             cx.write_to_clipboard(item);
@@ -1836,13 +1836,11 @@ mod tests {
         (value, heard)
     }
 
-    #[zz_gpui::test]
-    fn native_paste_preserves_text_and_image_from_one_clipboard_item(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    #[ala::test]
+    fn native_paste_preserves_text_and_image_from_one_clipboard_item(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let (state, cx) = cx.add_window_view(InputState::new);
-        let cx: &mut zz_gpui::VisualTestContext = cx;
+        let cx: &mut ala::VisualTestContext = cx;
         let heard = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
         cx.update(|window, cx| {
             let events = heard.clone();
@@ -1855,11 +1853,11 @@ mod tests {
                     state,
                     ClipboardItem {
                         entries: vec![
-                            zz_gpui::ClipboardEntry::String(zz_gpui::ClipboardString::new(
+                            ala::ClipboardEntry::String(ala::ClipboardString::new(
                                 "[<button>Save</button>]".to_owned(),
                             )),
-                            zz_gpui::ClipboardEntry::Image(zz_gpui::Image::from_bytes(
-                                zz_gpui::ImageFormat::Png,
+                            ala::ClipboardEntry::Image(ala::Image::from_bytes(
+                                ala::ImageFormat::Png,
                                 PNG_PIXEL.to_vec(),
                             )),
                         ],
@@ -1887,12 +1885,12 @@ mod tests {
         assert_eq!(images[0][0].bytes, PNG_PIXEL);
     }
 
-    #[zz_gpui::test]
-    fn a_masked_field_keeps_its_value_out_of_the_clipboard(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_masked_field_keeps_its_value_out_of_the_clipboard(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let (state, cx) = cx.add_window_view(InputState::new);
-        let cx: &mut zz_gpui::VisualTestContext = cx;
-        let clipboard = |cx: &mut zz_gpui::VisualTestContext| {
+        let cx: &mut ala::VisualTestContext = cx;
+        let clipboard = |cx: &mut ala::VisualTestContext| {
             cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text()))
         };
         cx.update(|window, cx| {
@@ -1920,11 +1918,11 @@ mod tests {
         assert_eq!(clipboard(cx).as_deref(), Some("hunter2"));
     }
 
-    #[zz_gpui::test]
-    fn a_masked_field_hides_its_word_boundaries(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_masked_field_hides_its_word_boundaries(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let (state, cx) = cx.add_window_view(InputState::new);
-        let cx: &mut zz_gpui::VisualTestContext = cx;
+        let cx: &mut ala::VisualTestContext = cx;
         cx.update(|window, cx| {
             state.update(cx, |state, cx| {
                 state.set_value("aaa bbb ccc", window, cx);
@@ -1941,10 +1939,10 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn an_image_only_clipboard_is_forwarded_instead_of_dropped(cx: &mut zz_gpui::TestAppContext) {
-        let image = zz_gpui::Image::from_bytes(zz_gpui::ImageFormat::Png, PNG_PIXEL.to_vec());
-        let (value, heard) = paste_into_a_field(zz_gpui::ClipboardItem::new_image(&image), cx);
+    #[ala::test]
+    fn an_image_only_clipboard_is_forwarded_instead_of_dropped(cx: &mut ala::TestAppContext) {
+        let image = ala::Image::from_bytes(ala::ImageFormat::Png, PNG_PIXEL.to_vec());
+        let (value, heard) = paste_into_a_field(ala::ClipboardItem::new_image(&image), cx);
 
         assert!(value.is_empty(), "an image inserts no text");
         let [InputEvent::PasteImages(images)] = heard.as_slice() else {
@@ -1954,10 +1952,10 @@ mod tests {
         assert_eq!(images[0].bytes, PNG_PIXEL);
     }
 
-    #[zz_gpui::test]
-    fn a_text_clipboard_still_pastes_as_text(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_text_clipboard_still_pastes_as_text(cx: &mut ala::TestAppContext) {
         let (value, heard) =
-            paste_into_a_field(zz_gpui::ClipboardItem::new_string("hello".to_owned()), cx);
+            paste_into_a_field(ala::ClipboardItem::new_string("hello".to_owned()), cx);
 
         assert_eq!(value, "hello");
         assert!(

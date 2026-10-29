@@ -1,4 +1,4 @@
-pub use zz_gpui;
+pub use ala;
 
 pub(crate) const BLINK_IDLE_TIMEOUT: web_time::Duration = web_time::Duration::from_secs(10);
 
@@ -63,7 +63,7 @@ pub use title_bar::{
     macos_traffic_light_clearance, window_controls_width,
 };
 
-pub fn init(cx: &mut zz_gpui::App) {
+pub fn init(cx: &mut ala::App) {
     foundation::init(cx);
     #[cfg(feature = "editor")]
     code_editor::init(cx);

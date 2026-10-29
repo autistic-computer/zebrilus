@@ -1,12 +1,12 @@
 use crate::Colorize as _;
 use crate::foundation::restyle;
 use crate::{ActiveTheme, Disableable, PaintState, StyledExt, SurfaceRole, h_flex};
-use smallvec::SmallVec;
-use zz_gpui::{
+use ala::{
     AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
     ParentElement, RenderOnce, Role, SharedString, StatefulInteractiveElement as _,
     StyleRefinement, Styled, Window, prelude::FluentBuilder as _,
 };
+use smallvec::SmallVec;
 
 #[derive(IntoElement)]
 pub(crate) struct MenuItemElement {
@@ -84,13 +84,13 @@ impl Disableable for MenuItemElement {
 }
 
 impl Styled for MenuItemElement {
-    fn style(&mut self) -> &mut zz_gpui::StyleRefinement {
+    fn style(&mut self) -> &mut ala::StyleRefinement {
         &mut self.style
     }
 }
 
 impl ParentElement for MenuItemElement {
-    fn extend(&mut self, elements: impl IntoIterator<Item = zz_gpui::AnyElement>) {
+    fn extend(&mut self, elements: impl IntoIterator<Item = ala::AnyElement>) {
         self.children.extend(elements);
     }
 }

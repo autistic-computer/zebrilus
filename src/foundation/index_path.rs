@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use zz_gpui::ElementId;
+use ala::ElementId;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IndexPath {

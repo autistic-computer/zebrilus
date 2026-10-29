@@ -1,11 +1,11 @@
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 
-use serde::{Deserialize, Serialize};
-use zz_gpui::{
+use ala::{
     App, BoxShadow, EdgeMark, FULL_CORNER_RADIUS, GlassMaterial, Hsla, InteractiveElement, Pixels,
     StatefulInteractiveElement, Styled, point, px,
 };
+use serde::{Deserialize, Serialize};
 
 use super::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, Ground, PaintState, PrimaryStyle, Theme,
@@ -1504,7 +1504,7 @@ pub trait StatefulSurfaceExt: StatefulInteractiveElement + Styled + Sized {
 
 impl<E: StatefulInteractiveElement + Styled> StatefulSurfaceExt for E {}
 
-pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui::StyleRefinement {
+pub(crate) fn restyle(style: ala::StyleRefinement, layer: &Layer) -> ala::StyleRefinement {
     let mut style = style
         .border_color(layer.border)
         .shadow(layer.shadow.clone())
@@ -1513,7 +1513,7 @@ pub(crate) fn restyle(style: zz_gpui::StyleRefinement, layer: &Layer) -> zz_gpui
         style = style.edge_mark(mark);
     }
     match layer.glass {
-        Some(material) => style.glass(material).bg(zz_gpui::transparent_black()),
+        Some(material) => style.glass(material).bg(ala::transparent_black()),
         None => style.bg(layer.fill),
     }
 }
@@ -1563,7 +1563,7 @@ mod tests {
             )
         };
         let mut light = (*ThemeColor::light()).clone();
-        light.background = zz_gpui::hsla(0., 0., 0.98, 1.);
+        light.background = ala::hsla(0., 0., 0.98, 1.);
 
         let (window, menu, card, ground) = fills(&light, false);
         assert!(menu < window && card < window && ground < window);
@@ -1585,7 +1585,7 @@ mod tests {
             .with(StylePatch::EMPTY.fill(Fill::Glass));
         let tab = SurfaceRole::TAB.with(StylePatch::EMPTY.selected(Highlight::Glass));
         let mut light = (*ThemeColor::light()).clone();
-        light.background = zz_gpui::hsla(0., 0., 0.97, 1.);
+        light.background = ala::hsla(0., 0., 0.97, 1.);
         for (mode, colors) in [
             (ThemeMode::Light, &light),
             (ThemeMode::Dark, &*ThemeColor::dark()),
@@ -1903,7 +1903,7 @@ mod tests {
         theme.glass = Some(GlassMaterial::frosted());
         let hover = theme.layer(SurfaceRole::POPOVER, PaintState::Hover);
         assert!(hover.glass.is_some());
-        let restyled = restyle(zz_gpui::StyleRefinement::default().bg(hover.fill), &hover);
+        let restyled = restyle(ala::StyleRefinement::default().bg(hover.fill), &hover);
         assert_eq!(restyled.glass, hover.glass);
         assert!(
             restyled

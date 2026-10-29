@@ -3,7 +3,7 @@ pub mod glyphs;
 
 pub use assets::Assets;
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Hsla, IntoElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled,
     Svg, Transformation, Window, font, prelude::FluentBuilder as _, svg,
 };
@@ -448,7 +448,7 @@ impl RenderOnce for IconName {
 mod tests {
     use std::{collections::HashSet, path::PathBuf};
 
-    use zz_gpui::AssetSource as _;
+    use ala::AssetSource as _;
 
     use super::{Assets, IconName};
 

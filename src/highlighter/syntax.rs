@@ -4,7 +4,7 @@ use std::{
     sync::{LazyLock, Mutex, MutexGuard, PoisonError},
 };
 
-use zz_gpui::{HighlightStyle, SharedString};
+use ala::{HighlightStyle, SharedString};
 
 use super::theme::HighlightTheme;
 

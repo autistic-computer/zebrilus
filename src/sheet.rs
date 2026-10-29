@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
-use web_time::{Duration, Instant};
-use zz_gpui::{
+use ala::{
     Animation, AnimationExt as _, AnyElement, App, Context, DispatchPhase, Div, ElementId, Global,
     HitboxBehavior, IntoElement, MouseButton, ParentElement as _, Pixels, Point, RenderOnce,
     ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled, TouchPhase, Window, anchored,
     canvas, deferred, div, ease_out_quint, prelude::*, px, relative,
 };
+use web_time::{Duration, Instant};
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
@@ -670,7 +670,7 @@ impl RenderOnce for BottomSheet {
 mod tests {
     use std::{cell::Cell, rc::Rc};
 
-    use zz_gpui::{
+    use ala::{
         Bounds, Context, Modifiers, Render, ScrollDelta, TestAppContext, VisualTestContext, point,
     };
 
@@ -744,7 +744,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_scrim_dismisses_and_the_panel_does_not(cx: &mut TestAppContext) {
         let (dismissed, cx) = host(120.0, cx);
         let panel = panel(cx);
@@ -766,7 +766,7 @@ mod tests {
         assert_eq!(dismissed.get(), 1);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_closed_sheet_slides_away_before_it_dismisses(cx: &mut TestAppContext) {
         let (dismissed, cx) = host(120.0, cx);
         cx.update(|_, cx| cx.set_reduce_motion(false));
@@ -782,7 +782,7 @@ mod tests {
         assert_eq!(dismissed.get(), 1);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_tall_sheet_stops_at_most_of_the_window(cx: &mut TestAppContext) {
         let (_, cx) = host(5000.0, cx);
         let panel = panel(cx);
@@ -794,7 +794,7 @@ mod tests {
         assert_eq!(body.size.height, px(5000.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_short_drag_follows_the_finger_and_springs_back(cx: &mut TestAppContext) {
         let (dismissed, cx) = host(300.0, cx);
         let rest = panel(cx);
@@ -814,7 +814,7 @@ mod tests {
         assert_eq!(dismissed.get(), 0);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_drag_that_catches_a_fling_still_moves_the_sheet(cx: &mut TestAppContext) {
         let (_, cx) = host(300.0, cx);
         let rest = panel(cx);
@@ -831,7 +831,7 @@ mod tests {
         assert_eq!(panel(cx).top(), rest.top() + px(60.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_long_drag_or_a_flick_dismisses(cx: &mut TestAppContext) {
         let (dismissed, cx) = host(300.0, cx);
         let rest = panel(cx);
@@ -862,7 +862,7 @@ mod tests {
         assert_eq!(dismissed.get(), 2);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn dragging_up_resists(cx: &mut TestAppContext) {
         let (_, cx) = host(300.0, cx);
         let rest = panel(cx);
@@ -876,7 +876,7 @@ mod tests {
         assert_eq!(panel(cx).top(), rest.top());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn content_scrolls_first_and_hands_over_at_its_top(cx: &mut TestAppContext) {
         let (dismissed, cx) = host(5000.0, cx);
         let rest = panel(cx);

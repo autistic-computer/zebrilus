@@ -6,7 +6,7 @@ mod dropdown_menu;
 mod menu_item;
 mod popup_menu;
 
-use zz_gpui::App;
+use ala::App;
 
 pub use context_menu::{ContextMenu, ContextMenuExt, ContextMenuState};
 pub use dropdown_menu::DropdownMenu;

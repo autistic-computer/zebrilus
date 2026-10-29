@@ -1,7 +1,7 @@
 use super::{
     ActiveTheme, Edge, Emphasis, Layer, PaintState, StatefulSurfaceExt, Surface, SurfaceRole, Tone,
 };
-use zz_gpui::{
+use ala::{
     AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS,
     Hsla, InteractiveElement as _, Pixels, Refineable, Stateful, StatefulInteractiveElement,
     StyleRefinement, Styled, div, px,
@@ -23,7 +23,7 @@ macro_rules! font_weight {
     ($fn:ident, $const:ident) => {
         #[inline]
         fn $fn(self) -> Self {
-            self.font_weight(zz_gpui::FontWeight::$const)
+            self.font_weight(ala::FontWeight::$const)
         }
     };
 }
@@ -162,7 +162,7 @@ pub fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
 pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
     element
         .rounded(row_radius(layer, height))
-        .corner_radius_mode(zz_gpui::CornerRadiusMode::Fixed)
+        .corner_radius_mode(ala::CornerRadiusMode::Fixed)
         .corner_smoothing(ROW_CORNER_SMOOTHING)
 }
 
@@ -310,8 +310,8 @@ pub trait Sizable: Sized {
 mod tests {
     use crate::Theme;
 
-    #[zz_gpui::test]
-    fn a_knobs_shadow_follows_the_contact_strength(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_knobs_shadow_follows_the_contact_strength(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         cx.update(|cx| {
             assert!(!super::lifted_shadow(cx).is_empty());

@@ -43,6 +43,6 @@ pub use variant::{
 };
 pub use window_border::{window_border, window_paddings};
 
-pub fn init(cx: &mut zz_gpui::App) {
+pub fn init(cx: &mut ala::App) {
     theme::init(cx);
 }

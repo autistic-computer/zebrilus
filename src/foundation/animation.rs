@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use zz_gpui::{
+use ala::{
     Animation, AnimationElement, AnimationExt as _, ElementId, IntoElement, Pixels, Styled,
     ease_out_quint, px,
 };

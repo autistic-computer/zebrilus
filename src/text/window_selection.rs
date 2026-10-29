@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use zz_gpui::{
+use ala::{
     App, Bounds, Element, ElementId, Entity, EntityId, GlobalElementId, Hitbox, InspectorElementId,
     IntoElement, LayoutId, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels,
     Point, ScrollWheelEvent, Style, WeakEntity, Window,
@@ -525,23 +525,23 @@ mod tests {
         Root,
         text::{TextView, TextViewState, suppress_text_selection},
     };
-    use std::cell::Cell;
-    use std::rc::Rc;
-    use zz_gpui::{
+    use ala::{
         AppContext as _, Context, Entity, FocusHandle, InteractiveElement as _, IntoElement,
         Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render,
         Styled as _, TestAppContext, VisualTestContext, Window, div, point,
         prelude::FluentBuilder as _, px,
     };
+    use std::cell::Cell;
+    use std::rc::Rc;
 
     struct ChatTestView {
         focus_handle: FocusHandle,
         first: Entity<TextViewState>,
         second: Entity<TextViewState>,
         second_selectable: bool,
-        top_offset: zz_gpui::Pixels,
-        mid_gap: zz_gpui::Pixels,
-        width: Option<zz_gpui::Pixels>,
+        top_offset: ala::Pixels,
+        mid_gap: ala::Pixels,
+        width: Option<ala::Pixels>,
     }
 
     impl ChatTestView {
@@ -607,13 +607,13 @@ mod tests {
 
     fn drag(
         cx: &mut VisualTestContext,
-        from: zz_gpui::Point<zz_gpui::Pixels>,
-        to: zz_gpui::Point<zz_gpui::Pixels>,
+        from: ala::Point<ala::Pixels>,
+        to: ala::Point<ala::Pixels>,
     ) {
         drag_through(cx, &[from, to]);
     }
 
-    fn drag_through(cx: &mut VisualTestContext, points: &[zz_gpui::Point<zz_gpui::Pixels>]) {
+    fn drag_through(cx: &mut VisualTestContext, points: &[ala::Point<ala::Pixels>]) {
         assert!(points.len() >= 2);
         let from = points[0];
         let to = *points.last().unwrap();
@@ -641,7 +641,7 @@ mod tests {
         cx.update(|window, cx| window.selected_text(cx))
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn cross_view_drag_merges_text_top_to_bottom(cx: &mut TestAppContext) {
         let (_, cx) = setup(true, cx);
 
@@ -656,7 +656,7 @@ mod tests {
         assert!(text.contains('\n'), "expected newline separator: {text:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn drag_from_blank_space_selects_views_below(cx: &mut TestAppContext) {
         let (_, cx) = setup(true, cx);
 
@@ -674,7 +674,7 @@ mod tests {
         assert!(text.contains("Second message"), "got: {text:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn drag_entirely_in_blank_gap_selects_nothing(cx: &mut TestAppContext) {
         let (chat, cx) = setup(true, cx);
 
@@ -692,7 +692,7 @@ mod tests {
         assert_eq!(text, "", "blank-only drag selected text: {text:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn drag_entirely_in_right_gutter_selects_nothing(cx: &mut TestAppContext) {
         let (_, cx) = setup(true, cx);
 
@@ -702,7 +702,7 @@ mod tests {
         assert_eq!(text, "", "right-gutter drag selected text: {text:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn selection_follows_content_when_layout_shifts(cx: &mut TestAppContext) {
         let (chat, cx) = setup(true, cx);
 
@@ -740,7 +740,7 @@ mod tests {
         assert_eq!(before, after, "selection drifted after layout shift");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn finished_selection_survives_its_view_growing(cx: &mut TestAppContext) {
         let (chat, cx) = setup(true, cx);
         drag(cx, point(px(0.), px(15.)), point(px(300.), px(15.)));
@@ -758,7 +758,7 @@ mod tests {
         assert_eq!(window_selected_text(cx), before);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn finished_selection_keeps_its_text_across_a_resize(cx: &mut TestAppContext) {
         let (chat, cx) = setup(true, cx);
         drag(cx, point(px(0.), px(15.)), point(px(300.), px(15.)));
@@ -779,7 +779,7 @@ mod tests {
         assert_eq!(window_selected_text(cx), "");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn suppressed_mouse_down_does_not_start_selection(cx: &mut TestAppContext) {
         let (_, cx) = setup(true, cx);
 
@@ -789,7 +789,7 @@ mod tests {
         assert!(text.is_empty(), "expected no selection, got: {text:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn non_selectable_view_is_excluded(cx: &mut TestAppContext) {
         let (_, cx) = setup(false, cx);
 
@@ -807,7 +807,7 @@ mod tests {
         assert!(!text.contains("Second message"), "got: {text:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn drag_within_single_view_excludes_others(cx: &mut TestAppContext) {
         let (_, cx) = setup(true, cx);
 
@@ -818,7 +818,7 @@ mod tests {
         assert!(!text.trim().is_empty(), "expected some selection");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn mouse_down_clears_previous_selection(cx: &mut TestAppContext) {
         let (_, cx) = setup(true, cx);
 
@@ -833,7 +833,7 @@ mod tests {
         assert_eq!(window_selected_text(cx), "");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn double_click_selects_word_under_root(cx: &mut TestAppContext) {
         let (_, cx) = setup(true, cx);
 
@@ -860,7 +860,7 @@ mod tests {
         assert!(!text.contains("Second message"), "got: {text:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn drag_back_into_anchor_view_clears_other_views(cx: &mut TestAppContext) {
         let (chat, cx) = setup(true, cx);
         let second = chat.read_with(cx, |chat, _| chat.second.clone());
@@ -909,7 +909,7 @@ mod tests {
              so its stale highlight would never be repainted away",
         );
     }
-    #[zz_gpui::test]
+    #[ala::test]
     fn selection_survives_resize_then_append(cx: &mut TestAppContext) {
         let (chat, cx) = setup(true, cx);
         drag(cx, point(px(0.), px(15.)), point(px(300.), px(15.)));

@@ -4,8 +4,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use ala::{App, EntityId, TextRun};
 use web_time::Instant;
-use zz_gpui::{App, EntityId, TextRun};
 
 use crate::pulse::pulse_lease;
 
@@ -90,7 +90,7 @@ impl ElementVeil {
 
         let boost = chunk_boost(self.chunks.len());
         self.chunks.retain(|chunk| {
-            zz_gpui::animation_time(now.saturating_duration_since(chunk.started)).as_secs_f32()
+            ala::animation_time(now.saturating_duration_since(chunk.started)).as_secs_f32()
                 * 1_000.0
                 * boost
                 < chunk.duration_ms
@@ -99,10 +99,9 @@ impl ElementVeil {
         self.chunks
             .iter()
             .map(|chunk| {
-                let elapsed_ms =
-                    zz_gpui::animation_time(now.saturating_duration_since(chunk.started))
-                        .as_secs_f32()
-                        * 1_000.0;
+                let elapsed_ms = ala::animation_time(now.saturating_duration_since(chunk.started))
+                    .as_secs_f32()
+                    * 1_000.0;
                 let progress = (elapsed_ms * boost / chunk.duration_ms).clamp(0.0, 1.0);
                 (chunk.range.clone(), veil_opacity(progress))
             })
@@ -265,8 +264,8 @@ fn apply_veil(runs: Vec<TextRun>, spans: &[(Range<usize>, f32)]) -> Vec<TextRun>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ala::{TextRun, font};
     use web_time::Duration;
-    use zz_gpui::{TextRun, font};
 
     fn at(base: Instant, millis: u64) -> Instant {
         base + Duration::from_millis(millis)
@@ -276,7 +275,7 @@ mod tests {
         TextRun {
             len,
             font: font("Test"),
-            color: zz_gpui::white(),
+            color: ala::white(),
             background_color: None,
             underline: None,
             strikethrough: None,

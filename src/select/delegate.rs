@@ -1,4 +1,4 @@
-use zz_gpui::SharedString;
+use ala::SharedString;
 
 pub trait SelectItem: Clone {
     type Value: Clone + PartialEq + 'static;

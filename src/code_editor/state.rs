@@ -1,15 +1,15 @@
 use std::{cell::Cell, ops::Range, time::Duration};
 
-use ropey::Rope;
-use unicode_segmentation::UnicodeSegmentation as _;
-use zz_gpui::sum_tree::Bias;
-use zz_gpui::{
+use ala::sum_tree::Bias;
+use ala::{
     Action, App, AppContext as _, Bounds, ClipboardItem, Context, Corners, Edges, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, IntoElement, KeyBinding,
     KeyDownEvent, MouseButton, MouseDownEvent, ParentElement as _, Pixels, Point, Render,
     ScrollKey, ScrollWheelEvent, SharedString, Styled as _, Subscription, TextRun, TextStyle,
     UTF16Selection, Window, actions, div, point,
 };
+use ropey::Rope;
+use unicode_segmentation::UnicodeSegmentation as _;
 
 use crate::{ActiveTheme as _, highlighter::SyntaxHighlighter, text::suppress_text_selection};
 
@@ -495,7 +495,7 @@ impl CodeEditorState {
     pub(super) fn sync_display_map_layout(
         &mut self,
         wrap_width: Option<Pixels>,
-        font: zz_gpui::Font,
+        font: ala::Font,
         font_size: Pixels,
         cx: &mut Context<Self>,
     ) {
@@ -1371,17 +1371,13 @@ mod tests {
     use super::*;
 
     fn with_editor(
-        cx: &mut zz_gpui::TestAppContext,
-    ) -> (Entity<CodeEditorState>, &mut zz_gpui::VisualTestContext) {
+        cx: &mut ala::TestAppContext,
+    ) -> (Entity<CodeEditorState>, &mut ala::VisualTestContext) {
         cx.update(crate::init);
         cx.add_window_view(CodeEditorState::new)
     }
 
-    fn type_text(
-        editor: &Entity<CodeEditorState>,
-        text: &str,
-        cx: &mut zz_gpui::VisualTestContext,
-    ) {
+    fn type_text(editor: &Entity<CodeEditorState>, text: &str, cx: &mut ala::VisualTestContext) {
         cx.update(|window, cx| {
             editor.update(cx, |editor, cx| {
                 editor.replace_text_in_range(None, text, window, cx);
@@ -1389,8 +1385,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn typing_and_backspace_are_grapheme_safe(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn typing_and_backspace_are_grapheme_safe(cx: &mut ala::TestAppContext) {
         let (editor, cx) = with_editor(cx);
         type_text(&editor, "a", cx);
         type_text(&editor, "e\u{301}", cx);
@@ -1405,8 +1401,8 @@ mod tests {
         assert_eq!(editor.read_with(cx, |editor, _| editor.cursor()), 1);
     }
 
-    #[zz_gpui::test]
-    fn vertical_selection_reaches_the_document_edges(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn vertical_selection_reaches_the_document_edges(cx: &mut ala::TestAppContext) {
         let (editor, cx) = with_editor(cx);
         type_text(&editor, "abcdef\nab\nabcdef", cx);
         cx.update(|window, cx| {
@@ -1422,8 +1418,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn horizontal_selection_forgets_the_remembered_column(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn horizontal_selection_forgets_the_remembered_column(cx: &mut ala::TestAppContext) {
         let (editor, cx) = with_editor(cx);
         type_text(&editor, "abcdef\nab\nabcdef", cx);
         cx.update(|window, cx| {
@@ -1439,8 +1435,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn adjacent_typing_is_one_undo_redo_group(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn adjacent_typing_is_one_undo_redo_group(cx: &mut ala::TestAppContext) {
         let (editor, cx) = with_editor(cx);
         for character in ["a", "b", "c"] {
             type_text(&editor, character, cx);
@@ -1457,8 +1453,8 @@ mod tests {
         assert_eq!(editor.read_with(cx, |editor, _| editor.value()), "abc");
     }
 
-    #[zz_gpui::test]
-    fn a_new_edit_after_undo_drops_the_redo_stack(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_new_edit_after_undo_drops_the_redo_stack(cx: &mut ala::TestAppContext) {
         let (editor, cx) = with_editor(cx);
         type_text(&editor, "hello", cx);
 
@@ -1479,10 +1475,10 @@ mod tests {
         assert_eq!(editor.read_with(cx, |editor, _| editor.value()), "");
     }
 
-    #[zz_gpui::test]
-    fn display_map_rows_follow_every_edit(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn display_map_rows_follow_every_edit(cx: &mut ala::TestAppContext) {
         let (editor, cx) = with_editor(cx);
-        let assert_in_sync = |cx: &mut zz_gpui::VisualTestContext| {
+        let assert_in_sync = |cx: &mut ala::VisualTestContext| {
             editor.read_with(cx, |editor, _| {
                 let map = &editor.display_map;
                 assert_eq!(map.text().to_string(), editor.text.to_string());
@@ -1537,12 +1533,12 @@ mod tests {
         assert_in_sync(cx);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn shaping_generation_tracks_content_and_language_but_not_selection(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         let (editor, cx) = with_editor(cx);
-        let generation = |cx: &mut zz_gpui::VisualTestContext| {
+        let generation = |cx: &mut ala::VisualTestContext| {
             editor.read_with(cx, |editor, _| editor.layout_generation)
         };
 
@@ -1567,8 +1563,8 @@ mod tests {
         assert_eq!(after_language, generation(cx));
     }
 
-    #[zz_gpui::test]
-    fn selection_and_basic_movement_follow_rope_lines(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn selection_and_basic_movement_follow_rope_lines(cx: &mut ala::TestAppContext) {
         let (editor, cx) = with_editor(cx);
         cx.update(|window, cx| {
             editor.update(cx, |editor, cx| {

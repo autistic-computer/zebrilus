@@ -1,6 +1,6 @@
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
-use zz_gpui::{
+use ala::{
     App, Bounds, ContentMask, Element, ElementId, GlobalElementId, Hitbox, InspectorElementId,
     InteractiveElement as _, IntoElement, IsZero as _, LayoutId, ParentElement as _, Pixels, Point,
     Position, ScrollHandle, ScrollWheelEvent, StatefulInteractiveElement as _, Style,
@@ -86,7 +86,7 @@ impl Element for HorizontalScrollMask {
             size: bounds.size,
         };
 
-        window.insert_hitbox(cover_bounds, zz_gpui::HitboxBehavior::Normal)
+        window.insert_hitbox(cover_bounds, ala::HitboxBehavior::Normal)
     }
 
     fn paint(

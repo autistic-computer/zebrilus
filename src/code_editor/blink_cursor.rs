@@ -1,5 +1,5 @@
+use ala::{Context, Pixels, Task, px};
 use web_time::Duration;
-use zz_gpui::{Context, Pixels, Task, px};
 
 static INTERVAL: Duration = Duration::from_millis(500);
 static PAUSE_DELAY: Duration = Duration::from_millis(300);
@@ -98,12 +98,12 @@ impl BlinkCursor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::AppContext as _;
+    use ala::AppContext as _;
 
-    #[zz_gpui::test]
-    fn a_restarted_caret_shows_at_once(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_restarted_caret_shows_at_once(cx: &mut ala::TestAppContext) {
         let blink = cx.new(|_| BlinkCursor::new());
-        let visible = |cx: &mut zz_gpui::TestAppContext| blink.read_with(cx, |b, _| b.visible());
+        let visible = |cx: &mut ala::TestAppContext| blink.read_with(cx, |b, _| b.visible());
         blink.update(cx, BlinkCursor::start);
         cx.run_until_parked();
         assert!(visible(cx));

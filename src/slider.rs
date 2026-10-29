@@ -1,6 +1,6 @@
 use std::{ops::RangeInclusive, rc::Rc};
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, Context, Div, ElementId, Entity, FocusHandle, HitboxBehavior, Hsla,
     IntoElement, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, RenderOnce, Role, SharedString,
     Stateful, TouchDragEvent, TouchPhase, Window, canvas, div, linear_color_stop, linear_gradient,
@@ -643,10 +643,10 @@ impl Slider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
-    use zz_gpui::{
+    use ala::{
         Context, Modifiers, MouseDownEvent, Render, TestAppContext, VisualTestContext, point,
     };
+    use std::cell::RefCell;
 
     struct SliderTest {
         value: Rc<RefCell<f32>>,
@@ -677,7 +677,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn clicking_dragging_and_arrow_keys_move_the_value(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let value = Rc::new(RefCell::new(0.0));
@@ -737,7 +737,7 @@ mod tests {
         assert_eq!(*changes.borrow(), [180.0, 360.0, 359.0, 349.0]);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_touch_drag_that_starts_on_the_slider_moves_it(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let value = Rc::new(RefCell::new(0.0));
@@ -778,7 +778,7 @@ mod tests {
         assert_eq!(*changes.borrow(), [180.0, 360.0]);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_slider_that_commits_on_release_reports_once_the_drag_lets_go(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let value = Rc::new(RefCell::new(0.0));
@@ -847,8 +847,8 @@ mod tests {
         assert_eq!(scale.snap(400.0), 360.0);
         assert_eq!(scale.nudge(359.0, 10.0), 360.0);
         let bounds = Bounds::new(
-            zz_gpui::point(px(10.0), px(0.0)),
-            zz_gpui::size(px(216.0), px(24.0)),
+            ala::point(px(10.0), px(0.0)),
+            ala::size(px(216.0), px(24.0)),
         );
         assert_eq!(scale.at(px(18.0), bounds, THUMB), 0.0);
         assert_eq!(scale.at(px(118.0), bounds, THUMB), 180.0);

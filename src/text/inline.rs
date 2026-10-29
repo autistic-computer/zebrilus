@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use zz_gpui::{
+use ala::{
     App, BorderStyle, Bounds, CursorStyle, Edges, Element, ElementId, GlobalElementId, Half,
     HighlightStyle, Hitbox, HitboxBehavior, InspectorElementId, IntoElement, LayoutId, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, PartTooltip, Pixels, Point, SharedString,
@@ -59,7 +59,7 @@ fn selectable_line_bounds(
             if row + 1 == rows {
                 width += newline_width;
             }
-            let bounds = Bounds::new(point(origin.x, top), zz_gpui::size(width, line_height))
+            let bounds = Bounds::new(point(origin.x, top), ala::size(width, line_height))
                 .intersect(&mask_bounds);
             if bounds.size.width > px(0.) && bounds.size.height > px(0.) {
                 line_bounds.push(bounds);
@@ -405,7 +405,7 @@ impl Inline {
                 px(0.),
                 cx.theme().foreground.wash(),
                 Edges::default(),
-                zz_gpui::transparent_black(),
+                ala::transparent_black(),
                 BorderStyle::default(),
             ));
         } else {
@@ -417,7 +417,7 @@ impl Inline {
                 px(0.),
                 cx.theme().foreground.wash(),
                 Edges::default(),
-                zz_gpui::transparent_black(),
+                ala::transparent_black(),
                 BorderStyle::default(),
             ));
 
@@ -430,7 +430,7 @@ impl Inline {
                     px(0.),
                     cx.theme().foreground.wash(),
                     Edges::default(),
-                    zz_gpui::transparent_black(),
+                    ala::transparent_black(),
                     BorderStyle::default(),
                 ));
             }
@@ -443,7 +443,7 @@ impl Inline {
                 px(0.),
                 cx.theme().foreground.wash(),
                 Edges::default(),
-                zz_gpui::transparent_black(),
+                ala::transparent_black(),
                 BorderStyle::default(),
             ));
         }
@@ -792,11 +792,11 @@ mod tests {
         point_in_text_selection, selectable_line_bounds,
     };
     use crate::text::links::is_openable;
-    use std::sync::Arc;
-    use zz_gpui::{
+    use ala::{
         FontId, GlyphId, LineLayout, ShapedGlyph, ShapedRun, WrapBoundary, WrappedLineLayout,
         point, px,
     };
+    use std::sync::Arc;
 
     fn code_line(text: &str, wraps: &[usize]) -> Arc<WrappedLineLayout> {
         let glyphs = text
@@ -942,12 +942,12 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
-    fn shaped_code_wrap_leaves_the_unused_line_width_unpainted(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn shaped_code_wrap_leaves_the_unused_line_width_unpainted(cx: &mut ala::TestAppContext) {
         let cx = cx.add_empty_window();
         cx.update(|window, _| {
-            let text = zz_gpui::SharedString::from("cargo run -p zz-xtask");
-            let run = zz_gpui::TextStyle::default().to_run(text.len());
+            let text = ala::SharedString::from("cargo run -p zz-xtask");
+            let run = ala::TextStyle::default().to_run(text.len());
             let wrapped = window
                 .text_system()
                 .shape_text(text.clone(), px(13.0), &[run], Some(px(113.0)), None)

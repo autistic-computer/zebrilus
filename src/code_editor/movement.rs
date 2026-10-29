@@ -1,4 +1,4 @@
-use zz_gpui::{Context, Window};
+use ala::{Context, Window};
 
 use super::{
     CodeEditorState, RopeExt as _,

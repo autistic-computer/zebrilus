@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, CursorStyle, Decorations, Edges, Hsla, InteractiveElement as _, IntoElement,
     MouseButton, ParentElement, Pixels, Point, RenderOnce, ResizeEdge, Size, Styled as _, Tiling,
     Window, div, point, prelude::FluentBuilder as _, px,
@@ -102,14 +102,14 @@ impl RenderOnce for WindowBorder {
 
         div()
             .id("window-backdrop")
-            .bg(zz_gpui::transparent_black())
+            .bg(ala::transparent_black())
             .map(|div| match decorations {
                 Decorations::Server => div,
                 Decorations::Client { tiling, .. } => div
                     .flex()
                     .flex_col()
                     .overflow_hidden()
-                    .bg(zz_gpui::transparent_black())
+                    .bg(ala::transparent_black())
                     .when(!(tiling.top || tiling.right), |div| {
                         div.rounded_tr(BORDER_RADIUS)
                     })
@@ -162,7 +162,7 @@ impl RenderOnce for WindowBorder {
                             .when(
                                 !tiling.is_tiled() && cx.theme().float_shadow.strength > 0.0,
                                 |div| {
-                                    div.shadow(vec![zz_gpui::BoxShadow {
+                                    div.shadow(vec![ala::BoxShadow {
                                         color: Hsla {
                                             h: 0.,
                                             s: 0.,
@@ -180,7 +180,7 @@ impl RenderOnce for WindowBorder {
                     .on_mouse_move(|_e, _, cx| {
                         cx.stop_propagation();
                     })
-                    .bg(zz_gpui::transparent_black())
+                    .bg(ala::transparent_black())
                     .children(self.children),
             )
             .when(matches!(decorations, Decorations::Client { .. }), |this| {

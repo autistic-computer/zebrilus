@@ -1,7 +1,7 @@
 use std::ops::Range;
 
-use zz_gpui::sum_tree::Bias;
-use zz_gpui::{ClipboardItem, Context, Window};
+use ala::sum_tree::Bias;
+use ala::{ClipboardItem, Context, Window};
 
 use crate::code_editor::{CodeEditorState, RopeExt as _};
 
@@ -558,7 +558,7 @@ impl CodeEditorState {
         let line_height = layout.line_height;
         let top = match align {
             ScrollAlign::Center => (viewport - line_height) / 2.0,
-            ScrollAlign::Top => zz_gpui::Pixels::ZERO,
+            ScrollAlign::Top => ala::Pixels::ZERO,
             ScrollAlign::Bottom => viewport - line_height,
         };
         self.scroll.y = top - caret;
@@ -725,13 +725,11 @@ impl CodeEditorState {
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::{Entity, EntityInputHandler as _, VisualTestContext};
+    use ala::{Entity, EntityInputHandler as _, VisualTestContext};
 
     use super::*;
 
-    fn editor(
-        cx: &mut zz_gpui::TestAppContext,
-    ) -> (Entity<CodeEditorState>, &mut VisualTestContext) {
+    fn editor(cx: &mut ala::TestAppContext) -> (Entity<CodeEditorState>, &mut VisualTestContext) {
         cx.update(crate::init);
         let (editor, cx) = cx.add_window_view(CodeEditorState::new);
         cx.update(|_, cx| {
@@ -784,16 +782,16 @@ mod tests {
         editor.read_with(cx, |editor, _| editor.vim_mode())
     }
 
-    #[zz_gpui::test]
-    fn normal_mode_swallows_printable_keys(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn normal_mode_swallows_printable_keys(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "abc", 0, cx);
         keys(&editor, "qzQ", cx);
         assert_eq!(value(&editor, cx), "abc", "normal mode never types");
     }
 
-    #[zz_gpui::test]
-    fn insert_mode_types_and_escape_clamps_the_cursor(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn insert_mode_types_and_escape_clamps_the_cursor(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "ab\n", 0, cx);
         keys(&editor, "i", cx);
@@ -811,16 +809,16 @@ mod tests {
         assert_eq!(cursor(&editor, cx), 0, "never before the line start");
     }
 
-    #[zz_gpui::test]
-    fn delete_word_spares_the_newline_at_the_end_of_a_line(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn delete_word_spares_the_newline_at_the_end_of_a_line(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "alpha beta\ngamma", 6, cx);
         keys(&editor, "dw", cx);
         assert_eq!(value(&editor, cx), "alpha \ngamma");
     }
 
-    #[zz_gpui::test]
-    fn change_word_stops_at_the_word_end(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn change_word_stops_at_the_word_end(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "alpha beta", 0, cx);
         keys(&editor, "cw", cx);
@@ -830,8 +828,8 @@ mod tests {
         assert_eq!(value(&editor, cx), "one beta");
     }
 
-    #[zz_gpui::test]
-    fn delete_line_handles_the_last_line(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn delete_line_handles_the_last_line(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "one\ntwo\nthree", 9, cx);
         keys(&editor, "dd", cx);
@@ -843,8 +841,8 @@ mod tests {
         assert_eq!(value(&editor, cx), "");
     }
 
-    #[zz_gpui::test]
-    fn counts_compose_across_operator_and_motion(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn counts_compose_across_operator_and_motion(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "a b c d e f g", 0, cx);
         keys(&editor, "2d3w", cx);
@@ -855,8 +853,8 @@ mod tests {
         assert_eq!(value(&editor, cx), "4\n5");
     }
 
-    #[zz_gpui::test]
-    fn join_takes_a_count_and_inserts_one_space(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn join_takes_a_count_and_inserts_one_space(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "one\n  two\nthree\nfour", 0, cx);
         keys(&editor, "3J", cx);
@@ -864,8 +862,8 @@ mod tests {
         assert_eq!(cursor(&editor, cx), 7, "the cursor sits on the last join");
     }
 
-    #[zz_gpui::test]
-    fn text_objects_and_find_drive_operators(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn text_objects_and_find_drive_operators(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "say \"hello there\" now", 8, cx);
         keys(&editor, "ci\"", cx);
@@ -877,8 +875,8 @@ mod tests {
         assert_eq!(value(&editor, cx), "b,c", "f is inclusive");
     }
 
-    #[zz_gpui::test]
-    fn linewise_and_charwise_pastes_land_differently(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn linewise_and_charwise_pastes_land_differently(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "one\ntwo\nthree", 0, cx);
         keys(&editor, "yyjp", cx);
@@ -891,8 +889,8 @@ mod tests {
         assert_eq!(cursor(&editor, cx), 1);
     }
 
-    #[zz_gpui::test]
-    fn visual_mode_selects_inclusively_and_deletes(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn visual_mode_selects_inclusively_and_deletes(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "alpha beta", 0, cx);
         keys(&editor, "vll", cx);
@@ -902,16 +900,16 @@ mod tests {
         assert_eq!(mode(&editor, cx), Some(VimMode::Normal));
     }
 
-    #[zz_gpui::test]
-    fn visual_line_mode_deletes_whole_lines(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn visual_line_mode_deletes_whole_lines(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "one\ntwo\nthree", 5, cx);
         keys(&editor, "Vd", cx);
         assert_eq!(value(&editor, cx), "one\nthree");
     }
 
-    #[zz_gpui::test]
-    fn visual_mode_swaps_ends_with_o(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn visual_mode_swaps_ends_with_o(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "abcdef", 2, cx);
         keys(&editor, "vll", cx);
@@ -922,8 +920,8 @@ mod tests {
         assert_eq!(value(&editor, cx), "abf");
     }
 
-    #[zz_gpui::test]
-    fn replace_and_toggle_case_respect_counts(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn replace_and_toggle_case_respect_counts(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "abcd", 0, cx);
         keys(&editor, "3rx", cx);
@@ -944,8 +942,8 @@ mod tests {
         assert_eq!(cursor(&editor, cx), 2, "~ advances past what it flipped");
     }
 
-    #[zz_gpui::test]
-    fn open_line_keeps_the_indentation(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn open_line_keeps_the_indentation(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "  body", 3, cx);
         keys(&editor, "o", cx);
@@ -958,8 +956,8 @@ mod tests {
         assert_eq!(cursor(&editor, cx), 2);
     }
 
-    #[zz_gpui::test]
-    fn undo_returns_the_buffer_and_the_cursor(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn undo_returns_the_buffer_and_the_cursor(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "one two", 0, cx);
         keys(&editor, "dw", cx);
@@ -968,8 +966,8 @@ mod tests {
         assert_eq!(value(&editor, cx), "one two");
     }
 
-    #[zz_gpui::test]
-    fn indent_shifts_whole_lines_by_a_count(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn indent_shifts_whole_lines_by_a_count(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "a\nb\nc", 0, cx);
         keys(&editor, "2>>", cx);
@@ -978,8 +976,8 @@ mod tests {
         assert_eq!(value(&editor, cx), "a\n  b\nc");
     }
 
-    #[zz_gpui::test]
-    fn the_cursor_never_sits_on_a_line_break(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn the_cursor_never_sits_on_a_line_break(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "abc\ndef", 0, cx);
         keys(&editor, "$", cx);
@@ -991,8 +989,8 @@ mod tests {
         assert_eq!(cursor(&editor, cx), 1, "deleting at the end steps back");
     }
 
-    #[zz_gpui::test]
-    fn substitute_leaves_the_cursor_where_the_characters_were(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn substitute_leaves_the_cursor_where_the_characters_were(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "ab", 1, cx);
         keys(&editor, "s", cx);
@@ -1002,21 +1000,21 @@ mod tests {
         assert_eq!(value(&editor, cx), "aXY", "insertion appends, not prepends");
     }
 
-    #[zz_gpui::test]
-    fn visual_mode_grows_to_a_text_object(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn visual_mode_grows_to_a_text_object(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "alpha beta gamma", 8, cx);
         keys(&editor, "viwd", cx);
         assert_eq!(value(&editor, cx), "alpha  gamma");
     }
 
-    #[zz_gpui::test]
-    fn a_foreign_clipboard_pastes_charwise(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_foreign_clipboard_pastes_charwise(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "one\ntwo", 0, cx);
         keys(&editor, "yy", cx);
         cx.update(|_, cx| {
-            cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string("X".into()));
+            cx.write_to_clipboard(ala::ClipboardItem::new_string("X".into()));
         });
         keys(&editor, "p", cx);
         assert_eq!(
@@ -1026,8 +1024,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn escape_in_normal_mode_still_reaches_the_pane(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn escape_in_normal_mode_still_reaches_the_pane(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "abc", 0, cx);
         let consumed = cx.update(|window, cx| {
@@ -1044,8 +1042,8 @@ mod tests {
         assert!(consumed, "an escape that cancels a count does not");
     }
 
-    #[zz_gpui::test]
-    fn loading_new_content_returns_to_normal_mode(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn loading_new_content_returns_to_normal_mode(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "abc", 0, cx);
         keys(&editor, "i", cx);
@@ -1054,8 +1052,8 @@ mod tests {
         assert_eq!(mode(&editor, cx), Some(VimMode::Normal));
     }
 
-    #[zz_gpui::test]
-    fn disabling_vim_restores_plain_typing(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn disabling_vim_restores_plain_typing(cx: &mut ala::TestAppContext) {
         let (editor, cx) = editor(cx);
         seed(&editor, "", 0, cx);
         cx.update(|_, cx| {

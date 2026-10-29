@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, Bounds, ClickEvent, InteractiveElement, ParentElement, Pixels, Stateful, Styled as _,
     Window, canvas,
 };

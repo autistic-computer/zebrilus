@@ -1,5 +1,5 @@
+use ala::{Hsla, Rgba, hsla};
 use std::cell::Cell;
-use zz_gpui::{Hsla, Rgba, hsla};
 
 #[inline]
 pub fn hsl(h: f32, s: f32, l: f32) -> Hsla {
@@ -233,7 +233,7 @@ pub trait Colorize: Sized {
 }
 
 pub(super) mod oklab {
-    use zz_gpui::Rgba;
+    use ala::Rgba;
 
     #[inline]
     fn to_linear(c: f32) -> f32 {
@@ -607,7 +607,7 @@ mod tests {
     }
 
     #[test]
-    fn hsl_maps_css_units_onto_gpui_units() {
+    fn hsl_maps_css_units_onto_ala_units() {
         let color = hsl(180., 50., 25.);
         assert_close(color.h, 0.5);
         assert_close(color.s, 0.5);
@@ -633,14 +633,14 @@ mod tests {
     #[test]
     fn mix_oklab_with_transparent_keeps_hue_and_scales_alpha() {
         let red = hsl(0., 100., 50.);
-        let mixed = red.mix_oklab(zz_gpui::transparent_black(), 0.2);
+        let mixed = red.mix_oklab(ala::transparent_black(), 0.2);
         assert_close(mixed.a, 0.2);
         assert_close(mixed.h, red.h);
     }
 
     #[test]
     fn mix_oklab_of_two_transparents_is_transparent() {
-        let mixed = zz_gpui::transparent_black().mix_oklab(zz_gpui::transparent_black(), 0.5);
+        let mixed = ala::transparent_black().mix_oklab(ala::transparent_black(), 0.5);
         assert_close(mixed.a, 0.0);
     }
 

@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
-use smallvec::SmallVec;
-use zz_gpui::{
+use ala::{
     AnyElement, App, ClickEvent, Decorations, Div, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Pixels, Point, RenderOnce, Stateful, StatefulInteractiveElement as _,
     StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, div, point,
     prelude::FluentBuilder as _, px,
 };
+use smallvec::SmallVec;
 
 use crate::UiZoom;
 use crate::{
@@ -393,7 +393,7 @@ impl RenderOnce for TitleBar {
                         .flex_1()
                         .when(!is_web, |this| {
                             this.window_control_area(WindowControlArea::Drag)
-                                .when(is_fullscreen, zz_gpui::Styled::pl_3)
+                                .when(is_fullscreen, ala::Styled::pl_3)
                                 .when(is_linux && is_client_decorated, |this| {
                                     this.child(
                                         div()

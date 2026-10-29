@@ -1,6 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
-use zz_gpui::rgb;
+use ala::rgb;
 
 use crate::ThemeMode;
 

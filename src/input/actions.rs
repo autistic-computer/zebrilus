@@ -1,5 +1,5 @@
+use ala::{Action, App, KeyBinding, actions};
 use serde::Deserialize;
-use zz_gpui::{Action, App, KeyBinding, actions};
 
 pub(super) const CONTEXT: &str = "ZzInput";
 
@@ -179,7 +179,7 @@ fn edit_key_bindings() -> Vec<KeyBinding> {
 mod tests {
     use std::{any::TypeId, collections::HashSet};
 
-    use zz_gpui::{AsKeystroke, Keystroke};
+    use ala::{AsKeystroke, Keystroke};
 
     use super::*;
 

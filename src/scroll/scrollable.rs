@@ -1,6 +1,6 @@
 use std::{panic::Location, rc::Rc};
 
-use zz_gpui::{
+use ala::{
     App, Div, Element, ElementId, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels,
     RenderOnce, ScrollHandle, Stateful, StatefulInteractiveElement, StyleRefinement, Styled,
     Window, div, prelude::FluentBuilder,
@@ -126,7 +126,7 @@ impl<E> ParentElement for Scrollable<E>
 where
     E: InteractiveElement + Styled + ParentElement + Element,
 {
-    fn extend(&mut self, elements: impl IntoIterator<Item = zz_gpui::AnyElement>) {
+    fn extend(&mut self, elements: impl IntoIterator<Item = ala::AnyElement>) {
         self.element.extend(elements);
     }
 }
@@ -135,7 +135,7 @@ impl<E> InteractiveElement for Scrollable<E>
 where
     E: InteractiveElement + Styled + ParentElement + Element,
 {
-    fn interactivity(&mut self) -> &mut zz_gpui::Interactivity {
+    fn interactivity(&mut self) -> &mut ala::Interactivity {
         self.element.interactivity()
     }
 }
@@ -264,7 +264,7 @@ fn render_scrollbar<H: ScrollbarHandle + Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::{
+    use ala::{
         Context, Render, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point,
         px,
     };
@@ -374,7 +374,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn auto_height_parent_gets_content_height(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| AutoHeightParentTest);
@@ -385,7 +385,7 @@ mod tests {
         assert_eq!(footer.top(), px(100.));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn max_height_parent_clamps_and_scrolls(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| MaxHeightParentTest);
@@ -529,7 +529,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn vertical_scrollbar_scrolls_past_a_size_full_child(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| SizeFullChildTest);
@@ -542,7 +542,7 @@ mod tests {
         assert!(cx.debug_bounds("last-row").unwrap().origin.y < initial_y);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn vertical_scrollbar_preserves_source_gap(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| GapLayoutTest);
@@ -554,7 +554,7 @@ mod tests {
         assert_eq!(second.top() - first.bottom(), px(10.));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn overflow_y_scrollbar_preserves_gap_and_padding_while_scrolling(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| GapRegressionTest);
@@ -582,7 +582,7 @@ mod tests {
         assert!(last_after_scroll_y < last_initial_y);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn horizontal_scrollbar_preserves_source_gap_and_scrolls(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| HorizontalGapLayoutTest);
@@ -608,7 +608,7 @@ mod tests {
         assert!(last_after_scroll_x < last_initial_x);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn overflow_scrollbar_preserves_vertical_source_gap(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| OverflowScrollbarVerticalTest);
@@ -621,7 +621,7 @@ mod tests {
         assert_eq!(second.top() - first.bottom(), px(10.));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn overflow_scrollbar_preserves_gap_and_scrolls_horizontally(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| OverflowScrollbarHorizontalTest);
@@ -655,7 +655,7 @@ mod tests {
         assert!(last_after_scroll_x < last_initial_x);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn multiple_scrollables_keep_independent_scroll_state(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| IndependentScrollablesTest);
@@ -674,7 +674,7 @@ mod tests {
         assert_eq!(right_after_scroll.top(), right_initial.top());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn vertical_scrollbar_does_not_scroll_when_content_does_not_overflow(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| NoOverflowTest);
@@ -699,7 +699,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn horizontal_scrollbar_does_not_scroll_when_content_does_not_overflow(
         cx: &mut TestAppContext,
     ) {

@@ -2,8 +2,8 @@
 
 use super::{HighlightTheme, LanguageRegistry};
 
+use ala::{HighlightStyle, SharedString};
 use anyhow::{Context, Result, anyhow};
-use zz_gpui::{HighlightStyle, SharedString};
 
 use ropey::{ChunkCursor, Rope};
 use std::sync::Arc;
@@ -255,7 +255,7 @@ impl HighlightItem {
     }
 }
 
-impl zz_gpui::sum_tree::Item for HighlightItem {
+impl ala::sum_tree::Item for HighlightItem {
     type Summary = HighlightSummary;
     fn summary(&self, _cx: &()) -> Self::Summary {
         HighlightSummary {
@@ -268,7 +268,7 @@ impl zz_gpui::sum_tree::Item for HighlightItem {
     }
 }
 
-impl zz_gpui::sum_tree::Summary for HighlightSummary {
+impl ala::sum_tree::Summary for HighlightSummary {
     type Context<'a> = &'a ();
     fn zero(_: Self::Context<'_>) -> Self {
         HighlightSummary {
@@ -289,7 +289,7 @@ impl zz_gpui::sum_tree::Summary for HighlightSummary {
     }
 }
 
-impl<'a> zz_gpui::sum_tree::Dimension<'a, HighlightSummary> for usize {
+impl<'a> ala::sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn zero(_: &()) -> Self {
         0
     }
@@ -297,7 +297,7 @@ impl<'a> zz_gpui::sum_tree::Dimension<'a, HighlightSummary> for usize {
     fn add_summary(&mut self, _: &'a HighlightSummary, _: &()) {}
 }
 
-impl<'a> zz_gpui::sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
+impl<'a> ala::sum_tree::Dimension<'a, HighlightSummary> for Range<usize> {
     fn zero(_: &()) -> Self {
         Default::default()
     }

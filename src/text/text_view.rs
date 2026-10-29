@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use zz_gpui::prelude::FluentBuilder as _;
-use zz_gpui::{
+use ala::prelude::FluentBuilder as _;
+use ala::{
     AnyElement, App, Bounds, Element, ElementId, Entity, GlobalElementId, Hitbox, HitboxBehavior,
     InspectorElementId, InteractiveElement, IntoElement, LayoutId, ParentElement, Pixels,
     SharedString, StyleRefinement, Styled, Window, div,
@@ -213,7 +213,7 @@ impl Element for TextView {
                     cx.propagate();
                     return;
                 }
-                cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(text.to_string()));
+                cx.write_to_clipboard(ala::ClipboardItem::new_string(text.to_string()));
             })
             .on_action(window.listener_for(&state, TextViewState::on_action_select_all))
             .child(state.clone())
@@ -261,7 +261,7 @@ impl Element for TextView {
 mod tests {
     use super::{TextView, clipboard_selection_text};
     use crate::text::TextViewState;
-    use zz_gpui::{
+    use ala::{
         AppContext as _, Context, Entity, InteractiveElement as _, IntoElement, Modifiers,
         MouseButton, MouseDownEvent, MouseUpEvent, ParentElement as _, Render, Styled as _,
         TestAppContext, VisualTestContext, Window, div, point, px,
@@ -335,7 +335,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn inline_image_keeps_surrounding_text_on_same_line(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|window, cx| {
@@ -379,7 +379,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn hovering_plain_glyphs_does_not_redraw(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (root, cx) = cx.add_window_view(|window, cx| {
@@ -426,7 +426,7 @@ mod tests {
         assert_eq!(notified.get(), 1, "entering a link redraws for its cursor");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn inline_image_after_hard_break_starts_the_next_line(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|window, cx| {
@@ -457,7 +457,7 @@ mod tests {
         assert!(inline_bounds[1].left() > inline_bounds[0].left());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn list_item_renders_a_nested_code_block_at_full_width(cx: &mut TestAppContext) {
         struct ListItemBlockRoot;
 
@@ -501,7 +501,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn clipped_markdown_link_does_not_open(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, cx| {
@@ -514,7 +514,7 @@ mod tests {
         assert_eq!(cx.opened_url(), None);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn clipped_markdown_cannot_start_selection(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx
@@ -562,7 +562,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn selection_band_beyond_clip_copies_offscreen_text(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (root, cx) = cx.add_window_view(|window, cx| {
@@ -602,7 +602,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn double_click_selects_word(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) =
@@ -635,7 +635,7 @@ mod tests {
         assert_eq!(selected_text.trim(), "quick");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn triple_click_selects_paragraph(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) =
@@ -669,9 +669,9 @@ mod tests {
         assert_eq!(selected_text.trim(), "quick select value");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn outer_list_content_total_stable_while_scrolling(cx: &mut TestAppContext) {
-        use zz_gpui::{ListAlignment, ListState, list};
+        use ala::{ListAlignment, ListState, list};
 
         const ITEMS: &[&str] = &[
             "# Heading\n\nA paragraph long enough to wrap across several lines and produce a non-trivial height.",

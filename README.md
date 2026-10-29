@@ -7,7 +7,7 @@
    //          {{{{     &gt;&gt;        <br>
                                   <br>
 ---                               <br>
-name: kit                         <br>
+name: penna                       <br>
 description: ui widgets           <br>
 author: autistic.computer         <br>
 license: apache-2.0               <br>

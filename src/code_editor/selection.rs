@@ -1,8 +1,8 @@
 use std::ops::Range;
 
+use ala::sum_tree::Bias;
+use ala::{Context, Window};
 use unicode_segmentation::UnicodeSegmentation as _;
-use zz_gpui::sum_tree::Bias;
-use zz_gpui::{Context, Window};
 
 use super::{CodeEditorState, RopeExt as _};
 

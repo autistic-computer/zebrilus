@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{
+use ala::{
     AnyView, App, HighlightStyle, Modifiers, MouseButton, SharedString, UnderlineStyle, Window, px,
 };
 

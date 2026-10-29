@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
+use ala::{App, EntityId, Global};
 use web_time::{Duration, Instant};
-use zz_gpui::{App, EntityId, Global};
 
 const TICK: Duration = Duration::from_millis(33);
 
@@ -31,7 +31,7 @@ pub fn pulse_phase(period: Duration, view: EntityId, cx: &mut App) -> f32 {
     }
 
     let phase = phase_at(
-        zz_gpui::animation_time(cx.default_global::<PulseClock>().epoch.elapsed()),
+        ala::animation_time(cx.default_global::<PulseClock>().epoch.elapsed()),
         period,
     );
     pulse_lease(view, cx);

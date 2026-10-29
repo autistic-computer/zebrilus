@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::window_border;
-use zz_gpui::{
+use ala::{
     Anchor, AnyView, App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle,
     InteractiveElement as _, IntoElement, ParentElement as _, Render, StyleRefinement, Styled,
     WeakFocusHandle, Window, div, prelude::FluentBuilder as _,
@@ -74,7 +74,7 @@ impl Root {
         let root = window
             .root::<Self>()
             .flatten()
-            .expect("the window's root view must be a zz_gpui_kit::Root");
+            .expect("the window's root view must be a penna::Root");
 
         root.update(cx, |root, cx| f(root, window, cx))
     }
@@ -83,7 +83,7 @@ impl Root {
         window
             .root::<Self>()
             .flatten()
-            .expect("the window's root view must be a zz_gpui_kit::Root")
+            .expect("the window's root view must be a penna::Root")
             .read(cx)
     }
 
@@ -377,9 +377,7 @@ impl Render for Root {
 #[cfg(test)]
 mod tests {
     use super::{Dialog, Root};
-    use zz_gpui::{
-        App, AppContext as _, Context, IntoElement, Render, TestAppContext, Window, div,
-    };
+    use ala::{App, AppContext as _, Context, IntoElement, Render, TestAppContext, Window, div};
 
     struct TestView;
 
@@ -393,7 +391,7 @@ mod tests {
         dialog
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn dialogs_stack_and_unwind(cx: &mut TestAppContext) {
         cx.update(crate::init);
 

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use zz_gpui::{
+use ala::{
     App, InteractiveElement as _, IntoElement, ListState, ParentElement as _, SharedString,
     Styled as _, Window, div,
 };
@@ -102,7 +102,7 @@ impl ParsedDocument {
         }
 
         div().id("document").size_full().child(
-            zz_gpui::list(list_state, {
+            ala::list(list_state, {
                 let node_cx = node_cx.clone();
                 let blocks = blocks.clone();
                 move |ix, window, cx| {

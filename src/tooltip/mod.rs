@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     Action, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder,
 };

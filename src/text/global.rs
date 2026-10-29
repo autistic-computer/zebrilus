@@ -1,4 +1,4 @@
-use zz_gpui::{App, Entity, Global};
+use ala::{App, Entity, Global};
 
 use super::{state::TextViewState, window_selection::SelectionScope};
 

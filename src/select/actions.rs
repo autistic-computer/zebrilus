@@ -1,3 +1,3 @@
-use zz_gpui::actions;
+use ala::actions;
 
 actions!(zz_select, [Cancel, Confirm, SelectNext, SelectPrev]);

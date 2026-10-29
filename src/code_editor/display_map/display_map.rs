@@ -1,7 +1,7 @@
 use std::ops::Range;
 
+use ala::{App, Font, Pixels};
 use ropey::Rope;
-use zz_gpui::{App, Font, Pixels};
 
 use super::fold_map::FoldMap;
 use super::folding::FoldRange;

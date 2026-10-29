@@ -1,6 +1,6 @@
 use std::{rc::Rc, time::Duration};
 
-use zz_gpui::{
+use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, ClickEvent, ElementId,
     InteractiveElement as _, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
     StatefulInteractiveElement as _, Styled as _, Window, div, prelude::FluentBuilder as _, px,
@@ -112,7 +112,7 @@ impl RenderOnce for SegmentedControl {
                 Some(from) if from != to => pill
                     .with_animation(
                         ("slide", generation),
-                        Animation::new(SLIDE).with_easing(zz_gpui::ease_out_quint()),
+                        Animation::new(SLIDE).with_easing(ala::ease_out_quint()),
                         move |pill, delta| {
                             pill.left(lerp(from.origin.x, to.origin.x, delta)).w(lerp(
                                 from.size.width,
@@ -143,7 +143,7 @@ impl RenderOnce for SegmentedControl {
                     });
                 div()
                     .id(("segment", index))
-                    .role(zz_gpui::Role::Button)
+                    .role(ala::Role::Button)
                     .aria_label(label.clone())
                     .aria_selected(index == selected)
                     .relative()

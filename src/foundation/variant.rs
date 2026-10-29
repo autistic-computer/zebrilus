@@ -1,5 +1,5 @@
+use ala::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 use serde::{Deserialize, Serialize};
-use zz_gpui::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
 use super::{
     Colorize as _, Theme,
@@ -426,7 +426,7 @@ impl<E: StatefulInteractiveElement + Styled> InteractivePaintExt for E {}
 mod tests {
     use super::*;
     use crate::ThemeColor;
-    use zz_gpui::hsla;
+    use ala::hsla;
 
     fn accent_theme(on_accent: Option<Hsla>) -> Theme {
         let mut theme = Theme::from(&*ThemeColor::dark());

@@ -1,13 +1,13 @@
 use std::{cell::Cell, panic::Location, rc::Rc};
 
-use web_time::{Duration, Instant};
-use zz_gpui::{
+use ala::{
     Anchor, App, Axis, Bounds, ContentMask, CursorStyle, Element, ElementId, GlobalElementId,
     Hitbox, HitboxBehavior, Hsla, InspectorElementId, IntoElement, LayoutId, ListState,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Position, ScrollHandle,
     ScrollWheelEvent, Size, Style, UniformListScrollHandle, Window, fill, point, px, relative,
     size, transparent_black,
 };
+use web_time::{Duration, Instant};
 
 use crate::ActiveTheme as _;
 use crate::Colorize as _;
@@ -254,7 +254,7 @@ impl ScrollbarStateInner {
 fn schedule_fade_wake(
     state: &ScrollbarState,
     delay: Duration,
-    view_id: zz_gpui::EntityId,
+    view_id: ala::EntityId,
     window: &Window,
     cx: &mut App,
 ) {
@@ -879,13 +879,13 @@ impl Element for Scrollbar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::{
+    use ala::{
         Context, InteractiveElement as _, Modifiers, MouseButton, ParentElement as _, Render,
         Styled as _, div,
     };
 
-    #[zz_gpui::test]
-    fn track_click_notifies_after_changing_custom_handle_offset(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn track_click_notifies_after_changing_custom_handle_offset(cx: &mut ala::TestAppContext) {
         #[derive(Clone, Default)]
         struct TestHandle(Rc<Cell<Point<Pixels>>>);
 
@@ -983,12 +983,12 @@ mod tests {
     }
 
     fn covered_root(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
         show: ScrollbarShow,
         cover: Bounds<Pixels>,
     ) -> (
-        zz_gpui::Entity<CoveredRoot>,
-        &mut zz_gpui::VisualTestContext,
+        ala::Entity<CoveredRoot>,
+        &mut ala::VisualTestContext,
         CoveredHandle,
     ) {
         cx.update(crate::init);
@@ -1005,8 +1005,8 @@ mod tests {
         (root, cx, handle)
     }
 
-    #[zz_gpui::test]
-    fn a_press_on_an_element_over_the_track_is_left_to_it(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_press_on_an_element_over_the_track_is_left_to_it(cx: &mut ala::TestAppContext) {
         let cover = Bounds::new(point(px(50.), px(60.)), size(px(50.), px(40.)));
         let (_, cx, handle) = covered_root(cx, ScrollbarShow::Always, cover);
         cx.simulate_click(point(px(95.), px(80.)), Modifiers::default());
@@ -1016,8 +1016,8 @@ mod tests {
         assert!(handle.offset().y < px(0.));
     }
 
-    #[zz_gpui::test]
-    fn hovering_an_element_over_the_track_leaves_the_bar_alone(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn hovering_an_element_over_the_track_leaves_the_bar_alone(cx: &mut ala::TestAppContext) {
         let cover = Bounds::new(point(px(50.), px(0.)), size(px(50.), px(50.)));
         let (root, cx, _) = covered_root(cx, ScrollbarShow::Hover, cover);
         cx.simulate_mouse_move(point(px(20.), px(20.)), None, Modifiers::default());

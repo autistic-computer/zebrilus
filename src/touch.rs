@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, Div, Element, ElementId, Global, GlobalElementId, InspectorElementId,
     InteractiveElement as _, IntoElement, LayoutId, Pixels, Stateful, Styled as _, Window, div,
 };
@@ -137,7 +137,7 @@ pub fn hit_area(id: impl Into<ElementId>, slop_x: f32, slop_y: f32) -> Stateful<
 mod tests {
     use std::{cell::Cell, rc::Rc};
 
-    use zz_gpui::{
+    use ala::{
         Context, IntoElement, Modifiers, ParentElement as _, Render,
         StatefulInteractiveElement as _, TestAppContext, Window, point, px,
     };
@@ -156,7 +156,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let count = |index: usize, clicks: &Rc<Cell<[usize; 3]>>| {
                 let clicks = Rc::clone(clicks);
-                move |_: &zz_gpui::ClickEvent, _: &mut Window, _: &mut App| {
+                move |_: &ala::ClickEvent, _: &mut Window, _: &mut App| {
                     let mut all = clicks.get();
                     all[index] += 1;
                     clicks.set(all);
@@ -190,13 +190,13 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn coarse_buttons_take_taps_beside_the_glyph(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let clicks = Rc::new(Cell::new([0; 3]));
         let shared = Rc::clone(&clicks);
         let (_, cx) = cx.add_window_view(move |_, _| Host { clicks: shared });
-        let tap = |cx: &mut zz_gpui::VisualTestContext, at| {
+        let tap = |cx: &mut ala::VisualTestContext, at| {
             cx.simulate_click(at, Modifiers::none());
             cx.run_until_parked();
         };

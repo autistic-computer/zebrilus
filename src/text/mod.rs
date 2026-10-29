@@ -21,7 +21,7 @@ mod utils;
 mod veil;
 mod window_selection;
 
-use zz_gpui::{App, KeyBinding, actions};
+use ala::{App, KeyBinding, actions};
 
 pub use links::{LinkClick, TextLinks};
 pub use markdown_ext::{

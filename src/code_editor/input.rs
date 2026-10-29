@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, Corners, Entity, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
     RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px,
 };

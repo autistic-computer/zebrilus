@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use zz_gpui::SharedString;
+use ala::SharedString;
 
 const MAX_ENTRIES: usize = 256;
 

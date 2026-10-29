@@ -10,8 +10,8 @@ use std::{
     },
 };
 
+use ala::{AnyElement, App, IntoElement, SharedString, Window};
 use markdown::{ParseOptions, mdast};
-use zz_gpui::{AnyElement, App, IntoElement, SharedString, Window};
 
 use super::node::Span;
 

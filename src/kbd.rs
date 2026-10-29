@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     Action, AnyElement, App, AsKeystroke as _, FocusHandle, FontWeight, IntoElement, KeyContext,
     Keystroke, ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, px,
 };
@@ -372,7 +372,7 @@ impl RenderOnce for Keycap {
 mod tests {
     use super::{Kbd, KeyGlyphs, Keycap};
     use crate::{Elevation, Theme, ThemeColor};
-    use zz_gpui::Keystroke;
+    use ala::Keystroke;
 
     #[test]
     fn kbd_and_keycap_draw_one_cap_on_the_same_ground() {

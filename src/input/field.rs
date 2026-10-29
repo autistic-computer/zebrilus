@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, DefiniteLength, Entity, InteractiveElement, IntoElement, MouseButton,
     ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
     TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
@@ -336,7 +336,7 @@ impl RenderOnce for Input {
             .w_full()
             .line_height(LINE_HEIGHT)
             .text_color(paint.text_at(paint_state))
-            .when(editable, zz_gpui::Styled::cursor_text);
+            .when(editable, ala::Styled::cursor_text);
 
         element = Self::sized(element, self.size);
         if !multi_line {
@@ -496,7 +496,7 @@ mod tests {
         assert_eq!(focused.border.a, 0.0);
 
         let mut theme = Theme::from(&*ThemeColor::dark());
-        theme.glass = zz_gpui::GlassMaterial::preset("regular");
+        theme.glass = ala::GlassMaterial::preset("regular");
         let glass = Surface::new(
             SurfaceRole::new("test.glass-field", Kind::Field, "Glass fields", "")
                 .with(StylePatch::EMPTY.fill(Fill::Glass)),

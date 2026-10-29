@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, Context, Entity, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _,
     RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, actions,
     prelude::FluentBuilder as _,
@@ -13,7 +13,7 @@ use super::{
     field::{Input, field_chrome},
     state::{InputState, StepDirection},
 };
-use zz_gpui::TextAlign;
+use ala::TextAlign;
 
 actions!(zz_number_input, [Increment, Decrement]);
 

@@ -1,6 +1,6 @@
 use std::{rc::Rc, time::Duration};
 
-use zz_gpui::{
+use ala::{
     Animation, AnimationExt as _, App, Background, ElementId, Entity, Hsla,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, Pixels, RenderOnce,
     SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
@@ -248,13 +248,12 @@ impl RenderOnce for Switch {
                     self.on_click.clone().filter(|_| !self.disabled),
                     |this, on_click| {
                         let toggle_state = toggle_state.clone();
-                        let toggle = move |_: &zz_gpui::MouseDownEvent,
-                                           window: &mut Window,
-                                           cx: &mut App| {
-                            cx.stop_propagation();
-                            let () = toggle_state.update(cx, |this, _| *this = checked);
-                            on_click(&!checked, window, cx);
-                        };
+                        let toggle =
+                            move |_: &ala::MouseDownEvent, window: &mut Window, cx: &mut App| {
+                                cx.stop_propagation();
+                                let () = toggle_state.update(cx, |this, _| *this = checked);
+                                on_click(&!checked, window, cx);
+                            };
                         this.on_mouse_down(MouseButton::Left, toggle.clone())
                             .when(coarse, |this| {
                                 this.child(

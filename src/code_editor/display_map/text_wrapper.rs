@@ -1,11 +1,11 @@
 use std::ops::Range;
 
-use ropey::Rope;
-use smallvec::SmallVec;
-use zz_gpui::sum_tree::{Bias, Dimensions, SumTree};
-use zz_gpui::{
+use ala::sum_tree::{Bias, Dimensions, SumTree};
+use ala::{
     App, Font, LineFragment, Pixels, Point, ShapedLine, Size, TextAlign, Window, point, px, size,
 };
+use ropey::Rope;
+use smallvec::SmallVec;
 
 use crate::code_editor::{LastLayout, Point as TreeSitterPoint, RopeExt, WhitespaceIndicators};
 
@@ -36,7 +36,7 @@ pub(crate) struct LineSummary {
     longest_row: usize,
 }
 
-impl zz_gpui::sum_tree::Summary for LineSummary {
+impl ala::sum_tree::Summary for LineSummary {
     type Context<'a> = &'a ();
 
     fn zero(_: &()) -> Self {
@@ -60,7 +60,7 @@ impl zz_gpui::sum_tree::Summary for LineSummary {
     }
 }
 
-impl zz_gpui::sum_tree::Item for LineItem {
+impl ala::sum_tree::Item for LineItem {
     type Summary = LineSummary;
 
     fn summary(&self, _: &()) -> LineSummary {
@@ -77,7 +77,7 @@ impl zz_gpui::sum_tree::Item for LineItem {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct BufferRows(pub usize);
 
-impl<'a> zz_gpui::sum_tree::Dimension<'a, LineSummary> for BufferRows {
+impl<'a> ala::sum_tree::Dimension<'a, LineSummary> for BufferRows {
     fn zero(_: &()) -> Self {
         BufferRows(0)
     }
@@ -90,7 +90,7 @@ impl<'a> zz_gpui::sum_tree::Dimension<'a, LineSummary> for BufferRows {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct WrapRows(pub usize);
 
-impl<'a> zz_gpui::sum_tree::Dimension<'a, LineSummary> for WrapRows {
+impl<'a> ala::sum_tree::Dimension<'a, LineSummary> for WrapRows {
     fn zero(_: &()) -> Self {
         WrapRows(0)
     }
@@ -239,7 +239,7 @@ impl TextWrapper {
         new_text: &Rope,
         wrap_line: &mut F,
     ) where
-        F: FnMut(&str, Pixels) -> Vec<zz_gpui::Boundary>,
+        F: FnMut(&str, Pixels) -> Vec<ala::Boundary>,
     {
         let buffer_line_count = self.lines_count();
         let start_row = self.text.offset_to_point(range.start).row;
@@ -542,11 +542,11 @@ mod tests {
     use super::*;
     use std::rc::Rc;
 
-    use zz_gpui::{Boundary, FontFeatures, FontStyle, FontWeight, px};
+    use ala::{Boundary, FontFeatures, FontStyle, FontWeight, px};
 
     #[test]
     fn test_update() {
-        let font = zz_gpui::Font {
+        let font = ala::Font {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,
@@ -732,8 +732,8 @@ mod tests {
         assert_eq!(wrapper.lines_count(), 2);
     }
 
-    fn test_font() -> zz_gpui::Font {
-        zz_gpui::Font {
+    fn test_font() -> ala::Font {
+        ala::Font {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,
@@ -905,7 +905,7 @@ mod tests {
 
     #[test]
     fn test_offset_to_display_point() {
-        let font = zz_gpui::Font {
+        let font = ala::Font {
             family: "Arial".into(),
             weight: FontWeight::default(),
             style: FontStyle::Normal,

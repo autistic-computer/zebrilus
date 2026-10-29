@@ -1,6 +1,6 @@
 use std::sync::{Arc, LazyLock};
 
-use zz_gpui::Hsla;
+use ala::Hsla;
 
 use super::{ThemeColor, ThemeMode, color::hsl};
 
@@ -27,7 +27,7 @@ impl ThemeColor {
 
 #[inline]
 fn scrim(alpha: f32) -> Hsla {
-    zz_gpui::hsla(0., 0., 0., alpha)
+    ala::hsla(0., 0., 0., alpha)
 }
 
 fn palette(mode: ThemeMode) -> ThemeColor {
@@ -116,7 +116,7 @@ mod tests {
                 (palette.foreground, tinted.foreground),
             ] {
                 assert!((lightness(after) - lightness(before)).abs() < 0.01);
-                let rgb = zz_gpui::Rgba::from(after);
+                let rgb = ala::Rgba::from(after);
                 assert!(rgb.g > rgb.r && rgb.g > rgb.b, "{rgb:?}");
             }
             let text = chroma(tinted.foreground) - chroma(palette.foreground);

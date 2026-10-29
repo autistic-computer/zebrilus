@@ -1,10 +1,10 @@
-# zz-gpui-kit: the fork of gpui-component
+# penna: the fork of gpui-component
 
-`zz-gpui-kit` owns zz's entire widget layer. It was split out of `zz-ui` on 2026-10-09 so it
-depends on nothing but zz-gpui; zz's application UI stays in `zz-ui`. It began as a thin facade over
+`penna` owns zz's entire widget layer. It was split out of `zz-ui` on 2026-10-09 so it
+depends on nothing but ala; zz's application UI stays in `zz-ui`. It began as a thin facade over
 [`gpui-component`][upstream] and was progressively forked, module by module,
 until the dependency could be deleted outright. **`gpui-component` is no longer
-a dependency of this workspace**; nothing outside zz-gpui (our gpui) is left.
+a dependency of this workspace**; nothing outside ala (our ala) is left.
 
 - Forked from: `longbridge/gpui-component`, now [longbridge/gpui-kit][upstream]
 - Original source revision: `b004e595cf5de98a73b6b561394a559a94ae1e2a`
@@ -16,7 +16,7 @@ a dependency of this workspace**; nothing outside zz-gpui (our gpui) is left.
   marks are files in `assets/icons`: `brand-chrome` is [Tabler Icons][tabler]
   outline, MIT, retained as `assets/icons/LICENSE-TABLER` (© 2020–2026 Paweł Kuna),
   and the vendor marks (`openai`, `claude`) are [Simple Icons][simple-icons], CC0-1.0.
-- `zz-gpui-kit`'s own code is `MIT OR Apache-2.0` like the rest of the workspace;
+- `penna`'s own code is `MIT OR Apache-2.0` like the rest of the workspace;
   the ported portions remain under upstream's Apache-2.0 terms.
 
 ## Why fork
@@ -38,7 +38,7 @@ src/
   sheet.rs, dismissal.rs, touch/, pulse.rs   zz-original touch and motion primitives
 ```
 
-Everything is reached through `zz_gpui_kit::<widget>`, mirroring upstream's namespace.
+Everything is reached through `penna::<widget>`, mirroring upstream's namespace.
 `zz-ui` re-exports the kit, so zz code also reaches it as `zz_ui::<widget>`.
 
 ## Ported modules and local deltas
@@ -68,12 +68,12 @@ Everything is reached through `zz_gpui_kit::<widget>`, mirroring upstream's name
 | `code_editor/display_map` | close-to-source | upstream buffer/wrap/fold mapping, kept for a future fold UI. Nothing reads it yet, because element.rs wraps through `shape_text`, but every edit still reaches it with upstream's arguments (post-edit rope, pre-edit range, inserted text) and `set_value` reports a whole-range replacement. Folding compiles but has no exposed UI in zz's first editor surface. |
 | `code_editor/vim` | **zz-original** | not upstream code and not a port of anyone's: upstream has no vim layer, and the whole thing is hand-rolled on the vendored editor with zero new dependencies. Split into a pure core (`parser` keystroke grammar, `motion`, `text_object` . all plain functions over a `Rope`, no GPUI, no `CodeEditorState`) and a thin `executor` that spends the editor's existing primitives. Inert unless `set_vim_enabled(true)`: `CodeEditorState::vim` is `None` by default and every interception is behind that check. The hooks it needed in the ported files are small and marked in place . text input is diverted in `state.rs`'s `replace_text_in_range`/`replace_and_mark_text_in_range`, the bound keys (Escape, Enter, Backspace, Tab, arrows, Home/End, PageUp/Down) ask `vim_key` first, vim's control chords bind against a second `vim` key-context identifier `input.rs` adds only when the layer is on, and `element.rs` paints a block cursor plus an optional relative rail. Five vendored helpers widened from private to `pub(super)` so the executor can spend them instead of reimplementing them: `break_typing_group`, `pause_blink_cursor`, `indent_selection`, `outdent_selection`, `viewport_rows`. One deliberate structural change to `element.rs`: the line-number rail left `ShapedText`/`ShapedCache` and is now shaped per frame for visible rows only, because relative numbering depends on the cursor line and must never invalidate the buffer shaping. |
 | `text` | close-to-source | renderer only . `markdown_ast` is `markdown::mdast`, so parsing comes from the `markdown` crate. Dropped upstream's HTML path (`html5ever`), which zz never rendered. Owns the window text-selection host that `overlay::Root` mounts. Heading base sizes are design pixels converted through the live root rem, keeping Markdown headings aligned with scaled body text. `InlineState` retains the hovered link range across GPUI's frame-owned mouse handlers, and a run with no links registers no move listener, so moving over plain glyphs never invalidates the window. A finished selection outlives a resize as each run's byte range (`TextViewState::preserve_inline_selection`) rather than through upstream's logical selection adapter. |
-| `highlighter` | mixed | keeps the upstream non-tree-sitter stub as the default and ports the real parser behind zz-gpui-kit's optional `tree-sitter` feature (tree-sitter 0.27, which builds for `wasm32-unknown-unknown`; the registry stores `LanguageFn` because a built `Language` is not `Send` there). The registry is trimmed to Rust, Markdown, JSON, TOML and tmux; colors come from the already-vendored `HighlightTheme` palettes rather than upstream's JSON theme registry. Incremental editor parses complete synchronously because zz does not vendor upstream's background-parser task. |
+| `highlighter` | mixed | keeps the upstream non-tree-sitter stub as the default and ports the real parser behind penna's optional `tree-sitter` feature (tree-sitter 0.27, which builds for `wasm32-unknown-unknown`; the registry stores `LanguageFn` because a built `Language` is not `Send` there). The registry is trimmed to Rust, Markdown, JSON, TOML and tmux; colors come from the already-vendored `HighlightTheme` palettes rather than upstream's JSON theme registry. Incremental editor parses complete synchronously because zz does not vendor upstream's background-parser task. |
 
 ## Two gotchas
 
 **Syntax highlighting is feature-gated.** With default features `highlighter/syntax.rs` returns
-no styles and its parity test remains the contract. Desktop and iOS enable `zz-ui/tree-sitter` (which turns on `zz-gpui-kit/tree-sitter`);
+no styles and its parity test remains the contract. Desktop and iOS enable `zz-ui/tree-sitter` (which turns on `penna/tree-sitter`);
 the browser client enables it through its `syntax-highlighting` feature, which
 `scripts/build-web-wasm.sh` turns on with the wasm C recipe (`llvm-ar`, tree-sitter-language's
 wasm headers, empty libc stubs; `WEB_SYNTAX_HIGHLIGHTING=0` skips it). The live demo and CI's
@@ -92,12 +92,12 @@ landed in a single commit.
 
 The shared Interface settings page includes a font picker using the shared Button and scrollable PopupMenu.
 Native entrypoints register `AvailableFonts` with their platform text system so the list excludes
-GPUI's hardcoded fallback names. The browser client uses GPUI's font list. The picker includes
+ala's hardcoded fallback names. The browser client uses ala's font list. The picker includes
 System default and filters internal dot-prefixed font aliases.
 
 ## Conventions
 
-`Theme::control_radius()` returns the configured radius through 24px and GPUI's full-rounding
+`Theme::control_radius()` returns the configured radius through 24px and ala's full-rounding
 value above 24px. Buttons, single-line inputs, number fields, select triggers, navigation
 chips and tree highlights, and browser controls use it so Full mode can produce
 pills and circles under adaptive rounding. Effort-slider pills follow the same rule. Popup menus,
@@ -124,14 +124,14 @@ selected text, and no shadow. Inputs and number fields reserve a 1px border for 
 Button keyboard focus rings also use the accent.
 
 PopupMenu, model picker, and directory/session picker rows use `StyledExt::menu_item_corners`
-with GPUI's per-element fixed radius mode and smoothing 2.5. Their radius is capped at 40%
+with ala's per-element fixed radius mode and smoothing 2.5. Their radius is capped at 40%
 of the row height. Custom menu content receives the highlight state so descriptions brighten
 to the normal foreground. Directory and session rows share 26px heights and 12px labels.
 The menu surface retains the window's adaptive squircle rounding. Fill and border use native
-GPUI painting; no highlight painter or row masks are involved.
+ala painting; no highlight painter or row masks are involved.
 
 Picker, chooser, command palette, popup menu, and dialog surfaces share a 160ms entrance:
-they fade in while settling upward by 6px, using GPUI's reduced-motion behavior.
+they fade in while settling upward by 6px, using ala's reduced-motion behavior.
 Dialog movement starts near its final position instead of sliding from the window edge.
 Each opened dialog has its own animation identity so replacement dialogs animate again.
 
@@ -202,7 +202,7 @@ added the rows from `a4ba683e` down.
 | [`1188c110`][u28] (blink part) | `code_editor` `BlinkCursor::stop` kept its visible and paused flags, hiding a refocused caret for 500ms. The 1px caret and press-to-focus changes are not ported. |
 | [`cc839912`][u29] (PopupMenu part) | A key press ended hover and cleared the menu highlight, so an unbound key reset keyboard navigation. The clear is skipped while the last input was the keyboard. |
 | [`9c4b175c`][u30] | ContextMenu focused its menu during layout, every frame, which panicked debug builds with accessibility on. It focuses the menu before its first frame; PopupMenu refocuses itself when a hover closes a focused submenu. |
-| [`369f7a8f`][u31] | Button skipped its hover style while selected, leaving GPUI's cached hover state stale after a dropdown closed. The style is always registered and empty when it should not apply. |
+| [`369f7a8f`][u31] | Button skipped its hover style while selected, leaving ala's cached hover state stale after a dropdown closed. The style is always registered and empty when it should not apply. |
 | [`70465ac7`][u32] (Space only) | Space on a focused select did nothing; it opens it, outside `ZzInput` contexts. |
 | [`40ac007f`][u33] (vertical selection) | Shift+Up on the first editor line selected nothing, and horizontal selection kept a stale remembered column. |
 | [`dca2c369`][u34] (hover part) | Markdown runs redrew their view on every glyph the pointer crossed; they redraw only when the hovered link changes. |

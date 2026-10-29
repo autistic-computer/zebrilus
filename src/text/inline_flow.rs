@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use zz_gpui::{
+use ala::{
     AbsoluteLength, AnyElement, App, AvailableSpace, Bounds, DefiniteLength, Element, ElementId,
     GlobalElementId, HighlightStyle, InspectorElementId, InteractiveElement as _, IntoElement,
     LayoutId, LineFragment as WrapLineFragment, ObjectFit, Pixels, ShapedLine, SharedString,
@@ -62,7 +62,7 @@ struct InlineFlowLayout {
 enum PositionedFragment {
     Text {
         item_ix: usize,
-        origin: zz_gpui::Point<Pixels>,
+        origin: ala::Point<Pixels>,
         size: Size<Pixels>,
         source_range: Range<usize>,
         text: SharedString,
@@ -72,7 +72,7 @@ enum PositionedFragment {
     },
     Image {
         item_ix: usize,
-        origin: zz_gpui::Point<Pixels>,
+        origin: ala::Point<Pixels>,
         size: Size<Pixels>,
     },
 }
@@ -151,7 +151,7 @@ impl InlineFlow {
                         cx.stop_propagation();
                         let click = LinkClick {
                             url: link.url.clone(),
-                            button: zz_gpui::MouseButton::Left,
+                            button: ala::MouseButton::Left,
                             modifiers: event.modifiers(),
                         };
                         open_link(links.as_ref(), &click, window, cx);
@@ -764,8 +764,8 @@ fn clip(range: &Range<usize>, start: usize, end: usize) -> Option<Range<usize>> 
 mod tests {
     use super::*;
 
-    #[zz_gpui::test]
-    fn hard_lines_keep_empty_lines_and_exclude_newline_bytes(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn hard_lines_keep_empty_lines_and_exclude_newline_bytes(cx: &mut ala::TestAppContext) {
         let cx = cx.add_empty_window();
         cx.update(|window, _| {
             let items = vec![

@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use web_time::{Duration, Instant};
-use zz_gpui::{
+use ala::{
     AnyElement, App, Corners, DispatchPhase, ElementId, Entity, EntityId, Global, Hitbox,
     HitboxBehavior, Hsla, IntoElement, LongPressEvent, MouseButton, MouseDownEvent, MouseExitEvent,
     MouseUpEvent, Pixels, Point, ScrollWheelEvent, Styled, TouchDragEvent, TouchPhase, Window,
     canvas, fill,
 };
+use web_time::{Duration, Instant};
 
 use crate::{ActiveTheme as _, Emphasis, Tone};
 
@@ -43,7 +43,7 @@ impl Press {
         };
         let rise = |at: Instant| {
             ease_out(
-                zz_gpui::animation_time(at.saturating_duration_since(from)),
+                ala::animation_time(at.saturating_duration_since(from)),
                 RISE,
             )
         };
@@ -52,7 +52,7 @@ impl Press {
                 rise(until)
                     * (1.0
                         - ease_out(
-                            zz_gpui::animation_time(now.saturating_duration_since(until)),
+                            ala::animation_time(now.saturating_duration_since(until)),
                             FALL,
                         ))
             }
@@ -330,7 +330,7 @@ fn listen(state: &Entity<Press>, hitbox: Hitbox, delay: Duration, window: &mut W
 mod tests {
     use std::{cell::Cell, rc::Rc};
 
-    use zz_gpui::{
+    use ala::{
         Context, Modifiers, ParentElement as _, Render, ScrollDelta, TestAppContext,
         VisualTestContext, div, point, prelude::*, px,
     };
@@ -392,7 +392,7 @@ mod tests {
         cx.simulate_mouse_up(at, MouseButton::Left, Modifiers::none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_held_touch_lights_the_innermost_control_after_the_delay(cx: &mut TestAppContext) {
         let (outer, inner, cx) = host(cx);
         let at = point(px(30.0), px(30.0));
@@ -409,7 +409,7 @@ mod tests {
         assert_eq!(inner.get(), 0.0);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_touch_that_ends_without_a_tap_lets_go(cx: &mut TestAppContext) {
         let (_, inner, cx) = host(cx);
         let at = point(px(30.0), px(30.0));
@@ -425,7 +425,7 @@ mod tests {
         assert_eq!(inner.get(), 0.0);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_quick_tap_still_flashes(cx: &mut TestAppContext) {
         let (_, inner, cx) = host(cx);
         let at = point(px(30.0), px(30.0));
@@ -438,7 +438,7 @@ mod tests {
         assert_eq!(inner.get(), 0.0);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_scroll_before_the_delay_never_lights(cx: &mut TestAppContext) {
         let (outer, inner, cx) = host(cx);
         let at = point(px(30.0), px(30.0));
@@ -457,7 +457,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_mouse_press_lights_at_once(cx: &mut TestAppContext) {
         let (outer, inner, cx) = host(cx);
         let at = point(px(200.0), px(200.0));

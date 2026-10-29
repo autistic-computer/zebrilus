@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use zz_gpui::{
+use ala::{
     Anchor, App, Corners, Edges, GlassMaterial, Global, Hsla, Pixels, SharedString, Window,
     WindowAppearance, px, size,
 };
@@ -138,7 +138,7 @@ impl Theme {
     pub fn control_radius(&self) -> Pixels {
         let radius = self.control_radius.unwrap_or(self.radius);
         if radius > px(24.0) {
-            zz_gpui::FULL_CORNER_RADIUS
+            ala::FULL_CORNER_RADIUS
         } else {
             radius
         }
@@ -225,9 +225,9 @@ impl Theme {
             return tint;
         }
         let (pole, weights) = if active {
-            (zz_gpui::white(), PANE_WASH)
+            (ala::white(), PANE_WASH)
         } else {
-            (zz_gpui::black(), PANE_VEIL)
+            (ala::black(), PANE_VEIL)
         };
         let weight = weights[usize::from(self.mode.is_dark())] * self.pane_glow_strength;
         tint.blend(pole.alpha(weight.min(1.0)))
@@ -448,13 +448,13 @@ mod tests {
                 ..Theme::default()
             };
             for (width, height) in [(24.0, 24.0), (120.0, 30.0), (360.0, 40.0)] {
-                let size = zz_gpui::size(px(width), px(height));
-                let control = zz_gpui::Corners::all(theme.control_radius())
+                let size = ala::size(px(width), px(height));
+                let control = ala::Corners::all(theme.control_radius())
                     .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION);
-                let surface = zz_gpui::Corners::all(theme.radius)
+                let surface = ala::Corners::all(theme.radius)
                     .resolve_radii_for_quad_size(size, ADAPTIVE_CORNER_FRACTION);
                 if radius > 24.0 {
-                    assert_eq!(control, zz_gpui::Corners::all(px(height / 2.0)));
+                    assert_eq!(control, ala::Corners::all(px(height / 2.0)));
                     assert!(surface.top_left < control.top_left);
                 } else {
                     assert_eq!(control, surface);
@@ -532,7 +532,7 @@ mod tests {
     #[test]
     fn bright_glass_panes_rise_in_light_mode_only() {
         let mut light = (*ThemeColor::light()).clone();
-        light.background = zz_gpui::hsla(0., 0., 0.97, 1.);
+        light.background = ala::hsla(0., 0., 0.97, 1.);
         for (mode, colors) in [
             (ThemeMode::Light, &light),
             (ThemeMode::Dark, &*ThemeColor::dark()),

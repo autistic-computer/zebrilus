@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, Axis, Hsla, IntoElement, ParentElement as _, RenderOnce, StyleRefinement, Styled, Window,
     div, prelude::FluentBuilder as _,
 };

@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, RenderOnce, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
@@ -180,7 +180,7 @@ impl RenderOnce for ListItem {
 mod tests {
     use super::*;
     use crate::{Highlight, StylePatch};
-    use zz_gpui::{Context, IntoElement, Render, TestAppContext, solid_background};
+    use ala::{Context, IntoElement, Render, TestAppContext, solid_background};
 
     const TINTED: SurfaceRole =
         SurfaceRole::under(&SurfaceRole::MENU_ITEM, "test.row", "Tinted rows", "")
@@ -202,7 +202,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_row_roles_selected_highlight_reaches_the_selected_row(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| Rows);

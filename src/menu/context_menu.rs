@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use zz_gpui::{
+use ala::{
     Anchor, AnyElement, App, Context, DismissEvent, Element, ElementId, Entity, Focusable,
     GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement,
     LongPressEvent, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement,
@@ -143,11 +143,11 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
 
     fn request_layout(
         &mut self,
-        id: Option<&zz_gpui::GlobalElementId>,
-        _: Option<&zz_gpui::InspectorElementId>,
+        id: Option<&ala::GlobalElementId>,
+        _: Option<&ala::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (zz_gpui::LayoutId, Self::RequestLayoutState) {
+    ) -> (ala::LayoutId, Self::RequestLayoutState) {
         let anchor = self.anchor;
 
         self.with_element_state(
@@ -216,9 +216,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
 
     fn prepaint(
         &mut self,
-        _: Option<&zz_gpui::GlobalElementId>,
+        _: Option<&ala::GlobalElementId>,
         _: Option<&InspectorElementId>,
-        bounds: zz_gpui::Bounds<zz_gpui::Pixels>,
+        bounds: ala::Bounds<ala::Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         window: &mut Window,
         cx: &mut App,
@@ -231,9 +231,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
 
     fn paint(
         &mut self,
-        id: Option<&zz_gpui::GlobalElementId>,
+        id: Option<&ala::GlobalElementId>,
         _: Option<&InspectorElementId>,
-        _: zz_gpui::Bounds<zz_gpui::Pixels>,
+        _: ala::Bounds<ala::Pixels>,
         request_layout: &mut Self::RequestLayoutState,
         hitbox: &mut Self::PrepaintState,
         window: &mut Window,
@@ -339,7 +339,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
 mod tests {
     use std::cell::Cell;
 
-    use zz_gpui::{
+    use ala::{
         Context, FocusHandle, IntoElement, Render, TestAppContext, VisualTestContext, actions,
         point,
     };
@@ -406,7 +406,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn menu_takes_focus_before_its_first_frame(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let focused_renders = Rc::new(Cell::new(0));
@@ -447,7 +447,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn closing_the_window_with_the_menu_open_releases_the_menu(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let before = cx.update(|cx| cx.leak_detector_snapshot());
@@ -475,7 +475,7 @@ mod tests {
         cx.update(|cx| cx.assert_no_new_leaks(&before));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn action_bubbles_from_trigger_and_focus_restores_on_dismiss(cx: &mut TestAppContext) {
         cx.update(crate::init);
 

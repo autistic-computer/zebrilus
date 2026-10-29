@@ -1,4 +1,4 @@
-use zz_gpui::Hsla;
+use ala::Hsla;
 
 use super::{
     Colorize as _,

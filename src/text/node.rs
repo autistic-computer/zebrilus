@@ -7,14 +7,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use markdown::mdast;
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, DefiniteLength, Div, Element, ElementId, FontStyle, FontWeight,
     GlobalElementId, HighlightStyle, Hsla, InspectorElementId, InteractiveElement as _,
     IntoElement, LayoutId, Length, ObjectFit, Overflow, ParentElement, Pixels, ScrollHandle,
     SharedString, SharedUri, StatefulInteractiveElement, Styled, StyledImage as _, Window, div,
     img, prelude::FluentBuilder as _, px, relative, rems,
 };
+use markdown::mdast;
 
 use crate::{
     ActiveTheme as _, Edge, Kind, PaintState, RULE_WIDTH, Sizable as _, StyledExt, SurfaceRole,
@@ -205,15 +205,15 @@ impl Element for CustomBlockElement {
         }
         self.content.paint(window, cx);
         if selected {
-            window.paint_quad(zz_gpui::fill(bounds, cx.theme().foreground.wash()));
+            window.paint_quad(ala::fill(bounds, cx.theme().foreground.wash()));
         }
     }
 }
 
 fn custom_block_is_selected(
     bounds: Bounds<Pixels>,
-    start: zz_gpui::Point<Pixels>,
-    end: zz_gpui::Point<Pixels>,
+    start: ala::Point<Pixels>,
+    end: ala::Point<Pixels>,
 ) -> bool {
     let (start_inside, end_inside) = (bounds.contains(&start), bounds.contains(&end));
     start != end
@@ -1112,7 +1112,7 @@ impl Paragraph {
                                     cx.stop_propagation();
                                     let click = LinkClick {
                                         url: link.url.clone(),
-                                        button: zz_gpui::MouseButton::Left,
+                                        button: ala::MouseButton::Left,
                                         modifiers: event.modifiers(),
                                     };
                                     open_link(links.as_ref(), &click, window, cx);
@@ -1139,14 +1139,14 @@ impl Paragraph {
                         highlight.font_style = Some(FontStyle::Italic);
                     }
                     if style.strikethrough {
-                        highlight.strikethrough = Some(zz_gpui::StrikethroughStyle {
-                            thickness: zz_gpui::px(1.),
+                        highlight.strikethrough = Some(ala::StrikethroughStyle {
+                            thickness: ala::px(1.),
                             ..Default::default()
                         });
                     }
                     if style.underline {
-                        highlight.underline = Some(zz_gpui::UnderlineStyle {
-                            thickness: zz_gpui::px(1.),
+                        highlight.underline = Some(ala::UnderlineStyle {
+                            thickness: ala::px(1.),
                             ..Default::default()
                         });
                     }
@@ -1175,7 +1175,7 @@ impl Paragraph {
                     node_highlights.push((inner_range, highlight));
                 }
 
-                highlights = zz_gpui::combine_highlights(highlights, node_highlights).collect();
+                highlights = ala::combine_highlights(highlights, node_highlights).collect();
                 offset += text_len;
             }
             ix += 1;
@@ -1263,14 +1263,14 @@ impl Paragraph {
                         highlight.font_style = Some(FontStyle::Italic);
                     }
                     if style.strikethrough {
-                        highlight.strikethrough = Some(zz_gpui::StrikethroughStyle {
-                            thickness: zz_gpui::px(1.),
+                        highlight.strikethrough = Some(ala::StrikethroughStyle {
+                            thickness: ala::px(1.),
                             ..Default::default()
                         });
                     }
                     if style.underline {
-                        highlight.underline = Some(zz_gpui::UnderlineStyle {
-                            thickness: zz_gpui::px(1.),
+                        highlight.underline = Some(ala::UnderlineStyle {
+                            thickness: ala::px(1.),
                             ..Default::default()
                         });
                     }
@@ -1299,7 +1299,7 @@ impl Paragraph {
                     node_highlights.push((inner_range, highlight));
                 }
 
-                highlights = zz_gpui::combine_highlights(highlights, node_highlights).collect();
+                highlights = ala::combine_highlights(highlights, node_highlights).collect();
                 offset += text_len;
             }
         }
@@ -2039,8 +2039,8 @@ fn figure<E: Styled>(element: E, role: Option<SurfaceRole>, cx: &App) -> E {
 mod tests {
     use super::*;
 
-    #[zz_gpui::test]
-    fn inline_code_beside_an_image_keeps_its_rounded_code_fill(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn inline_code_beside_an_image_keeps_its_rounded_code_fill(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let document = super::super::markdown_parse::parse(
             "run `ls` ![icon](icon.png) now",
@@ -2070,8 +2070,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn table_columns_follow_measured_width_not_utf8_bytes(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn table_columns_follow_measured_width_not_utf8_bytes(cx: &mut ala::TestAppContext) {
         let document = super::super::markdown_parse::parse(
             "| 中文中文 | abcdefghijkl |\n| --- | --- |\n| 中 | a |\n",
             &mut NodeContext::default(),
@@ -2091,7 +2091,7 @@ mod tests {
 
     #[test]
     fn custom_blocks_are_atomic_in_both_drag_directions() {
-        use zz_gpui::{point, size};
+        use ala::{point, size};
         let bounds = Bounds::new(point(px(10.), px(20.)), size(px(100.), px(40.)));
         let inside = bounds.center();
         let above = point(px(0.), px(0.));
@@ -2136,10 +2136,10 @@ mod tests {
         assert_eq!(block.selected_text(), "");
     }
 
-    #[zz_gpui::test]
-    fn a_drag_across_a_custom_block_copies_it(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn a_drag_across_a_custom_block_copies_it(cx: &mut ala::TestAppContext) {
         use super::super::{MarkdownExtensions, TextView, TextViewState};
-        use zz_gpui::{
+        use ala::{
             AppContext as _, Context, Entity, Modifiers, MouseButton, ParentElement as _, Render,
             Styled as _, point,
         };

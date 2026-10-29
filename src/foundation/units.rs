@@ -1,4 +1,4 @@
-use zz_gpui::{App, Global, Pixels, Rems, rems};
+use ala::{App, Global, Pixels, Rems, rems};
 
 pub const BASE_UI_FONT_SIZE: f32 = 16.0;
 
@@ -31,7 +31,7 @@ pub const fn rems_from_px(value: f32) -> Rems {
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::px;
+    use ala::px;
 
     use super::*;
 

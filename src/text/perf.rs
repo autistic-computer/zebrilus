@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use zz_gpui::{
+use ala::{
     AppContext as _, Context, Entity, IntoElement, Modifiers, ParentElement as _, Render,
     Styled as _, TestAppContext, VisualTestContext, Window, div, point, px,
 };
@@ -170,7 +170,7 @@ fn counters() -> (usize, usize) {
     )
 }
 
-#[zz_gpui::test]
+#[ala::test]
 #[ignore = "perf harness, run with --ignored --nocapture"]
 fn perf_markdown_stream(cx: &mut TestAppContext) {
     let source = transcript();
@@ -232,7 +232,7 @@ fn perf_markdown_stream(cx: &mut TestAppContext) {
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 #[ignore = "perf harness, run with --ignored --nocapture"]
 fn perf_link_hover_sweep(cx: &mut TestAppContext) {
     let mut paragraph = String::new();

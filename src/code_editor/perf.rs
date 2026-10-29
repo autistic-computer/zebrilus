@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use zz_gpui::TestAppContext;
+use ala::TestAppContext;
 
 use super::state::{CodeEditorState, Undo};
 
@@ -8,7 +8,7 @@ const LINES: usize = 5_000;
 const TYPED: usize = 200;
 const ROUNDS: usize = 5;
 
-#[zz_gpui::test]
+#[ala::test]
 #[ignore = "perf harness, run with --ignored --nocapture"]
 fn perf_code_editor_undo(cx: &mut TestAppContext) {
     cx.update(crate::init);
@@ -36,7 +36,7 @@ fn perf_code_editor_undo(cx: &mut TestAppContext) {
                 editor.set_selected_range(middle..middle, cx);
                 for ix in 0..TYPED {
                     let character = char::from(b'a' + (ix % 26) as u8).to_string();
-                    zz_gpui::EntityInputHandler::replace_text_in_range(
+                    ala::EntityInputHandler::replace_text_in_range(
                         editor, None, &character, window, cx,
                     );
                 }

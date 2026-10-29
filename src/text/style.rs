@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use zz_gpui::{Pixels, Rems, StyleRefinement, px, rems};
+use ala::{Pixels, Rems, StyleRefinement, px, rems};
 
 use crate::{SurfaceRole, highlighter::HighlightTheme};
 

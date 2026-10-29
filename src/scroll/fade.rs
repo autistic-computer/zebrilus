@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use zz_gpui::{
+use ala::{
     Bounds, Hsla, IntoElement, Pixels, Styled, canvas, fill, linear_color_stop, linear_gradient,
     point, size,
 };
