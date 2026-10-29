@@ -1,0 +1,6067 @@
+use std::{
+    cell::Cell,
+    collections::BTreeMap,
+    ffi::OsStr,
+    io,
+    marker::PhantomData,
+    path::{Path, PathBuf},
+    ptr,
+    rc::Rc,
+    sync::{
+        Arc, Mutex as StdMutex, Weak,
+        atomic::{AtomicBool, AtomicI32, AtomicU16, AtomicU64, Ordering},
+    },
+    time::Instant,
+};
+
+use async_channel::{Receiver, Sender};
+use base64::Engine as _;
+use cef::wrapper::message_router::{
+    BrowserSideCallback, BrowserSideHandler, BrowserSideRouter, MessageRouterBrowserSide,
+    MessageRouterBrowserSideHandlerCallbacks, MessageRouterConfig, MessageRouterRendererSide,
+    MessageRouterRendererSideHandlerCallbacks, RendererSideRouter,
+};
+use cef::{args::Args, *};
+use parking_lot::Mutex;
+use serde::Deserialize;
+use thiserror::Error;
+use url::Url;
+
+#[cfg(target_os = "macos")]
+#[path = "mac_app_protocol.rs"]
+mod mac_app_protocol;
+#[cfg(target_os = "macos")]
+#[path = "metal_osr.rs"]
+mod metal_osr;
+#[cfg(target_os = "macos")]
+use metal_osr::{MetalFrameCompletion, MetalFrameError, MetalFrameOutcome, MetalFrameProducer};
+
+#[cfg(target_os = "windows")]
+#[path = "d3d11_osr.rs"]
+mod d3d11_osr;
+#[cfg(target_os = "windows")]
+use d3d11_osr::{D3d11FrameError, D3d11FrameOutcome, D3d11FrameProducer};
+
+use crate::artifact::{
+    ARTIFACT_PROFILE, ArtifactFile, DEFAULT_PAGE_GLOBAL, DEFAULT_SCHEME, error_page, local_scheme,
+    page_global, parse_artifact_url, request_artifact, send_reply, set_names,
+};
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use crate::frame::GpuFrameSubmission;
+#[cfg(target_os = "macos")]
+use crate::frame::MacGpuFrameSubmission;
+#[cfg(target_os = "windows")]
+use crate::frame::WinGpuFrameSubmission;
+#[cfg(test)]
+use crate::page_zoom::CHROMIUM_ZOOM_STEP;
+use crate::{
+    BrowserCookie, BrowserCookiePriority, BrowserCookieSameSite, BrowserCursor, BrowserEvent,
+    BrowserGpuContext, BrowserKey, BrowserProfileError, BrowserProfilePaths, ContextMenuRequest,
+    CookieImportBatch, CookieImportResult, DEFAULT_BROWSER_PROFILE, EditCommand, EditFlags,
+    FrameMailbox, ImeCharacterBounds, KeyAction, KeyInput, Modifiers, OsrFrame, PointerButton,
+    PointerEvent, PointerPhase, RuntimePhase, SessionId, SessionPhase, SiteDataClearResult,
+    Viewport, WheelEvent,
+    element_picker::{
+        ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
+    },
+    frame::{FrameDamage, frame_byte_len},
+    page_zoom::{
+        chromium_zoom_level, next_page_zoom_factor, page_zoom_percent, sanitized_page_zoom_factor,
+    },
+    popup::{PopupRect, PopupState},
+};
+
+#[cfg(target_os = "macos")]
+type CursorHandle = *mut u8;
+
+const DEFAULT_BROWSER_FRAME_RATE: i32 = 60;
+const MAX_BROWSER_FRAME_RATE: i32 = 240;
+const ELEMENT_PICKER_QUERY_FUNCTION: &str = "__zzElementPickerQuery";
+const ELEMENT_PICKER_CANCEL_FUNCTION: &str = "__zzElementPickerQueryCancel";
+const ARTIFACT_REPLY_PREFIX: &str = "page.reply:";
+const ARTIFACT_REPLY_SCRIPT: &str = r#"(() => {
+  const query = globalThis.__zzElementPickerQuery;
+  if (typeof query !== "function" || "PAGE_GLOBAL" in globalThis) return;
+  const reply = (text) => new Promise((resolve, reject) => query({
+    request: "page.reply:" + String(text),
+    persistent: false,
+    onSuccess: () => resolve(),
+    onFailure: (_code, message) => reject(new Error(message)),
+  }));
+  Object.defineProperty(globalThis, "PAGE_GLOBAL", { value: Object.freeze({ reply }) });
+})();"#;
+use crate::element_picker::ELEMENT_PICKER_SCRIPT;
+const WINDOWS_EPOCH_UNIX_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeConfig {
+    pub scheme: &'static str,
+    pub page_global: &'static str,
+    pub frame_rate: Option<i32>,
+    pub gpu: bool,
+    pub shared_texture: bool,
+    pub external_begin_frame: bool,
+    pub begin_frame_adaptive: bool,
+    pub remote_debugging_port: Option<u16>,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            scheme: DEFAULT_SCHEME,
+            page_global: DEFAULT_PAGE_GLOBAL,
+            frame_rate: None,
+            gpu: true,
+            shared_texture: true,
+            external_begin_frame: cfg!(target_os = "macos"),
+            begin_frame_adaptive: false,
+            remote_debugging_port: None,
+        }
+    }
+}
+
+fn script_url(name: &str) -> String {
+    format!("{}://browser/{name}", local_scheme())
+}
+
+fn element_picker_router_config() -> MessageRouterConfig {
+    MessageRouterConfig {
+        js_query_function: ELEMENT_PICKER_QUERY_FUNCTION.to_owned(),
+        js_cancel_function: ELEMENT_PICKER_CANCEL_FUNCTION.to_owned(),
+        ..MessageRouterConfig::default()
+    }
+}
+
+fn diagnostic_timer() -> Option<Instant> {
+    log::log_enabled!(target: "ala_cef::diagnostics", log::Level::Trace).then(Instant::now)
+}
+
+fn diagnostic_elapsed_us(started: Option<Instant>) -> u128 {
+    started.map_or(0, |started| started.elapsed().as_micros())
+}
+
+fn popup_opens_in_foreground(disposition: WindowOpenDisposition) -> bool {
+    disposition != WindowOpenDisposition::NEW_BACKGROUND_TAB
+}
+
+#[must_use]
+fn uses_wayland_physical_osr() -> bool {
+    cfg!(target_os = "linux") && std::env::var_os("WAYLAND_DISPLAY").is_some()
+}
+
+#[must_use]
+fn osr_raster_scale(viewport: Viewport) -> f32 {
+    if uses_wayland_physical_osr() {
+        viewport.scale_factor
+    } else {
+        1.0
+    }
+}
+
+fn dirty_rect_damage(dirty_rects: Option<&[Rect]>) -> Option<FrameDamage> {
+    let mut dirty_rects = dirty_rects?.iter();
+    let first = cef_rect_damage(dirty_rects.next()?)?;
+    dirty_rects.try_fold(first, |bounds, rect| {
+        let rect = cef_rect_damage(rect)?;
+        let left = bounds.x.min(rect.x);
+        let top = bounds.y.min(rect.y);
+        let right = bounds
+            .x
+            .saturating_add(bounds.width)
+            .max(rect.x.saturating_add(rect.width));
+        let bottom = bounds
+            .y
+            .saturating_add(bounds.height)
+            .max(rect.y.saturating_add(rect.height));
+        Some(FrameDamage {
+            x: left,
+            y: top,
+            width: right.saturating_sub(left),
+            height: bottom.saturating_sub(top),
+        })
+    })
+}
+
+fn cef_rect_damage(rect: &Rect) -> Option<FrameDamage> {
+    let width = u32::try_from(rect.width).ok().filter(|width| *width > 0)?;
+    let height = u32::try_from(rect.height)
+        .ok()
+        .filter(|height| *height > 0)?;
+    Some(FrameDamage {
+        x: u32::try_from(rect.x).ok()?,
+        y: u32::try_from(rect.y).ok()?,
+        width,
+        height,
+    })
+}
+
+fn effective_chromium_zoom_level(viewport: Viewport, page_zoom_factor: f64) -> f64 {
+    let raster_factor = if uses_wayland_physical_osr() {
+        f64::from(viewport.scale_factor)
+    } else {
+        1.0
+    };
+    chromium_zoom_level(raster_factor * page_zoom_factor)
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "CEF dimensions are saturated to its signed integer range"
+)]
+#[must_use]
+fn scaled_osr_dimension(value: u32, scale_factor: f32) -> i32 {
+    (value as f32 * scale_factor)
+        .ceil()
+        .clamp(1.0, i32::MAX as f32) as i32
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "CEF coordinates are saturated to its signed integer range"
+)]
+#[must_use]
+fn scaled_osr_coordinate(value: i32, scale_factor: f32) -> i32 {
+    (f64::from(value) * f64::from(scale_factor))
+        .round()
+        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+}
+
+fn screen_point_coordinate(viewport: Viewport, origin: i32, view: i32, physical_osr: bool) -> i32 {
+    if physical_osr {
+        scaled_osr_coordinate(origin, viewport.scale_factor / viewport.window_zoom)
+            .saturating_add(view)
+    } else {
+        origin.saturating_add(scaled_osr_coordinate(view, viewport.window_zoom))
+    }
+}
+
+const ELEMENT_SCREENSHOT_MARGIN: f64 = 64.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct ScreenshotClip {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+fn element_screenshot_clip(geometry: PickGeometry) -> Option<ScreenshotClip> {
+    let page_left = geometry.x + geometry.scroll_x;
+    let page_top = geometry.y + geometry.scroll_y;
+    let view_left = geometry.scroll_x;
+    let view_top = geometry.scroll_y;
+    let view_right = view_left + geometry.viewport_width;
+    let view_bottom = view_top + geometry.viewport_height;
+
+    let left = (page_left - ELEMENT_SCREENSHOT_MARGIN).clamp(view_left, view_right);
+    let top = (page_top - ELEMENT_SCREENSHOT_MARGIN).clamp(view_top, view_bottom);
+    let right =
+        (page_left + geometry.width + ELEMENT_SCREENSHOT_MARGIN).clamp(view_left, view_right);
+    let bottom =
+        (page_top + geometry.height + ELEMENT_SCREENSHOT_MARGIN).clamp(view_top, view_bottom);
+
+    let width = right - left;
+    let height = bottom - top;
+    (width >= 1.0 && height >= 1.0).then_some(ScreenshotClip {
+        x: left,
+        y: top,
+        width,
+        height,
+    })
+}
+
+fn screenshot_params(clip: ScreenshotClip) -> Option<DictionaryValue> {
+    let params = dictionary_value_create()?;
+    let mut region = dictionary_value_create()?;
+    let submitted = region.set_double(Some(&CefString::from("x")), clip.x) != 0
+        && region.set_double(Some(&CefString::from("y")), clip.y) != 0
+        && region.set_double(Some(&CefString::from("width")), clip.width) != 0
+        && region.set_double(Some(&CefString::from("height")), clip.height) != 0
+        && region.set_double(Some(&CefString::from("scale")), 1.0) != 0
+        && params.set_string(
+            Some(&CefString::from("format")),
+            Some(&CefString::from("png")),
+        ) != 0
+        && params.set_dictionary(Some(&CefString::from("clip")), Some(&mut region)) != 0;
+    submitted.then_some(params)
+}
+
+#[derive(Deserialize)]
+struct ScreenshotResult {
+    data: String,
+}
+
+fn decode_screenshot_result(result: &[u8]) -> Option<Arc<[u8]>> {
+    let result: ScreenshotResult = serde_json::from_slice(result).ok()?;
+    let png = base64::engine::general_purpose::STANDARD
+        .decode(result.data)
+        .ok()?;
+    (!png.is_empty()).then(|| Arc::from(png.as_slice()))
+}
+
+#[allow(
+    clippy::cast_possible_truncation,
+    reason = "CEF coordinates are saturated to its signed integer range"
+)]
+#[must_use]
+fn unscaled_osr_coordinate(value: i32, scale_factor: f32) -> i32 {
+    (f64::from(value) / f64::from(scale_factor))
+        .round()
+        .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RuntimeSignal {
+    ContextInitialized,
+    RequestContextInitialized { profile: Arc<str> },
+    ScheduleMessagePump(i64),
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AcceleratedPaintDiagnostics {
+    pub callback_count: u64,
+    pub missing_info_count: u64,
+    pub view_count: u64,
+    pub popup_count: u64,
+    pub unique_handle_count: usize,
+    pub handle_transition_count: u64,
+    pub consecutive_handle_reuse_count: u64,
+    pub handles: Vec<AcceleratedPaintHandleDiagnostics>,
+    pub last_observation: Option<AcceleratedPaintObservation>,
+    pub gpu_import_attempt_count: u64,
+    pub gpu_frame_delivered_count: u64,
+    pub gpu_import_failure_count: u64,
+    pub gpu_helper_fallback_count: u64,
+    pub stale_pool_frame_count: u64,
+    pub readback_frame_delivered_count: u64,
+    pub latest_pool_generation: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcceleratedPaintHandleDiagnostics {
+    pub identity: String,
+    pub use_count: u64,
+    pub first_callback: u64,
+    pub last_callback: u64,
+    pub minimum_reuse_gap: Option<u64>,
+    pub maximum_reuse_gap: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AcceleratedPaintObservation {
+    pub callback: u64,
+    pub paint_element: String,
+    pub width: i32,
+    pub height: i32,
+    pub pixel_format: String,
+    pub pixel_format_raw: u32,
+    pub drm_modifier: Option<u64>,
+    pub plane_count: i32,
+    pub planes: Vec<AcceleratedPaintPlaneDiagnostics>,
+    pub handle_identity: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AcceleratedPaintPlaneDiagnostics {
+    pub fd: i32,
+    pub stride: u32,
+    pub offset: u64,
+    pub size: u64,
+}
+
+#[allow(
+    clippy::large_enum_variant,
+    reason = "the bootstrap result is constructed and consumed once at startup; boxing the runtime adds indirection to the steady-state owner"
+)]
+pub enum BrowserBootstrap {
+    SubprocessExit(i32),
+    Runtime(BrowserRuntime),
+}
+
+#[derive(Debug, Error)]
+pub enum BrowserError {
+    #[error("could not prepare the browser profile: {0}")]
+    Profile(#[from] BrowserProfileError),
+    #[error("CEF could not parse the process command line")]
+    CommandLine,
+    #[error("remote debugging port {0} must be 0 or from 1024 through 65535")]
+    RemoteDebuggingPort(u16),
+    #[error("CEF returned an unexpected subprocess result: {0}")]
+    ExecuteProcess(i32),
+    #[error("CEF initialization failed; verify that its libraries and resources are installed")]
+    Initialize,
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[error("CEF could not load its browser library: {0}")]
+    LibraryLoad(String),
+    #[error("CEF is still initializing")]
+    NotReady,
+    #[error("CEF could not create the persistent browser request context")]
+    RequestContext,
+    #[error("CEF could not create the off-screen browser")]
+    CreateBrowser,
+    #[error("CEF could not access the persistent cookie store")]
+    CookieStore,
+    #[error("CEF could not start the browser data operation")]
+    BrowserData,
+    #[error("browser site data can only be cleared for an HTTP or HTTPS origin")]
+    UnsupportedOrigin,
+    #[error("CEF cannot shut down while {0} browser session(s) are still open")]
+    BrowsersStillOpen(u64),
+    #[error("CEF cannot shut down while {0} browser data operation(s) are still active")]
+    DataOperationsStillActive(u64),
+    #[error("CEF could not configure the browser proxy preference: {0}")]
+    ProxyPreference(String),
+    #[error("CEF has already shut down")]
+    AlreadyShutdown,
+    #[cfg(target_os = "macos")]
+    #[error("CEF could not load the Chromium Embedded Framework")]
+    FrameworkLoad,
+    #[cfg(target_os = "macos")]
+    #[error(
+        "CEF framework version does not match this app (loaded {0}); restart the app after updating"
+    )]
+    FrameworkVersion(String),
+}
+
+#[derive(Clone, Copy)]
+struct MessagePumpState {
+    phase: RuntimePhase,
+    initialized: bool,
+}
+
+struct BrowserMessagePumpInner {
+    state: Cell<MessagePumpState>,
+    pumping: Cell<bool>,
+    repump: Cell<bool>,
+    active_sessions: Arc<AtomicU64>,
+}
+
+struct PumpGuard<'a>(&'a Cell<bool>);
+
+impl Drop for PumpGuard<'_> {
+    fn drop(&mut self) {
+        self.0.set(false);
+    }
+}
+
+#[derive(Clone)]
+pub struct BrowserMessagePump {
+    inner: Rc<BrowserMessagePumpInner>,
+}
+
+impl BrowserMessagePump {
+    fn new(active_sessions: Arc<AtomicU64>) -> Self {
+        Self {
+            inner: Rc::new(BrowserMessagePumpInner {
+                state: Cell::new(MessagePumpState {
+                    phase: RuntimePhase::Uninitialized,
+                    initialized: false,
+                }),
+                pumping: Cell::new(false),
+                repump: Cell::new(false),
+                active_sessions,
+            }),
+        }
+    }
+
+    fn state(&self) -> MessagePumpState {
+        self.inner.state.get()
+    }
+
+    fn set_phase(&self, phase: RuntimePhase) {
+        self.inner.state.set(MessagePumpState {
+            phase,
+            ..self.state()
+        });
+    }
+
+    fn enable(&self) {
+        self.inner.state.set(MessagePumpState {
+            initialized: true,
+            ..self.state()
+        });
+    }
+
+    fn mark_closed(&self) {
+        self.inner.state.set(MessagePumpState {
+            phase: RuntimePhase::Closed,
+            initialized: false,
+        });
+    }
+
+    fn disable(&self) {
+        self.inner.state.set(MessagePumpState {
+            initialized: false,
+            ..self.state()
+        });
+    }
+
+    pub fn do_message_loop_work(&self) {
+        self.run_message_loop_work(cef::do_message_loop_work);
+    }
+
+    fn run_message_loop_work(&self, mut work: impl FnMut()) {
+        let state = self.state();
+        if !state.initialized || matches!(state.phase, RuntimePhase::Closed | RuntimePhase::Failed)
+        {
+            return;
+        }
+        if self.inner.pumping.replace(true) {
+            self.inner.repump.set(true);
+            return;
+        }
+
+        let _guard = PumpGuard(&self.inner.pumping);
+        loop {
+            self.inner.repump.set(false);
+            let started = diagnostic_timer();
+            let state = self.state();
+            if state.initialized
+                && !matches!(state.phase, RuntimePhase::Closed | RuntimePhase::Failed)
+            {
+                work();
+            }
+            log::trace!(
+                target: "ala_cef::diagnostics::message_pump",
+                "work initialized={} phase={:?} active_sessions={} elapsed_us={}",
+                state.initialized,
+                state.phase,
+                self.inner.active_sessions.load(Ordering::Relaxed),
+                diagnostic_elapsed_us(started),
+            );
+            if !self.inner.repump.get() {
+                break;
+            }
+        }
+    }
+}
+
+pub struct BrowserRuntime {
+    message_pump: BrowserMessagePump,
+    signal_tx: Sender<RuntimeSignal>,
+    signals: Receiver<RuntimeSignal>,
+    args: Args,
+    app: cef::App,
+    remote_debugging_port: Arc<AtomicU16>,
+    remote_debugging_override: Option<u16>,
+    sandbox_info: *mut u8,
+    profile_paths: BrowserProfilePaths,
+    profile_contexts: BTreeMap<String, ProfileContext>,
+    next_session: Arc<AtomicU64>,
+    active_sessions: Arc<AtomicU64>,
+    active_data_operations: Arc<AtomicU64>,
+    windowless_frame_rate: i32,
+    frame_rate_override: Option<i32>,
+    shared_texture_enabled: bool,
+    external_begin_frame_enabled: bool,
+    begin_frame_adaptive_enabled: bool,
+    log_file: Option<PathBuf>,
+    background_color: u32,
+    #[cfg(target_os = "macos")]
+    _loader: Option<MacFrameworkLoader>,
+}
+
+#[cfg(target_os = "macos")]
+struct MacFrameworkLoader(std::ptr::NonNull<std::ffi::c_void>);
+
+#[cfg(target_os = "macos")]
+impl MacFrameworkLoader {
+    fn load() -> Result<Self, BrowserError> {
+        let loader = std::ptr::NonNull::new(cef::scoped_library_loader_create(0))
+            .map(Self)
+            .ok_or(BrowserError::FrameworkLoad)?;
+        unsafe extern "C" {
+            fn cef_version_full() -> *const std::ffi::c_char;
+        }
+        let version = unsafe { cef_version_full() };
+        let version = (!version.is_null()).then(|| unsafe { std::ffi::CStr::from_ptr(version) });
+        validate_framework_version(version)?;
+        Ok(loader)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn validate_framework_version(version: Option<&std::ffi::CStr>) -> Result<(), BrowserError> {
+    if version.is_some_and(|version| version.to_bytes_with_nul() == cef::sys::CEF_VERSION) {
+        return Ok(());
+    }
+    Err(BrowserError::FrameworkVersion(version.map_or_else(
+        || "unknown".to_owned(),
+        |version| version.to_string_lossy().into_owned(),
+    )))
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for MacFrameworkLoader {
+    fn drop(&mut self) {
+        cef::scoped_library_loader_free(self.0.as_ptr().cast());
+    }
+}
+
+struct ProfileContext {
+    context: RequestContext,
+    ready: bool,
+    proxy_port: Option<u16>,
+}
+
+impl BrowserRuntime {
+    pub fn set_remote_debugging_port(&mut self, port: Option<u16>) {
+        if self.phase() == RuntimePhase::Uninitialized {
+            self.remote_debugging_port
+                .store(port.unwrap_or(0), Ordering::Relaxed);
+        }
+    }
+
+    pub fn background_color(&self) -> u32 {
+        self.background_color
+    }
+
+    pub fn set_background_color(&mut self, color: u32) {
+        self.background_color = color;
+    }
+
+    #[must_use]
+    pub fn phase(&self) -> RuntimePhase {
+        self.message_pump.state().phase
+    }
+
+    #[must_use]
+    pub fn message_pump(&self) -> BrowserMessagePump {
+        self.message_pump.clone()
+    }
+
+    #[must_use]
+    pub fn signals(&self) -> Receiver<RuntimeSignal> {
+        self.signals.clone()
+    }
+
+    #[must_use]
+    pub fn profile_paths(&self) -> &BrowserProfilePaths {
+        &self.profile_paths
+    }
+
+    pub fn set_log_file(&mut self, path: PathBuf) {
+        self.log_file = Some(path);
+    }
+
+    #[must_use]
+    pub fn windowless_frame_rate(&self) -> i32 {
+        self.windowless_frame_rate
+    }
+
+    #[must_use]
+    pub fn frame_rate_override(&self) -> Option<i32> {
+        self.frame_rate_override
+    }
+
+    #[must_use]
+    pub fn shared_texture_enabled(&self) -> bool {
+        self.shared_texture_enabled
+    }
+
+    #[must_use]
+    pub fn external_begin_frame_enabled(&self) -> bool {
+        self.external_begin_frame_enabled
+    }
+
+    #[must_use]
+    pub fn begin_frame_adaptive_enabled(&self) -> bool {
+        self.begin_frame_adaptive_enabled
+    }
+
+    #[must_use]
+    pub fn active_session_count(&self) -> u64 {
+        self.active_sessions.load(Ordering::Relaxed)
+    }
+
+    #[must_use]
+    pub fn active_data_operation_count(&self) -> u64 {
+        self.active_data_operations.load(Ordering::Relaxed)
+    }
+
+    pub fn start(&mut self) -> Result<(), BrowserError> {
+        if self.phase() != RuntimePhase::Uninitialized {
+            return Ok(());
+        }
+
+        let started = diagnostic_timer();
+        #[cfg(target_os = "macos")]
+        if self._loader.is_none() {
+            match MacFrameworkLoader::load() {
+                Ok(loader) => self._loader = Some(loader),
+                Err(error) => {
+                    self.message_pump.set_phase(RuntimePhase::Failed);
+                    return Err(error);
+                }
+            }
+            let _ = api_hash(cef::sys::CEF_API_VERSION, 0);
+        }
+
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            if let Err(error) = cef::sys::load_library() {
+                self.message_pump.set_phase(RuntimePhase::Failed);
+                return Err(BrowserError::LibraryLoad(error));
+            }
+            let _ = api_hash(cef::sys::CEF_API_VERSION, 0);
+        }
+
+        let port = checked_remote_debugging_port(
+            self.remote_debugging_override
+                .unwrap_or_else(|| self.remote_debugging_port.load(Ordering::Relaxed)),
+        )?;
+        self.remote_debugging_port.store(port, Ordering::Relaxed);
+        let settings = Settings {
+            no_sandbox: 0,
+            external_message_pump: 1,
+            windowless_rendering_enabled: 1,
+            root_cache_path: path_to_cef_string(&self.profile_paths.root),
+            persist_session_cookies: 1,
+            log_severity: LogSeverity::WARNING,
+            log_file: self
+                .log_file
+                .as_deref()
+                .map(path_to_cef_string)
+                .unwrap_or_default(),
+            background_color: self.background_color,
+            ..Default::default()
+        };
+        #[cfg(target_os = "macos")]
+        mac_app_protocol::install();
+        self.message_pump.set_phase(RuntimePhase::Initializing);
+        if initialize(
+            Some(self.args.as_main_args()),
+            Some(&settings),
+            Some(&mut self.app),
+            self.sandbox_info,
+        ) != 1
+        {
+            self.message_pump.set_phase(RuntimePhase::Failed);
+            self.message_pump.disable();
+            return Err(BrowserError::Initialize);
+        }
+        self.message_pump.enable();
+
+        log::debug!(
+            target: "ala_cef::diagnostics::lifecycle",
+            "runtime initialized profile_paths={:?} windowless_frame_rate={} shared_texture_enabled={} wayland_physical_osr={} elapsed_us={}",
+            self.profile_paths,
+            self.windowless_frame_rate,
+            self.shared_texture_enabled,
+            uses_wayland_physical_osr(),
+            diagnostic_elapsed_us(started),
+        );
+        Ok(())
+    }
+
+    pub fn handle_context_initialized(&mut self) -> Result<(), BrowserError> {
+        if self.phase() == RuntimePhase::Running {
+            return Ok(());
+        }
+        if self.phase() != RuntimePhase::Initializing {
+            return Err(BrowserError::NotReady);
+        }
+
+        if let Err(error) = self.start_profile_context(DEFAULT_BROWSER_PROFILE) {
+            self.message_pump.set_phase(RuntimePhase::Closing);
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    pub fn handle_request_context_initialized(
+        &mut self,
+        profile: &str,
+    ) -> Result<bool, BrowserError> {
+        let Some(profile_context) = self.profile_contexts.get_mut(profile) else {
+            return Err(BrowserError::RequestContext);
+        };
+        profile_context.ready = true;
+
+        if profile == DEFAULT_BROWSER_PROFILE && self.phase() == RuntimePhase::Initializing {
+            self.message_pump.set_phase(RuntimePhase::Running);
+            return Ok(true);
+        }
+        if self.phase() != RuntimePhase::Running {
+            return Err(BrowserError::RequestContext);
+        }
+        Ok(false)
+    }
+
+    pub fn ensure_profile_context(&mut self, profile: &str) -> Result<bool, BrowserError> {
+        if self.phase() != RuntimePhase::Running {
+            return Err(BrowserError::NotReady);
+        }
+        let (profile, _) = self.profile_paths.ensure_profile(profile)?;
+        if let Some(profile_context) = self.profile_contexts.get(&profile) {
+            return Ok(profile_context.ready);
+        }
+        self.start_profile_context(&profile)?;
+        Ok(false)
+    }
+
+    pub fn ensure_egress_profile_context(&mut self, profile: &str) -> Result<bool, BrowserError> {
+        if self.phase() != RuntimePhase::Running {
+            return Err(BrowserError::NotReady);
+        }
+        let profile_path = self.profile_paths.ensure_egress_profile(profile)?;
+        if let Some(profile_context) = self.profile_contexts.get(profile) {
+            return Ok(profile_context.ready);
+        }
+        self.start_profile_context_at(profile.to_owned(), &profile_path)?;
+        Ok(false)
+    }
+
+    fn start_profile_context(&mut self, profile: &str) -> Result<String, BrowserError> {
+        let (profile, profile_path) = self.profile_paths.ensure_profile(profile)?;
+        if self.profile_contexts.contains_key(&profile) {
+            return Ok(profile);
+        }
+        self.start_profile_context_at(profile.clone(), &profile_path)?;
+        Ok(profile)
+    }
+
+    fn start_profile_context_at(
+        &mut self,
+        profile: String,
+        profile_path: &std::path::Path,
+    ) -> Result<(), BrowserError> {
+        let settings = RequestContextSettings {
+            cache_path: path_to_cef_string(profile_path),
+            persist_session_cookies: 1,
+            ..Default::default()
+        };
+        let mut handler =
+            ProfileRequestContextHandler::new(self.signal_tx.clone(), Arc::from(profile.as_str()));
+        let Some(context) = request_context_create_context(Some(&settings), Some(&mut handler))
+        else {
+            return Err(BrowserError::RequestContext);
+        };
+        let mut artifacts = ArtifactSchemeFactory::new(());
+        if profile == ARTIFACT_PROFILE
+            && context.register_scheme_handler_factory(
+                Some(&CefString::from(local_scheme())),
+                None,
+                Some(&mut artifacts),
+            ) == 0
+        {
+            log::warn!(
+                "could not serve {}:// pages in browser profile {profile}",
+                local_scheme()
+            );
+        }
+        self.profile_contexts.insert(
+            profile,
+            ProfileContext {
+                context,
+                ready: false,
+                proxy_port: None,
+            },
+        );
+        Ok(())
+    }
+
+    fn with_error_string<R>(f: impl FnOnce(&mut CefString) -> R) -> (R, String) {
+        let mut storage: cef::sys::_cef_string_utf16_t = unsafe { std::mem::zeroed() };
+        let mut error = CefString::from(&raw mut storage);
+        let result = f(&mut error);
+        let message = error.to_string();
+        unsafe { cef::sys::cef_string_utf16_clear(&raw mut storage) };
+        (result, message)
+    }
+
+    pub fn probe_preference_system(&mut self, profile: &str) -> String {
+        let Some(profile_context) = self.profile_contexts.get_mut(profile) else {
+            return "context missing".to_owned();
+        };
+        let context = &mut profile_context.context;
+        let proxy_name = CefString::from("proxy");
+        let current = context.preference(Some(&proxy_name)).map_or_else(
+            || "none".to_owned(),
+            |value| {
+                format!(
+                    "type={:?} valid={}",
+                    value.get_type(),
+                    value.is_valid() != 0
+                )
+            },
+        );
+        let bool_name = CefString::from("credentials_enable_service");
+        let can_set_bool = context.can_set_preference(Some(&bool_name)) != 0;
+        let Some(mut bool_value) = value_create() else {
+            return format!("proxy_current=({current}) value_create failed");
+        };
+        let bool_built = bool_value.set_bool(0) != 0;
+        let (bool_set, error) = Self::with_error_string(|error| {
+            context.set_preference(Some(&bool_name), Some(&mut bool_value), Some(error)) != 0
+        });
+        let (restore_default, restore_error) = Self::with_error_string(|restore_error| {
+            context.set_preference(Some(&bool_name), None, Some(restore_error)) != 0
+        });
+        let global = preference_manager_get_global().map_or_else(
+            || "unavailable".to_owned(),
+            |manager| {
+                let Some(mut global_value) = value_create() else {
+                    return "value_create failed".to_owned();
+                };
+                let _ = global_value.set_bool(0);
+                let (set, global_error) = Self::with_error_string(|global_error| {
+                    manager.set_preference(
+                        Some(&bool_name),
+                        Some(&mut global_value),
+                        Some(global_error),
+                    ) != 0
+                });
+                format!("set_ok={set} error={global_error:?}")
+            },
+        );
+        format!(
+            "proxy_current=({current}) bool_pref: can_set={can_set_bool} built={bool_built} \
+             set_ok={bool_set} error={:?} restore_default_ok={restore_default} \
+             restore_error={:?} global_manager: {global}",
+            error.clone(),
+            restore_error.clone(),
+        )
+    }
+
+    pub fn set_profile_proxy(&mut self, profile: &str, port: u16) -> Result<(), BrowserError> {
+        if self.phase() != RuntimePhase::Running {
+            return Err(BrowserError::NotReady);
+        }
+        let profile_context = self
+            .profile_contexts
+            .get_mut(profile)
+            .filter(|profile| profile.ready)
+            .ok_or(BrowserError::RequestContext)?;
+        if profile_context.proxy_port == Some(port) {
+            return Ok(());
+        }
+
+        let mut proxy = dictionary_value_create().ok_or(BrowserError::RequestContext)?;
+        let mode_key = CefString::from("mode");
+        let fixed_servers = CefString::from("fixed_servers");
+        let server_key = CefString::from("server");
+        let server = CefString::from(format!("socks5://127.0.0.1:{port}").as_str());
+        let bypass_key = CefString::from("bypass_list");
+        let bypass = CefString::from("<-loopback>");
+        if proxy.set_string(Some(&mode_key), Some(&fixed_servers)) == 0
+            || proxy.set_string(Some(&server_key), Some(&server)) == 0
+            || proxy.set_string(Some(&bypass_key), Some(&bypass)) == 0
+        {
+            return Err(BrowserError::ProxyPreference(
+                "could not build the proxy preference dictionary".to_owned(),
+            ));
+        }
+
+        let mut value = value_create().ok_or(BrowserError::RequestContext)?;
+        if value.set_dictionary(Some(&mut proxy)) == 0 {
+            return Err(BrowserError::ProxyPreference(
+                "could not wrap the proxy preference dictionary".to_owned(),
+            ));
+        }
+        let preference = CefString::from("proxy");
+        let (rejected, error) = Self::with_error_string(|error| {
+            profile_context
+                .context
+                .set_preference(Some(&preference), Some(&mut value), Some(error))
+                == 0
+        });
+        if rejected {
+            return Err(BrowserError::ProxyPreference(if error.is_empty() {
+                let on_ui_thread = currently_on(ThreadId::UI) != 0;
+                let has_preference = profile_context.context.has_preference(Some(&preference)) != 0;
+                let can_set_preference = profile_context
+                    .context
+                    .can_set_preference(Some(&preference))
+                    != 0;
+                format!(
+                    "CEF rejected the proxy preference without a reason \
+                     (on_ui_thread={on_ui_thread} has_preference={has_preference} \
+                     can_set_preference={can_set_preference})"
+                )
+            } else {
+                error
+            }));
+        }
+        profile_context.proxy_port = Some(port);
+        Ok(())
+    }
+
+    pub fn do_message_loop_work(&self) {
+        self.message_pump.do_message_loop_work();
+    }
+
+    pub fn import_cookies(
+        &self,
+        profile: &str,
+        batch: CookieImportBatch,
+    ) -> Result<Receiver<CookieImportResult>, BrowserError> {
+        if self.phase() != RuntimePhase::Running {
+            return Err(BrowserError::NotReady);
+        }
+        if batch.cookies.is_empty() {
+            return Err(BrowserError::BrowserData);
+        }
+        let profile_context = self
+            .profile_contexts
+            .get(profile)
+            .filter(|profile| profile.ready)
+            .ok_or(BrowserError::RequestContext)?;
+        let manager = profile_context
+            .context
+            .cookie_manager(None)
+            .ok_or(BrowserError::CookieStore)?;
+        let (results, result_rx) = async_channel::bounded(1);
+        let progress = Arc::new(Mutex::new(CookieImportProgress {
+            remaining: batch.cookies.len(),
+            imported: 0,
+            rejected: 0,
+            skipped: batch.skipped,
+            manager: manager.clone(),
+            results,
+            operation: ActiveCountGuard::new(Arc::clone(&self.active_data_operations)),
+        }));
+
+        for cookie in batch.cookies {
+            let Some(cef_cookie) = cef_cookie(&cookie) else {
+                finish_cookie_import(&progress, false);
+                continue;
+            };
+            let url = CefString::from(cookie.source_url.as_str());
+            let mut callback = ImportCookieCallback::new(Arc::clone(&progress));
+            if manager.set_cookie(Some(&url), Some(&cef_cookie), Some(&mut callback)) == 0 {
+                finish_cookie_import(&progress, false);
+            }
+        }
+
+        Ok(result_rx)
+    }
+
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "CEF client wiring, initial ownership, and cross-platform GPU context transfer form one ordered operation"
+    )]
+    pub fn create_session(
+        &mut self,
+        profile: &str,
+        initial_url: &str,
+        viewport: Viewport,
+        page_zoom_factor: f64,
+        windowless_frame_rate: Option<i32>,
+        gpu_context: Option<BrowserGpuContext>,
+        allow_shared_texture: bool,
+    ) -> Result<BrowserSession, BrowserError> {
+        if self.phase() != RuntimePhase::Running {
+            return Err(BrowserError::NotReady);
+        }
+        let profile_context = self
+            .profile_contexts
+            .get(profile)
+            .filter(|profile| profile.ready)
+            .ok_or(BrowserError::RequestContext)?;
+        let request_context = profile_context.context.clone();
+
+        let config = SessionConfig {
+            profile: Arc::from(profile),
+            request_context,
+            next_session: Arc::clone(&self.next_session),
+            active_sessions: Arc::clone(&self.active_sessions),
+            active_data_operations: Arc::clone(&self.active_data_operations),
+            #[cfg(not(target_os = "macos"))]
+            gpu_context,
+            external_begin_frame_enabled: self.external_begin_frame_enabled,
+        };
+        #[cfg(target_os = "macos")]
+        let _ = gpu_context;
+        let prepared = config.prepare(viewport, page_zoom_factor);
+        let mut client = prepared.client(None);
+
+        let window_info = WindowInfo {
+            shared_texture_enabled: i32::from(self.shared_texture_enabled && allow_shared_texture),
+            external_begin_frame_enabled: i32::from(self.external_begin_frame_enabled),
+            ..WindowInfo::default().set_as_windowless(Default::default())
+        };
+        let browser_settings = BrowserSettings {
+            windowless_frame_rate: windowless_frame_rate
+                .unwrap_or(self.windowless_frame_rate)
+                .clamp(1, MAX_BROWSER_FRAME_RATE),
+            background_color: self.background_color,
+            ..Default::default()
+        };
+        let url = CefString::from(initial_url);
+        let mut context = prepared.config.request_context.clone();
+        let Some(browser) = browser_host_create_browser_sync(
+            Some(&window_info),
+            Some(&mut client),
+            Some(&url),
+            Some(&browser_settings),
+            None,
+            Some(&mut context),
+        ) else {
+            return Err(BrowserError::CreateBrowser);
+        };
+
+        Ok(prepared.into_session(browser))
+    }
+
+    pub fn shutdown(&mut self) -> Result<(), BrowserError> {
+        let state = self.message_pump.state();
+        if state.phase == RuntimePhase::Closed {
+            return Err(BrowserError::AlreadyShutdown);
+        }
+        if state.phase == RuntimePhase::Uninitialized {
+            self.message_pump.mark_closed();
+            log::debug!(
+                target: "ala_cef::diagnostics::lifecycle",
+                "closed browser runtime without initializing CEF"
+            );
+            return Ok(());
+        }
+        if !state.initialized {
+            return Ok(());
+        }
+        ensure_no_live_sessions(&self.active_sessions)?;
+        ensure_no_active_data_operations(&self.active_data_operations)?;
+        self.message_pump.set_phase(RuntimePhase::Closing);
+        self.profile_contexts.clear();
+        cef::shutdown();
+        self.message_pump.mark_closed();
+        Ok(())
+    }
+}
+
+impl Drop for BrowserRuntime {
+    fn drop(&mut self) {
+        if self.message_pump.state().initialized {
+            self.message_pump.disable();
+            log::error!(
+                "BrowserRuntime dropped before explicit shutdown; CEF shutdown ordering was violated"
+            );
+        }
+    }
+}
+
+struct CookieImportProgress {
+    remaining: usize,
+    imported: usize,
+    rejected: usize,
+    skipped: usize,
+    manager: CookieManager,
+    results: Sender<CookieImportResult>,
+    operation: ActiveCountGuard,
+}
+
+#[derive(Clone)]
+struct ActiveCountGuard(Arc<ActiveCountGuardState>);
+
+struct ActiveCountGuardState {
+    active: Arc<AtomicU64>,
+    finished: AtomicBool,
+}
+
+impl ActiveCountGuard {
+    fn new(active: Arc<AtomicU64>) -> Self {
+        active.fetch_add(1, Ordering::AcqRel);
+        Self(Arc::new(ActiveCountGuardState {
+            active,
+            finished: AtomicBool::new(false),
+        }))
+    }
+
+    fn finish(&self) -> bool {
+        if self.0.finished.swap(true, Ordering::AcqRel) {
+            return false;
+        }
+        self.0.active.fetch_sub(1, Ordering::AcqRel);
+        true
+    }
+}
+
+impl Drop for ActiveCountGuardState {
+    fn drop(&mut self) {
+        if !self.finished.swap(true, Ordering::AcqRel) {
+            self.active.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+}
+
+fn cef_cookie(cookie: &BrowserCookie) -> Option<Cookie> {
+    let expires = match cookie.expires_unix_micros {
+        Some(unix_micros) => Some(cef_expiration(unix_micros)?),
+        None => None,
+    };
+    Some(Cookie {
+        name: CefString::from(cookie.name.as_str()),
+        value: CefString::from(cookie.value.as_str()),
+        domain: CefString::from(cookie.domain.as_str()),
+        path: CefString::from(cookie.path.as_str()),
+        secure: i32::from(cookie.secure),
+        httponly: i32::from(cookie.http_only),
+        has_expires: i32::from(expires.is_some()),
+        expires: expires.unwrap_or_default(),
+        same_site: match cookie.same_site {
+            BrowserCookieSameSite::Unspecified => CookieSameSite::UNSPECIFIED,
+            BrowserCookieSameSite::NoRestriction => CookieSameSite::NO_RESTRICTION,
+            BrowserCookieSameSite::Lax => CookieSameSite::LAX_MODE,
+            BrowserCookieSameSite::Strict => CookieSameSite::STRICT_MODE,
+        },
+        priority: match cookie.priority {
+            BrowserCookiePriority::Low => CookiePriority::LOW,
+            BrowserCookiePriority::Medium => CookiePriority::MEDIUM,
+            BrowserCookiePriority::High => CookiePriority::HIGH,
+        },
+        ..Cookie::default()
+    })
+}
+
+fn cef_expiration(unix_micros: i64) -> Option<Basetime> {
+    Some(Basetime {
+        val: unix_micros.checked_add(WINDOWS_EPOCH_UNIX_OFFSET_MICROS)?,
+    })
+}
+
+fn finish_cookie_import(progress: &Arc<Mutex<CookieImportProgress>>, success: bool) {
+    let flush = {
+        let mut progress = progress.lock();
+        if progress.remaining == 0 {
+            return;
+        }
+        progress.remaining -= 1;
+        if success {
+            progress.imported += 1;
+        } else {
+            progress.rejected += 1;
+        }
+        (progress.remaining == 0).then(|| {
+            (
+                progress.manager.clone(),
+                progress.results.clone(),
+                progress.operation.clone(),
+                CookieImportResult {
+                    imported: progress.imported,
+                    skipped: progress.skipped,
+                    rejected: progress.rejected,
+                    persisted: false,
+                },
+            )
+        })
+    };
+
+    let Some((manager, results, operation, result)) = flush else {
+        return;
+    };
+    let mut callback = CookieImportFlushCallback::new(result, results.clone(), operation.clone());
+    if manager.flush_store(Some(&mut callback)) == 0 {
+        let _ = results.try_send(result);
+        operation.finish();
+    }
+}
+
+fn site_origin(input: &str) -> Result<String, BrowserError> {
+    let url = Url::parse(input).map_err(|_| BrowserError::UnsupportedOrigin)?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err(BrowserError::UnsupportedOrigin);
+    }
+    let origin = url.origin().ascii_serialization();
+    (origin != "null")
+        .then_some(origin)
+        .ok_or(BrowserError::UnsupportedOrigin)
+}
+
+#[derive(Clone)]
+pub struct BrowserCommandSink {
+    id: SessionId,
+    browser: Browser,
+    _main_thread: PhantomData<Rc<()>>,
+}
+
+impl BrowserCommandSink {
+    pub fn set_audio_muted(&self, muted: bool) {
+        if let Some(host) = self.browser.host() {
+            host.set_audio_muted(i32::from(muted));
+        }
+    }
+
+    pub fn navigate(&self, url: &str) {
+        navigate_browser(&self.browser, self.id, url);
+    }
+
+    pub fn go_back(&self) {
+        go_back_browser(&self.browser);
+    }
+
+    pub fn go_forward(&self) {
+        go_forward_browser(&self.browser);
+    }
+
+    pub fn reload(&self) {
+        self.browser.reload();
+    }
+
+    pub fn stop_loading(&self) {
+        self.browser.stop_load();
+    }
+
+    pub fn edit(&self, command: EditCommand) {
+        edit_browser(&self.browser, command);
+    }
+
+    pub fn send_key(&self, input: KeyInput) {
+        send_browser_key(&self.browser, self.id, input);
+    }
+
+    pub fn send_text(&self, text: &str) {
+        send_browser_text(&self.browser, text);
+    }
+
+    pub fn commit_composition(&self, text: &str) {
+        commit_browser_composition(&self.browser, text);
+    }
+
+    pub fn set_composition(&self, text: &str, selection_utf16: std::ops::Range<usize>) {
+        set_browser_composition(&self.browser, text, selection_utf16);
+    }
+
+    pub fn finish_composition(&self) {
+        finish_browser_composition(&self.browser);
+    }
+
+    pub fn cancel_composition(&self) {
+        cancel_browser_composition(&self.browser);
+    }
+}
+
+type PendingPopups = Arc<Mutex<BTreeMap<u64, BrowserSession>>>;
+
+fn close_pending_popups(popups: &PendingPopups) {
+    let pending = std::mem::take(&mut *popups.lock());
+    for mut popup in pending.into_values() {
+        popup.close(true);
+    }
+}
+
+#[derive(Clone)]
+struct SessionConfig {
+    profile: Arc<str>,
+    request_context: RequestContext,
+    next_session: Arc<AtomicU64>,
+    active_sessions: Arc<AtomicU64>,
+    active_data_operations: Arc<AtomicU64>,
+    #[cfg(not(target_os = "macos"))]
+    gpu_context: Option<BrowserGpuContext>,
+    external_begin_frame_enabled: bool,
+}
+
+#[derive(Clone)]
+struct PreparedSession {
+    config: SessionConfig,
+    bridge: SessionBridge,
+    events: Receiver<BrowserEvent>,
+    popups: PendingPopups,
+    picker_available: Arc<AtomicBool>,
+}
+
+impl SessionConfig {
+    fn prepare(&self, viewport: Viewport, page_zoom_factor: f64) -> PreparedSession {
+        let id = SessionId(self.next_session.fetch_add(1, Ordering::Relaxed) + 1);
+        let viewport = Arc::new(Mutex::new(viewport.sanitized()));
+        let page_zoom_factor = Arc::new(Mutex::new(sanitized_page_zoom_factor(page_zoom_factor)));
+        let mailbox = FrameMailbox::default();
+        let (events, event_rx) = async_channel::unbounded();
+        let element_pick = ElementPickState::default();
+        let pending_capture = PendingCapture::default();
+        let accelerated_paint = AcceleratedPaintTracker::default();
+        let active_session = ActiveCountGuard::new(Arc::clone(&self.active_sessions));
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let accelerated_frames =
+            AcceleratedFrameProducer::new(self.gpu_context.clone(), *viewport.lock());
+        #[cfg(target_os = "windows")]
+        let d3d11_frames = D3d11FrameProducer::new(self.gpu_context.clone(), *viewport.lock());
+        #[cfg(target_os = "macos")]
+        let metal_frames = MetalFrameProducer::new(*viewport.lock());
+        let bridge = SessionBridge {
+            id,
+            events,
+            viewport: Arc::clone(&viewport),
+            page_zoom_factor: Arc::clone(&page_zoom_factor),
+            mailbox: mailbox.clone(),
+            invalid_frames: Arc::new(AtomicU64::new(0)),
+            accelerated_paint: accelerated_paint.clone(),
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            accelerated_frames: accelerated_frames.clone(),
+            #[cfg(target_os = "macos")]
+            metal_frames: metal_frames.clone(),
+            #[cfg(target_os = "windows")]
+            d3d11_frames: d3d11_frames.clone(),
+            shared_texture_fallback_notified: Arc::new(AtomicBool::new(false)),
+            element_pick: element_pick.clone(),
+            pending_capture: Arc::clone(&pending_capture),
+            active_session: active_session.clone(),
+            closing: Arc::new(AtomicBool::new(false)),
+            popup: Arc::default(),
+        };
+        PreparedSession {
+            config: self.clone(),
+            bridge,
+            events: event_rx,
+            popups: Arc::new(Mutex::new(BTreeMap::new())),
+            picker_available: Arc::new(AtomicBool::new(false)),
+        }
+    }
+}
+
+impl PreparedSession {
+    fn client(&self, popup: Option<PopupCompletion>) -> Client {
+        let message_router = BrowserSideRouter::new(element_picker_router_config());
+        if message_router
+            .add_handler(Arc::new(ArtifactReplyHandler), false)
+            .is_none()
+        {
+            log::error!("could not register the page reply query handler");
+        }
+        let picker_available = message_router
+            .add_handler(
+                Arc::new(ElementPickerQueryHandler {
+                    bridge: self.bridge.clone(),
+                }),
+                false,
+            )
+            .is_some();
+        self.picker_available
+            .store(picker_available, Ordering::Release);
+        if !picker_available {
+            log::error!("could not register the CEF element picker query handler");
+        }
+        let render_handler = RenderHandlerBuilder::new(self.bridge.clone());
+        let display_handler = DisplayHandlerBuilder::new(self.bridge.clone());
+        let life_span_handler = LifeSpanHandlerBuilder::new(
+            self.bridge.clone(),
+            Arc::clone(&message_router),
+            self.config.clone(),
+            Arc::downgrade(&self.popups),
+            Arc::new(Mutex::new(popup)),
+        );
+        let load_handler = LoadHandlerBuilder::new(self.bridge.clone());
+        let context_menu_handler = BridgedContextMenuHandler::new(self.bridge.clone());
+        let request_handler =
+            RequestHandlerBuilder::new(self.bridge.clone(), Arc::clone(&message_router));
+        let dialog_handler = DeniedDialogHandler::new();
+        let download_handler = DeniedDownloadHandler::new();
+        let permission_handler = DeniedPermissionHandler::new();
+        let keyboard_handler = ConsumedKeyboardHandler::new();
+        BrowserClient::new(
+            render_handler,
+            display_handler,
+            life_span_handler,
+            load_handler,
+            request_handler,
+            context_menu_handler,
+            dialog_handler,
+            download_handler,
+            permission_handler,
+            keyboard_handler,
+            message_router,
+        )
+    }
+
+    fn into_session(self, browser: Browser) -> BrowserSession {
+        let initial_viewport = *self.bridge.viewport.lock();
+        let mut session = BrowserSession {
+            id: self.bridge.id,
+            profile: self.config.profile,
+            phase: SessionPhase::Creating,
+            browser,
+            viewport: self.bridge.viewport,
+            page_zoom_factor: self.bridge.page_zoom_factor,
+            mailbox: self.bridge.mailbox,
+            events: self.events,
+            element_pick: self.bridge.element_pick,
+            picker_available: self.picker_available.load(Ordering::Acquire),
+            pending_capture: self.bridge.pending_capture,
+            pending_site_data_clears: BTreeMap::new(),
+            _request_context: self.config.request_context,
+            active_session: self.bridge.active_session,
+            closing: self.bridge.closing,
+            active_data_operations: self.config.active_data_operations,
+            accelerated_paint: self.bridge.accelerated_paint,
+            popups: self.popups,
+            popup: self.bridge.popup,
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            accelerated_frames: self.bridge.accelerated_frames,
+            #[cfg(target_os = "macos")]
+            metal_frames: self.bridge.metal_frames,
+            #[cfg(target_os = "windows")]
+            d3d11_frames: self.bridge.d3d11_frames,
+        };
+        session.apply_viewport(initial_viewport, true);
+        session
+    }
+}
+
+struct PopupCompletion {
+    prepared: PreparedSession,
+    opener: SessionBridge,
+    destination: Weak<Mutex<BTreeMap<u64, BrowserSession>>>,
+    url: Arc<str>,
+    foreground: bool,
+}
+
+pub struct BrowserSession {
+    id: SessionId,
+    profile: Arc<str>,
+    phase: SessionPhase,
+    browser: Browser,
+    viewport: Arc<Mutex<Viewport>>,
+    page_zoom_factor: Arc<Mutex<f64>>,
+    mailbox: FrameMailbox,
+    events: Receiver<BrowserEvent>,
+    popups: PendingPopups,
+    popup: Arc<Mutex<PopupState>>,
+    element_pick: ElementPickState,
+    picker_available: bool,
+    pending_capture: PendingCapture,
+    pending_site_data_clears: BTreeMap<i32, Registration>,
+    _request_context: RequestContext,
+    active_session: ActiveCountGuard,
+    closing: Arc<AtomicBool>,
+    active_data_operations: Arc<AtomicU64>,
+    accelerated_paint: AcceleratedPaintTracker,
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    accelerated_frames: AcceleratedFrameProducer,
+    #[cfg(target_os = "macos")]
+    metal_frames: MetalFrameProducer,
+    #[cfg(target_os = "windows")]
+    d3d11_frames: D3d11FrameProducer,
+}
+
+impl BrowserSession {
+    #[must_use]
+    pub fn site_connection_secure(&self) -> Option<bool> {
+        let ssl = self
+            .browser
+            .host()?
+            .visible_navigation_entry()?
+            .sslstatus()?;
+        Some(
+            ssl.is_secure_connection() != 0
+                && cef::is_cert_status_error(ssl.cert_status()) == 0
+                && ssl.content_status() == SslContentStatus::NORMAL_CONTENT,
+        )
+    }
+
+    #[must_use]
+    pub fn audio_muted(&self) -> Option<bool> {
+        Some(self.browser.host()?.is_audio_muted() != 0)
+    }
+
+    pub fn take_popup(&mut self, popup: SessionId) -> Option<Self> {
+        let mut session = self.popups.lock().remove(&popup.0)?;
+        if session.active_session.0.finished.load(Ordering::Acquire) {
+            session.mark_closed();
+            return None;
+        }
+        Some(session)
+    }
+
+    #[must_use]
+    pub fn id(&self) -> SessionId {
+        self.id
+    }
+
+    #[must_use]
+    pub fn phase(&self) -> SessionPhase {
+        self.phase
+    }
+
+    #[must_use]
+    pub fn profile(&self) -> &str {
+        self.profile.as_ref()
+    }
+
+    #[must_use]
+    pub fn command_sink(&self) -> BrowserCommandSink {
+        BrowserCommandSink {
+            id: self.id,
+            browser: self.browser.clone(),
+            _main_thread: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn viewport(&self) -> Viewport {
+        *self.viewport.lock()
+    }
+
+    #[must_use]
+    pub fn page_zoom_factor(&self) -> f64 {
+        *self.page_zoom_factor.lock()
+    }
+
+    #[must_use]
+    pub fn page_zoom_percent(&self) -> u16 {
+        page_zoom_percent(self.page_zoom_factor())
+    }
+
+    #[must_use]
+    pub fn zoom_in(&self) -> u16 {
+        let next = next_page_zoom_factor(self.page_zoom_factor(), 1);
+        self.set_page_zoom_factor(next)
+    }
+
+    #[must_use]
+    pub fn zoom_out(&self) -> u16 {
+        let next = next_page_zoom_factor(self.page_zoom_factor(), -1);
+        self.set_page_zoom_factor(next)
+    }
+
+    #[must_use]
+    pub fn reset_zoom(&self) -> u16 {
+        self.set_page_zoom_factor(1.0)
+    }
+
+    fn set_page_zoom_factor(&self, factor: f64) -> u16 {
+        let factor = sanitized_page_zoom_factor(factor);
+        *self.page_zoom_factor.lock() = factor;
+        if let Some(host) = self.browser.host() {
+            host.set_zoom_level(effective_chromium_zoom_level(self.viewport(), factor));
+        }
+        page_zoom_percent(factor)
+    }
+
+    #[must_use]
+    pub fn frame_mailbox_diagnostics(&self) -> crate::FrameMailboxDiagnostics {
+        self.mailbox.diagnostics()
+    }
+
+    #[must_use]
+    pub fn accelerated_paint_diagnostics(&self) -> AcceleratedPaintDiagnostics {
+        self.accelerated_paint.diagnostics()
+    }
+
+    #[must_use]
+    pub fn events(&self) -> Receiver<BrowserEvent> {
+        self.events.clone()
+    }
+
+    pub fn clear_site_data(&mut self) -> Result<Receiver<SiteDataClearResult>, BrowserError> {
+        if self.phase != SessionPhase::Ready {
+            return Err(BrowserError::NotReady);
+        }
+        let frame = self.browser.main_frame().ok_or(BrowserError::BrowserData)?;
+        let frame_url = frame.url();
+        let origin = site_origin(&CefString::from(&frame_url).to_string())?;
+        let host = self.browser.host().ok_or(BrowserError::BrowserData)?;
+        let mut params = dictionary_value_create().ok_or(BrowserError::BrowserData)?;
+        let origin_key = CefString::from("origin");
+        let origin_value = CefString::from(origin.as_str());
+        let storage_types_key = CefString::from("storageTypes");
+        let storage_types_value = CefString::from("all");
+        if params.set_string(Some(&origin_key), Some(&origin_value)) == 0
+            || params.set_string(Some(&storage_types_key), Some(&storage_types_value)) == 0
+        {
+            return Err(BrowserError::BrowserData);
+        }
+
+        let (results, result_rx) = async_channel::bounded(1);
+        let expected_id = Arc::new(AtomicI32::new(0));
+        let operation = ActiveCountGuard::new(Arc::clone(&self.active_data_operations));
+        let mut observer = SiteDataClearObserver::new(Arc::clone(&expected_id), results, operation);
+        let registration = host
+            .add_dev_tools_message_observer(Some(&mut observer))
+            .ok_or(BrowserError::BrowserData)?;
+        let method = CefString::from("Storage.clearDataForOrigin");
+        let message_id = host.execute_dev_tools_method(0, Some(&method), Some(&mut params));
+        if message_id == 0 {
+            return Err(BrowserError::BrowserData);
+        }
+        expected_id.store(message_id, Ordering::Release);
+        self.pending_site_data_clears
+            .insert(message_id, registration);
+        Ok(result_rx)
+    }
+
+    pub fn finish_site_data_clear(&mut self, message_id: i32) {
+        self.pending_site_data_clears.remove(&message_id);
+    }
+
+    pub fn evaluate_number(
+        &mut self,
+        expression: &str,
+    ) -> Result<(i32, Receiver<Option<f64>>), BrowserError> {
+        if self.phase != SessionPhase::Ready {
+            return Err(BrowserError::NotReady);
+        }
+        let host = self.browser.host().ok_or(BrowserError::BrowserData)?;
+        let mut params = dictionary_value_create().ok_or(BrowserError::BrowserData)?;
+        if params.set_string(
+            Some(&CefString::from("expression")),
+            Some(&CefString::from(expression)),
+        ) == 0
+            || params.set_bool(Some(&CefString::from("returnByValue")), 1) == 0
+        {
+            return Err(BrowserError::BrowserData);
+        }
+        let (results, result_rx) = async_channel::bounded(1);
+        let expected_id = Arc::new(AtomicI32::new(0));
+        let operation = ActiveCountGuard::new(Arc::clone(&self.active_data_operations));
+        let mut observer =
+            EvaluateNumberObserver::new(Arc::clone(&expected_id), results, operation);
+        let registration = host
+            .add_dev_tools_message_observer(Some(&mut observer))
+            .ok_or(BrowserError::BrowserData)?;
+        let method = CefString::from("Runtime.evaluate");
+        let message_id = host.execute_dev_tools_method(0, Some(&method), Some(&mut params));
+        if message_id == 0 {
+            return Err(BrowserError::BrowserData);
+        }
+        expected_id.store(message_id, Ordering::Release);
+        self.pending_site_data_clears
+            .insert(message_id, registration);
+        Ok((message_id, result_rx))
+    }
+
+    pub fn finish_element_capture(&self) {
+        self.pending_capture.lock().take();
+    }
+
+    #[must_use]
+    pub fn take_frame(&self) -> Option<OsrFrame> {
+        self.mailbox.take()
+    }
+
+    pub fn recycle_frame(&self, bgra: Vec<u8>) {
+        self.mailbox.recycle(bgra);
+    }
+
+    pub fn mark_ready(&mut self) {
+        if self.phase == SessionPhase::Creating {
+            self.phase = SessionPhase::Ready;
+        }
+    }
+
+    pub fn mark_crashed(&mut self) {
+        if self.phase == SessionPhase::Ready {
+            self.phase = SessionPhase::Crashed;
+            self.mailbox.clear();
+            self.element_pick.cancel();
+        }
+    }
+
+    pub fn mark_closed(&mut self) {
+        self.closing.store(true, Ordering::Release);
+        self.phase = SessionPhase::Closed;
+        self.active_session.finish();
+        self.mailbox.clear();
+        self.element_pick.cancel();
+    }
+
+    pub fn navigate(&self, url: &str) {
+        navigate_browser(&self.browser, self.id, url);
+    }
+
+    #[must_use]
+    pub fn current_url(&self) -> Option<String> {
+        self.browser
+            .main_frame()
+            .map(|frame| CefString::from(&frame.url()).to_string())
+            .filter(|url| !url.is_empty())
+    }
+
+    pub fn go_back(&self) {
+        go_back_browser(&self.browser);
+    }
+
+    pub fn go_forward(&self) {
+        go_forward_browser(&self.browser);
+    }
+
+    pub fn reload(&self) {
+        self.browser.reload();
+    }
+
+    pub fn edit(&self, command: EditCommand) {
+        edit_browser(&self.browser, command);
+    }
+
+    pub fn inspect_element_at(&self, x: i32, y: i32) {
+        let Some(host) = self.browser.host() else {
+            return;
+        };
+        let scale_factor = osr_raster_scale(*self.viewport.lock());
+        let point = Point {
+            x: scaled_osr_coordinate(x, scale_factor),
+            y: scaled_osr_coordinate(y, scale_factor),
+        };
+        host.show_dev_tools(None, None, None, Some(&point));
+    }
+
+    pub fn toggle_dev_tools(&self) {
+        let Some(host) = self.browser.host() else {
+            return;
+        };
+        if host.has_dev_tools() == 0 {
+            host.show_dev_tools(None, None, None, None);
+        } else {
+            host.close_dev_tools();
+        }
+    }
+
+    #[must_use]
+    pub fn start_element_pick(&self, appearance: &crate::ElementPickerAppearance) -> bool {
+        if self.phase != SessionPhase::Ready || !self.picker_available {
+            return false;
+        }
+        let Some(frame) = self.browser.main_frame() else {
+            return false;
+        };
+        let Some(token) = self.element_pick.begin() else {
+            log::error!("could not create a secure element picker token");
+            return false;
+        };
+        let script = match element_picker_start_script(&token, appearance) {
+            Ok(script) => script,
+            Err(error) => {
+                self.element_pick.cancel();
+                log::error!("could not serialize element picker appearance: {error}");
+                return false;
+            }
+        };
+        frame.execute_java_script(
+            Some(&CefString::from(script.as_str())),
+            Some(&CefString::from(script_url("element-picker.js").as_str())),
+            1,
+        );
+        true
+    }
+
+    #[must_use]
+    pub fn cancel_element_pick(&self) -> bool {
+        if !self.element_pick.cancel() {
+            return false;
+        }
+        if let Some(frame) = self.browser.main_frame() {
+            frame.execute_java_script(
+                Some(&CefString::from("globalThis.__zzElementPicker?.cancel();")),
+                Some(&CefString::from(script_url("element-picker.js").as_str())),
+                1,
+            );
+        }
+        true
+    }
+
+    pub fn set_viewport(&mut self, next: Viewport) {
+        self.apply_viewport(next, false);
+    }
+
+    fn apply_viewport(&mut self, next: Viewport, force: bool) {
+        let started = diagnostic_timer();
+        let next = next.sanitized();
+        let previous = self.viewport.lock().to_owned();
+        *self.viewport.lock() = next;
+        let size_changed = previous.width != next.width || previous.height != next.height;
+        let scale_changed = previous.scale_factor.to_bits() != next.scale_factor.to_bits();
+        if force || size_changed || scale_changed {
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            self.accelerated_frames.set_viewport(next);
+            #[cfg(target_os = "macos")]
+            self.metal_frames.set_viewport(next);
+            #[cfg(target_os = "windows")]
+            self.d3d11_frames.set_viewport(next);
+        }
+        if let Some(host) = self.browser.host() {
+            if force || previous.visible != next.visible {
+                host.was_hidden(i32::from(!next.visible));
+            }
+            let screen_changed =
+                previous.screen_x != next.screen_x || previous.screen_y != next.screen_y;
+
+            if force || (uses_wayland_physical_osr() && scale_changed) {
+                host.set_zoom_level(effective_chromium_zoom_level(next, self.page_zoom_factor()));
+            }
+
+            if force || scale_changed || screen_changed {
+                host.notify_screen_info_changed();
+            }
+            if force || size_changed || scale_changed {
+                host.was_resized();
+                host.invalidate(PaintElementType::VIEW);
+            }
+            log::trace!(
+                target: "ala_cef::diagnostics::viewport",
+                "apply session={} force={} previous={previous:?} next={next:?} size_changed={} scale_changed={} screen_changed={} elapsed_us={}",
+                self.id.0,
+                force,
+                size_changed,
+                scale_changed,
+                screen_changed,
+                diagnostic_elapsed_us(started),
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn set_frame_presenter(&self, presenter: Option<crate::MacFramePresenter>) {
+        self.metal_frames.set_presenter(presenter);
+    }
+
+    pub fn set_focus(&self, focused: bool) {
+        let Some(host) = self.browser.host() else {
+            log::debug!(
+                "dropping focus change for session {} without a browser host",
+                self.id.0
+            );
+            return;
+        };
+        host.set_focus(i32::from(focused));
+    }
+
+    pub fn set_frame_rate(&self, frames_per_second: i32) {
+        if let Some(host) = self.browser.host() {
+            host.set_windowless_frame_rate(frames_per_second.clamp(1, MAX_BROWSER_FRAME_RATE));
+        }
+    }
+
+    pub fn send_external_begin_frame(&self) {
+        if let Some(host) = self.browser.host() {
+            host.send_external_begin_frame();
+        }
+    }
+
+    fn input_position(&self, x: i32, y: i32) -> (i32, i32) {
+        let viewport = *self.viewport.lock();
+        let scale = osr_raster_scale(viewport);
+        self.popup.lock().input_position(
+            scaled_osr_coordinate(x, scale),
+            scaled_osr_coordinate(y, scale),
+            scaled_osr_dimension(viewport.width, scale).cast_unsigned(),
+            scaled_osr_dimension(viewport.height, scale).cast_unsigned(),
+        )
+    }
+
+    pub fn send_pointer(&self, event: PointerEvent) {
+        let Some(host) = self.browser.host() else {
+            return;
+        };
+        let viewport = *self.viewport.lock();
+        let scale = osr_raster_scale(viewport);
+        let Some((x, y)) = self.popup.lock().pointer_position(
+            event.phase,
+            scaled_osr_coordinate(event.x, scale),
+            scaled_osr_coordinate(event.y, scale),
+            scaled_osr_dimension(viewport.width, scale).cast_unsigned(),
+            scaled_osr_dimension(viewport.height, scale).cast_unsigned(),
+        ) else {
+            return;
+        };
+        let mouse = MouseEvent {
+            x,
+            y,
+            modifiers: event_flags(event.modifiers),
+        };
+        match event.phase {
+            PointerPhase::Move => host.send_mouse_move_event(Some(&mouse), 0),
+            PointerPhase::Leave => host.send_mouse_move_event(Some(&mouse), 1),
+            PointerPhase::Down | PointerPhase::Up => {
+                let Some(button) = event.button.map(mouse_button) else {
+                    return;
+                };
+                host.send_mouse_click_event(
+                    Some(&mouse),
+                    button,
+                    i32::from(event.phase == PointerPhase::Up),
+                    event.click_count.max(1),
+                );
+            }
+        }
+    }
+
+    pub fn send_wheel(&self, event: WheelEvent) {
+        let Some(host) = self.browser.host() else {
+            return;
+        };
+        let scale_factor = osr_raster_scale(*self.viewport.lock());
+        let mut flags = event_flags(event.modifiers);
+        if event.precise {
+            flags |=
+                cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA.0);
+        }
+        let (x, y) = self.input_position(event.x, event.y);
+        let mouse = MouseEvent {
+            x,
+            y,
+            modifiers: flags,
+        };
+        let (delta_x, delta_y) = if event.precise {
+            (
+                scaled_osr_coordinate(event.delta_x, scale_factor),
+                scaled_osr_coordinate(event.delta_y, scale_factor),
+            )
+        } else {
+            (event.delta_x, event.delta_y)
+        };
+        host.send_mouse_wheel_event(Some(&mouse), delta_x, delta_y);
+    }
+
+    pub fn send_key(&self, input: KeyInput) {
+        send_browser_key(&self.browser, self.id, input);
+    }
+
+    pub fn send_text(&self, text: &str) {
+        send_browser_text(&self.browser, text);
+    }
+
+    pub fn commit_composition(&self, text: &str) {
+        commit_browser_composition(&self.browser, text);
+    }
+
+    pub fn set_composition(&self, text: &str, selection_utf16: std::ops::Range<usize>) {
+        set_browser_composition(&self.browser, text, selection_utf16);
+    }
+
+    pub fn finish_composition(&self) {
+        finish_browser_composition(&self.browser);
+    }
+
+    pub fn cancel_composition(&self) {
+        cancel_browser_composition(&self.browser);
+    }
+
+    pub fn close(&mut self, force: bool) {
+        self.closing.store(true, Ordering::Release);
+        if self.active_session.0.finished.load(Ordering::Acquire) {
+            self.mark_closed();
+            return;
+        }
+        if matches!(self.phase, SessionPhase::Closing | SessionPhase::Closed) {
+            return;
+        }
+        self.element_pick.cancel();
+        self.phase = SessionPhase::Closing;
+        close_pending_popups(&self.popups);
+        if let Some(host) = self.browser.host() {
+            host.close_browser(i32::from(force));
+        }
+    }
+}
+
+impl Drop for BrowserSession {
+    fn drop(&mut self) {
+        self.closing.store(true, Ordering::Release);
+        close_pending_popups(&self.popups);
+        if !matches!(self.phase, SessionPhase::Closed | SessionPhase::Closing)
+            && !self.active_session.0.finished.load(Ordering::Acquire)
+        {
+            log::warn!(
+                "forcing CEF browser closure while dropping session {}",
+                self.id.0
+            );
+            if let Some(host) = self.browser.host() {
+                host.close_browser(1);
+            }
+        }
+    }
+}
+
+pub fn bootstrap(
+    config: &RuntimeConfig,
+    profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
+) -> Result<BrowserBootstrap, BrowserError> {
+    bootstrap_args_with_paths(config, Args::new(), ptr::null_mut(), profile_paths)
+}
+
+pub fn bootstrap_with_profile_paths(
+    config: &RuntimeConfig,
+    profile_paths: BrowserProfilePaths,
+) -> Result<BrowserBootstrap, BrowserError> {
+    bootstrap(config, || Ok(profile_paths))
+}
+
+#[cfg(target_os = "windows")]
+pub fn bootstrap_windows(
+    config: &RuntimeConfig,
+    instance: cef::sys::HINSTANCE,
+    sandbox_info: *mut u8,
+    profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
+) -> Result<BrowserBootstrap, BrowserError> {
+    bootstrap_args_with_paths(
+        config,
+        Args::from(MainArgs { instance }),
+        sandbox_info,
+        profile_paths,
+    )
+}
+
+fn bootstrap_args_with_paths(
+    config: &RuntimeConfig,
+    args: Args,
+    sandbox_info: *mut u8,
+    profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
+) -> Result<BrowserBootstrap, BrowserError> {
+    let started = diagnostic_timer();
+    set_names(config.scheme, config.page_global);
+    #[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
+    let dispatch = has_subprocess_switch(std::env::args_os().skip(1));
+    #[cfg(not(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64"))))]
+    let dispatch = true;
+    #[cfg(target_os = "macos")]
+    let loader = dispatch.then(MacFrameworkLoader::load).transpose()?;
+
+    let (signal_tx, signal_rx) = async_channel::unbounded();
+    let remote_debugging_port = Arc::new(AtomicU16::new(0));
+    let mut app = RuntimeApp::new(
+        signal_tx.clone(),
+        Arc::clone(&remote_debugging_port),
+        config.gpu,
+        RuntimeRenderProcessHandler::new(RendererSideRouter::new(element_picker_router_config())),
+    );
+    if dispatch {
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        cef::sys::load_library().map_err(BrowserError::LibraryLoad)?;
+        let _ = api_hash(cef::sys::CEF_API_VERSION, 0);
+        let result = execute_process(Some(args.as_main_args()), Some(&mut app), sandbox_info);
+        if result >= 0 {
+            return Ok(BrowserBootstrap::SubprocessExit(result));
+        }
+        if result != -1 {
+            return Err(BrowserError::ExecuteProcess(result));
+        }
+    }
+
+    let profile_paths = profile_paths().map_err(|error| BrowserError::Profile(error.into()))?;
+    profile_paths.ensure()?;
+    let frame_rate_override = config
+        .frame_rate
+        .map(|frame_rate| frame_rate.clamp(1, MAX_BROWSER_FRAME_RATE));
+    let windowless_frame_rate = frame_rate_override.unwrap_or(DEFAULT_BROWSER_FRAME_RATE);
+    let shared_texture_enabled = config.shared_texture && config.gpu;
+    let external_begin_frame_enabled = config.external_begin_frame
+        && cfg!(any(
+            target_os = "macos",
+            target_os = "linux",
+            target_os = "freebsd"
+        ));
+    let begin_frame_adaptive_enabled = config.begin_frame_adaptive;
+    log::info!("CEF OSR frame-rate ceiling: {windowless_frame_rate} FPS");
+    if config.gpu && !shared_texture_enabled {
+        log::info!("CEF GPU process enabled; shared-texture OSR disabled, using readback OSR");
+    }
+    if shared_texture_enabled {
+        log::info!(
+            "CEF shared-texture OSR enabled (GPU import/copy-on-receive active with a ala device; atomic readback fallback retained)"
+        );
+    }
+    if external_begin_frame_enabled {
+        log::info!("CEF external BeginFrame scheduling enabled");
+        if begin_frame_adaptive_enabled {
+            log::info!("CEF external BeginFrame adaptive throttle enabled");
+        } else {
+            log::info!("CEF external BeginFrame adaptive throttle disabled");
+        }
+    }
+    log::debug!(
+        target: "ala_cef::diagnostics::lifecycle",
+        "cold runtime prepared profile_paths={profile_paths:?} windowless_frame_rate={windowless_frame_rate} shared_texture_enabled={shared_texture_enabled} wayland_physical_osr={} elapsed_us={}",
+        uses_wayland_physical_osr(),
+        diagnostic_elapsed_us(started),
+    );
+
+    let active_sessions = Arc::new(AtomicU64::new(0));
+    let message_pump = BrowserMessagePump::new(Arc::clone(&active_sessions));
+    Ok(BrowserBootstrap::Runtime(BrowserRuntime {
+        message_pump,
+        signal_tx: signal_tx.clone(),
+        signals: signal_rx,
+        args,
+        app,
+        remote_debugging_port,
+        remote_debugging_override: config.remote_debugging_port,
+        sandbox_info,
+        profile_paths,
+        profile_contexts: BTreeMap::new(),
+        next_session: Arc::new(AtomicU64::new(0)),
+        active_sessions,
+        active_data_operations: Arc::new(AtomicU64::new(0)),
+        windowless_frame_rate,
+        frame_rate_override,
+        shared_texture_enabled,
+        external_begin_frame_enabled,
+        begin_frame_adaptive_enabled,
+        log_file: None,
+        background_color: 0xff10_1318,
+        #[cfg(target_os = "macos")]
+        _loader: loader,
+    }))
+}
+
+#[must_use]
+pub fn run_subprocess(config: &RuntimeConfig) -> i32 {
+    set_names(config.scheme, config.page_global);
+    let args = Args::new();
+
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    if let Err(error) = cef::sys::load_library() {
+        log::error!("CEF subprocess could not load its browser library: {error}");
+        return 1;
+    }
+
+    #[cfg(target_os = "macos")]
+    let _sandbox = {
+        let mut sandbox = cef::sandbox::Sandbox::new();
+        sandbox.initialize(args.as_main_args());
+        sandbox
+    };
+
+    #[cfg(target_os = "macos")]
+    let _loader = {
+        let Ok(executable) = std::env::current_exe() else {
+            return 1;
+        };
+        let loader = cef::library_loader::LibraryLoader::new(&executable, true);
+        if !loader.load() {
+            return 1;
+        }
+        loader
+    };
+
+    let _ = api_hash(cef::sys::CEF_API_VERSION, 0);
+    let (signal_tx, _signal_rx) = async_channel::unbounded();
+    let mut app = RuntimeApp::new(
+        signal_tx,
+        Arc::new(AtomicU16::new(0)),
+        config.gpu,
+        RuntimeRenderProcessHandler::new(RendererSideRouter::new(element_picker_router_config())),
+    );
+    let result = execute_process(Some(args.as_main_args()), Some(&mut app), ptr::null_mut());
+    if result < 0 { 1 } else { result }
+}
+
+#[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
+fn has_subprocess_switch(arguments: impl IntoIterator<Item = impl AsRef<OsStr>>) -> bool {
+    arguments.into_iter().any(|argument| {
+        let argument = argument.as_ref();
+        argument == "--type" || argument.to_string_lossy().starts_with("--type=")
+    })
+}
+
+fn owned_cef_string(value: &CefStringUserfree) -> Option<Arc<str>> {
+    let text = CefString::from(value).to_string();
+    (!text.is_empty()).then(|| Arc::from(text.as_str()))
+}
+
+fn path_to_cef_string(path: &Path) -> CefString {
+    CefString::from(path.to_string_lossy().as_ref())
+}
+
+fn checked_remote_debugging_port(port: u16) -> Result<u16, BrowserError> {
+    if port == 0 || port >= 1024 {
+        Ok(port)
+    } else {
+        Err(BrowserError::RemoteDebuggingPort(port))
+    }
+}
+
+fn navigate_browser(browser: &Browser, session: SessionId, url: &str) {
+    let Some(frame) = browser.main_frame() else {
+        log::debug!(
+            "dropping navigation for session {} without a main frame",
+            session.0
+        );
+        return;
+    };
+    frame.load_url(Some(&CefString::from(url)));
+}
+
+fn go_back_browser(browser: &Browser) {
+    if browser.can_go_back() != 0 {
+        browser.go_back();
+    }
+}
+
+fn go_forward_browser(browser: &Browser) {
+    if browser.can_go_forward() != 0 {
+        browser.go_forward();
+    }
+}
+
+fn edit_browser(browser: &Browser, command: EditCommand) {
+    let Some(frame) = browser.focused_frame().or_else(|| browser.main_frame()) else {
+        return;
+    };
+    match command {
+        EditCommand::Undo => frame.undo(),
+        EditCommand::Redo => frame.redo(),
+        EditCommand::Cut => frame.cut(),
+        EditCommand::Copy => frame.copy(),
+        EditCommand::Paste => frame.paste(),
+        EditCommand::PasteAndMatchStyle => frame.paste_and_match_style(),
+        EditCommand::SelectAll => frame.select_all(),
+    }
+}
+
+fn send_browser_key(browser: &Browser, session: SessionId, input: KeyInput) {
+    let Some(host) = browser.host() else {
+        log::debug!(
+            "dropping key event for session {} without a browser host",
+            session.0
+        );
+        return;
+    };
+    let event = key_event(input);
+    host.send_key_event(Some(&event));
+    if let Some(event) = named_key_character_event(input) {
+        host.send_key_event(Some(&event));
+    }
+}
+
+fn send_browser_text(browser: &Browser, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if let Some(host) = browser.host() {
+        for code_unit in text.encode_utf16() {
+            let event = text_key_event(code_unit);
+            host.send_key_event(Some(&event));
+        }
+    }
+}
+
+const NO_REPLACEMENT: Range = Range {
+    from: u32::MAX,
+    to: u32::MAX,
+};
+
+fn commit_browser_composition(browser: &Browser, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+    if let Some(host) = browser.host() {
+        host.ime_commit_text(Some(&CefString::from(text)), Some(&NO_REPLACEMENT), 0);
+    }
+}
+
+fn set_browser_composition(browser: &Browser, text: &str, selection_utf16: std::ops::Range<usize>) {
+    let Some(host) = browser.host() else {
+        return;
+    };
+    let length = u32::try_from(text.encode_utf16().count()).unwrap_or(u32::MAX);
+    let selected = Range {
+        from: u32::try_from(selection_utf16.start)
+            .unwrap_or(length)
+            .min(length),
+        to: u32::try_from(selection_utf16.end)
+            .unwrap_or(length)
+            .min(length),
+    };
+    let underline = CompositionUnderline {
+        range: Range {
+            from: 0,
+            to: length,
+        },
+        color: 0xffd8_dee9,
+        thick: 0,
+        ..Default::default()
+    };
+    host.ime_set_composition(
+        Some(&CefString::from(text)),
+        Some(&[underline]),
+        Some(&NO_REPLACEMENT),
+        Some(&selected),
+    );
+}
+
+fn finish_browser_composition(browser: &Browser) {
+    if let Some(host) = browser.host() {
+        host.ime_finish_composing_text(0);
+    }
+}
+
+fn cancel_browser_composition(browser: &Browser) {
+    if let Some(host) = browser.host() {
+        host.ime_cancel_composition();
+    }
+}
+
+#[cfg(windows)]
+fn cef_enum_bits(value: i32) -> u32 {
+    value.cast_unsigned()
+}
+
+#[cfg(not(windows))]
+fn cef_enum_bits(value: u32) -> u32 {
+    value
+}
+
+fn event_flags(modifiers: Modifiers) -> u32 {
+    let mut flags = 0u32;
+    if modifiers.shift() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_SHIFT_DOWN.0);
+    }
+    if modifiers.control() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_CONTROL_DOWN.0);
+    }
+    if modifiers.alt() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_ALT_DOWN.0);
+    }
+    if modifiers.platform() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_COMMAND_DOWN.0);
+    }
+    if modifiers.left_mouse() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_LEFT_MOUSE_BUTTON.0);
+    }
+    if modifiers.middle_mouse() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_MIDDLE_MOUSE_BUTTON.0);
+    }
+    if modifiers.right_mouse() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_RIGHT_MOUSE_BUTTON.0);
+    }
+    if modifiers.is_repeat() {
+        flags |= cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_IS_REPEAT.0);
+    }
+    flags
+}
+
+fn key_event(input: KeyInput) -> KeyEvent {
+    let character = key_character(input.key);
+    KeyEvent {
+        type_: match input.action {
+            KeyAction::Press => KeyEventType::RAWKEYDOWN,
+            KeyAction::Release => KeyEventType::KEYUP,
+        },
+        modifiers: event_flags(input.modifiers),
+        windows_key_code: input.key.windows_key_code(),
+        native_key_code: native_key_code(input.key),
+        is_system_key: i32::from(input.modifiers.alt()),
+        character,
+        unmodified_character: character,
+        ..Default::default()
+    }
+}
+
+fn named_key_character_event(input: KeyInput) -> Option<KeyEvent> {
+    if input.action != KeyAction::Press || matches!(input.key, BrowserKey::Character(_)) {
+        return None;
+    }
+    let mut event = key_event(input);
+    (event.character != 0).then(|| {
+        event.type_ = KeyEventType::CHAR;
+        event
+    })
+}
+
+fn key_character(key: BrowserKey) -> u16 {
+    if let BrowserKey::Character(character) = key {
+        return character
+            .encode_utf16(&mut [0; 2])
+            .first()
+            .copied()
+            .unwrap_or_default();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        match key {
+            BrowserKey::Backspace => 0x007f,
+            BrowserKey::Tab => 0x0009,
+            BrowserKey::Enter => 0x000d,
+            BrowserKey::Escape => 0x001b,
+            BrowserKey::Space => 0x0020,
+            BrowserKey::ArrowUp => 0xf700,
+            BrowserKey::ArrowDown => 0xf701,
+            BrowserKey::ArrowLeft => 0xf702,
+            BrowserKey::ArrowRight => 0xf703,
+            BrowserKey::Function(number @ 1..=35) => 0xf704 + u16::from(number) - 1,
+            BrowserKey::Delete => 0xf728,
+            BrowserKey::Home => 0xf729,
+            BrowserKey::End => 0xf72b,
+            BrowserKey::PageUp => 0xf72c,
+            BrowserKey::PageDown => 0xf72d,
+            BrowserKey::Insert => 0xf746,
+            BrowserKey::Character(_) | BrowserKey::Function(_) | BrowserKey::Unidentified => 0,
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = key;
+        0
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn native_key_code(key: BrowserKey) -> i32 {
+    match key {
+        BrowserKey::Enter => 0x24,
+        BrowserKey::Tab => 0x30,
+        BrowserKey::Space => 0x31,
+        BrowserKey::Backspace => 0x33,
+        BrowserKey::Escape => 0x35,
+        BrowserKey::Function(1) => 0x7a,
+        BrowserKey::Function(2) => 0x78,
+        BrowserKey::Function(3) => 0x63,
+        BrowserKey::Function(4) => 0x76,
+        BrowserKey::Function(5) => 0x60,
+        BrowserKey::Function(6) => 0x61,
+        BrowserKey::Function(7) => 0x62,
+        BrowserKey::Function(8) => 0x64,
+        BrowserKey::Function(9) => 0x65,
+        BrowserKey::Function(10) => 0x6d,
+        BrowserKey::Function(11) => 0x67,
+        BrowserKey::Function(12) => 0x6f,
+        BrowserKey::Function(13) => 0x69,
+        BrowserKey::Function(14) => 0x6b,
+        BrowserKey::Function(15) => 0x71,
+        BrowserKey::Function(16) => 0x6a,
+        BrowserKey::Function(17) => 0x40,
+        BrowserKey::Function(18) => 0x4f,
+        BrowserKey::Function(19) => 0x50,
+        BrowserKey::Function(20) => 0x5a,
+        BrowserKey::PageUp => 0x74,
+        BrowserKey::PageDown => 0x79,
+        BrowserKey::End => 0x77,
+        BrowserKey::Home => 0x73,
+        BrowserKey::ArrowLeft => 0x7b,
+        BrowserKey::ArrowUp => 0x7e,
+        BrowserKey::ArrowRight => 0x7c,
+        BrowserKey::ArrowDown => 0x7d,
+        BrowserKey::Insert => 0x72,
+        BrowserKey::Delete => 0x75,
+        BrowserKey::Character(character) => mac_character_key_code(character),
+        BrowserKey::Function(_) | BrowserKey::Unidentified => 0,
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[allow(
+    clippy::match_same_arms,
+    reason = "macOS assigns virtual key code zero to A, which is also CEF's unavailable-code sentinel"
+)]
+fn mac_character_key_code(character: char) -> i32 {
+    match character {
+        'a' | 'A' => 0x00,
+        's' | 'S' => 0x01,
+        'd' | 'D' => 0x02,
+        'f' | 'F' => 0x03,
+        'h' | 'H' => 0x04,
+        'g' | 'G' => 0x05,
+        'z' | 'Z' => 0x06,
+        'x' | 'X' => 0x07,
+        'c' | 'C' => 0x08,
+        'v' | 'V' => 0x09,
+        'b' | 'B' => 0x0b,
+        'q' | 'Q' => 0x0c,
+        'w' | 'W' => 0x0d,
+        'e' | 'E' => 0x0e,
+        'r' | 'R' => 0x0f,
+        'y' | 'Y' => 0x10,
+        't' | 'T' => 0x11,
+        '1' | '!' => 0x12,
+        '2' | '@' => 0x13,
+        '3' | '#' => 0x14,
+        '4' | '$' => 0x15,
+        '6' | '^' => 0x16,
+        '5' | '%' => 0x17,
+        '=' | '+' => 0x18,
+        '9' | '(' => 0x19,
+        '7' | '&' => 0x1a,
+        '-' | '_' => 0x1b,
+        '8' | '*' => 0x1c,
+        '0' | ')' => 0x1d,
+        ']' | '}' => 0x1e,
+        'o' | 'O' => 0x1f,
+        'u' | 'U' => 0x20,
+        '[' | '{' => 0x21,
+        'i' | 'I' => 0x22,
+        'p' | 'P' => 0x23,
+        'l' | 'L' => 0x25,
+        'j' | 'J' => 0x26,
+        '\'' | '"' => 0x27,
+        'k' | 'K' => 0x28,
+        ';' | ':' => 0x29,
+        '\\' | '|' => 0x2a,
+        ',' | '<' => 0x2b,
+        '/' | '?' => 0x2c,
+        'n' | 'N' => 0x2d,
+        'm' | 'M' => 0x2e,
+        '.' | '>' => 0x2f,
+        '`' | '~' => 0x32,
+        ' ' => 0x31,
+        _ => 0,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn native_key_code(_: BrowserKey) -> i32 {
+    0
+}
+
+fn text_key_event(code_unit: u16) -> KeyEvent {
+    KeyEvent {
+        type_: KeyEventType::CHAR,
+        windows_key_code: i32::from(code_unit),
+        character: code_unit,
+        unmodified_character: code_unit,
+        ..Default::default()
+    }
+}
+
+fn mouse_button(button: PointerButton) -> MouseButtonType {
+    match button {
+        PointerButton::Left => MouseButtonType::LEFT,
+        PointerButton::Middle => MouseButtonType::MIDDLE,
+        PointerButton::Right => MouseButtonType::RIGHT,
+    }
+}
+
+#[derive(Clone, Default)]
+struct AcceleratedPaintTracker(Arc<Mutex<AcceleratedPaintState>>);
+
+#[derive(Default)]
+struct AcceleratedPaintState {
+    callback_count: u64,
+    missing_info_count: u64,
+    view_count: u64,
+    popup_count: u64,
+    handle_transition_count: u64,
+    consecutive_handle_reuse_count: u64,
+    previous_handle: Option<AcceleratedPaintHandleIdentity>,
+    handles: BTreeMap<AcceleratedPaintHandleIdentity, AcceleratedPaintHandleState>,
+    last_observation: Option<(u64, AcceleratedPaintObservationState)>,
+    gpu_import_attempt_count: u64,
+    gpu_frame_delivered_count: u64,
+    gpu_import_failure_count: u64,
+    gpu_helper_fallback_count: u64,
+    stale_pool_frame_count: u64,
+    readback_frame_delivered_count: u64,
+    latest_pool_generation: u64,
+}
+
+struct AcceleratedPaintHandleState {
+    use_count: u64,
+    first_callback: u64,
+    last_callback: u64,
+    minimum_reuse_gap: Option<u64>,
+    maximum_reuse_gap: Option<u64>,
+}
+
+struct RecordedAcceleratedPaint {
+    callback: u64,
+    unique_handle_count: usize,
+    same_as_previous: bool,
+    reuse_gap: Option<u64>,
+}
+
+#[derive(Clone, Copy)]
+struct AcceleratedPaintObservationState {
+    paint_element: &'static str,
+    width: i32,
+    height: i32,
+    pixel_format: &'static str,
+    pixel_format_raw: u32,
+    platform: AcceleratedPaintPlatformState,
+}
+
+#[derive(Clone, Copy)]
+struct AcceleratedPaintPlatformState {
+    drm_modifier: Option<u64>,
+    plane_count: i32,
+    planes: [Option<AcceleratedPaintPlaneDiagnostics>; 4],
+    handle_identity: AcceleratedPaintHandleIdentity,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+type AcceleratedPaintHandleIdentity = usize;
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct AcceleratedPaintHandleIdentity {
+    plane_count: u8,
+    planes: [AcceleratedPaintPlaneIdentity; 4],
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+struct AcceleratedPaintPlaneIdentity {
+    device: Option<u64>,
+    inode: Option<u64>,
+    offset: u64,
+    size: u64,
+}
+
+impl AcceleratedPaintObservationState {
+    fn diagnostics(self, callback: u64) -> AcceleratedPaintObservation {
+        AcceleratedPaintObservation {
+            callback,
+            paint_element: self.paint_element.to_owned(),
+            width: self.width,
+            height: self.height,
+            pixel_format: self.pixel_format.to_owned(),
+            pixel_format_raw: self.pixel_format_raw,
+            drm_modifier: self.platform.drm_modifier,
+            plane_count: self.platform.plane_count,
+            planes: self.platform.planes.into_iter().flatten().collect(),
+            handle_identity: format_accelerated_handle_identity(self.platform.handle_identity),
+        }
+    }
+}
+
+impl AcceleratedPaintTracker {
+    #[allow(
+        clippy::large_types_passed_by_value,
+        reason = "the observation moves into the tracker state; by-ref would clone it"
+    )]
+    fn record(
+        &self,
+        type_: PaintElementType,
+        observation: AcceleratedPaintObservationState,
+    ) -> RecordedAcceleratedPaint {
+        let mut state = self.0.lock();
+        state.callback_count = state.callback_count.wrapping_add(1).max(1);
+        let callback = state.callback_count;
+        match type_ {
+            PaintElementType::VIEW => state.view_count += 1,
+            PaintElementType::POPUP => state.popup_count += 1,
+            _ => {}
+        }
+
+        let identity = observation.platform.handle_identity;
+        let same_as_previous = state.previous_handle == Some(identity);
+        if state.previous_handle.is_some() {
+            if same_as_previous {
+                state.consecutive_handle_reuse_count += 1;
+            } else {
+                state.handle_transition_count += 1;
+            }
+        }
+        state.previous_handle = Some(identity);
+
+        if !state.handles.contains_key(&identity)
+            && state.handles.len() >= MAX_TRACKED_ACCELERATED_HANDLES
+            && let Some(oldest) = state
+                .handles
+                .iter()
+                .min_by_key(|(_, handle)| handle.last_callback)
+                .map(|(identity, _)| *identity)
+        {
+            state.handles.remove(&oldest);
+        }
+        let handle = state
+            .handles
+            .entry(identity)
+            .or_insert(AcceleratedPaintHandleState {
+                use_count: 0,
+                first_callback: callback,
+                last_callback: callback,
+                minimum_reuse_gap: None,
+                maximum_reuse_gap: None,
+            });
+        let reuse_gap = (handle.use_count != 0).then(|| callback - handle.last_callback);
+        if let Some(reuse_gap) = reuse_gap {
+            handle.minimum_reuse_gap = Some(
+                handle
+                    .minimum_reuse_gap
+                    .map_or(reuse_gap, |current| current.min(reuse_gap)),
+            );
+            handle.maximum_reuse_gap = Some(
+                handle
+                    .maximum_reuse_gap
+                    .map_or(reuse_gap, |current| current.max(reuse_gap)),
+            );
+        }
+        handle.use_count += 1;
+        handle.last_callback = callback;
+        state.last_observation = Some((callback, observation));
+
+        RecordedAcceleratedPaint {
+            callback,
+            unique_handle_count: state.handles.len(),
+            same_as_previous,
+            reuse_gap,
+        }
+    }
+
+    fn record_missing_info(&self, type_: PaintElementType) -> u64 {
+        let mut state = self.0.lock();
+        state.callback_count = state.callback_count.wrapping_add(1).max(1);
+        state.missing_info_count += 1;
+        match type_ {
+            PaintElementType::VIEW => state.view_count += 1,
+            PaintElementType::POPUP => state.popup_count += 1,
+            _ => {}
+        }
+        state.callback_count
+    }
+
+    fn record_gpu_import_attempt(&self) {
+        self.0.lock().gpu_import_attempt_count += 1;
+    }
+
+    fn record_gpu_frame_delivered(&self, pool_generation: u64) {
+        let mut state = self.0.lock();
+        state.gpu_frame_delivered_count += 1;
+        state.latest_pool_generation = pool_generation;
+    }
+
+    fn record_gpu_import_failure(&self, helper_fallback: bool) -> u64 {
+        let mut state = self.0.lock();
+        state.gpu_import_failure_count += 1;
+        if helper_fallback {
+            state.gpu_helper_fallback_count += 1;
+        }
+        state.gpu_import_failure_count
+    }
+
+    fn record_stale_pool_frame(&self) -> u64 {
+        let mut state = self.0.lock();
+        state.stale_pool_frame_count += 1;
+        state.stale_pool_frame_count
+    }
+
+    fn record_readback_frame_delivered(&self) {
+        self.0.lock().readback_frame_delivered_count += 1;
+    }
+
+    fn diagnostics(&self) -> AcceleratedPaintDiagnostics {
+        let state = self.0.lock();
+        AcceleratedPaintDiagnostics {
+            callback_count: state.callback_count,
+            missing_info_count: state.missing_info_count,
+            view_count: state.view_count,
+            popup_count: state.popup_count,
+            unique_handle_count: state.handles.len(),
+            handle_transition_count: state.handle_transition_count,
+            consecutive_handle_reuse_count: state.consecutive_handle_reuse_count,
+            handles: state
+                .handles
+                .iter()
+                .map(|(identity, handle)| AcceleratedPaintHandleDiagnostics {
+                    identity: format_accelerated_handle_identity(*identity),
+                    use_count: handle.use_count,
+                    first_callback: handle.first_callback,
+                    last_callback: handle.last_callback,
+                    minimum_reuse_gap: handle.minimum_reuse_gap,
+                    maximum_reuse_gap: handle.maximum_reuse_gap,
+                })
+                .collect(),
+            last_observation: state
+                .last_observation
+                .map(|(callback, observation)| observation.diagnostics(callback)),
+            gpu_import_attempt_count: state.gpu_import_attempt_count,
+            gpu_frame_delivered_count: state.gpu_frame_delivered_count,
+            gpu_import_failure_count: state.gpu_import_failure_count,
+            gpu_helper_fallback_count: state.gpu_helper_fallback_count,
+            stale_pool_frame_count: state.stale_pool_frame_count,
+            readback_frame_delivered_count: state.readback_frame_delivered_count,
+            latest_pool_generation: state.latest_pool_generation,
+        }
+    }
+}
+
+fn paint_element_name(type_: PaintElementType) -> &'static str {
+    match type_ {
+        PaintElementType::VIEW => "view",
+        PaintElementType::POPUP => "popup",
+        _ => "unknown",
+    }
+}
+
+fn pixel_format_name(format: ColorType) -> &'static str {
+    match format {
+        ColorType::RGBA_8888 => "rgba_8888",
+        ColorType::BGRA_8888 => "bgra_8888",
+        _ => "unknown",
+    }
+}
+
+fn accelerated_paint_observation(
+    type_: PaintElementType,
+    info: &AcceleratedPaintInfo,
+) -> AcceleratedPaintObservationState {
+    let platform = accelerated_paint_platform_info(info);
+    AcceleratedPaintObservationState {
+        paint_element: paint_element_name(type_),
+        width: info.extra.coded_size.width,
+        height: info.extra.coded_size.height,
+        pixel_format: pixel_format_name(info.format),
+        pixel_format_raw: cef_enum_bits(info.format.get_raw()),
+        platform,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn accelerated_paint_platform_info(info: &AcceleratedPaintInfo) -> AcceleratedPaintPlatformState {
+    use std::{
+        fs::File,
+        mem::ManuallyDrop,
+        os::{fd::FromRawFd as _, unix::fs::MetadataExt},
+    };
+
+    let plane_count = usize::try_from(info.plane_count)
+        .unwrap_or_default()
+        .min(info.planes.len());
+    let mut planes = [None; 4];
+    let mut identity_planes = [AcceleratedPaintPlaneIdentity::default(); 4];
+    for (index, plane) in info.planes.iter().take(plane_count).enumerate() {
+        planes[index] = Some(AcceleratedPaintPlaneDiagnostics {
+            fd: plane.fd,
+            stride: plane.stride,
+            offset: plane.offset,
+            size: plane.size,
+        });
+        let metadata = (plane.fd >= 0)
+            .then(|| {
+                let file = ManuallyDrop::new(unsafe { File::from_raw_fd(plane.fd) });
+                file.metadata()
+            })
+            .transpose()
+            .ok()
+            .flatten();
+        identity_planes[index] = AcceleratedPaintPlaneIdentity {
+            device: metadata.as_ref().map(MetadataExt::dev),
+            inode: metadata.as_ref().map(MetadataExt::ino),
+            offset: plane.offset,
+            size: plane.size,
+        };
+    }
+    AcceleratedPaintPlatformState {
+        drm_modifier: Some(info.modifier),
+        plane_count: info.plane_count,
+        planes,
+        handle_identity: AcceleratedPaintHandleIdentity {
+            plane_count: u8::try_from(plane_count)
+                .expect("CEF accelerated paint exposes at most four planes"),
+            planes: identity_planes,
+        },
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn format_accelerated_handle_identity(identity: AcceleratedPaintHandleIdentity) -> String {
+    use std::fmt::Write as _;
+
+    let mut formatted = String::from("dmabuf[");
+    for (index, plane) in identity
+        .planes
+        .iter()
+        .take(usize::from(identity.plane_count))
+        .enumerate()
+    {
+        if index != 0 {
+            formatted.push(';');
+        }
+        if let (Some(device), Some(inode)) = (plane.device, plane.inode) {
+            write!(
+                formatted,
+                "dev={device:x}:ino={inode:x}:offset={}:size={}",
+                plane.offset, plane.size
+            )
+            .expect("writing to a String cannot fail");
+        } else {
+            write!(
+                formatted,
+                "dev=unknown:ino=unknown:offset={}:size={}",
+                plane.offset, plane.size
+            )
+            .expect("writing to a String cannot fail");
+        }
+    }
+    formatted.push(']');
+    formatted
+}
+
+#[cfg(target_os = "macos")]
+fn accelerated_paint_platform_info(info: &AcceleratedPaintInfo) -> AcceleratedPaintPlatformState {
+    AcceleratedPaintPlatformState {
+        drm_modifier: None,
+        plane_count: 0,
+        planes: [None; 4],
+        handle_identity: info.shared_texture_io_surface as usize,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn format_accelerated_handle_identity(identity: AcceleratedPaintHandleIdentity) -> String {
+    format!("iosurface[{identity:#x}]")
+}
+
+#[cfg(target_os = "windows")]
+fn accelerated_paint_platform_info(info: &AcceleratedPaintInfo) -> AcceleratedPaintPlatformState {
+    AcceleratedPaintPlatformState {
+        drm_modifier: None,
+        plane_count: 0,
+        planes: [None; 4],
+        handle_identity: info.shared_texture_handle as usize,
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn format_accelerated_handle_identity(identity: AcceleratedPaintHandleIdentity) -> String {
+    format!("d3d[{identity:#x}]")
+}
+
+const MAX_TRACKED_ACCELERATED_HANDLES: usize = 64;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ExpectedFrameSize {
+    logical_width: u32,
+    logical_height: u32,
+    device_width: i32,
+    device_height: i32,
+}
+
+impl ExpectedFrameSize {
+    fn from_viewport(viewport: Viewport) -> Self {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        let scale_factor = viewport.scale_factor;
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let scale_factor = osr_raster_scale(viewport);
+        Self {
+            logical_width: viewport.width,
+            logical_height: viewport.height,
+            device_width: scaled_osr_dimension(viewport.width, scale_factor),
+            device_height: scaled_osr_dimension(viewport.height, scale_factor),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AcceleratedPoolLayout {
+    width: i32,
+    height: i32,
+    pixel_format_raw: u32,
+}
+
+impl AcceleratedPoolLayout {
+    fn from_info(info: &AcceleratedPaintInfo) -> Result<Self, AcceleratedFrameError> {
+        frame_byte_len(info.extra.coded_size.width, info.extra.coded_size.height)
+            .map_err(|error| AcceleratedFrameError::InvalidMetadata(error.to_string()))?;
+        if !matches!(info.format, ColorType::BGRA_8888 | ColorType::RGBA_8888) {
+            return Err(AcceleratedFrameError::InvalidMetadata(format!(
+                "unsupported pixel format {}",
+                info.format.get_raw()
+            )));
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            let plane_count = usize::try_from(info.plane_count).map_err(|_| {
+                AcceleratedFrameError::InvalidMetadata(format!(
+                    "negative plane count {}",
+                    info.plane_count
+                ))
+            })?;
+            if plane_count == 0 || plane_count > info.planes.len() {
+                return Err(AcceleratedFrameError::InvalidMetadata(format!(
+                    "invalid plane count {} (capacity {})",
+                    info.plane_count,
+                    info.planes.len()
+                )));
+            }
+            info.planes.iter().take(plane_count).try_for_each(|plane| {
+                if plane.fd < 0 || plane.stride == 0 {
+                    return Err(AcceleratedFrameError::InvalidMetadata(format!(
+                        "invalid DMA-BUF plane fd={} stride={}",
+                        plane.fd, plane.stride
+                    )));
+                }
+                Ok(())
+            })?;
+        }
+
+        Ok(Self {
+            width: info.extra.coded_size.width,
+            height: info.extra.coded_size.height,
+            pixel_format_raw: cef_enum_bits(info.format.get_raw()),
+        })
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn texture_format(&self) -> wgpu::TextureFormat {
+        if self.pixel_format_raw == ColorType::BGRA_8888.get_raw() {
+            wgpu::TextureFormat::Bgra8Unorm
+        } else {
+            wgpu::TextureFormat::Rgba8Unorm
+        }
+    }
+}
+
+#[derive(Debug)]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct PoolGenerationBookkeeper {
+    expected: ExpectedFrameSize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum StalePoolFrame {
+    Dimensions {
+        expected_width: i32,
+        expected_height: i32,
+        actual_width: i32,
+        actual_height: i32,
+    },
+    #[cfg(target_os = "macos")]
+    InFlightLimit { limit: usize },
+    #[cfg(target_os = "macos")]
+    DestinationInFlight { slot: usize, sequence: u64 },
+    #[cfg(target_os = "macos")]
+    SupersededGeneration { pool_generation: u64 },
+    #[cfg(target_os = "macos")]
+    OutOfOrder {
+        last_published_sequence: u64,
+        sequence: u64,
+    },
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl PoolGenerationBookkeeper {
+    fn new(viewport: Viewport) -> Self {
+        Self {
+            expected: ExpectedFrameSize::from_viewport(viewport),
+        }
+    }
+
+    fn set_viewport(&mut self, viewport: Viewport) -> bool {
+        let expected = ExpectedFrameSize::from_viewport(viewport);
+        if self.expected == expected {
+            return false;
+        }
+        self.expected = expected;
+        true
+    }
+
+    fn observe(&self, layout: &AcceleratedPoolLayout) -> Result<(), StalePoolFrame> {
+        if layout.width != self.expected.device_width
+            || layout.height != self.expected.device_height
+        {
+            return Err(StalePoolFrame::Dimensions {
+                expected_width: self.expected.device_width,
+                expected_height: self.expected.device_height,
+                actual_width: layout.width,
+                actual_height: layout.height,
+            });
+        }
+        Ok(())
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct DestinationTexturePool {
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+    textures: [wgpu::Texture; 2],
+    next: usize,
+    blitter: wgpu::util::TextureBlitter,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl DestinationTexturePool {
+    fn new(device: &wgpu::Device, width: u32, height: u32, format: wgpu::TextureFormat) -> Self {
+        let create_texture = |index| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: Some(if index == 0 {
+                    "browser accelerated OSR destination 0"
+                } else {
+                    "browser accelerated OSR destination 1"
+                }),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING
+                    | wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            })
+        };
+        Self {
+            width,
+            height,
+            format,
+            textures: [create_texture(0), create_texture(1)],
+            next: 0,
+            blitter: wgpu::util::TextureBlitter::new(device, format),
+        }
+    }
+
+    fn matches(&self, width: u32, height: u32, format: wgpu::TextureFormat) -> bool {
+        self.width == width && self.height == height && self.format == format
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[derive(Clone)]
+struct AcceleratedFrameProducer {
+    gpu: Option<BrowserGpuContext>,
+    state: Arc<Mutex<AcceleratedFrameProducerState>>,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct AcceleratedFrameProducerState {
+    pool: PoolGenerationBookkeeper,
+    destination_generation: u64,
+    destinations: Option<DestinationTexturePool>,
+    popup: Option<PopupTexture>,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct PopupTexture {
+    texture: wgpu::Texture,
+    blitter: wgpu::util::TextureBlitter,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl PopupTexture {
+    fn new(device: &wgpu::Device, width: u32, height: u32, format: wgpu::TextureFormat) -> Self {
+        Self {
+            texture: device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("browser accelerated OSR popup"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::COPY_SRC
+                    | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            }),
+            blitter: wgpu::util::TextureBlitter::new(device, format),
+        }
+    }
+
+    fn matches(&self, width: u32, height: u32, format: wgpu::TextureFormat) -> bool {
+        self.texture.width() == width
+            && self.texture.height() == height
+            && self.texture.format() == format
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn import_accelerated_texture(
+    gpu: &BrowserGpuContext,
+    info: &AcceleratedPaintInfo,
+    layout: &AcceleratedPoolLayout,
+) -> Result<wgpu::Texture, AcceleratedFrameError> {
+    let import_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    #[cfg(target_os = "linux")]
+    let imported = crate::linux_dmabuf::import_texture(info, &gpu.device)
+        .map_err(AcceleratedFrameError::Import);
+    #[cfg(not(target_os = "linux"))]
+    let imported = cef::osr_texture_import::SharedTextureHandle::new(info)
+        .import_texture(&gpu.device)
+        .map_err(AcceleratedFrameError::Import);
+    let import_validation = pollster::block_on(import_scope.pop());
+    if let Some(error) = import_validation {
+        return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
+    }
+    let imported = imported?;
+    if imported.usage().contains(wgpu::TextureUsages::COPY_DST)
+        && !imported.usage().contains(wgpu::TextureUsages::COPY_SRC)
+    {
+        return Err(AcceleratedFrameError::HelperFallback);
+    }
+
+    let width = layout.width.cast_unsigned();
+    let height = layout.height.cast_unsigned();
+    let format = layout.texture_format();
+    if imported.width() != width || imported.height() != height || imported.format() != format {
+        return Err(AcceleratedFrameError::InvalidMetadata(format!(
+            "imported texture is {}x{} {:?}, callback reports {}x{} {:?}",
+            imported.width(),
+            imported.height(),
+            imported.format(),
+            width,
+            height,
+            format
+        )));
+    }
+    Ok(imported)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn record_accelerated_copy(
+    device: &wgpu::Device,
+    encoder: &mut wgpu::CommandEncoder,
+    source: &wgpu::Texture,
+    destination: &wgpu::Texture,
+    blitter: &wgpu::util::TextureBlitter,
+) {
+    if source.usage().contains(wgpu::TextureUsages::COPY_SRC) {
+        encoder.copy_texture_to_texture(
+            source.as_image_copy(),
+            destination.as_image_copy(),
+            wgpu::Extent3d {
+                width: source.width(),
+                height: source.height(),
+                depth_or_array_layers: 1,
+            },
+        );
+    } else {
+        let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
+        let destination_view = destination.create_view(&wgpu::TextureViewDescriptor::default());
+        blitter.copy(device, encoder, &source_view, &destination_view);
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+struct ProducedGpuFrame {
+    logical_width: u32,
+    logical_height: u32,
+    device_width: i32,
+    device_height: i32,
+    pool_generation: u64,
+    sequence: u64,
+    texture: wgpu::Texture,
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+enum AcceleratedFrameOutcome {
+    Frame(ProducedGpuFrame),
+    Stale(StalePoolFrame),
+}
+
+#[derive(Debug, Error)]
+enum AcceleratedFrameError {
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[error("ala's wgpu device context is unavailable")]
+    DeviceUnavailable,
+    #[error("invalid accelerated-paint metadata: {0}")]
+    InvalidMetadata(String),
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[error("CEF shared-texture import failed: {0}")]
+    Import(#[source] cef::osr_texture_import::TextureImportError),
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[error("CEF's import helper returned its blank fallback texture")]
+    HelperFallback,
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[error("wgpu rejected the accelerated frame: {0}")]
+    WgpuValidation(String),
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl AcceleratedFrameError {
+    fn is_helper_fallback(&self) -> bool {
+        matches!(self, Self::HelperFallback)
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+impl AcceleratedFrameProducer {
+    fn new(gpu: Option<BrowserGpuContext>, viewport: Viewport) -> Self {
+        Self {
+            gpu,
+            state: Arc::new(Mutex::new(AcceleratedFrameProducerState {
+                pool: PoolGenerationBookkeeper::new(viewport),
+                destination_generation: 0,
+                destinations: None,
+                popup: None,
+            })),
+        }
+    }
+
+    fn set_viewport(&self, viewport: Viewport) {
+        let mut state = self.state.lock();
+        if state.pool.set_viewport(viewport) {
+            state.destinations = None;
+        }
+    }
+
+    fn clear_popup(&self) {
+        self.state.lock().popup = None;
+    }
+
+    fn produce_popup(&self, info: &AcceleratedPaintInfo) -> Result<(), AcceleratedFrameError> {
+        let layout = AcceleratedPoolLayout::from_info(info)?;
+        let gpu = self
+            .gpu
+            .as_ref()
+            .ok_or(AcceleratedFrameError::DeviceUnavailable)?;
+        let mut state = self.state.lock();
+        let imported = import_accelerated_texture(gpu, info, &layout)?;
+        let width = imported.width();
+        let height = imported.height();
+        let format = imported.format();
+        if state
+            .popup
+            .as_ref()
+            .is_none_or(|popup| !popup.matches(width, height, format))
+        {
+            state.popup = Some(PopupTexture::new(&gpu.device, width, height, format));
+        }
+        let popup = state.popup.as_ref().expect("popup texture was initialized");
+        let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("browser accelerated OSR popup copy"),
+            });
+        record_accelerated_copy(
+            &gpu.device,
+            &mut encoder,
+            &imported,
+            &popup.texture,
+            &popup.blitter,
+        );
+        gpu.queue.submit([encoder.finish()]);
+        if let Some(error) = pollster::block_on(scope.pop()) {
+            state.popup = None;
+            return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
+        }
+        Ok(())
+    }
+
+    fn produce(
+        &self,
+        info: &AcceleratedPaintInfo,
+        sequence: u64,
+        popup: Option<PopupRect>,
+    ) -> Result<AcceleratedFrameOutcome, AcceleratedFrameError> {
+        let layout = AcceleratedPoolLayout::from_info(info)?;
+        let gpu = self
+            .gpu
+            .as_ref()
+            .ok_or(AcceleratedFrameError::DeviceUnavailable)?;
+        let mut guard = self.state.lock();
+        let state = &mut *guard;
+        match state.pool.observe(&layout) {
+            Ok(()) => {}
+            Err(stale_frame) => return Ok(AcceleratedFrameOutcome::Stale(stale_frame)),
+        }
+
+        let import_started = diagnostic_timer();
+        let imported = import_accelerated_texture(gpu, info, &layout)?;
+        let import_us = diagnostic_elapsed_us(import_started);
+        let width = layout.width.cast_unsigned();
+        let height = layout.height.cast_unsigned();
+        let format = layout.texture_format();
+
+        if state
+            .destinations
+            .as_ref()
+            .is_none_or(|destinations| !destinations.matches(width, height, format))
+        {
+            state.destination_generation = state.destination_generation.wrapping_add(1).max(1);
+            state.destinations = Some(DestinationTexturePool::new(
+                &gpu.device,
+                width,
+                height,
+                format,
+            ));
+        }
+
+        let pool_generation = state.destination_generation;
+        let destinations = state
+            .destinations
+            .as_mut()
+            .expect("destination textures were initialized");
+        let destination_index = destinations.next;
+        let destination = destinations.textures[destination_index].clone();
+        let copy_started = diagnostic_timer();
+        let blit_scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("browser accelerated OSR copy-on-receive"),
+            });
+        record_accelerated_copy(
+            &gpu.device,
+            &mut encoder,
+            &imported,
+            &destination,
+            &destinations.blitter,
+        );
+        if let (Some(rect), Some(popup)) = (popup, state.popup.as_ref())
+            && popup.texture.format() == format
+            && let Some(placement) = crate::popup::popup_placement(
+                rect,
+                popup.texture.width(),
+                popup.texture.height(),
+                width,
+                height,
+            )
+        {
+            encoder.copy_texture_to_texture(
+                popup.texture.as_image_copy(),
+                wgpu::TexelCopyTextureInfo {
+                    texture: &destination,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: placement.x,
+                        y: placement.y,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: placement.width,
+                    height: placement.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        gpu.queue.submit([encoder.finish()]);
+        if let Some(error) = pollster::block_on(blit_scope.pop()) {
+            state.destinations = None;
+            return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
+        }
+        destinations.next = (destination_index + 1) % destinations.textures.len();
+        let expected = state.pool.expected;
+        log::trace!(
+            target: "ala_cef::diagnostics::accelerated_copy",
+            "produce callback={sequence} device={}x{} import_us={import_us} copy_us={}",
+            layout.width,
+            layout.height,
+            diagnostic_elapsed_us(copy_started),
+        );
+
+        Ok(AcceleratedFrameOutcome::Frame(ProducedGpuFrame {
+            logical_width: expected.logical_width,
+            logical_height: expected.logical_height,
+            device_width: layout.width,
+            device_height: layout.height,
+            pool_generation,
+            sequence,
+            texture: destination,
+        }))
+    }
+}
+
+#[derive(Clone)]
+struct SessionBridge {
+    id: SessionId,
+    events: Sender<BrowserEvent>,
+    viewport: Arc<Mutex<Viewport>>,
+    page_zoom_factor: Arc<Mutex<f64>>,
+    mailbox: FrameMailbox,
+    invalid_frames: Arc<AtomicU64>,
+    accelerated_paint: AcceleratedPaintTracker,
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    accelerated_frames: AcceleratedFrameProducer,
+    #[cfg(target_os = "macos")]
+    metal_frames: MetalFrameProducer,
+    #[cfg(target_os = "windows")]
+    d3d11_frames: D3d11FrameProducer,
+    shared_texture_fallback_notified: Arc<AtomicBool>,
+    element_pick: ElementPickState,
+    pending_capture: PendingCapture,
+    active_session: ActiveCountGuard,
+    closing: Arc<AtomicBool>,
+    popup: Arc<Mutex<PopupState>>,
+}
+
+type PendingCapture = Arc<Mutex<Option<Registration>>>;
+
+fn invalidate_view(browser: Option<&mut Browser>) {
+    if let Some(host) = browser.and_then(|browser| browser.host()) {
+        host.invalidate(PaintElementType::VIEW);
+    }
+}
+
+impl SessionBridge {
+    fn emit(&self, event: BrowserEvent) {
+        let _ = self.events.try_send(event);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn produce_popup(&self, info: &AcceleratedPaintInfo, browser: Option<&mut Browser>) {
+        if self.popup.lock().rect().is_none() {
+            return;
+        }
+        #[cfg(not(target_os = "macos"))]
+        let result = self
+            .accelerated_frames
+            .produce_popup(info)
+            .map_err(|error| error.to_string());
+        #[cfg(target_os = "macos")]
+        let result = self
+            .metal_frames
+            .produce_popup(info)
+            .map_err(|error| error.to_string());
+        match result {
+            Ok(()) => invalidate_view(browser),
+            Err(error) => log::warn!(
+                target: "ala_cef::accelerated_paint",
+                "popup frame import failed session={}: {error}",
+                self.id.0,
+            ),
+        }
+    }
+
+    fn apply_page_zoom(&self, browser: &Browser) {
+        if let Some(host) = browser.host() {
+            host.set_zoom_level(effective_chromium_zoom_level(
+                *self.viewport.lock(),
+                *self.page_zoom_factor.lock(),
+            ));
+        }
+    }
+
+    fn start_element_screenshot(
+        &self,
+        browser: &Browser,
+        text: &Arc<str>,
+        geometry: PickGeometry,
+    ) -> bool {
+        let Some(clip) = element_screenshot_clip(geometry) else {
+            return false;
+        };
+        let Some(host) = browser.host() else {
+            return false;
+        };
+        let Some(mut params) = screenshot_params(clip) else {
+            return false;
+        };
+        let expected_id = Arc::new(AtomicI32::new(0));
+        let mut observer = ElementScreenshotObserver::new(
+            Arc::clone(&expected_id),
+            Arc::new(AtomicBool::new(false)),
+            self.clone(),
+            Arc::clone(text),
+        );
+        let Some(registration) = host.add_dev_tools_message_observer(Some(&mut observer)) else {
+            return false;
+        };
+        let method = CefString::from("Page.captureScreenshot");
+        let message_id = host.execute_dev_tools_method(0, Some(&method), Some(&mut params));
+        if message_id == 0 {
+            return false;
+        }
+        expected_id.store(message_id, Ordering::Release);
+        *self.pending_capture.lock() = Some(registration);
+        true
+    }
+
+    fn context_menu_request(&self, params: &ContextMenuParams) -> ContextMenuRequest {
+        use cef::sys::cef_context_menu_edit_state_flags_t as EditState;
+
+        let scale_factor = osr_raster_scale(*self.viewport.lock());
+        let flags = params.edit_state_flags().as_ref().0;
+        let can = |flag: EditState| flags & flag.0 != 0;
+        ContextMenuRequest {
+            x: unscaled_osr_coordinate(params.xcoord(), scale_factor),
+            y: unscaled_osr_coordinate(params.ycoord(), scale_factor),
+            link_url: owned_cef_string(&params.link_url()),
+            selection_text: owned_cef_string(&params.selection_text()),
+            editable: params.is_editable() != 0,
+            edit_flags: EditFlags {
+                can_cut: can(EditState::CM_EDITFLAG_CAN_CUT),
+                can_copy: can(EditState::CM_EDITFLAG_CAN_COPY),
+                can_paste: can(EditState::CM_EDITFLAG_CAN_PASTE),
+                can_select_all: can(EditState::CM_EDITFLAG_CAN_SELECT_ALL),
+            },
+        }
+    }
+
+    fn log_invalid_frame(&self, error: impl std::fmt::Display) {
+        let count = self.invalid_frames.fetch_add(1, Ordering::Relaxed) + 1;
+        if count.is_power_of_two() {
+            log::warn!("discarded invalid CEF frame #{count}: {error}");
+        }
+    }
+
+    fn cancel_element_pick(&self) {
+        if self.element_pick.cancel() {
+            self.emit(BrowserEvent::ElementPickCancelled { session: self.id });
+        }
+    }
+
+    fn request_shared_texture_fallback(&self, reason: impl Into<Arc<str>>) {
+        if !self
+            .shared_texture_fallback_notified
+            .swap(true, Ordering::AcqRel)
+        {
+            self.emit(BrowserEvent::SharedTextureFailed {
+                session: self.id,
+                reason: reason.into(),
+            });
+        }
+    }
+
+    fn shared_texture_fallback_requested(&self) -> bool {
+        self.shared_texture_fallback_notified
+            .load(Ordering::Acquire)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn record_stale_metal_frame(&self, sequence: u64, reason: &StalePoolFrame) {
+        let count = self.accelerated_paint.record_stale_pool_frame();
+        if count.is_power_of_two() {
+            log::warn!(
+                target: "ala_cef::accelerated_paint",
+                "discarded stale macOS accelerated frame #{count} session={} callback={sequence} reason={reason:?}",
+                self.id.0,
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn record_metal_frame_failure(&self, sequence: u64, error: &MetalFrameError) {
+        self.mailbox.record_gpu_import_failure();
+        self.request_shared_texture_fallback(error.to_string());
+        let count = self.accelerated_paint.record_gpu_import_failure(false);
+        if count.is_power_of_two() {
+            log::warn!(
+                target: "ala_cef::accelerated_paint",
+                "macOS Metal-IOSurface import/blit failed #{count} session={} callback={sequence}: {error}; retaining the last valid frame while awaiting readback fallback",
+                self.id.0,
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn publish_metal_frame(&self, frame: metal_osr::ProducedMetalFrame) {
+        let pool_generation = frame.pool_generation;
+        let sequence = frame.sequence;
+        let device_width = frame.device_width;
+        let device_height = frame.device_height;
+        let publish_result = self.mailbox.publish_mac_gpu(MacGpuFrameSubmission {
+            session: self.id,
+            logical_width: frame.logical_width,
+            logical_height: frame.logical_height,
+            device_width,
+            device_height,
+            pool_generation,
+            sequence,
+            io_surface: frame.io_surface,
+        });
+        match publish_result {
+            Ok(wake) => {
+                self.accelerated_paint
+                    .record_gpu_frame_delivered(pool_generation);
+                log::trace!(
+                    target: "ala_cef::accelerated_paint",
+                    "delivered macOS Metal-IOSurface frame session={} callback={} pool_generation={} device={}x{} wake={wake:?}",
+                    self.id.0,
+                    sequence,
+                    pool_generation,
+                    device_width,
+                    device_height,
+                );
+                if let Some(generation) = wake {
+                    self.emit(BrowserEvent::FrameReady {
+                        session: self.id,
+                        generation,
+                    });
+                }
+            }
+            Err(error) => {
+                self.mailbox.record_gpu_import_failure();
+                self.request_shared_texture_fallback(error.to_string());
+                self.accelerated_paint.record_gpu_import_failure(false);
+                self.log_invalid_frame(error);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn record_stale_d3d11_frame(&self, sequence: u64, reason: &StalePoolFrame) {
+        let count = self.accelerated_paint.record_stale_pool_frame();
+        if count.is_power_of_two() {
+            log::warn!(
+                target: "ala_cef::accelerated_paint",
+                "discarded stale Windows accelerated frame #{count} session={} callback={sequence} reason={reason:?}",
+                self.id.0,
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn record_d3d11_frame_failure(&self, sequence: u64, error: &D3d11FrameError) {
+        self.mailbox.record_gpu_import_failure();
+        self.request_shared_texture_fallback(error.to_string());
+        let count = self.accelerated_paint.record_gpu_import_failure(false);
+        if count.is_power_of_two() {
+            log::warn!(
+                target: "ala_cef::accelerated_paint",
+                "Windows D3D11 shared-texture import/copy failed #{count} session={} callback={sequence}: {error}; retaining the last valid frame while awaiting readback fallback",
+                self.id.0,
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn publish_d3d11_frame(&self, frame: d3d11_osr::ProducedD3d11Frame) {
+        let pool_generation = frame.pool_generation;
+        let sequence = frame.sequence;
+        let device_width = frame.device_width;
+        let device_height = frame.device_height;
+        let publish_result = self.mailbox.publish_win_gpu(WinGpuFrameSubmission {
+            session: self.id,
+            logical_width: frame.logical_width,
+            logical_height: frame.logical_height,
+            device_width,
+            device_height,
+            pool_generation,
+            sequence,
+            texture: frame.texture,
+        });
+        match publish_result {
+            Ok(wake) => {
+                self.accelerated_paint
+                    .record_gpu_frame_delivered(pool_generation);
+                log::trace!(
+                    target: "ala_cef::accelerated_paint",
+                    "delivered Windows D3D11 frame session={} callback={} pool_generation={} device={}x{} wake={wake:?}",
+                    self.id.0,
+                    sequence,
+                    pool_generation,
+                    device_width,
+                    device_height,
+                );
+                if let Some(generation) = wake {
+                    self.emit(BrowserEvent::FrameReady {
+                        session: self.id,
+                        generation,
+                    });
+                }
+            }
+            Err(error) => {
+                self.mailbox.record_gpu_import_failure();
+                self.request_shared_texture_fallback(error.to_string());
+                self.accelerated_paint.record_gpu_import_failure(false);
+                self.log_invalid_frame(error);
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn handle_metal_frame_completion(&self, completion: MetalFrameCompletion) {
+        if self.shared_texture_fallback_requested() {
+            return;
+        }
+        match completion {
+            MetalFrameCompletion::Frame(frame) => self.publish_metal_frame(frame),
+            MetalFrameCompletion::Stale { sequence, reason } => {
+                self.record_stale_metal_frame(sequence, &reason);
+            }
+            MetalFrameCompletion::Failed { sequence, error } => {
+                self.record_metal_frame_failure(sequence, &error);
+            }
+        }
+    }
+}
+
+struct ArtifactReplyHandler;
+
+impl BrowserSideHandler for ArtifactReplyHandler {
+    fn on_query_str(
+        &self,
+        _browser: Option<Browser>,
+        frame: Option<Frame>,
+        _query_id: i64,
+        request: &str,
+        persistent: bool,
+        callback: Arc<StdMutex<dyn BrowserSideCallback>>,
+    ) -> bool {
+        let Some(text) = request.strip_prefix(ARTIFACT_REPLY_PREFIX) else {
+            return false;
+        };
+        let token = frame
+            .filter(|frame| frame.is_main() != 0 && !persistent)
+            .and_then(|frame| parse_artifact_url(&CefString::from(&frame.url()).to_string()))
+            .map(|(token, _)| token);
+        let result = token
+            .ok_or_else(|| format!("{}.reply works only from a local page", page_global()))
+            .and_then(|token| send_reply(&token, text.to_owned()));
+        if let Ok(callback) = callback.lock() {
+            match result {
+                Ok(()) => callback.success_str(""),
+                Err(message) => callback.failure(403, &message),
+            }
+        }
+        true
+    }
+}
+
+struct ElementPickerQueryHandler {
+    bridge: SessionBridge,
+}
+
+impl BrowserSideHandler for ElementPickerQueryHandler {
+    fn on_query_str(
+        &self,
+        browser: Option<Browser>,
+        frame: Option<Frame>,
+        _query_id: i64,
+        request: &str,
+        persistent: bool,
+        callback: Arc<StdMutex<dyn BrowserSideCallback>>,
+    ) -> bool {
+        let reject = |code: i32, message: &str| {
+            if let Ok(callback) = callback.lock() {
+                callback.failure(code, message);
+            }
+        };
+        if persistent {
+            reject(400, "persistent element picker queries are not supported");
+            return true;
+        }
+        if frame.is_none_or(|frame| frame.is_main() == 0) {
+            reject(
+                403,
+                "element picker results are accepted only from the main frame",
+            );
+            return true;
+        }
+
+        match self.bridge.element_pick.consume(request) {
+            Ok(outcome) => {
+                if let Ok(callback) = callback.lock() {
+                    callback.success_str("");
+                }
+                let event = match outcome {
+                    ElementPickOutcome::Picked(text, geometry) => {
+                        if let Some((browser, geometry)) = browser.as_ref().zip(geometry)
+                            && self
+                                .bridge
+                                .start_element_screenshot(browser, &text, geometry)
+                        {
+                            return true;
+                        }
+                        BrowserEvent::ElementPicked {
+                            session: self.bridge.id,
+                            text,
+                            screenshot: None,
+                        }
+                    }
+                    ElementPickOutcome::Cancelled => BrowserEvent::ElementPickCancelled {
+                        session: self.bridge.id,
+                    },
+                    ElementPickOutcome::Failed => BrowserEvent::ElementPickFailed {
+                        session: self.bridge.id,
+                    },
+                };
+                self.bridge.emit(event);
+            }
+            Err(error) => {
+                log::debug!(
+                    target: "ala_cef::diagnostics::element_picker",
+                    "rejected element picker query for session {}: {error}",
+                    self.bridge.id.0,
+                );
+                reject(400, &error.to_string());
+            }
+        }
+        true
+    }
+}
+
+#[derive(Default)]
+struct ArtifactLoad {
+    status: i32,
+    mime: String,
+    bytes: Vec<u8>,
+    offset: usize,
+    ready: bool,
+    canceled: bool,
+}
+
+impl ArtifactLoad {
+    fn settle(&mut self, result: Result<ArtifactFile, String>) {
+        match result {
+            Ok(file) => {
+                self.status = 200;
+                self.mime = file.mime;
+                self.bytes = file.bytes;
+            }
+            Err(reason) => {
+                self.status = 404;
+                "text/html".clone_into(&mut self.mime);
+                self.bytes = error_page(&reason);
+            }
+        }
+        self.offset = 0;
+        self.ready = true;
+    }
+}
+
+cef::wrap_task! {
+    struct ContinueArtifact {
+        callback: Callback,
+    }
+
+    impl Task {
+        fn execute(&self) {
+            self.callback.cont();
+        }
+    }
+}
+
+cef::wrap_scheme_handler_factory! {
+    struct ArtifactSchemeFactory {
+        _unit: (),
+    }
+
+    impl SchemeHandlerFactory {
+        fn create(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            _scheme_name: Option<&CefString>,
+            _request: Option<&mut Request>,
+        ) -> Option<ResourceHandler> {
+            Some(ArtifactResourceHandler::new(Arc::new(Mutex::new(
+                ArtifactLoad::default(),
+            ))))
+        }
+    }
+}
+
+cef::wrap_resource_handler! {
+    struct ArtifactResourceHandler {
+        load: Arc<Mutex<ArtifactLoad>>,
+    }
+
+    impl ResourceHandler {
+        fn open(
+            &self,
+            request: Option<&mut Request>,
+            handle_request: Option<&mut i32>,
+            callback: Option<&mut Callback>,
+        ) -> i32 {
+            let Some(handle_request) = handle_request else {
+                return 0;
+            };
+            let url = request
+                .map(|request| CefString::from(&request.url()).to_string())
+                .unwrap_or_default();
+            let (Some((token, path)), Some(callback)) =
+                (parse_artifact_url(&url), callback.as_deref().cloned())
+            else {
+                *handle_request = 1;
+                return 0;
+            };
+            let load = Arc::clone(&self.load);
+            request_artifact(token, path, move |result| {
+                {
+                    let mut load = load.lock();
+                    if load.canceled {
+                        return;
+                    }
+                    load.settle(result);
+                }
+                post_task(ThreadId::IO, Some(&mut ContinueArtifact::new(callback)));
+            });
+            *handle_request = 0;
+            1
+        }
+
+        fn response_headers(
+            &self,
+            response: Option<&mut Response>,
+            response_length: Option<&mut i64>,
+            _redirect_url: Option<&mut CefString>,
+        ) {
+            let load = self.load.lock();
+            if let Some(response) = response {
+                if load.ready {
+                    response.set_status(load.status);
+                    response.set_mime_type(Some(&CefString::from(load.mime.as_str())));
+                    response.set_header_by_name(
+                        Some(&CefString::from("Cache-Control")),
+                        Some(&CefString::from("no-store")),
+                        1,
+                    );
+                } else {
+                    response.set_error(Errorcode::FAILED);
+                }
+            }
+            if let Some(response_length) = response_length {
+                *response_length = i64::try_from(load.bytes.len()).unwrap_or(i64::MAX);
+            }
+        }
+
+        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        fn read(
+            &self,
+            data_out: *mut u8,
+            bytes_to_read: i32,
+            bytes_read: Option<&mut i32>,
+            _callback: Option<&mut ResourceReadCallback>,
+        ) -> i32 {
+            let Some(bytes_read) = bytes_read else {
+                return 0;
+            };
+            let mut load = self.load.lock();
+            let remaining = load.bytes.len().saturating_sub(load.offset);
+            let count = remaining.min(usize::try_from(bytes_to_read).unwrap_or(0));
+            if count == 0 || data_out.is_null() {
+                *bytes_read = 0;
+                return 0;
+            }
+            unsafe {
+                ptr::copy_nonoverlapping(load.bytes[load.offset..].as_ptr(), data_out, count);
+            }
+            load.offset += count;
+            *bytes_read = i32::try_from(count).unwrap_or(0);
+            1
+        }
+
+        fn cancel(&self) {
+            self.load.lock().canceled = true;
+        }
+    }
+}
+
+cef::wrap_app! {
+    struct RuntimeApp {
+        signals: Sender<RuntimeSignal>,
+        remote_debugging_port: Arc<AtomicU16>,
+        gpu: bool,
+        render_process_handler: RenderProcessHandler,
+    }
+
+    impl App {
+        fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
+            let Some(registrar) = registrar else {
+                return;
+            };
+            let options = [
+                SchemeOptions::STANDARD,
+                SchemeOptions::SECURE,
+                SchemeOptions::FETCH_ENABLED,
+            ]
+            .iter()
+            .fold(0, |bits, option| bits | cef_enum_bits(option.get_raw()));
+            registrar.add_custom_scheme(
+                Some(&CefString::from(local_scheme())),
+                options.cast_signed(),
+            );
+        }
+
+        fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
+            Some(RuntimeBrowserProcessHandler::new(self.signals.clone()))
+        }
+
+        fn render_process_handler(&self) -> Option<RenderProcessHandler> {
+            Some(self.render_process_handler.clone())
+        }
+
+        fn on_before_command_line_processing(
+            &self,
+            process_type: Option<&CefString>,
+            command_line: Option<&mut CommandLine>,
+        ) {
+            let Some(command_line) = command_line else {
+                return;
+            };
+            for switch in [
+                "no-first-run",
+                "no-default-browser-check",
+                "disable-component-update",
+                "disable-breakpad",
+                "hide-crash-restore-bubble",
+            ] {
+                command_line.append_switch(Some(&CefString::from(switch)));
+            }
+            let is_browser_process = process_type.is_none_or(|value| value.to_string().is_empty());
+            if is_browser_process {
+                let port = self.remote_debugging_port.load(Ordering::Relaxed);
+                if port != 0 {
+                    command_line.append_switch_with_value(
+                        Some(&CefString::from("remote-debugging-port")),
+                        Some(&CefString::from(port.to_string().as_str())),
+                    );
+                }
+                let disable_features = CefString::from("disable-features");
+                let existing =
+                    CefString::from(&command_line.switch_value(Some(&disable_features)))
+                        .to_string();
+                let merged = if existing.is_empty() {
+                    "ImmersiveReadAnything".to_owned()
+                } else {
+                    format!("{existing},ImmersiveReadAnything")
+                };
+                command_line.append_switch_with_value(
+                    Some(&disable_features),
+                    Some(&CefString::from(merged.as_str())),
+                );
+                #[cfg(all(target_os = "macos", debug_assertions))]
+                {
+                    command_line
+                        .append_switch(Some(&CefString::from("use-mock-keychain")));
+                }
+                if !self.gpu {
+                    command_line.append_switch(Some(&CefString::from("disable-gpu")));
+                    command_line
+                        .append_switch(Some(&CefString::from("disable-gpu-compositing")));
+                }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                command_line.append_switch_with_value(
+                    Some(&CefString::from("ozone-platform-hint")),
+                    Some(&CefString::from("auto")),
+                );
+                command_line.append_switch(Some(&CefString::from("disable-setuid-sandbox")));
+            }
+        }
+    }
+}
+
+cef::wrap_render_process_handler! {
+    struct RuntimeRenderProcessHandler {
+        router: Arc<RendererSideRouter>,
+    }
+
+    impl RenderProcessHandler {
+        fn on_context_created(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            context: Option<&mut V8Context>,
+        ) {
+            self.router.on_context_created(
+                browser.as_deref().cloned(),
+                frame.as_deref().cloned(),
+                context.as_deref().cloned(),
+            );
+            let Some(frame) = frame else {
+                return;
+            };
+            if frame.is_main() == 0 {
+                return;
+            }
+            frame.execute_java_script(
+                Some(&CefString::from(ELEMENT_PICKER_SCRIPT)),
+                Some(&CefString::from(script_url("element-picker.js").as_str())),
+                1,
+            );
+            if parse_artifact_url(&CefString::from(&frame.url()).to_string()).is_some() {
+                let script = ARTIFACT_REPLY_SCRIPT.replace("PAGE_GLOBAL", page_global());
+                frame.execute_java_script(
+                    Some(&CefString::from(script.as_str())),
+                    Some(&CefString::from(script_url("reply.js").as_str())),
+                    1,
+                );
+            }
+        }
+
+        fn on_context_released(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            context: Option<&mut V8Context>,
+        ) {
+            self.router.on_context_released(
+                browser.as_deref().cloned(),
+                frame.as_deref().cloned(),
+                context.as_deref().cloned(),
+            );
+        }
+
+        fn on_process_message_received(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            source_process: ProcessId,
+            message: Option<&mut ProcessMessage>,
+        ) -> i32 {
+            i32::from(self.router.on_process_message_received(
+                browser.as_deref().cloned(),
+                frame.as_deref().cloned(),
+                Some(source_process),
+                message.as_deref().cloned(),
+            ))
+        }
+    }
+}
+
+cef::wrap_browser_process_handler! {
+    struct RuntimeBrowserProcessHandler {
+        signals: Sender<RuntimeSignal>,
+    }
+
+    impl BrowserProcessHandler {
+        fn on_context_initialized(&self) {
+            let _ = self.signals.try_send(RuntimeSignal::ContextInitialized);
+        }
+
+        fn on_schedule_message_pump_work(&self, delay_ms: i64) {
+            let _ = self
+                .signals
+                .try_send(RuntimeSignal::ScheduleMessagePump(delay_ms));
+        }
+    }
+}
+
+cef::wrap_request_context_handler! {
+    struct ProfileRequestContextHandler {
+        signals: Sender<RuntimeSignal>,
+        profile: Arc<str>,
+    }
+
+    impl RequestContextHandler {
+        fn on_request_context_initialized(&self, _request_context: Option<&mut RequestContext>) {
+            let _ = self
+                .signals
+                .try_send(RuntimeSignal::RequestContextInitialized {
+                    profile: Arc::clone(&self.profile),
+                });
+        }
+    }
+}
+
+cef::wrap_set_cookie_callback! {
+    struct ImportCookieCallback {
+        progress: Arc<Mutex<CookieImportProgress>>,
+    }
+
+    impl SetCookieCallback {
+        fn on_complete(&self, success: i32) {
+            finish_cookie_import(&self.progress, success != 0);
+        }
+    }
+}
+
+cef::wrap_completion_callback! {
+struct CookieImportFlushCallback {
+        result: CookieImportResult,
+        results: Sender<CookieImportResult>,
+        operation: ActiveCountGuard,
+    }
+
+    impl CompletionCallback {
+        fn on_complete(&self) {
+            let mut result = self.result;
+            result.persisted = true;
+            let _ = self.results.try_send(result);
+            self.operation.finish();
+        }
+    }
+}
+
+cef::wrap_dev_tools_message_observer! {
+    struct ElementScreenshotObserver {
+        expected_id: Arc<AtomicI32>,
+        emitted: Arc<AtomicBool>,
+        bridge: SessionBridge,
+        text: Arc<str>,
+    }
+
+    impl DevToolsMessageObserver {
+        fn on_dev_tools_method_result(
+            &self,
+            _browser: Option<&mut Browser>,
+            message_id: i32,
+            success: i32,
+            result: Option<&[u8]>,
+        ) {
+            if self.expected_id.load(Ordering::Acquire) != message_id {
+                return;
+            }
+            let screenshot = (success != 0)
+                .then(|| result.and_then(decode_screenshot_result))
+                .flatten();
+            self.announce(screenshot);
+        }
+
+        fn on_dev_tools_agent_detached(&self, _browser: Option<&mut Browser>) {
+            self.announce(None);
+        }
+    }
+}
+
+impl ElementScreenshotObserver {
+    fn announce(&self, screenshot: Option<Arc<[u8]>>) {
+        if self.emitted.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        self.bridge.emit(BrowserEvent::ElementPicked {
+            session: self.bridge.id,
+            text: Arc::clone(&self.text),
+            screenshot,
+        });
+    }
+}
+
+cef::wrap_dev_tools_message_observer! {
+struct SiteDataClearObserver {
+        expected_id: Arc<AtomicI32>,
+        results: Sender<SiteDataClearResult>,
+        operation: ActiveCountGuard,
+    }
+
+    impl DevToolsMessageObserver {
+        fn on_dev_tools_method_result(
+            &self,
+            _browser: Option<&mut Browser>,
+            message_id: i32,
+            success: i32,
+            _result: Option<&[u8]>,
+        ) {
+            if self.expected_id.load(Ordering::Acquire) == message_id
+                && self.operation.finish()
+            {
+                let _ = self.results.try_send(SiteDataClearResult {
+                    message_id,
+                    success: success != 0,
+                });
+            }
+        }
+
+        fn on_dev_tools_agent_detached(&self, _browser: Option<&mut Browser>) {
+            if self.operation.finish() {
+                let _ = self.results.try_send(SiteDataClearResult {
+                    message_id: self.expected_id.load(Ordering::Acquire),
+                    success: false,
+                });
+            }
+        }
+    }
+}
+
+#[derive(Deserialize)]
+struct EvaluateResult {
+    result: EvaluateValue,
+}
+
+#[derive(Deserialize)]
+struct EvaluateValue {
+    value: Option<f64>,
+}
+
+fn decode_evaluated_number(result: &[u8]) -> Option<f64> {
+    serde_json::from_slice::<EvaluateResult>(result)
+        .ok()?
+        .result
+        .value
+        .filter(|value| value.is_finite())
+}
+
+cef::wrap_dev_tools_message_observer! {
+    struct EvaluateNumberObserver {
+        expected_id: Arc<AtomicI32>,
+        results: Sender<Option<f64>>,
+        operation: ActiveCountGuard,
+    }
+
+    impl DevToolsMessageObserver {
+        fn on_dev_tools_method_result(
+            &self,
+            _browser: Option<&mut Browser>,
+            message_id: i32,
+            success: i32,
+            result: Option<&[u8]>,
+        ) {
+            if self.expected_id.load(Ordering::Acquire) == message_id
+                && self.operation.finish()
+            {
+                let value = (success != 0)
+                    .then(|| result.and_then(decode_evaluated_number))
+                    .flatten();
+                let _ = self.results.try_send(value);
+            }
+        }
+
+        fn on_dev_tools_agent_detached(&self, _browser: Option<&mut Browser>) {
+            if self.operation.finish() {
+                let _ = self.results.try_send(None);
+            }
+        }
+    }
+}
+
+cef::wrap_render_handler! {
+    struct RenderHandlerBuilder {
+        bridge: SessionBridge,
+    }
+
+    impl RenderHandler {
+        fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
+            if let Some(rect) = rect {
+                let viewport = self.bridge.viewport.lock();
+                let scale_factor = osr_raster_scale(*viewport);
+                rect.x = 0;
+                rect.y = 0;
+                rect.width = scaled_osr_dimension(viewport.width, scale_factor);
+                rect.height = scaled_osr_dimension(viewport.height, scale_factor);
+            }
+        }
+
+        fn screen_info(
+            &self,
+            _browser: Option<&mut Browser>,
+            info: Option<&mut ScreenInfo>,
+        ) -> i32 {
+            let Some(info) = info else {
+                return 0;
+            };
+            let viewport = *self.bridge.viewport.lock();
+            info.device_scale_factor = if uses_wayland_physical_osr() {
+                1.0
+            } else {
+                viewport.scale_factor
+            };
+            1
+        }
+
+        fn screen_point(
+            &self,
+            _browser: Option<&mut Browser>,
+            view_x: i32,
+            view_y: i32,
+            screen_x: Option<&mut i32>,
+            screen_y: Option<&mut i32>,
+        ) -> i32 {
+            let viewport = self.bridge.viewport.lock();
+            if let Some(screen_x) = screen_x {
+                *screen_x = screen_point_coordinate(
+                    *viewport,
+                    viewport.screen_x,
+                    view_x,
+                    uses_wayland_physical_osr(),
+                );
+            }
+            if let Some(screen_y) = screen_y {
+                *screen_y = screen_point_coordinate(
+                    *viewport,
+                    viewport.screen_y,
+                    view_y,
+                    uses_wayland_physical_osr(),
+                );
+            }
+            1
+        }
+
+        fn on_popup_show(&self, browser: Option<&mut Browser>, show: i32) {
+            self.bridge.popup.lock().set_visible(show != 0);
+            if show == 0 {
+                #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                self.bridge.accelerated_frames.clear_popup();
+                #[cfg(target_os = "macos")]
+                self.bridge.metal_frames.clear_popup();
+                invalidate_view(browser);
+            }
+        }
+
+        fn on_popup_size(&self, _browser: Option<&mut Browser>, rect: Option<&Rect>) {
+            if let Some(rect) = rect {
+                self.bridge.popup.lock().set_rect(PopupRect {
+                    x: rect.x,
+                    y: rect.y,
+                    width: rect.width,
+                    height: rect.height,
+                });
+            }
+        }
+
+        fn on_paint(
+            &self,
+            browser: Option<&mut Browser>,
+            type_: PaintElementType,
+            dirty_rects: Option<&[Rect]>,
+            buffer: *const u8,
+            width: i32,
+            height: i32,
+        ) {
+            let started = diagnostic_timer();
+            if buffer.is_null() {
+                return;
+            }
+            if type_ == PaintElementType::POPUP {
+                let Ok(length) = frame_byte_len(width, height) else {
+                    return;
+                };
+                let pixels = unsafe { std::slice::from_raw_parts(buffer, length) };
+                if self.bridge.popup.lock().store_pixels(
+                    pixels,
+                    width.cast_unsigned(),
+                    height.cast_unsigned(),
+                ) {
+                    invalidate_view(browser);
+                }
+                return;
+            }
+            if type_ != PaintElementType::VIEW {
+                return;
+            }
+            let length = match frame_byte_len(width, height) {
+                Ok(length) => length,
+                Err(error) => {
+                    self.bridge.log_invalid_frame(error);
+                    return;
+                }
+            };
+            let copy_started = diagnostic_timer();
+            let source = unsafe { std::slice::from_raw_parts(buffer, length) };
+            let mut bytes = self.bridge.mailbox.take_buffer(length);
+            bytes.clear();
+            bytes.extend_from_slice(source);
+            let mut damage = dirty_rect_damage(dirty_rects);
+            if let Some(popup) = self.bridge.popup.lock().composite(
+                &mut bytes,
+                width.cast_unsigned(),
+                height.cast_unsigned(),
+            ) {
+                damage = damage.map(|damage| damage.union(popup));
+            }
+            let publish_result = self
+                .bridge
+                .mailbox
+                .publish(self.bridge.id, width, height, bytes, damage);
+            log::trace!(
+                target: "ala_cef::diagnostics::cef_paint",
+                "on_paint session={} width={width} height={height} bytes={length} dirty_rects={:?} viewport={:?} copy_us={} publish_result={publish_result:?} elapsed_us={}",
+                self.bridge.id.0,
+                dirty_rects.map(|rects| rects.iter().map(|rect| (rect.x, rect.y, rect.width, rect.height)).collect::<Vec<_>>()),
+                *self.bridge.viewport.lock(),
+                diagnostic_elapsed_us(copy_started),
+                diagnostic_elapsed_us(started),
+            );
+            match publish_result {
+                Ok(Some(generation)) => {
+                    self.bridge
+                        .accelerated_paint
+                        .record_readback_frame_delivered();
+                    self.bridge.emit(BrowserEvent::FrameReady {
+                        session: self.bridge.id,
+                        generation,
+                    });
+                }
+                Ok(None) => self
+                    .bridge
+                    .accelerated_paint
+                    .record_readback_frame_delivered(),
+                Err(error) => self.bridge.log_invalid_frame(error),
+            }
+        }
+
+        fn on_accelerated_paint(
+            &self,
+            browser: Option<&mut Browser>,
+            type_: PaintElementType,
+            dirty_rects: Option<&[Rect]>,
+            info: Option<&AcceleratedPaintInfo>,
+        ) {
+            let Some(info) = info else {
+                let callback = self.bridge.accelerated_paint.record_missing_info(type_);
+                log::warn!(
+                    target: "ala_cef::accelerated_paint",
+                    "on_accelerated_paint session={} callback={callback} paint_element={} paint_element_raw={} info=missing",
+                    self.bridge.id.0,
+                    paint_element_name(type_),
+                    type_.get_raw(),
+                );
+                return;
+            };
+            let observation = accelerated_paint_observation(type_, info);
+            let recorded = self
+                .bridge
+                .accelerated_paint
+                .record(type_, observation);
+            if log::log_enabled!(
+                target: "ala_cef::accelerated_paint",
+                log::Level::Trace
+            ) {
+                let observation = observation.diagnostics(recorded.callback);
+                let drm_modifier = observation.drm_modifier.map_or_else(
+                    || "n/a".to_owned(),
+                    |modifier| format!("{modifier:#018x}"),
+                );
+                log::trace!(
+                    target: "ala_cef::accelerated_paint",
+                    "on_accelerated_paint session={} callback={} paint_element={} paint_element_raw={} width={} height={} pixel_format={} pixel_format_raw={} drm_modifier={} plane_count={} planes={:?} handle_identity={:?} unique_handles={} same_as_previous={} reuse_gap_callbacks={:?} dirty_rects={:?}",
+                    self.bridge.id.0,
+                    recorded.callback,
+                    observation.paint_element,
+                    type_.get_raw(),
+                    observation.width,
+                    observation.height,
+                    observation.pixel_format,
+                    observation.pixel_format_raw,
+                    drm_modifier,
+                    observation.plane_count,
+                    observation.planes,
+                    observation.handle_identity,
+                    recorded.unique_handle_count,
+                    recorded.same_as_previous,
+                    recorded.reuse_gap,
+                    dirty_rects.map(|rects| rects.iter().map(|rect| (rect.x, rect.y, rect.width, rect.height)).collect::<Vec<_>>()),
+                );
+            }
+            if self.bridge.shared_texture_fallback_requested() {
+                return;
+            }
+            if type_ == PaintElementType::POPUP {
+                #[cfg(not(target_os = "windows"))]
+                self.bridge.produce_popup(info, browser);
+                #[cfg(target_os = "windows")]
+                let _ = browser;
+                return;
+            }
+            if type_ != PaintElementType::VIEW {
+                return;
+            }
+            let popup = self.bridge.popup.lock().rect();
+
+            #[cfg(target_os = "macos")]
+            {
+                self.bridge.accelerated_paint.record_gpu_import_attempt();
+                let bridge = self.bridge.clone();
+                match self.bridge.metal_frames.produce(
+                    info,
+                    recorded.callback,
+                    popup,
+                    move |completion| bridge.handle_metal_frame_completion(completion),
+                ) {
+                    Ok(MetalFrameOutcome::Submitted) => {}
+                    Ok(MetalFrameOutcome::Stale(stale)) => {
+                        self.bridge
+                            .record_stale_metal_frame(recorded.callback, &stale);
+                    }
+                    Err(error) => {
+                        self.bridge
+                            .record_metal_frame_failure(recorded.callback, &error);
+                    }
+                }
+            }
+
+            #[cfg(target_os = "windows")]
+            {
+                let _ = popup;
+                self.bridge.accelerated_paint.record_gpu_import_attempt();
+                match self.bridge.d3d11_frames.produce(info, recorded.callback) {
+                    Ok(D3d11FrameOutcome::Frame(frame)) => {
+                        self.bridge.publish_d3d11_frame(frame);
+                    }
+                    Ok(D3d11FrameOutcome::Stale(stale)) => {
+                        self.bridge
+                            .record_stale_d3d11_frame(recorded.callback, &stale);
+                    }
+                    Err(error) => {
+                        self.bridge
+                            .record_d3d11_frame_failure(recorded.callback, &error);
+                    }
+                }
+            }
+
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            {
+            self.bridge.accelerated_paint.record_gpu_import_attempt();
+            match self
+                .bridge
+                .accelerated_frames
+                .produce(info, recorded.callback, popup)
+            {
+                Ok(AcceleratedFrameOutcome::Frame(frame)) => {
+                    let pool_generation = frame.pool_generation;
+                    let sequence = frame.sequence;
+                    let device_width = frame.device_width;
+                    let device_height = frame.device_height;
+                    let publish_result = self.bridge.mailbox.publish_gpu(GpuFrameSubmission {
+                        session: self.bridge.id,
+                        logical_width: frame.logical_width,
+                        logical_height: frame.logical_height,
+                        device_width,
+                        device_height,
+                        pool_generation,
+                        sequence,
+                        texture: frame.texture,
+                    });
+                    match publish_result {
+                        Ok(wake) => {
+                            self.bridge
+                                .accelerated_paint
+                                .record_gpu_frame_delivered(pool_generation);
+                            log::trace!(
+                                target: "ala_cef::accelerated_paint",
+                                "delivered GPU frame session={} callback={} pool_generation={} device={}x{} wake={wake:?}",
+                                self.bridge.id.0,
+                                sequence,
+                                pool_generation,
+                                device_width,
+                                device_height,
+                            );
+                            if let Some(generation) = wake {
+                                self.bridge.emit(BrowserEvent::FrameReady {
+                                    session: self.bridge.id,
+                                    generation,
+                                });
+                            }
+                        }
+                        Err(error) => {
+                            self.bridge.mailbox.record_gpu_import_failure();
+                            self.bridge
+                                .request_shared_texture_fallback(error.to_string());
+                            self.bridge
+                                .accelerated_paint
+                                .record_gpu_import_failure(false);
+                            self.bridge.log_invalid_frame(error);
+                        }
+                    }
+                }
+                Ok(AcceleratedFrameOutcome::Stale(stale)) => {
+                    let count = self
+                        .bridge
+                        .accelerated_paint
+                        .record_stale_pool_frame();
+                    if count.is_power_of_two() {
+                        log::warn!(
+                            target: "ala_cef::accelerated_paint",
+                            "discarded stale accelerated frame #{count} session={} callback={} reason={stale:?}",
+                            self.bridge.id.0,
+                            recorded.callback,
+                        );
+                    }
+                }
+                Err(error) => {
+                    self.bridge.mailbox.record_gpu_import_failure();
+                    self.bridge
+                        .request_shared_texture_fallback(error.to_string());
+                    let count = self
+                        .bridge
+                        .accelerated_paint
+                        .record_gpu_import_failure(error.is_helper_fallback());
+                    if count.is_power_of_two() {
+                        log::warn!(
+                            target: "ala_cef::accelerated_paint",
+                            "accelerated frame import/blit failed #{count} session={} callback={}: {error}; retaining the last valid frame while awaiting readback fallback",
+                            self.bridge.id.0,
+                            recorded.callback,
+                        );
+                    }
+                }
+            }
+            }
+        }
+
+        fn on_ime_composition_range_changed(
+            &self,
+            _browser: Option<&mut Browser>,
+            _selected_range: Option<&Range>,
+            character_bounds: Option<&[Rect]>,
+        ) {
+            let scale = osr_raster_scale(*self.bridge.viewport.lock());
+            let bounds = character_bounds
+                .unwrap_or_default()
+                .iter()
+                .map(|rect| {
+                    ImeCharacterBounds::from_view(rect.x, rect.y, rect.width, rect.height, scale)
+                })
+                .collect();
+            self.bridge.emit(BrowserEvent::ImeCompositionChanged {
+                session: self.bridge.id,
+                bounds,
+            });
+        }
+
+        fn start_dragging(
+            &self,
+            _browser: Option<&mut Browser>,
+            _drag_data: Option<&mut DragData>,
+            _allowed_ops: DragOperationsMask,
+            _x: i32,
+            _y: i32,
+        ) -> i32 {
+            0
+        }
+    }
+}
+
+cef::wrap_download_image_callback! {
+    struct FaviconDownloadCallback {
+        bridge: SessionBridge,
+        url: Arc<str>,
+    }
+
+    impl DownloadImageCallback {
+        fn on_download_image_finished(
+            &self,
+            _image_url: Option<&CefString>,
+            _http_status_code: i32,
+            image: Option<&mut Image>,
+        ) {
+            let (mut width, mut height) = (0, 0);
+            let Some(data) = image.and_then(|image| {
+                image.as_png(1.0, 1, Some(&mut width), Some(&mut height))
+            }) else {
+                return;
+            };
+            let len = data.size();
+            if len == 0 || len > crate::MAX_FAVICON_BYTES {
+                return;
+            }
+            let mut png = vec![0; len];
+            if data.data(Some(&mut png), 0) != len {
+                return;
+            }
+            self.bridge.emit(BrowserEvent::FaviconChanged {
+                session: self.bridge.id,
+                url: self.url.clone(),
+                png: png.into(),
+            });
+        }
+    }
+}
+
+cef::wrap_display_handler! {
+    struct DisplayHandlerBuilder {
+        bridge: SessionBridge,
+    }
+
+    impl DisplayHandler {
+        fn on_address_change(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            url: Option<&CefString>,
+        ) {
+            if frame.is_some_and(|frame| frame.is_main() != 0) {
+                if let Some(browser) = browser {
+                    self.bridge.apply_page_zoom(browser);
+                }
+                self.bridge.emit(BrowserEvent::AddressChanged {
+                    session: self.bridge.id,
+                    url: Arc::from(url.map(ToString::to_string).unwrap_or_default()),
+                });
+            }
+        }
+
+        fn on_title_change(&self, _browser: Option<&mut Browser>, title: Option<&CefString>) {
+            self.bridge.emit(BrowserEvent::TitleChanged {
+                session: self.bridge.id,
+                title: Arc::from(title.map(ToString::to_string).unwrap_or_default()),
+            });
+        }
+
+        fn on_favicon_urlchange(
+            &self,
+            browser: Option<&mut Browser>,
+            icon_urls: Option<&mut CefStringList>,
+        ) {
+            let Some(browser) = browser else { return; };
+            let Some(host) = browser.host() else { return; };
+            let Some(frame) = browser.main_frame() else { return; };
+            let Some(icon_url) = icon_urls.and_then(|urls| std::mem::take(urls).into_iter().next()) else {
+                return;
+            };
+            let mut callback = FaviconDownloadCallback::new(
+                self.bridge.clone(),
+                CefString::from(&frame.url()).to_string().into(),
+            );
+            host.download_image(
+                Some(&CefString::from(icon_url.as_str())),
+                1,
+                32,
+                0,
+                Some(&mut callback),
+            );
+        }
+
+        fn on_cursor_change(
+            &self,
+            _browser: Option<&mut Browser>,
+            _cursor: CursorHandle,
+            type_: CursorType,
+            _custom_cursor_info: Option<&CursorInfo>,
+        ) -> i32 {
+            self.bridge.emit(BrowserEvent::CursorChanged {
+                session: self.bridge.id,
+                cursor: browser_cursor(type_),
+            });
+            1
+        }
+    }
+}
+
+cef::wrap_life_span_handler! {
+    struct LifeSpanHandlerBuilder {
+        bridge: SessionBridge,
+        message_router: Arc<BrowserSideRouter>,
+        config: SessionConfig,
+        popups: Weak<Mutex<BTreeMap<u64, BrowserSession>>>,
+        popup: Arc<Mutex<Option<PopupCompletion>>>,
+    }
+
+    impl LifeSpanHandler {
+        fn on_before_popup(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            _popup_id: i32,
+            target_url: Option<&CefString>,
+            _target_frame_name: Option<&CefString>,
+            target_disposition: WindowOpenDisposition,
+            _user_gesture: i32,
+            _popup_features: Option<&PopupFeatures>,
+            window_info: Option<&mut WindowInfo>,
+            client: Option<&mut Option<Client>>,
+            _settings: Option<&mut BrowserSettings>,
+            _extra_info: Option<&mut Option<DictionaryValue>>,
+            _no_javascript_access: Option<&mut i32>,
+        ) -> i32 {
+            let (Some(window_info), Some(client)) = (window_info, client) else {
+                return 1;
+            };
+            if self.popups.upgrade().is_none()
+                || self.bridge.closing.load(Ordering::Acquire)
+            {
+                return 1;
+            }
+            let mut viewport = *self.bridge.viewport.lock();
+            viewport.visible = false;
+            let prepared = self.config.prepare(viewport, *self.bridge.page_zoom_factor.lock());
+            let popup = PopupCompletion {
+                prepared: prepared.clone(),
+                opener: self.bridge.clone(),
+                destination: self.popups.clone(),
+                url: Arc::from(target_url.map(ToString::to_string).filter(|url| !url.is_empty())
+                    .unwrap_or_else(|| "about:blank".to_owned())),
+                foreground: popup_opens_in_foreground(target_disposition),
+            };
+            *window_info = WindowInfo {
+                shared_texture_enabled: 0,
+                external_begin_frame_enabled: i32::from(self.config.external_begin_frame_enabled),
+                ..WindowInfo::default().set_as_windowless(Default::default())
+            };
+            *client = Some(prepared.client(Some(popup)));
+            0
+        }
+
+        fn on_after_created(&self, browser: Option<&mut Browser>) {
+            if let Some(browser) = browser {
+                self.bridge.apply_page_zoom(browser);
+                let completion = self.popup.lock().take();
+                if let Some(completion) = completion {
+                    let mut session = completion.prepared.into_session(browser.clone());
+                    if let Some(destination) = completion.destination.upgrade()
+                        && !completion.opener.closing.load(Ordering::Acquire)
+                    {
+                        let popup = session.id();
+                        destination.lock().insert(popup.0, session);
+                        completion.opener.emit(BrowserEvent::PopupCreated {
+                            session: completion.opener.id,
+                            popup,
+                            url: completion.url,
+                            foreground: completion.foreground,
+                        });
+                    } else {
+                        session.close(true);
+                    }
+                }
+            }
+            self.bridge.emit(BrowserEvent::Created {
+                session: self.bridge.id,
+            });
+        }
+
+        fn on_before_close(&self, browser: Option<&mut Browser>) {
+            self.bridge.closing.store(true, Ordering::Release);
+            if let Some(popups) = self.popups.upgrade() {
+                close_pending_popups(&popups);
+            }
+            self.message_router
+                .on_before_close(browser.as_deref().cloned());
+            self.bridge.cancel_element_pick();
+            self.bridge.active_session.finish();
+            self.bridge.emit(BrowserEvent::Closed {
+                session: self.bridge.id,
+            });
+        }
+    }
+}
+
+cef::wrap_load_handler! {
+    struct LoadHandlerBuilder {
+        bridge: SessionBridge,
+    }
+
+    impl LoadHandler {
+        fn on_loading_state_change(
+            &self,
+            _browser: Option<&mut Browser>,
+            is_loading: i32,
+            can_go_back: i32,
+            can_go_forward: i32,
+        ) {
+            self.bridge.emit(BrowserEvent::LoadingChanged {
+                session: self.bridge.id,
+                loading: is_loading != 0,
+                can_go_back: can_go_back != 0,
+                can_go_forward: can_go_forward != 0,
+            });
+        }
+
+        fn on_load_error(
+            &self,
+            _browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            error_code: Errorcode,
+            error_text: Option<&CefString>,
+            failed_url: Option<&CefString>,
+        ) {
+            if error_code == Errorcode::ABORTED
+                || frame.is_none_or(|frame| frame.is_main() == 0)
+            {
+                return;
+            }
+            self.bridge.emit(BrowserEvent::LoadFailed {
+                session: self.bridge.id,
+                code: error_code.get_raw(),
+                description: Arc::from(error_text.map(ToString::to_string).unwrap_or_default()),
+                url: Arc::from(failed_url.map(ToString::to_string).unwrap_or_default()),
+            });
+        }
+    }
+}
+
+cef::wrap_request_handler! {
+    struct RequestHandlerBuilder {
+        bridge: SessionBridge,
+        message_router: Arc<BrowserSideRouter>,
+    }
+
+    impl RequestHandler {
+        fn on_before_browse(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            _request: Option<&mut Request>,
+            _user_gesture: i32,
+            _is_redirect: i32,
+        ) -> i32 {
+            let is_main = frame.as_deref().is_some_and(|frame| frame.is_main() != 0);
+            self.message_router.on_before_browse(
+                browser.as_deref().cloned(),
+                frame.as_deref().cloned(),
+            );
+            if is_main {
+                self.bridge.cancel_element_pick();
+            }
+            0
+        }
+
+        fn on_open_urlfrom_tab(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            target_url: Option<&CefString>,
+            target_disposition: WindowOpenDisposition,
+            _user_gesture: i32,
+        ) -> i32 {
+            if let Some(target_url) = target_url {
+                self.bridge.emit(BrowserEvent::PopupRequested {
+                    session: self.bridge.id,
+                    url: Arc::from(target_url.to_string()),
+                    foreground: popup_opens_in_foreground(target_disposition),
+                });
+            }
+            1
+        }
+
+        fn on_render_process_terminated(
+            &self,
+            browser: Option<&mut Browser>,
+            status: TerminationStatus,
+            error_code: i32,
+            error_string: Option<&CefString>,
+        ) {
+            self.message_router
+                .on_render_process_terminated(browser.as_deref().cloned());
+            self.bridge.cancel_element_pick();
+            let detail = error_string.map_or_else(
+                || format!("renderer termination status {}", status.get_raw()),
+                ToString::to_string,
+            );
+            self.bridge.emit(BrowserEvent::RenderProcessTerminated {
+                session: self.bridge.id,
+                status: Arc::from(detail),
+                error_code,
+            });
+        }
+    }
+}
+
+cef::wrap_context_menu_handler! {
+    struct BridgedContextMenuHandler {
+        bridge: SessionBridge,
+    }
+
+    impl ContextMenuHandler {
+        fn run_context_menu(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            params: Option<&mut ContextMenuParams>,
+            _model: Option<&mut MenuModel>,
+            callback: Option<&mut RunContextMenuCallback>,
+        ) -> i32 {
+            if let Some(params) = params {
+                self.bridge.emit(BrowserEvent::ContextMenuRequested {
+                    session: self.bridge.id,
+                    request: self.bridge.context_menu_request(params),
+                });
+            }
+            if let Some(callback) = callback {
+                callback.cancel();
+            }
+            1
+        }
+    }
+}
+
+cef::wrap_dialog_handler! {
+    struct DeniedDialogHandler;
+
+    impl DialogHandler {
+        fn on_file_dialog(
+            &self,
+            _browser: Option<&mut Browser>,
+            _mode: FileDialogMode,
+            _title: Option<&CefString>,
+            _default_file_path: Option<&CefString>,
+            _accept_filters: Option<&mut CefStringList>,
+            _accept_extensions: Option<&mut CefStringList>,
+            _accept_descriptions: Option<&mut CefStringList>,
+            callback: Option<&mut FileDialogCallback>,
+        ) -> i32 {
+            if let Some(callback) = callback {
+                callback.cancel();
+            }
+            1
+        }
+    }
+}
+
+cef::wrap_download_handler! {
+    struct DeniedDownloadHandler;
+
+    impl DownloadHandler {
+        fn can_download(
+            &self,
+            _browser: Option<&mut Browser>,
+            _url: Option<&CefString>,
+            _request_method: Option<&CefString>,
+        ) -> i32 {
+            0
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+trait PointerTarget {
+    type Target;
+}
+
+#[cfg(not(target_os = "macos"))]
+impl<T> PointerTarget for *mut T {
+    type Target = T;
+}
+
+#[cfg(target_os = "macos")]
+type KeyboardOsEvent<'a> = *mut u8;
+
+#[cfg(not(target_os = "macos"))]
+type KeyboardOsEvent<'a> = Option<&'a mut <EventHandle as PointerTarget>::Target>;
+
+cef::wrap_keyboard_handler! {
+    struct ConsumedKeyboardHandler;
+
+    impl KeyboardHandler {
+        fn on_key_event(
+            &self,
+            _browser: Option<&mut Browser>,
+            _event: Option<&KeyEvent>,
+            _os_event: KeyboardOsEvent<'_>,
+        ) -> i32 {
+            1
+        }
+    }
+}
+
+cef::wrap_permission_handler! {
+    struct DeniedPermissionHandler;
+
+    impl PermissionHandler {
+        fn on_request_media_access_permission(
+            &self,
+            _browser: Option<&mut Browser>,
+            _frame: Option<&mut Frame>,
+            _requesting_origin: Option<&CefString>,
+            _requested_permissions: u32,
+            callback: Option<&mut MediaAccessCallback>,
+        ) -> i32 {
+            if let Some(callback) = callback {
+                callback.cancel();
+            }
+            1
+        }
+
+        fn on_show_permission_prompt(
+            &self,
+            _browser: Option<&mut Browser>,
+            _prompt_id: u64,
+            _requesting_origin: Option<&CefString>,
+            _requested_permissions: u32,
+            callback: Option<&mut PermissionPromptCallback>,
+        ) -> i32 {
+            if let Some(callback) = callback {
+                callback.cont(PermissionRequestResult::DENY);
+            }
+            1
+        }
+    }
+}
+
+cef::wrap_client! {
+    struct BrowserClient {
+        render_handler: RenderHandler,
+        display_handler: DisplayHandler,
+        life_span_handler: LifeSpanHandler,
+        load_handler: LoadHandler,
+        request_handler: RequestHandler,
+        context_menu_handler: ContextMenuHandler,
+        dialog_handler: DialogHandler,
+        download_handler: DownloadHandler,
+        permission_handler: PermissionHandler,
+        keyboard_handler: KeyboardHandler,
+        message_router: Arc<BrowserSideRouter>,
+    }
+
+    impl Client {
+        fn render_handler(&self) -> Option<RenderHandler> {
+            Some(self.render_handler.clone())
+        }
+
+        fn display_handler(&self) -> Option<DisplayHandler> {
+            Some(self.display_handler.clone())
+        }
+
+        fn life_span_handler(&self) -> Option<LifeSpanHandler> {
+            Some(self.life_span_handler.clone())
+        }
+
+        fn load_handler(&self) -> Option<LoadHandler> {
+            Some(self.load_handler.clone())
+        }
+
+        fn request_handler(&self) -> Option<RequestHandler> {
+            Some(self.request_handler.clone())
+        }
+
+        fn context_menu_handler(&self) -> Option<ContextMenuHandler> {
+            Some(self.context_menu_handler.clone())
+        }
+
+        fn dialog_handler(&self) -> Option<DialogHandler> {
+            Some(self.dialog_handler.clone())
+        }
+
+        fn download_handler(&self) -> Option<DownloadHandler> {
+            Some(self.download_handler.clone())
+        }
+
+        fn permission_handler(&self) -> Option<PermissionHandler> {
+            Some(self.permission_handler.clone())
+        }
+
+        fn keyboard_handler(&self) -> Option<KeyboardHandler> {
+            Some(self.keyboard_handler.clone())
+        }
+
+        fn on_process_message_received(
+            &self,
+            browser: Option<&mut Browser>,
+            frame: Option<&mut Frame>,
+            source_process: ProcessId,
+            message: Option<&mut ProcessMessage>,
+        ) -> i32 {
+            i32::from(self.message_router.on_process_message_received(
+                browser.as_deref().cloned(),
+                frame.as_deref().cloned(),
+                source_process,
+                message.as_deref().cloned(),
+            ))
+        }
+    }
+}
+
+fn browser_cursor(value: CursorType) -> BrowserCursor {
+    if value == CursorType::IBEAM || value == CursorType::VERTICALTEXT {
+        BrowserCursor::IBeam
+    } else if value == CursorType::HAND {
+        BrowserCursor::PointingHand
+    } else if value == CursorType::CROSS || value == CursorType::CELL {
+        BrowserCursor::Crosshair
+    } else if value == CursorType::WAIT || value == CursorType::PROGRESS {
+        BrowserCursor::Wait
+    } else if value == CursorType::HELP {
+        BrowserCursor::Help
+    } else if value == CursorType::MOVE {
+        BrowserCursor::Move
+    } else if matches!(
+        value,
+        CursorType::EASTRESIZE | CursorType::WESTRESIZE | CursorType::EASTWESTRESIZE
+    ) {
+        BrowserCursor::ResizeHorizontal
+    } else if matches!(
+        value,
+        CursorType::NORTHRESIZE | CursorType::SOUTHRESIZE | CursorType::NORTHSOUTHRESIZE
+    ) {
+        BrowserCursor::ResizeVertical
+    } else if matches!(
+        value,
+        CursorType::NORTHEASTRESIZE
+            | CursorType::SOUTHWESTRESIZE
+            | CursorType::NORTHEASTSOUTHWESTRESIZE
+    ) {
+        BrowserCursor::ResizeNorthEastSouthWest
+    } else if matches!(
+        value,
+        CursorType::NORTHWESTRESIZE
+            | CursorType::SOUTHEASTRESIZE
+            | CursorType::NORTHWESTSOUTHEASTRESIZE
+    ) {
+        BrowserCursor::ResizeNorthWestSouthEast
+    } else if value == CursorType::GRAB {
+        BrowserCursor::Grab
+    } else if value == CursorType::GRABBING {
+        BrowserCursor::Grabbing
+    } else if value == CursorType::NONE {
+        BrowserCursor::None
+    } else if value == CursorType::NOTALLOWED || value == CursorType::NODROP {
+        BrowserCursor::NotAllowed
+    } else {
+        BrowserCursor::Arrow
+    }
+}
+
+fn ensure_no_live_sessions(active_sessions: &AtomicU64) -> Result<(), BrowserError> {
+    let count = active_sessions.load(Ordering::Acquire);
+    if count == 0 {
+        Ok(())
+    } else {
+        Err(BrowserError::BrowsersStillOpen(count))
+    }
+}
+
+fn ensure_no_active_data_operations(active_operations: &AtomicU64) -> Result<(), BrowserError> {
+    let count = active_operations.load(Ordering::Acquire);
+    if count == 0 {
+        Ok(())
+    } else {
+        Err(BrowserError::DataOperationsStillActive(count))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn evaluated_numbers_come_from_the_result_value() {
+        assert_eq!(
+            decode_evaluated_number(br#"{"result":{"type":"number","value":241}}"#),
+            Some(241.0)
+        );
+        assert_eq!(
+            decode_evaluated_number(br#"{"result":{"type":"undefined"}}"#),
+            None
+        );
+        assert_eq!(decode_evaluated_number(b"not json"), None);
+    }
+
+    #[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
+    #[test]
+    fn subprocess_switch_accepts_chromium_forms_without_matching_other_flags() {
+        assert!(has_subprocess_switch(["--type=renderer"]));
+        assert!(has_subprocess_switch(["--type", "zygote"]));
+        assert!(!has_subprocess_switch(["--typewriter=renderer"]));
+        assert!(!has_subprocess_switch(["--url=--type=renderer"]));
+        assert!(!has_subprocess_switch(["--verbose"]));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn framework_version_requires_the_complete_compiled_version() {
+        let expected = std::ffi::CStr::from_bytes_with_nul(cef::sys::CEF_VERSION).unwrap();
+        assert!(validate_framework_version(Some(expected)).is_ok());
+        for version in [None, Some(c""), Some(c"0.0.0+gunknown+chromium-0.0.0.0")] {
+            assert!(matches!(
+                validate_framework_version(version),
+                Err(BrowserError::FrameworkVersion(_))
+            ));
+        }
+        let mut different_build = expected.to_bytes().to_vec();
+        let last = different_build.last_mut().unwrap();
+        *last = if *last == b'0' { b'1' } else { b'0' };
+        let different_build = std::ffi::CString::new(different_build).unwrap();
+        assert!(matches!(
+            validate_framework_version(Some(&different_build)),
+            Err(BrowserError::FrameworkVersion(_))
+        ));
+    }
+
+    #[test]
+    fn keys_the_page_ignores_are_reported_handled() {
+        let handler = ConsumedKeyboardHandler::new();
+        #[cfg(target_os = "macos")]
+        let absent: KeyboardOsEvent<'_> = std::ptr::null_mut();
+        #[cfg(not(target_os = "macos"))]
+        let absent: KeyboardOsEvent<'_> = None;
+        assert_eq!(handler.on_key_event(None, None, absent), 1);
+    }
+
+    #[test]
+    fn remote_debugging_port_is_off_or_unprivileged() {
+        for port in [0, 1024, 9222, 65535] {
+            assert_eq!(checked_remote_debugging_port(port).unwrap(), port);
+        }
+        for port in [1, 1023] {
+            assert!(matches!(
+                checked_remote_debugging_port(port),
+                Err(BrowserError::RemoteDebuggingPort(rejected)) if rejected == port
+            ));
+        }
+    }
+
+    #[test]
+    fn popup_disposition_preserves_background_tab_intent() {
+        assert!(!popup_opens_in_foreground(
+            WindowOpenDisposition::NEW_BACKGROUND_TAB,
+        ));
+        assert!(popup_opens_in_foreground(
+            WindowOpenDisposition::NEW_FOREGROUND_TAB,
+        ));
+        assert!(popup_opens_in_foreground(WindowOpenDisposition::NEW_WINDOW,));
+    }
+
+    #[test]
+    fn message_pump_starts_uninitialized_and_noops_before_start() {
+        let pump = BrowserMessagePump::new(Arc::new(AtomicU64::new(0)));
+        assert_eq!(pump.state().phase, RuntimePhase::Uninitialized);
+        assert!(!pump.state().initialized);
+
+        pump.do_message_loop_work();
+        let calls = Cell::new(0);
+        pump.run_message_loop_work(|| calls.set(calls.get() + 1));
+        assert_eq!(calls.get(), 0);
+    }
+
+    #[test]
+    fn detached_message_pump_tracks_lifecycle_and_coalesces_reentry() {
+        let pump = BrowserMessagePump::new(Arc::new(AtomicU64::new(0)));
+        let detached = pump.clone();
+        pump.set_phase(RuntimePhase::Initializing);
+        pump.enable();
+        pump.set_phase(RuntimePhase::Running);
+        assert_eq!(detached.state().phase, RuntimePhase::Running);
+
+        let calls = Cell::new(0);
+        let nested = detached.clone();
+        pump.run_message_loop_work(|| {
+            let call = calls.get() + 1;
+            calls.set(call);
+            if call == 1 {
+                nested.run_message_loop_work(|| panic!("nested CEF pump must be coalesced"));
+            }
+        });
+        assert_eq!(calls.get(), 2);
+
+        pump.mark_closed();
+        assert!(!detached.state().initialized);
+        assert_eq!(detached.state().phase, RuntimePhase::Closed);
+    }
+
+    #[test]
+    fn live_sessions_prevent_global_shutdown() {
+        let active = AtomicU64::new(1);
+        assert!(matches!(
+            ensure_no_live_sessions(&active),
+            Err(BrowserError::BrowsersStillOpen(1))
+        ));
+        active.store(0, Ordering::Release);
+        assert!(ensure_no_live_sessions(&active).is_ok());
+    }
+
+    #[test]
+    fn active_data_operations_prevent_global_shutdown() {
+        let active = Arc::new(AtomicU64::new(0));
+        let operation = ActiveCountGuard::new(Arc::clone(&active));
+        assert!(matches!(
+            ensure_no_active_data_operations(&active),
+            Err(BrowserError::DataOperationsStillActive(1))
+        ));
+        assert!(operation.finish());
+        assert!(!operation.finish());
+        assert!(ensure_no_active_data_operations(&active).is_ok());
+    }
+
+    #[test]
+    fn dropped_data_operation_releases_shutdown_guard() {
+        let active = Arc::new(AtomicU64::new(0));
+        drop(ActiveCountGuard::new(Arc::clone(&active)));
+        assert!(ensure_no_active_data_operations(&active).is_ok());
+    }
+
+    #[test]
+    fn active_count_guard_finishes_once_across_clones() {
+        let active = Arc::new(AtomicU64::new(0));
+        let first = ActiveCountGuard::new(Arc::clone(&active));
+        let second = first.clone();
+        assert_eq!(active.load(Ordering::Acquire), 1);
+        assert!(second.finish());
+        assert!(!first.finish());
+        assert_eq!(active.load(Ordering::Acquire), 0);
+    }
+
+    #[test]
+    fn site_data_origin_is_limited_to_http_and_https() {
+        assert_eq!(
+            site_origin("https://user:pass@example.com:8443/account?tab=1")
+                .expect("valid HTTPS origin"),
+            "https://example.com:8443"
+        );
+        for unsupported in [
+            "about:blank",
+            "file:///tmp/page.html",
+            "data:text/plain,hello",
+        ] {
+            assert!(matches!(
+                site_origin(unsupported),
+                Err(BrowserError::UnsupportedOrigin)
+            ));
+        }
+    }
+
+    #[test]
+    fn cookie_expiration_uses_the_windows_epoch() {
+        assert_eq!(
+            cef_expiration(1_000_000)
+                .expect("representable timestamp")
+                .val,
+            WINDOWS_EPOCH_UNIX_OFFSET_MICROS + 1_000_000
+        );
+        assert!(cef_expiration(i64::MAX).is_none());
+    }
+
+    #[test]
+    fn committed_text_uses_cef_character_events() {
+        let event = text_key_event('A' as u16);
+        assert_eq!(event.type_, KeyEventType::CHAR);
+        assert_eq!(event.windows_key_code, 0x41);
+        assert_eq!(event.character, 0x41);
+        assert_eq!(event.unmodified_character, 0x41);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn named_keys_keep_their_macos_character_and_hardware_identity() {
+        let tab = key_event(KeyInput {
+            action: KeyAction::Press,
+            key: BrowserKey::Tab,
+            modifiers: Modifiers::default(),
+        });
+        assert_eq!(tab.type_, KeyEventType::RAWKEYDOWN);
+        assert_eq!(tab.windows_key_code, 0x09);
+        assert_eq!(tab.native_key_code, 0x30);
+        assert_eq!(tab.character, 0x09);
+        assert_eq!(tab.unmodified_character, 0x09);
+
+        let enter = named_key_character_event(KeyInput {
+            action: KeyAction::Press,
+            key: BrowserKey::Enter,
+            modifiers: Modifiers::default(),
+        })
+        .expect("Return produces CEF's keypress companion event");
+        assert_eq!(enter.type_, KeyEventType::CHAR);
+        assert_eq!(enter.windows_key_code, 0x0d);
+        assert_eq!(enter.native_key_code, 0x24);
+        assert_eq!(enter.character, 0x0d);
+
+        let copy = key_event(KeyInput {
+            action: KeyAction::Press,
+            key: BrowserKey::Character('c'),
+            modifiers: Modifiers::new(false, false, false, true),
+        });
+        assert_eq!(copy.native_key_code, 0x08);
+        assert_ne!(
+            copy.modifiers & cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_COMMAND_DOWN.0),
+            0
+        );
+    }
+
+    #[test]
+    fn releases_and_committed_characters_do_not_duplicate_character_events() {
+        assert!(
+            named_key_character_event(KeyInput {
+                action: KeyAction::Release,
+                key: BrowserKey::Enter,
+                modifiers: Modifiers::default(),
+            })
+            .is_none()
+        );
+        assert!(
+            named_key_character_event(KeyInput {
+                action: KeyAction::Press,
+                key: BrowserKey::Character('a'),
+                modifiers: Modifiers::default(),
+            })
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn packed_modifiers_preserve_cef_event_flags() {
+        let flags = event_flags(
+            Modifiers::new(true, true, true, true)
+                .with_pointer_button(Some(PointerButton::Middle))
+                .with_repeat(true),
+        );
+        assert_ne!(
+            flags & cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_SHIFT_DOWN.0),
+            0
+        );
+        assert_ne!(
+            flags & cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_CONTROL_DOWN.0),
+            0
+        );
+        assert_ne!(
+            flags & cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_ALT_DOWN.0),
+            0
+        );
+        assert_ne!(
+            flags & cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_COMMAND_DOWN.0),
+            0
+        );
+        assert_ne!(
+            flags & cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_MIDDLE_MOUSE_BUTTON.0),
+            0
+        );
+        assert_ne!(
+            flags & cef_enum_bits(cef::sys::cef_event_flags_t::EVENTFLAG_IS_REPEAT.0),
+            0
+        );
+    }
+
+    #[test]
+    fn converts_fractional_wayland_scale_to_physical_osr_values() {
+        assert_eq!(scaled_osr_dimension(1080, 1.25), 1350);
+        assert_eq!(scaled_osr_dimension(638, 1.25), 798);
+        assert_eq!(scaled_osr_dimension(1120, 2.2), 2464);
+        assert_eq!(scaled_osr_dimension(1325, 2.2), 2915);
+        assert_eq!(scaled_osr_coordinate(100, 1.25), 125);
+        let zoom_factor = CHROMIUM_ZOOM_STEP.powf(chromium_zoom_level(1.25));
+        assert!((zoom_factor - 1.25).abs() < f64::EPSILON);
+    }
+
+    fn geometry(x: f64, y: f64, scroll_y: f64) -> PickGeometry {
+        PickGeometry {
+            x,
+            y,
+            width: 300.0,
+            height: 150.0,
+            scroll_x: 0.0,
+            scroll_y,
+            viewport_width: 1280.0,
+            viewport_height: 800.0,
+            visual_viewport: None,
+        }
+    }
+
+    #[test]
+    fn element_clip_expands_by_the_margin_in_page_coordinates() {
+        let clip = element_screenshot_clip(geometry(100.0, 200.0, 50.0)).expect("on-screen clip");
+        assert_eq!(
+            clip,
+            ScreenshotClip {
+                x: 36.0,
+                y: 186.0,
+                width: 428.0,
+                height: 278.0,
+            }
+        );
+    }
+
+    fn assert_px(actual: f64, expected: f64) {
+        assert!(
+            (actual - expected).abs() < f64::EPSILON,
+            "{actual} != {expected}"
+        );
+    }
+
+    #[test]
+    fn element_clip_stays_inside_the_visible_viewport() {
+        let clip = element_screenshot_clip(geometry(10.0, 10.0, 0.0)).expect("on-screen clip");
+        assert_px(clip.x, 0.0);
+        assert_px(clip.y, 0.0);
+        assert_px(clip.width, 374.0);
+        assert_px(clip.height, 224.0);
+
+        assert_eq!(
+            element_screenshot_clip(geometry(-5000.0, -5000.0, 0.0)),
+            None
+        );
+    }
+
+    #[test]
+    fn decodes_a_base64_screenshot_and_rejects_junk() {
+        let png = [0x89_u8, 0x50, 0x4e, 0x47];
+        let encoded = base64::engine::general_purpose::STANDARD.encode(png);
+        let body = serde_json::json!({ "data": encoded }).to_string();
+        assert_eq!(
+            decode_screenshot_result(body.as_bytes()).as_deref(),
+            Some(png.as_slice())
+        );
+
+        assert_eq!(decode_screenshot_result(b"{"), None);
+        assert_eq!(
+            decode_screenshot_result(br#"{"data":"not base64!!"}"#),
+            None
+        );
+        assert_eq!(decode_screenshot_result(br#"{"data":""}"#), None);
+    }
+
+    #[test]
+    fn osr_coordinates_survive_a_round_trip_through_the_raster_scale() {
+        for scale in [1.0_f32, 1.25, 1.5, 2.0] {
+            for value in [0, 1, 37, 638, 1920] {
+                assert_eq!(
+                    unscaled_osr_coordinate(scaled_osr_coordinate(value, scale), scale),
+                    value,
+                    "scale={scale} value={value}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn page_zoom_and_raster_scale_compose_multiplicatively() {
+        let viewport = Viewport {
+            scale_factor: 1.25,
+            ..Viewport::default()
+        };
+        let expected_factor = if uses_wayland_physical_osr() {
+            1.25 * 1.5
+        } else {
+            1.5
+        };
+        let effective_factor =
+            CHROMIUM_ZOOM_STEP.powf(effective_chromium_zoom_level(viewport, 1.5));
+        assert!((effective_factor - expected_factor).abs() < 1e-12);
+    }
+
+    #[test]
+    fn screen_points_apply_window_zoom_without_scaling_the_window_origin() {
+        let viewport = Viewport {
+            scale_factor: 1.0,
+            window_zoom: 0.5,
+            ..Viewport::default()
+        };
+
+        assert_eq!(screen_point_coordinate(viewport, 100, 300, false), 250);
+        assert_eq!(screen_point_coordinate(viewport, 100, 300, true), 500);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    fn test_accelerated_handle_identity(value: usize) -> AcceleratedPaintHandleIdentity {
+        value
+    }
+
+    #[cfg(target_os = "linux")]
+    fn test_accelerated_handle_identity(value: usize) -> AcceleratedPaintHandleIdentity {
+        let mut planes = [AcceleratedPaintPlaneIdentity::default(); 4];
+        planes[0] = AcceleratedPaintPlaneIdentity {
+            device: Some(1),
+            inode: Some(u64::try_from(value).expect("test identity fits in u64")),
+            offset: 0,
+            size: 800 * 600 * 4,
+        };
+        AcceleratedPaintHandleIdentity {
+            plane_count: 1,
+            planes,
+        }
+    }
+
+    #[test]
+    fn accelerated_paint_diagnostics_track_pool_reuse() {
+        let tracker = AcceleratedPaintTracker::default();
+        let observation = |identity| AcceleratedPaintObservationState {
+            paint_element: "view",
+            width: 800,
+            height: 600,
+            pixel_format: "bgra_8888",
+            pixel_format_raw: cef_enum_bits(ColorType::BGRA_8888.get_raw()),
+            platform: AcceleratedPaintPlatformState {
+                drm_modifier: Some(0),
+                plane_count: 0,
+                planes: [None; 4],
+                handle_identity: test_accelerated_handle_identity(identity),
+            },
+        };
+
+        tracker.record(PaintElementType::VIEW, observation(1));
+        tracker.record(PaintElementType::VIEW, observation(2));
+        let third = tracker.record(PaintElementType::VIEW, observation(1));
+
+        assert_eq!(third.reuse_gap, Some(2));
+        let diagnostics = tracker.diagnostics();
+        assert_eq!(diagnostics.callback_count, 3);
+        assert_eq!(diagnostics.unique_handle_count, 2);
+        assert_eq!(diagnostics.handle_transition_count, 2);
+        assert_eq!(diagnostics.handles[0].minimum_reuse_gap, Some(2));
+        assert_eq!(
+            diagnostics
+                .last_observation
+                .expect("last observation")
+                .handle_identity,
+            format_accelerated_handle_identity(test_accelerated_handle_identity(1))
+        );
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn test_pool_layout(width: i32, height: i32) -> AcceleratedPoolLayout {
+        AcceleratedPoolLayout {
+            width,
+            height,
+            pixel_format_raw: cef_enum_bits(ColorType::BGRA_8888.get_raw()),
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    fn assert_accelerated_identities_accepted(
+        pool: &PoolGenerationBookkeeper,
+        layout: &AcceleratedPoolLayout,
+        identities: &[AcceleratedPaintHandleIdentity],
+        observations: usize,
+    ) {
+        assert!(!identities.is_empty());
+        let rejections = (0..observations)
+            .filter_map(|callback| {
+                let identity = identities[callback % identities.len()];
+                pool.observe(layout)
+                    .err()
+                    .map(|error| (callback, identity, error))
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            rejections.is_empty(),
+            "same-sized accelerated identities were rejected: {rejections:?}"
+        );
+    }
+
+    fn test_viewport(width: u32, height: u32) -> Viewport {
+        Viewport {
+            width,
+            height,
+            scale_factor: 1.0,
+            visible: true,
+            ..Viewport::default()
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[test]
+    fn accelerated_pool_rejects_only_mismatched_dimensions() {
+        let mut pool = PoolGenerationBookkeeper::new(test_viewport(800, 600));
+        let first_layout = test_pool_layout(800, 600);
+        assert_eq!(pool.observe(&first_layout), Ok(()));
+
+        let same_dimensions_different_format = AcceleratedPoolLayout {
+            pixel_format_raw: cef_enum_bits(ColorType::RGBA_8888.get_raw()),
+            ..first_layout
+        };
+        assert_eq!(pool.observe(&same_dimensions_different_format), Ok(()));
+
+        assert!(pool.set_viewport(test_viewport(1088, 720)));
+        assert_eq!(
+            pool.observe(&first_layout),
+            Err(StalePoolFrame::Dimensions {
+                expected_width: 1088,
+                expected_height: 720,
+                actual_width: 800,
+                actual_height: 600,
+            })
+        );
+        let second_layout = test_pool_layout(1088, 720);
+        assert_eq!(pool.observe(&second_layout), Ok(()));
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[test]
+    fn accelerated_frames_expect_device_pixels_on_the_default_osr_path() {
+        let viewport = Viewport {
+            scale_factor: 2.0,
+            ..test_viewport(873, 955)
+        };
+        let expected = ExpectedFrameSize::from_viewport(viewport);
+        assert_eq!(expected.device_width, 1746);
+        assert_eq!(expected.device_height, 1910);
+        assert_eq!(expected.logical_width, 873);
+        assert_eq!(expected.logical_height, 955);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn accelerated_pool_accepts_reused_dmabuf_inodes_at_expected_dimensions() {
+        let pool = PoolGenerationBookkeeper::new(test_viewport(800, 600));
+        let layout = test_pool_layout(800, 600);
+        let physical_slots = [
+            test_accelerated_handle_identity(31),
+            test_accelerated_handle_identity(32),
+        ];
+
+        assert_accelerated_identities_accepted(&pool, &layout, &physical_slots, 512);
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[test]
+    fn accelerated_pool_accepts_three_rotating_identities_without_rejections() {
+        let pool = PoolGenerationBookkeeper::new(test_viewport(800, 600));
+        let layout = test_pool_layout(800, 600);
+        let rotating_slots = [
+            test_accelerated_handle_identity(101),
+            test_accelerated_handle_identity(102),
+            test_accelerated_handle_identity(103),
+        ];
+
+        assert_accelerated_identities_accepted(&pool, &layout, &rotating_slots, 1536);
+    }
+
+    #[test]
+    fn shared_texture_fallback_is_a_one_way_one_event_latch() {
+        let viewport = test_viewport(800, 600);
+        let (events, event_rx) = async_channel::unbounded();
+        let bridge = SessionBridge {
+            id: SessionId(7),
+            events,
+            viewport: Arc::new(Mutex::new(viewport)),
+            page_zoom_factor: Arc::new(Mutex::new(1.0)),
+            mailbox: FrameMailbox::default(),
+            invalid_frames: Arc::new(AtomicU64::new(0)),
+            accelerated_paint: AcceleratedPaintTracker::default(),
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+            accelerated_frames: AcceleratedFrameProducer::new(None, viewport),
+            #[cfg(target_os = "macos")]
+            metal_frames: MetalFrameProducer::new(viewport),
+            #[cfg(target_os = "windows")]
+            d3d11_frames: D3d11FrameProducer::new(None, viewport),
+            shared_texture_fallback_notified: Arc::new(AtomicBool::new(false)),
+            element_pick: ElementPickState::default(),
+            pending_capture: PendingCapture::default(),
+            active_session: ActiveCountGuard::new(Arc::new(AtomicU64::new(0))),
+            closing: Arc::new(AtomicBool::new(false)),
+            popup: Arc::default(),
+        };
+
+        assert!(!bridge.shared_texture_fallback_requested());
+        bridge.request_shared_texture_fallback("first import failed");
+        bridge.request_shared_texture_fallback("late validation failure");
+        assert!(bridge.shared_texture_fallback_requested());
+        assert!(matches!(
+            event_rx.try_recv(),
+            Ok(BrowserEvent::SharedTextureFailed { session, reason })
+                if session == SessionId(7) && reason.as_ref() == "first import failed"
+        ));
+        assert!(event_rx.try_recv().is_err());
+    }
+}
