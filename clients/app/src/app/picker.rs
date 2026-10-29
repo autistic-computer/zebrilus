@@ -22,7 +22,7 @@ use zz_ui::{
 };
 
 fn choices() -> &'static [PaneChoice] {
-    pane_choices(cfg!(target_os = "ios"))
+    pane_choices(cfg!(any(target_os = "ios", target_os = "android")))
 }
 
 fn choice_icon(choice: &PaneChoice) -> IconName {

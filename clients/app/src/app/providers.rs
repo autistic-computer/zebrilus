@@ -87,14 +87,14 @@ impl AppShell {
     }
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 fn host_name(connection: &Connection) -> String {
     connection
         .endpoint()
         .map_or_else(|| "Host".to_owned(), super::hosts::host_title)
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 fn host_name(_: &Connection) -> String {
     "This computer".to_owned()
 }

@@ -4,7 +4,7 @@ title: zz-daemon-client crate
 description: The client half of the zz daemon. Local and ssh endpoints, ssh askpass, the command and interactive clients, and the transport, config paths, and process facts the server shares.
 resource: crates/zz-daemon-client/src/lib.rs
 tags: [crate, client, ipc, transport, ssh, endpoint]
-timestamp: 2026-10-13T00:00:00-03:00
+timestamp: 2026-10-29T00:00:00-03:00
 ---
 
 # Overview
@@ -20,14 +20,16 @@ Who depends on what:
 
 | Crate | Depends on |
 |-------|-----------|
-| `zz-tui`, `zz-config`, `zz-app` (iOS), `zz-ios`, `zz-web` | `zz-daemon-client` only |
+| `zz-tui`, `zz-config`, `zz-app` (iOS and Android), `zz-ios`, `zz-android`, `zz-web` | `zz-daemon-client` only |
 | `zz`, `zz-cli` | both: they run `Daemon` and they are clients |
 | `zz-daemon` | `zz-daemon-client`, for what both halves share |
 | `zz-client`, `zz-web` tests | `zz-daemon` as a dev-dependency, to spawn a real daemon |
 
-The crate has no cargo features. It carries the iOS in-process ssh client (`russh`), so
+The crate has no cargo features. It carries the iOS and Android in-process ssh client (`russh`), so
 `IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo clippy -p zz-ios -p zz-app --target aarch64-apple-ios`
-is the check that covers those modules.
+and `cargo clippy -p zz-android -p zz-app -p zz-daemon-client --target aarch64-linux-android --lib`
+(with the NDK's clang as the linker, as `scripts/android.sh` sets it) are the checks that cover
+those modules.
 
 # What the server takes from it
 
@@ -63,7 +65,7 @@ only the event loop uses it.
 | `process_info.rs` | the `process_info` module | Per-OS process facts: start time, command name, cwd, parent, process group, samples, host name |
 | `unmasked.rs` | `unmasked::SpawnUnmasked` | The only way zz starts a `std::process::Command`: `spawn_unmasked`, `output_unmasked` and `status_unmasked` clear the calling thread's signal mask for the spawn and put it back after. Since Rust 1.97 a child inherits the mask of the thread that spawned it, and ala's background threads block nearly every signal, so a plain spawn from the desktop app starts ssh, shells and helpers with SIGINT, SIGTERM, SIGCHLD and SIGWINCH blocked. `clippy.toml` disallows the plain `spawn`, `output` and `status`; tests and `zz-xtask` are exempt. Children the daemon's job registry owns start through `daemon::jobs::spawn` in `zz-daemon` instead |
 | `user_data.rs` | `platform_data_dir`, `restrict_to_current_user`, `restrict_directory_to_current_user` | Where user-owned application data lives and how it is permission-hardened; `crates/zz/src/user_data.rs` re-exports it and the daemon's agent journal answers to it too |
-| `russh_client.rs`, `russh_prompt.rs`, `russh_socks.rs`, `ios_keychain.rs` (iOS) | `ios_ssh_public_key` | iOS cannot spawn ssh, so it tunnels in process with `russh`, keeps its identity in the Keychain, and runs browser egress through an in-process SOCKS forward |
+| `russh_client.rs`, `russh_prompt.rs`, `russh_socks.rs`, `ios_keychain.rs` (iOS) | `app_ssh_public_key` | iOS and Android cannot spawn ssh, so they tunnel in process with `russh` and run browser egress through an in-process SOCKS forward; iOS keeps its identity in the Keychain, Android in the app's private files directory |
 
 # Logging
 
@@ -81,7 +83,7 @@ directive as a target prefix.
 | `crates/zz-daemon-client/src/transport.rs` | `LocalTransport`, `LocalListener`/`LocalStream` over `interprocess`, `default_socket_path`, `PeerCredentials` |
 | `crates/zz-daemon-client/src/endpoint.rs` | Endpoint parsing, the ssh probe/auto-start/forward commands and their shell quoting, `SshForward`'s RAII child, `EndpointError` advice |
 | `crates/zz-daemon-client/src/lifecycle.rs` | Identity file writer and reader, guarded shutdown of an incompatible daemon |
-| `crates/zz-daemon-client/Cargo.toml` | No features; `russh`, `tokio`, and the Keychain bindings only on iOS |
+| `crates/zz-daemon-client/Cargo.toml` | No features; `russh` and `tokio` only on iOS and Android, the Keychain bindings only on iOS |
 
 # Related
 

@@ -612,9 +612,9 @@ impl TerminalPane {
                 return;
             }
             Some(ChromeAction::TerminalPaste) => {
-                #[cfg(target_os = "ios")]
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 {
-                    ala_platform::ios::request_paste();
+                    ala_platform::mobile::request_paste();
                     cx.stop_propagation();
                 }
                 return;
@@ -626,7 +626,7 @@ impl TerminalPane {
             }
             _ => {}
         }
-        let raw = cfg!(target_os = "ios")
+        let raw = cfg!(any(target_os = "ios", target_os = "android"))
             || self
                 .viewport(&self.connection.read(cx).core)
                 .is_some_and(|viewport| viewport.kitty_keyboard)
@@ -1597,9 +1597,9 @@ impl TerminalPane {
                     window,
                     cx,
                 );
-                #[cfg(target_os = "ios")]
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 if phase == ala::TouchPhase::Ended {
-                    ala_platform::ios::show_edit_menu(
+                    ala_platform::mobile::show_edit_menu(
                         f32::from(position.x) * window.zoom(),
                         f32::from(position.y) * window.zoom(),
                     );
@@ -1617,7 +1617,7 @@ impl TerminalPane {
                 self.observe_image_hover(None, cx);
                 self.end_drag();
                 self.pressed_buttons.clear();
-                #[cfg(target_os = "ios")]
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 for key in self.forwarded.drain().collect::<Vec<_>>() {
                     self.send(
                         InputMessage::Key {
@@ -2076,11 +2076,11 @@ pub fn key_input(event: &KeyDownEvent) -> KeyInput {
 }
 
 pub(crate) fn keystroke_input(keystroke: &Keystroke, action: KeyAction) -> KeyInput {
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     {
         crate::input::key_input(keystroke, action)
     }
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     {
         let key = key_code(&keystroke.key);
         let character = if let KeyCode::Character(value) = key {

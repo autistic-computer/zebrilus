@@ -77,9 +77,9 @@ pub fn alert_ground(cx: &App) -> Ground {
     cx.theme().ground_of(roles::INLINE_PANEL)
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 const ADD_HOST_DESCRIPTION: &str = "Connects over SSH with this device's built-in key.";
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 const ADD_HOST_DESCRIPTION: &str = "Connects over SSH · your ~/.ssh/config still applies.";
 
 /// Browser clear-data confirmation. The caller appends the completion
