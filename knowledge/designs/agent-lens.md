@@ -163,9 +163,9 @@ card, `AgentComposer` and the task tray.
 The first lens attempt (2026-09-17 to 2026-09-21) planned three readers and the same toggle while
 the ACP agent pane was the alternative; it was built and deleted unmerged when the ACP pane stayed.
 Since then the native drivers grew the Claude and Codex translators and the transcript tailing for
-PiP subagent feeds, which are what this lens reads with. The survey from that attempt still holds:
-screen scraping is ruled out, the Claude transcript's inner `message` is the public Messages API
-shape while its wrapper fields change, and Codex's `item_completed` records need no unwrapping.
+PiP subagent feeds, which are what this lens reads with. The lens reads transcripts: the Claude
+transcript's inner `message` is the public Messages API shape while its wrapper fields change, and
+Codex's `item_completed` records need no unwrapping.
 
 # Follow-ups
 

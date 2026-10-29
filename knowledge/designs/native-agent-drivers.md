@@ -26,8 +26,7 @@ agent pane went with it.
 # Why
 
 The ACP pane lagged Claude Code and Codex: fork broken, steering hangs, subagents and background
-work flattened. Every harness with a rich UI speaks each vendor's own protocol, the same one the
-vendor's own apps use ([survey](/research/2026-10-06-native-agent-drivers-survey.md)).
+work flattened. The native drivers speak each vendor's own protocol.
 
 # Decisions (fabrico, 2026-10-07)
 
@@ -37,10 +36,8 @@ vendor's own apps use ([survey](/research/2026-10-06-native-agent-drivers-survey
    vendor's commands and are mapped per vendor inside the driver; every other `/` command passes
    through to the vendor. (The 2026-10-07 build used a `//` prefix; that was a misreading of an
    escaped `/` and was dropped on 2026-10-08.)
-3. Codex does what the other apps do. t3code, superset, happy, vibe-kanban, CodexMonitor, and
-   Codex Desktop each spawn one private `codex app-server` child over stdio and send
-   `experimentalApi: true`. Only hapi puts a socket in the path, to attach the real TUI to the same
-   thread. zz runs one stdio child per pane.
+3. zz runs one private `codex app-server` child per pane over stdio and sends
+   `experimentalApi: true`.
 4. Order: the Claude driver, then Codex, then orchestration (a zz MCP server injected into driven
    sessions, PiP panes).
 
@@ -53,9 +50,9 @@ the ACP runtime's contract, so the host queue, fanout, journal, text projection 
 
 Transcript atoms stay ACP `SessionUpdate` JSON. It is a published schema with tolerant decoding,
 and `zz-client/src/agent_transcript.rs` already renders it for every client. The lag was in the
-adapters, not in that schema. The survey proposed a closed zz event core typed on the wire; that is
-still the plan for what ACP cannot carry (question cards, subagent threads, the task tray, side
-answers), as zz-owned stream variants in protocol v108. Rewriting the transcript atoms first would
+adapters, not in that schema. A closed zz event core typed on the wire is the plan for what ACP
+cannot carry (question cards, subagent threads, the task tray, side answers), as zz-owned stream
+variants in protocol v108. Rewriting the transcript atoms first would
 churn about 12k lines of reducers and views with no visible change.
 
 # Claude Code driver
@@ -64,7 +61,7 @@ churn about 12k lines of reducers and views with no visible change.
 updates, `sessions.rs` reads Claude's own session files.
 
 - **Launch.** The user's `claude`, found on the repaired login-shell PATH, with the flags
-  Anthropic's Desktop Code tab uses: `-p --output-format stream-json --input-format stream-json
+  `-p --output-format stream-json --input-format stream-json
   --verbose --include-partial-messages --replay-user-messages --permission-prompt-tool stdio
   --await-initialize`. zz leaves out `--setting-sources=user`, so project and local settings apply
   as they do in the TUI. Extra arguments in `agent-claude-code-command` are appended, and `--model`
@@ -72,8 +69,7 @@ updates, `sessions.rs` reads Claude's own session files.
 - **Environment.** `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`, the workspace identity
   (`ZZ_PANE` and friends), and the daemon's parent-Claude scrub list removed.
   `CLAUDE_CODE_ENTRYPOINT` stays unset, so sessions record `sdk-cli` and the `claude --resume`
-  picker hides them; resuming by ID still works, and zz lists them itself. Happy sets
-  `remote_mobile` to get past that filter; zz does not claim another product's entrypoint.
+  picker hides them; resuming by ID still works, and zz lists them itself.
 - **Process.** Each child gets its own process group. Shutdown closes stdin, then sends SIGTERM and
   finally SIGKILL to the group, two seconds apart.
 - **Sessions.** A new pane passes `--session-id <uuid>`. Restart and resume pass `--resume <id>`
@@ -225,7 +221,7 @@ drivers turn into an interrupt.
 # Codex driver
 
 `crates/zz-daemon/src/agent/codex/`, sharing the process plumbing in `agent/child.rs` with the
-Claude driver. One `codex app-server` child per pane over stdio, as the other apps do, with
+Claude driver. One `codex app-server` child per pane over stdio, with
 `experimentalApi: true`. `agent-command` defaults to `codex`; extra arguments go after
 `app-server`.
 
@@ -283,10 +279,9 @@ Codex. The drivers have not been run against older versions.
    2026-10-23 ([PiP panes](/designs/pip-panes.md#subagent-feeds-removed-2026-10-23)). The
    groundwork was in:
    `agent-send --notify` submitted to another agent pane and, when that turn ended, posted the reply
-   back into the calling agent pane as a prompt queued behind its own turn (t3code's async
-   completion, over the CLI agents already use). Since 2026-10-23 `--notify` goes through the
-   target terminal's lens and posts the reply back into the calling terminal pane. Both vendors can also host tools without a
+   back into the calling agent pane as a prompt queued behind its own turn. Since 2026-10-23
+   `--notify` goes through the target terminal's lens and posts the reply back into the calling
+   terminal pane. Both vendors can also host tools without a
    process: Claude through `sdkMcpServers` and `mcp_message` control requests, Codex through
    `dynamicTools` on `thread/start` and `item/tool/call`.
 3. Keep-up: a weekly diff of `sdk.d.ts` and the Codex schema against the tested versions above.
-   The survey's `archive/codex-host` tag is not in this clone; the Codex driver was written fresh.

@@ -32,7 +32,7 @@ timestamp: 2026-10-13T00:00:00Z
 > **2026-10-28:** the palette lost its sigils; the files mode is the `insert path` verb now, and
 > `prefix F` opens straight into it with the folder in the field.
 
-Two features from the [terminal augmentation survey](../research/2026-09-25-terminal-augmentation-survey.md):
+Two desktop overlays:
 
 - **Path picker.** `prefix F` opens a list under the shell cursor, rooted at the pane's cwd. An empty
   query browses the root; typing fuzzy-matches the whole subtree. Enter inserts the path at the cursor,
@@ -43,9 +43,6 @@ Two features from the [terminal augmentation survey](../research/2026-09-25-term
 
 Both ride one protocol bump to v107. Desktop only in v1; the views live in zz-ui behind small backend
 traits so the web and iOS clients can mount them later. The TUI comes in a later pass.
-
-Mockups: the private Design canvas linked from the survey (boards "Path picker in a shell" and
-"Which-key after prefix").
 
 # Decisions
 

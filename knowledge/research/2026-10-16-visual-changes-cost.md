@@ -1,7 +1,7 @@
 ---
 type: Research
 title: What the 2026-10-16 visual changes cost on macOS
-description: Frame, GPU and memory A/B of the Rex-sized chrome, text fade and glass-over-pages commit against the tree before it, the Primitive size fix that pays the regression back, the Metal glass backdrop blit that cost 170 MB of driver memory, and the follow-ups.
+description: Frame, GPU and memory A/B of the pane chrome, text fade and glass-over-pages commit against the tree before it, the Primitive size fix that pays the regression back, the Metal glass backdrop blit that cost 170 MB of driver memory, and the follow-ups.
 resource: libs/ala/crates/ala/src/scene.rs
 tags:
 - performance
@@ -15,7 +15,7 @@ timestamp: 2026-10-16T23:00:00Z
 
 # Question
 
-`d6b52ad11` reworked the chrome (Rex-sized pane headers, labels that fade instead of ending
+`d6b52ad11` reworked the chrome (34px pane headers, labels that fade instead of ending
 in an ellipsis, glass that blurs native browser pages, picked outlines and shadows). Did it make
 frames slower, and what is cheap to win back? Linux PR 17 was rebased on it and measured in the
 same runs.

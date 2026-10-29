@@ -1339,7 +1339,7 @@ the profiling bundle switched one focused pane between DECSCUSR blinking and ste
 Instruments stayed attached, so CPU includes tracing overhead. After 45 seconds steady, the first
 frames took 0.10 and 2.08 ms of GPU time, the same as ordinary blink frames; no re-backing cost was
 visible. The shipped change stops blinking, cursor shown, 10 seconds after the last key, mouse, IME,
-or focus change. Program output does not restart it, matching GTK, kitty and Alacritty. The matched
+or focus change. Program output does not restart it. The matched
 idle pair with no cursor escapes, baseline then candidate bundle:
 
 | Bundle | Presents/s | GPU ms/s | Footprint | GUI CPU, 20 s window |

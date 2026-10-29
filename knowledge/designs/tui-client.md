@@ -33,17 +33,6 @@ The product inversion this completes: zz stops being "a GUI terminal that contai
 browsers" and becomes "a mux whose sessions contain browsers, viewable from any
 client — GUI, TTY, iOS." The daemon was always the product; the GUI becomes one face.
 
-# Prior art validating the weird part
-
-[zenbu-labs/terminal-browser][1] ships a real browser inside a PTY: Chromium via
-Electron's offscreen API reading pixels off the GPU, encoded to the **Kitty graphics
-protocol** (supported by ghostty, kitty, cmux, vscode, and others), with terminal
-mouse/keyboard converted to synthetic Chromium events. That is architecturally
-identical to zz's existing browser pane (CEF-OSR, GPU frame readback, synthetic
-input, daemon-held tab descriptors) with one difference: their blit target is kitty
-escape sequences, zz's is an ala surface. They built the whole stack to get there;
-zz only needs the last encode step.
-
 # The rung ladder
 
 Ship each rung independently; never let a higher rung block a lower one.
@@ -130,9 +119,7 @@ compromise).
   epoch instead of entering new-session fallback, and repeated reports with the same value do not
   send another notification. Attachment replay does not emit pane focus. Real outer focus events add
   pane/application focus when the active pane is a terminal.
-- SGR pixel mouse (mode 1016) gives pixel-precision coordinates in supporting
-  terminals — no OS-level event helper needed (zenbu's Swift listener is their
-  workaround for cell-granularity mice).
+- SGR pixel mouse (mode 1016) gives pixel-precision coordinates in supporting terminals.
 - zz's own VT already speaks the kitty keyboard protocol, so zz-in-zz gets full key
   fidelity; other terminals degrade to legacy encoding.
 
@@ -188,8 +175,7 @@ canonical summary remain outside this proof.
   the old inline base64, now zlib (`o=z`) and paced by a bytes/sec debt
   (`ZZ_TUI_FRAME_BUDGET_MBPS`, default 3 MiB/s) instead of a fixed frame
   interval. CEF dirty rects ride the provider seam so unchanged frames skip
-  hashing entirely. Design lifted from zenbu-labs/terminal-browser (see the
-  dissection memory). Validation caps carry 1 MiB headroom above the clamp
+  hashing entirely. Validation caps carry 1 MiB headroom above the clamp
   budget — providers render at rounded logical sizes, so frames legitimately
   come back a pixel wider than the clamp target.
 
@@ -200,10 +186,3 @@ surfaces after a successful kitty graphics probe in `crates/zz-tui/src/app.rs`;
 `BrowserState::reconcile_surfaces` in `crates/zz-tui/src/browser.rs` also requires
 a browser provider. Without both, browser panes retain their placeholder cards.
 Rung 2, Agent transcript interaction, was dropped on 2026-10-23 with the Agent pane.
-
-# Citations
-
-1. https://github.com/zenbu-labs/terminal-browser — browser-in-PTY prior art:
-   Chromium OSR → kitty graphics, Rust + TypeScript, macOS-first.
-
-[1]: https://github.com/zenbu-labs/terminal-browser

@@ -1,7 +1,7 @@
 ---
 type: Research
 title: Where a zz frame goes (pane count, window area, focus glow)
-description: Measured how zz's per-frame CPU and GPU cost grows with panes on screen and window area, compared it with Ghostty, and recorded what came out of it (a cached pane header, a closed-form inset shadow blur, and a rejected whole-pane cache).
+description: Measured how zz's per-frame CPU and GPU cost grows with panes on screen and window area, and recorded what came out of it (a cached pane header, a closed-form inset shadow blur, and a rejected whole-pane cache).
 resource: crates/zz/src/workspace/view.rs
 tags:
 - performance
@@ -62,11 +62,6 @@ window, zz fragment time per second of wall time: 245 ms default, 92 ms with
 pane, and every pixel ran GPUI's 4-sample corner-aware blur loop. `window-background-blur =
 true` left zz's own GPU time alone but doubled WindowServer's (87 to 172 ms/s).
 
-**Ghostty 1.3.1 on the same stream used more CPU, less GPU.** 35-47% of a core against zz's
-20-26% (zz's number includes the daemon). In the large window its GPU power read 284 mW against
-zz's 1099 mW, but its frame rate was not counted and its small window read higher than its large
-one, so that comparison is a lead, not a result.
-
 # What changed
 
 | Change | Where | Result (median of 3) |
@@ -94,5 +89,3 @@ channel.
   grid). They are elements of the workspace view, which re-renders on every frame, so a cached
   view cannot skip them. Fewer nodes per split, or a GPUI change that reuses clean nested caches
   inside a dirty view, are the remaining CPU levers.
-- Ghostty's frame rate during the comparison. Its launcher also prompts before running a command
-  passed with `-e`; put the command in the config file instead.

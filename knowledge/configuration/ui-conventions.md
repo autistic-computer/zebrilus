@@ -159,7 +159,7 @@ materials decide what those look like, and the theme can change any role by id. 
    The local renderer makes blurred shadows follow the pane's corner smoothing, including
    its small 2px control shadow. Circular and fully rounded surfaces retain circular shadows.
 
-   The active gapped pane shows focus by light, not color, the way Rex draws it:
+   The active gapped pane shows focus through its fill and rim:
    `Theme::pane_frame` washes its fill toward white (5% in dark, 30% in light) and veils the other
    panes' fills toward black (18% in dark, 5% in light), and the others' rims, the glass glint or
    the hairline without glass (`Theme::pane_edge_color`), show at 70%. Their content dims by
@@ -199,7 +199,7 @@ Automatically named window pills use the active browser pane's title. Browser la
 back to the active URL and then “browser”; explicitly renamed windows keep their chosen names.
 
 Every pane header puts its controls 22px tall (`PANE_HEADER_CONTROL_HEIGHT`), 6px (`CHROME_GAP`)
-in from the pane's top and sides, so a terminal header is 34px, Rex's size; the sidebar's
+in from the pane's top and sides, so a terminal header is 34px; the sidebar's
 28px buttons and the titlebar's 32px tabs stay larger. A Browser header's first row is 40px so
 its 28px tabs, as tall as the URL field, keep the 6px inset: the title, the tabs, New tab right
 after the last tab, then the split buttons at the row's end; under it the navigation row, then 6px
@@ -453,7 +453,7 @@ toggle, Settings, the view switch (eye) and the iOS palette button are 28px butt
 glyphs, a step under the 32px titlebar pills (`WORKSPACE_CHROME_BUTTON_SIZE` in `navigation.rs`).
 The sidebar's rows stop 8px short of its trailing edge past the row inset
 (`WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER`, on the flat list and the tree's `uniform_list`), so the
-scrollbar thumb runs in a lane of its own beside them, as in Rex. Every row action (the flat rows'
+scrollbar thumb runs in a lane of its own beside them. Every row action (the flat rows'
 … and +, the tree's 24px buttons) centers 19px in from the row fill's trailing edge
 (`WORKSPACE_ROW_ACTION_CENTER`), and the toggle and the view switch center on the same line. A
 titlebar window pill's hover close sits 10px from the pill's edge (`workspace_row_action_gap`).

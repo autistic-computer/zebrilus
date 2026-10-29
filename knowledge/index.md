@@ -22,7 +22,7 @@ there before acting, because source is the ground truth and these pages are a ma
 | [crates](crates/index.md) | Crate-level concepts for `zz` and its major `zz-*` support crates |
 | [protocol](protocol/index.md) | Wire protocol (v117), stable IDs, packed terminal lanes, snapshots |
 | [tmux](tmux/index.md) | tmux-compat philosophy, config parser, key tables, commands, copy-mode, choosers |
-| [terminal](terminal/index.md) | libghostty embedding, Zed rendering parity, interaction, appearance |
+| [terminal](terminal/index.md) | libghostty embedding, ala terminal painting, interaction, appearance |
 | [browser](browser/index.md) | CEF runtime, OSR rendering + DPI/blur fix, lifecycle, profile, input, element picker |
 | [concepts](concepts/index.md) | Cross-cutting: agent lens, PTY worker, terminal frame, split-pane layout, session persistence, command palette |
 | [configuration](configuration/index.md) | Application configuration and [UI design conventions](configuration/ui-conventions.md) |

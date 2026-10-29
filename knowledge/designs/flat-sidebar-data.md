@@ -150,7 +150,7 @@ changes, so `-t 0` and `#S` behave as in tmux.
 
 # Program icons
 
-A terminal pane's tile shows the icon of the program running in it, the way Rex does. The daemon
+A terminal pane's tile shows the icon of the program running in it. The daemon
 does not pick the icon: `PaneSummary.process` carries the names it found, and the client matches
 them, so a client with new icons works against an older v112 daemon.
 

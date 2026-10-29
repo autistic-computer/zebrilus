@@ -21,9 +21,6 @@ Benchmarked 2026-07-28 (`bench/`, Mac16,5, 180×50, medians of 5 hyperfine runs)
 | terminal | cat 150 MiB ascii | cat 150 MiB unicode | DOOM-fire fps |
 | --- | ---: | ---: | ---: |
 | **zz (this design)** | **342.4 MB/s** | **99.0** | **671.5** |
-| ghostty tip (nightly termio) | 293.6 | 94.1 | 650.5 |
-| cmux (embeds ghostty tip) | 284.9 | 85.9 | 627.4 |
-| ghostty 1.3.2 stable | 94.3 | 68.9 | 630.5 |
 | zz before this design | 161.1 | 108.0 | 631.7 |
 
 Benchmarked 2026-08-05 on Linux 7.1.5, Ryzen 7 7800X3D, exact 180×50 grid:
@@ -32,7 +29,6 @@ Benchmarked 2026-08-05 on Linux 7.1.5, Ryzen 7 7800X3D, exact 180×50 grid:
 | --- | ---: | ---: | ---: |
 | zz inline actor | 444.39 MB/s | 74.43 MB/s | 1043.94 |
 | **zz Linux gather** | **644.09 MB/s** | **79.85 MB/s** | **1283.80** |
-| strongest submitted rival | Ghostty-tip 636.94 | Rio 123.58 | Alacritty 1255.05 |
 
 The Linux ASCII result uses 15 runs with a 232.888 ms median. Its individual runs span
 232.170–234.539 ms. The DOOM result uses the benchmark's full 30-second duration.

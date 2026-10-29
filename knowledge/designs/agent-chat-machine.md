@@ -22,45 +22,23 @@ reducer, lens runner), from untyped ACP `session/update` values. That is where t
 - Subagent steps reach the client and nest, but nothing says when a child is done or waiting.
 - The journal keeps `Update` records only, so a replay loses permissions, tasks and turn ends.
 
-# What the other apps taught
+# Chat contract
 
-Three hosts were read for this (Zeron and T3 Code from source, the Codex desktop app from its
-bundled frontend), then driven by hand. The reports are in the session scratchpad; the rules worth keeping:
-
-- **One owner, typed records.** T3 Code's adapters emit finished app records (turns, items,
-  subagents, requests) and the orchestrator never parses vendor frames; the server decides and the
-  clients only apply. Zeron has one flat event enum but decides turn ends in two huge loops with
-  about twenty flags; its rules are good, its shape is what to avoid.
+- **One owner, typed records.** Drivers translate vendor frames into facts. The daemon owns
+  turns, items, subagents and requests; clients apply its events.
 - **Every request closes exactly once.** One owner mints request ids; at a turn end every
   unresolved request of that turn is closed; an answer to a closed request is never sent.
 - **Children before parents.** A child's output can arrive before the spawn that owns it (Codex
-  child threads before adoption, Claude frames before `task_started`); both apps buffer it.
+  child threads before adoption, Claude frames before `task_started`); the machine buffers it.
 - **Interrupt closes dangling tools.** Tools left without an end when a turn stops end as
   interrupted, never as spinners.
 - **Background work outlives its turn.** Subagents and commands that run in the background keep
   their requests and end on their own.
 
-On 2026-10-29 the three apps were also driven by hand on the same stress-test chat (tools,
-parallel and failing subagents, questions, markdown torture). What their chats show that ours does
-not yet:
-
-| What | T3 Code | Zeron | Codex desktop | zz today |
-|---|---|---|---|---|
-| Run line | "Ran 9 commands, changed 1 file, and performed 4 other actions" | "Thought process · Ran 8 commands · read 3 files · searched 1 time · called 1 tool · 1 failed" | turn fold only | "Edited fanout.rs, read 3 files, searched 2 times", no failure count |
-| Open run | - | a tree with guide lines, file chips with type icons, the failed step in red, thinking as a step | - | steps with an icon, failed tinted |
-| Parallel subagents | one card: stacked avatars, "3 subagents · 3 done · 40s", a row each with a result preview and its time | one compact row each ("Agent · Research: TOCTOU" and an open arrow), a side list "6 finished" | one line: "Sleep 1, Sleep 2 and Sleep 3 started working", then "... finished" | one large card per subagent |
-| Opening a subagent | its own page: breadcrumb, "Subagent of" chip, the parent's prompt and follow-ups as labelled bubbles, footer "Completed in 1.0s · Open parent" | a tab in a split beside the chat, the prompt as a user bubble | none | the thread swaps to its rows, back button, no prompt |
-| Answered questions | one line "question \| answer ›" | a card of question → answer pairs | - | "Asked 2 questions · a, b" |
-| Turn fold | "Worked for 1m 27s" with the time on the right | per run only | "Worked for 19s", "30 previous messages" | "Worked for" |
-| Inline visuals | Mermaid diagrams with a code toggle, code blocks with language icon, wrap, copy and Run, tables with copy, link favicons | file chips | inline cards for scheduled tasks, a browser split | markdown only |
-| After the answer | - | time and copy | copy, feedback, read aloud; a suggested follow-up as the composer placeholder | nothing |
-| Background | one-line rows ("Background activity updated", "7 background tasks failed") | - | - | rows after the turn |
-
-Taken from this, in `chat_rows` and `zz_ui::agent::chat`: one card for subagents started together
+In `chat_rows` and `zz_ui::agent::chat`: one card for subagents started together
 with a compact row each; the subagent's prompt and a footer line when its row is opened in place;
-question → answer pairs for answered questions (the run line already counted failures). Zeron's
-split tab and T3's subagent page were not copied: a subagent opens in place, never as navigation
-inside the pane. Mermaid and code-block actions are a bigger, separate piece of the markdown view.
+question → answer pairs for answered questions (the run line already counted failures). A subagent
+opens in place. Mermaid and code-block actions are a separate piece of the markdown view.
 
 # Shape
 
@@ -220,9 +198,7 @@ could tie to real Claude Code or Codex behavior.
   attached and require no rejects, the same running turn as the driver, and no item outliving its
   turn.
 - An ignored test in each replay suite runs every recording in `$ZZ_REPLAY_DIR` the same way and
-  prints rejects and items left open. T3 Code's recorded sessions (8 Claude ones that carry
-  `command_lifecycle`, 27 Codex ones) went through it on 2026-10-29 and found three driver gaps,
-  now fixed:
+  prints rejects and items left open. The drivers also handle these cases:
   - The Claude translator knew a tool went to the background (`task_started.is_backgrounded`) but
     never said so, so the turn end closed a background Bash or subagent and its real end arrived
     stale. It now marks the tool with `_meta.zz.background`, and the bridge moves it out of the turn.

@@ -1,24 +1,21 @@
 ---
 type: Concept
-title: Zed GPUI terminal rendering parity
-description: The effort to bring zz's terminal painting up to Zed's GPUI standard by mapping immutable renderer-neutral frames and dirty-row patches onto GPUI text, cursor, and overlay painting.
+title: Terminal painting on ala
+description: How zz maps immutable renderer-neutral frames and dirty-row patches onto ala text, cursor, and overlay painting.
 resource: crates/zz-ui/src/terminal.rs
-tags: [rendering, gpui, zed, parity, cursor, ime, contrast, box-drawing, block-elements, local-scroll]
+tags: [rendering, gpui, cursor, ime, contrast, box-drawing, block-elements, local-scroll]
 timestamp: 2026-10-07T00:00:00Z
 ---
 
 # Overview
 
-Rendering parity is the goal of matching Zed's current terminal rendering fidelity while keeping zz's
-existing incremental frame pipeline. Both projects share the same broad structure: a custom ala element
-paints terminal backgrounds, shaped text, overlays, and a cursor over a fixed cell grid;
+zz's terminal painter uses an incremental frame pipeline. A custom ala element paints terminal
+backgrounds, shaped text, overlays, and a cursor over a fixed cell grid;
 [`libghostty-vt`](/terminal/libghostty-vt.md) owns VT parsing and state; ala owns font selection,
-shaping, rasterization, layout, and painting. zz keeps an incremental path Zed's terminal lacks: Ghostty
-dirty rows become compact [viewport patches](/concepts/terminal-frame.md), the client retains row
-revisions, and ala caches shaped rows by revision. The work raises typography, color, cursor, IME,
-selection/links, and fractional-scale geometry to Zed's standard without discarding that path. One
-client-only layer paints on top of it so a remote pane feels local: local scroll sources rows from the
-pane's history ring. It builds on
+shaping, rasterization, layout, and painting. Ghostty dirty rows become compact
+[viewport patches](/concepts/terminal-frame.md), the client retains row
+revisions, and ala caches shaped rows by revision. One client-only layer paints on top of it so a
+remote pane feels local: local scroll sources rows from the pane's history ring. It builds on
 `ala` + `ala-platform` from our own `libs/ala/crates/ala*`; the list of zz changes lives in
 [ala](/references/ala.md).
 

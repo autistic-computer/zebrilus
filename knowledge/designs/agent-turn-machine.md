@@ -33,10 +33,6 @@ A Codex review on 2026-10-21 found three more in the Claude driver alone: `/stee
 cancelled while the steered command keeps running, a hard failure is reported as a user cancel, and
 a late error from a cancelled turn fails the next one.
 
-The 2026-10-21 survey of other hosts (Zeron, Waku, Zed, the Codex TUI, t3code, CodexMonitor) found
-the same bug class everywhere. The ones that get it right have one owner of turn state, tie every
-end event to the turn it ends, and test against scripted vendor streams.
-
 # zz-machine
 
 `crates/zz-machine` is the shape every machine uses, about 100 lines with no dependencies:

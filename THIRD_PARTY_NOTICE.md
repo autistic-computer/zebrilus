@@ -132,16 +132,14 @@ Read, pinned, and cited. None of it is compiled, linked, or shipped.
 ## Prior art
 
 Projects zz studied and wrote down before building the equivalent. No code was taken from any
-of them. They are named because the surveys in `knowledge/research/` are part of the repository
-and the ideas are not ours.
+of them. These acknowledgments record the sources of the ideas.
 
 - [zenbu-labs/terminal-browser](https://github.com/zenbu-labs/terminal-browser) validated
   putting a real browser in a PTY, and its damage-driven frame transport shaped the TUI
   client's design.
-- [anomalyco/opencode](https://github.com/anomalyco/opencode) is part of the
-  [agent-harness rendering survey](knowledge/research/2026-08-15-agent-harness-rendering-survey.md).
-- [herdrdev/herdr](https://github.com/herdrdev/herdr) is part of the agent-to-agent
-  [messaging survey](knowledge/research/2026-09-10-agent-messaging-survey.md).
+- [anomalyco/opencode](https://github.com/anomalyco/opencode) informed the agent-harness
+  rendering work.
+- [herdrdev/herdr](https://github.com/herdrdev/herdr) informed the agent-to-agent messaging work.
 - [cmux](https://github.com/manaflow-ai/cmux) is the source of the pane drag-and-drop model zz
   measured its own against.
 
