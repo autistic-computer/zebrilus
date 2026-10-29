@@ -1,6 +1,3 @@
-//! The shared styling vocabulary: one [`Size`] scale, one set of state traits,
-//! one set of [`zz_gpui::Styled`] extensions.
-
 use super::{
     ActiveTheme, Edge, Emphasis, Layer, PaintState, StatefulSurfaceExt, Surface, SurfaceRole, Tone,
 };
@@ -12,7 +9,6 @@ use zz_gpui::{
 
 use super::rems_from_px;
 
-/// A [`Div`] laid out as a horizontal flex row, vertically centered.
 #[inline(always)]
 pub fn h_flex() -> Div {
     div().h_flex()
@@ -25,7 +21,6 @@ pub fn v_flex() -> Div {
 
 macro_rules! font_weight {
     ($fn:ident, $const:ident) => {
-        /// [docs](https://tailwindcss.com/docs/font-weight)
         #[inline]
         fn $fn(self) -> Self {
             self.font_weight(zz_gpui::FontWeight::$const)
@@ -33,14 +28,12 @@ macro_rules! font_weight {
     };
 }
 
-/// Extends [`zz_gpui::Styled`] with the shorthands this crate leans on.
 pub trait StyledExt: Styled + Sized {
     fn refine_style(mut self, style: &StyleRefinement) -> Self {
         self.style().refine(style);
         self
     }
 
-    /// Lay out as a horizontal flex row, vertically centered.
     #[inline(always)]
     fn h_flex(self) -> Self {
         self.flex().flex_row().items_center()
@@ -73,8 +66,6 @@ pub trait StyledExt: Styled + Sized {
             .mr(margins.right.into())
     }
 
-    /// An edge in `color` at the look's outline width, or none when the look
-    /// has no outline or picks the roles that take it.
     fn surface_outline(self, color: Hsla, cx: &App) -> Self {
         let this = self.border_color(color);
         if cx.theme().outlines_edges() {
@@ -84,14 +75,10 @@ pub trait StyledExt: Styled + Sized {
         }
     }
 
-    /// The edge of a card or a floating surface: the border color at the
-    /// look's outline width. Glass hides it behind its own rim.
     fn surface_edge(self, cx: &App) -> Self {
         self.surface_outline(cx.theme().border(), cx)
     }
 
-    /// A list of rows: padded in from its edges by the look's row inset, with
-    /// a hair of space between rows while they float.
     fn list_inset(self, cx: &App) -> Self {
         let this = self.px(cx.theme().row_inset);
         if cx.theme().inset_rows() {
@@ -101,29 +88,23 @@ pub trait StyledExt: Styled + Sized {
         }
     }
 
-    /// A focus ring in `paint`'s focus color.
     fn focus_ring(self, paint: &crate::Paint) -> Self {
         self.border(FOCUS_RING_WIDTH).border_color(paint.focus)
     }
 
-    /// A ring marking the chosen tile in a picker, in the accent.
     fn chosen_ring(self, cx: &App) -> Self {
         self.border(CHOSEN_RING_WIDTH)
             .border_color(cx.theme().accent)
     }
 
-    /// `surface` at rest.
     fn surface(self, surface: impl Into<Surface>, cx: &App) -> Self {
         self.surface_at(surface, PaintState::Rest, cx)
     }
 
-    /// `surface` in `state`. Pointing and pressing are not tracked; see
-    /// [`InteractiveSurfaceExt::surface_interactive`].
     fn surface_at(self, surface: impl Into<Surface>, state: PaintState, cx: &App) -> Self {
         self.layer(&cx.theme().layer(surface, state))
     }
 
-    /// Paints `layer`: fill or glass, edge, shadows, corners and ink.
     fn layer(self, layer: &Layer) -> Self {
         let this = self
             .rounded(layer.radius)
@@ -142,7 +123,6 @@ pub trait StyledExt: Styled + Sized {
         }
     }
 
-    /// A divider along `edge`, when `role` draws its outline.
     fn rule_on(self, role: SurfaceRole, edge: Edge, cx: &App) -> Self {
         let theme = cx.theme();
         if !theme.style(role).outline {
@@ -171,9 +151,6 @@ pub trait StyledExt: Styled + Sized {
 
 impl<E: Styled> StyledExt for E {}
 
-/// The corner radius of a row `height` tall drawn as `layer`: the layer's
-/// radius, held to a share of the height so short rows stay rounded rather
-/// than turning into pills, unless the role asks for a pill.
 pub fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
     if layer.radius >= FULL_CORNER_RADIUS {
         layer.radius
@@ -182,8 +159,6 @@ pub fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
     }
 }
 
-/// Rounds a row `height` tall the way [`row_radius`] does, with the
-/// smoothing rows use.
 pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
     element
         .rounded(row_radius(layer, height))
@@ -194,8 +169,6 @@ pub fn row_corners<E: Styled>(element: E, layer: &Layer, height: Pixels) -> E {
 const ROW_RADIUS_SHARE: f32 = 0.40;
 pub(crate) const ROW_CORNER_SMOOTHING: f32 = 2.5;
 
-/// A row `height` tall drawn as `surface` in `state`, with its hover and
-/// press while it rests.
 pub fn row_surface<E: StatefulInteractiveElement + Styled>(
     element: E,
     surface: impl Into<Surface>,
@@ -212,14 +185,12 @@ pub fn row_surface<E: StatefulInteractiveElement + Styled>(
     )
 }
 
-/// Secondary text on what `layer` paints: its ink pulled toward its fill.
 pub fn muted_on(layer: &Layer, cx: &App) -> Hsla {
     cx.theme()
         .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
         .muted_at(PaintState::Rest)
 }
 
-/// The state of a row the cursor may be on.
 pub const fn row_state(selected: bool, enabled: bool) -> PaintState {
     match (enabled, selected) {
         (false, _) => PaintState::Disabled,
@@ -244,25 +215,18 @@ pub fn list_row(
     )
 }
 
-/// The width of every divider rule.
 pub const RULE_WIDTH: Pixels = px(1.0);
 
-/// The width of a focus ring.
 pub const FOCUS_RING_WIDTH: Pixels = px(1.5);
 
 const CHOSEN_RING_WIDTH: Pixels = px(2.0);
 
-/// The small shadow of a knob riding on a control, like a switch thumb, or
-/// none when the theme picks the roles that cast shadows.
 pub fn lifted_shadow(cx: &App) -> Vec<BoxShadow> {
     cx.theme().lifted_shadows()
 }
 
-/// The size scale shared by every widget in the crate: [`Size::Medium`] for
-/// form controls, [`Size::Small`] for toolbars and dense rows.
 #[derive(Clone, Default, Copy, PartialEq, Eq, Debug)]
 pub enum Size {
-    /// An explicit pixel size, for the few places the scale does not fit.
     Size(Pixels),
     Small,
     #[default]
@@ -270,7 +234,6 @@ pub enum Size {
 }
 
 impl Size {
-    /// Control height in pixels.
     pub fn control_px(&self) -> f32 {
         match self {
             Size::Size(value) => value.as_f32(),
@@ -279,7 +242,6 @@ impl Size {
         }
     }
 
-    /// Label text of every control at this size.
     pub fn control_text(&self) -> AbsoluteLength {
         match self {
             Size::Size(value) => (*value * 0.875).into(),
@@ -288,7 +250,6 @@ impl Size {
         }
     }
 
-    /// Horizontal padding for input-shaped controls.
     pub fn input_px(&self) -> DefiniteLength {
         match self {
             Self::Medium => rems_from_px(8.).into(),
@@ -297,7 +258,6 @@ impl Size {
         }
     }
 
-    /// Vertical padding for input-shaped controls.
     pub fn input_py(&self) -> DefiniteLength {
         match self {
             Size::Medium => rems_from_px(2.).into(),
@@ -306,9 +266,6 @@ impl Size {
         }
     }
 
-    /// Height of every control that sits on a form row: text fields,
-    /// selects, and the square of an icon-only button. `Size::Size` stays the
-    /// caller's literal pixels.
     pub fn control_h(&self) -> DefiniteLength {
         match self {
             Size::Size(value) => (*value).into(),
@@ -329,7 +286,6 @@ pub trait Selectable: Sized {
 
     fn is_selected(&self) -> bool;
 
-    /// Mark the element as right-click-selected. Does nothing by default.
     fn secondary_selected(self, _: bool) -> Self {
         self
     }
@@ -340,10 +296,8 @@ pub trait Disableable {
     fn disabled(mut self, disabled: bool) -> Self;
 }
 
-/// An element that takes a [`Size`]. [`Size::Medium`] is the default.
 #[allow(patterns_in_fns_without_body)]
 pub trait Sizable: Sized {
-    /// Accepts a [`Pixels`] for a custom size: `.with_size(px(30.))`.
     fn with_size(mut self, size: impl Into<Size>) -> Self;
 
     #[inline(always)]

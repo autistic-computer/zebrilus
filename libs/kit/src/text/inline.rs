@@ -1,5 +1,3 @@
-//! One painted run of text: link hit-testing, the selection highlight, and the
-//! line bounds the window selection controller hit-tests against.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::{
@@ -29,15 +27,8 @@ use super::{
 };
 use crate::Colorize as _;
 
-/// Horizontal and vertical breathing room around an inline code fill. The fill
-/// is painted under the glyphs rather than reserved in layout, so the padding
-/// has to stay under the width of the space that separates code from prose.
 const CODE_FILL_PAD_X: f32 = 1.0;
 const CODE_FILL_PAD_Y: f32 = 1.0;
-/// `widget-corner-radius` is sized for panels and buttons and goes as high as
-/// 24px; on a fill barely taller than the glyphs anything near half the height
-/// rounds into a stadium. Square themes still come out square, since this only
-/// ever lowers the radius.
 const CODE_FILL_RADIUS_MAX: f32 = 6.0;
 
 fn selectable_line_bounds(
@@ -215,9 +206,6 @@ impl Inline {
         self
     }
 
-    /// Backtick spans, which take the mono family and a rounded fill. They stay
-    /// part of this one shaped run: an element per span would align by box and
-    /// drop the spans off the shared baseline.
     pub(super) fn code_ranges(mut self, code_ranges: Vec<Range<usize>>) -> Self {
         self.code_ranges = code_ranges;
         self
@@ -237,9 +225,6 @@ impl Inline {
         self
     }
 
-    /// Painted before the glyphs so the fill lands under them. zz-gpui's own run
-    /// background is a bare rect; this one is rounded and hugs the font's ink
-    /// box instead of the taller line box.
     fn paint_code_fills(&self, layout: &TextLayout, window: &mut Window, cx: &mut App) {
         if self.code_ranges.is_empty() {
             return;

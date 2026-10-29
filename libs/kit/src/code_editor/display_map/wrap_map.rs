@@ -8,7 +8,6 @@ use super::text_wrapper::{LineItem, TextWrapper, WrapDisplayPoint};
 use super::{BufferPoint, WrapPoint};
 use crate::code_editor::rope_ext::RopeExt;
 
-/// Soft-wraps buffer lines into wrap rows, over the [`TextWrapper`] sum tree.
 pub struct WrapMap {
     wrapper: TextWrapper,
 }
@@ -20,13 +19,11 @@ impl WrapMap {
         }
     }
 
-    /// Visual row count after soft wrapping.
     #[inline]
     pub fn wrap_row_count(&self) -> usize {
         self.wrapper.len()
     }
 
-    /// Logical line count, before soft wrapping.
     #[inline]
     pub fn buffer_line_count(&self) -> usize {
         self.wrapper.lines_count()
@@ -75,7 +72,6 @@ impl WrapMap {
         self.wrapper.buffer_line_to_first_wrap_row(line)
     }
 
-    /// Wrap rows `[start, end)` that a buffer line occupies.
     pub fn buffer_line_to_wrap_row_range(&self, line: usize) -> Range<usize> {
         self.wrapper.buffer_line_to_wrap_row_range(line)
     }

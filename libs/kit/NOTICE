@@ -1,0 +1,24 @@
+kit
+
+The source files carry no comments. The notices below were moved here from
+the files they cover.
+
+
+gpui-component, https://github.com/longbridge/gpui-component
+
+  Copyright 2024 - 2025 Longbridge <https://longbridge.com>
+  Licensed under the Apache License, Version 2.0. See LICENSE-APACHE.
+  UPSTREAM.md records what was ported and how it changed.
+
+
+src/icon/solar.json
+
+  Adapted from the Solar Icons Set by 480 Design,
+  https://www.figma.com/community/file/1166831539721848736
+  Licensed under CC BY 4.0. Credit and changes in src/icon/LICENSE-SOLAR.
+
+
+assets/icons/brand-chrome.svg
+
+  From Tabler Icons, https://tabler.io/icons
+  Copyright (c) 2020-2026 Paweł Kuna. MIT, see assets/icons/LICENSE-TABLER.

@@ -1,12 +1,9 @@
-//! Extensions on zz-gpui's element traits.
-
 use zz_gpui::{
     App, Bounds, ClickEvent, InteractiveElement, ParentElement, Pixels, Stateful, Styled as _,
     Window, canvas,
 };
 
 pub trait ElementExt: ParentElement + Sized {
-    /// Run `f` during prepaint with this element's resolved bounds.
     fn on_prepaint<F>(self, f: F) -> Self
     where
         F: FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static,
@@ -24,7 +21,6 @@ pub trait ElementExt: ParentElement + Sized {
 
 impl<T: ParentElement> ElementExt for T {}
 
-/// Extends [`zz_gpui::InteractiveElement`] with events zz-gpui does not surface.
 pub trait InteractiveElementExt: InteractiveElement {
     fn on_double_click(
         mut self,

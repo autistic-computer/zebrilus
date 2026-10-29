@@ -1,5 +1,3 @@
-//! The `RenderOnce` half of the select: the per-frame builder a call site writes.
-
 use zz_gpui::{
     App, ElementId, Entity, Focusable as _, InteractiveElement as _, IntoElement, Length,
     ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, div,
@@ -14,8 +12,6 @@ use super::{
     state::{EmptyBuilder, SelectOptions, SelectState},
 };
 
-/// A dropdown bound to a [`SelectState`]. Build it fresh every render; the
-/// pick and the open menu live in the state entity.
 #[derive(IntoElement)]
 pub struct Select<D: SelectDelegate> {
     id: ElementId,
@@ -35,37 +31,30 @@ impl<D: SelectDelegate> Select<D> {
         }
     }
 
-    /// Text shown in the trigger while nothing is picked, default `"Select"`.
     #[must_use]
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.options.placeholder = Some(placeholder.into());
         self
     }
 
-    /// What the list is choosing, named at the top of the sheet a touch
-    /// screen opens in place of the dropdown.
     #[must_use]
     pub fn title(mut self, title: impl Into<SharedString>) -> Self {
         self.options.title = Some(title.into());
         self
     }
 
-    /// Cap on the dropdown's height; defaults to the popup menu height limit.
     #[must_use]
     pub fn menu_max_h(mut self, max_h: impl Into<Length>) -> Self {
         self.options.menu_max_h = Some(max_h.into());
         self
     }
 
-    /// Draw the trigger on `ground`, the surface it sits on, instead of the
-    /// window.
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.options.on = Some(ground);
         self
     }
 
-    /// Draw the trigger as `role` draws, instead of as a field.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.options.surface_role = Some(role);
@@ -78,8 +67,6 @@ impl<D: SelectDelegate> Select<D> {
         self
     }
 
-    /// Replace the element shown when the delegate has no rows. The default is
-    /// a muted inbox glyph.
     #[must_use]
     pub fn empty<E: IntoElement + 'static>(
         mut self,

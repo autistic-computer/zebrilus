@@ -1,5 +1,3 @@
-//! Indeterminate loading indicator.
-
 use std::time::Duration;
 
 use zz_gpui::{
@@ -18,7 +16,6 @@ pub struct Spinner {
 }
 
 impl Spinner {
-    /// A spinner at the default (medium) size, inheriting the ambient text color.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -27,7 +24,6 @@ impl Spinner {
         }
     }
 
-    /// Tint the spinner. Defaults to the inherited text color.
     #[must_use]
     pub fn color(mut self, color: Hsla) -> Self {
         self.color = Some(color);

@@ -13,7 +13,6 @@ pub use press::{
 
 pub const TOUCH_TARGET: f32 = 44.0;
 
-/// Phone chrome reads at 15 points where the desktop sets 13 pixels.
 pub const TOUCH_TYPE_SCALE: f32 = 15.0 / 13.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -34,9 +33,6 @@ impl CoarsePointer {
     }
 }
 
-/// Renders desktop-sized chrome at phone reading size under a coarse pointer:
-/// everything sized in rems, including text, icons, controls, and the menus
-/// they open, grows by [`TOUCH_TYPE_SCALE`]. Pixel paddings stay put.
 pub fn touch_scale(child: impl IntoElement, cx: &App) -> AnyElement {
     if CoarsePointer::get(cx) {
         TouchScale {

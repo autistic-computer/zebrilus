@@ -42,9 +42,6 @@ struct ClosingSheets(Vec<ElementId>);
 
 impl Global for ClosingSheets {}
 
-/// Slides the open sheet `id` away, then runs its `on_dismiss`. Close
-/// buttons and picks inside a sheet call this instead of closing it
-/// themselves, so the sheet leaves the way a drag-down does.
 pub fn close_sheet(id: impl Into<ElementId>, cx: &mut App) {
     let id = id.into();
     let closing = &mut cx.default_global::<ClosingSheets>().0;
@@ -112,32 +109,24 @@ impl BottomSheet {
         self
     }
 
-    /// Draw the sheet as `role` draws, instead of as a sheet.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
-    /// Draw the header, with the title and actions, as `role` draws,
-    /// instead of as a bar.
     #[must_use]
     pub fn header_role(mut self, role: SurfaceRole) -> Self {
         self.header_role = Some(role);
         self
     }
 
-    /// Show `heading` in the header in place of the title.
     #[must_use]
     pub fn heading(mut self, heading: impl IntoElement) -> Self {
         self.heading = Some(heading.into_any_element());
         self
     }
 
-    /// Reach up to `top` from the top of the parent whatever the content
-    /// needs, and give the content the height left instead of scrolling it.
-    /// Content that scrolls itself passes its handle in
-    /// [`Self::content_scroll`], so a drag down at its top still dismisses.
     #[must_use]
     pub fn full(mut self, top: Pixels) -> Self {
         self.full = Some(top);
@@ -145,15 +134,11 @@ impl BottomSheet {
     }
 }
 
-/// Room a sheet keeps clear under its last row: the home indicator's safe
-/// area, or none while a soft keyboard already lifts the visible area.
 #[must_use]
 pub fn sheet_inset(window: &Window) -> Pixels {
     (window.visual_viewport_bounds().bottom() - window.fully_visible_bounds().bottom()).max(px(0.0))
 }
 
-/// Lifts a [`bottom_sheet`] out of its parent onto the visible part of the
-/// window, for a sheet opened from inside a page.
 pub fn floating_sheet(sheet: impl IntoElement, window: &Window) -> AnyElement {
     let area = window.visual_viewport_bounds();
     deferred(
@@ -169,7 +154,6 @@ pub fn floating_sheet(sheet: impl IntoElement, window: &Window) -> AnyElement {
     .into_any_element()
 }
 
-/// The close button at the right of a sheet's header.
 pub fn sheet_close(id: impl Into<ElementId>) -> Button {
     Button::new(id)
         .compact()
@@ -179,8 +163,6 @@ pub fn sheet_close(id: impl Into<ElementId>) -> Button {
         .child(Icon::new(IconName::Xmark).size(px(16.0)))
 }
 
-/// One choice in a picker sheet: the desktop menu row at touch height, with
-/// the check in front and the row's press wash under a press.
 pub fn sheet_option(
     id: impl Into<ElementId>,
     label: impl Into<SharedString>,
@@ -196,8 +178,6 @@ pub fn sheet_option(
     )
 }
 
-/// A command at the end of a picker sheet, like "New session": an option row
-/// with its icon on a tile where the check would be.
 pub fn sheet_action(
     id: impl Into<ElementId>,
     icon: IconName,
@@ -213,9 +193,6 @@ pub fn sheet_action(
     )
 }
 
-/// A row of a picker sheet drawn as `role`, a row role: the list row of a
-/// pane's own lists at touch height, `slot`'s icon on a tile in front, then
-/// the label. Touch rows show the row's press as the finger lands.
 pub fn sheet_row(
     id: impl Into<ElementId>,
     role: SurfaceRole,
@@ -232,9 +209,6 @@ pub fn sheet_row(
     )
 }
 
-/// A sheet row that says what its choice does: `slot`'s icon on a tile in
-/// front, the label, and `detail` muted under it, at the height two lines
-/// need.
 pub fn sheet_detail_row(
     id: impl Into<ElementId>,
     role: SurfaceRole,
@@ -346,8 +320,6 @@ fn row_shell(
     ))
 }
 
-/// An icon centered on a tile drawn as [`SurfaceRole::ICON_TILE`], so a
-/// row's icons line up with each other and with the labels beside them.
 fn icon_tile(icon: Icon, size: f32, layer: &Layer, cx: &App) -> Div {
     let theme = cx.theme();
     let role = SurfaceRole::ICON_TILE;

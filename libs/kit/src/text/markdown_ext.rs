@@ -1,4 +1,3 @@
-//! The Markdown extension point: custom block parsers and their renderers.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::{
@@ -20,23 +19,17 @@ static MARKDOWN_EXTENSIONS_REVISION: AtomicU64 = AtomicU64::new(1);
 
 pub use markdown::mdast as markdown_ast;
 
-/// A custom Markdown block parser. Runs during AST conversion, often on a
-/// background task, so it must not touch [`Window`] or [`App`].
 pub type MarkdownBlockParserFn =
     dyn for<'a> Fn(&mdast::Node, &MarkdownParseContext<'a>) -> Option<MarkdownNode> + Send + Sync;
 
 pub type MarkdownBlockRenderFn =
     dyn Fn(&MarkdownNode, &mut Window, &mut App) -> AnyElement + Send + Sync;
 
-/// A reusable Markdown extension that parses and renders one custom node.
 pub trait MarkdownPlugin: Send + Sync + 'static {
-    /// Whether this plugin produces block-level nodes. `TextView` renders only
-    /// block plugins, so return `true`.
     fn is_block(&self) -> bool {
         false
     }
 
-    /// Stable name for nodes produced by this plugin.
     fn name(&self) -> &str;
 
     fn parse(&self, node: &mdast::Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode>;
@@ -54,13 +47,10 @@ impl<'a> MarkdownParseContext<'a> {
         Self { source, offset }
     }
 
-    /// Source text for the Markdown fragment currently being parsed.
     pub fn source(&self) -> &'a str {
         self.source
     }
 
-    /// Byte offset of `source` in the full document when parsing an appended
-    /// fragment.
     pub fn offset(&self) -> usize {
         self.offset
     }
@@ -156,10 +146,8 @@ impl PartialEq for MarkdownNode {
     }
 }
 
-/// Rewrites a link destination at parse time; `None` keeps the original URL.
 pub type MarkdownLinkRewriterFn = dyn Fn(&str) -> Option<String> + Send + Sync;
 
-/// Registry for custom Markdown parsing and rendering.
 #[derive(Clone, Default)]
 pub struct MarkdownExtensions {
     block_parsers: Vec<Arc<MarkdownBlockParserFn>>,
@@ -227,8 +215,6 @@ impl MarkdownExtensions {
         self.bump_revision();
     }
 
-    /// Rewrite link destinations at parse time, say to resolve relative paths
-    /// against a working directory. `None` keeps the original URL.
     pub fn link_rewriter<F>(mut self, rewriter: F) -> Self
     where
         F: Fn(&str) -> Option<String> + Send + Sync + 'static,

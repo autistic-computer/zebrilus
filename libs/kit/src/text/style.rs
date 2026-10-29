@@ -1,4 +1,3 @@
-//! Style knobs a call site can set on a `TextView`.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::sync::Arc;
@@ -9,24 +8,15 @@ use crate::{SurfaceRole, highlighter::HighlightTheme};
 
 #[derive(Clone)]
 pub struct TextViewStyle {
-    /// Gap between paragraphs, default is 1 rem.
     pub paragraph_gap: Rems,
-    /// Base font size for headings, default is 14px.
     pub heading_base_font_size: Pixels,
-    /// Computes a heading's size from its level (1-6) and the base font size.
     pub heading_font_size: Option<Arc<dyn Fn(u8, Pixels) -> Pixels + Send + Sync + 'static>>,
-    /// Highlight theme for code blocks. Default: [`HighlightTheme::default_light()`]
     pub highlight_theme: Arc<HighlightTheme>,
     pub code_block: StyleRefinement,
-    /// Style for the bordered table container. Set `overflow_x: scroll` here to
-    /// scroll wide tables instead of wrapping cell content.
     pub table: StyleRefinement,
     pub table_cell: StyleRefinement,
     pub is_dark: bool,
-    /// The role code blocks, their header and inline code draw as. Unset,
-    /// they take a plain raised fill.
     pub code_role: Option<SurfaceRole>,
-    /// The role tables draw as. Unset, they take a divider-colored border.
     pub figure_role: Option<SurfaceRole>,
 }
 
@@ -58,7 +48,6 @@ impl Default for TextViewStyle {
 }
 
 impl TextViewStyle {
-    /// Set paragraph gap, default is 1 rem.
     pub fn paragraph_gap(mut self, gap: Rems) -> Self {
         self.paragraph_gap = gap;
         self
@@ -77,8 +66,6 @@ impl TextViewStyle {
         self
     }
 
-    /// Set `overflow_x: scroll` on the refinement to scroll wide tables instead
-    /// of shrinking them to fit.
     pub fn table(mut self, style: StyleRefinement) -> Self {
         self.table = style;
         self

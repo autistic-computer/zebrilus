@@ -1,5 +1,3 @@
-//! The window's outermost view, and the overlay state it owns.
-
 use std::rc::Rc;
 
 use crate::window_border;
@@ -32,9 +30,6 @@ struct ActiveDialog {
     builder: Rc<dyn Fn(Dialog, &mut Window, &mut App) -> Dialog>,
 }
 
-/// The window's root view: the app's own view, plus the dialog and notification
-/// state the overlay layers render from. Must be the window's first view;
-/// [`Root::update`] and both `render_*_layer` helpers downcast `window.root()`.
 pub struct Root {
     style: StyleRefinement,
     view: AnyView,
@@ -61,8 +56,6 @@ impl Root {
         }
     }
 
-    /// Draw the Linux client-side window border, default `true`. Pass `false`
-    /// for surfaces that must not carry a frame.
     #[must_use]
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
@@ -74,8 +67,6 @@ impl Root {
         &self.view
     }
 
-    /// Run `f` against this window's root. Panics unless the window's root view
-    /// is a [`Root`].
     pub fn update<F, R>(window: &mut Window, cx: &mut App, f: F) -> R
     where
         F: FnOnce(&mut Self, &mut Window, &mut Context<Self>) -> R,
@@ -88,8 +79,6 @@ impl Root {
         root.update(cx, |root, cx| f(root, window, cx))
     }
 
-    /// Read this window's root. Panics unless the window's root view is a
-    /// [`Root`].
     pub fn read<'a>(window: &'a Window, cx: &'a App) -> &'a Self {
         window
             .root::<Self>()
@@ -98,7 +87,6 @@ impl Root {
             .read(cx)
     }
 
-    /// The notification layer, for the host view to mount above its chrome.
     pub fn render_notification_layer(
         window: &mut Window,
         cx: &mut App,
@@ -131,8 +119,6 @@ impl Root {
         )
     }
 
-    /// The dialog layer, for the host view to mount above its chrome. `None`
-    /// when nothing is open.
     pub fn render_dialog_layer(
         window: &mut Window,
         cx: &mut App,
@@ -159,7 +145,6 @@ impl Root {
         Some(div().children(dialogs))
     }
 
-    /// Push a dialog onto the stack and move focus into it.
     pub fn open_dialog<F>(&mut self, build: F, window: &mut Window, cx: &mut Context<Self>)
     where
         F: Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
@@ -184,7 +169,6 @@ impl Root {
         cx.notify();
     }
 
-    /// Close the topmost dialog, restoring focus immediately.
     pub fn close_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(handle) = self.pop_dialog() {
             window.focus(&handle, cx);
@@ -214,7 +198,6 @@ impl Root {
         cx.notify();
     }
 
-    /// Close every open dialog, restoring the focus the first one took.
     pub fn close_all_dialogs(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let restore = self
             .active_dialogs
@@ -258,8 +241,6 @@ impl Root {
         cx.notify();
     }
 
-    /// Retire the notifications tagged with `key`, playing their dismiss
-    /// animation. Returns whether any were showing.
     pub fn dismiss_notification(
         &mut self,
         key: &str,
@@ -275,13 +256,11 @@ impl Root {
         dismissed
     }
 
-    /// Drop every notification, without playing their dismiss animation.
     pub fn clear_notifications(&mut self, cx: &mut Context<Self>) {
         self.notification.update(cx, NotificationList::clear);
         cx.notify();
     }
 
-    /// The live notifications, oldest first.
     #[must_use]
     pub fn notifications(&self, cx: &App) -> Vec<Entity<Notification>> {
         self.notification.read(cx).notifications()
@@ -332,7 +311,6 @@ impl Root {
         }
     }
 
-    /// The merged selected text across this window's selectable text views.
     #[must_use]
     pub fn window_selected_text(&self, cx: &App) -> String {
         self.text_selection
@@ -344,12 +322,10 @@ impl Root {
         self.text_selection.has_selection(cx)
     }
 
-    /// Clear the window selection and every view-local selection.
     pub fn clear_text_selection(&mut self, cx: &mut App) {
         self.text_selection.clear(cx);
     }
 
-    /// End an in-progress selection drag.
     pub fn end_text_selection(&mut self, cx: &mut App) {
         self.text_selection.end(cx);
     }
@@ -387,8 +363,6 @@ impl Render for Root {
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .refine_style(&self.style)
-            // Must stay the first child: bubble-phase mouse listeners fire in
-            // reverse registration order.
             .child(TextSelectionController)
             .child(self.view.clone());
 

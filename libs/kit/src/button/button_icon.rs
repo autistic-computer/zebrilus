@@ -1,5 +1,3 @@
-//! The leading glyph slot of a [`Button`](super::Button).
-
 use zz_gpui::{App, IntoElement, RenderOnce, Window};
 
 use crate::{Icon, Sizable, Size, spinner::Spinner};

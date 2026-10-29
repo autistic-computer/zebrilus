@@ -1,5 +1,3 @@
-//! mdast to our block tree. Runs on a background task, so nothing here may
-//! touch [`Window`](zz_gpui::Window) or [`App`](zz_gpui::App).
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::ops::Range;

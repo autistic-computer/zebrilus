@@ -23,4 +23,3 @@
   (link_text)
   (image_description)
 ] @link_text
-

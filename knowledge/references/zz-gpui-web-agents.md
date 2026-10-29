@@ -43,7 +43,7 @@ Sources: `libs/gpui/crates/zz-gpui-platform/src/web/platform.rs` (`open_window`,
 # The accessibility mirror
 
 GPUI core builds an AccessKit tree every frame once accessibility is active (see
-`libs/gpui/crates/zz-gpui/src/_accessibility.rs`). The web backend used to drop it. `libs/gpui/crates/zz-gpui-platform/src/web/a11y.rs`
+`libs/gpui/crates/zz-gpui/src/window/a11y.rs`). The web backend used to drop it. `libs/gpui/crates/zz-gpui-platform/src/web/a11y.rs`
 now keeps one transparent layer per window, next to the canvas, holding one `div` per node.
 
 - Each node gets the matching ARIA role, `aria-label`, value, checked, selected, expanded,

@@ -1,8 +1,3 @@
-//! Window-level overlay cluster: [`Root`], the dialog stack, and the
-//! notification stack.
-//!
-//! Ported from `gpui-component` and kept close to its source, so the style
-//! lints stay off here.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use zz_gpui::{App, KeyBinding};

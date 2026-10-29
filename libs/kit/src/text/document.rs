@@ -1,5 +1,3 @@
-//! The parsed block list and how it renders: fit-to-content, or virtualized
-//! through `zz_gpui::list`.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::sync::Arc;
@@ -57,7 +55,6 @@ impl ParsedDocument {
         }
     }
 
-    /// Only used to generate expected markdown in tests.
     #[allow(dead_code)]
     pub(crate) fn to_markdown(&self) -> String {
         self.blocks

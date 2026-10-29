@@ -165,9 +165,6 @@ impl RenderOnce for DiscreteSlider {
     }
 }
 
-/// A continuous slider: drag the thumb, click the track, or step it with the
-/// arrow keys (ten steps with shift). Reports each new value, snapped to its
-/// step, to `on_change` while the thumb moves.
 #[derive(IntoElement)]
 pub struct Slider {
     id: ElementId,
@@ -208,17 +205,12 @@ impl Slider {
         }
     }
 
-    /// Moves the thumb and the shown value while the thumb is dragged, but
-    /// reports the value to `on_change` once, when the drag lets go. For values
-    /// that relayout the window under the pointer, like UI zoom.
     #[must_use]
     pub fn commit_on_release(mut self) -> Self {
         self.commit_on_release = true;
         self
     }
 
-    /// Focuses `focus` instead of the slider's own handle, so its owner can
-    /// tell the slider is in use. Opening the touch sheet focuses it too.
     #[must_use]
     pub fn track_focus(mut self, focus: &FocusHandle) -> Self {
         self.focus = Some(focus.clone());
@@ -237,8 +229,6 @@ impl Slider {
         self
     }
 
-    /// Paints the track as a gradient through `colors` instead of filling it
-    /// up to the thumb.
     #[must_use]
     pub fn track(mut self, colors: impl IntoIterator<Item = Hsla>) -> Self {
         self.track = colors.into_iter().collect();

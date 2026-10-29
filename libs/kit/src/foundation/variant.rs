@@ -1,7 +1,3 @@
-//! Tone and emphasis: the two choices every filled, tinted or outlined widget
-//! makes, so a badge, a button and a tile that mean the same thing are drawn
-//! the same way.
-
 use serde::{Deserialize, Serialize};
 use zz_gpui::{Hsla, Pixels, StatefulInteractiveElement, Styled, px};
 
@@ -10,22 +6,14 @@ use super::{
     color::{faint_weight, muted_weight, raised_bright, readable_on},
 };
 
-/// What a widget means, which picks its color.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Tone {
-    /// Nothing beyond being there: the foreground's grays.
     #[default]
     Neutral,
-    /// The main thing to do here. The look picks its color, see
-    /// [`PrimaryStyle`].
     Primary,
-    /// Something failed or is destructive.
     Danger,
-    /// Something needs attention but still works.
     Warning,
-    /// Something completed or is healthy.
     Success,
-    /// The theme's accent, whichever color the look gives primary.
     Accent,
 }
 
@@ -51,17 +39,12 @@ impl Tone {
     }
 }
 
-/// How loudly a widget draws its tone.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Emphasis {
-    /// A full fill in the tone, with text that reads on it.
     Solid,
-    /// A tinted fill, with text in the tone.
     #[default]
     Soft,
-    /// A border in the tone and no fill.
     Outline,
-    /// Nothing but the text until hovered.
     Ghost,
 }
 
@@ -78,32 +61,22 @@ impl Emphasis {
     }
 }
 
-/// What the primary tone is drawn in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum PrimaryStyle {
-    /// The foreground: white on a dark theme, black on a light one.
     #[default]
     Foreground,
-    /// The accent color.
     Accent,
 }
 
-/// The state a painted widget is drawn in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PaintState {
     #[default]
     Rest,
     Hover,
     Active,
-    /// The row the cursor is on in a list you pick from: a menu, the palette,
-    /// a picker. Drawn in the look's selection color.
     Selected,
-    /// Where you are, or what is switched on: the open page, a toggle that is
-    /// on, the active session. Always the neutral wash, so chrome that stays
-    /// in this state does not carry the selection color.
     Current,
-    /// Keyboard focus: the border takes the focus color.
     Focused,
     Disabled,
 }
@@ -132,7 +105,6 @@ impl PaintState {
     }
 }
 
-/// The colors a tone and an emphasis resolve to on one ground.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Paint {
     pub fill: Hsla,
@@ -141,48 +113,30 @@ pub struct Paint {
     pub selected: Hsla,
     pub current: Hsla,
     pub border: Hsla,
-    /// Zero when the emphasis draws no border.
     pub border_width: Pixels,
-    /// The border of a focused field or control: the primary tone, or this
-    /// paint's tone when it has a meaning of its own.
     pub focus: Hsla,
     pub text: Hsla,
     pub selected_text: Hsla,
-    /// What this paint sits on.
     pub ground: Ground,
 }
 
-/// How far a surface stands off the window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Elevation {
-    /// The window itself.
     #[default]
     Window,
-    /// A panel set into the window: a bar, a card, an inset box.
     Panel,
-    /// A surface floating over the window: a menu, a popover, a sheet. Take
-    /// its fill `.opaque()` so what it covers does not read through.
     Popover,
 }
 
-/// What a painted widget sits on: a fill, and the ink that reads on it. A
-/// widget nested inside another paints on the outer one's
-/// [`Paint::ground_at`], so a keycap in a red button or on a selected row
-/// takes that fill's ink instead of the window's.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Ground {
     pub fill: Hsla,
     pub ink: Hsla,
-    /// The surface this ground belongs to. Controls cast a shadow only on the
-    /// window: a panel or a popover already stands off it.
     pub elevation: Elevation,
-    /// Whether it is glass, so what sits on it does not become glass too.
     pub glass: bool,
 }
 
 impl Ground {
-    /// This ground with its fill made opaque, for a surface that floats over
-    /// content.
     pub fn opaque(self) -> Self {
         Self {
             fill: self.fill.opaque(),
@@ -219,23 +173,16 @@ impl Paint {
         }
     }
 
-    /// Secondary text, such as a description under a label, in `state`:
-    /// the text pulled toward the fill it sits on, so it stays legible on a
-    /// solid or an accent fill as well as on the window.
     pub fn muted_at(&self, state: PaintState) -> Hsla {
         self.text_at(state)
             .mix_oklab(self.ground_at(state).fill, 1.0 - muted_weight())
     }
 
-    /// Text quieter than [`Self::muted_at`]: a placeholder or a hint.
     pub fn faint_at(&self, state: PaintState) -> Hsla {
         self.text_at(state)
             .mix_oklab(self.ground_at(state).fill, 1.0 - faint_weight())
     }
 
-    /// This paint with its fills composited over its ground, for something
-    /// that floats over content (a badge over an editor, a hint over a web
-    /// page) and must not let it show through.
     pub fn opaque(self) -> Self {
         let ground = self.ground.fill;
         Self {
@@ -248,7 +195,6 @@ impl Paint {
         }
     }
 
-    /// The ground this paint makes for what sits inside it in `state`.
     pub fn ground_at(&self, state: PaintState) -> Ground {
         Ground {
             fill: self.ground.fill.blend(self.fill_at(state)),
@@ -264,13 +210,10 @@ const FOCUS_ALPHA: f32 = 0.8;
 const SOFT_ALPHA: [f32; 3] = [0.12, 0.18, 0.24];
 const NEUTRAL_OUTLINE_ALPHA: f32 = 0.3;
 const TONE_OUTLINE_ALPHA: f32 = 0.55;
-/// How much of the outline emphasis's border a soft paint keeps as its
-/// hairline.
 const SOFT_OUTLINE_SHARE: f32 = 1.0 / 3.0;
 const TONE_TEXT_WEIGHT: f32 = 0.7;
 
 impl Theme {
-    /// The color `tone` is drawn in.
     pub fn tone(&self, tone: Tone) -> Hsla {
         match tone {
             Tone::Neutral => self.foreground,
@@ -285,8 +228,6 @@ impl Theme {
         }
     }
 
-    /// What a field drawn as `role` is at rest, as the theme's style for it
-    /// decides.
     pub fn field_emphasis(&self, role: super::SurfaceRole) -> Emphasis {
         let style = self.style(role);
         match style.fill {
@@ -296,8 +237,6 @@ impl Theme {
         }
     }
 
-    /// The window: the ground everything sits on unless it is nested in
-    /// another paint.
     pub fn ground(&self) -> Ground {
         Ground {
             fill: self.background,
@@ -307,9 +246,6 @@ impl Theme {
         }
     }
 
-    /// `color` raised `level` elevation steps the way this theme's surfaces
-    /// rise: away from its own lightness, or toward white in light mode
-    /// when they rise bright.
     pub fn raise(&self, color: Hsla, level: u8) -> Hsla {
         if self.bright_surfaces {
             raised_bright(color, level)
@@ -318,8 +254,6 @@ impl Theme {
         }
     }
 
-    /// The ground of a surface at `elevation`: the window, or the window's
-    /// fill raised one step for a panel and two for a popover.
     pub fn surface(&self, elevation: Elevation) -> Ground {
         let fill = match elevation {
             Elevation::Window => return self.ground(),
@@ -334,13 +268,10 @@ impl Theme {
         }
     }
 
-    /// `tone` at `emphasis` on the window.
     pub fn paint(&self, tone: Tone, emphasis: Emphasis) -> Paint {
         self.paint_on(self.ground(), tone, emphasis)
     }
 
-    /// `tone` at `emphasis` on `ground`. Neutral takes the ground's ink, and
-    /// its washes tint the ground's fill.
     pub fn paint_on(&self, ground: Ground, tone: Tone, emphasis: Emphasis) -> Paint {
         let neutral = tone == Tone::Neutral
             || (tone == Tone::Primary && self.primary == PrimaryStyle::Foreground);
@@ -462,10 +393,7 @@ impl Theme {
     }
 }
 
-/// Draws a [`Paint`] on any element.
 pub trait PaintExt: Styled + Sized {
-    /// `paint` as it looks in `state`. Hover and press are not tracked; see
-    /// [`InteractivePaintExt::painted_interactive`].
     fn painted(self, paint: Paint, state: PaintState) -> Self {
         self.bg(paint.fill_at(state))
             .border(paint.border_width)
@@ -476,7 +404,6 @@ pub trait PaintExt: Styled + Sized {
 
 impl<E: Styled> PaintExt for E {}
 
-/// Draws a [`Paint`] that follows the pointer, on an element with an id.
 pub trait InteractivePaintExt: StatefulInteractiveElement + Styled + Sized {
     fn painted_interactive(self, paint: Paint, selected: bool, enabled: bool) -> Self {
         let state = match (enabled, selected) {

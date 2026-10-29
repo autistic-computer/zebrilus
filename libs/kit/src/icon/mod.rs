@@ -1,15 +1,3 @@
-//! Icons: the glyph set, and the element that draws one.
-//!
-//! Every glyph but the brand marks is drawn by [`glyphs`] from the skeletons in
-//! `solar.json` so its corners follow the theme radius and corner smoothing
-//! (`knowledge/configuration/icon-set.md`). The set is adapted from the
-//! [Solar Icons Set](https://www.figma.com/community/file/1166831539721848736)
-//! by 480 Design (CC BY 4.0, `src/icon/LICENSE-SOLAR`). The brand marks are
-//! files in `assets/icons/`: `openai` and `claude` are
-//! [Simple Icons](https://simpleicons.org) (CC0-1.0), `brand-chrome` is
-//! [Tabler Icons](https://tabler.io/icons) (MIT, `assets/icons/LICENSE-TABLER`),
-//! and `zz` is the zz mark.
-
 mod assets;
 pub mod glyphs;
 
@@ -22,10 +10,6 @@ use zz_gpui::{
 
 use crate::{Sizable, Size, Theme};
 
-/// A single SVG glyph, sized and tinted like the text around it.
-///
-/// Size falls back in ascending priority: ambient font size, an explicit
-/// width/height through [`Styled`], then [`Sizable::with_size`].
 #[derive(Clone, Default, IntoElement)]
 pub struct Icon {
     path: SharedString,
@@ -41,23 +25,17 @@ impl Icon {
         icon.into()
     }
 
-    /// An icon-shaped blank. Keeps rows aligned where one item carries a glyph
-    /// and its neighbour does not.
     #[must_use]
     pub fn empty() -> Self {
         Self::default()
     }
 
-    /// Point the icon at an arbitrary asset path, such as `icons/globe.svg`.
-    /// Resolved through the [`zz_gpui::AssetSource`] the app was built with.
     #[must_use]
     pub fn path(mut self, path: impl Into<SharedString>) -> Self {
         self.path = path.into();
         self
     }
 
-    /// Apply an SVG transformation: rotation, scale, translation. Paint-only,
-    /// so layout and hit testing do not move.
     #[must_use]
     pub fn transform(mut self, transformation: Transformation) -> Self {
         self.transformation = Some(transformation);
@@ -124,17 +102,6 @@ impl From<Icon> for AnyElement {
     }
 }
 
-/// How far an icon of `icon_size`, centred on a line of the theme's UI font at
-/// `font_size`, moves down to sit centred on the line's capitals, the way SF
-/// Symbols sit next to text.
-///
-/// A line centres the font's ascent and descent, so the middle of its
-/// capitals is half of ascent less descent less cap height below the middle of
-/// the line: 0.33px for SF Pro at 13px, none for Inter. GPUI rounds the text's
-/// baseline and the icon to device pixels separately, so the drop is moved by
-/// at most a quarter point to keep the icon's top a whole number of half points
-/// above the baseline. Both then round the same way wherever the row lands,
-/// and at 2x the icon never jumps a pixel against the letters as rows scroll.
 #[must_use]
 pub fn cap_center_drop(font_size: Pixels, icon_size: Pixels, cx: &App) -> Pixels {
     let Some(theme) = cx.try_global::<Theme>() else {
@@ -147,7 +114,6 @@ pub fn cap_center_drop(font_size: Pixels, icon_size: Pixels, cx: &App) -> Pixels
     baseline + icon_size / 2.0 - (icon_top * 2.0).round() / 2.0
 }
 
-/// Every icon zz ships, drawn by [`glyphs`] or a brand mark in `assets/icons/`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, IntoElement)]
 pub enum IconName {
     ArrowDown,
@@ -252,7 +218,6 @@ pub enum IconName {
 }
 
 impl IconName {
-    /// Every variant, in declaration order.
     pub const ALL: &[Self] = &[
         Self::ArrowDown,
         Self::ArrowLeft,
@@ -355,8 +320,6 @@ impl IconName {
         Self::Zz,
     ];
 
-    /// The icon's asset path, such as `icons/arrow-down.svg`. Resolved through
-    /// the [`zz_gpui::AssetSource`] the app was built with, [`Assets`] by default.
     #[must_use]
     pub const fn path(&self) -> &'static str {
         match self {

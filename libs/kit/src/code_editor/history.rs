@@ -5,8 +5,6 @@ pub trait HistoryItem: Clone + PartialEq {
     fn version(&self) -> usize;
     fn set_version(&mut self, version: usize);
 
-    /// Folds `next`, pushed right after `self` in the same group, into
-    /// `self`. Returns false to keep them as separate items.
     fn merge(&mut self, _next: &Self) -> bool {
         false
     }
@@ -41,23 +39,19 @@ where
         }
     }
 
-    /// Groups changes that land within this interval into one undo step.
     pub fn group_interval(mut self, group_interval: Duration) -> Self {
         self.group_interval = Some(group_interval);
         self
     }
 
-    /// Freezes the version, so every change until `end_grouping` undoes as one.
     pub fn start_grouping(&mut self) {
         self.grouping = true;
     }
 
-    /// Resumes version increments.
     pub fn end_grouping(&mut self) {
         self.grouping = false;
     }
 
-    /// End the current edit group. The next pushed item starts a new version.
     pub fn break_group(&mut self) {
         self.grouping = false;
         self.version = self.version.saturating_add(1);
@@ -116,14 +110,12 @@ where
         Some(changes)
     }
 
-    /// Undoes the newest version group and returns its changes.
     pub fn undo(&mut self) -> Option<Vec<I>> {
         let changes = Self::pop_group(&mut self.undos)?;
         self.redos.extend(changes.iter().cloned());
         Some(changes)
     }
 
-    /// Redoes the newest undone version group and returns its changes.
     pub fn redo(&mut self) -> Option<Vec<I>> {
         let changes = Self::pop_group(&mut self.redos)?;
         self.undos.extend(changes.iter().cloned());

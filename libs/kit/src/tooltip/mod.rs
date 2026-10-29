@@ -1,5 +1,3 @@
-//! Hover tooltip: a label, optionally trailed by a keybinding.
-
 use zz_gpui::{
     Action, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder,
@@ -8,8 +6,6 @@ use zz_gpui::{
 use crate::Colorize as _;
 use crate::{ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex, kbd::Kbd};
 
-/// The box that appears on hover: a label, optionally trailed by the keybinding
-/// of the action it triggers. Attach one through zz-gpui's `.tooltip()`.
 pub struct Tooltip {
     style: StyleRefinement,
     surface_role: SurfaceRole,
@@ -28,22 +24,18 @@ impl Tooltip {
         }
     }
 
-    /// Trail the label with the keystroke bound to `action` in `context`, or
-    /// globally when `None`. An unbound action renders nothing extra.
     #[must_use]
     pub fn action(mut self, action: &dyn Action, context: Option<&str>) -> Self {
         self.action = Some((action.boxed_clone(), context.map(SharedString::new)));
         self
     }
 
-    /// Draw the tooltip as `role` draws, instead of as a tooltip.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = role;
         self
     }
 
-    /// Build the tooltip into the `AnyView` zz-gpui's hover machinery expects.
     #[must_use]
     pub fn build(self, _window: &mut Window, cx: &mut App) -> AnyView {
         cx.new(|_| self).into()

@@ -1,6 +1,3 @@
-//! A short label that says what something is or how it is doing: a count, a
-//! status, a kind.
-
 use zz_gpui::{
     AnyElement, App, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString,
     StyleRefinement, Styled, Window, prelude::FluentBuilder as _, px,
@@ -25,7 +22,6 @@ pub struct Badge {
 }
 
 impl Badge {
-    /// A neutral, soft badge.
     #[must_use]
     pub fn new(label: impl Into<SharedString>) -> Self {
         Self {
@@ -41,14 +37,11 @@ impl Badge {
         }
     }
 
-    /// A badge whose content is its children alone.
     #[must_use]
     pub fn empty() -> Self {
         Self::new(SharedString::default())
     }
 
-    /// Fill the badge over the window instead of tinting what is under it,
-    /// for a badge that floats over content.
     #[must_use]
     pub fn opaque(mut self) -> Self {
         self.opaque = true;
@@ -61,15 +54,12 @@ impl Badge {
         self
     }
 
-    /// Solid fills the badge in its tone; outline and ghost leave it
-    /// unfilled, ghost without its outline too.
     #[must_use]
     pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
         self.emphasis = emphasis;
         self
     }
 
-    /// Draw the badge as `role` draws, instead of as a badge.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
@@ -93,7 +83,6 @@ impl Badge {
         layer
     }
 
-    /// An icon before the label, in the label's color.
     #[must_use]
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         self.icon = Some(icon.into());

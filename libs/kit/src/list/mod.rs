@@ -1,5 +1,3 @@
-//! A selectable row for list-shaped surfaces.
-
 use zz_gpui::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, RenderOnce, Stateful,
@@ -18,9 +16,6 @@ type ClickHandler = Box<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>;
 type MouseDownHandler = Box<dyn Fn(&MouseDownEvent, &mut Window, &mut App) + 'static>;
 type MouseMoveHandler = Box<dyn Fn(&MouseMoveEvent, &mut Window, &mut App) + 'static>;
 
-/// One row of a list: a stateful horizontal flex box that hovers, selects and
-/// clicks. [`Styled`], so a call site overrides height, padding, radius, cursor
-/// and background as it would on a `div()`.
 #[derive(IntoElement)]
 pub struct ListItem {
     base: Stateful<Div>,
@@ -35,7 +30,6 @@ pub struct ListItem {
 }
 
 impl ListItem {
-    /// A row identified by `id`, which must be unique among its siblings.
     #[must_use]
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
@@ -51,22 +45,18 @@ impl ListItem {
         }
     }
 
-    /// Render the row as selected. Inherent mirror of [`Selectable::selected`],
-    /// so a call site does not have to import the trait.
     #[must_use]
     pub fn selected(mut self, selected: bool) -> Self {
         self.selected = selected;
         self
     }
 
-    /// Draw the row as `role` draws, instead of as a list row.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
-    /// Handle a click on the row. Ignored while the row is disabled.
     #[must_use]
     pub fn on_click(
         mut self,
@@ -76,8 +66,6 @@ impl ListItem {
         self
     }
 
-    /// Handle a press of `button`, carrying the click count that
-    /// [`Self::on_click`] drops. Ignored while disabled; handlers accumulate.
     #[must_use]
     pub fn on_mouse_down(
         mut self,
@@ -88,8 +76,6 @@ impl ListItem {
         self
     }
 
-    /// Handle the pointer moving over the row, for lists that follow the mouse
-    /// with their selection. Ignored while the row is disabled.
     #[must_use]
     pub fn on_mouse_enter(
         mut self,

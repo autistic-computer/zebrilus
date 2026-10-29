@@ -1,5 +1,3 @@
-//! Undo/redo for the text field.
-
 use std::ops::Range;
 
 use zz_gpui::SharedString;

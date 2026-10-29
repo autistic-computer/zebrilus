@@ -1,19 +1,12 @@
-//! Row data and the collection behind a [`crate::select::Select`].
-
 use zz_gpui::SharedString;
 
-/// One row of a [`crate::select::Select`]: a label to show and a value to
-/// report. Implemented for the string types.
 pub trait SelectItem: Clone {
-    /// What the select reports when this row is picked, and what identifies it.
     type Value: Clone + PartialEq + 'static;
 
-    /// The row's label, also shown in the trigger once picked.
     fn title(&self) -> SharedString;
 
     fn value(&self) -> &Self::Value;
 
-    /// A family to draw the row in, for a list of fonts.
     fn font_family(&self) -> Option<SharedString> {
         None
     }
@@ -55,7 +48,6 @@ impl SelectItem for &'static str {
     }
 }
 
-/// The collection of rows behind a [`crate::select::Select`].
 pub trait SelectDelegate: 'static {
     type Item: SelectItem + 'static;
 

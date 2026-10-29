@@ -1,7 +1,3 @@
-//! Keyboard-shortcut pill: one [`Keystroke`] drawn in the platform's key
-//! glyphs, ⌘⇧A on Apple platforms and ISO 9995's elsewhere, or as text
-//! (⌘⇧A, Ctrl+Shift+A) where there is no room for a cap.
-
 use zz_gpui::{
     Action, AnyElement, App, AsKeystroke as _, FocusHandle, FontWeight, IntoElement, KeyContext,
     Keystroke, ParentElement as _, RenderOnce, SharedString, StyleRefinement, Styled, Window, px,
@@ -13,8 +9,6 @@ use crate::{
 };
 
 const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
-/// How much larger than the text around them key icons draw, to match its
-/// capitals.
 const ICON_SCALE: f32 = 1.2;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -27,7 +21,6 @@ const MODIFIERS: [&str; 4] = ["⌃", "⌥", "⇧", "⌘"];
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 const MODIFIERS: [&str; 4] = ["Ctrl", "Alt", "Shift", "Win"];
 
-/// A keystroke drawn as a [`Keycap`].
 #[derive(IntoElement, Clone, Debug)]
 pub struct Kbd {
     style: StyleRefinement,
@@ -51,22 +44,18 @@ impl Kbd {
         }
     }
 
-    /// Render the key glyph in lower case, leaving modifier glyphs alone.
     #[must_use]
     pub fn lowercase(mut self) -> Self {
         self.lowercase = true;
         self
     }
 
-    /// Draw the cap as `role` draws, instead of as a key cap.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
-    /// Draw the cap on `ground`, the paint it sits inside, instead of the
-    /// window.
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);
@@ -87,14 +76,11 @@ impl Kbd {
         }
     }
 
-    /// The keystroke as text, for a binding shown without a cap.
     #[must_use]
     pub fn text(&self) -> String {
         Self::format_key(&self.stroke, self.lowercase)
     }
 
-    /// The highest-precedence binding for `action` as a pill, optionally scoped
-    /// to a key context. `None` when the action is unbound.
     #[must_use]
     pub fn binding_for_action(
         action: &dyn Action,
@@ -113,8 +99,6 @@ impl Kbd {
             .map(|key| Self::new(key.as_keystroke().clone()))
     }
 
-    /// The highest-precedence binding for `action` in `focus_handle`'s context,
-    /// as a pill. `None` when the action is unbound.
     #[must_use]
     pub fn binding_for_action_in(
         action: &dyn Action,
@@ -128,7 +112,6 @@ impl Kbd {
             .map(|key| Self::new(key.as_keystroke().clone()))
     }
 
-    /// Render a keystroke as its platform-specific display string.
     #[must_use]
     pub fn format(key: &Keystroke) -> String {
         Self::format_key(key, false)
@@ -193,9 +176,6 @@ fn key_symbol(key: &str) -> String {
     }
 }
 
-/// The icon a key or modifier, in GPUI's key names, draws as on this
-/// platform: Apple's glyph on macOS and iOS, ISO 9995's elsewhere. `None` for
-/// a key drawn by its name.
 #[must_use]
 pub fn key_icon(key: &str) -> Option<IconName> {
     Some(match key {
@@ -218,9 +198,6 @@ pub fn key_icon(key: &str) -> Option<IconName> {
     })
 }
 
-/// A keystroke as a row of key icons where the platform has them and names
-/// elsewhere, without a cap: ⌃ then B on a Mac, ✲ then B on Linux. Icons take
-/// the color of the text around them and a little more than its size.
 #[derive(IntoElement, Clone, Debug)]
 pub struct KeyGlyphs {
     stroke: Keystroke,
@@ -236,14 +213,12 @@ impl KeyGlyphs {
         }
     }
 
-    /// Name the key in lower case, the way tmux spells `C-b`.
     #[must_use]
     pub const fn lowercase(mut self) -> Self {
         self.lowercase = true;
         self
     }
 
-    /// Each key of the stroke, modifiers first: its icon, or its name.
     fn parts(&self) -> Vec<Result<IconName, String>> {
         let m = &self.stroke.modifiers;
         let modifiers = [
@@ -316,9 +291,6 @@ impl RenderOnce for Kbd {
     }
 }
 
-/// One key drawn as a cap: a shortcut digit on a row, the Enter mark inside a
-/// button. Its label reads muted on the cap's fill, and at full ink on an
-/// accent or other colored fill, where muting would wash it into the color.
 #[derive(IntoElement)]
 pub struct Keycap {
     label: AnyElement,
@@ -340,7 +312,6 @@ impl Keycap {
         }
     }
 
-    /// Draw the cap as `role` draws, instead of as a key cap.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
@@ -354,8 +325,6 @@ impl Keycap {
         )
     }
 
-    /// Draw the cap on `ground`, the paint it sits inside (see
-    /// [`crate::Paint::ground_at`]), instead of the window.
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);

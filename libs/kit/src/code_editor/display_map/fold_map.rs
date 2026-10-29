@@ -1,12 +1,9 @@
 use super::folding::FoldRange;
 use super::wrap_map::WrapMap;
 
-/// Projects wrap rows onto display rows by hiding folded regions.
 pub struct FoldMap {
-    /// display_row → wrap_row, ascending.
     visible_wrap_rows: Vec<usize>,
 
-    /// wrap_row → display_row, None where folding hides the row.
     wrap_row_to_display_row: Vec<Option<usize>>,
 
     candidates: Vec<FoldRange>,
@@ -39,7 +36,6 @@ impl FoldMap {
         self.visible_wrap_rows.len()
     }
 
-    /// Display row for a wrap row, or None if folding hides it.
     pub fn wrap_row_to_display_row(&self, wrap_row: usize) -> Option<usize> {
         if self.folded.is_empty() {
             return if wrap_row < self.cached_wrap_row_count {
@@ -80,7 +76,6 @@ impl FoldMap {
         }
     }
 
-    /// Replaces every candidate and drops folds that are no longer candidates.
     pub fn set_candidates(&mut self, mut candidates: Vec<FoldRange>) {
         candidates.sort_by_key(|r| r.start_line);
         candidates.dedup_by_key(|r| r.start_line);
@@ -93,7 +88,6 @@ impl FoldMap {
         });
     }
 
-    /// Replaces candidates inside `[edit_start_line, edit_end_line]` and keeps the rest.
     pub fn merge_candidates_for_edit(
         &mut self,
         edit_start_line: usize,
@@ -108,7 +102,6 @@ impl FoldMap {
         self.candidates.dedup_by_key(|r| r.start_line);
     }
 
-    /// Folds or unfolds at `start_line`, which must be a candidate.
     pub fn set_folded(&mut self, start_line: usize, folded: bool) {
         if folded {
             if let Some(candidate) = self.candidates.iter().find(|c| c.start_line == start_line) {
@@ -152,7 +145,6 @@ impl FoldMap {
         self.folded.clear();
     }
 
-    /// Drops folds and candidates touching the edited lines, shifts later ones by `line_delta`.
     pub fn adjust_folds_for_edit(
         &mut self,
         edit_start_line: usize,
@@ -191,7 +183,6 @@ impl FoldMap {
         self.needs_rebuild = true;
     }
 
-    /// Recomputes the wrap-row to display-row projection.
     pub fn rebuild(&mut self, wrap_map: &WrapMap) {
         let wrap_row_count = wrap_map.wrap_row_count();
 

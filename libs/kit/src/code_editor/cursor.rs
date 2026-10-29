@@ -1,6 +1,5 @@
 use std::ops::{Range, RangeBounds};
 
-/// A byte range of selected text.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct Selection {
     pub start: usize,
