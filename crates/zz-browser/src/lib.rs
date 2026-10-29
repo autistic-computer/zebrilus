@@ -37,9 +37,9 @@ mod linux_dmabuf;
 
 #[cfg(feature = "host")]
 pub use artifact::{
-    ARTIFACT_PROFILE, ARTIFACT_SCHEME, ArtifactFile, ArtifactReply, ArtifactRequest,
-    MAX_ARTIFACT_PATH_BYTES, MAX_ARTIFACT_REPLY_BYTES, artifact_replies, artifact_requests,
-    drop_local_page, host_local_page, is_local_page, parse_artifact_url,
+    ARTIFACT_PROFILE, ArtifactFile, ArtifactReply, ArtifactRequest, MAX_ARTIFACT_PATH_BYTES,
+    MAX_ARTIFACT_REPLY_BYTES, artifact_replies, artifact_requests, drop_local_page,
+    host_local_page, is_local_page, local_scheme, parse_artifact_url,
 };
 pub use cookie::{
     BrowserCookie, BrowserCookiePriority, BrowserCookieSameSite, CookieImportBatch,
@@ -75,7 +75,7 @@ pub use profile::{
 pub use cef_runtime::{
     AcceleratedPaintDiagnostics, AcceleratedPaintHandleDiagnostics, AcceleratedPaintObservation,
     AcceleratedPaintPlaneDiagnostics, BrowserBootstrap, BrowserCommandSink, BrowserError,
-    BrowserMessagePump, BrowserRuntime, BrowserSession, RuntimeSignal, bootstrap,
+    BrowserMessagePump, BrowserRuntime, BrowserSession, RuntimeConfig, RuntimeSignal, bootstrap,
     bootstrap_with_profile_paths, run_subprocess,
 };
 

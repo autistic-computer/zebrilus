@@ -43,8 +43,8 @@ mod d3d11_osr;
 use d3d11_osr::{D3d11FrameError, D3d11FrameOutcome, D3d11FrameProducer};
 
 use crate::artifact::{
-    ARTIFACT_PROFILE, ARTIFACT_SCHEME, ArtifactFile, error_page, parse_artifact_url,
-    request_artifact, send_reply,
+    ARTIFACT_PROFILE, ArtifactFile, DEFAULT_PAGE_GLOBAL, DEFAULT_SCHEME, error_page, local_scheme,
+    page_global, parse_artifact_url, request_artifact, send_reply, set_names,
 };
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::frame::GpuFrameSubmission;
@@ -78,22 +78,51 @@ const DEFAULT_BROWSER_FRAME_RATE: i32 = 60;
 const MAX_BROWSER_FRAME_RATE: i32 = 240;
 const ELEMENT_PICKER_QUERY_FUNCTION: &str = "__zzElementPickerQuery";
 const ELEMENT_PICKER_CANCEL_FUNCTION: &str = "__zzElementPickerQueryCancel";
-const ELEMENT_PICKER_SCRIPT_URL: &str = "zz://browser/element-picker.js";
-const ARTIFACT_REPLY_PREFIX: &str = "zz.reply:";
-const ARTIFACT_REPLY_SCRIPT_URL: &str = "zz://browser/reply.js";
+const ARTIFACT_REPLY_PREFIX: &str = "page.reply:";
 const ARTIFACT_REPLY_SCRIPT: &str = r#"(() => {
   const query = globalThis.__zzElementPickerQuery;
-  if (typeof query !== "function" || "zz" in globalThis) return;
+  if (typeof query !== "function" || "PAGE_GLOBAL" in globalThis) return;
   const reply = (text) => new Promise((resolve, reject) => query({
-    request: "zz.reply:" + String(text),
+    request: "page.reply:" + String(text),
     persistent: false,
     onSuccess: () => resolve(),
     onFailure: (_code, message) => reject(new Error(message)),
   }));
-  Object.defineProperty(globalThis, "zz", { value: Object.freeze({ reply }) });
+  Object.defineProperty(globalThis, "PAGE_GLOBAL", { value: Object.freeze({ reply }) });
 })();"#;
 use crate::element_picker::ELEMENT_PICKER_SCRIPT;
 const WINDOWS_EPOCH_UNIX_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeConfig {
+    pub scheme: &'static str,
+    pub page_global: &'static str,
+    pub frame_rate: Option<i32>,
+    pub gpu: bool,
+    pub shared_texture: bool,
+    pub external_begin_frame: bool,
+    pub begin_frame_adaptive: bool,
+    pub remote_debugging_port: Option<u16>,
+}
+
+impl Default for RuntimeConfig {
+    fn default() -> Self {
+        Self {
+            scheme: DEFAULT_SCHEME,
+            page_global: DEFAULT_PAGE_GLOBAL,
+            frame_rate: None,
+            gpu: true,
+            shared_texture: true,
+            external_begin_frame: cfg!(target_os = "macos"),
+            begin_frame_adaptive: false,
+            remote_debugging_port: None,
+        }
+    }
+}
+
+fn script_url(name: &str) -> String {
+    format!("{}://browser/{name}", local_scheme())
+}
 
 fn element_picker_router_config() -> MessageRouterConfig {
     MessageRouterConfig {
@@ -355,8 +384,8 @@ pub enum BrowserError {
     Profile(#[from] BrowserProfileError),
     #[error("CEF could not parse the process command line")]
     CommandLine,
-    #[error("browser configuration error: {0} must be 0 or an integer from 1024 through 65535")]
-    RemoteDebuggingPort(&'static str),
+    #[error("remote debugging port {0} must be 0 or from 1024 through 65535")]
+    RemoteDebuggingPort(u16),
     #[error("CEF returned an unexpected subprocess result: {0}")]
     ExecuteProcess(i32),
     #[error("CEF initialization failed; verify that its libraries and resources are installed")]
@@ -389,7 +418,7 @@ pub enum BrowserError {
     FrameworkLoad,
     #[cfg(target_os = "macos")]
     #[error(
-        "CEF framework version does not match this app (loaded {0}); restart zz after updating"
+        "CEF framework version does not match this app (loaded {0}); restart the app after updating"
     )]
     FrameworkVersion(String),
 }
@@ -514,6 +543,7 @@ pub struct BrowserRuntime {
     args: Args,
     app: cef::App,
     remote_debugging_port: Arc<AtomicU16>,
+    remote_debugging_override: Option<u16>,
     sandbox_info: *mut u8,
     profile_paths: BrowserProfilePaths,
     profile_contexts: BTreeMap<String, ProfileContext>,
@@ -676,9 +706,9 @@ impl BrowserRuntime {
             let _ = api_hash(cef::sys::CEF_API_VERSION, 0);
         }
 
-        let port = resolve_remote_debugging_port(
-            std::env::var_os("ZZ_BROWSER_REMOTE_DEBUGGING_PORT").as_deref(),
-            self.remote_debugging_port.load(Ordering::Relaxed),
+        let port = checked_remote_debugging_port(
+            self.remote_debugging_override
+                .unwrap_or_else(|| self.remote_debugging_port.load(Ordering::Relaxed)),
         )?;
         self.remote_debugging_port.store(port, Ordering::Relaxed);
         let settings = Settings {
@@ -810,12 +840,15 @@ impl BrowserRuntime {
         let mut artifacts = ArtifactSchemeFactory::new(());
         if profile == ARTIFACT_PROFILE
             && context.register_scheme_handler_factory(
-                Some(&CefString::from(ARTIFACT_SCHEME)),
+                Some(&CefString::from(local_scheme())),
                 None,
                 Some(&mut artifacts),
             ) == 0
         {
-            log::warn!("could not serve zz:// pages in browser profile {profile}");
+            log::warn!(
+                "could not serve {}:// pages in browser profile {profile}",
+                local_scheme()
+            );
         }
         self.profile_contexts.insert(
             profile,
@@ -1384,7 +1417,7 @@ impl PreparedSession {
             .add_handler(Arc::new(ArtifactReplyHandler), false)
             .is_none()
         {
-            log::error!("could not register the zz.reply query handler");
+            log::error!("could not register the page reply query handler");
         }
         let picker_available = message_router
             .add_handler(
@@ -1795,7 +1828,7 @@ impl BrowserSession {
         };
         frame.execute_java_script(
             Some(&CefString::from(script.as_str())),
-            Some(&CefString::from(ELEMENT_PICKER_SCRIPT_URL)),
+            Some(&CefString::from(script_url("element-picker.js").as_str())),
             1,
         );
         true
@@ -1809,7 +1842,7 @@ impl BrowserSession {
         if let Some(frame) = self.browser.main_frame() {
             frame.execute_java_script(
                 Some(&CefString::from("globalThis.__zzElementPicker?.cancel();")),
-                Some(&CefString::from(ELEMENT_PICKER_SCRIPT_URL)),
+                Some(&CefString::from(script_url("element-picker.js").as_str())),
                 1,
             );
         }
@@ -2030,24 +2063,28 @@ impl Drop for BrowserSession {
 }
 
 pub fn bootstrap(
+    config: &RuntimeConfig,
     profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
 ) -> Result<BrowserBootstrap, BrowserError> {
-    bootstrap_args_with_paths(Args::new(), ptr::null_mut(), profile_paths)
+    bootstrap_args_with_paths(config, Args::new(), ptr::null_mut(), profile_paths)
 }
 
 pub fn bootstrap_with_profile_paths(
+    config: &RuntimeConfig,
     profile_paths: BrowserProfilePaths,
 ) -> Result<BrowserBootstrap, BrowserError> {
-    bootstrap(|| Ok(profile_paths))
+    bootstrap(config, || Ok(profile_paths))
 }
 
 #[cfg(target_os = "windows")]
 pub fn bootstrap_windows(
+    config: &RuntimeConfig,
     instance: cef::sys::HINSTANCE,
     sandbox_info: *mut u8,
     profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
 ) -> Result<BrowserBootstrap, BrowserError> {
     bootstrap_args_with_paths(
+        config,
         Args::from(MainArgs { instance }),
         sandbox_info,
         profile_paths,
@@ -2055,11 +2092,13 @@ pub fn bootstrap_windows(
 }
 
 fn bootstrap_args_with_paths(
+    config: &RuntimeConfig,
     args: Args,
     sandbox_info: *mut u8,
     profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
 ) -> Result<BrowserBootstrap, BrowserError> {
     let started = diagnostic_timer();
+    set_names(config.scheme, config.page_global);
     #[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
     let dispatch = has_subprocess_switch(std::env::args_os().skip(1));
     #[cfg(not(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64"))))]
@@ -2072,6 +2111,7 @@ fn bootstrap_args_with_paths(
     let mut app = RuntimeApp::new(
         signal_tx.clone(),
         Arc::clone(&remote_debugging_port),
+        config.gpu,
         RuntimeRenderProcessHandler::new(RendererSideRouter::new(element_picker_router_config())),
     );
     if dispatch {
@@ -2089,25 +2129,23 @@ fn bootstrap_args_with_paths(
 
     let profile_paths = profile_paths().map_err(|error| BrowserError::Profile(error.into()))?;
     profile_paths.ensure()?;
-    let frame_rate_override = configured_browser_frame_rate();
+    let frame_rate_override = config
+        .frame_rate
+        .map(|frame_rate| frame_rate.clamp(1, MAX_BROWSER_FRAME_RATE));
     let windowless_frame_rate = frame_rate_override.unwrap_or(DEFAULT_BROWSER_FRAME_RATE);
-    let gpu_enabled = browser_gpu_enabled();
-    let shared_texture_setting = std::env::var_os("ZZ_BROWSER_SHARED_TEXTURE");
-    let shared_texture_requested = default_enabled_env_flag(shared_texture_setting.as_deref());
-    let shared_texture_enabled = shared_texture_requested && gpu_enabled;
-    let external_begin_frame_enabled = browser_external_begin_frame_enabled();
-    let begin_frame_adaptive_enabled = browser_begin_frame_adaptive_enabled();
+    let shared_texture_enabled = config.shared_texture && config.gpu;
+    let external_begin_frame_enabled = config.external_begin_frame
+        && cfg!(any(
+            target_os = "macos",
+            target_os = "linux",
+            target_os = "freebsd"
+        ));
+    let begin_frame_adaptive_enabled = config.begin_frame_adaptive;
     log::info!("CEF OSR frame-rate ceiling: {windowless_frame_rate} FPS");
-    if gpu_enabled && !shared_texture_enabled {
-        log::info!(
-            "CEF GPU process enabled; shared-texture OSR disabled (ZZ_BROWSER_SHARED_TEXTURE=0), using readback OSR"
-        );
+    if config.gpu && !shared_texture_enabled {
+        log::info!("CEF GPU process enabled; shared-texture OSR disabled, using readback OSR");
     }
-    if shared_texture_setting.is_some() && shared_texture_requested && !gpu_enabled {
-        log::warn!(
-            "ZZ_BROWSER_SHARED_TEXTURE is enabled but ZZ_BROWSER_GPU=0; shared textures are disabled and CEF will use software readback OSR"
-        );
-    } else if shared_texture_enabled {
+    if shared_texture_enabled {
         log::info!(
             "CEF shared-texture OSR enabled (GPU import/copy-on-receive active with a ala device; atomic readback fallback retained)"
         );
@@ -2136,6 +2174,7 @@ fn bootstrap_args_with_paths(
         args,
         app,
         remote_debugging_port,
+        remote_debugging_override: config.remote_debugging_port,
         sandbox_info,
         profile_paths,
         profile_contexts: BTreeMap::new(),
@@ -2155,7 +2194,8 @@ fn bootstrap_args_with_paths(
 }
 
 #[must_use]
-pub fn run_subprocess() -> i32 {
+pub fn run_subprocess(config: &RuntimeConfig) -> i32 {
+    set_names(config.scheme, config.page_global);
     let args = Args::new();
 
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
@@ -2188,6 +2228,7 @@ pub fn run_subprocess() -> i32 {
     let mut app = RuntimeApp::new(
         signal_tx,
         Arc::new(AtomicU16::new(0)),
+        config.gpu,
         RuntimeRenderProcessHandler::new(RendererSideRouter::new(element_picker_router_config())),
     );
     let result = execute_process(Some(args.as_main_args()), Some(&mut app), ptr::null_mut());
@@ -2211,92 +2252,12 @@ fn path_to_cef_string(path: &Path) -> CefString {
     CefString::from(path.to_string_lossy().as_ref())
 }
 
-fn resolve_remote_debugging_port(
-    environment: Option<&OsStr>,
-    configured: u16,
-) -> Result<u16, BrowserError> {
-    let (port, source) = match environment {
-        Some(value) => (
-            value
-                .to_str()
-                .and_then(|value| value.trim().parse::<u16>().ok()),
-            "ZZ_BROWSER_REMOTE_DEBUGGING_PORT",
-        ),
-        None => (Some(configured), "browser-remote-debugging-port"),
-    };
-    port.filter(|port| *port == 0 || *port >= 1024)
-        .ok_or(BrowserError::RemoteDebuggingPort(source))
-}
-
-fn configured_browser_frame_rate() -> Option<i32> {
-    let value = std::env::var_os("ZZ_BROWSER_FPS")?;
-    let Ok(value) = value.into_string() else {
-        log::warn!("ZZ_BROWSER_FPS is not valid Unicode; using {DEFAULT_BROWSER_FRAME_RATE} FPS");
-        return Some(DEFAULT_BROWSER_FRAME_RATE);
-    };
-    if let Some(frame_rate) = parse_browser_frame_rate(&value) {
-        Some(frame_rate)
+fn checked_remote_debugging_port(port: u16) -> Result<u16, BrowserError> {
+    if port == 0 || port >= 1024 {
+        Ok(port)
     } else {
-        log::warn!(
-            "ZZ_BROWSER_FPS must be an integer from 1 through {MAX_BROWSER_FRAME_RATE}; using {DEFAULT_BROWSER_FRAME_RATE} FPS"
-        );
-        Some(DEFAULT_BROWSER_FRAME_RATE)
+        Err(BrowserError::RemoteDebuggingPort(port))
     }
-}
-
-fn parse_browser_frame_rate(value: &str) -> Option<i32> {
-    let frame_rate = value.trim().parse::<i32>().ok()?;
-    (1..=MAX_BROWSER_FRAME_RATE)
-        .contains(&frame_rate)
-        .then_some(frame_rate)
-}
-
-fn default_enabled_env_flag(value: Option<&OsStr>) -> bool {
-    value.is_none_or(|value| value != "0")
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ExternalBeginFramePlatform {
-    MacOs,
-    LinuxOrFreeBsd,
-    Unsupported,
-}
-
-fn external_begin_frame_setting_enabled(
-    value: Option<&OsStr>,
-    platform: ExternalBeginFramePlatform,
-) -> bool {
-    match platform {
-        ExternalBeginFramePlatform::MacOs => default_enabled_env_flag(value),
-        ExternalBeginFramePlatform::LinuxOrFreeBsd => value == Some(OsStr::new("1")),
-        ExternalBeginFramePlatform::Unsupported => false,
-    }
-}
-
-fn browser_external_begin_frame_enabled() -> bool {
-    let platform = if cfg!(target_os = "macos") {
-        ExternalBeginFramePlatform::MacOs
-    } else if cfg!(any(target_os = "linux", target_os = "freebsd")) {
-        ExternalBeginFramePlatform::LinuxOrFreeBsd
-    } else {
-        ExternalBeginFramePlatform::Unsupported
-    };
-    external_begin_frame_setting_enabled(
-        std::env::var_os("ZZ_BROWSER_EXTERNAL_BEGIN_FRAME").as_deref(),
-        platform,
-    )
-}
-
-fn begin_frame_adaptive_setting_enabled(value: Option<&OsStr>) -> bool {
-    value == Some(OsStr::new("1"))
-}
-
-fn browser_begin_frame_adaptive_enabled() -> bool {
-    begin_frame_adaptive_setting_enabled(std::env::var_os("ZZ_BROWSER_BF_ADAPTIVE").as_deref())
-}
-
-fn browser_gpu_enabled() -> bool {
-    default_enabled_env_flag(std::env::var_os("ZZ_BROWSER_GPU").as_deref())
 }
 
 fn navigate_browser(browser: &Browser, session: SessionId, url: &str) {
@@ -3197,9 +3158,9 @@ impl DestinationTexturePool {
         let create_texture = |index| {
             device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(if index == 0 {
-                    "zz browser accelerated OSR destination 0"
+                    "browser accelerated OSR destination 0"
                 } else {
-                    "zz browser accelerated OSR destination 1"
+                    "browser accelerated OSR destination 1"
                 }),
                 size: wgpu::Extent3d {
                     width,
@@ -3257,7 +3218,7 @@ impl PopupTexture {
     fn new(device: &wgpu::Device, width: u32, height: u32, format: wgpu::TextureFormat) -> Self {
         Self {
             texture: device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("zz browser accelerated OSR popup"),
+                label: Some("browser accelerated OSR popup"),
                 size: wgpu::Extent3d {
                     width,
                     height,
@@ -3440,7 +3401,7 @@ impl AcceleratedFrameProducer {
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("zz browser accelerated OSR popup copy"),
+                label: Some("browser accelerated OSR popup copy"),
             });
         record_accelerated_copy(
             &gpu.device,
@@ -3508,7 +3469,7 @@ impl AcceleratedFrameProducer {
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("zz browser accelerated OSR copy-on-receive"),
+                label: Some("browser accelerated OSR copy-on-receive"),
             });
         record_accelerated_copy(
             &gpu.device,
@@ -3908,7 +3869,7 @@ impl BrowserSideHandler for ArtifactReplyHandler {
             .and_then(|frame| parse_artifact_url(&CefString::from(&frame.url()).to_string()))
             .map(|(token, _)| token);
         let result = token
-            .ok_or_else(|| "zz.reply works only from a page zz html opened".to_owned())
+            .ok_or_else(|| format!("{}.reply works only from a local page", page_global()))
             .and_then(|token| send_reply(&token, text.to_owned()));
         if let Ok(callback) = callback.lock() {
             match result {
@@ -4154,6 +4115,7 @@ cef::wrap_app! {
     struct RuntimeApp {
         signals: Sender<RuntimeSignal>,
         remote_debugging_port: Arc<AtomicU16>,
+        gpu: bool,
         render_process_handler: RenderProcessHandler,
     }
 
@@ -4170,7 +4132,7 @@ cef::wrap_app! {
             .iter()
             .fold(0, |bits, option| bits | cef_enum_bits(option.get_raw()));
             registrar.add_custom_scheme(
-                Some(&CefString::from(ARTIFACT_SCHEME)),
+                Some(&CefString::from(local_scheme())),
                 options.cast_signed(),
             );
         }
@@ -4227,7 +4189,7 @@ cef::wrap_app! {
                     command_line
                         .append_switch(Some(&CefString::from("use-mock-keychain")));
                 }
-                if !browser_gpu_enabled() {
+                if !self.gpu {
                     command_line.append_switch(Some(&CefString::from("disable-gpu")));
                     command_line
                         .append_switch(Some(&CefString::from("disable-gpu-compositing")));
@@ -4270,13 +4232,14 @@ cef::wrap_render_process_handler! {
             }
             frame.execute_java_script(
                 Some(&CefString::from(ELEMENT_PICKER_SCRIPT)),
-                Some(&CefString::from(ELEMENT_PICKER_SCRIPT_URL)),
+                Some(&CefString::from(script_url("element-picker.js").as_str())),
                 1,
             );
             if parse_artifact_url(&CefString::from(&frame.url()).to_string()).is_some() {
+                let script = ARTIFACT_REPLY_SCRIPT.replace("PAGE_GLOBAL", page_global());
                 frame.execute_java_script(
-                    Some(&CefString::from(ARTIFACT_REPLY_SCRIPT)),
-                    Some(&CefString::from(ARTIFACT_REPLY_SCRIPT_URL)),
+                    Some(&CefString::from(script.as_str())),
+                    Some(&CefString::from(script_url("reply.js").as_str())),
                     1,
                 );
             }
@@ -5549,50 +5512,16 @@ mod tests {
     }
 
     #[test]
-    fn remote_debugging_port_defaults_and_environment_precedence() {
-        assert_eq!(resolve_remote_debugging_port(None, 0).unwrap(), 0);
-        assert_eq!(resolve_remote_debugging_port(None, 9222).unwrap(), 9222);
-        assert_eq!(
-            resolve_remote_debugging_port(Some(OsStr::new("9333")), 9222).unwrap(),
-            9333
-        );
-        assert_eq!(
-            resolve_remote_debugging_port(Some(OsStr::new("0")), 9222).unwrap(),
-            0
-        );
-        for port in ["1024", "65535"] {
-            assert_eq!(
-                resolve_remote_debugging_port(Some(OsStr::new(port)), 0)
-                    .unwrap()
-                    .to_string(),
-                port
-            );
+    fn remote_debugging_port_is_off_or_unprivileged() {
+        for port in [0, 1024, 9222, 65535] {
+            assert_eq!(checked_remote_debugging_port(port).unwrap(), port);
         }
-    }
-
-    #[test]
-    fn remote_debugging_port_rejects_invalid_configuration() {
-        for value in ["", "abc", "-1", "1", "1023", "65536", "9222.0"] {
+        for port in [1, 1023] {
             assert!(matches!(
-                resolve_remote_debugging_port(Some(OsStr::new(value)), 9222),
-                Err(BrowserError::RemoteDebuggingPort(
-                    "ZZ_BROWSER_REMOTE_DEBUGGING_PORT"
-                ))
+                checked_remote_debugging_port(port),
+                Err(BrowserError::RemoteDebuggingPort(rejected)) if rejected == port
             ));
         }
-        assert!(matches!(
-            resolve_remote_debugging_port(None, 1023),
-            Err(BrowserError::RemoteDebuggingPort(
-                "browser-remote-debugging-port"
-            ))
-        ));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn remote_debugging_port_rejects_non_unicode_environment() {
-        use std::os::unix::ffi::OsStrExt;
-        assert!(resolve_remote_debugging_port(Some(OsStr::from_bytes(&[0xff])), 9222).is_err());
     }
 
     #[test]
@@ -5713,77 +5642,6 @@ mod tests {
             WINDOWS_EPOCH_UNIX_OFFSET_MICROS + 1_000_000
         );
         assert!(cef_expiration(i64::MAX).is_none());
-    }
-
-    #[test]
-    fn validates_browser_frame_rate_configuration() {
-        assert_eq!(parse_browser_frame_rate("1"), Some(1));
-        assert_eq!(parse_browser_frame_rate(" 120 "), Some(120));
-        assert_eq!(parse_browser_frame_rate("240"), Some(240));
-        assert_eq!(parse_browser_frame_rate("0"), None);
-        assert_eq!(parse_browser_frame_rate("241"), None);
-        assert_eq!(parse_browser_frame_rate("fast"), None);
-    }
-
-    #[test]
-    fn gpu_features_are_enabled_unless_explicitly_disabled() {
-        assert!(default_enabled_env_flag(None));
-        assert!(default_enabled_env_flag(Some(OsStr::new("1"))));
-        assert!(!default_enabled_env_flag(Some(OsStr::new("0"))));
-    }
-
-    #[test]
-    fn external_begin_frames_macos_default_on_with_zero_kill_switch() {
-        let platform = ExternalBeginFramePlatform::MacOs;
-        assert!(external_begin_frame_setting_enabled(None, platform));
-        assert!(external_begin_frame_setting_enabled(
-            Some(OsStr::new("1")),
-            platform
-        ));
-        assert!(external_begin_frame_setting_enabled(
-            Some(OsStr::new("enabled")),
-            platform
-        ));
-        assert!(!external_begin_frame_setting_enabled(
-            Some(OsStr::new("0")),
-            platform
-        ));
-    }
-
-    #[test]
-    fn external_begin_frames_linux_and_freebsd_require_exact_opt_in() {
-        let platform = ExternalBeginFramePlatform::LinuxOrFreeBsd;
-        assert!(!external_begin_frame_setting_enabled(None, platform));
-        assert!(external_begin_frame_setting_enabled(
-            Some(OsStr::new("1")),
-            platform
-        ));
-        for value in ["0", "true", " 1 ", "01"] {
-            assert!(!external_begin_frame_setting_enabled(
-                Some(OsStr::new(value)),
-                platform
-            ));
-        }
-    }
-
-    #[test]
-    fn external_begin_frames_stay_disabled_on_unsupported_platforms() {
-        let platform = ExternalBeginFramePlatform::Unsupported;
-        assert!(!external_begin_frame_setting_enabled(None, platform));
-        assert!(!external_begin_frame_setting_enabled(
-            Some(OsStr::new("1")),
-            platform
-        ));
-    }
-
-    #[test]
-    fn adaptive_begin_frame_throttle_requires_exact_opt_in() {
-        assert!(!begin_frame_adaptive_setting_enabled(None));
-        assert!(begin_frame_adaptive_setting_enabled(Some(OsStr::new("1"))));
-        assert!(!begin_frame_adaptive_setting_enabled(Some(OsStr::new(
-            "enabled"
-        ))));
-        assert!(!begin_frame_adaptive_setting_enabled(Some(OsStr::new("0"))));
     }
 
     #[test]

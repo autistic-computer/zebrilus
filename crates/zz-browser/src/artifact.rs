@@ -1,12 +1,13 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write as _,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, LazyLock, Mutex, OnceLock},
 };
 
 use async_channel::{Receiver, Sender};
 
-pub const ARTIFACT_SCHEME: &str = "zz";
+pub(crate) const DEFAULT_SCHEME: &str = "app";
+pub(crate) const DEFAULT_PAGE_GLOBAL: &str = "app";
 pub const MAX_ARTIFACT_PATH_BYTES: usize = 4096;
 pub const MAX_ARTIFACT_REPLY_BYTES: usize = 64 * 1024;
 pub const ARTIFACT_PROFILE: &str = "artifacts";
@@ -48,6 +49,29 @@ static REPLIES: LazyLock<(Sender<ArtifactReply>, Receiver<ArtifactReply>)> =
 static REPLY_TOKENS: LazyLock<Mutex<HashSet<String>>> = LazyLock::new(Mutex::default);
 static LOCAL_PAGES: LazyLock<Mutex<HashMap<String, (Arc<[u8]>, bool)>>> =
     LazyLock::new(Mutex::default);
+static NAMES: OnceLock<(&'static str, &'static str)> = OnceLock::new();
+
+#[cfg_attr(not(feature = "cef-runtime"), allow(dead_code))]
+pub(crate) fn set_names(scheme: &'static str, page_global: &'static str) {
+    let _ = NAMES.set((scheme, page_global));
+}
+
+fn names() -> (&'static str, &'static str) {
+    NAMES
+        .get()
+        .copied()
+        .unwrap_or((DEFAULT_SCHEME, DEFAULT_PAGE_GLOBAL))
+}
+
+#[must_use]
+pub fn local_scheme() -> &'static str {
+    names().0
+}
+
+#[cfg_attr(not(feature = "cef-runtime"), allow(dead_code))]
+pub(crate) fn page_global() -> &'static str {
+    names().1
+}
 
 pub fn host_local_page(html: &str, reply: bool) -> Result<String, String> {
     let mut bytes = [0_u8; 16];
@@ -62,7 +86,7 @@ pub fn host_local_page(html: &str, reply: bool) -> Result<String, String> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .insert(token.clone(), (Arc::from(html.as_bytes()), reply));
-    Ok(format!("zz://{token}/"))
+    Ok(format!("{}://{token}/", local_scheme()))
 }
 
 pub fn drop_local_page(url: &str) {
@@ -131,14 +155,14 @@ pub(crate) fn request_artifact(
     if let Err(error) = REQUESTS.0.try_send(request) {
         error
             .into_inner()
-            .respond(Err("zz is shutting down".to_owned()));
+            .respond(Err("the browser is shutting down".to_owned()));
     }
 }
 
 #[cfg_attr(not(feature = "cef-runtime"), allow(dead_code))]
 pub(crate) fn send_reply(token: &str, text: String) -> Result<(), String> {
     if !reply_allowed(token) {
-        return Err("this page was opened without --reply".to_owned());
+        return Err("this page was opened without replies".to_owned());
     }
     if text.len() > MAX_ARTIFACT_REPLY_BYTES {
         return Err(format!(
@@ -151,7 +175,7 @@ pub(crate) fn send_reply(token: &str, text: String) -> Result<(), String> {
             token: token.to_owned(),
             text,
         })
-        .map_err(|_| "zz is shutting down".to_owned())
+        .map_err(|_| "the browser is shutting down".to_owned())
 }
 
 fn set_reply_allowed(token: &str, allowed: bool) {
@@ -174,7 +198,11 @@ fn reply_allowed(token: &str) -> bool {
 
 #[must_use]
 pub fn parse_artifact_url(url: &str) -> Option<(String, String)> {
-    let rest = url.strip_prefix("zz://")?;
+    parse_url(local_scheme(), url)
+}
+
+fn parse_url(scheme: &str, url: &str) -> Option<(String, String)> {
+    let rest = url.strip_prefix(scheme)?.strip_prefix("://")?;
     let rest = rest.split(['?', '#']).next().unwrap_or_default();
     let (token, path) = rest.split_once('/').unwrap_or((rest, ""));
     if token.len() != TOKEN_LEN || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
@@ -226,40 +254,39 @@ mod tests {
     #[test]
     fn artifact_urls_give_their_token_and_decoded_path() {
         assert_eq!(
-            parse_artifact_url(&format!(
-                "zz://{}/my%20report.html?x=1#top",
-                TOKEN.to_ascii_uppercase()
-            )),
+            parse_url(
+                "zz",
+                &format!(
+                    "zz://{}/my%20report.html?x=1#top",
+                    TOKEN.to_ascii_uppercase()
+                )
+            ),
             Some((TOKEN.to_owned(), "my report.html".to_owned()))
         );
         assert_eq!(
-            parse_artifact_url(&format!("zz://{TOKEN}")),
+            parse_url("zz", &format!("zz://{TOKEN}")),
             Some((TOKEN.to_owned(), String::new()))
         );
         assert_eq!(
-            parse_artifact_url(&format!("zz://{TOKEN}/lib/a.js")),
+            parse_url("zz", &format!("zz://{TOKEN}/lib/a.js")),
             Some((TOKEN.to_owned(), "lib/a.js".to_owned()))
         );
-        assert_eq!(parse_artifact_url(&format!("https://{TOKEN}/")), None);
-        assert_eq!(parse_artifact_url("zz:///x"), None);
-        assert_eq!(parse_artifact_url("zz://a.b/x"), None);
-        assert_eq!(parse_artifact_url(&format!("zz://{TOKEN}/%zz")), None);
+        assert_eq!(parse_url("zz", &format!("https://{TOKEN}/")), None);
+        assert_eq!(parse_url("app", &format!("zz://{TOKEN}/")), None);
+        assert_eq!(parse_url("z", &format!("zz://{TOKEN}/")), None);
+        assert_eq!(parse_url("zz", "zz:///x"), None);
+        assert_eq!(parse_url("zz", "zz://a.b/x"), None);
+        assert_eq!(parse_url("zz", &format!("zz://{TOKEN}/%zz")), None);
     }
 
     #[test]
     fn urls_the_wire_would_refuse_never_parse() {
-        assert_eq!(parse_artifact_url("zz://ab12/x"), None);
-        assert_eq!(parse_artifact_url(&format!("zz://{TOKEN}0/x")), None);
-        assert_eq!(
-            parse_artifact_url(&format!("zz://{}/x", "g".repeat(32))),
-            None
-        );
+        assert_eq!(parse_url("zz", "zz://ab12/x"), None);
+        assert_eq!(parse_url("zz", &format!("zz://{TOKEN}0/x")), None);
+        assert_eq!(parse_url("zz", &format!("zz://{}/x", "g".repeat(32))), None);
         let longest = "x".repeat(MAX_ARTIFACT_PATH_BYTES);
-        assert!(parse_artifact_url(&format!("zz://{TOKEN}/{longest}")).is_some());
-        assert_eq!(
-            parse_artifact_url(&format!("zz://{TOKEN}/{longest}x")),
-            None
-        );
+        assert!(parse_url("zz", &format!("zz://{TOKEN}/{longest}")).is_some());
+        assert_eq!(parse_url("zz", &format!("zz://{TOKEN}/{longest}x")), None);
     }
 
     #[test]
