@@ -125,7 +125,7 @@ fn render_permissions(_: &mut Window, cx: &mut App) -> AnyElement {
             "waiting on a dialog the lens cannot answer: its one action shows the terminal",
             prefix_width(terminal_wait_card(
                 "permission-wait",
-                "Waiting for a question in the terminal",
+                "Claude Code needs your input in the terminal",
                 |_, _| {},
                 cx,
             )),

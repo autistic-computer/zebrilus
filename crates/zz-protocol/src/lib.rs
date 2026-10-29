@@ -4,6 +4,7 @@ pub mod agent_stream;
 pub mod app_identity;
 mod browser_cookie;
 mod catalog;
+pub mod chat;
 mod control;
 mod exec;
 mod framing;
