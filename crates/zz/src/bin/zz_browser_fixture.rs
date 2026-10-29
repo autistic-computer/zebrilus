@@ -353,6 +353,7 @@ fn run_popup_regression_inner() -> Result<(), String> {
     let paths = BrowserProfilePaths {
         profile: profile_root.join("zz-default"),
         root: profile_root,
+        named_prefix: "zz-profile-".to_owned(),
     };
     let mut runtime =
         match ala_cef::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
@@ -586,6 +587,7 @@ fn run_ime_regression_inner() -> Result<(), String> {
     let paths = BrowserProfilePaths {
         profile: profile_root.join("zz-default"),
         root: profile_root,
+        named_prefix: "zz-profile-".to_owned(),
     };
     let mut runtime =
         match ala_cef::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
@@ -1296,6 +1298,7 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
     let paths = BrowserProfilePaths {
         profile: profile_root.join("zz-default"),
         root: profile_root,
+        named_prefix: "zz-profile-".to_owned(),
     };
     let mut runtime =
         match ala_cef::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
@@ -1905,6 +1908,7 @@ fn app_profile_paths() -> std::io::Result<BrowserProfilePaths> {
     Ok(BrowserProfilePaths::under(
         &zz_protocol::app_identity::browser_data_dir()?,
         "zz-default",
+        "zz-profile-",
     ))
 }
 
