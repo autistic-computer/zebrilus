@@ -85,7 +85,7 @@ Multiple agent sessions often share this checkout in parallel. Never `git stash`
 <important if="you are changing anything under libs/">
 
 - `libs/gpui` and `libs/kit` are git subtrees of [autistic-computer/gpui](https://github.com/autistic-computer/gpui) and [autistic-computer/kit](https://github.com/autistic-computer/kit), libraries other apps build on. Edit them in place and commit them with the zz code that needs the change, like any other file here.
-- No comments in their code, doc comments included. Third-party copyright and license notices live in each lib's `NOTICE`, and every README uses the same frontmatter-in-a-code-block format.
+- No comments in their code, doc comments included. Third-party copyright and license notices live in each lib's `NOTICE`, and every README is the same centered `<samp>` block: the `/{>` mark over the frontmatter, padded with literal non-breaking spaces so the lines stay aligned, then a `<kbd>` link to autistic.computer.
 - They must build on their own: no zz crate dependencies and no paths outside their own directory. Each is its own Cargo workspace, excluded from zz's; zz uses them by path, and the root `[patch."https://github.com/autistic-computer/gpui"]` (repeated in `clients/web`, `clients/storybook` and `clients/dom/theme`) points the kit's git dependency on gpui at `libs/gpui`.
 - The root clippy and `cargo ci-test` skip them. Run `just libs check gpui` or `just libs check kit` when you touch one; CI runs the same.
 - Commits touching `libs/<lib>` reach its repo with `just libs push <lib>` once they are on main, carrying their commit messages along, so write those for a reader outside zz. `just libs pull <lib>` merges commits made in the lib repo; do that before pushing if the lib repo moved.
