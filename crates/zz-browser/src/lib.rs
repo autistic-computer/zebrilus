@@ -1,6 +1,7 @@
 #[cfg(feature = "host")]
 mod artifact;
 mod cookie;
+#[cfg(not(target_family = "wasm"))]
 pub mod element_picker;
 mod event;
 #[cfg(feature = "host")]
@@ -45,6 +46,7 @@ pub use cookie::{
     CookieImportError, CookieImportResult, MAX_COOKIE_IMPORT_BYTES, MAX_COOKIE_IMPORT_COUNT,
     SiteDataClearResult, parse_cookie_import,
 };
+#[cfg(not(target_family = "wasm"))]
 pub use element_picker::ElementPickerAppearance;
 pub use event::{
     BrowserCursor, BrowserEvent, ContextMenuRequest, EditFlags, MAX_FAVICON_BYTES, SessionId,
