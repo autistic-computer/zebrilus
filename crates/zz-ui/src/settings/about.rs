@@ -7,9 +7,9 @@ use crate::{
 };
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const REPOSITORY_URL: &str = "https://github.com/demfabris/zz";
-pub const RELEASES_URL: &str = "https://github.com/demfabris/zz/releases";
-pub const ISSUES_URL: &str = "https://github.com/demfabris/zz/issues/new";
+pub const REPOSITORY_URL: &str = "https://github.com/autistic-computer/zz";
+pub const RELEASES_URL: &str = "https://github.com/autistic-computer/zz/releases";
+pub const ISSUES_URL: &str = "https://github.com/autistic-computer/zz/issues/new";
 pub const ABOUT_LOGO_SIZE: f32 = 88.0;
 
 #[must_use]

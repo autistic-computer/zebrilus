@@ -8,11 +8,11 @@
     ],
     "version": "0.0.0",
     "description": "Terminal multiplexer with terminal, browser, and agent panes",
-    "homepage": "https://github.com/demfabris/zz",
+    "homepage": "https://github.com/autistic-computer/zz",
     "license": "MIT|Apache-2.0",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/demfabris/zz/releases/download/v0.0.0/zz-0.0.0-windows-x64.zip",
+            "url": "https://github.com/autistic-computer/zz/releases/download/v0.0.0/zz-0.0.0-windows-x64.zip",
             "hash": "0000000000000000000000000000000000000000000000000000000000000000"
         }
     },
@@ -24,12 +24,12 @@
         ]
     ],
     "checkver": {
-        "github": "https://github.com/demfabris/zz"
+        "github": "https://github.com/autistic-computer/zz"
     },
     "autoupdate": {
         "architecture": {
             "64bit": {
-                "url": "https://github.com/demfabris/zz/releases/download/v$version/zz-$version-windows-x64.zip"
+                "url": "https://github.com/autistic-computer/zz/releases/download/v$version/zz-$version-windows-x64.zip"
             }
         }
     }

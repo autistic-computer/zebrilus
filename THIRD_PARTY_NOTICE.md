@@ -138,4 +138,4 @@ with or built on. zz is not affiliated with, endorsed by, or sponsored by any of
 ## Corrections
 
 If something here is wrong, missing, or attributes your work incorrectly, open an issue at
-<https://github.com/demfabris/zz/issues> and it gets fixed.
+<https://github.com/autistic-computer/zz/issues> and it gets fixed.

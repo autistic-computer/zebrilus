@@ -73,7 +73,7 @@ pub(crate) struct OpenUrl {
     pub(crate) url: String,
 }
 
-pub(crate) const RELEASE_NOTES_URL: &str = "https://github.com/demfabris/zz/releases";
+pub(crate) const RELEASE_NOTES_URL: &str = "https://github.com/autistic-computer/zz/releases";
 
 #[derive(Default)]
 struct MenuSessions(BTreeSet<String>);
@@ -230,7 +230,7 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
             MenuItem::separator(),
             open_url(
                 "Report an Issue",
-                "https://github.com/demfabris/zz/issues/new",
+                "https://github.com/autistic-computer/zz/issues/new",
             ),
             MenuItem::action("Open Logs", OpenLogs),
         ]),

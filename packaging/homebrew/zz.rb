@@ -1,5 +1,5 @@
 # The casks published to github.com/demfabris/homebrew-zz. Their source lives
-# in packaging/homebrew/zz.rb in demfabris/zz; the release workflow fills in
+# in packaging/homebrew/zz.rb in autistic-computer/zz; the release workflow fills in
 # the version and checksum with scripts/render-cask.sh and pushes the result to
 # the tap, so edit the template rather than the published copies. The same
 # template renders the `zz@beta` cask: the renderer retargets the token, the
@@ -8,11 +8,11 @@ cask "zz" do
   version "0.0.0"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 
-  url "https://github.com/demfabris/zz/releases/download/v#{version}/zz-#{version}-macos-arm64.dmg",
-      verified: "github.com/demfabris/zz/"
+  url "https://github.com/autistic-computer/zz/releases/download/v#{version}/zz-#{version}-macos-arm64.dmg",
+      verified: "github.com/autistic-computer/zz/"
   name "zz"
   desc "Terminal multiplexer with terminal, browser, and agent panes"
-  homepage "https://github.com/demfabris/zz"
+  homepage "https://github.com/autistic-computer/zz"
 
   livecheck do
     url :url

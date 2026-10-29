@@ -4,11 +4,11 @@ PackageVersion: 0.0.0
 PackageLocale: en-US
 Publisher: demfabris
 PublisherUrl: https://github.com/demfabris
-PublisherSupportUrl: https://github.com/demfabris/zz/issues
+PublisherSupportUrl: https://github.com/autistic-computer/zz/issues
 PackageName: zz
-PackageUrl: https://github.com/demfabris/zz
+PackageUrl: https://github.com/autistic-computer/zz
 License: MIT OR Apache-2.0
-LicenseUrl: https://github.com/demfabris/zz/blob/main/LICENSE-MIT
+LicenseUrl: https://github.com/autistic-computer/zz/blob/main/LICENSE-MIT
 Moniker: zz
 ShortDescription: Terminal multiplexer with terminal, browser, and agent panes
 Description: >-

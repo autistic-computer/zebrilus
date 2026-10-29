@@ -42,7 +42,7 @@ under `share/icons/hicolor` from the prefix; a `.deb` install goes with
 `sudo apt remove zz`.
 
 Package managers work too, and the raw artifacts live on the
-[releases page](https://github.com/demfabris/zz/releases). CI also builds every
+[releases page](https://github.com/autistic-computer/zz/releases). CI also builds every
 platform on every push, so the artifacts of a green run give you the tip of
 `main`.
 

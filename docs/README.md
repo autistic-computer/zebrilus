@@ -1,0 +1,180 @@
+<p align="center">
+  <img src="../assets/zz-dark-512.png" alt="zz" width="96">
+</p>
+
+# zz
+
+zz is tmux, ghostty and ala love triangle
+
+![zz](../assets/screenshot.png)
+
+## Is it any good?
+
+Yes.
+
+### In math notation:
+
+> **zz := ala(tmux ∪ ghostty)**
+
+## Features
+
+A multiplexer that ships as a native GPU app. A background daemon owns
+your sessions, so closing the window detaches instead of killing your work.
+
+- `tmux` superset implemented in Rust, bring your `.tmux.conf` and muscle memory.
+- Remote machines over plain ssh. Their sessions, windows, and panes sit in the
+  same control plane.
+- Browser panes: a real Chromium composited on the same surface as your
+  terminals, split and targeted like any other pane.
+- macOS, Linux (Wayland). Experimental Windows and WSL support.
+- Browser client with the shared ala interface: [build and run](../knowledge/playbooks/browser-client.md).
+
+# Pty Benchmarks
+
+> `zz` core is at least ~8x faster than `tmux` + any terminal emulator
+
+**macOS · Metal** — Apple M4 Max
+
+| terminal     | cat-ascii (MB/s) | cat-unicode (MB/s) | doom-fire (fps) |
+| ------------ | ---------------: | -----------------: | --------------: |
+| **zz**       |          **328** |             **98** |         **668** |
+| ghostty-tip  |              294 |                 94 |             650 |
+| cmux         |              285 |                 86 |             627 |
+| kero         |              273 |                  x |               x |
+| ghostty      |               94 |                 69 |             630 |
+| iterm2       |               87 |                  x |               x |
+| ghostty+tmux |               44 |                 19 |             194 |
+| rio          |               28 |                 30 |             125 |
+
+**Linux · Vulkan** — AMD Ryzen 7 7800X3D, Radeon 7900 XTX, Wayland
+
+| terminal     | cat-ascii (MB/s) | cat-unicode (MB/s) | doom-fire (fps) |
+| ------------ | ---------------: | -----------------: | --------------: |
+| **zz**       |          **645** |             **81** |        **1285** |
+| ghostty-tip  |              637 |                 61 |            1216 |
+| rio          |              487 |                124 |            1191 |
+| alacritty    |              129 |                 91 |            1255 |
+| ghostty      |               98 |                 45 |             653 |
+| limux        |               94 |                 54 |             618 |
+| ghostty+tmux |               56 |                 17 |             201 |
+
+_Median of 5 runs at 180×50. `cat-ascii` and `cat-unicode` are throughput,
+`doom-fire` is frame rate; higher is better. `x` means crashed or timed out.
+Reproduce with [`bench/run.sh`](../bench/run.sh) and [`bench/summarize.sh`](../bench/summarize.sh)._
+
+# Install
+
+One command on macOS (Apple Silicon) and Linux:
+
+```sh
+curl -fsSL https://zzmux.sh/install.sh | sh
+curl -fsSL https://zzmux.sh/install.sh | sh -s -- --headless   # CLI + daemon only, for hosts you ssh into
+```
+
+It picks the route for the machine: the notarized app into `/Applications`
+with `zz` linked on your `PATH`, the `.deb` through apt where dpkg runs, and
+the release tarball under `~/.local` everywhere else. Add `-s -- --beta` for the
+newest beta, `--version 0.3.0` to pin one; rerun to upgrade.
+
+Or through a package manager. macOS, Apple Silicon:
+
+```sh
+brew install --cask demfabris/zz/zz
+```
+
+AUR:
+
+```sh
+paru zz-bin
+```
+
+Betas ship to their own channel, `demfabris/zz/zz@beta` and `zz-beta-bin`, which
+stable releases also update. Each conflicts with its stable sibling, so pick one.
+
+Debian/Ubuntu 24.04+, from a release `.deb`:
+
+```sh
+sudo apt install ./zz-<version>-linux-<arch>.deb
+```
+
+# Development
+
+Install [just](https://github.com/casey/just) 1.52 or newer. Run `just` to browse command
+groups, `just web` to list browser commands, or `just --list --list-submodules` for the full tree.
+Related commands use `just <group> <action> [arguments]`; `run`, `watch`, and `build` stay at the root.
+
+## Prerequisites
+
+- Rust 1.99.0
+- Zig 0.16.0
+- CMake 3.21+ and Ninja: the CEF C++ wrapper is compiled from source.
+- Linux: `cmake curl desktop-file-utils ninja-build libfontconfig-dev libwayland-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev`.
+- Windows x64: Git for Windows (including Git Bash), the MSVC Rust toolchain, and Visual Studio 2022 Build Tools with the C++ tools and a Windows SDK.
+
+```sh
+just build mac
+just install mac
+just package mac
+just package arch
+just install arch
+just package deb
+just install deb
+just web run
+just web build --release
+```
+
+On Windows, build from PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build-windows.ps1
+```
+
+The script loads the x64 Visual Studio environment and selects Microsoft's linker explicitly
+to avoid Git Bash's `link.exe`. It runs `just build windows`, producing the complete app at
+`dist/zz/zz.exe`. Keep the adjacent DLLs and resources with the executable. To package the bundle:
+
+```powershell
+powershell -File scripts/package-windows.ps1 dist/zz dist/zz-windows.zip
+```
+
+Before rebuilding an existing bundle, close its app and stop its daemon after finishing your
+sessions: Windows cannot replace DLLs that those processes have loaded.
+
+# Connecting
+
+The sidebar shows every machine you have added, each expanding into its own
+sessions, windows, and panes. Click a session to attach to it. Add one from the
+menu on your own machine's row, remove one from the menu on its own row, or from
+a shell:
+
+```sh
+zz fleet add desktop you@desktop
+zz list-hosts
+zz fleet remove desktop
+```
+
+Or directly in zz's config file:
+
+```
+host-desktop = ssh://you@desktop
+host-gpu     = ssh://gpu-box:2222
+```
+
+Any verb runs on a host with `--host` before it, such as
+`zz --host desktop list-panes -a`, and `zz --host all inspect -a` reads every
+host at once. `zz fleet sync` shares zz's own ssh key across your machines so
+logins stop asking, and `zz fleet install desktop` installs or updates zz there.
+
+## Browser egress
+
+Browser panes always render locally, but a pane opened while you are attached to
+a remote host sends its traffic back out through that host over `ssh -D`, so
+`localhost:3000` is the dev server _there_. Set `browser-egress = false` to keep
+browsing local.
+
+## License
+
+Dual-licensed under [MIT](../LICENSE-MIT) or [Apache-2.0](../LICENSE-APACHE).
+
+What zz forks, bundles, and read on the way here is credited in
+[THIRD_PARTY_NOTICE.md](../THIRD_PARTY_NOTICE.md).
