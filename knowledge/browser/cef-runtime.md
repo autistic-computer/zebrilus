@@ -4,7 +4,7 @@ title: CEF runtime & subprocess dispatch
 description: CEF Alloy OSR bootstrap with deferred loading and initialization, platform-specific subprocess dispatch, frame-rate policy, external BeginFrames, message pumping, and safe foreground command dispatch.
 resource: crates/zz-browser/src/cef_runtime.rs
 tags: [browser, cef, runtime, subprocess, begin-frame, frame-pacing]
-timestamp: 2026-09-23T20:52:00Z
+timestamp: 2026-10-29T21:18:08Z
 ---
 
 # Overview
@@ -36,10 +36,17 @@ For paths that call `execute_process`, the result determines dispatch:
   in `RuntimePhase::Uninitialized`.
 - any other negative value → `BrowserError::ExecuteProcess`.
 
-`run_subprocess()` is the dedicated helper entry point (used by the macOS helper
+`run_subprocess(&config)` is the dedicated helper entry point (used by the macOS helper
 app, which initializes a `cef::sandbox::Sandbox` and loads the framework via
-`LibraryLoader`). On Windows, `bootstrap_windows(instance, sandbox_info)` routes
+`LibraryLoader`). On Windows, `bootstrap_windows(&config, instance, sandbox_info)` routes
 through CEF's sandbox bootstrap executable and the exported `RunWinMain` entry.
+
+Every entry point takes a `RuntimeConfig`: the local page scheme and the page
+global for replies, the frame-rate override, GPU, shared-texture and BeginFrame
+switches, and a remote debugging port that wins over the setting. The crate reads
+no environment; zz builds the config from `ZZ_BROWSER_*` in
+`crates/zz/src/browser/environment.rs`. Subprocesses need the same scheme, since
+custom schemes register in every process.
 
 # Deferred initialization
 

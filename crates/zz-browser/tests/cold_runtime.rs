@@ -8,7 +8,8 @@
 )]
 
 use zz_browser::{
-    BrowserBootstrap, BrowserProfilePaths, RuntimePhase, bootstrap_with_profile_paths,
+    BrowserBootstrap, BrowserProfilePaths, RuntimeConfig, RuntimePhase,
+    bootstrap_with_profile_paths,
 };
 
 #[test]
@@ -20,7 +21,8 @@ fn preparing_and_closing_a_cold_runtime_does_not_load_chromium() {
         root,
     };
     assert!(!chromium_is_loaded());
-    let BrowserBootstrap::Runtime(mut runtime) = bootstrap_with_profile_paths(paths).unwrap()
+    let BrowserBootstrap::Runtime(mut runtime) =
+        bootstrap_with_profile_paths(&RuntimeConfig::default(), paths).unwrap()
     else {
         panic!("main process was dispatched as a subprocess");
     };
@@ -76,7 +78,8 @@ fn starting_without_a_framework_returns_an_error() {
         root,
     };
     assert!(!chromium_is_loaded());
-    let BrowserBootstrap::Runtime(mut runtime) = bootstrap_with_profile_paths(paths).unwrap()
+    let BrowserBootstrap::Runtime(mut runtime) =
+        bootstrap_with_profile_paths(&RuntimeConfig::default(), paths).unwrap()
     else {
         panic!("main process was dispatched as a subprocess");
     };

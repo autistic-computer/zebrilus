@@ -207,8 +207,10 @@ A page starts with:
 
 The only bridge is the reply, and it rides the element picker's message router rather than a
 second one. `ArtifactReplyHandler` sits on that router before the picker's handler and takes only
-queries that start with `zz.reply:`. `on_context_created` runs a small script on main frames whose
-URL is `zz://` that defines `window.zz.reply(text)` over `__zzElementPickerQuery`. The handler
+queries that start with `page.reply:`. `on_context_created` runs a small script on main frames whose
+URL is `zz://` that defines `window.zz.reply(text)` over `__zzElementPickerQuery`. The scheme and
+the `zz` global come from the `RuntimeConfig` zz hands zz-browser at bootstrap
+(`crates/zz/src/browser/environment.rs`). The handler
 takes the token from the frame's own URL, never from the query, and answers only the main frame,
 so an https page that calls the query function gets nothing. It rejects unless the page loaded with
 `reply` set, then queues an `ArtifactReply` for the workspace view to send. The daemon is the gate

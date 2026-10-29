@@ -633,7 +633,10 @@ mod tests {
     fn a_live_page_replies_to_its_agent_pane_at_most_once_a_second() {
         let now = Instant::now();
         let mut gate = ReplyGate {
-            url: "zz://0123456789abcdef0123456789abcdef/".to_owned(),
+            url: format!(
+                "{}://0123456789abcdef0123456789abcdef/",
+                zz_browser::local_scheme()
+            ),
             pane: Some(PaneId(4)),
             replied: None,
         };
