@@ -22,3 +22,9 @@ search = '(?m)(name = "zz-(?:client|protocol|terminal|ui)"\nversion = ")[^"]+'
 replace = '${1}{{version}}'
 exactly = 4
 prerelease = true
+
+[[pre-release-replacements]]
+file = "../../README.md"
+search = 'version:\x{a0}[0-9][^\x{a0}<]*\x{a0}*'
+replace = "version:\u00a0{{version}}\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0"
+exactly = 1

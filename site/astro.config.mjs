@@ -26,7 +26,7 @@ export default defineConfig({
 				dark: './src/assets/zz.svg',
 				replacesTitle: false,
 			},
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/demfabris/zz' }],
+			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/autistic-computer/zz' }],
 			customCss: ['./src/styles/custom.css'],
 			// Code frames get the landing page's corner and hairline. Two rules
 			// here: values must be literal (Expressive Code drops a `var()` it

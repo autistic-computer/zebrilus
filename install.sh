@@ -11,7 +11,7 @@
 # command to upgrade.
 set -eu
 
-repo=demfabris/zz
+repo=autistic-computer/zz
 channel=stable
 headless=0
 version=

@@ -11,7 +11,7 @@ InstallModes:
 UpgradeBehavior: install
 Installers:
   - Architecture: x64
-    InstallerUrl: https://github.com/demfabris/zz/releases/download/v0.0.0/zz-0.0.0-windows-x64-setup.exe
+    InstallerUrl: https://github.com/autistic-computer/zz/releases/download/v0.0.0/zz-0.0.0-windows-x64-setup.exe
     InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
     # Inno Setup registers its uninstall key as {AppId}_is1; keep this in sync
     # with AppId in packaging/windows/zz.iss or winget loses track of upgrades.

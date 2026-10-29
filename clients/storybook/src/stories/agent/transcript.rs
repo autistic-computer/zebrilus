@@ -142,7 +142,7 @@ pub fn user_message(_: &mut Window, cx: &mut App) -> AnyView {
                     "unbroken text",
                     &[user(
                         150,
-                        "CI failed overnight: https://github.com/demfabris/zz/actions/runs/18234567890/job/51987654321?pr=1234#step:7:212",
+                        "CI failed overnight: https://github.com/autistic-computer/zz/actions/runs/18234567890/job/51987654321?pr=1234#step:7:212",
                     )],
                     cx,
                 ),

@@ -35,9 +35,9 @@ AppName=zz
 AppVersion={#AppVersion}
 VersionInfoVersion={#VersionInfo}
 AppPublisher=demfabris
-AppPublisherURL=https://github.com/demfabris/zz
-AppSupportURL=https://github.com/demfabris/zz/issues
-AppUpdatesURL=https://github.com/demfabris/zz/releases
+AppPublisherURL=https://github.com/autistic-computer/zz
+AppSupportURL=https://github.com/autistic-computer/zz/issues
+AppUpdatesURL=https://github.com/autistic-computer/zz/releases
 ; Inno resolves every relative path against SourceDir, which defaults to the
 ; directory holding this script. Point it at the repository root so BundleDir
 ; and OutputDir read the way the rest of the repository writes paths.

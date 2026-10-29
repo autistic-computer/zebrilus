@@ -377,7 +377,7 @@ fn install_plan(release: &Release, channel: Channel, environment: &Environment) 
             environment.executable.as_deref().and_then(tarball_prefix),
         )),
         "windows" => InstallPlan::Open(format!(
-            "https://github.com/demfabris/zz/releases/download/v{version}/zz-{version}-windows-x64-setup.exe",
+            "https://github.com/autistic-computer/zz/releases/download/v{version}/zz-{version}-windows-x64-setup.exe",
             version = release.version
         )),
         _ => InstallPlan::Open(release.url.clone()),
@@ -434,7 +434,7 @@ mod tests {
     fn offered() -> Release {
         Release {
             version: version("0.3.2"),
-            url: "https://github.com/demfabris/zz/releases/tag/v0.3.2".to_owned(),
+            url: "https://github.com/autistic-computer/zz/releases/tag/v0.3.2".to_owned(),
             assets: Vec::new(),
         }
     }
@@ -528,7 +528,7 @@ mod tests {
         assert_eq!(
             install_plan(&offered(), Channel::Stable, &windows),
             InstallPlan::Open(
-                "https://github.com/demfabris/zz/releases/download/v0.3.2/zz-0.3.2-windows-x64-setup.exe"
+                "https://github.com/autistic-computer/zz/releases/download/v0.3.2/zz-0.3.2-windows-x64-setup.exe"
                     .to_owned()
             )
         );
