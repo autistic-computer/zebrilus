@@ -1,29 +1,11 @@
+pub use penna::roles::{
+    BAR_RULE, CHROME_BUTTON, LIST_RULE, SETTINGS_CARD, SETTINGS_PREVIEW, SETTINGS_TILE, SIDEBAR,
+    SIDEBAR_ROW, SIDEBAR_RULE, TITLEBAR, WINDOW, WINDOW_CONTROLS,
+};
 use penna::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
 
 const P: StylePatch = StylePatch::EMPTY;
 
-pub const WINDOW: SurfaceRole = SurfaceRole::new(
-    "window",
-    Kind::Panel,
-    "Window",
-    "The edge and drop shadow of the window frame zz draws on Linux",
-)
-.with(P.outline(true).shadow(Shadow::Float))
-.with_knobs(Knobs::FIXED);
-pub const TITLEBAR: SurfaceRole = SurfaceRole::new(
-    "titlebar",
-    Kind::Bar,
-    "Title bar",
-    "The strip across the top of the window",
-)
-.with_knobs(Knobs::FIXED);
-pub const CHROME_BUTTON: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::ICON_BUTTON,
-    "chrome.button",
-    "Chrome buttons",
-    "Icon buttons on the window chrome: sidebar toggle, settings, add host, list view, search, window overflow",
-)
-.with(P.ink(Ink::Rest));
 pub const WINDOW_TAB: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,
     "titlebar.window-tab",
@@ -39,32 +21,7 @@ pub const STATUS_CHIP: SurfaceRole = SurfaceRole::under(
 )
 .with(P.selected(Highlight::Tint))
 .with_knobs(Kind::Label.knobs().pressable());
-pub const WINDOW_CONTROLS: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::ICON_BUTTON,
-    "titlebar.window-controls",
-    "Window controls",
-    "Minimize, maximize and close on Windows and Linux",
-)
-.with(
-    P.shape(Shape::Square)
-        .hover(Highlight::Tint)
-        .selected(Highlight::None),
-);
 
-pub const SIDEBAR: SurfaceRole = SurfaceRole::new(
-    "sidebar",
-    Kind::Panel,
-    "Sidebar",
-    "The session sidebar, also when it slides over the panes",
-)
-.with_knobs(Knobs::FIXED);
-pub const SIDEBAR_ROW: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::ROW,
-    "sidebar.row",
-    "Sidebar rows",
-    "Tree rows for hosts, sessions, windows and panes, and the Settings sections",
-)
-.with(P.ink(Ink::Rest));
 pub const SIDEBAR_ENTRY: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ROW,
     "sidebar.entry",
@@ -326,27 +283,6 @@ pub const BROWSER_EMPTY_ICON: SurfaceRole = SurfaceRole::under(
 )
 .with(P.shape(Shape::Pill).outline(false));
 
-pub const SETTINGS_CARD: SurfaceRole = SurfaceRole::new(
-    "settings.card",
-    Kind::Card,
-    "Setting groups",
-    "The cards that group settings",
-);
-pub const SETTINGS_TILE: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::TILE,
-    "settings.tile",
-    "Picker tiles",
-    "Theme, mode and app icon tiles in Settings",
-)
-.with(P.fill(Fill::None).outline(false).shadow(Shadow::None));
-pub const SETTINGS_PREVIEW: SurfaceRole = SurfaceRole::new(
-    "settings.preview",
-    Kind::Card,
-    "Previews",
-    "The pane, title bar, terminal and config previews in Settings",
-)
-.with(P.shadow(Shadow::None));
-
 pub const PHONE_BAR: SurfaceRole = SurfaceRole::new(
     "phone.bar",
     Kind::Bar,
@@ -465,29 +401,11 @@ pub const PICKER_NOTICE: SurfaceRole = SurfaceRole::new(
     "Strips across a chooser that ask before something happens, and its key help",
 );
 
-pub const BAR_RULE: SurfaceRole = SurfaceRole::new(
-    "rule.bar",
-    Kind::Rule,
-    "Bar dividers",
-    "Lines under the title bar and pane headers, over the phone bar and footers",
-);
-pub const SIDEBAR_RULE: SurfaceRole = SurfaceRole::new(
-    "rule.sidebar",
-    Kind::Rule,
-    "Sidebar edge",
-    "The line between the sidebar and the panes",
-);
 pub const SPLIT_RULE: SurfaceRole = SurfaceRole::new(
     "rule.split",
     Kind::Rule,
     "Split lines",
     "Lines between panes when they have no gaps",
-);
-pub const LIST_RULE: SurfaceRole = SurfaceRole::new(
-    "rule.list",
-    Kind::Rule,
-    "List dividers",
-    "Lines between menu groups, setting rows and question cards",
 );
 pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
     "rule.tree",
@@ -496,7 +414,7 @@ pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
     "The lines that join a tree's children",
 );
 
-const ZZ: &[SurfaceRole] = &[
+pub(crate) const ZZ: &[SurfaceRole] = &[
     WINDOW,
     SIDEBAR,
     TITLEBAR,
@@ -577,15 +495,18 @@ pub const RETIRED: [&str; 7] = [
 ];
 
 pub fn all() -> impl Iterator<Item = SurfaceRole> {
-    SurfaceRole::KIT.into_iter().chain(ZZ.iter().copied())
+    crate::register();
+    penna::roles::all()
 }
 
 pub fn find(id: &str) -> Option<SurfaceRole> {
-    all().find(|role| role.id == id)
+    crate::register();
+    penna::roles::find(id)
 }
 
 pub fn members(group: SurfaceRole) -> impl Iterator<Item = SurfaceRole> {
-    all().filter(move |role| role.group() == Some(group))
+    crate::register();
+    penna::roles::members(group)
 }
 
 #[cfg(test)]
@@ -630,5 +551,13 @@ mod tests {
         for role in ZZ {
             assert!(!role.is_kind(), "{} is a kind", role.id);
         }
+    }
+
+    #[test]
+    fn zz_names_every_chrome_role_so_the_theme_editor_keeps_its_order() {
+        for role in penna::roles::CHROME {
+            assert!(ZZ.contains(&role), "{}", role.id);
+        }
+        assert_eq!(all().count(), SurfaceRole::KIT.len() + ZZ.len());
     }
 }

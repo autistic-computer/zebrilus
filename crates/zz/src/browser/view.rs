@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use zz_ui::shell::window_drag_handle;
 
 #[cfg(target_os = "macos")]
 use ala::PromptLevel;
@@ -78,10 +79,7 @@ use crate::{
         nav::{TreeTarget, kill_target_command},
         prefix::terminal_key_input,
     },
-    window::{
-        corners::{WindowCorners, round_div_radii},
-        drag::window_drag_handle,
-    },
+    window::corners::{WindowCorners, round_div_radii},
     workspace::ClosePane,
 };
 

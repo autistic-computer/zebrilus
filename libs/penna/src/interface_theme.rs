@@ -1,9 +1,9 @@
-use std::{collections::BTreeMap, sync::LazyLock};
+use std::{collections::BTreeMap, sync::OnceLock};
 
 use ala::{GlassMaterial, Hsla, SharedString, px};
 use serde::{Deserialize, Deserializer, Serialize};
 
-pub const BUILTIN_THEMES: [&str; 1] = ["default"];
+use crate::{PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Theme, ThemeColor, ThemeMode};
 
 pub const DEFAULT_THEME: &str = "default";
 
@@ -15,66 +15,35 @@ pub const ACCENTS: [&str; 8] = [
 
 pub const DEFAULT_TINT_HUE: f32 = 260.0;
 
-pub fn is_builtin_theme(id: &str) -> bool {
-    BUILTIN_THEMES.contains(&id.trim())
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum ThemeModeSetting {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
-impl ThemeModeSetting {
-    pub const ALL: [Self; 3] = [Self::System, Self::Light, Self::Dark];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::System => "system",
-            Self::Light => "light",
-            Self::Dark => "dark",
-        }
-    }
-
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::System => "System",
-            Self::Light => "Light",
-            Self::Dark => "Dark",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|mode| mode.as_str() == value.trim())
-    }
-
-    pub const fn pinned(self) -> Option<bool> {
-        match self {
-            Self::System => None,
-            Self::Light => Some(false),
-            Self::Dark => Some(true),
-        }
-    }
-}
-
-use crate::{PrimaryStyle, ShadowMaterial, StylePatch, Theme, ThemeColor, ThemeMode};
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Materials {
     pub radius: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub control_radius: Option<f32>,
+    pub smoothing: Smoothing,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub picked_smoothing: bool,
     pub outline: f32,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub picked_outlines: bool,
     pub row_inset: f32,
     pub primary: PrimaryStyle,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub flat_highlights: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub bright_surfaces: bool,
+    pub highlight_strength: f32,
     pub font: Option<SharedString>,
     #[serde(deserialize_with = "deserialize_glass")]
     pub glass: Option<GlassMaterial>,
+    #[serde(
+        deserialize_with = "deserialize_glass",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub light_glass: Option<GlassMaterial>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub picked_shadows: bool,
     #[serde(deserialize_with = "deserialize_contact")]
     pub contact: ShadowMaterial,
     #[serde(deserialize_with = "deserialize_float")]
@@ -85,12 +54,20 @@ impl Default for Materials {
     fn default() -> Self {
         Self {
             radius: 10.0,
+            control_radius: None,
+            smoothing: Smoothing::THEME,
+            picked_smoothing: false,
             outline: 0.5,
+            picked_outlines: false,
             row_inset: 4.0,
             primary: PrimaryStyle::Foreground,
             flat_highlights: false,
+            bright_surfaces: false,
+            highlight_strength: 1.0,
             font: None,
             glass: None,
+            light_glass: None,
+            picked_shadows: false,
             contact: ShadowMaterial::CONTACT,
             float: ShadowMaterial::FLOAT,
         }
@@ -100,14 +77,24 @@ impl Default for Materials {
 impl Materials {
     pub fn apply(&self, theme: &mut Theme) {
         theme.radius = px(self.radius);
+        theme.control_radius = self.control_radius.map(px);
+        theme.smoothing = self.smoothing;
+        theme.picked_smoothing = self.picked_smoothing;
         theme.outline = px(self.outline);
+        theme.picked_outlines = self.picked_outlines;
         theme.row_inset = px(self.row_inset);
         theme.primary = self.primary;
         theme.flat_highlights = self.flat_highlights;
+        theme.bright_surfaces = self.bright_surfaces;
+        theme.highlight_strength = self.highlight_strength.max(0.0);
         if let Some(font) = &self.font {
             theme.font_family = font.clone();
         }
-        theme.glass = self.glass;
+        theme.glass = match theme.mode {
+            ThemeMode::Light => self.light_glass.or(self.glass),
+            ThemeMode::Dark => self.glass,
+        };
+        theme.picked_shadows = self.picked_shadows;
         theme.contact_shadow = self.contact;
         theme.float_shadow = self.float;
     }
@@ -165,7 +152,9 @@ impl ThemeOverrides {
                 colors.on_accent = None;
             }
             if tint > 0.0 {
-                colors.background = Some(colors.resolve(mode).tinted(hue, tint).background);
+                let tinted = colors.resolve(mode).tinted(hue, tint);
+                colors.background = Some(tinted.background);
+                colors.foreground = Some(tinted.foreground);
             }
         }
     }
@@ -205,7 +194,8 @@ fn deserialize_roles<'de, D: Deserializer<'de>>(
     deserializer: D,
 ) -> Result<BTreeMap<String, StylePatch>, D::Error> {
     use serde::de::Error as _;
-    let roles = BTreeMap::<String, StylePatch>::deserialize(deserializer)?;
+    let mut roles = BTreeMap::<String, StylePatch>::deserialize(deserializer)?;
+    roles.retain(|id, _| !crate::roles::is_retired(id));
     for (id, patch) in &roles {
         let Some(role) = crate::roles::find(id) else {
             return Err(D::Error::custom(unknown_role(id)));
@@ -360,12 +350,33 @@ impl InterfaceTheme {
 }
 
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
-    let value =
+    let mut value =
         serde_json::from_str::<serde_json::Value>(source).map_err(|error| error.to_string())?;
     if !value.is_object() {
         return Err("a theme is a JSON object".to_owned());
     }
+    light_glass_over_glass(&mut value);
     serde_json::from_value(value).map_err(|error| with_spelling_hint(error.to_string()))
+}
+
+fn light_glass_over_glass(theme: &mut serde_json::Value) {
+    use serde_json::Value;
+    let Some(materials) = theme.get_mut("materials").and_then(Value::as_object_mut) else {
+        return;
+    };
+    let mut glass = match materials.get("glass") {
+        Some(Value::String(name)) => {
+            serde_json::Map::from_iter([("preset".to_owned(), Value::String(name.clone()))])
+        }
+        Some(Value::Object(glass)) => glass.clone(),
+        _ => return,
+    };
+    if let Some(Value::Object(light)) = materials.get_mut("light-glass")
+        && !light.contains_key("preset")
+    {
+        glass.extend(std::mem::take(light));
+        *light = glass;
+    }
 }
 
 fn with_spelling_hint(message: String) -> String {
@@ -387,22 +398,39 @@ fn with_spelling_hint(message: String) -> String {
         )
 }
 
-const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] =
-    [("default", include_str!("../themes/default.json"))];
+const DEFAULT_SOURCE: (&str, &str) = ("default", include_str!("../themes/default.json"));
 
-static BUILTINS: LazyLock<Vec<(&'static str, InterfaceTheme)>> = LazyLock::new(|| {
-    BUILTIN_SOURCES
-        .iter()
+static SOURCES: OnceLock<&'static [(&'static str, &'static str)]> = OnceLock::new();
+static BUILTINS: OnceLock<Vec<(&'static str, InterfaceTheme)>> = OnceLock::new();
+
+pub fn register(themes: &'static [(&'static str, &'static str)]) {
+    let fresh = SOURCES.set(themes).is_ok();
+    assert!(
+        !fresh || BUILTINS.get().is_none(),
+        "built-in themes were read before the app registered its own"
+    );
+}
+
+fn builtins_from(themes: &[(&'static str, &'static str)]) -> Vec<(&'static str, InterfaceTheme)> {
+    let mut sources = vec![DEFAULT_SOURCE];
+    for &(id, source) in themes {
+        match sources.iter_mut().find(|(known, _)| *known == id) {
+            Some(slot) => *slot = (id, source),
+            None => sources.push((id, source)),
+        }
+    }
+    sources
+        .into_iter()
         .map(|(id, source)| {
             let theme = parse_theme(source)
                 .unwrap_or_else(|error| panic!("built-in theme {id} does not parse: {error}"));
-            (*id, theme)
+            (id, theme)
         })
         .collect()
-});
+}
 
 pub fn builtin_themes() -> &'static [(&'static str, InterfaceTheme)] {
-    &BUILTINS
+    BUILTINS.get_or_init(|| builtins_from(SOURCES.get().copied().unwrap_or_default()))
 }
 
 pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
@@ -412,16 +440,12 @@ pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
         .map(|(_, theme)| theme)
 }
 
-pub fn default_theme() -> &'static InterfaceTheme {
-    builtin_theme(DEFAULT_THEME).expect("the default theme is built in")
+pub fn is_builtin_theme(id: &str) -> bool {
+    builtin_theme(id).is_some()
 }
 
-pub const fn pinned_theme_mode(setting: ThemeModeSetting) -> Option<ThemeMode> {
-    match setting.pinned() {
-        Some(true) => Some(ThemeMode::Dark),
-        Some(false) => Some(ThemeMode::Light),
-        None => None,
-    }
+pub fn default_theme() -> &'static InterfaceTheme {
+    builtin_theme(DEFAULT_THEME).expect("the default theme is built in")
 }
 
 #[cfg(test)]
@@ -453,7 +477,7 @@ mod tests {
             .iter()
             .map(|(id, _)| *id)
             .collect::<Vec<_>>();
-        assert_eq!(ids, BUILTIN_THEMES);
+        assert_eq!(ids, [DEFAULT_THEME]);
         for (id, theme) in builtin_themes() {
             assert!(!theme.name.is_empty(), "{id} has no name");
             sets_every_root(id, &theme.light, &theme.dark);
@@ -558,6 +582,21 @@ mod tests {
     }
 
     #[test]
+    fn a_control_radius_reaches_the_kit_and_built_ins_follow_the_radius() {
+        let theme = parse_theme(r#"{"materials":{"radius":8,"control-radius":4}}"#).unwrap();
+        assert_eq!(theme.materials.control_radius, Some(4.0));
+        let mut kit = Theme::from(&*ThemeColor::for_mode(ThemeMode::Dark));
+        theme.apply(&mut kit);
+        assert_eq!(kit.control_radius, Some(px(4.0)));
+        assert!(theme.to_json().contains("\"control-radius\": 4.0"));
+
+        for (id, builtin) in builtin_themes() {
+            assert_eq!(builtin.materials.control_radius, None, "{id}");
+            assert!(!builtin.to_json().contains("control-radius"), "{id}");
+        }
+    }
+
+    #[test]
     fn roles_change_only_what_they_name() {
         use crate::{Fill, Kind, Shape};
         let theme = parse_theme(
@@ -574,6 +613,40 @@ mod tests {
         );
         assert!(!kit.style(Kind::Button.role()).outline);
         assert!(kit.style(crate::SurfaceRole::BADGE).outline);
+    }
+
+    #[test]
+    fn picked_outlines_go_only_where_the_theme_turns_them_on() {
+        use crate::Kind;
+        let theme = parse_theme(
+            r#"{"materials":{"outline":1,"picked-outlines":true},"roles":{"popover":{"outline":true}}}"#,
+        )
+        .unwrap();
+        let mut kit = Theme::default();
+        theme.apply(&mut kit);
+        assert!(kit.style(crate::SurfaceRole::POPOVER).outline);
+        assert!(!kit.style(Kind::Button.role()).outline);
+        assert!(!kit.style(crate::SurfaceRole::BADGE).outline);
+        assert!(kit.style(crate::roles::BAR_RULE).outline);
+        assert!(theme.to_json().contains("\"picked-outlines\": true"));
+        assert!(!default_theme().to_json().contains("picked-outlines"));
+    }
+
+    #[test]
+    fn picked_shadows_go_only_where_the_theme_casts_them() {
+        use crate::{Kind, Shadow};
+        let theme = parse_theme(
+            r#"{"materials":{"picked-shadows":true},"roles":{"popover":{"shadow":"float"}}}"#,
+        )
+        .unwrap();
+        let mut kit = Theme::default();
+        theme.apply(&mut kit);
+        assert_eq!(kit.style(crate::SurfaceRole::POPOVER).shadow, Shadow::Float);
+        assert_eq!(kit.style(Kind::Button.role()).shadow, Shadow::None);
+        assert_eq!(kit.style(crate::SurfaceRole::DIALOG).shadow, Shadow::None);
+        assert_eq!(kit.style(crate::roles::WINDOW).shadow, Shadow::Float);
+        assert!(theme.to_json().contains("\"picked-shadows\": true"));
+        assert!(!default_theme().to_json().contains("picked-shadows"));
     }
 
     #[test]
@@ -622,6 +695,39 @@ mod tests {
     }
 
     #[test]
+    fn light_mode_draws_the_light_glass_laid_over_the_glass() {
+        let theme = parse_theme(
+            r#"{"materials":{"glass":{"preset":"clear","blur":3},"light-glass":{"edge_shadow":0.7}}}"#,
+        )
+        .unwrap();
+        let glass = theme.materials.glass.unwrap();
+        let mut kit = Theme {
+            mode: ThemeMode::Light,
+            ..Theme::default()
+        };
+        theme.apply(&mut kit);
+        assert_eq!(
+            kit.glass,
+            Some(GlassMaterial {
+                edge_shadow: 0.7,
+                ..glass
+            })
+        );
+        kit.mode = ThemeMode::Dark;
+        theme.apply(&mut kit);
+        assert_eq!(kit.glass, Some(glass));
+        assert_eq!(parse_theme(&theme.to_json()).unwrap(), theme);
+
+        let preset =
+            parse_theme(r#"{"materials":{"glass":"clear","light-glass":"frosted"}}"#).unwrap();
+        assert_eq!(
+            preset.materials.light_glass,
+            GlassMaterial::preset("frosted")
+        );
+        assert!(!default_theme().to_json().contains("light-glass"));
+    }
+
+    #[test]
     fn overrides_compose_a_radius_accent_and_tint_over_the_theme() {
         let mut theme = default_theme().clone();
         theme.materials.font = Some("Inter".into());
@@ -643,12 +749,12 @@ mod tests {
         assert_eq!(theme.materials.font.as_deref(), Some("Inter"));
         assert_eq!(theme.materials.outline, default_theme().materials.outline);
         assert_eq!(theme.materials.radius, 14.0);
-        assert_eq!(theme.dark.foreground, colors.foreground);
         assert_eq!(theme.light.accent, accent_color("green", ThemeMode::Light));
         assert_eq!(theme.dark.accent, accent_color("green", ThemeMode::Dark));
         assert_eq!(theme.dark.on_accent, None);
         let tinted = colors.resolve(ThemeMode::Dark).tinted(145.0, 1.0);
         assert_eq!(theme.dark.background, Some(tinted.background));
+        assert_eq!(theme.dark.foreground, Some(tinted.foreground));
 
         let mut plain = default_theme().clone();
         ThemeOverrides::default().apply_to(&mut plain);
@@ -658,6 +764,20 @@ mod tests {
             crate::parse_hex("#ff8800").ok()
         );
         assert_eq!(accent_color("chartreuse", ThemeMode::Dark), None);
+    }
+
+    #[test]
+    fn app_themes_join_the_builtins_and_can_replace_the_default() {
+        let plain = r#"{"name":"Plain","materials":{"radius":3}}"#;
+        let ids = |themes: &[(&'static str, InterfaceTheme)]| {
+            themes.iter().map(|(id, _)| *id).collect::<Vec<_>>()
+        };
+        let added = builtins_from(&[("plain", plain)]);
+        assert_eq!(ids(&added), ["default", "plain"]);
+        assert_eq!(added[0].1, builtins_from(&[])[0].1);
+        let replaced = builtins_from(&[("plain", plain), ("default", plain)]);
+        assert_eq!(ids(&replaced), ["default", "plain"]);
+        assert_eq!(replaced[0].1.materials.radius, 3.0);
     }
 
     #[test]

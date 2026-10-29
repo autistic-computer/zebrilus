@@ -23,6 +23,7 @@ use std::{
     rc::Rc,
     sync::Arc,
 };
+use zz_ui::sidebar::{sidebar_footer, sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
 
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corners, DragMoveEvent, Entity,
@@ -50,9 +51,7 @@ use zz_ui::{
     },
     navigation::{
         workspace_layout_button, workspace_settings_button, workspace_sidebar_fade,
-        workspace_sidebar_footer, workspace_sidebar_ground, workspace_sidebar_panel,
-        workspace_sidebar_resize_handle, workspace_sidebar_slideover, workspace_sidebar_titlebar,
-        workspace_sidebar_view_button,
+        workspace_sidebar_ground, workspace_sidebar_slideover, workspace_sidebar_view_button,
     },
     pane::{
         DropPreview, DropPreviewFrame, PaneArrivals, PaneChrome, PaneDrag, PaneDragOverlayState,
@@ -1008,7 +1007,7 @@ impl AppShell {
     pub(super) fn sidebar_width(&self, window: &Window) -> f32 {
         let width = f32::from(window.fully_visible_bounds().size.width);
         if Self::narrow(window) {
-            zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH.min(width - 40.0)
+            zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH.min(width - 40.0)
         } else {
             self.preferences.sidebar_width(width)
         }
@@ -1027,12 +1026,18 @@ impl AppShell {
                 }
                 previous_group = Some(group);
                 rows.push(
-                    settings_navigation_button(section, section == selected, cx)
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            this.settings = Some(section);
-                            cx.notify();
-                        }))
-                        .into_any_element(),
+                    settings_navigation_button(
+                        section.title(),
+                        section.title(),
+                        section.icon(),
+                        section == selected,
+                        cx,
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.settings = Some(section);
+                        cx.notify();
+                    }))
+                    .into_any_element(),
                 );
             }
             div()
@@ -1041,7 +1046,7 @@ impl AppShell {
                 .flex_col()
                 .w_full()
                 .list_inset(cx)
-                .child(zz_ui::settings::settings_navigation_back_row(
+                .child(zz_ui::settings::settings_navigation_row(
                     zz_ui::settings::settings_navigation_back_button("web-settings-back").on_click(
                         cx.listener(|this, _, _, cx| {
                             this.settings = None;
@@ -1075,7 +1080,7 @@ impl AppShell {
             )
         };
         let footer = self.settings.is_none().then(|| {
-            workspace_sidebar_footer(
+            sidebar_footer(
                 "web-sidebar-footer",
                 workspace_settings_button("web-settings")
                     .on(ground)
@@ -1101,10 +1106,10 @@ impl AppShell {
             )
         });
         let divider = !(self.preferences.gaps && self.inline_sidebar(window));
-        workspace_sidebar_panel(
+        sidebar_panel(
             "web-sidebar-surface",
             self.sidebar_width(window),
-            workspace_sidebar_titlebar("web-sidebar-titlebar", self.controls(ground, cx), cx),
+            sidebar_titlebar("web-sidebar-titlebar", self.controls(ground, cx), cx),
             navigation,
             ground,
             divider,
@@ -1113,7 +1118,7 @@ impl AppShell {
         .children(footer)
         .track_focus(&self.sidebar_focus)
         .child(
-            workspace_sidebar_resize_handle("web-sidebar-resize-handle", divider, cx)
+            sidebar_resize_handle("web-sidebar-resize-handle", divider, cx)
                 .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
                     cx.new(|_| SidebarResizePreview)
                 })

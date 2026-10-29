@@ -17,13 +17,14 @@ use zz_client::{
     window_summary::{DaemonClock, PaneTag, age_label, summarize_chats},
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
+use zz_ui::sidebar::SIDEBAR_CONTENT_INSET;
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     command::PaletteHostId,
     menu::PopupMenuItem,
     motion::Instant,
     navigation::{
-        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
+        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
         flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatState, HostConnection, flat_sidebar,
@@ -274,7 +275,7 @@ pub(super) fn session_tree(
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),
-        px(WORKSPACE_TREE_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
+        px(SIDEBAR_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
         px(4.0),
         IndentGuideColors::tree(cx),
     );
@@ -298,7 +299,7 @@ pub(super) fn session_tree(
         },
     )
     .size_full()
-    .pr(zz_ui::navigation::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(zz_ui::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides);

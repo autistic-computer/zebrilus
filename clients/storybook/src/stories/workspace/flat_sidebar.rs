@@ -1,3 +1,4 @@
+use zz_ui::sidebar::{SIDEBAR_DEFAULT_WIDTH};
 use std::rc::Rc;
 
 use zz_client::{
@@ -21,14 +22,11 @@ use zz_ui::{
     ActiveTheme as _, Colorize as _,
     command::PaletteHostId,
     menu::PopupMenuItem,
-    navigation::{
-        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
-        flat::{
+    navigation::{WORKSPACE_SIDEBAR_FADE_HEIGHT, flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatRowState, FlatState, FlatTarget,
             FlatWindow, HostConnection, flat_row_ground, flat_sidebar, flat_tile_stack,
             flat_window_row,
-        },
-    },
+        }},
     scroll::ScrollableElement as _,
 };
 
@@ -828,7 +826,7 @@ fn numbered(hosts: &[FlatHost]) -> Vec<FlatHost> {
 fn row_frame(index: usize, content: impl IntoElement) -> AnyElement {
     div()
         .id(("flat-row-case", index))
-        .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
+        .w(px(SIDEBAR_DEFAULT_WIDTH))
         .child(content)
         .into_any_element()
 }
@@ -1105,7 +1103,7 @@ fn programs(_: &mut Window, cx: &mut App) -> AnyElement {
 fn host_frame(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
     div()
         .id(id)
-        .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
+        .w(px(SIDEBAR_DEFAULT_WIDTH))
         .py(px(8.0))
         .rounded(px(12.0))
         .framed(cx)

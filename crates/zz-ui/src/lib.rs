@@ -2,8 +2,8 @@ pub mod tmux_style;
 
 pub use penna::{
     badge, button, check, color_picker, dialog, highlighter, icon, input, kbd, list, menu,
-    notification, overlay, popover, pulse, scroll, segmented, select, separator, slider, spinner,
-    switch, text, theme, title_bar, tooltip, touch,
+    notification, overlay, popover, pulse, scroll, segmented, select, separator, sidebar, slider,
+    spinner, switch, text, theme, title_bar, tooltip, touch,
 };
 
 #[cfg(feature = "editor")]
@@ -18,9 +18,9 @@ pub use penna::{
     Selectable, Shadow, ShadowMaterial, Shape, Side, Sizable, Size, Smoothing, StatefulSurfaceExt,
     Style, StylePatch, StyledExt, Surface, SurfaceRole, TITLE_BAR_HEIGHT, Theme, ThemeColor,
     ThemeMode, TitleBar, Tone, UiZoom, WindowControls, WindowExt, cubic_ease, drawn_roles,
-    draws_window_controls, h_flex, init, lifted_shadow, macos_traffic_light_clearance,
-    note_drawn_roles, oklab_lightness, oklch, parse_hex, rems_from_px, row_corners, row_radius,
-    row_surface, to_hex, to_oklch, v_flex, window_border, window_controls_width, window_paddings,
+    draws_window_controls, h_flex, lifted_shadow, macos_traffic_light_clearance, note_drawn_roles,
+    oklab_lightness, oklch, parse_hex, rems_from_px, row_corners, row_radius, row_surface, to_hex,
+    to_oklch, v_flex, window_border, window_controls_width, window_paddings,
 };
 
 #[cfg(feature = "agent")]
@@ -50,5 +50,16 @@ pub mod theme_css;
 pub mod which_key;
 
 pub use program::Assets;
+
+pub fn register() {
+    penna::roles::register(roles::ZZ);
+    penna::roles::retire(&roles::RETIRED);
+    penna::interface_theme::register(&interface_theme::BUILTIN_SOURCES);
+}
+
+pub fn init(cx: &mut ala::App) {
+    register();
+    penna::init(cx);
+}
 
 pub const LABEL_FADE: ala::Pixels = ala::px(28.0);

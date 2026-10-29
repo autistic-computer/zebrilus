@@ -5,41 +5,37 @@ pub mod status;
 pub mod tree;
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Emphasis, Ground, Icon, IconName,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, Icon, IconName,
     InteractiveSurfaceExt as _, Layer, PaintState, Shape, Sizable as _, StyledExt as _, Surface,
     SurfaceRole, Tone,
     button::{Button, ButtonVariants as _, COMPACT_ICON_BUTTON_SIZE},
     kbd::Kbd,
     rems_from_px, roles,
+    sidebar::{
+        CHROME_BUTTON_SIZE, SIDEBAR_CONTENT_INSET, SIDEBAR_ROW_ACTION_CENTER, chrome_button,
+        sidebar_panel, status_dot,
+    },
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
 };
 use ala::{
-    AnyElement, App, CursorStyle, ElementId, Hsla, IntoElement, Keystroke, MouseButton,
-    MouseDownEvent, ParentElement as _, Pixels, SharedString, Stateful,
-    StatefulInteractiveElement as _, Styled as _, Window, div, prelude::*, px,
+    AnyElement, App, ElementId, Hsla, IntoElement, Keystroke, MouseButton, MouseDownEvent,
+    ParentElement as _, Pixels, SharedString, Stateful, StatefulInteractiveElement as _,
+    Styled as _, Window, div, prelude::*, px,
 };
 
 pub const WORKSPACE_TREE_ROW_HEIGHT: f32 = 32.0;
 pub const WORKSPACE_TREE_INDENT_WIDTH: f32 = 20.0;
-pub const WORKSPACE_TREE_CONTENT_INSET: f32 = 8.0;
 pub const WORKSPACE_TREE_MARKER_SLOT_WIDTH: f32 = 18.0;
 pub const WORKSPACE_TREE_NODE_ICON_SIZE: f32 = 14.0;
 pub const WORKSPACE_TREE_MARKER_LABEL_GAP: f32 = 6.0;
 const TREE_TOUCH_SLOP: f32 = (TOUCH_TARGET - COMPACT_ICON_BUTTON_SIZE) / 2.0;
 const WORKSPACE_TREE_FILL_VERTICAL_INSET: f32 = 1.0;
-pub const WORKSPACE_SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 const WORKSPACE_CHROME_CONTROL_GAP: f32 = 4.0;
 const WORKSPACE_ROW_ACTION_GAP: f32 = 10.0;
-pub const WORKSPACE_ROW_ACTION_CENTER: Pixels = px(19.0);
-pub const WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER: Pixels = px(8.0);
-const WORKSPACE_SIDEBAR_FOOTER_TOP: f32 = 4.0;
-const WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
 pub const WORKSPACE_SIDEBAR_FADE_HEIGHT: Pixels = px(40.0);
 pub const WORKSPACE_STATUS_PILL_HEIGHT: Pixels = px(32.0);
-pub const WORKSPACE_CHROME_BUTTON_SIZE: Pixels = WORKSPACE_STATUS_PILL_HEIGHT;
 const WORKSPACE_STATUS_WINDOW_TEXT_SIZE: f32 = 14.0;
-const WORKSPACE_CHROME_ICON_SIZE: Pixels = px(17.0);
 const WORKSPACE_STATUS_LINE_HEIGHT: Pixels = px(18.0);
 const WORKSPACE_STATUS_ITEM_MAX_WIDTH: Pixels = px(180.0);
 const WORKSPACE_STATUS_WINDOW_DEFAULT_WIDTH: Pixels = px(240.0);
@@ -47,16 +43,6 @@ const WORKSPACE_STATUS_WINDOW_MIN_WIDTH: Pixels = px(36.0);
 const WORKSPACE_STATUS_ICON_SIZE: Pixels = px(14.0);
 const WORKSPACE_STATUS_TEXT_SIZE: f32 = 13.0;
 const WORKSPACE_STATUS_CHIP_PADDING: Pixels = px(6.0);
-pub(crate) const STATUS_DOT_SIZE: f32 = 6.0;
-
-#[must_use]
-pub fn status_dot(color: Hsla) -> ala::Div {
-    div()
-        .flex_none()
-        .size(rems_from_px(STATUS_DOT_SIZE))
-        .rounded_full()
-        .bg(color)
-}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceStatusWindowState {
@@ -78,40 +64,31 @@ impl WorkspaceStatusWindowState {
 }
 
 #[must_use]
-pub fn workspace_controls_leading_inset(cx: &App) -> Pixels {
-    if cfg!(target_os = "macos") {
-        crate::macos_traffic_light_clearance(cx)
-    } else {
-        px(WORKSPACE_TREE_CONTENT_INSET)
-    }
-}
-
-#[must_use]
 pub fn workspace_layout_button(id: impl Into<ElementId>) -> Button {
-    workspace_chrome_button(id, IconName::PanelLeft, "Toggle sidebar")
+    chrome_button(id, IconName::PanelLeft, "Toggle sidebar")
 }
 
 #[must_use]
 pub fn workspace_palette_button(id: impl Into<ElementId>) -> Button {
-    workspace_chrome_button(id, IconName::Search, "Command palette")
+    chrome_button(id, IconName::Search, "Command palette")
 }
 
 #[must_use]
 pub fn workspace_settings_button(id: impl Into<ElementId>) -> Button {
-    workspace_chrome_button(id, IconName::Settings, "Settings")
+    chrome_button(id, IconName::Settings, "Settings")
 }
 
 #[must_use]
 pub fn workspace_add_host_button(id: impl Into<ElementId>) -> Button {
-    workspace_chrome_button(id, IconName::ServerPlus, "Add host")
+    chrome_button(id, IconName::ServerPlus, "Add host")
 }
 
 #[must_use]
 pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Button {
     if flat {
-        workspace_chrome_button(id, IconName::List, "Show the session tree")
+        chrome_button(id, IconName::List, "Show the session tree")
     } else {
-        workspace_chrome_button(id, IconName::ListTree, "Show chats")
+        chrome_button(id, IconName::ListTree, "Show chats")
     }
 }
 
@@ -128,22 +105,10 @@ pub fn workspace_sidebar_footer_controls(
         .child(view)
 }
 
-fn workspace_chrome_button(
-    id: impl Into<ElementId>,
-    icon: IconName,
-    tooltip: &'static str,
-) -> Button {
-    Button::compact_icon(id, icon)
-        .surface_role(roles::CHROME_BUTTON)
-        .with_size(WORKSPACE_CHROME_ICON_SIZE / 0.75)
-        .size(WORKSPACE_CHROME_BUTTON_SIZE)
-        .tooltip(tooltip)
-}
-
 #[must_use]
 pub fn workspace_chrome_controls_width_for(count: usize, window: &Window) -> Pixels {
     let count = f32::from(u16::try_from(count).unwrap_or(u16::MAX));
-    WORKSPACE_CHROME_BUTTON_SIZE * count
+    CHROME_BUTTON_SIZE * count
         + rems_from_px(WORKSPACE_CHROME_CONTROL_GAP).to_pixels(window.rem_size())
             * (count - 1.0).max(0.0)
 }
@@ -254,63 +219,12 @@ pub fn workspace_status_window(
         )
 }
 
-#[must_use]
-pub fn workspace_sidebar_titlebar(
-    id: impl Into<ElementId>,
-    controls: impl IntoElement,
-    cx: &App,
-) -> Stateful<ala::Div> {
-    div()
-        .id(id)
-        .flex()
-        .flex_none()
-        .w_full()
-        .h(cx.theme().title_bar_height())
-        .items_center()
-        .justify_end()
-        .pl(workspace_controls_leading_inset(cx))
-        .pr(workspace_sidebar_trailing_inset(cx))
-        .child(controls)
-}
-
-fn workspace_chrome_inset(cx: &App) -> Pixels {
-    (cx.theme().pane_header_height() - WORKSPACE_CHROME_BUTTON_SIZE) / 2.0
-}
-
-fn workspace_sidebar_trailing_inset(cx: &App) -> Pixels {
-    WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER + cx.theme().row_inset + WORKSPACE_ROW_ACTION_CENTER
-        - WORKSPACE_CHROME_BUTTON_SIZE / 2.0
-}
-
 fn workspace_tree_trailing_inset(cx: &App) -> Pixels {
-    cx.theme().row_inset + WORKSPACE_ROW_ACTION_CENTER - px(COMPACT_ICON_BUTTON_SIZE / 2.0)
+    cx.theme().row_inset + SIDEBAR_ROW_ACTION_CENTER - px(COMPACT_ICON_BUTTON_SIZE / 2.0)
 }
 
 fn workspace_row_action_gap() -> Pixels {
     px(WORKSPACE_ROW_ACTION_GAP)
-}
-
-pub fn workspace_sidebar_footer(
-    id: impl Into<ElementId>,
-    leading: impl IntoElement,
-    trailing: Option<ala::AnyElement>,
-    cx: &App,
-) -> Stateful<ala::Div> {
-    let inset = workspace_chrome_inset(cx);
-    let window_inset = cx.theme().pane_margin + inset;
-    div()
-        .id(id)
-        .flex()
-        .flex_none()
-        .w_full()
-        .items_center()
-        .justify_between()
-        .pt(px(WORKSPACE_SIDEBAR_FOOTER_TOP))
-        .pl(window_inset)
-        .pr(workspace_sidebar_trailing_inset(cx))
-        .pb(window_inset)
-        .child(leading)
-        .children(trailing)
 }
 
 #[must_use]
@@ -321,7 +235,7 @@ pub fn workspace_sidebar_surface(
     navigation: impl IntoElement,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    workspace_sidebar_panel(
+    sidebar_panel(
         id,
         width,
         titlebar,
@@ -330,63 +244,6 @@ pub fn workspace_sidebar_surface(
         true,
         cx,
     )
-}
-
-#[must_use]
-pub fn workspace_sidebar_panel(
-    id: impl Into<ElementId>,
-    width: f32,
-    titlebar: impl IntoElement,
-    navigation: impl IntoElement,
-    ground: Ground,
-    divider: bool,
-    cx: &App,
-) -> Stateful<ala::Div> {
-    div()
-        .id(id)
-        .flex()
-        .flex_col()
-        .w(px(width))
-        .h_full()
-        .min_h_0()
-        .flex_none()
-        .overflow_hidden()
-        .relative()
-        .surface(Surface::new(roles::SIDEBAR).on(ground), cx)
-        .when(divider, |this| {
-            this.rule_on(roles::SIDEBAR_RULE, Edge::Right, cx)
-        })
-        .child(titlebar)
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .flex_1()
-                .min_h_0()
-                .overflow_hidden()
-                .pb(px(8.0))
-                .child(navigation),
-        )
-}
-
-#[must_use]
-pub fn workspace_sidebar_resize_handle(
-    id: impl Into<ElementId>,
-    divider: bool,
-    cx: &App,
-) -> Stateful<ala::Div> {
-    div()
-        .id(id)
-        .absolute()
-        .top(px(0.0))
-        .right(px(0.0))
-        .bottom(px(0.0))
-        .w(px(WORKSPACE_SIDEBAR_RESIZE_HANDLE_WIDTH))
-        .cursor(CursorStyle::ResizeLeftRight)
-        .occlude()
-        .when(!divider, |this| {
-            this.hover(|this| this.rule_on(roles::SIDEBAR_RULE, Edge::Right, cx))
-        })
 }
 
 #[must_use]
@@ -625,9 +482,9 @@ fn workspace_tree_row_frame(id: impl Into<ElementId>, depth: u8, cx: &App) -> St
         .flex()
         .items_center()
         .pl(px(
-            WORKSPACE_TREE_CONTENT_INSET + f32::from(depth) * WORKSPACE_TREE_INDENT_WIDTH
+            SIDEBAR_CONTENT_INSET + f32::from(depth) * WORKSPACE_TREE_INDENT_WIDTH
         ))
-        .pr(px(WORKSPACE_TREE_CONTENT_INSET))
+        .pr(px(SIDEBAR_CONTENT_INSET))
         .text_sm()
 }
 

@@ -38,7 +38,7 @@ pub fn page_dots_in(groups: &[Vec<PageDot>], ink: Hsla, cx: &App) -> Div {
                     } else {
                         ink.faint()
                     };
-                    crate::navigation::status_dot(color)
+                    crate::sidebar::status_dot(color)
                         .debug_selector(move || selector)
                         .when(dot.active, |dot| dot.w(rems_from_px(ACTIVE_DOT)))
                 }))

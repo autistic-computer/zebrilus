@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use zz_ui::shell::window_drag_handle;
 
 use ala::{
     AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent,
@@ -22,7 +23,7 @@ use crate::{
     mux::client::MuxClient,
     request_window_close,
     status_bar::render_gui_status_bar,
-    window::{corners::WindowCorners, drag::window_drag_handle},
+    window::corners::WindowCorners,
     workspace::{
         AppView, ClosePane,
         sidebar::{
@@ -244,7 +245,7 @@ impl AppShell {
     fn render_control_strip(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement> {
         draws_window_controls(window).then(|| {
             let title_corners = WindowCorners::for_window(window).top();
-            let strip = app_titlebar_strip("app-titlebar", self.window_controls(), cx)
+            let strip = app_titlebar_strip("app-titlebar", div(), self.window_controls(), cx)
                 .surface(Surface::new(roles::TITLEBAR), cx)
                 .when(title_corners.top_right(), |strip| {
                     strip.rounded_tr(frame_content_corner_radius(cx))
