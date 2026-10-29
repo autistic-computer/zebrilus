@@ -16,8 +16,11 @@ use agent_client_protocol::schema::v1::{MessageId, ToolKind};
 use async_channel::Sender;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
+
+use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers};
 use serde_json::{Map, Value, json};
 use zz_protocol::agent_stream::agent_verb;
+use zz_protocol::chat::ChatEvent;
 use zz_protocol::{
     AgentAutoApprove, AgentProvider, AgentQuestionAnswer, AgentTaskWire, MAX_AGENT_TASKS,
 };
@@ -131,6 +134,7 @@ pub(crate) async fn run_codex_runtime(
         next_request: 0,
         permissions: HashMap::new(),
         turns: TurnState::default(),
+        chat: Mutex::new(Shadow::default().codex()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         settings: Settings::default(),
@@ -403,6 +407,7 @@ struct Runtime {
     next_request: u64,
     permissions: HashMap<u64, Pending>,
     turns: TurnState,
+    chat: Mutex<Shadow>,
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
     settings: Settings,
@@ -430,14 +435,39 @@ struct Side {
 
 impl Runtime {
     async fn emit(&self, payload: AgentStreamPayload) -> Result<(), String> {
+        let chat = {
+            let mut shadow = self.chat.lock();
+            shadow.payload(&payload);
+            shadow.drain()
+        };
         if let Err(error) = validate_payload(&payload) {
             log::warn!(target: "zz::agent", "dropping an oversized Codex item: {error}");
-            return Ok(());
+            return self.send_chat(chat).await;
         }
         self.events
             .send(payload)
             .await
-            .map_err(|error| format!("agent stream is unavailable: {error}"))
+            .map_err(|error| format!("agent stream is unavailable: {error}"))?;
+        self.send_chat(chat).await
+    }
+
+    async fn send_chat(&self, events: Vec<ChatEvent>) -> Result<(), String> {
+        for event in events {
+            let payload = AgentStreamPayload::Chat { event };
+            if validate_payload(&payload).is_err() {
+                continue;
+            }
+            self.events
+                .send(payload)
+                .await
+                .map_err(|error| format!("agent stream is unavailable: {error}"))?;
+        }
+        Ok(())
+    }
+
+    async fn flush_chat(&self) -> Result<(), String> {
+        let events = self.chat.lock().drain();
+        self.send_chat(events).await
     }
 
     async fn update(&self, update: Value, record: bool) -> Result<(), String> {
@@ -511,13 +541,14 @@ impl Runtime {
 
     async fn apply(&mut self, fact: &Fact) -> Result<Option<Reject>, String> {
         let idle = self.turns.turn().is_none();
-        let step = TurnMachine::step(
-            &mut self.turns,
+        let now = Instant::now();
+        let step = TurnMachine::step(&mut self.turns, fact, &turn::Ctx { now });
+        self.chat.lock().turn(
             fact,
-            &turn::Ctx {
-                now: Instant::now(),
-            },
+            self.session.as_ref().map(|session| session.id.as_str()),
+            now,
         );
+        self.flush_chat().await?;
         if let Some(reject) = &step.rejected {
             log::debug!(target: "zz::agent", "Codex turn kept {fact:?} out: {reject:?}");
         }
@@ -1087,12 +1118,13 @@ impl Runtime {
         let mut translator = Translator::new(self.cwd());
         let mut updates = Vec::new();
         for item in thread_items(thread) {
-            updates.extend(translator.history_item(&item));
+            updates.extend(translator.history_start(&item));
             for child in spawned(&item) {
                 for step in children.get(&child).into_iter().flatten() {
                     updates.extend(translator.child_history(&child, step));
                 }
             }
+            updates.extend(translator.history_end(&item));
         }
         if updates.is_empty()
             && let Some(journal) = self.journal.as_deref()
@@ -1687,7 +1719,29 @@ impl Runtime {
         }
     }
 
+    async fn resolved(&mut self, params: &Value) -> Result<(), String> {
+        let request = params["requestId"].clone();
+        let resolved = self
+            .permissions
+            .iter()
+            .filter(|(_, pending)| pending.rpc_id == request)
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
+        for request_id in resolved {
+            self.permissions.remove(&request_id);
+            self.emit(AgentStreamPayload::PermissionResolved {
+                request_id,
+                canceled: false,
+            })
+            .await?;
+        }
+        Ok(())
+    }
+
     async fn notification(&mut self, method: &str, params: &Value) -> Result<(), String> {
+        if method == "serverRequest/resolved" {
+            return self.resolved(params).await;
+        }
         if let Some(thread) = params["threadId"].as_str()
             && self.sides.contains_key(thread)
         {
@@ -1765,23 +1819,6 @@ impl Runtime {
                         .cloned()
                         .collect();
                     self.set_tasks(tasks).await?;
-                }
-            }
-            "serverRequest/resolved" => {
-                let request = params["requestId"].clone();
-                let resolved = self
-                    .permissions
-                    .iter()
-                    .filter(|(_, pending)| pending.rpc_id == request)
-                    .map(|(id, _)| *id)
-                    .collect::<Vec<_>>();
-                for request_id in resolved {
-                    self.permissions.remove(&request_id);
-                    self.emit(AgentStreamPayload::PermissionResolved {
-                        request_id,
-                        canceled: false,
-                    })
-                    .await?;
                 }
             }
             "error" => {
@@ -2062,32 +2099,22 @@ impl Runtime {
         let Some(pending) = self.permissions.remove(&request_id) else {
             return Ok(());
         };
+        let chosen = match &pending.reply {
+            Reply::Questions(questions) => chosen(questions, option_id),
+            _ => None,
+        };
+        let answer = match &chosen {
+            Some(answer) => chat_answers(std::slice::from_ref(answer)),
+            None => chat_answer(option_id),
+        };
+        self.chat.lock().answered(request_id, answer);
         self.emit(AgentStreamPayload::PermissionResolved {
             request_id,
             canceled: option_id.is_none(),
         })
         .await?;
         let result = match (&pending.reply, option_id) {
-            (Reply::Questions(questions), Some(option)) => {
-                let label = option
-                    .strip_prefix("answer-")
-                    .and_then(|index| index.parse::<usize>().ok())
-                    .zip(questions.first())
-                    .and_then(|(index, question)| {
-                        Some((
-                            question.id.clone(),
-                            question.options.get(index)?.label.clone(),
-                        ))
-                    });
-                match label {
-                    Some((id, label)) => question_answers(&[AgentQuestionAnswer {
-                        id,
-                        answers: vec![label],
-                    }]),
-                    None => question_answers(&[]),
-                }
-            }
-            (Reply::Questions(_), None) => question_answers(&[]),
+            (Reply::Questions(_), _) => question_answers(chosen.as_slice()),
             (reply, Some(option)) => decision(reply, option),
             (reply, None) => decision(reply, "cancel"),
         };
@@ -2100,6 +2127,9 @@ impl Runtime {
         request_id: u64,
         answers: &[AgentQuestionAnswer],
     ) -> Result<(), String> {
+        if self.permissions.contains_key(&request_id) {
+            self.chat.lock().answered(request_id, chat_answers(answers));
+        }
         let Some(pending) = self.permissions.remove(&request_id) else {
             return Ok(());
         };
@@ -2185,6 +2215,15 @@ fn decision(reply: &Reply, option: &str) -> Value {
         },
         Reply::Questions(_) => question_answers(&[]),
     }
+}
+
+fn chosen(questions: &[AgentQuestion], option: Option<&str>) -> Option<AgentQuestionAnswer> {
+    let index = option?.strip_prefix("answer-")?.parse::<usize>().ok()?;
+    let question = questions.first()?;
+    Some(AgentQuestionAnswer {
+        id: question.id.clone(),
+        answers: vec![question.options.get(index)?.label.clone()],
+    })
 }
 
 fn question_answers(answers: &[AgentQuestionAnswer]) -> Value {
@@ -2307,6 +2346,13 @@ while IFS= read -r line; do
       printf '{"id":%s,"result":{"thread":{"id":"t1","turns":[{"id":"u0","items":[{"type":"userMessage","id":"m0","content":[{"type":"text","text":"scan"}]},{"type":"subAgentActivity","id":"a1","kind":"started","agentThreadId":"c1","agentPath":"/root/scan_files"},{"type":"subAgentActivity","id":"a2","kind":"completed","agentThreadId":"c1","agentPath":"/root/scan_files"}]}]}}}\n' "$id" ;;
     *'"method":"thread/read"'*'"threadId":"c1"'*)
       printf '{"id":%s,"result":{"thread":{"id":"c1","turns":[{"id":"v0","items":[{"type":"userMessage","id":"n0","content":[{"type":"text","text":"list"}]},{"type":"commandExecution","id":"exec-c","command":"ls","commandActions":[],"status":"completed","exitCode":0,"aggregatedOutput":"x"},{"type":"agentMessage","id":"n1","text":"found x"}]}]}}}\n' "$id" ;;
+    *'"method":"turn/start"'*'"text":"ask me"'*)
+      printf '{"id":%s,"result":{"turn":{"id":"u2"}}}\n' "$id"
+      printf '%s\n' '{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u2"}}}'
+      printf '%s\n' '{"method":"item/tool/requestUserInput","id":900,"params":{"threadId":"t1","turnId":"u2","itemId":"ask-1","questions":[{"id":"fruit","header":"Fruit","question":"Which fruit?","options":[{"label":"apple"},{"label":"pear"}]}]}}' ;;
+    *'"id":900,'*'"fruit":{"answers":["pear"]}'*)
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u2","status":"completed"}}}' ;;
+    *'"id":900,'*) echo "bad answer: $line" >&2; exit 4 ;;
     *'"method":"turn/start"'*)
       printf '{"id":%s,"result":{"turn":{"id":"u1"}}}\n' "$id"
       printf '%s\n' '{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}'
@@ -2330,7 +2376,9 @@ done
         async_channel::Receiver<AgentStreamPayload>,
         impl std::future::Future<Output = Result<(), String>>,
     ) {
-        fake_codex_in(directory, AgentWorkspaceEnvironment::default())
+        let (commands, _, events, runtime) =
+            fake_codex_in(directory, AgentWorkspaceEnvironment::default());
+        (commands, events, runtime)
     }
 
     #[cfg(unix)]
@@ -2339,6 +2387,7 @@ done
         workspace: AgentWorkspaceEnvironment,
     ) -> (
         async_channel::Sender<RuntimeCommand>,
+        async_channel::Sender<RuntimeControl>,
         async_channel::Receiver<AgentStreamPayload>,
         impl std::future::Future<Output = Result<(), String>>,
     ) {
@@ -2350,7 +2399,7 @@ done
             .expect("executable");
         let command = CodexCommand::parse(&program.display().to_string()).expect("native");
         let (commands, command_rx) = async_channel::unbounded();
-        let (_controls, control_rx) = async_channel::unbounded();
+        let (controls, control_rx) = async_channel::unbounded();
         let (events, event_rx) = async_channel::unbounded();
         let runtime = run_codex_runtime(
             command,
@@ -2365,7 +2414,7 @@ done
                 events,
             },
         );
-        (commands, event_rx, runtime)
+        (commands, controls, event_rx, runtime)
     }
 
     #[cfg(unix)]
@@ -2395,7 +2444,7 @@ done
             session: Some("work".to_owned()),
             ..AgentWorkspaceEnvironment::default()
         };
-        let (commands, events, runtime) = fake_codex_in(directory.path(), workspace);
+        let (commands, _, events, runtime) = fake_codex_in(directory.path(), workspace);
         let driver = async {
             commands
                 .send(RuntimeCommand::Open {
@@ -2551,6 +2600,93 @@ done
             assert_eq!(updates[1]["title"], "Scan files");
             assert_eq!(updates[4]["content"][0]["content"]["text"], "found x");
             assert_eq!(updates[5]["status"], "completed");
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_single_question_picked_by_option_records_the_label() {
+        use zz_protocol::chat::{Answer, QuestionAnswer, RequestClose};
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let (commands, controls, events, runtime) =
+            fake_codex_in(directory.path(), AgentWorkspaceEnvironment::default());
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(RuntimeCommand::Prompt {
+                    turn_id: 1,
+                    prompt: AgentPrompt {
+                        text: "ask me".to_owned(),
+                        ..Default::default()
+                    },
+                })
+                .await
+                .expect("prompt");
+            let AgentStreamPayload::PermissionRequested {
+                request_id,
+                options,
+                ..
+            } = until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::PermissionRequested { .. })
+            })
+            .await
+            else {
+                unreachable!();
+            };
+            assert_eq!(options[1]["optionId"], "answer-1");
+            controls
+                .send(RuntimeControl::RespondPermission {
+                    request_id,
+                    option_id: Some("answer-1".to_owned()),
+                })
+                .await
+                .expect("answer");
+            let AgentStreamPayload::Chat {
+                event: ChatEvent::RequestClosed { close, .. },
+            } = until(&events, |payload| {
+                matches!(
+                    payload,
+                    AgentStreamPayload::Chat {
+                        event: ChatEvent::RequestClosed { .. }
+                    }
+                )
+            })
+            .await
+            else {
+                unreachable!();
+            };
+            assert_eq!(
+                close,
+                RequestClose::Answered {
+                    answer: Answer::Questions {
+                        answers: vec![QuestionAnswer {
+                            question: "fruit".to_owned(),
+                            answers: vec!["pear".to_owned()],
+                        }],
+                    },
+                }
+            );
+            until(&events, |payload| {
+                matches!(payload, AgentStreamPayload::PromptFinished { .. })
+            })
+            .await;
             commands
                 .send(RuntimeCommand::Shutdown)
                 .await

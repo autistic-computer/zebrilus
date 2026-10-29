@@ -1,6 +1,7 @@
 use crate::story::{Section, Story};
 
 pub(super) mod cards;
+mod chat;
 mod chrome;
 mod composer;
 mod fixtures;
@@ -8,7 +9,58 @@ pub(super) mod lens;
 mod timeline;
 mod transcript;
 
-pub const STORIES: &[Story] = &[STORY];
+pub const STORIES: &[Story] = &[STORY, CHAT];
+
+const CHAT: Story = Story {
+    id: "agent-chat",
+    name: "Agent chat",
+    group: "Agent",
+    summary: "The driver-backed chat drawn from the chat machine's events: a ChatView folded from fixed event scripts, turned into rows by zz_client::chat_rows and drawn by zz_ui::agent::chat. Runs of tools read as one line, a finished turn folds behind Worked for, and approvals, questions and subagents sit in the thread.",
+    sections: &[
+        Section {
+            id: "live",
+            name: "Live turn",
+            summary: "One line per run of tools; while a tool runs the line names it, between tools it shows the latest reasoning heading.",
+            build: chat::live,
+        },
+        Section {
+            id: "finished",
+            name: "Finished turn",
+            summary: "When the answer lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps.",
+            build: chat::finished,
+        },
+        Section {
+            id: "asks",
+            name: "Inline asks",
+            summary: "An approval sits on the tool row that needs it, a question sits in the thread, and an answered question leaves a one-line record.",
+            build: chat::asks,
+        },
+        Section {
+            id: "subagents",
+            name: "Subagents",
+            summary: "Subagents started together share one card, a row each: status, name, a one-line preview and how long it took. A row opens in place to show the prompt, the agent's own rows and a footer; an approval waits right under its agent.",
+            build: chat::subagents,
+        },
+        Section {
+            id: "background",
+            name: "After the turn",
+            summary: "A background agent outlives its turn and keeps its approval: the finished turn stays open around it until it is answered.",
+            build: chat::background,
+        },
+        Section {
+            id: "try",
+            name: "Try it",
+            summary: "Click through it: open a fold or a run, open a subagent in place and close it, answer the approval under Replay or the question in the thread and watch it turn into a record.",
+            build: chat::try_it,
+        },
+        Section {
+            id: "rows",
+            name: "Plans and notices",
+            summary: "A plan is a card whose steps update in place; compaction and retries are notice rows.",
+            build: chat::rows,
+        },
+    ],
+};
 
 const STORY: Story = Story {
     id: "agent",

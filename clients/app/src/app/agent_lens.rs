@@ -1,6 +1,8 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     path::PathBuf,
+    rc::Rc,
     sync::Arc,
 };
 
@@ -17,17 +19,20 @@ use zz_client::agent_lens::{
 use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
 use zz_gpui::{
     AnyElement, App, Context, Corners, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
-    ListAlignment, ListState, Pixels, Render, Subscription, Window, div, prelude::*, px,
+    ListAlignment, ListState, Pixels, Render, ScrollWheelEvent, Subscription, Window, div,
+    prelude::*, px,
 };
+use zz_protocol::chat::RequestView;
 use zz_protocol::{
     AgentConnectionPhase, AgentImage, AgentQuestionAnswer, PaneId, PaneSnapshot, ProtocolMessage,
 };
 use zz_ui::{
     Disableable as _,
     agent::{
-        AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore, AgentToolEntry,
-        AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText, MarkdownSlot, TimelineRow,
-        TimelineStick, agent_jump_to_bottom_button,
+        AGENT_CONTENT_MAX_WIDTH, AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore,
+        AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText,
+        MarkdownSlot, TimelineRow, TimelineStick, agent_jump_to_bottom_button,
+        chat::{ChatClicks, ChatHooks, ChatPane, chat_live, chat_thread, shows_chat},
         composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer},
         composer_attachment,
         controls::{
@@ -84,6 +89,8 @@ pub(super) struct AgentLens {
     usage: Option<(u64, u64)>,
     transcript_dirty: bool,
     corner_radii: Corners<Pixels>,
+    chat: ChatPane,
+    chat_inline: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -211,6 +218,8 @@ impl AgentLens {
             usage: None,
             transcript_dirty: false,
             corner_radii: Corners::default(),
+            chat: ChatPane::default(),
+            chat_inline: false,
             _subscriptions: vec![
                 observation,
                 events,
@@ -306,7 +315,7 @@ impl AgentLens {
     }
 
     fn enter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.input.read(cx).value().trim().is_empty() {
+        if self.input.read(cx).value().trim().is_empty() && !self.asks_out_of_view() {
             let head = self.current_permission(cx);
             self.synchronize_question_card(head.as_ref(), window, cx);
             if let Some(card) = &self.question {
@@ -664,11 +673,31 @@ impl AgentLens {
             .find(|request| !self.permission_answered.contains(&request.request_id))
     }
 
+    fn asks_out_of_view(&self) -> bool {
+        self.chat_inline && self.chat.away
+    }
+
+    fn on_chat_wheel(
+        &mut self,
+        event: &ScrollWheelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.chat.wheel(event) {
+            cx.defer_in(window, |this, _, cx| {
+                if this.chat.settle() {
+                    cx.notify();
+                }
+            });
+        }
+    }
+
     fn permissions(
         &self,
         permission: PendingPermission,
         index: usize,
         count: usize,
+        current: bool,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let request_id = permission.request_id;
@@ -700,7 +729,7 @@ impl AgentLens {
                     index,
                     option.name,
                     option.allow == Some(false),
-                    index == self.permission_selected,
+                    current && index == self.permission_selected,
                     enabled,
                     cx,
                 )
@@ -709,7 +738,7 @@ impl AgentLens {
                     cx.stop_propagation();
                 }))
                 .on_hover(cx.listener(move |this, hovered, _, cx| {
-                    if *hovered && this.permission_selected != index {
+                    if current && *hovered && this.permission_selected != index {
                         this.permission_selected = index;
                         cx.notify();
                     }
@@ -993,6 +1022,9 @@ impl AgentLens {
         if modifiers.platform || modifiers.alt || modifiers.control || modifiers.function {
             return;
         }
+        if self.asks_out_of_view() {
+            return;
+        }
         let head = self.current_permission(cx);
         self.synchronize_question_card(head.as_ref(), window, cx);
         if let Some(card) = self.question.as_mut() {
@@ -1113,12 +1145,13 @@ impl Render for AgentLens {
                 state.phase,
                 AgentConnectionPhase::Ready | AgentConnectionPhase::Running
             );
-        let permissions = self.pending_permissions(cx);
+        let pending = self.pending_permissions(cx);
         self.permission_answered
-            .retain(|id| permissions.iter().any(|request| request.request_id == *id));
-        let permissions = permissions
-            .into_iter()
+            .retain(|id| pending.iter().any(|request| request.request_id == *id));
+        let permissions = pending
+            .iter()
             .filter(|request| !self.permission_answered.contains(&request.request_id))
+            .cloned()
             .collect::<Vec<_>>();
         let current_permission = (!permissions.is_empty()).then_some(0);
         let permission_id = current_permission.map(|index| permissions[index].request_id);
@@ -1132,38 +1165,63 @@ impl Render for AgentLens {
         }
         self.stick.set_bottom_padding(COMPOSER_OUTER_PADDING);
         self.drive_stick(window, cx);
-        let show_jump = !self.rows.is_empty() && self.stick.shows_jump_button();
+        let use_chat = shows_chat(&self.transcript.lens.chat);
+        let open_in_chat = |lens: &Self, request_id: u64| {
+            use_chat
+                && lens
+                    .transcript
+                    .lens
+                    .chat
+                    .open_requests()
+                    .any(|request| request.id.0 == request_id)
+        };
+        let show_jump = !use_chat && !self.rows.is_empty() && self.stick.shows_jump_button();
         let mut prefix = Vec::new();
+        let mut inline = HashMap::new();
+        self.chat_inline = false;
         if let Some(index) = current_permission {
             let request_id = permissions[index].request_id;
-            if let Some(card) = self
+            let in_chat = open_in_chat(self, request_id);
+            self.chat_inline = in_chat;
+            let (shown, count) = if in_chat {
+                (0, 1)
+            } else {
+                (index, permissions.len())
+            };
+            let card = if let Some(card) = self
                 .question
                 .as_ref()
                 .filter(|card| card.request_id() == request_id)
             {
                 let entity = cx.entity();
-                prefix.push(
-                    card.render(
-                        &format!("web-agent-question-{}-{request_id}", self.pane.0),
-                        (permissions.len() > 1)
-                            .then(|| format!("{}/{}", index + 1, permissions.len()).into()),
-                        writable,
-                        move |action, window, cx| {
-                            entity.update(cx, |this, cx| {
-                                this.question_action(action, window, cx);
-                            });
-                        },
-                        cx,
-                    )
-                    .into_any_element(),
-                );
-            } else {
-                prefix.push(self.permissions(
-                    permissions[index].clone(),
-                    index,
-                    permissions.len(),
+                card.render(
+                    &format!("web-agent-question-{}-{request_id}", self.pane.0),
+                    (count > 1).then(|| format!("{}/{count}", shown + 1).into()),
+                    writable,
+                    move |action, window, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.question_action(action, window, cx);
+                        });
+                    },
                     cx,
-                ));
+                )
+                .into_any_element()
+            } else {
+                self.permissions(permissions[index].clone(), shown, count, true, cx)
+            };
+            if in_chat {
+                inline.insert(request_id, card);
+            } else {
+                prefix.push(card);
+            }
+        }
+        for permission in pending
+            .iter()
+            .filter(|request| Some(request.request_id) != permission_id)
+        {
+            if permission.questions.is_empty() && open_in_chat(self, permission.request_id) {
+                let card = self.permissions(permission.clone(), 0, 1, false, cx);
+                inline.insert(permission.request_id, card);
             }
         }
         if state.queued_prompts > 0 {
@@ -1317,18 +1375,16 @@ impl Render for AgentLens {
             }
             .into_any_element()
         };
+        let chat = use_chat.then(|| self.render_chat(inline, cx));
         let provider = self
             .terminal(cx)
             .and_then(zz_client::window_summary::pane_agent);
-        let empty =
-            self.rows
-                .is_empty()
-                .then(|| match lens_empty(connected, &state.phase, provider) {
-                    LensEmpty::Welcome(provider) => lens_welcome(provider, cx),
-                    LensEmpty::Message { text, busy } => {
-                        empty_state(text, busy, cx.entity_id(), cx)
-                    }
-                });
+        let empty = (self.rows.is_empty() && !use_chat).then(|| {
+            match lens_empty(connected, &state.phase, provider) {
+                LensEmpty::Welcome(provider) => lens_welcome(provider, cx),
+                LensEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
+            }
+        });
         let timeline = AgentTimeline::new(
             self.rows.clone(),
             self.scroll.clone(),
@@ -1371,7 +1427,8 @@ impl Render for AgentLens {
                     .min_h_0()
                     .overflow_hidden()
                     .children(empty)
-                    .when(!self.rows.is_empty(), |area| {
+                    .children(chat)
+                    .when(!self.rows.is_empty() && !use_chat, |area| {
                         area.child(timeline).child(
                             div()
                                 .absolute()
@@ -1413,6 +1470,92 @@ impl Render for AgentLens {
             .capture_action(cx.listener(Self::move_completion_down))
             .map(|root| mention_keys(root, &self.mention))
             .capture_key_down(cx.listener(Self::key_down))
+    }
+}
+
+impl AgentLens {
+    fn render_chat(
+        &mut self,
+        inline: HashMap<u64, AnyElement>,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let phase = if chat_live(&self.transcript.lens.chat) {
+            zz_ui::agent::presentation::spinner_phase(cx.entity_id(), cx)
+        } else {
+            0.0
+        };
+        self.chat.sync(&self.transcript.lens.chat);
+        self.chat.pin();
+        let entity = cx.entity();
+        let click: ChatClicks = {
+            let entity = entity.clone();
+            Rc::new(move |click, _, cx| {
+                entity.update(cx, |this, cx| {
+                    this.chat.click(click);
+                    cx.notify();
+                });
+            })
+        };
+        let show_jump = self.chat.shows_jump();
+        let jump = cx.listener(|this, _, _, cx| {
+            this.chat.follow();
+            cx.notify();
+            cx.stop_propagation();
+        });
+        let wheel = cx.listener(Self::on_chat_wheel);
+        let pane = self.pane.0;
+        let inline = RefCell::new(inline);
+        let ask = |request: &RequestView, _: &App| inline.borrow_mut().remove(&request.id.0);
+        let hooks = ChatHooks {
+            click: Some(click),
+            ask: Some(&ask),
+        };
+        let body = chat_thread(
+            &self.transcript.lens.chat,
+            zz_client::chat_rows::now_ms(),
+            &self.chat.open,
+            phase,
+            &hooks,
+            cx,
+        );
+        div()
+            .relative()
+            .size_full()
+            .child(
+                div()
+                    .id(("web-agent-chat-scroll", pane))
+                    .size_full()
+                    .overflow_y_scroll()
+                    .track_scroll(&self.chat.scroll)
+                    .on_scroll_wheel(wheel)
+                    .child(
+                        div().w_full().px_3().child(
+                            div()
+                                .w_full()
+                                .max_w(px(AGENT_CONTENT_MAX_WIDTH))
+                                .mx_auto()
+                                .pt_3()
+                                .pb(px(COMPOSER_OUTER_PADDING + 12.0))
+                                .child(body),
+                        ),
+                    ),
+            )
+            .when(show_jump, |root| {
+                root.child(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .right_0()
+                        .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
+                        .flex()
+                        .justify_center()
+                        .child(
+                            agent_jump_to_bottom_button(("web-agent-chat-jump", pane), cx)
+                                .on_click(jump),
+                        ),
+                )
+            })
+            .into_any_element()
     }
 }
 

@@ -78,6 +78,9 @@ impl Translator {
         match entry["type"].as_str() {
             Some("assistant") => self.assistant(entry),
             Some("user") => {
+                if let Some(frame) = task_notification(entry) {
+                    return self.system(&frame);
+                }
                 let mut updates = self.user_text(entry);
                 updates.extend(self.tool_results(entry));
                 updates
@@ -100,6 +103,28 @@ impl Translator {
         self.user_text(&json!({
             "uuid": entry["uuid"],
             "message": { "content": attachment["prompt"] },
+        }))
+    }
+
+    pub(crate) fn knows(&self, tool: &str) -> bool {
+        self.tools.contains_key(tool)
+    }
+
+    pub(crate) fn running(&self, tool: &str) -> bool {
+        self.knows(tool) && (!self.settled.contains(tool) || self.background.contains(tool))
+    }
+
+    pub(crate) fn waiting_on(&self, tool: &str) -> bool {
+        self.settled.contains(tool) && self.background.contains(tool)
+    }
+
+    pub(crate) fn agent_finished(&mut self, tool: &str, result: Option<&str>) -> Vec<Value> {
+        self.system(&json!({
+            "type": "system",
+            "subtype": "task_notification",
+            "tool_use_id": tool,
+            "status": "completed",
+            "summary": result,
         }))
     }
 
@@ -126,7 +151,9 @@ impl Translator {
                 {
                     self.task_tools.insert(task.to_owned(), tool.to_owned());
                     if frame["is_backgrounded"] == true {
+                        let update = self.backgrounded(tool);
                         self.background.insert(tool.to_owned());
+                        return update;
                     }
                 }
                 Vec::new()
@@ -135,7 +162,9 @@ impl Translator {
                 if frame["patch"]["is_backgrounded"] == true
                     && let Some(tool) = self.task_tool(frame)
                 {
+                    let update = self.backgrounded(&tool);
                     self.background.insert(tool);
+                    return update;
                 }
                 Vec::new()
             }
@@ -177,6 +206,7 @@ impl Translator {
                     }
                     return Vec::new();
                 }
+                self.background.remove(&tool);
                 let output = self.task_output(&tool, frame, summary);
                 let mut update = json!({
                     "sessionUpdate": "tool_call_update",
@@ -242,6 +272,20 @@ impl Translator {
         }
     }
 
+    fn backgrounded(&self, tool: &str) -> Vec<Value> {
+        if self.settled.contains(tool)
+            || self.background.contains(tool)
+            || !self.tools.contains_key(tool)
+        {
+            return Vec::new();
+        }
+        vec![json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": tool,
+            "_meta": { "zz": { "background": true } },
+        })]
+    }
+
     fn block_key(&mut self, message_id: &str) -> String {
         if let Some(index) = self.open_blocks.remove(message_id) {
             return format!("{message_id}:{index}");
@@ -280,6 +324,21 @@ impl Translator {
                 }
                 Some("tool_use" | "server_tool_use" | "mcp_tool_use") => {
                     updates.extend(self.tool_use(block, parent.as_deref()));
+                }
+                Some(kind @ ("text" | "thinking")) => {
+                    let (session_update, field) = if kind == "text" {
+                        ("agent_message_chunk", "text")
+                    } else {
+                        ("agent_thought_chunk", "thinking")
+                    };
+                    if let (Some(parent), Some(text)) = (
+                        parent.as_deref(),
+                        block[field].as_str().filter(|text| !text.is_empty()),
+                    ) {
+                        let mut update = chunk(session_update, &key, text);
+                        update["_meta"] = json!({ "zz": { "parent": parent } });
+                        updates.push(update);
+                    }
                 }
                 _ => {}
             }
@@ -448,6 +507,15 @@ impl Translator {
             return Vec::new();
         }
         let name = self.tools.get(id).cloned().unwrap_or_default();
+        if !is_error
+            && let Some(launch) = structured
+                .filter(|result| result["isAsync"] == true || result["status"] == "async_launched")
+        {
+            self.background.insert(id.to_owned());
+            if let Some(agent) = launch["agentId"].as_str() {
+                self.task_tools.insert(agent.to_owned(), id.to_owned());
+            }
+        }
         let output = if is_error {
             Some(text)
         } else {
@@ -460,13 +528,19 @@ impl Translator {
         };
         self.settled.insert(id.to_owned());
         let early = self.ended_early.remove(id);
+        if early.is_some() {
+            self.background.remove(id);
+        }
         let running = !is_error && self.background.contains(id) && early.is_none();
         let status = match (is_error, running, &early) {
             (true, _, _) | (false, _, Some((true, _))) => "failed",
             (false, true, _) => "in_progress",
             (false, false, _) => "completed",
         };
-        let output = early.and_then(|(_, output)| output).or(output);
+        let output = early
+            .and_then(|(_, output)| output)
+            .or(output)
+            .filter(|_| !(running && matches!(name.as_str(), "Agent" | "Task")));
         let mut update = json!({
             "sessionUpdate": "tool_call_update",
             "toolCallId": id,
@@ -477,6 +551,15 @@ impl Translator {
             && let Some(code) = exit_code(output.as_deref().unwrap_or_default())
         {
             update["_meta"] = json!({ "zz": { "exitCode": code } });
+        }
+        if running {
+            update["_meta"] = json!({ "zz": { "background": true } });
+        }
+        if name == "AskUserQuestion"
+            && !is_error
+            && let Some(answered) = structured.and_then(answered_questions)
+        {
+            update["_meta"]["zz"]["answered"] = answered;
         }
         if let Some(output) = output.filter(|output| !output.trim().is_empty()) {
             update["content"] = json!([text_content(&output)]);
@@ -568,7 +651,12 @@ fn created_task_id(text: &str) -> Option<String> {
 }
 
 pub(crate) fn prompt_text(frame: &Value) -> Option<String> {
-    let text = match &frame["message"]["content"] {
+    let text = message_text(frame);
+    (!text.trim().is_empty() && !is_internal_user_text(&text)).then_some(text)
+}
+
+fn message_text(frame: &Value) -> String {
+    match &frame["message"]["content"] {
         Value::String(text) => text.clone(),
         Value::Array(blocks) => blocks
             .iter()
@@ -577,8 +665,57 @@ pub(crate) fn prompt_text(frame: &Value) -> Option<String> {
             .collect::<Vec<_>>()
             .join("\n"),
         _ => String::new(),
+    }
+}
+
+fn task_notification(entry: &Value) -> Option<Value> {
+    let text = message_text(entry);
+    let body = text.trim_start().strip_prefix("<task-notification>")?;
+    let tag = |name: &str| {
+        let open = format!("<{name}>");
+        let start = body.find(&open)? + open.len();
+        let end = body[start..].rfind(&format!("</{name}>"))? + start;
+        Some(body[start..end].trim().to_owned()).filter(|value| !value.is_empty())
     };
-    (!text.trim().is_empty() && !is_internal_user_text(&text)).then_some(text)
+    let tool = tag("tool-use-id");
+    let task = tag("task-id");
+    if tool.is_none() && task.is_none() {
+        return None;
+    }
+    Some(json!({
+        "type": "system",
+        "subtype": "task_notification",
+        "task_id": task,
+        "tool_use_id": tool,
+        "status": tag("status"),
+        "summary": tag("result").or_else(|| tag("summary")),
+        "output_file": tag("output-file"),
+    }))
+}
+
+fn answered_questions(result: &Value) -> Option<Value> {
+    let answers = result["answers"].as_object()?;
+    let asked = result["questions"].as_array().cloned().unwrap_or_default();
+    let mut answered = asked
+        .iter()
+        .filter_map(|question| {
+            let text = question["question"].as_str()?;
+            Some(json!({
+                "question": text,
+                "header": question["header"],
+                "answer": answers.get(text)?.as_str()?,
+            }))
+        })
+        .collect::<Vec<_>>();
+    if answered.is_empty() {
+        answered = answers
+            .iter()
+            .filter_map(|(question, answer)| {
+                Some(json!({ "question": question, "answer": answer.as_str()? }))
+            })
+            .collect();
+    }
+    (!answered.is_empty()).then_some(Value::Array(answered))
 }
 
 fn is_internal_user_text(text: &str) -> bool {
@@ -1079,6 +1216,52 @@ mod tests {
     }
 
     #[test]
+    fn a_transcript_background_agent_stays_running_until_its_notification() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let call = json!({"type":"assistant","uuid":"a1","message":{"id":"m","content":[
+            {"type":"tool_use","id":"g1","name":"Agent","input":{"description":"Find it","prompt":"find it","subagent_type":"Explore"}}]}});
+        assert_eq!(kinds(&translator.history_entry(&call)), ["tool_call"]);
+        let launched = json!({"type":"user","uuid":"u1",
+            "toolUseResult":{"isAsync":true,"status":"async_launched","agentId":"a9"},
+            "message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"g1",
+                "content":[{"type":"text","text":"Async agent launched successfully. (internal metadata)"}]}]}});
+        let updates = translator.history_entry(&launched);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["status"], "in_progress");
+        assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
+        assert!(updates[0].get("content").is_none(), "{}", updates[0]);
+        assert!(translator.running("g1"));
+        let done = json!({"type":"user","uuid":"u2","message":{"role":"user","content":
+            "<task-notification>\n<task-id>a9</task-id>\n<tool-use-id>g1</tool-use-id>\n<status>completed</status>\n<summary>Agent \"Find it\" finished</summary>\n<result>src/lib.rs:4</result>\n<usage><duration_ms>6532</duration_ms></usage>\n</task-notification>"}});
+        let updates = translator.history_entry(&done);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["toolCallId"], "g1");
+        assert_eq!(updates[0]["status"], "completed");
+        assert_eq!(updates[0]["content"][0]["content"]["text"], "src/lib.rs:4");
+        assert!(!translator.running("g1"));
+    }
+
+    #[test]
+    fn a_question_answered_in_the_terminal_carries_its_answers() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let questions = json!([{"question":"Which file?","header":"Open first","multiSelect":false,
+            "options":[{"label":"chat.rs","description":"d"},{"label":"lib.rs","description":"d"}]}]);
+        let call = json!({"type":"assistant","uuid":"a1","message":{"id":"m","content":[
+            {"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{"questions":questions}}]}});
+        translator.history_entry(&call);
+        let answered = json!({"type":"user","uuid":"u1",
+            "toolUseResult":{"questions":questions,"answers":{"Which file?":"chat.rs"},"annotations":{}},
+            "message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"q1",
+                "content":"Your questions have been answered: \"Which file?\"=\"chat.rs\"."}]}});
+        let updates = translator.history_entry(&answered);
+        assert_eq!(updates[0]["status"], "completed");
+        assert_eq!(
+            updates[0]["_meta"]["zz"]["answered"],
+            json!([{"question":"Which file?","header":"Open first","answer":"chat.rs"}])
+        );
+    }
+
+    #[test]
     fn background_work_stays_running_until_its_notification() {
         let output = tempfile::NamedTempFile::new().expect("output");
         std::fs::write(output.path(), "line one\nlate\n").expect("write");
@@ -1087,11 +1270,16 @@ mod tests {
             {"type":"tool_use","id":"b1","name":"Bash","input":{"command":"sleep 30; echo late","run_in_background":true}}]}});
         assert_eq!(kinds(&translator.frame(&call)), ["tool_call"]);
         let started = json!({"type":"system","subtype":"task_started","task_id":"t9","tool_use_id":"b1","is_backgrounded":true,"task_type":"local_bash","description":"late"});
-        assert!(translator.frame(&started).is_empty());
+        let updates = translator.frame(&started);
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["toolCallId"], "b1");
+        assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
+        assert!(updates[0].get("status").is_none());
         let launched = json!({"type":"user","parent_tool_use_id":null,"message":{"role":"user","content":[
             {"type":"tool_result","tool_use_id":"b1","content":"Command running in background with ID: t9."}]}});
         let updates = translator.frame(&launched);
         assert_eq!(updates[0]["status"], "in_progress");
+        assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
         let done = json!({"type":"system","subtype":"task_notification","task_id":"t9","tool_use_id":"b1","status":"completed",
             "output_file": output.path(), "summary":"Background command completed"});
         let updates = translator.frame(&done);
@@ -1150,8 +1338,11 @@ mod tests {
         let frame = json!({"type":"assistant","parent_tool_use_id":"toolu_parent","message":{"id":"m","content":[
             {"type":"text","text":"inner"},
             {"type":"tool_use","id":"inner_tool","name":"Read","input":{"file_path":"/work/a.rs"}}]}});
-        let updates = translator.frame(&frame);
-        assert_eq!(kinds(&updates), ["tool_call"]);
+        let mut updates = translator.frame(&frame);
+        assert_eq!(kinds(&updates), ["agent_message_chunk", "tool_call"]);
+        assert_eq!(updates[0]["content"]["text"], "inner");
+        assert_eq!(updates[0]["_meta"]["zz"]["parent"], "toolu_parent");
+        updates.remove(0);
         assert_eq!(updates[0]["title"], "Read a.rs");
         assert_eq!(
             updates[0]["_meta"]["claudeCode"]["parentToolUseId"],

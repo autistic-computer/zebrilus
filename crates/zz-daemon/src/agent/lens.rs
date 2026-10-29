@@ -10,9 +10,14 @@ use std::{
 };
 
 use serde_json::{Value, json};
-use zz_protocol::{AgentProvider, MAX_AGENT_PERMISSION_BYTES, PaneId};
+use zz_protocol::{
+    AgentProvider, AgentQuestionAnswer, MAX_AGENT_PERMISSION_BYTES, PaneId,
+    agent_stream::{AgentQuestion, AgentQuestionOption},
+    chat::ChatEvent,
+};
 
 use crate::agent::{
+    chat_bridge::{Shadow, chat_answers},
     claude::{
         sessions,
         translate::{self as claude_translate, Translator as ClaudeTranslator},
@@ -28,6 +33,7 @@ use crate::agent::{
     stream::{
         AgentPrompt, AgentPromptOutcome, AgentSessionCapabilities, AgentStreamPayload, agent_verb,
     },
+    turn,
 };
 
 const POLL: Duration = Duration::from_millis(250);
@@ -183,6 +189,16 @@ struct Claude {
     translator: ClaudeTranslator,
     last: Option<String>,
     open: Vec<(String, String, Value)>,
+    subagents: Option<PathBuf>,
+    agents: Vec<Subagent>,
+}
+
+struct Subagent {
+    tool: String,
+    tail: Tail,
+    meta: PathBuf,
+    seen: bool,
+    last: Option<String>,
 }
 
 impl Claude {
@@ -194,6 +210,8 @@ impl Claude {
             translator: ClaudeTranslator::default(),
             last: None,
             open: Vec::new(),
+            subagents: None,
+            agents: Vec::new(),
         }
     }
 
@@ -246,11 +264,16 @@ impl Claude {
             .rev()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
             .find_map(|entry| entry["uuid"].as_str().map(str::to_owned));
+        self.subagents = Some(tail.path.with_extension("").join("subagents"));
+        self.agents.clear();
+        self.discover();
         let mut updates = Vec::new();
         for entry in sessions::chain_tail(&text) {
             self.track(&entry);
             updates.extend(self.translator.history_entry(&entry));
+            updates.extend(self.agent_lines(false));
         }
+        updates.extend(self.finished_agents());
         self.tail = Some(tail);
         updates
     }
@@ -260,13 +283,112 @@ impl Claude {
         let Some(tail) = self.tail.as_mut() else {
             return read;
         };
-        for entry in tail.lines() {
+        let lines = tail.lines();
+        self.discover();
+        for entry in lines {
             if read.reload {
                 break;
             }
+            read.updates.extend(self.agent_lines(true));
             self.entry(&entry, &mut read);
         }
+        if !read.reload {
+            read.updates.extend(self.agent_lines(true));
+            read.updates.extend(self.finished_agents());
+        }
         read
+    }
+
+    fn discover(&mut self) {
+        let Some(dir) = &self.subagents else {
+            return;
+        };
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for path in entries.filter_map(Result::ok).map(|entry| entry.path()) {
+            let Some(agent) = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.strip_suffix(".meta.json"))
+            else {
+                continue;
+            };
+            let transcript = dir.join(format!("{agent}.jsonl"));
+            if self
+                .agents
+                .iter()
+                .any(|known| known.tail.path == transcript)
+            {
+                continue;
+            }
+            let Some(tool) = std::fs::read(&path)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                .and_then(|meta| meta["toolUseId"].as_str().map(str::to_owned))
+            else {
+                continue;
+            };
+            self.agents.push(Subagent {
+                tool,
+                tail: Tail {
+                    path: transcript,
+                    ..Tail::default()
+                },
+                meta: path,
+                seen: false,
+                last: None,
+            });
+        }
+    }
+
+    fn agent_lines(&mut self, live: bool) -> Vec<Value> {
+        let mut entries = Vec::new();
+        for agent in &mut self.agents {
+            let due = if agent.seen {
+                live && self.translator.running(&agent.tool)
+            } else {
+                self.translator.knows(&agent.tool)
+            };
+            if !due {
+                continue;
+            }
+            agent.seen = true;
+            for mut entry in agent.tail.lines() {
+                if entry["type"] == "assistant"
+                    && let Some(text) = claude_translate::prompt_text(&entry)
+                {
+                    agent.last = Some(text);
+                }
+                entry["parent_tool_use_id"] = Value::from(agent.tool.as_str());
+                entries.push(entry);
+            }
+        }
+        let mut updates = Vec::new();
+        for entry in entries {
+            self.track(&entry);
+            updates.extend(self.translator.sidechain_entry(&entry));
+        }
+        updates
+    }
+
+    fn finished_agents(&mut self) -> Vec<Value> {
+        let finished = self
+            .agents
+            .iter()
+            .filter(|agent| agent.seen && self.translator.waiting_on(&agent.tool))
+            .filter(|agent| {
+                std::fs::read(&agent.meta)
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                    .is_some_and(|meta| meta["finished"] == true)
+            })
+            .map(|agent| (agent.tool.clone(), agent.last.clone()))
+            .collect::<Vec<_>>();
+        finished
+            .into_iter()
+            .flat_map(|(tool, last)| self.translator.agent_finished(&tool, last.as_deref()))
+            .collect()
     }
 
     fn entry(&mut self, entry: &Value, read: &mut Read) {
@@ -537,6 +659,18 @@ impl Source {
         }
     }
 
+    fn pending_question(&self) -> Option<(String, AgentQuestion)> {
+        let Self::Claude(claude) = self else {
+            return None;
+        };
+        let (id, _, input) = claude
+            .open
+            .iter()
+            .rev()
+            .find(|(_, name, _)| name == "AskUserQuestion")?;
+        Some((id.clone(), pickable(input)?))
+    }
+
     const fn every(&self) -> Duration {
         match self {
             Self::Claude(_) => LOCATE,
@@ -558,6 +692,7 @@ struct Permission {
     tool: Option<String>,
     answerable: bool,
     answered: bool,
+    choices: Vec<String>,
 }
 
 struct Lens {
@@ -571,6 +706,38 @@ struct Lens {
     failed: Option<String>,
     permission: Option<Permission>,
     next_locate: Instant,
+}
+
+fn pickable(input: &Value) -> Option<AgentQuestion> {
+    let [question] = input["questions"].as_array()?.as_slice() else {
+        return None;
+    };
+    let options = question["options"].as_array()?;
+    if question["multiSelect"] == true || options.is_empty() || options.len() > 9 {
+        return None;
+    }
+    Some(AgentQuestion {
+        id: "q0".to_owned(),
+        header: question["header"].as_str().map(str::to_owned),
+        question: question["question"].as_str()?.to_owned(),
+        options: options
+            .iter()
+            .map(|option| {
+                Some(AgentQuestionOption {
+                    label: option["label"].as_str()?.to_owned(),
+                    description: option["description"].as_str().map(str::to_owned),
+                })
+            })
+            .collect::<Option<_>>()?,
+        ..AgentQuestion::default()
+    })
+}
+
+fn waiting_title(why: &str) -> String {
+    match why {
+        "input needed" | "dialog open" => "Claude Code needs your input in the terminal".to_owned(),
+        why => format!("Waiting for a {why} in the terminal"),
+    }
 }
 
 fn option(id: &str, name: &str, kind: &str) -> Value {
@@ -620,7 +787,7 @@ impl Lens {
             capabilities: AgentSessionCapabilities::default(),
         }];
         payloads.extend(self.locate(true));
-        payloads.extend(self.observe(false));
+        payloads.extend(self.observe(false, Vec::new()));
         payloads
     }
 
@@ -707,26 +874,31 @@ impl Lens {
             }
             return payloads;
         }
-        payloads.extend(
-            read.updates
-                .into_iter()
-                .map(|update| AgentStreamPayload::Update { update }),
-        );
         self.failed = read.failed;
-        payloads.extend(self.observe(read.finished));
+        payloads.extend(self.observe(read.finished, read.updates));
         self.failed = None;
         payloads
     }
 
-    fn observe(&mut self, finished: bool) -> Vec<AgentStreamPayload> {
-        let mut payloads = Vec::new();
+    fn observe(&mut self, finished: bool, updates: Vec<Value>) -> Vec<AgentStreamPayload> {
+        let updates = updates
+            .into_iter()
+            .map(|update| AgentStreamPayload::Update { update });
         let Some(status) = self.source.status() else {
-            return payloads;
+            return updates.collect();
         };
+        let mut payloads = Vec::new();
+        if status.busy && !self.busy {
+            self.busy = true;
+            payloads.push(AgentStreamPayload::Activity { busy: true });
+        }
+        payloads.extend(updates);
         payloads.extend(self.follow_permission(status.waiting.as_deref()));
-        if status.busy != self.busy {
-            self.busy = status.busy;
-            payloads.push(AgentStreamPayload::Activity { busy: status.busy });
+        if self.busy && !status.busy {
+            self.busy = false;
+            payloads.push(AgentStreamPayload::Activity { busy: false });
+        } else if finished && !status.busy && self.turn.is_none() {
+            payloads.push(AgentStreamPayload::Activity { busy: false });
         }
         let settled = self.turn.as_mut().is_some_and(|turn| {
             turn.busy |= status.busy;
@@ -758,9 +930,15 @@ impl Lens {
         };
         let mut payloads = Vec::new();
         let answerable = why == PERMISSION_PROMPT;
+        let question = (!answerable)
+            .then(|| self.source.pending_question())
+            .flatten();
+        let tool = question.as_ref().map(|(id, _)| id.clone()).or(tool);
         if let Some(permission) = &self.permission {
-            let upgrade =
-                answerable && !permission.answered && permission.tool.is_none() && tool.is_some();
+            let upgrade = (answerable || question.is_some())
+                && !permission.answered
+                && permission.tool.is_none()
+                && tool.is_some();
             let same = !permission.answered || permission.tool.is_none() || permission.tool == tool;
             if !upgrade && same {
                 return payloads;
@@ -774,6 +952,30 @@ impl Lens {
             self.permission = None;
         }
         let request_id = self.permission_ids.fetch_add(1, Ordering::Relaxed);
+        if let Some((id, question)) = question {
+            self.permission = Some(Permission {
+                request_id,
+                tool: Some(id.clone()),
+                answerable: true,
+                answered: false,
+                choices: question
+                    .options
+                    .iter()
+                    .map(|option| option.label.clone())
+                    .collect(),
+            });
+            payloads.push(AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call: json!({
+                    "toolCallId": id,
+                    "title": question.question,
+                    "kind": "other",
+                }),
+                options: json!([]),
+                questions: vec![question],
+            });
+            return payloads;
+        }
         let pending = self.source.pending_tool().filter(|_| answerable);
         let answers = json!([
             option(ALLOW, "Allow", "allow_once"),
@@ -811,7 +1013,7 @@ impl Lens {
             (
                 json!({
                     "toolCallId": format!("lens-wait-{request_id}"),
-                    "title": format!("Waiting for a {why} in the terminal"),
+                    "title": waiting_title(why),
                     "kind": "other",
                 }),
                 json!([]),
@@ -822,6 +1024,7 @@ impl Lens {
             tool: pending.map(|(id, _, _)| id.clone()),
             answerable,
             answered: false,
+            choices: Vec::new(),
         });
         payloads.push(AgentStreamPayload::PermissionRequested {
             request_id,
@@ -917,6 +1120,41 @@ impl Lens {
         }
     }
 
+    fn answer(
+        &mut self,
+        request_id: u64,
+        answers: &[AgentQuestionAnswer],
+    ) -> Vec<AgentStreamPayload> {
+        let Some(permission) = self
+            .permission
+            .as_mut()
+            .filter(|permission| permission.request_id == request_id && !permission.answered)
+        else {
+            return Vec::new();
+        };
+        let Some(index) = answers
+            .first()
+            .and_then(|answer| answer.answers.first())
+            .and_then(|label| permission.choices.iter().position(|choice| choice == label))
+        else {
+            return Vec::new();
+        };
+        let key = (index + 1).to_string();
+        match self.spec.io.keys(&[key.as_str()]) {
+            Ok(()) => {
+                permission.answered = true;
+                vec![AgentStreamPayload::PermissionResolved {
+                    request_id,
+                    canceled: false,
+                }]
+            }
+            Err(error) => {
+                log::debug!(target: "zz::agent", "could not answer {}: {error}", self.spec.pane);
+                Vec::new()
+            }
+        }
+    }
+
     fn respond(&mut self, request_id: u64, option_id: Option<&str>) -> Vec<AgentStreamPayload> {
         let Some(permission) = self
             .permission
@@ -997,7 +1235,10 @@ impl Lens {
                 request_id,
                 option_id,
             } => self.respond(request_id, option_id.as_deref()),
-            RuntimeControl::AnswerQuestion { .. } => Vec::new(),
+            RuntimeControl::AnswerQuestion {
+                request_id,
+                answers,
+            } => self.answer(request_id, &answers),
         }
     }
 }
@@ -1016,6 +1257,10 @@ pub(crate) async fn run_lens(spec: LensSpec, channels: RuntimeChannels) -> Resul
         events,
         ..
     } = channels;
+    let mut shadow = match spec.provider {
+        AgentProvider::ClaudeCode => Shadow::default().attached(),
+        AgentProvider::Codex => Shadow::default().codex().attached(),
+    };
     let mut lens = Lens::new(spec, permission_ids);
     let mut opened = false;
     loop {
@@ -1035,17 +1280,63 @@ pub(crate) async fn run_lens(spec: LensSpec, channels: RuntimeChannels) -> Resul
                 opened |= matches!(command, RuntimeCommand::Open { .. });
                 lens.command(command)
             }
-            Input::Control(Ok(control)) => lens.control(control),
+            Input::Control(Ok(control)) => {
+                let answer = match &control {
+                    RuntimeControl::AnswerQuestion {
+                        request_id,
+                        answers,
+                    } => Some((*request_id, chat_answers(answers))),
+                    _ => None,
+                };
+                let payloads = lens.control(control);
+                if let Some((request, answer)) = answer.filter(|_| !payloads.is_empty()) {
+                    shadow.answered(request, answer);
+                }
+                payloads
+            }
             Input::Tick if opened => lens.tick(),
             Input::Tick => Vec::new(),
         };
-        for payload in payloads {
+        let chat = shadow_lens(&mut shadow, &payloads);
+        for payload in payloads.into_iter().chain(
+            chat.into_iter()
+                .map(|event| AgentStreamPayload::Chat { event }),
+        ) {
             events
                 .send(payload)
                 .await
                 .map_err(|error| error.to_string())?;
         }
     }
+}
+
+fn shadow_lens(shadow: &mut Shadow, payloads: &[AgentStreamPayload]) -> Vec<ChatEvent> {
+    let now = Instant::now();
+    let ready = payloads.iter().find_map(|payload| match payload {
+        AgentStreamPayload::SessionReady { session_id, .. } => Some(session_id.clone()),
+        _ => None,
+    });
+    for payload in payloads {
+        match payload {
+            AgentStreamPayload::SessionReset { .. } => {
+                shadow.turn(&turn::Fact::SessionClosed, None, now);
+                shadow.payload(payload);
+            }
+            AgentStreamPayload::SessionReady { .. } => {}
+            AgentStreamPayload::Activity { busy: true } => {
+                shadow.turn(&turn::Fact::Busy, None, now);
+            }
+            AgentStreamPayload::Activity { busy: false }
+            | AgentStreamPayload::PromptFinished { .. } => {
+                shadow.turn(&turn::Fact::Idle, None, now);
+            }
+            _ => shadow.payload(payload),
+        }
+    }
+    if let Some(session) = ready {
+        shadow.turn(&turn::Fact::SessionReady, Some(&session), now);
+    }
+    shadow.drain()
 }
 
 #[cfg(test)]
@@ -1257,6 +1548,207 @@ mod tests {
                 .iter()
                 .any(|payload| matches!(payload, AgentStreamPayload::SessionReset { .. }))
         );
+    }
+
+    #[test]
+    fn the_lens_feeds_the_chat_machine_a_clean_chat() {
+        use zz_protocol::chat::{ChatPhase, ChatView};
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "first question"));
+        claudes.line(&answer("a1", "u1", "first answer"));
+        let mut lens = claudes.lens();
+        let mut shadow = Shadow::recording();
+        shadow_lens(&mut shadow, &lens.open());
+        claudes.record("busy", "");
+        shadow_lens(&mut shadow, &lens.tick());
+        claudes.line(&prompt("u2", Some("a1"), "second question"));
+        claudes.line(&answer("a2", "u2", "second answer"));
+        shadow_lens(&mut shadow, &lens.tick());
+        let mut view = ChatView::default();
+        for event in &shadow.events {
+            view.apply(event)
+                .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+        }
+        assert_eq!(view.phase(), ChatPhase::Running);
+        assert_eq!(view.turns.len(), 1);
+        let texts = view
+            .items
+            .values()
+            .map(|item| item.body.text.clone())
+            .collect::<std::collections::BTreeSet<_>>();
+        for text in [
+            "first question",
+            "first answer",
+            "second question",
+            "second answer",
+        ] {
+            assert!(texts.contains(text), "{text} missing from {texts:?}");
+        }
+        claudes.record("idle", "");
+        shadow_lens(&mut shadow, &lens.tick());
+        let mut view = ChatView::default();
+        for event in &shadow.events {
+            view.apply(event).expect("valid");
+        }
+        assert_eq!(view.phase(), ChatPhase::Idle);
+        assert!(view.open_items().next().is_none());
+    }
+
+    #[test]
+    fn a_background_subagent_nests_its_own_transcript_and_ends_on_its_notification() {
+        use zz_protocol::chat::{ChatView, ItemId, ItemStatus};
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "look around"));
+        claudes.line(&json!({
+            "type": "assistant", "uuid": "a1", "parentUuid": "u1", "isSidechain": false,
+            "message": { "id": "msg_a1", "role": "assistant", "content": [{ "type": "tool_use", "id": "g1",
+                "name": "Agent", "input": { "description": "Find it", "prompt": "find it", "subagent_type": "Explore" } }] },
+        }));
+        claudes.line(&json!({
+            "type": "user", "uuid": "u2", "parentUuid": "a1", "isSidechain": false,
+            "toolUseResult": { "isAsync": true, "status": "async_launched", "agentId": "a9" },
+            "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "g1",
+                "content": [{ "type": "text", "text": "Async agent launched successfully." }] }] },
+        }));
+        let agents = claudes.transcript.with_extension("").join("subagents");
+        std::fs::create_dir_all(&agents).unwrap();
+        std::fs::write(agents.join("agent-a9.meta.json"), r#"{"toolUseId":"g1"}"#).unwrap();
+        let sidechain = |entry: Value| format!("{entry}\n");
+        std::fs::write(
+            agents.join("agent-a9.jsonl"),
+            [
+                sidechain(json!({ "type": "user", "uuid": "s1", "isSidechain": true,
+                    "message": { "role": "user", "content": "find it" } })),
+                sidechain(tool_use("s2", "s1", "r1", "rg ChatMachine")),
+            ]
+            .concat(),
+        )
+        .unwrap();
+        let mut lens = claudes.lens();
+        let mut shadow = Shadow::recording().attached();
+        shadow_lens(&mut shadow, &lens.open());
+        claudes.record("busy", "");
+        shadow_lens(&mut shadow, &lens.tick());
+        let mut file = std::fs::OpenOptions::new()
+            .append(true)
+            .open(agents.join("agent-a9.jsonl"))
+            .unwrap();
+        writeln!(
+            file,
+            "{}",
+            json!({ "type": "user", "uuid": "s3", "isSidechain": true, "message": { "role": "user",
+                "content": [{ "type": "tool_result", "tool_use_id": "r1", "content": "src/chat.rs" }] } })
+        )
+        .unwrap();
+        writeln!(file, "{}", answer("s4", "s3", "src/chat.rs:148")).unwrap();
+        claudes.line(&json!({
+            "type": "user", "uuid": "u3", "parentUuid": "u2", "isSidechain": false,
+            "message": { "role": "user", "content": "<task-notification>\n<task-id>a9</task-id>\n<tool-use-id>g1</tool-use-id>\n<status>completed</status>\n<result>src/chat.rs:148</result>\n</task-notification>" },
+        }));
+        shadow_lens(&mut shadow, &lens.tick());
+        let mut view = ChatView::default();
+        for event in &shadow.events {
+            view.apply(event)
+                .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+        }
+        let agent = view.item(&ItemId::new("g1")).expect("the subagent row");
+        assert_eq!(agent.status, ItemStatus::Completed);
+        assert_eq!(agent.body.text, "src/chat.rs:148");
+        let read = view
+            .item(&ItemId::new("r1"))
+            .expect("the subagent's own tool");
+        assert_eq!(read.parent, Some(ItemId::new("g1")));
+        assert_eq!(read.status, ItemStatus::Completed);
+        assert!(
+            agent.children.iter().any(|child| view
+                .item(child)
+                .is_some_and(|item| item.body.text == "src/chat.rs:148")),
+            "{:?}",
+            agent.children
+        );
+        assert!(
+            !view
+                .items
+                .values()
+                .any(|item| item.body.text.contains("find it") && item.parent.is_none()),
+            "the subagent prompt is not a prompt of yours"
+        );
+    }
+
+    #[test]
+    fn a_background_subagent_whose_notification_never_came_ends_when_its_meta_says_finished() {
+        use zz_protocol::chat::{ChatView, ItemId, ItemStatus};
+        let claudes = Claudes::new();
+        let mut lens = claudes.lens();
+        let mut shadow = Shadow::recording().attached();
+        shadow_lens(&mut shadow, &lens.open());
+        claudes.record("busy", "");
+        claudes.line(&prompt("u1", None, "look around"));
+        claudes.line(&json!({
+            "type": "assistant", "uuid": "a1", "parentUuid": "u1", "isSidechain": false,
+            "message": { "id": "msg_a1", "role": "assistant", "content": [{ "type": "tool_use", "id": "g1",
+                "name": "Agent", "input": { "description": "Find it", "prompt": "find it" } }] },
+        }));
+        claudes.line(&json!({
+            "type": "user", "uuid": "u2", "parentUuid": "a1", "isSidechain": false,
+            "toolUseResult": { "isAsync": true, "status": "async_launched", "agentId": "a9" },
+            "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "g1",
+                "content": [{ "type": "text", "text": "Async agent launched successfully." }] }] },
+        }));
+        let agents = claudes.transcript.with_extension("").join("subagents");
+        std::fs::create_dir_all(&agents).unwrap();
+        let meta = agents.join("agent-a9.meta.json");
+        std::fs::write(&meta, r#"{"toolUseId":"g1","finished":false}"#).unwrap();
+        std::fs::write(
+            agents.join("agent-a9.jsonl"),
+            format!("{}\n", answer("s1", "s0", "src/chat.rs:148")),
+        )
+        .unwrap();
+        shadow_lens(&mut shadow, &lens.tick());
+        let open = |shadow: &Shadow| {
+            let mut view = ChatView::default();
+            for event in &shadow.events {
+                view.apply(event)
+                    .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+            }
+            view
+        };
+        assert!(
+            open(&shadow)
+                .item(&ItemId::new("g1"))
+                .is_some_and(|agent| agent.status.is_open())
+        );
+        std::fs::write(&meta, r#"{"toolUseId":"g1","finished":true}"#).unwrap();
+        shadow_lens(&mut shadow, &lens.tick());
+        let view = open(&shadow);
+        let agent = view.item(&ItemId::new("g1")).expect("the subagent row");
+        assert_eq!(agent.status, ItemStatus::Completed);
+        assert_eq!(agent.body.text, "src/chat.rs:148");
+    }
+
+    #[test]
+    fn a_prompt_typed_in_the_terminal_opens_its_turn_before_claude_says_busy() {
+        use zz_protocol::chat::{ChatPhase, ChatView, ItemId};
+        let claudes = Claudes::new();
+        let mut lens = claudes.lens();
+        let mut shadow = Shadow::recording().attached();
+        shadow_lens(&mut shadow, &lens.open());
+        claudes.line(&prompt("u1", None, "look around"));
+        claudes.line(&answer("a1", "u1", "looked"));
+        claudes.line(&turn_duration("d1", "a1"));
+        shadow_lens(&mut shadow, &lens.tick());
+        let mut view = ChatView::default();
+        for event in &shadow.events {
+            view.apply(event)
+                .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+        }
+        assert!(view.background.is_empty(), "{:?}", view.background);
+        assert_eq!(view.turns.len(), 1);
+        assert_eq!(
+            view.turns[0].items,
+            [ItemId::new("u:u1"), ItemId::new("a:msg_a1#1")]
+        );
+        assert_eq!(view.phase(), ChatPhase::Idle);
     }
 
     #[test]
@@ -1571,6 +2063,86 @@ mod tests {
                     request_id,
                     canceled: false
                 })
+        );
+    }
+
+    fn ask(uuid: &str, parent: &str, id: &str, multi: bool) -> Value {
+        json!({
+            "type": "assistant", "uuid": uuid, "parentUuid": parent, "isSidechain": false,
+            "message": { "id": format!("msg_{uuid}"), "role": "assistant", "content": [{
+                "type": "tool_use", "id": id, "name": "AskUserQuestion", "input": { "questions": [{
+                    "question": "Which file?", "header": "Open first", "multiSelect": multi,
+                    "options": [{ "label": "chat.rs" }, { "label": "lib.rs" }, { "label": "mod.rs" }],
+                }] },
+            }] },
+        })
+    }
+
+    #[test]
+    fn a_single_choice_question_shows_inline_and_answers_with_its_digit() {
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "ask me"));
+        claudes.line(&ask("a1", "u1", "q1", false));
+        let mut lens = claudes.lens();
+        lens.open();
+        claudes.record("waiting", "input needed");
+        let asked = lens.tick();
+        let Some((request_id, tool_call, questions)) =
+            asked.iter().find_map(|payload| match payload {
+                AgentStreamPayload::PermissionRequested {
+                    request_id,
+                    tool_call,
+                    questions,
+                    ..
+                } => Some((*request_id, tool_call.clone(), questions.clone())),
+                _ => None,
+            })
+        else {
+            panic!("{asked:?}");
+        };
+        assert_eq!(tool_call["toolCallId"], "q1");
+        assert_eq!(questions.len(), 1);
+        assert_eq!(questions[0].options.len(), 3);
+        let answered = lens.control(RuntimeControl::AnswerQuestion {
+            request_id,
+            answers: vec![AgentQuestionAnswer {
+                id: questions[0].id.clone(),
+                answers: vec!["lib.rs".to_owned()],
+            }],
+        });
+        assert_eq!(*claudes.pane.keys.lock(), ["2"]);
+        assert_eq!(
+            answered,
+            [AgentStreamPayload::PermissionResolved {
+                request_id,
+                canceled: false
+            }]
+        );
+    }
+
+    #[test]
+    fn a_multi_select_question_stays_in_the_terminal() {
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "ask me"));
+        claudes.line(&ask("a1", "u1", "q1", true));
+        let mut lens = claudes.lens();
+        lens.open();
+        claudes.record("waiting", "input needed");
+        let asked = lens.tick();
+        let Some((tool_call, questions)) = asked.iter().find_map(|payload| match payload {
+            AgentStreamPayload::PermissionRequested {
+                tool_call,
+                questions,
+                ..
+            } => Some((tool_call.clone(), questions.clone())),
+            _ => None,
+        }) else {
+            panic!("{asked:?}");
+        };
+        assert!(questions.is_empty());
+        assert_eq!(
+            tool_call["title"],
+            "Claude Code needs your input in the terminal"
         );
     }
 

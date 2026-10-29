@@ -13,6 +13,9 @@ pub mod agent_output;
 pub mod agent_question;
 pub mod agent_timeline;
 pub mod agent_transcript;
+pub mod chat_rows;
+#[cfg(test)]
+mod chat_rows_tests;
 pub mod chooser;
 mod chrome;
 pub mod completion;
