@@ -11,7 +11,6 @@ pub mod chooser;
 mod chrome;
 pub mod completion;
 mod core;
-#[cfg(not(target_family = "wasm"))]
 pub mod floating;
 pub mod fuzzy;
 pub mod gui_actions;
@@ -38,7 +37,6 @@ mod status_bar;
 pub mod terminal_color;
 pub mod terminal_view;
 pub mod tmux_style;
-pub mod url_input;
 pub mod verbs;
 pub mod which_key;
 pub mod window_summary;
@@ -72,3 +70,4 @@ pub use status_bar::{
 };
 
 pub mod appearance;
+pub mod url_input;
