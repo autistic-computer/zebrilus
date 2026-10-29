@@ -4,42 +4,53 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "CEF off-screen-rendering browser runtime"
+description = "Chromium off-screen rendering for wgpu apps: CEF frames as GPU textures, input, profiles, cookies"
 publish = false
 
 [features]
 default = ["cef-runtime"]
-cef-runtime = ["dep:cef", "dep:ash"]
+host = [
+    "dep:ala",
+    "dep:async-channel",
+    "dep:base64",
+    "dep:block2",
+    "dep:objc2",
+    "dep:objc2-core-foundation",
+    "dep:objc2-io-surface",
+    "dep:objc2-metal",
+    "dep:pollster",
+    "dep:wgpu",
+]
+cef-runtime = ["host", "dep:cef", "dep:ash"]
 
 [dependencies]
-zz-client.workspace = true
-async-channel.workspace = true
-base64.workspace = true
+async-channel = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 cef = { workspace = true, optional = true }
-getrandom.workspace = true
 log.workspace = true
 parking_lot.workspace = true
-pollster.workspace = true
+pollster = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 url.workspace = true
-wgpu.workspace = true
-zz-protocol.workspace = true
-zz-terminal.workspace = true
+wgpu = { workspace = true, optional = true }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+getrandom.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ash = { version = "0.38", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-ala = { workspace = true, features = ["default"] }
+ala = { workspace = true, optional = true, features = ["default"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-block2.workspace = true
-objc2.workspace = true
-objc2-core-foundation = { workspace = true, features = ["CFDictionary", "CFNumber", "CFString"] }
-objc2-io-surface.workspace = true
-objc2-metal.workspace = true
+block2 = { workspace = true, optional = true }
+objc2 = { workspace = true, optional = true }
+objc2-core-foundation = { workspace = true, optional = true, features = ["CFDictionary", "CFNumber", "CFString"] }
+objc2-io-surface = { workspace = true, optional = true }
+objc2-metal = { workspace = true, optional = true }
 
 [dev-dependencies]
 tempfile.workspace = true

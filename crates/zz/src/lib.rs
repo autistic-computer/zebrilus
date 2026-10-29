@@ -93,7 +93,7 @@ pub fn run() -> ExitCode {
         }
     }
     ExitCode::from(finish_bootstrap(
-        zz_browser::bootstrap(),
+        zz_browser::bootstrap(browser::profile_paths),
         socket_path,
         AppProfile::desktop(),
     ))
@@ -155,7 +155,8 @@ pub extern "C" fn RunWinMain(
             Startup::Exit(exit) => return if exit == ExitCode::SUCCESS { 0 } else { 1 },
         };
     }
-    let result = zz_browser::bootstrap_windows(instance, sandbox_info.cast());
+    let result =
+        zz_browser::bootstrap_windows(instance, sandbox_info.cast(), browser::profile_paths);
     i32::from(finish_bootstrap(result, socket_path, AppProfile::desktop()))
 }
 
@@ -534,7 +535,7 @@ fn tui_browser_provider() -> Option<Box<dyn zz_tui::browser::BrowserFrameProvide
         return None;
     }
 
-    let profile_paths = match zz_browser::resolve_profile_paths() {
+    let profile_paths = match browser::profile_paths() {
         Ok(paths) => browser::tui::tui_profile_paths(&paths),
         Err(error) => {
             log::error!(target: "zz::browser::tui", "could not resolve the TUI browser cache: {error}");

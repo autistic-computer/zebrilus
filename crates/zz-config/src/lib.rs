@@ -6,13 +6,13 @@ use std::{
     path::{Path, PathBuf},
     time::SystemTime,
 };
+use zz_browser::url_input::SearchProvider;
 use zz_client::StatusBarSettings;
 use zz_client::appearance::{
     ACCENTS, AccentSetting, AppIconSetting, BUILTIN_THEMES, DEFAULT_ANIMATION_SPEED, DEFAULT_THEME,
     DEFAULT_TINT_HUE, MAX_ANIMATION_SPEED, MAX_CORNER_RADIUS, MIN_ANIMATION_SPEED,
     ThemeModeSetting, is_builtin_theme,
 };
-use zz_client::url_input::SearchProvider;
 pub use zz_daemon_client::{
     HostEntry, RejectedHost, atomic_write, configured_fleet_hosts, validate_fleet_host,
 };

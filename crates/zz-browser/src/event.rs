@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use crate::ImeCharacterBounds;
 
+pub const MAX_FAVICON_BYTES: usize = 8 * 1024;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub u64);
 

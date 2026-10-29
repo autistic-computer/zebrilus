@@ -370,7 +370,7 @@ impl InlineBrowser {
         } else {
             TerminalKeyAction::Press
         };
-        let input = zz_browser::terminal_key_input(&terminal_key_input(keystroke, action));
+        let input = super::browser_key_input(&terminal_key_input(keystroke, action));
         self.controller.update(cx, |controller, cx| {
             controller.send_key(INLINE_PANE, tab, input, cx);
         });
@@ -383,7 +383,7 @@ impl InlineBrowser {
         let Some(tab) = self.live.as_ref().map(|live| live.tab) else {
             return;
         };
-        let input = zz_browser::terminal_key_input(&terminal_key_input(
+        let input = super::browser_key_input(&terminal_key_input(
             &event.keystroke,
             TerminalKeyAction::Release,
         ));

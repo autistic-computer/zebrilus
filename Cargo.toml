@@ -192,7 +192,7 @@ ala-platform = { path = "libs/ala/crates/ala-platform", default-features = false
 
 zz = { path = "crates/zz" }
 zz-app = { path = "clients/app" }
-zz-browser = { path = "crates/zz-browser" }
+zz-browser = { path = "crates/zz-browser", default-features = false }
 zz-chrome-import = { path = "crates/zz-chrome-import" }
 zz-cli = { path = "crates/zz-cli" }
 zz-client = { path = "crates/zz-client" }

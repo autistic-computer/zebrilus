@@ -179,7 +179,7 @@ that holds the token; a host switch fails the fetches in flight. Responses carry
 `Cache-Control: no-store`. http(s) pages and other artifacts can't fetch `zz://` URLs because the
 scheme is not CORS-enabled.
 
-The URL parser (`crates/zz-client/src/url_input.rs:127`) adds `zz` beside http, https and file,
+The URL parser (`crates/zz-browser/src/url_input.rs`) adds `zz` beside http, https and file,
 so `set-browser-url` and reattach take these URLs.
 
 # Reload

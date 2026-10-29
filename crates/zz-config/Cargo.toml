@@ -11,6 +11,7 @@ publish = false
 update = ["dep:semver", "dep:ureq"]
 
 [dependencies]
+zz-browser.workspace = true
 zz-client.workspace = true
 zz-daemon-client.workspace = true
 zz-protocol.workspace = true

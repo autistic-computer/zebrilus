@@ -13,12 +13,12 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-daemon-client` - the client half of the daemon: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, transport, paths, and process facts; client-only crates depend on it instead of `zz-daemon`
 - `crates/zz-mux` — tmux-compatible model: sessions, windows, panes, key tables
 - `crates/zz-protocol` — wire protocol between daemon and clients, plus the shared key contract (tables, engine, fold, command catalog)
-- `crates/zz-client` - sans-IO client core: protocol reduction, chrome keymap, daemon-backed convergence simulator, the browser element picker
+- `crates/zz-client` - sans-IO client core: protocol reduction, chrome keymap, daemon-backed convergence simulator
 - `crates/zz-config` - renderer-free application config, settings actions, preference persistence; update checks behind its `update` feature
 - `crates/zz-machine` - the shape of zz's pure state machines: a transition returns the next state, effects and rejects, and the state says when to wake; the agent turn machine (`zz-daemon/src/agent/turn.rs`) is built on it
 - `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
 - `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
-- `crates/zz-browser` — CEF off-screen-rendering browser runtime
+- `crates/zz-browser` — CEF off-screen-rendering browser runtime with no zz crate dependencies (the future `ala-cef`); without features it is the pure half (cookies, profile names, URL input, element picker) that `zz-client`'s thin clients and `zz-chrome-import` use
 - `crates/zz-chrome-import` — Chrome profile, cookie, and history import
 - `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, settings, navigation, phone shell); re-exports the kit
 - `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)

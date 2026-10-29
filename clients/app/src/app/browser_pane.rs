@@ -662,9 +662,9 @@ impl BrowserPane {
         if !self.writable(cx) {
             return;
         }
-        let Ok(url) = zz_client::url_input::resolve_address(
+        let Ok(url) = zz_browser::url_input::resolve_address(
             value,
-            zz_client::url_input::SearchProvider::default(),
+            zz_browser::url_input::SearchProvider::default(),
         ) else {
             return;
         };
