@@ -1,3 +1,4 @@
+use crate::sidebar::status_dot;
 use std::rc::Rc;
 
 use ala::{App, IntoElement, div, prelude::*, px};
@@ -8,7 +9,7 @@ use crate::{
     navigation::{
         WorkspaceStatusWindowState,
         status::{StatusPaneEntry, StatusWindowActions, status_window},
-        status_dot, workspace_status_item,
+        workspace_status_item,
     },
     shell::{WorkspaceStatusSlots, workspace_status_bar},
 };

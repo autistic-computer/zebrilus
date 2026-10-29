@@ -1,6 +1,5 @@
 pub(crate) mod background;
 pub(crate) mod corners;
-pub(crate) mod drag;
 #[cfg(target_os = "linux")]
 pub(crate) mod frame;
 pub(crate) mod state;

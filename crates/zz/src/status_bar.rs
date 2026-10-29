@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use zz_ui::sidebar::{controls_leading_inset, status_dot};
 
 use ala::{
     AnyElement, App, Entity, IntoElement, MouseButton, Pixels, SharedString, Stateful, Window,
@@ -13,7 +14,7 @@ use zz_ui::{
             MAX_VISIBLE_WINDOWS, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
             status_window, status_window_overflow, visible_window_range,
         },
-        status_dot, workspace_controls_leading_inset, workspace_status_item,
+        workspace_status_item,
     },
     tooltip::Tooltip,
 };
@@ -75,7 +76,7 @@ pub(crate) fn render_gui_status_bar(
     let right = render_right_items(&model, cx);
     workspace_status_bar(
         crate::config::pane_gaps(cx),
-        workspace_controls_leading_inset(cx),
+        controls_leading_inset(cx),
         WorkspaceStatusSlots {
             windows: visible_windows.into_iter().chain(overflow).collect(),
             right,

@@ -84,7 +84,7 @@ pub fn tree_node_marker(
             .child(icon)
             .when(bell, |this| {
                 this.child(
-                    super::status_dot(cx.theme().warning)
+                    crate::sidebar::status_dot(cx.theme().warning)
                         .absolute()
                         .top(px(-1.0))
                         .right(px(-1.0)),
@@ -92,7 +92,7 @@ pub fn tree_node_marker(
             })
             .when_some(badge_color, |this, color| {
                 this.child(
-                    super::status_dot(color)
+                    crate::sidebar::status_dot(color)
                         .absolute()
                         .bottom(px(-1.0))
                         .right(px(-1.0)),

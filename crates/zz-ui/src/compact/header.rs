@@ -9,7 +9,8 @@ use crate::{
     rems_from_px, roles,
 };
 
-pub const LARGE_TITLE_HEIGHT: f32 = 52.0;
+pub use penna::settings::{LARGE_TITLE_HEIGHT, large_title};
+
 pub const TITLE_BAR_HEIGHT: f32 = 44.0;
 
 const FOLD_START: f32 = 4.0;
@@ -21,29 +22,6 @@ const FROST_SATURATION: f32 = 1.8;
 
 pub fn scrolled(scroll: &ScrollHandle) -> f32 {
     (-f32::from(scroll.offset().y)).max(0.0)
-}
-
-pub fn large_title(title: impl Into<SharedString>, cx: &App) -> Div {
-    div()
-        .debug_selector(|| "large-title".to_owned())
-        .flex()
-        .flex_none()
-        .items_end()
-        .h(px(LARGE_TITLE_HEIGHT))
-        .px(px(16.0))
-        .pb(px(4.0))
-        .text_size(px(34.0))
-        .line_height(px(41.0))
-        .font_bold()
-        .text_color(cx.theme().foreground)
-        .child(
-            div()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .child(title.into()),
-        )
 }
 
 pub fn folding_title_bar(

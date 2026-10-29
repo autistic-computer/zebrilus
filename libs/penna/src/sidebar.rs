@@ -9,12 +9,13 @@ use ala::{
 
 pub const SIDEBAR_DEFAULT_WIDTH: f32 = 256.0;
 pub const SIDEBAR_CONTENT_INSET: f32 = 8.0;
+pub const SIDEBAR_SCROLLBAR_GUTTER: Pixels = px(8.0);
+pub const SIDEBAR_ROW_ACTION_CENTER: Pixels = px(19.0);
 pub const CHROME_BUTTON_SIZE: Pixels = px(32.0);
 const CHROME_ICON_SIZE: Pixels = px(17.0);
-const SIDEBAR_EDGE_INSET: f32 = 6.0;
 const SIDEBAR_FOOTER_TOP: f32 = 4.0;
 const SIDEBAR_RESIZE_HANDLE_WIDTH: f32 = 8.0;
-const STATUS_DOT_SIZE: f32 = 6.0;
+pub const STATUS_DOT_SIZE: f32 = 6.0;
 
 #[must_use]
 pub fn status_dot(color: Hsla) -> ala::Div {
@@ -43,8 +44,13 @@ pub fn chrome_button(id: impl Into<ElementId>, icon: IconName, tooltip: &'static
         .tooltip(tooltip)
 }
 
-fn edge_inset(cx: &App) -> Pixels {
-    cx.theme().row_inset + px(SIDEBAR_EDGE_INSET)
+fn chrome_inset(cx: &App) -> Pixels {
+    (cx.theme().pane_header_height() - CHROME_BUTTON_SIZE) / 2.0
+}
+
+fn trailing_inset(cx: &App) -> Pixels {
+    SIDEBAR_SCROLLBAR_GUTTER + cx.theme().row_inset + SIDEBAR_ROW_ACTION_CENTER
+        - CHROME_BUTTON_SIZE / 2.0
 }
 
 #[must_use]
@@ -62,7 +68,7 @@ pub fn sidebar_titlebar(
         .items_center()
         .justify_end()
         .pl(controls_leading_inset(cx))
-        .pr(edge_inset(cx))
+        .pr(trailing_inset(cx))
         .child(controls)
 }
 
@@ -72,7 +78,7 @@ pub fn sidebar_footer(
     trailing: Option<ala::AnyElement>,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    let inset = edge_inset(cx);
+    let window_inset = cx.theme().pane_margin + chrome_inset(cx);
     div()
         .id(id)
         .flex()
@@ -81,9 +87,9 @@ pub fn sidebar_footer(
         .items_center()
         .justify_between()
         .pt(px(SIDEBAR_FOOTER_TOP))
-        .pl(inset)
-        .pr(inset)
-        .pb(inset)
+        .pl(window_inset)
+        .pr(trailing_inset(cx))
+        .pb(window_inset)
         .child(leading)
         .children(trailing)
 }

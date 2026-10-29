@@ -1,3 +1,4 @@
+use zz_ui::sidebar::{SIDEBAR_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
 use std::rc::Rc;
 
 use zz_client::program::Program;
@@ -7,20 +8,10 @@ use ala::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
-    navigation::{
-        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
-        WORKSPACE_TREE_CONTENT_INSET, WORKSPACE_TREE_INDENT_WIDTH,
-        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
-        sidebar::{
+    navigation::{WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH, WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
             tree_node_marker, tree_row_menu,
-        },
-        tree::{IndentGuideColors, WorkspaceIndentGuides},
-        workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-        workspace_sidebar_footer, workspace_sidebar_footer_controls, workspace_sidebar_surface,
-        workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
-        workspace_tree_disclosure, workspace_tree_row, workspace_tree_shortcut,
-    },
+        }, tree::{IndentGuideColors, WorkspaceIndentGuides}, workspace_add_host_button, workspace_layout_button, workspace_settings_button, workspace_sidebar_footer_controls, workspace_sidebar_surface, workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_row, workspace_tree_shortcut},
     program::program_mark,
     scroll::ScrollableElement as _,
 };
@@ -344,7 +335,7 @@ pub fn guides(depths: Rc<[usize]>, active_row: Option<usize>, cx: &App) -> Works
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),
-        px(WORKSPACE_TREE_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
+        px(SIDEBAR_CONTENT_INSET + WORKSPACE_TREE_MARKER_SLOT_WIDTH / 2.0),
         px(4.0),
         IndentGuideColors::tree(cx),
     )
@@ -368,7 +359,7 @@ pub fn tree_list(
             .collect::<Vec<_>>()
     })
     .size_full()
-    .pr(zz_ui::navigation::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(zz_ui::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides(depths, active_row, cx));
@@ -407,13 +398,13 @@ fn sidebar_in_view(
 ) -> Stateful<ala::Div> {
     workspace_sidebar_surface(
         "sidebar",
-        WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
-        workspace_sidebar_titlebar("sidebar-titlebar", chrome_controls(), cx),
+        SIDEBAR_DEFAULT_WIDTH,
+        sidebar_titlebar("sidebar-titlebar", chrome_controls(), cx),
         navigation,
         cx,
     )
     .when(!settings_selected, |surface| {
-        surface.child(workspace_sidebar_footer(
+        surface.child(sidebar_footer(
             "sidebar-footer",
             workspace_settings_button("settings"),
             Some(

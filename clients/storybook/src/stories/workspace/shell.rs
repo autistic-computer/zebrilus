@@ -283,6 +283,7 @@ fn titlebar_strip(_: &mut Window, cx: &mut App) -> AnyElement {
                 .framed(cx)
                 .child(app_titlebar_strip(
                     "titlebar-strip",
+                    div(),
                     div().pr(px(8.0)).child(chrome_controls()),
                     cx,
                 )),

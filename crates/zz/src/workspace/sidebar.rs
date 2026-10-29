@@ -6,6 +6,11 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+use zz_ui::shell::window_drag_handle;
+use zz_ui::sidebar::{
+    SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer,
+    sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
+};
 
 use ala::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Hsla,
@@ -17,9 +22,7 @@ use ala::{
 use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
 use zz_ui::navigation::{
-    WORKSPACE_SIDEBAR_DEFAULT_WIDTH as SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
-    WORKSPACE_TREE_CONTENT_INSET as TREE_CONTENT_INSET,
-    WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
+    WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH as TREE_INDENT_WIDTH,
     WORKSPACE_TREE_MARKER_SLOT_WIDTH as TREE_MARKER_SLOT_WIDTH,
     WORKSPACE_TREE_NODE_ICON_SIZE as TREE_NODE_ICON_SIZE,
     sidebar::{
@@ -28,10 +31,9 @@ use zz_ui::navigation::{
         tree_node_marker, tree_row_menu,
     },
     workspace_add_host_button, workspace_layout_button, workspace_settings_button,
-    workspace_sidebar_fade, workspace_sidebar_footer, workspace_sidebar_footer_controls,
-    workspace_sidebar_ground, workspace_sidebar_panel, workspace_sidebar_resize_handle,
-    workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_tree_action_button,
-    workspace_tree_disclosure, workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
+    workspace_sidebar_fade, workspace_sidebar_footer_controls, workspace_sidebar_ground,
+    workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
+    workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _,
@@ -39,8 +41,8 @@ use zz_ui::{
     rems_from_px,
     scroll::ScrollableElement as _,
     settings::{
-        settings_navigation_back_button, settings_navigation_back_row, settings_navigation_button,
-        settings_navigation_group_gap,
+        settings_navigation_back_button, settings_navigation_button, settings_navigation_group_gap,
+        settings_navigation_row,
     },
 };
 
@@ -62,7 +64,7 @@ use crate::{
             expand_path_to, kill_target_command, new_window_command,
         },
     },
-    window::{corners::WindowCorners, drag::window_drag_handle},
+    window::corners::WindowCorners,
     workspace::tree::{IndentGuideColors, WorkspaceIndentGuides},
 };
 
@@ -791,7 +793,7 @@ impl WorkspaceSidebar {
             settings_navigation_back_button("settings-back").on_click(move |_, window, cx| {
                 close_sidebar.update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
             });
-        let mut items = vec![settings_navigation_back_row(back).into_any_element()];
+        let mut items = vec![settings_navigation_row(back).into_any_element()];
         let mut current_group = None;
         for &section in &crate::profile::profile(cx).settings_sections {
             let group = section.navigation_group();
@@ -802,14 +804,20 @@ impl WorkspaceSidebar {
             let settings = settings.clone();
             let navigation_sidebar = sidebar.clone();
             items.push(
-                settings_navigation_button(section, section == selected, cx)
-                    .on_click(move |_, window, cx| {
-                        settings.update(cx, |settings, cx| {
-                            settings.set_section(section, window, cx);
-                        });
-                        navigation_sidebar.update(cx, |_, cx| cx.notify());
-                    })
-                    .into_any_element(),
+                settings_navigation_button(
+                    section.title(),
+                    section.title(),
+                    section.icon(),
+                    section == selected,
+                    cx,
+                )
+                .on_click(move |_, window, cx| {
+                    settings.update(cx, |settings, cx| {
+                        settings.set_section(section, window, cx);
+                    });
+                    navigation_sidebar.update(cx, |_, cx| cx.notify());
+                })
+                .into_any_element(),
             );
         }
         div()
@@ -843,7 +851,7 @@ impl WorkspaceSidebar {
         let settings = sidebar.clone();
         let view = sidebar.clone();
         let ground = self.content_ground(cx);
-        workspace_sidebar_footer(
+        sidebar_footer(
             "workspace-sidebar-footer",
             workspace_settings_button("workspace-settings")
                 .on(ground)
@@ -976,9 +984,8 @@ impl Render for WorkspaceSidebar {
             Self::render_controls(&sidebar, self.content_ground(cx), cx)
         };
         let footer = (!settings_route).then(|| self.render_footer(&sidebar, cx));
-        let titlebar =
-            workspace_sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)
-                .window_control_area(WindowControlArea::Drag);
+        let titlebar = sidebar_titlebar("workspace-sidebar-titlebar", div().children(controls), cx)
+            .window_control_area(WindowControlArea::Drag);
         let titlebar = if crate::profile::profile(cx).fixed_window {
             titlebar
         } else {
@@ -992,7 +999,7 @@ impl Render for WorkspaceSidebar {
         };
         let divider_hidden = (settings_route || docked) && pane_gaps(cx);
         let shell = corners.round_div(
-            workspace_sidebar_panel(
+            sidebar_panel(
                 "workspace-sidebar",
                 width,
                 titlebar,
@@ -1005,7 +1012,7 @@ impl Render for WorkspaceSidebar {
             frame_content_corner_radius(cx),
         );
         let resize_handle =
-            workspace_sidebar_resize_handle("workspace-sidebar-resize-handle", !divider_hidden, cx)
+            sidebar_resize_handle("workspace-sidebar-resize-handle", !divider_hidden, cx)
                 .on_drag(SidebarResizeDrag, |_: &SidebarResizeDrag, _, _, cx| {
                     cx.new(|_| SidebarResizePreview)
                 });
@@ -1315,7 +1322,7 @@ fn render_expanded_navigation(
         },
     )
     .size_full()
-    .pr(zz_ui::navigation::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(zz_ui::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll_handle)
     .with_decoration(decoration);

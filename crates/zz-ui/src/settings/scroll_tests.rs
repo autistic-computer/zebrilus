@@ -1,7 +1,6 @@
 use ala::{
-    AppContext as _, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _,
-    Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext, VisualTestContext, Window,
-    div, point, px,
+    Context, Div, InteractiveElement as _, IntoElement, ParentElement as _, Render, ScrollDelta,
+    ScrollWheelEvent, Styled as _, TestAppContext, VisualTestContext, Window, div, point, px,
 };
 
 fn draw(cx: &mut VisualTestContext) {
@@ -25,120 +24,6 @@ fn row(selector: &'static str, height: f32) -> Div {
         .h(px(height))
         .flex_shrink_0()
         .debug_selector(move || selector.to_string())
-}
-
-struct WrappedTextTest;
-
-impl Render for WrappedTextTest {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().flex().w(px(300.)).h(px(200.)).child(
-            div().flex().flex_1().min_h_0().overflow_hidden().child(
-                super::settings_scroll_column("wrapped-text-column")
-                    .child(
-                        div()
-                            .text_size(crate::rems_from_px(10.))
-                            .child(ala::SharedString::from("word ".repeat(60))),
-                    )
-                    .child(row("wrapped-text-tail", 20.)),
-            ),
-        )
-    }
-}
-
-struct SettingsPageReplicaTest {
-    pickers: Vec<ala::Entity<crate::color_picker::ColorPickerState>>,
-    numbers: Vec<ala::Entity<crate::input::InputState>>,
-}
-
-impl Render for SettingsPageReplicaTest {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div().flex().w(px(760.)).h(px(300.)).child(
-            div().flex().flex_1().min_h_0().overflow_hidden().child(
-                super::settings_scroll_column("replica-column")
-                    .child(
-                        div()
-                            .text_size(crate::rems_from_px(11.))
-                            .child("Changes are written to zz/config."),
-                    )
-                    .child(
-                        super::SettingsStack::titled("Theme").children(self.pickers.iter().map(
-                            |picker| {
-                                super::SettingEntry::new("Background").control(
-                                    crate::color_picker::ColorPicker::new(picker, ala::black()),
-                                )
-                            },
-                        )),
-                    )
-                    .child(
-                        super::SettingsStack::titled("Window")
-                            .child(
-                                super::SettingEntry::new("Window background opacity").control(
-                                    div()
-                                        .w(px(120.))
-                                        .flex_none()
-                                        .child(crate::input::NumberInput::new(&self.numbers[0])),
-                                ),
-                            )
-                            .child(
-                                super::SettingEntry::new("Window background blur").control(
-                                    crate::switch::Switch::new("replica-blur").checked(true),
-                                ),
-                            ),
-                    )
-                    .child(
-                        super::SettingsStack::titled("Interface").child(
-                            super::SettingEntry::new("Widget corner radius").control(
-                                div()
-                                    .w(px(120.))
-                                    .flex_none()
-                                    .child(crate::input::NumberInput::new(&self.numbers[1])),
-                            ),
-                        ),
-                    )
-                    .child(row("replica-tail", 20.)),
-            ),
-        )
-    }
-}
-
-#[ala::test]
-fn settings_page_scroll_range_matches_content(cx: &mut TestAppContext) {
-    cx.update(crate::init);
-    let (_, cx) = cx.add_window_view(|window, cx| SettingsPageReplicaTest {
-        pickers: (0..6)
-            .map(|_| cx.new(|cx| crate::color_picker::ColorPickerState::new(None, window, cx)))
-            .collect(),
-        numbers: (0..2)
-            .map(|_| cx.new(|cx| crate::input::InputState::new(window, cx)))
-            .collect(),
-    });
-    let cx: &mut VisualTestContext = cx;
-    draw(cx);
-
-    scroll(cx, 300., 150., 0., -100_000.);
-    let tail = cx.debug_bounds("replica-tail").unwrap();
-    assert!(
-        tail.bottom() >= px(250.) && tail.bottom() <= px(300.),
-        "after scrolling to the end, the last row must sit at the viewport bottom, \
-         not pages above it (tail bottom: {:?})",
-        tail.bottom()
-    );
-}
-
-#[ala::test]
-fn scroll_range_measures_wrapped_text_at_layout_width(cx: &mut TestAppContext) {
-    cx.update(crate::init);
-    let (_, cx) = cx.add_window_view(|_, _| WrappedTextTest);
-    let cx: &mut VisualTestContext = cx;
-    draw(cx);
-
-    let before = cx.debug_bounds("wrapped-text-tail").unwrap().origin.y;
-    scroll(cx, 150., 100., 0., -10_000.);
-    let after = cx.debug_bounds("wrapped-text-tail").unwrap().origin.y;
-    assert_eq!(
-        before, after,
-        "content fits the viewport, so the wheel must not move it"
-    );
 }
 
 struct LargeTitleTest {

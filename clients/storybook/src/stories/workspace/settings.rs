@@ -31,7 +31,7 @@ use zz_ui::{
         panes_preview::PanesPreview,
         providers::{ProvidersHost, providers_stack},
         settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
-        settings_navigation_back_row, settings_navigation_button, settings_navigation_group_gap,
+        settings_navigation_row, settings_navigation_button, settings_navigation_group_gap,
         settings_page_title, settings_scroll_column, settings_section_index, settings_title_bar,
         status_bar_preview::status_bar_page,
     },
@@ -154,7 +154,13 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
             rows.push(settings_navigation_group_gap().into_any_element());
         }
         previous = Some(group);
-        rows.push(settings_navigation_button(section, section == selected, cx).into_any_element());
+        rows.push(settings_navigation_button(
+                    section.title(),
+                    section.title(),
+                    section.icon(),
+                    section == selected,
+                    cx,
+                ).into_any_element());
     }
     let list = div()
         .id("settings-nav")
@@ -163,7 +169,7 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
         .w_full()
         .gap(px(2.0))
         .px(px(6.0))
-        .child(settings_navigation_back_row(
+        .child(settings_navigation_row(
             settings_navigation_back_button("settings-back"),
         ))
         .children(rows);

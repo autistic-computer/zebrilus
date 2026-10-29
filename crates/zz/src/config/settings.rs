@@ -8,6 +8,7 @@ use std::{
     io::{self, ErrorKind},
     path::PathBuf,
 };
+use zz_ui::shell::window_drag_handle;
 
 use ala::{
     AnyElement, App, ClipboardItem, Context, Entity, FocusHandle, Focusable, IntoElement, Render,
@@ -36,7 +37,7 @@ use crate::{
         client::MuxClient,
         hosts::{HostId, HostState},
     },
-    window::{drag::window_drag_handle, toast},
+    window::toast,
     workspace::add_host,
 };
 use zz_browser::SearchProvider;

@@ -1,18 +1,23 @@
+use std::{cell::Cell, rc::Rc};
+
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Ground, IconName, Layer,
     PaintState, RULE_WIDTH, Selectable as _, Sizable as _, StyledExt as _,
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    icon::{Icon, cap_center_drop},
+    icon::Icon,
     roles,
     scroll::ScrollableElement as _,
     select::SelectItem,
     separator::Separator,
 };
 use ala::{
-    AnyElement, App, Bounds, ElementId, Hsla, IntoElement, ParentElement, Pixels, RenderOnce,
-    ScrollHandle, SharedString, Styled as _, div, prelude::*, px, relative,
+    AnyElement, App, Bounds, Corners, ElementId, FocusHandle, Hsla, IntoElement, ListAlignment,
+    ListSizingBehavior, ListState, ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString,
+    Styled as _, Window, div, list, prelude::*, px, relative,
 };
+
+type EntryClick = Rc<dyn Fn(&ala::ClickEvent, &mut Window, &mut App)>;
 
 pub const SETTINGS_NAVIGATION_ROW_HEIGHT: f32 = 32.0;
 
@@ -67,8 +72,12 @@ pub fn settings_navigation_group_label(title: impl Into<SharedString>, cx: &App)
         .child(title.into())
 }
 
-const SETTINGS_CONTENT_MAX_WIDTH: f32 = 960.0;
-const SETTINGS_PAGE_PADDING: f32 = 14.0;
+pub fn settings_navigation_group_gap() -> ala::Div {
+    div().flex_none().h(px(12.0))
+}
+
+const SETTINGS_CONTENT_MAX_WIDTH: f32 = 760.0;
+pub const SETTINGS_PAGE_PADDING: f32 = 14.0;
 
 pub fn settings_page_content() -> ala::Div {
     div()
@@ -80,29 +89,59 @@ pub fn settings_page_content() -> ala::Div {
         .mx_auto()
 }
 
-pub fn settings_page_heading(
-    title: impl Into<SharedString>,
-    description: impl Into<SharedString>,
-    cx: &App,
-) -> ala::Div {
+#[derive(Clone, Debug, Default)]
+pub struct SettingsFold(Rc<Cell<f32>>);
+
+impl SettingsFold {
+    #[must_use]
+    pub fn scrolled(&self) -> f32 {
+        self.0.get()
+    }
+}
+
+pub const LARGE_TITLE_HEIGHT: f32 = 52.0;
+
+pub fn large_title(title: impl Into<SharedString>, cx: &App) -> ala::Div {
+    div()
+        .debug_selector(|| "large-title".to_owned())
+        .flex()
+        .flex_none()
+        .items_end()
+        .h(px(LARGE_TITLE_HEIGHT))
+        .px(px(16.0))
+        .pb(px(4.0))
+        .text_size(px(34.0))
+        .line_height(px(41.0))
+        .font_bold()
+        .text_color(cx.theme().foreground)
+        .child(
+            div()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .child(title.into()),
+        )
+}
+
+fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
+    large_title(title, cx)
+        .px(px(2.0))
+        .mt(px(-SETTINGS_PAGE_PADDING))
+}
+
+pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
     let title = title.into();
     div()
         .flex()
         .flex_col()
         .flex_none()
-        .gap(px(4.0))
         .when(!crate::touch::CoarsePointer::get(cx), |this| {
             this.child(
                 crate::StyledExt::font_medium(div().text_size(crate::rems_from_px(20.0)))
                     .child(title),
             )
         })
-        .child(
-            div()
-                .text_size(crate::rems_from_px(11.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(description.into()),
-        )
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -122,6 +161,7 @@ pub fn settings_scroll_column(id: &'static str) -> SettingsScrollColumn {
     SettingsScrollColumn {
         id,
         children: Vec::new(),
+        large_title: None,
     }
 }
 
@@ -129,6 +169,15 @@ pub fn settings_scroll_column(id: &'static str) -> SettingsScrollColumn {
 pub struct SettingsScrollColumn {
     id: &'static str,
     children: Vec<AnyElement>,
+    large_title: Option<(SharedString, SettingsFold)>,
+}
+
+impl SettingsScrollColumn {
+    #[must_use]
+    pub fn large_title(mut self, title: impl Into<SharedString>, fold: &SettingsFold) -> Self {
+        self.large_title = Some((title.into(), fold.clone()));
+        self
+    }
 }
 
 impl ala::ParentElement for SettingsScrollColumn {
@@ -145,6 +194,10 @@ impl RenderOnce for SettingsScrollColumn {
             })
             .read(cx)
             .clone();
+        let title = self.large_title.map(|(title, fold)| {
+            fold.0.set((-f32::from(handle.offset().y)).max(0.0));
+            settings_large_title(title, cx)
+        });
         div()
             .flex_1()
             .min_w_0()
@@ -173,6 +226,7 @@ impl RenderOnce for SettingsScrollColumn {
                         settings_page_content()
                             .flex_none()
                             .gap(px(18.0))
+                            .children(title)
                             .children(self.children),
                     )
                     .child(div().flex_none().h(SettingsBottomInset::get(cx))),
@@ -209,102 +263,149 @@ fn reveal_in_scroll(handle: &ScrollHandle, target: Bounds<Pixels>) -> bool {
     true
 }
 
-const SETTINGS_GROUP_TITLE_SIZE: f32 = 12.0;
-const SETTINGS_GROUP_TITLE_LINE: f32 = 18.0;
-const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
+const SETTINGS_LIST_OVERDRAW: f32 = 24.0;
 
-fn settings_group_header(
-    title: SharedString,
-    description: Option<SharedString>,
-    cx: &App,
-) -> ala::Div {
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(2.0))
-        .px(px(2.0))
-        .child(
-            crate::StyledExt::font_medium(
-                div()
-                    .text_size(crate::rems_from_px(SETTINGS_GROUP_TITLE_SIZE))
-                    .line_height(px(SETTINGS_GROUP_TITLE_LINE)),
-            )
-            .child(title),
-        )
-        .when_some(description, |this, description| {
-            this.child(
-                div()
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(description),
-            )
-        })
+type SettingsItemRenderer = Box<dyn FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static>;
+
+#[must_use]
+pub fn settings_virtual_column(
+    id: &'static str,
+    item_count: usize,
+    render_item: impl FnMut(usize, &mut Window, &mut App) -> AnyElement + 'static,
+) -> SettingsVirtualColumn {
+    SettingsVirtualColumn {
+        id,
+        item_count,
+        render_item: Box::new(render_item),
+        row_focus: Vec::new(),
+        large_title: None,
+    }
 }
 
-pub fn settings_list_disclosure_header(
+#[derive(IntoElement)]
+pub struct SettingsVirtualColumn {
     id: &'static str,
-    title: &'static str,
-    description: Option<&'static str>,
-    expanded: bool,
-    cx: &App,
-) -> ala::Stateful<ala::Div> {
-    let muted = cx.theme().foreground.muted();
-    div()
-        .id(id)
-        .pt(px(10.0))
-        .flex()
-        .items_start()
-        .gap(px(2.0))
-        .cursor_pointer()
-        .child(
+    item_count: usize,
+    render_item: SettingsItemRenderer,
+    row_focus: Vec<Option<FocusHandle>>,
+    large_title: Option<(SharedString, SettingsFold)>,
+}
+
+impl SettingsVirtualColumn {
+    #[must_use]
+    pub fn row_focus(mut self, handles: impl IntoIterator<Item = Option<FocusHandle>>) -> Self {
+        self.row_focus = handles.into_iter().collect();
+        self
+    }
+
+    #[must_use]
+    pub fn large_title(mut self, title: impl Into<SharedString>, fold: &SettingsFold) -> Self {
+        self.large_title = Some((title.into(), fold.clone()));
+        self
+    }
+}
+
+impl RenderOnce for SettingsVirtualColumn {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let state_key = ElementId::Name(format!("{}-list-state", self.id).into());
+        let lead = usize::from(self.large_title.is_some());
+        let mut focus = vec![None; lead];
+        focus.extend(self.row_focus);
+        focus.resize(self.item_count + lead, None);
+        let list_state = window
+            .use_keyed_state(state_key, cx, |_, _| {
+                (
+                    ListState::new(0, ListAlignment::Top, px(SETTINGS_LIST_OVERDRAW)).measure_all(),
+                    Vec::new(),
+                )
+            })
+            .update(cx, |(list_state, applied), _| {
+                if *applied != focus {
+                    let kept = applied
+                        .iter()
+                        .zip(&focus)
+                        .take_while(|(was, is)| was == is)
+                        .count();
+                    list_state.splice_focusable(kept..applied.len(), focus[kept..].iter().cloned());
+                    list_state.remeasure_items(kept..focus.len());
+                    *applied = focus;
+                }
+                list_state.clone()
+            });
+
+        let title = self.large_title.map(|(title, fold)| {
+            let top = list_state.logical_scroll_top();
+            fold.0.set(if top.item_ix == 0 {
+                f32::from(top.offset_in_item)
+            } else {
+                f32::INFINITY
+            });
+            title
+        });
+        let mut render_item = self.render_item;
+        let rows = list(list_state.clone(), move |index, window, cx| {
+            let row = match (&title, index.checked_sub(lead)) {
+                (_, Some(index)) => render_item(index, window, cx),
+                (Some(title), None) => settings_large_title(title.clone(), cx).into_any_element(),
+                (None, None) => div().into_any_element(),
+            };
             div()
                 .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .w(px(SETTINGS_DISCLOSURE_WIDTH))
-                .h(px(SETTINGS_GROUP_TITLE_LINE))
-                .child(
-                    Icon::new(if expanded {
-                        crate::IconName::ChevronDown
-                    } else {
-                        crate::IconName::ChevronRight
-                    })
-                    .size(px(SETTINGS_GROUP_TITLE_SIZE))
-                    .text_color(muted)
-                    .relative()
-                    .top(cap_center_drop(
-                        px(SETTINGS_GROUP_TITLE_SIZE),
-                        px(SETTINGS_GROUP_TITLE_SIZE),
-                        cx,
-                    )),
-                ),
-        )
-        .child(settings_group_header(
-            title.into(),
-            description.map(Into::into),
-            cx,
-        ))
+                .w_full()
+                .px(px(SETTINGS_PAGE_PADDING))
+                .child(settings_page_content().flex_none().child(row))
+                .into_any_element()
+        })
+        .with_sizing_behavior(ListSizingBehavior::Auto)
+        .size_full()
+        .pt(px(SETTINGS_PAGE_PADDING))
+        .pb(px(SETTINGS_PAGE_PADDING) + SettingsBottomInset::get(cx));
+
+        div()
+            .id(self.id)
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .relative()
+            .child(rows)
+            .vertical_scrollbar(&list_state)
+    }
 }
 
-pub fn settings_list_group_header(
-    title: &'static str,
-    description: Option<&'static str>,
-    cx: &App,
-) -> ala::Div {
-    div().pt(px(10.0)).child(settings_group_header(
-        title.into(),
-        description.map(Into::into),
-        cx,
-    ))
+pub const SETTINGS_GROUP_TITLE_SIZE: f32 = 13.0;
+pub const SETTINGS_GROUP_TITLE_LINE: f32 = 20.0;
+const SETTINGS_DESCRIPTION_SIZE: f32 = 12.0;
+
+pub fn settings_group_header(title: SharedString, cx: &App) -> ala::Div {
+    crate::StyledExt::font_semibold(
+        div()
+            .px(px(2.0))
+            .text_size(crate::rems_from_px(SETTINGS_GROUP_TITLE_SIZE))
+            .line_height(px(SETTINGS_GROUP_TITLE_LINE))
+            .text_color(cx.theme().foreground.muted()),
+    )
+    .child(title)
 }
 
-const SETTINGS_STACK_PADDING: f32 = 12.0;
+pub fn settings_description(text: SharedString, cx: &App) -> ala::Div {
+    div()
+        .text_size(crate::rems_from_px(SETTINGS_DESCRIPTION_SIZE))
+        .text_color(cx.theme().foreground.muted())
+        .child(text)
+}
+
+pub fn settings_list_group_header(title: &'static str, cx: &App) -> ala::Div {
+    div()
+        .pt(px(10.0))
+        .child(settings_group_header(title.into(), cx))
+}
+
+pub const SETTINGS_STACK_PADDING: f32 = 12.0;
 
 #[derive(IntoElement)]
 pub struct SettingsStack {
     title: Option<SharedString>,
-    description: Option<SharedString>,
+    note: Option<SharedString>,
     entries: Vec<SettingEntry>,
 }
 
@@ -313,7 +414,7 @@ impl SettingsStack {
     pub fn new() -> Self {
         Self {
             title: None,
-            description: None,
+            note: None,
             entries: Vec::new(),
         }
     }
@@ -327,8 +428,8 @@ impl SettingsStack {
     }
 
     #[must_use]
-    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
-        self.description = Some(description.into());
+    pub fn note(mut self, note: impl Into<SharedString>) -> Self {
+        self.note = Some(note.into());
         self
     }
 
@@ -366,7 +467,10 @@ impl RenderOnce for SettingsStack {
             .w_full()
             .gap(px(8.0))
             .when_some(self.title, |this, title| {
-                this.child(settings_group_header(title, self.description, cx))
+                this.child(settings_group_header(title, cx))
+            })
+            .when_some(self.note, |this, note| {
+                this.child(settings_description(note, cx).px(px(2.0)))
             })
             .child(div().flex().flex_col().w_full().children(rows))
     }
@@ -418,27 +522,45 @@ impl StackPosition {
 #[derive(IntoElement)]
 pub struct SettingEntry {
     title: SharedString,
-    description: SharedString,
+    description: Option<SharedString>,
     title_icon: Option<Icon>,
     title_actions: Option<AnyElement>,
     control: Option<AnyElement>,
     disabled: bool,
     position: StackPosition,
     children: Vec<AnyElement>,
+    on_click: Option<(ElementId, EntryClick)>,
 }
 
 impl SettingEntry {
-    pub fn new(title: impl Into<SharedString>, description: impl Into<SharedString>) -> Self {
+    pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
             title: title.into(),
-            description: description.into(),
+            description: None,
             title_icon: None,
             title_actions: None,
             control: None,
             disabled: false,
             position: StackPosition::Middle,
             children: Vec::new(),
+            on_click: None,
         }
+    }
+
+    #[must_use]
+    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
+        self.description = Some(description.into());
+        self
+    }
+
+    #[must_use]
+    pub fn on_click(
+        mut self,
+        id: impl Into<ElementId>,
+        handler: impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_click = Some((id.into(), Rc::new(handler)));
+        self
     }
 
     #[must_use]
@@ -484,12 +606,9 @@ impl RenderOnce for SettingEntry {
         let position = self.position;
         let coarse = crate::touch::CoarsePointer::get(cx);
         let heading = if coarse {
-            let description = (!self.description.is_empty()).then(|| {
-                div()
-                    .text_size(crate::rems_from_px(11.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child(self.description.clone())
-            });
+            let description = self
+                .description
+                .map(|description| settings_description(description, cx));
             div()
                 .flex()
                 .flex_col()
@@ -506,7 +625,7 @@ impl RenderOnce for SettingEntry {
                                 .flex_1()
                                 .min_w_0()
                                 .items_center()
-                                .gap(px(4.0))
+                                .gap(px(8.0))
                                 .when_some(self.title_icon, |this, icon| {
                                     this.child(icon.with_size(crate::Size::Medium))
                                 })
@@ -523,7 +642,8 @@ impl RenderOnce for SettingEntry {
                 .justify_between()
                 .gap(px(16.0))
                 .child(
-                    SettingCopy::new(self.title, self.description)
+                    SettingCopy::new(self.title)
+                        .when_some(self.description, SettingCopy::description)
                         .when_some(self.title_icon, SettingCopy::title_icon)
                         .when_some(self.title_actions, SettingCopy::title_actions),
                 )
@@ -555,7 +675,22 @@ impl RenderOnce for SettingEntry {
             .child(heading)
             .children(self.children);
 
+        let press = self.on_click.as_ref().map(|(id, _)| {
+            let corner = |rounds: bool| if rounds { radius } else { px(0.0) };
+            crate::touch::press_highlight(
+                ElementId::from((id.clone(), "press")),
+                None,
+                crate::touch::PressCorners::Each(Corners {
+                    top_left: corner(position.rounds_top()),
+                    top_right: corner(position.rounds_top()),
+                    bottom_left: corner(position.rounds_bottom()),
+                    bottom_right: corner(position.rounds_bottom()),
+                }),
+            )
+            .inset_0()
+        });
         let surface = div()
+            .relative()
             .flex()
             .flex_col()
             .w_full()
@@ -567,6 +702,7 @@ impl RenderOnce for SettingEntry {
             .map(ends)
             .when(!position.rounds_top(), ala::Styled::border_t_0)
             .when(!position.rounds_bottom(), ala::Styled::border_b_0)
+            .children(press)
             .when(position.rules_above(), |this| {
                 this.child(
                     div().flex_none().px(px(SETTINGS_STACK_PADDING)).child(
@@ -578,7 +714,7 @@ impl RenderOnce for SettingEntry {
             })
             .child(body);
 
-        div()
+        let entry = div()
             .relative()
             .flex()
             .flex_col()
@@ -621,26 +757,40 @@ impl RenderOnce for SettingEntry {
                         ),
                 )
             })
-            .child(surface)
+            .child(surface);
+        match self.on_click.filter(|_| !disabled) {
+            Some((id, handler)) => entry
+                .id(id)
+                .cursor_pointer()
+                .on_click(move |event, window, cx| handler(event, window, cx))
+                .into_any_element(),
+            None => entry.into_any_element(),
+        }
     }
 }
 
 #[derive(IntoElement)]
 pub struct SettingCopy {
     title: SharedString,
-    description: SharedString,
+    description: Option<SharedString>,
     title_icon: Option<Icon>,
     title_actions: Option<AnyElement>,
 }
 
 impl SettingCopy {
-    pub fn new(title: impl Into<SharedString>, description: impl Into<SharedString>) -> Self {
+    pub fn new(title: impl Into<SharedString>) -> Self {
         Self {
             title: title.into(),
-            description: description.into(),
+            description: None,
             title_icon: None,
             title_actions: None,
         }
+    }
+
+    #[must_use]
+    pub fn description(mut self, description: impl Into<SharedString>) -> Self {
+        self.description = Some(description.into());
+        self
     }
 
     #[must_use]
@@ -664,7 +814,7 @@ impl RenderOnce for SettingCopy {
             .w_full()
             .max_w(relative(0.7))
             .min_w_0()
-            .gap(px(3.0))
+            .gap(px(2.0))
             .child(
                 div()
                     .flex()
@@ -676,13 +826,8 @@ impl RenderOnce for SettingCopy {
                     .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
                     .when_some(self.title_actions, ala::ParentElement::child),
             )
-            .when(!self.description.is_empty(), |this| {
-                this.child(
-                    div()
-                        .text_size(crate::rems_from_px(11.0))
-                        .text_color(cx.theme().foreground.muted())
-                        .child(self.description),
-                )
+            .when_some(self.description, |this, description| {
+                this.child(settings_description(description, cx))
             })
     }
 }
@@ -759,5 +904,307 @@ impl SelectItem for SettingsSelectItem {
 
     fn font_family(&self) -> Option<SharedString> {
         self.font.then(|| self.value.clone().into())
+    }
+}
+
+#[cfg(test)]
+mod scroll_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ala::{Context, Render, TestAppContext, VisualTestContext};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+
+    struct VirtualSettingsTest {
+        rendered: Arc<AtomicUsize>,
+    }
+
+    impl Render for VirtualSettingsTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let rendered = Arc::clone(&self.rendered);
+            div()
+                .flex()
+                .w(px(400.0))
+                .h(px(220.0))
+                .child(settings_virtual_column(
+                    "virtual-settings-test",
+                    100,
+                    move |index, _, _| {
+                        rendered.fetch_add(1, Ordering::Relaxed);
+                        div()
+                            .h(px(120.0))
+                            .flex_none()
+                            .debug_selector(move || format!("virtual-settings-row-{index}"))
+                            .into_any_element()
+                    },
+                ))
+        }
+    }
+
+    struct FocusedRowTest {
+        focus: FocusHandle,
+    }
+
+    impl Render for FocusedRowTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let focus = self.focus.clone();
+            div().flex().w(px(400.0)).h(px(220.0)).child(
+                settings_virtual_column("focused-row-test", 100, move |index, _, _| {
+                    div()
+                        .h(px(120.0))
+                        .flex_none()
+                        .when(index == 99, |row| row.track_focus(&focus))
+                        .debug_selector(move || format!("focused-row-{index}"))
+                        .into_any_element()
+                })
+                .row_focus((0..100).map(|index| (index == 99).then(|| self.focus.clone()))),
+            )
+        }
+    }
+
+    struct RevealTest {
+        input: ala::Entity<crate::input::InputState>,
+        virtual_rows: bool,
+    }
+
+    impl Render for RevealTest {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let input = self.input.clone();
+            let focus = ala::Focusable::focus_handle(self.input.read(cx), cx);
+            let row = move |index: usize| {
+                if index == 8 {
+                    div()
+                        .flex_none()
+                        .debug_selector(|| "reveal-field".to_owned())
+                        .child(crate::input::Input::new(&input))
+                } else {
+                    div().h(px(50.0)).flex_none()
+                }
+            };
+            let page = if self.virtual_rows {
+                settings_virtual_column("reveal-virtual", 10, move |index, _, _| {
+                    row(index).into_any_element()
+                })
+                .row_focus((0..10).map(|index| (index == 8).then(|| focus.clone())))
+                .into_any_element()
+            } else {
+                settings_scroll_column("reveal-scroll")
+                    .children((0..10).map(row))
+                    .into_any_element()
+            };
+            div().flex().w(px(400.0)).h(px(220.0)).child(page)
+        }
+    }
+
+    fn reveal_field(cx: &mut TestAppContext, virtual_rows: bool) -> Bounds<Pixels> {
+        cx.update(crate::init);
+        let (view, cx) = cx.add_window_view(|window, cx| RevealTest {
+            input: cx.new(|cx| crate::input::InputState::new(window, cx)),
+            virtual_rows,
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.update(|window, cx| {
+            window.set_a11y_forced(true);
+            _ = window.draw(cx);
+        });
+        let hidden = cx.debug_bounds("reveal-field");
+        assert!(hidden.is_none_or(|field| field.top() >= px(220.0)));
+        cx.update(|window, cx| {
+            let focus = ala::Focusable::focus_handle(view.read(cx).input.read(cx), cx);
+            focus.focus(window, cx);
+        });
+        for _ in 0..3 {
+            cx.run_until_parked();
+            cx.update(|window, cx| {
+                _ = window.draw(cx);
+            });
+        }
+        cx.debug_bounds("reveal-field")
+            .expect("the focused field paints")
+    }
+
+    #[ala::test]
+    fn a_focused_field_scrolls_into_a_list_page(cx: &mut TestAppContext) {
+        let field = reveal_field(cx, true);
+        assert!(field.top() >= px(0.0) && field.bottom() <= px(220.0));
+    }
+
+    #[ala::test]
+    fn a_focused_field_scrolls_into_a_scroll_page(cx: &mut TestAppContext) {
+        let field = reveal_field(cx, false);
+        assert!(field.top() >= px(0.0) && field.bottom() <= px(220.0));
+    }
+
+    struct SettingsColumnGutterTest;
+
+    impl Render for SettingsColumnGutterTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .flex()
+                .flex_col()
+                .w(px(400.0))
+                .h(px(440.0))
+                .child(
+                    div().flex().w(px(400.0)).h(px(220.0)).child(
+                        settings_scroll_column("scroll-gutter-test").child(
+                            div()
+                                .h(px(50.0))
+                                .flex_none()
+                                .debug_selector(|| "scroll-gutter-row".to_owned()),
+                        ),
+                    ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .w(px(400.0))
+                        .h(px(220.0))
+                        .child(settings_virtual_column(
+                            "virtual-gutter-test",
+                            1,
+                            |_, _, _| {
+                                div()
+                                    .h(px(50.0))
+                                    .flex_none()
+                                    .debug_selector(|| "virtual-gutter-row".to_owned())
+                                    .into_any_element()
+                            },
+                        )),
+                )
+        }
+    }
+
+    #[test]
+    fn stack_positions_round_and_rule_the_ends_of_a_run() {
+        assert_eq!(StackPosition::at(0, 0), StackPosition::Only);
+        assert_eq!(StackPosition::at(0, 2), StackPosition::First);
+        assert_eq!(StackPosition::at(1, 2), StackPosition::Middle);
+        assert_eq!(StackPosition::at(2, 2), StackPosition::Last);
+
+        for last in 0..4 {
+            let run: Vec<_> = (0..=last)
+                .map(|index| StackPosition::at(index, last))
+                .collect();
+            assert_eq!(run.iter().filter(|p| p.rounds_top()).count(), 1);
+            assert_eq!(run.iter().filter(|p| p.rounds_bottom()).count(), 1);
+            assert_eq!(run.iter().filter(|p| p.rules_above()).count(), last);
+            assert!(run[0].rounds_top() && !run[0].rules_above());
+            assert!(run[last].rounds_bottom());
+        }
+    }
+
+    #[ala::test]
+    fn one_long_scroll_reaches_the_last_row(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let rendered = Arc::new(AtomicUsize::new(0));
+        let rendered_for_view = Arc::clone(&rendered);
+        let (_, cx) = cx.add_window_view(move |_, _| VirtualSettingsTest {
+            rendered: rendered_for_view,
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        assert!(cx.debug_bounds("virtual-settings-row-0").is_some());
+        assert!(cx.debug_bounds("virtual-settings-row-99").is_none());
+
+        cx.simulate_event(ala::ScrollWheelEvent {
+            position: ala::point(px(100.0), px(100.0)),
+            delta: ala::ScrollDelta::Pixels(ala::point(px(0.0), px(-100_000.0))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        assert!(cx.debug_bounds("virtual-settings-row-99").is_some());
+        assert!(cx.debug_bounds("virtual-settings-row-0").is_none());
+    }
+
+    #[ala::test]
+    fn a_focused_row_keeps_painting_out_of_view(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (view, cx) = cx.add_window_view(|_, cx| FocusedRowTest {
+            focus: cx.focus_handle(),
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.update(|window, cx| {
+            view.read(cx).focus.clone().focus(window, cx);
+            _ = window.draw(cx);
+        });
+
+        assert!(cx.debug_bounds("focused-row-0").is_some());
+        assert!(cx.debug_bounds("focused-row-99").is_some());
+        assert!(cx.debug_bounds("focused-row-98").is_none());
+
+        cx.update(|window, cx| {
+            window.blur(cx);
+            _ = window.draw(cx);
+        });
+        assert!(cx.debug_bounds("focused-row-99").is_none());
+    }
+
+    struct InsetPageTest;
+
+    impl Render for InsetPageTest {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div().flex().w(px(400.0)).h(px(220.0)).child(
+                settings_scroll_column("inset-test").children((0..10).map(|index| {
+                    div()
+                        .h(px(50.0))
+                        .flex_none()
+                        .debug_selector(move || format!("inset-row-{index}"))
+                })),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn the_bottom_inset_keeps_the_last_row_clear(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_global(SettingsBottomInset(px(40.0)));
+        });
+        let (_, cx) = cx.add_window_view(|_, _| InsetPageTest);
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        cx.simulate_event(ala::ScrollWheelEvent {
+            position: ala::point(px(100.0), px(100.0)),
+            delta: ala::ScrollDelta::Pixels(ala::point(px(0.0), px(-10_000.0))),
+            ..Default::default()
+        });
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let last = cx.debug_bounds("inset-row-9").expect("last row");
+        assert!(last.bottom() <= px(220.0 - 40.0));
+    }
+
+    #[ala::test]
+    fn virtual_rows_land_where_scrolled_rows_do(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| SettingsColumnGutterTest);
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+
+        let scrolled = cx
+            .debug_bounds("scroll-gutter-row")
+            .expect("the scrolled column renders its row");
+        let virtualized = cx
+            .debug_bounds("virtual-gutter-row")
+            .expect("the virtual column renders its row");
+        assert_eq!(scrolled.origin.x, virtualized.origin.x);
+        assert_eq!(scrolled.size.width, virtualized.size.width);
     }
 }

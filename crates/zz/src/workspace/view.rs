@@ -1,4 +1,5 @@
 use zz_ui::command::floating::{FloatingFrame as PopupFrame, floating_frame};
+use zz_ui::shell::window_drag_handle;
 
 use std::{
     cell::Cell,
@@ -94,7 +95,7 @@ use crate::{
     pane::layout::{SeparatorSide, pane_separator},
     pane::picker::{AgentChosen, ChooseFolder, PanePickerView},
     terminal::view::TerminalView,
-    window::{corners::WindowCorners, drag::window_drag_handle},
+    window::corners::WindowCorners,
 };
 
 const DROP_PREVIEW_MORPH: Duration = Duration::from_millis(180);

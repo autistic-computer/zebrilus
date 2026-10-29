@@ -60,7 +60,7 @@ const NOTE_SIZE: f32 = 11.0;
 const NOTE_LINE: f32 = 15.0;
 const HEADER_BUTTON_HEIGHT: f32 = 20.0;
 const STATUS_ICON: f32 = 14.0;
-const ROLLUP_DOT: f32 = super::STATUS_DOT_SIZE;
+const ROLLUP_DOT: f32 = crate::sidebar::STATUS_DOT_SIZE;
 const ROLLUP_SPINNER: f32 = 10.0;
 const ROLLUP_GAP: f32 = 8.0;
 const ROLLUP_ITEM_GAP: f32 = 4.0;
@@ -297,7 +297,7 @@ fn row_height() -> Pixels {
 }
 
 fn row_trailing_inset(cx: &App) -> Pixels {
-    cx.theme().row_inset + super::WORKSPACE_ROW_ACTION_CENTER - px(SPINNER_SIZE / 2.0)
+    cx.theme().row_inset + crate::sidebar::SIDEBAR_ROW_ACTION_CENTER - px(SPINNER_SIZE / 2.0)
 }
 
 fn tile_radius(size: StackSize, cx: &App) -> Pixels {
@@ -599,11 +599,11 @@ pub fn flat_rollup(rollup: &AttentionRollup, live: bool, cx: &App) -> Div {
                 .map(|(value, color)| {
                     h_flex()
                         .gap(px(ROLLUP_ITEM_GAP))
-                        .child(super::status_dot(color).relative().top(cap_center_drop(
-                            px(NOTE_SIZE),
-                            px(ROLLUP_DOT),
-                            cx,
-                        )))
+                        .child(
+                            crate::sidebar::status_dot(color)
+                                .relative()
+                                .top(cap_center_drop(px(NOTE_SIZE), px(ROLLUP_DOT), cx)),
+                        )
                         .child(count(value))
                 }),
         )
@@ -846,7 +846,7 @@ pub fn flat_sidebar(
     let mut list = v_flex()
         .w_full()
         .flex_none()
-        .pr(super::WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER);
+        .pr(crate::sidebar::SIDEBAR_SCROLLBAR_GUTTER);
     for (index, host) in hosts.iter().enumerate() {
         list = list.child(motion::enter(
             ("flat-host-enter", host.id.0),
@@ -895,9 +895,9 @@ pub fn flat_sidebar(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::navigation::{
-        WORKSPACE_CHROME_BUTTON_SIZE, WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
-        WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER, workspace_sidebar_footer, workspace_sidebar_titlebar,
+    use crate::sidebar::{
+        CHROME_BUTTON_SIZE, SIDEBAR_DEFAULT_WIDTH, SIDEBAR_SCROLLBAR_GUTTER, sidebar_footer,
+        sidebar_titlebar,
     };
 
     struct Sidebar;
@@ -907,7 +907,7 @@ mod tests {
             let chrome = |id: &'static str| {
                 div()
                     .debug_selector(move || id.to_owned())
-                    .size(WORKSPACE_CHROME_BUTTON_SIZE)
+                    .size(CHROME_BUTTON_SIZE)
             };
             let host = PaletteHostId(0);
             let hosts = [FlatHost {
@@ -926,8 +926,8 @@ mod tests {
             let handler: FlatHandler = Rc::new(|_, _, _| {});
             let menu: FlatMenu = Rc::new(|_, _, menu, _, _| menu);
             v_flex()
-                .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
-                .child(workspace_sidebar_titlebar("titlebar", chrome("toggle"), cx))
+                .w(px(SIDEBAR_DEFAULT_WIDTH))
+                .child(sidebar_titlebar("titlebar", chrome("toggle"), cx))
                 .child(
                     div()
                         .debug_selector(|| "rows".to_owned())
@@ -940,7 +940,7 @@ mod tests {
                             cx,
                         )),
                 )
-                .child(workspace_sidebar_footer(
+                .child(sidebar_footer(
                     "footer",
                     div(),
                     Some(chrome("eye").into_any_element()),
@@ -967,7 +967,7 @@ mod tests {
         let inset = cx.update(|_, cx| header_inset(cx));
         assert_eq!(
             new_chat.right(),
-            rows.right() - WORKSPACE_SIDEBAR_SCROLLBAR_GUTTER - inset
+            rows.right() - SIDEBAR_SCROLLBAR_GUTTER - inset
         );
     }
 

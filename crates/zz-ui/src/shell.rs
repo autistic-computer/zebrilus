@@ -3,90 +3,16 @@ use crate::Colorize as _;
 use crate::StyledExt as _;
 use crate::kbd::Kbd;
 use crate::{Edge, Emphasis, Ground, PaintState, Surface, SurfaceRole, Tone, roles};
+pub use penna::shell::*;
+
 use ala::{
-    AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, Keystroke,
+    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, Keystroke,
     ParentElement as _, Pixels, SharedString, Stateful, Styled as _, WindowControlArea, div,
     prelude::FluentBuilder as _, px,
 };
 
-const BLURRED_CHROME_OPACITY: f32 = 0.93;
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "blurred chrome lets the window material show through"
-)]
-pub fn chrome_background(background: Hsla, blur_opacity: Option<f32>) -> Hsla {
-    match blur_opacity {
-        Some(opacity) => background.opacity(
-            BLURRED_CHROME_OPACITY + (1.0 - BLURRED_CHROME_OPACITY) * opacity.clamp(0.0, 1.0),
-        ),
-        None => background,
-    }
-}
-
-pub fn app_shell_surface(
-    id: impl Into<ElementId>,
-    background: Hsla,
-    sidebar: impl IntoElement,
-    titlebar: Option<AnyElement>,
-    workspace: impl IntoElement,
-    overlays: impl IntoIterator<Item = AnyElement>,
-) -> Stateful<ala::Div> {
-    div()
-        .id(id)
-        .relative()
-        .flex()
-        .flex_col()
-        .size_full()
-        .overflow_hidden()
-        .bg(background)
-        .child(
-            div()
-                .flex()
-                .flex_row()
-                .flex_1()
-                .min_w_0()
-                .min_h_0()
-                .overflow_hidden()
-                .child(sidebar)
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .min_h_0()
-                        .children(titlebar)
-                        .child(div().flex().flex_1().min_w_0().min_h_0().child(workspace)),
-                ),
-        )
-        .children(overlays)
-}
-
 pub fn titlebar_over_panes(titlebar: impl IntoElement, gap: Pixels) -> ala::Div {
     div().flex_none().w_full().mb(-gap).child(titlebar)
-}
-
-pub fn app_titlebar_strip(
-    id: impl Into<ElementId>,
-    controls: impl IntoElement,
-    cx: &App,
-) -> Stateful<ala::Div> {
-    div()
-        .id(id)
-        .flex()
-        .flex_none()
-        .w_full()
-        .h(cx.theme().title_bar_height())
-        .items_center()
-        .child(
-            div()
-                .flex_1()
-                .h_full()
-                .min_w_0()
-                .window_control_area(WindowControlArea::Drag),
-        )
-        .child(controls)
 }
 
 pub fn app_workspace_surface(

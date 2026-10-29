@@ -49,7 +49,7 @@ impl Default for Preferences {
             sidebar: true,
             flat_sidebar: false,
             program_colors: true,
-            sidebar_width: zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
+            sidebar_width: zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH,
             status_badges: true,
             animations: true,
             animation_speed: interface_theme::DEFAULT_ANIMATION_SPEED,
@@ -90,7 +90,7 @@ impl Preferences {
             self.sidebar_width,
             160.0,
             640.0,
-            zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH,
+            zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH,
         );
         let mut ids = std::collections::HashSet::new();
         self.themes.retain(|(id, _)| {
@@ -478,7 +478,7 @@ mod tests {
         assert_eq!(defaults.overrides, ThemeOverrides::default());
         assert_eq!(
             defaults.sidebar_width,
-            zz_ui::navigation::WORKSPACE_SIDEBAR_DEFAULT_WIDTH
+            zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH
         );
         let status = defaults.status_bar_settings();
         assert!(status.badges);

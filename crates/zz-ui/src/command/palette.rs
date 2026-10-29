@@ -65,7 +65,7 @@ pub struct PaletteRow {
 }
 
 fn status_dot(status: PaletteStatus, cx: &App) -> Div {
-    crate::navigation::status_dot(status.color(cx))
+    crate::sidebar::status_dot(status.color(cx))
 }
 
 #[allow(
@@ -315,7 +315,7 @@ pub(super) fn palette_entry(
                 })
                 .children(badge)
                 .when(row.running, |element| {
-                    element.child(crate::navigation::status_dot(secondary))
+                    element.child(crate::sidebar::status_dot(secondary))
                 }),
         )
 }
@@ -502,7 +502,7 @@ mod tests {
                                 .paint(Tone::Neutral, Emphasis::Ghost)
                                 .muted_at(PaintState::Selected)
                             && quad.bounds.size.width.0
-                                == crate::navigation::STATUS_DOT_SIZE * window.scale_factor()
+                                == crate::sidebar::STATUS_DOT_SIZE * window.scale_factor()
                             && quad.border_widths.top.0 > 0.0
                     }),
                     "selected running agent remains visible on the accent selection"

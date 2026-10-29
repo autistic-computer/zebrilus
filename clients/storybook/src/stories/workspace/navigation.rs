@@ -1,3 +1,4 @@
+use zz_ui::sidebar::{SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
 use std::rc::Rc;
 
 use zz_client::program::Program;
@@ -7,15 +8,7 @@ use ala::{
 };
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, h_flex,
-    navigation::{
-        WORKSPACE_SIDEBAR_DEFAULT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState,
-        sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
-        workspace_add_host_button, workspace_layout_button, workspace_palette_button,
-        workspace_settings_button, workspace_sidebar_footer, workspace_sidebar_footer_controls,
-        workspace_sidebar_titlebar, workspace_sidebar_view_button, workspace_status_item,
-        workspace_status_window, workspace_tree_action_button, workspace_tree_disclosure,
-        workspace_tree_marker, workspace_tree_row,
-    },
+    navigation::{WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState, sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker}, workspace_add_host_button, workspace_layout_button, workspace_palette_button, workspace_settings_button, workspace_sidebar_footer_controls, workspace_sidebar_view_button, workspace_status_item, workspace_status_window, workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_marker, workspace_tree_row},
     program::program_mark,
 };
 
@@ -647,7 +640,7 @@ fn guide_list(
     .with_decoration(guides(depths, active_row, cx));
     div()
         .id(id)
-        .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
+        .w(px(SIDEBAR_DEFAULT_WIDTH))
         .h(px(32.0 * GUIDE_DEPTHS.len() as f32))
         .child(list)
         .into_any_element()
@@ -701,10 +694,10 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
             "sidebar titlebar",
             div()
                 .id("titlebar")
-                .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
+                .w(px(SIDEBAR_DEFAULT_WIDTH))
                 .framed(cx)
                 .rounded(cx.theme().radius)
-                .child(workspace_sidebar_titlebar(
+                .child(sidebar_titlebar(
                     "sidebar-titlebar",
                     chrome_controls(),
                     cx,
@@ -714,10 +707,10 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
             "sidebar footer",
             div()
                 .id("footer")
-                .w(px(WORKSPACE_SIDEBAR_DEFAULT_WIDTH))
+                .w(px(SIDEBAR_DEFAULT_WIDTH))
                 .framed(cx)
                 .rounded(cx.theme().radius)
-                .child(workspace_sidebar_footer(
+                .child(sidebar_footer(
                     "sidebar-footer",
                     workspace_settings_button("footer-settings"),
                     Some(

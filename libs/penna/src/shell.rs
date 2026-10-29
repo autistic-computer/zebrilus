@@ -5,15 +5,18 @@ use ala::{
     prelude::FluentBuilder,
 };
 
+const BLURRED_CHROME_OPACITY: f32 = 0.93;
+
 #[allow(
     clippy::disallowed_methods,
     reason = "blurred chrome lets the window material show through"
 )]
-pub fn chrome_background(background: Hsla, blur: bool) -> Hsla {
-    if blur {
-        background.opacity(0.93)
-    } else {
-        background
+pub fn chrome_background(background: Hsla, blur_opacity: Option<f32>) -> Hsla {
+    match blur_opacity {
+        Some(opacity) => background.opacity(
+            BLURRED_CHROME_OPACITY + (1.0 - BLURRED_CHROME_OPACITY) * opacity.clamp(0.0, 1.0),
+        ),
+        None => background,
     }
 }
 
@@ -49,17 +52,8 @@ pub fn app_shell_surface(
                         .flex_1()
                         .min_w_0()
                         .min_h_0()
-                        .overflow_hidden()
                         .children(titlebar)
-                        .child(
-                            div()
-                                .flex()
-                                .flex_1()
-                                .min_w_0()
-                                .min_h_0()
-                                .overflow_hidden()
-                                .child(content),
-                        ),
+                        .child(div().flex().flex_1().min_w_0().min_h_0().child(content)),
                 ),
         )
         .children(overlays)
@@ -151,4 +145,117 @@ pub fn window_drag_handle<E: InteractiveElementExt + FluentBuilder>(
                 }
             }),
         )
+}
+
+#[cfg(all(test, not(target_os = "windows")))]
+mod tests {
+    use super::*;
+    use crate::{
+        button::Button,
+        h_flex,
+        input::{Input, InputState},
+    };
+    use ala::{AppContext as _, Context, Entity, FocusHandle, Render, px};
+
+    struct Preview {
+        focus: FocusHandle,
+        input: Entity<InputState>,
+        drag: Option<Entity<DragCandidate>>,
+    }
+
+    impl Render for Preview {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let drag = window_drag_handle(
+                "drag-test",
+                div()
+                    .id("drag-test-strip")
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w_full()
+                    .h(crate::TITLE_BAR_HEIGHT),
+                window,
+                cx,
+            );
+            self.drag = Some(window.use_keyed_state("drag-test", cx, |_, _| unreachable!()));
+            div()
+                .track_focus(&self.focus)
+                .relative()
+                .w(px(400.0))
+                .h(px(200.0))
+                .child(drag)
+                .child(
+                    h_flex()
+                        .h(crate::TITLE_BAR_HEIGHT)
+                        .child(
+                            div()
+                                .w(px(80.0))
+                                .debug_selector(|| "drag-button".into())
+                                .child(Button::new("drag-button").label("Reset")),
+                        )
+                        .child(
+                            div()
+                                .w(px(120.0))
+                                .debug_selector(|| "drag-input".into())
+                                .child(Input::new(&self.input)),
+                        )
+                        .child(
+                            div()
+                                .id("drag-own")
+                                .w(px(100.0))
+                                .h_full()
+                                .debug_selector(|| "drag-own".into())
+                                .on_mouse_down(MouseButton::Left, |_, window, _| {
+                                    window.prevent_default();
+                                }),
+                        ),
+                )
+        }
+    }
+
+    #[ala::test]
+    fn background_drag_yields_to_buttons_text_fields_and_controls_that_claim_the_press(
+        cx: &mut ala::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let (preview, cx) = cx.add_window_view(|window, cx| Preview {
+            focus: cx.focus_handle(),
+            input: cx.new(|cx| InputState::new(window, cx)),
+            drag: None,
+        });
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let state = preview.read_with(cx, |preview, _| preview.drag.clone().unwrap());
+        let background = ala::point(px(360.0), px(15.0));
+        cx.simulate_mouse_down(background, MouseButton::Left, ala::Modifiers::default());
+        assert!(state.read_with(cx, |state: &DragCandidate, _| state.armed));
+        cx.simulate_mouse_up(background, MouseButton::Left, ala::Modifiers::default());
+        assert!(!state.read_with(cx, |state, _| state.armed));
+
+        for selector in ["drag-button", "drag-input", "drag-own"] {
+            let bounds = cx.debug_bounds(selector).unwrap();
+            cx.simulate_mouse_down(
+                bounds.center(),
+                MouseButton::Left,
+                ala::Modifiers::default(),
+            );
+            assert!(!state.read_with(cx, |state, _| state.armed), "{selector}");
+            assert!(
+                !state.read_with(cx, |state, _| state.accepts_click),
+                "{selector}"
+            );
+            cx.simulate_mouse_move(
+                bounds.center(),
+                Some(MouseButton::Left),
+                ala::Modifiers::default(),
+            );
+            cx.simulate_mouse_up(
+                bounds.center(),
+                MouseButton::Left,
+                ala::Modifiers::default(),
+            );
+        }
+    }
 }
