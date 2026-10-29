@@ -36,8 +36,9 @@ then to a built-in value.
 | Kinds, styles, patches, `Layer` and the resolver (`Theme::style`, `Theme::layer`) | `libs/penna/src/foundation/surface.rs` |
 | Painting helpers (`.surface`, `.surface_at`, `.layer`, `.rule_on`, `row_corners`, `row_radius`) | `libs/penna/src/foundation/styled.rs` |
 | `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `libs/penna/src/foundation/theme.rs` |
-| zz's roles and the lookups over them (`all()`, `find()`, `members()`) | `crates/zz-ui/src/roles.rs` |
-| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `crates/zz-ui/src/interface_theme.rs`, `crates/zz-ui/themes/*.json` |
+| Window chrome roles, `register`, `retire` and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
+| zz's roles, retired ids, and the zz-ui lookups that register them first | `crates/zz-ui/src/roles.rs`, `zz_ui::register` in `crates/zz-ui/src/lib.rs` |
+| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; zz's built-ins in `crates/zz-ui/src/interface_theme.rs`, `crates/zz-ui/themes/*.json` |
 | The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `clients/storybook/src/knobs.rs` |
 
 ## The model

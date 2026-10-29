@@ -82,6 +82,7 @@ pub struct TrayOptions {
     pub id: String,
     pub tooltip: String,
     pub icon: TrayIcon,
+    pub icon_name: Option<String>,
     pub menu_on_click: bool,
 }
 
@@ -114,6 +115,13 @@ impl Tray {
     pub fn menu_changed(&self) {
         #[cfg(target_os = "linux")]
         self.backend.menu_changed();
+    }
+
+    pub fn set_badge(&self, badge: &str) {
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        self.backend.set_badge(badge);
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        let _ = badge;
     }
 
     pub fn set_look(&self, tooltip: &str, icon: &TrayIcon) {

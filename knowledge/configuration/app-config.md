@@ -355,7 +355,7 @@ A surface whose role takes glass draws the theme's glass tinted with its own fil
 rim in place of the outline. On a glass ground it paints a tint instead, and under a theme without
 glass a solid fill.
 
-A test in `crates/zz-ui/src/interface_theme.rs` holds every built-in to
+A test in `crates/zz-ui/src/interface_theme.rs` (and its twin in `libs/penna`) holds every built-in to
 contrast floors in both modes: foreground at least 7:1 on the background and on a popover, the accent and status colors
 at least 3:1, and text on the accent at least 3:1. Another (`every_named_accent_reads_at_any_tint`)
 holds each of the eight named accents to the same floors on Default at full tint, with the tint
