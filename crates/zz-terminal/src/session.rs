@@ -2366,7 +2366,7 @@ pub struct KittyImage {
     pub generation: u64,
     pub width: u32,
     pub height: u32,
-    /// Premultiplied BGRA8 pixels, ready for GPUI's image atlas.
+    /// Premultiplied BGRA8 pixels, ready for ala's image atlas.
     pub bgra: Vec<u8>,
 }
 

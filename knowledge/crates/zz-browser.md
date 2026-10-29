@@ -15,7 +15,7 @@ API so the rest of zz never sees a raw Chromium handle. It owns global CEF
 initialization, single-binary multi-process subprocess dispatch, named private
 persistent request contexts ("zz profiles"), GPUI-to-CEF input translation,
 runtime/session lifecycle state machines, and one **latest-frame mailbox** per
-session. The GPUI client in [`crates/zz`](/crates/zz.md) consumes only the
+session. The ala client in [`crates/zz`](/crates/zz.md) consumes only the
 browser-neutral types re-exported from `lib.rs`, never CEF binding types.
 
 Frame transport is a replaceable boundary, and it has already been replaced twice:
@@ -46,7 +46,7 @@ from `on_paint`, or a zz-owned destination texture/`IOSurface` from
 `on_accelerated_paint`), and publishes that into a
 [`FrameMailbox`](/browser/osr-rendering.md) holding at most one pending frame. A
 new frame replaces a stale unread one, `take()` hands the consumer the owned
-frame, and the app moves it onward without another pixel copy. A slow GPUI
+frame, and the app moves it onward without another pixel copy. A slow ala
 consumer therefore never builds an unbounded queue; it always paints the newest
 frame.
 
@@ -106,8 +106,8 @@ runtime types (only under `cef-runtime`):
 
 # Related
 
-- Consumed by [`crates/zz`](/crates/zz.md), the GPUI mux client, which keys one
-  CEF `BrowserSession` per browser pane ID and paints its frames via a custom GPUI
+- Consumed by [`crates/zz`](/crates/zz.md), the ala mux client, which keys one
+  CEF `BrowserSession` per browser pane ID and paints its frames via a custom ala
   element.
 - CEF is pinned through `Cargo.lock`; the resolved versions and per-target archive
   hashes are recorded in `third_party/cef/ARTIFACTS.md`, described by

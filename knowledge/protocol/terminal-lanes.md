@@ -310,6 +310,6 @@ scratch.release_shared();
 - Payload types (`TerminalViewport`, `TerminalViewportPatch`, `TerminalPatchFields`,
   `PackedCell`, `PackedStyle`, dictionaries) live in [zz-terminal](/crates/zz-terminal.md); see
   [the terminal frame concept](/concepts/terminal-frame.md).
-- Produced by [zz-daemon](/crates/zz-daemon.md)'s frame fanout, decoded by [the GPUI app](/crates/zz.md),
+- Produced by [zz-daemon](/crates/zz-daemon.md)'s frame fanout, decoded by [the ala app](/crates/zz.md),
   the TUI and the zz-client core.
 - Identifiers in the header: [stable IDs](/protocol/ids.md).

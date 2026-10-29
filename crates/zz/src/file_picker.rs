@@ -7,15 +7,15 @@ use std::{
     time::{Duration, Instant},
 };
 
-use fff_search::FilePickerOptions;
-use fff_search::{FilePicker, FuzzySearchOptions, PaginationArgs, QueryParser};
-use ignore::WalkBuilder;
-use zz_gpui::{
+use ala::{
     App, Entity, EventEmitter, FocusHandle, Focusable, IntoElement, KeyDownEvent, MouseButton,
     Render, ScrollStrategy, Subscription, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
-use zz_gpui::{Context, SharedString, Task};
+use ala::{Context, SharedString, Task};
+use fff_search::FilePickerOptions;
+use fff_search::{FilePicker, FuzzySearchOptions, PaginationArgs, QueryParser};
+use ignore::WalkBuilder;
 use zz_ui::command::palette_shortcut_hint;
 use zz_ui::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, IconName, StyledExt as _, h_flex,
@@ -995,8 +995,8 @@ mod tests {
         assert!(!names.contains(&"a/b/c/d/e/f/g/h/i"));
     }
 
-    #[zz_gpui::test]
-    fn streamed_rows_stay_visible_before_scan_completion(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn streamed_rows_stay_visible_before_scan_completion(cx: &mut ala::TestAppContext) {
         use std::{cell::RefCell, rc::Rc};
         cx.update(zz_ui::init);
         let root = tempfile::tempdir().unwrap();

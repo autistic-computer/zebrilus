@@ -1,5 +1,10 @@
 use std::{ops::Range, rc::Rc, sync::Arc, time::Duration};
 
+use ala::{
+    App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable,
+    Global, IntoElement, KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString,
+    Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
+};
 use zz_client::{
     completion::{
         CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion,
@@ -10,11 +15,6 @@ use zz_client::{
     place::{ActionKind, parse},
     recents::now_secs,
     verbs::{self, Verb},
-};
-use zz_gpui::{
-    App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable,
-    Global, IntoElement, KeyDownEvent, MouseButton, Render, ScrollStrategy, SharedString,
-    Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_protocol::{
     ChooseTreeAction, ChooseTreeState, ChooseTreeTarget, CommandInvocation, CommandPromptAction,
@@ -871,7 +871,7 @@ impl CommandPaletteView {
     }
 
     fn dispatch_twin(twin: Twin, window: &mut Window, cx: &mut App) {
-        let action: Box<dyn zz_gpui::Action> = match twin {
+        let action: Box<dyn ala::Action> = match twin {
             Twin::Down => Box::new(MoveDown),
             Twin::Up => Box::new(MoveUp),
             Twin::Into => Box::new(IndentInline),
@@ -1335,11 +1335,7 @@ impl CommandPaletteView {
         );
     }
 
-    fn render_unified(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> zz_gpui::AnyElement {
+    fn render_unified(&mut self, window: &mut Window, cx: &mut Context<Self>) -> ala::AnyElement {
         let target_item = self.target.as_ref().and_then(|(picker, _)| {
             picker.update(cx, |picker, _| {
                 picker.fit(px(super::command_palette_list_height(
@@ -2138,7 +2134,7 @@ impl CommandPaletteView {
         palette: Entity<Self>,
         font: SharedString,
         cx: &App,
-    ) -> zz_gpui::Div {
+    ) -> ala::Div {
         let hover_palette = palette.clone();
         let click_palette = palette;
         let kind = suggestion.kind;

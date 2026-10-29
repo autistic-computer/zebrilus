@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
@@ -157,7 +157,7 @@ impl Bar {
     };
 }
 
-pub fn titlebar(config: &Bar, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
+pub fn titlebar(config: &Bar, cx: &App) -> ala::Stateful<ala::Div> {
     let state = |index: usize| {
         let (_, active, bell, activity) = WINDOWS[index % WINDOWS.len()];
         WorkspaceStatusWindowState {

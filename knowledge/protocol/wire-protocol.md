@@ -231,7 +231,7 @@ matching dispatch suppression. A no-match Text leaves the queue intact and treat
 standalone. Bounded eviction retires any suppression debt linked to the evicted entry. Detach,
 unregister or reconnect, and a successful wire `Attach` clear
 the ledger. A synchronous `switch-client` executed by the key keeps it, because the trailing text
-still belongs to that key. GPUI terminal committed text uses standalone `Text`; the GPUI browser
+still belongs to that key. ala terminal committed text uses standalone `Text`; the ala browser
 emits a correlatable `BrowserSurfaceKey` plus `BrowserSurfaceText` pair. TUI keys set
 `text_follows: false`; FFI callers choose the bit explicitly, and iOS sends standalone text plus
 unpaired keys.
@@ -610,7 +610,7 @@ egress itself is current: a client-local `browser-egress` key in `zz/config` poi
 time, and the daemon's frame supersession now happens entirely in the outbound mailbox (see
 [zz-daemon](/crates/zz-daemon.md)).
 
-When a remote connection dies, the desktop GPUI client backs off for 1, 2, 4, 8, 16, then 30
+When a remote connection dies, the desktop ala client backs off for 1, 2, 4, 8, 16, then 30
 seconds. It retains the intended session and guards connection attempts so a stale timer cannot
 replace a newer connection. The daemon sees an ordinary disconnect followed by an ordinary
 attach.
@@ -653,7 +653,7 @@ equality-deduplicated like the status line: a recomputation whose result matches
 already holds sends nothing. `escape-time` and `prefix2` publish the global values. Since the
 2026-08-21 B2/B3 slice zz-tui consumes `mouse` (outer-terminal mouse-mode gating) and `escape-time`
 (the escape fold timeout); since Wave C run 2 the same day, `prefix2` feeds the shared key tables
-(either prefix arms) and the GPUI client's local prefix claim. `from_config_key` maps all three —
+(either prefix arms) and the ala client's local prefix claim. `from_config_key` maps all three —
 `zz/config` can write them with the standard reload-reapply semantics.
 Full-map validation requires those 20 keys; subscribed patches contain only requested keys.
 Every string is bounded to 64 KiB on encode and during deserialization.
@@ -1070,7 +1070,7 @@ palette turns the entries into verbs ([command palette](/concepts/command-palett
   `PanesModeBorder { x, y, cell }` names a `CELL_*` border glyph drawn in `border_style`
   (`display-panes-border-style`); `copy` is false when the window is larger than the pane and the
   client draws each viewport through `screen_write_preview` instead of a top-left copy. The raw TUI
-  draws it; the GPUI, iOS and web clients ignore it and keep their native `DisplayPanes` overlay.
+  draws it; the ala, iOS and web clients ignore it and keep their native `DisplayPanes` overlay.
 - v107 requires updated clients and daemon together, including the daemon on every ssh host.
 - v106 requires updated clients and daemon together. A v105 daemon retains the old
   placement limit even after the GUI is rebuilt; restarting only the GUI cannot fix
@@ -1086,7 +1086,7 @@ palette turns the entries into verbs ([command palette](/concepts/command-palett
   face, one that attaches later gets it with its first snapshot, and a clientless `list-panes` reads
   `#{pane_in_mode}` and `#{pane_mode}` from the daemon's own map. The daemon republishes the snapshot
   on the whole second, the way `window_clock_timer_callback` redraws. The raw TUI is the consumer
-  half and ships with the daemon; the GPUI, iOS and web clients ignore the field and
+  half and ships with the daemon; the ala, iOS and web clients ignore the field and
   keep the pane's own presentation. Copy mode is not here - it stays on each client's terminal view.
   `PaneMode::Switch { rows, selected, offset, selection_style, prompt, prompt_style }` is
   `window_switch_mode`: the server expands one row per session, or per window under `-w`, through
@@ -1138,7 +1138,7 @@ palette turns the entries into verbs ([command palette](/concepts/command-palett
   `MAX_CLIENT_TERMINAL_TYPE_BYTES` (128) bytes and rejected during deserialization; the daemon
   answers `#{client_termtype}` from it and `window_client_draw_info` draws it as `Terminal Type`.
   Both are pure end-appends with their consumer halves in the same push. The raw TUI is the
-  consumer of both, and it is the only client that draws the pane-cell prompt: the GPUI, iOS and
+  consumer of both, and it is the only client that draws the pane-cell prompt: the ala, iOS and
   web clients read neither field and keep the prompt on their own client surface. 102 shipped in
   zz 0.9.0 and 0.9.1 while the cycle-9 lanes were still appending to it, so the version moves
   rather than the v102 entry growing.
@@ -1536,7 +1536,7 @@ palette turns the entries into verbs ([command palette](/concepts/command-palett
   carries no authority: the daemon still applies read-only authorization and dispatch validation,
   and rejects a forged destructive request from a read-only client. Prepare requests use nonzero
   request IDs because notifications and command responses can interleave on the same stream.
-- v73 appends `InputMessage::ClientFocus { focused }` at wire tag 18. GPUI derives the desired state
+- v73 appends `InputMessage::ClientFocus { focused }` at wire tag 18. ala derives the desired state
   only from the window activation lifecycle. `AppView` seeds `true` when construction finds an active
   window; inactive construction leaves the state unset until the first activation callback.
   `MuxClient` sends the value after attachment is ready. A written attach opens a pending epoch;
@@ -1788,5 +1788,5 @@ entries apply in file order; `prefix` and `mode-keys` are dispatched through the
 - The compact fanout path: [packed terminal lanes](/protocol/terminal-lanes.md).
 - Identifiers carried in messages: [stable IDs](/protocol/ids.md).
 - State tree carried by `Attached`/`Snapshot`: [snapshots](/protocol/snapshots.md).
-- Produced/consumed by [zz-daemon](/crates/zz-daemon.md) and [the GPUI app](/crates/zz.md); commands
+- Produced/consumed by [zz-daemon](/crates/zz-daemon.md) and [the ala app](/crates/zz.md); commands
   resolve through [the mux state machine](/crates/zz-mux.md).

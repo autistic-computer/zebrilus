@@ -3,7 +3,7 @@
 //! built-in look differs from that group's, so the Default theme draws zz
 //! as it always has; a theme file changes any of them by id.
 
-use zz_gpui_kit::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
+use penna::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
 
 const P: StylePatch = StylePatch::EMPTY;
 

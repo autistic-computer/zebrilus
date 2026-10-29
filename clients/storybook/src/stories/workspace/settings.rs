@@ -1,7 +1,7 @@
 use std::sync::{Arc, LazyLock};
 
 use zz_client::StatusBarSettings;
-use zz_gpui::{
+use ala::{
     AnyElement, App, AppContext as _, Entity, FocusHandle, IntoElement, ParentElement as _,
     Styled as _, Window, div, prelude::*, px,
 };
@@ -136,7 +136,7 @@ impl Controls {
         }
     }
 
-    fn number(&self, index: usize, cx: &App) -> zz_gpui::Div {
+    fn number(&self, index: usize, cx: &App) -> ala::Div {
         div()
             .w(px(120.0))
             .flex_none()
@@ -349,7 +349,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         overrides: &overrides,
     };
     let entry = |item: AppearancePageItem| SettingEntry::new(item.title().unwrap_or_default());
-    let custom = ColorPicker::new(&controls.accent, zz_gpui::transparent_black())
+    let custom = ColorPicker::new(&controls.accent, ala::transparent_black())
         .label("Accent")
         .swatch(px(SWATCH));
     states()
@@ -559,14 +559,14 @@ fn status_bar(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-static LOGOS: LazyLock<[Arc<zz_gpui::Image>; 2]> = LazyLock::new(|| {
+static LOGOS: LazyLock<[Arc<ala::Image>; 2]> = LazyLock::new(|| {
     [
         include_bytes!("../../../../../assets/zz-light-512.png").as_slice(),
         include_bytes!("../../../../../assets/zz-dark-512.png").as_slice(),
     ]
     .map(|bytes| {
-        Arc::new(zz_gpui::Image::from_bytes(
-            zz_gpui::ImageFormat::Png,
+        Arc::new(ala::Image::from_bytes(
+            ala::ImageFormat::Png,
             bytes.to_vec(),
         ))
     })
@@ -748,7 +748,7 @@ fn about(_: &mut Window, cx: &mut App) -> AnyElement {
             "page",
             div().id("about").flex().h(px(780.0)).child(
                 settings_scroll_column("settings-about")
-                    .child(about_hero(zz_gpui::img(logo).size(px(ABOUT_LOGO_SIZE)), cx))
+                    .child(about_hero(ala::img(logo).size(px(ABOUT_LOGO_SIZE)), cx))
                     .child(about_build_stack(
                         "browser · wasm32",
                         about_copy_button("copy-build"),

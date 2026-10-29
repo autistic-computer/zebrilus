@@ -106,14 +106,14 @@ jobs:
 
       # libs/ are subtrees of the autistic-computer repos and sit outside the
       # workspace, so the workspace lint above skips them. The kit builds
-      # against the gpui in libs/, not the one on GitHub.
+      # against the ala in libs/, not the one on GitHub.
       - name: Lint libs
         if: runner.os == 'Linux'
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
-          cargo clippy --manifest-path libs/gpui/Cargo.toml --workspace --all-targets --all-features -- -D warnings
-          cargo clippy --manifest-path libs/kit/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/gpui\".zz-gpui.path=\"$PWD/libs/gpui/crates/zz-gpui\"" -- -D warnings
+          cargo clippy --manifest-path libs/ala/Cargo.toml --workspace --all-targets --all-features -- -D warnings
+          cargo clippy --manifest-path libs/penna/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
 
       - name: Check browser client
         if: runner.os == 'Linux'
@@ -143,23 +143,23 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
-          cargo test --manifest-path libs/gpui/Cargo.toml --workspace --all-features --exclude zz-gpui-platform
-          cargo test --manifest-path libs/kit/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/gpui\".zz-gpui.path=\"$PWD/libs/gpui/crates/zz-gpui\""
+          cargo test --manifest-path libs/ala/Cargo.toml --workspace --all-features --exclude ala-platform
+          cargo test --manifest-path libs/penna/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
 
       - name: Test the iOS input logic
         if: runner.os != 'Linux'
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features --test ios
+        run: cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features --test ios
 
-      - name: Test zz-gpui-platform on lavapipe (software Vulkan)
+      - name: Test ala-platform on lavapipe (software Vulkan)
         if: runner.os == 'Linux'
         timeout-minutes: 20
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: |
           export VK_ICD_FILENAMES=$(echo /usr/share/vulkan/icd.d/lvp_icd*.json)
-          cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features
+          cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features
 
       - name: Test zz-mux release profile
         if: runner.os == 'Linux'
@@ -184,7 +184,7 @@ jobs:
         shell: bash
         run: |
           tree=$(cargo tree -p zz-cli -e normal --prefix none)
-          if grep -Eq '^(zz-gpui|zz-gpui-platform|wgpu|cef|zz-gpui-kit|zz-ui|zz-browser|zz-chrome-import) ' <<<"$tree"; then
+          if grep -Eq '^(ala|ala-platform|wgpu|cef|penna|zz-ui|zz-browser|zz-chrome-import) ' <<<"$tree"; then
             echo "zz-cli links GUI crates"
             exit 1
           fi

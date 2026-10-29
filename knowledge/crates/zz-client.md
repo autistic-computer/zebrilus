@@ -9,7 +9,7 @@ timestamp: 2026-10-27T00:00:00-03:00
 
 # Overview
 
-`zz-client` is the renderer-free client brain shared by the GPUI app, the raw-terminal client, and
+`zz-client` is the renderer-free client brain shared by the ala app, the raw-terminal client, and
 the C ABI. It depends only on `zz-protocol` and the model-only half of `zz-terminal`. It owns no
 socket, thread, clock, renderer, or toolkit type.
 
@@ -56,7 +56,7 @@ Warning typing remains separate.
 # Desktop hot-path boundary
 
 The desktop `MuxClient` sends non-frame messages through `ClientCore` and drains the resulting
-requests and events into GPUI state. It intercepts `TerminalViewport`, `TerminalPatch`, and
+requests and events into ala state. It intercepts `TerminalViewport`, `TerminalPatch`, and
 `CommandOutput` first because `RetainedTerminalViewport` also owns history, row revisions, and paint
 diff scratch. Passing those frames through both stores would duplicate the highest-rate work. The
 TUI and C ABI use the core's viewport retention directly.
@@ -79,7 +79,7 @@ snapshot change (`clear_deferred`) so its backfill goes out at once.
 `local_scroll.rs` holds the pixel scroll state machine. `LocalScrollState` turns pixel deltas into a
 local target row plus a sub-row offset, decides when the daemon should follow (`ScrollToOffset`),
 when to prefetch history, and when to sync and retire, and returns those as `LocalScrollEffect`s for
-the shell to send. The desktop `TerminalView` and the GPUI thin client's `TerminalPane` both drive
+the shell to send. The desktop `TerminalView` and the ala thin client's `TerminalPane` both drive
 it; see [interaction](/terminal/interaction.md#local-scroll-client-side).
 
 # Command-output actor state
@@ -117,7 +117,7 @@ pointer to the menu cell it lands on (`menu_hit_cell`) and fits menu rows to the
 choose-tree and choose-buffer titles, subtitles, key labels, footer hints and buffer row text.
 `palette.rs` holds the palette's fuzzy matcher, which catalog commands ask for a target or more
 arguments, and the tmux key spelling a shortcut cap draws. `tmux_style.rs` splits a styled label
-into its left, centre and right runs and reads literal colours out of a style. zz-ui's GPUI views
+into its left, centre and right runs and reads literal colours out of a style. zz-ui's ala views
 and the HTML client (`clients/dom`) both call these.
 
 # Testing
@@ -148,7 +148,7 @@ are not errors because the daemon may supersede an unread terminal frame under b
 
 - [Wire protocol](/protocol/wire-protocol.md) and [key tables](/tmux/key-tables.md) supply the
   renderer-neutral contract.
-- [GPUI client](/crates/zz.md) uses the hybrid core plus retained-painter path.
+- [ala client](/crates/zz.md) uses the hybrid core plus retained-painter path.
 - [Client core decision record](/designs/client-core-and-contract.md) records the extraction and its
   remaining ABI scope.
 - [Native status bar](/designs/native-status-bar.md) records the desktop presentation boundary.

@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
+use ala::SharedString;
 use async_channel::Sender;
-use zz_gpui::SharedString;
 
 use super::*;
 
@@ -547,9 +547,9 @@ impl BrowserController {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::{AppContext as _, TestAppContext};
+    use ala::{AppContext as _, TestAppContext};
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn canceling_a_queued_preview_before_polling_releases_its_page(cx: &mut TestAppContext) {
         let (controller, render, token) = cx.update(|cx| {
             let controller =
@@ -573,7 +573,7 @@ mod tests {
         assert!(!zz_browser::is_local_page(&token));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn canceling_an_active_preview_keeps_its_page_until_the_job_finishes(cx: &mut TestAppContext) {
         let (controller, render, token) = cx.update(|cx| {
             let controller =

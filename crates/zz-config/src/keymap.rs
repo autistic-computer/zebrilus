@@ -51,12 +51,12 @@ fn parse_target(target: &str) -> Result<(&'static str, String), String> {
             )
         })?;
     let chord = ChromeKey::parse(key)
-        .filter(|chord| gpui_source(chord).is_some())
+        .filter(|chord| ala_source(chord).is_some())
         .ok_or_else(|| format!("`{key}` is not a chord zz can bind"))?;
     Ok((table, chord.to_string()))
 }
 
-pub fn gpui_source(key: &ChromeKey) -> Option<String> {
+pub fn ala_source(key: &ChromeKey) -> Option<String> {
     let mut source = String::new();
     if key.command {
         source.push_str("cmd-");
@@ -72,7 +72,7 @@ pub fn gpui_source(key: &ChromeKey) -> Option<String> {
     }
     let base = match key.base.as_str() {
         " " => "space",
-        named => gpui_key_name(named).unwrap_or(named),
+        named => ala_key_name(named).unwrap_or(named),
     };
     let mut characters = base.chars();
     match (characters.next(), characters.next()) {
@@ -89,17 +89,17 @@ pub fn gpui_source(key: &ChromeKey) -> Option<String> {
     parse_keystroke(&source).map(|_| source)
 }
 
-pub fn gpui_key_name(name: &str) -> Option<&'static str> {
+pub fn ala_key_name(name: &str) -> Option<&'static str> {
     KEY_NAMES
         .iter()
         .find(|(tmux, _)| *tmux == name)
-        .map(|(_, zz_gpui)| *zz_gpui)
+        .map(|(_, ala)| *ala)
 }
 
 pub fn tmux_key_name(name: &str) -> Option<&'static str> {
     KEY_NAMES
         .iter()
-        .find(|(_, zz_gpui)| *zz_gpui == name)
+        .find(|(_, ala)| *ala == name)
         .map(|(tmux, _)| *tmux)
 }
 const KEY_NAMES: [(&str, &str); 26] = [

@@ -4,14 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "zz's application UI on zz-gpui-kit: panes, terminal, agent, palette, settings, navigation"
+description = "zz's application UI on penna: panes, terminal, agent, palette, settings, navigation"
 publish = false
 
 [features]
 default = []
 agent = ["dep:merman"]
-editor = ["zz-gpui-kit/editor"]
-tree-sitter = ["zz-gpui-kit/tree-sitter"]
+editor = ["penna/editor"]
+tree-sitter = ["penna/tree-sitter"]
 
 [dependencies]
 image.workspace = true
@@ -24,9 +24,9 @@ serde.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true
 web-time.workspace = true
-zz-gpui = { workspace = true, features = ["default"] }
+ala = { workspace = true, features = ["default"] }
 zz-client.workspace = true
-zz-gpui-kit.workspace = true
+penna.workspace = true
 zz-protocol.workspace = true
 zz-terminal.workspace = true
 
@@ -37,7 +37,7 @@ rust-embed = { version = "8.12", features = ["include-exclude", "debug-embed"] }
 url.workspace = true
 
 [dev-dependencies]
-zz-gpui = { workspace = true, features = ["test-support"] }
+ala = { workspace = true, features = ["test-support"] }
 
 [lints]
 workspace = true

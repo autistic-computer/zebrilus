@@ -1,4 +1,4 @@
-use zz_gpui::{App, Div, ParentElement as _, SharedString, Styled as _, div, prelude::*};
+use ala::{App, Div, ParentElement as _, SharedString, Styled as _, div, prelude::*};
 
 use crate::{ActiveTheme as _, StyledExt as _, SurfaceRole, rems_from_px};
 

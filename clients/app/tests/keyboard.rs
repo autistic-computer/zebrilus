@@ -1,5 +1,5 @@
+use ala_platform::ios::keyboard;
 use zz_app::input;
-use zz_gpui_platform::ios::keyboard;
 
 #[test]
 fn terminal_input_preserves_layout_modifiers_and_release() {
@@ -23,17 +23,17 @@ fn terminal_input_preserves_layout_modifiers_and_release() {
 
 #[test]
 fn terminal_tab_does_not_enter_toolbar_focus_navigation() {
-    zz_gpui::actions!(test_navigation, [Next, Previous]);
+    ala::actions!(test_navigation, [Next, Previous]);
     let mut bindings = vec![
-        zz_gpui::KeyBinding::new("tab", Next, Some("Root")),
-        zz_gpui::KeyBinding::new("shift-tab", Previous, Some("Root")),
+        ala::KeyBinding::new("tab", Next, Some("Root")),
+        ala::KeyBinding::new("shift-tab", Previous, Some("Root")),
     ];
     bindings.extend(input::raw_key_bindings());
-    let keymap = zz_gpui::Keymap::new(bindings);
-    let root = zz_gpui::KeyContext::parse("Root").unwrap();
-    let terminal = zz_gpui::KeyContext::parse("Terminal").unwrap();
+    let keymap = ala::Keymap::new(bindings);
+    let root = ala::KeyContext::parse("Root").unwrap();
+    let terminal = ala::KeyContext::parse("Terminal").unwrap();
     for key in ["tab", "shift-tab"] {
-        let key = zz_gpui::Keystroke::parse(key).unwrap();
+        let key = ala::Keystroke::parse(key).unwrap();
         let (bindings, pending) = keymap.bindings_for_input(
             std::slice::from_ref(&key),
             &[root.clone(), terminal.clone()],

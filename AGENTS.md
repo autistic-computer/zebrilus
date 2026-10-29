@@ -1,14 +1,14 @@
 # AGENTS.md
 
-zz is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on zz-gpui (our fork of Zed's GPUI UI framework, in `libs/gpui`), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL and iOS clients, and a raw-terminal attach client.
+zz is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on ala (our fork of Zed's GPUI UI framework, in `libs/ala`), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL and iOS clients, and a raw-terminal attach client.
 
 Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (see `mise.toml`).
 
 ## Project map
 
-- `libs/gpui` - zz-gpui, our GPUI, a git subtree of [autistic-computer/gpui](https://github.com/autistic-computer/gpui) with its own Cargo workspace: `crates/zz-gpui` (the gpui core split out of Zed, with the Zed utility code it needs as modules: `zz_gpui::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`), `crates/zz-gpui-platform` (the backends, one module per target, each compiled only there: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit), and the `wgpu` renderer Linux, web and iOS share), `crates/zz-gpui-macros` (proc macros, including the `Refineable` derive), and `third_party/cosmic-text`
-- `libs/kit` - `zz-gpui-kit`, the widget kit on zz-gpui (theme, primitives, widgets, icons), a git subtree of [autistic-computer/kit](https://github.com/autistic-computer/kit): a maintained fork of gpui-component with no zz dependencies, usable by other apps
-- `crates/zz` - desktop client: zz-gpui shell, terminal/browser/agent panes, settings, daemon client
+- `libs/ala` - ala, our GPUI, a git subtree of [autistic-computer/ala](https://github.com/autistic-computer/ala) with its own Cargo workspace: `crates/ala` (the gpui core split out of Zed, with the Zed utility code it needs as modules: `ala::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`), `crates/ala-platform` (the backends, one module per target, each compiled only there: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit), and the `wgpu` renderer Linux, web and iOS share), `crates/ala-macros` (proc macros, including the `Refineable` derive), and `third_party/cosmic-text`
+- `libs/penna` - `penna`, the widget kit on ala (theme, primitives, widgets, icons), a git subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna): a maintained fork of gpui-component with no zz dependencies, usable by other apps
+- `crates/zz` - desktop client: ala shell, terminal/browser/agent panes, settings, daemon client
 - `crates/zz-daemon` — the daemon: session state, PTY workers, client connections
 - `crates/zz-daemon-client` - the client half of the daemon: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, transport, paths, and process facts; client-only crates depend on it instead of `zz-daemon`
 - `crates/zz-mux` — tmux-compatible model: sessions, windows, panes, key tables
@@ -20,14 +20,14 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
 - `crates/zz-browser` — CEF off-screen-rendering browser runtime
 - `crates/zz-chrome-import` — Chrome profile, cookie, and history import
-- `crates/zz-ui` - zz's application UI on zz-gpui-kit (panes, terminal painting, agent, palette, settings, navigation, phone shell); re-exports the kit
+- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, settings, navigation, phone shell); re-exports the kit
 - `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)
 - `crates/zz-web` - local HTTP/WebSocket gateway for browser clients
 - `crates/zz-hotreload` - Subsecond hot-reload launcher for `just hot linux`
 - `clients/app` - `zz-app`: the thin-client app web and iOS share (shell, sidebar, status bar, settings, palette, overlays, panes, connection reducer, image cache, iOS transport and browser pane)
 - `clients/web` - `zz-web-client`: the WASM entry point around zz-app, with its own Cargo workspace
 - `clients/dom` - `zz-dom`: an HTML thin client, `zz-client` in wasm drawn with `design/kit`, served by `just design client`
-- `clients/ios` - `zz-ios`: the iOS entry point around zz-app and zz-gpui-platform's iOS backend, the bundle files, and a terminal example (`ZZ_GPUI_DEMO=terminal`); `just ios`
+- `clients/ios` - `zz-ios`: the iOS entry point around zz-app and ala-platform's iOS backend, the bundle files, and a terminal example (`ZZ_ALA_DEMO=terminal`); `just ios`
 - `crates/zz-xtask` — build tooling: CEF bundling, packaging (`cargo xtask`)
 - `compat/` — tmux compat campaign: differential harness (`run.sh`), gap registry (`tmux-gaps.json`), dispatch-board client (`board.py`), progress meter, orchestration handoff (`orchestration/`)
 - `compat/tui/` — TUI parity campaign: proof ledger (`campaign.json`), validator and report generator (`tracker.py`), cycle runners (`run-N.js`); closed 2026-09-20 at 18/18
@@ -58,7 +58,7 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 
 | Command | What it does |
 |---|---|
-| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` (alias in `.cargo/config.toml`). `libs/` sits outside the workspace; `just libs check <gpui\|kit>` lints and tests each lib the way CI does. CI's Linux leg runs zz-gpui-platform's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features` (Ubuntu `mesa-vulkan-drivers`, Arch `vulkan-swrast`; on an NVIDIA box also set `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`, or the atlas tests take NVIDIA's GL backend and fail). macOS and Windows run only its iOS input tests: `cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features --test ios` |
+| `cargo ci-test` | Tests (what CI runs): `cargo test --workspace --all-features` (alias in `.cargo/config.toml`). `libs/` sits outside the workspace; `just libs check <ala\|penna>` lints and tests each lib the way CI does. CI's Linux leg runs ala-platform's whole suite, wgpu pixel tests included, on Mesa lavapipe (software Vulkan): `VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features` (Ubuntu `mesa-vulkan-drivers`, Arch `vulkan-swrast`; on an NVIDIA box also set `__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json`, or the atlas tests take NVIDIA's GL backend and fail). macOS and Windows run only its iOS input tests: `cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features --test ios` |
 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | Lint (what CI runs) |
 | `cargo clippy -p zz-daemon -p zz-daemon-client --no-default-features --all-targets -- -D warnings` | Lint the daemon without agent support (CI runs this too) |
 | `cargo fmt --all` | Format |
@@ -66,8 +66,8 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 | `just watch <platform>` | Rebuild and relaunch on source change |
 | `just build <platform>` | Release bundle into `dist/zz` (wraps `cargo xtask bundle-cef`) |
 | `just install mac` | Build and swap `/Applications/zz.app`; the daemon survives the swap |
-| `just ios <run\|build\|device\|bench> [iPhone\|iPad]` / `ios rig [stop]` / `ios testflight` | GPUI iOS app (iPhone by default): simulator, a paired device (release, signed, installed), a hands-free frame benchmark on the device, a throwaway daemon that `ios run` attaches to, or a signed `dev.zz.ios` TestFlight upload; `ZZ_GPUI_DEMO=terminal` selects the terminal example |
-| `just libs <check\|push\|pull> <gpui\|kit>` | Lint and test a lib alone, push zz's `libs/<lib>` commits to its autistic-computer repo, or merge that repo's commits back (git subtree) |
+| `just ios <run\|build\|device\|bench> [iPhone\|iPad]` / `ios rig [stop]` / `ios testflight` | ala iOS app (iPhone by default): simulator, a paired device (release, signed, installed), a hands-free frame benchmark on the device, a throwaway daemon that `ios run` attaches to, or a signed `dev.zz.ios` TestFlight upload; `ZZ_ALA_DEMO=terminal` selects the terminal example |
+| `just libs <check\|push\|pull> <ala\|penna>` | Lint and test a lib alone, push zz's `libs/<lib>` commits to its autistic-computer repo, or merge that repo's commits back (git subtree) |
 | `just site` | Docs site dev server with live reload |
 | `just web run` / `web setup` / `web build [--release]` / `web serve` | Browser client dev loop / toolchain / assets / local gateway |
 | `just profile <cpu\|memory\|startup\|system\|metal\|terminal> mac …` | Capture profiling data; read it back with `just profile summary <cpu\|metal\|terminal> <run>` |
@@ -84,19 +84,19 @@ Multiple agent sessions often share this checkout in parallel. Never `git stash`
 
 <important if="you are changing anything under libs/">
 
-- `libs/gpui` and `libs/kit` are git subtrees of [autistic-computer/gpui](https://github.com/autistic-computer/gpui) and [autistic-computer/kit](https://github.com/autistic-computer/kit), libraries other apps build on. Edit them in place and commit them with the zz code that needs the change, like any other file here.
+- `libs/ala` and `libs/penna` are git subtrees of [autistic-computer/ala](https://github.com/autistic-computer/ala) and [autistic-computer/penna](https://github.com/autistic-computer/penna), libraries other apps build on. Edit them in place and commit them with the zz code that needs the change, like any other file here.
 - No comments in their code, doc comments included. Third-party copyright and license notices live in each lib's `NOTICE`, and every README is the same centered `<samp>` block: the `/{>` mark over the frontmatter, padded with literal non-breaking spaces so the lines stay aligned, then a `<kbd>` link to autistic.computer.
-- They must build on their own: no zz crate dependencies and no paths outside their own directory. Each is its own Cargo workspace, excluded from zz's; zz uses them by path, and the root `[patch."https://github.com/autistic-computer/gpui"]` (repeated in `clients/web`, `clients/storybook` and `clients/dom/theme`) points the kit's git dependency on gpui at `libs/gpui`.
-- The root clippy and `cargo ci-test` skip them. Run `just libs check gpui` or `just libs check kit` when you touch one; CI runs the same.
+- They must build on their own: no zz crate dependencies and no paths outside their own directory. Each is its own Cargo workspace, excluded from zz's; zz uses them by path, and the root `[patch."https://github.com/autistic-computer/ala"]` (repeated in `clients/web`, `clients/storybook` and `clients/dom/theme`) points the kit's git dependency on ala at `libs/ala`.
+- The root clippy and `cargo ci-test` skip them. Run `just libs check ala` or `just libs check penna` when you touch one; CI runs the same.
 - Commits touching `libs/<lib>` reach its repo with `just libs push <lib>` once they are on main, carrying their commit messages along, so write those for a reader outside zz. `just libs pull <lib>` merges commits made in the lib repo; do that before pushing if the lib repo moved.
 </important>
 
-<important if="you are changing zz-gpui (our gpui)">
+<important if="you are changing ala (our gpui)">
 
-- zz-gpui is `libs/gpui`: the crates `zz-gpui`, `zz-gpui-macros` and `zz-gpui-platform`, our copy of the gpui crates split out of Zed, with Zed's utility crates folded into `zz-gpui` as modules and every backend folded into `zz-gpui-platform`. It is not a patch branch: there is nothing to rebase, and upstream Zed fixes come in by hand. Change zz-gpui in the same commit as the zz code that needs it.
-- `just libs check gpui` lints them with all features, but only for the host OS: each backend in zz-gpui-platform compiles for its own target only. Check the others from macOS with `cargo clippy --manifest-path libs/gpui/Cargo.toml --target <triple> -p zz-gpui-platform --all-features` (the `fork-rebase` skill has the zig setup that cross-compiles their C dependencies). CI's Linux leg runs zz-gpui-platform's tests on lavapipe. The Wayland swapchain test (ignored) and the Metal and DirectX renderers stay unchecked in CI. Run `cargo test --manifest-path libs/gpui/Cargo.toml -p zz-gpui-platform --all-features` when you touch it, on a GPU or with lavapipe selected as above. The three carry Zed's relaxed `[lints]` table instead of zz's pedantic set, and `[profile.dev.package]` in the root `Cargo.toml` optimizes them in debug builds so those stay fast enough to use. `libs/kit` is ours and carries zz's pedantic lints in its own manifest.
-- `clients/web` consumes zz-gpui's WASM renderer in an excluded workspace; check `just web build` after a zz-gpui change.
-- `knowledge/references/zz-gpui.md` has the full recipe; the `fork-rebase` skill covers pulling upstream Zed fixes and syncing the vendored Ghostty.
+- ala is `libs/ala`: the crates `ala`, `ala-macros` and `ala-platform`, our copy of the gpui crates split out of Zed, with Zed's utility crates folded into `ala` as modules and every backend folded into `ala-platform`. It is not a patch branch: there is nothing to rebase, and upstream Zed fixes come in by hand. Change ala in the same commit as the zz code that needs it.
+- `just libs check ala` lints them with all features, but only for the host OS: each backend in ala-platform compiles for its own target only. Check the others from macOS with `cargo clippy --manifest-path libs/ala/Cargo.toml --target <triple> -p ala-platform --all-features` (the `fork-rebase` skill has the zig setup that cross-compiles their C dependencies). CI's Linux leg runs ala-platform's tests on lavapipe. The Wayland swapchain test (ignored) and the Metal and DirectX renderers stay unchecked in CI. Run `cargo test --manifest-path libs/ala/Cargo.toml -p ala-platform --all-features` when you touch it, on a GPU or with lavapipe selected as above. The three carry Zed's relaxed `[lints]` table instead of zz's pedantic set, and `[profile.dev.package]` in the root `Cargo.toml` optimizes them in debug builds so those stay fast enough to use. `libs/penna` is ours and carries zz's pedantic lints in its own manifest.
+- `clients/web` consumes ala's WASM renderer in an excluded workspace; check `just web build` after an ala change.
+- `knowledge/references/ala.md` has the full recipe; the `fork-rebase` skill covers pulling upstream Zed fixes and syncing the vendored Ghostty.
 </important>
 
 <important if="a test fails under cargo test --workspace">
@@ -107,7 +107,7 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 
 - The daemon outlives the app: after installing a new build, existing sessions keep running the old daemon binary until it restarts. Don't chase "missing" behavior in a stale daemon.
 - `just run` / `just watch` build zz Dev with `ZZ_DEV_BUILD=1`, clear inherited daemon/pane context, and use `zz-dev` config/data/socket paths. The macOS bundle is `dist/zz-dev/zz Dev.app` (`dev.zz.app.dev`); Linux launches `target/debug/zz-dev`. Installed and beta packages keep their existing behavior.
-- `just web run` / `web build` / `web serve` use dev assets and port 8081. Dev SSH selects `zz-dev`, linked by desktop dev runs into `~/.local/bin`. `web build --release` retains production identity. `just ios run iPad` opens the session sidebar and daemon-backed terminal/agent panes; `just ios run` (iPhone) opens the phone shell, one pane per screen, paged by the bar's pill, with a drill-in overview as its navigator (Overview in the pill's menu or dragging the pill up zooms out to the host's windows as a bento grid; All hosts in the host pill's menu or dragging it up again zooms out to every host); the gear on the Hosts page, or Settings in a host pill's menu, opens the thin-client settings (iPhone hides Panes and Status bar); set `ZZ_GPUI_DEMO=terminal` for the terminal example. See `clients/ios/README.md` for endpoint selection.
+- `just web run` / `web build` / `web serve` use dev assets and port 8081. Dev SSH selects `zz-dev`, linked by desktop dev runs into `~/.local/bin`. `web build --release` retains production identity. `just ios run iPad` opens the session sidebar and daemon-backed terminal/agent panes; `just ios run` (iPhone) opens the phone shell, one pane per screen, paged by the bar's pill, with a drill-in overview as its navigator (Overview in the pill's menu or dragging the pill up zooms out to the host's windows as a bento grid; All hosts in the host pill's menu or dragging it up again zooms out to every host); the gear on the Hosts page, or Settings in a host pill's menu, opens the thin-client settings (iPhone hides Panes and Status bar); set `ZZ_ALA_DEMO=terminal` for the terminal example. See `clients/ios/README.md` for endpoint selection.
 - `ZZ_SOCKET` overrides the socket the app dials. Unix socket paths have a low length cap (`sun_path`); put test sockets directly under `/tmp`.
 - Recipes live in `knowledge/playbooks/running-zz.md`.
 </important>
@@ -115,7 +115,7 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 <important if="you are building or styling UI chrome or widgets">
 
 - UI conventions: `knowledge/configuration/ui-conventions.md` (chrome colors come from the theme; clippy rejects raw `rgb`/`hsla`).
-- `libs/kit` is a full fork of gpui-component, not a dependency - read `libs/kit/UPSTREAM.md` before touching widget internals or trying to "update" it. App-specific UI belongs in `crates/zz-ui`; the kit must not depend on zz crates.
+- `libs/penna` is a full fork of gpui-component, not a dependency - read `libs/penna/UPSTREAM.md` before touching widget internals or trying to "update" it. App-specific UI belongs in `crates/zz-ui`; the kit must not depend on zz crates.
 </important>
 
 <important if="you are adding or editing documents under knowledge/">

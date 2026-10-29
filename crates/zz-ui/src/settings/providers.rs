@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use zz_gpui::{
+use ala::{
     App, ClipboardItem, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
@@ -145,7 +145,7 @@ fn action(
     })
 }
 
-fn task_line(text: impl Into<SharedString>, color: zz_gpui::Hsla, cx: &App) -> impl IntoElement {
+fn task_line(text: impl Into<SharedString>, color: ala::Hsla, cx: &App) -> impl IntoElement {
     div()
         .min_w_0()
         .font_family(cx.theme().mono_font_family.clone())

@@ -24,7 +24,7 @@ The tokens are build output under `kit/tokens/` and stay out of git.
 ```
 
 `kit.js` loads the tokens for the theme in the corner switcher (or `?theme=macos&mode=light`), rounds
-corners the way zz-gpui does, and adds the glass lens in Chromium. `?bare` hides the switcher, `?flat`
+corners the way ala does, and adds the glass lens in Chromium. `?bare` hides the switcher, `?flat`
 turns the lens off.
 
 ## What maps to what

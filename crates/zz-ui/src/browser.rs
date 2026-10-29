@@ -11,7 +11,7 @@ use crate::{
     separator::Separator,
     tooltip::Tooltip,
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, Context, Entity, Focusable as _, IntoElement, MouseButton, ParentElement as _,
     Pixels, RenderOnce, SharedString, Styled as _, StyledImage as _, Window, canvas, deferred, div,
     prelude::*, px,
@@ -99,7 +99,7 @@ impl RenderOnce for BrowserHeader {
                             .when(!self.active, |actions| {
                                 actions
                                     .invisible()
-                                    .group_hover("browser-pane-header", zz_gpui::Styled::visible)
+                                    .group_hover("browser-pane-header", ala::Styled::visible)
                             })
                             .child(self.actions),
                     ),
@@ -221,7 +221,7 @@ impl BrowserToolbar {
 }
 
 impl RenderOnce for BrowserToolbar {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         div()
             .id("browser-navigation-row")
             .debug_selector(|| "browser-navigation-row".into())
@@ -251,7 +251,7 @@ impl RenderOnce for BrowserToolbar {
     }
 }
 
-fn browser_toolbar_cluster() -> zz_gpui::Div {
+fn browser_toolbar_cluster() -> ala::Div {
     div().flex().flex_none().items_center().gap_1()
 }
 
@@ -260,7 +260,7 @@ pub fn browser_address(
     site_controls: impl IntoElement,
     window: &Window,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     let focus_handle = address.read(cx).focus_handle(cx);
     let role = crate::roles::ADDRESS_BAR;
     let state = if focus_handle.is_focused(window) {
@@ -313,7 +313,7 @@ pub fn browser_site_controls_button(cx: &App) -> Button {
         .radius;
     Button::compact_icon("browser-site-controls", IconName::SiteControls)
         .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
-        .rounded(if address >= zz_gpui::FULL_CORNER_RADIUS {
+        .rounded(if address >= ala::FULL_CORNER_RADIUS {
             address
         } else {
             (address - SITE_CONTROLS_INSET - ADDRESS_EDGE_WIDTH).max(px(0.0))
@@ -453,7 +453,7 @@ impl BrowserTabStrip {
 }
 
 impl RenderOnce for BrowserTabStrip {
-    fn render(self, window: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let Self {
             tabs,
             active,
@@ -594,7 +594,7 @@ fn browser_tab_pill(
                         .items_center()
                         .justify_center()
                         .child(favicon.when(closable, |favicon| {
-                            favicon.group_hover(browser_tab_group(id), zz_gpui::Styled::invisible)
+                            favicon.group_hover(browser_tab_group(id), ala::Styled::invisible)
                         }))
                         .when(closable, |slot| {
                             slot.child(
@@ -660,7 +660,7 @@ fn browser_tab_close_button(id: u64, on_close: &BrowserTabAction, cx: &App) -> i
     div()
         .flex_none()
         .invisible()
-        .group_hover(browser_tab_group(id), zz_gpui::Styled::visible)
+        .group_hover(browser_tab_group(id), ala::Styled::visible)
         .child(
             Button::compact_icon(("browser-tab-close", id), IconName::Xmark)
                 .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
@@ -693,7 +693,7 @@ pub fn browser_toolbar_button(
         .tooltip(tooltip)
 }
 
-pub fn browser_start_surface(content: impl IntoElement) -> zz_gpui::Div {
+pub fn browser_start_surface(content: impl IntoElement) -> ala::Div {
     div()
         .absolute()
         .inset_0()
@@ -711,7 +711,7 @@ pub fn browser_start_surface(content: impl IntoElement) -> zz_gpui::Div {
 pub struct BrowserEmptyHint;
 
 impl RenderOnce for BrowserEmptyHint {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         div()
             .max_w(px(440.0))
             .flex()
@@ -758,8 +758,8 @@ pub fn browser_favicon(png: Option<Arc<[u8]>>, cx: &App) -> AnyElement {
             .into_any_element()
     };
     match png {
-        Some(png) => zz_gpui::img(Arc::new(zz_gpui::Image::from_bytes(
-            zz_gpui::ImageFormat::Png,
+        Some(png) => ala::img(Arc::new(ala::Image::from_bytes(
+            ala::ImageFormat::Png,
             png.to_vec(),
         )))
         .size(px(14.0))
@@ -772,11 +772,11 @@ pub fn browser_favicon(png: Option<Arc<[u8]>>, cx: &App) -> AnyElement {
 }
 
 pub fn browser_recent_row(
-    id: impl Into<zz_gpui::ElementId>,
+    id: impl Into<ala::ElementId>,
     url: impl Into<SharedString>,
     favicon: Option<Arc<[u8]>>,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     let url = url.into();
     let height = crate::picker::LIST_ROW_HEIGHT;
     crate::picker::row_surface(
@@ -829,7 +829,7 @@ pub fn browser_omnibox_row(
     selected: bool,
     favicon: Option<Arc<[u8]>>,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     let title = title.into();
     let url = url.into();
     let muted = crate::picker::muted_on(
@@ -876,7 +876,7 @@ pub fn browser_omnibox_row(
                 this.child(
                     div()
                         .min_w_0()
-                        .max_w(zz_gpui::relative(0.55))
+                        .max_w(ala::relative(0.55))
                         .whitespace_nowrap()
                         .text_ellipsis()
                         .overflow_hidden()
@@ -1278,7 +1278,7 @@ impl BrowserErrorPanel {
 }
 
 impl RenderOnce for BrowserErrorPanel {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         inline_alert(Some("This page couldn’t load".into()), self.message, cx)
             .id("browser-error")
             .max_w(px(360.0))
@@ -1301,7 +1301,7 @@ impl BrowserPickStatus {
 }
 
 impl RenderOnce for BrowserPickStatus {
-    fn render(self, _: &mut zz_gpui::Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, _: &mut App) -> impl IntoElement {
         div()
             .absolute()
             .left(px(16.0))
@@ -1312,7 +1312,7 @@ impl RenderOnce for BrowserPickStatus {
             .child(
                 Badge::empty()
                     .surface_role(crate::roles::PANE_CHIP)
-                    .font_weight(zz_gpui::FontWeight::NORMAL)
+                    .font_weight(ala::FontWeight::NORMAL)
                     .max_w_full()
                     .h(px(28.0))
                     .px(px(10.0))
@@ -1335,7 +1335,7 @@ impl RenderOnce for BrowserPickStatus {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use zz_gpui::{Context, Modifiers, Render, TestAppContext, VisualTestContext, point};
+    use ala::{Context, Modifiers, Render, TestAppContext, VisualTestContext, point};
 
     use super::*;
     use crate::menu::DropdownMenu as _;
@@ -1446,7 +1446,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn narrow_header_keeps_controls_visible_and_address_focusable(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|window, cx| BrowserHeaderTest {
@@ -1617,7 +1617,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn active_and_inactive_tabs_reveal_working_close_buttons_on_hover(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let activated = Arc::new(Mutex::new(Vec::new()));
@@ -1686,7 +1686,7 @@ mod tests {
         assert!(activated.lock().unwrap().is_empty());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn switching_active_tab_preserves_equal_tab_widths(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(move |_, _| BrowserTabStripTest {
@@ -1781,7 +1781,7 @@ mod tests {
         assert!(first.origin.x >= strip.origin.x && second.right() <= strip.right());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn omnibox_results_render_above_the_toolbar_and_accept_pointer_input(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let accepted = Arc::new(Mutex::new(Vec::new()));

@@ -37,7 +37,7 @@ use crate::{
     kbd::{Kbd, KeyGlyphs},
     list::ListItem,
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, ElementId, Entity, IntoElement, Keystroke, ParentElement as _, Pixels,
     RenderOnce, SharedString, Styled as _, deferred, div, prelude::*, px, relative,
 };
@@ -107,7 +107,7 @@ pub fn command_palette_input(
 /// A completion row. The caller attaches event handlers to the returned
 /// `ListItem`.
 pub fn command_palette_row(
-    id: impl Into<zz_gpui::ElementId>,
+    id: impl Into<ala::ElementId>,
     label: impl Into<SharedString>,
     detail: impl Into<SharedString>,
     badge: Option<AnyElement>,
@@ -217,7 +217,7 @@ impl CommandPaletteSurface {
 }
 
 impl RenderOnce for CommandPaletteSurface {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let (input, input_last) = if self.input_last {
             (None, Some(self.input))
         } else {
@@ -233,7 +233,7 @@ impl RenderOnce for CommandPaletteSurface {
             .overflow_hidden()
             .surface(crate::roles::PALETTE, cx)
             .rounded(command_palette_radius(cx))
-            .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .children(input)
             .children(self.usage.map(|usage| {
                 div()
@@ -306,7 +306,7 @@ impl RenderOnce for CommandPaletteSurface {
                     }))
                     .children(self.hints.into_iter().map(|hint| palette_hint(hint, cx))),
             );
-        zz_gpui_kit::foundation::surface_enter(
+        penna::foundation::surface_enter(
             surface,
             ElementId::NamedInteger("command-palette-open".into(), self.revision),
             px(0.0),
@@ -315,7 +315,7 @@ impl RenderOnce for CommandPaletteSurface {
 }
 
 /// A footer hint: its keys in the platform's glyphs, then what they do.
-/// `hint.key` holds GPUI keystrokes apart by spaces or `/`, such as
+/// `hint.key` holds ala keystrokes apart by spaces or `/`, such as
 /// `up down` or `ctrl-c`.
 pub(crate) fn palette_hint(hint: PaletteHint, cx: &App) -> impl IntoElement {
     div()
@@ -361,8 +361,8 @@ pub fn tmux_shortcut(shortcut: &SharedString, ground: crate::Ground, cx: &App) -
     }
 }
 
-/// A key in tmux's spelling (`C-b`, `M-Up`, `%`, `L`) as a GPUI keystroke, for
-/// drawing in the platform's glyphs. `None` for a key GPUI cannot name.
+/// A key in tmux's spelling (`C-b`, `M-Up`, `%`, `L`) as a ala keystroke, for
+/// drawing in the platform's glyphs. `None` for a key ala cannot name.
 #[must_use]
 pub fn tmux_keystroke(spelling: &str) -> Option<Keystroke> {
     let (source, base) = zz_client::palette::tmux_keystroke_source(spelling)?;
@@ -407,7 +407,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tmux_spellings_become_gpui_keystrokes() {
+    fn tmux_spellings_become_ala_keystrokes() {
         let control = tmux_keystroke("C-b").expect("prefix");
         assert!(control.modifiers.control);
         assert_eq!(control.key, "b");

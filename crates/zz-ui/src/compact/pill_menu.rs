@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use zz_gpui::{
+use ala::{
     App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, IntoElement, MouseButton, ParentElement as _,
     Pixels, SharedString, Styled as _, Window, div, prelude::*, px,
 };
@@ -316,7 +316,7 @@ fn chip(
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use zz_gpui::{Context, Modifiers, Render, TestAppContext, VisualTestContext, point, size};
+    use ala::{Context, Modifiers, Render, TestAppContext, VisualTestContext, point, size};
 
     use super::*;
 
@@ -370,10 +370,7 @@ mod tests {
         });
     }
 
-    fn host(
-        cx: &mut TestAppContext,
-        height: f32,
-    ) -> (zz_gpui::Entity<Host>, &mut VisualTestContext) {
+    fn host(cx: &mut TestAppContext, height: f32) -> (ala::Entity<Host>, &mut VisualTestContext) {
         cx.update(crate::init);
         let (host, cx) = cx.add_window_view(|_, _| Host { log: Rc::default() });
         cx.simulate_resize(size(px(402.0), px(height)));
@@ -388,7 +385,7 @@ mod tests {
         assert_eq!(Spacing::fitting(9, 2, px(100.0)), SPACINGS[3]);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn chips_stay_under_the_top_and_above_the_button(cx: &mut TestAppContext) {
         let (_, cx) = host(cx, 520.0);
         let close = cx.debug_bounds("pill-menu-close").expect("close");
@@ -400,7 +397,7 @@ mod tests {
         assert_eq!(last.center().x, close.center().x);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_chip_picks_and_the_scrim_closes(cx: &mut TestAppContext) {
         let (host, cx) = host(cx, 800.0);
         let log =

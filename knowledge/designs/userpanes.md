@@ -292,7 +292,7 @@ the job finishes or fails.
 and the scale, so a resize or a mode switch renders again after the debounce. The budget is decoded
 bytes, 64 MiB as for terminal images (`clients/app/src/terminal_images.rs:5`), least recently drawn
 first out. A 640×400 block at 2x is about 4 MB, so about sixteen stay resident. The timeline is a
-gpui `list` that lays out only visible rows, so rows off screen cost nothing, and an evicted block
+ala `list` that lays out only visible rows, so rows off screen cost nothing, and an evicted block
 renders again when it comes back.
 
 **Click to go live.** A preview is a still picture; clicking it makes that block live in place, and
@@ -352,7 +352,7 @@ second, and drops the rest; other tokens still go to the daemon. An html block i
 `markdown` block has no owner and can't reply.
 
 Rejected: a live browser per block (one renderer each, all drawing while you scroll), and a native
-HTML engine in GPUI (no JS, so Chart.js and D3 pages, most of what agents draw, would not run).
+HTML engine in ala (no JS, so Chart.js and D3 pages, most of what agents draw, would not run).
 
 Measured 2026-10-19 on macOS (M-series, 2x, release-like dev bundle, the app's own call path):
 
@@ -382,7 +382,7 @@ up in the numbers.
 * **Web** shows a placeholder for every browser pane (`clients/app/src/app.rs:1834`). The web
   client already runs in a browser, so artifacts and previews can be live sandboxed
   `<iframe srcdoc>` frames without same-origin, placed over the canvas the way the accessibility
-  mirror places its nodes (`libs/gpui/crates/zz-gpui-platform/src/web/a11y.rs`); no pictures needed. Single
+  mirror places its nodes (`libs/ala/crates/ala-platform/src/web/a11y.rs`); no pictures needed. Single
   files only, since relative assets have no origin to resolve against. Later.
 
 Until then those clients show an artifact like any browser pane they can't show, and html blocks

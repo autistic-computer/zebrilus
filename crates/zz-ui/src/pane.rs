@@ -5,7 +5,7 @@ use crate::{
     button::{Button, ButtonVariants as _},
     roles,
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, BorderStyle, Bounds, Corners, CursorStyle, ElementId, FontWeight,
     GlassMaterial, Hsla, IntoElement, ParentElement as _, Pixels, SharedString, Stateful,
     Styled as _, StyledText, Window, canvas, div, prelude::*, px, quad, relative, size,
@@ -100,7 +100,7 @@ impl RenderOnce for PaneTitle {
             .child(
                 div()
                     .when(movable && !coarse, |icon| {
-                        icon.group_hover(PANE_TITLE_GROUP, zz_gpui::Styled::invisible)
+                        icon.group_hover(PANE_TITLE_GROUP, ala::Styled::invisible)
                     })
                     .child(self.icon.size(icon_size)),
             )
@@ -110,7 +110,7 @@ impl RenderOnce for PaneTitle {
                         .absolute()
                         .inset_0()
                         .invisible()
-                        .group_hover(PANE_TITLE_GROUP, zz_gpui::Styled::visible)
+                        .group_hover(PANE_TITLE_GROUP, ala::Styled::visible)
                         .child(Icon::new(IconName::ArrowsMove).size(icon_size)),
                 )
             });
@@ -121,7 +121,7 @@ impl RenderOnce for PaneTitle {
                 .when(!coarse, |close| {
                     close
                         .invisible()
-                        .group_hover(PANE_TITLE_GROUP, zz_gpui::Styled::visible)
+                        .group_hover(PANE_TITLE_GROUP, ala::Styled::visible)
                 })
                 .child(
                     Button::compact_icon("pane-title-close", IconName::Xmark)
@@ -252,7 +252,7 @@ pub fn terminal_pane_header(
     lens: Option<PaneLens>,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     pane_header(
         IconName::SquareTerminal,
         active,
@@ -300,7 +300,7 @@ pub fn pane_header(
     lens: Option<PaneLens>,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let on_action = std::rc::Rc::new(on_action);
     let close = std::rc::Rc::clone(&on_action);
     let toggle = std::rc::Rc::clone(&on_action);
@@ -346,7 +346,7 @@ pub fn pane_header(
                 .flex_none()
                 .when(!active, |slot| {
                     slot.invisible()
-                        .group_hover("terminal-pane-header", zz_gpui::Styled::visible)
+                        .group_hover("terminal-pane-header", ala::Styled::visible)
                 })
                 .child(pane_lens_button(
                     lens,
@@ -363,7 +363,7 @@ pub fn pane_header(
                 .when(!active, |actions| {
                     actions
                         .invisible()
-                        .group_hover("terminal-pane-header", zz_gpui::Styled::visible)
+                        .group_hover("terminal-pane-header", ala::Styled::visible)
                 })
                 .children(
                     pane_header_actions(floats)
@@ -379,7 +379,7 @@ pub fn pane_header_frame(
     header: impl IntoElement,
     radii: Corners<Pixels>,
     opacity: f32,
-) -> zz_gpui::Div {
+) -> ala::Div {
     div()
         .w_full()
         .flex_none()
@@ -426,8 +426,8 @@ impl PaneArrivals {
     #[must_use]
     pub fn shown(&self, pane: zz_protocol::PaneId, now: web_time::Instant) -> f32 {
         self.arrived.get(&pane).map_or(1.0, |since| {
-            zz_gpui::ease_out_quint()(
-                (zz_gpui::animation_time(now.saturating_duration_since(*since)).as_secs_f32()
+            ala::ease_out_quint()(
+                (ala::animation_time(now.saturating_duration_since(*since)).as_secs_f32()
                     / PANE_ARRIVAL.as_secs_f32())
                 .min(1.0),
             )
@@ -509,7 +509,7 @@ pub fn pane_surface(
     overlays: impl IntoIterator<Item = AnyElement>,
     chrome: PaneChrome,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let theme = cx.theme();
     let glass = theme.style(roles::PANE).fill == Fill::Glass && theme.glass_effect().is_some();
     let rest = theme.layer(roles::PANE, PaintState::Rest);
@@ -630,7 +630,7 @@ fn pane_frame_hairline(
     clippy::disallowed_methods,
     reason = "an inactive pane dims by the look's inactive-pane opacity"
 )]
-fn pane_inactive_scrim(radii: Corners<Pixels>, opacity: f32, cx: &App) -> zz_gpui::Div {
+fn pane_inactive_scrim(radii: Corners<Pixels>, opacity: f32, cx: &App) -> ala::Div {
     div()
         .absolute()
         .inset_0()
@@ -716,7 +716,7 @@ impl FloatingSurface {
 }
 
 impl RenderOnce for FloatingSurface {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let theme = cx.theme();
         let mut layer = theme.layer(roles::FLOATING_PANE, PaintState::Rest);
         if let Some(fill) = self.background {
@@ -747,7 +747,7 @@ impl RenderOnce for FloatingSurface {
             .overflow_hidden()
             .occlude()
             .layer(&layer)
-            .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .absolute()
@@ -765,7 +765,7 @@ impl RenderOnce for FloatingSurface {
                         .overflow_hidden()
                         .whitespace_nowrap()
                         .text_ellipsis()
-                        .when_some(label_fill, zz_gpui::Styled::bg)
+                        .when_some(label_fill, ala::Styled::bg)
                         .child(text)
                 };
                 surface.child(
@@ -812,7 +812,7 @@ pub fn pane_drag_overlay(
     state: PaneDragOverlayState,
     radii: Corners<Pixels>,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let cursor = match state {
         PaneDragOverlayState::Armed => CursorStyle::OpenHand,
         PaneDragOverlayState::Source | PaneDragOverlayState::Target => CursorStyle::ClosedHand,
@@ -857,7 +857,7 @@ fn pane_drag_source_veil(cx: &App) -> Hsla {
 /// The rectangle a dragged pane lands in if it is dropped now. Positioning and
 /// animation belong to the caller; pass the target pane's own radius and border
 /// width so the preview's arcs land on the pane's.
-pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> zz_gpui::Div {
+pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> ala::Div {
     let layer = cx.theme().layer(roles::DROP_ZONE, PaintState::Selected);
     let border_width = if layer.border_width > Pixels::ZERO {
         border_width
@@ -877,7 +877,7 @@ pub fn pane_drag_chip(
     pane: impl Into<SharedString>,
     title: impl Into<SharedString>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let theme = cx.theme();
     let layer = theme.layer(roles::DRAG_CHIP, PaintState::Rest);
     let ink = theme.paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost);
@@ -959,7 +959,7 @@ pub fn pane_split_hit_target(
     axis: PaneSplitAxis,
     ratio: f32,
     gap: Pixels,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let slot = f32::from(pane_split_slot(gap));
     let offset = -(PANE_SPLIT_HIT_THICKNESS - slot) / 2.0;
     div()
@@ -1002,7 +1002,7 @@ pub fn pane_split_surface(
     second_content: impl IntoElement,
     hit_target: impl IntoElement,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let slot = f32::from(pane_split_slot(gap));
     let ruled = cx.theme().style(roles::SPLIT_RULE).outline || hairline.is_some();
     let first = div()
@@ -1010,7 +1010,7 @@ pub fn pane_split_surface(
         .flex_none()
         .min_w_0()
         .min_h_0()
-        .when(!gaps, zz_gpui::Styled::overflow_hidden)
+        .when(!gaps, ala::Styled::overflow_hidden)
         .when(axis == PaneSplitAxis::Horizontal, |element| {
             element.w(relative(ratio)).h_full()
         })
@@ -1091,7 +1091,7 @@ pub fn pane_split_surface(
         .size_full()
         .min_w_0()
         .min_h_0()
-        .when(!gaps, zz_gpui::Styled::overflow_hidden)
+        .when(!gaps, ala::Styled::overflow_hidden)
         .when(axis == PaneSplitAxis::Vertical, |element| {
             element.flex_col()
         })
@@ -1103,7 +1103,7 @@ pub fn pane_split_surface(
                 .flex_1()
                 .min_w_0()
                 .min_h_0()
-                .when(!gaps, zz_gpui::Styled::overflow_hidden)
+                .when(!gaps, ala::Styled::overflow_hidden)
                 .child(second_content),
         )
         .child(hit_target)
@@ -1111,16 +1111,16 @@ pub fn pane_split_surface(
 
 /// A pending-entity placeholder shown as a top-right status tag while a pane
 /// waits for its backing terminal, browser, or agent to attach.
-pub fn pane_waiting_state(label: impl IntoElement, cx: &App) -> zz_gpui::Div {
+pub fn pane_waiting_state(label: impl IntoElement, cx: &App) -> ala::Div {
     pane_status_badge(IconName::Clock, label, cx)
 }
 
 /// Warns that keyboard input is mirrored to every pane in a synchronized group.
-pub fn pane_sync_badge(cx: &App) -> zz_gpui::Div {
+pub fn pane_sync_badge(cx: &App) -> ala::Div {
     pane_status_badge(IconName::Layers, "Sync", cx)
 }
 
-pub fn pane_status_badge(icon: IconName, label: impl IntoElement, cx: &App) -> zz_gpui::Div {
+pub fn pane_status_badge(icon: IconName, label: impl IntoElement, cx: &App) -> ala::Div {
     pane_chip(PaintState::Rest, cx)
         .flex()
         .items_center()
@@ -1140,7 +1140,7 @@ pub fn pane_status_badge(icon: IconName, label: impl IntoElement, cx: &App) -> z
         .child(label)
 }
 
-pub fn pane_indicator_overlay(indicator: impl IntoElement) -> zz_gpui::Div {
+pub fn pane_indicator_overlay(indicator: impl IntoElement) -> ala::Div {
     div()
         .absolute()
         .inset_0()
@@ -1163,7 +1163,7 @@ pub enum PaneOverlayCorner {
 pub fn pane_overlay_stack(
     corner: PaneOverlayCorner,
     tags: impl IntoIterator<Item = AnyElement>,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let column = div()
         .absolute()
         .right(px(8.0))
@@ -1192,7 +1192,7 @@ pub fn pane_indicator(
     state: &zz_protocol::DisplayPanesState,
     indicator: &zz_protocol::PaneIndicator,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let theme = cx.theme();
     let active = indicator.active();
     let surface = Surface::new(roles::DISPLAY_PANES);
@@ -1267,7 +1267,7 @@ pub fn pane_indicator(
         .min_w(px(40.0))
         .when(!caption.is_empty(), |chip| chip.pl(px(14.0)).pr(px(16.0)))
         .surface_hover(surface, chip_state, cx)
-        .when_some(ringed, zz_gpui::Styled::shadow)
+        .when_some(ringed, ala::Styled::shadow)
         .cursor(CursorStyle::PointingHand)
         .font_family(theme.font_family.clone())
         .child(
@@ -1306,7 +1306,7 @@ pub fn terminal_mode_indicator(
     label: Option<impl Into<SharedString>>,
     detail: impl Into<SharedString>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let label = label.map(Into::into);
     let icon = match label.as_deref() {
         Some("Copy mode" | "COPY MODE") => IconName::Copy,
@@ -1320,7 +1320,7 @@ pub fn terminal_mode_indicator(
             .flex()
             .items_center()
             .gap(px(7.0))
-            .when_some(label, zz_gpui::ParentElement::child)
+            .when_some(label, ala::ParentElement::child)
             .when(!detail.is_empty(), |row| {
                 row.child(
                     div()
@@ -1341,7 +1341,7 @@ pub fn terminal_search_prompt(
     caret: usize,
     on_caret: impl FnOnce(Bounds<Pixels>, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let text = StyledText::new(message);
     let layout = text.layout().clone();
     overlay_line(PaintState::Focused, cx)
@@ -1362,7 +1362,7 @@ pub fn terminal_search_prompt(
 
 /// A transient status line (copy confirmations, search errors) for the pane's
 /// bottom-right overlay stack.
-pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> zz_gpui::Div {
+pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> ala::Div {
     let quiet = overlay_paint(cx).muted_at(PaintState::Rest);
     overlay_line(PaintState::Rest, cx)
         .text_color(quiet)
@@ -1371,7 +1371,7 @@ pub fn terminal_status_popup(message: impl IntoElement, cx: &App) -> zz_gpui::Di
 
 /// A preview of the URI under the pointer, shown in the pane's bottom-right
 /// overlay stack.
-pub fn terminal_link_popup(uri: impl IntoElement, cx: &App) -> zz_gpui::Div {
+pub fn terminal_link_popup(uri: impl IntoElement, cx: &App) -> ala::Div {
     overlay_line(PaintState::Rest, cx)
         .overflow_hidden()
         .child(uri)
@@ -1381,7 +1381,7 @@ fn overlay_paint(cx: &App) -> crate::Paint {
     cx.theme().paint(Tone::Neutral, Emphasis::Soft).opaque()
 }
 
-fn pane_chip(state: PaintState, cx: &App) -> zz_gpui::Div {
+fn pane_chip(state: PaintState, cx: &App) -> ala::Div {
     div()
         .surface_at(roles::PANE_CHIP, state, cx)
         .when(state == PaintState::Focused, |chip| {
@@ -1390,7 +1390,7 @@ fn pane_chip(state: PaintState, cx: &App) -> zz_gpui::Div {
 }
 
 /// A line in the pane's bottom-right overlay stack.
-fn overlay_line(state: PaintState, cx: &App) -> zz_gpui::Div {
+fn overlay_line(state: PaintState, cx: &App) -> ala::Div {
     pane_chip(state, cx)
         .flex()
         .items_center()
@@ -1409,7 +1409,7 @@ pub fn pane_picker_row(
     selected: bool,
     enabled: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     picker_item(
         id,
         title.into(),
@@ -1429,7 +1429,7 @@ pub fn pane_picker_folder_row(
     shortcut: Option<&'static str>,
     selected: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     picker_item(
         id,
         path.into(),
@@ -1442,7 +1442,7 @@ pub fn pane_picker_folder_row(
     )
 }
 
-pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
+pub fn pane_picker_label(text: impl Into<SharedString>, cx: &App) -> ala::Div {
     div()
         .flex_none()
         .px(px(12.0))
@@ -1461,8 +1461,8 @@ pub enum ChatPickerTarget {
 }
 
 pub enum ChatPickerRow {
-    Label(zz_gpui::Div),
-    Item(ChatPickerTarget, Stateful<zz_gpui::Div>),
+    Label(ala::Div),
+    Item(ChatPickerTarget, Stateful<ala::Div>),
 }
 
 pub fn chat_picker_rows(
@@ -1514,7 +1514,7 @@ fn picker_item(
     selected: bool,
     enabled: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let state = crate::picker::row_state(selected, enabled);
     let ground = cx.theme().layer(roles::PANE_PICKER, state).ground;
     let ink = cx
@@ -1532,7 +1532,7 @@ fn picker_item(
     .w_full()
     .gap(px(10.0))
     .px(px(12.0))
-    .when(enabled, zz_gpui::Styled::cursor_pointer)
+    .when(enabled, ala::Styled::cursor_pointer)
     .child(crate::Icon::new(icon).with_size(px(16.0)).text_color(ink))
     .child(
         div()
@@ -1552,11 +1552,9 @@ fn picker_item(
             .child(note)
     }))
     .children(shortcut.map(|shortcut| {
-        crate::kbd::Kbd::new(
-            zz_gpui::Keystroke::parse(shortcut).expect("static pane picker shortcut"),
-        )
-        .lowercase()
-        .on(ground)
+        crate::kbd::Kbd::new(ala::Keystroke::parse(shortcut).expect("static pane picker shortcut"))
+            .lowercase()
+            .on(ground)
     }))
 }
 
@@ -1565,7 +1563,7 @@ pub fn pane_picker_surface(
     radii: Corners<Pixels>,
     rows: impl IntoIterator<Item = AnyElement>,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let theme = cx.theme();
     div()
         .id(id)
@@ -1583,7 +1581,7 @@ pub fn pane_picker_surface(
         .child(pane_picker_choices(rows))
 }
 
-pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> zz_gpui::Div {
+pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> ala::Div {
     div()
         .flex()
         .flex_col()
@@ -1596,7 +1594,7 @@ pub fn pane_picker_choices(rows: impl IntoIterator<Item = AnyElement>) -> zz_gpu
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::point;
+    use ala::point;
 
     struct TitleTest {
         label: &'static str,
@@ -1627,7 +1625,7 @@ mod tests {
         }
     }
 
-    fn title_width(label: &'static str, cx: &mut zz_gpui::TestAppContext) -> Pixels {
+    fn title_width(label: &'static str, cx: &mut ala::TestAppContext) -> Pixels {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| TitleTest {
             label,
@@ -1659,8 +1657,8 @@ mod tests {
         assert!(!arrivals.fading());
     }
 
-    #[zz_gpui::test]
-    fn the_title_fits_its_label_up_to_a_cap(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn the_title_fits_its_label_up_to_a_cap(cx: &mut ala::TestAppContext) {
         assert!(title_width("zsh", cx) < px(PANE_TITLE_MAX_WIDTH));
         assert_eq!(
             title_width("cargo test --workspace --all-features -- --nocapture", cx),
@@ -1668,16 +1666,16 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn the_title_drags_the_pane_and_its_x_closes_it(cx: &mut zz_gpui::TestAppContext) {
-        use zz_gpui::{Modifiers, MouseButton};
+    #[ala::test]
+    fn the_title_drags_the_pane_and_its_x_closes_it(cx: &mut ala::TestAppContext) {
+        use ala::{Modifiers, MouseButton};
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|_, _| TitleTest {
             label: "cargo test",
             started: Vec::new(),
             closed: 0,
         });
-        let draw = |cx: &mut zz_gpui::VisualTestContext| {
+        let draw = |cx: &mut ala::VisualTestContext| {
             cx.run_until_parked();
             cx.update(|window, cx| {
                 let _ = window.draw(cx);
@@ -1728,7 +1726,7 @@ mod tests {
     }
 
     struct FloatHost {
-        cell: zz_gpui::Size<Pixels>,
+        cell: ala::Size<Pixels>,
         columns: u16,
         rows: u16,
         bordered: bool,
@@ -1740,7 +1738,7 @@ mod tests {
             let inset = if self.bordered {
                 self.cell
             } else {
-                zz_gpui::Size::default()
+                ala::Size::default()
             };
             div().size_full().child(
                 div()
@@ -1764,10 +1762,8 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
-    fn a_floating_surface_gives_its_content_every_cell_of_the_float(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    #[ala::test]
+    fn a_floating_surface_gives_its_content_every_cell_of_the_float(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let cell = size(px(9.0), px(19.0));
         for bordered in [true, false] {

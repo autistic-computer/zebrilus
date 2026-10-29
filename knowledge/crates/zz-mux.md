@@ -11,7 +11,7 @@ timestamp: 2026-10-23T00:00:00-03:00
 
 `zz-mux` is the renderer-free heart of zz's multiplexer: a pure state machine
 for layouts, target resolution, tmux-style commands, and the supported `.tmux.conf`
-parser. It compiles without GPUI, CEF, or PTYs and never renders anything; it takes parsed
+parser. It compiles without ala, CEF, or PTYs and never renders anything; it takes parsed
 `CommandInvocation`s and key presses and returns structured [`MuxEffect`](/tmux/commands.md) side
 effects plus [`MuxSnapshot`](/protocol/snapshots.md) state for the daemon adapter to act on. All
 identifiers (`$session`, `@window`, `%pane`, `^split`, `c` client) come from
@@ -20,7 +20,7 @@ identifiers (`$session`, `@window`, `%pane`, `^split`, `c` client) come from
 into real PTYs, browser sessions, socket fanout, and clipboard actions.
 
 `new-session` returns `PaneCreated{Terminal}` plus `Attach { session, detach_others: false }`, and
-`-d` drops the attach effect. The daemon applies the attachment only for interactive clients, so a GPUI
+`-d` drops the attach effect. The daemon applies the attachment only for interactive clients, so an ala
 empty-workspace action creates and enters the session atomically while command-only clients retain
 ordinary detached CLI behavior. The daemon advertises this execution contract with
 `new-session-attach-v1`; clients missing that capability can preserve the same result by sending

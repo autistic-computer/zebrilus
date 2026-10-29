@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
-use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
-use zz_gpui::{
+use ala::{
     AnyElement, App, Div, IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful,
     Window, div, prelude::*, px, relative,
 };
+use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
 use zz_protocol::chat::{
     Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, OptionKind, RequestClose, RequestView,
     SessionView, StepStatus, TurnId, TurnView,

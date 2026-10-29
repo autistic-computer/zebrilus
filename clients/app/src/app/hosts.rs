@@ -1,6 +1,6 @@
 #[cfg(target_os = "ios")]
-use zz_gpui::{AnyElement, Entity, Pixels, SharedString, Subscription, Window, px};
-use zz_gpui::{Context, IntoElement, div, prelude::*};
+use ala::{AnyElement, Entity, Pixels, SharedString, Subscription, Window, px};
+use ala::{Context, IntoElement, div, prelude::*};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,
@@ -101,7 +101,7 @@ impl SavedHosts {
 impl SavedHosts {
     fn directory() -> std::path::PathBuf {
         std::path::PathBuf::from(std::env::var_os("HOME").expect("iOS application home directory"))
-            .join("Library/Application Support/zz-gpui")
+            .join("Library/Application Support/ala")
     }
 
     pub(super) fn load() -> Self {
@@ -704,7 +704,7 @@ impl AppShell {
                 destination,
                 h_flex()
                     .gap_2()
-                    .when(narrow, zz_gpui::Styled::w_full)
+                    .when(narrow, ala::Styled::w_full)
                     .child(
                         div()
                             .when(narrow, |field| field.flex_1().min_w_0())
@@ -741,11 +741,11 @@ impl AppShell {
 }
 
 #[cfg(target_os = "ios")]
-pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut zz_gpui::App) {
+pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
     use zz_ui::{WindowExt as _, notification::Notification};
     let notification = match zz_daemon_client::ios_ssh_public_key() {
         Ok(key) => {
-            cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(key));
+            cx.write_to_clipboard(ala::ClipboardItem::new_string(key));
             Notification::success("SSH key copied.")
         }
         Err(error) => Notification::error(error.to_string()),
@@ -754,7 +754,7 @@ pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut zz_gpui::App) {
 }
 
 #[cfg(target_os = "ios")]
-fn row_meta(text: &'static str, cx: &zz_gpui::App) -> impl IntoElement {
+fn row_meta(text: &'static str, cx: &ala::App) -> impl IntoElement {
     let theme = cx.theme();
     h_flex()
         .flex_none()
@@ -772,7 +772,7 @@ fn row_meta(text: &'static str, cx: &zz_gpui::App) -> impl IntoElement {
         )
 }
 
-fn status_line(text: impl Into<zz_gpui::SharedString>, color: zz_gpui::Hsla) -> impl IntoElement {
+fn status_line(text: impl Into<ala::SharedString>, color: ala::Hsla) -> impl IntoElement {
     div()
         .text_size(rems_from_px(11.0))
         .text_color(color)

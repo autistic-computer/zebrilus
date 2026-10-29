@@ -1,11 +1,11 @@
 use std::ops::Range;
 
-pub use zz_client::tmux_style::split_tmux_alignment;
-use zz_client::tmux_style::style_field;
-use zz_gpui::{
+use ala::{
     App, FontStyle, FontWeight, HighlightStyle, Hsla, Rgba, SharedString, StrikethroughStyle,
     StyledText, UnderlineStyle, px,
 };
+pub use zz_client::tmux_style::split_tmux_alignment;
+use zz_client::tmux_style::style_field;
 use zz_protocol::{
     StyledSegment, TmuxAttributeState, TmuxColour, TmuxStyle, indexed_colour_rgb, parse_tmux_colour,
 };
@@ -153,11 +153,11 @@ fn packed_tmux_colour(colour: u32) -> Hsla {
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::TestAppContext;
+    use ala::TestAppContext;
 
     use super::*;
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_last_colour_field_wins_and_theme_slots_are_not_literal(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::init(cx);

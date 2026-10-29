@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc};
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Context, Div, Entity, Focusable as _, FontWeight, IntoElement, SharedString,
     Subscription, Window, div, prelude::*, px,
 };
@@ -347,7 +347,7 @@ impl QuestionCardState {
             .when(index > 0, |section| section.child(card_divider(cx)))
             .child(
                 card_header()
-                    .when(index > 0, zz_gpui::Styled::pt_0)
+                    .when(index > 0, ala::Styled::pt_0)
                     .when(several && !focused, |header| {
                         header.text_color(cx.theme().foreground.muted())
                     })

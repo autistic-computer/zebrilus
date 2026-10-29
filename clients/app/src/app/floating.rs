@@ -1,14 +1,14 @@
 use std::{cell::RefCell, rc::Rc};
 
+use ala::{
+    AnchoredPositionMode, AnyElement, App, Bounds, Context, MouseDownEvent, MouseMoveEvent,
+    MouseUpEvent, Pixels, Point, ScrollWheelEvent, Window, anchored, div, point, prelude::*, px,
+    size,
+};
 use zz_client::{
     MenuBox, MenuKeyResult, MenuPointerKind,
     floating::{FloatCells, float_title},
     resolve_menu_mouse,
-};
-use zz_gpui::{
-    AnchoredPositionMode, AnyElement, App, Bounds, Context, MouseDownEvent, MouseMoveEvent,
-    MouseUpEvent, Pixels, Point, ScrollWheelEvent, Window, anchored, div, point, prelude::*, px,
-    size,
 };
 use zz_protocol::{
     FloatingPaneSnapshot, InputMessage, MenuState, PaneBorderLines, PopupBorderLines,
@@ -39,7 +39,7 @@ pub(super) struct AppPipDrag {
 pub(super) struct AppPipLanding {
     pane: PaneId,
     target: FloatCells,
-    at: zz_gpui::scheduler::Instant,
+    at: ala::scheduler::Instant,
 }
 
 #[derive(Default)]
@@ -63,7 +63,7 @@ impl PipState {
 }
 
 impl AppShell {
-    pub(super) fn floating_canvas_size(&self, window: &Window, cx: &App) -> zz_gpui::Size<Pixels> {
+    pub(super) fn floating_canvas_size(&self, window: &Window, cx: &App) -> ala::Size<Pixels> {
         let viewport = window.fully_visible_bounds().size;
         size(
             (viewport.width
@@ -379,19 +379,19 @@ impl AppShell {
     pub(super) fn touch_pip(
         &mut self,
         float: FloatingPaneSnapshot,
-        event: &zz_gpui::TouchDragEvent,
+        event: &ala::TouchDragEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         match event.phase {
-            zz_gpui::TouchPhase::Started => {
+            ala::TouchPhase::Started => {
                 self.begin_pip(float, event.start_position, true, cx);
                 self.move_pip(event.position, cx);
                 window.prevent_default();
             }
-            zz_gpui::TouchPhase::Moved => self.move_pip(event.position, cx),
-            zz_gpui::TouchPhase::Ended => self.release_pip(cx),
-            zz_gpui::TouchPhase::Cancelled => {
+            ala::TouchPhase::Moved => self.move_pip(event.position, cx),
+            ala::TouchPhase::Ended => self.release_pip(cx),
+            ala::TouchPhase::Cancelled => {
                 self.pip.drag = None;
                 cx.notify();
             }
@@ -447,7 +447,7 @@ impl AppShell {
             .fill(fill)
             .stashed(
                 stashed,
-                cx.listener(move |this, _: &zz_gpui::ClickEvent, _, cx| {
+                cx.listener(move |this, _: &ala::ClickEvent, _, cx| {
                     this.pip.stage.restore(pane);
                     this.command("select-pane", vec!["-t".into(), pane.to_string()], cx);
                 }),
@@ -554,7 +554,7 @@ impl AppShell {
                         .occlude()
                         .bg(cx.theme().scrim)
                         .on_mouse_down(
-                            zz_gpui::MouseButton::Left,
+                            ala::MouseButton::Left,
                             cx.listener(move |this, _: &MouseDownEvent, _, cx| {
                                 if modal.close_on_click {
                                     this.command(
@@ -614,7 +614,7 @@ impl AppShell {
                 .inset_0()
                 .overflow_hidden()
                 .on_drag_move::<PipGrab>(cx.listener(
-                    |this, event: &zz_gpui::DragMoveEvent<PipGrab>, _, cx| {
+                    |this, event: &ala::DragMoveEvent<PipGrab>, _, cx| {
                         let pane = event.drag(cx).pane;
                         this.grab_pip(pane, event.event.position, cx);
                     },
@@ -659,7 +659,7 @@ pub(super) struct FloatPlacement {
 pub(super) fn float_placement(
     float: &FloatingPaneSnapshot,
     cell: (f32, f32),
-    canvas: zz_gpui::Size<Pixels>,
+    canvas: ala::Size<Pixels>,
 ) -> Option<FloatPlacement> {
     let bounds = |rect: zz_client::floating::PixelRect| {
         Bounds::new(
@@ -706,7 +706,7 @@ pub(super) fn native_panes_shown(
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::{Bounds, point, px, size};
+    use ala::{Bounds, point, px, size};
     use zz_protocol::{FloatingPaneSnapshot, PaneBorderLines, PaneBorderStatus, PaneId};
 
     use super::{FloatPlacement, float_placement, native_panes_shown, pane_frame};
@@ -725,7 +725,7 @@ mod tests {
         }
     }
 
-    fn rect(x: f32, y: f32, width: f32, height: f32) -> Bounds<zz_gpui::Pixels> {
+    fn rect(x: f32, y: f32, width: f32, height: f32) -> Bounds<ala::Pixels> {
         Bounds::new(point(px(x), px(y)), size(px(width), px(height)))
     }
 

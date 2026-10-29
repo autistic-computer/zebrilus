@@ -5,20 +5,20 @@ use thiserror::Error;
 
 use crate::SessionId;
 
+#[cfg(target_os = "windows")]
+use ala::windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11DeviceContext};
 #[cfg(target_os = "macos")]
 use objc2_core_foundation::CFRetained;
 #[cfg(target_os = "macos")]
 use objc2_io_surface::IOSurfaceRef;
-#[cfg(target_os = "windows")]
-use zz_gpui::windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11DeviceContext};
 
 const BYTES_PER_PIXEL: usize = 4;
 const MAX_FRAME_BYTES: usize = 512 * 1024 * 1024;
 const MAX_RECYCLED_BUFFERS: usize = 3;
 const MAX_RECYCLED_CAPACITY_SCALE: usize = 2;
 
-/// GPUI's renderer device, handed to zz-browser at session creation: wgpu
-/// everywhere except Windows, where GPUI owns a native D3D11 device.
+/// ala's renderer device, handed to zz-browser at session creation: wgpu
+/// everywhere except Windows, where ala owns a native D3D11 device.
 #[derive(Clone, Debug)]
 pub struct BrowserGpuContext {
     #[cfg(not(target_os = "windows"))]
@@ -46,11 +46,11 @@ impl BrowserGpuContext {
         Self { device, queue }
     }
 
-    /// Adopt GPUI's DirectX device and immediate context, bumping their COM
+    /// Adopt ala's DirectX device and immediate context, bumping their COM
     /// refcounts.
     #[cfg(target_os = "windows")]
     #[must_use]
-    pub fn from_directx(context: zz_gpui::DirectXDeviceContext) -> Self {
+    pub fn from_directx(context: ala::DirectXDeviceContext) -> Self {
         Self {
             device: context.device,
             device_context: context.device_context,
@@ -134,7 +134,7 @@ pub struct GpuFrame {
     pub texture: wgpu::Texture,
 }
 
-/// A retained `IOSurface` that can be imported by GPUI's Metal device.
+/// A retained `IOSurface` that can be imported by ala's Metal device.
 #[cfg(target_os = "macos")]
 #[derive(Clone)]
 pub struct MacIoSurface {
@@ -209,13 +209,13 @@ pub struct MacGpuFrame {
     pub io_surface: MacIoSurface,
 }
 
-/// A zz-owned D3D11 destination texture on GPUI's device, ready for
-/// `zz_gpui::external_texture`. GPUI's `windows` crate version, not zz's: only the
+/// A zz-owned D3D11 destination texture on ala's device, ready for
+/// `ala::external_texture`. ala's `windows` crate version, not zz's: only the
 /// re-exported one is type-compatible with the renderer.
 #[cfg(target_os = "windows")]
-pub type WinGpuTexture = zz_gpui::windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
+pub type WinGpuTexture = ala::windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
 
-/// A browser frame living in a zz-owned texture on GPUI's DirectX device.
+/// A browser frame living in a zz-owned texture on ala's DirectX device.
 #[cfg(target_os = "windows")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WinGpuFrame {

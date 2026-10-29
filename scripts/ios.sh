@@ -5,11 +5,11 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 family="${1:-iPhone}"
 mode="${2:-run}"
-demo="${ZZ_GPUI_DEMO:-app}"
-[[ "$(uname -s)" == Darwin ]] || { echo "iOS GPUI requires macOS" >&2; exit 2; }
+demo="${ZZ_ALA_DEMO:-app}"
+[[ "$(uname -s)" == Darwin ]] || { echo "iOS ala requires macOS" >&2; exit 2; }
 [[ "$family" == iPhone || "$family" == iPad ]] || { echo "expected iPhone or iPad" >&2; exit 2; }
 [[ "$mode" == run || "$mode" == build || "$mode" == device || "$mode" == bench || "$mode" == testflight ]] || { echo "expected run, build, device, bench, or testflight" >&2; exit 2; }
-[[ "$demo" == app || "$demo" == terminal ]] || { echo "ZZ_GPUI_DEMO must be app or terminal" >&2; exit 2; }
+[[ "$demo" == app || "$demo" == terminal ]] || { echo "ZZ_ALA_DEMO must be app or terminal" >&2; exit 2; }
 [[ "$(zig version)" == 0.16.0 ]] || { echo "Zig 0.16.0 is required" >&2; exit 2; }
 
 if [[ "$demo" == terminal ]]; then
@@ -30,7 +30,7 @@ compile_icon() {
 }
 
 signing_identity() {
-    local identity="${ZZ_GPUI_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development: .*\)"/\1/p' | head -1)}"
+    local identity="${ZZ_ALA_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | sed -n 's/.*"\(Apple Development: .*\)"/\1/p' | head -1)}"
     [[ -n "$identity" ]] || { echo "no Apple Development signing identity; sign in to Xcode with your Apple ID" >&2; exit 1; }
     printf '%s' "$identity"
 }
@@ -129,11 +129,11 @@ if [[ "$mode" == testflight ]]; then
 fi
 
 if [[ "$mode" == device || "$mode" == bench ]]; then
-    bundle_id=dev.zz.gpui-poc
+    bundle_id=dev.zz.ala-poc
     devices_json="$(mktemp)"
     trap 'rm -f "$devices_json"' EXIT
     xcrun devicectl list devices --json-output "$devices_json" >/dev/null
-    udid="${ZZ_GPUI_DEVICE:-$(python3 - "$devices_json" "$family" <<'PY'
+    udid="${ZZ_ALA_DEVICE:-$(python3 - "$devices_json" "$family" <<'PY'
 import json, sys
 devices = json.load(open(sys.argv[1]))["result"]["devices"]
 for device in devices:
@@ -144,9 +144,9 @@ for device in devices:
         break
 PY
 )}"
-    [[ -n "$udid" ]] || { echo "no paired physical $family; pair it in Xcode or set ZZ_GPUI_DEVICE" >&2; exit 1; }
+    [[ -n "$udid" ]] || { echo "no paired physical $family; pair it in Xcode or set ZZ_ALA_DEVICE" >&2; exit 1; }
     identity="$(signing_identity)"
-    profile="${ZZ_GPUI_PROFILE:-$(python3 - "$udid" "$bundle_id" <<'PY'
+    profile="${ZZ_ALA_PROFILE:-$(python3 - "$udid" "$bundle_id" <<'PY'
 import datetime, glob, os, plistlib, subprocess, sys
 udid, bundle = sys.argv[1], sys.argv[2]
 home = os.path.expanduser("~")
@@ -169,46 +169,46 @@ for path in glob.glob(f"{home}/Library/Developer/Xcode/UserData/Provisioning Pro
 print(candidates[0] if candidates else "")
 PY
 )}"
-    [[ -n "$profile" ]] || { echo "no provisioning profile covers $bundle_id on $udid; build any app to it once from Xcode, or set ZZ_GPUI_PROFILE" >&2; exit 1; }
+    [[ -n "$profile" ]] || { echo "no provisioning profile covers $bundle_id on $udid; build any app to it once from Xcode, or set ZZ_ALA_PROFILE" >&2; exit 1; }
     team="$(security cms -D -i "$profile" | plutil -extract TeamIdentifier.0 raw -)"
-    endpoint="${ZZ_GPUI_ENDPOINT:-ssh://${USER}@$(scutil --get LocalHostName).local}"
+    endpoint="${ZZ_ALA_ENDPOINT:-ssh://${USER}@$(scutil --get LocalHostName).local}"
     dev_build="${ZZ_DEV_BUILD-1}"
-    cargo_profile="${ZZ_GPUI_CARGO_PROFILE:-release}"
+    cargo_profile="${ZZ_ALA_CARGO_PROFILE:-release}"
     ZZ_DEV_BUILD="$dev_build" IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo build --locked --profile "$cargo_profile" -p zz-ios "${build_target[@]}" --target aarch64-apple-ios
-    app="$repo_root/target/ios-gpui-device/ZZ GPUI.app"
+    app="$repo_root/target/ios-ala-device/ZZ Ala.app"
     rm -rf "$app"
     mkdir -p "$app"
-    cp "$repo_root/target/aarch64-apple-ios/$cargo_profile/$binary" "$app/ZZGPUI"
+    cp "$repo_root/target/aarch64-apple-ios/$cargo_profile/$binary" "$app/ZZAla"
     cp "$repo_root/clients/ios/Info.plist" "$app/Info.plist"
     plutil -replace CFBundleSupportedPlatforms -json '["iPhoneOS"]' "$app/Info.plist"
     compile_icon "$app" iphoneos zz-dev
     cp "$profile" "$app/embedded.mobileprovision"
-    entitlements="$repo_root/target/ios-gpui-device/entitlements.plist"
+    entitlements="$repo_root/target/ios-ala-device/entitlements.plist"
     write_entitlements "$entitlements" "$team" "$bundle_id" 1
     codesign --force --timestamp=none --sign "$identity" --entitlements "$entitlements" "$app"
     [[ "${3:-}" == --build-only ]] && exit 0
     [[ "$mode" == bench ]] && exec "$repo_root/scripts/ios-bench.sh" "$udid" "$app" "$endpoint"
     xcrun devicectl device install app --device "$udid" "$app"
     if ! xcrun devicectl device info lockState --device "$udid" 2>/dev/null | grep -q "passcodeRequired: false"; then
-        echo "installed; the phone is locked, so open zz GPUI from the home screen"
+        echo "installed; the phone is locked, so open zz ala from the home screen"
         exit 0
     fi
-    launch_env="$(ZZ_GPUI_ENDPOINT="$endpoint" python3 -c 'import json, os; print(json.dumps({key: os.environ[key] for key in ("ZZ_GPUI_ENDPOINT", "ZZ_GPUI_SESSION", "ZZ_GPUI_FRAME_LOG", "ZZ_GPUI_BENCH", "ZZ_GPUI_GLASS", "GPUI_FRAME_STATS") if os.environ.get(key)}))')"
+    launch_env="$(ZZ_ALA_ENDPOINT="$endpoint" python3 -c 'import json, os; print(json.dumps({key: os.environ[key] for key in ("ZZ_ALA_ENDPOINT", "ZZ_ALA_SESSION", "ZZ_ALA_FRAME_LOG", "ZZ_ALA_BENCH", "ZZ_ALA_GLASS", "ALA_FRAME_STATS") if os.environ.get(key)}))')"
     echo "launching on $udid with endpoint $endpoint"
     exec xcrun devicectl device process launch --device "$udid" --terminate-existing --console \
         --environment-variables "$launch_env" "$bundle_id"
 fi
 
 IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo build --locked -p zz-ios "${build_target[@]}" --target aarch64-apple-ios-sim
-app="$repo_root/target/ios-gpui/ZZ GPUI.app"
+app="$repo_root/target/ios-ala/ZZ Ala.app"
 mkdir -p "$app"
-cp "$repo_root/target/aarch64-apple-ios-sim/debug/$binary" "$app/ZZGPUI"
+cp "$repo_root/target/aarch64-apple-ios-sim/debug/$binary" "$app/ZZAla"
 cp "$repo_root/clients/ios/Info.plist" "$app/Info.plist"
 compile_icon "$app" iphonesimulator zz-dev
 codesign --force --sign - "$app"
 [[ "$mode" == run ]] || exit 0
 
-endpoint="${ZZ_GPUI_ENDPOINT:-${ZZ_DEV_SOCKET:-${ZZ_SOCKET:-}}}"
+endpoint="${ZZ_ALA_ENDPOINT:-${ZZ_DEV_SOCKET:-${ZZ_SOCKET:-}}}"
 if [[ -z "$endpoint" ]]; then
     darwin_tmp="$(getconf DARWIN_USER_TEMP_DIR 2>/dev/null || true)"
     for candidate in "${ZZ_IOS_RIG_SOCKET:-/tmp/zzios-$(basename "$repo_root").sock}" "${XDG_RUNTIME_DIR:-/tmp}/zz-dev/default.sock" "${TMPDIR:-/tmp}/zz-dev-${USER:-user}/default.sock" "${darwin_tmp%/}/zz-dev-${USER:-user}/default.sock" "/tmp/zz-dev-${USER:-user}/default.sock"; do
@@ -225,18 +225,18 @@ PY
         then endpoint="$candidate"; break; fi
     done
 fi
-unset SIMCTL_CHILD_ZZ_GPUI_ENDPOINT
+unset SIMCTL_CHILD_ZZ_ALA_ENDPOINT
 if [[ -n "$endpoint" ]]; then
-    export SIMCTL_CHILD_ZZ_GPUI_ENDPOINT="$endpoint"
+    export SIMCTL_CHILD_ZZ_ALA_ENDPOINT="$endpoint"
 fi
-for key in ZZ_GPUI_SESSION ZZ_GPUI_FRAME_LOG ZZ_GPUI_BENCH ZZ_GPUI_GLASS GPUI_FRAME_STATS; do
+for key in ZZ_ALA_SESSION ZZ_ALA_FRAME_LOG ZZ_ALA_BENCH ZZ_ALA_GLASS ALA_FRAME_STATS; do
     unset "SIMCTL_CHILD_$key"
     if [[ -n "${!key:-}" ]]; then
         export "SIMCTL_CHILD_$key=${!key}"
     fi
 done
 
-udid="${ZZ_GPUI_SIMULATOR:-}"
+udid="${ZZ_ALA_SIMULATOR:-}"
 if [[ -z "$udid" ]]; then
     udid="$(xcrun simctl list devices available --json | python3 -c '
 import json, sys
@@ -259,6 +259,6 @@ if [[ -d "$developer_dir/../Applications/DeviceHub.app" ]]; then
 else
     open -a Simulator
 fi
-xcrun simctl terminate "$udid" dev.zz.gpui-poc 2>/dev/null || true
+xcrun simctl terminate "$udid" dev.zz.ala-poc 2>/dev/null || true
 xcrun simctl install "$udid" "$app"
-exec xcrun simctl launch --console-pty "$udid" dev.zz.gpui-poc
+exec xcrun simctl launch --console-pty "$udid" dev.zz.ala-poc

@@ -16,11 +16,11 @@ timestamp: 2026-09-12T23:50:00Z
 The September 2026 dependency cleanup removed the unused Cargo override and
 `third_party/rust/proc-macro-error2/` snapshot. Neither `proc-macro-error2` nor
 `stacksafe` appears in the resolved workspace graph at the
-[current GPUI revision](/references/zz-gpui.md).
+[current ala revision](/references/ala.md).
 
-The old dependency chain was `gpui → stacksafe → stacksafe-macro → proc-macro-error2`.
+The old dependency chain was `ala → stacksafe → stacksafe-macro → proc-macro-error2`.
 In zz commit `bed7d693`, `stacksafe-macro` 1.0.3 replaced its dependency on
-`proc-macro-error2` with `proc-macro2`; the later GPUI rebase removed `stacksafe`.
+`proc-macro-error2` with `proc-macro2`; the later ala rebase removed `stacksafe`.
 
 # Historical provenance
 

@@ -3,9 +3,9 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
+use ala::{App, RenderImage, WindowAppearance};
 use image::{Frame, RgbaImage, imageops::FilterType};
 use smallvec::smallvec;
-use zz_gpui::{App, RenderImage, WindowAppearance};
 use zz_ui::ThemeMode;
 
 #[cfg(any(target_os = "linux", test))]

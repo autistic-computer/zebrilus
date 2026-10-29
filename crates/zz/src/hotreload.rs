@@ -1,5 +1,5 @@
 #[cfg(all(feature = "hotreload", debug_assertions, not(target_family = "wasm")))]
-pub(crate) fn init(cx: &mut zz_gpui::App) {
+pub(crate) fn init(cx: &mut ala::App) {
     if !zz_protocol::app_identity::DEVELOPMENT {
         return;
     }
@@ -10,7 +10,7 @@ pub(crate) fn init(cx: &mut zz_gpui::App) {
     cx.spawn(async move |cx| {
         while patches.recv().await.is_ok() {
             log::info!(target: "zz::hotreload", "patch applied; refreshing windows");
-            cx.update(zz_gpui::App::refresh_windows);
+            cx.update(ala::App::refresh_windows);
         }
     })
     .detach();

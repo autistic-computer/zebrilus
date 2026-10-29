@@ -1,9 +1,9 @@
 use std::{rc::Rc, sync::Arc};
 
+use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_client::{
     completion::PaneKindAvailability, gui_actions::GuiOffer, place::ActionKind, recents::Recents,
 };
-use zz_gpui::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneStatusState, PathEntry, PathListRoot,
 };

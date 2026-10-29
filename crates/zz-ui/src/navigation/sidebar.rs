@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, ElementId, Hsla, IntoElement, MouseButton, SharedString, Stateful, Window,
     div, prelude::*, px,
 };
@@ -20,9 +20,9 @@ use crate::{
 use super::workspace_tree_marker;
 
 pub fn tree_host_marker(bell: bool, badge_color: Option<Hsla>, cx: &App) -> AnyElement {
-    static LOGO: LazyLock<Arc<zz_gpui::Image>> = LazyLock::new(|| {
-        Arc::new(zz_gpui::Image::from_bytes(
-            zz_gpui::ImageFormat::Png,
+    static LOGO: LazyLock<Arc<ala::Image>> = LazyLock::new(|| {
+        Arc::new(ala::Image::from_bytes(
+            ala::ImageFormat::Png,
             include_bytes!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../assets/linux/hicolor/64x64/apps/zz.png"
@@ -31,8 +31,7 @@ pub fn tree_host_marker(bell: bool, badge_color: Option<Hsla>, cx: &App) -> AnyE
         ))
     });
     tree_node_marker(
-        zz_gpui::img(Arc::clone(&LOGO))
-            .size(crate::rems_from_px(super::WORKSPACE_TREE_NODE_ICON_SIZE)),
+        ala::img(Arc::clone(&LOGO)).size(crate::rems_from_px(super::WORKSPACE_TREE_NODE_ICON_SIZE)),
         bell,
         badge_color,
         cx,
@@ -120,7 +119,7 @@ impl TreeRowMenuItem {
     }
 }
 
-pub fn tree_row_menu(row: Stateful<zz_gpui::Div>, items: Vec<TreeRowMenuItem>) -> AnyElement {
+pub fn tree_row_menu(row: Stateful<ala::Div>, items: Vec<TreeRowMenuItem>) -> AnyElement {
     if items.is_empty() {
         return row.into_any_element();
     }
@@ -171,8 +170,8 @@ mod tests {
 
     struct Row;
 
-    impl zz_gpui::Render for Row {
-        fn render(&mut self, _: &mut Window, cx: &mut zz_gpui::Context<Self>) -> impl IntoElement {
+    impl ala::Render for Row {
+        fn render(&mut self, _: &mut Window, cx: &mut ala::Context<Self>) -> impl IntoElement {
             let actions = tree_action_strip(
                 "actions",
                 vec![
@@ -207,10 +206,8 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
-    fn coarse_rows_grow_to_a_touch_target_and_keep_actions_inside(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    #[ala::test]
+    fn coarse_rows_grow_to_a_touch_target_and_keep_actions_inside(cx: &mut ala::TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| Row);
         for coarse in [false, true] {

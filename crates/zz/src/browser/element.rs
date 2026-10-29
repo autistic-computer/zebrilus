@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-#[cfg(target_os = "macos")]
-use core_video::pixel_buffer::CVPixelBuffer;
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "windows"))]
-use zz_gpui::ExternalTextureHandle;
-use zz_gpui::{
+use ala::ExternalTextureHandle;
+use ala::{
     App, Bounds, ContentMask, Context, Corners, Element, ElementId, ElementInputHandler, Entity,
     EntityInputHandler, FocusHandle, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
     Pixels, RenderImage, Window,
 };
+#[cfg(target_os = "macos")]
+use core_video::pixel_buffer::CVPixelBuffer;
 
 #[cfg(target_os = "macos")]
 use crate::browser::underlay::{self, UnderlayHandle};

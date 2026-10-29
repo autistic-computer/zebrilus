@@ -1,9 +1,6 @@
 use std::sync::Arc;
 
-use cef::AcceleratedPaintInfo;
-use parking_lot::Mutex;
-use thiserror::Error;
-use zz_gpui::windows::{
+use ala::windows::{
     Win32::{
         Foundation::HANDLE,
         Graphics::{
@@ -19,13 +16,16 @@ use zz_gpui::windows::{
     },
     core::Interface as _,
 };
+use cef::AcceleratedPaintInfo;
+use parking_lot::Mutex;
+use thiserror::Error;
 
 use crate::{
     BrowserGpuContext, Viewport, WinGpuTexture,
     cef_runtime::{AcceleratedPoolLayout, ExpectedFrameSize, StalePoolFrame},
 };
 
-// Five: GPUI's flip-model swap chain can still be sampling four published frames.
+// Five: ala's flip-model swap chain can still be sampling four published frames.
 const DESTINATION_POOL_SLOT_COUNT: usize = 5;
 
 #[derive(Clone)]
@@ -72,15 +72,15 @@ pub(super) enum D3d11FrameOutcome {
 
 #[derive(Debug, Error)]
 pub(super) enum D3d11FrameError {
-    #[error("GPUI's DirectX device context is unavailable")]
+    #[error("ala's DirectX device context is unavailable")]
     DeviceUnavailable,
-    #[error("GPUI's D3D11 device does not implement ID3D11Device1: {0}")]
+    #[error("ala's D3D11 device does not implement ID3D11Device1: {0}")]
     DeviceInterface(String),
     #[error("D3D11 initialization failed: {0}")]
     Initialization(String),
     #[error("invalid accelerated-paint metadata: {0}")]
     InvalidMetadata(String),
-    #[error("GPUI's D3D11 device was removed: {0}")]
+    #[error("ala's D3D11 device was removed: {0}")]
     DeviceRemoved(String),
     #[error("could not open CEF's shared texture handle: {0}")]
     OpenSharedResource(String),
@@ -171,7 +171,7 @@ impl D3d11Context {
                 Quality: 0,
             },
             Usage: D3D11_USAGE_DEFAULT,
-            // `CopyResource` needs no usage flag; GPUI only binds as a shader resource.
+            // `CopyResource` needs no usage flag; ala only binds as a shader resource.
             BindFlags: D3D11_BIND_SHADER_RESOURCE.0.cast_unsigned(),
             CPUAccessFlags: 0,
             MiscFlags: 0,
@@ -198,7 +198,7 @@ impl D3d11Context {
     )]
     fn copy_and_flush(&self, destination: &ID3D11Texture2D, source: &ID3D11Texture2D) {
         // SAFETY: both interfaces are live 2D textures of identical dimensions and
-        // format, as CopyResource requires, and GPUI's immediate context is only
+        // format, as CopyResource requires, and ala's immediate context is only
         // ever touched from the main thread that drives CEF's pump.
         unsafe {
             self.device_context.CopyResource(destination, source);

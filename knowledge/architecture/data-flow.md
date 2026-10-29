@@ -24,7 +24,7 @@ PTY child ──bytes──▶ libghostty-vt (worker thread)  [zz-terminal]
    server frame fanout  [server]
         │  packed terminal lanes over the wire protocol
         ▼
-   mux_client  [app] ──▶ terminal_element paints in GPUI
+   mux_client  [app] ──▶ terminal_element paints in ala
 ```
 
 - The worker thread owns the PTY and every libghostty object and publishes one immutable
@@ -40,7 +40,7 @@ PTY child ──bytes──▶ libghostty-vt (worker thread)  [zz-terminal]
   pane, newest replacing stale, so a slow client converges on the latest frame rather than draining a
   backlog. A client that cannot apply a patch repairs one pane at a time with `RequestFull { pane }`.
 - The [app](/crates/zz.md) reconciles panes by [ID](/protocol/ids.md), keeping terminal entities
-  stable, and paints frames with a custom GPUI element aiming for
+  stable, and paints frames with a custom ala element aiming for
   [Zed rendering parity](/terminal/rendering-parity.md). Rows the grid scrolls away land in that
   pane's client-side `HistoryRing`, backfilled deeper by `HistoryRequest`/`HistoryChunk`, which is
   what makes scrolling back a local read.
@@ -92,7 +92,7 @@ AgentController reducer ──────▶ AgentTimeline + composer          
 # Input path (client → target)
 
 ```
-GPUI event ─┬─ prefix chord (any focus) ─▶ window-root claim ─▶ mux key tables       [server]
+ala event ─┬─ prefix chord (any focus) ─▶ window-root claim ─▶ mux key tables       [server]
             ├─ chrome action ─▶ ChromeKeymap ─▶ local or protocol-backed effect      [client]
             ├─ terminal raw key ─▶ mux key tables ─▶ Pass ─▶ PTY                     [server]
             ├─ browser page key ─▶ browser-surface route ─▶ CEF sink                 [server/client]
@@ -122,7 +122,7 @@ GPUI event ─┬─ prefix chord (any focus) ─▶ window-root claim ─▶ mu
 # Configuration & appearance flow
 
 At GUI startup, the app independently resolves the first platform-appropriate
-[`zz/config`](/configuration/app-config.md) file into client-local GPUI globals used by native
+[`zz/config`](/configuration/app-config.md) file into client-local ala globals used by native
 window rendering. A file watch (500 ms polling outside Linux) hot-reloads it; daemon-owned appearance and mux entries cross the
 override channel, and the three agent adapter keys are among them; they configure the native
 drivers, which no pane opens now.

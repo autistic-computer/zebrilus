@@ -4,7 +4,7 @@ The app opens the session sidebar beside the attached window's panes. It uses
 `zz-ui` for the shell, navigation, pane frames, headers, terminal painting, and
 agent interface. Web and iOS compile the same app shell, sidebar, status bar, settings,
 command palette, overlays, terminal, agent, connection reducer, and image caches
-from `clients/app` (`zz-app`). The UIKit backend is `zz_gpui_platform::ios` in `libs/gpui/crates/zz-gpui-platform/src/ios`;
+from `clients/app` (`zz-app`). The UIKit backend is `ala_platform::ios` in `libs/ala/crates/ala-platform/src/ios`;
 this crate (`zz-ios`) is only the entry point, the terminal example, and the bundle files.
 The sidebar is 256 points wide and respects the iOS safe area.
 
@@ -74,7 +74,7 @@ it for 130 ms. Keys in the key row light at once. Lifting a finger clears hover,
 does not stay lit.
 
 Pinch a terminal to change its text size, as in Blink Shell: the pinch starts once the
-fingers' spread changes by 6% and by at least 8 points (gpui's touch slop), then follows the
+fingers' spread changes by 6% and by at least 8 points (ala's touch slop), then follows the
 fingers from that spread. The size moves in 5% steps between 50% and 300% (the Terminal
 font scale setting), and a badge shows the percentage while pinching and for a second after.
 The text resizes live; the pane reports its new grid to the daemon once, after the fingers
@@ -108,14 +108,14 @@ just ios device iPad
 ```
 
 Device mode builds a release arm64 binary, signs it with your first Apple Development identity
-and a provisioning profile that covers `dev.zz.gpui-poc` (a team wildcard works), installs it with
-`devicectl`, and launches it with `ZZ_GPUI_ENDPOINT=ssh://$USER@<this Mac>.local`. That launch
+and a provisioning profile that covers `dev.zz.ala-poc` (a team wildcard works), installs it with
+`devicectl`, and launches it with `ZZ_ALA_ENDPOINT=ssh://$USER@<this Mac>.local`. That launch
 connects straight away and adds the host to the saved list; later launches from the home screen
 open the connection screen with it at the top. The Mac needs Remote Login
 enabled and `zz-dev` on its PATH (desktop dev runs link it into `~/.local/bin`). Sign in with your
 password; after a password sign-in the app offers to add its key to `~/.ssh/authorized_keys` so
 later connections skip the password. The key is also in the Add host sheet to copy by hand. Override the
-choices with `ZZ_GPUI_DEVICE`, `ZZ_GPUI_SIGN_IDENTITY`, `ZZ_GPUI_PROFILE`, or `ZZ_GPUI_ENDPOINT`.
+choices with `ZZ_ALA_DEVICE`, `ZZ_ALA_SIGN_IDENTITY`, `ZZ_ALA_PROFILE`, or `ZZ_ALA_ENDPOINT`.
 
 Simulator and device builds use the zz Dev icon (`assets/zz-dev.icon`, compiled with `actool`).
 
@@ -139,12 +139,12 @@ Without a rig, the launcher probes zz Dev socket candidates and skips stale sock
 start a daemon. To choose a socket and session:
 
 ```sh
-ZZ_GPUI_ENDPOINT=/tmp/my-zz.sock ZZ_GPUI_SESSION=work just ios run
+ZZ_ALA_ENDPOINT=/tmp/my-zz.sock ZZ_ALA_SESSION=work just ios run
 ```
 
-`ZZ_DEV_SOCKET` also selects a local socket. Set `ZZ_GPUI_SIMULATOR` to a simulator
-UDID to choose an exact device. The bundle ID is `dev.zz.gpui-poc`, its display name
-is **zz GPUI**, and build products live in `target/ios-gpui/ZZ GPUI.app`.
+`ZZ_DEV_SOCKET` also selects a local socket. Set `ZZ_ALA_SIMULATOR` to a simulator
+UDID to choose an exact device. The bundle ID is `dev.zz.ala-poc`, its display name
+is **zz ala**, and build products live in `target/ios-gpui/ZZ ala.app`.
 
 The tree shows the connected host, its sessions, windows, and panes. Tap a marker to expand or
 collapse it, or a row to select it. Arrow keys navigate the tree; Enter selects
@@ -161,8 +161,8 @@ toolbar above it. Settings › Hosts shows the same list. On iPhone each host is
 it opens a sheet with the full address, the last error, and Open, Connect, Disconnect or Remove
 host. Add host opens the same sheet as the Hosts page's tile: the destination field, Connect, and
 Copy SSH key. Settings › Agents lists each connected host's agents and gathers the rest under Not
-connected. Hosts are saved in `Library/Application Support/zz-gpui/hosts.json`; a
-successful connection moves its host to the top. `ZZ_GPUI_ENDPOINT` (or `ZZ_SOCKET`) connects
+connected. Hosts are saved in `Library/Application Support/ala/hosts.json`; a
+successful connection moves its host to the top. `ZZ_ALA_ENDPOINT` (or `ZZ_SOCKET`) connects
 for that launch only, and opening a `zz://attach/<session>` link connects to the most recent host.
 SSH endpoints show host-key confirmation and authentication dialogs. The terminal example shares
 the native transport, key translation, and UIKit backend.
@@ -232,7 +232,7 @@ gets its one resize at the start, the grid hangs past the top edge under the sta
 the rows the keyboard uncovers slide into view already filled instead of arriving in one step
 after the keyboard lands.
 
-A field picks its keyboard through gpui's text input mode (the HTML `inputmode` set), which
+A field picks its keyboard through ala's text input mode (the HTML `inputmode` set), which
 the backend maps onto `keyboardType`: decimal and numeric pads, phone, email, URL, and web
 search keyboards; `None` keeps the field focused with no software keyboard, through an empty
 input view. Number fields in Settings ask for the decimal pad, and the browser client gets
@@ -273,7 +273,7 @@ live. On iPad it multiplies UI zoom and can be turned off in System › Display;
 is the only interface scale, capped at the largest non-accessibility size (135%) because it
 scales controls and icons as well as text. Reduce Motion and Increase Contrast apply live.
 The text system loads the iOS system fonts, so Chinese, Japanese, Korean, Arabic, Hebrew,
-and other scripts render. Emoji still show as blank: GPUI's text system only treats Noto
+and other scripts render. Emoji still show as blank: ala's text system only treats Noto
 Color Emoji as a color font.
 
 ## Frame rate
@@ -283,7 +283,7 @@ at least 60, up to the maximum), so ProMotion iPhones and iPads animate at 120 H
 `CADisableMinimumFrameDurationOnPhone` in `Info.plist` lifts the iPhone's 60 Hz cap. The link
 pauses three ticks after the last frame request and restarts when the window is invalidated, a
 touch begins, or a momentum scroll, key repeat, or keyboard animation is running, so an idle
-app takes no vsync callbacks and the display drops to its idle rate. The window opts out of GPUI
+app takes no vsync callbacks and the display drops to its idle rate. The window opts out of ala
 presenting the last frame again for a second after fast input, and the pager, sheets, and swipe
 back end the touch fling they swallow, so a swipe stops ticking once the page settles.
 
@@ -303,17 +303,17 @@ output, `interval` is the time between new frames in milliseconds (8.33 at 120 H
 counts vsyncs that passed without a new frame inside a burst, `cpu` is the main-thread time of
 each display link tick, and an idle `link:` line with few ticks means the display link is paused.
 
-`ZZ_GPUI_FRAME_LOG=1` prints, per burst of drawn frames, the interval between new frames (p50,
+`ZZ_ALA_FRAME_LOG=1` prints, per burst of drawn frames, the interval between new frames (p50,
 p95, max), missed vsyncs, and the CPU time of each display link tick, plus link ticks and draws
-every five seconds. `ZZ_GPUI_BENCH=swipe`, `scroll`, `drag`, or `fling` (optionally `:count`,
+every five seconds. `ZZ_ALA_BENCH=swipe`, `scroll`, `drag`, or `fling` (optionally `:count`,
 default 16) waits eight seconds after launch and then plays horizontal pager swipes, vertical
 terminal flings, slow 1.5 s terminal drags that hold still before letting go, each followed by a
 fling back, or one terminal fling every 4 s, two toward older output and then three toward newer,
-from the display link. `ZZ_GPUI_BENCH=sheet` opens the All bindings sheet on attach and flings
-its list down and back, which with `ZZ_GPUI_GLASS` set measures content moving under glass. `GPUI_FRAME_STATS=frames.jsonl` writes gpui's per-frame JSON stats into the app's
-`tmp` directory. `ZZ_GPUI_GLASS=frosted` (or `regular`, `clear`, `bubble`, `smoked`) turns
-floating surfaces into liquid glass. Device and simulator launches forward these variables and `ZZ_GPUI_SESSION`;
-`ZZ_GPUI_CARGO_PROFILE=testflight` builds the device app with line tables for Instruments.
+from the display link. `ZZ_ALA_BENCH=sheet` opens the All bindings sheet on attach and flings
+its list down and back, which with `ZZ_ALA_GLASS` set measures content moving under glass. `ALA_FRAME_STATS=frames.jsonl` writes ala's per-frame JSON stats into the app's
+`tmp` directory. `ZZ_ALA_GLASS=frosted` (or `regular`, `clear`, `bubble`, `smoked`) turns
+floating surfaces into liquid glass. Device and simulator launches forward these variables and `ZZ_ALA_SESSION`;
+`ZZ_ALA_CARGO_PROFILE=testflight` builds the device app with line tables for Instruments.
 
 ## Settings
 
@@ -345,7 +345,7 @@ The page omits desktop-only options and controls for unsupported pane kinds. iPh
 leaves out Panes and Status bar (the phone shell shows one pane without gaps or frames and
 has its own bottom bar), UI zoom, and Match system text size.
 Interface and pane preferences are saved atomically in the app container
-at `Library/Application Support/zz-gpui/preferences.json` and restored on launch.
+at `Library/Application Support/ala/preferences.json` and restored on launch.
 Touch controls work without a keyboard; numeric values open a decimal pad and hex colors
 open the on-screen keyboard.
 
@@ -355,13 +355,13 @@ The terminal uses `InteractiveClient`, `ClientCore`, and the shared `zz-ui`
 painter and Kitty image cache. The daemon owns the PTY and Ghostty parser/encoder.
 
 ```sh
-ZZ_GPUI_DEMO=terminal just ios run
+ZZ_ALA_DEMO=terminal just ios run
 ```
 
 To attach the terminal example to a specific socket and session:
 
 ```sh
-ZZ_GPUI_DEMO=terminal ZZ_GPUI_ENDPOINT=/tmp/my-zz.sock ZZ_GPUI_SESSION=work just ios run
+ZZ_ALA_DEMO=terminal ZZ_ALA_ENDPOINT=/tmp/my-zz.sock ZZ_ALA_SESSION=work just ios run
 ```
 
 Without a saved endpoint, the terminal example opens a connection field. **Host** opens that
@@ -391,7 +391,7 @@ saved by this example.
   (0.998 per ms); wheel ticks do not coast. Scroll views, lists, and the terminal's scrollback
   rubber-band past their edges and spring back, and a fling that reaches an edge bounces off it.
   Mouse-tracking applications, copy mode, and screens without scrollback keep plain scrolling.
-  The bounce lives in the gpui fork (`Overscroll::Bounce` in the backend's gesture tuning).
+  The bounce lives in the ala fork (`Overscroll::Bounce` in the backend's gesture tuning).
 - Terminal scrollback moves with the finger by pixels, and a fling coasts the same way. The app
   keeps up to 2000 rows above the screen (the `history-trickle` option) and draws scrolled rows
   from them without waiting for the daemon. The daemon's view trails the gesture by up to a
@@ -469,23 +469,23 @@ packages simulator apps only.
 
 ```sh
 cargo test --locked -p zz-app
-cargo test --locked -p zz-gpui-platform --all-features --test ios
+cargo test --locked -p ala-platform --all-features --test ios
 cargo test --locked -p zz-ui terminal_images::tests
 cargo fmt -p zz-ios -p zz-app -p zz-ui --check
-IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo clippy --locked -p zz-ios -p zz-app -p zz-gpui-platform --all-targets --target aarch64-apple-ios-sim -- -D warnings
+IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo clippy --locked -p zz-ios -p zz-app -p ala-platform --all-targets --target aarch64-apple-ios-sim -- -D warnings
 IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo build --locked -p zz-ios --bin zz-ios --target aarch64-apple-ios
 just web build
 ```
 
 ## Recovered history
 
-- `015b3a39` (2026-08-07): original UIKit backend and GPUI card demo.
-- `22c6bb5d` (2026-08-08): separate GPUI iOS client.
+- `015b3a39` (2026-08-07): original UIKit backend and ala card demo.
+- `22c6bb5d` (2026-08-08): separate ala iOS client.
 - `4c23f8d6` (2026-08-15): replacement with the Swift client. Its parent contains
-  the last full GPUI iOS implementation.
+  the last full ala iOS implementation.
 
-`zz_gpui_platform::ios` restores the small window/display adapter and scene startup
-from that work. It uses zz-gpui's wgpu renderer and CosmicText font
+`ala_platform::ios` restores the small window/display adapter and scene startup
+from that work. It uses ala's wgpu renderer and CosmicText font
 system, with the web client's Inter and Lilex fonts plus the memory-mapped iOS
 system fonts. It explicitly selects Metal because
-GPUI's native wgpu convenience constructor defaults to Vulkan and GL.
+ala's native wgpu convenience constructor defaults to Vulkan and GL.

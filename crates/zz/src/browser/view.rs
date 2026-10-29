@@ -11,6 +11,18 @@ use std::{
 };
 
 #[cfg(target_os = "macos")]
+use ala::PromptLevel;
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use ala::wgpu;
+use ala::{
+    Anchor, AnyElement, AnyView, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString,
+    Context, Corners, CursorStyle, DismissEvent, Entity, EntityInputHandler, FocusHandle,
+    Focusable, Image, ImageFormat, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, MouseButton,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, PathPromptOptions, Pixels, Point,
+    Render, RenderImage, ScrollWheelEvent, SharedString, StyleRefinement, Subscription,
+    UTF16Selection, WeakEntity, Window, anchored, deferred, div, point, prelude::*, px,
+};
+#[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
 #[cfg(target_os = "windows")]
 use zz_browser::WinGpuTexture;
@@ -22,18 +34,6 @@ use zz_browser::{
     normalize_browser_profile_name, normalize_url, parse_cookie_import, resolve_address,
 };
 use zz_client::{BROWSER_TABLE, ChromeAction};
-#[cfg(target_os = "macos")]
-use zz_gpui::PromptLevel;
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use zz_gpui::wgpu;
-use zz_gpui::{
-    Anchor, AnyElement, AnyView, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString,
-    Context, Corners, CursorStyle, DismissEvent, Entity, EntityInputHandler, FocusHandle,
-    Focusable, Image, ImageFormat, IntoElement, KeyBinding, KeyDownEvent, KeyUpEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, NoAction, PathPromptOptions, Pixels, Point,
-    Render, RenderImage, ScrollWheelEvent, SharedString, StyleRefinement, Subscription,
-    UTF16Selection, WeakEntity, Window, anchored, deferred, div, point, prelude::*, px,
-};
 use zz_protocol::{
     BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
     InputMessage, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
@@ -103,7 +103,7 @@ const OMNIBOX_INPUT_KEY_CONTEXT: &str = "BrowserOmnibox > ZzInput";
 const FULL_DISK_ACCESS_SETTINGS_URL: &str =
     "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles";
 
-zz_gpui::actions!(
+ala::actions!(
     browser,
     [
         ZoomIn,
@@ -125,21 +125,21 @@ zz_gpui::actions!(
 );
 
 #[allow(clippy::unsafe_derive_deserialize)]
-#[derive(Clone, Debug, zz_gpui::Action, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, ala::Action, PartialEq, Eq, serde::Deserialize)]
 #[action(namespace = browser, no_json)]
 struct BrowserEdit {
     command: EditCommand,
 }
 
 #[allow(clippy::unsafe_derive_deserialize)]
-#[derive(Clone, Debug, zz_gpui::Action, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, ala::Action, PartialEq, Eq, serde::Deserialize)]
 #[action(namespace = browser, no_json)]
 struct SelectTab {
     index: usize,
 }
 
 #[allow(clippy::unsafe_derive_deserialize)]
-#[derive(Clone, Debug, zz_gpui::Action, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, ala::Action, PartialEq, Eq, serde::Deserialize)]
 #[action(namespace = browser, no_json)]
 struct ConfiguredElementSelector {
     chord: String,
@@ -1745,9 +1745,7 @@ impl BrowserView {
                 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
                 {
                     let _ = texture;
-                    log::warn!(
-                        "received a GPU browser frame without GPUI external-texture support"
-                    );
+                    log::warn!("received a GPU browser frame without ala external-texture support");
                     return true;
                 }
             }
@@ -1781,7 +1779,7 @@ impl BrowserView {
                     Err(error) => {
                         log::warn!(
                             target: "zz_browser::accelerated_paint",
-                            "could not wrap browser IOSurface for GPUI: {error}"
+                            "could not wrap browser IOSurface for ala: {error}"
                         );
                         let pane = self.pane;
                         let tab = self.active_tab;
@@ -3011,7 +3009,7 @@ impl BrowserView {
 
     #[allow(
         clippy::trivially_copy_pass_by_ref,
-        reason = "GPUI's hover callback supplies &bool"
+        reason = "ala's hover callback supplies &bool"
     )]
     fn on_page_hover(&mut self, hovered: &bool, window: &mut Window, cx: &mut Context<Self>) {
         if !hovered
@@ -3020,7 +3018,7 @@ impl BrowserView {
                 PointerPhase::Leave,
                 None,
                 0,
-                zz_gpui::Modifiers::default(),
+                ala::Modifiers::default(),
                 None,
             )
         {
@@ -3097,7 +3095,7 @@ impl BrowserView {
         phase: PointerPhase,
         button: Option<MouseButton>,
         click_count: usize,
-        modifiers: zz_gpui::Modifiers,
+        modifiers: ala::Modifiers,
         pressed: Option<MouseButton>,
     ) -> Option<PointerEvent> {
         let (x, y) =
@@ -3348,7 +3346,7 @@ impl EntityInputHandler for BrowserView {
     }
 }
 
-impl zz_gpui::EventEmitter<PaneDrag> for BrowserView {}
+impl ala::EventEmitter<PaneDrag> for BrowserView {}
 
 fn ime_window_bounds(
     content: Bounds<Pixels>,
@@ -3358,11 +3356,11 @@ fn ime_window_bounds(
     match ime_range_bounds(characters, range_utf16) {
         Some(character) => Bounds::new(
             content.origin + point(px(character.x), px(character.y)),
-            zz_gpui::size(px(character.width.max(1.0)), px(character.height)),
+            ala::size(px(character.width.max(1.0)), px(character.height)),
         ),
         None => Bounds::new(
             content.origin,
-            zz_gpui::size(px(1.0), px(18.0).min(content.size.height)),
+            ala::size(px(1.0), px(18.0).min(content.size.height)),
         ),
     }
 }
@@ -4177,7 +4175,7 @@ pub(crate) fn pointer_button(button: MouseButton) -> Option<PointerButton> {
     clippy::cast_possible_truncation,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    reason = "CEF view dimensions are bounded integers derived from finite GPUI pixels"
+    reason = "CEF view dimensions are bounded integers derived from finite ala pixels"
 )]
 pub(crate) fn rounded_dimension(value: Pixels) -> u32 {
     f32::from(value).round().clamp(1.0, u32::MAX as f32) as u32
@@ -4199,7 +4197,7 @@ fn browser_input_from_terminal(input: &TerminalKeyInput) -> KeyInput {
 }
 
 pub(crate) fn browser_modifiers(
-    value: zz_gpui::Modifiers,
+    value: ala::Modifiers,
     pressed: Option<MouseButton>,
     is_repeat: bool,
 ) -> Modifiers {
@@ -4247,7 +4245,7 @@ fn browser_named_key(name: &str) -> Option<KeyInput> {
     zz_browser::named_key_input(name)
 }
 
-pub(crate) fn allows_text_input(key: BrowserKey, modifiers: zz_gpui::Modifiers) -> bool {
+pub(crate) fn allows_text_input(key: BrowserKey, modifiers: ala::Modifiers) -> bool {
     !modifiers.control
         && !modifiers.alt
         && !modifiers.platform
@@ -4259,7 +4257,7 @@ pub(crate) fn allows_text_input(key: BrowserKey, modifiers: zz_gpui::Modifiers) 
 
 fn browser_surface_key_input(
     pane: PaneId,
-    keystroke: &zz_gpui::Keystroke,
+    keystroke: &ala::Keystroke,
     action: TerminalKeyAction,
 ) -> (InputMessage, bool) {
     let text_follows = allows_text_input(browser_key(&keystroke.key), keystroke.modifiers);
@@ -4307,18 +4305,18 @@ mod tests {
         rc::Rc,
     };
 
+    #[cfg(not(target_os = "macos"))]
+    use ala::VisualTestContext;
+    use ala::{AsKeystroke, KeyContext, Keymap, Keystroke, TestAppContext};
     use zz_browser::BrowserError;
     #[cfg(not(target_os = "macos"))]
     use zz_browser::SessionId;
     use zz_daemon_client::DaemonError;
-    #[cfg(not(target_os = "macos"))]
-    use zz_gpui::VisualTestContext;
-    use zz_gpui::{AsKeystroke, KeyContext, Keymap, Keystroke, TestAppContext};
     use zz_ui::Root;
 
     use super::*;
 
-    zz_gpui::actions!(
+    ala::actions!(
         browser_view_test,
         [FocusNext, FocusPrevious, RootCopy, InputEdit]
     );
@@ -4400,7 +4398,7 @@ mod tests {
         keymap: &Keymap,
         source: &str,
         context_names: &[&str],
-    ) -> Vec<zz_gpui::KeyBinding> {
+    ) -> Vec<ala::KeyBinding> {
         let keystroke = Keystroke::parse(source).expect("valid browser keystroke");
         let contexts = context_names
             .iter()
@@ -4411,7 +4409,7 @@ mod tests {
         bindings.into_vec()
     }
 
-    fn browser_bindings_for(keymap: &Keymap, source: &str) -> Vec<zz_gpui::KeyBinding> {
+    fn browser_bindings_for(keymap: &Keymap, source: &str) -> Vec<ala::KeyBinding> {
         bindings_for_contexts(keymap, source, &["Root", BROWSER_KEY_CONTEXT])
     }
 
@@ -4423,7 +4421,7 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    fn assert_binding<A: zz_gpui::Action>(keymap: &Keymap, source: &str) {
+    fn assert_binding<A: ala::Action>(keymap: &Keymap, source: &str) {
         let bindings = browser_bindings_for(keymap, source);
         assert_eq!(bindings.len(), 1, "expected one binding for {source}");
         assert_eq!(bindings[0].action().as_any().type_id(), TypeId::of::<A>());
@@ -4437,7 +4435,7 @@ mod tests {
         bindings
     }
 
-    fn edit_action_command(action: &dyn zz_gpui::Action) -> Option<EditCommand> {
+    fn edit_action_command(action: &dyn ala::Action) -> Option<EditCommand> {
         if let Some(action) = action.as_any().downcast_ref::<BrowserEdit>() {
             return Some(action.command);
         }
@@ -4931,7 +4929,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn hidden_title_events_update_history_without_notifying_the_pane(cx: &mut TestAppContext) {
         let url = "https://example.com/";
         let profile = zz_browser::DEFAULT_BROWSER_PROFILE;
@@ -5006,7 +5004,7 @@ mod tests {
         cx.update(|_, cx| assert_eq!(view.read(cx).title, "Hidden second"));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn window_moves_carry_the_screen_origin_to_the_browser(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let view_slot = Rc::new(RefCell::new(None));
@@ -5038,7 +5036,7 @@ mod tests {
             Root::new(view, window, cx)
         });
         let view = view_slot.borrow().clone().expect("captured browser view");
-        let screen_origin = |cx: &mut zz_gpui::VisualTestContext| {
+        let screen_origin = |cx: &mut ala::VisualTestContext| {
             cx.update(|window, cx| {
                 let view = view.read(cx);
                 let content = view.content_bounds.expect("content bounds");
@@ -5055,7 +5053,7 @@ mod tests {
         cx.update(|window, cx| {
             view.update(cx, |view, cx| {
                 view.update_content_bounds(
-                    Bounds::new(point(px(12.), px(40.)), zz_gpui::size(px(400.), px(300.))),
+                    Bounds::new(point(px(12.), px(40.)), ala::size(px(400.), px(300.))),
                     window,
                     cx,
                 );
@@ -5071,7 +5069,7 @@ mod tests {
         assert_ne!(viewport, (12, 40));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn held_resizes_cover_the_page_and_reach_the_browser_once(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let view_slot = Rc::new(RefCell::new(None));
@@ -5107,11 +5105,11 @@ mod tests {
         cx.update(|_, cx| {
             view.update(cx, |view, _| view.share_resize_hold(Rc::clone(&held)));
         });
-        let resize = |width: f32, height: f32, cx: &mut zz_gpui::VisualTestContext| {
+        let resize = |width: f32, height: f32, cx: &mut ala::VisualTestContext| {
             cx.update(|window, cx| {
                 view.update(cx, |view, cx| {
                     view.update_content_bounds(
-                        Bounds::new(point(px(0.), px(40.)), zz_gpui::size(px(width), px(height))),
+                        Bounds::new(point(px(0.), px(40.)), ala::size(px(width), px(height))),
                         window,
                         cx,
                     );
@@ -5142,7 +5140,7 @@ mod tests {
         assert_eq!(resize(shown_width, shown_height, cx), (width, false));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn popup_tabs_render_blank_documents_and_follow_script_closure(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let view_slot = Rc::new(RefCell::new(None));
@@ -5231,7 +5229,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn first_blank_pane_edit_updates_omnibox_before_focus_event(cx: &mut TestAppContext) {
         cx.update(|cx| {
             zz_ui::init(cx);
@@ -5290,7 +5288,7 @@ mod tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn component_chrome_renders_and_navigation_preserves_active_address_edits(
         cx: &mut TestAppContext,
     ) {
@@ -5389,61 +5387,55 @@ mod tests {
 
     #[test]
     fn ime_bounds_map_cef_view_rects_into_window_coordinates() {
-        let content = Bounds::new(
-            point(px(120.0), px(64.0)),
-            zz_gpui::size(px(800.0), px(600.0)),
-        );
+        let content = Bounds::new(point(px(120.0), px(64.0)), ala::size(px(800.0), px(600.0)));
         let hidpi_zoomed = [
             ImeCharacterBounds::from_view(60, 30, 30, 45, 1.5 * 2.0),
             ImeCharacterBounds::from_view(90, 30, 30, 45, 1.5 * 2.0),
         ];
         assert_eq!(
             ime_window_bounds(content, &hidpi_zoomed, 0..2),
-            Bounds::new(
-                point(px(140.0), px(74.0)),
-                zz_gpui::size(px(20.0), px(15.0))
-            )
+            Bounds::new(point(px(140.0), px(74.0)), ala::size(px(20.0), px(15.0)))
         );
         assert_eq!(
             ime_window_bounds(content, &hidpi_zoomed, 2..2),
-            Bounds::new(point(px(160.0), px(74.0)), zz_gpui::size(px(1.0), px(15.0)))
+            Bounds::new(point(px(160.0), px(74.0)), ala::size(px(1.0), px(15.0)))
         );
         let logical = [ImeCharacterBounds::from_view(5, 7, 9, 18, 1.0)];
         assert_eq!(
             ime_window_bounds(content, &logical, 0..1),
-            Bounds::new(point(px(125.0), px(71.0)), zz_gpui::size(px(9.0), px(18.0)))
+            Bounds::new(point(px(125.0), px(71.0)), ala::size(px(9.0), px(18.0)))
         );
         assert_eq!(
             ime_window_bounds(content, &[], 0..0),
-            Bounds::new(content.origin, zz_gpui::size(px(1.0), px(18.0)))
+            Bounds::new(content.origin, ala::size(px(1.0), px(18.0)))
         );
     }
 
     #[test]
-    fn routes_plain_and_ime_keys_through_gpui_text_input() {
+    fn routes_plain_and_ime_keys_through_ala_text_input() {
         assert!(allows_text_input(
             BrowserKey::Character('a'),
-            zz_gpui::Modifiers::default()
+            ala::Modifiers::default()
         ));
         assert!(allows_text_input(
             BrowserKey::Space,
-            zz_gpui::Modifiers {
+            ala::Modifiers {
                 shift: true,
                 ..Default::default()
             }
         ));
         assert!(allows_text_input(
             BrowserKey::Unidentified,
-            zz_gpui::Modifiers::default()
+            ala::Modifiers::default()
         ));
     }
 
     #[test]
-    fn gpui_browser_emits_one_correlatable_key_and_text_pair() {
+    fn ala_browser_emits_one_correlatable_key_and_text_pair() {
         let keystroke = Keystroke {
             key: "x".to_owned(),
             key_char: Some("x".to_owned()),
-            modifiers: zz_gpui::Modifiers::default(),
+            modifiers: ala::Modifiers::default(),
         };
         let (key, text_follows) =
             browser_surface_key_input(PaneId(7), &keystroke, TerminalKeyAction::Press);
@@ -5472,21 +5464,21 @@ mod tests {
     fn modified_and_navigation_keys_do_not_emit_committed_text() {
         assert!(!allows_text_input(
             BrowserKey::Character('c'),
-            zz_gpui::Modifiers {
+            ala::Modifiers {
                 control: true,
                 ..Default::default()
             }
         ));
         assert!(!allows_text_input(
             BrowserKey::Character('v'),
-            zz_gpui::Modifiers {
+            ala::Modifiers {
                 platform: true,
                 ..Default::default()
             }
         ));
         assert!(!allows_text_input(
             BrowserKey::ArrowLeft,
-            zz_gpui::Modifiers::default()
+            ala::Modifiers::default()
         ));
     }
 

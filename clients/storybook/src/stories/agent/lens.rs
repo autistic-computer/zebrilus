@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ListAlignment,
     ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
     prelude::*, px,

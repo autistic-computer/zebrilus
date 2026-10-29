@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent,
     ModifiersChangedEvent, Render, StyleRefinement, Window, div, prelude::*, px,
 };
@@ -383,12 +383,9 @@ impl Render for AppShell {
         let shell = app_shell_surface(
             "app-shell",
             if cfg!(target_os = "linux")
-                && matches!(
-                    window.window_decorations(),
-                    zz_gpui::Decorations::Client { .. }
-                )
+                && matches!(window.window_decorations(), ala::Decorations::Client { .. })
             {
-                zz_gpui::transparent_black()
+                ala::transparent_black()
             } else {
                 crate::theme::chrome_background(cx)
             },
@@ -601,7 +598,7 @@ fn growing_strip(strip: AnyElement, shown: f32, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-// gpui-component's macOS Root constructor requires a native NSView; GPUI test windows have none.
+// gpui-component's macOS Root constructor requires a native NSView; ala test windows have none.
 #[cfg(all(test, not(target_os = "macos")))]
 mod tests {
     use std::{
@@ -609,16 +606,16 @@ mod tests {
         rc::Rc,
     };
 
+    use ala::{TestAppContext, VisualTestContext, div};
     use zz_browser::BrowserError;
     use zz_daemon_client::DaemonError;
-    use zz_gpui::{TestAppContext, VisualTestContext, div};
     use zz_protocol::ClientMessageKind;
     use zz_ui::{WindowExt as _, notification::Notification};
 
     use super::*;
     use crate::mux::client::MuxClient;
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn mux_notifications_reach_the_mounted_root_layer(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));

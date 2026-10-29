@@ -1,9 +1,9 @@
-use web_time::Instant;
-use zz_gpui::{
+use ala::{
     App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, FontWeight, InteractiveElement as _,
     MouseButton, ParentElement as _, Pixels, SharedString, SpringConfig, SpringState, Stateful,
     Styled as _, TextRun, Window, div, point, px, size,
 };
+use web_time::Instant;
 
 use super::{
     bar::{COMPACT_PILL_HEIGHT, PillPlacement, floating_layer},
@@ -228,7 +228,7 @@ pub fn pill_corner(
 /// How wide the small pill is around `text`.
 pub fn mini_pill_width(text: &SharedString, window: &Window, cx: &App) -> Pixels {
     let font_size = rems_from_px(MINI_TEXT).to_pixels(window.rem_size());
-    let mut font = zz_gpui::font(cx.theme().font_family.clone());
+    let mut font = ala::font(cx.theme().font_family.clone());
     font.weight = FontWeight::MEDIUM;
     let run = TextRun {
         len: text.len(),

@@ -6,7 +6,7 @@ use crate::ImeCharacterBounds;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionId(pub u64);
 
-/// Browser cursor shapes that GPUI can represent directly.
+/// Browser cursor shapes that ala can represent directly.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum BrowserCursor {
     #[default]

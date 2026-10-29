@@ -185,8 +185,8 @@ target picker (`zz_ui::target::TargetPicker`, inserted with its host), the field
 and the round send button; the cards over it and the branch under it are the lens's own. The
 timeline mechanics carried over unchanged: the `TimelineStick` / `StickSpring` follow-the-tail pin
 (`agent.rs`), the display-only Markdown repair for streaming text (`zz-client/src/mend.rs`), the
-streamed-text fade (`zz-gpui-kit/src/text/veil.rs`) and the shared leased animation clock
-(`zz-gpui-kit/src/pulse.rs`).
+streamed-text fade (`penna/src/text/veil.rs`) and the shared leased animation clock
+(`penna/src/pulse.rs`).
 
 - **Desktop.** `crates/zz/src/agent` (controller and view) behind the `agent-pane` cargo feature,
   which stays on by default; without it a stub stands in.

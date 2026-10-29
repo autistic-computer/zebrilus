@@ -5,8 +5,8 @@
 
 use std::{collections::BTreeMap, sync::LazyLock};
 
+use ala::{GlassMaterial, Hsla, SharedString, px};
 use serde::{Deserialize, Deserializer, Serialize};
-use zz_gpui::{GlassMaterial, Hsla, SharedString, px};
 
 pub use zz_client::appearance::{
     ACCENTS, AccentSetting, BUILTIN_THEMES, DEFAULT_ANIMATION_SPEED, DEFAULT_THEME,
@@ -509,7 +509,7 @@ mod tests {
     use crate::{Colorize as _, Elevation};
 
     fn luminance(color: Hsla) -> f32 {
-        let rgba: zz_gpui::Rgba = color.into();
+        let rgba: ala::Rgba = color.into();
         let linear = |channel: f32| {
             if channel <= 0.04045 {
                 channel / 12.92

@@ -55,7 +55,7 @@ presses (`ChooseTreeAction::Key` / `ChooseBufferAction::Key`) and the daemon map
 `delete`, …) in `crates/zz-daemon/src/keys.rs` (`choose_tree_key_action`), preferring the typed
 character (`?` from shift+`/`) over the folded physical key name. Search-mode editing keys
 (Escape/Enter/BSpace/arrows, printable text append) stay fixed, like other search prompts. Chooser
-vim navigation is therefore rebindable with `bind-key -T choose-tree …` and identical in the GPUI
+vim navigation is therefore rebindable with `bind-key -T choose-tree …` and identical in the ala
 app and the TUI, which contain no chooser key maps at all. Before a key reaches those tables it goes
 through the client's `KeyEngine` (`handle_overlay_with_repeat_metadata`, from `chooser_key_binding`
 in the daemon), the way the pin's `server_client_key_callback` looks the prefix up before
@@ -312,7 +312,7 @@ were the last divergent shared shapes now store the pin's exact commands. Fourte
 `?`, `:`, `f`, `F`, `t`, `T` and emacs `g`, `C-r`, `C-s`, `f`, `F`, `t`, `T`) render through
 `command-prompt -P`; the pin draws that prompt over the target pane's last row at redraw time, and so
 does zz's raw TUI since 2026-09-14, which reads the pane the flag resolved off `CommandPromptState`.
-The GPUI, iOS and web clients read nothing from that field and keep the prompt on their own client
+The ala, iOS and web clients read nothing from that field and keep the prompt on their own client
 surface, so the stored command matches everywhere and only the GUI's drawing differs. The remaining two, vi `#` and `*`, carry
 `send-keys -FX search-backward -- "#{copy_cursor_word}"` and its forward twin. `#{pane_search_string}`
 in the emacs `-I` value expands to the last search on the pane, which the pane keeps after copy mode
@@ -322,7 +322,7 @@ See [copy mode](/tmux/copy-mode.md).
 
 # Shifted key spellings
 
-GPUI resolves a shifted **symbol** before zz sees it: `shift+5` arrives as `%` with the shift bit
+ala resolves a shifted **symbol** before zz sees it: `shift+5` arrives as `%` with the shift bit
 *cleared*, so `%`, `"`, `!`, `&`, `?`, `=`, `{`, `}`, `:` and `$` look up directly.
 
 A shifted **letter** is the exception: it arrives as the lowercase key with the shift bit still set.

@@ -100,9 +100,9 @@ profile emits.
 
 Because that executable is prebuilt, its icon and DPI manifest cannot come from the compiler.
 `configure_windows_executable` writes both into the copy's PE resources with `editpe`:
-`assets/windows/zz.ico` as the icon group at resource id 1 (where gpui's `LoadImage` looks for the
+`assets/windows/zz.ico` as the icon group at resource id 1 (where ala's `LoadImage` looks for the
 window icon; `editpe` files new groups under the name `MAINICON`, which that lookup never reaches),
-and a per-monitor-v2 manifest . gpui scales windows by `GetDpiForWindow`, which answers 96 in a
+and a per-monitor-v2 manifest . ala scales windows by `GetDpiForWindow`, which answers 96 in a
 process that never declared awareness. `verify_bundle` re-reads both. Editing resources invalidates
 CEF's Authenticode signature on the file; release signing re-signs the bundle.
 
@@ -129,4 +129,4 @@ sandbox handle . but that binary answers every windowless verb.
 - [Updating CEF playbook](/playbooks/updating-cef.md) . coordinated steps when bumping the CEF pin
 - [Prerequisites playbook](/playbooks/prerequisites.md) . CMake/Ninja/Zig requirements this task depends on
 - [CEF runtime concept](/browser/cef-runtime.md) . the runtime this bundle ships
-- [`app` crate](/crates/zz.md) . the GPUI binary (`zz`) that the bundle wraps
+- [`app` crate](/crates/zz.md) . the ala binary (`zz`) that the bundle wraps

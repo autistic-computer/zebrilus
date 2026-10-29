@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use zz_gpui::{App, Context, Task, Window, div, prelude::*};
+use ala::{App, Context, Task, Window, div, prelude::*};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{ActiveTheme as _, Colorize as _};
 
@@ -19,7 +19,7 @@ impl AgentController {
         Self
     }
 
-    pub(crate) fn attach_mux(&mut self, _mux: zz_gpui::Entity<MuxClient>) {}
+    pub(crate) fn attach_mux(&mut self, _mux: ala::Entity<MuxClient>) {}
 
     pub(crate) fn retain_panes(
         &mut self,
@@ -32,7 +32,7 @@ impl AgentController {
         &mut self,
         _pane: PaneId,
         _text: &str,
-        _images: Vec<Arc<zz_gpui::Image>>,
+        _images: Vec<Arc<ala::Image>>,
         _cx: &mut Context<Self>,
     ) -> Result<(), Arc<str>> {
         Err("the agent lens is not included in this build".into())
@@ -52,15 +52,15 @@ impl AgentController {
 }
 
 pub(crate) struct AgentView {
-    focus_handle: zz_gpui::FocusHandle,
+    focus_handle: ala::FocusHandle,
 }
 
 impl AgentView {
     pub(crate) fn new(
         _pane: PaneId,
         _provider: AgentProvider,
-        _controller: zz_gpui::Entity<AgentController>,
-        _mux: zz_gpui::Entity<MuxClient>,
+        _controller: ala::Entity<AgentController>,
+        _mux: ala::Entity<MuxClient>,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -69,7 +69,7 @@ impl AgentView {
         }
     }
 
-    pub(crate) fn focus(&self, _cx: &App) -> zz_gpui::FocusHandle {
+    pub(crate) fn focus(&self, _cx: &App) -> ala::FocusHandle {
         self.focus_handle.clone()
     }
 
@@ -85,7 +85,7 @@ impl AgentView {
 
 pub(crate) struct ShowTerminal;
 
-impl zz_gpui::EventEmitter<ShowTerminal> for AgentView {}
+impl ala::EventEmitter<ShowTerminal> for AgentView {}
 
 impl Render for AgentView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

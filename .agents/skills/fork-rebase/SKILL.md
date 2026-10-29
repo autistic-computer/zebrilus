@@ -1,17 +1,17 @@
 ---
 name: fork-rebase
-description: Maintain zz-gpui, zz's own GPUI (libs/gpui/crates/zz-gpui, zz-gpui-macros and zz-gpui-platform: the gpui crates split out of Zed with Zed's utility crates folded in, carrying RenderImage::into_frames, WgpuDeviceContext, the external-texture element, the window corner mask, superellipse corner smoothing, refresh_rate exposure, liquid glass, the iOS UIKit backend, and more) and the vendored native Ghostty in third_party/ghostty with its libghostty-vt crates. Use when changing zz-gpui/gpui or Ghostty, pulling an upstream Zed or Ghostty change, when the user says "bump gpui", "update zed", "bump ghostty", "sync ghostty", or "rebase forks", and before debugging weird zz-gpui build errors after a dependency change.
+description: Maintain ala, zz's own GPUI (libs/ala/crates/ala, ala-macros and ala-platform: the gpui crates split out of Zed with Zed's utility crates folded in, carrying RenderImage::into_frames, WgpuDeviceContext, the external-texture element, the window corner mask, superellipse corner smoothing, refresh_rate exposure, liquid glass, the iOS UIKit backend, and more) and the vendored native Ghostty in third_party/ghostty with its libghostty-vt crates. Use when changing ala/gpui or Ghostty, pulling an upstream Zed or Ghostty change, when the user says "bump gpui", "update zed", "bump ghostty", "sync ghostty", or "rebase forks", and before debugging weird ala build errors after a dependency change.
 ---
 
-# zz-gpui: `libs/gpui/crates/zz-gpui*`
+# ala: `libs/ala/crates/ala*`
 
-zz-gpui is zz's GPUI: the gpui crates split out of Zed on 2026-10-05. They were the
+ala is zz's GPUI: the gpui crates split out of Zed on 2026-10-05. They were the
 [`demfabris/gpui`](https://github.com/demfabris/gpui) repo until 2026-10-09, when they moved in
 with their history, then into `crates/` the same day
-(`git log -- 'libs/gpui/crates/zz-gpui*' 'crates/zz-gpui*' 'crates/zpui*' zpui gpui`). Later that day the 22 crates became
-three plus the kit: `zz-gpui` (gpui core, with Zed's utility crates as modules:
-`zz_gpui::collections`, `util`, `sum_tree`, `scheduler`, `http_client`, `refineable`),
-`zz-gpui-macros` (gpui's macros and the `Refineable` derive) and `zz-gpui-platform` (every
+(`git log -- 'libs/ala/crates/ala*' 'crates/ala*' 'crates/zpui*' zpui ala`). Later that day the 22 crates became
+three plus the kit: `ala` (gpui core, with Zed's utility crates as modules:
+`ala::collections`, `util`, `sum_tree`, `scheduler`, `http_client`, `refineable`),
+`ala-macros` (ala's macros and the `Refineable` derive) and `ala-platform` (every
 backend as a module built only for its target: `apple`, `macos`, `linux`, `windows`, `web`,
 `wgpu`, `ios`). It is not a patch branch: nothing gets rebased, and upstream Zed fixes come in
 by hand. The first commit is upstream `zed-industries/zed` `933d8d9381` limited to those crates;
@@ -21,60 +21,60 @@ commits exist here with the same subjects.
 
 | Zed | zz |
 |---|---|
-| `crates/gpui/src/` | `libs/gpui/crates/zz-gpui/src/` |
-| `crates/gpui_macros/src/` | `libs/gpui/crates/zz-gpui-macros/src/` |
-| `crates/refineable/derive_refineable/src/` | `libs/gpui/crates/zz-gpui-macros/src/derive_refineable.rs` |
-| `crates/gpui_platform/src/` | `libs/gpui/crates/zz-gpui-platform/src/zz_gpui_platform.rs` |
-| `crates/gpui_<x>/src/` for `macos`, `linux`, `windows`, `web`, `wgpu` | `libs/gpui/crates/zz-gpui-platform/src/<x>/`, root file `<x>.rs` (Linux: `linux.rs` and `linux/`) |
-| `crates/gpui_apple/src/` (Metal) | `libs/gpui/crates/zz-gpui-platform/src/apple/` |
-| `crates/<x>/src/` for `collections`, `http_client`, `scheduler`, `sum_tree`, `refineable` | `libs/gpui/crates/zz-gpui/src/<x>/`, root file `<x>.rs` |
-| `crates/util/src/` (the parts gpui uses) | merged into `libs/gpui/crates/zz-gpui/src/util.rs` |
-| `gpui::`, `gpui_<x>::`, `collections::` | `zz_gpui::`, `zz_gpui_platform::<x>::`, `zz_gpui::collections::` (`crate::` inside the crate) |
+| `crates/gpui/src/` | `libs/ala/crates/ala/src/` |
+| `crates/gpui_macros/src/` | `libs/ala/crates/ala-macros/src/` |
+| `crates/refineable/derive_refineable/src/` | `libs/ala/crates/ala-macros/src/derive_refineable.rs` |
+| `crates/gpui_platform/src/` | `libs/ala/crates/ala-platform/src/ala_platform.rs` |
+| `crates/gpui_<x>/src/` for `macos`, `linux`, `windows`, `web`, `wgpu` | `libs/ala/crates/ala-platform/src/<x>/`, root file `<x>.rs` (Linux: `linux.rs` and `linux/`) |
+| `crates/gpui_apple/src/` (Metal) | `libs/ala/crates/ala-platform/src/apple/` |
+| `crates/<x>/src/` for `collections`, `http_client`, `scheduler`, `sum_tree`, `refineable` | `libs/ala/crates/ala/src/<x>/`, root file `<x>.rs` |
+| `crates/util/src/` (the parts ala uses) | merged into `libs/ala/crates/ala/src/util.rs` |
+| `ala::`, `gpui_<x>::`, `collections::` | `ala::`, `ala_platform::<x>::`, `ala::collections::` (`crate::` inside the crate) |
 | `tooling/perf`, screen capture (`scap`, ScreenCaptureKit), tracy, `zlog`, `ztracing`, `util_macros` | removed 2026-10-09: skip upstream patches that only touch them |
 
-The zz-gpui crates live in `libs/gpui`, a git subtree of `autistic-computer/gpui` with its own
+The ala crates live in `libs/ala`, a git subtree of `autistic-computer/ala` with its own
 Cargo workspace outside zz's. They carry Zed's relaxed `[lints]` table, and `[profile.dev.package]`
 in the root `Cargo.toml` optimizes them in debug builds. Lint and test them with
-`just libs check gpui`, and send a landed change to the gpui repo with `just libs push gpui`.
-`libs/kit` is zz's own widget kit and carries zz's pedantic lints in its own manifest.
+`just libs check ala`, and send a landed change to the ala repo with `just libs push ala`.
+`libs/penna` is zz's own widget kit and carries zz's pedantic lints in its own manifest.
 
-## Landing a zz-gpui change
+## Landing an ala change
 
-1. Edit the zz-gpui crates in the same commit as the zz code that needs it.
-2. The root clippy covers zz-gpui with all features, for the host OS only, and `cargo ci-test` runs
-   zz-gpui's headless tests. zz-gpui-platform's tests need a GPU, so run them yourself when you touch
-   it (`cargo test -p zz-gpui-platform --all-features`). Its other backends only compile for their
+1. Edit the ala crates in the same commit as the zz code that needs it.
+2. The root clippy covers ala with all features, for the host OS only, and `cargo ci-test` runs
+   ala's headless tests. ala-platform's tests need a GPU, so run them yourself when you touch
+   it (`cargo test -p ala-platform --all-features`). Its other backends only compile for their
    own target: cross-check them from macOS as described at the end of this section, and check the
-   UIKit backend with `cargo clippy -p zz-ios -p zz-gpui-platform --target aarch64-apple-ios`.
+   UIKit backend with `cargo clippy -p zz-ios -p ala-platform --target aarch64-apple-ios`.
 3. Run the workspace gates and `just web build`, then an isolated app run for anything visual.
 
 ## Pulling a fix from upstream Zed
 
-Zed's paths and identifiers say `gpui`; ours say `zz-gpui`. Export the patch, map the paths with the
+Zed's paths and identifiers say `gpui`; ours say `ala`. Export the patch, map the paths with the
 table above, then apply it. A backend file moved down one directory, so a patch to its root file
-(`crates/gpui_wgpu/src/gpui_wgpu.rs`) needs `libs/gpui/crates/zz-gpui-platform/src/wgpu.rs` instead, and
+(`crates/gpui_wgpu/src/gpui_wgpu.rs`) needs `libs/ala/crates/ala-platform/src/wgpu.rs` instead, and
 `crate::` paths inside a backend become `crate::<x>::`:
 
 ```bash
 git -C <zed-checkout> format-patch -1 <sha> --stdout -- crates/gpui crates/gpui_wgpu \
-  | sed -e 's#crates/gpui_wgpu/src/#libs/gpui/crates/zz-gpui-platform/src/wgpu/#g' -e 's#crates/gpui/#libs/gpui/crates/zz-gpui/#g' \
-        -e 's/\bgpui_wgpu::/zz_gpui_platform::wgpu::/g' -e 's/\bgpui::/zz_gpui::/g' > fix.patch
+  | sed -e 's#crates/gpui_wgpu/src/#libs/ala/crates/ala-platform/src/wgpu/#g' -e 's#crates/gpui/#libs/ala/crates/ala/#g' \
+        -e 's/\bgpui_wgpu::/ala_platform::wgpu::/g' -e 's/\bgpui::/ala::/g' > fix.patch
 git am -3 fix.patch
 ```
 
 Limit the pathspec to the crates the fix touches. Never bulk-merge upstream: take what we need,
 read it, and run the GPU tests for the renderers it touches.
 
-## What zz changed in zz-gpui
+## What zz changed in ala
 
-`git log -- 'libs/gpui/crates/zz-gpui*' 'crates/zz-gpui*' zz-gpui gpui` is the authority. The core five:
+`git log -- 'libs/ala/crates/ala*' 'crates/ala*' ala ala` is the authority. The core five:
 
   1. `RenderImage::into_frames()` — retired browser frames return their pixel
      buffers to the OSR paint pool.
   2. `WgpuDeviceContext` — `Window::wgpu_device_context()` exposes the Linux
-     renderer's `wgpu::Device`/`Queue` (plus a `zz_gpui::wgpu` re-export) so
-     embedders create GPU resources on GPUI's exact device.
-  3. External-texture element — `zz_gpui::external_texture(wgpu::Texture)` paints
+     renderer's `wgpu::Device`/`Queue` (plus a `ala::wgpu` re-export) so
+     embedders create GPU resources on ala's exact device.
+  3. External-texture element — `ala::external_texture(wgpu::Texture)` paints
      an app-provided texture with normal clipping/HiDPI via the repurposed
      Linux surface pipeline (was a dead YCbCr stub upstream).
   4. Window corner mask — `Window::set_window_corner_mask()` clips everything
@@ -110,12 +110,12 @@ read it, and run the GPU tests for the renderers it touches.
   ÷ zoom, input/IME coordinates converted at the core platform seam; powers
   zz's browser-style whole-UI zoom, gpui-core-only), and keeping the GPU
   visible under WSL (Mesa's dzn translates Vulkan to D3D12 and reports no
-  conformance version, which wgpu hides, so gpui fell back to llvmpipe and
+  conformance version, which wgpu hides, so ala fell back to llvmpipe and
   drew every frame on the CPU; `ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER` is set
   only when `/dev/dxg` exists, a node native Linux cannot have), and
   `KeystrokeEvent::is_held` (the OS autorepeat flag carried through to
   keystroke observers/interceptors — zz's prefix layer swallows repeats by
-  this flag instead of held-set inference, which a lost macOS keyUp desyncs). Newest: `zz_gpui_platform::wgpu` subpixel offset kept in
+  this flag instead of held-set inference, which a lost macOS keyUp desyncs). Newest: `ala_platform::wgpu` subpixel offset kept in
   device pixels (the swash scaler already runs at `pixel_size * scale_factor`, so the
   extra `/ scale_factor` upstream still carries shrank the quarter-pixel phase on HiDPI —
   a one-line upstream-able fix).
@@ -136,8 +136,8 @@ Gotchas that still apply when changing renderers or pulling upstream work:
     because the WebGL quad decoder reads whole texels.
   - Upstream unified perf tracking under gpui's `profiler` feature. Since
     `66cad0ed` (2026-09-22), zz leaves it disabled in production to avoid its
-    collection overhead. Enable it only for diagnostic builds or GPUI validation,
-    on the desktop crate's `gpui` dependency, not the shared workspace dependency.
+    collection overhead. Enable it only for diagnostic builds or ala validation,
+    on the desktop crate's `ala` dependency, not the shared workspace dependency.
     The profiler uses native timing and crashes on WASM action dispatch if
     inherited by `zz-ui`. `set_frame_trace_enabled` became
     the shared `set_trace_enabled`, and collectors now yield
@@ -147,7 +147,7 @@ Linux and Windows can be type-checked from macOS: `cargo check --target
 x86_64-unknown-linux-musl` with a `zig cc -target x86_64-linux-musl` wrapper named
 `x86_64-linux-musl-gcc` (drop cc-rs's `--target=` flag; a `zig c++` twin as `-g++`),
 `RUST_FONTCONFIG_DLOPEN=1`, and
-`FREETYPE2_NO_PKG_CONFIG=1`; and `cargo +1.99.0 check -p zz-gpui-platform --target
+`FREETYPE2_NO_PKG_CONFIG=1`; and `cargo +1.99.0 check -p ala-platform --target
 x86_64-pc-windows-msvc` with `RC_x86_64_pc_windows_msvc` set to Homebrew's `llvm-rc`.
 
 ## Native Ghostty: `third_party/ghostty`

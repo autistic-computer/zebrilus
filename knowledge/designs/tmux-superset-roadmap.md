@@ -451,10 +451,10 @@ physical internal group newlines print as ` ;; `. String children construct afte
 parent-format expansion as one group. Its strict three-step scenario runs 19 internal construction,
 parser, readback, alias, and exact channel checks and finishes
 `ARGS_PARSE_CONFIRM_BEFORE=clean:19` on both servers. Nested bind and confirm failures are preflight
-parse errors. Reply and `-y` Enter-default paths have daemon and GPUI unit proof. Raw zz-tui now
+parse errors. Reply and `-y` Enter-default paths have daemon and ala unit proof. Raw zz-tui now
 renders confirmations and handles their replies with unit and attached-client coverage. It also
 consumes the daemon-published menu and popup descriptors; menu keyboard resolution is shared with
-GPUI. The broader menu and popup behavior classes stay under `display-menu.behavior-fidelity` and
+ala. The broader menu and popup behavior classes stay under `display-menu.behavior-fidelity` and
 `display-popup.behavior-fidelity`. Eager whole-file source construction and the broader
 replay-channel placement difference remain open.
 Stored `bind-key` and `set-hook` commands execute their constructed lists without another
@@ -1282,7 +1282,7 @@ the same pane-kind operation as the picker. Do not give `split-window` an agent 
 
 - `%` and `"` may open `split-picker` in the zz default table.
 - `s` and `w` may focus the native sidebar instead of drawing tmux's tree.
-- The GPUI client uses native presentation for prompts, menus, popups, copy mode, status, and
+- The ala client uses native presentation for prompts, menus, popups, copy mode, status, and
   choosers. Raw zz-tui handles confirmations plus daemon-published menu and popup descriptors.
   `display-menu.behavior-fidelity` and `display-popup.behavior-fidelity` own the remaining behavior
   classes.
@@ -1606,7 +1606,7 @@ that would admit a second identity.
 - 2026-08-28: Slice 10o closed `clients.tui-display-menu-overlay` without a protocol or daemon
   change. Raw zz-tui now retains and clears menu state with its connection, renders the
   daemon-published descriptor after chooser and command-output bases, and resolves menu keys through
-  the same renderer-free client helper as GPUI. Input capture runs before confirmation, global
+  the same renderer-free client helper as ala. Input capture runs before confirmation, global
   shortcuts, and pane delivery; paste and pointer input do not activate an item. The attached
   fixture covers a title, shortcut-before-cancel behavior, disabled and separator skipping, Escape,
   an unusable PageUp landing plus stay-open Enter, nonactivating paste, and a pane sentinel. Focused
@@ -1916,7 +1916,7 @@ that would admit a second identity.
   channel, while the exact base fails its renderer-marker assertion. Same-side ties after
   `join-pane`, `swap-pane`, or serialized `select-layout` remain under
   `presentation:border-style-owner-z-order` because the snapshot does not carry mutable tiled
-  order. The closure changes no protocol, wire snapshot, or GPUI behavior. The registry has 87
+  order. The closure changes no protocol, wire snapshot, or ala behavior. The registry has 87
   active groups and 586 active items, with 124 closed records: 45 open, 20 blocked, and 22 accepted.
   Closed history plus accepted groups resolve 146 of 211 groups (69.2%). The persisted aggregate
   covers 109 scenarios and 1,755 steps with attached-client `PASS`, exactly two approved GEO rows,

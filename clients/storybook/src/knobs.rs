@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use zz_gpui::{App, GlassMaterial, Hsla, WindowAppearance, px};
+use ala::{App, GlassMaterial, Hsla, WindowAppearance, px};
 use zz_ui::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Shadow, Smoothing, Style,
     StylePatch, SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom,

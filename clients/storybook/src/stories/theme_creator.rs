@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, Focusable as _,
     IntoElement, Keystroke, ParentElement as _, Render, SharedString, Styled as _, Window, div,
     prelude::*, px, relative, size,
@@ -445,7 +445,7 @@ impl Render for Pip {
         );
         let terminal = PipSurface::new(
             "showcase-pip-terminal",
-            terminal_body(BUILD, false, cx).bg(zz_gpui::transparent_black()),
+            terminal_body(BUILD, false, cx).bg(ala::transparent_black()),
         )
         .header(super::workspace::panes::pip_header(
             "cargo watch -x test",
@@ -1239,7 +1239,7 @@ const TABS: [(&str, &str); 3] = [
     ("Issues", "github.com"),
 ];
 
-fn phone_frame(id: &'static str, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
+fn phone_frame(id: &'static str, cx: &App) -> ala::Stateful<ala::Div> {
     let theme = cx.theme();
     v_flex()
         .id(id)
@@ -1390,7 +1390,7 @@ fn panes(find: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement 
                 .child(
                     FloatingSurface::new(
                         "showcase-floating",
-                        terminal_body(SERVER, false, cx).bg(zz_gpui::transparent_black()),
+                        terminal_body(SERVER, false, cx).bg(ala::transparent_black()),
                         cx,
                     )
                     .title("display-popup · lazygit")
@@ -1740,7 +1740,7 @@ fn agent(cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn card(id: &'static str, cx: &App) -> zz_gpui::Stateful<zz_gpui::Div> {
+fn card(id: &'static str, cx: &App) -> ala::Stateful<ala::Div> {
     v_flex()
         .id(id)
         .w_full()
@@ -1781,7 +1781,7 @@ fn heading(title: &'static str, description: &'static str, cx: &App) -> impl Int
         .child(
             div()
                 .text_sm()
-                .font_weight(zz_gpui::FontWeight::SEMIBOLD)
+                .font_weight(ala::FontWeight::SEMIBOLD)
                 .child(title),
         )
         .child(

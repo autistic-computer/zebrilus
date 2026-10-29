@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use web_time::{Duration, Instant};
-use zz_client::floating::{FloatCells, FloatPlace, PipGeometry};
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, ClickEvent, ElementId, GlassMaterial, Hsla, IntoElement,
     ParentElement as _, Pixels, Point, Size, Styled as _, Window, div, point, prelude::*, px,
 };
+use web_time::{Duration, Instant};
+use zz_client::floating::{FloatCells, FloatPlace, PipGeometry};
 use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
 
 use crate::{ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, roles};
@@ -87,7 +87,7 @@ impl PipLayout {
     #[must_use]
     pub fn size(&self, cells: FloatCells) -> Size<Pixels> {
         let (width, height) = self.geometry().size(cells);
-        zz_gpui::size(px(width), px(height))
+        ala::size(px(width), px(height))
     }
 
     #[must_use]
@@ -95,7 +95,7 @@ impl PipLayout {
         let frame = self.geometry().frame(cells);
         Bounds::new(
             point(px(frame.x), px(frame.y)),
-            zz_gpui::size(px(frame.width), px(frame.height)),
+            ala::size(px(frame.width), px(frame.height)),
         )
     }
 
@@ -113,7 +113,7 @@ impl PipLayout {
 
     fn area(&self) -> Size<Pixels> {
         let (width, height) = self.geometry().area();
-        zz_gpui::size(px(width), px(height))
+        ala::size(px(width), px(height))
     }
 
     fn place_at(&self, centre: Point<Pixels>) -> FloatPlace {
@@ -504,9 +504,7 @@ impl RenderOnce for PipSurface {
                 .right_0()
                 .h(header_height)
                 .when(!coarse && !docked && !stashed, |header| {
-                    header
-                        .invisible()
-                        .group_hover(GROUP, zz_gpui::Styled::visible)
+                    header.invisible().group_hover(GROUP, ala::Styled::visible)
                 })
                 .child(header)
         });
@@ -534,7 +532,7 @@ impl RenderOnce for PipSurface {
             .rounded(cx.theme().pane_radius())
             .bg(cx.theme().transparent)
             .glass(material)
-            .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .absolute()
@@ -615,7 +613,7 @@ mod tests {
         let size = LAYOUT.size(float);
         assert_eq!(
             size,
-            zz_gpui::size(px(176.0), px(96.0 + 16.0) + crate::PANE_HEADER_HEIGHT)
+            ala::size(px(176.0), px(96.0 + 16.0) + crate::PANE_HEADER_HEIGHT)
         );
         assert_eq!(
             frame(FloatPlace::TopLeft).origin,
@@ -710,7 +708,7 @@ mod tests {
     fn card(pane: u64, x: f32, y: f32) -> PipCard {
         PipCard {
             pane: PaneId(pane),
-            frame: Bounds::new(point(px(x), px(y)), zz_gpui::size(px(200.0), px(120.0))),
+            frame: Bounds::new(point(px(x), px(y)), ala::size(px(200.0), px(120.0))),
             held: false,
         }
     }
@@ -742,7 +740,7 @@ mod tests {
         assert_eq!(placed[1].frame.origin.y, px(46.0));
         assert_eq!(placed[0].frame.origin.y, px(80.0));
         let mut taller = card(2, 560.0, 300.0);
-        taller.frame.size = zz_gpui::size(px(228.0), px(288.0));
+        taller.frame.size = ala::size(px(228.0), px(288.0));
         let placed = stage.arrange(&[card(1, 588.0, 468.0), taller], CANVAS, px(34.0));
         assert_eq!(
             placed[1].frame.origin.y,

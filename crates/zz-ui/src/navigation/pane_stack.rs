@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc, time::Duration};
 
-use zz_gpui::{
+use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, Div, Element, ElementId, Entity,
     EntityId, FULL_CORNER_RADIUS, GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId,
     MouseButton, Pixels, RenderOnce, Role, SharedString, Window, deferred, div, ease_out_quint,
@@ -178,8 +178,8 @@ fn glyph(tile: &StackTile, size: f32, color: Hsla) -> AnyElement {
                         .into_any_element()
                 }
             };
-            zz_gpui::img(Arc::new(zz_gpui::Image::from_bytes(
-                zz_gpui::ImageFormat::Png,
+            ala::img(Arc::new(ala::Image::from_bytes(
+                ala::ImageFormat::Png,
                 png.to_vec(),
             )))
             .size(px(size))
@@ -386,7 +386,7 @@ impl PaneStack {
             row.with_animation(
                 "pane-stack-fade",
                 Animation::new(duration).with_easing(ease_out_quint()),
-                zz_gpui::Styled::opacity,
+                ala::Styled::opacity,
             )
             .into_any_element()
         } else {

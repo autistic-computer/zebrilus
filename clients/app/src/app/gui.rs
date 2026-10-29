@@ -1,5 +1,5 @@
+use ala::{Context, Window};
 use zz_client::gui_actions::{GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, THEME, TITLEBAR_MODE};
-use zz_gpui::{Context, Window};
 use zz_ui::command::{GuiEvent, theme_offer};
 
 use super::AppShell;

@@ -3,7 +3,7 @@ use crate::Colorize as _;
 use crate::StyledExt as _;
 use crate::kbd::Kbd;
 use crate::{Edge, Emphasis, Ground, PaintState, Surface, SurfaceRole, Tone, roles};
-use zz_gpui::{
+use ala::{
     AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement, Keystroke,
     ParentElement as _, Pixels, SharedString, Stateful, Styled as _, WindowControlArea, div,
     prelude::FluentBuilder as _, px,
@@ -31,7 +31,7 @@ pub fn app_shell_surface(
     titlebar: Option<AnyElement>,
     workspace: impl IntoElement,
     overlays: impl IntoIterator<Item = AnyElement>,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .relative()
@@ -67,7 +67,7 @@ pub fn app_shell_surface(
 /// keeps that gap above its panes as on every other side, so the panes still
 /// start where the titlebar ends but their rim and shadow are not cut off at
 /// the workspace's top edge.
-pub fn titlebar_over_panes(titlebar: impl IntoElement, gap: Pixels) -> zz_gpui::Div {
+pub fn titlebar_over_panes(titlebar: impl IntoElement, gap: Pixels) -> ala::Div {
     div().flex_none().w_full().mb(-gap).child(titlebar)
 }
 
@@ -78,7 +78,7 @@ pub fn app_titlebar_strip(
     id: impl Into<ElementId>,
     controls: impl IntoElement,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .flex()
@@ -101,7 +101,7 @@ pub fn app_workspace_surface(
     content: impl IntoElement,
     overlays: impl IntoIterator<Item = AnyElement>,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .relative()
@@ -119,7 +119,7 @@ pub fn app_workspace_surface(
         .children(overlays)
 }
 
-pub fn app_connection_state(message: impl IntoElement, cx: &App) -> zz_gpui::Div {
+pub fn app_connection_state(message: impl IntoElement, cx: &App) -> ala::Div {
     div()
         .flex()
         .flex_1()
@@ -143,7 +143,7 @@ pub fn workspace_status_bar(
     leading_inset: Pixels,
     slots: WorkspaceStatusSlots,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let height = cx.theme().title_bar_height();
     let window_strip = div()
         .flex()
@@ -215,7 +215,7 @@ pub fn empty_workspace(
     id: impl Into<ElementId>,
     content: impl IntoElement,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .flex()
@@ -228,7 +228,7 @@ pub fn empty_workspace(
         .child(content)
 }
 
-pub fn empty_workspace_keys(rows: impl IntoIterator<Item = AnyElement>) -> zz_gpui::Div {
+pub fn empty_workspace_keys(rows: impl IntoIterator<Item = AnyElement>) -> ala::Div {
     div()
         .flex()
         .flex_col()
@@ -246,7 +246,7 @@ pub fn empty_workspace_action(
     strong: bool,
     selected: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let state = crate::picker::row_state(selected, true);
     let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
     crate::picker::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, true, cx)
@@ -255,7 +255,7 @@ pub fn empty_workspace_action(
         .child(key_hint(keys, label, strong, ground, cx).flex_1().min_w_0())
 }
 
-pub fn empty_workspace_caption(label: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
+pub fn empty_workspace_caption(label: impl Into<SharedString>, cx: &App) -> ala::Div {
     div()
         .mt(px(12.0))
         .mb(px(4.0))
@@ -269,13 +269,13 @@ pub fn empty_workspace_hint(
     keys: impl IntoIterator<Item = Keystroke>,
     label: impl Into<SharedString>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     key_hint(keys, label, false, cx.theme().ground(), cx)
         .h(px(EMPTY_HINT_HEIGHT))
         .px(px(12.0))
 }
 
-pub fn empty_workspace_connect(action: impl IntoElement, cx: &App) -> zz_gpui::Div {
+pub fn empty_workspace_connect(action: impl IntoElement, cx: &App) -> ala::Div {
     div()
         .flex()
         .flex_col()
@@ -301,7 +301,7 @@ fn key_hint(
     strong: bool,
     ground: Ground,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let ink = if strong {
         ground.ink
     } else {

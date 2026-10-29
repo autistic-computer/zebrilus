@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, div, linear_color_stop,
     linear_gradient, pattern_slash, px,
 };
@@ -27,14 +27,14 @@ const CODE: &[&[(Ink, &str)]] = &[
         (Ink::Success, "   Compiling "),
         (
             Ink::Text,
-            "zz-gpui v0.1.0 (/Users/fabrico/dev/zz/crates/zz-gpui)",
+            "ala v0.1.0 (/Users/fabrico/dev/zz/crates/ala)",
         ),
     ],
     &[
         (Ink::Success, "   Compiling "),
         (
             Ink::Text,
-            "zz-gpui-platform v0.1.0 (crates/zz-gpui-platform)",
+            "ala-platform v0.1.0 (crates/ala-platform)",
         ),
     ],
     &[
@@ -96,7 +96,7 @@ const CODE: &[&[(Ink, &str)]] = &[
     &[
         (Ink::Accent, "drwxr-xr-x"),
         (Ink::Muted, "   9 fabrico staff  288 "),
-        (Ink::Text, "zz-gpui-kit"),
+        (Ink::Text, "penna"),
     ],
     &[
         (Ink::Accent, "drwxr-xr-x"),

@@ -1,6 +1,4 @@
-use zz_gpui::{
-    App, Div, ElementId, IntoElement, Pixels, SharedString, Stateful, div, prelude::*, px,
-};
+use ala::{App, Div, ElementId, IntoElement, Pixels, SharedString, Stateful, div, prelude::*, px};
 
 use crate::{
     ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex,
@@ -57,7 +55,7 @@ pub fn suggestion_row(
                     .whitespace_nowrap()
                     .text_size(crate::rems_from_px(12.0))
                     .line_height(px(16.0))
-                    .font_weight(zz_gpui::FontWeight::MEDIUM)
+                    .font_weight(ala::FontWeight::MEDIUM)
                     .child(format!("/{name}")),
             )
             .when_some(description, |column, description| {

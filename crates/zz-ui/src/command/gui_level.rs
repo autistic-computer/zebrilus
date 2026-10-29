@@ -1,13 +1,13 @@
 use std::{cell::Cell, rc::Rc};
 
+use ala::{
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, ScrollHandle,
+    StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px,
+};
 use zz_client::{
     fuzzy::fuzzy_match,
     gui_actions::{GuiAction, GuiOffer, GuiOption, THEME},
     recents::RecentKey,
-};
-use zz_gpui::{
-    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, ScrollHandle,
-    StatefulInteractiveElement as _, Styled as _, WeakEntity, Window, div, px,
 };
 
 use super::{

@@ -15,7 +15,7 @@ timestamp: 2026-10-23T00:00:00-03:00
 `ProtocolMessage` control enum encoded with `postcard`, the PaneFrame terminal fanout lane, and the
 `MuxSnapshot` state tree. It deliberately owns **no** renderer, transport, or business logic; it is
 the shared vocabulary that keeps [the mux state machine](/crates/zz-mux.md), [the daemon](/crates/zz-daemon.md),
-and [the GPUI client](/crates/zz.md) interoperable across a socket or named pipe.
+and [the ala client](/crates/zz.md) interoperable across a socket or named pipe.
 
 The crate is small and dependency-light: six dependencies, `postcard`, `serde`, `smallvec`,
 `thiserror`, `unicode-width`, and `zz-terminal` (for `TerminalViewport`, `TerminalAppearance`,
@@ -243,7 +243,7 @@ window activity flag into that final field for structured native presentation.
 - [Packed terminal lanes](/protocol/terminal-lanes.md) . the compact terminal fanout encoding.
 - [Snapshots](/protocol/snapshots.md) . the `MuxSnapshot` state tree.
 - Consumed by [the mux state machine](/crates/zz-mux.md), served by [zz-daemon](/crates/zz-daemon.md),
-  and reconciled by [the GPUI app](/crates/zz.md).
+  and reconciled by [the ala app](/crates/zz.md).
 - Terminal payload types (`TerminalViewport`, `PackedCell`, `TerminalAppearance`) come from
   [zz-terminal](/crates/zz-terminal.md).
 - System context: [architecture overview](/architecture/overview.md), [process model](/architecture/process-model.md),

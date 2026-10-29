@@ -1,6 +1,4 @@
-use zz_gpui::{
-    App, ElementId, IntoElement, ParentElement as _, SharedString, Styled as _, div, px,
-};
+use ala::{App, ElementId, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
 
 use super::{SettingEntry, SettingsStack, settings_card_ground, settings_provenance_badge};
 use crate::{
@@ -15,7 +13,7 @@ pub const ISSUES_URL: &str = "https://github.com/demfabris/zz/issues/new";
 pub const ABOUT_LOGO_SIZE: f32 = 88.0;
 
 #[must_use]
-pub fn about_hero(logo: impl IntoElement, cx: &App) -> zz_gpui::Div {
+pub fn about_hero(logo: impl IntoElement, cx: &App) -> ala::Div {
     div()
         .flex()
         .flex_col()
@@ -40,7 +38,7 @@ pub fn about_hero(logo: impl IntoElement, cx: &App) -> zz_gpui::Div {
                     div()
                         .text_size(crate::rems_from_px(12.0))
                         .text_color(cx.theme().foreground.muted())
-                        .child("tmux, ghostty and zz_gpui walked into a mux."),
+                        .child("tmux, ghostty and ala walked into a mux."),
                 )
                 .child(settings_provenance_badge(concat!(
                     "v",
@@ -50,7 +48,7 @@ pub fn about_hero(logo: impl IntoElement, cx: &App) -> zz_gpui::Div {
 }
 
 #[must_use]
-pub fn about_value(value: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
+pub fn about_value(value: impl Into<SharedString>, cx: &App) -> ala::Div {
     div()
         .flex_none()
         .font_family(cx.theme().mono_font_family.clone())

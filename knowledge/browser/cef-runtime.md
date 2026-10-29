@@ -11,7 +11,7 @@ timestamp: 2026-09-23T20:52:00Z
 
 The CEF runtime subsystem is `cef_runtime.rs` plus the crate root `lib.rs`. It owns
 the one-time global CEF Alloy initialization, the platform-specific Chromium
-subprocess entry points, and the **external message pump** that steps CEF from GPUI's
+subprocess entry points, and the **external message pump** that steps CEF from ala's
 foreground executor instead of a CEF-owned loop. CEF is pinned to Rust package
 `154.0.0+154.0.23`, backed by **Chromium `154.0.8037.17`**; upgrading is an
 explicit dependency bump requiring all platform bundle smoke tests
@@ -23,14 +23,14 @@ publishes owned frames into a [mailbox](/browser/osr-rendering.md).
 
 # Subprocess dispatch
 
-Chromium subprocesses dispatch before GPUI starts. macOS uses the dedicated
+Chromium subprocesses dispatch before ala starts. macOS uses the dedicated
 helper app, Linux re-executes the desktop executable, and Windows uses its
 sandbox bootstrap. Main-process bootstrap on macOS and Linux x86_64 skips
 `execute_process`; it prepares an `Uninitialized` runtime without loading CEF.
 For paths that call `execute_process`, the result determines dispatch:
 
 - `execute_process` returns `>= 0` → this is a **subprocess**; return
-  `BrowserBootstrap::SubprocessExit(code)` and never start GPUI.
+  `BrowserBootstrap::SubprocessExit(code)` and never start ala.
 - returns exactly `-1` → this is the **main browser process**; prepare the
   profile directories and return a `BrowserBootstrap::Runtime(BrowserRuntime)`
   in `RuntimePhase::Uninitialized`.
@@ -62,7 +62,7 @@ dispatch. Linux ARM64 and Windows retain upstream loading behavior.
 When a browser or browser-data operation calls
 `BrowserController::ensure_runtime_started`, the controller schedules
 `start_runtime` on the foreground executor. That task takes the runtime out of
-the controller, calls `BrowserRuntime::start` outside GPUI app borrows, then
+the controller, calls `BrowserRuntime::start` outside ala app borrows, then
 returns it to the controller. On Linux x86_64 and macOS, `start` first loads the browser
 library and reports any failure through `BrowserError`. It then calls
 `cef::initialize` on the main thread. The controller replays deferred callbacks
@@ -121,7 +121,7 @@ zz's Wayland-hosted fixture, so the application keeps Ozone selection automatic.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `ZZ_BROWSER_FPS=1..240` | Unset | Explicit per-session OSR ceiling. An unset value uses the fastest attached display: `NSScreen` on macOS, GPUI display refresh rates elsewhere. Missing display rates and invalid explicit values fall back to 60. |
+| `ZZ_BROWSER_FPS=1..240` | Unset | Explicit per-session OSR ceiling. An unset value uses the fastest attached display: `NSScreen` on macOS, ala display refresh rates elsewhere. Missing display rates and invalid explicit values fall back to 60. |
 | `ZZ_BROWSER_GPU=0` | GPU enabled | Disables Chromium GPU rendering/compositing and therefore shared-texture OSR. |
 | `ZZ_BROWSER_SHARED_TEXTURE=0` | Shared textures enabled | Keeps Chromium GPU content acceleration but selects the universal `on_paint` readback tier. On Linux, each visible shared-texture session gets a two-second first-frame guard. Any delivered frame cancels the guard, and hiding the pane pauses it. If the guard expires, zz recreates only that session in readback mode while keeping the GPU process enabled. This covers failures before CEF emits either paint callback. On the tested NVIDIA host, CEF 151's default GL path hit that failure; native Vulkan produced frames but failed resize stress under Chromium's unsupported Ozone/Wayland combination. See the [NVIDIA accelerated OSR investigation](/research/2026-08-07-nvidia-cef-accelerated-osr.md). |
 | `ZZ_BROWSER_EXTERNAL_BEGIN_FRAME` | macOS on; Linux/FreeBSD off | On macOS, exact `0` restores CEF's internal BeginFrame timer. On Linux/FreeBSD, exact `1` opts into zz-driven BeginFrames; all other values leave them off. |
@@ -144,17 +144,17 @@ CEF never runs its own loop here. Instead:
 
 1. `RuntimeBrowserProcessHandler::on_schedule_message_pump_work(delay_ms)` fires a
    `RuntimeSignal::ScheduleMessagePump(delay_ms)` over an `async-channel`.
-2. The app replaces its retained GPUI timer task, cancelling the superseded
+2. The app replaces its retained ala timer task, cancelling the superseded
    timer, and clones the runtime's `BrowserMessagePump` handle at the deadline.
-3. The GPUI entity update returns, releasing the app's `RefCell` borrow, before
+3. The ala entity update returns, releasing the app's `RefCell` borrow, before
    `BrowserMessagePump::do_message_loop_work()` enters CEF on the main thread.
 4. The handle calls `cef::do_message_loop_work()` only while initialized and not
    in a `Closed`/`Failed` phase; nested pump attempts coalesce into a follow-up
    iteration.
 
-Releasing GPUI state before entering CEF is a required re-entrancy boundary, not
+Releasing ala state before entering CEF is a required re-entrancy boundary, not
 an ownership convenience. CEF may synchronously route a macOS keyboard event
-through `NSMenu`, whose validation/action callbacks borrow the GPUI app again.
+through `NSMenu`, whose validation/action callbacks borrow the ala app again.
 Pumping CEF from inside `Entity::update` therefore turns an ordinary menu shortcut
 into a double-borrow panic, which aborts because the callback cannot unwind across
 Objective-C. The normal timer and shutdown loop both use the detached pump handle.
@@ -233,7 +233,7 @@ turns:
 6. hidden panes send no BeginFrames.
 
 The creation/visibility activity window keeps BeginFrames flowing until the
-first OSR paint. Linux/FreeBSD derive the display ceiling from GPUI's reported
+first OSR paint. Linux/FreeBSD derive the display ceiling from ala's reported
 refresh rates, with a 60 FPS fallback when none are available; `ZZ_BROWSER_FPS`
 overrides that ceiling. Their opt-in default is deliberate because an invalid external
 clock can leave a pane blank on an unvalidated display backend. Measured on NVIDIA

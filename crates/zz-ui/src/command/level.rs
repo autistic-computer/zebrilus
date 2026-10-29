@@ -1,10 +1,10 @@
 use std::{ops::Range, rc::Rc};
 
+use ala::{AnyElement, App, Global, WeakEntity, Window, actions};
 use zz_client::{
     place::{ActionKind, Fleet, LevelSet, Place},
     recents::{RecentKey, Recents, now_secs},
 };
-use zz_gpui::{AnyElement, App, Global, WeakEntity, Window, actions};
 use zz_protocol::PaneId;
 
 use super::{CommandPaletteEvent, CommandPaletteView, PaletteHint, PaletteHostId};

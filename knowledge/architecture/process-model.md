@@ -20,7 +20,7 @@ lets terminal sessions survive GUI detach while keeping the mux state a single s
 | Process | Owns | Lifetime |
 |---------|------|----------|
 | Daemon ([server](/crates/zz-daemon.md)), running from the headless binary (`cli` in a bundle install, `zz` on a headless install) | mux state, PTYs, terminal frame fanout, IPC listener | persistent; survives GUI detach; exits on `kill-server`, or once it has **zero sessions and zero interactive clients**; dies on crash, logout, reboot |
-| GUI client ([app](/crates/zz.md)) | GPUI windows, rendering, local CEF sessions, agent lens stream reducers | attached to at most one session; a session takes as many clients as devices attach |
+| GUI client ([app](/crates/zz.md)) | ala windows, rendering, local CEF sessions, agent lens stream reducers | attached to at most one session; a session takes as many clients as devices attach |
 | CLI client ([headless binary](/crates/zz-cli.md)) | one short-lived command (`list-sessions`, `send-keys`, …) | request/response, then exits |
 | CEF browser process | Chromium main/GPU/renderer/utility (zygote) tree | spawned inside a GUI process; not kept alive without a GUI |
 

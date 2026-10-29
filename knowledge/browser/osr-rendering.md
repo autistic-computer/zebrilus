@@ -13,12 +13,12 @@ zz embeds CEF as an off-screen-rendered browser rather than a native child
 window. Every complete view paint enters the same latest-frame mailbox, but the
 payload depends on the active rendering tier:
 
-| Tier | Platforms | CEF callback | Mailbox payload | GPUI paint path |
+| Tier | Platforms | CEF callback | Mailbox payload | ala paint path |
 | --- | --- | --- | --- | --- |
 | Readback | Universal fallback | `on_paint` | `OsrFrame::OwnedBgra` with owned premultiplied BGRA bytes | Linux/FreeBSD update a persistent BGRA texture; other platforms use `RenderImage` through `BrowserElement::paint_image` |
-| Linux wgpu | Linux/FreeBSD where GPUI exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | `BrowserElement` through `Window::paint_external_texture` |
-| macOS Metal-IOSurface | macOS | `on_accelerated_paint` | `OsrFrame::MacGpu` with a retained zz-owned `IOSurface` | a per-pane `CALayer` under the window behind a GPUI `paint_underlay` hole, drawn by GPUI instead while glass covers it; `CVPixelBuffer` through `paint_surface` until the layer exists |
-| Windows D3D11 | Windows where GPUI exposes its DirectX context | `on_accelerated_paint` | `OsrFrame::WinGpu` with a zz-owned `ID3D11Texture2D` | `BrowserElement` through `Window::paint_external_texture` |
+| Linux wgpu | Linux/FreeBSD where ala exposes its wgpu context | `on_accelerated_paint` | `OsrFrame::Gpu` with a zz-owned destination texture | `BrowserElement` through `Window::paint_external_texture` |
+| macOS Metal-IOSurface | macOS | `on_accelerated_paint` | `OsrFrame::MacGpu` with a retained zz-owned `IOSurface` | a per-pane `CALayer` under the window behind an ala `paint_underlay` hole, drawn by ala instead while glass covers it; `CVPixelBuffer` through `paint_surface` until the layer exists |
+| Windows D3D11 | Windows where ala exposes its DirectX context | `on_accelerated_paint` | `OsrFrame::WinGpu` with a zz-owned `ID3D11Texture2D` | `BrowserElement` through `Window::paint_external_texture` |
 
 All tiers are bounded by a one-slot `FrameMailbox`: a slow consumer cannot build
 an unbounded queue, and a new frame replaces an unread stale frame. The readback
@@ -31,7 +31,7 @@ same `Rc<Cell<bool>>` terminals read), a browser pane whose size changes keeps
 its committed `Viewport` and stops painting the page, so the pane's opaque fill
 covers it and CEF sees no resize per frame (`ResizeCover::Held`). On macOS the
 page layer stays placed at the pane's bounds under that fill, with no hole cut
-for it: hiding it would end the underlay, flip GPUI's layer back to opaque
+for it: hiding it would end the underlay, flip ala's layer back to opaque
 untransacted presents, and show the desktop through the hole still on screen
 (fabrico saw that flash, 2026-10-20). On release
 it sends the one new size and stays covered until a frame of that logical size
@@ -52,7 +52,7 @@ CEF on_paint (callback-scoped BGRA buffer)
   -> FrameMailbox::publish -> OsrFrame::OwnedBgra
   -> Linux/FreeBSD upload damage into a persistent BGRA texture
   -> controller moves the Vec into one RenderImage
-  -> GPUI paints that texture, or the shared RenderImage on other platforms
+  -> ala paints that texture, or the shared RenderImage on other platforms
 ```
 
 The callback buffer must be copied before `on_paint` returns. After that copy,
@@ -79,7 +79,7 @@ the last frame until a frame with the new dimensions arrives.
 
 ## Linux wgpu
 
-The Linux/FreeBSD tier imports CEF's external texture on GPUI's wgpu device,
+The Linux/FreeBSD tier imports CEF's external texture on ala's wgpu device,
 blits it immediately into a small zz-owned texture pool, and publishes the
 destination texture. `pool_generation` distinguishes resize generations and
 `sequence` tracks accelerated callbacks. CEF may recycle its source after the
@@ -115,14 +115,14 @@ IOSurface-backed destination textures. For each accelerated paint it:
 The retained source remains alive until the asynchronous completion even though
 macOS viz normally supplies fresh handles. At most two blits may be in flight;
 new paints at the cap are skipped instead of queued. Five destinations reserve
-three surfaces that GPUI's CAMetalLayer may still be sampling plus two producer
+three surfaces that ala's CAMetalLayer may still be sampling plus two producer
 writes, and each slot carries an in-flight marker as a final guard against
 out-of-order reuse. Command-buffer failures enter the normal
 `record_gpu_import_failure` → readback-recreation path from the completion
 thread.
 
 The app caches a `CVPixelBuffer` wrapper per destination surface and pool
-generation. GPUI imports that buffer on its own Metal device and samples it
+generation. ala imports that buffer on its own Metal device and samples it
 through the fork's single-plane BGRA shader with premultiplied alpha and the
 pane's corner mask. `IOSurface` is the cross-device sharing boundary, not
 `MTLTexture`. That path now only covers the first frame of a pane.
@@ -130,20 +130,20 @@ pane's corner mask. `IOSurface` is the cross-device sharing boundary, not
 ### Native underlay layer
 
 Once a pane has a frame, `underlay.rs` gives it its own `CALayer` and frames
-stop going through GPUI:
+stop going through ala:
 
 - a host `NSView` holding a layer-hosting root sits in the window's content
-  view, ordered below GPUI's view (the same trick GPUI uses for its blur view);
+  view, ordered below ala's view (the same trick ala uses for its blur view);
 - the view registers a `MacFramePresenter` with the controller, which hands it
   to the session's `MetalFrameProducer`; on Metal's completion thread each
   finished blit becomes the pane layer's `contents` inside a
   `CATransaction` with actions disabled;
 - `BrowserElement::paint` places the layer at the pane's bounds and calls the
   fork's `paint_underlay` with the latest frame's `CVPixelBuffer`. At
-  `Scene::finish` that becomes a hole clearing the rounded rect in GPUI's
+  `Scene::finish` that becomes a hole clearing the rounded rect in ala's
   drawable so the layer shows through, unless glass that blurs its backdrop
   (a menu, a tooltip, the omnibox) is drawn over the page later in the frame:
-  glass can only blur what GPUI drew, so there the frame is drawn into the
+  glass can only blur what ala drew, so there the frame is drawn into the
   scene instead, over the layer. While that lasts (`Window::underlay_covered`)
   the view keeps redrawing on `FrameReady`, so the blurred page stays live.
   Glass beside the page whose blur merely reaches in does not count;
@@ -156,7 +156,7 @@ stop going through GPUI:
   (`zz_ui::CORNER_SMOOTHING`), so its corners never show square through a
   translucent frame;
 - `UnderlayFlush`, painted last by `AppShell`, hides layers that were not
-  placed this frame and calls `Window::set_underlay_active`, which makes GPUI's
+  placed this frame and calls `Window::set_underlay_active`, which makes ala's
   Metal layer non-opaque and presents with the Core Animation transaction only
   while some pane uses a layer. Placement and the flush change layers in the
   main thread's implicit transaction, not an explicit one: an explicit
@@ -166,9 +166,9 @@ stop going through GPUI:
   browser frame no longer redraws the window.
 
 Geometry traps: the layer-hosting root ignores `geometryFlipped`, so `y` is
-computed from the host view's height, and AppKit points are GPUI pixels times
+computed from the host view's height, and AppKit points are ala pixels times
 `window.zoom()` because the fork folds UI zoom into the scale factor. Moving
-from per-frame GPUI draws to the layer cut the main thread from about 22% to
+from per-frame ala draws to the layer cut the main thread from about 22% to
 11% of a core on a 120 fps animation (after the source texture cache and the
 cached sidebar); the rest is CEF's own per-frame IPC and pump turns.
 
@@ -176,10 +176,10 @@ Unlike the Linux tier, the destination pool tracks **no CEF pool identity**:
 macOS viz hands out fresh IOSurface handles (new `IOSurfaceRef` objects) on
 every callback, so slot bookkeeping keyed on handles churned a new destination
 pool every few frames and grew retired-slot state without bound (gradual
-frame-rate decay, `CVMetalTextureCache` accumulation on the GPUI side). The
+frame-rate decay, `CVMetalTextureCache` accumulation on the ala side). The
 only invalidation is dimension agreement with the viewport; `pool_generation`
 increments only when the destination pool is (re)created for a new size,
-keeping the app's `CVPixelBuffer` cache and GPUI's texture cache pinned to five
+keeping the app's `CVPixelBuffer` cache and ala's texture cache pinned to five
 stable surfaces.
 
 The handles are fresh but the surfaces behind them are not: CEF's frame
@@ -195,20 +195,20 @@ busy time at 120 fps. Misses log at debug level on
 ## Windows D3D11
 
 `d3d11_osr.rs` mirrors the macOS split . native import, no wgpu, because
-`zz_gpui_platform::windows` renders through DirectX . with one structural simplification:
-producer and consumer share GPUI's single immediate context, so the copy is
+`ala_platform::windows` renders through DirectX . with one structural simplification:
+producer and consumer share ala's single immediate context, so the copy is
 synchronous and needs no completion handler, no in-flight cap, and no per-slot
 marker. For each accelerated paint it:
 
 1. validates the coded size against the viewport (device pixels: Windows uses
    the same default OSR path as macOS, logical `view_rect` plus a scaled
    `screen_info`, so a scaled display delivers scaled textures);
-2. checks `GetDeviceRemovedReason` and opens CEF's shared NT handle on GPUI's
+2. checks `GetDeviceRemovedReason` and opens CEF's shared NT handle on ala's
    `ID3D11Device1` with **`OpenSharedResource1`** . the legacy
    `OpenSharedResource` returns `E_INVALIDARG` for NT handles;
 3. validates the imported texture's own dimensions and DXGI format
    (`B8G8R8A8_UNORM` or `R8G8B8A8_UNORM`; typeless and sRGB variants are
-   rejected because GPUI builds its shader resource view with a null
+   rejected because ala builds its shader resource view with a null
    description);
 4. `CopyResource`s into the next of five zz-owned pool textures and `Flush`es,
    then releases the imported interface . all before returning to CEF, which
@@ -217,8 +217,8 @@ marker. For each accelerated paint it:
 
 zz never closes the shared handle: CEF owns it and recycles the slot. The pool
 is keyed by size and format, and `pool_generation` increments only when it is
-rebuilt, exactly as on macOS. Every D3D11 type crossing the GPUI boundary comes
-from `zz_gpui::windows`, GPUI's own re-export of the `windows` crate . zz's
+rebuilt, exactly as on macOS. Every D3D11 type crossing the ala boundary comes
+from `ala::windows`, ala's own re-export of the `windows` crate . zz's
 workspace pin is a different, type-incompatible version.
 
 External BeginFrames are **not** wired on Windows; the tier runs on CEF's
@@ -234,7 +234,7 @@ or a diagnostics snapshot is requested; the 64-handle bound remains unchanged.
 Chromium draws `<select>` dropdowns, date pickers and other popup widgets as a
 separate `POPUP` paint, announced by `on_popup_show` and placed by
 `on_popup_size` in view coordinates. zz composites the popup into the view frame
-before it enters the mailbox, so the mailbox, the GPUI paint paths, the macOS
+before it enters the mailbox, so the mailbox, the ala paint paths, the macOS
 underlay layer and the TUI all see one frame:
 
 | Tier | Popup paint | View paint |
@@ -291,7 +291,7 @@ the newest frame.
 Before creating a session, `BrowserController::resolve_frame_rate_ceiling`
 resolves the paint ceiling. An explicit `ZZ_BROWSER_FPS=1..240` wins; otherwise
 zz uses the fastest attached display: `NSScreen.maximumFramesPerSecond` on macOS,
-GPUI's reported refresh rates elsewhere. The controller caches the first available
+ala's reported refresh rates elsewhere. The controller caches the first available
 rate; when no display reports one, it uses 60 FPS and retries on the next session
 creation. Focused sessions use the ceiling. Visible unfocused
 sessions normally use `min(ceiling, 30)`, but wheel input temporarily raises
@@ -312,8 +312,8 @@ default and enable the same pump-driven scheduler only for exact
 
 - a frame or browser input makes a visible session hot for about 500 ms;
 - BeginFrames are sent from the message-pump turn itself (immediately before
-  `do_message_loop_work` processes them), decoupled from GPUI's render loop:
-  riding `on_next_frame` pipelined production one GPUI frame behind consumption
+  `do_message_loop_work` processes them), decoupled from ala's render loop:
+  riding `on_next_frame` pipelined production one ala frame behind consumption
   and halved the effective browser frame rate;
 - each pane owns an anchored next deadline: hot and visibility edges send
   immediately, on-time turns advance by one interval, and late turns send once
@@ -333,7 +333,7 @@ default and enable the same pump-driven scheduler only for exact
 - hidden sessions receive no external BeginFrames.
 
 The external BeginFrame scheduler controls Chromium compositor cadence. It is
-separate from CEF's external message pump. Linux/FreeBSD use GPUI's reported
+separate from CEF's external message pump. Linux/FreeBSD use ala's reported
 display rates, with a 60 FPS fallback; `ZZ_BROWSER_FPS` overrides that ceiling.
 Adaptive tiers stay opt-in because delivery is demand-driven:
 a scroll pause inside the hot window reads as a delivery shortfall and
@@ -373,7 +373,7 @@ suppressed by equality checks.
 | `crates/zz/src/browser/view.rs` | Latest-frame consumption, retained surfaces, and hot/idle BeginFrame scheduling. |
 | `crates/zz/src/browser/macos_surface.rs` | Cached `IOSurface` to `CVPixelBuffer` wrapping. |
 | `crates/zz/src/browser/underlay.rs` | macOS per-pane `CALayer`, host view, placement, and the end-of-frame `UnderlayFlush`. |
-| `crates/zz/src/browser/element.rs` | GPUI image, wgpu external-texture, and macOS surface painting. |
+| `crates/zz/src/browser/element.rs` | ala image, wgpu external-texture, and macOS surface painting. |
 
 # Related
 
@@ -381,5 +381,5 @@ suppressed by equality checks.
 - [NVIDIA Linux CEF accelerated OSR failure](/research/2026-08-07-nvidia-cef-accelerated-osr.md)
 - [Browser lifecycle](/browser/lifecycle.md)
 - [Input translation](/browser/input-translation.md)
-- [GPUI revision](/references/zz-gpui.md)
+- [ala revision](/references/ala.md)
 - [Browser-core crate](/crates/zz-browser.md)

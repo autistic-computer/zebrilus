@@ -1,7 +1,7 @@
 ---
 type: Design Plan
 title: Fleet attach . one GUI, every daemon
-description: Design and v1 record of one GPUI client aggregating sessions from every machine running a zz daemon - host-keyed connections, a merged multi-host sidebar tree, ssh-forwarded sockets behind a transport-agnostic endpoint seam; daemons never talk to each other.
+description: Design and v1 record of one ala client aggregating sessions from every machine running a zz daemon - host-keyed connections, a merged multi-host sidebar tree, ssh-forwarded sockets behind a transport-agnostic endpoint seam; daemons never talk to each other.
 status: Complete
 tags:
 - remote
@@ -53,7 +53,7 @@ timestamp: 2026-10-20T12:00:00-03:00
 > because `reconcile_hosts` retains an attached host's connection until detach. `Endpoint` is `unix://` + `ssh://` only, and `quic://` is
 > once again reserved rather than implemented.
 
-Fleet attach turns the GPUI client into a **multi-daemon client**: the window on whatever machine
+Fleet attach turns the ala client into a **multi-daemon client**: the window on whatever machine
 you sit at aggregates sessions from every machine you own that runs a zz daemon. "Two-way" is
 free by symmetry . every machine runs the same daemon + GUI, so machine B aggregating machine A
 is just A appearing in B's host list. Daemons never learn about each other; there is no

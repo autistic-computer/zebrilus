@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, Window, div, px,
 };
 use zz_protocol::parse_styled_segments;

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{App, ElementId, SharedString, px};
+use ala::{App, ElementId, SharedString, px};
 use zz_protocol::PaneKindSnapshot;
 
 use crate::{
@@ -100,11 +100,11 @@ fn focused_first(mut panes: Vec<StatusPaneEntry>) -> Vec<StatusPaneEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::Cell, rc::Rc};
-    use zz_gpui::{
+    use ala::{
         Context, IntoElement, Modifiers, MouseButton, ParentElement as _, Render, Styled as _,
         TestAppContext, VisualTestContext, Window, div, prelude::*,
     };
+    use std::{cell::Cell, rc::Rc};
 
     use crate::ActiveTheme as _;
 
@@ -163,7 +163,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn pointing_opens_every_pane_and_a_click_selects_one(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::init(cx);
@@ -184,7 +184,7 @@ mod tests {
         assert!(cx.debug_bounds("pane-stack-tile-0").is_none());
         let deck = cx.debug_bounds("deck").unwrap();
         cx.simulate_mouse_move(
-            deck.origin + zz_gpui::point(px(4.0), px(4.0)),
+            deck.origin + ala::point(px(4.0), px(4.0)),
             None,
             Modifiers::none(),
         );
@@ -204,7 +204,7 @@ mod tests {
         draw(cx);
         let deck = cx.debug_bounds("deck").unwrap();
         cx.simulate_mouse_move(
-            deck.origin + zz_gpui::point(px(4.0), px(4.0)),
+            deck.origin + ala::point(px(4.0), px(4.0)),
             None,
             Modifiers::none(),
         );

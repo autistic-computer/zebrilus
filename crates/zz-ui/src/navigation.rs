@@ -14,7 +14,7 @@ use crate::{
     tooltip::Tooltip,
     touch::{CoarsePointer, TOUCH_TARGET},
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, CursorStyle, ElementId, Hsla, IntoElement, Keystroke, MouseButton,
     MouseDownEvent, ParentElement as _, Pixels, SharedString, Stateful,
     StatefulInteractiveElement as _, Styled as _, Window, div, prelude::*, px,
@@ -62,7 +62,7 @@ const WORKSPACE_STATUS_CHIP_PADDING: Pixels = px(6.0);
 pub(crate) const STATUS_DOT_SIZE: f32 = 6.0;
 
 #[must_use]
-pub fn status_dot(color: Hsla) -> zz_gpui::Div {
+pub fn status_dot(color: Hsla) -> ala::Div {
     div()
         .flex_none()
         .size(rems_from_px(STATUS_DOT_SIZE))
@@ -135,7 +135,7 @@ pub fn workspace_sidebar_view_button(id: impl Into<ElementId>, flat: bool) -> Bu
 pub fn workspace_sidebar_footer_controls(
     add_host: impl IntoElement,
     view: impl IntoElement,
-) -> zz_gpui::Div {
+) -> ala::Div {
     div()
         .flex()
         .items_center()
@@ -170,7 +170,7 @@ pub fn workspace_status_item(
     icon: Option<IconName>,
     text: SharedString,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .flex()
@@ -216,7 +216,7 @@ pub fn workspace_status_window(
     state: WorkspaceStatusWindowState,
     deck: Option<pane_stack::PaneStack>,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let foreground = cx.theme().foreground;
     let tab = Surface::new(roles::WINDOW_TAB);
     let paint_state = state.paint_state();
@@ -277,7 +277,7 @@ pub fn workspace_sidebar_titlebar(
     id: impl Into<ElementId>,
     controls: impl IntoElement,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .flex()
@@ -321,9 +321,9 @@ fn workspace_row_action_gap() -> Pixels {
 pub fn workspace_sidebar_footer(
     id: impl Into<ElementId>,
     leading: impl IntoElement,
-    trailing: Option<zz_gpui::AnyElement>,
+    trailing: Option<ala::AnyElement>,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let inset = workspace_chrome_inset(cx);
     let window_inset = cx.theme().pane_margin + inset;
     div()
@@ -351,7 +351,7 @@ pub fn workspace_sidebar_surface(
     titlebar: impl IntoElement,
     navigation: impl IntoElement,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     workspace_sidebar_panel(
         id,
         width,
@@ -375,7 +375,7 @@ pub fn workspace_sidebar_panel(
     ground: Ground,
     divider: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .flex()
@@ -411,7 +411,7 @@ pub fn workspace_sidebar_resize_handle(
     id: impl Into<ElementId>,
     divider: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .absolute()
@@ -444,7 +444,7 @@ pub fn workspace_sidebar_slideover(
     sidebar: impl IntoElement,
     on_dismiss: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     div()
         .id(id)
         .absolute()
@@ -557,7 +557,7 @@ pub fn workspace_tree_row(
     actions: impl IntoElement,
     ground: Ground,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let trailing = div()
         .h_full()
         .flex()
@@ -566,7 +566,7 @@ pub fn workspace_tree_row(
         .pl(px(6.0))
         .when(hover_actions, |this| {
             this.invisible()
-                .group_hover(row_group.clone(), zz_gpui::Styled::visible)
+                .group_hover(row_group.clone(), ala::Styled::visible)
         })
         .child(actions);
     let id = id.into();
@@ -598,7 +598,7 @@ pub fn workspace_tree_row(
             row.hover(move |row| row.text_color(foreground))
         })
         .when(active, crate::StyledExt::font_medium)
-        .when(clickable, zz_gpui::Styled::cursor_pointer)
+        .when(clickable, ala::Styled::cursor_pointer)
         .child(marker)
         .child(workspace_tree_row_label(label))
         .child(trailing)
@@ -611,10 +611,10 @@ pub fn window_shortcut_cap(stroke: Keystroke, ground: Ground) -> Kbd {
 
 #[must_use]
 pub fn workspace_tree_shortcut(
-    row: Stateful<zz_gpui::Div>,
+    row: Stateful<ala::Div>,
     stroke: Option<Keystroke>,
     ground: Ground,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     row.children(stroke.map(|stroke| {
         div()
             .flex_none()
@@ -667,11 +667,7 @@ fn workspace_tree_row_height(cx: &App) -> f32 {
     }
 }
 
-fn workspace_tree_row_frame(
-    id: impl Into<ElementId>,
-    depth: u8,
-    cx: &App,
-) -> Stateful<zz_gpui::Div> {
+fn workspace_tree_row_frame(id: impl Into<ElementId>, depth: u8, cx: &App) -> Stateful<ala::Div> {
     div()
         .id(id)
         .w_full()
@@ -688,7 +684,7 @@ fn workspace_tree_row_frame(
         .text_sm()
 }
 
-fn workspace_tree_row_label(label: impl IntoElement) -> zz_gpui::Div {
+fn workspace_tree_row_label(label: impl IntoElement) -> ala::Div {
     div()
         .min_w_0()
         .flex_1()
@@ -703,7 +699,7 @@ fn workspace_tree_row_label(label: impl IntoElement) -> zz_gpui::Div {
 }
 
 #[must_use]
-pub fn workspace_tree_marker(marker: impl IntoElement) -> zz_gpui::Div {
+pub fn workspace_tree_marker(marker: impl IntoElement) -> ala::Div {
     div()
         .h_full()
         .w(px(WORKSPACE_TREE_MARKER_SLOT_WIDTH))
@@ -737,7 +733,7 @@ pub fn workspace_tree_disclosure(
     expanded: bool,
     row_group: SharedString,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let foreground = cx.theme().foreground;
     let id = id.into();
     let chevron = crate::motion::Disclosure::new(
@@ -762,7 +758,7 @@ pub fn workspace_tree_disclosure(
                 .flex()
                 .items_center()
                 .justify_center()
-                .group_hover(row_group.clone(), zz_gpui::Styled::invisible)
+                .group_hover(row_group.clone(), ala::Styled::invisible)
                 .child(marker),
         )
         .child(
@@ -773,7 +769,7 @@ pub fn workspace_tree_disclosure(
                 .items_center()
                 .justify_center()
                 .invisible()
-                .group_hover(row_group, zz_gpui::Styled::visible)
+                .group_hover(row_group, ala::Styled::visible)
                 .child(chevron),
         )
 }

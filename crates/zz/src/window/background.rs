@@ -1,6 +1,6 @@
 //! Platform plumbing for `window-background-blur`.
 
-use zz_gpui::{App, Global, Pixels, Window, WindowBackgroundAppearance};
+use ala::{App, Global, Pixels, Window, WindowBackgroundAppearance};
 
 struct CompositorBlurSupport(bool);
 
@@ -45,7 +45,7 @@ pub(crate) const fn native_appearance(
 ) -> WindowBackgroundAppearance {
     #[cfg(target_os = "macos")]
     if matches!(requested, WindowBackgroundAppearance::Blurred) {
-        // GPUI's NSVisualEffectView Selection material stopped blurring on macOS 27.
+        // ala's NSVisualEffectView Selection material stopped blurring on macOS 27.
         return WindowBackgroundAppearance::Transparent;
     }
 
@@ -160,10 +160,10 @@ fn corner_offset(radius: u32, row: u32) -> u32 {
 mod macos {
     use std::fmt;
 
+    use ala::Window;
     use objc2::{MainThreadMarker, rc::Retained};
     use objc2_app_kit::NSView;
     use raw_window_handle::RawWindowHandle;
-    use zz_gpui::Window;
 
     const BLUR_RADIUS: i32 = 160;
 
@@ -197,7 +197,7 @@ mod macos {
                     write!(formatter, "could not read native window handle: {error}")
                 }
                 Self::UnexpectedWindowHandle => {
-                    formatter.write_str("GPUI returned a non-AppKit window handle")
+                    formatter.write_str("ala returned a non-AppKit window handle")
                 }
                 Self::NotMainThread => {
                     formatter.write_str("WindowServer blur update ran outside the main thread")
@@ -224,7 +224,7 @@ mod macos {
             return Err(BlurError::UnexpectedWindowHandle);
         };
         // SAFETY: raw-window-handle guarantees this is a live NSView for the lifetime of
-        // `handle`, and this function only runs on GPUI's AppKit main thread.
+        // `handle`, and this function only runs on ala's AppKit main thread.
         let view = unsafe { Retained::<NSView>::retain(handle.ns_view.as_ptr().cast()) }
             .ok_or(BlurError::MissingView)?;
         let native_window = view.window().ok_or(BlurError::MissingWindow)?;
@@ -252,6 +252,7 @@ mod macos {
 mod linux {
     use std::{fmt, sync::OnceLock};
 
+    use ala::Window;
     use raw_window_handle::RawWindowHandle;
     use x11rb::{
         connection::Connection as _,
@@ -259,7 +260,6 @@ mod linux {
         rust_connection::RustConnection,
         wrapper::ConnectionExt as _,
     };
-    use zz_gpui::Window;
 
     use crate::{window::background::rounded_region, window::corners::WindowCorners};
 
@@ -293,7 +293,7 @@ mod linux {
     pub(super) fn set_x11_blur(
         window: &Window,
         enabled: bool,
-        corner_radius: zz_gpui::Pixels,
+        corner_radius: ala::Pixels,
     ) -> Result<(), BlurError> {
         let handle = raw_window_handle::HasWindowHandle::window_handle(window)
             .map_err(BlurError::WindowHandle)?;
@@ -432,7 +432,7 @@ mod linux {
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::Tiling;
+    use ala::Tiling;
 
     use super::*;
     use crate::window::corners::WindowCorners;

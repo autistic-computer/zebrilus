@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Building and running zz
-description: How to build and run the zz GPUI client and its daemon, what the first build downloads, and how to exercise the browser pane with the loopback fixture.
+description: How to build and run the zz ala client and its daemon, what the first build downloads, and how to exercise the browser pane with the loopback fixture.
 resource: crates/zz/src/lib.rs
 tags: [running, cargo, cef-download, daemon, browser-fixture, pacman, profiling, instruments]
 timestamp: 2026-09-23T00:00:00Z
@@ -9,7 +9,7 @@ timestamp: 2026-09-23T00:00:00Z
 
 # Overview
 
-The `zz` package (crate at `crates/zz`) provides the GPUI client, daemon/CLI entrypoints, and CEF
+The `zz` package (crate at `crates/zz`) provides the ala client, daemon/CLI entrypoints, and CEF
 helper executable. Linux can run the main binary directly from Cargo. macOS and Windows must launch
 the platform bundle so Chromium can find its framework/resources, sandbox helpers, or bootstrap
 DLL. A first native build additionally downloads and verifies a matching CEF distribution and
@@ -116,9 +116,9 @@ The other development recipes share this identity:
   port 8081, separate browser preferences, and the existing dev daemon. `web serve --socket PATH`
   overrides the socket. `web build --release` retains ordinary release assets in `clients/web/dist`.
 
-`just ios run [iPhone|iPad]` runs the GPUI iOS client in a simulator with its own app identity.
+`just ios run [iPhone|iPad]` runs the ala iOS client in a simulator with its own app identity.
 It attaches to the throwaway daemon from `just ios rig` when that is up, then to an existing dev
-socket, or to `ZZ_GPUI_ENDPOINT` / `ZZ_DEV_SOCKET`; `just ios device` installs it on a paired
+socket, or to `ZZ_ALA_ENDPOINT` / `ZZ_DEV_SOCKET`; `just ios device` installs it on a paired
 phone. See `clients/ios/README.md`.
 
 `just build` and package installation keep their existing identity and destinations. Brew/AUR
@@ -309,7 +309,7 @@ just profile cpu mac daemon 30s      # Time Profiler attached to the daemon
 just profile cpu mac all 20s         # broader, noisier all-process CPU trace
 just profile summary cpu <run-dir>   # retain only the isolated owned process tree
 just profile system mac 20s          # scheduling, waits, wakeups, and IPC
-just profile metal mac 20s           # GPUI and CEF Metal work
+just profile metal mac 20s           # ala and CEF Metal work
 just profile summary metal <run-dir> # zz-only frame and GPU summary
 just profile startup mac 8s          # launch to the first attributed displayed frame
 just profile terminal mac 20s
@@ -464,7 +464,7 @@ cargo run -p zz
 ```
 
 CEF off-screen rendering uses the fastest attached display refresh rate as
-its paint ceiling: `NSScreen` on macOS and GPUI display rates elsewhere, with a
+its paint ceiling: `NSScreen` on macOS and ala display rates elsewhere, with a
 60 FPS fallback when no rate is available. Override the ceiling with
 `ZZ_BROWSER_FPS=1..240`, for example:
 
@@ -505,7 +505,7 @@ pump-driven scheduler there, opt in with the exact value `1`:
 ZZ_BROWSER_EXTERNAL_BEGIN_FRAME=1 just run linux
 ```
 
-The Linux/FreeBSD display ceiling uses GPUI's reported refresh rates, with a
+The Linux/FreeBSD display ceiling uses ala's reported refresh rates, with a
 60 FPS fallback when none are available. `ZZ_BROWSER_FPS` overrides the ceiling
 independently of the external BeginFrame opt-in.
 
@@ -548,7 +548,7 @@ cargo test -p zz-browser --no-default-features
 
 | File | Role |
 | --- | --- |
-| `crates/zz/src/main.rs` | Entry point for the `zz` binary (GPUI client + daemon bootstrap) |
+| `crates/zz/src/main.rs` | Entry point for the `zz` binary (ala client + daemon bootstrap) |
 | `crates/zz/src/bin/zz_browser_fixture.rs` | Loopback-only HTTP fixture used as the standard browser-pane example |
 | `crates/zz/src/bin/zz_helper.rs` | CEF helper/bootstrap binary bundled alongside `zz` |
 | `crates/zz/src/lib.rs` | Argument parsing, `run_command_mode` (the CLI path), daemon spawn, and the log-directory resolution documented above |
@@ -559,6 +559,6 @@ cargo test -p zz-browser --no-default-features
 - [Prerequisites](/playbooks/prerequisites.md) . toolchain needed before the first build
 - [Build/verify a CEF bundle](/playbooks/build-cef-bundle.md) . packaged equivalent of the first-build download
 - [CEF artifact pin](/references/cef-artifacts.md) . exact version the first build downloads
-- [`app` crate](/crates/zz.md) . the GPUI client this playbook runs
+- [`app` crate](/crates/zz.md) . the ala client this playbook runs
 - [`server` crate](/crates/zz-daemon.md) . the daemon the platform launcher connects to or spawns
 - [Browser CEF runtime](/browser/cef-runtime.md) . what the fixture exercises

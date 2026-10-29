@@ -155,7 +155,7 @@ Equivalence checks cover 1,464 records with three cache orders, Arabic,
 Hebrew, Indic, combining marks, ligatures, emoji, feature sets, and static and
 variable fonts. All 39,924 glyphs and 2,160 missing-glyph results match.
 The shaping probe excludes ANSI processing and app rendering.
-Sources: `libs/gpui/third_party/cosmic-text/src/shape.rs`, `ShapeBuffer`, and
+Sources: `libs/ala/third_party/cosmic-text/src/shape.rs`, `ShapeBuffer`, and
 `src/font/system.rs`, `FontSystem::db_mut`.
 
 Terminal rows also paint freshly computed raster data immediately, removing
@@ -220,7 +220,7 @@ microseconds and 512 paragraphs from 870.79 milliseconds to 21.32
 microseconds. This test-profile probe isolates document cloning, not parsing or total app
 CPU.
 Retained-snapshot tests and the text suite verify append behavior.
-Sources: `libs/kit/src/text/document.rs` and `text/state.rs`.
+Sources: `libs/penna/src/text/document.rs` and `text/state.rs`.
 
 # Scheduling decisions
 
@@ -234,7 +234,7 @@ while inactive, and 63.6 FPS after reactivation. A single pending update
 arrives in 35.0 milliseconds while inactive. This establishes cap and delivery
 behavior; the older baseline focus probe used a different display scale and
 build load, so it is excluded from performance comparisons.
-Source: `libs/gpui/crates/zz-gpui/src/window.rs`.
+Source: `libs/ala/crates/ala/src/window.rs`.
 
 The main-thread watchdog observer sleeps until the earliest expiry of its
 last observed heartbeat while the app is healthy. It retains 100-millisecond
@@ -272,8 +272,8 @@ Resource timing uses an AMD Vulkan GPU and isolated headless probes; the
 resize probe uses small 128/129-pixel Wayland windows and eight successful
 error recoveries. These results do not bound larger scenes or other drivers.
 The replay count is measured, but actual VRR hardware behavior was not
-validated. Sources: `libs/gpui/crates/zz-gpui-platform/src/wgpu/wgpu_renderer.rs` and
-`libs/gpui/crates/zz-gpui/src/window.rs`.
+validated. Sources: `libs/ala/crates/ala-platform/src/wgpu/wgpu_renderer.rs` and
+`libs/ala/crates/ala/src/window.rs`.
 
 # Final app comparisons and validation
 
@@ -687,7 +687,7 @@ fixed RAM saving for every application window.
 
 The same-binary SHA-256 is
 `9f8270f5be2a9c07204d81c631e21d557f167153768dc48058569f13a4bc144a`.
-Sources: `libs/gpui/third_party/cosmic-text/src/shape.rs`, `shape_fallback`, and
+Sources: `libs/ala/third_party/cosmic-text/src/shape.rs`, `shape_fallback`, and
 `src/font/system.rs`, `FontSystem`. Receipts and reproducible probe sources:
 `font-probe/decision.json`, `findings.json`, `policy-findings.json`, `probe.rs`,
 and `setup.py` under the fresh artifact directory.

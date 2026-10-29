@@ -6,7 +6,7 @@ resource: clients/storybook/src/lib.rs
 tags:
 - storybook
 - zz-ui
-- zz-gpui-kit
+- penna
 - wasm
 - agents
 timestamp: 2026-10-15T00:00:00Z
@@ -15,20 +15,20 @@ timestamp: 2026-10-15T00:00:00Z
 # What it is
 
 `clients/storybook` shows zz's own UI, not a generic widget catalog: every piece of `zz-ui` and
-`zz-gpui-kit` in its states, built from fixture data with the same functions the app calls. The page
-is plain HTML (navigation, prose, knobs). Each section of the open story is its own zz-gpui window,
+`penna` in its states, built from fixture data with the same functions the app calls. The page
+is plain HTML (navigation, prose, knobs). Each section of the open story is its own ala window,
 mounted into the section's element with `WindowOptions::mount` and sized to its content, so a
 section looks exactly like that piece does in zz.
 
 It is its own wasm Cargo workspace, like `clients/web`, with its own lockfile. Its dev profile
 optimizes dependencies the way the root workspace does (`[profile.dev.package]`): third-party
-crates and zz-gpui optimized, the zz crates it edits (`zz-ui`, `zz-gpui-kit`, `zz-client`,
+crates and ala optimized, the zz crates it edits (`zz-ui`, `penna`, `zz-client`,
 `zz-protocol`, `zz-terminal`) not. Without it, a debug build drew one Theme creator frame in about
 100 ms. Keep those zz crates at `opt-level = 0`: optimized and incremental, an edit to `zz-ui` once
 left an rlib that failed to link with undefined `anon.*.llvm.*` symbols.
 
 A mounted window more than half a scroll height out of view skips its frames until it scrolls
-back, so a long story costs about what is on screen. See [zz-gpui web windows](/references/zz-gpui-web-agents.md).
+back, so a long story costs about what is on screen. See [ala web windows](/references/ala-web-agents.md).
 
 # Run it
 
@@ -109,7 +109,7 @@ authoring rules; the short version:
 
 # Check a change
 
-Edit the component in `crates/zz-ui` or `libs/kit`, let `just storybook run` rebuild,
+Edit the component in `crates/zz-ui` or `libs/penna`, let `just storybook run` rebuild,
 reload, and walk the knobs: light and dark, both built-in themes, radius 0 and 25 (where every
 button turns pill), outline 0,
 both shadow strengths at 0, row inset 0, contrast extremes, a full tint, zoom. The sections re-render live as
@@ -125,7 +125,7 @@ itself with, or on `story::Framed::framed`, the edge of a frame that stands in f
 # For agents
 
 - `scripts/storybook-shot.mjs <story>[/<section>][?knobs] out.png [--url ..]` (also
-  `just storybook shot`) opens the story in headless Chrome over CDP, waits for `zzGpui.idle()` and
+  `just storybook shot`) opens the story in headless Chrome over CDP, waits for `ala.idle()` and
   saves a PNG clipped to the section. Its JSON output lists wasm panics and console errors under
   `problems`. The knob panel keeps its own scroll, which the capture does not, so pass a taller
   `--height` to see a step's lower half, as in `theme-creator?step=roles&inspect=button`, which
@@ -136,8 +136,8 @@ itself with, or on `story::Framed::framed`, the edge of a frame that stands in f
   `storybook.step("roles")`, `storybook.roles()` (the role tree with inherited and resolved styles),
   `storybook.setRole("chrome.button", "fill", "glass")` (`"inherit"` clears a prop),
   `storybook.inspect("button")`, and
-  the `zzGpui` API from [zz-gpui web windows for agents](/references/zz-gpui-web-agents.md) for the live
-  UI (`zzGpui.find`, `zzGpui.click`, `zzGpui.capture`).
+  the `ala` API from [ala web windows for agents](/references/ala-web-agents.md) for the live
+  UI (`ala.find`, `ala.click`, `ala.capture`).
 
 # Traps
 

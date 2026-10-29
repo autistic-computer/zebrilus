@@ -4,13 +4,13 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use ala::{
+    AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
+    ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
+};
 use zz_client::{
     new_chat::open_picker_commands,
     window_summary::{age_label, summarize_chats},
-};
-use zz_gpui::{
-    AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
-    ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
 use zz_protocol::{PaneKindSnapshot, SessionId, WindowId};
 use zz_ui::{

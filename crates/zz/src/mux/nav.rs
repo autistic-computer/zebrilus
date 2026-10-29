@@ -2,8 +2,8 @@
 
 use std::collections::BTreeSet;
 
+use ala::{App, Entity, SharedString};
 use zz_client::{program::Program, window_summary::pane_program};
-use zz_gpui::{App, Entity, SharedString};
 use zz_protocol::{
     Axis, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatusState,
     SessionId, WindowId,

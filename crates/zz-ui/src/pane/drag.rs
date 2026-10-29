@@ -1,6 +1,6 @@
 use std::{rc::Rc, time::Duration};
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, Context, CursorStyle, Div, Entity, IntoElement, MouseButton, Pixels,
     Point, Render, Stateful, Window, div, prelude::*, px,
 };
@@ -31,11 +31,11 @@ impl DropPreview {
 
 fn lerp_bounds(from: Bounds<Pixels>, to: Bounds<Pixels>, delta: f32) -> Bounds<Pixels> {
     Bounds::new(
-        zz_gpui::point(
+        ala::point(
             lerp_pixels(from.origin.x, to.origin.x, delta),
             lerp_pixels(from.origin.y, to.origin.y, delta),
         ),
-        zz_gpui::size(
+        ala::size(
             lerp_pixels(from.size.width, to.size.width, delta),
             lerp_pixels(from.size.height, to.size.height, delta),
         ),
@@ -179,7 +179,7 @@ impl PaneDragSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::{Modifiers, MouseButton, TestAppContext, point};
+    use ala::{Modifiers, MouseButton, TestAppContext, point};
 
     struct DragTest {
         enabled: bool,
@@ -213,7 +213,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn handle_starts_without_prefix_and_drops_after_a_single_move(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|_, _| DragTest {

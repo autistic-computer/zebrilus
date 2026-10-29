@@ -7,15 +7,15 @@
 
 use std::{collections::HashMap, ops::Range, rc::Rc, sync::Arc};
 
+use ala::{
+    AnyElement, App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, IntoElement,
+    Pixels, Render, ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle,
+    WeakEntity, Window, div, prelude::*, px, uniform_list,
+};
 use zz_client::{
     path_rank,
     place::{Level, Place},
     recents::RecentKey,
-};
-use zz_gpui::{
-    AnyElement, App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, IntoElement,
-    Pixels, Render, ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle,
-    WeakEntity, Window, div, prelude::*, px, uniform_list,
 };
 use zz_protocol::{
     GitMark, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PathEntry, PathKind,
@@ -950,9 +950,9 @@ impl FilesLevel {
         row: &FileRow,
         index: usize,
         selected: bool,
-        level: zz_gpui::Entity<Self>,
+        level: ala::Entity<Self>,
         cx: &App,
-    ) -> zz_gpui::Div {
+    ) -> ala::Div {
         let hover = level.clone();
         let folder = row.entry.kind == PathKind::Dir;
         let insert = (folder && CoarsePointer::get(cx)).then(|| {

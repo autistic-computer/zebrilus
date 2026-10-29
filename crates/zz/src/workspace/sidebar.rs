@@ -7,14 +7,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
-use zz_gpui::{
+use ala::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Hsla,
     InteractiveElement as _, IntoElement, KeyBinding, Keystroke, ListSizingBehavior, MouseButton,
     ParentElement as _, Render, ScrollStrategy, SharedString, StatefulInteractiveElement as _,
     Styled as _, SystemNotification, UniformListScrollHandle, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px, uniform_list,
 };
+use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
 use zz_ui::navigation::{
     WORKSPACE_SIDEBAR_DEFAULT_WIDTH as SIDEBAR_DEFAULT_WIDTH, WORKSPACE_SIDEBAR_FADE_HEIGHT,
@@ -79,7 +79,7 @@ const TREE_INDENT_GUIDE_OFFSET: f32 = TREE_MARKER_SLOT_WIDTH / 2.0;
 const TREE_INDENT_GUIDE_PADDING: f32 = 4.0;
 const TREE_KEY_CONTEXT: &str = "WorkspaceTree";
 
-zz_gpui::actions!(
+ala::actions!(
     workspace_tree,
     [
         TreeCancel,
@@ -448,7 +448,7 @@ impl WorkspaceSidebar {
         let Some(since) = self.mode_changed else {
             return 1.0;
         };
-        let elapsed = zz_gpui::animation_time(
+        let elapsed = ala::animation_time(
             cx.background_executor()
                 .now()
                 .saturating_duration_since(since),
@@ -456,7 +456,7 @@ impl WorkspaceSidebar {
         if cx.reduce_motion() || elapsed >= SIDEBAR_SLIDE {
             return 1.0;
         }
-        zz_gpui::ease_out_quint()(elapsed.as_secs_f32() / SIDEBAR_SLIDE.as_secs_f32())
+        ala::ease_out_quint()(elapsed.as_secs_f32() / SIDEBAR_SLIDE.as_secs_f32())
     }
 
     fn ground(&self, cx: &App) -> Ground {
@@ -1436,7 +1436,7 @@ fn render_tree_row(
         div()
             .flex_none()
             .invisible()
-            .group_hover(row_group.clone(), zz_gpui::Styled::visible)
+            .group_hover(row_group.clone(), ala::Styled::visible)
             .child(actions)
             .into_any_element()
     } else {
@@ -1546,7 +1546,7 @@ fn render_host_indicator(index: usize, indicator: HostIndicator, cx: &mut App) -
 }
 
 fn render_tree_row_context_menu(
-    row: zz_gpui::Stateful<zz_gpui::Div>,
+    row: ala::Stateful<ala::Div>,
     entry: &VisibleTreeEntry,
     runtime: &TreeRowRuntime,
 ) -> AnyElement {
@@ -1802,8 +1802,8 @@ mod tests {
         collections::{BTreeMap, BTreeSet},
     };
 
+    use ala::TestAppContext;
     use zz_daemon_client::DaemonError;
-    use zz_gpui::TestAppContext;
     use zz_protocol::{
         Axis, BrowserDescriptor, LayoutNode, PaneKindSnapshot, PaneSnapshot, PaneStatus,
         PaneSummary, SessionSnapshot, SplitId, WindowId, WindowSnapshot,
@@ -1812,12 +1812,12 @@ mod tests {
     use super::*;
     use crate::mux::nav::picker_split_command;
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn workspace_tree_key_bindings_register(cx: &mut TestAppContext) {
         cx.update(init);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn tree_model_tracks_snapshot_focus_and_attachment_revisions(cx: &mut TestAppContext) {
         let mux = cx.new(|cx| {
             MuxClient::new(
@@ -1884,7 +1884,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn attention_follows_the_mux_without_a_render(cx: &mut TestAppContext) {
         let mux = cx.new(|cx| {
             MuxClient::new(
@@ -1922,7 +1922,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn settings_view_is_lazy_and_retained(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let captured = Rc::new(RefCell::new(None));
@@ -1967,10 +1967,10 @@ mod tests {
             });
         });
         cx.draw(
-            zz_gpui::Point::default(),
-            zz_gpui::size(
-                zz_gpui::AvailableSpace::Definite(px(800.0)),
-                zz_gpui::AvailableSpace::Definite(px(600.0)),
+            ala::Point::default(),
+            ala::size(
+                ala::AvailableSpace::Definite(px(800.0)),
+                ala::AvailableSpace::Definite(px(600.0)),
             ),
             |_, _| first.clone().into_any_element(),
         );
@@ -1995,10 +1995,10 @@ mod tests {
         });
         assert_eq!(first.entity_id(), reopened.entity_id());
         cx.draw(
-            zz_gpui::Point::default(),
-            zz_gpui::size(
-                zz_gpui::AvailableSpace::Definite(px(800.0)),
-                zz_gpui::AvailableSpace::Definite(px(600.0)),
+            ala::Point::default(),
+            ala::size(
+                ala::AvailableSpace::Definite(px(800.0)),
+                ala::AvailableSpace::Definite(px(600.0)),
             ),
             |_, _| reopened.clone().into_any_element(),
         );
@@ -2035,7 +2035,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn raising_the_slideover_mid_draw_schedules_the_frame_that_mounts_it(cx: &mut TestAppContext) {
         let slideover_frames = Rc::new(Cell::new(0));
         let pending_focus = Rc::new(Cell::new(true));
@@ -2071,17 +2071,17 @@ mod tests {
 
     #[test]
     fn plain_keys_bind_only_inside_the_focused_workspace_tree() {
-        let keymap = zz_gpui::Keymap::new(workspace_tree_key_bindings(
-            &crate::keymap::test_chords(SIDEBAR_TABLE),
-        ));
+        let keymap = ala::Keymap::new(workspace_tree_key_bindings(&crate::keymap::test_chords(
+            SIDEBAR_TABLE,
+        )));
         let tree_context =
-            zz_gpui::KeyContext::parse(TREE_KEY_CONTEXT).expect("valid workspace tree context");
-        let root_context = zz_gpui::KeyContext::parse("Root").expect("valid root context");
+            ala::KeyContext::parse(TREE_KEY_CONTEXT).expect("valid workspace tree context");
+        let root_context = ala::KeyContext::parse("Root").expect("valid root context");
         for (key, action) in [
             ("r", std::any::TypeId::of::<TreeRename>()),
             (":", std::any::TypeId::of::<TreeCommandPalette>()),
         ] {
-            let key = zz_gpui::Keystroke::parse(key).expect("valid tree key");
+            let key = ala::Keystroke::parse(key).expect("valid tree key");
 
             let (tree_bindings, pending) = keymap.bindings_for_input(
                 std::slice::from_ref(&key),

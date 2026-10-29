@@ -11,14 +11,14 @@
 * [zz-protocol crate](zz-protocol.md) - The stable, versioned wire vocabulary (IDs, framing, control messages, packed terminal lanes, and mux snapshots) shared by every zz client and the daemon.
 * [zz-terminal crate](zz-terminal.md) - The per-pane terminal engine that owns a PTY child and every libghostty-vt object on a worker thread and publishes immutable renderer-neutral frames.
 * [zz-xtask crate](zz-xtask.md) - Workspace build task that assembles and validates desktop CEF bundles across Linux, macOS, and Windows.
-* [zz crate (the GPUI client)](zz.md) - The long-lived GPUI desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal and Chromium browser panes plus the agent lens over terminals running Claude Code or Codex.
+* [zz crate (the ala client)](zz.md) - The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal and Chromium browser panes plus the agent lens over terminals running Claude Code or Codex.
 <!-- okf:listing:end -->
 
-Workspace members without a crate page here: `zz-gpui` and the `zz-gpui-*` crates (our GPUI, see
-[zz-gpui](/references/zz-gpui.md)), `zz-gpui-kit` (widget kit, a maintained gpui-component fork),
+Workspace members without a crate page here: `ala` and the `ala-*` crates (our ala, see
+[ala](/references/ala.md)), `penna` (widget kit, a maintained gpui-component fork),
 `zz-ui` (zz's application UI), `zz-tui` (the library behind `zz attach`), `zz-app` (the thin-client app
 web and iOS share, in `clients/app`), and `zz-ios` (the iOS entry point, in `clients/ios`).
-`zz-web` serves the [browser client](/playbooks/browser-client.md), whose GPUI/WASM frontend lives
+`zz-web` serves the [browser client](/playbooks/browser-client.md), whose ala/WASM frontend lives
 in the separate `clients/web` workspace.
 The map in
 [architecture/overview](/architecture/overview.md) uses the live `zz-*` names.

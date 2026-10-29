@@ -1,14 +1,14 @@
 use std::{collections::HashMap, rc::Rc};
 
-use web_time::Instant;
-use zz_gpui::{
+use ala::{
     AnyElement, App, Context, DispatchPhase, ElementId, Global, Hitbox, HitboxBehavior,
     IntoElement, ParentElement as _, Pixels, Point, RenderOnce, ScrollHandle, ScrollWheelEvent,
     Styled as _, TouchPhase, Window, canvas, div, prelude::*, px,
 };
+use web_time::Instant;
 
 use crate::{ActiveTheme as _, Colorize as _, roles};
-use zz_gpui_kit::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
+use penna::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 
 const EDGE: f32 = 20.0;
 const FLING_WIDTHS: f32 = 1.0;
@@ -363,10 +363,10 @@ impl RenderOnce for SwipeBack {
 mod tests {
     use std::{cell::Cell, rc::Rc};
 
-    use web_time::Duration;
-    use zz_gpui::{
+    use ala::{
         Bounds, Context, Modifiers, Render, ScrollDelta, TestAppContext, VisualTestContext, point,
     };
+    use web_time::Duration;
 
     use super::*;
 
@@ -453,7 +453,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_edge_drag_past_half_pops_and_a_short_one_returns(cx: &mut TestAppContext) {
         let (backs, _, cx) = host(cx);
         let rest = page(cx);
@@ -505,7 +505,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_entering_page_slides_in_over_a_backdrop_built_only_while_it_moves(
         cx: &mut TestAppContext,
     ) {
@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(built.get(), settled);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_pushed_page_slides_in_over_the_one_under_it(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let pushed = Rc::new(Cell::new(false));
@@ -562,7 +562,7 @@ mod tests {
         assert!(cx.debug_bounds("swipe-back-under").is_none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_drag_that_catches_a_fling_can_still_go_back(cx: &mut TestAppContext) {
         let (_, _, cx) = host(cx);
         let edge = point(px(8.0), page(cx).center().y);
@@ -578,7 +578,7 @@ mod tests {
         assert_eq!(page(cx).left(), px(100.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_flick_from_the_edge_pops(cx: &mut TestAppContext) {
         let (backs, _, cx) = host(cx);
         let edge = point(px(8.0), page(cx).center().y);
@@ -595,7 +595,7 @@ mod tests {
         assert_eq!(backs.get(), 1);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_drag_from_the_middle_of_the_page_pops(cx: &mut TestAppContext) {
         let (backs, _, cx) = host(cx);
         let rest = page(cx);
@@ -621,7 +621,7 @@ mod tests {
         assert_eq!(backs.get(), 1);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_horizontal_scroller_keeps_the_drag_while_it_can_scroll_back(cx: &mut TestAppContext) {
         let (backs, strip, cx) = host(cx);
         let bounds = cx.debug_bounds("strip").expect("strip");
@@ -670,7 +670,7 @@ mod tests {
         assert_eq!(backs.get(), 0);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn leftward_drags_are_ignored(cx: &mut TestAppContext) {
         let (backs, _, cx) = host(cx);
         let rest = page(cx);

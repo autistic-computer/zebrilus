@@ -2,7 +2,7 @@
 type: Design Plan
 title: Client core & contract - one brain, every face
 description: Decision record for the shared client contract - protocol-owned commands and keys, sans-IO reduction, typed Agent attention, and a native-shell C ABI.
-status: Shared client reduction, key tables, and chrome bindings are implemented. The C ABI (`zz-client-ffi`) shipped and was deleted on 2026-10-09, since no client used it after the native macOS client was archived; it remains in git history. GPUI cross-surface rebinding still needs a restart.
+status: Shared client reduction, key tables, and chrome bindings are implemented. The C ABI (`zz-client-ffi`) shipped and was deleted on 2026-10-09, since no client used it after the native macOS client was archived; it remains in git history. ala cross-surface rebinding still needs a restart.
 tags:
 - client
 - ffi
@@ -21,7 +21,7 @@ live `PROTOCOL_VERSION` is published in the [wire protocol](/protocol/wire-proto
 `zz-protocol` owns the command catalog, key grammar, tables,
 and resolver; the daemon publishes every live table. `zz-client::ClientCore` reduces decoded
 messages into shared state and typed effects, while `ChromeKeymap` owns client-side chords. The TUI
-uses both directly. The GPUI `MuxClient` sends non-frame messages through the core but keeps terminal
+uses both directly. The ala `MuxClient` sends non-frame messages through the core but keeps terminal
 frames in `RetainedTerminalViewport`, avoiding a second patch application on the paint hot path.
 
 `zz-client-ffi` proves the C integration shape with a pollable wake fd and a from-scratch link
@@ -67,10 +67,10 @@ the parts that shipped and the parts that remain design intent.
 - **Commands travel tokenized-but-unparsed** (`CommandInvocation`); parsing,
   aliases, flags, and target resolution are daemon-side
   (`crates/zz-mux/src/command.rs`).
-- **Two composition paths existed**: `zz::engine` + `AppProfile` let the former GPUI iPad app
+- **Two composition paths existed**: `zz::engine` + `AppProfile` let the former ala iPad app
   recompile the desktop client on another backend, while `zz-daemon` with
   `default-features = false` supplied a pure client SDK, which became its own crate,
-  `zz-daemon-client`, on 2026-10-09. The iOS client (`zz-app` on `zz_gpui_platform::ios`) uses that SDK and
+  `zz-daemon-client`, on 2026-10-09. The iOS client (`zz-app` on `ala_platform::ios`) uses that SDK and
   `ClientCore` directly.
 
 # The gap - what every new client re-hand-rolls today
@@ -79,13 +79,13 @@ the parts that shipped and the parts that remain design intent.
 |---|---|---|
 | Wire `KeyInput` encoding | `terminal_key_input` in `crates/zz/src/mux/prefix.rs` | `key_input` in `crates/zz-tui/src/input.rs` |
 | `LayoutNode` ratio → rects | `pane_rects` in `crates/zz/src/pane/layout.rs` | `resolve` in `crates/zz-tui/src/layout.rs` |
-| Client brain (reconnect, viewport retention, patch apply, history) | `MuxClient` in `crates/zz/src/mux/client.rs` (a gpui `Entity`; backoff ladder + `HistoryRing`) | own loop in `crates/zz-tui/src/app.rs` (one-shot reconnect, no history ring) |
+| Client brain (reconnect, viewport retention, patch apply, history) | `MuxClient` in `crates/zz/src/mux/client.rs` (an ala `Entity`; backoff ladder + `HistoryRing`) | own loop in `crates/zz-tui/src/app.rs` (one-shot reconnect, no history ring) |
 | Chooser vi/emacs navigation | keystroke→action maps in `crates/zz/src/chooser/tree.rs` / `buffer.rs` | second copy in `crates/zz-tui/src/input.rs` |
 | Key spelling normalization | `canonical_prefix` in `crates/zz/src/mux/prefix.rs`, kept in deliberate lockstep | (n/a - forwards raw) |
 | Sidebar tree projection | `crates/zz/src/mux/nav.rs` + `workspace/sidebar.rs` | `crates/zz-tui/src/sidebar.rs` |
 | Kitty image assembly | `KittyImageCache` on the terminal element | `KittyImageAssembler` in `crates/zz-tui/src/kitty.rs` |
 
-At the starting point, GPUI bindings were programmatic `KeyBinding::new` calls or raw
+At the starting point, ala bindings were programmatic `KeyBinding::new` calls or raw
 `on_key_down` matches, and only two actions were configurable. Chooser and sidebar maps were
 duplicated across clients, while new-session hints reconciled hardcoded guesses against the lone
 published prefix table. Full table publication and `ChromeKeymap` removed those specific splits;
@@ -140,7 +140,7 @@ panes. Deletes both hardcoded maps and makes chooser vim-nav rebindable via
 ## Pillar 4 - zz-client: original target, partially landed
 
 New crate sitting between the contract and any skin. Contents (lifted from
-`MuxClient` and `zz-tui`, decoupled from gpui):
+`MuxClient` and `zz-tui`, decoupled from ala):
 
 - connection + handshake + the reconnect/backoff ladder + fleet host handling
 - snapshot store, per-pane viewport retention, patch application, `HistoryRing`
@@ -152,7 +152,7 @@ New crate sitting between the contract and any skin. Contents (lifted from
 - kitty image assembly
 
 The API discipline is the central decision: **a handle, messages in, events
-+ snapshots out; no async types, no gpui types, no generics on the public
++ snapshots out; no async types, no ala types, no generics on the public
 surface**. Desktop and TUI consume this same C-shaped API natively. If the desktop grows a Rust-only
 convenience layer the core does not export, the
 GTK/Qt/Swift clients become second-class again, so the FFI surface doubles as the
@@ -240,7 +240,7 @@ retain pane focus when the active pane is a terminal.
   own native browser surface or a placeholder.
 - **The zz-ui editor vim layer** — an editor engine behind a config flag, not a
   binding surface.
-- **gpui anything.** The core must build for a musl target with no display
+- **ala anything.** The core must build for a musl target with no display
   server as its CI integration check.
 
 # Performance
@@ -277,7 +277,7 @@ iteration-order nondeterminism (key tables are already `BTreeMap`). The reader
 thread and eventfd live in a thin shell around it. Prior art: quinn-proto and
 str0m (sans-IO protocol cores); FoundationDB and TigerBeetle's VOPR
 (deterministic simulation). This is only possible because of the extraction —
-today the brain is welded to gpui entities and cannot run without a display
+today the brain is welded to ala entities and cannot run without a display
 server.
 
 **The simulator** (one binary, run continuously in CI): `zz-daemon` is already a
@@ -336,7 +336,7 @@ API emit identical event sequences.
 
 # Hard parts
 
-- **`MuxClient` is a gpui `Entity`** with entity-context plumbing throughout;
+- **`MuxClient` is an ala `Entity`** with entity-context plumbing throughout;
   the extraction is a rewrite of its ownership model (plain struct + event
   queue), not a move. The TUI's `app.rs` loop is the better starting skeleton.
 - **Per-client geometry pressure**: more client kinds exercise
@@ -351,7 +351,7 @@ API emit identical event sequences.
   (proposal: prefix claim > chrome table > raw forward > daemon tables, i.e.
   today's observable order, made explicit and documented in
   [key tables](/tmux/key-tables.md) when built).
-- **Fork surface**: none — this plan touches no gpui fork patches; `zz-ui`
+- **Fork surface**: none — this plan touches no ala fork patches; `zz-ui`
   widget bindings are explicitly out of scope.
 
 # Related

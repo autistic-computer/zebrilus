@@ -1,6 +1,6 @@
 use std::{cell::Cell, rc::Rc};
 
-use zz_gpui::{
+use ala::{
     App, Bounds, IntoElement, Modifiers, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     Pixels, PlatformInput, Point, Styled as _, Window, canvas,
 };

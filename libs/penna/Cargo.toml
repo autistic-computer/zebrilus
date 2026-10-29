@@ -1,0 +1,83 @@
+[workspace]
+
+[package]
+name = "penna"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.99"
+description = "Widgets for ala: theme, primitives, widgets and icons"
+repository = "https://github.com/autistic-computer/penna"
+publish = false
+
+[features]
+default = []
+editor = []
+tree-sitter = [
+    "dep:tree-sitter",
+    "dep:tree-sitter-language",
+    "dep:tree-sitter-json",
+    "dep:tree-sitter-md",
+    "dep:tree-sitter-rust",
+    "dep:tree-sitter-tmux",
+    "dep:tree-sitter-toml-ng",
+]
+
+[dependencies]
+anyhow = "1"
+async-channel = "2.5.0"
+image = { version = "=0.25.10", default-features = false }
+log = "0.4.34"
+markdown = { version = "1.0", features = ["serde"] }
+ropey = { version = "=2.0.0-beta.1", features = ["metric_lines_lf", "metric_utf16"] }
+rust-embed = { version = "8.12", features = ["include-exclude"] }
+serde = { version = "1.0.229", features = ["derive", "rc"] }
+serde_json = "1.0.151"
+smallvec = { version = "=1.16.1", features = ["serde"] }
+tree-sitter = { version = "0.27.0", optional = true }
+tree-sitter-json = { version = "0.24.8", optional = true }
+tree-sitter-language = { version = "0.1.8", optional = true }
+tree-sitter-md = { version = "0.5.3", optional = true }
+tree-sitter-rust = { version = "0.24.2", optional = true }
+tree-sitter-tmux = { version = "0.1.4", optional = true }
+tree-sitter-toml-ng = { version = "0.7.0", optional = true }
+unicode-segmentation = "1.13.3"
+web-time = "1.1.0"
+ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["default"] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+rust-embed = { version = "8.12", features = ["include-exclude", "debug-embed"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+url = "=2.5.8"
+
+[dev-dependencies]
+ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["test-support"] }
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_panics_doc = "allow"
+missing_errors_doc = "allow"
+must_use_candidate = "allow"
+wildcard_imports = "allow"
+enum_glob_use = "allow"
+struct_field_names = "allow"
+items_after_statements = "allow"
+too_many_arguments = "allow"
+too_many_lines = "allow"
+result_large_err = "allow"
+assert_is_empty = "allow"
+unused_async_trait_impl = "allow"
+cast_possible_truncation = "allow"
+cast_possible_wrap = "allow"
+cast_precision_loss = "allow"
+cast_sign_loss = "allow"
+float_cmp = "allow"
+struct_excessive_bools = "allow"
+type_complexity = "allow"
+used_underscore_binding = "allow"
+unused_self = "allow"

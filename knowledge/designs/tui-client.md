@@ -41,7 +41,7 @@ protocol** (supported by ghostty, kitty, cmux, vscode, and others), with termina
 mouse/keyboard converted to synthetic Chromium events. That is architecturally
 identical to zz's existing browser pane (CEF-OSR, GPU frame readback, synthetic
 input, daemon-held tab descriptors) with one difference: their blit target is kitty
-escape sequences, zz's is a GPUI surface. They built the whole stack to get there;
+escape sequences, zz's is an ala surface. They built the whole stack to get there;
 zz only needs the last encode step.
 
 # The rung ladder
@@ -93,7 +93,7 @@ remains presentation work, and client chrome resolves through `ChromeKeymap`.
 The TUI mirrors the zz app's UI structure, not tmux's: a toggleable left
 sidebar tree (host → sessions → windows → panes, `+ new pane` row, sidebar
 status details at the bottom), the pane canvas in the center, and the pane-kind
-picker as a floating card with key hints — "the gpui app rendered in TUI
+picker as a floating card with key hints — "the ala app rendered in TUI
 symbols." The tree is a pure view over the `MuxSnapshot` the client already
 holds (same source the GUI sidebar reads), which also gives session switching
 for free. **Landed 2026-08-09** (second codex batch, crates/zz-tui only,

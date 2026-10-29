@@ -7,7 +7,7 @@ resource: crates/zz/src/status_bar.rs
 tags:
 - status-bar
 - desktop
-- gpui
+- ala
 - client
 - snapshot
 - configuration
@@ -114,7 +114,7 @@ Further FFI and mobile-client activity presentation remains separate. There is n
 # Key files
 
 - `crates/zz-client/src/status_bar.rs`: pure status-bar model and typed settings.
-- `crates/zz/src/status_bar.rs`: GPUI layout, overflow, actions, host and update items.
+- `crates/zz/src/status_bar.rs`: ala layout, overflow, actions, host and update items.
 - `crates/zz/src/config/mod.rs`: app-side values, defaults, parsing, and live projection.
 - `crates/zz/src/config/settings.rs`: Status bar page controls.
 - `crates/zz/src/app_shell.rs`: snapshot and agent-state redraw subscriptions.

@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _,
     UniformListScrollHandle, Window, div, prelude::*, px,
 };
@@ -149,7 +149,7 @@ pub(crate) fn with_sidebar(
         cx,
     )
     .when(gaps, |surface| {
-        surface.border_color(zz_gpui::transparent_black())
+        surface.border_color(ala::transparent_black())
     });
     app_shell_surface(
         "shell",

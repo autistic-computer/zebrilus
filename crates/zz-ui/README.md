@@ -1,10 +1,10 @@
 # zz-ui
 
-zz's application UI on [`zz-gpui-kit`](../zz-gpui-kit): panes, terminal painting, the agent
+zz's application UI on [`penna`](../penna): panes, terminal painting, the agent
 interface, the command palette, settings, navigation, and the compact (phone) shell.
 The desktop app and the thin clients (web, iOS) share it. It re-exports the kit, so
 zz code imports UI from `zz_ui` alone; anything another app could reuse belongs in
-`zz-gpui-kit` instead, which depends on nothing from zz.
+`penna` instead, which depends on nothing from zz.
 
 The app-owned `shell`, `navigation`, and `pane` modules share one background at
 `app_shell_surface`. The Linux client-decorated window paints that background at
@@ -47,7 +47,7 @@ theme colors and highlighted text for status labels, popups, menus, and display-
 `ContextMenu` also opens on a touch long-press, so rows and pills with rename and close menus
 work on iOS.
 
-`src/terminal.rs` contains the portable GPUI terminal painter, including retained row shaping,
+`src/terminal.rs` contains the portable ala terminal painter, including retained row shaping,
 selection, cursor, scrollbar, and image placement. It consumes `zz-terminal` view data with the
 engine features disabled. Each client owns its input, focus, image delivery, and connection
 lifecycle; native daemon and operating-system dependencies stay outside `zz-ui`.

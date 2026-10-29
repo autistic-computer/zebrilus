@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, IntoElement, ParentElement as _, Styled as _, Transformation, Window, div,
     percentage, px,
 };

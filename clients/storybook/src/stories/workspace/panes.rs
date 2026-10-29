@@ -1,5 +1,5 @@
 use zz_client::new_chat::{ChatPicker, FolderChoice};
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::*, px, relative,
 };
@@ -182,7 +182,7 @@ fn header(
     draggable: bool,
     lens: Option<PaneLens>,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     zz_ui::pane::terminal_pane_header(
         active,
         title,
@@ -777,7 +777,7 @@ fn floating_box(id: &'static str, surface: impl IntoElement) -> impl IntoElement
 }
 
 fn floating(_: &mut Window, cx: &mut App) -> AnyElement {
-    let body = |cx: &App| terminal_body(SERVER, false, cx).bg(zz_gpui::transparent_black());
+    let body = |cx: &App| terminal_body(SERVER, false, cx).bg(ala::transparent_black());
     states()
         .columns(2)
         .state(
@@ -848,7 +848,7 @@ fn pip_box(id: &'static str, height: f32, surface: impl IntoElement) -> impl Int
 fn pip_surface(id: &'static str, cx: &App) -> PipSurface {
     PipSurface::new(
         id,
-        terminal_body(BUILD, false, cx).bg(zz_gpui::transparent_black()),
+        terminal_body(BUILD, false, cx).bg(ala::transparent_black()),
     )
     .header(pip_header("cargo watch -x test", cx))
     .content_inset(px(8.0), px(16.0))
@@ -944,7 +944,7 @@ fn pip(views: &PipViews, _: &mut Window, cx: &mut App) -> AnyElement {
                                 .child(PipSurface::new(
                                     "pip-pile-back",
                                     terminal_body(LOGS, false, cx)
-                                        .bg(zz_gpui::transparent_black()),
+                                        .bg(ala::transparent_black()),
                                 )
                                 .header(pip_header("tail -f daemon.log", cx))
                                 .content_inset(px(8.0), px(16.0))),
@@ -1045,7 +1045,7 @@ pub(crate) fn chat_picker_surface(
     picker: &ChatPicker,
     enabled: bool,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     let rows = chat_picker_rows(7, picker, &chat_folders(), enabled, cx)
         .into_iter()
         .map(|row| match row {

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use zz_gpui::{
+use ala::{
     App, Bounds, Context, Div, FontWeight, QuitMode, Window, WindowBounds, WindowOptions, div, img,
     point, prelude::*, px, size,
 };
@@ -270,7 +270,7 @@ fn main() {
     );
     let definition =
         parse_theme(&std::fs::read_to_string(&source).expect("read theme")).expect("parse theme");
-    zz_gpui_platform::application()
+    ala_platform::application()
         .with_assets(Assets)
         .run(move |cx| {
             cx.set_quit_mode(QuitMode::LastWindowClosed);

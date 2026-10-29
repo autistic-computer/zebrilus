@@ -11,13 +11,13 @@ timestamp: 2026-10-15T00:00:00Z
 
 `appearance.rs` owns the renderer-neutral appearance for terminal panes: colors, palette, fonts, padding,
 cursor policy, and the loader that resolves an appearance-only subset of Ghostty configuration. It contains
-no GPUI types. The daemon resolves appearance as built-in defaults plus `zz/config` overrides at
+no ala types. The daemon resolves appearance as built-in defaults plus `zz/config` overrides at
 startup and on explicit reload; it never reads a Ghostty *config*, though it does open the Ghostty
 *theme file* a `theme` override names. The Ghostty config loader runs **client-side**, during the
 explicit import flow
 ([Application configuration](/configuration/app-config.md)), which snapshots donor values into
 `zz/config`. Every client sees the same daemon-resolved values (the
-[rendering-parity](/terminal/rendering-parity.md) app converts it into a GPUI
+[rendering-parity](/terminal/rendering-parity.md) app converts it into an ala
 `Font` and paint colors). The module also embeds `x11-rgb.txt`, the Ghostty/X.Org named-color table, so
 `red`, `rebeccapurple`, etc. resolve identically on every host. The wire protocol carries a
 complete per-key provenance map beside the appearance.
@@ -49,7 +49,7 @@ Supporting types: `AppearanceColor` (compact RGBA), `FontFeature` (`[u8;4]` tag 
 `FontSyntheticStyle` (independent bold / italic / bold-italic permissions), `CellHeightAdjustment`
 (None / Pixels / Percent), `CursorBlinkPolicy`, `TerminalColorScheme`.
 `validate()` rejects non-finite / negative / oversized metrics and out-of-range counts before values reach
-GPUI; `stable_hash()` gives a deterministic signature for renderer caches. `default_palette()` builds the
+ala; `stable_hash()` gives a deterministic signature for renderer caches. `default_palette()` builds the
 standard xterm layout: 16 ANSI colors, the 6×6×6 color cube, then 24 grays.
 
 `AppearanceProvenance` maps every key in `AppearanceConfigKey::ALL` to one
@@ -155,7 +155,7 @@ backgrounds, foregrounds, accents, and semantic families come from the interface
 dark colors, with any accent and tint `zz/config` sets over them (see
 [interface themes](/designs/interface-themes.md)), and follow the effective light/dark mode (`theme-mode`, pinned or the OS's), which is also the color
 scheme the client reports for the terminals. `crates/zz/src/theme.rs` holds the latest immutable `TerminalAppearance`
-as a GPUI global; it derives no chrome color or alpha from it. The client consumes appearance
+as an ala global; it derives no chrome color or alpha from it. The client consumes appearance
 provenance while resolving daemon font stacks against fonts installed on the rendering machine, but
 does not retain provenance as a global. Terminal panes read the localized appearance directly.
 

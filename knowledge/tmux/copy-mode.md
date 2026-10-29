@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Copy mode and view mode
-description: "Daemon-native tmux copy/view mode over libghostty history: vi/emacs movement tables, selection, incremental search, jumps, and copy/pipe variants, driven by send-keys -X and painted by GPUI."
+description: "Daemon-native tmux copy/view mode over libghostty history: vi/emacs movement tables, selection, incremental search, jumps, and copy/pipe variants, driven by send-keys -X and painted by ala."
 resource: crates/zz-mux/src/command.rs
 tags: [tmux, copy-mode, view-mode, selection, search]
 timestamp: 2026-08-26T00:00:00-03:00
@@ -30,7 +30,7 @@ history. **View mode** is the same machinery in read-only form for command outpu
 tables without turning browser pixels into terminal content. Entering copy mode freezes a stable
 view revision while PTY output keeps flowing underneath; each attached client owns an independent mode
 cursor, selection, and search state. Nothing is drawn as terminal escape
-sequences: GPUI paints the cursor, selection, matches, scrollbar, and mode indicator.
+sequences: ala paints the cursor, selection, matches, scrollbar, and mode indicator.
 
 [`crates/zz-mux`](/crates/zz-mux.md) is the state-machine half: the `copy-mode` command enters the mode and
 every navigation/selection/copy action arrives as `send-keys -X <action>` from the

@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyView, App, AppContext as _, Context, Entity, Hsla, IntoElement, MouseButton,
     ParentElement as _, Render, Styled as _, Subscription, Window, div, px,
 };

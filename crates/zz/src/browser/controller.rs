@@ -6,6 +6,7 @@ use std::{
     time::Instant,
 };
 
+use ala::{App, Context, EventEmitter, RenderImage, Task};
 use image::{Frame as ImageFrame, ImageBuffer, Rgba};
 #[cfg(target_os = "macos")]
 use zz_browser::MacIoSurface;
@@ -17,7 +18,6 @@ use zz_browser::{
     OsrFrame, PointerEvent, RuntimePhase, RuntimeSignal, SessionId, SessionPhase,
     SiteDataClearResult, Viewport, WheelEvent,
 };
-use zz_gpui::{App, Context, EventEmitter, RenderImage, Task};
 use zz_protocol::PaneId;
 
 use crate::diagnostics;
@@ -133,7 +133,7 @@ fn resolve_frame_rate_ceiling_value(
 }
 
 #[cfg(target_os = "macos")]
-fn display_frame_rate_ceiling(_cx: &zz_gpui::App) -> Option<i32> {
+fn display_frame_rate_ceiling(_cx: &ala::App) -> Option<i32> {
     use objc2::MainThreadMarker;
     use objc2_app_kit::NSScreen;
 
@@ -149,7 +149,7 @@ fn display_frame_rate_ceiling(_cx: &zz_gpui::App) -> Option<i32> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn display_frame_rate_ceiling(cx: &zz_gpui::App) -> Option<i32> {
+fn display_frame_rate_ceiling(cx: &ala::App) -> Option<i32> {
     reported_display_frame_rate_ceiling(
         cx.displays()
             .into_iter()
@@ -521,7 +521,7 @@ pub(crate) enum BrowserPaneFrameContent {
     WinGpu(WinGpuTexture),
 }
 
-/// The newest OSR frame for a browser tab: a decoded GPUI image or a GPU texture.
+/// The newest OSR frame for a browser tab: a decoded ala image or a GPU texture.
 #[derive(Clone)]
 pub(crate) struct BrowserPaneFrame {
     pub(crate) session: SessionId,
@@ -772,7 +772,7 @@ impl BrowserController {
             return;
         }
         cx.spawn(async move |this, cx| {
-            // Take the burst under GPUI, then enter CEF only after that borrow is gone.
+            // Take the burst under ala, then enter CEF only after that borrow is gone.
             let work = this.update(cx, |controller, _| {
                 std::mem::take(&mut controller.queued_cef_work)
             });
@@ -993,7 +993,7 @@ impl BrowserController {
         resolve_frame_rate_ceiling_value(self.frame_rate_ceiling, None).0
     }
 
-    fn resolve_frame_rate_ceiling(&mut self, cx: &zz_gpui::App) {
+    fn resolve_frame_rate_ceiling(&mut self, cx: &ala::App) {
         if self.frame_rate_ceiling.is_some() {
             return;
         }
@@ -2169,7 +2169,7 @@ impl BrowserController {
     }
 
     /// `cef::initialize` runs Chromium startup work on this thread, and that
-    /// work can service the GCD main queue: a zz-gpui runnable drained there must
+    /// work can service the GCD main queue: a ala runnable drained there must
     /// find the App borrow free or it panics with `RefCell already borrowed`.
     /// So, like the pump calls, the runtime leaves the controller and
     /// initializes at task top level, outside every borrow.
@@ -2749,7 +2749,7 @@ enum ShutdownProgress {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use zz_gpui::{AppContext as _, TestAppContext};
+    use ala::{AppContext as _, TestAppContext};
 
     use super::*;
 
@@ -2777,7 +2777,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test(iterations = 20)]
+    #[ala::test(iterations = 20)]
     fn cef_work_runs_after_the_app_update_in_submission_order(cx: &mut TestAppContext) {
         let calls = Rc::new(RefCell::new(Vec::new()));
         let app = Rc::clone(&cx.app);
@@ -2808,7 +2808,7 @@ mod tests {
         assert_eq!(*calls.borrow(), vec![1, 2]);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn pump_timer_replacement_preserves_the_new_deadline(cx: &mut TestAppContext) {
         let controller = cx.update(|cx| {
             cx.new(|cx| BrowserController::new(Err(BrowserError::AlreadyShutdown), cx))
@@ -2845,7 +2845,7 @@ mod tests {
         cx.update(|cx| assert!(controller.read(cx).pump_task.is_none()));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn wheel_decay_replacement_extends_the_boost_and_focus_cancels_it(cx: &mut TestAppContext) {
         let key = (PaneId(7), TabId(3));
         let controller = cx.update(|cx| {
@@ -2886,7 +2886,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn shutdown_cancels_scheduled_browser_timers(cx: &mut TestAppContext) {
         cx.update(|cx| {
             let controller =
@@ -3017,7 +3017,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn browser_egress_records_the_route_until_its_tabs_close(cx: &mut TestAppContext) {
         cx.update(|cx| {
             let controller =
@@ -3088,7 +3088,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn active_tab_flips_pending_session_visibility(cx: &mut TestAppContext) {
         cx.update(|cx| {
             let controller =
@@ -3130,7 +3130,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn close_tab_and_close_pane_keep_other_tab_keys_isolated(cx: &mut TestAppContext) {
         cx.update(|cx| {
             let controller =

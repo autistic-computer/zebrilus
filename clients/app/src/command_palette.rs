@@ -6,13 +6,13 @@ use std::{
     },
 };
 
+use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_client::completion::PaneKindAvailability;
 use zz_client::navigation::{ordered_panes, pane_index, pane_label, session_label};
 use zz_client::{
     AgentAttentionStatus, ClientCore, CoreEvent, agent_attention_status, gui_actions::GuiOffer,
     place::ActionKind,
 };
-use zz_gpui::{App, Entity, KeyDownEvent, SharedString, Subscription};
 use zz_protocol::{
     CommandInvocation, InputMessage, MuxOptionKey, MuxSnapshot, PaneId, PaneKindSnapshot,
     PathEntry, PathListRoot, ProtocolMessage,
@@ -451,7 +451,7 @@ fn tree_pane(
 mod tests {
     use std::cell::RefCell;
 
-    use zz_gpui::{AppContext as _, TestAppContext};
+    use ala::{AppContext as _, TestAppContext};
     use zz_protocol::{
         Event, EventPayload, InsertStyle, LayoutNode, PaneSnapshot, PaneSummary, PathKind,
         SessionId, SessionSnapshot, ShellKind, WindowId, WindowSnapshot,
@@ -518,7 +518,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn files_are_listed_through_a_terminal_and_pasted_into_the_pane(cx: &mut TestAppContext) {
         let pane = PaneId(1);
         let connection = cx.new(Connection::new);

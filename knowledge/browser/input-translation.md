@@ -1,6 +1,6 @@
 ---
 type: Subsystem
-title: Input translation (GPUI → CEF)
+title: Input translation (ala → CEF)
 description: Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, history-backed omnibox interaction, and why page drag and drop is off.
 resource: crates/zz-browser/src/input.rs
 tags: [browser, input, ime, keyboard, url, history, omnibox]
@@ -9,15 +9,15 @@ timestamp: 2026-10-19T00:00:00Z
 
 # Overview
 
-Input translation converts GPUI's platform events into CEF host calls without
-leaking GPUI or CEF types across the crate boundary. `input.rs` defines the
+Input translation converts ala's platform events into CEF host calls without
+leaking ala or CEF types across the crate boundary. `input.rs` defines the
 browser-neutral input value types (`Viewport`, `Modifiers`, pointer/wheel/key
 records); `BrowserSession` and its main-thread `BrowserCommandSink` in
 `cef_runtime.rs` perform the actual CEF `SendMouse*`/`SendKeyEvent`/`ImeX` calls.
 `url_input.rs` handles the address field:
 deciding between navigating and searching, normalizing typed text into an allowed
 URL, and redacting URLs before diagnostics.
-[`crates/zz`](/crates/zz.md) builds these neutral records from GPUI events and
+[`crates/zz`](/crates/zz.md) builds these neutral records from ala events and
 calls the session methods on the foreground thread.
 
 # Browser-neutral input types (`input.rs`)
@@ -75,17 +75,17 @@ their macOS ANSI positions so Command-based page shortcuts reach Chromium with
 the correct key identity. Ordinary committed text still uses the separate
 `send_text` path and is not duplicated.
 
-The nested `Browser` key context binds Tab and Shift+Tab to GPUI's `NoAction`.
+The nested `Browser` key context binds Tab and Shift+Tab to ala's `NoAction`.
 That masks the outer `Root` focus-navigation actions without consuming the raw
 key events, keeping focus inside Chromium so its DOM traversal handles them.
 
 Keyboard, committed-text, IME, focused-frame edit, and ordered navigation calls
-from GPUI do not enter CEF inside an entity update. `BrowserController` captures
+from ala do not enter CEF inside an entity update. `BrowserController` captures
 the active session's `BrowserCommandSink`, appends the owned operation to one
 FIFO, and schedules one foreground drain for the burst. The drain takes the
 batch while the controller is borrowed, returns from that update, and only then
 calls CEF. CEF can synchronously re-enter the platform event loop, so moving the
-call beyond the GPUI app borrow is required for correctness. The sink is
+call beyond the ala app borrow is required for correctness. The sink is
 main-thread-only and keeps the browser identity captured at submission time.
 
 # IME candidate placement
@@ -110,9 +110,9 @@ caret at the content's top-left. `ime_window_bounds` in `view.rs` and the
 drag and drop inside the page, and dragging a link, image or selection out of
 it. It stays off because each half needs pieces that do not exist yet:
 
-- zz-gpui starts a drag only from an element's `on_drag` on mouse-down, and
+- ala starts a drag only from an element's `on_drag` on mouse-down, and
   `App::active_drag` is crate-private, so a drag that CEF starts from inside the
-  page cannot become a GPUI drag. Putting `on_drag` on the page would turn every
+  page cannot become an ala drag. Putting `on_drag` on the page would turn every
   text selection into a drag.
 - Native drag-out (`ExternalDragPayload`) carries only files: the macOS
   `beginDraggingSession` and Wayland `start_drag` paths offer path lists, with no
@@ -149,7 +149,7 @@ the same complete edit family and edits the URL normally.
 # Pane shortcuts
 
 The browser pane root installs a `Browser` key context before its raw key handler,
-so browser-convention chords become GPUI actions and are not forwarded into the
+so browser-convention chords become ala actions and are not forwarded into the
 web page or the daemon's synchronized-input path:
 
 | Action | macOS | Linux / Windows |
@@ -240,7 +240,7 @@ silently become a search.
 
 # History-backed omnibox
 
-The address field's GPUI input layer searches the current logical browser
+The address field's ala input layer searches the current logical browser
 profile after each non-empty edit. Results match every whitespace-delimited term
 across URL and title, then rank address fit, learned selection, typed use, visit
 frequency, and recency. At most eight native title-and-URL rows appear below the
@@ -295,17 +295,17 @@ assert_eq!(
 | `src/page_zoom.rs` | Chromium percentage ladder and factor-to-CEF-level conversion. |
 | `src/url_input.rs` | `resolve_address`, `SearchProvider`, `normalize_url`, `diagnostic_url`, `UrlInputError`. |
 | `src/cef_runtime.rs` | `BrowserSession`, main-thread `BrowserCommandSink`, CEF input/edit helpers, `event_flags`, coordinate scaling. |
-| `crates/zz/src/browser/controller.rs` | Ordered foreground CEF command queue and the GPUI re-entrancy boundary. |
+| `crates/zz/src/browser/controller.rs` | Ordered foreground CEF command queue and the ala re-entrancy boundary. |
 | `crates/zz/src/browser/view.rs` | Platform keybindings, nested omnibox key context, input events, selection and Escape stages, page edit actions, zoom actions, and menu controls. |
 | `crates/zz-client/src/chrome.rs` | Browser chrome action names, platform profile defaults, extended chord grammar, and table resolution. |
-| `crates/zz/src/keymap.rs` | GPUI bridge for browser chrome defaults and `chrome-keybind`/`chrome-unbind` overrides. |
+| `crates/zz/src/keymap.rs` | ala bridge for browser chrome defaults and `chrome-keybind`/`chrome-unbind` overrides. |
 | `crates/zz/src/browser/recent_pages.rs` | Profile-scoped history queries, scoring, inline eligibility, learned selections, and deletion. |
 
 # Related
 
 - Coordinate scaling is shared with the
   [off-screen rendering](/browser/osr-rendering.md) DPI path.
-- Input records are built from GPUI events in [`crates/zz`](/crates/zz.md);
+- Input records are built from ala events in [`crates/zz`](/crates/zz.md);
   focus/cursor state feeds the [lifecycle events](/browser/lifecycle.md).
 - Address-field results and successful-use learning are detailed in
   [history and omnibox autocomplete](/browser/history-autocomplete.md).

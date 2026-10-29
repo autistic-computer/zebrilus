@@ -432,13 +432,12 @@ impl SettingsView {
                                 .label("Choose…")
                                 .on(settings_card_ground(cx))
                                 .on_click(cx.listener(move |this, _, window, cx| {
-                                    let selected =
-                                        cx.prompt_for_paths(zz_gpui::PathPromptOptions {
-                                            files: true,
-                                            directories: false,
-                                            multiple: false,
-                                            prompt: Some("Choose configuration".into()),
-                                        });
+                                    let selected = cx.prompt_for_paths(ala::PathPromptOptions {
+                                        files: true,
+                                        directories: false,
+                                        multiple: false,
+                                        prompt: Some("Choose configuration".into()),
+                                    });
                                     let input = this.file_options[&kind].donor.clone();
                                     cx.spawn_in(window, async move |_, window| {
                                         let path =
@@ -781,8 +780,8 @@ mod tests {
     use super::*;
 
     #[cfg(target_os = "macos")]
-    #[zz_gpui::test]
-    fn font_smoothing_controls_save_strength_toggle_and_reset(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn font_smoothing_controls_save_strength_toggle_and_reset(cx: &mut ala::TestAppContext) {
         use std::{cell::RefCell, rc::Rc};
 
         cx.update(zz_ui::init);
@@ -842,12 +841,10 @@ mod tests {
         assert_eq!(std::fs::read_to_string(path).unwrap(), source);
     }
 
-    #[zz_gpui::test]
-    fn terminal_preview_uses_drafts_without_changing_saved_settings(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    #[ala::test]
+    fn terminal_preview_uses_drafts_without_changing_saved_settings(cx: &mut ala::TestAppContext) {
+        use ala::EntityInputHandler as _;
         use std::{cell::RefCell, rc::Rc};
-        use zz_gpui::EntityInputHandler as _;
 
         cx.update(zz_ui::init);
         let captured = Rc::new(RefCell::new(None));

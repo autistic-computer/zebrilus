@@ -4,7 +4,7 @@
 
 # zz
 
-zz is tmux, ghostty and gpui love triangle
+zz is tmux, ghostty and ala love triangle
 
 ![zz](assets/screenshot.png)
 
@@ -14,7 +14,7 @@ Yes.
 
 ### In math notation:
 
-> **zz := gpui(tmux ∪ ghostty)**
+> **zz := ala(tmux ∪ ghostty)**
 
 ## Features
 
@@ -27,7 +27,7 @@ your sessions, so closing the window detaches instead of killing your work.
 - Browser panes: a real Chromium composited on the same surface as your
   terminals, split and targeted like any other pane.
 - macOS, Linux (Wayland). Experimental Windows and WSL support.
-- Browser client with the shared GPUI interface: [build and run](knowledge/playbooks/browser-client.md).
+- Browser client with the shared ala interface: [build and run](knowledge/playbooks/browser-client.md).
 
 # Pty Benchmarks
 

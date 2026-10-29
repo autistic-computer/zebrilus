@@ -11,7 +11,7 @@ timestamp: 2026-10-20T18:00:00-03:00
 
 `zz-cli` provides the CLI verbs, `zz daemon`, `zz proxy`, `zz fleet`, and `zz attach`.
 The `zz-cli` package builds the headless `zz_cli` binary; the `zz` package builds the
-GPUI desktop binary `zz` and links the shared `zz-cli` library for CLI dispatch,
+ala desktop binary `zz` and links the shared `zz-cli` library for CLI dispatch,
 daemon spawning, and terminal attach through the `zz-tui` library.
 
 Desktop bundles install `zz_cli` as `cli`: `lib/zz/cli` on Linux and

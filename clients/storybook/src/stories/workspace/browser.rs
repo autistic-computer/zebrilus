@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, AppContext as _, Entity, Focusable as _, IntoElement, ParentElement as _,
     Styled as _, Window, div, prelude::*, px,
 };
@@ -96,7 +96,7 @@ const URLS: [&str; 4] = [
     "https://zed.dev/docs/key-bindings",
     "https://github.com/demfabris/zz/pull/412",
     "http://localhost:4321/",
-    "https://docs.rs/gpui/latest/gpui/struct.Window.html#method.use_keyed_state",
+    "https://docs.rs/ala/latest/ala/struct.Window.html#method.use_keyed_state",
 ];
 
 fn inputs<const N: usize>(window: &mut Window, cx: &mut App) -> [Entity<InputState>; N] {
@@ -216,7 +216,7 @@ pub fn toolbar(
             false,
             false,
         )
-        .dropdown_menu_with_anchor(zz_gpui::Anchor::TopRight, move |menu, window, cx| {
+        .dropdown_menu_with_anchor(ala::Anchor::TopRight, move |menu, window, cx| {
             browser_action_menu(
                 menu,
                 window,
@@ -250,9 +250,9 @@ fn pane_actions(cx: &App) -> impl IntoElement {
 fn tab_infos(count: usize) -> Vec<BrowserTabInfo> {
     [
         ("zed.dev", "Key bindings - Zed"),
-        ("github.com", "Rename zpui to zz-gpui · Pull Request #412"),
+        ("github.com", "Rename zpui to ala · Pull Request #412"),
         ("localhost:4321", "zz, a terminal multiplexer"),
-        ("docs.rs", "Window in gpui - Rust"),
+        ("docs.rs", "Window in ala - Rust"),
         ("news.ycombinator.com", "Hacker News"),
         ("crates.io", "crates.io: Rust Package Registry"),
         ("about:blank", "New tab"),
@@ -300,7 +300,7 @@ pub fn browser_pane(
     gaps: bool,
     window: &Window,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     let radius = radii(gaps, cx).top_left;
     pane_surface(
         id,
@@ -595,7 +595,7 @@ fn start_page(_: &mut Window, cx: &mut App) -> AnyElement {
                 "zed.dev/docs/key-bindings",
                 "github.com/demfabris/zz/pull/412",
                 "localhost:4321",
-                "docs.rs/gpui/latest/gpui/struct.Window.html#method.use_keyed_state",
+                "docs.rs/ala/latest/ala/struct.Window.html#method.use_keyed_state",
             ]
             .into_iter()
             .enumerate()

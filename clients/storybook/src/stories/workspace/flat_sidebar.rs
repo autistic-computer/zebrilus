@@ -8,7 +8,7 @@ use zz_client::{
         PaneTile, WindowSummary, age_label, summarize_chats, summarize_host,
     },
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _, Render,
     ScrollHandle, Styled as _, Window, div, prelude::*, px,
 };
@@ -540,7 +540,7 @@ fn extras(rows: Rows) -> FlatHost {
                             )
                             .ago(3),
                         terminal(23, "zsh").at(MAC, "main"),
-                        browser(24, "docs.rs", "https://docs.rs/zz-gpui"),
+                        browser(24, "docs.rs", "https://docs.rs/ala"),
                     ],
                 ),
                 window(

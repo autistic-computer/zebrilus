@@ -42,6 +42,11 @@ pub use overview::{
     HostState, host_state_dot, overview_count, overview_host_empty, overview_session_heading,
 };
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
+pub use penna::dismissal::coast_guard;
+pub use penna::sheet::{
+    BottomSheet, bottom_sheet, close_sheet, floating_sheet, sheet_action, sheet_close,
+    sheet_detail_row, sheet_inset, sheet_option, sheet_row,
+};
 pub use pill_menu::{PillMenuAlign, PillMenuItem, PillMenuLook, compact_pill_menu};
 pub use popover_key::{
     PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords,
@@ -50,8 +55,3 @@ pub use sticky::{StickyModifier, StickyModifiers};
 pub use swipe_back::{SwipeBack, claim_back_swipe, swipe_back, yield_back_swipe};
 pub use web_time::Instant;
 pub use which_key_list::WhichKeyList;
-pub use zz_gpui_kit::dismissal::coast_guard;
-pub use zz_gpui_kit::sheet::{
-    BottomSheet, bottom_sheet, close_sheet, floating_sheet, sheet_action, sheet_close,
-    sheet_detail_row, sheet_inset, sheet_option, sheet_row,
-};

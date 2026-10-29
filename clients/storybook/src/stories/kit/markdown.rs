@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
     Render, StyleRefinement, Styled as _, Window, div, px,
 };
@@ -136,7 +136,7 @@ fn code(_: &mut Window, cx: &mut App) -> AnyElement {
 
 fn tables(_: &mut Window, cx: &mut App) -> AnyElement {
     let mut table = StyleRefinement::default();
-    table.overflow.x = Some(zz_gpui::Overflow::Scroll);
+    table.overflow.x = Some(ala::Overflow::Scroll);
     let scrolling =
         TextView::markdown("md-tables-scroll", TABLES).style(TextViewStyle { table, ..style(cx) });
     states()

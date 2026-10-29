@@ -1,14 +1,14 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
+use ala::{
+    App, AppContext as _, Context, Entity, KeyDownEvent, SharedString, TestAppContext,
+    VisualTestContext, Window,
+};
 use zz_client::{
     completion::PaneKindAvailability,
     gui_actions::{GuiOffer, GuiOption, PANE_GAPS, THEME, gui_action},
     place::ActionKind,
     recents::RecentKey,
-};
-use zz_gpui::{
-    App, AppContext as _, Context, Entity, KeyDownEvent, SharedString, TestAppContext,
-    VisualTestContext, Window,
 };
 use zz_protocol::{CommandInvocation, InputMessage, MuxSnapshot, PaneId, SessionId, WindowId};
 
@@ -180,7 +180,7 @@ fn finished(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext) ->
     palette.read_with(cx, |palette, _| palette.is_finished())
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_theme_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppContext) {
     let (palette, heard, cx) = mount(cx);
     let theme = gui_action(THEME).unwrap();
@@ -229,7 +229,7 @@ fn a_theme_previews_while_highlighted_and_applies_on_enter(cx: &mut TestAppConte
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn enter_flips_an_on_off_action(cx: &mut TestAppContext) {
     let (palette, heard, cx) = mount(cx);
     cx.simulate_input("gaps");
@@ -246,7 +246,7 @@ fn enter_flips_an_on_off_action(cx: &mut TestAppContext) {
     assert!(finished(&palette, cx));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn backspace_leaves_the_values_and_puts_the_theme_back(cx: &mut TestAppContext) {
     let (palette, heard, cx) = mount(cx);
     cx.simulate_input("theme");
@@ -263,7 +263,7 @@ fn backspace_leaves_the_values_and_puts_the_theme_back(cx: &mut TestAppContext) 
     assert!(!finished(&palette, cx));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_recent_action_applies_its_value_again(cx: &mut TestAppContext) {
     let (palette, heard, cx) = mount(cx);
     cx.update(|window, cx| {

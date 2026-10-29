@@ -87,13 +87,13 @@ Picking a theme clears the radius (`ThemeOverrides::pick_theme`, `ConfigKey::THE
 | Built-in ids, named accents and the radius limit for config validation | `zz_client::appearance::BUILTIN_THEMES`, `ACCENTS`, `AccentSetting`, `DEFAULT_TINT_HUE`, `MAX_CORNER_RADIUS` |
 | `interface-theme`, `chrome-accent` and the tint keys, `themes/` folder, writer, retired keys | `crates/zz-config/src/lib.rs` (`ConfigKey::THEME_PICKS`, `RETIRED_MATERIAL_KEYS`), `crates/zz-config/src/themes.rs` |
 | Overrides over the theme | `zz_ui::interface_theme::ThemeOverrides` (`apply_to`, `pick_theme`), `accent_color`, `ACCENT_COLORS`; desktop `config::theme_overrides` and `config::shown_theme` in `crates/zz/src/config/mod.rs` |
-| The tint | `ThemeColor::tinted` and the `oklch` helper in `libs/kit/src/foundation/` |
+| The tint | `ThemeColor::tinted` and the `oklch` helper in `libs/penna/src/foundation/` |
 | Desktop: load, apply, Settings rows and Import | `crates/zz/src/config/mod.rs`, `crates/zz/src/theme.rs`, `crates/zz/src/config/settings.rs` |
 | Thin clients: the selected id, saved themes and overrides in preferences; the same rows, Import and Delete | `clients/app/src/preferences.rs`, `clients/app/src/app/settings.rs` |
 | The Interface page's rows | `zz_ui::settings::appearance`: `AppearancePageItem`, `appearance_page_items`, `ThemePicks`, `theme_mode_control`, `theme_picker`, `theme_labels`, `accent_swatches`, `tint_hue_slider`, `tint_slider`, `corner_radius_slider`, `contrast_slider` |
 | Tile preview | `zz_ui::settings::appearance::interface_theme_preview` |
-| The sliders | the kit's continuous `Slider` in `libs/kit/src/slider.rs` |
-| The custom accent | the kit's `ColorPicker` (`libs/kit/src/color_picker/mod.rs`) drawn as a bare swatch with `.swatch(size)`; swatches round with `Theme::swatch_radius()` |
+| The sliders | the kit's continuous `Slider` in `libs/penna/src/slider.rs` |
+| The custom accent | the kit's `ColorPicker` (`libs/penna/src/color_picker/mod.rs`) drawn as a bare swatch with `.swatch(size)`; swatches round with `Theme::swatch_radius()` |
 | Kit values the theme sets | `ThemeColor::shadow_color`, `ThemeColor::on_accent`; `Theme::radius`, `outline`, `row_inset`, `primary`, `glass` (`light-glass` in light mode), `contact_shadow`, `float_shadow` and `styles`; `Theme::pane_radius()` and `pane_edge_width()` follow the radius and the outline |
 | Theme creator and knobs | `clients/storybook/src/stories/theme_creator.rs`, `clients/storybook/src/knobs.rs`, `clients/storybook/web/main.js` |
 

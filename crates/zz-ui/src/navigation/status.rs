@@ -3,7 +3,7 @@ use std::rc::Rc;
 mod pane_deck;
 pub use pane_deck::{StatusPaneEntry, status_pane_deck};
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, ElementId, IntoElement, MouseButton, SharedString, Window, div, prelude::*,
 };
 
@@ -64,7 +64,7 @@ pub fn status_window(
             div()
                 .flex_none()
                 .invisible()
-                .group_hover(group, zz_gpui::Styled::visible)
+                .group_hover(group, ala::Styled::visible)
                 .child(
                     workspace_row_action(
                         Button::compact_icon(

@@ -8,6 +8,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use ala::{
+    AnyElement, AnyWindowHandle, App, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
+    EntityInputHandler, FocusHandle, Focusable, Font, Hsla, Image, IntoElement, KeyBinding,
+    KeyDownEvent, KeyUpEvent, Keystroke, ModifiersChangedEvent, MouseButton, MouseDownEvent,
+    MouseExitEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, ScrollDelta,
+    ScrollWheelEvent, Subscription, Task, UTF16Selection, Window, div, point, prelude::*, px,
+};
 use parking_lot::RwLock;
 use zz_client::{
     ChromeAction, TERMINAL_TABLE,
@@ -15,13 +22,6 @@ use zz_client::{
         LOCAL_SCROLL_DEBOUNCE, LOCAL_SCROLL_TIMEOUT, LocalScrollEffect, LocalScrollState,
         LocalScrollStep, LocalScrollSync, local_scroll_available, scroll_fraction_offset,
     },
-};
-use zz_gpui::{
-    AnyElement, AnyWindowHandle, App, Bounds, ClipboardEntry, ClipboardItem, Context, Entity,
-    EntityInputHandler, FocusHandle, Focusable, Font, Hsla, Image, IntoElement, KeyBinding,
-    KeyDownEvent, KeyUpEvent, Keystroke, ModifiersChangedEvent, MouseButton, MouseDownEvent,
-    MouseExitEvent, MouseMoveEvent, MouseUpEvent, NoAction, Pixels, Point, Render, ScrollDelta,
-    ScrollWheelEvent, Subscription, Task, UTF16Selection, Window, div, point, prelude::*, px,
 };
 use zz_protocol::{ClientMessageKind, CommandInvocation, InputMessage, PaneId, TerminalUiCommand};
 use zz_terminal::{
@@ -80,9 +80,9 @@ const LOCAL_TERMINAL_FONT_CANDIDATES: &[&str] = &[
 // CoreText backends (macOS, iOS) take font size in points; the rest take 96-DPI
 // logical pixels.
 #[cfg(target_os = "macos")]
-const GPUI_UNITS_PER_FONT_POINT: f32 = 1.0;
+const ALA_UNITS_PER_FONT_POINT: f32 = 1.0;
 #[cfg(not(target_os = "macos"))]
-const GPUI_UNITS_PER_FONT_POINT: f32 = 96.0 / 72.0;
+const ALA_UNITS_PER_FONT_POINT: f32 = 96.0 / 72.0;
 
 static COPY_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static PASTE_UPLOAD_ID: AtomicU64 = AtomicU64::new(1);
@@ -268,7 +268,7 @@ impl TerminalRenderAppearance {
 }
 
 pub(crate) fn terminal_font_size(appearance: &TerminalAppearance) -> Pixels {
-    px(appearance.font_size_points * GPUI_UNITS_PER_FONT_POINT)
+    px(appearance.font_size_points * ALA_UNITS_PER_FONT_POINT)
 }
 
 pub(crate) fn terminal_line_height(appearance: &TerminalAppearance) -> Pixels {
@@ -280,7 +280,7 @@ pub(crate) fn terminal_line_height(appearance: &TerminalAppearance) -> Pixels {
 
 #[cfg(test)]
 fn appearance_hsla(color: zz_terminal::AppearanceColor) -> Hsla {
-    zz_gpui::Rgba {
+    ala::Rgba {
         r: f32::from(color.r) / 255.0,
         g: f32::from(color.g) / 255.0,
         b: f32::from(color.b) / 255.0,
@@ -373,7 +373,7 @@ fn terminal_text_input(pane: PaneId, key: Option<&KeyDownEvent>, text: &str) -> 
 
 #[allow(
     clippy::struct_excessive_bools,
-    reason = "independent GPUI gesture and timer lifecycles are intentionally tracked separately"
+    reason = "independent ala gesture and timer lifecycles are intentionally tracked separately"
 )]
 pub(crate) struct TerminalView {
     pane: PaneId,
@@ -1669,7 +1669,7 @@ impl TerminalView {
         cx.stop_propagation();
     }
 
-    fn local_selection(&self, modifiers: zz_gpui::Modifiers) -> bool {
+    fn local_selection(&self, modifiers: ala::Modifiers) -> bool {
         modifiers.shift || !self.retained.read().viewport.mouse_tracking
     }
 
@@ -1761,7 +1761,7 @@ impl TerminalView {
         &self,
         position: Point<Pixels>,
         click_count: usize,
-        modifiers: zz_gpui::Modifiers,
+        modifiers: ala::Modifiers,
     ) -> Option<PointerCellEvent> {
         self.pointer_cell_with_clamping(position, click_count, modifiers, false)
     }
@@ -1770,7 +1770,7 @@ impl TerminalView {
         &self,
         position: Point<Pixels>,
         click_count: usize,
-        modifiers: zz_gpui::Modifiers,
+        modifiers: ala::Modifiers,
     ) -> Option<PointerCellEvent> {
         self.pointer_cell_with_clamping(position, click_count, modifiers, true)
     }
@@ -1779,7 +1779,7 @@ impl TerminalView {
         &self,
         position: Point<Pixels>,
         click_count: usize,
-        modifiers: zz_gpui::Modifiers,
+        modifiers: ala::Modifiers,
         clamp: bool,
     ) -> Option<PointerCellEvent> {
         let grid = self.hit_grid?;
@@ -1824,7 +1824,7 @@ impl TerminalView {
         &self,
         position: Point<Pixels>,
         click_count: usize,
-        input_modifiers: zz_gpui::Modifiers,
+        input_modifiers: ala::Modifiers,
         phase: TerminalMousePhase,
         button: Option<TerminalMouseButton>,
         scale: f32,
@@ -1844,7 +1844,7 @@ impl TerminalView {
         &self,
         position: Point<Pixels>,
         click_count: usize,
-        input_modifiers: zz_gpui::Modifiers,
+        input_modifiers: ala::Modifiers,
         phase: TerminalMousePhase,
         button: Option<TerminalMouseButton>,
         scale: f32,
@@ -1870,7 +1870,7 @@ impl TerminalView {
         &self,
         position: Point<Pixels>,
         click_count: usize,
-        input_modifiers: zz_gpui::Modifiers,
+        input_modifiers: ala::Modifiers,
         phase: TerminalMousePhase,
         button: Option<TerminalMouseButton>,
         scale: f32,
@@ -2627,7 +2627,7 @@ fn scrollbar_strip_hit(grid: HitGrid, scrollbar: ScrollbarState, position: Point
     zz_ui::terminal::scrollbar_strip_hit(grid.surface_bounds, scrollbar, position)
 }
 
-fn modifiers(value: zz_gpui::Modifiers) -> Modifiers {
+fn modifiers(value: ala::Modifiers) -> Modifiers {
     Modifiers::new(value.shift, value.control, value.alt, value.platform)
 }
 
@@ -2686,14 +2686,14 @@ pub(crate) fn key_code(key: &str) -> KeyCode {
 )]
 mod tests {
     use super::*;
+    use ala::{FontStyle, FontWeight};
     use zz_client::scrollback::HistoryRow;
-    use zz_gpui::{FontStyle, FontWeight};
     use zz_terminal::{AppearanceColor, CursorBlinkPolicy};
 
-    zz_gpui::actions!(terminal_view_test, [FocusNext, FocusPrevious]);
+    ala::actions!(terminal_view_test, [FocusNext, FocusPrevious]);
 
     #[test]
-    fn maps_gpui_key_names() {
+    fn maps_ala_key_names() {
         assert_eq!(key_code("left"), KeyCode::ArrowLeft);
         assert_eq!(key_code("f12"), KeyCode::Function(12));
         assert_eq!(key_code("x"), KeyCode::Character('x'));
@@ -2722,7 +2722,7 @@ mod tests {
                 keystroke: Keystroke {
                     key: key.to_owned(),
                     key_char: None,
-                    modifiers: zz_gpui::Modifiers {
+                    modifiers: ala::Modifiers {
                         shift: true,
                         ..Default::default()
                     },
@@ -2749,7 +2749,7 @@ mod tests {
     }
 
     #[test]
-    fn gpui_terminal_commits_text_as_one_standalone_message() {
+    fn ala_terminal_commits_text_as_one_standalone_message() {
         assert_eq!(
             terminal_text_input(PaneId(7), None, "typed"),
             InputMessage::Text {
@@ -2765,7 +2765,7 @@ mod tests {
             keystroke: Keystroke {
                 key: "e".to_owned(),
                 key_char: Some("e".to_owned()),
-                modifiers: zz_gpui::Modifiers::default(),
+                modifiers: ala::Modifiers::default(),
             },
             is_held: false,
             prefer_character_input: false,
@@ -2792,7 +2792,7 @@ mod tests {
         let keystroke = Keystroke {
             key: "space".to_owned(),
             key_char: Some(" ".to_owned()),
-            modifiers: zz_gpui::Modifiers::default(),
+            modifiers: ala::Modifiers::default(),
         };
 
         assert_eq!(
@@ -2819,10 +2819,10 @@ mod tests {
             KeyBinding::new("shift-tab", FocusPrevious, Some("Root")),
         ];
         bindings.extend(raw_key_bindings());
-        let keymap = zz_gpui::Keymap::new(bindings);
-        let root_context = zz_gpui::KeyContext::parse("Root").expect("valid root key context");
+        let keymap = ala::Keymap::new(bindings);
+        let root_context = ala::KeyContext::parse("Root").expect("valid root key context");
         let terminal_context =
-            zz_gpui::KeyContext::parse(TERMINAL_KEY_CONTEXT).expect("valid terminal key context");
+            ala::KeyContext::parse(TERMINAL_KEY_CONTEXT).expect("valid terminal key context");
 
         for source in ["tab", "shift-tab"] {
             let keystroke = Keystroke::parse(source).expect("valid tab keystroke");
@@ -2885,10 +2885,10 @@ mod tests {
         bindings.extend(terminal_key_bindings(&crate::keymap::test_chords(
             TERMINAL_TABLE,
         )));
-        let keymap = zz_gpui::Keymap::new(bindings);
+        let keymap = ala::Keymap::new(bindings);
         let contexts = [
-            zz_gpui::KeyContext::parse(zz_ui::ROOT_KEY_CONTEXT).expect("valid zz root context"),
-            zz_gpui::KeyContext::parse(TERMINAL_KEY_CONTEXT).expect("valid terminal context"),
+            ala::KeyContext::parse(zz_ui::ROOT_KEY_CONTEXT).expect("valid zz root context"),
+            ala::KeyContext::parse(TERMINAL_KEY_CONTEXT).expect("valid terminal context"),
         ];
 
         for source in ["ctrl-=", "ctrl-+", "ctrl--"] {
@@ -3230,12 +3230,10 @@ mod tests {
 
     #[test]
     fn visible_scrollbar_strip_is_not_part_of_the_terminal_hit_grid() {
-        let surface_bounds = Bounds::new(
-            point(px(10.0), px(20.0)),
-            zz_gpui::size(px(650.0), px(460.0)),
-        );
+        let surface_bounds =
+            Bounds::new(point(px(10.0), px(20.0)), ala::size(px(650.0), px(460.0)));
         let grid = HitGrid {
-            bounds: Bounds::new(surface_bounds.origin, zz_gpui::size(px(640.0), px(456.0))),
+            bounds: Bounds::new(surface_bounds.origin, ala::size(px(640.0), px(456.0))),
             surface_bounds,
             columns: 80,
             rows: 24,
@@ -3282,9 +3280,9 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn terminal_geometry_retries_the_same_grid_after_a_new_layout_view(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -3349,9 +3347,9 @@ mod tests {
         drop(terminal);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn trackpad_scrollback_stays_local_and_syncs_the_daemon_before_a_press(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -3371,7 +3369,7 @@ mod tests {
         });
         let mux: Entity<MuxClient> = mux_slot.borrow().clone().expect("captured mux");
         let sent = mux.update(cx, |mux, _| mux.record_input_for_test());
-        let grid = Bounds::new(point(px(0.0), px(0.0)), zz_gpui::size(px(640.0), px(480.0)));
+        let grid = Bounds::new(point(px(0.0), px(0.0)), ala::size(px(640.0), px(480.0)));
         let geometry = |view: &mut TerminalView, content_offset, cx: &mut Context<TerminalView>| {
             view.update_geometry(
                 GridSize {
@@ -3488,9 +3486,9 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn pane_search_owns_focus_and_updates_unicode_edits_without_submitting(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         cx.update(zz_ui::init);
         let (terminal, cx) = cx.add_window_view(|window, cx| {
@@ -3534,9 +3532,9 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn hidden_and_blurred_terminals_stop_blinking_without_another_render(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         cx.update(zz_ui::init);
         let (terminal, cx) = cx.add_window_view(|window, cx| {
@@ -3593,8 +3591,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn cursor_blinking_settles_visible_after_idle_until_input(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn cursor_blinking_settles_visible_after_idle_until_input(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         let (terminal, cx) = cx.add_window_view(|window, cx| {
             let mux = cx.new(|cx| {

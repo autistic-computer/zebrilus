@@ -4,11 +4,11 @@
 # Concepts
 
 * [Agent benchmarks](agent-benchmarks.md) - Measure zz as an agent target: browser-pane capability parity over CDP against standalone browser tools, whether the zz-workspace skill helps weak agents, what a fresh user's Claude Code and Codex get, and the agent-send gaps an agent hits when it hands work to Claude Code or Codex workers across machines; harness layout, prerequisites, results, and traps.
-* [Running the browser client](browser-client.md) - Build the shared GPUI browser client and connect it to a zz daemon through the local WebSocket gateway.
+* [Running the browser client](browser-client.md) - Build the shared ala browser client and connect it to a zz daemon through the local WebSocket gateway.
 * [Building and verifying a platform CEF bundle](build-cef-bundle.md) - Step-by-step use of cargo xtask and release recipes to assemble, sign, notarize, and validate platform CEF bundles.
 * [Running the tmux compatibility harness](compat-harness.md) - How to run the pinned tmux differential corpus, read topology, geometry, format, and query-stdout results, and record known divergences.
 * [Toolchain and system prerequisites](prerequisites.md) - The exact toolchain versions and per-platform system libraries required to build zz, pinned by rust-toolchain.toml, mise.toml, and CI.
-* [Building and running zz](running-zz.md) - How to build and run the zz GPUI client and its daemon, what the first build downloads, and how to exercise the browser pane with the loopback fixture.
+* [Building and running zz](running-zz.md) - How to build and run the zz ala client and its daemon, what the first build downloads, and how to exercise the browser pane with the loopback fixture.
 * [Working with the zz storybook](storybook.md) - Run the zz-ui storybook, add a story, change a look and check it in every theme, and drive or screenshot it from an agent.
 * [Running tmux compatibility cohorts](tmux-compat-cohorts.md) - A bounded, parallel workflow for closing the practical alias tmux=zz gap without letting new oracle findings extend one campaign forever.
 * [Running the TUI parity campaign](tui-parity-campaign.md) - Run the TUI parity campaign: the ledger, the proof surfaces, and the worker, reviewer, and gate cycle that turns measurements into verified obligations.

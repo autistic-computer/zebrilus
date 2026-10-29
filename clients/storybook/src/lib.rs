@@ -2,10 +2,10 @@
 //!
 //! The page (`web/`) renders the navigation, prose and knobs as HTML from the
 //! registry in [`stories`]. Each section of the story on screen is its own
-//! zz-gpui window, mounted into that section's element and sized to its content,
+//! ala window, mounted into that section's element and sized to its content,
 //! so people and agents get real page structure around live zz UI. The
 //! sections' accessibility trees are mirrored into the page, and
-//! `globalThis.zzGpui` drives them.
+//! `globalThis.ala` drives them.
 
 mod backdrop;
 mod host;
@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use serde_json::json;
-use zz_gpui::{AnyWindowHandle, App, AppContext as _, Task, WindowOptions};
+use ala::{AnyWindowHandle, App, AppContext as _, Task, WindowOptions};
 use zz_ui::{ActiveTheme as _, Colorize as _, Root, to_hex};
 
 pub use knobs::Knobs;
@@ -82,7 +82,7 @@ pub fn stories_json() -> String {
 
 pub fn glass_presets_json() -> String {
     json!(
-        zz_gpui::GlassMaterial::PRESETS
+        ala::GlassMaterial::PRESETS
             .iter()
             .map(|(id, material)| {
                 let material = material();
@@ -106,7 +106,7 @@ pub fn interface_themes_json() -> String {
             .map(|(id, theme)| {
                 let mut values = knobs::theme_knobs(theme);
                 values.insert("name".to_owned(), json!(theme.name));
-                let glass = |material: Option<zz_gpui::GlassMaterial>| {
+                let glass = |material: Option<ala::GlassMaterial>| {
                     json!(material.map(|material| {
                         knobs::GLASS_KNOBS
                             .iter()
@@ -187,7 +187,7 @@ pub fn roles_json() -> String {
 /// Flashes a ring around every surface of the role or kind `id` in the open
 /// story: it holds, then fades out. An empty `id` clears it.
 pub fn inspect(id: &str, cx: &mut App) {
-    let inspect = (!id.is_empty()).then(|| zz_gpui::SharedString::from(id.to_owned()));
+    let inspect = (!id.is_empty()).then(|| ala::SharedString::from(id.to_owned()));
     let flash = inspect.is_some().then(|| {
         cx.spawn(async move |cx| {
             let start = web_time::Instant::now();
@@ -317,7 +317,7 @@ mod web {
 
     use wasm_bindgen::prelude::*;
 
-    fn launch(cx: &mut zz_gpui::App) {
+    fn launch(cx: &mut ala::App) {
         cx.text_system()
             .add_fonts(vec![
                 super::Cow::Borrowed(include_bytes!(
@@ -348,11 +348,11 @@ mod web {
     }
 
     thread_local! {
-        static APPLICATION: RefCell<Option<zz_gpui::ApplicationHandle>> = const { RefCell::new(None) };
+        static APPLICATION: RefCell<Option<ala::ApplicationHandle>> = const { RefCell::new(None) };
         static READY: Cell<bool> = const { Cell::new(false) };
     }
 
-    fn with_app<R>(f: impl FnOnce(&mut zz_gpui::App) -> R) -> Result<R, JsValue> {
+    fn with_app<R>(f: impl FnOnce(&mut ala::App) -> R) -> Result<R, JsValue> {
         APPLICATION.with(|application| {
             application
                 .borrow()
@@ -367,8 +367,8 @@ mod web {
         if APPLICATION.with(|application| application.borrow().is_some()) {
             return Err(JsValue::from_str("the storybook is already running"));
         }
-        zz_gpui_platform::web_init();
-        let application = zz_gpui_platform::single_threaded_web().with_assets(zz_ui::Assets);
+        ala_platform::web_init();
+        let application = ala_platform::single_threaded_web().with_assets(zz_ui::Assets);
         let handle = application.run_embedded(|cx| {
             launch(cx);
             READY.with(|ready| ready.set(true));

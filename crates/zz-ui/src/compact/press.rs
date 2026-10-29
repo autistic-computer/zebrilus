@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     Context, HitboxBehavior, IntoElement, MouseButton, MouseDownEvent, MouseMoveEvent,
     MouseUpEvent, Pixels, Point, Styled, TouchDragEvent, TouchPhase, WeakEntity, canvas,
 };

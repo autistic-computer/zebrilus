@@ -28,7 +28,7 @@ stay in the crate; no pane opens them.
 The daemon speaks the versioned [wire protocol](/protocol/wire-protocol.md) from
 [zz-protocol](/crates/zz-protocol.md), applies commands through the serialized `MuxEngine`, and
 translates the engine's `MuxEffect`s into terminal spawns, view attach/detach,
-send-keys, and client events. It contains no GPUI or CEF code; live browser rendering stays in
+send-keys, and client events. It contains no ala or CEF code; live browser rendering stays in
 [the app](/crates/zz.md), and the daemon only holds the browser pane's restorable
 `BrowserDescriptor` (URL + profile).
 
@@ -693,7 +693,7 @@ interactive clients as the user has devices. Per-client maps carry the rest:
 |-------------|---------------|
 | `PaneCreated{Terminal}` | `TerminalSession::spawn_with_scrollback_and_appearance`, insert into `terminals`, queue `watch_terminal`, attach the attached client's view |
 | `PaneCreated{Browser}` | No PTY; the pane's `BrowserDescriptor` lives in mux state, rendered by the attached GUI |
-| `PaneCreated{Picker}` | No PTY or browser runtime; publish the layout leaf for the GPUI picker |
+| `PaneCreated{Picker}` | No PTY or browser runtime; publish the layout leaf for the ala picker |
 | `PaneMaterialized{Terminal/Browser}` | Spawn the terminal actor using the remembered cwd donor, or retain the browser descriptor; the pane ID/layout leaf do not change |
 | `PanesRemoved` | Drop `Arc<TerminalSession>` (worker exits), close any lens runtime and lane (`close_agent_panes`), publish `PaneRemoved` |
 | `SendKeys{pane, keys}` | `resolve_input_sinks` → `send_tokens` to terminals / `BrowserCommand::SendKeys` to the GUI |
@@ -981,7 +981,7 @@ let mut client = CommandClient::connect(&default_socket_path())?;
 client.execute(CommandInvocation::new("new-session", ["-d"]))?;
 let output = client.execute(CommandInvocation::new("send-keys", ["-t", "%0", "ls", "Enter"]))?;
 
-// Interactive GPUI client: an empty target creates session 0 if the daemon is empty.
+// Interactive ala client: an empty target creates session 0 if the daemon is empty.
 let client = InteractiveClient::connect(&path)?;
 client.attach("")?;
 loop { let message = client.recv()?; /* reconcile snapshot / apply terminal frames */ }
@@ -1025,7 +1025,7 @@ send-keys data flow (CLI → PTY):
   [PTY worker model](/concepts/pty-worker.md) for the ownership boundary.
 - [Session persistence](/concepts/session-persistence.md) . detach/attach, what survives, transport per platform.
 - [Terminal frame](/concepts/terminal-frame.md) . the coalesced per-pane fan-out unit.
-- The [GPUI app](/crates/zz.md) is the single interactive client; the CLI subcommands are short-lived clients.
+- The [ala app](/crates/zz.md) is the single interactive client; the CLI subcommands are short-lived clients.
 - System context: [architecture overview](/architecture/overview.md), [process model](/architecture/process-model.md),
   [data flow](/architecture/data-flow.md).
 - The compact fan-out encoding: [packed terminal lanes](/protocol/terminal-lanes.md).

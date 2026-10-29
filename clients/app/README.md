@@ -7,8 +7,8 @@ protocol reducer, and image cache. `zz-ui` owns their widgets and painting;
 
 `connection.rs` uses WebSocket on WASM and `transport.rs` (the daemon client) on
 iOS. `input.rs` translates native keystrokes; `ios_browser.rs` is the WKWebView
-browser pane. Native keyboard, paste, and menus call `zz_gpui_platform::ios`, the UIKit backend
-in `libs/gpui/crates/zz-gpui-platform/src/ios`. Each client (`clients/web`, `clients/ios`) owns its
+browser pane. Native keyboard, paste, and menus call `ala_platform::ios`, the UIKit backend
+in `libs/ala/crates/ala-platform/src/ios`. Each client (`clients/web`, `clients/ios`) owns its
 entry point, fonts, window lifecycle, and platform backend.
 
 Run `cargo test -p zz-app` for shared logic, `just web build` for WASM, and

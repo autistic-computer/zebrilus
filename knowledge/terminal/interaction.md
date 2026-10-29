@@ -50,8 +50,8 @@ separate so IME and non-US layouts stay correct. `Modifiers` packs shift/control
 byte with reserved-bit validation on deserialize; `KeyInput` is 32 bytes on 64-bit. The worker calls
 `encode_key` → `key::Encoder` (Kitty-keyboard aware) to produce PTY bytes.
 
-The GPUI adapter derives both printable-text fallback and `unshifted_codepoint` from the mapped
-`KeyCode::Character` rather than from GPUI's key-name string. Space is why: GPUI names the
+The ala adapter derives both printable-text fallback and `unshifted_codepoint` from the mapped
+`KeyCode::Character` rather than from ala's key-name string. Space is why: ala names the
 physical key `space`, while the terminal mapping is `Character(' ')`. Press and release records must
 therefore both carry `unshifted_codepoint: Some(' ')`. When it is absent under Kitty event reporting
 (for example, Codex pushes `CSI > 7 u`), libghostty cannot identify the release and falls back to the
@@ -112,7 +112,7 @@ triggers a `HistoryRequest` prefetch.
 
 The state machine is `LocalScrollState` in [`zz-client`](/crates/zz-client.md)
 (`crates/zz-client/src/local_scroll.rs`); the desktop `TerminalView`
-(`crates/zz/src/terminal/view.rs`) and the GPUI thin client's `TerminalPane`
+(`crates/zz/src/terminal/view.rs`) and the ala thin client's `TerminalPane`
 (`clients/app/src/terminal.rs`, iOS and web) both drive it and send the effects it returns.
 The thin client keeps its rings in `ClientCore` (`retain_history`); both pace history requests with
 the shared `HistoryPacer`.
@@ -170,7 +170,7 @@ returns to copy navigation, while ordinary terminal Find uses Enter to move betw
 
 The daemon recognizes the stock structured copy-mode search callbacks in
 `native_copy_search_direction` and opens this editor for interactive clients advertising
-`client-native-terminal-search-v1`. The GPUI client advertises this capability locally and over
+`client-native-terminal-search-v1`. The ala client advertises this capability locally and over
 SSH. Terminal-pane support and a client's tty path do not identify its search UI.
 Custom callbacks, seeded prompts and clients without the capability keep the generic command-prompt path.
 `remember_copy_mode_search` retains live queries for copy-mode repeat and later copy-mode entries.
@@ -202,4 +202,4 @@ a resurrection of the old one. See
 - Overlays produced here (selection, hover, copy cursor) are painted per [rendering-parity](/terminal/rendering-parity.md).
 - Copy/view-mode semantics build on [copy-mode](/tmux/copy-mode.md); key routing layers over [key-tables](/tmux/key-tables.md).
 - Actions travel the [terminal lanes](/protocol/terminal-lanes.md) of the [wire protocol](/protocol/wire-protocol.md).
-- The client halves of local scroll (`HistoryRing`, `LocalScrollState`) live in [`zz-client`](/crates/zz-client.md), driven by the [zz app](/crates/zz.md) and the GPUI thin client.
+- The client halves of local scroll (`HistoryRing`, `LocalScrollState`) live in [`zz-client`](/crates/zz-client.md), driven by the [zz app](/crates/zz.md) and the ala thin client.

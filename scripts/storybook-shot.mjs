@@ -153,14 +153,14 @@ async function main() {
                     element.style.height = "auto";
                     element.style.overflow = "visible";
                 }
-                await zzGpui.idle();
-                await zzGpui.idle();
+                await ala.idle();
+                await ala.idle();
                 const section = ${JSON.stringify(section ?? null)};
                 const target = section && document.getElementById(${JSON.stringify(story)} + "-" + section);
                 if (section && !target) throw new Error("no section " + section);
                 const rect = target?.getBoundingClientRect();
                 return {
-                    windows: zzGpui.windows().map((window) => ({ id: window.id, mount: window.mount, height: window.height })),
+                    windows: ala.windows().map((window) => ({ id: window.id, mount: window.mount, height: window.height })),
                     clip: rect ? { x: rect.left + scrollX - 16, y: rect.top + scrollY - 16, width: rect.width + 32, height: rect.height + 32 } : null,
                 };
             })()`,

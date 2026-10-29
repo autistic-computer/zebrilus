@@ -12,10 +12,10 @@ use std::{
     time::Duration,
 };
 
+use ala::{App, AsyncApp, Entity, Global, Window, prelude::*};
 use semver::Version;
 pub(crate) use zz_config::update::{Channel, Release};
 use zz_config::update::{checks_enabled, fetch_latest};
-use zz_gpui::{App, AsyncApp, Entity, Global, Window, prelude::*};
 use zz_protocol::CommandInvocation;
 use zz_ui::{
     WindowExt as _,

@@ -8,12 +8,12 @@ use crate::segmented::SegmentedControl;
 use crate::select::{SelectItem as _, SelectState};
 use crate::slider::Slider;
 use crate::{ActiveTheme as _, Colorize as _, IconName, StyledExt as _, ThemeColor, ThemeMode};
-use std::{rc::Rc, sync::Arc};
-use zz_client::appearance::ThemeModeSetting;
-use zz_gpui::{
+use ala::{
     Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Window, div,
     prelude::*, px,
 };
+use std::{rc::Rc, sync::Arc};
+use zz_client::appearance::ThemeModeSetting;
 
 const THEME_PREVIEW_WIDTH: f32 = 84.0;
 const THEME_PREVIEW_HEIGHT: f32 = 56.0;
@@ -225,7 +225,7 @@ pub fn theme_labels(picks: &ThemePicks) -> Vec<SharedString> {
 
 const ACCENT_DOT: f32 = 10.0;
 
-fn accent_label(accent: zz_gpui::Hsla, label: SharedString, cx: &App) -> zz_gpui::Div {
+fn accent_label(accent: ala::Hsla, label: SharedString, cx: &App) -> ala::Div {
     div()
         .flex()
         .items_center()
@@ -240,7 +240,7 @@ fn accent_label(accent: zz_gpui::Hsla, label: SharedString, cx: &App) -> zz_gpui
         .child(
             div()
                 .flex_none()
-                .line_height(zz_gpui::relative(1.0))
+                .line_height(ala::relative(1.0))
                 .child(label),
         )
 }
@@ -250,7 +250,7 @@ pub fn theme_picker(
     on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
     more: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let theme_mode = cx.theme().mode;
     let live = cx.theme().accent;
     let selected = picks.selected;
@@ -328,7 +328,7 @@ pub fn accent_swatches(
     custom: crate::color_picker::ColorPicker,
     on_pick: impl Fn(Option<&'static str>, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let selected = picks.overrides.accent.as_deref().unwrap_or("theme");
     let own = picks
         .composed(|overrides| overrides.accent = None)
@@ -339,7 +339,7 @@ pub fn accent_swatches(
     let radius = cx.theme().swatch_radius();
     let coarse = crate::touch::CoarsePointer::get(cx);
     let size = if coarse { SHEET_SWATCH } else { SWATCH };
-    let swatch = |id: &'static str, name: SharedString, color: zz_gpui::Hsla| {
+    let swatch = |id: &'static str, name: SharedString, color: ala::Hsla| {
         let on_pick = Rc::clone(&on_pick);
         ringed(
             selected == id,
@@ -347,7 +347,7 @@ pub fn accent_swatches(
             radius,
             div()
                 .id(SharedString::from(format!("settings-accent-{id}")))
-                .role(zz_gpui::Role::Button)
+                .role(ala::Role::Button)
                 .aria_label(name.clone())
                 .size(px(size))
                 .rounded(radius)
@@ -399,10 +399,10 @@ fn accent_title(name: &str) -> SharedString {
 )]
 fn ringed(
     selected: bool,
-    ring: zz_gpui::Hsla,
-    radius: zz_gpui::Pixels,
+    ring: ala::Hsla,
+    radius: ala::Pixels,
     swatch: impl IntoElement,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let inset = px(SWATCH_RING_GAP + SWATCH_RING);
     div()
         .flex_none()
@@ -416,7 +416,7 @@ fn ringed(
         .border_color(if selected {
             ring
         } else {
-            zz_gpui::transparent_black()
+            ala::transparent_black()
         })
         .child(swatch)
 }
@@ -429,7 +429,7 @@ pub fn tint_hue_slider(
     hue: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let stops =
         (0..=HUE_STOPS).map(|stop| hue_swatch(f32::from(stop) * 360.0 / f32::from(HUE_STOPS)));
     let slider = Slider::new("settings-tint-hue", "Tint hue", hue, 0.0..=360.0, on_change)
@@ -457,7 +457,7 @@ pub fn tint_slider(
     tint: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     value_slider(
         Slider::new("settings-tint", "Tint strength", tint, 0.0..=1.0, on_change)
             .step(0.01)
@@ -470,7 +470,7 @@ pub fn window_opacity_slider(
     opacity: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     value_slider(
         Slider::new(
             "settings-window-opacity",
@@ -490,7 +490,7 @@ pub fn corner_radius_slider(
     radius: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     value_slider(
         Slider::new(
             "settings-corner-radius",
@@ -510,7 +510,7 @@ pub fn contrast_slider(
     contrast: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     value_slider(
         Slider::new(
             "settings-contrast",
@@ -530,7 +530,7 @@ pub fn animation_speed_slider(
     speed: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     value_slider(
         Slider::new(
             "settings-animation-speed",
@@ -553,7 +553,7 @@ pub fn percent_slider(
     value: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     value_slider(percent(id, label, value, on_change), cx)
 }
 
@@ -566,7 +566,7 @@ pub fn zoom_slider(
     focus: &FocusHandle,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     value_slider(
         percent("settings-zoom", "UI zoom", value, on_change)
             .commit_on_release()
@@ -586,7 +586,7 @@ fn percent(
         .display(|value| format!("{:.0}%", value * 100.0).into())
 }
 
-fn value_slider(slider: Slider, cx: &App) -> zz_gpui::Div {
+fn value_slider(slider: Slider, cx: &App) -> ala::Div {
     if crate::touch::CoarsePointer::get(cx) {
         return div().w_full().child(slider);
     }
@@ -597,7 +597,7 @@ fn value_slider(slider: Slider, cx: &App) -> zz_gpui::Div {
     slider_row(slider, shown)
 }
 
-fn slider_row(slider: Slider, trailing: impl IntoElement) -> zz_gpui::Div {
+fn slider_row(slider: Slider, trailing: impl IntoElement) -> ala::Div {
     div()
         .flex()
         .items_center()
@@ -610,7 +610,7 @@ fn slider_row(slider: Slider, trailing: impl IntoElement) -> zz_gpui::Div {
     clippy::disallowed_methods,
     reason = "the hue picker shows every hue, not a theme color"
 )]
-fn hue_swatch(hue: f32) -> zz_gpui::Hsla {
+fn hue_swatch(hue: f32) -> ala::Hsla {
     crate::oklch(0.72, 0.13, hue)
 }
 
@@ -657,9 +657,9 @@ pub fn appearance_page(
     )
 }
 
-pub struct AvailableFonts(pub Arc<dyn zz_gpui::PlatformTextSystem>);
+pub struct AvailableFonts(pub Arc<dyn ala::PlatformTextSystem>);
 
-impl zz_gpui::Global for AvailableFonts {}
+impl ala::Global for AvailableFonts {}
 
 pub fn ui_font_select(
     selected: Option<&str>,
@@ -691,7 +691,7 @@ pub fn picker_tile(
     preview: impl IntoElement,
     selected: bool,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     tile(id, label, preview, selected, false, cx)
 }
 
@@ -709,7 +709,7 @@ fn tile(
     selected: bool,
     focused: bool,
     cx: &App,
-) -> zz_gpui::Stateful<zz_gpui::Div> {
+) -> ala::Stateful<ala::Div> {
     let frame = cx.theme().layer(
         crate::Surface::new(crate::roles::SETTINGS_TILE).on(super::settings_card_ground(cx)),
         if selected {
@@ -719,7 +719,7 @@ fn tile(
         },
     );
     div()
-        .id(zz_gpui::ElementId::Name(id))
+        .id(ala::ElementId::Name(id))
         .flex()
         .flex_col()
         .flex_none()
@@ -734,7 +734,7 @@ fn tile(
                 .border_color(if focused {
                     cx.theme().accent
                 } else {
-                    zz_gpui::transparent_black()
+                    ala::transparent_black()
                 })
                 .child(
                     div()
@@ -766,7 +766,7 @@ fn tile(
 
 /// The radius of a box `inset` outside one rounded by `radius`, so the two
 /// stay concentric. Square corners stay square.
-fn around(radius: zz_gpui::Pixels, inset: f32) -> zz_gpui::Pixels {
+fn around(radius: ala::Pixels, inset: f32) -> ala::Pixels {
     if radius > px(0.0) {
         radius + px(inset)
     } else {
@@ -783,7 +783,7 @@ pub fn theme_preview(
     light: &ThemeColor,
     dark: &ThemeColor,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     match mode {
         Some(ThemeMode::Light) => palette_preview(light, cx),
         Some(ThemeMode::Dark) => palette_preview(dark, cx),
@@ -833,7 +833,7 @@ pub fn interface_theme_preview(
     theme: &crate::interface_theme::InterfaceTheme,
     mode: ThemeMode,
     _: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let colors = theme.colors(mode);
     let materials = &theme.materials;
     let mut kit = crate::Theme::from(&colors);
@@ -886,9 +886,9 @@ pub fn interface_theme_preview(
         .when(
             kit.casts_shadow(crate::SurfaceRole::POPOVER) && materials.float.strength > 0.0,
             |menu| {
-                menu.shadow(vec![zz_gpui::BoxShadow {
+                menu.shadow(vec![ala::BoxShadow {
                     color: colors.shadow_color,
-                    offset: zz_gpui::point(px(0.0), px(3.0)),
+                    offset: ala::point(px(0.0), px(3.0)),
                     blur_radius: px(8.0),
                     spread_radius: px(-1.0),
                     inset: false,
@@ -953,7 +953,7 @@ pub fn interface_theme_preview(
 }
 
 /// Text on `colors`' accent, as a solid primary button letters it.
-fn accent_ink(colors: &ThemeColor) -> zz_gpui::Hsla {
+fn accent_ink(colors: &ThemeColor) -> ala::Hsla {
     let mut theme = crate::Theme::from(colors);
     theme.primary = crate::PrimaryStyle::Accent;
     theme
@@ -966,7 +966,7 @@ fn accent_ink(colors: &ThemeColor) -> zz_gpui::Hsla {
     clippy::disallowed_methods,
     reason = "previews draw another palette's colors, not the live one's"
 )]
-pub fn palette_preview(colors: &ThemeColor, cx: &App) -> zz_gpui::Div {
+pub fn palette_preview(colors: &ThemeColor, cx: &App) -> ala::Div {
     let sidebar_fraction = THEME_PREVIEW_SIDEBAR_WIDTH / THEME_PREVIEW_WIDTH;
     div()
         .w(px(THEME_PREVIEW_WIDTH))
@@ -984,7 +984,7 @@ pub fn palette_preview(colors: &ThemeColor, cx: &App) -> zz_gpui::Div {
     clippy::disallowed_methods,
     reason = "previews draw another palette's colors and lines, not the live one's"
 )]
-fn theme_preview_contents(colors: &ThemeColor) -> zz_gpui::Div {
+fn theme_preview_contents(colors: &ThemeColor) -> ala::Div {
     let text = colors.foreground.muted();
     let text_bar = move |width: f32| div().w(px(width)).h(px(3.0)).rounded_full().bg(text);
     div()
@@ -1025,14 +1025,14 @@ fn theme_preview_contents(colors: &ThemeColor) -> zz_gpui::Div {
 }
 
 fn theme_preview_split_background(
-    left: zz_gpui::Hsla,
-    right: zz_gpui::Hsla,
+    left: ala::Hsla,
+    right: ala::Hsla,
     split: f32,
-) -> zz_gpui::Background {
-    zz_gpui::linear_gradient(
+) -> ala::Background {
+    ala::linear_gradient(
         90.0,
-        zz_gpui::linear_color_stop(left, split),
-        zz_gpui::linear_color_stop(right, split),
+        ala::linear_color_stop(left, split),
+        ala::linear_color_stop(right, split),
     )
 }
 

@@ -2,12 +2,12 @@ use crate::{
     ActiveTheme as _, Colorize as _, Edge, Emphasis, Icon, IconName, PaintState, Sizable as _,
     StyledExt as _, Surface, Tone, badge::Badge, kbd::Kbd, list::ListItem, roles,
 };
-use zz_client::chooser::SEARCH_HINTS;
-pub use zz_client::chooser::{ChooserHint, chooser_has_key_gutter, chooser_subtitle};
-use zz_gpui::{
+use ala::{
     AnyElement, App, CursorStyle, IntoElement, Keystroke, ParentElement as _, RenderOnce,
     SharedString, Styled as _, div, prelude::*, px, relative,
 };
+use zz_client::chooser::SEARCH_HINTS;
+pub use zz_client::chooser::{ChooserHint, chooser_has_key_gutter, chooser_subtitle};
 
 pub const CHOOSER_ROW_HEIGHT: f32 = 40.0;
 
@@ -96,7 +96,7 @@ impl ChooserModal {
 }
 
 impl RenderOnce for ChooserModal {
-    fn render(self, window: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let rows = f32::from(u8::try_from(self.dimensions.row_count.min(10)).unwrap_or(10));
         let notices = u8::from(self.help) + u8::from(self.prompt.is_some());
         let height = 106.0 + rows * CHOOSER_ROW_HEIGHT + f32::from(notices) * 36.0;
@@ -124,7 +124,7 @@ impl RenderOnce for ChooserModal {
             .overflow_hidden()
             .surface(roles::PICKER, cx)
             .rounded(crate::picker::outer_radius(&modal, px(8.0)))
-            .on_mouse_down(zz_gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+            .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .h(px(56.0))
@@ -179,7 +179,7 @@ impl RenderOnce for ChooserModal {
                 self.font_family,
                 cx,
             ));
-        zz_gpui_kit::foundation::surface_enter(surface, "chooser-open", px(0.0))
+        penna::foundation::surface_enter(surface, "chooser-open", px(0.0))
     }
 }
 
@@ -188,7 +188,7 @@ pub fn chooser_footer(
     hints: &'static [ChooserHint],
     font_family: impl Into<SharedString>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let searching = search.is_some();
     let font_family = font_family.into();
     let search = search.map(|search| {

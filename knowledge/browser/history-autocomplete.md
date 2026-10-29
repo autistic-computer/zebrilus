@@ -42,7 +42,7 @@ atomic replace path and restrict the file to the current user on Unix. A legacy
 `unix-seconds<TAB>url<TAB>title` row loads into the `default` profile with one
 visit and no typed credit; the next write upgrades the file.
 
-The shared `RecentPages::load` API saves after each mutation. The GPUI desktop
+The shared `RecentPages::load` API saves after each mutation. The ala desktop
 adapter records the path at startup and defers loading stored pages, learned
 selections, and favicons until a history lookup or mutation. Its
 `RecentPages::pages` and `pages_mut` accessors perform that first load through
@@ -56,7 +56,7 @@ Writes run in sequence; a change during a write schedules the next batch.
 
 On normal quit, the adapter cancels the batch coordinator, waits for its
 independent background writer, and saves the latest remaining changes
-synchronously. This final flush runs before GPUI starts its quit-future timeout;
+synchronously. This final flush runs before ala starts its quit-future timeout;
 a slow filesystem can delay quitting but does not abandon the newest batch. A
 store without a path stays in memory and starts no save worker.
 
@@ -66,7 +66,7 @@ modification time.
 
 History changes notify visible consumers whose displayed history data changed:
 browser tab icons, blank-page recents, suggestion icons, and browser entries in
-the titlebar status bar. They do not force a refresh of every GPUI window.
+the titlebar status bar. They do not force a refresh of every ala window.
 
 CEF never reads this file. It contains browsing URLs, titles, and learned address
 text, so operators should treat it as sensitive user data.

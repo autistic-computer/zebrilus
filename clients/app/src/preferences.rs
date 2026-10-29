@@ -85,8 +85,8 @@ impl Preferences {
     /// How far panes stand in from the window's edges: the pane margin while
     /// gaps are on, none while panes sit flush.
     #[must_use]
-    pub fn margin(&self) -> zz_gpui::Pixels {
-        zz_gpui::px(if self.gaps { self.pane_margin } else { 0.0 })
+    pub fn margin(&self) -> ala::Pixels {
+        ala::px(if self.gaps { self.pane_margin } else { 0.0 })
     }
 
     #[must_use]
@@ -333,7 +333,7 @@ impl Preferences {
     #[cfg(target_os = "ios")]
     fn path() -> std::path::PathBuf {
         std::path::PathBuf::from(std::env::var_os("HOME").expect("iOS application home directory"))
-            .join("Library/Application Support/zz-gpui/preferences.json")
+            .join("Library/Application Support/ala/preferences.json")
     }
 
     #[must_use]

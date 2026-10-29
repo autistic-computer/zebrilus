@@ -6,21 +6,21 @@ import { join } from "node:path";
 
 const USAGE = `usage: scripts/dom-parity.mjs [options]
 
-Loads the gpui web client and the HTML client against the same daemon in
-headless Chrome, then matches every named node in the gpui accessibility tree
+Loads the ala web client and the HTML client against the same daemon in
+headless Chrome, then matches every named node in the ala accessibility tree
 (role and name) with the HTML client's named elements (buttons by title or
 aria-label, text by [data-text]) and reports what is missing or moved.
 
 options:
-  --gpui <url>        gpui web client (default http://127.0.0.1:8093/)
+  --ala <url>        ala web client (default http://127.0.0.1:8093/)
   --dom <url>         HTML client (default http://127.0.0.1:8092/)
   --mode <dark|light> color scheme for both (default dark)
   --theme <id>        interface theme for the HTML client (default default)
   --width <px>        viewport width (default 1400)
   --height <px>       viewport height (default 900)
   --threshold <px>    largest allowed offset (default 2)
-  --out <dir>         also save gpui.png and dom.png there
-  --gpui-eval <js>    run in the gpui page before collecting
+  --out <dir>         also save ala.png and dom.png there
+  --ala-eval <js>    run in the ala page before collecting
   --dom-eval <js>     run in the HTML page before collecting
   --settle <ms>       wait after setup (default 600)
   --report-only       exit 0 even when nodes differ
@@ -30,7 +30,7 @@ environment: CHROME overrides the browser binary.`;
 
 function parseArgs(argv) {
     const options = {
-        gpui: "http://127.0.0.1:8093/",
+        ala: "http://127.0.0.1:8093/",
         dom: "http://127.0.0.1:8092/",
         mode: "dark",
         theme: "default",
@@ -38,7 +38,7 @@ function parseArgs(argv) {
         height: 900,
         threshold: 2,
         out: "",
-        "gpui-eval": "",
+        "ala-eval": "",
         "dom-eval": "",
         settle: 600,
         "report-only": false,
@@ -152,15 +152,15 @@ async function page(cdp, url, options) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const GPUI_READY = `(async () => {
-    for (let i = 0; i < 300 && !(globalThis.zzGpui && zzGpui.windows().length); i++) await new Promise((r) => setTimeout(r, 100));
-    if (!globalThis.zzGpui) return "no zzGpui";
-    if (!zzGpui.windows().length) return "no windows";
-    await Promise.race([zzGpui.enableAccessibility(), new Promise((r) => setTimeout(r, 2000))]);
+const ALA_READY = `(async () => {
+    for (let i = 0; i < 300 && !(globalThis.ala && ala.windows().length); i++) await new Promise((r) => setTimeout(r, 100));
+    if (!globalThis.ala) return "no ala";
+    if (!ala.windows().length) return "no windows";
+    await Promise.race([ala.enableAccessibility(), new Promise((r) => setTimeout(r, 2000))]);
     let names = [];
     for (let i = 0; i < 100; i++) {
-        await Promise.race([zzGpui.idle(), new Promise((r) => setTimeout(r, 500))]);
-        names = zzGpui.find({}).map((node) => node.name || node.text);
+        await Promise.race([ala.idle(), new Promise((r) => setTimeout(r, 500))]);
+        names = ala.find({}).map((node) => node.name || node.text);
         if (names.includes("zz daemon")) return true;
         await new Promise((r) => setTimeout(r, 100));
     }
@@ -175,9 +175,9 @@ const DOM_READY = `(async () => {
     return false;
 })()`;
 
-const GPUI_NODES = `(async () => {
-    await Promise.race([zzGpui.idle(), new Promise((r) => setTimeout(r, 500))]);
-    return zzGpui.find({}).filter((node) => node.bounds && (node.name || node.text)).map((node) => ({
+const ALA_NODES = `(async () => {
+    await Promise.race([ala.idle(), new Promise((r) => setTimeout(r, 500))]);
+    return ala.find({}).filter((node) => node.bounds && (node.name || node.text)).map((node) => ({
         role: node.role === "button" ? "button" : "text",
         name: String(node.name || node.text).trim(),
         x: node.bounds.x, y: node.bounds.y, w: node.bounds.width, h: node.bounds.height,
@@ -208,7 +208,7 @@ function key(node) {
     return `${node.role}:${node.name}`;
 }
 
-function compare(gpui, dom, threshold) {
+function compare(ala, dom, threshold) {
     const order = (a, b) => a.y - b.y || a.x - b.x;
     const pools = new Map();
     for (const node of [...dom].sort(order)) {
@@ -217,7 +217,7 @@ function compare(gpui, dom, threshold) {
     }
     const matched = [];
     const missing = [];
-    for (const node of [...gpui].sort(order)) {
+    for (const node of [...ala].sort(order)) {
         const pool = pools.get(key(node));
         const twin = pool?.shift();
         if (!twin) {
@@ -255,25 +255,25 @@ async function main() {
         domUrl.searchParams.set("theme", options.theme);
         domUrl.searchParams.set("mode", options.mode);
         domUrl.searchParams.set("bare", "");
-        const gpui = await page(cdp, options.gpui, options);
+        const ala = await page(cdp, options.ala, options);
         const dom = await page(cdp, domUrl.toString(), options);
-        await gpui.front();
-        console.error("waiting for the gpui client");
-        const ready = await gpui.evaluate(GPUI_READY);
-        if (ready !== true) throw new Error(`the gpui client never showed its tree (${ready})`);
-        if (options["gpui-eval"]) await gpui.evaluate(`(async () => { ${options["gpui-eval"]} })()`);
+        await ala.front();
+        console.error("waiting for the ala client");
+        const ready = await ala.evaluate(ALA_READY);
+        if (ready !== true) throw new Error(`the ala client never showed its tree (${ready})`);
+        if (options["ala-eval"]) await ala.evaluate(`(async () => { ${options["ala-eval"]} })()`);
         await sleep(options.settle);
-        const gpuiNodes = await gpui.evaluate(GPUI_NODES);
-        const gpuiShot = options.out ? await gpui.shot() : null;
+        const alaNodes = await ala.evaluate(ALA_NODES);
+        const alaShot = options.out ? await ala.shot() : null;
         await dom.front();
         console.error("waiting for the HTML client");
         if (!(await dom.evaluate(DOM_READY))) throw new Error("the HTML client never showed its tree");
         if (options["dom-eval"]) await dom.evaluate(`(async () => { ${options["dom-eval"]} })()`);
         await sleep(options.settle);
-        const result = compare(gpuiNodes, await dom.evaluate(DOM_NODES), options.threshold);
+        const result = compare(alaNodes, await dom.evaluate(DOM_NODES), options.threshold);
         if (options.out) {
             mkdirSync(options.out, { recursive: true });
-            writeFileSync(join(options.out, "gpui.png"), gpuiShot);
+            writeFileSync(join(options.out, "ala.png"), alaShot);
             writeFileSync(join(options.out, "dom.png"), await dom.shot());
         }
         for (const node of result.matched) {

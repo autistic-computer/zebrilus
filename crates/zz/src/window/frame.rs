@@ -1,6 +1,6 @@
 // Adapted from gpui-component's Apache-2.0 Linux client-side window border:
 // https://github.com/longbridge/gpui-component/blob/b004e595cf5de98a73b6b561394a559a94ae1e2a/crates/zz-ui/src/window_border.rs
-use zz_gpui::{
+use ala::{
     AnyElement, App, BorderStyle, Bounds, CursorStyle, Decorations, Edges, Hsla,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, Pixels, Point, RenderOnce,
     ResizeEdge, Size, Styled as _, Tiling, Window, canvas, div, point, prelude::FluentBuilder as _,
@@ -20,11 +20,11 @@ const RESIZE_HIT_SIZE: Pixels = px(4.0);
     clippy::disallowed_types,
     reason = "the window's own drop shadow under client-side decorations, which no surface recipe draws"
 )]
-fn window_shadow(extent: Pixels, cx: &App) -> Vec<zz_gpui::BoxShadow> {
+fn window_shadow(extent: Pixels, cx: &App) -> Vec<ala::BoxShadow> {
     if !cx.theme().casts_shadow(zz_ui::roles::WINDOW) {
         return Vec::new();
     }
-    vec![zz_gpui::BoxShadow {
+    vec![ala::BoxShadow {
         color: cx.theme().shadow_color,
         blur_radius: extent / 2.0,
         spread_radius: px(0.0),
@@ -69,7 +69,7 @@ impl RenderOnce for RoundedWindowFrame {
 
         div()
             .id("rounded-window-backdrop")
-            .bg(zz_gpui::transparent_black())
+            .bg(ala::transparent_black())
             .map(|frame| match decorations {
                 Decorations::Server => frame,
                 Decorations::Client { tiling } => frame
@@ -196,7 +196,7 @@ fn border_ring(tiling: Tiling, radius: Pixels, color: Hsla) -> impl IntoElement 
             window.paint_quad(quad(
                 bounds,
                 corners.radii(radius),
-                zz_gpui::transparent_black(),
+                ala::transparent_black(),
                 client_frame_insets(WINDOW_FRAME_BORDER_SIZE, tiling),
                 color,
                 BorderStyle::default(),

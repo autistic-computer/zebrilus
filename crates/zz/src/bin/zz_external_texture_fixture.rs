@@ -15,13 +15,13 @@ mod fixture {
         time::Duration,
     };
 
-    use env_logger::{Builder, Env, WriteStyle};
-    use zz_gpui::{
+    use ala::{
         App, Bounds, Context, DevicePixels, ObjectFit, Pixels, Render, Size, WgpuDeviceContext,
         Window, WindowBounds, WindowOptions, div, external_texture, prelude::*, px, rgb, size,
         wgpu,
     };
-    use zz_gpui_platform::application;
+    use ala_platform::application;
+    use env_logger::{Builder, Env, WriteStyle};
 
     const DEFAULT_SECONDS: u64 = 5;
     const TEXTURE_LOGICAL_WIDTH: f32 = 560.0;
@@ -42,7 +42,7 @@ mod fixture {
             }
         };
 
-        let _ = Builder::from_env(Env::default().default_filter_or("wgpu=warn,zz_gpui=info"))
+        let _ = Builder::from_env(Env::default().default_filter_or("wgpu=warn,ala=info"))
             .write_style(WriteStyle::Never)
             .try_init();
         run(Duration::from_secs(seconds));
@@ -87,7 +87,7 @@ mod fixture {
                 move |window, cx| {
                     let gpu = window
                         .wgpu_device_context()
-                        .expect("the external-texture fixture requires GPUI's wgpu renderer");
+                        .expect("the external-texture fixture requires ala's wgpu renderer");
                     cx.new(|_| {
                         ExternalTextureFixture::new(
                             gpu,
@@ -197,7 +197,7 @@ mod fixture {
                 .gap_3()
                 .bg(rgb(0x10_17_22))
                 .text_color(rgb(0xe8_ee_f7))
-                .child("GPUI app-provided BGRA8 wgpu texture")
+                .child("ala app-provided BGRA8 wgpu texture")
                 .child(format!(
                     "logical {}x{} · device {}x{} · scale {:.3}",
                     f32::from(self.logical_size.width),
@@ -345,6 +345,6 @@ fn main() -> ExitCode {
 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 fn main() -> ExitCode {
     let _ = env::args_os();
-    eprintln!("zz_external_texture_fixture requires GPUI's Linux wgpu backend");
+    eprintln!("zz_external_texture_fixture requires ala's Linux wgpu backend");
     ExitCode::FAILURE
 }

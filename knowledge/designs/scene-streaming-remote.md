@@ -69,15 +69,15 @@ timestamp: 2026-08-28T00:00:00-03:00
 > as `zz attach`.
 
 Scene-streaming remote attach lets the [zz daemon](/crates/zz-daemon.md) live on a **remote host**
-while GPUI clients attach over the network. Instead of streaming pixels (VNC/RDP: heavy, blurry,
+while ala clients attach over the network. Instead of streaming pixels (VNC/RDP: heavy, blurry,
 DPI-locked) or raw bytes (ssh/tmux: no local intelligence, replay-on-reconnect), zz streams the
 **renderer-neutral scene it already produces**: packed cells, interned styles, split layouts, and
 damage. The client rasterizes locally with its own fonts, theme, DPI, and GPU.
 
 ```
-today:     GPUI client ──unix socket / named pipe / ssh -L── daemon (PTYs, mux, frames)
+today:     ala client ──unix socket / named pipe / ssh -L── daemon (PTYs, mux, frames)
 historical proposal (deleted 2026-08-01):
-           GPUI client ──QUIC over the internet──── same daemon, any host
+           ala client ──QUIC over the internet──── same daemon, any host
            renders locally                          owns processes durably
 ```
 
@@ -194,7 +194,7 @@ The renderer never crosses the network, which is today's reattach model stretche
 
 ## Degraded clients
 
-Because the scene is renderer-neutral, fidelity tiers fall out: full GPUI client, a TUI client
+Because the scene is renderer-neutral, fidelity tiers fall out: full ala client, a TUI client
 (`zz attach --tui` rendering mux state into a plain terminal over ssh), and a read-only viewer.
 The synced client-side state also permits offline reading of scrollback while detached.
 

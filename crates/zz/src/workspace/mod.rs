@@ -13,6 +13,6 @@ pub(crate) use view::ClosePane;
 pub(crate) use view::maybe_prompt_stale_daemon;
 pub(crate) use view::pip_fill_rows;
 
-pub fn init(cx: &mut zz_gpui::App) {
+pub fn init(cx: &mut ala::App) {
     sidebar::init(cx);
 }

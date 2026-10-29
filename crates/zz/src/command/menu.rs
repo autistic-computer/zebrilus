@@ -1,11 +1,11 @@
 use std::{cell::RefCell, rc::Rc};
 
-use zz_client::{MenuBox, MenuKeyResult, MenuPointerKind, resolve_menu_key, resolve_menu_mouse};
-use zz_gpui::{
+use ala::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, KeyDownEvent, Keystroke,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, ScrollWheelEvent, Window,
     prelude::*,
 };
+use zz_client::{MenuBox, MenuKeyResult, MenuPointerKind, resolve_menu_key, resolve_menu_mouse};
 use zz_protocol::{InputMessage, MenuAction, MenuState};
 use zz_terminal::KeyAction;
 
@@ -179,7 +179,7 @@ fn resolve_keystroke(
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::Modifiers;
+    use ala::Modifiers;
     use zz_protocol::{MenuItem, PopupBorderLines};
 
     use super::*;
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn gpui_shift_tab_reaches_the_shared_backtab_path() {
+    fn ala_shift_tab_reaches_the_shared_backtab_path() {
         let shift = Modifiers {
             shift: true,
             ..Modifiers::default()

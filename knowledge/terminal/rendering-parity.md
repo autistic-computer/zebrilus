@@ -10,28 +10,28 @@ timestamp: 2026-10-07T00:00:00Z
 # Overview
 
 Rendering parity is the goal of matching Zed's current terminal rendering fidelity while keeping zz's
-existing incremental frame pipeline. Both projects share the same broad structure: a custom GPUI element
+existing incremental frame pipeline. Both projects share the same broad structure: a custom ala element
 paints terminal backgrounds, shaped text, overlays, and a cursor over a fixed cell grid;
-[`libghostty-vt`](/terminal/libghostty-vt.md) owns VT parsing and state; GPUI owns font selection,
+[`libghostty-vt`](/terminal/libghostty-vt.md) owns VT parsing and state; ala owns font selection,
 shaping, rasterization, layout, and painting. zz keeps an incremental path Zed's terminal lacks: Ghostty
 dirty rows become compact [viewport patches](/concepts/terminal-frame.md), the client retains row
-revisions, and GPUI caches shaped rows by revision. The work raises typography, color, cursor, IME,
+revisions, and ala caches shaped rows by revision. The work raises typography, color, cursor, IME,
 selection/links, and fractional-scale geometry to Zed's standard without discarding that path. One
 client-only layer paints on top of it so a remote pane feels local: local scroll sources rows from the
 pane's history ring. It builds on
-`zz-gpui` + `zz-gpui-platform` from our own `libs/gpui/crates/zz-gpui*`; the list of zz changes lives in
-[zz-gpui](/references/zz-gpui.md).
+`ala` + `ala-platform` from our own `libs/ala/crates/ala*`; the list of zz changes lives in
+[ala](/references/ala.md).
 
-# How frames map to GPUI painting
+# How frames map to ala painting
 
 The [terminal frame](/concepts/terminal-frame.md) is renderer-neutral. Desktop and browser clients
 share the painter in `crates/zz-ui/src/terminal.rs`; the desktop adapter lives in
 `crates/zz/src/terminal/element.rs`.
 
-| Frame data | GPUI rendering |
+| Frame data | ala rendering |
 | --- | --- |
 | Dirty rows → `TerminalViewportPatch` | Applied in place to one retained mutable grid; each changed row bumps a row revision that keys the shaped-row cache. |
-| `PackedCell` glyph + `PackedStyle` | Resolved to a GPUI text run; multi-codepoint graphemes and wide glyphs keep their grid reservation. |
+| `PackedCell` glyph + `PackedStyle` | Resolved to an ala text run; multi-codepoint graphemes and wide glyphs keep their grid reservation. |
 | Connected light box / solid block glyph | Light segments, junctions, rounded corners, and diagonals become device-pixel-snapped geometry; solid block elements fill exact snapped cell fractions. |
 | `foreground`/`background` + palette | Faint foregrounds are first blended with their resolved cell background. Every text color (default, palette and application truecolor) is then corrected against that background when below `minimum-contrast` (default 4.5): its OKLab lightness moves away from the background with hue and chroma kept inside the sRGB gamut, and the result is cached per foreground, background and floor. The corrected text is painted without further faint opacity. Box drawing, block, legacy-computing and Powerline glyphs skip correction so adjacent graphical cells keep identical colors. |
 | `ATTR_EXPLICIT_RGB` bit | Records application-chosen truecolor. Contrast correction no longer reads it. |
@@ -74,33 +74,33 @@ cache retention set. Whole device-pixel moves keep both shaped rows and glyph ra
 
 `TerminalRenderInput::rows_above` lets a caller extend that peek upward: given a window y above a
 bottom-anchored grid, the painter adds as many ring or live rows above the grid as reach it and
-raises the row clip to it. Only the GPUI thin client's phone shell passes it, as the top of the
+raises the row clip to it. Only the ala thin client's phone shell passes it, as the top of the
 pager's clip, while a pane is scrolled back or its rubber band is stretched, and it drops the pane
 root's `overflow_hidden` so those rows run under the floating pane header and the status bar. The
 desktop and the other thin-client layouts pass `None` and paint exactly as before.
 
 # Typography and grid geometry
 
-- Each regular, bold, italic, and bold-italic Ghostty family stack maps to one GPUI font stack; an
+- Each regular, bold, italic, and bold-italic Ghostty family stack maps to one ala font stack; an
   empty style-specific stack inherits the regular stack. OpenType tags become `FontFeatures`;
   Ghostty's explicit default `liga=1` entry is prepended before configured entries, so a later
   `-liga` override still wins. Bold/italic runs retain the configured features and fallbacks.
 - On macOS, zz compares the requested style's resolved CoreText face with the corresponding
   unstyled face. If the family has no real bold or italic face and `font-synthetic-style` permits it,
-  GPUI paints a Ghostty-compatible fill-plus-stroke bold and 15-degree italic shear. The decision is
+  ala paints a Ghostty-compatible fill-plus-stroke bold and 15-degree italic shear. The decision is
   cached with each shaped row. Synthetic-bold line width is converted back to user space before the
   Retina context transform so the stroke remains device-pixel sized. `font-thicken` and its 0–255
   strength map to explicit CoreGraphics smoothing, independently of synthetic bold. Both keys are
-  macOS-only: GPUI's swash rasterizer on Linux never reads the smoothing parameters, as in Ghostty.
+  macOS-only: ala's swash rasterizer on Linux never reads the smoothing parameters, as in Ghostty.
 - Font size remains in Ghostty points through the renderer-neutral model. On macOS those points map
-  one-to-one to GPUI/CoreText units and display scaling happens later; other backends convert points to
-  GPUI logical pixels at 96 logical DPI. The resolved `m` advance, snapped to whole device pixels like the line height so every
+  one-to-one to ala/CoreText units and display scaling happens later; other backends convert points to
+  ala logical pixels at 96 logical DPI. The resolved `m` advance, snapped to whole device pixels like the line height so every
   column origin lands on a device pixel, defines cell width; ascent +
   descent + line gap defines the natural cell height. The optional configured adjustment modifies
   that natural value, which rounds to a whole device pixel and converts back to logical pixels.
 - `align_line_to_cells` places each scalar batch's shaped glyph clusters at their source cell
   columns and sets the line width to the reserved grid width. It preserves offsets within a
-  cluster and the source columns after ligatures and wide characters. GPUI's general fixed-width
+  cluster and the source columns after ligatures and wide characters. ala's general fixed-width
   adjustment permits up to one logical pixel of drift, which made the first letters move when a
   highlight changed a batch boundary with a fractional-advance font such as Berkeley Mono 13pt.
 - Padding is independent per edge and excluded before grid dimensions are computed; a float tolerance is
@@ -123,7 +123,7 @@ desktop and the other thin-client layouts pass `None` and paint exactly as befor
   disagreed with Ghostty for most faces (at BerkeleyMono 13pt @2x it strokes 2 device pixels where
   Ghostty strokes 3), which made box-drawn art read lighter. Reading the metric needed a
   `TextSystem::underline_thickness` accessor, carried patch 13 in
-  [zz-gpui](/references/zz-gpui.md). Underline, strikethrough, and overline still paint one
+  [ala](/references/ala.md). Underline, strikethrough, and overline still paint one
   device pixel rather than this thickness.
 - In Live mode spare vertical pixels sit above the grid so the bottom row stays anchored, both when the
   viewport follows live output with a filled last row and whenever it is scrolled back (by the server,
@@ -142,7 +142,7 @@ desktop and the other thin-client layouts pass `None` and paint exactly as befor
 Cursor: derived from the visible cell under the cursor (a wide-tail marker resolves to the wide glyph's
 leading cell). Focused: block paints a filled rectangle then repaints the glyph in the background color;
 bar is a 1px vertical stroke; underline a 2px bottom stroke; hollow a 1px outline. Unfocused block/bar/
-underline become hollow. Blinking is GPUI-local (off / on / terminal-controlled) and sends no protocol
+underline become hollow. Blinking is ala-local (off / on / terminal-controlled) and sends no protocol
 traffic; input activity resets it to visible. `TerminalView::set_visible` cancels the blink task for
 hidden windows, zoomed-out panes, and panes covered by settings or replacement overlays. Focus loss
 and window deactivation also cancel it without waiting for the terminal to render again. Visible,
@@ -169,7 +169,7 @@ While a copy shimmer runs, all eight go through one shader layer.
 
 # Shader layers and the copy flash
 
-`Window::paint_shader_layer` (a carried [gpui patch](/references/zz-gpui.md)) draws what a
+`Window::paint_shader_layer` (a carried [ala patch](/references/ala.md)) draws what a
 closure paints into a texture and composites it through a WGSL fragment shader. zz writes its
 terminal shaders in Ghostty's Shadertoy dialect: `crates/zz/src/terminal/shaders/prelude.glsl` holds
 Ghostty's uniform block (with `iChannelTime` as a `vec4`, since WGSL rejects float arrays in uniforms)
@@ -205,4 +205,4 @@ blink is preserved in the model but not painted this milestone.
   which also drives local scroll; its client state (`HistoryRing`, `LocalScrollState`) lives in
   [`zz-client`](/crates/zz-client.md).
 - Frames arrive over the [terminal lanes](/protocol/terminal-lanes.md); painting lives in [`/crates/zz.md`](/crates/zz.md).
-- GPUI pin and carried patches: [zz-gpui](/references/zz-gpui.md).
+- ala pin and carried patches: [ala](/references/ala.md).
