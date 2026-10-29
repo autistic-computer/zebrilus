@@ -1,5 +1,3 @@
-//! Syntax palettes plus an optional tree-sitter engine.
-
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 #[cfg(feature = "tree-sitter")]

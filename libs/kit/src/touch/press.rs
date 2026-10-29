@@ -99,9 +99,6 @@ impl Press {
     }
 }
 
-/// How far a control is pressed, from 0 to 1, and the listener that tracks
-/// it. Add [`PressFeedback::listener`] as an absolute child covering the
-/// control's hit area, then draw the press from [`PressFeedback::amount`].
 pub struct PressFeedback {
     pub amount: f32,
     listener: AnyElement,
@@ -114,10 +111,6 @@ impl PressFeedback {
     }
 }
 
-/// Tracks presses the way touch platforms show them: a touch lights the
-/// control after a short delay unless it turns into a scroll first, a quick
-/// tap still flashes, and the highlight fades in and out. The innermost
-/// pressable under the finger takes the press.
 pub fn press_feedback(
     id: impl Into<ElementId>,
     window: &mut Window,
@@ -136,10 +129,6 @@ pub fn press_feedback(
     }
 }
 
-/// How a press highlight rounds: like any element, through the window's
-/// adaptive corners, or like a row drawn with [`crate::row_corners`], holding
-/// its radius with the row's smoothing so the press lands on the hover's
-/// shape.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PressCorners {
     Adaptive(Pixels),
@@ -153,11 +142,6 @@ impl From<Pixels> for PressCorners {
     }
 }
 
-/// [`press_feedback`] for builders without a window: a layer that tracks
-/// presses over its own bounds and paints `color` at the press amount, the
-/// neutral ghost paint's pressed fill when `None`. Its corners are `radius`,
-/// clamped to its size. It fills its parent unless positioned; put it under
-/// the content.
 pub fn press_highlight(
     id: impl Into<ElementId>,
     color: impl Into<Option<Hsla>>,
@@ -166,7 +150,6 @@ pub fn press_highlight(
     highlight(id.into(), color.into(), radius.into(), DELAY)
 }
 
-/// [`press_highlight`] that lights at touch-down, for keys that never scroll.
 pub fn instant_press_highlight(
     id: impl Into<ElementId>,
     color: impl Into<Option<Hsla>>,

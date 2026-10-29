@@ -1,5 +1,3 @@
-//! A custom-painted overlay bar that reads and drives a scroll handle.
-
 use std::{cell::Cell, panic::Location, rc::Rc};
 
 use web_time::{Duration, Instant};
@@ -14,36 +12,27 @@ use zz_gpui::{
 use crate::ActiveTheme as _;
 use crate::Colorize as _;
 
-/// When a scrollbar makes itself visible.
 pub use crate::ScrollbarShow;
 
-/// Width of the scrollbar gutter, wider than the thumb + inset so the bar stays
-/// easy to grab. Also the hit strip a hand-painted matching bar should reserve.
 pub const WIDTH: Pixels = px(16.);
-/// The thumb never shrinks below this, however long the content gets.
 pub const MIN_THUMB_SIZE: f32 = 48.;
 
-/// Resting thumb thickness (`Scrolling` mode).
 pub const THUMB_WIDTH: Pixels = px(6.);
-/// Gap between the thumb and the container edge.
 pub const THUMB_INSET: Pixels = px(2.);
 
 const THUMB_ACTIVE_WIDTH: Pixels = px(8.);
 const THUMB_ACTIVE_INSET: Pixels = px(2.);
 
-/// Thumb corner radius: the widget corner radius, capped at a pill.
 #[must_use]
 pub fn thumb_radius(thumb_width: Pixels, cx: &App) -> Pixels {
     cx.theme().radius.min(thumb_width / 2.)
 }
 
-/// The fill of a resting or hovered scrollbar thumb.
 #[must_use]
 pub fn thumb_color(cx: &App) -> Hsla {
     theme_thumb_color(cx.theme())
 }
 
-/// [`thumb_color`] for a theme read outside a window.
 #[must_use]
 pub fn theme_thumb_color(theme: &crate::Theme) -> Hsla {
     theme.foreground.wash()
@@ -76,13 +65,9 @@ fn fade_frame(elapsed: f32, reduce_motion: bool) -> Option<(f32, Duration)> {
     }
 }
 
-/// A scroll position source a [`Scrollbar`] can read and drive.
 pub trait ScrollbarHandle: 'static {
-    /// The current scroll offset. Offsets run negative as content scrolls away
-    /// from the origin.
     fn offset(&self) -> Point<Pixels>;
     fn set_offset(&self, offset: Point<Pixels>);
-    /// The full size of the content, including padding.
     fn content_size(&self) -> Size<Pixels>;
     fn start_drag(&self) {}
     fn end_drag(&self) {}
@@ -287,7 +272,6 @@ fn schedule_fade_wake(
         .detach();
 }
 
-/// Which bars a [`Scrollbar`] draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScrollbarAxis {
     Vertical,
@@ -305,14 +289,12 @@ impl From<Axis> for ScrollbarAxis {
 }
 
 impl ScrollbarAxis {
-    /// Whether this is the vertical-only axis.
     #[inline]
     #[must_use]
     pub fn is_vertical(&self) -> bool {
         matches!(self, Self::Vertical)
     }
 
-    /// Whether both bars are drawn.
     #[inline]
     #[must_use]
     pub fn is_both(&self) -> bool {
@@ -345,7 +327,6 @@ fn resting_metrics(show: ScrollbarShow) -> (Pixels, Pixels) {
     }
 }
 
-/// Scrollbar overlay for a scroll area, a uniform list, or a `ListState`.
 pub struct Scrollbar {
     id: ElementId,
     axis: ScrollbarAxis,
@@ -354,7 +335,6 @@ pub struct Scrollbar {
 }
 
 impl Scrollbar {
-    /// A scrollbar on both axes.
     #[track_caller]
     #[must_use]
     pub fn new<H: ScrollbarHandle + Clone>(scroll_handle: &H) -> Self {
@@ -379,14 +359,12 @@ impl Scrollbar {
         Self::new(scroll_handle).axis(ScrollbarAxis::Vertical)
     }
 
-    /// Override the element id, which defaults to the construction site.
     #[must_use]
     pub fn id(mut self, id: impl Into<ElementId>) -> Self {
         self.id = id.into();
         self
     }
 
-    /// Override the show mode. Defaults to `cx.theme().scrollbar_show`.
     #[must_use]
     pub fn scrollbar_show(mut self, scrollbar_show: ScrollbarShow) -> Self {
         self.scrollbar_show = Some(scrollbar_show);

@@ -1,5 +1,3 @@
-//! [`Input`]: the chrome around a text field, rebuilt every frame.
-
 use zz_gpui::{
     AnyElement, App, DefiniteLength, Entity, InteractiveElement, IntoElement, MouseButton,
     ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
@@ -20,13 +18,10 @@ use super::{actions, state::InputState};
 use crate::Colorize as _;
 
 const LINE_HEIGHT: DefiniteLength = DefiniteLength::Fraction(1.25);
-/// A semantic hint about what a field holds, for the accessibility role.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputContentType {
     Url,
     EmailAddress,
-    /// A password: the rendered text is masked, single-line only. Copy and cut
-    /// do nothing, and word motions treat the value as one word.
     Password,
 }
 
@@ -44,7 +39,6 @@ impl InputContentType {
     }
 }
 
-/// A text field bound to an [`InputState`].
 #[derive(IntoElement)]
 pub struct Input {
     state: Entity<InputState>,
@@ -65,9 +59,6 @@ pub struct Input {
     on: Option<Ground>,
 }
 
-/// The paint of a field drawn as `surface`: its tone, on its ground or the
-/// window, at the emphasis its role's fill and outline make. Its text,
-/// placeholder and focus colors are the field's.
 pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
     let surface = surface.into();
     let theme = cx.theme();
@@ -78,14 +69,6 @@ pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {
     )
 }
 
-/// A field's fill, border, corners and text in `state`, drawn as `surface`
-/// draws, with the hover highlight while it rests. A role with no fill and
-/// no outline draws no box. The border is always at least a pixel wide,
-/// clear when the role has none, so focusing a field never moves its text;
-/// focus turns it to the field's focus color while the role's selected
-/// highlight is the edge, unless the theme draws no outlines, picks them and
-/// leaves this role out, or the field is glass, whose rim is its edge. A field that holds
-/// more than its text, like the agent composer, draws its shell with this.
 pub fn field_chrome<E: Styled + InteractiveElement>(
     element: E,
     surface: impl Into<Surface>,
@@ -133,7 +116,6 @@ fn field_layer(theme: &Theme, surface: Surface, state: PaintState, focus_bordere
     layer
 }
 
-/// The text size of a field at `size`.
 pub(crate) fn field_text<E: Styled>(element: E, size: Size) -> E {
     element.text_size(size.control_text())
 }
@@ -160,30 +142,24 @@ impl Input {
         }
     }
 
-    /// Draw the field in `tone`: danger for an invalid value.
     #[must_use]
     pub fn tone(mut self, tone: Tone) -> Self {
         self.tone = tone;
         self
     }
 
-    /// Draw the field as `role` draws, instead of as a field.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
-    /// Draw the field on `ground`, the paint it sits inside, instead of the
-    /// window.
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);
         self
     }
 
-    /// Place the text horizontally within the field. Hit-testing, the caret and
-    /// selection quads all follow the alignment.
     #[must_use]
     pub fn text_align(mut self, align: TextAlign) -> Self {
         self.align = align;
@@ -202,29 +178,24 @@ impl Input {
         self
     }
 
-    /// Draw the field's background, radius and border. With `false` the field
-    /// is bare text, for a field embedded in chrome that already has an edge.
     #[must_use]
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.appearance = appearance;
         self
     }
 
-    /// Draw the resting border. Only meaningful with [`Self::appearance`].
     #[must_use]
     pub fn bordered(mut self, bordered: bool) -> Self {
         self.bordered = bordered;
         self
     }
 
-    /// Draw the focus ring. Only meaningful with [`Self::bordered`].
     #[must_use]
     pub fn focus_bordered(mut self, bordered: bool) -> Self {
         self.focus_bordered = bordered;
         self
     }
 
-    /// Show a clear button while the field is non-empty. Single-line only.
     #[must_use]
     pub fn cleanable(mut self, cleanable: bool) -> Self {
         self.cleanable = cleanable;
@@ -237,7 +208,6 @@ impl Input {
         self
     }
 
-    /// What the field holds, for assistive technology.
     #[must_use]
     pub fn content_type(mut self, content_type: InputContentType) -> Self {
         self.content_type = Some(content_type);

@@ -1,5 +1,3 @@
-//! The element that turns [`InputState`] into pixels.
-
 use std::{ops::Range, rc::Rc};
 
 use unicode_segmentation::UnicodeSegmentation as _;

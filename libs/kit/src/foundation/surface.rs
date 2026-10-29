@@ -1,14 +1,3 @@
-//! Surfaces and their roles.
-//!
-//! Every painted piece of UI names a [`SurfaceRole`]: a [`Kind`] of widget and, for
-//! the pieces a theme wants to tell apart, the place it sits in. A role's
-//! [`Style`] says which treatments it takes (a fill, an outline, a shadow, a
-//! shape, and what pointing at it or selecting it adds), and the theme's
-//! materials say what each treatment looks like: its radius, outline width,
-//! shadows and glass. A theme changes a kind or a role with a [`StylePatch`];
-//! a role takes the kind's built-in style, then the theme's patch for the
-//! kind, then its own built-in patch, then the theme's patch for the role.
-
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 
@@ -23,57 +12,37 @@ use super::{
     Tone,
 };
 
-/// What a surface is made of.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Fill {
-    /// Nothing: what is behind shows through.
     None,
-    /// A translucent wash over what is behind.
     Tint,
-    /// An opaque fill a step off what it sits on.
     Solid,
-    /// The theme's glass, tinted with the solid fill. On glass it paints a
-    /// tint instead, and where the theme has no glass it paints solid.
     Glass,
 }
 
-/// Which of the theme's shadows a surface casts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Shadow {
     None,
-    /// The tight shadow of something resting on the window.
     Contact,
-    /// The contact shadow under a deep, soft one, for what floats.
     Float,
 }
 
-/// The corners of a surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Shape {
     Square,
-    /// The theme's radius. Rows take it less the list's inset, so they sit
-    /// concentric inside the menu or panel that holds them, and go square
-    /// when the theme insets nothing.
     Round,
-    /// Ends rounded into half circles.
     Pill,
 }
 
-/// How a surface's rounded corners curve: the exponent of the superellipse
-/// they follow, in tenths. 2 is a circular arc; higher keeps the sides
-/// straight longer and turns the corner tighter. Pills always end in half
-/// circles.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "f32", into = "f32")]
 pub struct Smoothing(u8);
 
 impl Smoothing {
     pub const CIRCLE: Self = Self(20);
-    /// The continuous corner every window draws with,
-    /// [`super::CORNER_SMOOTHING`].
     pub const THEME: Self = Self(40);
     pub const ALL: &'static [Self] = &[
         Self(20),
@@ -108,26 +77,16 @@ impl TryFrom<f32> for Smoothing {
     }
 }
 
-/// What a surface adds while it is pointed at or pressed, or while it is
-/// the selected or current one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Highlight {
     None,
-    /// A wash a step deeper than the fill.
     Tint,
-    /// The wash with the outline and a contact shadow, as if the surface
-    /// rose off what it sits on.
     Lift,
-    /// The accent, with the text that reads on it.
     Accent,
-    /// A ring in the accent just outside the edge.
     Ring,
-    /// On a row, the wash with a short accent bar centered on its leading
-    /// edge; elsewhere, an accent line along the bottom edge.
     Bar,
     Glass,
-    /// The outline in the focus color, where a field draws one.
     Edge,
 }
 
@@ -143,14 +102,10 @@ impl Highlight {
     ];
 }
 
-/// How a surface's text sits at rest.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Ink {
-    /// The full ink in every state.
     Bright,
-    /// A step below the full ink while nothing points at it, the full ink
-    /// when hovered, pressed, selected or current.
     Rest,
 }
 
@@ -158,11 +113,9 @@ impl Ink {
     pub const ALL: &'static [Self] = &[Self::Bright, Self::Rest];
 }
 
-/// The treatments a surface takes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Style {
     pub fill: Fill,
-    /// Whether it draws the theme's outline.
     pub outline: bool,
     pub shadow: Shadow,
     pub shape: Shape,
@@ -172,7 +125,6 @@ pub struct Style {
     pub ink: Ink,
 }
 
-/// Changes to a [`Style`]: what a theme file writes for a kind or a role.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StylePatch {
@@ -293,7 +245,6 @@ impl StylePatch {
         }
     }
 
-    /// The patch that turns `from` into `to`, naming only what differs.
     pub fn between(from: Style, to: Style) -> Self {
         let differs = |same: bool| !same;
         Self {
@@ -309,8 +260,6 @@ impl StylePatch {
     }
 }
 
-/// The kinds of widget every role is one of. Each carries a built-in style;
-/// the Default theme changes none of them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
     Bar,
@@ -339,7 +288,6 @@ impl Kind {
         Self::Rule,
     ];
 
-    /// What a theme file calls it.
     pub const fn name(self) -> &'static str {
         match self {
             Self::Bar => "bar",
@@ -397,12 +345,10 @@ impl Kind {
         }
     }
 
-    /// The kind as a role, for a widget nothing more specific names.
     pub const fn role(self) -> SurfaceRole {
         SurfaceRole::new(self.name(), self, self.label(), self.about())
     }
 
-    /// The built-in style, which draws the Default theme.
     pub const fn base(self) -> Style {
         const fn style(
             fill: Fill,
@@ -442,19 +388,14 @@ impl Kind {
         }
     }
 
-    /// A control: it casts its shadow only on the window, since a panel or a
-    /// popover already stands off it.
     pub const fn is_control(self) -> bool {
         matches!(self, Self::Button | Self::Item | Self::Field | Self::Label)
     }
 
-    /// Floats over the window, so its fill steps off the window's color
-    /// whatever it is placed on.
     pub const fn floats(self) -> bool {
         matches!(self, Self::Floating)
     }
 
-    /// How far its fill stands off the window.
     pub const fn elevation(self) -> Elevation {
         if self.floats() {
             Elevation::Popover
@@ -571,10 +512,8 @@ impl Knobs {
         ink: &[],
     };
 
-    /// The shapes of a box too big to be a pill.
     pub const BOXES: &'static [Shape] = &[Shape::Square, Shape::Round];
 
-    /// These knobs, with every hover and selected highlight open.
     pub const fn pressable(self) -> Self {
         Self {
             hover: Highlight::ALL,
@@ -641,29 +580,16 @@ impl Knobs {
     }
 }
 
-/// One distinct piece of UI a theme can style: a kind, the group within it
-/// the piece belongs to, and the built-in changes this piece makes to what
-/// it takes from them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SurfaceRole {
-    /// What a theme file calls it: the kind's name for a kind, or a dotted
-    /// name for a place, like `sidebar.row`.
     pub id: &'static str,
     pub kind: Kind,
-    /// The group it belongs to within its kind; the kind itself when unset.
     pub parent: Option<&'static SurfaceRole>,
-    /// What the theme creator calls it.
     pub label: &'static str,
-    /// Where it shows up, in plain words.
     pub about: &'static str,
-    /// How it differs from its parent before any theme speaks.
     pub patch: StylePatch,
     pub knobs: Option<Knobs>,
-    /// A row in a list: its round corners sit concentric inside the list,
-    /// and a bar highlight runs down its leading edge.
     pub row: bool,
-    /// Whether its round shape turns into a pill at the largest radius; its
-    /// group's, or its kind's, when unset.
     pub capsule: Option<bool>,
 }
 
@@ -687,7 +613,6 @@ impl SurfaceRole {
         }
     }
 
-    /// A role within the group `parent`, taking its kind and its look.
     pub const fn under(
         parent: &'static SurfaceRole,
         id: &'static str,
@@ -739,14 +664,10 @@ impl SurfaceRole {
         }
     }
 
-    /// Whether a theme that picks its outlines decides this one's: it is an
-    /// edge, not a divider line, and a theme can turn it on.
     pub fn picks_outline(&self) -> bool {
         self.kind != Kind::Rule && self.knobs().outline.contains(&true)
     }
 
-    /// Whether a theme that picks its shadows decides this one's: a theme
-    /// can give it one.
     pub fn picks_shadow(&self) -> bool {
         self.knobs()
             .shadow
@@ -754,18 +675,14 @@ impl SurfaceRole {
             .any(|shadow| *shadow != Shadow::None)
     }
 
-    /// Whether a theme that picks its smoothing decides this one's: a theme
-    /// can set it.
     pub fn picks_smoothing(&self) -> bool {
         !self.knobs().smoothing.is_empty()
     }
 
-    /// Whether this role is its kind, not a place within it.
     pub fn is_kind(&self) -> bool {
         self.id == self.kind.name()
     }
 
-    /// The group this role belongs to: its parent, or its kind.
     pub fn group(&self) -> Option<Self> {
         match self.parent {
             Some(parent) => Some(*parent),
@@ -774,7 +691,6 @@ impl SurfaceRole {
         }
     }
 
-    /// This role, then each group it belongs to out to its kind.
     pub fn lineage(self) -> impl Iterator<Item = Self> {
         std::iter::successors(Some(self), Self::group)
     }
@@ -826,8 +742,6 @@ impl SurfaceRole {
         "Notifications and banners",
     );
 
-    /// A tooltip rests just off what it explains, so it casts the contact
-    /// shadow.
     pub const TOOLTIP: Self = Self::new(
         "tooltip",
         Kind::Floating,
@@ -840,7 +754,6 @@ impl SurfaceRole {
             .selected(Highlight::None),
     );
 
-    /// A button that is only an icon: no fill until pointed at.
     pub const ICON_BUTTON: Self = Self::new(
         "icon-button",
         Kind::Button,
@@ -856,7 +769,6 @@ impl SurfaceRole {
             .selected(Highlight::Lift),
     );
 
-    /// A button that shows no fill until pointed at.
     pub const QUIET_BUTTON: Self = Self::new(
         "button.quiet",
         Kind::Button,
@@ -872,8 +784,6 @@ impl SurfaceRole {
             .selected(Highlight::Lift),
     );
 
-    /// An icon button set into a bar, a field or a row: it washes while
-    /// pointed at but never rises.
     pub const FLAT_ICON_BUTTON: Self = Self::under(
         &Self::ICON_BUTTON,
         "icon-button.flat",
@@ -886,7 +796,6 @@ impl SurfaceRole {
             .selected(Highlight::Tint),
     );
 
-    /// A row you press to run or pick something.
     pub const MENU_ITEM: Self = Self::new(
         "menu-item",
         Kind::Button,
@@ -908,7 +817,6 @@ impl SurfaceRole {
         ..Kind::Button.knobs()
     });
 
-    /// A row that shows which one is open or current.
     pub const ROW: Self = Self::new(
         "row",
         Kind::Item,
@@ -921,7 +829,6 @@ impl SurfaceRole {
     pub const TAB: Self =
         Self::new("tab", Kind::Item, "Tabs", "Tabs and window pills").capsule(true);
 
-    /// A pickable thumbnail, raised like a card.
     pub const TILE: Self = Self::new("tile", Kind::Item, "Tiles", "Pickable thumbnails").with(
         StylePatch::EMPTY
             .fill(Fill::Solid)
@@ -931,8 +838,6 @@ impl SurfaceRole {
             .selected(Highlight::Ring),
     );
 
-    /// A field that holds more than one line. It keeps the theme's radius
-    /// where a single-line field may be a pill.
     pub const TEXT_AREA: Self = Self::new(
         "field.multiline",
         Kind::Field,
@@ -959,7 +864,6 @@ impl SurfaceRole {
         ..Kind::Label.knobs()
     });
 
-    /// The handle a sheet or a bar is dragged by, filled with ink.
     pub const GRABBER: Self = Self::under(
         &Self::BADGE,
         "grabber",
@@ -968,8 +872,6 @@ impl SurfaceRole {
     )
     .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
 
-    /// The roles the kit itself names: every kind and the groups within
-    /// them.
     pub const KIT: [Self; 28] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
@@ -1008,15 +910,12 @@ impl From<Kind> for SurfaceRole {
     }
 }
 
-/// One of the theme's shadows, in logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ShadowMaterial {
     pub y: f32,
     pub blur: f32,
     pub spread: f32,
-    /// How dark it is: 1 is the theme's shadow color as the mode sets it,
-    /// 0 casts nothing.
     pub strength: f32,
 }
 
@@ -1041,20 +940,12 @@ impl Default for ShadowMaterial {
     }
 }
 
-/// How far a shadow's ink goes on the contact shadow: the theme's shadow
-/// color at this alpha, times the material's strength.
 const CONTACT_ALPHA: f32 = 0.2;
-/// The width of an accent ring around a chosen tile.
 const RING_WIDTH: Pixels = px(2.0);
-/// The width of an accent bar along a selected row.
 const BAR_WIDTH: Pixels = px(3.0);
 const BAR_LENGTH: Pixels = px(16.0);
-/// How strongly a control's outline shows its ink.
 const CONTROL_EDGE_ALPHA: f32 = 0.1;
 const DISABLED: f32 = 0.5;
-/// The marker ring of the role a theme editor inspects: a magenta no theme
-/// uses, so it reads on every surface. It runs just inside the edge, so a
-/// translucent fill never shows it through.
 const INSPECT_COLOR: Hsla = Hsla {
     h: 0.833,
     s: 1.0,
@@ -1074,14 +965,11 @@ pub fn drawn_roles() -> BTreeSet<&'static str> {
     DRAWN.with_borrow_mut(|drawn| drawn.take().unwrap_or_default())
 }
 
-/// A role drawn in a tone, on a ground.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Surface {
     pub role: SurfaceRole,
     pub tone: Tone,
-    /// Filled in the tone: the one action to take here.
     pub prominent: bool,
-    /// What it sits on; the window when unset.
     pub ground: Option<Ground>,
 }
 
@@ -1130,22 +1018,17 @@ impl From<Kind> for Surface {
     }
 }
 
-/// Everything a surface paints in one state.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Layer {
     pub fill: Hsla,
     pub glass: Option<GlassMaterial>,
     pub border: Hsla,
-    /// The same in every state of a role, so a highlight never moves what
-    /// is inside it.
     pub border_width: Pixels,
     pub shadow: Vec<BoxShadow>,
     pub mark: Option<EdgeMark>,
     pub text: Hsla,
     pub radius: Pixels,
-    /// The superellipse exponent its corners follow.
     pub smoothing: f32,
-    /// What content inside it paints on.
     pub ground: Ground,
 }
 
@@ -1160,9 +1043,6 @@ impl Layer {
 }
 
 impl Theme {
-    /// Whether the theme's patch for `group`, one of the groups `role`
-    /// belongs to, still changes `role`: some prop its knobs open is left by
-    /// the theme's patches for everything between them.
     pub fn group_reaches(&self, group: SurfaceRole, role: SurfaceRole) -> bool {
         if !role.lineage().any(|node| node.id == group.id) {
             return false;
@@ -1207,12 +1087,6 @@ impl Theme {
         }
     }
 
-    /// The style `role` resolves to in this theme: its kind's built-in
-    /// style and each group's built-in patch from the kind inward, then the
-    /// theme's patches the same way, so a theme's patch for a kind beats
-    /// the built-in look of everything in it. Every corner starts at the
-    /// theme's smoothing. A theme that picks its outlines, shadows or
-    /// smoothing drops every built-in one first.
     pub fn style(&self, role: SurfaceRole) -> Style {
         DRAWN.with_borrow_mut(|drawn| {
             if let Some(drawn) = drawn {
@@ -1240,8 +1114,6 @@ impl Theme {
         style
     }
 
-    /// The corner radius `shape` gives `role`. At the theme's largest radius
-    /// every button is a pill.
     pub fn shape_radius(&self, role: SurfaceRole, shape: Shape) -> Pixels {
         match shape {
             Shape::Square => px(0.0),
@@ -1256,7 +1128,6 @@ impl Theme {
         }
     }
 
-    /// The theme's contact shadow.
     pub fn contact_shadows(&self) -> Vec<BoxShadow> {
         let material = self.contact_shadow;
         if material.strength <= 0.0 {
@@ -1293,7 +1164,6 @@ impl Theme {
         ]
     }
 
-    /// The theme's floating shadow: the contact shadow under a deep one.
     pub fn float_shadows(&self) -> Vec<BoxShadow> {
         let material = self.float_shadow;
         let mut shadows = self.contact_shadows();
@@ -1307,7 +1177,6 @@ impl Theme {
         shadows
     }
 
-    /// The shadows `shadow` names.
     pub fn shadows_of(&self, shadow: Shadow) -> Vec<BoxShadow> {
         match shadow {
             Shadow::None => Vec::new(),
@@ -1316,12 +1185,10 @@ impl Theme {
         }
     }
 
-    /// The theme's glass when it draws more than a plain fill would.
     fn drawn_glass(&self) -> Option<GlassMaterial> {
         self.glass.filter(|material| !material.is_opaque_fill())
     }
 
-    /// How `surface` paints in `state`.
     pub fn layer(&self, surface: impl Into<Surface>, state: PaintState) -> Layer {
         let surface = surface.into();
         let kind = surface.role.kind;
@@ -1584,7 +1451,6 @@ impl Theme {
         }
     }
 
-    /// What content inside `surface` paints on while it rests.
     pub fn ground_of(&self, surface: impl Into<Surface>) -> Ground {
         self.layer(surface, PaintState::Rest).ground
     }
@@ -1600,7 +1466,6 @@ fn shadow_of(material: ShadowMaterial, color: Hsla) -> BoxShadow {
     }
 }
 
-/// Which edge of a box a rule runs along.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Edge {
     Top,
@@ -1609,10 +1474,7 @@ pub enum Edge {
     Right,
 }
 
-/// Paints a surface that follows the pointer.
 pub trait InteractiveSurfaceExt: InteractiveElement + Styled + Sized {
-    /// `surface` in `state`, taking its hover highlight while pointed at
-    /// when it rests.
     fn surface_hover(self, surface: impl Into<Surface>, state: PaintState, cx: &App) -> Self {
         let surface = surface.into();
         let theme = cx.theme();
@@ -1627,11 +1489,7 @@ pub trait InteractiveSurfaceExt: InteractiveElement + Styled + Sized {
 
 impl<E: InteractiveElement + Styled> InteractiveSurfaceExt for E {}
 
-/// Paints a surface that follows the pointer and presses, on an element with
-/// an id.
 pub trait StatefulSurfaceExt: StatefulInteractiveElement + Styled + Sized {
-    /// `surface` in `state`, with its hover and pressed highlights when it
-    /// rests.
     fn surface_interactive(self, surface: impl Into<Surface>, state: PaintState, cx: &App) -> Self {
         let surface = surface.into();
         let theme = cx.theme();

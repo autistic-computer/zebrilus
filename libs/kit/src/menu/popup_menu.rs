@@ -57,7 +57,6 @@ pub enum PopupMenuItem {
         render: Box<dyn Fn(bool, &mut Window, &mut App) -> AnyElement + 'static>,
         handler: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
     },
-    /// Only supported when the parent menu is not `scrollable`.
     Submenu {
         icon: Option<Icon>,
         label: SharedString,
@@ -135,7 +134,6 @@ impl PopupMenuItem {
         PopupMenuItem::Label(label.into())
     }
 
-    /// Only works for [`PopupMenuItem::Item`], [`PopupMenuItem::ElementItem`] and [`PopupMenuItem::Submenu`].
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         match &mut self {
             PopupMenuItem::Item { icon: i, .. } => {
@@ -152,7 +150,6 @@ impl PopupMenuItem {
         self
     }
 
-    /// Only works for [`PopupMenuItem::Item`] and [`PopupMenuItem::ElementItem`].
     pub fn action(mut self, action: Box<dyn Action>) -> Self {
         match &mut self {
             PopupMenuItem::Item { action: a, .. } => {
@@ -166,7 +163,6 @@ impl PopupMenuItem {
         self
     }
 
-    /// Only works for [`PopupMenuItem::Item`], [`PopupMenuItem::ElementItem`] and [`PopupMenuItem::Submenu`].
     pub fn disabled(mut self, disabled: bool) -> Self {
         match &mut self {
             PopupMenuItem::Item { disabled: d, .. } => {
@@ -183,7 +179,6 @@ impl PopupMenuItem {
         self
     }
 
-    /// A checked item renders a check icon in place of its left icon.
     pub fn checked(mut self, checked: bool) -> Self {
         match &mut self {
             PopupMenuItem::Item { checked: c, .. } => {
@@ -197,7 +192,6 @@ impl PopupMenuItem {
         self
     }
 
-    /// Only works for [`PopupMenuItem::Item`] and [`PopupMenuItem::ElementItem`].
     pub fn on_click<F>(mut self, handler: F) -> Self
     where
         F: Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -336,8 +330,6 @@ impl PopupMenu {
         cx.new(|cx| f(Self::new(cx), window, cx))
     }
 
-    /// Focus returns to this handle on dismiss and before an action fires, and
-    /// the action is dispatched there.
     pub fn action_context(mut self, handle: FocusHandle) -> Self {
         self.action_context = Some(handle);
         self
@@ -359,32 +351,26 @@ impl PopupMenu {
         }
     }
 
-    /// Set the menu's min width. Defaults to 8rem.
     pub fn min_w(mut self, width: impl Into<Pixels>) -> Self {
         self.min_width = Some(width.into());
         self
     }
 
-    /// Set the menu's max width. Defaults to 500px.
     pub fn max_w(mut self, width: impl Into<Pixels>) -> Self {
         self.max_width = Some(width.into());
         self
     }
 
-    /// Set the menu's max height. Defaults to half the window height, capped
-    /// at 450px.
     pub fn max_h(mut self, height: impl Into<Pixels>) -> Self {
         self.max_height = Some(height.into());
         self
     }
 
-    /// Draw the menu as `role` draws, instead of as a popover.
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = role;
         self
     }
 
-    /// A scrollable menu cannot carry submenus.
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = scrollable;
         self
@@ -939,7 +925,6 @@ impl PopupMenu {
                     && this.selected_index == Some(ix)
                     && !window.last_input_was_keyboard()
                 {
-                    // TODO: Better handle the submenu unselection when hover out
                     this.selected_index = None;
                 }
 
@@ -1251,7 +1236,6 @@ impl Render for PopupMenu {
                     }),
             )
             .when(self.scrollable, |this| {
-                // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu will cannot be displayed.
                 this.vertical_scrollbar(&self.scroll_handle)
             });
         crate::foundation::surface_enter(surface, "menu-open", px(0.0))

@@ -1,5 +1,3 @@
-//! Window-level text selection: one drag, many `TextView`s. Endpoints are
-//! anchored to a view's content, so a selection stays put when layout shifts.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::collections::HashMap;
@@ -65,8 +63,6 @@ pub(super) fn register_selectable_text_inline(
     });
 }
 
-/// Window-level text selection state, owned by [`Root`]. Drives all text
-/// selection, including a drag inside a single `TextView`.
 #[derive(Default)]
 pub struct WindowTextSelection {
     anchor: Option<SelectionEndpoint>,
@@ -121,7 +117,6 @@ impl WindowTextSelection {
         (anchor == cursor).then_some(anchor)
     }
 
-    /// Whether there is an active text selection (window-level or view-local).
     pub fn has_selection(&self, cx: &App) -> bool {
         if self.resolved_points(cx).is_some() {
             return true;
@@ -132,8 +127,6 @@ impl WindowTextSelection {
         })
     }
 
-    /// The merged selected text across the views in `scope`, in document order.
-    /// Reflects the last painted frame.
     pub fn selected_text(&self, scope: SelectionScope, cx: &App) -> String {
         let resolved = self.resolved_points(cx);
         let single_view = self.single_view();
@@ -173,7 +166,6 @@ impl WindowTextSelection {
             .join("\n")
     }
 
-    /// Clear the window selection and all view-local selections.
     pub fn clear(&mut self, cx: &mut App) {
         let had_window_selection = self.anchor.is_some();
         self.anchor = None;
@@ -425,9 +417,6 @@ impl WindowTextSelection {
     }
 }
 
-/// Zero-size element driving window text selection. Must be `Root`'s first
-/// child: bubble listeners fire in reverse registration order, so registering
-/// earliest is what makes this one run after every interactive widget.
 pub(crate) struct TextSelectionController;
 
 impl IntoElement for TextSelectionController {

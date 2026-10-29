@@ -1,10 +1,7 @@
-//! Addressing a cell in a sectioned list.
-
 use std::fmt::Display;
 
 use zz_gpui::ElementId;
 
-/// A section / row / column address. All three default to `0`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct IndexPath {
     pub section: usize,
@@ -29,7 +26,6 @@ impl Display for IndexPath {
 }
 
 impl IndexPath {
-    /// A path to `row` in section `0`, column `0`.
     pub fn new(row: usize) -> Self {
         IndexPath {
             section: 0,

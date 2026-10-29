@@ -1,7 +1,3 @@
-//! The text field: a single-line or auto-growing multi-line editor.
-
-// Each allow below is for a lint that fires only on zz-gpui's element and action
-// shapes; correctness, perf and suspicious lints stay on.
 #![allow(
     clippy::cast_precision_loss,
     clippy::fn_params_excessive_bools,

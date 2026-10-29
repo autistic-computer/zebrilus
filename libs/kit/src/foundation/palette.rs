@@ -1,5 +1,3 @@
-//! The two built-in palettes, light and dark.
-
 use std::sync::{Arc, LazyLock};
 
 use zz_gpui::Hsla;
@@ -33,7 +31,6 @@ fn scrim(alpha: f32) -> Hsla {
 }
 
 fn palette(mode: ThemeMode) -> ThemeColor {
-    // shadcn/Tailwind scale values, as `hsl(deg, %, %)`.
     let neutral_50 = hsl(0., 0., 98.);
     let neutral_950 = hsl(0., 0., 3.9);
     let white = hsl(0., 0., 100.);

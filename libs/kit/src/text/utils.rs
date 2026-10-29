@@ -1,4 +1,3 @@
-//! List-item markers: `1.` / `A.` / `a.` by depth, and the bullet cycle.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 const NUMBERED_PREFIXES_1: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";

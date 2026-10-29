@@ -1,5 +1,3 @@
-//! Which side of a box something sits on.
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
     Left,

@@ -16,7 +16,6 @@ use super::{
 };
 
 impl CodeEditorState {
-    /// Turns the vim layer on or off. Enabling enters normal mode.
     pub fn set_vim_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
         if enabled == self.vim.is_some() {
             return;
@@ -29,7 +28,6 @@ impl CodeEditorState {
         cx.notify();
     }
 
-    /// The current vim mode, or None when the layer is off.
     pub fn vim_mode(&self) -> Option<VimMode> {
         self.vim.as_ref().map(VimState::mode)
     }

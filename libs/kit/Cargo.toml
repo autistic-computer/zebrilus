@@ -6,15 +6,13 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.99"
-description = "Widget kit on zz-gpui: theme, primitives, and widgets, forked from gpui-component (see UPSTREAM.md)"
+description = "Widgets for gpui: theme, primitives, widgets and icons"
 repository = "https://github.com/autistic-computer/kit"
 publish = false
 
 [features]
 default = []
-# The code-editor widget stack, off unless an app asks for it.
 editor = []
-# Syntax highlighting for the markdown renderer and the code editor.
 tree-sitter = [
     "dep:tree-sitter",
     "dep:tree-sitter-language",
@@ -30,11 +28,8 @@ anyhow = "1"
 async-channel = "2.5.0"
 image = { version = "=0.25.10", default-features = false }
 log = "0.4.34"
-# Markdown parsing: only the AST is used; `text` owns the rendering and
-# re-exports `mdast` as `markdown_ast`.
 markdown = { version = "1.0", features = ["serde"] }
 ropey = { version = "=2.0.0-beta.1", features = ["metric_lines_lf", "metric_utf16"] }
-# `include-exclude` is required by the `#[include]` attribute in `icon/assets.rs`.
 rust-embed = { version = "8.12", features = ["include-exclude"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
@@ -46,16 +41,11 @@ tree-sitter-md = { version = "0.5.3", optional = true }
 tree-sitter-rust = { version = "0.24.2", optional = true }
 tree-sitter-tmux = { version = "0.1.4", optional = true }
 tree-sitter-toml-ng = { version = "0.7.0", optional = true }
-# Grapheme-cluster boundaries, so editing steps over an emoji or a combining
-# sequence as one unit.
 unicode-segmentation = "1.13.3"
-# Monotonic clock that works on native and under WASM.
 web-time = "1.1.0"
 zz-gpui = { git = "https://github.com/autistic-computer/gpui", branch = "main", features = ["default"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-# Browsers have no filesystem for the debug-build disk reads, so the icon set
-# is embedded in every wasm profile.
 rust-embed = { version = "8.12", features = ["include-exclude", "debug-embed"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
@@ -82,8 +72,6 @@ too_many_lines = "allow"
 result_large_err = "allow"
 assert_is_empty = "allow"
 unused_async_trait_impl = "allow"
-# Pixel math casts between f32/u32/i32 on every screen, and exact f32
-# equality is the UI's change-detection idiom; clippy 1.97 warns on both.
 cast_possible_truncation = "allow"
 cast_possible_wrap = "allow"
 cast_precision_loss = "allow"
@@ -91,7 +79,5 @@ cast_sign_loss = "allow"
 float_cmp = "allow"
 struct_excessive_bools = "allow"
 type_complexity = "allow"
-# zz-gpui idioms: `_subscriptions`/`_task` fields held for RAII get reassigned,
-# and view methods take &self for organization before they need it.
 used_underscore_binding = "allow"
 unused_self = "allow"

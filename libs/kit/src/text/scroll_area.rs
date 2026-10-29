@@ -1,4 +1,3 @@
-//! A horizontal scroll viewport that lets vertical wheel events keep bubbling.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use zz_gpui::{

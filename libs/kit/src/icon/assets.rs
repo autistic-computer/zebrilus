@@ -1,15 +1,9 @@
-//! The asset source backing [`IconName`](super::IconName).
-
 use std::borrow::Cow;
 
 use zz_gpui::{AssetSource, Result, SharedString};
 
 use super::glyphs;
 
-/// zz's icons: the set [`glyphs`] draws for any `icons/…` path it names, and
-/// the brand marks embedded from `assets/icons/`. Native
-/// debug builds read the marks from disk, so an edited SVG needs no rebuild;
-/// wasm builds always embed because the browser has no disk to read.
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets"]
 #[include = "icons/**/*.svg"]

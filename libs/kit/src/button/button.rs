@@ -1,5 +1,3 @@
-//! The [`Button`] element and its variant/state color matrix.
-
 use std::rc::Rc;
 
 use zz_gpui::{
@@ -20,7 +18,6 @@ use super::button_icon::ButtonIcon;
 pub const COMPACT_ICON_BUTTON_SIZE: f32 = 24.0;
 const COMPACT_ICON_DROP: Pixels = px(0.5);
 
-/// Corner radius of a [`Button`]: the theme radius, or an explicit override.
 #[derive(Default, Clone, Copy)]
 pub enum ButtonRounded {
     #[default]
@@ -34,17 +31,13 @@ impl From<Pixels> for ButtonRounded {
     }
 }
 
-/// The variant selectors, as a trait so wrappers around a Button can forward
-/// them (see [`ButtonVariant`] for the variants themselves).
 pub trait ButtonVariants: Sized {
     fn with_variant(self, variant: ButtonVariant) -> Self;
 
-    /// The main action of a surface: primary, solid.
     fn primary(self) -> Self {
         self.with_variant(ButtonVariant::Paint(Tone::Primary, Emphasis::Solid))
     }
 
-    /// An action beside the main one: neutral, soft.
     fn secondary(self) -> Self {
         self.with_variant(ButtonVariant::Paint(Tone::Neutral, Emphasis::Soft))
     }
@@ -61,7 +54,6 @@ pub trait ButtonVariants: Sized {
         self.with_variant(ButtonVariant::Paint(Tone::Success, Emphasis::Soft))
     }
 
-    /// A quiet action: neutral, ghost.
     fn ghost(self) -> Self {
         self.with_variant(ButtonVariant::Paint(Tone::Neutral, Emphasis::Ghost))
     }
@@ -70,21 +62,15 @@ pub trait ButtonVariants: Sized {
         self.with_variant(ButtonVariant::Link)
     }
 
-    /// Unpadded, styled as plain text.
     fn text(self) -> Self {
         self.with_variant(ButtonVariant::Text)
     }
 }
 
-/// How a button is drawn: a tone at an emphasis, or one of the two
-/// unpadded forms that read as text.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ButtonVariant {
-    /// A tone at an emphasis, drawn from the theme's [`Paint`].
     Paint(Tone, Emphasis),
-    /// Underlined text.
     Link,
-    /// Plain text with no padding.
     Text,
 }
 
@@ -110,9 +96,6 @@ impl ButtonVariant {
         self.is_link() || self.is_text()
     }
 
-    /// The surface a painted button draws: its own role, or the one its
-    /// emphasis implies. A solid button is the prominent one; a ghost one is
-    /// quiet, or an icon button when it shows only an icon.
     fn surface(
         &self,
         role: Option<SurfaceRole>,
@@ -136,7 +119,6 @@ impl ButtonVariant {
     }
 }
 
-/// A link or text button in `state`: no fill or edge, just its ink.
 fn text_layer(variant: ButtonVariant, state: PaintState, ground: Ground, cx: &App) -> Layer {
     let theme = cx.theme();
     let foreground = theme.foreground;
@@ -238,8 +220,6 @@ impl Button {
         self
     }
 
-    /// Replace the variant's hovered fill. Setting `hover` from outside panics,
-    /// because the variant matrix already claimed it.
     #[must_use]
     pub fn hover_bg(mut self, bg: Hsla) -> Self {
         self.hover_bg = Some(bg);
@@ -251,13 +231,11 @@ impl Button {
         self
     }
 
-    /// Set the label. A button with no label renders as an icon button.
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
         self
     }
 
-    /// Set the leading icon.
     pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
         self.icon = Some(ButtonIcon::new(icon));
         self
@@ -286,19 +264,16 @@ impl Button {
         self
     }
 
-    /// Called with `true` when the pointer enters, `false` when it leaves.
     pub fn on_hover(mut self, handler: impl Fn(&bool, &mut Window, &mut App) + 'static) -> Self {
         self.on_hover = Some(Rc::new(handler));
         self
     }
 
-    /// Defaults to 0.
     pub fn tab_index(mut self, tab_index: isize) -> Self {
         self.tab_index = tab_index;
         self
     }
 
-    /// Defaults to true.
     pub fn tab_stop(mut self, tab_stop: bool) -> Self {
         self.tab_stop = tab_stop;
         self
@@ -327,8 +302,6 @@ impl Button {
 }
 
 impl Button {
-    /// Draw the button in `tone`, keeping its emphasis if it has one and
-    /// soft otherwise.
     #[must_use]
     pub fn tone(mut self, tone: Tone) -> Self {
         let emphasis = match self.variant {
@@ -339,8 +312,6 @@ impl Button {
         self
     }
 
-    /// Draw the button at `emphasis`, keeping its tone if it has one and
-    /// neutral otherwise.
     #[must_use]
     pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
         let tone = match self.variant {
@@ -351,16 +322,12 @@ impl Button {
         self
     }
 
-    /// Draw the button as `role` draws, instead of the role its emphasis
-    /// implies.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
-    /// Paint the button on `ground`, the surface it sits on, instead of the
-    /// window.
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);

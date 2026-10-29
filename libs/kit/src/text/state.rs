@@ -1,5 +1,3 @@
-//! [`TextViewState`]: the parsed document, kept in sync with a streaming
-//! source. `set_text` parses synchronously; `push_str` parses off-thread.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use async_channel::{Receiver, Sender, unbounded};
@@ -366,7 +364,6 @@ impl TextViewState {
         }
     }
 
-    /// Select all rendered text in this view.
     pub fn select_all(&mut self, cx: &mut Context<Self>) {
         self.multi_click_selection = None;
         self.selected_text_override = None;

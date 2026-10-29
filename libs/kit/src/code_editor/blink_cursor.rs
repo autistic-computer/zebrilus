@@ -4,7 +4,6 @@ use zz_gpui::{Context, Pixels, Task, px};
 static INTERVAL: Duration = Duration::from_millis(500);
 static PAUSE_DELAY: Duration = Duration::from_millis(300);
 
-// On Windows and Linux, use an integer width to avoid a blurry cursor.
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub(super) const CURSOR_WIDTH: Pixels = px(2.);
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -76,7 +75,6 @@ impl BlinkCursor {
         self.paused || self.visible
     }
 
-    /// Pause the blinking, resuming after `PAUSE_DELAY`.
     pub fn pause(&mut self, cx: &mut Context<Self>) {
         self.paused = true;
         self.visible = true;

@@ -1,5 +1,3 @@
-//! Inert highlighter and language registry used when `tree-sitter` is off.
-
 use std::{
     collections::HashMap,
     ops::Range,
@@ -26,10 +24,8 @@ impl SyntaxHighlighter {
         &self.language
     }
 
-    /// No-op: there is no parser to feed.
     pub fn update(&mut self, _text: &str) {}
 
-    /// Always empty, so code renders unstyled.
     pub fn styles(
         &self,
         _range: &Range<usize>,
@@ -55,7 +51,6 @@ impl LanguageRegistry {
         &INSTANCE
     }
 
-    /// Registers `config` under `lang`, replacing any previous entry.
     pub fn register(&self, lang: &str, config: &LanguageConfig) {
         self.entries()
             .insert(SharedString::new(lang), config.clone());

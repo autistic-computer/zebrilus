@@ -1,5 +1,3 @@
-//! The window title bar: a draggable strip that owns the top of a window.
-
 use std::rc::Rc;
 
 use smallvec::SmallVec;
@@ -17,27 +15,11 @@ use crate::{
     h_flex,
 };
 
-/// The least height of the title bar: one gapped pane header. Its height on
-/// screen is [`Theme::title_bar_height`](crate::Theme::title_bar_height),
-/// which every strip that lines up with it (the sidebar headers in zz-ui's
-/// navigation and settings) reads.
 pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
 
-/// Side of a native macOS window-button frame, and the width of all three
-/// plus their gaps. Measured on macOS 27: each frame is 14x14, origins sit 23
-/// apart, so the cluster spans 60 from the first left edge to the last right
-/// edge. The platform layer centres the buttons in a container of
-/// `glyph + 2 * traffic_light_position.y`, which is what ties them to the
-/// title bar's height: keep the two in step or the lights stop sharing a
-/// centre line with the strip's own controls.
 pub const MACOS_TRAFFIC_LIGHT_GLYPH: f32 = 14.;
 pub const MACOS_TRAFFIC_LIGHT_SPAN: f32 = 60.;
 
-/// Space a strip reserves for the macOS traffic lights: the lights keep as
-/// much room from the window's leading edge as from its top, and the strip's
-/// own controls the same from the cluster's far edge, so the gap on either
-/// side of the lights reads as one measurement. Both margins ride the zoom
-/// with the lights' placement, the native glyphs do not.
 #[must_use]
 pub fn macos_traffic_light_clearance(cx: &App) -> Pixels {
     let margin =
@@ -45,9 +27,6 @@ pub fn macos_traffic_light_clearance(cx: &App) -> Pixels {
     margin * 2. + UiZoom::unzoomed(px(MACOS_TRAFFIC_LIGHT_SPAN), cx)
 }
 
-/// Whether the app draws the window's minimize / maximize / close buttons:
-/// Windows outside fullscreen, and Linux under [`Decorations::Client`]. macOS
-/// keeps its native traffic lights, and WASM has no window to control.
 #[must_use]
 pub fn draws_window_controls(window: &Window) -> bool {
     (cfg!(target_os = "windows") && !window.is_fullscreen())
@@ -64,7 +43,6 @@ pub fn window_controls_width(window: &Window) -> Pixels {
     }
 }
 
-/// Left inset that clears the native macOS traffic lights, in window points.
 #[cfg(target_os = "macos")]
 fn title_bar_left_padding(cx: &App) -> Pixels {
     macos_traffic_light_clearance(cx)
@@ -76,8 +54,6 @@ fn title_bar_left_padding(_cx: &App) -> Pixels {
 
 type CloseHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
-/// The window title bar. Children are laid out in the draggable region, to the
-/// left of the window controls.
 #[derive(IntoElement)]
 pub struct TitleBar {
     style: StyleRefinement,
@@ -95,9 +71,6 @@ impl TitleBar {
         }
     }
 
-    /// The [`TitlebarOptions`] a window must open with for [`TitleBar`] to sit
-    /// correctly in it: transparent, untitled, traffic lights placed to match
-    /// a bar `height` tall and its left padding.
     #[must_use]
     pub fn title_bar_options(height: Pixels) -> TitlebarOptions {
         TitlebarOptions {
@@ -108,18 +81,12 @@ impl TitleBar {
         }
     }
 
-    /// Where the macOS traffic lights sit at `zoom` in a bar `height` tall, in
-    /// window points: on the bar's zoomed centre line, as far in from the
-    /// leading edge as from the top, at native size.
     #[must_use]
     pub fn traffic_light_position(height: Pixels, zoom: f32) -> Point<Pixels> {
         let margin = (height * zoom - px(MACOS_TRAFFIC_LIGHT_GLYPH)) / 2.;
         point(margin, margin)
     }
 
-    /// Run `f` instead of `Window::remove_window` when the close button is
-    /// clicked. Linux only: elsewhere the button is absent or hit-tested by the
-    /// OS, so there is no click to intercept.
     #[must_use]
     pub fn on_close_window(
         mut self,
@@ -152,7 +119,6 @@ impl ParentElement for TitleBar {
 
 #[cfg(not(target_os = "windows"))]
 const CONTROL_ICON_WIDTH: Pixels = TITLE_BAR_HEIGHT;
-/// The Windows 11 shell's own caption button width.
 #[cfg(target_os = "windows")]
 const CONTROL_ICON_WIDTH: Pixels = px(46.);
 
@@ -297,9 +263,6 @@ impl RenderOnce for WindowControl {
     }
 }
 
-/// The trailing minimize / maximize / close cluster. Empty wherever
-/// [`draws_window_controls`] is false. Mountable on its own, without a
-/// [`TitleBar`].
 #[derive(IntoElement)]
 pub struct WindowControls {
     on_close_window: Option<CloseHandler>,
@@ -321,17 +284,12 @@ impl WindowControls {
         Self::default()
     }
 
-    /// Draw the controls' hover and press as `role` draws, instead of as
-    /// square icon buttons.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = role;
         self
     }
 
-    /// Run `f` instead of `Window::remove_window` when close is clicked. Linux
-    /// only, as with [`TitleBar::on_close_window`]; on Windows the veto belongs
-    /// on `Window::on_window_should_close`.
     #[must_use]
     pub fn on_close_window(
         mut self,

@@ -1,6 +1,3 @@
-//! The mark that says whether an option is picked: a checkbox when several
-//! can be, a radio when one can. A row or tile around it handles the click.
-
 use zz_gpui::{
     App, IntoElement, ParentElement as _, RenderOnce, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
@@ -49,15 +46,12 @@ impl Check {
         }
     }
 
-    /// The tone of the checked mark. Primary by default.
     #[must_use]
     pub fn tone(mut self, tone: Tone) -> Self {
         self.tone = tone;
         self
     }
 
-    /// Draw the mark on `ground`, the paint it sits inside, instead of the
-    /// window.
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);

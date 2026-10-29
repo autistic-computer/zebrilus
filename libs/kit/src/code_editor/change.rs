@@ -1,6 +1,5 @@
 use super::{Selection, history::HistoryItem};
 
-/// One rope replacement in the undo/redo history.
 #[derive(Debug, PartialEq, Clone)]
 pub struct Change {
     pub(crate) old_range: Selection,

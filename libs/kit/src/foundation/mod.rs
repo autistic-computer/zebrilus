@@ -1,6 +1,3 @@
-//! The foundation every widget stands on: the theme global and the shared
-//! traits.
-
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 mod animation;
@@ -46,8 +43,6 @@ pub use variant::{
 };
 pub use window_border::{window_border, window_paddings};
 
-/// Install the [`Theme`] global. Must run once, before any window opens;
-/// `zz_gpui_kit::init` calls it first, ahead of every widget's own `init`.
 pub fn init(cx: &mut zz_gpui::App) {
     theme::init(cx);
 }

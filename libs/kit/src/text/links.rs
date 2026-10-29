@@ -1,6 +1,3 @@
-//! What a call site does with the links in a [`super::TextView`]: how each one
-//! paints, the card hovering it shows, and what a click on it does.
-
 use std::sync::Arc;
 
 use zz_gpui::{
@@ -9,7 +6,6 @@ use zz_gpui::{
 
 use crate::ActiveTheme as _;
 
-/// A click on a link: its destination, the button, and the keys held.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LinkClick {
     pub url: SharedString,
@@ -17,21 +13,15 @@ pub struct LinkClick {
     pub modifiers: Modifiers,
 }
 
-/// Links a call site handles itself. Every method sees the destination as
-/// written, so a scheme of its own never reaches the OS.
 pub trait TextLinks: Send + Sync + 'static {
-    /// How the link to `url` paints in place of the plain underline; `None`
-    /// keeps that.
     fn style(&self, _url: &str, _cx: &App) -> Option<HighlightStyle> {
         None
     }
 
-    /// The card that hovering the link to `url` shows.
     fn tooltip(&self, _url: &str, _window: &mut Window, _cx: &mut App) -> Option<AnyView> {
         None
     }
 
-    /// Handle `click`; `false` lets the view open the destination.
     fn click(&self, _click: &LinkClick, _window: &mut Window, _cx: &mut App) -> bool {
         false
     }
@@ -39,8 +29,6 @@ pub trait TextLinks: Send + Sync + 'static {
 
 pub(crate) type SharedLinks = Arc<dyn TextLinks>;
 
-/// How the link to `url` paints: the text's ink, underlined, unless `links`
-/// says otherwise.
 pub(crate) fn link_highlight(links: Option<&SharedLinks>, url: &str, cx: &App) -> HighlightStyle {
     let plain = HighlightStyle {
         color: Some(cx.theme().foreground),
@@ -55,7 +43,6 @@ pub(crate) fn link_highlight(links: Option<&SharedLinks>, url: &str, cx: &App) -
         .unwrap_or(plain)
 }
 
-/// Hand `click` to `links`, and open what they leave.
 pub(crate) fn open_link(
     links: Option<&SharedLinks>,
     click: &LinkClick,

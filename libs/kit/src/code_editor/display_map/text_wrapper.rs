@@ -12,7 +12,6 @@ use crate::code_editor::{LastLayout, Point as TreeSitterPoint, RopeExt, Whitespa
 #[derive(Debug, Clone)]
 pub(crate) struct LineItem {
     len: usize,
-    /// Wrap spans as byte ranges within `0..len`, excluding the line's `\n`.
     pub(crate) wrapped_lines: SmallVec<[Range<usize>; 1]>,
 }
 
@@ -34,7 +33,6 @@ pub(crate) struct LineSummary {
     wrap_rows: usize,
     bytes: usize,
     max_line_len: usize,
-    /// Row of the first line reaching `max_line_len`, relative to this subtree.
     longest_row: usize,
 }
 
@@ -106,7 +104,6 @@ pub(crate) struct TextWrapper {
     text: Rope,
     font: Font,
     font_size: Pixels,
-    /// None means no soft wrapping.
     wrap_width: Option<Pixels>,
     pub(crate) lines: SumTree<LineItem>,
 
@@ -135,7 +132,6 @@ impl TextWrapper {
         &self.text
     }
 
-    /// Wrap rows, not buffer lines.
     #[inline]
     pub(crate) fn len(&self) -> usize {
         self.lines.summary().wrap_rows
@@ -163,7 +159,6 @@ impl TextWrapper {
         self.lines.iter()
     }
 
-    /// First wrap row of buffer line `row`, or the total wrap row count if `row` is past the end.
     pub(crate) fn buffer_line_to_first_wrap_row(&self, row: usize) -> usize {
         let mut cursor = self.lines.cursor::<Dimensions<BufferRows, WrapRows>>(&());
         cursor.seek(&BufferRows(row), Bias::Right);
@@ -178,7 +173,6 @@ impl TextWrapper {
         start..start + len
     }
 
-    /// Buffer line holding `wrap_row`, clamped to the last line.
     pub(crate) fn wrap_row_to_buffer_line(&self, wrap_row: usize) -> usize {
         let mut cursor = self.lines.cursor::<Dimensions<WrapRows, BufferRows>>(&());
         cursor.seek(&WrapRows(wrap_row), Bias::Right);
@@ -216,7 +210,6 @@ impl TextWrapper {
         true
     }
 
-    /// Rewraps for an edit: `changed_text` is the post-edit rope, `range` the pre-edit selection.
     pub(crate) fn update(
         &mut self,
         changed_text: &Rope,
@@ -306,7 +299,6 @@ impl TextWrapper {
         self.update(text, &(0..text.len()), &text, cx);
     }
 
-    /// Wrap-space point for a byte offset. Panics past the end of the text.
     pub(crate) fn offset_to_display_point(&self, offset: usize) -> WrapDisplayPoint {
         let row = self.text.offset_to_point(offset).row;
         let start = self.text.line_start_offset(row);
@@ -334,7 +326,6 @@ impl TextWrapper {
         return WrapDisplayPoint::new(wrapped_row + ix, ix, last_range.len());
     }
 
-    /// Byte offset for a wrap-space point. Panics if `point.row` is past the end.
     pub(crate) fn display_point_to_offset(&self, point: WrapDisplayPoint) -> usize {
         let mut cursor = self.lines.cursor::<Dimensions<WrapRows, BufferRows>>(&());
         cursor.seek(&WrapRows(point.row), Bias::Right);
@@ -361,11 +352,8 @@ impl TextWrapper {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct WrapDisplayPoint {
-    /// 0-based wrap row across the whole text.
     pub row: usize,
-    /// 0-based wrap row within its buffer line; only set by `offset_to_display_point`.
     pub local_row: usize,
-    /// 0-based byte column within the wrap row.
     pub column: usize,
 }
 
@@ -384,7 +372,6 @@ pub(crate) struct LineLayout {
     pub(crate) wrapped_lines: SmallVec<[ShapedLine; 1]>,
     pub(crate) longest_width: Pixels,
     pub(crate) whitespace_indicators: Option<WhitespaceIndicators>,
-    /// One entry per drawn indicator: (wrap row, x, is_tab).
     pub(crate) whitespace_chars: Vec<(usize, Pixels, bool)>,
 }
 
@@ -420,8 +407,6 @@ impl LineLayout {
         self.len
     }
 
-    /// Position of a local byte offset, relative to this layout's top-left corner.
-    /// With `line_end_affinity`, a wrap-boundary offset stays on the current visual line.
     pub(crate) fn position_for_index(
         &self,
         offset: usize,

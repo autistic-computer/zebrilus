@@ -1,17 +1,11 @@
-//! Color math shared by the theme and every widget that tints something.
-
 use std::cell::Cell;
 use zz_gpui::{Hsla, Rgba, hsla};
 
-/// Create a [`zz_gpui::Hsla`] color from CSS-style components: `h` in 0.0..360.0,
-/// `s` and `l` in 0.0..100.0.
 #[inline]
 pub fn hsl(h: f32, s: f32, l: f32) -> Hsla {
     hsla(h / 360., s / 100.0, l / 100.0, 1.0)
 }
 
-/// Parse `#rgb`, `#rrggbb` or `#rrggbbaa` into a color. The leading `#` is
-/// optional, and the error is a sentence callers show to the user verbatim.
 pub fn parse_hex(value: &str) -> Result<Hsla, String> {
     let digits = value.trim().strip_prefix('#').unwrap_or(value.trim());
     if !digits.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -37,8 +31,6 @@ pub fn parse_hex(value: &str) -> Result<Hsla, String> {
     .into())
 }
 
-/// Render a color as `#rrggbb`, or `#rrggbbaa` when it is translucent. The
-/// inverse of [`parse_hex`], lossy only in the last bit of a channel.
 #[must_use]
 pub fn to_hex(color: Hsla) -> String {
     let rgba: Rgba = color.into();
@@ -51,8 +43,6 @@ pub fn to_hex(color: Hsla) -> String {
     }
 }
 
-/// The Oklab lightness of `color`, in `0.0..=1.0`. Perceptual lightness, not
-/// [`Hsla::l`]. Alpha is ignored, so the caller composites first if it matters.
 #[must_use]
 pub fn oklab_lightness(color: Hsla) -> f32 {
     oklab::rgb_to_oklab(color.into()).0
@@ -107,9 +97,6 @@ pub(super) fn faint_weight() -> f32 {
     (FAINT / contrast()).clamp(0.0, 1.0)
 }
 
-/// `amount` of the way from `from` to `to`, alpha-premultiplied, so a wash
-/// over nothing deepens by its alpha alone: 0 is `from`, 1 is `to`, and
-/// past 1 goes further the same way.
 pub(super) fn toward(from: Hsla, to: Hsla, amount: f32) -> Hsla {
     if amount == 0.0 {
         return from;
@@ -133,9 +120,6 @@ pub(super) fn toward(from: Hsla, to: Hsla, amount: f32) -> Hsla {
     })
 }
 
-/// The ink that reads on a solid `fill`, judged by perceptual lightness, so a
-/// yellow or green fill gets dark text where [`Colorize::on`], which goes by
-/// HSL lightness, would pick white.
 pub(super) fn readable_on(fill: Hsla) -> Hsla {
     let pole = if oklab_lightness(fill.opaque()) > READABLE_ON_LIGHTNESS {
         hsla(0., 0., 0., 1.)
@@ -154,16 +138,12 @@ pub(super) fn is_colored(color: Hsla) -> bool {
     a.hypot(b) > COLORED_CHROMA
 }
 
-/// The color at Oklch `lightness`, `chroma` and `hue` in degrees, clipped
-/// to sRGB.
 #[must_use]
 pub fn oklch(lightness: f32, chroma: f32, hue: f32) -> Hsla {
     let (sin, cos) = hue.to_radians().sin_cos();
     oklab::oklab_to_rgb(lightness, chroma * cos, chroma * sin).into()
 }
 
-/// The Oklch lightness, chroma and hue in degrees of `color`, the inverse of
-/// [`oklch`].
 #[must_use]
 pub fn to_oklch(color: Hsla) -> (f32, f32, f32) {
     let (lightness, a, b) = oklab::rgb_to_oklab(color.into());
@@ -180,9 +160,6 @@ pub(super) fn tint(color: Hsla, hue: f32, intensity: f32) -> Hsla {
     color.mix_oklab(tinted.opacity(color.a), 1.0 - intensity.clamp(0.0, 1.0))
 }
 
-/// `color` raised `level` steps toward white: a light color as far in
-/// lightness as [`Colorize::raised`] would darken it, stopping at white, and
-/// a dark one the way `raised` already lightens it.
 pub(super) fn raised_bright(color: Hsla, level: u8) -> Hsla {
     if color.l < 0.5 {
         return color.raised(level);
@@ -199,107 +176,62 @@ pub(super) fn raised_bright(color: Hsla, level: u8) -> Hsla {
     }
 }
 
-/// Presentation transforms on a color. Each is a function of the receiver's
-/// own lightness and the theme contrast, moving it toward whichever contrast
-/// pole it is further from, so one rule covers light mode, dark mode and
-/// colored controls alike.
 pub trait Colorize: Sized {
-    /// Move `level` elevation steps away from this color's own lightness: a dark
-    /// plane raises lighter, a light plane raises darker. Alpha is preserved.
     fn raised(&self, level: u8) -> Self;
 
-    /// The translucent counterpart of [`Colorize::raised`]: this color's
-    /// contrast pole at `level` steps' worth of *alpha*. Tints a translucent
-    /// plane instead of blotting out what reads through it.
     fn washed(&self, level: u8) -> Self;
 
-    /// The hovered form of this color: a fraction of an elevation step.
     fn hover(&self) -> Self;
 
-    /// The pressed form of this color: twice [`Colorize::hover`].
     fn active(&self) -> Self;
 
-    /// Chrome text at rest: a step toward the contrast pole, so pointing at
-    /// it can brighten it to this color. On `foreground`, the resting ink.
     fn rest(&self) -> Self;
 
-    /// De-emphasized text: this color pulled most of the way toward its
-    /// contrast pole. On `foreground`, the muted body color.
     fn muted(&self) -> Self;
 
-    /// Text quieter than [`Colorize::muted`]: placeholders, hints and
-    /// disabled labels.
     fn faint(&self) -> Self;
 
-    /// Text that stays legible *on* this color: near-black on a light color,
-    /// near-white on a dark one.
     fn on(&self) -> Self;
 
-    /// This color at full alpha, for a panel floating over the window rather
-    /// than one that is part of it.
     fn opaque(&self) -> Self;
 
-    /// This color as a filled surface (a tinted area in this color).
     fn fill(&self) -> Self;
 
-    /// This color as an outline around a filled surface.
     fn outline(&self) -> Self;
 
-    /// This color softened into a hairline, for quiet dividers and shadows.
     fn subtle(&self) -> Self;
 
-    /// A colored emphasis outline: a focus or selection ring, as a 1px shadow or
-    /// a border.
     fn glow(&self) -> Self;
 
-    /// A faint neutral fill or line: inset rows, hover fills, indent guides.
     fn wash(&self) -> Self;
 
-    /// Translucent floating chrome that lets content bleed through.
     fn floating(&self) -> Self;
 
-    /// Scale the alpha channel by `factor` (clamped to `0.0..=1.0`). Relative,
-    /// so a half-transparent color ends at `0.5 * factor`;
-    /// [`zz_gpui::Hsla::alpha`] sets alpha outright.
     fn opacity(&self, opacity: f32) -> Self;
 
-    /// Replace the alpha channel with `divisor`.
     fn divide(&self, divisor: f32) -> Self;
 
-    /// Invert hue, saturation and lightness, keeping alpha.
     fn invert(&self) -> Self;
 
-    /// Invert lightness only, keeping hue, saturation and alpha.
     fn invert_l(&self) -> Self;
 
-    /// Scale lightness up by `amount` (clamped to `0.0..=1.0`).
     fn lighten(&self, amount: f32) -> Self;
 
-    /// Scale lightness down by `amount` (clamped to `0.0..=1.0`).
     fn darken(&self, amount: f32) -> Self;
 
-    /// Take hue and saturation from `base_color`, keep our own lightness and
-    /// alpha.
     fn apply(&self, base_color: Self) -> Self;
 
-    /// Mix with `other` in HSL space. `factor` is our own weight.
     fn mix(&self, other: Self, factor: f32) -> Self;
 
-    /// Mix with `other` in Oklab space, alpha-premultiplied, matching CSS
-    /// `color-mix(in oklab, ..)`. `factor` is our own weight.
     fn mix_oklab(&self, other: Self, factor: f32) -> Self;
 
-    /// Replace the hue (0.0..=1.0).
     fn hue(&self, hue: f32) -> Self;
 
-    /// Replace the saturation (0.0..=1.0).
     fn saturation(&self, saturation: f32) -> Self;
 
-    /// Replace the lightness (0.0..=1.0).
     fn lightness(&self, lightness: f32) -> Self;
 }
 
-/// sRGB <-> Oklab, after Björn Ottosson's reference implementation.
 pub(super) mod oklab {
     use zz_gpui::Rgba;
 

@@ -1,5 +1,3 @@
-//! Modal dialogs, and the alert built on top of one.
-
 use std::{rc::Rc, time::Duration};
 
 use crate::foundation::{SURFACE_ENTER_DURATION, surface_enter};
@@ -45,7 +43,6 @@ const CANCEL_LABEL: &str = "Cancel";
 type ConfirmHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App) -> bool>;
 type CloseHandler = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
-/// The text, variants and callbacks of a dialog's OK and Cancel buttons.
 #[derive(Clone)]
 pub struct DialogButtonProps {
     ok_text: Option<SharedString>,
@@ -72,35 +69,30 @@ impl Default for DialogButtonProps {
 }
 
 impl DialogButtonProps {
-    /// Label for the OK button. Default: `OK`.
     #[must_use]
     pub fn ok_text(mut self, ok_text: impl Into<SharedString>) -> Self {
         self.ok_text = Some(ok_text.into());
         self
     }
 
-    /// Variant for the OK button. Default: primary, solid.
     #[must_use]
     pub fn ok_variant(mut self, ok_variant: ButtonVariant) -> Self {
         self.ok_variant = ok_variant;
         self
     }
 
-    /// Label for the Cancel button. Default: `Cancel`.
     #[must_use]
     pub fn cancel_text(mut self, cancel_text: impl Into<SharedString>) -> Self {
         self.cancel_text = Some(cancel_text.into());
         self
     }
 
-    /// Show the Cancel button. Default: `false`.
     #[must_use]
     pub fn show_cancel(mut self, show_cancel: bool) -> Self {
         self.show_cancel = show_cancel;
         self
     }
 
-    /// Called when the dialog is confirmed. Return `true` to close it.
     #[must_use]
     pub fn on_ok(
         mut self,
@@ -110,7 +102,6 @@ impl DialogButtonProps {
         self
     }
 
-    /// Called when the dialog is cancelled. Return `true` to close it.
     #[must_use]
     pub fn on_cancel(
         mut self,
@@ -178,8 +169,6 @@ impl Default for DialogProps {
     }
 }
 
-/// A modal box centered over a scrim. Opened with
-/// [`crate::WindowExt::open_dialog`]; most callers want [`AlertDialog`].
 #[derive(IntoElement)]
 pub struct Dialog {
     style: StyleRefinement,
@@ -198,8 +187,6 @@ pub struct Dialog {
 }
 
 impl Dialog {
-    /// A dialog with a close button, an overlay that closes it, and escape /
-    /// enter bound to cancel / confirm.
     #[must_use]
     pub fn new(cx: &mut App) -> Self {
         Self {
@@ -225,16 +212,12 @@ impl Dialog {
         self
     }
 
-    /// Set the footer. Doing so replaces the OK/Cancel row that
-    /// [`Self::button_props`] would render.
     #[must_use]
     pub fn footer(mut self, footer: impl IntoElement) -> Self {
         self.footer = Some(footer.into_any_element());
         self
     }
 
-    /// Set the OK/Cancel button configuration, and show the action row. An
-    /// explicit [`Self::footer`] still wins.
     #[must_use]
     pub fn button_props(mut self, button_props: DialogButtonProps) -> Self {
         self.button_props = button_props;
@@ -242,7 +225,6 @@ impl Dialog {
         self
     }
 
-    /// Called after the dialog closes, whichever way it closed.
     #[must_use]
     pub fn on_close(
         mut self,
@@ -252,7 +234,6 @@ impl Dialog {
         self
     }
 
-    /// Called when the dialog is confirmed. Return `true` to close it.
     #[must_use]
     pub fn on_ok(
         mut self,
@@ -263,7 +244,6 @@ impl Dialog {
         self
     }
 
-    /// Called when the dialog is cancelled. Return `true` to close it.
     #[must_use]
     pub fn on_cancel(
         mut self,
@@ -274,35 +254,30 @@ impl Dialog {
         self
     }
 
-    /// Show the corner close button. Default: `true`.
     #[must_use]
     pub fn close_button(mut self, close_button: bool) -> Self {
         self.props.close_button = close_button;
         self
     }
 
-    /// Close the dialog when the scrim is clicked. Default: `true`.
     #[must_use]
     pub fn overlay_closable(mut self, overlay_closable: bool) -> Self {
         self.props.overlay_closable = overlay_closable;
         self
     }
 
-    /// Bind escape to cancel and enter to confirm. Default: `true`.
     #[must_use]
     pub fn keyboard(mut self, keyboard: bool) -> Self {
         self.props.keyboard = keyboard;
         self
     }
 
-    /// Set the width. Default: 400px.
     #[must_use]
     pub fn width(mut self, width: impl Into<Pixels>) -> Self {
         self.props.width = width.into();
         self
     }
 
-    /// Draw the dialog as `role` draws, instead of as a dialog.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
@@ -503,8 +478,6 @@ impl RenderOnce for Dialog {
     }
 }
 
-/// A dialog's floating surface: its outline, fill, corners, vertical padding
-/// and shadow. Content sits in [`dialog_gutter`]s inside it.
 pub fn dialog_surface(cx: &App) -> Div {
     dialog_frame(SurfaceRole::DIALOG, cx)
 }
@@ -517,7 +490,6 @@ fn dialog_frame(role: SurfaceRole, cx: &App) -> Div {
         .gap(CONTENT_PADDING)
 }
 
-/// The horizontal inset of a dialog's title, body and footer.
 pub fn dialog_gutter() -> Div {
     div().pl(CONTENT_PADDING).pr(CONTENT_PADDING)
 }
@@ -543,9 +515,6 @@ pub fn dialog_footer(cx: &App) -> Div {
         .rounded_b(cx.theme().radius)
 }
 
-/// A modal that interrupts with one question and expects an answer. An optional
-/// icon, a title, a description, and the OK/Cancel row from its
-/// [`DialogButtonProps`]. Open it with [`crate::WindowExt::open_alert_dialog`].
 pub struct AlertDialog {
     base: Dialog,
     icon: Option<AnyElement>,
@@ -555,8 +524,6 @@ pub struct AlertDialog {
 }
 
 impl AlertDialog {
-    /// An alert with an OK button, no Cancel, no close button, and a scrim that
-    /// does not dismiss it.
     #[must_use]
     pub fn new(cx: &mut App) -> Self {
         Self {
@@ -568,21 +535,18 @@ impl AlertDialog {
         }
     }
 
-    /// Leading icon, rendered to the left of the title block.
     #[must_use]
     pub fn icon(mut self, icon: impl IntoElement) -> Self {
         self.icon = Some(icon.into_any_element());
         self
     }
 
-    /// The question, in bold.
     #[must_use]
     pub fn title(mut self, title: impl IntoElement) -> Self {
         self.title = Some(title.into_any_element());
         self
     }
 
-    /// The consequences, in muted body text.
     #[must_use]
     pub fn description(mut self, description: impl IntoElement) -> Self {
         self.description = Some(description.into_any_element());
@@ -595,14 +559,12 @@ impl AlertDialog {
         self
     }
 
-    /// Draw the alert as `role` draws, instead of as a dialog.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.base = self.base.surface_role(role);
         self
     }
 
-    /// Called when the alert is confirmed. Return `true` to close it.
     #[must_use]
     pub fn on_ok(
         mut self,
@@ -612,7 +574,6 @@ impl AlertDialog {
         self
     }
 
-    /// Called when the alert is cancelled. Return `true` to close it.
     #[must_use]
     pub fn on_cancel(
         mut self,
@@ -622,7 +583,6 @@ impl AlertDialog {
         self
     }
 
-    /// Called after the alert closes, whichever way it closed.
     #[must_use]
     pub fn on_close(
         mut self,

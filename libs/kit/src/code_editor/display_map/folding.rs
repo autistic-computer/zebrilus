@@ -6,13 +6,11 @@ use tree_sitter::Node;
 pub use tree_sitter::Tree;
 
 #[cfg(not(feature = "tree-sitter"))]
-/// Stub type for tree-sitter Tree on WASM (tree-sitter not available).
 pub struct Tree;
 
 #[cfg(feature = "tree-sitter")]
 const MIN_FOLD_LINES: usize = 2;
 
-/// Foldable region spanning `start_line` to `end_line`, both inclusive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FoldRange {
     pub start_line: usize,
@@ -54,7 +52,6 @@ pub fn extract_fold_ranges(tree: &Tree) -> Vec<FoldRange> {
 }
 
 #[cfg(feature = "tree-sitter")]
-/// Fold ranges touching `byte_range`, skipping subtrees outside it.
 pub fn extract_fold_ranges_in_range(tree: &Tree, byte_range: Range<usize>) -> Vec<FoldRange> {
     let mut ranges = Vec::new();
     let root = tree.root_node();
@@ -111,13 +108,11 @@ fn collect_foldable_nodes(node: Node, ranges: &mut Vec<FoldRange>) {
 }
 
 #[cfg(not(feature = "tree-sitter"))]
-/// Always empty without the `tree-sitter` feature.
 pub fn extract_fold_ranges(_tree: &Tree) -> Vec<FoldRange> {
     Vec::new()
 }
 
 #[cfg(not(feature = "tree-sitter"))]
-/// Always empty without the `tree-sitter` feature.
 pub fn extract_fold_ranges_in_range(_tree: &Tree, _byte_range: Range<usize>) -> Vec<FoldRange> {
     Vec::new()
 }

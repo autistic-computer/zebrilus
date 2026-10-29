@@ -1,4 +1,3 @@
-//! Timer-driven scrolling while a drag-selection sits near a viewport edge.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::sync::{Arc, Mutex};
