@@ -14,7 +14,15 @@ pub(crate) struct Translator {
     commands: HashMap<String, String>,
     prompts: HashSet<String>,
     agents: HashMap<String, String>,
+    spawned: HashMap<String, String>,
+    finished: HashSet<String>,
+    parents: HashMap<String, String>,
+    pending: HashMap<String, Vec<(String, Value)>>,
+    restoring: bool,
 }
+
+const PENDING_THREADS: usize = 32;
+const PENDING_FRAMES: usize = 512;
 
 impl Translator {
     pub(crate) fn new(cwd: PathBuf) -> Self {
@@ -79,7 +87,26 @@ impl Translator {
         method: &str,
         params: &Value,
     ) -> Option<Vec<Value>> {
-        let parent = self.agents.get(thread)?.clone();
+        let Some(parent) = self.agents.get(thread).cloned() else {
+            let lifecycle = method.starts_with("turn/") || method == "item/completed";
+            let delta = method.ends_with("/delta") || method.ends_with("Delta");
+            if !delta && (self.pending.len() < PENDING_THREADS || self.pending.contains_key(thread))
+            {
+                let frames = self.pending.entry(thread.to_owned()).or_default();
+                if frames.len() < PENDING_FRAMES
+                    || method.starts_with("turn/")
+                    || (lifecycle && frames.len() < PENDING_FRAMES * 2)
+                {
+                    frames.push((method.to_owned(), params.clone()));
+                }
+            }
+            return None;
+        };
+        match method {
+            "turn/started" => return Some(self.agent_turn(thread, &parent)),
+            "turn/completed" => return Some(self.agent_done(&parent, params)),
+            _ => {}
+        }
         let item = &params["item"];
         let mut updates = match (method, item["type"].as_str()) {
             ("item/completed", Some("agentMessage")) => item["text"]
@@ -103,14 +130,26 @@ impl Translator {
             _ => Vec::new(),
         };
         for update in &mut updates {
-            if update["sessionUpdate"] == "tool_call" {
-                update["_meta"]["zz"] = json!({ "parent": parent });
+            if update["sessionUpdate"] == "tool_call" && update["_meta"]["zz"]["parent"].is_null() {
+                update["_meta"]["zz"]["parent"] = Value::from(parent.clone());
+                if let Some(id) = update["toolCallId"].as_str()
+                    && self.spawned.contains_key(id)
+                {
+                    self.parents.insert(id.to_owned(), parent.clone());
+                }
             }
         }
         Some(updates)
     }
 
     pub(crate) fn child_history(&mut self, thread: &str, item: &Value) -> Vec<Value> {
+        let restoring = std::mem::replace(&mut self.restoring, true);
+        let updates = self.child_history_item(thread, item);
+        self.restoring = restoring;
+        updates
+    }
+
+    fn child_history_item(&mut self, thread: &str, item: &Value) -> Vec<Value> {
         let params = json!({ "item": item });
         let mut updates = self
             .child(thread, "item/started", &params)
@@ -128,8 +167,28 @@ impl Translator {
                 .map(|text| vec![chunk("user_message_chunk", &prompt_id(item), &text)])
                 .unwrap_or_default();
         }
-        let mut updates = self.started(item);
-        updates.extend(self.completed(item));
+        let mut updates = self.history_start(item);
+        updates.extend(self.history_end(item));
+        updates
+    }
+
+    pub(crate) fn history_start(&mut self, item: &Value) -> Vec<Value> {
+        if item["type"] == "userMessage" {
+            return Vec::new();
+        }
+        self.restoring = true;
+        let updates = self.started(item);
+        self.restoring = false;
+        updates
+    }
+
+    pub(crate) fn history_end(&mut self, item: &Value) -> Vec<Value> {
+        if item["type"] == "userMessage" {
+            return self.history_item(item);
+        }
+        self.restoring = true;
+        let updates = self.completed(item);
+        self.restoring = false;
         updates
     }
 
@@ -149,12 +208,17 @@ impl Translator {
         if item["type"] == "subAgentActivity" {
             return self.activity(&id, item);
         }
-        if item["tool"] == "spawnAgent" {
-            self.adopt(&id, item);
-        }
+        let adopted = if item["tool"] == "spawnAgent" {
+            self.adopt(&id, item)
+        } else {
+            Vec::new()
+        };
         let Some(info) = tool_info(item, &self.cwd) else {
             return Vec::new();
         };
+        if item["tool"] == "spawnAgent" {
+            self.spawned.insert(id.clone(), info.title.clone());
+        }
         let mut call = json!({
             "sessionUpdate": "tool_call",
             "toolCallId": id,
@@ -170,14 +234,37 @@ impl Translator {
         if !info.locations.is_empty() {
             call["locations"] = Value::Array(info.locations);
         }
-        vec![call]
+        let mut updates = vec![call];
+        for thread in adopted {
+            updates.extend(self.release(&thread));
+        }
+        updates
     }
 
     fn completed(&mut self, item: &Value) -> Vec<Value> {
         let id = id_of(item);
+        let mut updates = Vec::new();
         if item["tool"] == "spawnAgent" {
-            self.adopt(&id, item);
+            for thread in self.adopt(&id, item) {
+                updates.extend(self.release(&thread));
+            }
         }
+        updates.extend(self.completed_item(&id, item));
+        updates
+    }
+
+    fn release(&mut self, thread: &str) -> Vec<Value> {
+        let Some(frames) = self.pending.remove(thread) else {
+            return Vec::new();
+        };
+        frames
+            .into_iter()
+            .flat_map(|(method, params)| self.child(thread, &method, &params).unwrap_or_default())
+            .collect()
+    }
+
+    fn completed_item(&mut self, id: &str, item: &Value) -> Vec<Value> {
+        let id = id.to_owned();
         match item["type"].as_str() {
             Some("userMessage") => {
                 let Some(text) = user_text(item) else {
@@ -203,9 +290,17 @@ impl Translator {
                 self.whole(&id, "agent_thought_chunk", Some(&text))
             }
             Some(_) => {
-                let Some(status) = tool_status(item) else {
+                let Some(mut status) = tool_status(item) else {
                     return Vec::new();
                 };
+                if status == "completed"
+                    && !self.restoring
+                    && self.spawned.contains_key(&id)
+                    && !self.finished.contains(&id)
+                    && self.agents.values().any(|row| *row == id)
+                {
+                    status = "in_progress";
+                }
                 let mut update = json!({
                     "sessionUpdate": "tool_call_update",
                     "toolCallId": id,
@@ -227,15 +322,67 @@ impl Translator {
         }
     }
 
-    fn adopt(&mut self, id: &str, item: &Value) {
+    fn agent_turn(&mut self, thread: &str, row: &str) -> Vec<Value> {
+        if !self.finished.contains(row) {
+            return Vec::new();
+        }
+        let title = self.spawned.get(row).cloned().unwrap_or_default();
+        let base = row.split('~').next().unwrap_or(row);
+        let mut next = 2;
+        while self.spawned.contains_key(&format!("{base}~{next}")) {
+            next += 1;
+        }
+        let id = format!("{base}~{next}");
+        self.spawned.insert(id.clone(), title.clone());
+        self.agents.insert(thread.to_owned(), id.clone());
+        let mut call = json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": id,
+            "title": title,
+            "kind": "think",
+            "status": "in_progress",
+            "rawInput": { "agentThreadId": thread },
+            "_meta": { "codex": { "itemType": "collabAgentToolCall" } },
+        });
+        if let Some(parent) = self.parents.get(row).cloned() {
+            call["_meta"]["zz"] = json!({ "parent": parent });
+            self.parents.insert(id, parent);
+        }
+        vec![call]
+    }
+
+    fn agent_done(&mut self, row: &str, params: &Value) -> Vec<Value> {
+        if !self.spawned.contains_key(row) || !self.finished.insert(row.to_owned()) {
+            return Vec::new();
+        }
+        let status = match params["turn"]["status"].as_str() {
+            Some("failed" | "interrupted") => "failed",
+            _ => "completed",
+        };
+        vec![json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": row,
+            "status": status,
+        })]
+    }
+
+    fn adopt(&mut self, id: &str, item: &Value) -> Vec<String> {
+        let mut adopted = Vec::new();
         for thread in item["receiverThreadIds"]
             .as_array()
             .into_iter()
             .flatten()
             .filter_map(Value::as_str)
         {
-            self.agents.insert(thread.to_owned(), id.to_owned());
+            if self
+                .agents
+                .insert(thread.to_owned(), id.to_owned())
+                .is_none()
+            {
+                adopted.push(thread.to_owned());
+            }
         }
+        adopted
     }
 
     fn activity(&mut self, id: &str, item: &Value) -> Vec<Value> {
@@ -255,6 +402,7 @@ impl Translator {
             })];
         }
         self.agents.insert(thread.to_owned(), id.to_owned());
+        let thread = thread.to_owned();
         let name = item["agentPath"]
             .as_str()
             .and_then(|path| path.rsplit('/').find(|part| !part.is_empty()))
@@ -264,7 +412,7 @@ impl Translator {
         let title = title.next().map_or_else(String::new, |first| {
             first.to_uppercase().chain(title).collect()
         });
-        vec![json!({
+        let mut updates = vec![json!({
             "sessionUpdate": "tool_call",
             "toolCallId": id,
             "title": clip_title(&title),
@@ -272,7 +420,9 @@ impl Translator {
             "status": status,
             "rawInput": { "agentPath": item["agentPath"], "agentThreadId": thread },
             "_meta": { "codex": { "itemType": "subAgentActivity" } },
-        })]
+        })];
+        updates.extend(self.release(&thread));
+        updates
     }
 
     fn whole(&mut self, id: &str, kind: &str, text: Option<&str>) -> Vec<Value> {
@@ -648,6 +798,170 @@ mod tests {
                     && update["content"]["text"] == "Reply with exactly: hi there"),
             "the prompt echo stays with the host"
         );
+    }
+
+    fn spawn(id: &str, thread: &str, status: &str, receivers: &[&str]) -> Value {
+        json!({"threadId": thread, "item": {"type": "collabAgentToolCall", "id": id,
+            "tool": "spawnAgent", "status": status, "senderThreadId": thread,
+            "receiverThreadIds": receivers, "prompt": "look around", "agentsStates": {}}})
+    }
+
+    #[test]
+    fn a_follow_up_turn_of_a_nested_agent_keeps_its_parent() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        translator.notification("item/started", &spawn("spawn-a", "main", "inProgress", &[]));
+        translator.notification(
+            "item/completed",
+            &spawn("spawn-a", "main", "completed", &["a"]),
+        );
+        let nested = translator
+            .child(
+                "a",
+                "item/started",
+                &spawn("spawn-b", "a", "inProgress", &[]),
+            )
+            .expect("adopted");
+        assert_eq!(nested[0]["_meta"]["zz"]["parent"], "spawn-a");
+        translator.child(
+            "a",
+            "item/completed",
+            &spawn("spawn-b", "a", "completed", &["b"]),
+        );
+        let turn = |status: &str| json!({"threadId": "b", "turn": {"id": "t", "status": status}});
+        translator.child("b", "turn/completed", &turn("completed"));
+        let again = translator
+            .child("b", "turn/started", &turn("inProgress"))
+            .expect("adopted");
+        assert_eq!(again[0]["toolCallId"], "spawn-b~2");
+        assert_eq!(again[0]["_meta"]["zz"]["parent"], "spawn-a");
+    }
+
+    #[test]
+    fn child_output_before_the_spawn_names_its_thread_is_replayed() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        translator.notification("item/started", &spawn("spawn-s", "main", "inProgress", &[]));
+        let command = json!({"threadId": "c", "item": {"type": "commandExecution", "id": "x1",
+            "command": "ls", "cwd": "/work", "status": "inProgress", "commandActions": []}});
+        assert_eq!(translator.child("c", "item/started", &command), None);
+        let done = json!({"threadId": "c", "turn": {"id": "t", "status": "completed"}});
+        assert_eq!(translator.child("c", "turn/completed", &done), None);
+        let updates = translator.notification(
+            "item/completed",
+            &spawn("spawn-s", "main", "completed", &["c"]),
+        );
+        assert!(
+            updates
+                .iter()
+                .any(|update| update["sessionUpdate"] == "tool_call"
+                    && update["toolCallId"] == "x1"
+                    && update["_meta"]["zz"]["parent"] == "spawn-s")
+        );
+        assert!(
+            updates
+                .iter()
+                .any(|update| update["toolCallId"] == "spawn-s" && update["status"] == "completed")
+        );
+    }
+
+    #[test]
+    fn a_grandchild_replayed_on_adoption_keeps_its_own_parent() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        translator.notification("item/started", &spawn("spawn-a", "main", "inProgress", &[]));
+        translator.notification(
+            "item/completed",
+            &spawn("spawn-a", "main", "completed", &["a"]),
+        );
+        translator.child(
+            "a",
+            "item/started",
+            &spawn("spawn-b", "a", "inProgress", &[]),
+        );
+        let tool = json!({"threadId": "b", "item": {"type": "commandExecution", "id": "x",
+            "command": "ls", "cwd": "/work", "status": "inProgress", "commandActions": []}});
+        assert_eq!(translator.child("b", "item/started", &tool), None);
+        let updates = translator
+            .child(
+                "a",
+                "item/completed",
+                &spawn("spawn-b", "a", "completed", &["b"]),
+            )
+            .expect("adopted");
+        let call = updates
+            .iter()
+            .find(|update| update["toolCallId"] == "x")
+            .expect("replayed");
+        assert_eq!(call["_meta"]["zz"]["parent"], "spawn-b");
+    }
+
+    #[test]
+    fn a_full_child_buffer_still_keeps_the_child_turn_end() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        translator.notification("item/started", &spawn("spawn-s", "main", "inProgress", &[]));
+        let item = |index: usize| {
+            json!({"threadId": "c", "item": {"type": "reasoning",
+            "id": format!("r{index}"), "summary": [], "content": []}})
+        };
+        for index in 0..PENDING_FRAMES + 10 {
+            translator.child("c", "item/started", &item(index));
+        }
+        let done = json!({"threadId": "c", "turn": {"id": "t", "status": "completed"}});
+        translator.child("c", "turn/completed", &done);
+        let updates = translator.notification(
+            "item/completed",
+            &spawn("spawn-s", "main", "completed", &["c"]),
+        );
+        assert!(
+            updates
+                .iter()
+                .any(|update| update["toolCallId"] == "spawn-s" && update["status"] == "completed")
+        );
+    }
+
+    #[test]
+    fn a_restored_spawn_that_finished_stays_finished() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let item = spawn("spawn-r", "main", "completed", &["r"]);
+        let updates = translator.history_item(&item["item"]);
+        assert!(
+            updates
+                .iter()
+                .any(|update| update["toolCallId"] == "spawn-r" && update["status"] == "completed")
+        );
+    }
+
+    #[test]
+    fn a_spawned_agent_row_runs_until_the_child_turn_ends() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let spawn = |status: &str, receivers: &[&str]| {
+            json!({"threadId": "main", "item": {"type": "collabAgentToolCall", "id": "spawn1",
+                "tool": "spawnAgent", "status": status, "senderThreadId": "main",
+                "receiverThreadIds": receivers, "prompt": "look around", "agentsStates": {}}})
+        };
+        let started = translator.notification("item/started", &spawn("inProgress", &[]));
+        assert_eq!(started[0]["sessionUpdate"], "tool_call");
+        let completed = translator.notification("item/completed", &spawn("completed", &["child"]));
+        assert_eq!(completed[0]["status"], "in_progress");
+        let turn =
+            |status: &str| json!({"threadId": "child", "turn": {"id": "t", "status": status}});
+        assert_eq!(
+            translator.child("child", "turn/started", &turn("inProgress")),
+            Some(Vec::new())
+        );
+        let done = translator
+            .child("child", "turn/completed", &turn("completed"))
+            .expect("adopted");
+        assert_eq!(done[0]["toolCallId"], "spawn1");
+        assert_eq!(done[0]["status"], "completed");
+        let again = translator
+            .child("child", "turn/started", &turn("inProgress"))
+            .expect("adopted");
+        assert_eq!(again[0]["sessionUpdate"], "tool_call");
+        assert_eq!(again[0]["toolCallId"], "spawn1~2");
+        let failed = translator
+            .child("child", "turn/completed", &turn("interrupted"))
+            .expect("adopted");
+        assert_eq!(failed[0]["toolCallId"], "spawn1~2");
+        assert_eq!(failed[0]["status"], "failed");
     }
 
     #[test]

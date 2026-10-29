@@ -275,6 +275,8 @@ impl<I> AgentTranscript<I> {
             SessionUpdate::UserMessageChunk(chunk) => {
                 self.apply_message_chunk(StreamRole::User, chunk);
             }
+            SessionUpdate::AgentMessageChunk(chunk) | SessionUpdate::AgentThoughtChunk(chunk)
+                if nested(chunk.meta.as_ref()) => {}
             SessionUpdate::AgentMessageChunk(chunk) => {
                 self.apply_message_chunk(StreamRole::Assistant, chunk);
             }
@@ -1061,6 +1063,12 @@ fn payload_prefix_end(text: &str, max_bytes: usize) -> usize {
 
 fn pretty_json_markdown(value: &impl serde::Serialize) -> String {
     pretty_json(value).map_or_else(String::new, |value| format!("```json\n{value}\n```"))
+}
+
+fn nested(meta: Option<&serde_json::Map<String, serde_json::Value>>) -> bool {
+    meta.and_then(|meta| meta.get("zz"))
+        .and_then(|zz| zz.get("parent"))
+        .is_some_and(serde_json::Value::is_string)
 }
 
 #[cfg(test)]

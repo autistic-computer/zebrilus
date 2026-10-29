@@ -7,6 +7,13 @@
 //! implements.
 
 pub(crate) mod catalog;
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) mod chat;
+pub(crate) mod chat_bridge;
+#[cfg(test)]
+mod chat_bridge_tests;
+#[cfg(test)]
+mod chat_tests;
 pub(crate) mod child;
 pub(crate) mod claude;
 #[cfg(unix)]

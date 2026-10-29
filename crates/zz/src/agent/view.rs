@@ -65,6 +65,8 @@ use crate::{
     window::corners::{WindowCorners, round_div_radii},
 };
 
+mod chat;
+
 const AGENT_KEY_CONTEXT: &str = "Agent";
 const STICK_FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
 
@@ -494,6 +496,8 @@ pub(crate) struct AgentView {
     last_cursor: usize,
     window_corners: WindowCorners,
     floats: bool,
+    chat: zz_ui::agent::chat::ChatPane,
+    chat_inline: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -611,6 +615,8 @@ impl AgentView {
             last_cursor: 0,
             window_corners: WindowCorners::NONE,
             floats,
+            chat: zz_ui::agent::chat::ChatPane::default(),
+            chat_inline: false,
             _subscriptions: vec![
                 input_observer,
                 timeline_store_observer,
@@ -880,7 +886,7 @@ impl AgentView {
     /// It never reaches [`ComposerAction::Stop`]: a stray Enter right after
     /// sending must not kill the turn it just started.
     fn confirm_permission(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        if !self.input.read(cx).value().trim().is_empty() {
+        if !self.input.read(cx).value().trim().is_empty() || self.asks_out_of_view() {
             return false;
         }
         self.synchronize_question_card(window, cx);
@@ -935,7 +941,7 @@ impl AgentView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if self.pane_state.pending_permissions.is_empty() {
+        if self.pane_state.pending_permissions.is_empty() || self.asks_out_of_view() {
             return false;
         }
         let modifiers = event.keystroke.modifiers;
@@ -1167,18 +1173,36 @@ impl AgentView {
         cx: &zz_gpui::App,
     ) -> Option<AnyElement> {
         let permission = self.permission_wizard.current(&state.pending_permissions)?;
-        let counter = self
+        self.render_permission(permission, state, view, cx)
+    }
+
+    fn render_permission(
+        &self,
+        permission: &AgentPermissionRequest,
+        state: &AgentPaneState,
+        view: &Entity<Self>,
+        cx: &zz_gpui::App,
+    ) -> Option<AnyElement> {
+        let request_id = permission.request_id;
+        let current = self
             .permission_wizard
-            .page_label(&state.pending_permissions);
+            .current(&state.pending_permissions)
+            .is_some_and(|head| head.request_id == request_id);
+        let counter = current
+            .then(|| {
+                self.permission_wizard
+                    .page_label(&state.pending_permissions)
+            })
+            .flatten();
         if let Some(card) = self
             .question
             .as_ref()
-            .filter(|card| card.request_id() == permission.request_id)
+            .filter(|card| current && card.request_id() == request_id)
         {
             let view = view.clone();
             return Some(
                 card.render(
-                    &format!("agent-question-{}-{}", self.pane.0, permission.request_id),
+                    &format!("agent-question-{}-{request_id}", self.pane.0),
                     counter.map(Into::into),
                     true,
                     move |action, window, cx| {
@@ -1189,7 +1213,9 @@ impl AgentView {
                 .into_any_element(),
             );
         }
-        let request_id = permission.request_id;
+        if !permission.questions.is_empty() {
+            return None;
+        }
         if permission.options.is_empty() {
             let view = view.clone();
             return Some(
@@ -1202,7 +1228,8 @@ impl AgentView {
                 .into_any_element(),
             );
         }
-        let highlighted = self.permission_wizard.highlighted;
+        let enabled = !self.permission_wizard.answered.contains(&request_id);
+        let highlighted = current.then_some(self.permission_wizard.highlighted);
         let options = permission
             .options
             .iter()
@@ -1221,24 +1248,28 @@ impl AgentView {
                         option.kind,
                         AgentPermissionKind::RejectOnce | AgentPermissionKind::RejectAlways
                     ),
-                    index == highlighted,
-                    true,
+                    highlighted == Some(index),
+                    enabled,
                     cx,
                 )
-                .on_click(move |_, _, cx| {
-                    answer_view.update(cx, |view, cx| {
-                        view.answer_permission(index, cx);
-                    });
-                    cx.stop_propagation();
-                })
-                .on_hover(move |hovered, _, cx| {
-                    if *hovered {
-                        hover_view.update(cx, |view, cx| {
-                            if view.permission_wizard.highlight(index) {
-                                cx.notify();
-                            }
+                .when(enabled, |tile| {
+                    tile.on_click(move |_, _, cx| {
+                        answer_view.update(cx, |view, cx| {
+                            view.answer_request(request_id, Some(index), cx);
                         });
-                    }
+                        cx.stop_propagation();
+                    })
+                })
+                .when(current, |tile| {
+                    tile.on_hover(move |hovered, _, cx| {
+                        if *hovered {
+                            hover_view.update(cx, |view, cx| {
+                                if view.permission_wizard.highlight(index) {
+                                    cx.notify();
+                                }
+                            });
+                        }
+                    })
                 })
                 .into_any_element()
             })
@@ -1255,13 +1286,39 @@ impl AgentView {
                 ))
                 .tooltip("Cancel request")
                 .on_click(move |_, _, cx| {
-                    cancel_view.update(cx, Self::cancel_permission);
+                    cancel_view.update(cx, |view, cx| view.answer_request(request_id, None, cx));
                     cx.stop_propagation();
                 }),
                 cx,
             )
             .into_any_element(),
         )
+    }
+
+    fn answer_request(&mut self, request_id: u64, option: Option<usize>, cx: &mut Context<Self>) {
+        let requests = self.pane_state.pending_permissions.clone();
+        let Some(request) = requests
+            .iter()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+        let option_id = match option {
+            Some(index) => match request.options.get(index) {
+                Some(option) => Some(option.id.clone()),
+                None => return,
+            },
+            None => None,
+        };
+        if self.permission_wizard.take(&requests, request_id) {
+            self.apply_permission_step(
+                PermissionStep::Answer {
+                    request_id,
+                    option_id,
+                },
+                cx,
+            );
+        }
     }
 
     /// How many prompts are waiting behind the live turn, and the way back:
@@ -1288,18 +1345,6 @@ impl AgentView {
             },
             cx,
         ))
-    }
-
-    fn answer_permission(&mut self, option: usize, cx: &mut Context<Self>) {
-        let requests = self.pane_state.pending_permissions.clone();
-        let step = self.permission_wizard.answer(&requests, Some(option));
-        self.apply_permission_step(step, cx);
-    }
-
-    fn cancel_permission(&mut self, cx: &mut Context<Self>) {
-        let requests = self.pane_state.pending_permissions.clone();
-        let step = self.permission_wizard.cancel(&requests);
-        self.apply_permission_step(step, cx);
     }
 
     fn synchronize_question_card(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1692,6 +1737,7 @@ impl AgentView {
             git: git.map(IntoElement::into_any_element),
             prefix: self
                 .render_permission_wizard(state, view, cx)
+                .filter(|_| !self.chat_inline)
                 .into_iter()
                 .map(IntoElement::into_any_element)
                 .chain(
@@ -1799,14 +1845,26 @@ impl Render for AgentView {
             self.tray_open = None;
         }
         let state = self.pane_state.clone();
+        let (use_chat, inline) =
+            self.controller
+                .read(cx)
+                .pane_chat(self.pane)
+                .map_or((false, false), |chat| {
+                    (
+                        zz_ui::agent::chat::shows_chat(chat),
+                        self.asks_inline(chat, &state),
+                    )
+                });
+        self.chat_inline = inline;
         let rows = self.timeline.rows.clone();
-        let has_timeline = !rows.is_empty();
+        let has_timeline = !rows.is_empty() && !use_chat;
         let show_jump = has_timeline && self.stick.shows_jump_button();
         self.stick.set_bottom_padding(COMPOSER_OUTER_PADDING);
         self.drive_stick(window, cx);
         let floats = self.floats;
         let view = cx.entity();
         let input_focus = self.focus(cx);
+        let chat_body = use_chat.then(|| self.render_chat(&state, &view, cx));
         let timeline = AgentTimeline::new(
             rows,
             self.timeline_scroll.clone(),
@@ -1851,7 +1909,8 @@ impl Render for AgentView {
                     .flex_1()
                     .min_h_0()
                     .overflow_hidden()
-                    .when(!has_timeline, |this| {
+                    .when_some(chat_body, ParentElement::child)
+                    .when(!has_timeline && !use_chat, |this| {
                         this.child(
                             div().size_full().px_3().child(
                                 div()

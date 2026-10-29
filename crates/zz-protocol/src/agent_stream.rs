@@ -142,6 +142,9 @@ pub enum AgentStreamPayload {
         reclaim_id: u64,
         prompts: Vec<AgentPrompt>,
     },
+    Chat {
+        event: crate::chat::ChatEvent,
+    },
 }
 
 /// A question the agent asks the user, answered from a card rather than a

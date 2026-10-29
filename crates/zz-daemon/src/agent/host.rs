@@ -1300,7 +1300,8 @@ impl PanePump {
                 | AgentStreamPayload::SessionDeleted { .. }
                 | AgentStreamPayload::SessionDeleteFailed { .. }
                 | AgentStreamPayload::PromptsReclaimed { .. }
-                | AgentStreamPayload::PromptsRestored { .. } => {}
+                | AgentStreamPayload::PromptsRestored { .. }
+                | AgentStreamPayload::Chat { .. } => {}
             }
         }
         let permission = if turn_result.is_none()
