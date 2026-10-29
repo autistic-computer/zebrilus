@@ -95800,6 +95800,7 @@ bind - split-window -v -c "#{pane_current_path}"
 
         copy_command(&mut context, &["cancel"]);
         wait_for_answer("#{pane_in_mode}", "0");
+        wait_for_root_key_table(&shared, client, "cancel left the copy session open");
         assert_eq!(answer("[#{pane_search_string}]"), "[needle]");
 
         enter_observed_copy_mode(&shared, client, &mut context, pane, &terminal);
