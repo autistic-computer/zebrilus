@@ -122476,6 +122476,27 @@ bind - split-window -v -c "#{pane_current_path}"
             panic!("timed out waiting for {what}: {seen:#?}");
         }
 
+        fn wait_for_ready_broadcast(mailbox: &OutboundMailbox, agent: PaneId) {
+            let deadline = Instant::now() + DEADLINE;
+            while Instant::now() < deadline {
+                let ready = take_reliable_messages(mailbox).iter().any(|message| {
+                    matches!(
+                        message,
+                        ProtocolMessage::Event(Event {
+                            payload: EventPayload::AgentState { pane, state },
+                            ..
+                        }) if *pane == agent
+                            && matches!(state.phase, zz_protocol::AgentConnectionPhase::Ready)
+                    )
+                });
+                if ready {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            panic!("timed out waiting for agent pane {agent:?} to broadcast Ready");
+        }
+
         fn agent_states_for(mailbox: &OutboundMailbox, agent: PaneId) -> usize {
             take_reliable_messages(mailbox)
                 .iter()
@@ -122545,6 +122566,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 .expect("workspace command");
             let agent = context.pane.expect("agent terminal");
             assert!(shared.open_test_agent(agent));
+            wait_for_ready_broadcast(&mailbox, agent);
             shared.send_resync(client, &mailbox);
             take_reliable_messages(&mailbox);
             Workspace {
