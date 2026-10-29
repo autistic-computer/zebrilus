@@ -128,4 +128,4 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 </important>
 
 - No commit attribution
-- Do not add comments in code
+- No comments in code, doc comments and Python docstrings included. What stays is what a tool reads: shebangs, `# shellcheck` and `# noqa` directives, `@ts-check`, the help headers `bench/run.sh`, `bench/inner.sh`, `bench/gen-fixtures.sh` and `compat/run.sh` print with `sed`, and module docstrings that argparse shows through `__doc__`. Just recipe docs are `[doc("...")]` attributes
