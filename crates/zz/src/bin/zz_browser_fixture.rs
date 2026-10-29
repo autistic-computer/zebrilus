@@ -169,7 +169,7 @@ fn main() -> ExitCode {
     if env::args_os().skip(1).any(|argument| {
         argument == OsStr::new("--type") || argument.to_string_lossy().starts_with("--type=")
     }) {
-        let code = zz_browser::run_subprocess().clamp(0, 255);
+        let code = zz_browser::run_subprocess(&zz::browser_runtime_config()).clamp(0, 255);
         return ExitCode::from(u8::try_from(code).unwrap_or_default());
     }
 
@@ -355,7 +355,9 @@ fn run_popup_regression_inner() -> Result<(), String> {
         root: profile_root,
     };
     let mut runtime =
-        match zz_browser::bootstrap_with_profile_paths(paths).map_err(|error| error.to_string())? {
+        match zz_browser::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
+            .map_err(|error| error.to_string())?
+        {
             BrowserBootstrap::SubprocessExit(code) => {
                 return Err(format!("unexpected CEF subprocess exit {code}"));
             }
@@ -587,7 +589,9 @@ fn run_ime_regression_inner() -> Result<(), String> {
         root: profile_root,
     };
     let mut runtime =
-        match zz_browser::bootstrap_with_profile_paths(paths).map_err(|error| error.to_string())? {
+        match zz_browser::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
+            .map_err(|error| error.to_string())?
+        {
             BrowserBootstrap::SubprocessExit(code) => {
                 return Err(format!("unexpected CEF subprocess exit {code}"));
             }
@@ -748,13 +752,14 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
     let url = format!("http://{address}/shared-texture-spike");
     println!("zz shared-texture animated fixture: {url}");
 
-    let mut runtime =
-        match zz_browser::bootstrap(app_profile_paths).map_err(|error| error.to_string())? {
-            BrowserBootstrap::SubprocessExit(code) => {
-                return Err(format!("unexpected CEF subprocess exit {code}"));
-            }
-            BrowserBootstrap::Runtime(runtime) => runtime,
-        };
+    let mut runtime = match zz_browser::bootstrap(&zz::browser_runtime_config(), app_profile_paths)
+        .map_err(|error| error.to_string())?
+    {
+        BrowserBootstrap::SubprocessExit(code) => {
+            return Err(format!("unexpected CEF subprocess exit {code}"));
+        }
+        BrowserBootstrap::Runtime(runtime) => runtime,
+    };
     if !runtime.shared_texture_enabled() {
         return Err("CEF did not enable shared-texture OSR".to_owned());
     }
@@ -1295,7 +1300,9 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
         root: profile_root,
     };
     let mut runtime =
-        match zz_browser::bootstrap_with_profile_paths(paths).map_err(|error| error.to_string())? {
+        match zz_browser::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
+            .map_err(|error| error.to_string())?
+        {
             BrowserBootstrap::SubprocessExit(code) => {
                 return Err(format!("unexpected CEF subprocess exit {code}"));
             }
@@ -1389,13 +1396,14 @@ fn probe_egress_pref() -> ExitCode {
 
 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 fn probe_egress_pref_inner() -> Result<(), String> {
-    let mut runtime =
-        match zz_browser::bootstrap(app_profile_paths).map_err(|error| error.to_string())? {
-            BrowserBootstrap::SubprocessExit(code) => {
-                return Err(format!("unexpected CEF subprocess exit {code}"));
-            }
-            BrowserBootstrap::Runtime(runtime) => runtime,
-        };
+    let mut runtime = match zz_browser::bootstrap(&zz::browser_runtime_config(), app_profile_paths)
+        .map_err(|error| error.to_string())?
+    {
+        BrowserBootstrap::SubprocessExit(code) => {
+            return Err(format!("unexpected CEF subprocess exit {code}"));
+        }
+        BrowserBootstrap::Runtime(runtime) => runtime,
+    };
     initialize_runtime(&mut runtime)?;
     let signals = runtime.signals();
 
