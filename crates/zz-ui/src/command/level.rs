@@ -7,7 +7,7 @@ use zz_client::{
 use zz_gpui::{AnyElement, App, Global, WeakEntity, Window, actions};
 use zz_protocol::PaneId;
 
-use super::{CommandPaletteEvent, CommandPaletteView, PaletteHint};
+use super::{CommandPaletteEvent, CommandPaletteView, PaletteHint, PaletteHostId};
 
 actions!(zz_palette, [CopyAddress]);
 
@@ -21,6 +21,7 @@ pub struct ActionContext {
     pub rest: String,
     pub rest_range: Range<usize>,
     pub insert_pane: Option<PaneId>,
+    pub focus: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -45,6 +46,7 @@ pub enum LevelEffect {
     Copied(String),
     Emit(CommandPaletteEvent),
     Finish(CommandPaletteEvent),
+    Leave(Option<CommandPaletteEvent>),
 }
 
 pub trait PaletteActionLevel {
@@ -55,6 +57,9 @@ pub trait PaletteActionLevel {
     fn rows(&mut self, window: &mut Window, cx: &mut App) -> AnyElement;
     fn hints(&self, cx: &App) -> Vec<PaletteHint>;
     fn copy_text(&self, _cx: &App) -> Option<String> {
+        None
+    }
+    fn picked_folder(&self, _cx: &App) -> Option<(PaletteHostId, String)> {
         None
     }
     fn open_recent(

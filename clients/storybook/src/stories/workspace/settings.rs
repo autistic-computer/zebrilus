@@ -87,7 +87,7 @@ pub const STORY: Story = Story {
         Section {
             id: "agents",
             name: "Agents",
-            summary: "The driver's settings (on or off, the model it runs, its effort), then providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
+            summary: "providers_stack for each connected machine: Claude Code and Codex with the installed and newest versions, Update or Install, the updater's latest line while it runs, its error when it fails, installs zz leaves to their owner (a root-owned npm prefix with the command to copy, Nix without one), a machine still checking and one that is offline.",
             build: |_, cx| stateless(agents, cx),
         },
         Section {
@@ -735,25 +735,10 @@ fn agents(_: &mut Window, cx: &mut App) -> AnyElement {
             div().id("agents").flex().h(px(1700.0)).child(
                 settings_scroll_column("settings-agents")
                     .child(settings_page_title(SettingsSection::Agents, cx))
-                    .child(driver_stack(cx))
                     .children(stacks),
             ),
         )
         .into_any_element()
-}
-
-/// The Driver stack as the app draws it, with the driver on.
-fn driver_stack(cx: &App) -> SettingsStack {
-    let choice = |id: &'static str, label: &'static str| {
-        Button::new(id)
-            .label(label)
-            .dropdown_caret(true)
-            .on(settings_card_ground(cx))
-    };
-    SettingsStack::titled("Driver")
-        .child(SettingEntry::new("Driver Agent").control(Switch::new("driver-agent").checked(true)))
-        .child(SettingEntry::new("Model").control(choice("driver-model", "Claude Opus")))
-        .child(SettingEntry::new("Effort").control(choice("driver-effort", "Extra high")))
 }
 
 fn about(_: &mut Window, cx: &mut App) -> AnyElement {

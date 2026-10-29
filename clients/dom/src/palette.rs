@@ -1,3 +1,5 @@
+mod places;
+
 use std::{collections::BTreeMap, ops::Range};
 
 use serde_json::{Value, json};
@@ -8,17 +10,18 @@ use zz_client::{
         CompletionKind, CompletionSuggestion, PaneKindAvailability, apply_completion,
         complete_command,
     },
-    navigation::{ordered_panes, pane_label, session_label},
+    navigation::{ordered_panes, pane_index, pane_label, session_label},
     palette::{
         count, fuzzy_match, has_command_arguments, needs_arguments, target_kind,
         tmux_keystroke_source,
     },
+    place::{self, Place},
 };
 use zz_protocol::{
     ChooseTreeAction, ChooseTreePaneKind, ChooseTreeState, ChooseTreeTarget, CommandInvocation,
     CommandPromptAction, CommandPromptKind, CommandPromptMode, CommandSpec, CommandValueKind,
-    InputMessage, MAX_COMMAND_PROMPT_BYTES, MuxOptionKey, PaneId, PaneKindSnapshot, SessionId,
-    WindowId, catalog_command_spec, command_specs,
+    InputMessage, MAX_COMMAND_PROMPT_BYTES, MuxOptionKey, PaneId, PaneKindSnapshot,
+    PaneStatusState, SessionId, WindowId, catalog_command_spec, command_specs,
 };
 use zz_terminal::KeyAction;
 
@@ -27,7 +30,6 @@ use crate::{Client, overlays::glyphs};
 const ROW_HEIGHT: f32 = 28.0;
 const MAX_VISIBLE_ROWS: usize = 8;
 const HOST: &str = "zz daemon";
-const DRIVER_PREFIX: &str = ">";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
@@ -49,17 +51,9 @@ impl Mode {
             Self::Target => "@",
         }
     }
-
-    fn from_prefix(value: &str) -> Option<Self> {
-        match value {
-            ":" => Some(Self::Command),
-            "@" => Some(Self::Target),
-            _ => None,
-        }
-    }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Target {
     Session(SessionId),
     Window(WindowId),
@@ -76,64 +70,33 @@ impl Target {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum TargetKind {
-    Host,
-    Session,
-    Window,
-    Pane,
-    Dir,
-}
-
-impl TargetKind {
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Host => "host",
-            Self::Session => "session",
-            Self::Window => "window",
-            Self::Pane => "pane",
-            Self::Dir => "dir",
-        }
-    }
-
-    const fn drills(self) -> bool {
-        !matches!(self, Self::Pane)
-    }
-
-    const fn opener(self) -> &'static str {
-        match self {
-            Self::Host | Self::Session => ":",
-            Self::Window => ".",
-            Self::Dir => "/",
-            Self::Pane => "",
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Pick {
-    kind: TargetKind,
-    target: Option<Target>,
-    typed: String,
-}
-
-enum Level {
-    Top,
-    Sessions,
-    Windows(String),
-    Panes(String, String),
-    Files,
-}
-
 #[derive(Clone)]
 enum Action {
-    Pick(Pick),
-    Host,
     Target { target: Target, label: String },
     Command(&'static CommandSpec),
     History(String),
     Completion(CompletionSuggestion),
     ChooseWindow(u32),
+    Place(Place),
+    Verb(usize),
+    Fill(Place),
+    Submit,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Anchor {
+    Target(Target),
+    Place(Place),
+}
+
+impl Action {
+    const fn anchor(&self) -> Option<Anchor> {
+        match self {
+            Self::Target { target, .. } => Some(Anchor::Target(*target)),
+            Self::Place(place) | Self::Fill(place) => Some(Anchor::Place(*place)),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -156,7 +119,6 @@ struct Row {
 struct Entry {
     row: Row,
     action: Option<Action>,
-    hint: &'static str,
     score: usize,
 }
 
@@ -165,19 +127,17 @@ impl Entry {
         Self {
             row,
             action: Some(action),
-            hint: "",
             score: 0,
         }
     }
 
-    fn header(label: &str, hint: &'static str) -> Self {
+    fn header(label: &str) -> Self {
         Self {
             row: Row {
                 label: label.to_owned(),
                 ..Row::default()
             },
             action: None,
-            hint,
             score: 0,
         }
     }
@@ -197,11 +157,15 @@ impl Entry {
 
 struct TreePane {
     id: PaneId,
+    index: u32,
     label: String,
     program: Option<&'static str>,
     detail: &'static str,
     icon: &'static str,
     running: bool,
+    needs_you: bool,
+    terminal: bool,
+    cwd: String,
 }
 
 struct TreeWindow {
@@ -222,6 +186,7 @@ impl TreeWindow {
 struct TreeSession {
     id: SessionId,
     name: String,
+    tmux_name: String,
     active: bool,
     windows: Vec<TreeWindow>,
 }
@@ -277,9 +242,8 @@ pub struct Palette {
     local: bool,
     unified: bool,
     mode: Option<Mode>,
-    scoped: bool,
     command: Option<&'static CommandSpec>,
-    expanded: BTreeMap<Target, bool>,
+    places: places::Places,
     chooser_current_window: Option<u32>,
     flat: bool,
     hide_keys: bool,
@@ -304,7 +268,6 @@ pub struct Palette {
     revision: u64,
     local_revisions: Option<(u64, u64)>,
     connected: bool,
-    files: bool,
     notices: Vec<String>,
 }
 
@@ -408,21 +371,13 @@ impl Palette {
     fn reset_unified(&mut self, mode: Option<Mode>) {
         self.unified = true;
         self.mode = mode;
-        self.scoped = false;
         self.command = None;
-        self.expanded.clear();
         self.chooser_current_window = None;
         self.rows.clear();
     }
 
-    fn pop_layer(&mut self) -> bool {
-        self.command.take().is_some()
-            || self.mode.take().is_some()
-            || std::mem::take(&mut self.scoped)
-    }
-
-    const fn is_navigation_tree(&self) -> bool {
-        self.command.is_none() && self.mode.is_none()
+    fn selected_action(&self) -> Option<&Action> {
+        self.rows.get(self.selected?)?.action.as_ref()
     }
 
     fn navigate_rows(&self, selected: Option<usize>, direction: isize) -> Option<usize> {
@@ -470,22 +425,6 @@ impl Palette {
             .or_else(|| self.rows.iter().position(|entry| entry.action.is_some()))
     }
 
-    fn set_expanded(&mut self, index: usize, expanded: bool) -> bool {
-        let Some(entry) = self.rows.get(index) else {
-            return false;
-        };
-        if entry.row.expanded.is_none_or(|current| current == expanded) {
-            return false;
-        }
-        match entry.action {
-            Some(Action::Target { target, .. }) => {
-                self.expanded.insert(target, expanded);
-            }
-            _ => return false,
-        }
-        true
-    }
-
     fn parent_index(&self, index: usize) -> Option<usize> {
         let depth = self.rows.get(index)?.row.indent;
         self.rows[..index]
@@ -507,10 +446,10 @@ impl Palette {
     }
 
     fn pills(&self) -> Vec<Value> {
-        let mut pills = Vec::new();
-        if self.scoped {
-            pills.push(json!({ "kind": "host", "label": HOST, "status": if self.connected { "online" } else { "offline" } }));
+        if self.is_places() {
+            return self.place_pills();
         }
+        let mut pills = Vec::new();
         if let Some(mode) = self.mode {
             pills.push(json!({ "kind": "mode", "prefix": mode.prefix(), "label": mode.label() }));
         }
@@ -531,6 +470,9 @@ impl Palette {
             }
             .to_owned();
         }
+        if self.is_places() {
+            return self.place_placeholder();
+        }
         if let Some(command) = self.command {
             return if target_kind(command) == Some(CommandValueKind::Window) {
                 "Target window"
@@ -541,30 +483,21 @@ impl Palette {
         }
         match self.mode {
             Some(Mode::Command) => "Type a command".to_owned(),
-            Some(Mode::Target) => "A session, window, pane or ~/file".to_owned(),
-            None => {
-                let scope = if self.scoped {
-                    format!(" {HOST}")
-                } else {
-                    String::new()
-                };
-                format!("Search{scope}, or type : or @")
-            }
+            Some(Mode::Target) | None => "Search sessions, windows, panes".to_owned(),
         }
     }
 
-    fn usage(&self) -> Option<&'static str> {
+    fn usage(&self) -> Option<String> {
+        if self.is_places() {
+            return self.place_usage();
+        }
         if self.mode != Some(Mode::Command) {
             return None;
         }
         self.command
-            .or_else(|| {
-                self.selected
-                    .and_then(|index| self.rows.get(index))
-                    .and_then(|entry| match entry.action {
-                        Some(Action::Command(spec)) => Some(spec),
-                        _ => None,
-                    })
+            .or_else(|| match self.selected_action() {
+                Some(Action::Command(spec)) => Some(*spec),
+                _ => None,
             })
             .map(|spec| spec.usage)
             .or_else(|| {
@@ -574,6 +507,7 @@ impl Palette {
                     .and_then(catalog_command_spec)
                     .map(|spec| spec.usage)
             })
+            .map(str::to_owned)
     }
 
     fn rebuild_window_chooser(&mut self, state: &ChooseTreeState) {
@@ -666,8 +600,7 @@ impl Palette {
         }
     }
 
-    fn navigation_entries(&self, tree_data: &[TreeSession], query: &str) -> Vec<Entry> {
-        let tree = !self.flat && query.is_empty() && self.is_navigation_tree();
+    fn navigation_entries(&self, tree: &[TreeSession], query: &str) -> Vec<Entry> {
         let kind = self.command.and_then(target_kind);
         let pane_only = kind == Some(CommandValueKind::Pane);
         let window_only = kind == Some(CommandValueKind::Window);
@@ -675,14 +608,9 @@ impl Palette {
         if !self.connected {
             return rows;
         }
-        for session in tree_data {
-            let session_open = self
-                .expanded
-                .get(&Target::Session(session.id))
-                .copied()
-                .unwrap_or(session.active);
+        for session in tree {
             if !pane_only && !window_only {
-                let mut entry = Entry::row(
+                let entry = Entry::row(
                     Row {
                         label: session.name.clone(),
                         detail: count(session.windows.len(), "window"),
@@ -696,32 +624,17 @@ impl Palette {
                         label: format!("{} on {HOST}", session.name),
                     },
                 );
-                entry.row.expanded = (tree && !session.windows.is_empty()).then_some(session_open);
                 let metadata = format!("{} {}", session.id, entry.row.detail);
-                if let Some(entry) = entry.matching(query, &metadata) {
-                    rows.push(entry);
-                }
-            }
-            if tree && !session_open {
-                continue;
+                rows.extend(entry.matching(query, &metadata));
             }
             for window in &session.windows {
-                let window_open = self
-                    .expanded
-                    .get(&Target::Window(window.id))
-                    .copied()
-                    .unwrap_or(false);
                 if !pane_only {
                     let prefix = format!("{} / ", session.name);
                     let label = format!("{prefix}{}", window.name);
-                    let mut entry = Entry::row(
+                    let entry = Entry::row(
                         Row {
-                            label: if tree {
-                                window.name.clone()
-                            } else {
-                                label.clone()
-                            },
-                            muted_prefix: if tree { 0 } else { prefix.len() },
+                            label: label.clone(),
+                            muted_prefix: prefix.len(),
                             detail: count(window.panes.len(), "pane"),
                             right: if window.active { "current" } else { "" }.to_owned(),
                             icon: Some("panels-top-left"),
@@ -733,20 +646,18 @@ impl Palette {
                             label,
                         },
                     );
-                    entry.row.indent = if tree { 18.0 } else { 0.0 };
-                    entry.row.expanded = (tree && !window.panes.is_empty()).then_some(window_open);
                     let metadata = format!("{} {} {}", session.id, window.id, entry.row.detail);
-                    if let Some(entry) = entry.matching(query, &metadata) {
-                        rows.push(entry);
-                    }
+                    rows.extend(entry.matching(query, &metadata));
                 }
-                if window_only || (tree && !window_open) {
+                if window_only {
                     continue;
                 }
                 for pane in &window.panes {
-                    let mut entry = Entry::row(
+                    let prefix = format!("{} / {} / ", session.name, window.name);
+                    let entry = Entry::row(
                         Row {
-                            label: pane.label.clone(),
+                            label: format!("{prefix}{}", pane.label),
+                            muted_prefix: prefix.len(),
                             detail: pane.detail.to_owned(),
                             icon: Some(pane.icon),
                             right: if window.active && window.active_pane == pane.id {
@@ -762,26 +673,15 @@ impl Palette {
                             label: format!("{} / {} / {}", session.name, window.name, pane.label),
                         },
                     );
-                    if tree {
-                        entry.row.indent = 36.0;
-                    } else {
-                        let prefix = format!("{} / {} / ", session.name, window.name);
-                        entry.row.label = format!("{prefix}{}", pane.label);
-                        entry.row.muted_prefix = prefix.len();
-                    }
                     let metadata = format!(
                         "{} {} {} {}",
                         session.id, window.id, pane.id, entry.row.detail
                     );
-                    if let Some(entry) = entry.matching(query, &metadata) {
-                        rows.push(entry);
-                    }
+                    rows.extend(entry.matching(query, &metadata));
                 }
             }
         }
-        if !tree {
-            rows.sort_by_key(|entry| entry.score);
-        }
+        rows.sort_by_key(|entry| entry.score);
         rows
     }
 
@@ -811,24 +711,6 @@ impl Palette {
         entries
     }
 
-    fn host_entry(&self, sessions: usize) -> Entry {
-        Entry::row(
-            Row {
-                label: HOST.to_owned(),
-                detail: "Daemon host".to_owned(),
-                icon: Some("hard-drive"),
-                right: if self.connected {
-                    count(sessions, "session")
-                } else {
-                    "offline · ↵ to connect".to_owned()
-                },
-                status: Some(if self.connected { "online" } else { "offline" }),
-                ..Row::default()
-            },
-            Action::Host,
-        )
-    }
-
     fn rebuild(
         &mut self,
         tree: &[TreeSession],
@@ -841,392 +723,19 @@ impl Palette {
         self.rows.clear();
         if self.command.is_some() {
             self.rows = self.navigation_entries(tree, &query);
-            return;
-        }
-        match self.mode {
-            Some(Mode::Target) => {
-                let (rows, files) = target_picks(&self.input, tree, self.connected);
-                self.rows = rows;
-                self.files = files;
-            }
-            Some(Mode::Command) => {
-                self.rows = self.command_entries(&query, availability, shortcut);
-            }
-            None => {
-                let mut rows = Vec::new();
-                append_section(
-                    &mut rows,
-                    if query.is_empty() {
-                        "Workspace"
-                    } else {
-                        "Navigation"
-                    },
-                    "@",
-                    self.navigation_entries(tree, &query),
-                );
-                if query.is_empty() {
-                    let mut seen = std::collections::BTreeSet::new();
-                    append_section(
-                        &mut rows,
-                        "Recent commands",
-                        ":",
-                        history
-                            .iter()
-                            .map(|value| (value, value.split_whitespace().next().unwrap_or(value)))
-                            .filter(|(_, name)| availability.allows_command(name))
-                            .filter(|(_, name)| seen.insert(*name))
-                            .take(3)
-                            .map(|(value, name)| {
-                                let spec = catalog_command_spec(name);
-                                Entry::row(
-                                    Row {
-                                        label: name.to_owned(),
-                                        icon: Some("terminal"),
-                                        detail: spec.map_or("", |spec| spec.description).to_owned(),
-                                        ..Row::default()
-                                    },
-                                    spec.map_or_else(
-                                        || Action::History(value.clone()),
-                                        Action::Command,
-                                    ),
-                                )
-                            })
-                            .collect(),
-                    );
-                } else {
-                    append_section(
-                        &mut rows,
-                        "Commands",
-                        ":",
-                        self.command_entries(&query, availability, shortcut),
-                    );
-                }
-                if !self.scoped {
-                    let sessions = tree.len();
-                    append_section(
-                        &mut rows,
-                        "Hosts",
-                        "@",
-                        self.host_entry(sessions)
-                            .matching(&query, "")
-                            .into_iter()
-                            .collect(),
-                    );
-                }
-                self.rows = rows;
-            }
+        } else if self.mode == Some(Mode::Command) {
+            self.rows = self.command_entries(&query, availability, shortcut);
+        } else if self.mode.is_none() {
+            self.rebuild_places(tree, history, availability, shortcut);
         }
     }
 }
 
-fn session_ref(session: &TreeSession) -> String {
-    let plain = !session.name.is_empty()
-        && !session.name.starts_with(['$', '@', '%', '~', '/'])
-        && !session
-            .name
-            .contains(|character: char| character.is_whitespace() || ":.\\".contains(character));
-    if plain {
-        session.name.clone()
-    } else {
-        session.id.to_string()
-    }
-}
-
-fn find_session<'a>(tree: &'a [TreeSession], text: &str) -> Option<&'a TreeSession> {
-    tree.iter()
-        .find(|session| session.name == text)
-        .or_else(|| tree.iter().find(|session| session.id.to_string() == text))
-}
-
-fn find_window<'a>(session: &'a TreeSession, text: &str) -> Option<&'a TreeWindow> {
-    session
-        .windows
-        .iter()
-        .find(|window| window.index.to_string() == text || window.id.to_string() == text)
-        .or_else(|| session.windows.iter().find(|window| window.name == text))
-}
-
-fn pop_level(body: &str) -> Option<String> {
-    let trimmed = body.strip_suffix([':', '.', '/'])?;
-    let cut = trimmed
-        .char_indices()
-        .rev()
-        .find(|(index, character)| {
-            matches!(character, ':' | '.' | '/') && !trimmed[..*index].ends_with('\\')
-        })
-        .map_or(0, |(index, _)| index + 1);
-    Some(trimmed[..cut].to_owned())
-}
-
-fn parse_target(body: &str) -> (Level, String, bool) {
-    if body.starts_with(['/', '~']) {
-        return (Level::Files, String::new(), false);
-    }
-    let Some((first, rest)) = body.split_once(':') else {
-        return (Level::Top, body.to_owned(), false);
-    };
-    if first != HOST {
-        return match rest.split_once('.') {
-            Some((window, filter)) => (
-                Level::Panes(first.to_owned(), window.to_owned()),
-                filter.to_owned(),
-                false,
-            ),
-            None => (Level::Windows(first.to_owned()), rest.to_owned(), false),
-        };
-    }
-    if rest.starts_with(['/', '~']) {
-        return (Level::Files, String::new(), true);
-    }
-    let Some((session, rest)) = rest.split_once(':') else {
-        return (Level::Sessions, rest.to_owned(), true);
-    };
-    match rest.split_once('.') {
-        Some((window, filter)) => (
-            Level::Panes(session.to_owned(), window.to_owned()),
-            filter.to_owned(),
-            true,
-        ),
-        None => (Level::Windows(session.to_owned()), rest.to_owned(), true),
-    }
-}
-
-fn typed(rest: &str, written: bool) -> String {
-    if rest.is_empty() {
-        HOST.to_owned()
-    } else if written {
-        format!("{HOST}:{rest}")
-    } else {
-        rest.to_owned()
-    }
-}
-
-fn pick(
-    kind: TargetKind,
-    label: String,
-    detail: String,
-    icon: &'static str,
-    target: Option<Target>,
-    typed: String,
-) -> Entry {
-    let right = if kind.drills() {
-        format!("{} ›", kind.label())
-    } else {
-        kind.label().to_owned()
-    };
-    Entry::row(
-        Row {
-            label,
-            detail,
-            right,
-            icon: Some(icon),
-            ..Row::default()
-        },
-        Action::Pick(Pick {
-            kind,
-            target,
-            typed,
-        }),
-    )
-}
-
-fn pane_detail(pane: &TreePane, place: Option<String>) -> String {
-    let title = pane.label.trim();
-    place
-        .into_iter()
-        .chain(pane.program.map(str::to_owned))
-        .chain((!title.is_empty()).then(|| title.to_owned()))
-        .collect::<Vec<_>>()
-        .join(" · ")
-}
-
-fn session_pick(session: &TreeSession, written: bool, label: String) -> Entry {
-    pick(
-        TargetKind::Session,
-        label,
-        count(session.windows.len(), "window"),
-        "folder",
-        Some(Target::Session(session.id)),
-        typed(&session_ref(session), written),
-    )
-}
-
-fn window_pick(session: &TreeSession, window: &TreeWindow, written: bool, label: String) -> Entry {
-    pick(
-        TargetKind::Window,
-        label,
-        count(window.panes.len(), "pane"),
-        "panels-top-left",
-        Some(Target::Window(window.id)),
-        typed(
-            &format!("{}:{}", session_ref(session), window.index),
-            written,
-        ),
-    )
-}
-
-fn pane_pick(pane: &TreePane, written: bool, rest: &str, place: Option<String>) -> Entry {
-    pick(
-        TargetKind::Pane,
-        pane.id.to_string(),
-        pane_detail(pane, place),
-        pane.icon,
-        Some(Target::Pane(pane.id)),
-        typed(rest, written),
-    )
-}
-
-fn home_pick(written: bool) -> Entry {
-    pick(
-        TargetKind::Dir,
-        "~/".to_owned(),
-        "files".to_owned(),
-        "folder",
-        None,
-        typed("~", written),
-    )
-}
-
-fn host_pick(connected: bool, sessions: usize) -> Entry {
-    let mut entry = pick(
-        TargetKind::Host,
-        HOST.to_owned(),
-        if connected {
-            count(sessions, "session")
-        } else {
-            "offline".to_owned()
-        },
-        "hard-drive",
-        None,
-        HOST.to_owned(),
-    );
-    entry.row.status = Some(if connected { "online" } else { "offline" });
-    entry
-}
-
-fn panes_by_id(tree: &[TreeSession], filter: &str) -> Vec<Entry> {
-    tree.iter()
-        .flat_map(|session| {
-            session.windows.iter().flat_map(move |window| {
-                window.panes.iter().map(move |pane| (session, window, pane))
-            })
-        })
-        .filter_map(|(session, window, pane)| {
-            pane_pick(
-                pane,
-                false,
-                &pane.id.to_string(),
-                Some(format!("{}:{}", session.name, window.index)),
-            )
-            .matching(filter, "")
-        })
-        .collect()
-}
-
-fn fleet_picks(tree: &[TreeSession], connected: bool, filter: &str) -> Vec<Entry> {
-    let mut items = Vec::new();
-    items.extend(host_pick(connected, tree.len()).matching(filter, ""));
-    if connected {
-        for session in tree {
-            let label = session_ref(session);
-            items.extend(session_pick(session, false, label.clone()).matching(filter, ""));
-            for window in &session.windows {
-                let window_label = format!("{label}:{}", window.index);
-                let mut item = window_pick(session, window, false, window_label.clone());
-                item.row.detail = format!("{} · {}", window.name, item.row.detail);
-                items.extend(item.matching(filter, &format!("{} {}", session.name, window.name)));
-                for pane in &window.panes {
-                    let rest = format!("{label}:{}.{}", window.index, pane.id);
-                    let mut item = pane_pick(pane, false, &rest, None);
-                    item.row.label = format!("{window_label}.{}", pane.id);
-                    let metadata = item.row.detail.clone();
-                    items.extend(item.matching(filter, &metadata));
-                }
-            }
-        }
-    }
-    items.sort_by_key(|item| item.score);
-    items
-}
-
-fn target_picks(body: &str, tree: &[TreeSession], connected: bool) -> (Vec<Entry>, bool) {
-    let (level, filter, written) = parse_target(body);
-    let filter = filter.as_str();
-    let mut items = match level {
-        Level::Files => return (Vec::new(), true),
-        Level::Top => {
-            if filter.starts_with('%') {
-                panes_by_id(tree, filter)
-            } else if filter.is_empty() {
-                tree.iter()
-                    .map(|session| session_pick(session, false, session.name.clone()))
-                    .chain(std::iter::once(home_pick(false)))
-                    .collect()
-            } else {
-                let mut items = fleet_picks(tree, connected, filter);
-                items.extend(home_pick(false).matching(filter, ""));
-                items.truncate(200);
-                return (items, false);
-            }
-        }
-        Level::Sessions => {
-            if filter.starts_with('%') {
-                panes_by_id(tree, filter)
-            } else {
-                tree.iter()
-                    .map(|session| session_pick(session, written, session.name.clone()))
-                    .chain(std::iter::once(home_pick(written)))
-                    .filter_map(|item| item.matching(filter, ""))
-                    .collect()
-            }
-        }
-        Level::Windows(session) => {
-            let Some(session) = find_session(tree, &session) else {
-                return (Vec::new(), false);
-            };
-            session
-                .windows
-                .iter()
-                .filter_map(|window| {
-                    window_pick(
-                        session,
-                        window,
-                        written,
-                        format!("{}:{}", window.index, window.name),
-                    )
-                    .matching(filter, "")
-                })
-                .collect()
-        }
-        Level::Panes(session, window) => {
-            let Some((session, window)) = find_session(tree, &session)
-                .and_then(|session| Some((session, find_window(session, &window)?)))
-            else {
-                return (Vec::new(), false);
-            };
-            let target = format!("{}:{}", session_ref(session), window.index);
-            window
-                .panes
-                .iter()
-                .filter_map(|pane| {
-                    pane_pick(pane, written, &format!("{target}.{}", pane.id), None)
-                        .matching(filter, "")
-                })
-                .collect()
-        }
-    };
-    if !filter.is_empty() {
-        items.sort_by_key(|item| item.score);
-    }
-    items.truncate(200);
-    (items, false)
-}
-
-fn append_section(rows: &mut Vec<Entry>, label: &str, hint: &'static str, entries: Vec<Entry>) {
+fn append_section(rows: &mut Vec<Entry>, label: &str, entries: Vec<Entry>) {
     if entries.is_empty() {
         return;
     }
-    rows.push(Entry::header(label, hint));
+    rows.push(Entry::header(label));
     rows.extend(entries);
 }
 
@@ -1259,7 +768,12 @@ impl Client {
                 action: ChooseTreeAction::Close,
             });
         }
-        self.open_local(mode.as_deref().and_then(Mode::from_prefix));
+        let field = if mode.as_deref() == Some(":") {
+            ":"
+        } else {
+            ""
+        };
+        self.open_local(None, field);
         self.palette.local_revisions =
             Some((self.palette.prompt_revision, self.palette.chooser_revision));
         true
@@ -1289,24 +803,7 @@ impl Client {
         if self.palette.input.trim().is_empty() && !value.trim().is_empty() {
             self.palette.chooser_search.selection = self.selected_chooser_target();
         }
-        if self.palette.connected
-            && self.palette.input.is_empty()
-            && value == DRIVER_PREFIX
-            && self.palette.unified
-            && self.palette.mode.is_none()
-            && self.palette.command.is_none()
-        {
-            self.set_query(String::new());
-            return;
-        }
-        if self.palette.input.is_empty()
-            && self.palette.unified
-            && self.palette.mode.is_none()
-            && self.palette.command.is_none()
-            && let Some(mode) = Mode::from_prefix(&value)
-        {
-            self.palette.mode = Some(mode);
-            self.set_query(String::new());
+        if self.commit_typed(&value) {
             return;
         }
         self.palette.input.clone_from(&value);
@@ -1327,7 +824,7 @@ impl Client {
         }
     }
 
-    pub fn palette_key(&mut self, key: &str, at_end: bool) -> bool {
+    pub fn palette_key(&mut self, key: &str) -> bool {
         if !self.palette.open {
             return false;
         }
@@ -1335,7 +832,10 @@ impl Client {
             "ArrowUp" => self.palette_navigate(-1),
             "ArrowDown" => self.palette_navigate(1),
             "Escape" => self.palette_close(),
-            "Tab" => {
+            "ShiftTab" if self.palette.is_places() => {
+                self.step_back();
+            }
+            "Tab" | "ShiftTab" => {
                 if self.palette.unified {
                     self.activate_unified(true);
                 } else {
@@ -1343,7 +843,8 @@ impl Client {
                 }
             }
             "Enter" => self.palette_enter(),
-            "Backspace" => return self.leave_layer(at_end),
+            "Backspace" => return self.leave_layer(),
+            "ArrowRight" if self.palette.is_places() => return self.place_into(),
             "ArrowLeft" | "ArrowRight" => return self.move_in_tree(key == "ArrowRight"),
             _ => return false,
         }
@@ -1523,6 +1024,7 @@ impl Client {
                 TreeSession {
                     id: session.id,
                     name: session_label(session).to_string(),
+                    tmux_name: session.name.clone(),
                     active,
                     windows: session
                         .windows
@@ -1545,6 +1047,7 @@ impl Client {
                                         .flatten();
                                     TreePane {
                                         id: pane.id,
+                                        index: pane_index(window, pane.id),
                                         label: pane_label(pane),
                                         program: zz_client::window_summary::pane_program(pane)
                                             .map(|program| program.name),
@@ -1573,6 +1076,14 @@ impl Client {
                                             PaneKindSnapshot::Editor(_) => "file",
                                         },
                                         running: attention == Some(AgentAttentionStatus::Working),
+                                        needs_you: pane.status.as_ref().is_some_and(|status| {
+                                            matches!(
+                                                status.state,
+                                                PaneStatusState::Blocked | PaneStatusState::Error
+                                            )
+                                        }),
+                                        terminal: matches!(pane.kind, PaneKindSnapshot::Terminal),
+                                        cwd: pane.summary.cwd.clone(),
                                     }
                                 })
                                 .collect(),
@@ -1583,7 +1094,7 @@ impl Client {
             .collect()
     }
 
-    fn open_local(&mut self, mode: Option<Mode>) {
+    fn open_local(&mut self, mode: Option<Mode>, field: &str) {
         let palette = &mut self.palette;
         palette.open = true;
         palette.local = true;
@@ -1601,8 +1112,7 @@ impl Client {
         palette.cursor = 0;
         palette.set_input = true;
         palette.reset_unified(mode);
-        self.recompute_suggestions();
-        self.palette_refresh();
+        self.start_places(field);
     }
 
     fn palette_sync(&mut self) {
@@ -1640,7 +1150,7 @@ impl Client {
         }
         if let Some(state) = window_chooser {
             if !self.palette.open || self.palette.window_chooser.is_none() {
-                self.open_local(Some(Mode::Target));
+                self.open_local(Some(Mode::Target), "");
                 self.palette.local = false;
                 self.palette.window_chooser = None;
             }
@@ -1833,15 +1343,7 @@ impl Client {
         if !self.palette.unified {
             return;
         }
-        let selected_node = self
-            .palette
-            .selected
-            .and_then(|index| self.palette.rows.get(index))
-            .and_then(|entry| match entry.action {
-                Some(Action::Target { target, .. }) => Some(Some(target)),
-                Some(Action::Host) => Some(None),
-                _ => None,
-            });
+        let anchor = self.palette.selected_action().and_then(Action::anchor);
         let mut history = self.palette.recent.clone();
         for entry in &self.palette.history {
             if !history.contains(entry) {
@@ -1861,13 +1363,22 @@ impl Client {
                 });
         }
         let palette = &mut self.palette;
-        if palette.mode == Some(Mode::Command)
-            && palette.command.is_none()
-            && has_command_arguments(&palette.input)
+        let places = palette.is_places();
+        let command_input = if places {
+            place::parse(&palette.input).command.map(|rest| {
+                let start = palette.input.len() - palette.input.trim_start().len() + 1;
+                (rest, palette.cursor.saturating_sub(start))
+            })
+        } else {
+            (palette.mode == Some(Mode::Command) && palette.command.is_none())
+                .then(|| (palette.input.clone(), palette.cursor))
+        };
+        if let Some((input, cursor)) =
+            command_input.filter(|(input, _)| has_command_arguments(input))
         {
             palette.rows = complete_command(
-                &palette.input,
-                palette.cursor,
+                &input,
+                cursor,
                 &history,
                 self.core.snapshot(),
                 Self::availability(),
@@ -1891,18 +1402,16 @@ impl Client {
                         ..Row::default()
                     },
                     action: Some(Action::Completion(suggestion)),
-                    hint: "",
                     score: 0,
                 }
             })
             .collect();
         }
-        if let Some(node) = selected_node {
-            palette.selected = palette.rows.iter().position(|entry| match entry.action {
-                Some(Action::Target { target, .. }) => node == Some(target),
-                Some(Action::Host) => node.is_none(),
-                _ => false,
-            });
+        if let Some(anchor) = anchor {
+            palette.selected = palette
+                .rows
+                .iter()
+                .position(|entry| entry.action.as_ref().and_then(Action::anchor) == Some(anchor));
         }
         palette.selected = palette
             .selected
@@ -1913,7 +1422,7 @@ impl Client {
                     .is_some_and(|row| row.action.is_some())
             })
             .or_else(|| {
-                if palette.input.trim().is_empty() {
+                if palette.input.trim().is_empty() && !places {
                     palette.initial_selection()
                 } else {
                     palette.rows.iter().position(|row| row.action.is_some())
@@ -2019,51 +1528,49 @@ impl Client {
     }
 
     fn return_to_default(&mut self) {
-        if self.palette.finishing || self.palette.window_chooser.take().is_none() {
+        if self.palette.finishing {
+            return;
+        }
+        if self.palette.window_chooser.take().is_some() {
+            self.send_tree(ChooseTreeAction::Close);
+        } else if !self.palette.local {
+            self.input(InputMessage::CommandPrompt {
+                action: CommandPromptAction::Close,
+            });
+        } else {
             return;
         }
         self.palette.local = true;
         self.palette.chooser_search = ChooserSearch::default();
         self.palette.chooser_activation = None;
         self.palette.reset_unified(None);
-        self.palette.selected = None;
-        self.palette.engaged = false;
-        self.send_tree(ChooseTreeAction::Close);
         self.palette.local_revisions =
             Some((self.palette.prompt_revision, self.palette.chooser_revision));
-        self.palette_refresh();
+        self.start_places("");
     }
 
-    fn leave_layer(&mut self, at_end: bool) -> bool {
-        if self.target_mode()
-            && at_end
-            && let Some(up) = pop_level(&self.palette.input)
-        {
-            self.set_query(up);
-            return true;
-        }
+    fn leave_layer(&mut self) -> bool {
         if !self.palette.input.is_empty() {
             return false;
         }
-        if self.palette.window_chooser.is_some() {
-            self.return_to_default();
-            return true;
+        if self.palette.is_places() {
+            return self.step_back();
         }
-        if self.palette.unified {
-            self.palette.pop_layer();
+        if self.palette.unified && self.palette.command.take().is_some() {
             self.palette.selected = None;
             self.palette.engaged = false;
             self.palette_refresh();
+            return true;
+        }
+        if self.palette.unified {
+            self.return_to_default();
             return true;
         }
         false
     }
 
     fn move_in_tree(&mut self, expand: bool) -> bool {
-        if !self.palette.input.is_empty() || !self.palette.unified {
-            return false;
-        }
-        if self.palette.window_chooser.is_none() && !self.palette.is_navigation_tree() {
+        if !self.palette.input.is_empty() || self.palette.window_chooser.is_none() {
             return false;
         }
         let Some(index) = self.palette.selected else {
@@ -2113,12 +1620,14 @@ impl Client {
             } else {
                 ChooseTreeAction::Collapse
             });
-        } else if self.palette.set_expanded(index, expand) {
-            self.palette_refresh();
         }
     }
 
     fn activate_unified(&mut self, complete: bool) {
+        if self.palette.is_places() {
+            self.activate_places(complete);
+            return;
+        }
         let raw_command = self.palette.mode == Some(Mode::Command)
             && self.palette.command.is_none()
             && has_command_arguments(&self.palette.input);
@@ -2178,27 +1687,9 @@ impl Client {
                     self.set_query(completed);
                 }
             }
-            Action::Pick(pick) => {
-                if complete || pick.kind == TargetKind::Host {
-                    self.set_query(format!("{}{}", pick.typed, pick.kind.opener()));
-                } else if let Some(target) = pick.target
-                    && self.activate_target(target)
-                {
-                    self.palette_close();
-                    self.palette
-                        .notices
-                        .push(format!("Switched to {}", pick.typed));
-                }
-            }
-            Action::Host => {
-                self.palette.mode = Some(Mode::Target);
-                self.palette.command = None;
-                self.set_query(String::new());
-            }
             Action::Target { target, label } => {
                 if let Some(command) = self.palette.command {
                     let spelled = target.spelled();
-                    self.palette.scoped = true;
                     self.run_command(
                         format!("{} -t {spelled}", command.name),
                         Some(CommandInvocation::new(command.name, ["-t", &spelled])),
@@ -2208,6 +1699,7 @@ impl Client {
                     self.palette.notices.push(format!("Switched to {label}"));
                 }
             }
+            Action::Place(_) | Action::Verb(_) | Action::Fill(_) | Action::Submit => {}
         }
     }
 
@@ -2297,9 +1789,7 @@ impl Client {
 
     fn enter_hint(&self) -> &'static str {
         self.palette
-            .selected
-            .and_then(|index| self.palette.rows.get(index))
-            .and_then(|entry| entry.action.as_ref())
+            .selected_action()
             .map_or("choose", |action| match action {
                 Action::Target { target, .. } => match target {
                     Target::Session(_) => "switch session",
@@ -2317,50 +1807,19 @@ impl Client {
                         ChooseTreeTarget::Pane(_) => "focus pane",
                         ChooseTreeTarget::Client(_) => "choose",
                     }),
-                Action::Pick(_) => "choose",
-                Action::Host => "scope host",
                 Action::Command(_) | Action::History(_) => "run command",
                 Action::Completion(_) => "complete",
+                Action::Place(_) => "go",
+                Action::Verb(_) => "choose",
+                Action::Fill(_) => "pick",
+                Action::Submit => "run",
             })
-    }
-
-    fn target_mode(&self) -> bool {
-        self.palette.unified
-            && self.palette.window_chooser.is_none()
-            && self.palette.command.is_none()
-            && self.palette.mode == Some(Mode::Target)
     }
 
     fn unified_hints(&self) -> Vec<Value> {
         let palette = &self.palette;
-        if self.target_mode() {
-            let kind = palette
-                .selected
-                .and_then(|index| palette.rows.get(index))
-                .and_then(|entry| match &entry.action {
-                    Some(Action::Pick(pick)) => Some(pick.kind),
-                    _ => None,
-                });
-            let enter = match kind {
-                Some(TargetKind::Host) => "open",
-                Some(TargetKind::Session | TargetKind::Window) => "switch",
-                Some(TargetKind::Pane) => "focus",
-                Some(TargetKind::Dir) => "insert",
-                None => "choose",
-            };
-            return vec![
-                hint("tab", "open"),
-                hint("enter", enter),
-                hint(
-                    "backspace",
-                    if palette.input.is_empty() {
-                        "leave mode"
-                    } else {
-                        "up"
-                    },
-                ),
-                hint("escape", "close"),
-            ];
+        if palette.is_places() {
+            return self.place_hints();
         }
         let enter = self.enter_hint();
         let mut hints: Vec<(&str, &str)> = if palette.command.is_some() {
@@ -2377,28 +1836,13 @@ impl Client {
                     ("backspace", "leave mode"),
                     ("escape", "close"),
                 ],
-                Some(Mode::Target) => vec![
+                Some(Mode::Target) | None => vec![
                     ("up down", "navigate"),
                     ("left right", "expand"),
                     ("enter", enter),
                     ("backspace", "leave mode"),
                     ("escape", "close"),
                 ],
-                None => {
-                    let mut hints = vec![
-                        ("left right", "expand"),
-                        ("up down", "navigate"),
-                        ("enter", enter),
-                    ];
-                    if palette.scoped {
-                        hints.push(("backspace", "clear host"));
-                    }
-                    if palette.connected && palette.input.is_empty() {
-                        hints.push((DRIVER_PREFIX, "driver"));
-                    }
-                    hints.push(("escape", "close"));
-                    hints
-                }
             }
         };
         let keeps_expand = palette.input.is_empty()
@@ -2414,13 +1858,7 @@ impl Client {
         }
         hints
             .into_iter()
-            .map(|(key, label)| {
-                if key == DRIVER_PREFIX {
-                    json!({ "keys": [[{ "text": key }]], "label": label })
-                } else {
-                    hint(key, label)
-                }
-            })
+            .map(|(key, label)| hint(key, label))
             .collect()
     }
 
@@ -2494,7 +1932,7 @@ impl Client {
             .iter()
             .map(|entry| {
                 if entry.action.is_none() {
-                    return json!({ "header": entry.row.label, "hint": entry.hint });
+                    return json!({ "header": entry.row.label });
                 }
                 let row = &entry.row;
                 json!({
@@ -2512,17 +1950,11 @@ impl Client {
                 })
             })
             .collect();
-        let room = list_height(viewport, usage.is_some());
-        let room = if self.target_mode() {
-            (room / ROW_HEIGHT).floor().max(1.0) * ROW_HEIGHT
+        let height = (rows.len() as f32 * ROW_HEIGHT).min(list_height(viewport, usage.is_some()));
+        let empty = if palette.is_places() {
+            palette.place_empty()
         } else {
-            room
-        };
-        let height = (rows.len() as f32 * ROW_HEIGHT).min(room);
-        let empty = if self.target_mode() && palette.files {
-            "Files are listed in the desktop app"
-        } else {
-            "No matches"
+            Some("No matches")
         };
         json!({
             "kind": "unified",

@@ -30,8 +30,8 @@ use zz_ui::{
 use crate::{
     app_icon::AppIconSetting,
     config::{
-        self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue, DriverEffort,
-        DriverModel, remove_config_key, set_config_key, set_interface_theme,
+        self, AppConfig, BrowserConfig, ConfigKey, ConfigProvenance, ConfigValue,
+        remove_config_key, set_config_key, set_interface_theme,
     },
     diagnostics,
     mux::{
@@ -77,25 +77,6 @@ const KEY_INPUT_WIDTH: f32 = 65.0;
 const CONFIG_EDITOR_FONT_SIZE: f32 = 12.0;
 const CONFIG_EDITOR_PADDING: f32 = 2.0;
 const APP_ICON_PREVIEW_SIZE: f32 = 48.0;
-const DRIVER_MODELS: [(&str, &str); 5] = [
-    (DriverModel::Claude.as_str(), DriverModel::Claude.title()),
-    (DriverModel::Opus.as_str(), DriverModel::Opus.title()),
-    (DriverModel::Sonnet.as_str(), DriverModel::Sonnet.title()),
-    (DriverModel::Fable.as_str(), DriverModel::Fable.title()),
-    (DriverModel::Codex.as_str(), DriverModel::Codex.title()),
-];
-const DRIVER_EFFORTS: [(&str, &str); 6] = [
-    (
-        DriverEffort::Default.as_str(),
-        DriverEffort::Default.title(),
-    ),
-    (DriverEffort::Low.as_str(), DriverEffort::Low.title()),
-    (DriverEffort::Medium.as_str(), DriverEffort::Medium.title()),
-    (DriverEffort::High.as_str(), DriverEffort::High.title()),
-    (DriverEffort::Xhigh.as_str(), DriverEffort::Xhigh.title()),
-    (DriverEffort::Max.as_str(), DriverEffort::Max.title()),
-];
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum ConfigFileKind {
     Mux,
@@ -1242,36 +1223,7 @@ impl SettingsView {
             .into_any_element()
     }
 
-    fn driver_stack(resolved: &AppConfig, cx: &Context<Self>) -> SettingsStack {
-        SettingsStack::titled("Driver")
-            .child(
-                Self::boolean_setting(
-                    ConfigKey::DriverAgent,
-                    "Driver Agent",
-                    resolved.driver_agent,
-                )
-                .description("Type > in an empty command palette to chat with it"),
-            )
-            .child(
-                Self::palette_choice_setting(
-                    ConfigKey::DriverModel,
-                    "Model",
-                    resolved.driver_model.value.as_str(),
-                    &DRIVER_MODELS,
-                    cx,
-                )
-                .description("Applies when the driver next starts"),
-            )
-            .child(Self::palette_choice_setting(
-                ConfigKey::DriverEffort,
-                "Effort",
-                resolved.driver_effort.value.as_str(),
-                &DRIVER_EFFORTS,
-                cx,
-            ))
-    }
-
-    fn agents_section(&self, resolved: &AppConfig, cx: &mut Context<Self>) -> AnyElement {
+    fn agents_section(&self, cx: &mut Context<Self>) -> AnyElement {
         use zz_ui::settings::providers::{ProvidersHost, providers_stack};
 
         let mux = self.mux.read(cx);
@@ -1316,7 +1268,6 @@ impl SettingsView {
         });
         Self::scroll_column("settings-agents")
             .child(settings_page_title(SettingsSection::Agents, cx))
-            .child(Self::driver_stack(resolved, cx))
             .children(stacks)
             .child(
                 h_flex().justify_end().child(
@@ -1886,7 +1837,7 @@ impl Render for SettingsView {
             SettingsSection::Editor => self.editor_section(&resolved, cx),
             SettingsSection::Panes => self.panes_section(&resolved, cx),
             SettingsSection::Hosts => self.hosts_section(cx),
-            SettingsSection::Agents => self.agents_section(&resolved, cx),
+            SettingsSection::Agents => self.agents_section(cx),
             SettingsSection::Advanced => Self::advanced_section(&resolved, cx),
             SettingsSection::Terminal => self.config_file_section(ConfigFileKind::Terminal, cx),
             SettingsSection::Multiplexer => self.config_file_section(ConfigFileKind::Mux, cx),
@@ -2316,10 +2267,6 @@ fn refresh_settings_preview(key: ConfigKey, cx: &mut App) {
                 | ConfigKey::StatusHost
                 | ConfigKey::StatusUpdate
                 | ConfigKey::ProgramColors
-                | ConfigKey::DriverAgent
-                | ConfigKey::DriverModel
-                | ConfigKey::DriverEffort
-                | ConfigKey::DriverHosts
         )
     {
         return;
@@ -2447,11 +2394,7 @@ fn numeric_config_value(config: &AppConfig, key: ConfigKey) -> ConfigValue<f32> 
         | ConfigKey::InterfaceTheme
         | ConfigKey::UiFontFamily
         | ConfigKey::AppIcon
-        | ConfigKey::ChromeAccent
-        | ConfigKey::DriverAgent
-        | ConfigKey::DriverModel
-        | ConfigKey::DriverEffort
-        | ConfigKey::DriverHosts => {
+        | ConfigKey::ChromeAccent => {
             unreachable!("only numeric settings use numeric inputs")
         }
     }

@@ -2122,12 +2122,6 @@ impl InteractiveClient {
         self.send(&ProtocolMessage::AgentPrompt { pane, text, images })
     }
 
-    /// Type `text` into the pane's running turn; with none running the
-    /// daemon takes it as a prompt.
-    pub fn agent_steer(&self, pane: PaneId, text: String) -> Result<(), DaemonError> {
-        self.send(&ProtocolMessage::AgentSteer { pane, text })
-    }
-
     pub fn agent_cancel(&self, pane: PaneId) -> Result<(), DaemonError> {
         self.send(&ProtocolMessage::AgentCancel { pane })
     }

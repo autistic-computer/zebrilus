@@ -216,7 +216,6 @@ cannot reach them.
 | `cmd-c` `cmd-v` `cmd-a` `cmd-k` | `ctrl-shift-…` | Copy, paste, select all, clear scrollback |
 | `ctrl-=` `ctrl--` | same | Terminal font size, across every terminal pane |
 | `cmd-w` `cmd-q` | not bound | Close the active pane, quit |
-| prefix `A` | same | The Driver Agent's chat, while there is one |
 
 Terminal panes also take <kbd>shift-PageUp</kbd> and <kbd>shift-PageDown</kbd>
 for the scrollback, and mouse selection copies on release without entering copy

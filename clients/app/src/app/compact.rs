@@ -22,9 +22,9 @@ use zz_ui::{
         ArrowPadEvent, BENTO_INSET, Instant, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot,
         Pager, PagerEvent, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
         PillSpring, PopoverKey, PopoverKeyEvent, ToolKeys, WhichKeyList, bottom_sheet, close_sheet,
-        compact_floating_bar, compact_floating_pill, compact_group_dot, compact_hud,
-        compact_pill_collapse, compact_pill_label, compact_pill_menu, compact_pill_morph,
-        mini_pill_width, page_dots_in, pill_bounds, pill_corner, pill_glass_over,
+        compact_floating_bar, compact_floating_pill, compact_hud, compact_pill_collapse,
+        compact_pill_label, compact_pill_menu, compact_pill_morph, mini_pill_width, page_dots_in,
+        pill_bounds, pill_corner, pill_glass_over,
     },
     kbd::Kbd,
     roles,
@@ -56,7 +56,6 @@ const RENAME_PANE: &str = "rename-pane";
 const LAST_PANE: &str = "last-pane";
 const KILL_PANE: &str = "kill-pane";
 const ALL_BINDINGS: &str = "all-bindings";
-const DRIVER_CHAT: &str = "driver-chat";
 const OVERVIEW: &str = "overview";
 const LENS: &str = "lens";
 const NEW_TERMINAL: &str = "new-terminal";
@@ -146,16 +145,12 @@ impl CompactState {
     }
 }
 
-fn pill_menu(
-    lens: Option<zz_ui::pane::PaneLens>,
-    driver: Option<zz_gpui::Hsla>,
-) -> Vec<Vec<PillMenuItem>> {
+fn pill_menu(lens: Option<zz_ui::pane::PaneLens>) -> Vec<Vec<PillMenuItem>> {
     let mut panes = vec![
         PillMenuItem::new(RENAME_PANE, "Rename pane", IconName::Pencil),
         PillMenuItem::new(NEW_WINDOW, "New window", IconName::AppWindow),
         PillMenuItem::new(NEW_PANE, "New pane", IconName::Plus),
         PillMenuItem::new(LAST_PANE, "Last pane", IconName::History),
-        PillMenuItem::new(DRIVER_CHAT, "Driver chat", IconName::Chat).dot(driver),
         PillMenuItem::new(OVERVIEW, "Overview", IconName::LayoutDashboard),
     ];
     if let Some(lens) = lens {
@@ -176,7 +171,7 @@ fn pill_menu(
     ]
 }
 
-fn host_menu(connected: bool, driver: Option<zz_gpui::Hsla>) -> Vec<Vec<PillMenuItem>> {
+fn host_menu(connected: bool) -> Vec<Vec<PillMenuItem>> {
     let new = [
         PillMenuItem::new(NEW_SESSION, "New session", IconName::Layers),
         PillMenuItem::new(NEW_BROWSER, "New browser", IconName::Globe),
@@ -186,10 +181,7 @@ fn host_menu(connected: bool, driver: Option<zz_gpui::Hsla>) -> Vec<Vec<PillMenu
         .then_some(new)
         .into_iter()
         .flatten()
-        .chain([
-            PillMenuItem::new(DRIVER_CHAT, "Driver chat", IconName::Chat).dot(driver),
-            PillMenuItem::new(ALL_HOSTS, "All hosts", IconName::Server),
-        ])
+        .chain([PillMenuItem::new(ALL_HOSTS, "All hosts", IconName::Server)])
         .collect();
     vec![
         vec![PillMenuItem::new(SETTINGS, "Settings", IconName::Settings).look(PillMenuLook::Quiet)],
@@ -525,7 +517,6 @@ impl AppShell {
             return;
         }
         match id {
-            DRIVER_CHAT => self.open_driver_chat(window, cx),
             ALL_HOSTS => {
                 self.compact.menu = None;
                 self.open_hosts(cx);
@@ -1315,7 +1306,6 @@ impl AppShell {
                 .absolute()
                 .inset_0()
         };
-        let driver_dot = self.driver_dot(cx);
         let page_background = self
             .compact
             .page_background
@@ -1352,9 +1342,6 @@ impl AppShell {
             let pill = compact_floating_pill("compact-pill", label, dots, &placement, cx)
                 .opacity(1.0 - menu_progress)
                 .child(track_pill())
-                .when_some(driver_dot, |pill, color| {
-                    pill.child(compact_group_dot(color))
-                })
                 .on_click(cx.listener(|this, _, _, cx| this.open_pill_menu(MenuFrom::Pill, cx)));
             div()
                 .relative()
@@ -1435,9 +1422,6 @@ impl AppShell {
             )
             .opacity(fade * (1.0 - menu_progress))
             .child(track_pill())
-            .when_some(driver_dot.filter(|_| full), |pill, color| {
-                pill.child(compact_group_dot(color))
-            })
             .on_click(cx.listener(move |this, _, _, cx| {
                 if full {
                     this.open_pill_menu(MenuFrom::Pill, cx);
@@ -1574,12 +1558,9 @@ impl AppShell {
                 ),
             };
             let items = if from == MenuFrom::Host {
-                host_menu(self.shown_host_connected(cx), driver_dot)
+                host_menu(self.shown_host_connected(cx))
             } else {
-                pill_menu(
-                    shown_page.and_then(|page| self.pane_lens(page.pane, cx)),
-                    driver_dot,
-                )
+                pill_menu(shown_page.and_then(|page| self.pane_lens(page.pane, cx)))
             };
             let pick = cx.weak_entity();
             let shut = cx.weak_entity();

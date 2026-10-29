@@ -19,8 +19,8 @@ mod which_key_list;
 pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
 pub use bar::{
     COMPACT_NAV_BAR_HEIGHT, COMPACT_PILL_HEIGHT, PillGlass, PillLabel, PillPlacement,
-    compact_bar_button, compact_composer_pill, compact_floating_bar, compact_floating_group,
-    compact_floating_pill, compact_group_dot, compact_nav_bar, compact_pill_label, pill_glass_over,
+    compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
+    compact_nav_bar, compact_pill_label, pill_glass_over,
 };
 pub use bento::{
     BENTO_COLUMNS, BENTO_GAP, BENTO_INSET, BentoSpan, bento_add_tile, bento_grid, bento_pack,

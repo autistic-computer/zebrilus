@@ -12,11 +12,13 @@ timestamp: 2026-10-23T00:00:00-03:00
 
 **Status 2026-10-23.** The Agent pane is gone ([agent lens](/designs/agent-lens.md)). The machine
 stays in `agent/turn.rs` and the Claude and Codex drivers still run it, but no pane opens a driver
-now; it waits for the driver chat. The lens runner (`agent/lens.rs`) does not use it: it settles a
+now. The lens runner (`agent/lens.rs`) does not use it: it settles a
 turn from Claude's session record (`busy`, `idle`, `waiting`) and transcript, or Codex's
 `task_started` and `task_complete` lines. Where this page says "pane", read the driver-backed Agent
 pane that existed until then. The subagent feed and its `external_turn` in the fanout lane, and the
-sidebar status record for agent panes, were removed the same day.
+sidebar status record for agent panes, were removed the same day. The machine was kept for a driver
+chat; that shipped as the Driver Agent, which followed a terminal through the lens instead, and was
+removed on 2026-10-28.
 
 # Why
 

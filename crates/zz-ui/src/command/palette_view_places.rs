@@ -3,7 +3,8 @@ use std::rc::Rc;
 use zz_client::{
     completion::apply_completion,
     place::{self, ActionKind, Level, LevelSet, Place, Written, parse, read_written},
-    recents::{RecentKey, now_secs},
+    recents::RecentKey,
+    verbs::{self, Filled, Run, Slot, Verb, VerbKind},
 };
 use zz_gpui::{App, Context, Window};
 use zz_protocol::{CommandInvocation, MAX_COMMAND_PROMPT_BYTES, catalog_command_spec};
@@ -12,8 +13,8 @@ use super::{CommandPaletteView, has_command_arguments};
 use crate::command::{
     ActionContext, ActionKey, PaletteHint, PaletteHostId, PaletteTarget,
     palette_model::{PaletteAction, UnifiedPalette, needs_arguments},
-    palette_places::{Chip, chip_for, palette_fleet, place_label},
-    palette_recents, record_recent,
+    palette_places::{Chip, Draft, chip_for, palette_fleet, place_label},
+    record_recent,
 };
 
 fn chips_to(fleet: &place::Fleet, place: Place) -> Vec<Chip> {
@@ -28,9 +29,21 @@ fn chips_to(fleet: &place::Fleet, place: Place) -> Vec<Chip> {
         })
         .filter_map(|level| {
             let at = level.deeper().map_or(place, |deeper| place.above(deeper));
-            chip_for(fleet, at, None)
+            chip_for(fleet, at)
         })
         .collect()
+}
+
+fn insert_path_verb() -> Verb {
+    Verb {
+        name: "insert path".to_owned(),
+        keywords: String::new(),
+        description: String::new(),
+        kind: VerbKind::Zz,
+        run: Run::InsertPath,
+        slots: vec![Slot::Path],
+        raw: false,
+    }
 }
 
 impl CommandPaletteView {
@@ -42,11 +55,14 @@ impl CommandPaletteView {
     ) {
         let tree = self.backend.tree(cx);
         let fleet = palette_fleet(&tree);
+        let verbs = self.backend.verbs(cx);
         if let Some(unified) = &mut self.unified {
             unified.mode = None;
             unified.command = None;
             unified.host = None;
-            unified.chips = chip_for(&fleet, Place::host(tree.attached.0), None)
+            unified.draft = None;
+            unified.verbs = Rc::from(verbs);
+            unified.chips = chip_for(&fleet, Place::host(tree.attached.0))
                 .map(|chip| Chip { auto: true, ..chip })
                 .into_iter()
                 .collect();
@@ -60,39 +76,20 @@ impl CommandPaletteView {
             && self.unified.as_ref().is_some_and(UnifiedPalette::is_places)
     }
 
-    fn boost(&self, cx: &App) -> impl Fn(&Place) -> i64 + use<> {
-        let recents = palette_recents(cx);
-        let now = now_secs();
-        let fleet = self
-            .unified
-            .as_ref()
-            .map(|unified| Rc::clone(&unified.fleet))
-            .unwrap_or_default();
-        move |place: &Place| {
-            place::recent_key(&fleet, place).map_or(0, |key| recents.boost(&key, now))
-        }
+    fn draft(&self) -> Option<&Draft> {
+        self.unified.as_ref()?.draft.as_ref()
     }
 
-    pub(super) fn line_place(&self) -> Option<Place> {
-        let unified = self.unified.as_ref()?;
-        let line = parse(&self.last_input);
-        let resolved = place::resolve(&unified.fleet, &unified.scope(), &line.parts, &|_| 0);
-        resolved.failed.is_none().then_some(resolved.place)
+    fn next_slot(&self) -> Option<Slot> {
+        self.draft()?.next().cloned()
     }
 
     fn set_command_input(&mut self, input: String, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.places() {
+        if self.places() {
+            self.set_query(format!("{}{input}", place::COMMAND_SIGIL), window, cx);
+        } else {
             self.set_query(input, window, cx);
-            return;
         }
-        let prefix = parse(&self.last_input)
-            .action
-            .filter(|action| action.kind == ActionKind::Command)
-            .map_or_else(
-                || ":".to_owned(),
-                |action| self.last_input[..action.rest_range().start].to_owned(),
-            );
-        self.set_query(format!("{prefix}{input}"), window, cx);
     }
 
     pub(super) fn set_files_body(
@@ -101,21 +98,22 @@ impl CommandPaletteView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let prefix = parse(&self.last_input)
-            .action
-            .filter(|action| action.kind == ActionKind::Files)
-            .map_or_else(
-                || "&".to_owned(),
-                |action| self.last_input[..action.rest_range().start].to_owned(),
-            );
-        self.set_query(format!("{prefix}{body}"), window, cx);
+        if self.next_slot() != Some(Slot::Path)
+            && let Some(unified) = &mut self.unified
+        {
+            let verb = unified
+                .verbs
+                .iter()
+                .find(|verb| verb.run == Run::InsertPath)
+                .cloned()
+                .unwrap_or_else(insert_path_verb);
+            unified.draft = Some(Draft::new(verb));
+        }
+        self.set_query(body.to_owned(), window, cx);
     }
 
     pub(super) fn files_body(&self) -> Option<String> {
-        parse(&self.last_input)
-            .action
-            .filter(|action| action.kind == ActionKind::Files)
-            .map(|action| action.rest)
+        (self.places() && self.next_slot() == Some(Slot::Path)).then(|| self.last_input.clone())
     }
 
     pub(super) fn commit_typed(
@@ -124,66 +122,21 @@ impl CommandPaletteView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        if !self.places() {
+        if !self.places() || !self.last_input.is_empty() || value.chars().count() < 2 {
             return false;
         }
-        let boost = self.boost(cx);
         let Some(unified) = &mut self.unified else {
             return false;
         };
-        let fleet = Rc::clone(&unified.fleet);
-        if self.last_input.is_empty()
-            && value.chars().count() > 1
-            && let Some(Written::Place(place)) = read_written(value, &fleet)
-        {
-            unified.chips = chips_to(&fleet, place);
-            self.set_query(String::new(), window, cx);
-            return true;
-        }
-        let line = parse(value);
-        let count = if line.action.is_some() {
-            line.parts.len()
-        } else {
-            line.parts.len().saturating_sub(1)
-        };
-        if count == 0 {
-            if value.chars().count() > 1
-                && let Some(chip) = unified.chips.last_mut()
-            {
-                chip.typed = None;
-            }
+        if unified.draft.is_some() {
             return false;
         }
-        let first = line.parts[0].level;
-        let mut chips: Vec<Chip> = unified
-            .chips
-            .iter()
-            .filter(|chip| chip.level < first)
-            .cloned()
-            .collect();
-        for part in &line.parts[..count] {
-            let scope = chips.last().map_or_else(Place::default, |chip| chip.place);
-            let Some(chip) = place::candidates(&fleet, &scope, part, &boost)
-                .into_iter()
-                .next()
-                .and_then(|best| chip_for(&fleet, best.place, None))
-            else {
-                return false;
-            };
-            chips.push(chip);
-        }
-        let typed = &line.parts[count - 1].range;
-        if let Some(chip) = chips.last_mut() {
-            chip.typed = Some(value[typed.clone()].trim_end().to_owned());
-        }
-        let rest = line
-            .parts
-            .get(count)
-            .map(|part| part.range.start)
-            .or_else(|| line.action.as_ref().map(|action| action.start))
-            .unwrap_or(value.len());
-        unified.chips = chips;
-        self.set_query(value[rest..].to_owned(), window, cx);
+        let fleet = Rc::clone(&unified.fleet);
+        let Some(Written::Place(place)) = read_written(value, &fleet) else {
+            return false;
+        };
+        unified.chips = chips_to(&fleet, place);
+        self.set_query(String::new(), window, cx);
         true
     }
 
@@ -192,32 +145,34 @@ impl CommandPaletteView {
             return None;
         }
         let unified = self.unified.as_ref()?;
-        let line = parse(&self.last_input);
-        let action = line.action.clone()?;
-        if action.kind == ActionKind::Command {
+        if parse(&self.last_input).command.is_some() {
             return None;
         }
+        let (kind, focus) = match unified.draft.as_ref()?.next()? {
+            Slot::Path => (ActionKind::Files, None),
+            Slot::Value(id) => (ActionKind::Gui, Some(*id)),
+            Slot::Target(_) | Slot::Text(_) => return None,
+        };
         let written = unified
             .chips
             .iter()
             .filter(|chip| !chip.auto)
             .map(|chip| chip.level)
-            .chain(line.parts.iter().map(|part| part.level))
             .fold(LevelSet::default(), LevelSet::with);
         let host_auto = unified
             .chips
             .iter()
-            .any(|chip| chip.level == Level::Host && chip.auto)
-            && !line.parts.iter().any(|part| part.level == Level::Host);
+            .any(|chip| chip.level == Level::Host && chip.auto);
         Some(ActionContext {
-            kind: action.kind,
+            kind,
             fleet: Rc::clone(&unified.fleet),
-            place: self.line_place().unwrap_or_else(|| unified.scope()),
+            place: unified.scope(),
             written,
             host_auto,
-            rest_range: action.rest_range(),
-            rest: action.rest,
+            rest: self.last_input.clone(),
+            rest_range: 0..self.last_input.len(),
             insert_pane: self.insert_pane.or_else(|| self.backend.active_pane(cx)),
+            focus,
         })
     }
 
@@ -254,6 +209,17 @@ impl CommandPaletteView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
+        if key == ActionKey::Enter
+            && let Some(pick) = self.pick_folder.clone()
+            && let Some(picked) = self
+                .level
+                .as_ref()
+                .and_then(|(_, level)| level.picked_folder(cx))
+        {
+            self.close(cx);
+            pick(picked.0, picked.1, window, cx);
+            return true;
+        }
         let effect = match self.level.as_mut() {
             Some((_, level)) => level.key(key, window, cx),
             None => return false,
@@ -283,7 +249,7 @@ impl CommandPaletteView {
         let Some(unified) = &mut self.unified else {
             return;
         };
-        let Some(chip) = chip_for(&unified.fleet, place, None) else {
+        let Some(chip) = chip_for(&unified.fleet, place) else {
             return;
         };
         if chip.level == Level::Host
@@ -295,13 +261,9 @@ impl CommandPaletteView {
         let Some(unified) = &mut self.unified else {
             return;
         };
-        let field = chip
-            .level
-            .deeper()
-            .map_or_else(String::new, |level| level.sigil().to_string());
         unified.chips.retain(|existing| existing.level < chip.level);
         unified.chips.push(chip);
-        self.set_query(field, window, cx);
+        self.set_query(String::new(), window, cx);
     }
 
     pub(super) fn go_to(&mut self, place: Place, window: &mut Window, cx: &mut Context<Self>) {
@@ -350,7 +312,7 @@ impl CommandPaletteView {
         let Some(unified) = &self.unified else {
             return;
         };
-        let place = self.line_place().unwrap_or_else(|| unified.scope());
+        let place = unified.scope();
         let host = place.host.map_or(unified.tree.attached, PaletteHostId);
         let name = input
             .split_whitespace()
@@ -416,32 +378,180 @@ impl CommandPaletteView {
         }
     }
 
+    fn start_verb(&mut self, verb: Verb, window: &mut Window, cx: &mut Context<Self>) {
+        if verb.raw
+            && let Some(command) = verb.command()
+        {
+            self.set_command_input(format!("{command} "), window, cx);
+            return;
+        }
+        let Some(unified) = &mut self.unified else {
+            return;
+        };
+        let scope = unified.scope();
+        let mut draft = Draft::new(verb);
+        if matches!(draft.next(), Some(Slot::Target(_)))
+            && scope.level().is_some_and(|level| level > Level::Host)
+        {
+            draft.filled.push((Filled::Place(scope), String::new()));
+        }
+        unified.draft = Some(draft);
+        self.advance(window, cx);
+    }
+
+    fn advance(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.draft().is_some_and(|draft| draft.next().is_none()) {
+            self.run_draft(window, cx);
+        } else {
+            self.set_query(String::new(), window, cx);
+        }
+    }
+
+    fn fill(&mut self, value: Filled, label: String, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(draft) = self
+            .unified
+            .as_mut()
+            .and_then(|unified| unified.draft.as_mut())
+        {
+            draft.filled.push((value, label));
+        }
+        self.advance(window, cx);
+    }
+
+    fn run_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(unified) = &self.unified else {
+            return;
+        };
+        let Some(draft) = unified.draft.clone() else {
+            return;
+        };
+        let Some(compiled) = verbs::compile(&draft.verb, &draft.values(), &unified.fleet) else {
+            return;
+        };
+        let host = compiled
+            .host
+            .or(unified.scope().host)
+            .map_or(unified.tree.attached, PaletteHostId);
+        if let Some(unified) = &mut self.unified {
+            unified.host = Some(host);
+        }
+        record_recent(
+            RecentKey::Command(compiled.line.clone()),
+            compiled.display,
+            cx,
+        );
+        self.run_command(compiled.line, compiled.invocation, window, cx);
+    }
+
+    pub(super) fn draft_usage(&self) -> Option<String> {
+        let unified = self.unified.as_ref()?;
+        let draft = unified.draft.as_ref()?;
+        match draft.verb.kind {
+            VerbKind::Gui => return Some("gui · no tmux command".to_owned()),
+            VerbKind::Zz => return Some(format!("zz · {}", draft.verb.description)),
+            VerbKind::Tmux | VerbKind::Alias => {}
+        }
+        let mut values = draft.values();
+        match (draft.next(), self.selected_action()) {
+            (Some(Slot::Target(_)), Some(PaletteAction::Fill(place))) => {
+                values.push(Filled::Place(place));
+            }
+            (Some(Slot::Text(_)), _) if !self.last_input.trim().is_empty() => {
+                values.push(Filled::Text(self.last_input.trim().to_owned()));
+            }
+            _ => {}
+        }
+        Some(format!(
+            "runs  {}",
+            verbs::compile(&draft.verb, &values, &unified.fleet)
+                .map_or_else(|| draft.verb.spelled(), |compiled| compiled.display)
+        ))
+    }
+
+    pub(super) fn row_usage(&self) -> Option<String> {
+        let unified = self.unified.as_ref()?;
+        match self.selected_action()? {
+            PaletteAction::Verb(index) => {
+                let verb = unified.verbs.get(index)?;
+                Some(match verb.kind {
+                    VerbKind::Gui => "gui · no tmux command".to_owned(),
+                    VerbKind::Zz => format!("zz · {}", verb.description),
+                    VerbKind::Tmux | VerbKind::Alias => {
+                        let scope = unified.scope();
+                        let filled = if matches!(verb.slots.first(), Some(Slot::Target(_)))
+                            && scope.level().is_some_and(|level| level > Level::Host)
+                        {
+                            vec![Filled::Place(scope)]
+                        } else {
+                            Vec::new()
+                        };
+                        let line = verbs::compile(verb, &filled, &unified.fleet)
+                            .map_or_else(|| verb.spelled(), |compiled| compiled.display);
+                        format!("runs  {line}")
+                    }
+                })
+            }
+            PaletteAction::Place(place) => {
+                verbs::go_to_line(&unified.fleet, &place).map(|line| format!("runs  {line}"))
+            }
+            _ => None,
+        }
+    }
+
     pub(super) fn activate_places(
         &mut self,
         complete: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let line = parse(&self.last_input);
-        if let Some(action) = line.action {
-            if action.kind == ActionKind::Command {
-                self.activate_command(action.rest, complete, window, cx);
-            } else {
-                let key = if complete {
-                    ActionKey::Tab
-                } else {
-                    ActionKey::Enter
-                };
-                self.level_key(key, window, cx);
+        if let Some(command) = parse(&self.last_input).command {
+            self.activate_command(command, complete, window, cx);
+            return;
+        }
+        if let Some(slot) = self.next_slot() {
+            match slot {
+                Slot::Path | Slot::Value(_) => {
+                    let key = if complete {
+                        ActionKey::Tab
+                    } else {
+                        ActionKey::Enter
+                    };
+                    self.level_key(key, window, cx);
+                }
+                Slot::Target(_) => {
+                    if let Some(PaletteAction::Fill(place)) = self.selected_action() {
+                        let label = self
+                            .unified
+                            .as_ref()
+                            .and_then(|unified| place_label(&unified.fleet, &place))
+                            .unwrap_or_default();
+                        self.fill(Filled::Place(place), label, window, cx);
+                    }
+                }
+                Slot::Text(_) => {
+                    let text = self.last_input.trim().to_owned();
+                    if !text.is_empty() {
+                        self.fill(Filled::Text(text.clone()), text, window, cx);
+                    }
+                }
             }
             return;
         }
         match self.selected_action() {
             Some(PaletteAction::Place(place)) => {
-                if complete && place.level() != Some(Level::Pane) {
+                if complete {
                     self.enter_place(place, window, cx);
                 } else if !complete {
                     self.go_to(place, window, cx);
+                }
+            }
+            Some(PaletteAction::Verb(index)) => {
+                let verb = self
+                    .unified
+                    .as_ref()
+                    .and_then(|unified| unified.verbs.get(index).cloned());
+                if let Some(verb) = verb {
+                    self.start_verb(verb, window, cx);
                 }
             }
             Some(PaletteAction::Command(spec)) => {
@@ -460,13 +570,9 @@ impl CommandPaletteView {
                 self.run_place_command(command, None, window, cx);
             }
             Some(PaletteAction::Recent(key)) if !complete => self.open_recent(&key, window, cx),
-            Some(PaletteAction::Ask) if !complete => {
-                cx.emit(super::CommandPaletteEvent::Driver {
-                    text: line.search.unwrap_or_default().trim().to_owned(),
-                });
-            }
             None if !complete => {
-                if let Some(place) = self.line_place()
+                let place = self.unified.as_ref().map(UnifiedPalette::scope);
+                if let Some(place) = place
                     && place != Place::default()
                     && self
                         .unified
@@ -481,12 +587,9 @@ impl CommandPaletteView {
     }
 
     fn open_recent(&mut self, key: &RecentKey, window: &mut Window, cx: &mut Context<Self>) {
-        let (kind, rest, host) = match key {
-            RecentKey::Gui(_) => (ActionKind::Gui, String::new(), None),
-            RecentKey::File { host, path, .. } => (ActionKind::Files, path.clone(), Some(host)),
+        match key {
             RecentKey::Command(command) => {
                 self.run_place_command(command.clone(), None, window, cx);
-                return;
             }
             RecentKey::Place { .. } => {
                 if let Some(place) = self
@@ -496,45 +599,64 @@ impl CommandPaletteView {
                 {
                     self.go_to(place, window, cx);
                 }
-                return;
             }
-        };
-        if let Some(unified) = &mut self.unified
-            && let Some(host) = host.and_then(|name| unified.fleet.host_named(name))
-            && let Some(chip) = chip_for(&unified.fleet, Place::host(host.id), None)
-        {
-            unified.chips = vec![chip];
+            RecentKey::Gui(_) => {
+                let Some(mut level) = self.backend.action_level(ActionKind::Gui, cx) else {
+                    return;
+                };
+                level.attach(cx.entity().downgrade(), cx);
+                let effect = level.open_recent(key, window, cx);
+                self.apply_level_effect(effect, window, cx);
+            }
+            RecentKey::File { host, path, .. } => {
+                if let Some(unified) = &mut self.unified
+                    && let Some(host) = unified.fleet.host_named(host)
+                    && let Some(chip) = chip_for(&unified.fleet, Place::host(host.id))
+                {
+                    unified.chips = vec![chip];
+                }
+                self.set_files_body(path, window, cx);
+                let effect = match self.level.as_mut() {
+                    Some((ActionKind::Files, level)) => level.open_recent(key, window, cx),
+                    _ => return,
+                };
+                self.apply_level_effect(effect, window, cx);
+            }
         }
-        self.set_query(format!("{}{rest}", kind.sigil()), window, cx);
-        let effect = match self.level.as_mut() {
-            Some((active, level)) if *active == kind => level.open_recent(key, window, cx),
-            _ => return,
+    }
+
+    pub(super) fn step_back(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(unified) = &mut self.unified else {
+            return false;
         };
-        self.apply_level_effect(effect, window, cx);
+        let Some(draft) = &mut unified.draft else {
+            let Some(chip) = unified.chips.pop() else {
+                return false;
+            };
+            self.set_query(String::new(), window, cx);
+            if let Some(unified) = &self.unified
+                && let Some(index) = unified.rows.iter().position(|entry| {
+                    matches!(entry.action, Some(PaletteAction::Place(place)) if place == chip.place)
+                })
+            {
+                self.selected = Some(index);
+                self.navigation_engaged = true;
+                cx.notify();
+            }
+            return true;
+        };
+        if draft.filled.pop().is_none_or(|(_, label)| label.is_empty()) {
+            unified.draft = None;
+        }
+        self.set_query(String::new(), window, cx);
+        true
     }
 
     pub(super) fn shift_tab_places(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if self.level_key(ActionKey::ShiftTab, window, cx) {
             return true;
         }
-        let Some(chip) = self
-            .unified
-            .as_mut()
-            .and_then(|unified| unified.chips.pop())
-        else {
-            return false;
-        };
-        self.set_query(String::new(), window, cx);
-        if let Some(unified) = &self.unified
-            && let Some(index) = unified.rows.iter().position(|entry| {
-                matches!(entry.action, Some(PaletteAction::Place(place)) if place == chip.place)
-            })
-        {
-            self.selected = Some(index);
-            self.navigation_engaged = true;
-            cx.notify();
-        }
-        true
+        self.step_back(window, cx)
     }
 
     pub(super) fn backspace_places(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -544,31 +666,32 @@ impl CommandPaletteView {
         if !self.input.read(cx).value().is_empty() {
             return false;
         }
-        let Some(chip) = self
-            .unified
-            .as_mut()
-            .and_then(|unified| unified.chips.pop())
-        else {
+        if self.draft().is_some() {
+            return self.step_back(window, cx);
+        }
+        let Some(unified) = &mut self.unified else {
             return false;
         };
-        self.set_query(chip.typed.unwrap_or_default(), window, cx);
+        if unified.chips.pop().is_none() {
+            return false;
+        }
+        self.set_query(String::new(), window, cx);
         true
     }
 
     pub(super) fn place_address(&self) -> Option<String> {
         let unified = self.unified.as_ref()?;
         match self.selected_action()? {
-            PaletteAction::Place(place) => place::written(&unified.fleet, &place),
+            PaletteAction::Place(place) | PaletteAction::Fill(place) => {
+                place::written(&unified.fleet, &place)
+            }
             _ => None,
         }
     }
 
     pub(super) fn place_hints(&self, enter: &'static str, cx: &App) -> Vec<PaletteHint> {
         let mut hints = Vec::new();
-        if matches!(
-            self.selected_action(),
-            Some(PaletteAction::Place(place)) if place.level() != Some(Level::Pane)
-        ) {
+        if matches!(self.selected_action(), Some(PaletteAction::Place(_))) {
             hints.push(PaletteHint {
                 key: "tab",
                 label: "into",
@@ -582,18 +705,11 @@ impl CommandPaletteView {
             && self
                 .unified
                 .as_ref()
-                .is_some_and(|unified| !unified.chips.is_empty())
+                .is_some_and(|unified| !unified.chips.is_empty() || unified.draft.is_some())
         {
             hints.push(PaletteHint {
                 key: "backspace",
                 label: "back",
-            });
-        }
-        if self.driver == Some(super::DriverOffer::Ready) && self.input.read(cx).value().is_empty()
-        {
-            hints.push(PaletteHint {
-                key: super::DRIVER_PREFIX,
-                label: "driver",
             });
         }
         hints.push(PaletteHint {

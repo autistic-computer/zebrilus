@@ -326,8 +326,6 @@ pub struct AgentController {
     pending_images: BTreeMap<PaneId, Vec<Arc<Image>>>,
     retained_panes: BTreeSet<PaneId>,
     shutting_down: bool,
-    /// Sends go to the driver's host instead of the attached one.
-    driver: bool,
 }
 
 impl Default for AgentController {
@@ -346,16 +344,6 @@ impl AgentController {
             pending_images: BTreeMap::new(),
             retained_panes: BTreeSet::new(),
             shutting_down: false,
-            driver: false,
-        }
-    }
-
-    /// The controller of the Driver Agent's one pane, which may live on any
-    /// host: its requests ride [`MuxClient::send_driver_request`].
-    pub(crate) fn for_driver() -> Self {
-        Self {
-            driver: true,
-            ..Self::new()
         }
     }
 
@@ -499,34 +487,6 @@ impl AgentController {
             thread.begin_prompt(text, images);
         }
         cx.notify();
-        Ok(())
-    }
-
-    /// Type `text` into the pane's running turn, which Claude Code and Codex
-    /// take as steering; it shows once the CLI records it. With no turn
-    /// running it is a prompt.
-    pub(crate) fn steer(
-        &mut self,
-        pane: PaneId,
-        text: &str,
-        cx: &mut Context<Self>,
-    ) -> Result<(), Arc<str>> {
-        let Some(thread) = self.panes.get(&pane) else {
-            return Err(Arc::from("the lens is not open"));
-        };
-        if !thread.connection.has_active_turn() {
-            return self.prompt(pane, text, Vec::new(), cx);
-        }
-        let text = text.trim();
-        if text.is_empty() {
-            return Ok(());
-        }
-        let steer = AgentRequest::Steer {
-            text: text.to_owned(),
-        };
-        if !self.send(pane, steer, cx) {
-            return Err(self.disconnected(pane, cx));
-        }
         Ok(())
     }
 
@@ -685,14 +645,9 @@ impl AgentController {
     }
 
     fn send(&self, pane: PaneId, request: AgentRequest, cx: &App) -> bool {
-        self.mux.as_ref().is_some_and(|mux| {
-            let mux = mux.read(cx);
-            if self.driver {
-                mux.send_driver_request(request)
-            } else {
-                mux.send_agent_request(pane, request)
-            }
-        })
+        self.mux
+            .as_ref()
+            .is_some_and(|mux| mux.read(cx).send_agent_request(pane, request))
     }
 
     /// Apply one batch of stream items, in seq order, to the pane's reducer.
@@ -2946,41 +2901,6 @@ mod tests {
                     images: Vec::new(),
                 },
                 AgentRequest::Unqueue,
-            ]
-        );
-    }
-
-    #[zz_gpui::test]
-    fn a_steer_types_into_the_running_turn_and_prompts_when_idle(cx: &mut TestAppContext) {
-        let (controller, sink) = proxy_controller(cx);
-        let pane = PaneId(7);
-        cx.update(|cx| {
-            controller.update(cx, |controller, cx| {
-                ready_pane(controller, pane);
-                controller
-                    .steer(pane, "first", cx)
-                    .expect("an idle steer is a prompt");
-                controller
-                    .steer(pane, " only the fast ones ", cx)
-                    .expect("a steer goes out mid-turn");
-                assert_eq!(controller.queued_count(pane), 0);
-                assert_eq!(controller.panes[&pane].transcript.entries().len(), 1);
-            });
-        });
-
-        assert_eq!(
-            sink.borrow()
-                .iter()
-                .map(|(_, request)| request.clone())
-                .collect::<Vec<_>>(),
-            vec![
-                AgentRequest::Prompt {
-                    text: "first".to_owned(),
-                    images: Vec::new(),
-                },
-                AgentRequest::Steer {
-                    text: "only the fast ones".to_owned(),
-                },
             ]
         );
     }

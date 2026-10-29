@@ -36,7 +36,6 @@ use super::{
     fixtures::{browser_kind, editor_kind},
     tree::flat_view_sidebar,
 };
-use crate::stories::agent::chat::with_driver;
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -704,7 +703,6 @@ pub(crate) struct Live {
     state: FlatState,
     scroll: ScrollHandle,
     height: Option<f32>,
-    driver: bool,
     shortcuts: bool,
 }
 
@@ -718,20 +716,12 @@ impl Live {
             },
             scroll: ScrollHandle::new(),
             height,
-            driver: false,
             shortcuts: false,
         }
     }
 
     pub(crate) const fn shortcuts(mut self) -> Self {
         self.shortcuts = true;
-        self
-    }
-
-    /// The driver's last message under the list, as the app draws it while
-    /// there is a driver.
-    pub(crate) const fn driver(mut self) -> Self {
-        self.driver = true;
         self
     }
 
@@ -809,17 +799,13 @@ impl Render for Live {
                 None => this.h_full(),
             })
             .child(flat_view_sidebar(
-                if self.driver {
-                    with_driver("flat-live-column", navigation, cx)
-                } else {
-                    div()
-                        .flex()
-                        .flex_col()
-                        .size_full()
-                        .min_h_0()
-                        .child(navigation)
-                        .into_any_element()
-                },
+                div()
+                    .flex()
+                    .flex_col()
+                    .size_full()
+                    .min_h_0()
+                    .child(navigation)
+                    .into_any_element(),
                 cx,
             ))
     }

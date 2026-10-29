@@ -2,14 +2,14 @@
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
 description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 73 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
-status: Built (2026-10-13; agent pane rows updated for the lens 2026-10-23; driver chat roles 2026-10-24)
+status: Built (2026-10-13; agent pane rows updated for the lens 2026-10-23; driver chat roles added 2026-10-24, retired with the Driver Agent 2026-10-28)
 resource: crates/zz-gpui-kit/src/foundation/surface.rs
 tags:
 - ui
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-25T00:00:00Z
+timestamp: 2026-10-28T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -101,7 +101,7 @@ primary, danger, warning, success) decides what its color means, so a danger but
 toolbar is red-tinted glass. A prominent surface (`Surface::prominent`, what a solid `Button` is)
 fills with its tone, primary when neutral; on glass it tints the glass with it. A `tint` surface
 that is not a control (a card or a panel) takes its tone's wash when it has a tone, and the ground's
-wash otherwise: `chat.bubble.mine` is a card drawn in the accent tone.
+wash otherwise: `chat.bubble.mine`, retired on 2026-10-28, was a card drawn in the accent tone.
 
 Rules are surfaces too: a divider role only uses `outline`, and `.rule_on(role, edge)` draws a 1px
 line in the divider color when the role's outline is on.
@@ -156,7 +156,7 @@ that makes `floating` glass makes drop zones and pane chips glass too, though bo
 solid as built in, and a patch for `pane.drop-zone` takes it back. Built-in patches only say how
 the Default theme draws a role. A widget
 with no role draws as its kind. `zz_ui::roles::all()` lists the kit's kinds and groups, then zz's
-73 roles; `members(group)` lists what is directly in a group.
+67 roles; `members(group)` lists what is directly in a group.
 
 A row (`SurfaceRole::row`, set on `menu-item` and `row` and taken by everything in them) rounds
 concentric inside its list: its round corners are the radius less 4px, square when the row inset
@@ -382,30 +382,23 @@ file that still names one loads with the entry dropped. The agent history picker
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `agent.bubble` | card | your messages | `ui/agent.rs:2416` | |
-| `agent.composer` | field.multiline | the composer pill the lens and the Driver chat share, a pill in every theme (a taller draft keeps the one-line corner) | `ui/agent/composer.rs` (`Composer`) | took over `chat.composer` 2026-10-26 |
+| `agent.composer` | field.multiline | the lens's composer pill, a pill in every theme (a taller draft keeps the one-line corner) | `ui/agent/composer.rs` (`Composer`) | took over `chat.composer` 2026-10-26 |
 | `agent.send` | button | send, stop and queue, and the composer's `+` | `ui/agent/controls.rs` (`composer_action_button`, `composer_add_button`) | stop had no fill, send was solid; fixed, stop takes send's fill. Moved from `icon-button` to `button` 2026-10-26: themes that turn icon-button fills off (macOS, Yaru) left `+` and stop bare. Send and stop draw prominent, `+` and queue neutral, all on the composer's ground |
 | `agent.tray` | tab | plan and tasks chips that open the tray over the composer (the queue chip is a quiet button) | `ui/agent/tasks.rs:147` | plan chip used Selected, tasks chip nothing; fixed, the open plan chip shows the tab's selected lift |
 | `agent.attachment` | card | image tiles in bubbles and the composer, their remove × | `ui/agent.rs:2105` | × has no backing |
 | `agent.option` | menu-item | answer tiles in question and permission cards, Show terminal on the card for an approval the lens cannot answer | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
 | `agent.jump` | icon-button | jump-to-bottom button over the transcript | `ui/agent.rs:1025` | |
 | `agent.action` | icon-button | copy on answers, code blocks and diagrams, rewind on prompts | `ui/agent.rs:2464` | washed and lifted under the pointer, and the copy buttons always showed; since 10-15 no fill in any state, shown only while their message, block or figure is pointed at |
-| `inline-panel` | floating | panels raised inside a pane or the driver chat: question and approval cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
+| `inline-panel` | floating | panels raised inside a pane: question and approval cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
 
 The agent's step rows (the trace line, thoughts and tool calls) had `agent.trace`, a `row`, until 2026-10-15. They draw no fill now: their ink is muted and a row you can open brightens it under the pointer, so the role had nothing left to style.
 
-### Driver chat
+### Driver chat (retired)
 
-The chat with the Driver Agent, under the sidebar's list and in the command palette's Driver mode
-([durable driver chat](/designs/durable-driver-chat.md)). It also paints through roles it shares:
-`agent.send` for send and queue, `inline-panel` and `agent.option` for an approval waiting on you,
-`palette` for Driver mode, `chrome.button` for the title bar's chat button, and `pane-stack` for the
-corners of the sender tiles.
-
-| Role | Group | Covers | Where | Drift found |
-|---|---|---|---|---|
-| `chat.bubble` | card | the driver's replies and agents' messages, plain rounded boxes since 2026-10-26 | `ui/agent/chat.rs` (`ChatBubble`) | new 2026-10-24 |
-| `chat.bubble.mine` | chat.bubble | your messages, in the accent's wash | `ui/agent/chat.rs` (`ChatBubble::mine`) | new 2026-10-24 |
-| `rule.chat` | rule | the line over the driver's last message in the sidebar | `ui/agent/chat.rs` (`chat_latest`) | drew as `rule.list` until 2026-10-24, so styling list dividers restyled it |
+The Driver Agent's chat, under the sidebar's list, in the command palette's Driver mode and in a
+phone drawer, went with the Driver Agent on 2026-10-28. Its roles `chat.bubble`,
+`chat.bubble.mine`, `rule.chat`, `phone.driver-card` and `drawer.driver` are listed in
+`roles::RETIRED`, and a theme file that still names one loads with the entry dropped.
 
 ### Reading content (markdown in agent replies)
 
@@ -438,8 +431,7 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `phone.bar` | bar | 44px nav bars (settings, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
-| `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, Message the driver and the Settings button beside it, the pill the keys sit in | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
-| `phone.driver-card` | phone.pill | the driver's last message on the Hosts page | `ui/agent/chat.rs` (`phone_chat_card`) | borrowed `phone.pill` until 10-27, so styling the pills restyled it |
+| `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, the Hosts page's Settings button, the pill the keys sit in | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
 | `phone.button` | icon-button | back, close, gear | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
 | `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `ui/compact/key_row.rs:50` | |
 | `phone.card` | tile | the overview's bento tiles: hosts on the Hosts page, windows on a host's page | `ui/compact/bento.rs` (`bento_tile`) | was one card per pane in a row per window until the 2026-10-26 drill-in |
@@ -484,7 +476,6 @@ they fill with `theme.scrim`.
 | `rule.split` | split divider and the accent half on the active pane's side | `ui/pane.rs:636` |
 | `rule.list` | menu separators, setting row lines, prompt card lines | `ui/settings.rs:1357`, `kit/menu/popup_menu.rs:922` |
 | `rule.tree` | tree indent guides | `ui/navigation/tree.rs:157` |
-| `rule.chat` | the line over the driver's last message in the sidebar | `ui/agent/chat.rs` (`chat_latest`) |
 
 ### Not roles
 

@@ -7,7 +7,7 @@
 //! and after the last `/` it searches everything under that folder. Tab opens
 //! the level under the highlighted row, and `:`, `.` and `/` typed by hand do
 //! the same. One [`TargetPicker`] serves the command palette's `@` mode,
-//! `prefix F`, and the Driver chat's `@` mentions, which go out with their
+//! `prefix F`, and the lens composer's `@` mentions, which go out with their
 //! host written.
 
 use std::{ops::Range, rc::Rc, sync::Arc};

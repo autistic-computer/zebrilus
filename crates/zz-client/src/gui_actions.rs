@@ -14,6 +14,7 @@ pub enum GuiValues {
 pub struct GuiAction {
     pub id: &'static str,
     pub title: &'static str,
+    pub verb: &'static str,
     pub aliases: &'static [&'static str],
     pub values: GuiValues,
     pub config_key: Option<&'static str>,
@@ -41,6 +42,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
     GuiAction {
         id: TITLEBAR_MODE,
         title: "Titlebar mode",
+        verb: "titlebar mode",
         aliases: &["toggle sidebar", "hide sidebar", "show sidebar"],
         values: GuiValues::Fixed(&[
             GuiChoice {
@@ -58,6 +60,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
     GuiAction {
         id: PANE_GAPS,
         title: "Pane gaps",
+        verb: "pane gaps",
         aliases: &["gaps", "frames"],
         values: GuiValues::Fixed(ON_OFF),
         config_key: Some(PANE_GAPS),
@@ -66,6 +69,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
     GuiAction {
         id: WINDOW_BLUR,
         title: "Window blur",
+        verb: "window blur",
         aliases: &["blur", "translucent"],
         values: GuiValues::Fixed(ON_OFF),
         config_key: Some(WINDOW_BLUR),
@@ -74,6 +78,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
     GuiAction {
         id: THEME,
         title: "Theme",
+        verb: "select theme",
         aliases: &["color theme", "look"],
         values: GuiValues::Listed,
         config_key: Some(THEME),
@@ -82,6 +87,7 @@ pub const GUI_ACTIONS: [GuiAction; 5] = [
     GuiAction {
         id: SIDEBAR_LAYOUT,
         title: "Sidebar layout",
+        verb: "sidebar layout",
         aliases: &["list", "tree", "flat"],
         values: GuiValues::Fixed(&[
             GuiChoice {

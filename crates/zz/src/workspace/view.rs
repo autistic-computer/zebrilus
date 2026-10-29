@@ -76,8 +76,8 @@ use crate::{
         confirm::ConfirmView,
         menu::MenuView,
         palette::{
-            CommandPaletteEvent, CommandPaletteView, DriverOffer, GuiEvent, PaletteMode,
-            palette_backend, palette_backend_with,
+            CommandPaletteEvent, CommandPaletteView, GuiEvent, PaletteMode, palette_backend,
+            palette_backend_with,
         },
     },
     config::{self, frame_content_corner_radius},
@@ -681,8 +681,6 @@ impl AppRevision {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OverlayKind {
     CommandPalette,
-    #[cfg(feature = "agent-pane")]
-    DriverPalette,
     ChooseBuffer,
     ChooseTree,
     DisplayPanes,
@@ -735,8 +733,6 @@ pub struct AppView {
     choose_buffer: Option<Entity<ChooseBufferView>>,
     display_panes: Option<Entity<DisplayPanesView>>,
     command_palette: Option<Entity<CommandPaletteView>>,
-    #[cfg(feature = "agent-pane")]
-    driver_palette: Option<Entity<crate::agent::driver_palette::DriverPalette>>,
     local_palette_prompt_revision: Option<u64>,
     local_palette_chooser_revision: Option<u64>,
     pending_palette_chooser_close: Option<u64>,
@@ -1103,24 +1099,6 @@ impl AppView {
         .detach();
         cx.subscribe(&sidebar, |_, _, _: &SidebarModeChanged, cx| cx.notify())
             .detach();
-        #[cfg(feature = "agent-pane")]
-        cx.subscribe_in(
-            &sidebar,
-            window,
-            |view, _, _: &crate::workspace::sidebar::SidebarOpenDriver, window, cx| {
-                view.open_driver_palette(window, cx);
-            },
-        )
-        .detach();
-        #[cfg(feature = "agent-pane")]
-        cx.subscribe_in(
-            &sidebar,
-            window,
-            |view, _, _: &crate::workspace::sidebar::SidebarShowDriverTerminal, window, cx| {
-                view.show_driver_terminal(window, cx);
-            },
-        )
-        .detach();
         cx.subscribe(&sidebar, |view, _, _: &SidebarRouteChanged, cx| {
             view.input_router.event(InputEvent::WindowDeactivated);
             cx.notify();
@@ -1158,8 +1136,6 @@ impl AppView {
             choose_buffer: None,
             display_panes: None,
             command_palette: None,
-            #[cfg(feature = "agent-pane")]
-            driver_palette: None,
             local_palette_prompt_revision: None,
             local_palette_chooser_revision: None,
             pending_palette_chooser_close: None,
@@ -1442,11 +1418,6 @@ impl AppView {
                 self.open_command_palette(None, window, cx);
                 return;
             }
-            #[cfg(feature = "agent-pane")]
-            ChromeAction::OpenDriverChat => {
-                self.open_driver_palette(window, cx);
-                return;
-            }
             ChromeAction::SelectWindow(position) => {
                 if self
                     .sidebar
@@ -1474,7 +1445,6 @@ impl AppView {
             || self.command_palette.as_ref().is_some_and(|palette| {
                 palette.read(cx).is_local() || palette.read(cx).is_window_chooser()
             })
-            || self.driver_palette_open()
             || self.sidebar.read(cx).route() == WorkspaceRoute::Settings
     }
 
@@ -1611,10 +1581,6 @@ impl AppView {
         if self.menu.is_some() || self.confirm.is_some() {
             return;
         }
-        #[cfg(feature = "agent-pane")]
-        {
-            self.driver_palette = None;
-        }
         let mux = self.mux.clone();
         mux.update(cx, |mux, _| mux.send_prefix_cancel());
         self.local_palette_prompt_revision = Some(mux.read(cx).command_prompt_revision());
@@ -1630,13 +1596,8 @@ impl AppView {
             });
         }
         let offers = crate::command::gui::offers(&self.sidebar, cx);
-        #[cfg(feature = "agent-pane")]
-        let driver = Some(self.driver_offer(cx));
-        #[cfg(not(feature = "agent-pane"))]
-        let driver = None;
-        let backend = palette_backend_with(mux, offers, driver);
+        let backend = palette_backend_with(mux, offers);
         let palette = cx.new(|cx| build(backend, window, cx));
-        palette.update(cx, |palette, cx| palette.offer_driver(driver, cx));
         self.observe_command_palette(&palette, window, cx);
         palette.read(cx).focus(cx).focus(window, cx);
         self.command_palette = Some(palette);
@@ -1661,136 +1622,6 @@ impl AppView {
                 crate::command::gui::apply(action, value, &self.sidebar, cx);
             }
         }
-    }
-
-    #[cfg(feature = "agent-pane")]
-    fn driver_offer(&self, cx: &App) -> DriverOffer {
-        let ready = self
-            .sidebar
-            .read(cx)
-            .driver_chat()
-            .read(cx)
-            .driver()
-            .is_some();
-        let on = config::resolved_config(cx).driver_agent.value;
-        match (ready, on) {
-            (true, _) => DriverOffer::Ready,
-            (false, true) => DriverOffer::Asleep,
-            (false, false) => DriverOffer::Off,
-        }
-    }
-
-    #[cfg(feature = "agent-pane")]
-    fn ask_driver(&mut self, text: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let chat = self.sidebar.read(cx).driver_chat();
-        if chat.read(cx).driver().is_some() {
-            self.open_driver_palette(window, cx);
-            if let Some(palette) = &self.driver_palette {
-                palette.update(cx, |palette, cx| palette.prefill(text, window, cx));
-            }
-            return;
-        }
-        self.command_palette = None;
-        self.focused_overlay = None;
-        self.synchronized_signature = None;
-        if config::resolved_config(cx).driver_agent.value {
-            chat.update(cx, crate::agent::driver::DriverChat::wake);
-            self.focus_active_pane(window, cx);
-        } else {
-            self.sidebar
-                .update(cx, |sidebar, cx| sidebar.open_settings(window, cx));
-            if let Some(settings) = self.sidebar.read(cx).settings_view() {
-                settings.update(cx, |settings, cx| {
-                    settings.set_section(zz_ui::settings::SettingsSection::Agents, window, cx);
-                });
-                settings.read(cx).focus().focus(window, cx);
-            }
-        }
-        cx.notify();
-    }
-
-    #[cfg(not(feature = "agent-pane"))]
-    fn ask_driver(&mut self, _: &str, _: &mut Window, _: &mut Context<Self>) {}
-
-    /// Open the palette in Driver mode: the driver chat in the palette's surface.
-    /// Does nothing while there is no driver or another overlay holds input.
-    #[cfg(feature = "agent-pane")]
-    pub(crate) fn open_driver_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        use crate::agent::driver_palette::{DriverPalette, DriverPaletteEvent};
-        let chat = self.sidebar.read(cx).driver_chat();
-        if chat.read(cx).driver().is_none() || self.menu.is_some() || self.confirm.is_some() {
-            return;
-        }
-        self.command_palette = None;
-        let palette = cx.new(|cx| DriverPalette::new(chat, window, cx));
-        cx.subscribe_in(&palette, window, |view, palette, event, window, cx| {
-            if view.driver_palette.as_ref() != Some(palette) {
-                return;
-            }
-            view.driver_palette = None;
-            view.focused_overlay = None;
-            view.synchronized_signature = None;
-            match event {
-                DriverPaletteEvent::Close => view.focus_active_pane(window, cx),
-                DriverPaletteEvent::LeaveMode => view.open_command_palette(None, window, cx),
-                DriverPaletteEvent::ShowTerminal => view.show_driver_terminal(window, cx),
-                DriverPaletteEvent::Open(address) => {
-                    crate::command::palette::open_link(&view.mux, address, cx);
-                    view.focus_active_pane(window, cx);
-                }
-            }
-            cx.notify();
-        })
-        .detach();
-        palette.read(cx).focus(cx).focus(window, cx);
-        self.driver_palette = Some(palette);
-        self.focused_overlay = Some(OverlayKind::DriverPalette);
-        self.synchronized_signature = None;
-        cx.notify();
-    }
-
-    #[cfg(feature = "agent-pane")]
-    pub(crate) fn show_driver_terminal(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some((host, pane)) = self
-            .sidebar
-            .read(cx)
-            .driver_chat()
-            .read(cx)
-            .driver()
-            .map(|driver| (driver.host, driver.pane))
-        else {
-            return;
-        };
-        let Some(activation) = crate::mux::nav::pane_activation(self.mux.read(cx), host, pane)
-        else {
-            return;
-        };
-        self.sidebar
-            .update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
-        crate::mux::nav::activate_nav(&self.mux, activation, cx);
-        self.focus_active_pane(window, cx);
-    }
-
-    #[cfg(feature = "agent-pane")]
-    const fn driver_palette_open(&self) -> bool {
-        self.driver_palette.is_some()
-    }
-
-    #[cfg(not(feature = "agent-pane"))]
-    const fn driver_palette_open(&self) -> bool {
-        false
-    }
-
-    #[cfg(feature = "agent-pane")]
-    fn driver_palette_focus(&self, cx: &App) -> Option<(OverlayKind, FocusHandle)> {
-        self.driver_palette
-            .as_ref()
-            .map(|palette| (OverlayKind::DriverPalette, palette.read(cx).focus(cx)))
-    }
-
-    #[cfg(not(feature = "agent-pane"))]
-    fn driver_palette_focus(&self, _: &App) -> Option<(OverlayKind, FocusHandle)> {
-        None
     }
 
     fn observe_command_palette(
@@ -1818,7 +1649,6 @@ impl AppView {
                     view.synchronized_signature = None;
                     cx.notify();
                 }
-                CommandPaletteEvent::Driver { text } => view.ask_driver(text, window, cx),
                 CommandPaletteEvent::Gui(_) => {}
             }
         })
@@ -2063,8 +1893,6 @@ impl AppView {
             Some((OverlayKind::Confirm, confirm.read(cx).focus().clone()))
         } else if let Some(palette) = &self.command_palette {
             Some((OverlayKind::CommandPalette, palette.read(cx).focus(cx)))
-        } else if let Some(focus) = self.driver_palette_focus(cx) {
-            Some(focus)
         } else if let Some(chooser) = &self.choose_buffer {
             Some((OverlayKind::ChooseBuffer, chooser.read(cx).focus().clone()))
         } else if let Some(chooser) = &self.choose_tree {
@@ -2622,7 +2450,6 @@ impl AppView {
         self.audit_pane_focus("pass", window, cx);
         let floating_input = self.menu.is_some()
             || self.confirm.is_some()
-            || self.driver_palette_open()
             || self
                 .command_palette
                 .as_ref()
@@ -4702,10 +4529,6 @@ impl Render for AppView {
                     .cached(StyleRefinement::default().absolute().inset_0())
                     .into_any_element(),
             );
-        }
-        #[cfg(feature = "agent-pane")]
-        if let Some(palette) = &self.driver_palette {
-            overlays.push(AnyView::from(palette.clone()).into_any_element());
         }
         if let Some(menu) = self.menu_overlay(canvas_origin, window, cx) {
             overlays.push(menu);
@@ -9202,7 +9025,7 @@ mod tests {
         assert!(terminal_is_focused(&workspace, cx));
         input.borrow_mut().clear();
         publish_to_mux(&mux, open_path_picker_event(1), cx);
-        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("&~/"));
+        assert_eq!(palette_input(&workspace, cx).as_deref(), Some("~/"));
         assert!(
             input
                 .borrow()
@@ -9276,33 +9099,6 @@ mod tests {
             }]
         );
         assert!(workspace.read_with(cx, |workspace, _| workspace.command_palette.is_none()));
-    }
-
-    #[zz_gpui::test]
-    fn a_file_link_in_the_driver_chat_pastes_into_the_active_pane(cx: &mut TestAppContext) {
-        let (_, mux, input, _, cx) = path_picker_workspace(cx);
-        mux.update(cx, |mux, cx| {
-            mux.attach_snapshot_for_test(
-                SessionId(0),
-                two_pane_snapshot_of(PaneId(0), PaneKindSnapshot::Terminal),
-                cx,
-            );
-        });
-        cx.run_until_parked();
-        input.borrow_mut().clear();
-        let open = |address: &str, cx: &mut zz_gpui::VisualTestContext| {
-            cx.update(|_, cx| crate::command::palette::open_link(&mux, address, cx))
-        };
-        assert!(open(r"@~/my\ notes.txt:3", cx));
-        assert_eq!(
-            input.borrow().as_slice(),
-            &[InputMessage::TerminalView {
-                pane: PaneId(0),
-                action: zz_terminal::TerminalViewAction::Paste(r"~/my\ notes.txt ".to_owned()),
-            }]
-        );
-        assert!(!open("@%99", cx));
-        assert!(!open("plain words", cx));
     }
 
     #[test]

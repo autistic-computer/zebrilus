@@ -73,7 +73,7 @@ pub(super) struct AgentLens {
     last_sequence: u64,
     last_reclaim_id: u64,
     attachments: Vec<AgentImage>,
-    /// The `@` picker over the composer, the Driver chat's.
+    /// The `@` picker over the composer.
     mention: Entity<TargetPicker>,
     draft_error: Option<String>,
     permission_request_id: Option<u64>,

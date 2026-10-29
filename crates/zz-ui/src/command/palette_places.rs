@@ -3,10 +3,10 @@ use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     completion::PaneKindAvailability,
     place::{
-        self, ActionKind, Candidate, Fleet, FleetHost, FleetPane, FleetSession, FleetWindow, Level,
-        Place, Query,
+        self, Candidate, Fleet, FleetHost, FleetPane, FleetSession, FleetWindow, Level, Part, Place,
     },
     recents::{RecentKey, RecentKind, Recents},
+    verbs::{self, Filled, Slot, Verb, VerbKind, VerbMatch},
 };
 use zz_gpui::SharedString;
 
@@ -20,9 +20,10 @@ use super::{
 use crate::IconName;
 
 pub const PLACE_ROWS: usize = 50;
+const VERB_ROWS: usize = 30;
 const RECENT_PLACES: usize = 5;
 const RECENT_OTHERS: usize = 3;
-pub const PLACE_PLACEHOLDER_KEYS: &str = "^ $ @ % : > & ?";
+pub const PLACE_PLACEHOLDER: &str = "Type a place or an action";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Chip {
@@ -30,7 +31,29 @@ pub(crate) struct Chip {
     pub place: Place,
     pub label: String,
     pub auto: bool,
-    pub typed: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Draft {
+    pub verb: Verb,
+    pub filled: Vec<(Filled, String)>,
+}
+
+impl Draft {
+    pub(crate) const fn new(verb: Verb) -> Self {
+        Self {
+            verb,
+            filled: Vec::new(),
+        }
+    }
+
+    pub(crate) fn next(&self) -> Option<&Slot> {
+        self.verb.slots.get(self.filled.len())
+    }
+
+    pub(crate) fn values(&self) -> Vec<Filled> {
+        self.filled.iter().map(|(value, _)| value.clone()).collect()
+    }
 }
 
 #[must_use]
@@ -100,35 +123,24 @@ pub(crate) fn place_label(fleet: &Fleet, place: &Place) -> Option<String> {
     }
 }
 
-pub(crate) fn chip_for(fleet: &Fleet, place: Place, typed: Option<String>) -> Option<Chip> {
+pub(crate) fn chip_for(fleet: &Fleet, place: Place) -> Option<Chip> {
     Some(Chip {
         level: place.level()?,
         label: place_label(fleet, &place)?,
         place,
         auto: false,
-        typed,
     })
-}
-
-const fn sigil_hint(level: Level) -> &'static str {
-    match level {
-        Level::Host => "^",
-        Level::Session => "$",
-        Level::Window => "@",
-        Level::Pane => "%",
-    }
 }
 
 fn section(
     rows: &mut Vec<PaletteEntry>,
     label: impl Into<SharedString>,
-    hint: &'static str,
     entries: Vec<PaletteEntry>,
 ) {
     if entries.is_empty() {
         return;
     }
-    rows.push(PaletteEntry::header(label, hint));
+    rows.push(PaletteEntry::header(label, ""));
     rows.extend(entries);
 }
 
@@ -175,7 +187,7 @@ fn crumbs(fleet: &Fleet, place: &Place, level: Level, parent: &Place) -> String 
     if parts.is_empty() {
         String::new()
     } else {
-        format!("{} / ", parts.join(" / "))
+        format!("{} › ", parts.join(" › "))
     }
 }
 
@@ -206,7 +218,7 @@ fn running(tree: &PaletteTree, place: &Place) -> bool {
         .any(|pane| pane.running)
 }
 
-fn is_current(current: &Place, place: &Place, level: Level) -> bool {
+pub(crate) fn is_current(current: &Place, place: &Place, level: Level) -> bool {
     match level {
         Level::Host => place.host == current.host,
         Level::Session => place.host == current.host && place.session == current.session,
@@ -215,15 +227,14 @@ fn is_current(current: &Place, place: &Place, level: Level) -> bool {
     }
 }
 
-fn place_entry(
+fn place_row(
     fleet: &Fleet,
     tree: &PaletteTree,
     candidate: &Candidate,
     parent: &Place,
-) -> PaletteEntry {
+) -> PaletteRow {
     let place = candidate.place;
-    let crumb = crumbs(fleet, &place, candidate.level, parent);
-    let prefix = format!("{crumb}{}", candidate.level.sigil());
+    let prefix = crumbs(fleet, &place, candidate.level, parent);
     let shift = prefix.len();
     let (detail, icon, status) = match candidate.level {
         Level::Host => {
@@ -253,28 +264,37 @@ fn place_entry(
             |pane| (pane.detail.to_string(), pane.icon.clone(), None),
         ),
     };
+    PaletteRow {
+        label: format!("{prefix}{}", candidate.label).into(),
+        matches: candidate
+            .matches
+            .iter()
+            .map(|range| range.start + shift..range.end + shift)
+            .collect(),
+        muted_prefix: shift,
+        detail: detail.into(),
+        right: if is_current(&fleet.current(), &place, candidate.level) {
+            "current"
+        } else {
+            ""
+        }
+        .into(),
+        status,
+        running: candidate.level != Level::Host && running(tree, &place),
+        icon: Some(icon),
+        ..Default::default()
+    }
+}
+
+fn place_entry(
+    fleet: &Fleet,
+    tree: &PaletteTree,
+    candidate: &Candidate,
+    parent: &Place,
+) -> PaletteEntry {
     PaletteEntry::row(
-        PaletteRow {
-            label: format!("{prefix}{}", candidate.label).into(),
-            matches: candidate
-                .matches
-                .iter()
-                .map(|range| range.start + shift..range.end + shift)
-                .collect(),
-            muted_prefix: shift,
-            detail: detail.into(),
-            right: if is_current(&fleet.current(), &place, candidate.level) {
-                "current"
-            } else {
-                ""
-            }
-            .into(),
-            status,
-            running: candidate.level != Level::Host && running(tree, &place),
-            icon: Some(icon),
-            ..Default::default()
-        },
-        PaletteAction::Place(place),
+        place_row(fleet, tree, candidate, parent),
+        PaletteAction::Place(candidate.place),
     )
 }
 
@@ -286,6 +306,47 @@ fn candidate_at(fleet: &Fleet, place: Place) -> Option<Candidate> {
         matches: Vec::new(),
         score: 0,
     })
+}
+
+const fn verb_icon(verb: &Verb) -> IconName {
+    match verb.kind {
+        VerbKind::Tmux | VerbKind::Alias => IconName::Terminal,
+        VerbKind::Gui => IconName::Settings,
+        VerbKind::Zz => IconName::File,
+    }
+}
+
+fn verb_entry(
+    verbs: &[Verb],
+    found: &VerbMatch,
+    shortcut: &dyn Fn(&str) -> Option<SharedString>,
+) -> PaletteEntry {
+    let verb = &verbs[found.index];
+    let plain = matches!(&verb.run, verbs::Run::Tmux { args, .. } if args.is_empty());
+    PaletteEntry::row(
+        PaletteRow {
+            label: verb.name.clone().into(),
+            matches: found.matches.clone(),
+            detail: verb.description.clone().into(),
+            right: verb.spelled().into(),
+            icon: Some(verb_icon(verb)),
+            shortcut: verb.command().filter(|_| plain).and_then(shortcut),
+            ..Default::default()
+        },
+        PaletteAction::Verb(found.index),
+    )
+}
+
+pub(crate) const fn slot_noun(slot: &Slot) -> &'static str {
+    match slot {
+        Slot::Target(Level::Host) => "Pick a host",
+        Slot::Target(Level::Session) => "Pick a session",
+        Slot::Target(Level::Window) => "Pick a window",
+        Slot::Target(Level::Pane) => "Pick a pane",
+        Slot::Text(_) => "",
+        Slot::Value(_) => "Pick a value",
+        Slot::Path => "A folder or file",
+    }
 }
 
 impl UnifiedPalette {
@@ -300,7 +361,8 @@ impl UnifiedPalette {
     }
 
     pub fn place_pills(&self) -> Vec<PalettePill> {
-        self.chips
+        let mut pills = self
+            .chips
             .iter()
             .map(|chip| match chip.level {
                 Level::Host => PalettePill::Host {
@@ -312,18 +374,33 @@ impl UnifiedPalette {
                         .find(|host| Some(host.id.0) == chip.place.host)
                         .map_or(PaletteStatus::Offline, |host| host.status),
                 },
-                level => PalettePill::Mode {
-                    prefix: level.sigil().to_string().into(),
-                    label: chip.label.clone().into(),
-                },
+                _ => PalettePill::Place(chip.label.clone().into()),
             })
-            .collect()
+            .collect::<Vec<_>>();
+        if let Some(draft) = &self.draft {
+            pills.push(PalettePill::Verb(draft.verb.name.clone().into()));
+            pills.extend(
+                draft
+                    .filled
+                    .iter()
+                    .filter(|(_, label)| !label.is_empty())
+                    .map(|(_, label)| PalettePill::Place(label.clone().into())),
+            );
+        }
+        pills
     }
 
     pub fn place_placeholder(&self) -> String {
-        match self.chips.last() {
-            Some(chip) => format!("Search {}, or type {PLACE_PLACEHOLDER_KEYS}", chip.label),
-            None => format!("Search everything, or type {PLACE_PLACEHOLDER_KEYS}"),
+        match self.draft.as_ref().and_then(Draft::next) {
+            Some(Slot::Text(label)) => {
+                let mut label = label.clone();
+                if let Some(first) = label.get_mut(..1) {
+                    first.make_ascii_uppercase();
+                }
+                label
+            }
+            Some(slot) => slot_noun(slot).to_owned(),
+            None => PLACE_PLACEHOLDER.to_owned(),
         }
     }
 
@@ -346,85 +423,127 @@ impl UnifiedPalette {
         };
         let scope = self.scope();
         let line = place::parse(text);
-        let mut rows = Vec::new();
-        if let Some(action) = &line.action {
-            if action.kind == ActionKind::Command {
-                rows = command_entries(action.rest.trim(), availability, shortcut);
-            }
-            self.rows = rows;
+        if let Some(command) = &line.command {
+            self.rows = command_entries(command.trim(), availability, shortcut);
             return;
         }
-        if let Some((last, parents)) = line.parts.split_last() {
-            let resolved = place::resolve(&fleet, &scope, parents, &boost);
-            if resolved.failed.is_none() {
-                let parent = resolved.place.above(last.level);
-                let entries = place::candidates(&fleet, &resolved.place, last, &boost)
-                    .iter()
-                    .take(PLACE_ROWS)
-                    .map(|candidate| place_entry(&fleet, &self.tree, candidate, &parent))
-                    .collect();
-                section(
-                    &mut rows,
-                    level_header(&fleet, last.level, &parent),
-                    sigil_hint(last.level),
-                    entries,
-                );
-            }
-            self.rows = rows;
+        if let Some(draft) = &self.draft {
+            self.rows = self.slot_rows(&fleet, draft, text.trim(), &boost);
             return;
         }
-        if let Some(search) = &line.search {
-            let entries = place::search(&fleet, &scope, search, &boost)
+        let pane = scope.level() == Some(Level::Pane);
+        let Some(search) = line.search.or_else(|| pane.then(String::new)) else {
+            if self.chips.iter().all(|chip| chip.auto) {
+                self.rows = self.empty_rows(&fleet, history, recents, now, availability, &boost);
+                return;
+            }
+            let level = scope.level().and_then(Level::deeper).unwrap_or(Level::Host);
+            let entries = place::children(&fleet, &scope, &boost)
                 .iter()
                 .take(PLACE_ROWS)
                 .map(|candidate| place_entry(&fleet, &self.tree, candidate, &scope))
                 .collect();
-            section(&mut rows, "Places", "", entries);
-            section(
-                &mut rows,
-                "Commands",
-                ":",
-                command_entries(search, availability, shortcut),
-            );
-            if !self.chips.iter().any(|chip| chip.level == Level::Host) {
-                let part = place::Part {
-                    level: Level::Host,
-                    query: Query::Text(search.clone()),
-                    range: 0..0,
-                };
-                let hosts = place::candidates(&fleet, &Place::default(), &part, &boost)
-                    .iter()
-                    .map(|candidate| place_entry(&fleet, &self.tree, candidate, &Place::default()))
-                    .collect();
-                section(&mut rows, "Hosts", "^", hosts);
-            }
-            if search.trim_end().ends_with('?') {
-                let mut asked = super::ask_level::ask_entries(self.driver, search);
-                asked.append(&mut rows);
-                rows = asked;
-            } else if rows.is_empty() {
-                rows = super::ask_level::ask_entries(self.driver, search);
-            }
+            let mut rows = Vec::new();
+            section(&mut rows, level_header(&fleet, level, &scope), entries);
             self.rows = rows;
             return;
-        }
-        if self.chips.iter().all(|chip| chip.auto) {
-            self.rows = self.empty_rows(&fleet, history, recents, now, availability);
-            return;
-        }
-        let level = scope.level().and_then(Level::deeper).unwrap_or(Level::Host);
-        let entries = place::children(&fleet, &scope, &boost)
+        };
+        let drilled = scope.level().is_some_and(|level| level > Level::Host);
+        let verbs = verbs::match_verbs(&self.verbs, &search, |verb| {
+            !drilled || verb.target().is_some()
+        });
+        let places = place::search(&fleet, &scope, &search, &boost);
+        let verb_rows = verbs
+            .iter()
+            .take(VERB_ROWS)
+            .map(|found| verb_entry(&self.verbs, found, shortcut))
+            .collect::<Vec<_>>();
+        let place_rows = places
             .iter()
             .take(PLACE_ROWS)
             .map(|candidate| place_entry(&fleet, &self.tree, candidate, &scope))
-            .collect();
-        section(
-            &mut rows,
-            level_header(&fleet, level, &scope),
-            sigil_hint(level),
-            entries,
-        );
+            .collect::<Vec<_>>();
+        let actions = if drilled {
+            place_label(&fleet, &scope).map_or_else(
+                || "Actions".to_owned(),
+                |label| format!("Actions on {label}"),
+            )
+        } else {
+            "Actions".to_owned()
+        };
+        let verbs_first = drilled
+            || match (verbs.first(), places.first()) {
+                (Some(verb), Some(place)) => verb.score < place.score,
+                (Some(_), None) => true,
+                _ => false,
+            };
+        let mut rows = Vec::new();
+        if verbs_first {
+            section(&mut rows, actions, verb_rows);
+            section(&mut rows, "Places", place_rows);
+        } else {
+            section(&mut rows, "Places", place_rows);
+            section(&mut rows, actions, verb_rows);
+        }
+        if !self.chips.iter().any(|chip| chip.level == Level::Host) {
+            let part = Part {
+                level: Level::Host,
+                query: search,
+            };
+            let hosts = place::candidates(&fleet, &Place::default(), &part, &boost)
+                .iter()
+                .map(|candidate| place_entry(&fleet, &self.tree, candidate, &Place::default()))
+                .collect();
+            section(&mut rows, "Hosts", hosts);
+        }
         self.rows = rows;
+    }
+
+    fn slot_rows(
+        &self,
+        fleet: &Fleet,
+        draft: &Draft,
+        query: &str,
+        boost: &dyn Fn(&Place) -> i64,
+    ) -> Vec<PaletteEntry> {
+        match draft.next() {
+            Some(Slot::Target(level)) => {
+                let host = Place::host(self.scope().host.unwrap_or(fleet.here));
+                let part = Part {
+                    level: *level,
+                    query: query.to_owned(),
+                };
+                let current = fleet.current();
+                let mut found = place::candidates(fleet, &host, &part, boost);
+                if query.is_empty() {
+                    found.sort_by_key(|candidate| !is_current(&current, &candidate.place, *level));
+                }
+                let entries = found
+                    .iter()
+                    .take(PLACE_ROWS)
+                    .map(|candidate| {
+                        PaletteEntry::row(
+                            place_row(fleet, &self.tree, candidate, &host),
+                            PaletteAction::Fill(candidate.place),
+                        )
+                    })
+                    .collect();
+                let mut rows = Vec::new();
+                section(&mut rows, level_header(fleet, *level, &host), entries);
+                rows
+            }
+            Some(Slot::Text(label)) if !query.is_empty() => vec![PaletteEntry::row(
+                PaletteRow {
+                    label: query.to_owned().into(),
+                    detail: label.clone().into(),
+                    right: draft.verb.name.clone().into(),
+                    icon: Some(IconName::Pencil),
+                    ..Default::default()
+                },
+                PaletteAction::Submit,
+            )],
+            _ => Vec::new(),
+        }
     }
 
     fn empty_rows(
@@ -434,6 +553,7 @@ impl UnifiedPalette {
         recents: &Recents,
         now: u64,
         availability: PaneKindAvailability,
+        boost: &dyn Fn(&Place) -> i64,
     ) -> Vec<PaletteEntry> {
         let mut rows = Vec::new();
         let root = Place::default();
@@ -465,7 +585,7 @@ impl UnifiedPalette {
                 Some(entry)
             })
             .collect();
-        section(&mut rows, "Needs you", "", needs);
+        section(&mut rows, "Needs you", needs);
         let current = fleet.current();
         let recent = recents
             .top(RecentKind::Place, RECENT_PLACES * 4, now)
@@ -479,42 +599,46 @@ impl UnifiedPalette {
                 Some(place_entry(fleet, &self.tree, &candidate, &root))
             })
             .collect();
-        section(&mut rows, "Recent places", "@", recent);
+        section(&mut rows, "Recent places", recent);
         let mut seen = BTreeSet::new();
-        let commands = recents
+        let recent_actions = recents
             .top(RecentKind::Command, RECENT_PLACES * 4, now)
             .into_iter()
             .filter_map(|recent| match &recent.key {
-                RecentKey::Command(command) => Some(command.clone()),
+                RecentKey::Command(command) => Some((command.clone(), recent.label.clone())),
                 _ => None,
             })
-            .chain(history.iter().cloned())
-            .filter(|value| {
-                let name = value.split_whitespace().next().unwrap_or(value);
-                availability.allows_command(name) && seen.insert(name.to_owned())
+            .chain(
+                history
+                    .iter()
+                    .map(|command| (command.clone(), String::new())),
+            )
+            .filter(|(command, _)| {
+                let name = command.split_whitespace().next().unwrap_or(command);
+                availability.allows_command(name) && seen.insert(command.clone())
             })
             .take(RECENT_OTHERS)
-            .map(|value| {
-                let name = value.split_whitespace().next().unwrap_or(&value).to_owned();
-                let spec = zz_protocol::catalog_command_spec(&name);
+            .map(|(command, label)| {
+                let name = command
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or(&command)
+                    .to_owned();
                 PaletteEntry::row(
                     PaletteRow {
-                        label: name.into(),
+                        label: if label.is_empty() { name } else { label }.into(),
                         icon: Some(IconName::Terminal),
-                        detail: spec.map_or("", |spec| spec.description).into(),
+                        right: command.clone().into(),
                         ..Default::default()
                     },
-                    spec.map_or_else(
-                        || PaletteAction::History(value.clone()),
-                        PaletteAction::Command,
-                    ),
+                    PaletteAction::History(command),
                 )
             })
             .collect();
-        section(&mut rows, "Recent commands", ":", commands);
-        for (kind, label, hint, icon) in [
-            (RecentKind::Gui, "Recent actions", ">", IconName::Settings),
-            (RecentKind::File, "Recent files", "&", IconName::File),
+        section(&mut rows, "Recent actions", recent_actions);
+        for (kind, label, icon) in [
+            (RecentKind::Gui, "Recent settings", IconName::Settings),
+            (RecentKind::File, "Recent files", IconName::File),
         ] {
             let entries = recents
                 .top(kind, RECENT_OTHERS, now)
@@ -530,15 +654,37 @@ impl UnifiedPalette {
                     )
                 })
                 .collect();
-            section(&mut rows, label, hint, entries);
+            section(&mut rows, label, entries);
+        }
+        let scope = self.scope();
+        if scope.host.is_some() {
+            let sessions = place::children(fleet, &scope, boost)
+                .iter()
+                .take(PLACE_ROWS)
+                .map(|candidate| place_entry(fleet, &self.tree, candidate, &scope))
+                .collect();
+            section(
+                &mut rows,
+                level_header(fleet, Level::Session, &scope),
+                sessions,
+            );
         }
         let hosts = fleet
             .hosts
             .iter()
+            .filter(|host| Some(host.id) != scope.host)
             .filter_map(|host| candidate_at(fleet, Place::host(host.id)))
             .map(|candidate| place_entry(fleet, &self.tree, &candidate, &root))
             .collect();
-        section(&mut rows, "Hosts", "^", hosts);
+        section(
+            &mut rows,
+            if scope.host.is_some() {
+                "Other hosts"
+            } else {
+                "Hosts"
+            },
+            hosts,
+        );
         rows
     }
 }

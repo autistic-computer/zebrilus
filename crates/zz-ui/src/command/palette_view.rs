@@ -9,6 +9,7 @@ use zz_client::{
     palette::has_command_arguments,
     place::{ActionKind, parse},
     recents::now_secs,
+    verbs::{self, Verb},
 };
 use zz_gpui::{
     App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, FocusHandle, Focusable,
@@ -28,8 +29,8 @@ use super::{
     command_palette_tree_entry,
     palette::palette_vim_badge,
     palette_model::{
-        DriverOffer, PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings,
-        PaletteTarget, PaletteTree, UnifiedPalette, needs_arguments, target_kind,
+        PaletteAction, PaletteEntry, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget,
+        PaletteTree, UnifiedPalette, needs_arguments, target_kind,
     },
     palette_recents,
     palette_vim::{PaletteVim, PaletteVimMode, Twin, VimCommand},
@@ -85,6 +86,9 @@ pub trait PaletteBackend {
         _cx: &mut App,
     ) -> Option<Box<dyn PaletteActionLevel>> {
         None
+    }
+    fn verbs(&self, cx: &App) -> Vec<Verb> {
+        verbs::verbs(self.availability(cx), &[], true, "")
     }
     /// Feed `picker` the listings it asks for while it keeps the subscription.
     fn feed_targets(&self, _picker: &Entity<TargetPicker>, _cx: &mut App) -> Option<Subscription> {
@@ -217,12 +221,6 @@ impl Global for RecentPaletteCommands {}
 
 pub enum CommandPaletteEvent {
     ReturnToDefault,
-    /// `?` or the Ask row: the app swaps the palette for its Driver mode with
-    /// `text` in the composer, wakes a sleeping driver, or shows where to
-    /// turn it on.
-    Driver {
-        text: String,
-    },
     Gui(GuiEvent),
 }
 
@@ -268,9 +266,6 @@ fn target_hints(item: Option<&crate::target::TargetItem>, typed: &str) -> Vec<Pa
     ]
 }
 
-/// What switches the palette to its Driver mode, typed into an empty palette.
-pub const DRIVER_PREFIX: &str = "?";
-
 impl EventEmitter<CommandPaletteEvent> for CommandPaletteView {}
 
 pub type FolderPick = Rc<dyn Fn(PaletteHostId, String, &mut Window, &mut App)>;
@@ -298,7 +293,6 @@ pub struct CommandPaletteView {
     chooser_activation: Option<ChooseTreeTarget>,
     local: bool,
     changing_input: bool,
-    driver: Option<DriverOffer>,
     /// The `@` mode's picker while the palette is in it.
     target: Option<(Entity<TargetPicker>, Subscription)>,
     /// The pane a picked file goes into: the one `prefix F` came from, else
@@ -421,7 +415,6 @@ impl CommandPaletteView {
             chooser_search: ChooserSearch::default(),
             chooser_activation: None,
             changing_input: false,
-            driver: None,
             target: None,
             insert_pane: None,
             pick_folder: None,
@@ -448,8 +441,7 @@ impl CommandPaletteView {
         let mut palette = Self::new_local(backend, None, window, cx);
         let field = match mode {
             Some(PaletteMode::Command) => ":",
-            Some(PaletteMode::Target) => "@",
-            None => "",
+            Some(PaletteMode::Target) | None => "",
         };
         palette.start_places(field, window, cx);
         palette
@@ -521,15 +513,6 @@ impl CommandPaletteView {
     #[must_use]
     pub fn query(&self) -> &str {
         &self.last_input
-    }
-
-    /// What the driver can do now, for the footer's [`DRIVER_PREFIX`] key and
-    /// the Ask row a search offers.
-    pub fn offer_driver(&mut self, offer: Option<DriverOffer>, cx: &mut Context<Self>) {
-        if self.driver != offer {
-            self.driver = offer;
-            cx.notify();
-        }
     }
 
     pub const fn is_window_chooser(&self) -> bool {
@@ -711,7 +694,6 @@ impl CommandPaletteView {
             unified.rebuild_window_chooser(state, &self.last_input);
         } else if unified.is_places() {
             let backend = Rc::clone(&self.backend);
-            unified.driver = self.driver;
             unified.rebuild_places(
                 &self.last_input,
                 &history,
@@ -731,13 +713,10 @@ impl CommandPaletteView {
             );
         }
         let command_input = if places {
-            parse(&self.last_input)
-                .action
-                .filter(|action| action.kind == ActionKind::Command)
-                .map(|action| {
-                    let start = action.rest_range().start;
-                    (action.rest, self.last_cursor.saturating_sub(start))
-                })
+            parse(&self.last_input).command.map(|rest| {
+                let start = self.last_input.len() - self.last_input.trim_start().len() + 1;
+                (rest, self.last_cursor.saturating_sub(start))
+            })
         } else {
             (unified.mode == Some(PaletteMode::Command) && unified.command.is_none())
                 .then(|| (self.last_input.clone(), self.last_cursor))
@@ -870,10 +849,11 @@ impl CommandPaletteView {
             }
             VimCommand::ClearAndInsert => {
                 let value = self.input.read(cx).value().to_string();
-                let kept = parse(&value)
-                    .action
-                    .map_or("", |action| &value[..action.rest_range().start])
-                    .to_owned();
+                let kept = if parse(&value).command.is_some() {
+                    zz_client::place::COMMAND_SIGIL.to_string()
+                } else {
+                    String::new()
+                };
                 self.set_query(kept, window, cx);
             }
             VimCommand::InsertWith(sigil) => {
@@ -1264,7 +1244,11 @@ impl CommandPaletteView {
                     Self::notify_action(format!("Switched to {label}"), window, cx);
                 }
             }
-            PaletteAction::Place(_) | PaletteAction::Recent(_) | PaletteAction::Ask => {}
+            PaletteAction::Place(_)
+            | PaletteAction::Recent(_)
+            | PaletteAction::Verb(_)
+            | PaletteAction::Fill(_)
+            | PaletteAction::Submit => {}
         }
     }
 
@@ -1365,11 +1349,10 @@ impl CommandPaletteView {
             .as_mut()
             .map(|(_, level)| (level.rows(window, cx), level.hints(cx)));
         let places = self.places();
-        let command_rest = places
-            .then(|| parse(&self.last_input).action)
-            .flatten()
-            .filter(|action| action.kind == ActionKind::Command)
-            .map(|action| action.rest);
+        let command_rest = places.then(|| parse(&self.last_input).command).flatten();
+        let places_usage = (places && command_rest.is_none())
+            .then(|| self.draft_usage().or_else(|| self.row_usage()))
+            .flatten();
         let Some(unified) = &self.unified else {
             return div().into_any_element();
         };
@@ -1397,9 +1380,11 @@ impl CommandPaletteView {
                 PaletteAction::Completion(_) => "complete",
                 PaletteAction::Place(_) => "go",
                 PaletteAction::Recent(_) => "open",
-                PaletteAction::Ask => "ask",
+                PaletteAction::Verb(_) => "choose",
+                PaletteAction::Fill(_) => "pick",
+                PaletteAction::Submit => "run",
             });
-        let usage = if let Some(rest) = &command_rest {
+        let typed_usage = if let Some(rest) = &command_rest {
             selected
                 .and_then(|index| unified.rows.get(index))
                 .and_then(|entry| match entry.action {
@@ -1425,6 +1410,9 @@ impl CommandPaletteView {
                     .flatten()
             })
         };
+        let usage: Option<SharedString> = places_usage
+            .map(SharedString::from)
+            .or_else(|| typed_usage.map(SharedString::from));
         let entries = Arc::new(unified.rows.clone());
         let palette = cx.entity();
         let rows_palette = palette.clone();
@@ -1573,12 +1561,6 @@ impl CommandPaletteView {
                         hints.push(PaletteHint {
                             key: "backspace",
                             label: "clear host",
-                        });
-                    }
-                    if self.driver == Some(DriverOffer::Ready) && self.last_input.is_empty() {
-                        hints.push(PaletteHint {
-                            key: DRIVER_PREFIX,
-                            label: "driver",
                         });
                     }
                     hints.push(PaletteHint {
@@ -1956,13 +1938,12 @@ impl CommandPaletteView {
                 self.close(cx);
             }
             LevelEffect::Copied(text) => Self::notify_action(format!("Copied {text}"), window, cx),
-            LevelEffect::SetRest(rest) => {
-                let value = self.input.read(cx).value().to_string();
-                if let Some(action) = parse(&value).action {
-                    let range = action.rest_range();
-                    let value = format!("{}{rest}{}", &value[..range.start], &value[range.end..]);
-                    self.set_query(value, window, cx);
+            LevelEffect::SetRest(rest) => self.set_query(rest, window, cx),
+            LevelEffect::Leave(event) => {
+                if let Some(event) = event {
+                    cx.emit(event);
                 }
+                self.step_back(window, cx);
             }
         }
     }

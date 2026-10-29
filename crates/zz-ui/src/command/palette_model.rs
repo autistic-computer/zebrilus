@@ -6,6 +6,7 @@ use zz_client::{
     completion::{CompletionSuggestion, PaneKindAvailability},
     place::{Fleet, Place},
     recents::RecentKey,
+    verbs::Verb,
 };
 use zz_gpui::SharedString;
 use zz_protocol::{
@@ -13,7 +14,10 @@ use zz_protocol::{
     command_specs,
 };
 
-use super::{PalettePill, PaletteRow, PaletteStatus, palette_places::Chip};
+use super::{
+    PalettePill, PaletteRow, PaletteStatus,
+    palette_places::{Chip, Draft},
+};
 use crate::IconName;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -162,7 +166,9 @@ pub(crate) enum PaletteAction {
     History(String),
     Completion(CompletionSuggestion),
     ChooseWindow(u32),
-    Ask,
+    Verb(usize),
+    Fill(Place),
+    Submit,
 }
 
 #[derive(Clone)]
@@ -208,20 +214,14 @@ impl PaletteEntry {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DriverOffer {
-    Ready,
-    Asleep,
-    Off,
-}
-
 pub(crate) struct UnifiedPalette {
     pub mode: Option<PaletteMode>,
     pub host: Option<PaletteHostId>,
     pub command: Option<&'static CommandSpec>,
     pub chips: Vec<Chip>,
     pub fleet: Rc<Fleet>,
-    pub driver: Option<DriverOffer>,
+    pub verbs: Rc<[Verb]>,
+    pub draft: Option<Draft>,
     pub tree: PaletteTree,
     pub rows: Vec<PaletteEntry>,
     chooser_current_window: Option<u32>,
@@ -238,7 +238,8 @@ impl UnifiedPalette {
             command: None,
             chips: Vec::new(),
             fleet: Rc::default(),
-            driver: None,
+            verbs: Rc::from(Vec::new()),
+            draft: None,
             tree: PaletteTree::default(),
             rows: Vec::new(),
             chooser_current_window: None,
