@@ -1895,6 +1895,13 @@ fn response_for(path: &str) -> Response {
     }
 }
 
+fn app_profile_paths() -> std::io::Result<BrowserProfilePaths> {
+    Ok(BrowserProfilePaths::under(
+        &zz_protocol::app_identity::browser_data_dir()?,
+        "zz-default",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1953,11 +1960,4 @@ mod tests {
         );
         assert_eq!(response_for("/missing").status, "404 Not Found");
     }
-}
-
-fn app_profile_paths() -> std::io::Result<BrowserProfilePaths> {
-    Ok(BrowserProfilePaths::under(
-        &zz_protocol::app_identity::browser_data_dir()?,
-        "zz-default",
-    ))
 }
