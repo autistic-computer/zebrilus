@@ -31,10 +31,12 @@ The crate depends on no zz crate, so it can leave the workspace as `ala-cef`.
 It splits into three layers by Cargo feature:
 
 - **No features**: `cookie`, `element_picker`, `event`, `input`, `lifecycle`,
-  `page_zoom`, `profile`, `url_input`. Pure types, validation and state
-  machines on `url`, `serde` and `parking_lot`; this is what `zz-client`'s
-  thin clients, `zz-config` and `zz-chrome-import` use, and it builds for WASM,
-  iOS and Android. The root workspace dependency turns default features off.
+  `page_zoom`, `profile`. Pure types, validation and state
+  machines on `url`, `serde` and `parking_lot`; this is what the thin
+  clients' browser panes (`clients/app`) and `zz-chrome-import` use, and it
+  builds for WASM, iOS and Android. The root workspace dependency turns
+  default features off. CI keeps it out of `zz-cli`'s tree, so `zz-config`
+  takes `SearchProvider` from `zz-client`'s `url_input`, not from here.
 - **`host`**: adds `frame`, `readback_texture` and `artifact`, the wgpu,
   Metal and Direct3D frame types and the local artifact pages.
 - **`cef-runtime`** (the crate's default, enabled by `crates/zz`): adds
@@ -80,7 +82,6 @@ runtime types (only under `cef-runtime`):
 | `Viewport`, `Modifiers`, `PointerEvent`, `WheelEvent`, `KeyInput`, `BrowserKey`, `KeyAction`, `EditCommand`, `PointerButton`, `PointerPhase` | `input` | Browser-neutral input + viewport types |
 | `RuntimePhase`, `SessionPhase` | `lifecycle` | Runtime + session state machines |
 | `BrowserProfilePaths` (`under`, `normalize`), `BrowserProfileError`, profile-name constants/normalization | `profile` | Safe named-profile validation, path resolution, creation; the default directory's name also names the default profile |
-| `resolve_address`, `SearchProvider`, `normalize_url`, `diagnostic_url`, `UrlInputError` | `url_input` | Address-field navigate-or-search, URL normalization + redaction |
 | `parse_cookie_import`, `BrowserCookie`, `CookieImportBatch`, `CookieImportResult`, `SiteDataClearResult` | `cookie` | Bounded Cookie-Editor/Netscape parsing plus browser-data operation results |
 | `BrowserBootstrap`, `BrowserRuntime`, `BrowserSession`, `BrowserError`, `RuntimeSignal`, `bootstrap`, `bootstrap_with_profile_paths`, `run_subprocess` (+ `bootstrap_windows`) | `cef_runtime` | CEF init, subprocess dispatch, session control. `bootstrap` takes a closure that resolves the profile paths, called only in the browser process; zz passes `browser::profile_paths` |
 
@@ -97,7 +98,6 @@ runtime types (only under `cef-runtime`):
 | `src/page_zoom.rs` | Chrome percentage ladder and logarithmic CEF zoom-level conversion. |
 | `src/profile.rs` | `BrowserProfilePaths`, profile-name rules; encoded named paths, user-only permissions. zz picks the data dir in `crates/zz/src/browser/mod.rs`. |
 | `src/cookie.rs` | Cookie-Editor JSON/Netscape parsing, normalization, limits, and secret-free result types (CEF-free, so `zz-chrome-import` builds without Chromium). |
-| `src/url_input.rs` | `resolve_address` (address field: navigate or search), `normalize_url`, and `diagnostic_url` (credential/query redaction). |
 | `src/element_picker.rs` | Token-guarded in-page element-picker protocol state (`ElementPickState`). |
 | `src/element_picker.js` | Injected renderer-side script backing the element picker (~45 KB). |
 | `Cargo.toml` | Takes the workspace `cef` dependency (pinned in the root `Cargo.toml`, `accelerated_osr` feature) as an optional dep behind `cef-runtime`. |
@@ -108,7 +108,7 @@ runtime types (only under `cef-runtime`):
 - [Off-screen rendering pipeline](/browser/osr-rendering.md) . `frame.rs` + `on_paint`/DPI handling
 - [Runtime & session lifecycle](/browser/lifecycle.md) . `lifecycle.rs` + `event.rs`
 - [Named private profiles & request contexts](/browser/profile.md) . `profile.rs`
-- [Input translation](/browser/input-translation.md) . `input.rs` + `url_input.rs`
+- [Input translation](/browser/input-translation.md) . `input.rs` + `zz-client`'s `url_input.rs`
 - [Element picker](/browser/element-picker.md) . `element_picker.rs`
 
 # Related
