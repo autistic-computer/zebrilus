@@ -19,6 +19,7 @@ fn preparing_and_closing_a_cold_runtime_does_not_load_chromium() {
     let paths = BrowserProfilePaths {
         profile: root.join("default"),
         root,
+        named_prefix: "profile-".to_owned(),
     };
     assert!(!chromium_is_loaded());
     let BrowserBootstrap::Runtime(mut runtime) =
@@ -76,6 +77,7 @@ fn starting_without_a_framework_returns_an_error() {
     let paths = BrowserProfilePaths {
         profile: root.join("default"),
         root,
+        named_prefix: "profile-".to_owned(),
     };
     assert!(!chromium_is_loaded());
     let BrowserBootstrap::Runtime(mut runtime) =
