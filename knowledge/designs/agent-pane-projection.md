@@ -20,8 +20,7 @@ timestamp: 2026-10-23T00:00:00-03:00
 
 # Why
 
-Every tmux-based agent orchestrator surveyed on 2026-08-25 reads agents back by scraping a
-terminal. zz's Agent panes were not terminals, so `capture-pane -p -t %agent` answered
+zz's Agent panes were not terminals, so `capture-pane -p -t %agent` answered
 `PaneExited`, `pipe-pane` had nothing to tap, and `alert-bell`/`monitor-activity` never fired for
 a turn that finished. `agent-send --wait` covers request/reply; this makes the whole tmux read
 grammar work on an Agent pane too.

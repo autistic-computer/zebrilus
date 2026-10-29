@@ -40,8 +40,8 @@ PTY child ──bytes──▶ libghostty-vt (worker thread)  [zz-terminal]
   pane, newest replacing stale, so a slow client converges on the latest frame rather than draining a
   backlog. A client that cannot apply a patch repairs one pane at a time with `RequestFull { pane }`.
 - The [app](/crates/zz.md) reconciles panes by [ID](/protocol/ids.md), keeping terminal entities
-  stable, and paints frames with a custom ala element aiming for
-  [Zed rendering parity](/terminal/rendering-parity.md). Rows the grid scrolls away land in that
+  stable, and paints frames with a [custom ala element](/terminal/rendering-parity.md).
+  Rows the grid scrolls away land in that
   pane's client-side `HistoryRing`, backfilled deeper by `HistoryRequest`/`HistoryChunk`, which is
   what makes scrolling back a local read.
 

@@ -8,5 +8,5 @@
 * [libghostty-vt embedding](libghostty-vt.md) - How zz-terminal embeds libghostty-vt over a pinned Ghostty snapshot, including line-counted scrollback, terminal color-query replies, and single-worker-thread ownership.
 * [Program status (OSC 7501)](program-status.md) - How zz reads the Program Status Protocol from pane output, keeps one record per id for each pane, and shows the most urgent record in formats, the tree (whose status record @agent_state terminals fill too), @agent_state, and the desktop sidebar.
 * [PTY drain topology (the IO fast path)](pty-drain.md) - How macOS keeps its tuned inline PTY actor while Linux reads idle panes on their shard and lends busy ones to a bounded gather stage that overlaps reads with VT parsing; includes the probe and benchmark results behind each platform choice.
-* [Zed GPUI terminal rendering parity](rendering-parity.md) - The effort to bring zz's terminal painting up to Zed's GPUI standard by mapping immutable renderer-neutral frames and dirty-row patches onto GPUI text, cursor, and overlay painting.
+* [Terminal painting on ala](rendering-parity.md) - How zz maps immutable renderer-neutral frames and dirty-row patches onto ala text, cursor, and overlay painting.
 <!-- okf:listing:end -->

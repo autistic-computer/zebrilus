@@ -12,9 +12,8 @@ pane running Claude Code with `agent-send`, and Claude Code can discover and mes
 terminal pane through `ListAgents` and `SendMessage`. Until 2026-10-23 an Agent pane registered as a
 peer too; that pane kind is gone ([agent lens](/designs/agent-lens.md)).
 
-The [agent messaging survey](/research/2026-09-10-agent-messaging-survey.md) records live probes
-with Claude Code 2.1.267 on 2026-09-10. The implementation uses `peerProtocol: 1`; Claude Code has
-not published the registry shape as a stable contract.
+The implementation uses `peerProtocol: 1`; Claude Code has not published the registry shape as a
+stable contract.
 
 Peers are per machine. A record names a live local pid, delivery goes to a local Unix socket, and
 replies go to a `uds:` address that must exist on the replier's machine, so `ListAgents` shows only

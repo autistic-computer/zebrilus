@@ -33,21 +33,11 @@ shell access can replace it.
 
 The same binary, the same commands, the same site. Any difference is the pane.
 
-## Common browser tools, surveyed 2026-09-09
+## Browser coverage
 
-The primitives below are the union of what agent-browser 0.37, Playwright MCP 0.0.80,
-chrome-devtools-mcp 1.9, and Claude in Chrome expose. All but the last attach to an existing
-Chromium over CDP; Claude in Chrome drives the user's own Chrome through an extension and has no
-attach mode, so it sets the capability bar rather than joining the matrix. Notable per-tool
-holes: Playwright MCP has no forward, reload, selector, URL, or download wait; chrome-devtools-mcp
-has no scroll, checkbox, CSS locator, cookie, storage, PDF, or download tool and requires a
-`pageId` on every call; Claude in Chrome has no dialog, cookie, or emulation tool and blocks on
-JavaScript dialogs. agent-browser accepts alerts automatically but leaves confirm and prompt to
-`dialog accept`, and its `--pin-tab` binds a session to one CDP target so it never adopts another
-pane's page. Documented CEF off-screen-rendering hazards that the matrix probes on purpose:
-`Page.captureScreenshot` scale and blank-image bugs, `Target.createTarget` and `window.open`
-producing windows rather than panes, and JavaScript dialogs passing through the embedder's
-dialog handler.
+The matrix probes CEF off-screen-rendering hazards: `Page.captureScreenshot` scale and blank-image
+bugs, `Target.createTarget` and `window.open` producing windows rather than panes, and JavaScript
+dialogs passing through the embedder's dialog handler.
 
 ## Results (2026-09-10, installed app 1494d00a plus the observer sync fix, agent-browser 0.37.1)
 
@@ -149,17 +139,6 @@ flailing for a weak model but does not fix its outcomes. The next round needs zz
 second agent addressed by `@name`) to separate the Gemini models. The failure modes this round
 exposed went into `zz tools`: session-prefixed pane targets, hunting for help in the tmux usage
 banner, running the bare binary, `set-option` without `-p`, `agent-send` without `-t`.
-
-## zz against Rex, and how to hand the guide over (2026-10-15)
-
-The harness now takes `BACKEND=zz|rex`, drives `claude -p` for `claude-*` models, and has
-`hook`, `stub` and `stubhook` arms plus tasks t10-t12 (one failing test in 3000 lines, the pane
-waiting for an answer, the focused pane). 348 runs, Haiku 5.5 once and gpt-oss-120b twice per
-cell; results and numbers in `knowledge/research/2026-10-15-zz-vs-rex.md`, rows in
-`bench/agents/skill/results/2026-10-15-zz-vs-rex.tsv`. Short version: inline still wins for
-gpt-oss (21/22), a ~1 KB startup hook gets zz to 18-19/22 from 14-15 and is the cheapest arm for
-Haiku; Rex's hook drops gpt-oss to 9/22 because it sends the agent to rename the session first;
-Haiku passes everything on both products but spends 1.7x the tokens on Rex.
 
 # Fresh user (2026-10-21)
 
@@ -294,7 +273,7 @@ running `claude` or `codex`.
 - A form submit that navigates is not awaited by `click`; wait on text from the next page.
 - Run agents from a directory under `/tmp`: a cwd inside the checkout hands them zz's own
   AGENTS.md. `claude -p --setting-sources project --strict-mcp-config` keeps the user's skills,
-  hooks (Rex installs a SessionStart hook globally) and CLAUDE.md out.
+  hooks and CLAUDE.md out.
 - `codex exec` runs commands in a login shell, so macOS path_helper moves the wrapper directory
   behind `/opt/homebrew/bin` and a bare `zz` reaches the user's real daemon. The harness gives
   Codex a throwaway HOME whose profile files put the wrappers first again; `--ignore-user-config`
@@ -303,8 +282,6 @@ running `claude` or `codex`.
   chunks (SIGPIPE). Match against `"$(CMD)"`.
 - A fixture script in the agent's cwd is readable: compute answers at run time and require
   evidence in the pane, not just the reply.
-- `REX_SERVER=unix:/path` with one slash silently falls back to the default Rex server; pin
-  `-S` in the wrapper.
 - `#!/usr/bin/env bash` resolves to bash 3.2 on macOS, which has no `EPOCHREALTIME`; the scripts
   fall back to `perl -MTime::HiRes`.
 - A fresh `HOME` logs Claude out on macOS, because the keychain is found through `HOME`; link
