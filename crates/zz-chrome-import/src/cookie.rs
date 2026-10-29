@@ -21,7 +21,7 @@ use url::Url;
 #[cfg(target_os = "windows")]
 use zeroize::Zeroize as _;
 use zeroize::Zeroizing;
-use zz_protocol::{
+use zz_browser::{
     BrowserCookie, CookieImportBatch, CookieImportError, MAX_COOKIE_IMPORT_BYTES,
     parse_cookie_import,
 };
@@ -761,7 +761,7 @@ mod tests {
     use cbc::cipher::{BlockModeEncrypt as _, block_padding::Pkcs7};
     use rusqlite::params;
     use tempfile::tempdir;
-    use zz_protocol::MAX_COOKIE_IMPORT_COUNT;
+    use zz_browser::MAX_COOKIE_IMPORT_COUNT;
 
     use super::*;
 

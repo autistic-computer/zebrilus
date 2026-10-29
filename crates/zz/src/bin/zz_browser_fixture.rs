@@ -748,12 +748,13 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
     let url = format!("http://{address}/shared-texture-spike");
     println!("zz shared-texture animated fixture: {url}");
 
-    let mut runtime = match zz_browser::bootstrap().map_err(|error| error.to_string())? {
-        BrowserBootstrap::SubprocessExit(code) => {
-            return Err(format!("unexpected CEF subprocess exit {code}"));
-        }
-        BrowserBootstrap::Runtime(runtime) => runtime,
-    };
+    let mut runtime =
+        match zz_browser::bootstrap(app_profile_paths).map_err(|error| error.to_string())? {
+            BrowserBootstrap::SubprocessExit(code) => {
+                return Err(format!("unexpected CEF subprocess exit {code}"));
+            }
+            BrowserBootstrap::Runtime(runtime) => runtime,
+        };
     if !runtime.shared_texture_enabled() {
         return Err("CEF did not enable shared-texture OSR".to_owned());
     }
@@ -1388,12 +1389,13 @@ fn probe_egress_pref() -> ExitCode {
 
 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 fn probe_egress_pref_inner() -> Result<(), String> {
-    let mut runtime = match zz_browser::bootstrap().map_err(|error| error.to_string())? {
-        BrowserBootstrap::SubprocessExit(code) => {
-            return Err(format!("unexpected CEF subprocess exit {code}"));
-        }
-        BrowserBootstrap::Runtime(runtime) => runtime,
-    };
+    let mut runtime =
+        match zz_browser::bootstrap(app_profile_paths).map_err(|error| error.to_string())? {
+            BrowserBootstrap::SubprocessExit(code) => {
+                return Err(format!("unexpected CEF subprocess exit {code}"));
+            }
+            BrowserBootstrap::Runtime(runtime) => runtime,
+        };
     initialize_runtime(&mut runtime)?;
     let signals = runtime.signals();
 
@@ -1891,6 +1893,13 @@ fn response_for(path: &str) -> Response {
             body: "not found\n",
         },
     }
+}
+
+fn app_profile_paths() -> std::io::Result<BrowserProfilePaths> {
+    Ok(BrowserProfilePaths::under(
+        &zz_protocol::app_identity::browser_data_dir()?,
+        "zz-default",
+    ))
 }
 
 #[cfg(test)]

@@ -8080,7 +8080,6 @@ dependencies = [
  "agent-client-protocol-schema",
  "base64 0.23.1",
  "foldhash",
- "getrandom 0.4.3",
  "neo_frizbee",
  "parking_lot",
  "serde",
@@ -8106,7 +8105,6 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.20",
  "unicode-width",
- "url",
  "zz-terminal",
 ]
 

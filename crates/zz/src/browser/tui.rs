@@ -10,9 +10,11 @@ use zz_browser::{
     BrowserEvent, BrowserProfilePaths, BrowserRuntime, BrowserSession, KeyInput as BrowserKeyInput,
     Modifiers as BrowserModifiers, OsrFrame, PointerButton, PointerEvent, PointerPhase,
     RuntimePhase, RuntimeSignal, SessionPhase, Viewport, WheelEvent,
+};
+use zz_protocol::{
+    BrowserCommand, BrowserDescriptor, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
     normalize_browser_profile_name,
 };
-use zz_protocol::{BrowserCommand, BrowserDescriptor, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId};
 use zz_terminal::KeyInput as TerminalKeyInput;
 use zz_tui::browser::{
     BrowserFrameProvider, ProviderFrame, ProviderModifiers, ProviderPointerButton,
@@ -756,7 +758,7 @@ const fn browser_pointer_button(button: ProviderPointerButton) -> PointerButton 
 }
 
 fn browser_input_from_terminal(input: &TerminalKeyInput) -> BrowserKeyInput {
-    zz_browser::terminal_key_input(input)
+    super::browser_key_input(input)
 }
 
 fn browser_modifiers(

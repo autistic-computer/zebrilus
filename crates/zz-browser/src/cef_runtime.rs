@@ -2,6 +2,7 @@ use std::{
     cell::Cell,
     collections::BTreeMap,
     ffi::OsStr,
+    io,
     marker::PhantomData,
     path::{Path, PathBuf},
     ptr,
@@ -68,7 +69,6 @@ use crate::{
         chromium_zoom_level, next_page_zoom_factor, page_zoom_percent, sanitized_page_zoom_factor,
     },
     popup::{PopupRect, PopupState},
-    resolve_profile_paths,
 };
 
 #[cfg(target_os = "macos")]
@@ -92,7 +92,7 @@ const ARTIFACT_REPLY_SCRIPT: &str = r#"(() => {
   }));
   Object.defineProperty(globalThis, "zz", { value: Object.freeze({ reply }) });
 })();"#;
-use zz_client::element_picker::ELEMENT_PICKER_SCRIPT;
+use crate::element_picker::ELEMENT_PICKER_SCRIPT;
 const WINDOWS_EPOCH_UNIX_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
 
 fn element_picker_router_config() -> MessageRouterConfig {
@@ -2029,35 +2029,35 @@ impl Drop for BrowserSession {
     }
 }
 
-pub fn bootstrap() -> Result<BrowserBootstrap, BrowserError> {
-    let profile_paths =
-        resolve_profile_paths().map_err(|error| BrowserError::Profile(error.into()))?;
-    bootstrap_with_profile_paths(profile_paths)
+pub fn bootstrap(
+    profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
+) -> Result<BrowserBootstrap, BrowserError> {
+    bootstrap_args_with_paths(Args::new(), ptr::null_mut(), profile_paths)
 }
 
 pub fn bootstrap_with_profile_paths(
     profile_paths: BrowserProfilePaths,
 ) -> Result<BrowserBootstrap, BrowserError> {
-    bootstrap_args_with_paths(Args::new(), ptr::null_mut(), Some(profile_paths))
+    bootstrap(|| Ok(profile_paths))
 }
 
 #[cfg(target_os = "windows")]
 pub fn bootstrap_windows(
     instance: cef::sys::HINSTANCE,
     sandbox_info: *mut u8,
+    profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
 ) -> Result<BrowserBootstrap, BrowserError> {
-    bootstrap_args(Args::from(MainArgs { instance }), sandbox_info)
-}
-
-#[cfg(target_os = "windows")]
-fn bootstrap_args(args: Args, sandbox_info: *mut u8) -> Result<BrowserBootstrap, BrowserError> {
-    bootstrap_args_with_paths(args, sandbox_info, None)
+    bootstrap_args_with_paths(
+        Args::from(MainArgs { instance }),
+        sandbox_info,
+        profile_paths,
+    )
 }
 
 fn bootstrap_args_with_paths(
     args: Args,
     sandbox_info: *mut u8,
-    profile_paths: Option<BrowserProfilePaths>,
+    profile_paths: impl FnOnce() -> io::Result<BrowserProfilePaths>,
 ) -> Result<BrowserBootstrap, BrowserError> {
     let started = diagnostic_timer();
     #[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
@@ -2087,10 +2087,7 @@ fn bootstrap_args_with_paths(
         }
     }
 
-    let profile_paths = match profile_paths {
-        Some(profile_paths) => profile_paths,
-        None => resolve_profile_paths().map_err(|error| BrowserError::Profile(error.into()))?,
-    };
+    let profile_paths = profile_paths().map_err(|error| BrowserError::Profile(error.into()))?;
     profile_paths.ensure()?;
     let frame_rate_override = configured_browser_frame_rate();
     let windowless_frame_rate = frame_rate_override.unwrap_or(DEFAULT_BROWSER_FRAME_RATE);
