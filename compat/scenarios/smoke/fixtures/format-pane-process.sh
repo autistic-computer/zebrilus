@@ -102,9 +102,6 @@ main_client new-session -d -s "$session" -x 80 -y 24
 pane="$(main_client list-panes -t "=$session" -F '#{pane_id}' | sed -n '1p')"
 pane_tty="$(probe '#{pane_tty}')"
 
-# format_cb_pane_pipe reads wp->pipe_fd and format_cb_pane_pipe_pid reads
-# wp->pipe_pid, so both answer only while a pipe is attached; pane_pipe answers
-# 0 rather than declining, while pane_pipe_pid declines.
 check_equal fresh 'pipe=0 pid=[] unseen=0' \
     "$(probe 'pipe=#{pane_pipe} pid=[#{pane_pipe_pid}] unseen=#{pane_unseen_changes}')"
 
@@ -115,8 +112,6 @@ if ! await 'pipe=#{pane_pipe}' 'pipe=1'; then
 fi
 pipe_pid="$(probe '#{pane_pipe_pid}')"
 check_equal piped-pid-numeric yes "$(numeric "$pipe_pid")"
-# wp->pipe_pid is the job's own process, which runs the pipe command through a
-# shell, so its argument vector still names the destination.
 check_equal piped-pid-is-the-job yes "$(pipe_job "$pipe_pid")"
 
 main_client pipe-pane -t "$pane"
@@ -126,9 +121,6 @@ if ! await 'pipe=#{pane_pipe}' 'pipe=0'; then
 fi
 check_equal unpiped 'pipe=0 pid=[]' "$(probe 'pipe=#{pane_pipe} pid=[#{pane_pipe_pid}]')"
 
-# PANE_UNSEENCHANGES is not "output nobody looked at": input.c raises it only
-# while the pane holds a mode, and window.c drops it when the last mode goes.
-# zz keeps copy mode per client, so the clause needs an attached one.
 env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
     TERM=xterm-256color \
     python3 "$HOME/pty-drive.py" "$work/one" 80 24 \
@@ -162,8 +154,6 @@ if ! await 'inmode=#{pane_in_mode}' 'inmode=0'; then
 fi
 check_equal after-cancel 'unseen=0' "$(probe 'unseen=#{pane_unseen_changes}')"
 
-# Re-entering the mode starts clean, which is window_pane_reset_mode dropping
-# the bit before the next mode entry can see it.
 main_client copy-mode -t "$pane"
 if ! await 'inmode=#{pane_in_mode}' 'inmode=1'; then
     echo "format-pane-process-$side: copy-mode-again"

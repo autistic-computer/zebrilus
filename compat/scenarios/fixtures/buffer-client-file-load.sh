@@ -49,8 +49,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Every probe runs the CLI as a command client from its own directory, with the
-# harness environment scrubbed the way the differential scrubs it elsewhere.
 probe_client() {
     directory="$1"
     home="$2"

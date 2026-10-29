@@ -122,11 +122,6 @@ row() {
     printf '%s=[%s]\n' "$1" "$2" >>"$log"
 }
 
-# There is no format for "a prompt is open", so every step raises a parked
-# prompt in its own background process and waits for that process to exit.
-# CMD_RETURN_WAIT holds it until the prompt is answered, cancelled or freed, so
-# the wait is exactly "the prompt closed" and no row can start while the last
-# one is still up.
 prompt_pid=""
 
 raise_prompt() {
@@ -155,9 +150,6 @@ await_prompt_close() {
     prompt_pid=""
 }
 
-# `-k` answers with `key_string_lookup_key`'s own spelling, which is not the
-# key's typed text: 0x20 is Space, 0x08 is C-h and never BSpace, and CSI Z is
-# BTab and never a shifted Tab.
 key_answer() {
     probe set-environment -gu KEY >/dev/null 2>&1 || true
     raise_prompt -k -p 'k ' "set-environment -g KEY '%%'"
@@ -181,10 +173,6 @@ key_answer delete 1b5b337e
 key_answer tilde 7e
 key_answer semicolon 3b
 
-# `prompt_set_options` reads status-keys and word-separators once, at prompt
-# creation, and `prompt_translate_key` is the whole vi table on top of the
-# emacs one.
-# `sh` has no local variables, so nothing here may reuse a caller's name.
 edit_answer() {
     edit_label=$1
     edit_keys=$2
@@ -224,7 +212,6 @@ edit_answer emacs-delete-word emacs "$separators" 'foo_bar baz' 17
 edit_answer emacs-meta-f emacs "$separators" 'foo_bar baz' 01 1b66 0b
 edit_answer emacs-control-right emacs "$separators" 'foo_bar baz' 01 1b5b313b3543 0b
 
-# `prompt_key` maps C-c and C-g onto the same close Escape takes.
 close_answer() {
     probe set-environment -g EDIT untouched >/dev/null
     raise_prompt -I zz -p 'e ' "set-environment -g EDIT 'ran-%%'"
@@ -235,12 +222,6 @@ close_answer() {
 close_answer control-c 03
 close_answer control-g 07
 
-# `screen_redraw_draw_status` draws the message over the prompt line rather
-# than deferring it, and `server_client_handle_key` clears the message and lets
-# the same key reach the prompt unless `-N` set `message_ignore_keys`.
-# `status_message_set` only assigns that flag when the delay is non-zero, so the
-# `-d 0` message below inherits the `-N` one's setting and keeps eating keys: the
-# parked prompt never closes and its answer never runs.
 message_answer() {
     probe set-environment -g EDIT pending >/dev/null
     raise_prompt -I ab -p 'm ' "set-environment -g EDIT 'got-%%'"

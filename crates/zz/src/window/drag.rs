@@ -1,5 +1,3 @@
-//! Making a titlebar-height strip move the window, the way a title bar does.
-
 use ala::{App, ElementId, MouseButton, MouseMoveEvent, Window, prelude::FluentBuilder};
 use zz_ui::InteractiveElementExt;
 
@@ -8,9 +6,6 @@ struct DragCandidate {
     accepts_click: bool,
 }
 
-/// Drags `strip` to move the window; double click zooms. `key` must be unique
-/// among the strips rendered at once. The caller declares the
-/// `WindowControlArea::Drag` hitbox, which is all Windows needs.
 pub(crate) fn window_drag_handle<E: InteractiveElementExt + FluentBuilder>(
     key: impl Into<ElementId>,
     strip: E,

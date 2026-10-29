@@ -1,10 +1,7 @@
-//! Pasted images on their way into an ACP prompt.
-
 use std::{borrow::Cow, io::Cursor, sync::Arc};
 
 use ala::{Image, ImageFormat};
 
-/// Formats sent as-is: Anthropic's API takes exactly these four.
 const NATIVE_FORMATS: [ImageFormat; 4] = [
     ImageFormat::Png,
     ImageFormat::Jpeg,
@@ -12,16 +9,10 @@ const NATIVE_FORMATS: [ImageFormat; 4] = [
     ImageFormat::Webp,
 ];
 
-/// Long edge past which the image is scaled down: Claude resizes anything
-/// larger before it reaches the model.
 const MAX_EDGE: u32 = 1568;
 
-/// Ceiling on the encoded payload, matching the per-image API limit.
 const MAX_BYTES: usize = 5 * 1024 * 1024;
 
-/// Prepare a clipboard image for a prompt, transcoding or scaling if needed.
-///
-/// The error is a message for the composer.
 pub(crate) fn normalize(image: &Image) -> Result<Arc<Image>, Cow<'static, str>> {
     if image.format == ImageFormat::Svg {
         return Err(Cow::Borrowed("SVG images cannot be sent to an agent"));
@@ -58,9 +49,6 @@ pub(crate) fn normalize(image: &Image) -> Result<Arc<Image>, Cow<'static, str>> 
     Ok(Arc::new(Image::from_bytes(ImageFormat::Png, png)))
 }
 
-/// Hand normalized attachments to the wire. The daemon turns bytes plus MIME
-/// type into ACP content blocks on its own host, so `ala::Image` never
-/// crosses the socket.
 #[cfg(feature = "agent-pane")]
 pub(crate) fn wire_images(images: &[Arc<Image>]) -> Vec<zz_protocol::AgentImage> {
     images
@@ -72,7 +60,6 @@ pub(crate) fn wire_images(images: &[Arc<Image>]) -> Vec<zz_protocol::AgentImage>
         .collect()
 }
 
-/// Rebuild an attachment the daemon handed back with a reclaimed prompt.
 #[cfg(feature = "agent-pane")]
 pub(crate) fn inbound_image(image: &zz_daemon::AgentStreamImage) -> Option<Arc<Image>> {
     let format = ImageFormat::from_mime_type(&image.format)?;

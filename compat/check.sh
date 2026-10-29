@@ -16,7 +16,6 @@ python3 "$COMPAT_DIR/wire-version.py"
 python3 "$COMPAT_DIR/evidence-secrets.py"
 python3 "$COMPAT_DIR/tui/tracker.py" check
 
-# Drift report, never a gate: names the pin registers that no proof fires.
 printf '\n== proof census ==\n'
 python3 "$COMPAT_DIR/census.py" --quiet || true
 printf '\n'

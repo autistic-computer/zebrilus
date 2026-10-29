@@ -1,5 +1,3 @@
-//! Bounded decoding for the terminal input protocols enabled by `tty`.
-
 use std::{
     ops::BitOr,
     time::{Duration, Instant},
@@ -8,9 +6,6 @@ use std::{
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 const MAX_BUFFER_BYTES: usize = 4 * 1024 * 1024;
-/// A device control string with no terminator in sight is not one, the way a
-/// control sequence with no final byte is not one either; past this many bytes
-/// the escape is read as the key it would have been.
 const MAX_DEVICE_CONTROL_BYTES: usize = 256;
 const PASTE_START: &[u8] = b"\x1b[200~";
 const PASTE_END: &[u8] = b"\x1b[201~";
@@ -522,9 +517,6 @@ fn parse_clipboard_reply(payload: &[u8]) -> Option<Event> {
     STANDARD.decode(data).ok().map(Event::Clipboard)
 }
 
-/// `tty_keys_extended_device_attributes`: the XTVERSION reply is a device
-/// control string opening `\x1bP>|` and closing on a string terminator, and
-/// what lies between names the terminal.
 fn parse_extended_device_attributes(payload: &[u8]) -> Option<Event> {
     let name = payload.strip_prefix(b">|")?;
     Some(Event::ExtendedDeviceAttributes(
@@ -532,10 +524,6 @@ fn parse_extended_device_attributes(payload: &[u8]) -> Option<Event> {
     ))
 }
 
-/// `tty_keys_device_attributes2` reads the first parameter of a secondary DA
-/// as a letter: 84 is tmux, 77 mintty, 85 rxvt-unicode. `tty_default_raw_keys`
-/// reads `\e[?997;1n` and `\e[?997;2n` as the terminal's answer to `\e[?996n`
-/// and as every theme change after it, while mode 2031 is subscribed.
 fn parse_csi(parameters: &str, final_byte: u8) -> Option<Event> {
     match (parameters, final_byte) {
         (parameters, b'c') if parameters.starts_with('?') => {
@@ -569,7 +557,6 @@ fn parse_csi(parameters: &str, final_byte: u8) -> Option<Event> {
 
     let mut fields = parameters.split(';');
     let first = fields.next().unwrap_or_default();
-    // Kitty report-event-types puts `modifiers:event` in field two: 2 repeat, 3 release.
     let mut modifier_parts = fields.next().unwrap_or_default().split(':');
     let modifier = modifier_parts
         .next()
@@ -777,8 +764,6 @@ fn parse_sgr_mouse(parameters: &str, final_byte: u8) -> Option<MouseEvent> {
 fn control_key(byte: u8) -> KeyEvent {
     match byte {
         0 => KeyEvent::new(KeyCode::Char(' '), KeyModifiers::CONTROL),
-        // `key_string_lookup_key` spells 0x08 `C-h` and only 0x7f `BSpace`,
-        // so the legacy control byte must stay a control chord.
         127 => KeyEvent::new(KeyCode::Backspace, KeyModifiers::NONE),
         9 => KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
         10 | 13 => KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
@@ -794,10 +779,6 @@ fn control_key(byte: u8) -> KeyEvent {
     }
 }
 
-/// The `b'p'`..`b'y'` arms are the numeric keypad, which a terminal in
-/// `keypad_xmit` mode spells this way. `tty_default_raw_keys` names the same
-/// sixteen sequences and `input-keys.c` sends what a pane out of
-/// application-keypad mode expects, which is the character on the key.
 fn ss3_key(final_byte: u8) -> Option<KeyEvent> {
     let code = match final_byte {
         b'A' => KeyCode::Up,

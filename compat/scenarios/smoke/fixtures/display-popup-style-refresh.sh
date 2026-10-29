@@ -80,9 +80,6 @@ drive() {
     return 0
 }
 
-# The SGR sequences a snapshot carries, one per line, deduplicated: a redraw
-# that lands twice in one snapshot cannot move this set, and a colour that
-# reaches the drawn menu must.
 sgr_set() {
     python3 -c 'import re, sys
 data = open(sys.argv[1], "rb").read()
@@ -90,8 +87,6 @@ found = sorted({m.decode("latin-1") for m in re.findall(rb"\x1b\[[0-9;:]*m", dat
 sys.stdout.write("\n".join(found))' "$snaps/$1"
 }
 
-# The printable characters a snapshot drew, deduplicated: the box glyphs move
-# with the border lines and stay put when only a colour changes.
 glyph_set() {
     python3 -c 'import re, sys
 data = open(sys.argv[1], "rb").read()
@@ -156,9 +151,6 @@ popup_pid=$!
 sleep 1.4
 drive "snap opened"
 
-# popup_reapply_styles runs from popup_draw_cb, so a set-option that lands while
-# the popup is up repaints it with the new colours and no key pressed. The box
-# keeps its glyphs: only the styling moves.
 restyle popup-style 'bg=colour52' style-b
 restyle popup-style 'bg=colour17' style-a
 restyle popup-style 'bg=colour52' style-b-again
@@ -171,8 +163,6 @@ restyle popup-border-style 'fg=colour201' border-a
 check_equal border-style-reaches-the-live-popup differ "$(compare_sgr border-b border-a)"
 check_equal border-style-leaves-the-box-alone same "$(compare_glyphs border-b border-a)"
 
-# popup_display copies popup-border-lines into the popup once and popup_draw_cb
-# never reads the option again, so the live box keeps the lines it opened with.
 main_client set-window-option popup-border-lines double
 sleep 0.7
 drive "snap lines-set"

@@ -1,7 +1,3 @@
-//! Renderer-free decisions a terminal pane makes outside of drawing: pointer
-//! mapping, wheel accumulation, the chrome shortcuts it claims, find-bar keys
-//! and feedback, and the status text shown over it.
-
 use zz_protocol::PaneId;
 use zz_terminal::{
     Cursor, CursorBlinkPolicy, IMAGE_PLACEHOLDER_SCHEME, KeyCode, KeyInput, Modifiers,
@@ -12,7 +8,6 @@ use zz_terminal::{
 
 use crate::{ChromeAction, ChromeKeymap, TERMINAL_TABLE};
 
-/// The cell grid a pointer lands on, in logical pixels relative to the page.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct PointerGrid {
     pub left: f32,
@@ -72,7 +67,6 @@ impl PointerGrid {
     }
 }
 
-/// Rows to scroll while a selection drag is held above or below the grid.
 #[must_use]
 pub fn selection_autoscroll_lines(top: f32, bottom: f32, line_height: f32, y: f32) -> i32 {
     let distance = if y < top {
@@ -92,7 +86,6 @@ pub fn selection_autoscroll_lines(top: f32, bottom: f32, line_height: f32, y: f3
     }
 }
 
-/// Whether a press lands in the scrollbar gutter along a surface's right edge.
 #[must_use]
 pub fn scrollbar_strip_hit(
     right: f32,
@@ -106,14 +99,12 @@ pub fn scrollbar_strip_hit(
     scrollbar.total > scrollbar.len && x >= right - gutter && x <= right && y >= top && y <= bottom
 }
 
-/// Where a scrollbar press at `y` lands, from `0` at the top to `u32::MAX`.
 #[must_use]
 pub fn scroll_fraction(top: f32, height: f32, y: f32) -> u32 {
     let fraction = ((y - top) / height.max(1.0)).clamp(0.0, 1.0);
     (fraction * u32::MAX as f32).round() as u32
 }
 
-/// Whole rows a wheel delta adds up to, keeping the fraction for next time.
 pub fn accumulate_scroll(remainder: &mut f32, delta: f32) -> i32 {
     *remainder += delta;
     let lines = *remainder as i32;
@@ -138,8 +129,6 @@ pub fn cursor_should_blink(
         })
 }
 
-/// The chrome shortcut a terminal claims for `input`, unless the prefix or a
-/// key-capturing modal owns the key.
 #[must_use]
 pub fn terminal_shortcut(
     keymaps: [&ChromeKeymap; 2],
@@ -155,7 +144,6 @@ pub fn terminal_shortcut(
         .find_map(|keymap| keymap.resolve(TERMINAL_TABLE, input))
 }
 
-/// The find bar's own keys: alt-r toggles regex, alt-c cycles case.
 pub fn search_key_action(query: &mut SearchQuery, input: &KeyInput) -> Option<TerminalViewAction> {
     match input.key {
         KeyCode::Character('r' | 'R') if input.modifiers.alt() => {
@@ -177,7 +165,6 @@ pub fn search_key_action(query: &mut SearchQuery, input: &KeyInput) -> Option<Te
     }
 }
 
-/// The find bar's match count, or why there is none.
 #[must_use]
 pub fn search_result_text(status: Option<SearchStatus>) -> String {
     match status {
@@ -199,7 +186,6 @@ pub fn search_case_label(case: SearchCase) -> &'static str {
     }
 }
 
-/// A hovered URI shortened to what the link popup shows.
 #[must_use]
 pub fn presented_uri(uri: &str) -> String {
     let mut characters = uri.chars();
@@ -210,7 +196,6 @@ pub fn presented_uri(uri: &str) -> String {
     presented
 }
 
-/// The pasted image an `[Image #N]` placeholder link names.
 #[must_use]
 pub fn pasted_image_number(uri: &str) -> Option<u32> {
     uri.strip_prefix(IMAGE_PLACEHOLDER_SCHEME)?
@@ -219,13 +204,11 @@ pub fn pasted_image_number(uri: &str) -> Option<u32> {
         .ok()
 }
 
-/// Whether a client may hand `uri` to the system: web and mail links only.
 #[must_use]
 pub fn openable_uri(uri: &str) -> bool {
     uri.starts_with("https://") || uri.starts_with("http://") || uri.starts_with("mailto:")
 }
 
-/// The mode tag over a terminal: its label and detail, or nothing when live.
 #[must_use]
 pub fn mode_text(mode: TerminalMode, unseen_output: u32) -> Option<(Option<&'static str>, String)> {
     match mode {
@@ -250,13 +233,11 @@ pub fn mode_text(mode: TerminalMode, unseen_output: u32) -> Option<(Option<&'sta
     }
 }
 
-/// The badge a dead pane shows, with its exit status when the host kept one.
 #[must_use]
 pub fn dead_label(dead: bool, status: Option<u32>) -> Option<String> {
     dead.then(|| status.map_or_else(|| "Dead".to_owned(), |status| format!("Dead · {status}")))
 }
 
-/// Why a terminal's shell is gone, when it is.
 #[must_use]
 pub fn status_text(status: &SessionStatus) -> Option<String> {
     match status {

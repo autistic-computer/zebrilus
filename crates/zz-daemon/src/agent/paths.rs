@@ -1,7 +1,3 @@
-//! Where the daemon keeps the state it owns. The GUI's data directory holds
-//! what a user edits; this one holds what the daemon writes, so the two never
-//! collide when both run on the same machine.
-
 use std::{io, path::PathBuf};
 
 use zz_daemon_client::user_data::platform_data_dir;
@@ -9,7 +5,6 @@ use zz_daemon_client::user_data::platform_data_dir;
 const DAEMON_DIRECTORY_NAME: &str = "daemon";
 const JOURNAL_DIRECTORY_NAME: &str = "agent-journal";
 
-/// `<data>/zz/daemon`, the root of everything the daemon persists.
 pub(crate) fn daemon_data_dir() -> io::Result<PathBuf> {
     let data = platform_data_dir().ok_or_else(|| {
         io::Error::new(

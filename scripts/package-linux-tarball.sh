@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# Package the Linux CEF bundle as a release tarball. The archive carries a
-# single root-owned <name>/usr/ tree (name = the archive filename without
-# .tar.gz), so `tar -x --strip-components=2 -C /usr/local` installs it by hand
-# and the AUR zz-bin package copies <name>/usr verbatim into the package root.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

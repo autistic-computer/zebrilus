@@ -1,6 +1,5 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// A physical/logical key understood by the terminal encoder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyCode {
     Character(char),
@@ -23,7 +22,6 @@ pub enum KeyCode {
     User(u16),
 }
 
-/// The phase of a key event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum KeyAction {
     Press,
@@ -31,7 +29,6 @@ pub enum KeyAction {
     Release,
 }
 
-/// Keyboard modifiers carried with a key event in one byte.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -132,7 +129,6 @@ impl<'de> Deserialize<'de> for Modifiers {
     }
 }
 
-/// Renderer-independent input passed to libghostty's key encoder.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyInput {
     pub action: KeyAction,

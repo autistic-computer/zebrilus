@@ -1,20 +1,11 @@
 ---
 import TerminalPane from './TerminalPane.astro';
 
-// NOT zz's agent pane. The reference capture's top-middle pane is a *terminal*
-// running the Claude Code CLI, so everything here is terminal cells: 13px mono on
-// the terminal plane, 4px window padding, no zz chrome. (zz's own agent DOM lives
-// in zz-ui/src/agent.rs and has no ›-prompt, no ● bullet and no status lines.)
-//
-// Vertical metrics are measured off the 2720x1658 reference capture at 1.21875
-// raw px per logical px: rules at y=249.9 and y=281, so the composer box is
-// exactly two 15.6px rows tall.
 interface Props {
 	title?: string;
 	version?: string;
 	subtitle?: string;
 	cwd?: string;
-	/** Composer prompt glyph. */
 	prompt?: string;
 	fontSize?: number;
 	lineHeight?: number;
@@ -34,8 +25,6 @@ const {
 	class: cls,
 } = Astro.props;
 
-// 16x10 pixel grid at 3.9px per cell, traced off the capture: body 12 wide with
-// two 1x2 eye holes, a full-width arm band, then four legs.
 const CELL = 3.9;
 const BODY = [
 	{ x: 2, y: 0, w: 12, h: 4 },
@@ -86,8 +75,6 @@ const BODY = [
 </TerminalPane>
 
 <style>
-	/* The rows re-establish `pre`; the structural wrappers must not, or the
-	   template's own indentation would print as terminal cells. */
 	.head,
 	.headlines,
 	.transcript,
@@ -110,7 +97,6 @@ const BODY = [
 	.transcript {
 		min-height: 0;
 	}
-	/* 1px rules top and bottom with the row centred: 7.3 + 15.6 + 7.8 = 30.7px. */
 	.composer {
 		margin-top: 4.6px;
 		padding: 7.3px 0 7.8px;

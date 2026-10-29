@@ -184,10 +184,6 @@ impl PaneKind {
     }
 }
 
-/// Where a split drops the pane it creates: `size` is the requested size of
-/// the new pane, `before` puts it left of or above the target,
-/// `full_size` spans the whole window instead of the target's box, and
-/// `detached` leaves focus where it was.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SplitPlacement {
     pub size: SplitSize,
@@ -213,7 +209,6 @@ pub struct Pane {
     pub title: String,
     pub kind: PaneKind,
     pub active_point: u64,
-    /// A BEL rang here and nobody has been back since.
     pub bell: bool,
     pub status: Option<PaneStatus>,
     pub summary: PaneSummary,
@@ -222,10 +217,6 @@ pub struct Pane {
     pub dead_time: Option<u64>,
     pub(crate) input_off: bool,
     pub(crate) empty: bool,
-    /// The pin's `wp->sx`/`wp->sy` when `layout_fix_panes` skipped this pane:
-    /// a `split-window -Z` assigns the new pane's cell with `do_not_resize`,
-    /// so it keeps the screen it was created with until the next layout fix
-    /// (spawn.c `spawn_pane`, layout.c `layout_assign_pane`).
     pub(crate) screen_extent: Option<(u16, u16)>,
     title_pinned: bool,
     pub over_zoom: bool,
@@ -241,30 +232,18 @@ pub struct Window {
     pub created: u64,
     pub activity: u64,
     pub activity_time: Option<i64>,
-    /// The pin's `WINLINK_ACTIVITY`: output landed here and nobody has been
-    /// back since. Server-side only; formats and labels carry it to clients.
     pub activity_flag: bool,
-    /// The pin's `WINLINK_SILENCE`: the monitor-silence deadline expired and
-    /// nobody has been back since.
     pub silence_flag: bool,
     pub active_pane: PaneId,
     pub zoomed_pane: Option<PaneId>,
     pub layout: CellLayout,
     pub panes: BTreeMap<PaneId, Pane>,
     pane_order: Vec<PaneId>,
-    /// The pin's `w->z_index`: a second pane order that `window_add_pane`
-    /// always appends to, `join-pane` inserts beside its destination in,
-    /// `swap-pane` exchanges positions in, and `layout_parse` rebuilds from
-    /// the layout tree. `redraw_build_scene` walks it in reverse, so the pane
-    /// earliest here owns a border cell two panes both touch.
     z_order: Vec<PaneId>,
     last_panes: Vec<PaneId>,
     last_layout: Option<LayoutPreset>,
     previous_layout: Option<Box<SavedLayout>>,
     pub(crate) last_extent_probe: Option<(PaneId, u16, u16)>,
-    /// The pin's `w->manual_sx`/`w->manual_sy`: the extent `resize-window`
-    /// stored, kept while `window-size` is automatic so a return to manual
-    /// restores it (resize.c `clients_calculate_size`).
     pub(crate) manual_extent: (u16, u16),
     pub floats: WindowFloats,
     input_options: InputOptions,
@@ -388,18 +367,12 @@ impl Session {
 }
 
 impl Window {
-    /// The cell size a pane presents to formats and status lines: the full
-    /// window extent while the pane is zoomed (tmux swaps in a one-leaf
-    /// layout during zoom), otherwise its tree allocation.
     #[must_use]
     pub fn displayed_pane_geometry(&self, pane: PaneId) -> Option<(u16, u16)> {
         self.displayed_pane_cell(pane, PaneBorderStatus::Off)
             .map(|geometry| (geometry.sx, geometry.sy))
     }
 
-    /// The same cell with the `pane-border-status` row carved out of it. A
-    /// zoomed pane is the whole window, and `layout_fix_panes` still runs over
-    /// the one-leaf zoom root, so it takes the row too.
     #[must_use]
     pub(crate) fn displayed_pane_cell(
         &self,
@@ -818,9 +791,6 @@ impl MuxState {
         self.generation
     }
 
-    /// `window.c` seeds a new pane's title from `gethostname`, so a terminal
-    /// pane that has reported no title of its own answers `#{pane_title}` with
-    /// the server's host name.
     pub(crate) fn set_default_pane_title(&mut self, title: impl Into<String>) {
         self.default_pane_title = title.into();
     }
@@ -1093,8 +1063,6 @@ impl MuxState {
         Some(self.windows.get(&window)?.layout.extent())
     }
 
-    /// The index a new window takes in `session`: the requested one when it is
-    /// free, otherwise the lowest free index.
     fn claim_window_index(
         &self,
         session: SessionId,
@@ -1139,8 +1107,6 @@ impl MuxState {
             .find(|window| self.windows.get(window).is_some_and(&predicate))
     }
 
-    /// Frees `index` by moving the contiguous run of windows starting there up
-    /// one slot, tmux's `winlink_shuffle_up`.
     pub fn shift_windows_up(&mut self, session: SessionId, index: u32) -> Result<(), ServerError> {
         let state = self
             .sessions
@@ -1443,14 +1409,6 @@ impl MuxState {
         Ok(())
     }
 
-    /// `window_tree_swap`: the chooser trades two windows' slots the way
-    /// `swap-window` does and then moves `curw` so the same window stays
-    /// current, where `cmd_swap_window_exec` leaves the current slot alone and
-    /// lets the window under it change. The move runs through
-    /// `session_set_current`, which drops the slot it moves into off the last
-    /// stack and pushes the slot the current window vacated, so the session's
-    /// last window becomes the other member of the swapped pair rather than
-    /// the current window itself.
     pub fn swap_windows_keeping_current(
         &mut self,
         current: WindowId,
@@ -1993,8 +1951,6 @@ impl MuxState {
         self.set_window_silence_flag(window, false);
     }
 
-    /// Set or clear a window's pin-`WINLINK_ACTIVITY` flag, reporting whether
-    /// it moved. A window that already left is not an error.
     pub fn set_window_activity_flag(&mut self, window: WindowId, raised: bool) -> bool {
         let Some(window_state) = self.windows.get_mut(&mut self.journal, &window) else {
             return false;
@@ -2007,8 +1963,6 @@ impl MuxState {
         true
     }
 
-    /// Set or clear a window's pin-`WINLINK_SILENCE` flag, reporting whether
-    /// it moved. A window that already left is not an error.
     pub fn set_window_silence_flag(&mut self, window: WindowId, raised: bool) -> bool {
         let Some(window_state) = self.windows.get_mut(&mut self.journal, &window) else {
             return false;
@@ -2103,8 +2057,6 @@ impl MuxState {
         }
     }
 
-    /// Move `pane`'s resize boundary by terminal cells, positive toward the
-    /// right or bottom.
     pub fn resize_pane(
         &mut self,
         pane: PaneId,
@@ -2127,7 +2079,6 @@ impl MuxState {
         Ok(())
     }
 
-    /// Give `pane` an absolute cell size along `axis`.
     pub fn resize_pane_to(
         &mut self,
         pane: PaneId,
@@ -2170,7 +2121,6 @@ impl MuxState {
         Ok(())
     }
 
-    /// Sets one exact split ratio and returns whether the layout changed.
     pub fn resize_split(
         &mut self,
         window: WindowId,
@@ -2529,8 +2479,6 @@ impl MuxState {
         self.update_pane_title(pane, title)
     }
 
-    /// Set or clear a pane's pending bell, reporting whether it moved. A pane
-    /// that already left is not an error: nothing changed either way.
     pub fn set_pane_bell(&mut self, pane: PaneId, bell: bool) -> bool {
         let Some(pane_state) = self.pane_mut(pane) else {
             return false;
@@ -2582,9 +2530,6 @@ impl MuxState {
         bell || unseen
     }
 
-    /// Replace a pending picker with its selected runtime kind, keeping the pane
-    /// ID and layout position. Returns the terminal to inherit a directory from:
-    /// the donor captured at split time if still live, otherwise a fresh resolve.
     pub fn materialize_pane(
         &mut self,
         pane: PaneId,
@@ -2986,8 +2931,6 @@ impl MuxState {
             .collect())
     }
 
-    /// The last-resort context every recovery path falls back to. A session
-    /// whose `active_window` dangles does not end the search.
     #[must_use]
     pub fn default_context(&self) -> Option<(SessionId, WindowId, PaneId)> {
         self.sessions.values().find_map(|session| {
@@ -2996,9 +2939,6 @@ impl MuxState {
         })
     }
 
-    /// Sessions in tmux's listing order: the pin keeps them in an RB tree
-    /// keyed by strcmp on the name, so every session enumeration a script can
-    /// observe is name-sorted, not creation-sorted.
     #[must_use]
     pub fn sessions_by_name(&self) -> Vec<&Session> {
         let mut sessions = self.sessions.values().collect::<Vec<_>>();
@@ -3704,10 +3644,6 @@ impl MuxState {
             .ok_or_else(not_found)
     }
 
-    /// The pin's `window_find_string` plus `window_get_active_at`: a compass
-    /// word names one window cell; the modal answers alone, then visible
-    /// floats front to back with their borders, then the covering tiled pane,
-    /// its right and bottom borders included.
     fn pane_at_compass_point(&self, window: WindowId, target: &str) -> Option<PaneId> {
         let state = self.windows.get(&window)?;
         let compass = PANE_COMPASS_TARGETS
@@ -3838,9 +3774,6 @@ impl MuxState {
             .find_map(|(id, window)| window.panes.contains_key(&pane).then_some(*id))
     }
 
-    /// The pane a new pane copies its working directory from: `target` itself
-    /// when it is a terminal, otherwise the window's last focused terminal,
-    /// otherwise the first in layout order.
     #[must_use]
     pub fn cwd_donor(&self, target: PaneId) -> Option<PaneId> {
         let window = &self.windows[&self.window_for_pane(target)?];
@@ -4278,7 +4211,6 @@ impl MuxState {
         Ok(window_id)
     }
 
-    /// `before` changes layout placement, while pane order stays after the target to match tmux's by-value flag bug.
     pub fn join_pane(
         &mut self,
         source: PaneId,
@@ -4454,17 +4386,6 @@ impl MuxState {
         Err(ServerError::InvalidCommand("no last pane".to_owned()))
     }
 
-    /// The pin's `marked_pane`: one server-global mark over a whole find
-    /// state, reported valid only while the session it was taken in still
-    /// links that window and the window still holds that pane
-    /// (`server_check_marked` defers to `cmd_find_valid_state`, which walks
-    /// `marked_pane.s->windows` for `marked_pane.wl` and ends at
-    /// `window_has_pane`). Killing the pane or moving it into another window
-    /// through break-pane or join-pane reads as no mark at all, and so does a
-    /// window that changed session through move-window or swap-window,
-    /// because `server_link_window` and `cmd_swap_window_exec` retarget only
-    /// `marked_pane.wl`, never `marked_pane.s`. A swap inside the same window
-    /// and a move inside the same session keep it.
     #[must_use]
     pub fn marked_pane(&self) -> Option<PaneId> {
         let (session, window, pane) = self.marked_pane?;
@@ -4478,8 +4399,6 @@ impl MuxState {
             .ok_or_else(no_marked_target)
     }
 
-    /// The pin's `-m`: mark the target unless it already holds the mark, in
-    /// which case `server_is_marked` makes the request a clear instead.
     pub(crate) fn toggle_marked_pane(&mut self, pane: PaneId) -> Result<(), ServerError> {
         let window = self
             .window_for_pane(pane)
@@ -4497,9 +4416,6 @@ impl MuxState {
         Ok(())
     }
 
-    /// `server_set_marked`: a plain set, where the `-m` flag's
-    /// `toggle_marked_pane` reads a second request on the same pane as a
-    /// clear. `window_tree_key`'s `m` takes this path.
     pub fn set_marked_pane(&mut self, pane: PaneId) -> Result<(), ServerError> {
         let window = self
             .window_for_pane(pane)
@@ -4517,7 +4433,6 @@ impl MuxState {
         Ok(())
     }
 
-    /// The pin's `-M`: `server_clear_marked` whatever the target was.
     pub fn clear_marked_pane(&mut self) {
         if self.marked_pane.is_some() {
             self.marked_pane = None;
@@ -4872,11 +4787,6 @@ fn validate_window_index_run(base_index: u32, count: usize) -> Result<(), Server
     Ok(())
 }
 
-/// Which slot of the pin's `cmd_find_target` a token reached. Only the
-/// session and window slots strip a leading `=` into an exact-match flag and
-/// map the window alias table; a colon-less token for a pane target lands in
-/// the pane slot, so the window and session lookups that run after a pane miss
-/// search for the token exactly as written (cmd-find.c).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TargetSlot {
     Session,
@@ -4902,9 +4812,6 @@ fn normalize_window_target(target: &str, slot: TargetSlot) -> (&str, bool) {
     (target, exact)
 }
 
-/// The pin's server-global mark alias: a plain `~` or `{marked}` fills the
-/// whole find state from `marked_pane` before any session, window, or pane
-/// splitting happens (cmd-find.c `cmd_find_target`).
 pub(crate) const NO_MARKED_TARGET: &str = "no marked target";
 
 pub(crate) fn is_marked_target(target: &str) -> bool {
@@ -4915,9 +4822,6 @@ fn no_marked_target() -> ServerError {
     ServerError::InvalidCommand(NO_MARKED_TARGET.to_owned())
 }
 
-/// The pin's `{up-of}`, `{down-of}`, `{left-of}`, and `{right-of}`: a
-/// directional search from the window's own active pane, not from the
-/// resolved target (cmd-find.c `cmd_find_get_pane_with_window`).
 const PANE_DIRECTION_TARGETS: [(&str, PaneDirection); 4] = [
     ("{up-of}", PaneDirection::Up),
     ("{down-of}", PaneDirection::Down),
@@ -4925,10 +4829,6 @@ const PANE_DIRECTION_TARGETS: [(&str, PaneDirection); 4] = [
     ("{right-of}", PaneDirection::Right),
 ];
 
-/// The pin's `window_find_string` compass words, each a point in window cells
-/// that `window_get_active_at` then resolves (window.c). Comparison is
-/// `strcasecmp`, and the point is the window centre on the axis a word does
-/// not name.
 const PANE_COMPASS_TARGETS: [&str; 8] = [
     "top",
     "bottom",

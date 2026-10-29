@@ -38,8 +38,6 @@ case "$channel" in
         ;;
     *) die "channel must be stable or beta: $channel" ;;
 esac
-# pacman rejects a hyphen in pkgver; 1.2.3-beta.1 becomes 1.2.3beta.1, which
-# vercmp orders before 1.2.3 like any trailing alphabetic segment.
 pkgver="${version//-/}"
 [[ "$x86_64_sha256" =~ ^[0-9a-f]{64}$ ]] || die "malformed x86_64 sha256: $x86_64_sha256"
 [[ "$aarch64_sha256" =~ ^[0-9a-f]{64}$ ]] || die "malformed aarch64 sha256: $aarch64_sha256"
@@ -68,8 +66,6 @@ grep -qx "sha256sums_x86_64=('$x86_64_sha256')" <<<"$pkgbuild" || \
 grep -qx "sha256sums_aarch64=('$aarch64_sha256')" <<<"$pkgbuild" || \
     die "the PKGBUILD template has no aarch64 checksum to replace"
 
-# The tag version appears expanded in .SRCINFO's source URLs; pkgver is
-# rewritten first so the global replacement only touches the URLs.
 srcinfo="$(sed \
     -e "s/^pkgbase = zz-bin$/pkgbase = $pkgname/" \
     -e "s/^pkgname = zz-bin$/pkgname = $pkgname/" \

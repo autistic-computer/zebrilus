@@ -1,7 +1,5 @@
 #![deny(clippy::debug_assert_with_mut_call)]
 
-//! Pure state, commands, layouts, key tables, and tmux-compatible parsing.
-
 mod command;
 #[cfg(test)]
 mod compat_manifest_tests;

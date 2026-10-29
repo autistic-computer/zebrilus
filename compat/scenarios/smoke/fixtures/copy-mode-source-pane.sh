@@ -108,8 +108,6 @@ viewer_pid=$!
 await_clients 1 || { echo "copy-mode-source-pane-$side: attach"; exit 0; }
 client="$(main_client list-clients -t "=$session" -F '#{client_name}' | head -n 1)"
 
-# window_pane_set_mode(wp, swp) puts the mode on the target pane only; the
-# source pane keeps no mode entry of its own.
 main_client copy-mode -s "$source_pane" -t "$target_pane"
 sleep 0.5
 check_equal target-is-in-copy-mode 1 "$(value pane_in_mode "$target_pane")"
@@ -117,14 +115,10 @@ check_equal target-mode-name copy-mode "$(value pane_mode "$target_pane")"
 check_equal source-stays-out-of-the-mode 0 "$(value pane_in_mode "$source_pane")"
 check_equal source-mode-name-is-empty '' "$(value pane_mode "$source_pane")"
 
-# window_copy_clone_screen trims the source's trailing blank rows and drops
-# the cursor onto the last used row at column zero, so the mode opens on the
-# source pane's last line, not the target's.
 check_equal cursor-line-is-the-source-last-line SRC5 "$(value copy_cursor_line "$target_pane")"
 check_equal cursor-column-is-zero 0 "$(value copy_cursor_x "$target_pane")"
 check_equal cursor-word-is-the-source-word SRC5 "$(value copy_cursor_word "$target_pane")"
 
-# Keys still go to the target pane's own mode, and they walk the source's rows.
 main_client send-keys -t "$target_pane" -N 3 -X cursor-up
 sleep 0.4
 check_equal cursor-walks-the-source-rows SRC2 "$(value copy_cursor_line "$target_pane")"
@@ -132,7 +126,6 @@ main_client send-keys -t "$target_pane" -X cursor-down
 sleep 0.3
 check_equal cursor-walks-back-down SRC3 "$(value copy_cursor_line "$target_pane")"
 
-# The source pane has no mode command, so send-keys -X still fails on it.
 if main_client send-keys -t "$source_pane" -X cursor-up >"$work/src.out" 2>"$work/src.err"; then
     check_equal source-refuses-mode-commands 1 0
 else
@@ -140,14 +133,11 @@ else
 fi
 check_equal source-refusal-message 'not in a mode' "$(cat "$work/src.err")"
 
-# capture-pane reads the pane's own grid, which the mode never replaced.
 check_equal target-grid-keeps-its-own-lines 5 \
     "$(main_client capture-pane -p -t "$target_pane" | grep -cE '^DST[1-5]$' || true)"
 check_equal target-grid-has-no-source-lines 0 \
     "$(main_client capture-pane -p -t "$target_pane" | grep -cE '^SRC[1-5]$' || true)"
 
-# window_copy_refresh_start refuses a view of another pane, so refresh-on
-# cannot arm on this mode and the backing stays where it was.
 main_client send-keys -t "$target_pane" -X refresh-on
 main_client send-keys -t "$source_pane" -l SRC6
 main_client send-keys -t "$source_pane" -H 0a
@@ -159,9 +149,6 @@ sleep 0.4
 check_equal cancel-leaves-the-mode 0 "$(value pane_in_mode "$target_pane")"
 check_equal cancel-clears-the-mode-name '' "$(value pane_mode "$target_pane")"
 
-# Naming the target pane as its own source leaves window_copy_clone_screen's
-# trim off, so the entry parks on the live cursor row the way a plain
-# copy-mode does rather than on the last used row.
 main_client copy-mode -s "$target_pane" -t "$target_pane"
 sleep 0.4
 check_equal self-source-is-a-plain-entry 1 "$(value pane_in_mode "$target_pane")"

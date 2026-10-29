@@ -276,9 +276,6 @@ impl AppShell {
         window_drag_handle("gui-status-titlebar-drag", bar, window, cx).into_any_element()
     }
 
-    /// The sidebar docked beside the panes, `shown` of its width on screen:
-    /// it keeps its full width and the panes cover its trailing edge, so its
-    /// rows never reflow while it slides.
     fn docked_sidebar(&self, width: f32, shown: f32) -> AnyElement {
         div()
             .flex_none()
@@ -576,8 +573,6 @@ impl Render for AppShell {
     }
 }
 
-/// `strip` growing down from the window's top edge as `shown` goes from 0 to
-/// 1, so the panes under it move down with it instead of jumping.
 fn growing_strip(strip: AnyElement, shown: f32, cx: &App) -> AnyElement {
     let height = cx.theme().title_bar_height();
     div()
@@ -598,7 +593,6 @@ fn growing_strip(strip: AnyElement, shown: f32, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-// gpui-component's macOS Root constructor requires a native NSView; ala test windows have none.
 #[cfg(all(test, not(target_os = "macos")))]
 mod tests {
     use std::{

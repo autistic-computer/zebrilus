@@ -117,15 +117,11 @@ if [ -z "$client" ]; then
 fi
 sleep 0.6
 
-# A clean base draws neither override, so every later marker is the option's
-# doing and not the theme's.
 paint
 drive "snap base"
 check_equal base-first no "$(seen base '38;2;18;52;86')"
 check_equal base-second no "$(seen base '38;2;101;67;33')"
 
-# colour_palette_from_option copies the window array into every pane's default
-# palette, and the cells already on screen take it without the pane restarting.
 main_client set-option -w -t "=$session:0" pane-colours[1] '#123456'
 main_client set-option -w -t "=$session:0" pane-colours[2] '#654321'
 sleep 1.2
@@ -138,8 +134,6 @@ drive "snap window"
 check_equal window-first yes "$(seen window '38;2;18;52;86')"
 check_equal window-second yes "$(seen window '38;2;101;67;33')"
 
-# A pane-level array is the whole array options_get finds first, so the second
-# pane loses the window entry it was inheriting while the first keeps it.
 main_client set-option -p -t "=$session:0.1" pane-colours[3] '#0f0f0f'
 sleep 0.8
 paint
@@ -153,7 +147,6 @@ paint
 drive "snap unshadow"
 check_equal unshadow-second yes "$(seen unshadow '38;2;101;67;33')"
 
-# colour_palette_get reads the OSC 4 palette before the configured default.
 printf '\033]4;1;rgb:00/ff/00\007' >"$tty0" 2>/dev/null || true
 sleep 0.8
 paint
@@ -163,8 +156,6 @@ check_equal osc-hides-default no "$(seen osc '38;2;18;52;86')"
 printf '\033]104;1\007' >"$tty0" 2>/dev/null || true
 sleep 0.8
 
-# options_array_getv reads "%u" for 0..255 only, so a named key and an index
-# past the palette are stored and never consumed.
 main_client set-option -w -t "=$session:0" 'pane-colours[named]' '#ff00ff'
 main_client set-option -w -t "=$session:0" pane-colours[300] '#00ffff'
 sleep 0.8
@@ -176,8 +167,6 @@ check_equal nonconsumer-stored \
     "pane-colours[1] #123456 pane-colours[2] #654321 pane-colours[300] #00ffff pane-colours[named] #ff00ff " \
     "$(main_client show-options -w -t "=$session:0" pane-colours | tr '\n' ' ')"
 
-# Unsetting one index drops just that entry, and unsetting the array drops all
-# of them, both live.
 main_client set-option -wu -t "=$session:0" pane-colours[1]
 sleep 0.8
 paint

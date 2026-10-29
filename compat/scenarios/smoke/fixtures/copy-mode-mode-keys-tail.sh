@@ -83,8 +83,6 @@ xy() {
     main_client display-message -p -t "$pane" '#{copy_cursor_x},#{copy_cursor_y}'
 }
 
-# The wrapped line's two rows are told apart by their first four cells: the
-# filled row is all `a`, the continuation row starts `qqq `.
 col_abs() {
     printf '%s|%s' \
         "$(main_client display-message -p -t "$pane" '#{copy_cursor_x}')" \
@@ -125,11 +123,6 @@ main_client load-buffer -b cmtail "$work/in.txt"
 main_client paste-buffer -b cmtail -t "$pane"
 await_output 'plain text here' || { echo "copy-mode-mode-keys-tail-$side: output"; exit 0; }
 
-# window_copy_cmd_next_matching_bracket and its previous twin both read
-# data->modekeys, the value the option had when the mode was entered. vi walks a
-# closing bracket found first back to its opener; emacs never does that walk,
-# looks at exactly one neighbouring cell, and falls back to a word motion whose
-# separators are the bracket set itself.
 for keys in vi emacs; do
     main_client set-window-option -t "=$session" mode-keys "$keys"
     if [ "$keys" = vi ]; then
@@ -169,12 +162,6 @@ for keys in vi emacs; do
     X cancel
 done
 
-# window_copy_cursor_jump_to_back passes onemore to the right step it takes
-# after the jump, and grid_reader_cursor_jump_back follows a wrapped line back
-# onto the row it came from. The line is built from the pane's own width so the
-# jump target is the last cell of the filled row, which is where the vi and
-# emacs limits differ; the pane is not the same width on the two engines, so the
-# column is compared against that width.
 width="$(main_client display-message -p -t "$pane" '#{pane_width}')"
 filler="$(awk -v n="$((width - 1))" 'BEGIN { while (i++ < n) printf "a" }')"
 printf '%szqqq tail\n' "$filler" >"$work/wrapped.txt"
@@ -182,10 +169,6 @@ main_client load-buffer -b cmtail2 "$work/wrapped.txt"
 main_client paste-buffer -b cmtail2 -t "$pane"
 await_output 'tail' || { echo "copy-mode-mode-keys-tail-$side: wrapped-output"; exit 0; }
 
-# The three short lines are echoed and printed twice before the wrapped one, so
-# the filled row is the seventh from the top of the history and its continuation
-# the eighth. Both engines wrap that line in the same place because it is built
-# from their own pane width.
 park_on_the_continuation_row() {
     main_client copy-mode -t "$pane"
     X history-top
@@ -202,8 +185,6 @@ for keys in vi emacs; do
     check_equal "$keys-parked-on-the-continuation-row" '3|qqq ' "$(col_abs)"
     X jump-to-backward z
     if [ "$keys" = vi ]; then
-        # The target is the filled row's last cell, which is the vi limit, so
-        # the right step wraps onto the continuation row instead.
         check_equal "$keys-jump-to-backward-across-the-wrap" '0|qqq ' "$(col_abs)"
     else
         check_equal "$keys-jump-to-backward-across-the-wrap" '0|aaaa' "$(col_rel)"
@@ -216,10 +197,6 @@ for keys in vi emacs; do
     X cancel
 done
 
-# window_copy_cursor_up and _down with scroll_only: the view moves one row
-# either way, and under vi the cursor first steps one screen row against the
-# scroll so it keeps the line it was on, while under emacs it keeps its screen
-# row and the line under it changes.
 seq 1 40 | sed 's/^/L/' >"$work/long.txt"
 main_client load-buffer -b cmtail3 "$work/long.txt"
 main_client paste-buffer -b cmtail3 -t "$pane"
@@ -252,14 +229,6 @@ for keys in vi emacs; do
 done
 
 
-# window_copy_command's tail: after every command whose name does not start
-# with `search-`, the marks a search laid down are dropped per the command
-# table's clear class, read against the live mode-keys, and searchx/searchy go
-# back to -1. The clear class is CLEAR_ALWAYS for 52 names, CLEAR_EMACS_ONLY
-# for 36 and CLEAR_NEVER for 7. cursor-down is emacs-only, begin-selection and
-# back-to-indentation are always, toggle-position is never. Losing the marks
-# also re-latches the incremental origin, and the re-lay a following search of
-# the same string does is visible-only, which leaves the count unset.
 main_client new-window -t "=$session" -n search cat
 spane="$(main_client list-panes -t "=$session:search" -F '#{pane_id}' | head -n 1)"
 

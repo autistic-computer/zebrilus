@@ -7,28 +7,19 @@ use zz_ui::{
     interface_theme::{self, InterfaceTheme, Materials, ThemeColors},
 };
 
-/// The interface font the storybook loads and falls back to.
 pub const UI_FONT: &str = "Inter Variable";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Knobs {
-    /// Light, dark, or `None` to follow the browser.
     pub theme: Option<ThemeMode>,
-    /// The built-in theme the knobs start from.
     pub interface: &'static str,
-    /// What the theme file calls the theme.
     pub name: String,
     pub materials: Materials,
-    /// How the theme changes each kind and role: the start theme's until
-    /// the `roles` knob names them.
     pub roles: BTreeMap<String, StylePatch>,
     pub light: ThemeColors,
     pub dark: ThemeColors,
     pub contrast: f32,
-    /// The Oklch hue, in degrees, every surface, and faintly the text, leans
-    /// toward.
     pub tint_hue: f32,
-    /// How far surfaces lean toward the tint hue, from 0 to 1.
     pub tint: f32,
     pub zoom: f32,
     pub pane: PaneKnobs,
@@ -69,7 +60,6 @@ pub enum Backdrop {
 
 type Knob<T> = (&'static str, fn(&T) -> f32, fn(&mut T, f32));
 
-/// The lengths of [`Materials`] and its two shadows, by knob name.
 pub const MATERIAL_KNOBS: &[Knob<Materials>] = &[
     ("radius", |m| m.radius, |m, v| m.radius = v),
     ("outline", |m| m.outline, |m, v| m.outline = v),
@@ -115,8 +105,6 @@ type ColorKnob = (
     fn(&mut ThemeColors, Hsla),
 );
 
-/// One mode's colors by knob name. The panel prefixes each with `light-` or
-/// `dark-`.
 pub const COLOR_KNOBS: &[ColorKnob] = &[
     (
         "background",
@@ -232,8 +220,6 @@ impl Knobs {
         }
     }
 
-    /// Reads a knob query. The interface theme comes first, wherever it sits
-    /// in the query, and every material and color knob then overrides it.
     pub fn parse(query: &str) -> Result<Self, String> {
         let pairs = query
             .trim_start_matches('?')
@@ -426,7 +412,6 @@ impl Knobs {
         Ok(knobs)
     }
 
-    /// The theme the knobs describe, as a theme file would hold it.
     pub fn interface_theme(&self) -> InterfaceTheme {
         InterfaceTheme {
             name: self.name.clone(),
@@ -478,9 +463,6 @@ impl Knobs {
     }
 }
 
-/// The knob values that reproduce `materials`, by knob name, for the page to
-/// load: every length, both shadows, the primary style, where outlines and
-/// shadows go, how highlights rise, the font and the glass.
 pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_json::Value> {
     let mut knobs = MATERIAL_KNOBS
         .iter()
@@ -553,10 +535,6 @@ pub fn material_knobs(materials: &Materials) -> serde_json::Map<String, serde_js
     knobs
 }
 
-/// The knob values that reproduce `theme`: its name, materials, roles and
-/// both modes' colors, each color as the `#rrggbb` a color input takes. A
-/// color the theme leaves to the palette comes out as what the palette
-/// resolves it to.
 pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json::Value> {
     let mut knobs = material_knobs(&theme.materials);
     knobs.insert("name".to_owned(), serde_json::json!(theme.name));
@@ -569,7 +547,6 @@ pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json
     knobs
 }
 
-/// Each color knob's value in `mode`, as `#rrggbb`.
 fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static str, String)> {
     let colors = theme.colors(mode);
     let ink = accent_ink(colors);
@@ -586,8 +563,6 @@ fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static str
     ]
 }
 
-/// A `roles` knob: the theme file's `roles` object, checked the way a theme
-/// file is.
 fn parse_roles(json: &str) -> Result<BTreeMap<String, StylePatch>, String> {
     let roles = serde_json::from_str::<serde_json::Value>(json)
         .map_err(|error| format!("roles must be JSON: {error}"))?;
@@ -595,20 +570,12 @@ fn parse_roles(json: &str) -> Result<BTreeMap<String, StylePatch>, String> {
         .map(|theme| theme.roles)
 }
 
-/// Where a role's prop comes from before the theme names the role itself:
-/// the built-in style or patch of the role or one of its groups, or the
-/// theme's patch for one of its groups, which beats every built-in. The
-/// theme's smoothing, and a theme that picks its outlines, shadows or
-/// smoothing dropping the built-in one, come from the materials, with no
-/// role.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Origin {
     pub role: Option<SurfaceRole>,
     pub themed: bool,
 }
 
-/// Where a prop with no role comes from: the materials step's smoothing, or
-/// a picked outline, shadow or smoothing.
 pub fn material_origin(prop: &str, role: SurfaceRole, materials: &Materials) -> String {
     match prop {
         "smoothing" if materials.picked_smoothing && role.picks_smoothing() => {
@@ -619,7 +586,6 @@ pub fn material_origin(prop: &str, role: SurfaceRole, materials: &Materials) -> 
     }
 }
 
-/// The props of a [`Style`] in theme-file order.
 pub const PROPS: [&str; 8] = [
     "fill",
     "outline",
@@ -631,8 +597,6 @@ pub const PROPS: [&str; 8] = [
     "ink",
 ];
 
-/// The style `role` takes from everything but the theme's patch for it, and
-/// where each of its [`PROPS`] comes from.
 pub fn inherited(
     role: SurfaceRole,
     roles: &BTreeMap<String, StylePatch>,
@@ -719,7 +683,6 @@ pub fn knobs_json(knobs: zz_ui::Knobs) -> serde_json::Value {
     })
 }
 
-/// `style`'s props by name, spelled as a theme file spells them.
 pub fn style_json(style: Style) -> serde_json::Value {
     serde_json::json!({
         "fill": style.fill,
@@ -739,8 +702,6 @@ fn accent_ink(colors: ThemeColor) -> Hsla {
     theme.paint(Tone::Primary, Emphasis::Solid).text
 }
 
-/// A color knob's value: `#rrggbb` keeps `previous`'s alpha, so a color
-/// input can set a translucent shadow's hue.
 fn color(key: &str, value: &str, previous: Option<Hsla>) -> Result<Hsla, String> {
     let value = decode(value);
     let parsed =

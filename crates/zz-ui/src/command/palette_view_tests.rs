@@ -197,9 +197,6 @@ fn fake_backend(
     (Rc::new(backend), calls)
 }
 
-/// A backend that hands out the real `&` level, whose host has terminals in
-/// `~/one`, `~/two` and `~/three`, pane 10 focused, and whose listings the
-/// test feeds through the sink.
 fn files_backend() -> (Rc<dyn PaletteBackend>, Calls, Sink) {
     let snapshot: &'static MuxSnapshot = Box::leak(Box::new(crate::files::tests::snapshot()));
     let calls = Calls::default();

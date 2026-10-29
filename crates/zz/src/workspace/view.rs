@@ -1,5 +1,3 @@
-//! Main workspace view and pane-layout reconciliation.
-
 use zz_ui::command::floating::{FloatingFrame as PopupFrame, floating_frame};
 
 use std::{
@@ -109,8 +107,6 @@ const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::app_render";
 const PANE_KEY_CONTEXT: &str = "ZzPane";
 const PANE_KEY_CONTEXT_ID: &str = "pane";
 
-/// Prompt once during this launch when the initial local connection found a stale daemon.
-/// Returns whether it consumed startup's dialog slot.
 pub(crate) fn maybe_prompt_stale_daemon(
     mux: &Entity<MuxClient>,
     window: &mut Window,
@@ -689,9 +685,6 @@ enum OverlayKind {
     Confirm,
 }
 
-/// A folder as the palette's `@` mode types it: under `home` as `~/`, with
-/// its spaces escaped and a `/` at its end, or the home folder when there is
-/// none.
 fn pane_in_session(snapshot: &MuxSnapshot, session: Option<SessionId>, pane: PaneId) -> bool {
     snapshot
         .sessions
@@ -708,8 +701,6 @@ struct SynchronizeSignature {
     route: WorkspaceRoute,
 }
 
-// Each focus debt is owed by a different thing, so folding them into one enum
-// would hide which one is outstanding.
 #[allow(clippy::struct_excessive_bools)]
 pub struct AppView {
     controller: Entity<BrowserController>,
@@ -1530,8 +1521,6 @@ impl AppView {
         active
     }
 
-    /// Forward a claimed key's release to the daemon and stop it reaching the
-    /// widget that never saw the press.
     pub fn on_claim_key_up(&mut self, event: &KeyUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         let input = terminal_key_input(&event.keystroke, TerminalKeyAction::Release);
         let disposition = self.input_router.key(&input, PrefixView::default());
@@ -1566,8 +1555,6 @@ impl AppView {
         );
     }
 
-    /// Open the palette `build` makes, closing whatever other palette or
-    /// prompt is up.
     fn show_command_palette(
         &mut self,
         build: impl FnOnce(
@@ -1694,8 +1681,6 @@ impl AppView {
         }
     }
 
-    /// `prefix F`: the palette in `&` mode on `pane`'s folder, or the `-c`
-    /// folder, putting what you pick at that pane's cursor.
     fn open_path_palette(
         &mut self,
         pane: PaneId,
@@ -1766,7 +1751,6 @@ impl AppView {
         );
     }
 
-    // Reached from the app shell's ClosePane action.
     pub(crate) fn close_active_pane(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(pane) = self.active_pane(cx) else {
             return false;
@@ -1971,7 +1955,6 @@ impl AppView {
         if bell_revision != self.bell_revision {
             self.bell_revision = bell_revision;
             window.request_attention();
-            // Only macOS has a one-call system beep.
             #[cfg(target_os = "macos")]
             objc2_app_kit::NSBeep();
         }
@@ -2704,8 +2687,6 @@ impl AppView {
             })
     }
 
-    /// Hand the agent controller everything the mux client buffered for it:
-    /// the seq-filtered stream and the published pane states.
     #[cfg(feature = "agent-pane")]
     fn drain_agent_events(&mut self, cx: &mut Context<Self>) {
         if !self.mux.read(cx).has_agent_events() {
@@ -3028,9 +3009,6 @@ impl AppView {
             .set(self.split_drag.is_some() || self.terminal_resizes_held);
     }
 
-    /// Keeps terminals at their grid size while the chrome around the panes
-    /// slides, so the daemon sees one resize when it settles instead of one a
-    /// frame. Releasing repaints every terminal so each reports its new size.
     pub(crate) fn hold_terminal_resizes(&mut self, hold: bool, cx: &mut Context<Self>) {
         self.terminal_resizes_held = hold;
         self.terminal_resize_suppressed
@@ -3193,10 +3171,6 @@ impl AppView {
         }
     }
 
-    /// `server_client_check_mouse`: a pointer move over a pane that is not the
-    /// active one selects it while `focus-follows-mouse` is on. Unlike a click
-    /// it leaves an armed prefix alone, which is all the pin's
-    /// `window_set_active_pane` does.
     fn on_pane_pointer_focus(&mut self, pane: PaneId, cx: &mut Context<Self>) {
         self.mux.read(cx).execute(pane_select_command(pane));
     }
@@ -3248,11 +3222,6 @@ impl AppView {
         cx.stop_propagation();
     }
 
-    /// A pointer report that lands outside the menu's own surface. `menu.c`
-    /// gives `menu_key_cb` every mouse report while the menu owns the client's
-    /// overlay, so the reports the menu's occluding surface never sees have to
-    /// reach it too: that is where a release closes a menu that is not
-    /// stay-open, and where any press closes one that is.
     fn route_menu_pointer(
         &mut self,
         kind: MenuPointerKind,
@@ -4636,8 +4605,6 @@ fn float_cell_size(mux: &MuxClient, window: &Window) -> Size<Pixels> {
     )
 }
 
-/// How tall, borders included, Float makes `pane`: the tallest float that fits
-/// its window's `canvas`, the panes' area in pixels.
 pub(crate) fn pip_fill_rows(
     mux: &MuxClient,
     pane: PaneId,
@@ -4667,8 +4634,6 @@ fn pane_select_command(pane: PaneId) -> CommandInvocation {
     CommandInvocation::new("select-pane", ["-t", &pane.to_string()])
 }
 
-/// Toast tag for a daemon-timed message, so an explicit clear retires exactly
-/// the toast that message raised.
 fn timed_message_key(message_id: u64) -> String {
     format!("timed-message-{message_id}")
 }
@@ -5159,15 +5124,6 @@ mod tests {
         }
     }
 
-    /// Every overlay payload the daemon can publish, and the workspace consumer
-    /// each one must find.
-    ///
-    /// The exhaustive match is the point: a `CoreEvent` variant added later
-    /// cannot compile until someone says whether it raises an overlay, and a
-    /// kind that says it does has to name an element the matrix can find on the
-    /// drawn window. Cycle 11's silently destructive desktop chooser was a
-    /// payload that reached a no-op arm; nothing under the campaign ran the
-    /// ala client, so nothing caught it.
     fn overlay_selector(event: &CoreEvent) -> Option<&'static str> {
         match event {
             CoreEvent::CommandPromptChanged => Some("command-palette-overlay"),
@@ -6242,10 +6198,6 @@ mod tests {
         });
         cx.run_until_parked();
 
-        // Kind, the payload that raises it, the payload that retires it, the
-        // key the overlay answers, and the shape that key has to reach the
-        // daemon as. Every element the matrix looks for is the selector
-        // `overlay_selector` maps the kind's CoreEvent to.
         struct OverlayCase {
             event: CoreEvent,
             raise: zz_protocol::EventPayload,
@@ -6349,9 +6301,6 @@ mod tests {
             );
         }
 
-        // The two update payloads carry no state of their own: they advance a
-        // chooser the daemon already published, so the consumer they need is
-        // the running chooser's own synchronize, not a new element.
         publish(
             zz_protocol::EventPayload::ChooseTree {
                 state: Some(choose_tree_state_for_test()),
@@ -6424,25 +6373,6 @@ mod tests {
         assert!(workspace.read_with(cx, |workspace, cx| workspace.visible_overlay(cx).is_none()));
     }
 
-    /// Derived from pinned tmux d77c9dc6, menu.c `menu_key_cb`:
-    ///
-    /// ```c
-    /// if (md->flags & MENU_NOMOUSE) {
-    ///         if (MOUSE_BUTTONS(m->b) != MOUSE_BUTTON_1)
-    ///                 return (1);
-    ///         return (0);
-    /// }
-    /// ```
-    ///
-    /// A `display-menu` raised without `-M` and without an invoking mouse
-    /// event is `MENU_NOMOUSE` — `menu_prepare` also leaves `MODE_MOUSE_ALL`
-    /// and `MODE_MOUSE_BUTTON` off for it. Button 1 is swallowed and the menu
-    /// stays; any other button returns 1, which closes the menu with nothing
-    /// chosen. `MenuState::mouse_keys` carries that flag to every client, and
-    /// the desktop was the client that dropped it: `resolve_menu_mouse` in the
-    /// client core reads it, but only crates/zz-tui/src/input.rs called that,
-    /// so a right-click over the desktop menu did nothing and a left-click
-    /// chose a row the pin would never have chosen.
     #[ala::test]
     fn a_nomouse_menu_leaves_on_any_button_but_the_first(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
@@ -6585,9 +6515,6 @@ mod tests {
         );
     }
 
-    /// A workspace with one pane and a `display-menu` up, plus the input queue
-    /// the daemon would have received. `mouse_keys` is the pin's `MENU_NOMOUSE`
-    /// flag inverted: true is a menu that took the mouse.
     fn menu_mouse_fixture(
         cx: &mut TestAppContext,
         mouse_keys: bool,
@@ -6681,11 +6608,6 @@ mod tests {
         })
     }
 
-    /// `menu_key_cb`: a report inside the box that neither chooses nor closes
-    /// sets `md->choice` to `m->y - (md->py + 1)`, so a bare motion moves the
-    /// highlight and nothing else. Enter then chooses the row the highlight
-    /// sits on, which is how this reads the highlight without asking the view
-    /// for its private state.
     #[ala::test]
     fn a_mouse_menu_moves_its_highlight_under_a_motion(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, false);
@@ -6708,11 +6630,6 @@ mod tests {
         );
     }
 
-    /// `menu_key_cb`: for a menu that is not stay-open, `!move && MOUSE_RELEASE`
-    /// inside the box goes to `chosen`, and `chosen` reads `md->choice`, which
-    /// the release never sets. So the release chooses the row the highlight
-    /// already sits on, not the row it lands on, and a press on its own only
-    /// moves the highlight there.
     #[ala::test]
     fn a_release_inside_a_mouse_menu_chooses_the_highlighted_row(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, false);
@@ -6744,9 +6661,6 @@ mod tests {
         );
     }
 
-    /// `menu_key_cb`: outside the box, a menu that is not stay-open closes on
-    /// `!move && MOUSE_RELEASE` and on nothing else, so the press that opened
-    /// the way to it leaves the menu up.
     #[ala::test]
     fn a_release_outside_a_mouse_menu_closes_it_and_a_press_does_not(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, false);
@@ -6774,10 +6688,6 @@ mod tests {
         );
     }
 
-    /// `menu_key_cb`: with `MENU_STAYOPEN` the outside arm inverts. It closes on
-    /// any report that is neither a release, a wheel nor a drag, so the press
-    /// that leaves a plain menu up closes this one, and the wheel that closes
-    /// nothing still closes nothing.
     #[ala::test]
     fn a_stay_open_menu_closes_outside_on_a_press_and_not_on_a_wheel(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, true);
@@ -7972,13 +7882,6 @@ mod tests {
         );
     }
 
-    /// `rendering.geometry-residue`'s probe. The desktop client measures its
-    /// pane in pixels and `terminal_grid_size` floors, so a box that is not a
-    /// whole number of cells reaches the PTY one column and one row short of
-    /// the box the engine laid out. The daemon's `set_pane_geometry` swallows a
-    /// difference of one cell rather than re-solving the window extent from it,
-    /// so `#{pane_width}` keeps answering the laid-out number while the PTY has
-    /// the floored one.
     #[ala::test]
     fn attached_pane_measurement_floors_below_the_laid_out_box(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);

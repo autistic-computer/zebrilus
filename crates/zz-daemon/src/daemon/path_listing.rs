@@ -613,9 +613,6 @@ fn expand_directory(
     Some(normalize_lexically(&path))
 }
 
-/// A dir that names its own root, absolute or from a home, so the listing does
-/// not depend on the pane's cwd: any terminal on this daemon can carry it, in
-/// a session the client is attached to or not.
 fn names_own_root(dir: &str) -> bool {
     dir.starts_with('~') || Path::new(dir).is_absolute()
 }

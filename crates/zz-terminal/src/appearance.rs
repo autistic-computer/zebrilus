@@ -29,7 +29,6 @@ const MAX_PADDING: f32 = 1024.0;
 const MAX_ADJUSTMENT: f32 = 1024.0;
 const MAX_BLINK_INTERVAL_MS: u32 = 60_000;
 
-/// Appearance keys accepted by the daemon-owned `zz/config` override layer.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum AppearanceConfigKey {
     Theme,
@@ -172,7 +171,6 @@ impl AppearanceConfigKey {
     }
 }
 
-/// The layer that supplied one effective appearance setting.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AppearanceSource {
     #[default]
@@ -182,7 +180,6 @@ pub enum AppearanceSource {
     Override,
 }
 
-/// Complete per-key provenance for a resolved terminal appearance.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct AppearanceProvenance(BTreeMap<AppearanceConfigKey, AppearanceSource>);
@@ -208,7 +205,6 @@ impl AppearanceProvenance {
         self.0.insert(key, source);
     }
 
-    /// Ensure a wire payload contains exactly one source for every supported key.
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.0.len() != AppearanceConfigKey::ALL.len()
             || AppearanceConfigKey::ALL
@@ -221,7 +217,6 @@ impl AppearanceProvenance {
     }
 }
 
-/// A compact RGBA color used by renderer-owned translucent presentation.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AppearanceColor {
@@ -248,7 +243,6 @@ impl AppearanceColor {
     }
 }
 
-/// One validated OpenType feature assignment.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FontFeature {
     pub tag: [u8; 4],
@@ -267,7 +261,6 @@ impl FontFeature {
     }
 }
 
-/// Synthetic font styles Ghostty may create when a configured family lacks a native face.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FontSyntheticStyle {
     pub bold: bool,
@@ -297,7 +290,6 @@ impl FontSyntheticStyle {
     }
 }
 
-/// How an `adjust-cell-height` value modifies the font-derived line height.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub enum CellHeightAdjustment {
@@ -318,7 +310,6 @@ impl CellHeightAdjustment {
     }
 }
 
-/// ala-local cursor blink policy resolved by the daemon.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CursorBlinkPolicy {
@@ -328,7 +319,6 @@ pub enum CursorBlinkPolicy {
     Terminal,
 }
 
-/// The system color scheme used to resolve adaptive Ghostty themes.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TerminalColorScheme {
@@ -347,7 +337,6 @@ impl TerminalColorScheme {
     }
 }
 
-/// A fixed-size terminal palette with an exact-length wire representation.
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TerminalPalette([Color; 256]);
@@ -445,7 +434,6 @@ impl<'de> Deserialize<'de> for TerminalPalette {
     }
 }
 
-/// Renderer-neutral appearance shared by terminal actors and ala clients.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct TerminalAppearance {
     pub color_scheme: TerminalColorScheme,
@@ -489,15 +477,10 @@ pub struct TerminalAppearance {
     pub palette_classes: Vec<(u8, ColourClass)>,
     #[serde(skip)]
     pub default_classes: [Option<ColourClass>; 2],
-    /// The colors this client draws the terminal's own colors in instead of
-    /// the host's, when it owns them.
     #[serde(skip)]
     pub local_colors: Option<LocalColors>,
 }
 
-/// Colors a client draws a terminal in over the host's: the default
-/// foreground and background, then the 16 base palette colors. Cells keep
-/// any other color an application picked.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LocalColors {
     host: [Color; 18],
@@ -505,8 +488,6 @@ pub struct LocalColors {
 }
 
 impl LocalColors {
-    /// `local` in place of the host's `foreground`, `background` and the
-    /// first 16 colors of `palette`, in that order.
     #[must_use]
     pub fn new(
         foreground: Color,
@@ -530,8 +511,6 @@ impl LocalColors {
         self.local[1]
     }
 
-    /// `viewport` with its default colors and its cursor in the local
-    /// foreground and background.
     #[must_use]
     pub fn viewport(&self, viewport: &TerminalViewport) -> TerminalViewport {
         TerminalViewport {
@@ -544,9 +523,6 @@ impl LocalColors {
         }
     }
 
-    /// `style` with each color that came from the defaults or the base
-    /// palette in the local one. A color whose source the host did not
-    /// record, such as an inverted cell's, is matched by value.
     #[must_use]
     pub fn recolor(&self, style: PackedStyle) -> PackedStyle {
         style.with_grounds(
@@ -756,7 +732,6 @@ impl Default for TerminalAppearance {
             font_families_bold: Vec::new(),
             font_families_italic: Vec::new(),
             font_families_bold_italic: Vec::new(),
-            // Ghostty's default font size, in points.
             font_size_points: 13.0,
             font_weight: 400,
             font_features: Vec::new(),
@@ -815,7 +790,6 @@ impl TerminalAppearance {
         }
     }
 
-    /// Validate all dimensions and bounded variable-length fields received over IPC.
     pub fn validate(&self) -> Result<(), AppearanceValidationError> {
         if self.font_families.is_empty() || self.font_families.len() > MAX_FONT_FAMILIES {
             return Err(AppearanceValidationError::FontFamilies);
@@ -873,7 +847,6 @@ impl TerminalAppearance {
         Ok(())
     }
 
-    /// Produce a deterministic appearance signature for renderer caches and diagnostics.
     #[must_use]
     pub fn stable_hash(&self) -> u64 {
         let mut hasher = StableHasher::default();
@@ -940,7 +913,6 @@ pub enum AppearanceValidationError {
     BackgroundOpacity,
 }
 
-/// Outcome category for one Ghostty configuration entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppearanceConfigDisposition {
     Applied,
@@ -950,7 +922,6 @@ pub enum AppearanceConfigDisposition {
     NoOp,
 }
 
-/// Bounded source diagnostic produced while reading Ghostty configuration.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppearanceConfigDiagnostic {
     pub path: PathBuf,
@@ -960,7 +931,6 @@ pub struct AppearanceConfigDiagnostic {
     pub message: String,
 }
 
-/// Fully resolved appearance plus configuration provenance and parse counters.
 #[derive(Clone, Debug)]
 pub struct AppearanceLoad {
     pub appearance: TerminalAppearance,
@@ -972,14 +942,11 @@ pub struct AppearanceLoad {
     pub unsupported: u32,
     pub invalid: u32,
     pub bytes_read: usize,
-    /// A requested theme could not be resolved or parsed safely.
     pub fatal: bool,
-    /// The concrete theme file selected for this load, when any.
     pub theme_path: Option<PathBuf>,
 }
 
 impl AppearanceLoad {
-    /// Build a load result containing only built-in defaults for `color_scheme`.
     #[must_use]
     pub fn defaults_for(color_scheme: TerminalColorScheme) -> Self {
         let appearance = TerminalAppearance::default_for(color_scheme);
@@ -999,13 +966,11 @@ impl AppearanceLoad {
     }
 }
 
-/// Discover and load the first standard Ghostty configuration file.
 #[must_use]
 pub fn load_ghostty_appearance() -> AppearanceLoad {
     load_ghostty_appearance_for(TerminalColorScheme::Dark)
 }
 
-/// Discover and load Ghostty appearance for a specific system color scheme.
 #[must_use]
 pub fn load_ghostty_appearance_for(color_scheme: TerminalColorScheme) -> AppearanceLoad {
     let Some(path) = discover_ghostty_config() else {
@@ -1014,13 +979,11 @@ pub fn load_ghostty_appearance_for(color_scheme: TerminalColorScheme) -> Appeara
     load_ghostty_appearance_from_for(&path, color_scheme)
 }
 
-/// Load a specific Ghostty configuration root, following bounded relative includes.
 #[must_use]
 pub fn load_ghostty_appearance_from(path: &Path) -> AppearanceLoad {
     load_ghostty_appearance_from_for(path, TerminalColorScheme::Dark)
 }
 
-/// Load a Ghostty configuration root for a specific system color scheme.
 #[must_use]
 pub fn load_ghostty_appearance_from_for(
     path: &Path,
@@ -1079,7 +1042,6 @@ pub fn load_ghostty_appearance_from_for(
     load
 }
 
-/// Load the discovered Ghostty appearance and apply ordered `zz/config` entries last.
 #[must_use]
 pub fn load_ghostty_appearance_for_with_overrides(
     color_scheme: TerminalColorScheme,
@@ -1088,7 +1050,6 @@ pub fn load_ghostty_appearance_for_with_overrides(
     apply_appearance_overrides(load_ghostty_appearance_for(color_scheme), entries)
 }
 
-/// Load a specific Ghostty root and apply ordered `zz/config` entries last.
 #[must_use]
 pub fn load_ghostty_appearance_from_for_with_overrides(
     path: &Path,
@@ -1101,9 +1062,6 @@ pub fn load_ghostty_appearance_from_for_with_overrides(
     )
 }
 
-/// Applies the daemon-owned appearance subset as a final ordered pass. A closing
-/// `theme` entry resolves first and becomes the base for every other entry, which
-/// then applies in file order.
 #[must_use]
 pub fn apply_appearance_overrides(
     mut load: AppearanceLoad,
@@ -1332,7 +1290,6 @@ fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
     }
 }
 
-/// One discoverable Ghostty theme and its renderer-neutral swatch source.
 #[derive(Clone, Debug)]
 pub struct GhosttyTheme {
     pub name: String,
@@ -1340,7 +1297,6 @@ pub struct GhosttyTheme {
     pub appearance: TerminalAppearance,
 }
 
-/// Enumerate valid Ghostty theme files in the same precedence order used by theme resolution.
 #[must_use]
 pub fn enumerate_ghostty_themes_for(color_scheme: TerminalColorScheme) -> Vec<GhosttyTheme> {
     let config_root = discover_ghostty_config();
@@ -1402,7 +1358,6 @@ fn load_ghostty_theme_file_for(path: &Path, color_scheme: TerminalColorScheme) -
     load
 }
 
-/// Return the first existing Ghostty configuration path in the supported order.
 #[must_use]
 pub fn discover_ghostty_config() -> Option<PathBuf> {
     let xdg = std::env::var_os("XDG_CONFIG_HOME").filter(|value| !value.is_empty());
@@ -2276,7 +2231,6 @@ fn parse_rgba(value: &str) -> Result<AppearanceColor, String> {
 fn x11_colors() -> &'static HashMap<String, Color> {
     static COLORS: OnceLock<HashMap<String, Color>> = OnceLock::new();
     COLORS.get_or_init(|| {
-        // Sourced from Ghostty's MIT/X11-licensed terminal/res/rgb.txt.
         include_str!("x11-rgb.txt")
             .lines()
             .filter_map(|line| {

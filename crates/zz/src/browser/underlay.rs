@@ -23,8 +23,6 @@ type MaskShape = (f64, f64, [f64; 4]);
 
 struct Layer(Retained<CALayer>, Mutex<Option<MaskShape>>);
 
-// SAFETY: Core Animation accepts layer property changes from any thread inside
-// an explicit transaction, and this wrapper only exposes such changes.
 #[allow(
     unsafe_code,
     reason = "CALayer is shared with Metal's completion thread"
@@ -42,11 +40,9 @@ impl Layer {
         reason = "an IOSurfaceRef is toll-free bridged to the IOSurface object CALayer.contents takes"
     )]
     fn show(&self, surface: &MacIoSurface) {
-        // SAFETY: MacIoSurface retains a live IOSurfaceRef for the duration of this call.
         let contents = unsafe { &*surface.as_ptr().cast::<AnyObject>() };
         CATransaction::begin();
         CATransaction::setDisableActions(true);
-        // SAFETY: CALayer retains the IOSurface it is given as contents.
         unsafe { self.0.setContents(Some(contents)) };
         CATransaction::commit();
     }
@@ -63,7 +59,6 @@ impl Layer {
         }
         *current = Some(shape);
         if radii.iter().all(|radius| *radius <= 0.0) {
-            // SAFETY: clearing the mask is always valid.
             unsafe { self.0.setMask(None) };
             return;
         }
@@ -75,7 +70,6 @@ impl Layer {
             radii,
             f64::from(zz_ui::CORNER_SMOOTHING),
         )));
-        // SAFETY: the mask is a new layer with no superlayer of its own.
         unsafe { self.0.setMask(Some(&mask)) };
     }
 }
@@ -101,7 +95,6 @@ fn corner_path(
     let mut first = true;
     let mut point = |x: f64, y: f64| {
         let y = height - y;
-        // SAFETY: a null transform pointer means no transform.
         unsafe {
             if first {
                 CGMutablePath::move_to_point(Some(&path), std::ptr::null(), x, y);
@@ -151,7 +144,6 @@ impl PaneUnderlay {
     #[allow(unsafe_code, reason = "reads an immutable Core Animation constant")]
     pub(crate) fn new(first_frame: &MacIoSurface) -> Self {
         let layer = CALayer::new();
-        // SAFETY: kCAGravityResize is an immutable framework constant.
         layer.setContentsGravity(unsafe { kCAGravityResize });
         layer.setMasksToBounds(true);
         layer.setHidden(true);
@@ -225,7 +217,6 @@ thread_local! {
     reason = "NSView.superview is marked unsafe in objc2-app-kit"
 )]
 fn ala_view_superview(view: &NSView) -> Option<Retained<NSView>> {
-    // SAFETY: the view is alive and this runs on the main thread.
     unsafe { view.superview() }
 }
 
@@ -238,7 +229,6 @@ fn ala_view(window: &Window) -> Option<Retained<NSView>> {
     let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
         return None;
     };
-    // SAFETY: raw-window-handle guarantees a live NSView, and paint runs on the main thread.
     unsafe { Retained::retain(handle.ns_view.as_ptr().cast()) }
 }
 

@@ -122,7 +122,6 @@ impl ArrowPad {
     }
 }
 
-/// The bubble a held arrow pad shows over its key, with `direction` lit.
 pub fn arrow_pad_bubble(direction: Option<ArrowDirection>, cx: &App) -> AnyElement {
     let theme = cx.theme();
     let muted = theme

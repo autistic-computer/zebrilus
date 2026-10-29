@@ -1,11 +1,3 @@
-//! The `L` format modifier over the daemon's real client roster.
-//!
-//! The pin loops `sort_get_clients`: every attached client, none of the ones
-//! that never attached, each row built from that client while the outer
-//! session, window, and pane stay where they were (format.c
-//! `format_loop_clients`, sort.c `sort_get_clients`). Command clients are
-//! connections, not attachments, so they never own a row.
-
 #![cfg(unix)]
 
 mod clients;
@@ -60,8 +52,6 @@ fn every_attached_client_owns_one_row_and_the_command_client_owns_none() {
 
     assert_eq!(names.len(), 2, "two clients attached: {names:?}");
     assert_eq!(clients.format("base", ROW), wrap(&names));
-    // The connection running display-message is a command client, so the row
-    // count stays at the number of attachments.
     assert_eq!(clients.format("base", "#{L:x}").len(), 2);
 }
 
@@ -92,14 +82,10 @@ fn a_row_answers_the_client_formats_for_its_own_client() {
         expected
     );
 
-    // The outer session, window, and pane survive the row's client swap: both
-    // rows report the target of the display-message, not their own session.
     assert_eq!(
         clients.format("right", "#{L:<#{session_name}:#{window_index}>}"),
         "<right:0><right:0>"
     );
-    // A client format the row does not carry stays empty rather than falling
-    // back to the client the format was expanded for.
     assert_eq!(clients.format("left", "#{L:<#{client_termtype}>}"), "<><>");
 }
 
@@ -114,8 +100,6 @@ fn the_order_flags_and_reversal_follow_the_pinned_comparator() {
     let mut by_name_reversed = by_name.clone();
     by_name_reversed.reverse();
 
-    // Default and i are SORT_ORDER, which keeps the order the clients attached
-    // and only reverses it for r. n compares names and r negates that.
     for form in ["#{L:<#{client_name}>}", "#{Li:<#{client_name}>}"] {
         assert_eq!(clients.format("base", form), wrap(&attached), "{form}");
     }
@@ -135,8 +119,6 @@ fn the_order_flags_and_reversal_follow_the_pinned_comparator() {
         wrap(&by_name_reversed)
     );
 
-    // t is activity, newest first: the control client attached last, so it
-    // leads until the interactive client sends input.
     let control_first = clients.format("base", "#{Lt:<#{client_name}>}");
     assert_eq!(
         clients.format("base", "#{Ltr:<#{client_name}>}"),
@@ -188,14 +170,10 @@ fn nested_and_malformed_client_loops_keep_the_pinned_fallback() {
     let mut clients = Clients::start("client-loop-nesting", &["base"]);
     let names = attach_interactive_then_control(&mut clients, "base");
 
-    // An order letter the pin does not know falls back to SORT_ORDER without
-    // reversing, so it reads exactly like the bare modifier.
     for form in ["#{Lz:<#{client_name}>}", "#{Lqq:<#{client_name}>}"] {
         assert_eq!(clients.format("base", form), wrap(&names), "{form}");
     }
 
-    // A window loop inside a client row keeps the row's client and picks up the
-    // outer session's windows.
     assert_eq!(
         clients.format("base", "#{L:#{W:[#{window_index}]}}"),
         "[0][0]"
@@ -205,15 +183,10 @@ fn nested_and_malformed_client_loops_keep_the_pinned_fallback() {
         surround(&names, '(', ')')
     );
 
-    // Client loops nest: the inner loop walks the same roster for every row of
-    // the outer one.
     assert_eq!(clients.format("base", "#{L:[#{L:x}]}"), "[xx][xx]");
 
-    // An empty body still runs the rows and contributes nothing.
     assert_eq!(clients.format("base", "#{L:}"), "\n");
 
-    // Outside a loop the client formats keep answering for the one client the
-    // format was expanded for, never for every row of the roster.
     let outer = clients.format("base", "[#{client_name}]");
     assert!(
         names.iter().any(|name| outer == format!("[{name}]")),

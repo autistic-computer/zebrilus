@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# run-one.sh MODEL ARM TASK
-#   BACKEND=zz|rex (default zz); MODEL claude-* runs `claude -p`, gpt-<digit>* runs `codex exec`, anything else runs `agy -p`
-#   ARM = none | skill | inline | hook | stub | stubhook (stub and stubhook are zz only)
 set -uo pipefail
 MODEL=$1 ARM=$2 TASK=$3
 BACKEND=${BACKEND:-zz}

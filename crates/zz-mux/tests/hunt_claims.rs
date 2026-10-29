@@ -1651,8 +1651,6 @@ fn detach_client_dash_a_leaves_the_caller_attached() {
         })]
     );
 
-    // cmd-detach-client.c takes -E as a value and -P as a flag, and -E wins over
-    // the message type -P would have chosen.
     let exec = engine
         .execute(
             &mut context,
@@ -2293,9 +2291,6 @@ fn resize_pane_direction_flags_accept_bare_attached_and_separated_amounts() {
     }
 }
 
-// cmd-send-keys.c hands the client it resolved from -c to window_pane_key,
-// key_bindings_dispatch and wme->mode->command, so the flag has to reach the
-// effects the daemon executes rather than being parsed and dropped.
 #[test]
 fn send_keys_carries_its_target_client_onto_the_mode_effects() {
     let mut engine = MuxEngine::default();
@@ -2352,12 +2347,6 @@ fn send_keys_carries_its_target_client_onto_the_mode_effects() {
     );
 }
 
-// Measured on pinned tmux d77c9dc6 on 2026-09-01 with a real attached client:
-// a pane entering copy mode reports #{copy_cursor_y} 22, `send-keys -N 4 -X`
-// with no action then a plain `-X cursor-up` leaves it at 12, and a following
-// cursor-up moves one row. window_copy_command returns at count == 0 before
-// the `wme->prefix = 1` line, so the empty -X keeps the count it was given and
-// a bare `-X` with no count leaves the pending count alone.
 #[test]
 fn send_keys_empty_copy_command_keeps_the_count_it_was_given() {
     let mut engine = MuxEngine::default();

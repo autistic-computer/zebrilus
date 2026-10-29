@@ -49,8 +49,6 @@ pub(crate) struct TerminalDisplayPreferences {
 
 impl ala::Global for TerminalDisplayPreferences {}
 
-/// The colors the phone draws a terminal in over the host's `viewport`
-/// colors and base `palette`: its interface theme's.
 pub(crate) fn phone_colors(
     viewport: &TerminalViewport,
     palette: &TerminalPalette,

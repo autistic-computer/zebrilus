@@ -1,10 +1,4 @@
 #!/bin/sh
-# Control-mode behaviour that moved with tmux 3.8. Every refresh-client -C
-# resizes every sized window and fires its events as they happen, so each
-# call sends %layout-change and runs window-resized hooks even when no size
-# changed, and end of file no longer loses them. A blank line still ends the
-# client before the commands read with it run, so their notifications are
-# dropped. A read-only control client runs queries and refresh-client.
 set -eu
 
 export LC_ALL=C

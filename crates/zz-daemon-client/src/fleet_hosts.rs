@@ -1,5 +1,3 @@
-//! Discovery and parsing for client-side fleet host entries in `zz/config`.
-
 use std::{
     env,
     fs::{self, File, OpenOptions},
@@ -21,7 +19,6 @@ pub struct HostEntry {
     pub endpoint: Endpoint,
 }
 
-/// A `host-<name>` line that could not become a [`HostEntry`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RejectedHost {
     pub name: String,
@@ -29,7 +26,6 @@ pub struct RejectedHost {
     pub reason: String,
 }
 
-/// Read every configured fleet host from the first discovered `zz/config`.
 pub fn configured_fleet_hosts() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>)> {
     let candidates = config_candidates();
     let Some(path) = discover_config_path(&candidates) else {
@@ -38,14 +34,11 @@ pub fn configured_fleet_hosts() -> io::Result<(Vec<HostEntry>, Vec<RejectedHost>
     read_config_source(&path).map(|source| parse_fleet_hosts(&source))
 }
 
-/// Validate one `host-<name>` entry and write it to `zz/config` with an atomic rename.
 pub fn write_fleet_host(name: &str, endpoint: &str) -> io::Result<()> {
     let path = config_path_for_write()?;
     write_fleet_host_at(&path, name, endpoint)
 }
 
-/// Apply one `host-<name>` entry, returning its diagnostic text when invalid
-/// or when it replaces an earlier entry.
 pub fn apply_fleet_host_entry(
     hosts: &mut Vec<HostEntry>,
     rejected: &mut Vec<RejectedHost>,

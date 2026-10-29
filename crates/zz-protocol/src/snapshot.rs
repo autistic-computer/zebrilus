@@ -183,7 +183,6 @@ pub enum BrowserProfileNameError {
     ControlCharacter,
 }
 
-/// Normalizes a browser profile name. `zz-default` is the legacy alias for `default`.
 pub fn normalize_browser_profile_name(value: &str) -> Result<String, BrowserProfileNameError> {
     let value = value.trim();
     if value.is_empty() {
@@ -203,9 +202,7 @@ pub fn normalize_browser_profile_name(value: &str) -> Result<String, BrowserProf
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BrowserDescriptor {
-    /// Every tab's URL in strip order. Never empty.
     pub tabs: Vec<String>,
-    /// Index into `tabs` of the tab the pane shows.
     pub active_tab: usize,
     pub profile: String,
 }
@@ -220,7 +217,6 @@ impl BrowserDescriptor {
         }
     }
 
-    /// The active tab's URL, or `about:blank` if the index is out of range.
     #[must_use]
     pub fn url(&self) -> &str {
         self.tabs
@@ -230,7 +226,6 @@ impl BrowserDescriptor {
     }
 }
 
-/// The agent CLI a terminal pane runs under the lens.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AgentProvider {
     #[default]
@@ -290,7 +285,6 @@ pub enum EditorDescriptorError {
     ControlCharacter { field: &'static str },
 }
 
-/// Daemon-owned restore metadata for an Editor pane. Buffer bytes stay GUI-local.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct EditorDescriptor {
     pub path: Option<String>,
@@ -319,7 +313,6 @@ impl<'de> Deserialize<'de> for EditorDescriptor {
 }
 
 impl EditorDescriptor {
-    /// Rejects relative, oversized, or control-character paths.
     pub fn validate(&self) -> Result<(), EditorDescriptorError> {
         validate_editor_absolute_path("working directory", &self.cwd)?;
         if let Some(path) = &self.path {
@@ -347,16 +340,12 @@ fn validate_editor_absolute_path(
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaneKindSnapshot {
-    /// A newly split pane with no runtime surface yet.
     Picker,
     Terminal,
     Browser(BrowserDescriptor),
     Editor(EditorDescriptor),
 }
 
-/// `pane-border-status` as the redraw path sees it. `window_get_pane_status`
-/// folds `top-floating` and `bottom-floating` back to off for every tiled
-/// pane, so only these three reach a client.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaneBorderStatus {
     #[default]
@@ -381,8 +370,6 @@ impl PaneBorderStatus {
     }
 }
 
-/// `pane-border-lines`: the glyph family `window_get_border_cell` draws pane
-/// borders from.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaneBorderLines {
     #[default]
@@ -410,7 +397,6 @@ impl PaneBorderLines {
     }
 }
 
-/// `pane-border-indicators`: how the active pane is marked on its borders.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PaneBorderIndicators {
     Off,
@@ -448,16 +434,11 @@ pub struct PaneSnapshot {
     pub title: String,
     pub kind: PaneKindSnapshot,
     pub synchronized_input: bool,
-    /// A BEL rang here and nobody has visited since. Latched until the pane is read.
     pub bell: bool,
     pub dead: bool,
     pub dead_status: Option<u32>,
-    /// `pane-border-style` colour override; `None` means theme fallback.
     pub border_colour: Option<TmuxColour>,
-    /// `pane-active-border-style` colour override; `None` means theme fallback.
     pub active_border_colour: Option<TmuxColour>,
-    /// The expanded `pane-border-format` for this pane, empty while
-    /// `pane-border-status` is off.
     #[serde(default)]
     pub border_status_text: String,
     #[serde(default)]
@@ -607,8 +588,6 @@ pub struct PanesModeBorder {
     pub cell: u8,
 }
 
-/// `window_panes_clear_floating_area`: the blank a float's frame paints over
-/// whatever is under it, before `areas[before]` is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PanesModeClear {
     pub before: u32,
@@ -641,15 +620,8 @@ pub struct WindowSnapshot {
     pub pane_border_lines: PaneBorderLines,
     #[serde(default)]
     pub pane_border_indicators: PaneBorderIndicators,
-    /// `w->panes`: the order `window_pane_index` counts, so a pane's index is
-    /// its position here plus `pane-base-index`.
     #[serde(default)]
     pub pane_order: Vec<PaneId>,
-    /// `w->z_index`: the second order `window_add_pane` always appends to,
-    /// `join-pane` inserts beside its destination in, `swap-pane` exchanges
-    /// positions in, and `layout_parse` rebuilds from the layout tree. A
-    /// border cell two panes both touch goes to the pane earliest here,
-    /// because `redraw_build_scene` walks the list in reverse.
     #[serde(default)]
     pub pane_z_order: Vec<PaneId>,
     #[serde(default)]
@@ -782,7 +754,6 @@ pub struct MuxSnapshot {
 }
 
 impl MuxSnapshot {
-    /// The window the recipient should render. Falls back to the session default.
     #[must_use]
     pub fn focused_window_for(&self, session: &SessionSnapshot) -> WindowId {
         self.focused_window

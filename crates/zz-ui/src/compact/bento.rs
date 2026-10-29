@@ -19,7 +19,6 @@ const WINDOW_HEADER: f32 = 18.0;
 const MINI_GAP: f32 = 4.0;
 const MINI_RADIUS: f32 = 10.0;
 
-/// How many grid cells a bento tile covers across and down.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BentoSpan {
     pub columns: usize,
@@ -31,8 +30,6 @@ impl BentoSpan {
         Self { columns, rows }
     }
 
-    /// The tile a window gets for its pane count: a square for one or two
-    /// panes, the full width for more, taller still past three.
     pub fn for_window(panes: usize) -> Self {
         match panes {
             0..=2 => Self::new(2, 2),
@@ -42,9 +39,6 @@ impl BentoSpan {
     }
 }
 
-/// Where each of `spans` lands on a grid [`BENTO_COLUMNS`] wide, as
-/// `(column, row)`: row by row, each in the first free spot it fits, so a
-/// small tile fills a hole a big one left behind.
 pub fn bento_pack(spans: &[BentoSpan]) -> Vec<(usize, usize)> {
     let mut taken: Vec<[bool; BENTO_COLUMNS]> = Vec::new();
     spans
@@ -76,8 +70,6 @@ pub fn bento_pack(spans: &[BentoSpan]) -> Vec<(usize, usize)> {
         .collect()
 }
 
-/// A grid of `tiles` `width` wide in square cells, packed by
-/// [`bento_pack`], each tile sized to the cells it spans.
 pub fn bento_grid(width: Pixels, tiles: Vec<(BentoSpan, AnyElement)>) -> Div {
     let gap = px(BENTO_GAP);
     let cell = ((width - gap * (BENTO_COLUMNS - 1) as f32) / BENTO_COLUMNS as f32).max(px(0.0));
@@ -112,8 +104,6 @@ pub fn bento_grid(width: Pixels, tiles: Vec<(BentoSpan, AnyElement)>) -> Div {
         )
 }
 
-/// A tile on a phone bento page, drawn as [`roles::PHONE_CARD`] and filling
-/// the cells it is given. The caller adds what it holds and its click.
 pub fn bento_tile(
     id: impl Into<ElementId>,
     press: impl Into<ElementId>,
@@ -134,9 +124,6 @@ pub fn bento_tile(
         .child(press_highlight(press, None, radius))
 }
 
-/// A host on the Hosts page: its state dot and name, `detail` under them, and
-/// `footer` at the bottom: what its agents are doing, or the button that
-/// connects it.
 pub fn host_tile(
     id: impl Into<ElementId>,
     press: impl Into<ElementId>,
@@ -186,8 +173,6 @@ pub fn host_tile(
     )
 }
 
-/// A line at the foot of a host tile: a dot in `color` and `text`, both in
-/// `color` when it is a warning.
 pub fn host_tile_line(color: Hsla, text: impl Into<SharedString>, warning: bool, cx: &App) -> Div {
     div()
         .flex()
@@ -210,8 +195,6 @@ pub fn host_tile_line(color: Hsla, text: impl Into<SharedString>, warning: bool,
         )
 }
 
-/// A tile that adds something, drawn as [`roles::PHONE_ADD`]: Add host on
-/// the Hosts page.
 pub fn bento_add_tile(
     id: impl Into<ElementId>,
     title: impl Into<SharedString>,
@@ -240,9 +223,6 @@ pub fn bento_add_tile(
         .child(title.into())
 }
 
-/// A window on a host's bento page: its number, title and folder over
-/// `body`, its panes drawn where they sit by [`window_layout`], with a dot
-/// when one of them waits on you.
 pub fn window_tile(
     id: impl Into<ElementId>,
     press: impl Into<ElementId>,
@@ -308,9 +288,6 @@ pub fn window_tile(
     )
 }
 
-/// A window's panes laid out the way the window splits them: each of
-/// `panes` at its `(x, y, width, height)` share of the area, with a gap
-/// between neighbours.
 pub fn window_layout(panes: Vec<([f32; 4], AnyElement)>) -> Div {
     let half = px(MINI_GAP / 2.0);
     div()
@@ -328,10 +305,6 @@ pub fn window_layout(panes: Vec<([f32; 4], AnyElement)>) -> Div {
         }))
 }
 
-/// One pane in a window tile: its icon and title over `preview`, on
-/// `background`, ringed in the accent when it is the pane the window opens
-/// to and dotted when it waits on you. A window with one pane leaves the
-/// title to the tile.
 pub fn mini_pane(
     icon: IconName,
     title: Option<SharedString>,

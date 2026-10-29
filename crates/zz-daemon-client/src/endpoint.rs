@@ -48,10 +48,6 @@ use crate::transport::{LocalTransport, Transport as _, TransportStream as _};
 #[cfg(any(unix, windows, test))]
 use crate::unmasked::SpawnUnmasked as _;
 
-/// `sh -l` reads `/etc/profile` and `~/.profile`; a PATH exported from `~/.bash_profile` or
-/// `~/.zshrc` never reaches it, which hides the CLI that install.sh linked into one of these.
-/// Appending leaves whatever the profile did contribute ahead of the fallbacks. A Mac app dragged
-/// out of the disk image has no CLI link at all, so `$zz_cli` falls back to the bundle's own `cli`.
 #[cfg(any(unix, windows, test))]
 pub(crate) fn remote_path_fallback() -> String {
     format!(
@@ -68,8 +64,6 @@ pub(crate) fn remote_path_fallback() -> String {
 }
 
 #[cfg(any(unix, windows, test))]
-// Runs under `sh -lc` so `zz` resolves through the login shell's PATH; the sentinel prefixes
-// let the parser skip whatever a login profile prints around the probe's own output.
 pub(crate) fn remote_socket_probe(key_line: Option<&str>) -> String {
     shell_quote(&remote_socket_probe_script(key_line))
 }
@@ -117,7 +111,6 @@ pub(crate) fn remote_zz_key_script() -> String {
         name = zz_protocol::app_identity::DIRECTORY,
     )
 }
-/// Exit codes the auto-start script picks for itself; ssh reports its own failures as 255.
 #[cfg(any(unix, windows, test))]
 pub(crate) const REMOTE_ZZ_MISSING_STATUS: i32 = 127;
 #[cfg(any(unix, windows, test))]
@@ -134,7 +127,6 @@ const INSTALL_SCRIPT: &str = include_str!("../../../install.sh");
 const REMOTE_DAEMON_POLL_ATTEMPTS: u32 = 50;
 #[cfg(any(unix, windows, test))]
 const REMOTE_DAEMON_POLL_INTERVAL: &str = "0.1";
-/// POSIX only requires whole-second `sleep`, so a remote that rejects the fraction polls seconds.
 #[cfg(any(unix, windows, test))]
 const REMOTE_DAEMON_POLL_FALLBACK_ATTEMPTS: u32 = 5;
 #[cfg(unix)]
@@ -145,14 +137,12 @@ const FORWARD_POLL_INTERVAL: Duration = Duration::from_millis(20);
 const CONTROL_PERSIST_SECONDS: u32 = 600;
 #[cfg(unix)]
 const LEGACY_SSH_DIRECTORY_AGE: Duration = Duration::from_mins(10);
-/// Leaves room inside `sun_path` for the private directory and the socket names under it.
 #[cfg(unix)]
 const MAX_SSH_RUNTIME_ROOT_BYTES: usize = 60;
 #[cfg(unix)]
 static FORWARD_COUNTER: AtomicU64 = AtomicU64::new(1);
 #[cfg(windows)]
 static FORWARD_COUNTER: AtomicU64 = AtomicU64::new(1);
-/// What the remote proxy prints before its first protocol byte, ahead of any login chatter.
 pub(crate) const PROXY_READY_MARKER: &[u8] = b"zz-proxy-1\n";
 #[cfg(windows)]
 const MAX_PROXY_PREAMBLE_BYTES: usize = 64 * 1024;
@@ -261,7 +251,6 @@ pub enum EndpointError {
 }
 
 impl EndpointError {
-    /// The endpoint failure behind `error`, looking through the `io::Error` a connect wraps it in.
     #[must_use]
     pub fn find<'a>(error: &'a (dyn std::error::Error + 'static)) -> Option<&'a Self> {
         let mut source = Some(error);
@@ -280,7 +269,6 @@ impl EndpointError {
         None
     }
 
-    /// The same failure `Display` reports, said in terms of what the user can do about it.
     #[must_use]
     pub fn ssh_reason(&self) -> Option<String> {
         Some(match self {
@@ -495,7 +483,6 @@ fn parse_ssh_endpoint(input: &str, value: &str) -> Result<SshEndpoint, EndpointE
     if host.chars().any(char::is_whitespace) {
         return Err(parse_error(input, "ssh host contains whitespace"));
     }
-    // A leading `-` reaches ssh's option parser instead of its destination argument.
     if host.starts_with('-') {
         return Err(parse_error(input, "ssh host must not start with `-`"));
     }
@@ -588,7 +575,6 @@ fn forwarding_spec(local_socket: &Path, remote_socket: &Path) -> std::ffi::OsStr
     forwarding
 }
 
-/// Binds SOCKS to loopback explicitly: ssh's default bind address follows `GatewayPorts`.
 #[cfg(any(unix, test))]
 fn socks_spec(port: u16) -> String {
     format!("127.0.0.1:{port}")
@@ -620,7 +606,6 @@ fn ssh_forward_command(
     command
 }
 
-/// `ssh -D 0` is invalid, so ask the kernel for a candidate and retry startup if the handoff races.
 #[cfg(unix)]
 fn available_socks_port() -> Option<u16> {
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).ok()?;
@@ -964,7 +949,6 @@ fn daemon_was_not_running(message: &str) -> bool {
             && message.ends_with("(No such file or directory)"))
 }
 
-/// The remote half of an attach that cannot forward a Unix socket: `zz proxy` on its stdio.
 #[cfg(any(target_os = "ios", target_os = "android", test))]
 pub(crate) fn remote_proxy_script(remote_socket: &Path) -> String {
     format!(
@@ -974,8 +958,6 @@ pub(crate) fn remote_proxy_script(remote_socket: &Path) -> String {
     )
 }
 
-/// One login for a whole Windows attach: the probe, a daemon start when its protocol matches, and
-/// `zz proxy`, whose ready marker follows the probe lines.
 #[cfg(any(windows, test))]
 pub(crate) fn remote_connect_script(
     remote_socket: Option<&Path>,
@@ -996,9 +978,6 @@ pub(crate) fn remote_connect_script(
     )
 }
 
-/// Appends `line` to the remote `~/.ssh/authorized_keys` unless `key` is already there, creating
-/// the directory and file private as sshd's `StrictModes` wants, and never gluing onto a last line
-/// that lacks its newline.
 #[cfg(any(unix, windows, test))]
 pub(crate) fn authorized_key_script(key: &str, line: &str) -> String {
     let file = "\"$HOME/.ssh/authorized_keys\"";
@@ -1012,7 +991,6 @@ pub(crate) fn authorized_key_script(key: &str, line: &str) -> String {
     )
 }
 
-/// Quote a value so the remote shell sees it verbatim; an ssh command line is parsed twice.
 #[cfg(any(unix, windows, test))]
 pub fn shell_quote(value: &str) -> String {
     let mut quoted = String::with_capacity(value.len() + 2);
@@ -1112,7 +1090,6 @@ impl SshFailure {
     }
 }
 
-/// ssh collapses every failure of its own into exit 255, so stderr is all there is to go on.
 #[cfg(any(unix, windows, test))]
 pub(crate) fn ssh_failure_hint(stderr: &str) -> Option<&'static str> {
     SshFailure::classify(stderr).map(SshFailure::hint)
@@ -1148,8 +1125,6 @@ fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: Ss
         .arg("ServerAliveCountMax=3")
         .arg("-o")
         .arg("Compression=yes");
-    // Windows OpenSSH has no connection sharing, and any set `ControlPath` still routes children
-    // into its broken mux stub, so both options are overridden rather than omitted.
     #[cfg(windows)]
     command
         .arg("-o")
@@ -1176,8 +1151,6 @@ fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: Ss
         command.arg("-l").arg(user);
     }
     if let Some(askpass) = session.askpass {
-        // `force`, not `prefer`: `prefer` skips the helper whenever ssh has a controlling TTY, and
-        // on Windows it resolves to off outright. `BatchMode` stays unset; it kills prompts.
         command
             .env(crate::askpass::SSH_ASKPASS_ENV, askpass.helper)
             .env(crate::askpass::SSH_ASKPASS_REQUIRE_ENV, "force")
@@ -1185,7 +1158,6 @@ fn append_ssh_options(command: &mut Command, endpoint: &SshEndpoint, session: Ss
     }
 }
 
-/// ssh expands `%` tokens inside `ControlPath`, so a literal one has to be escaped.
 #[cfg(any(unix, test))]
 fn control_path_option(control_path: &Path) -> String {
     format!(
@@ -1571,8 +1543,6 @@ pub(crate) enum KeyEnrollment {
     Failed,
 }
 
-// Login profiles may print arbitrary noise around the probe's output; only the
-// sentinel-prefixed lines are ours.
 pub(crate) fn probe_value<'a>(stdout: &'a str, prefix: &str) -> Option<&'a str> {
     stdout
         .lines()
@@ -1617,8 +1587,6 @@ fn remote_probe_socket(target: &str, stdout: &str) -> Result<PathBuf, EndpointEr
         });
     }
     match probe_value("zz-probe-protocol=") {
-        // No zz on the remote PATH says nothing about a running daemon; dial anyway.
-        // A daemon that must be auto-started still fails with the install-zz message.
         Some("missing") => {
             log::debug!("zz is not on the login-shell PATH of {target}; skipping version gate");
         }
@@ -2533,8 +2501,6 @@ pub(crate) fn connect_kept<T>(
 #[cfg(windows)]
 const FORWARD_PIPE_ROLE: &str = "zz-fwd";
 
-/// A pipe whose 128-bit random name is its only access control: Windows named pipes have no
-/// `0600`, and a default descriptor grants read access to Everyone.
 #[cfg(windows)]
 pub(crate) fn ssh_pipe(role: &str, serial: u64) -> io::Result<(PathBuf, LocalListener)> {
     let mut entropy = [0_u8; 16];
@@ -2552,8 +2518,6 @@ pub(crate) fn ssh_pipe(role: &str, serial: u64) -> io::Result<(PathBuf, LocalLis
     Ok((path, listener))
 }
 
-/// Polled rather than woken by a self-connect: `interprocess` dials with an unbounded wait, so
-/// poking a pipe that is already serving a client would hang the teardown.
 #[cfg(windows)]
 pub(crate) fn accept_until_stopped(
     listener: &LocalListener,
@@ -2576,8 +2540,6 @@ pub(crate) fn accept_until_stopped(
     }
 }
 
-/// `Path::is_absolute` asks the local platform's question, which a Windows client would answer
-/// wrongly about a remote POSIX path.
 #[cfg(any(windows, target_os = "ios", target_os = "android"))]
 pub(crate) fn remote_socket_is_absolute(path: &Path) -> bool {
     path.as_os_str().as_encoded_bytes().starts_with(b"/")
@@ -2599,7 +2561,6 @@ fn ssh_connect_command(endpoint: &SshEndpoint, session: SshSession<'_>, script: 
     command
 }
 
-// Drained off-thread because ssh blocks once its stderr pipe fills.
 #[cfg(windows)]
 struct SshStderr {
     text: Arc<Mutex<String>>,
@@ -2635,9 +2596,6 @@ impl SshStderr {
     }
 }
 
-// The Windows ssh client cannot bind a Unix-domain socket, so the remote runs `zz proxy` and this
-// end bridges its stdio to a named pipe. A TCP `-L` forward would work but a Windows loopback port
-// has no owner to check, where the unix arm chmods its forwarded socket 0600.
 #[cfg(windows)]
 pub(crate) struct SshForward {
     child: Child,
@@ -2764,8 +2722,6 @@ impl SshForward {
         &self.local_socket
     }
 
-    // Always absent: `ssh -D` is an unauthenticated loopback listener, and a Windows loopback port
-    // has no owner to check against.
     #[allow(
         clippy::unused_self,
         reason = "the unix arm answers from its reserved port; both are called as SshForward::socks_port"
@@ -2877,8 +2833,6 @@ fn end_with_this_process(child: &Child) {
             unsafe_code,
             reason = "job objects are raw Win32 entry points with no safe wrapper"
         )]
-        // SAFETY: `limits` outlives the call and `size` is its exact size; the job handle is
-        // never closed, so the kernel closes it when this process ends and kills the job.
         let job = unsafe {
             let job = CreateJobObjectW(None, windows::core::PCWSTR::null()).ok()?;
             SetInformationJobObject(
@@ -2899,7 +2853,6 @@ fn end_with_this_process(child: &Child) {
         unsafe_code,
         reason = "AssignProcessToJobObject is a raw Win32 entry point with no safe wrapper"
     )]
-    // SAFETY: both handles are live: the job is never closed and `child` owns its process handle.
     let assigned =
         unsafe { AssignProcessToJobObject(HANDLE(job as *mut _), HANDLE(child.as_raw_handle())) };
     if let Err(error) = assigned {
@@ -2948,9 +2901,6 @@ impl Drop for SshForward {
     }
 }
 
-/// The remote half of the Windows attach path, run as `zz proxy` over ssh.
-///
-/// Connects to this host's daemon socket and pumps it to stdin and stdout.
 pub fn run_socket_proxy(socket: &Path) -> io::Result<()> {
     let mut from_daemon = LocalTransport::connect(socket)?;
     let mut to_daemon = from_daemon.try_clone()?;
@@ -2966,8 +2916,6 @@ pub fn run_socket_proxy(socket: &Path) -> io::Result<()> {
     pump(&mut from_daemon, &mut stdout)
 }
 
-// Flushes every chunk: the protocol is framed binary with no newlines, and stdout is a
-// `LineWriter`.
 fn pump(reader: &mut impl io::Read, writer: &mut impl io::Write) -> io::Result<()> {
     let mut buffer = [0_u8; PUMP_BUFFER_BYTES];
     loop {
@@ -3318,7 +3266,6 @@ mod tests {
 
     #[test]
     fn remote_probe_tolerates_login_profile_noise_and_a_pathless_zz() {
-        // A chatty ~/.profile prints around the sentinel lines under `sh -lc`.
         let noisy = format!(
             "Welcome to devbox!\nzz-probe-socket=/run/zz.sock\nmotd: 3 updates\nzz-probe-protocol={}\n",
             zz_protocol::PROTOCOL_VERSION
@@ -3330,7 +3277,6 @@ mod tests {
             Path::new("/run/zz.sock")
         );
 
-        // No zz on the login-shell PATH must not block dialing a running daemon.
         assert_eq!(
             parse_remote_probe_output(
                 "host",

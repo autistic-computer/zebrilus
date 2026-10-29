@@ -34,11 +34,8 @@ const WINDOW_SWITCH_DEFAULT_FORMAT: &str = concat!(
     "#[dim]#{window_name}#[default]",
     "}"
 );
-/// `WINDOW_CLIENT_DEFAULT_FORMAT`.
 const WINDOW_CLIENT_DEFAULT_FORMAT: &str =
     "#[fg=themelightgrey]#{t/p:client_activity}: session #[default]#{session_name}";
-/// `WINDOW_CLIENT_FEATURE`: the feature's name padded to fifteen columns, green
-/// when this client's terminal carries it and grey when it does not.
 macro_rules! window_client_feature {
     ($name:literal) => {
         concat!(
@@ -51,7 +48,6 @@ macro_rules! window_client_feature {
     };
 }
 
-/// `window_client_info_lines`, the `i` view, verbatim.
 const WINDOW_CLIENT_INFO_LINES: &[&str] = &[
     concat!(
         "#[fg=themelightgrey]Client Name   #[#{E:tree-mode-border-style},acs]x#[default] ",
@@ -217,9 +213,6 @@ fn expand_row(
     )
 }
 
-/// `window_client_build`: one row per attached client, with its shortcut key
-/// column, its name and the row text expanded in that client's own format
-/// tree, which is the only place the client formats resolve.
 pub(super) fn client_chooser_rows(
     inner: &ServerState,
     format: Option<&str>,
@@ -293,7 +286,6 @@ pub(super) fn client_chooser_rows(
     rows
 }
 
-/// `window_client_draw_info`, expanded in the chosen client's format tree.
 fn client_info_lines(inner: &ServerState, client: ClientId) -> Vec<String> {
     let Some(session_id) = client_attached_session(inner, client) else {
         return Vec::new();
@@ -921,8 +913,6 @@ fn tree_preview(
 ) -> Option<ChooserPreview> {
     let state = &styles.inner.engine.state;
     match target {
-        // `window_client_draw`: the chosen client's current pane, a rule, and
-        // that client's own status rows underneath it.
         ChooseTreeTarget::Client(id) => {
             let inner = styles.inner;
             if chooser.info_preview {

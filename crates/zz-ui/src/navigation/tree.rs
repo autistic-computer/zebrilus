@@ -22,8 +22,6 @@ pub struct IndentGuideColors {
 }
 
 impl IndentGuideColors {
-    /// The sidebar tree's guides: the tree rule, and the guide along the
-    /// active row's path in muted ink.
     #[must_use]
     pub fn tree(cx: &App) -> Self {
         let theme = cx.theme();

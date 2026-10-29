@@ -236,9 +236,6 @@ fn menu_pointer_kind(kind: MouseEventKind) -> MenuPointerKind {
     }
 }
 
-/// `MOUSE_BUTTONS(b)` for one report: a press or drag carries its button, a
-/// release and a motion with no button held both encode 3, and a wheel report
-/// encodes 64 upwards.
 fn menu_pointer_buttons(kind: MouseEventKind) -> u8 {
     match kind {
         MouseEventKind::Down(button) | MouseEventKind::Drag(button) => match button {
@@ -322,8 +319,6 @@ fn menu_input_route(
     }
 }
 
-/// The cell divisors a pointer report needs when the client asked the terminal
-/// for pixel coordinates.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct PointerCells {
     pixels: bool,
@@ -987,9 +982,6 @@ fn handle_command_prompt(
     if event.kind == KeyEventKind::Release {
         return Ok(InputOutcome::None);
     }
-    // Every prompt key is decided in the daemon, which owns the buffer, the
-    // cursor, the history and the status-keys table the way `status_prompt_key`
-    // does, so the client only relays the press and renders what comes back.
     if let Some(pane) = model.active_pane() {
         client
             .send_input(InputMessage::Key {
@@ -1033,8 +1025,6 @@ fn handle_paste(
         return Ok(InputOutcome::None);
     }
     if let Some(state) = model.command_prompt.as_mut() {
-        // `-1`, `-N` and `-k` read key codes, not text, so a paste has nothing
-        // to give them.
         if matches!(
             state.mode,
             CommandPromptMode::Single | CommandPromptMode::Numeric | CommandPromptMode::Key
@@ -1231,19 +1221,6 @@ fn handle_mouse(
     })
 }
 
-/// `server_client_check_mouse` and `key_bindings_get`: the pin turns a decoded
-/// pointer event into a key name carrying its event, its button and where on
-/// the client's screen it landed, and runs that key's binding. Every raw TUI
-/// gesture is a pointer event with the same three facts, so the name is built
-/// here and the daemon is asked to run the binding only when one exists; a
-/// name nothing is bound to leaves the client's own pointer handling alone,
-/// which is what the pin does with an unbound mouse key too.
-/// What the client does with a decoded pointer event: hand the daemon the key
-/// name it resolved, or leave the event to the client's own pointer handling.
-/// A click-sequence name goes to the daemon whether or not anything is bound
-/// to it, because the daemon is the side that runs `server_client_handle_key`
-/// and the client's own pointer handling has no meaning of its own for a
-/// second or third press.
 enum MouseKeyRoute {
     Send(InputMessage),
     Native,
@@ -1330,14 +1307,8 @@ fn is_click_sequence_name(key: &str) -> bool {
         || base.starts_with("TripleClick")
 }
 
-/// `KEYC_CLICK_TIMEOUT`.
 const CLICK_TIMEOUT: Duration = Duration::from_millis(300);
 
-/// `server_client_check_mouse`'s press sequence. A press starts one and arms
-/// `KEYC_CLICK_TIMEOUT`; a press inside it on the same button, location and
-/// pane is a `SecondClick` and then a `TripleClick`; a press that matches none
-/// of that resets the sequence and is an ordinary `MouseDown` again. Nothing
-/// but a press moves it, so the release between two clicks leaves it alone.
 fn advance_click_sequence(
     model: &mut Model,
     event: MouseEvent,
@@ -1377,9 +1348,6 @@ fn advance_click_sequence(
     key
 }
 
-/// `server_client_click_timer`: the timer expiring while the sequence is still
-/// waiting for a third press means the two that did arrive were a double
-/// click, so the stored event is replayed under that name.
 pub(crate) fn expire_click_sequence(
     model: &mut Model,
     client: &InteractiveClient,
@@ -1431,11 +1399,6 @@ pub(crate) fn expire_click_sequence(
         .map_err(|error| error.to_string())
 }
 
-/// The pane input the gesture would have carried on its own, handed over with
-/// the event so a binding that runs `send -M` can replay it. The pin's
-/// `window_pane_key` re-encodes `m` inside the server; the cell grid and the
-/// pixel geometry that encoding needs live in the client here, so the client
-/// encodes and the daemon replays.
 fn bound_mouse_view_action(
     model: &Model,
     pane: zz_protocol::PaneId,
@@ -1497,10 +1460,6 @@ fn native_pane_mouse_action(
     )
 }
 
-/// `window_pane_key`'s mode branch: a pane holding one of the server's own pane
-/// modes answers a pointer in the mode itself, with no key table in the way, so
-/// the names `mode_tree_key` and `window_switch_key` read have to reach the
-/// daemon even when nothing is bound to them.
 const PANE_MODE_POINTER_KEYS: [&str; 5] = [
     "MouseDown1Pane",
     "MouseDown3Pane",
@@ -1522,9 +1481,6 @@ fn pane_mode_mouse_key_is_reachable(
         })
 }
 
-/// The mode table half of `key_bindings_get`'s walk: the pane the pointer
-/// resolved to holds a mode, so a name the copy tables bind is reachable from
-/// this gesture even though root does not bind it.
 fn copy_mouse_key_is_reachable(
     model: &Model,
     latch: &crate::state::MouseDragLatch,
@@ -1539,11 +1495,6 @@ fn copy_mouse_key_is_reachable(
     (pane_holds_a_mode || latch.dragging && latch.bound) && model.copy_mouse_bindings.contains(key)
 }
 
-/// `server_client_check_mouse` resolves a location once, on the press, and
-/// `c->tty.mouse_drag_flag` keeps the drag that follows on the same pane and
-/// the same location until the release clears it. A press resolves and stores;
-/// a drag and a release read the store and leave the pointer's own cell to the
-/// event; anything else resolves fresh.
 fn latched_mouse_location(
     model: &mut Model,
     event: MouseEvent,
@@ -1607,9 +1558,6 @@ fn resolved_mouse_latch(
     }
 }
 
-/// The axis of the divider a cell belongs to, which is the axis
-/// `resize_pane_mouse_update` resizes along once the drag it starts is under
-/// way.
 fn divider_axis(model: &Model, global_column: u16, global_row: u16) -> Option<zz_protocol::Axis> {
     model
         .layout
@@ -1619,9 +1567,6 @@ fn divider_axis(model: &Model, global_column: u16, global_row: u16) -> Option<zz
         .map(|divider| divider.axis)
 }
 
-/// The first column of the status range a gesture landed in, in the client's
-/// own screen columns, which `cmd_display_menu_get_pos` reads off the target
-/// client's status entries for `-x W`.
 fn mouse_status_range_start(model: &Model, global_column: u16, global_row: u16) -> Option<u16> {
     let index = model.status_row_at(global_row)?;
     let (status_x, _) = model.status_area();
@@ -1631,8 +1576,6 @@ fn mouse_status_range_start(model: &Model, global_column: u16, global_row: u16) 
         .map(|start| status_x.saturating_add(start))
 }
 
-/// The `KEYC_MOUSE_LOCATION_*` half of the name, and the pane and window the
-/// pin's `mouse_event` would carry with it.
 fn mouse_key_location(
     model: &Model,
     global_column: u16,
@@ -1681,12 +1624,6 @@ fn mouse_key_location(
     ("Border".to_owned(), Some(entry), window)
 }
 
-/// A divider cell belongs to the pane it is the far edge of.
-/// `server_client_check_mouse_in_pane` walks the window's panes and matches
-/// each one's own right column and bottom row, so a vertical divider is the
-/// border of the pane to its left and a horizontal one of the pane above it.
-/// The raw TUI resolves a divider outside every pane's rect, which is why this
-/// looks the cell up rather than reading the rect back.
 fn divider_owner(
     model: &Model,
     global_column: u16,
@@ -1704,10 +1641,6 @@ fn divider_owner(
     model.pane_at(column, row).map(|entry| entry.pane)
 }
 
-/// The event and button half of the name, in the pin's own spelling.
-/// `server_client_check_mouse` turns the release that ends a drag into
-/// `MouseDragEnd` for the button that started it, and leaves every other
-/// release a `MouseUp`.
 fn mouse_key_name(event: MouseEvent, location: &str, dragging: bool) -> Option<String> {
     let base = match event.kind {
         MouseEventKind::Down(button) => {
@@ -1748,11 +1681,6 @@ const fn mouse_button_index(button: MouseButton) -> u8 {
     }
 }
 
-/// `server_client_check_mouse`: a `MOUSEMOVE` resolved inside a pane that is
-/// not the active one selects it while `focus-follows-mouse` is on. The pin
-/// reads the option before it decides what the mouse key becomes, so the switch
-/// happens whether or not `mouse` is on and whatever the pane under the pointer
-/// asked for; a drag reports as `MOUSEDRAG` and never switches.
 fn pointer_focus_follows_mouse(
     model: &mut Model,
     client: &InteractiveClient,
@@ -1822,9 +1750,6 @@ const fn mouse_route_owner(
     }
 }
 
-/// The pin's `forward_key` route for a disabled `mouse` option: the event goes
-/// to the pane under the cursor when that pane's application asked for mouse
-/// reporting, and every chrome branch is skipped.
 pub(crate) fn app_mouse_forward_action(
     model: &Model,
     event: MouseEvent,
@@ -2997,11 +2922,6 @@ mod tests {
         );
     }
 
-    /// Measured on pinned tmux d77c9dc6 on 2026-09-02 with a client attached on
-    /// a real pty: a bracketed paste of `ZaXY` over a two-row menu ran the row
-    /// `a` names, left the menu closed, and put `XY` in the pane, so the
-    /// bracket markers are swallowed, each character is answered as if typed,
-    /// and the tail after the close reaches the pane.
     #[test]
     fn menu_paste_answers_every_character_and_hands_the_tail_back() {
         let state = menu_state(Some(0), false);
@@ -3140,11 +3060,6 @@ mod tests {
         );
     }
 
-    /// Measured on pinned tmux d77c9dc6 on 2026-09-02: a `display-menu` typed on
-    /// a command line has no invoking mouse event, so it is `MENU_NOMOUSE` and
-    /// answers only button 1. A button-1 press left it up with `Enter` still
-    /// running its starting row, while a release, a motion with no button held
-    /// and a button-3 press each closed it with nothing run.
     #[test]
     fn a_nomouse_menu_answers_only_button_one() {
         let mut state = menu_state(Some(0), false);

@@ -1,7 +1,3 @@
-//! A daemon whose working directory and home are deliberately not the
-//! client's, so a buffer command that reads or writes on the wrong side of the
-//! connection is visible.
-
 #![allow(dead_code)]
 #![allow(
     clippy::disallowed_methods,

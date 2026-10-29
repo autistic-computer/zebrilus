@@ -169,9 +169,6 @@ fn prompt_for_chrome_data_access(window: &mut Window, cx: &mut App) {
     .detach();
 }
 
-/// Bindings a browser pane owns outright: the tabs it swallows so focus never
-/// leaves the page, and the omnibox list keys, which belong to an input widget
-/// rather than to chrome.
 fn raw_key_bindings() -> [KeyBinding; 5] {
     [
         KeyBinding::new("tab", NoAction, Some(BROWSER_KEY_CONTEXT)),
@@ -865,8 +862,6 @@ impl BrowserView {
         }
     }
 
-    /// The handle pane chrome should focus: the address bar while it is being
-    /// edited or the pane is blank, the page otherwise.
     pub(crate) fn pane_focus_handle(&self, cx: &App) -> FocusHandle {
         if self.address_editing || self.shows_empty_state() {
             self.address.read(cx).focus_handle(cx)
@@ -1058,8 +1053,6 @@ impl BrowserView {
         }
     }
 
-    /// Answer one `capture-browser` request, whether or not the capture worked:
-    /// a CLI client is parked on the reply.
     pub(crate) fn screenshot(&mut self, request_id: u64, path: String, cx: &mut Context<Self>) {
         let response = match self.write_screenshot(Path::new(&path), cx) {
             Ok(()) => GuiResponse::Success {
@@ -2278,9 +2271,6 @@ impl BrowserView {
         cx.notify();
     }
 
-    /// Apply a descriptor tab-list change from mux. Only a changed descriptor
-    /// reconciles, so a stale echo cannot yank the pane back mid-browse. Tabs
-    /// match up by index because tab ids are client-local.
     pub(crate) fn synchronize_tabs(
         &mut self,
         tabs: &[String],
@@ -2762,7 +2752,6 @@ impl BrowserView {
                 .await;
             window
                 .update(|window, cx| {
-                    // `window` only feeds the macOS Chrome-permission prompt.
                     #[cfg(not(target_os = "macos"))]
                     let _ = &window;
                     let permission_denied = cfg!(target_os = "macos")

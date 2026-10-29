@@ -1,20 +1,4 @@
 #!/usr/bin/env python3
-"""Fail when the wire format changed after a release but the version did not.
-
-    python3 compat/wire-version.py
-
-`PROTOCOL_VERSION` is pinned by two assertions, so a lane that appends a field
-and leaves the number alone passes every test in the workspace. That is the one
-wire mistake the campaign keeps making: 101 shipped in zz 0.8.0 during cycle 6
-and 102 shipped in zz 0.9.0 during cycle 9, both while lanes were appending to
-the number that had just become a released format. Two builds then both claim
-the same version and disagree about the bytes, which is exactly what the
-handshake's exact-match rule exists to prevent.
-
-So: read the newest release tag, read the version it shipped, and if the working
-tree still carries that number while the wire source has changed since, say so
-and name the next number. An append is only free while its version is unshipped.
-"""
 
 import re
 import subprocess
@@ -22,10 +6,6 @@ import sys
 from pathlib import Path
 
 WIRE_DIR = "crates/zz-protocol/src"
-# Every serialized payload source in the protocol crate is wire. The guard used to
-# watch message.rs alone, which is how cycle 11 pushed a PaneSnapshot.mode append in
-# snapshot.rs onto a released 103 and got a green check. New files are watched by
-# default, because a guard that has to be told about each one fails open.
 NOT_WIRE = {"catalog.rs", "lib.rs"}
 VERSION = re.compile(r"pub const PROTOCOL_VERSION: u16 = (\d+);")
 

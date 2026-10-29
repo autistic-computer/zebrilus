@@ -1,10 +1,3 @@
-//! A menu row answers to its action key whether or not it draws it.
-//!
-//! The pin drops `key` from the drawn row name when the bracketed form does
-//! not fit, but leaves `new_item->key` set, so the row still answers the press
-//! (menu.c `menu_add_item`). zz publishes those two facts as separate fields,
-//! so the client resolves presses from `key` and draws only `annotation`.
-
 use zz_client::{MenuKeyResult, resolve_menu_key};
 use zz_protocol::{MenuAction, MenuItem, MenuState, PopupBorderLines};
 use zz_terminal::{KeyAction, KeyCode, KeyInput, Modifiers};

@@ -1,32 +1,3 @@
-"""A pty in the middle of an attached client that can stop reading on command.
-
-compat/tui-output-backpressure.sh needs a terminal that stops draining while
-the client keeps painting, and an outer pinned tmux always drains its panes.
-This relay sits between the two: it runs inside an outer tmux pane, gives the
-client a pty of its own at the pane's size, and copies master to stdout and
-stdin to master. SIGUSR1 stops the copy in the master direction, SIGUSR2
-resumes it. Keys keep flowing while the copy is stopped, which is the whole
-point: the client's terminal is unreadable and its input is not.
-
-The status file is the fixture's observable. Every poll it holds one line,
-`hold=<0|1> avail=<bytes> forwarded=<bytes> restores=<n> tail=<bytes>
-exited=<0|1>`, where avail is FIONREAD on the master: the bytes the kernel is
-holding for a reader that is not reading. A bounded wait on avail going flat is
-how the fixture knows the pty buffer is full and the client is really backed
-up, instead of sleeping. restores counts the times the client left the
-alternate screen, tail is how many bytes it wrote after the last one and
-escapes is how many of those bytes were ESC. A detach message after the
-restore is a line of text; a paint after the restore carries escapes.
-
-After the client exits the relay takes the terminal over: it restores the
-cooked modes, clears the screen and prints DONE_MARKER, so whatever the outer
-pane decodes from then on arrived after the client was gone. It then stays
-alive so the pane it runs in is never a dead pane with tmux's own text in it.
---late-paint injects a paint twice, once accounted into the tail as though the
-client had written it after handing the terminal back and once after the
-marker: one sabotage for each of the two assertions the teardown case makes.
-"""
-
 import errno
 import fcntl
 import os
@@ -114,9 +85,6 @@ def main(argv):
     signal.signal(signal.SIGUSR2, on_resume)
     signal.signal(signal.SIGWINCH, on_winch)
 
-    # The pane the relay runs in hands it a cooked terminal: without this the
-    # keys the fixture sends would sit in the line discipline until a newline
-    # and be echoed back over the client's screen.
     outer = termios.tcgetattr(0)
     tty.setraw(0)
 

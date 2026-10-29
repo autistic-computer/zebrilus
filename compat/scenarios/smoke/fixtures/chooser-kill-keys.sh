@@ -85,10 +85,6 @@ windows() {
     main_client list-windows -t "=$session" -F '#{window_name}' 2>/dev/null | tr '\n' ' '
 }
 
-# Open the chooser with the root binding, send the keys one at a time, and let
-# the caller read back whichever of the two answers the probe is after: the
-# template's `%%` target when a row was activated, or the window list when a
-# kill went through.
 open_chooser() {
     main_client set-environment -g CHOOSER_ROW pending
     drive "keys 0f"
@@ -146,9 +142,6 @@ check_equal setup-windows 'w0 w1 w2 w3 w4 ' "$(windows)"
 main_client bind-key -n C-o choose-tree -w -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 
-# window_tree_key's `x` raises mtd->prompt, which mode_tree_key answers before
-# the chooser's own keys: the Enter that follows is eaten by the prompt instead
-# of activating the row, and the answer is not `y`, so nothing is killed.
 open_chooser
 press 67
 press 6a
@@ -161,8 +154,6 @@ check_equal x-prompt-declined-kills-nothing 'w0 w1 w2 w3 w4 ' "$(windows)"
 press 71
 sleep 0.3
 
-# With the prompt closed by a key that is not `y`, the chooser is still there
-# and the next Enter activates the row the cursor is on.
 open_chooser
 press 67
 press 6a
@@ -174,7 +165,6 @@ settle
 check_equal x-declined-leaves-the-chooser-open "=$session:1." "$(chosen_row)"
 check_equal x-declined-still-kills-nothing 'w0 w1 w2 w3 w4 ' "$(windows)"
 
-# `y` answers it, window_tree_kill_each runs, and the mode stays open.
 open_chooser
 press 67
 press 6a
@@ -187,8 +177,6 @@ press 0d
 settle
 check_equal x-confirmed-leaves-the-chooser-open "=$session:2." "$(chosen_row)"
 
-# `t` tags the current row, so `X` has something to count and raises its own
-# prompt, which eats the Enter the same way.
 open_chooser
 press 67
 press 6a
@@ -202,8 +190,6 @@ check_equal tagged-X-declined-kills-nothing 'w0 w2 w3 w4 ' "$(windows)"
 press 71
 sleep 0.3
 
-# X is inert when mode_tree_count_tagged is zero: no prompt is raised, so the
-# Enter that follows activates the row.
 open_chooser
 press 67
 press 6a
@@ -213,7 +199,6 @@ press 0d
 settle
 check_equal untagged-X-is-inert "=$session:2." "$(chosen_row)"
 
-# `T` untags every row, which puts X back to inert.
 open_chooser
 press 67
 press 6a
@@ -225,8 +210,6 @@ press 0d
 settle
 check_equal T-untags-every-row "=$session:3." "$(chosen_row)"
 
-# C-t tags every row whose parent is absent, which in a tree filtered to one
-# session is that session's own row, so X finds a tag without `t`.
 open_chooser
 press 67
 press 14
@@ -238,8 +221,6 @@ check_equal ctrl-t-kills-nothing-on-a-declined-prompt 'w0 w2 w3 w4 ' "$(windows)
 press 71
 sleep 0.3
 
-# -y is PROMPT_ACCEPT, which mode_tree_set_prompt turns into a queued `y`, so
-# `x` kills with no answer key at all.
 main_client bind-key -n C-o choose-tree -y -w -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 open_chooser
@@ -252,7 +233,6 @@ check_equal y-flag-answers-the-current-kill 'w0 w3 w4 ' "$(windows)"
 press 71
 sleep 0.3
 
-# PROMPT_SINGLE is set on X too, so -y answers the tagged kill as well.
 open_chooser
 press 67
 press 6a

@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Catch-up campaign ledger.
-
-    ledger.py status            every item with its state
-    ledger.py ready             todo items whose deps are merged
-    ledger.py show ID           one item in full
-    ledger.py live              branches of active and review items
-    ledger.py set ID STATUS [--branch B] [--sha S] [--note TEXT]
-    ledger.py check             validate the ledger
-"""
 import argparse
 import datetime
 import json

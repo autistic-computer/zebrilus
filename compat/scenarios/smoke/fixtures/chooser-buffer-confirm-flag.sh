@@ -93,8 +93,6 @@ remaining_buffers() {
         2>/dev/null | sort | tr '\n' ' '
 }
 
-# window_buffer_init never reads 'y', so every spelling of the flag has to leave
-# the row the shortcut pastes and the row 'd' deletes exactly where they were.
 variant() {
     label="$1"
     shift

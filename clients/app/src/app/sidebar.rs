@@ -467,8 +467,6 @@ fn disclosure_id(target: Target) -> String {
     format!("web-tree-disclosure-{}", target_id(target))
 }
 
-/// When the row at `index` came into view by an ancestor opening, so it can
-/// drop in: the latest instant any of its ancestors opened.
 fn row_opened(rows: &[TreeRow], index: usize, cx: &mut App) -> Option<Instant> {
     let mut depth = rows.get(index)?.depth;
     let mut opened = None;

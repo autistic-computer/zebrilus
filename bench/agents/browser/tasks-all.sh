@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# tasks-all.sh - run every model x backend x task serially (one browser tab per backend), then summarize.
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 MODELS=${MODELS:-"gemini-3.8-flash-low gpt-oss-120b-medium"}

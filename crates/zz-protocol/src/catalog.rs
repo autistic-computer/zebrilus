@@ -1,13 +1,9 @@
-//! Shared metadata for tmux-compatible and native `zz` commands.
-
 use std::{collections::HashMap, sync::LazyLock};
 
 use crate::message::{CommandInvocation, RawText, ServerError};
 
-/// The kind of value accepted by an option or positional argument.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandValueKind {
-    /// Arbitrary user-provided text. No value completions are produced.
     FreeForm,
     Session,
     Window,
@@ -19,18 +15,14 @@ pub enum CommandValueKind {
     Boolean,
 }
 
-/// One flag or value option accepted by a command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CommandOptionSpec {
     pub name: &'static str,
     pub value: Option<CommandValueKind>,
     pub description: &'static str,
-    /// Whether the option is part of the implemented completion surface.
     pub completable: bool,
-    /// Whether zz accepts a value only when it is attached to the flag.
     pub attached_value: bool,
     pub optional_value: bool,
-    /// Whether the option is catalogued only so its value can be rejected.
     pub unsupported: bool,
     pub native: bool,
 }
@@ -119,7 +111,6 @@ impl CommandOptionSpec {
     }
 }
 
-/// Syntax, completion, and canonicalization metadata for one command.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CommandSpec {
     pub name: &'static str,
@@ -127,9 +118,7 @@ pub struct CommandSpec {
     pub description: &'static str,
     pub usage: &'static str,
     pub options: &'static [CommandOptionSpec],
-    /// Kinds for fixed positional arguments, in order.
     pub positionals: &'static [CommandValueKind],
-    /// Kind accepted by all remaining positional arguments.
     pub variadic: Option<CommandValueKind>,
 }
 
@@ -1463,7 +1452,6 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
     },
 ];
 
-/// Every tmux-compatible command currently executable by the mux engine.
 pub static COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "new-session",
@@ -2752,7 +2740,6 @@ fn spec_index(specs: &'static [CommandSpec]) -> SpecIndex {
     index
 }
 
-/// Look up a command by canonical name or alias.
 #[must_use]
 pub fn command_spec(name: &str) -> Option<&'static CommandSpec> {
     static INDEX: LazyLock<SpecIndex> = LazyLock::new(|| spec_index(COMMAND_SPECS));
@@ -2776,7 +2763,6 @@ pub fn command_specs() -> impl Iterator<Item = &'static CommandSpec> {
     COMMAND_SPECS.iter().chain(DAEMON_COMMAND_SPECS)
 }
 
-/// Resolve a known alias while preserving unknown input for structured errors.
 #[must_use]
 pub fn canonical_command(command: &str) -> &str {
     match resolve_command(command) {

@@ -1,5 +1,3 @@
-//! The dialog ssh's password and host-key questions appear in.
-
 use std::{cell::Cell, rc::Rc, thread, time::Duration};
 
 use ala::{App, AppContext as _, Entity, Focusable as _, Window};

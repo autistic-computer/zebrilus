@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Export a Time Profiler table and summarize zz-owned macOS processes."""
 
 from __future__ import annotations
 
@@ -58,8 +57,6 @@ def read_process_snapshots(run_dir: Path) -> dict[int, ProcessSnapshot]:
         if not path.is_file():
             continue
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            # The first six ps columns never contain spaces. Everything after
-            # elapsed time is retained verbatim because macOS app paths do.
             columns = line.split(maxsplit=6)
             if len(columns) != 7:
                 continue

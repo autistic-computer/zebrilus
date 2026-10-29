@@ -447,8 +447,6 @@ impl TargetBackend for FakeBackend {
     }
 }
 
-/// The lens composer's shape: the picker's keys around the input, and a
-/// key-down listener of its own that must not see a key the picker took.
 struct Composer {
     input: Entity<InputState>,
     picker: Entity<TargetPicker>,

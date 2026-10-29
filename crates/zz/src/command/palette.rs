@@ -88,8 +88,6 @@ impl MuxPalette {
     }
 }
 
-/// A host's name in the palette and in targets: its fleet name, or this
-/// machine's own.
 fn host_name(host: HostId, name: &str) -> String {
     if host == HostId::LOCAL {
         crate::workspace::sidebar::local_hostname().to_string()
@@ -98,8 +96,6 @@ fn host_name(host: HostId, name: &str) -> String {
     }
 }
 
-/// What a picked file puts at a pane's cursor: its path for the pane's shell
-/// or agent, relative to the pane's folder when under it.
 pub(crate) fn path_insert_text(root: &PathListRoot, entry: &PathEntry) -> Option<String> {
     zz_client::path_insert::insert_text(
         &root.root,

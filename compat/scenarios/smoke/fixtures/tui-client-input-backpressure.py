@@ -1,28 +1,3 @@
-"""Does an attached client still act on a key while its own pty output is backed up?
-
-The fixture attaches a real client on a pty at 80x24 and presses the same F5
-binding twice. The first press happens with the master drained and is the
-canary: it fails loudly if the binding never worked at all. The second happens
-while the pane runs an endless producer of unique lines and nothing reads the
-master, so every frame the client wants to draw is a fresh screen and the sink
-is saturated.
-
-The pin's client hands its terminal bytes to a libevent buffer and never blocks
-its event loop on the tty, so the second press acts as fast as the first. A
-client that writes its frames straight through from the loop that also handles
-input blocks there instead, and the key sits in the pty until something drains
-the master.
-
-Saturation is derived, not guessed: sink_capacity() fills a scratch pty until
-the write would block, so the kernel's own buffer size is measured here, and
-the drain window measures how fast this client fills it. The undrained window
-is eight times the quotient, floored and capped, so both sides wait only as
-long as their own measured fill rate needs.
-
-ZZ_BACKPRESSURE_VERBOSE=1 prints the latencies and the derivation; the scenario
-keeps them out so the two sides can be diffed.
-"""
-
 import fcntl
 import os
 import pathlib

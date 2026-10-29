@@ -99,9 +99,6 @@ pub(super) enum KeyLook {
     Inverted,
 }
 
-/// A key's surface and state, drawn as [`roles::PHONE_KEY`] on the key
-/// row's pill: a resting key rests, a latched modifier is current, and a held
-/// or open key is the prominent one.
 pub(super) fn key_look(look: KeyLook, theme: &Theme) -> (Surface, PaintState) {
     let ground = theme.layer(roles::PHONE_PILL, PaintState::Rest).ground;
     let key = Surface::new(roles::PHONE_KEY).on(ground);
@@ -112,8 +109,6 @@ pub(super) fn key_look(look: KeyLook, theme: &Theme) -> (Surface, PaintState) {
     }
 }
 
-/// How a key paints in `state`. A round key takes the pill's radius less the
-/// padding around it, so it sits concentric in the pill.
 pub(super) fn key_layer(surface: Surface, state: PaintState, theme: &Theme) -> Layer {
     let layer = theme.layer(surface, state);
     if theme.style(roles::PHONE_KEY).shape != Shape::Round {
@@ -217,7 +212,6 @@ impl ToolKeys {
         }
     }
 
-    /// The prefix key, which stands on its own before the row.
     pub fn lead(&self) -> KeyRowKey {
         KeyRowKey::Popover(self.prefix.clone())
     }
@@ -269,15 +263,12 @@ impl KeyRow {
         }
     }
 
-    /// A key in a pill of its own before the row, which stays put while the
-    /// row scrolls.
     #[must_use]
     pub fn lead(mut self, key: KeyRowKey) -> Self {
         self.lead = Some(key);
         self
     }
 
-    /// How far the row's pill starts in from where it would without a lead.
     pub fn lead_room(&self) -> f32 {
         if self.lead.is_some() {
             KEY_PILL_HEIGHT + LEAD_GAP
@@ -286,8 +277,6 @@ impl KeyRow {
         }
     }
 
-    /// Leaves out the pill behind the scrolling keys, for a caller that draws
-    /// it.
     #[must_use]
     pub fn bare(mut self) -> Self {
         self.bare = true;
@@ -559,7 +548,6 @@ impl RenderOnce for KeyRow {
     }
 }
 
-/// Whether the row has keys out of sight before and after what shows.
 fn edges(scroll: &ScrollHandle) -> (bool, bool) {
     let offset = scroll.offset().x;
     let end = -scroll.max_offset().x;

@@ -71,8 +71,6 @@ drive() {
     return 0
 }
 
-# The client is 79 columns so both engines lay the split out the same way: a
-# one-column divider at column 39 with the right pane on columns 40..78.
 pointer() {
     drive "keys $(printf '\033%s' "$1" | od -An -tx1 | tr -d ' \n')"
     sleep 0.7
@@ -119,13 +117,9 @@ main_client select-pane -t "=$session:.0"
 sleep 0.4
 check_equal starts-on-the-first-pane '0* 1 ' "$(active_pane)"
 
-# With the option off the pin's MOUSEMOVE is only turned into a key binding, so
-# the pane under the pointer is left alone.
 pointer '[<35;61;11M'
 check_equal move-leaves-the-active-pane-alone '0* 1 ' "$(active_pane)"
 
-# window_set_active_pane runs before the mouse key becomes a binding, so the
-# pointer moves the active pane while the option is on.
 main_client set-option -g focus-follows-mouse on
 sleep 0.5
 pointer '[<35;62;12M'
@@ -134,7 +128,6 @@ check_equal move-selects-the-pane-under-the-pointer '0 1* ' "$(active_pane)"
 pointer '[<35;11;11M'
 check_equal move-back-selects-the-first-pane '0* 1 ' "$(active_pane)"
 
-# A held button reports as MOUSEDRAG, which never reaches the focus switch.
 pointer '[<32;63;13M'
 check_equal drag-never-selects-a-pane '0* 1 ' "$(active_pane)"
 pointer '[<0;63;13m'
@@ -142,8 +135,6 @@ sleep 0.3
 main_client select-pane -t "=$session:.0"
 sleep 0.4
 
-# The switch is read before the mouse option decides what the key becomes, so
-# it still runs while `mouse` is off.
 main_client set-option -g mouse off
 sleep 0.5
 pointer '[<35;64;14M'

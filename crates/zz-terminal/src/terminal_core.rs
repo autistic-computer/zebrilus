@@ -1,4 +1,3 @@
-//! Cross-platform terminal session and renderer-neutral snapshots.
 #![cfg_attr(
     test,
     allow(

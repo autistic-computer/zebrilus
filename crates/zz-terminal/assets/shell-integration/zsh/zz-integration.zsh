@@ -1,6 +1,3 @@
-# zz zsh shell integration. Installation is deferred until the first prompt so
-# user startup files and prompt frameworks finish configuring their hooks first.
-
 [[ -o interactive ]] || return 0
 (( ! ${+__ZZ_TITLE_INTEGRATION_INSTALLED} )) || return 0
 typeset -gi __ZZ_TITLE_INTEGRATION_INSTALLED=1
@@ -33,16 +30,11 @@ _zz_title_precmd() {
   fi
   typeset -gi _zz_command_running=0
   _zz_write_working_directory
-  # DECSCUSR default: the prompt restores the configured cursor style instead of
-  # imposing one, so a program that exits without resetting cannot keep its shape.
   print -rn -- $'\e[0 q'
   [[ $PS1 == *$'%{\e]133;B\a%}' ]] || PS1+=$'%{\e]133;B\a%}'
   print -rn -- $'\e]133;A\a'
 }
 
-# The idle title runs first among the precmd hooks, so a title a prompt
-# framework sets lands after it and is the one the pane keeps, the way it is
-# under tmux.
 _zz_idle_title() {
   emulate -L zsh
   _zz_write_title "${ZSH_NAME:-zsh}"

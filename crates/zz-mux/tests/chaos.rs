@@ -1,5 +1,3 @@
-//! Randomized command interleavings from several connections at once.
-
 use zz_mux::{ExecutionContext, MuxEngine};
 use zz_protocol::{CommandInvocation, PaneId, SessionId, WindowId};
 
@@ -7,7 +5,6 @@ const ITERATIONS: usize = 2_000;
 const CONNECTIONS: usize = 3;
 const MAX_SESSIONS: usize = 6;
 
-// The 64-bit LCG constants from Knuth, taking the high bits as the output.
 struct Rng(u64);
 
 impl Rng {

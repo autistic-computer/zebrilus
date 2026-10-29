@@ -1,15 +1,11 @@
-//! Application-wide UI zoom, the browser kind.
-
 use ala::{App, KeyBinding, Window};
 use zz_client::{ChromeAction, UI_TABLE};
 use zz_ui::{ROOT_KEY_CONTEXT, UiZoom};
 
 use crate::keymap::ChromeChord;
 
-/// The clamp floor. Below this the chrome stops being legible.
 pub const MIN_UI_ZOOM: f32 = 50.0;
 pub const MAX_UI_ZOOM: f32 = 300.0;
-/// One keystroke, or one press of the Settings field's steppers.
 pub const UI_ZOOM_STEP: f32 = 10.0;
 const DEFAULT_UI_ZOOM: f32 = 100.0;
 
@@ -32,7 +28,6 @@ pub fn reset(cx: &mut App) {
     set_percent(DEFAULT_UI_ZOOM, cx);
 }
 
-/// Zoom to `percent`, clamped to the supported range.
 pub fn set_percent(percent: f32, cx: &mut App) {
     let next = zoom_for_percent(percent);
     let previous = UiZoom::get(cx);
@@ -55,7 +50,6 @@ pub fn set_percent(percent: f32, cx: &mut App) {
     });
 }
 
-/// Start a freshly opened window at the zoom already in effect.
 pub fn apply_to_new_window(window: &mut Window, cx: &App) {
     apply(window, cx);
 }
@@ -65,8 +59,6 @@ fn apply(window: &mut Window, cx: &App) {
     place_traffic_lights(window, cx);
 }
 
-/// Seat the macOS traffic lights on the title bar's center line at the zoom
-/// in effect.
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 pub(crate) fn place_traffic_lights(window: &Window, cx: &App) {
     #[cfg(target_os = "macos")]
@@ -76,13 +68,10 @@ pub(crate) fn place_traffic_lights(window: &Window, cx: &App) {
     ));
 }
 
-/// The effective zoom, rounded for display.
 pub fn percent(cx: &App) -> u32 {
     percent_for_zoom(UiZoom::get(cx)).round() as u32
 }
 
-/// Whether `percent` resolves to the zoom already in effect, which is not the
-/// same as matching [`percent`]: `150.7` displays as 151 but is exact.
 pub fn is_effective_percent(percent: f32, cx: &App) -> bool {
     zoom_for_percent(percent) == UiZoom::get(cx)
 }

@@ -12,8 +12,6 @@ use zz_ui::{
     pane::{PaneChrome, PaneDragSource, PaneLens, pane_surface, terminal_pane_header},
 };
 
-/// What a freshly split pane offers, as the desktop and thin clients list
-/// it: title, icon and the key that picks it.
 pub const PANE_CHOICES: [(&str, IconName, &str); 3] = [
     ("Terminal", IconName::SquareTerminal, "t"),
     ("Browser", IconName::BrandChrome, "b"),

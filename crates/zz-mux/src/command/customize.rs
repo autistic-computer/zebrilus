@@ -113,8 +113,6 @@ pub struct CustomizeMode {
 }
 
 impl CustomizeMode {
-    /// `PROMPT_COMMANDMODE`: `prompt_draw` paints the mode's prompt row with
-    /// `message-command-style` while a vi prompt sits in command mode.
     #[must_use]
     pub fn prompt_command_mode(&self) -> bool {
         self.prompt
@@ -181,8 +179,6 @@ struct Row {
     item: Item,
 }
 
-/// The prompt facts `prompt_set_options` copies off the session, kept for the
-/// whole life of every prompt the mode raises.
 struct ModePromptOptions {
     vi: bool,
     separators: String,
@@ -1714,8 +1710,6 @@ impl MuxEngine {
         self.customize_tree_key(pane, mode, key, lines, expand)
     }
 
-    /// `mode_tree_build`'s line list with `mode_tree_check_selected` applied,
-    /// or nothing when the tree is empty and `mode_tree_key` closes the mode.
     fn customize_ready(
         &self,
         pane: PaneId,
@@ -1731,9 +1725,6 @@ impl MuxEngine {
         Some(lines.len())
     }
 
-    /// `mode_tree_key`'s pointer half and `window_pane_key`'s mode branch: the
-    /// pin forwards a mouse key to the pane, the pane hands it to the mode, and
-    /// the mode answers it before any of its own key handling runs.
     pub fn customize_mouse(
         &self,
         pane: PaneId,
@@ -2205,8 +2196,6 @@ impl MuxEngine {
         CustomizeResult::stay()
     }
 
-    /// `prompt_set_options`: every mode-tree prompt is created through it, so
-    /// each one keeps the session's `status-keys` and `word-separators`.
     fn customize_prompt_options(&self, pane: PaneId) -> ModePromptOptions {
         let session = self
             .state

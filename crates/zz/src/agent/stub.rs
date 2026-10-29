@@ -1,6 +1,3 @@
-//! Inert stand-ins compiled when the `agent-pane` feature is off.
-
-// Stub methods keep the real API's `self` receivers without reading them.
 #![allow(clippy::unused_self)]
 
 use std::sync::Arc;

@@ -32,7 +32,5 @@ if [ "$lines" != 9 ]; then
     exit 0
 fi
 
-# The observations themselves are the differential; the environment value only
-# reports that the run produced a full set.
 sed 's/^/observed /' "$work/observed"
 "$binary" "$@" set-environment -g CLIENT_EXIT_ACTIONS "observed:$lines"

@@ -1,7 +1,3 @@
-//! zz's application UI on [`penna`]: panes, terminal, agent, command palette,
-//! settings, and navigation, shared by the desktop app and the thin clients.
-//! It re-exports the kit, so zz code imports UI from one place.
-
 pub mod tmux_style;
 
 pub use penna::{
@@ -55,6 +51,4 @@ pub mod which_key;
 
 pub use program::Assets;
 
-/// How far a label too long for its box fades out at its end, instead of
-/// ending in an ellipsis.
 pub const LABEL_FADE: ala::Pixels = ala::px(28.0);

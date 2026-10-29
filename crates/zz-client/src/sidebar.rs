@@ -1,6 +1,3 @@
-//! The workspace sidebar's session tree, renderer-free: which rows it shows,
-//! what they say, how a keyboard walks them and what activating one sends.
-
 use std::collections::BTreeSet;
 
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
@@ -75,8 +72,6 @@ fn rollup(
         .min()
 }
 
-/// The session tree's rows, top to bottom, with every target in `collapsed`
-/// folded away.
 #[must_use]
 pub fn sidebar_rows(
     core: &ClientCore,
@@ -189,8 +184,6 @@ pub fn sidebar_rows(
     rows
 }
 
-/// The target the tree marks as where the client is: the focused window's
-/// active pane, else the attached session, else the host.
 #[must_use]
 pub fn sidebar_active(snapshot: &MuxSnapshot, attached: Option<SessionId>) -> SidebarTarget {
     let session = snapshot
@@ -209,8 +202,6 @@ pub fn sidebar_active(snapshot: &MuxSnapshot, attached: Option<SessionId>) -> Si
         .unwrap_or(SidebarTarget::Host)
 }
 
-/// The rows that fold away to show `active`: its session and window, and
-/// the host.
 #[must_use]
 pub fn sidebar_active_path(
     snapshot: &MuxSnapshot,
@@ -235,8 +226,6 @@ pub fn sidebar_active_path(
     path
 }
 
-/// The prompt that renames what `target` names, with its menu label. A pane
-/// renames its window.
 #[must_use]
 pub fn sidebar_rename_command(
     snapshot: &MuxSnapshot,
@@ -264,7 +253,6 @@ pub fn sidebar_rename_command(
     }
 }
 
-/// What a row's close button sends: its label and command.
 #[must_use]
 pub fn sidebar_close_command(target: SidebarTarget) -> Option<(&'static str, CommandInvocation)> {
     let (label, command, id) = match target {
@@ -279,7 +267,6 @@ pub fn sidebar_close_command(target: SidebarTarget) -> Option<(&'static str, Com
     ))
 }
 
-/// What a row's add button sends: its icon's meaning, label and command.
 #[must_use]
 pub fn sidebar_add_command(target: SidebarTarget) -> Option<(&'static str, CommandInvocation)> {
     match target {
@@ -295,8 +282,6 @@ pub fn sidebar_add_command(target: SidebarTarget) -> Option<(&'static str, Comma
     }
 }
 
-/// Opening a row: the session to attach first, if any, then the commands
-/// that bring its window and pane forward.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SidebarActivation {
     pub attach: Option<SessionId>,
@@ -366,7 +351,6 @@ pub enum TreeNavigationResult {
     None,
 }
 
-/// Each row's place in the tree, for [`tree_navigation`].
 #[must_use]
 pub fn navigation_rows(rows: &[SidebarRow]) -> Vec<TreeNavigationRow> {
     rows.iter()

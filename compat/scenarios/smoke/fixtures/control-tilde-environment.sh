@@ -75,8 +75,6 @@ cleanup_probe() {
 trap cleanup_probe EXIT
 trap 'exit 1' HUP INT TERM
 
-# The probe server owns HOME=/server/home; the Control client below owns
-# HOME=/client/home. Every `~` the Control client types must read the server's.
 if [ -n "${ZZ_SMOKE_ZZ_BIN:-}" ]; then
     probe_socket="/tmp/zzcte-$$.sock"
     env HOME=/server/home "$ZZ_SMOKE_ZZ_BIN" --socket "$probe_socket" -f /dev/null daemon \
@@ -130,8 +128,6 @@ wait_for_payload() {
     done
 }
 
-# Rebase the command numbers on the first flags-1 frame so the two servers'
-# global counters compare, and keep only framed command traffic.
 control_timeline() {
     sed "s|$passwd_home|<PASSWD>|g" "$raw" | awk '
         function emit(terminator) {
@@ -164,9 +160,6 @@ control_client <"$input" >"$raw" 2>"$errors" &
 control_pid=$!
 exec 3>"$input"
 
-# Each step waits for its own payload: the pin parses whatever stdin it has
-# already buffered before running any of it, so a burst would read a stale
-# server HOME on both sides for reasons that have nothing to do with the route.
 printf 'display-message -p ~\n' >&3
 wait_for_payload /server/home
 printf 'display-message -p ~/x\n' >&3

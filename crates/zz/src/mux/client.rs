@@ -1,5 +1,3 @@
-//! ala-side client for the daemon-owned multiplexer.
-
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     io,
@@ -52,8 +50,6 @@ use crate::{
     terminal::view::localize_terminal_font_families,
 };
 
-/// One client-to-daemon agent request, named so the shell states its intent
-/// once and the transport picks the matching [`InteractiveClient`] helper.
 #[cfg(feature = "agent-pane")]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum AgentRequest {
@@ -82,7 +78,6 @@ pub(crate) enum AgentRequest {
     },
 }
 
-/// What one drain hands the agent controller.
 #[cfg(feature = "agent-pane")]
 #[derive(Default)]
 pub(crate) struct AgentEvents {
@@ -97,9 +92,6 @@ impl AgentEvents {
     }
 }
 
-/// Decode a batch of agent stream items against `cursor`, the highest seq
-/// already handed on. Returns the items past it and whether the batch skipped
-/// ahead of it, a hole only a replay fills.
 #[cfg(feature = "agent-pane")]
 fn accept_agent_items(
     pane: PaneId,
@@ -390,23 +382,17 @@ pub(crate) enum PathPickerUpdate {
     Close,
 }
 
-/// A listing asked of `host` with [`MuxClient::request_host_path_list`], for
-/// pickers that list files on any host rather than in the attached session.
 pub(crate) struct HostPathListUpdate {
     pub(crate) host: HostId,
     pub(crate) update: PathPickerUpdate,
 }
 
-/// A pasted image a terminal pane asked to reopen.
 pub(crate) struct AttachmentPreviewRequest {
     pub(crate) image: Arc<Image>,
 }
 
-/// A question ssh asked while dialling `host`, waiting on an answer. Dropping
-/// `reply` unanswered cancels the prompt.
 pub(crate) struct SshPromptRequest {
     pub(crate) host: HostId,
-    /// The ssh destination, so several hosts dialling at once stay apart.
     pub(crate) label: String,
     pub(crate) prompt: AskpassPrompt,
     pub(crate) reply: async_channel::Sender<AskpassReply>,
@@ -627,9 +613,6 @@ struct KittyCachedImage {
     image: Arc<RenderImage>,
 }
 
-/// Pane-local GPU image ownership shared by the mux client and terminal view.
-/// Replaced textures wait in `retired` until a paint-capable Window can call
-/// `drop_image`.
 #[derive(Default)]
 pub(crate) struct KittyImageCache {
     images: HashMap<u32, KittyCachedImage>,
@@ -752,12 +735,9 @@ pub(crate) struct ClientNotification {
     pub(crate) kind: ClientMessageKind,
     pub(crate) text: String,
     pub(crate) duration_ms: Option<u32>,
-    /// Set for daemon-timed messages so an explicit clear can retire exactly
-    /// this toast.
     pub(crate) message_id: Option<u64>,
 }
 
-/// The daemon retired an identified timed message before its duration ran out.
 pub(crate) struct ClientNotificationCleared {
     pub(crate) message_id: u64,
 }
@@ -1055,10 +1035,6 @@ impl HostConnection {
 pub(crate) struct TerminalSignal;
 
 pub struct MuxClient {
-    /// Protocol reduction for the attached connection: snapshot, options, key
-    /// tables, status, prefix arming, attachment and the overlay models. It
-    /// outlives connection churn on purpose — a reconnecting host keeps
-    /// rendering its last frame until the new `ServerHello` resets the core.
     core: ClientCore,
     registry: HostRegistry,
     connections: HashMap<HostId, HostConnection>,
@@ -1083,14 +1059,8 @@ pub struct MuxClient {
     kitty_images: BTreeMap<PaneId, Arc<RwLock<KittyImageCache>>>,
     kitty_image_assemblies: BTreeMap<(PaneId, u32, u64), KittyImageAssembly>,
     browser_commands: BTreeMap<PaneId, Vec<BrowserCommand>>,
-    /// Per-pane replay cursor: the highest agent stream seq handed to the
-    /// shell. A replay overlaps the live tail on purpose, so this is what makes
-    /// the stream idempotent.
     #[cfg(feature = "agent-pane")]
     agent_cursors: BTreeMap<PaneId, u64>,
-    /// Panes with a replay asked for and not yet landed. A hole is re-requested
-    /// once rather than once per batch: every batch that arrives across the
-    /// hole before the replay lands is another sighting of the same gap.
     #[cfg(feature = "agent-pane")]
     agent_replays_pending: BTreeSet<PaneId>,
     #[cfg(feature = "agent-pane")]
@@ -1391,13 +1361,6 @@ impl MuxClient {
         Ok(())
     }
 
-    /// Adopt a connection's handshake as the attached client's truth: options,
-    /// key tables and status land in the core, the localized appearance stays
-    /// here because font resolution needs the ala text system.
-    ///
-    /// Settings only — a reconnect ingests the new hello while the old frame is
-    /// still on screen, and must not blank it. Clearing the attachment is
-    /// `clear_cross_host_state`'s job, and only a host switch does it.
     fn ingest_server_hello(&mut self, hello: ServerHello, cx: &mut Context<Self>) {
         self.core.adopt_hello(hello);
         let provenance = self.core.appearance_provenance().clone();
@@ -1431,8 +1394,6 @@ impl MuxClient {
         crate::theme::set_terminal_appearance(Arc::clone(&self.appearance), cx);
     }
 
-    /// Drain the core's queues without acting on them, for state a test stands
-    /// up directly. Left queued, they would replay against the next message.
     #[cfg(test)]
     fn discard_core_effects(&mut self) {
         while self.core.poll_outbound().is_some() {}
@@ -1450,8 +1411,6 @@ impl MuxClient {
         self.connections.get_mut(&attached_host).unwrap()
     }
 
-    /// The attached ssh host and the loopback SOCKS port its forward opened, or
-    /// `None` when the attached host is local (or has no live port).
     pub(crate) fn attached_ssh_egress(&self) -> Option<(String, u16)> {
         let entry = self.registry.get(self.attached_host)?;
         let Endpoint::Ssh(endpoint) = &entry.endpoint else {
@@ -2339,8 +2298,6 @@ impl MuxClient {
         self.attached_connection().client.is_some() && self.core.claims_prefix_input(input)
     }
 
-    /// The daemon-published prefix in the form a keystroke is compared
-    /// against, or `None` while disconnected.
     #[must_use]
     pub(crate) fn canonical_prefix(&self) -> Option<String> {
         self.attached_connection().client.as_ref()?;
@@ -2359,8 +2316,6 @@ impl MuxClient {
             .unwrap_or_default()
     }
 
-    /// The daemon-published `focus-follows-mouse`, resolved for the session
-    /// this client is attached to the way the pin reads `s->options`.
     #[must_use]
     pub(crate) fn focus_follows_mouse(&self) -> bool {
         self.core
@@ -2369,8 +2324,6 @@ impl MuxClient {
             .is_some_and(|option| option.value == "on")
     }
 
-    /// The daemon-published `set-clipboard`, read the way the pin reads
-    /// `global_options`: only `off` suppresses a system-clipboard write.
     #[must_use]
     pub(crate) fn set_clipboard_writes(&self) -> bool {
         self.core
@@ -2379,21 +2332,6 @@ impl MuxClient {
             .is_none_or(|option| option.value != "off")
     }
 
-    /// Land one clipboard write from the daemon.
-    ///
-    /// The producer separates the two writers the pin keeps apart.
-    /// `window_copy_copy_buffer`, `set-buffer -w` and `load-buffer -w` hand
-    /// `tty_set_selection` an empty selection field so the outer terminal
-    /// picks its own default, and window-copy.c:5756 skips the write outright
-    /// while `set-clipboard` is `off`. An application's own OSC 52 comes
-    /// through `input_osc_52`, which forwards the field the application named
-    /// out of `cpqs01234567`. The desktop is that outer terminal, so a write
-    /// with the empty field lands in CLIPBOARD as well as PRIMARY unless
-    /// `set-clipboard` is `off`, and a named field lands only where it says.
-    ///
-    /// `request_id` used to stand in for the producer, and it was the wrong
-    /// proxy: `deliver_buffer_clipboard_write` publishes a server write with
-    /// id zero too.
     fn write_clipboard(
         &self,
         pane: PaneId,
@@ -2430,7 +2368,6 @@ impl MuxClient {
         }
     }
 
-    /// Whether the daemon reported this client's prefix sequence as armed.
     #[must_use]
     pub(crate) const fn prefix_armed(&self) -> bool {
         self.core.prefix_armed()
@@ -2455,8 +2392,6 @@ impl MuxClient {
         self.prefix_cancelled_request
     }
 
-    /// The daemon-published prefix key table, or empty while disconnected.
-    /// Keys are tmux-grammar strings; commands carry canonical names.
     #[must_use]
     pub(crate) fn prefix_bindings(&self) -> &[KeyBindingSnapshot] {
         if self.attached_connection().client.is_none() {
@@ -2479,7 +2414,6 @@ impl MuxClient {
         sink
     }
 
-    /// Collect what the views send to panes, so a test can assert delivery.
     #[cfg(test)]
     pub(crate) fn record_input_for_test(
         &mut self,
@@ -2489,8 +2423,6 @@ impl MuxClient {
         sink
     }
 
-    /// Collect what the agent controller sends, so a test can assert the shape
-    /// that reaches the wire.
     #[cfg(all(test, feature = "agent-pane"))]
     pub(crate) fn record_agent_requests_for_test(
         &mut self,
@@ -2508,8 +2440,6 @@ impl MuxClient {
         self.agent_client_instance_id = Some(client_instance_id);
     }
 
-    /// Reduce one event payload into the core without running its effects, so
-    /// a test can stand a piece of daemon state up directly.
     #[cfg(test)]
     fn seed_core(&mut self, payload: EventPayload) {
         self.core.handle_message(ProtocolMessage::Event(Event {
@@ -2542,7 +2472,6 @@ impl MuxClient {
         cx.notify();
     }
 
-    /// Stand in for a daemon `Attached`/snapshot round trip in a view test.
     #[cfg(test)]
     pub(crate) fn attach_snapshot_for_test(
         &mut self,
@@ -2604,8 +2533,6 @@ impl MuxClient {
             .unwrap_or_default()
     }
 
-    /// What a cross-host attach leaves behind before the new daemon answers:
-    /// the machine has moved and the outgoing snapshot is gone.
     #[cfg(test)]
     pub(crate) fn attach_host_for_test(&mut self, name: &str, cx: &mut Context<Self>) {
         let (host, _) = self
@@ -2881,8 +2808,6 @@ impl MuxClient {
         self.core.attached_session()
     }
 
-    /// The pane a pane-targeted [`InputMessage`] should name: the active pane
-    /// of the focused window in the attached session.
     #[must_use]
     pub(crate) fn active_pane(&self) -> Option<PaneId> {
         let attached = self.attached_session()?;
@@ -3001,9 +2926,6 @@ impl MuxClient {
         }
     }
 
-    /// List `dir` on `host`'s daemon through `pane`, any terminal there: the
-    /// daemon takes an absolute or `~` dir from a client not attached to the
-    /// pane's session. The replies come back as [`HostPathListUpdate`].
     pub(crate) fn request_host_path_list(
         &mut self,
         host: HostId,
@@ -3059,8 +2981,6 @@ impl MuxClient {
         }
     }
 
-    /// Hand a listing asked of `host` with [`Self::request_host_path_list`] to
-    /// whoever asked, before the attached session's path picker sees it.
     fn route_host_path_list(
         &mut self,
         host: HostId,
@@ -3120,9 +3040,6 @@ impl MuxClient {
         }
     }
 
-    /// Ship a pasted image to the daemon that owns `pane`, which lands it on
-    /// its own host and pastes the resulting path into the pane. Returns
-    /// whether the upload reached the wire.
     pub(crate) fn send_paste_upload(
         &self,
         upload_id: u64,
@@ -3141,7 +3058,6 @@ impl MuxClient {
         true
     }
 
-    /// Ship normalized image bytes to the daemon before forwarding the paste key.
     pub(crate) fn record_pasted_image(
         &self,
         upload_id: u64,
@@ -3360,15 +3276,10 @@ impl MuxClient {
         self.attach_to_host_target(host, None, Some(target), cx)
     }
 
-    /// Switch to a machine and let its daemon select the default session. The
-    /// sidebar uses this for machine rows, which name no session of their own.
     pub fn attach_to_host_default(&mut self, host: HostId, cx: &mut Context<Self>) -> bool {
         self.attach_to_host_target(host, None, None, cx)
     }
 
-    /// Step off `host` so that removing it from the fleet actually ends its
-    /// connection: [`Self::reconcile_hosts`] retains an attached host even
-    /// after its configuration entry vanishes.
     pub(crate) fn release_host(&mut self, host: HostId, cx: &mut Context<Self>) {
         if self.attached_host == host {
             if self.registry.get(HostId::LOCAL).is_some() {
@@ -3674,8 +3585,6 @@ impl MuxClient {
             );
             return;
         }
-        // ala reads these bytes as premultiplied BGRA; `Rgba` names the
-        // four-byte storage layout, not the channel order.
         let Some(buffer) = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
             assembly.width,
             assembly.height,
@@ -3885,14 +3794,6 @@ impl MuxClient {
         }
     }
 
-    /// Buffer one coalesced agent batch, dropping what the shell already
-    /// applied: a replay deliberately overlaps the live tail, so the per-pane
-    /// cursor is what makes the stream idempotent. A batch that starts past the
-    /// cursor is a hole in the journal the shell cannot fill by waiting, so the
-    /// pane re-requests from where it is instead of buffering across it — once,
-    /// because the batches that keep arriving across the hole are the same gap
-    /// seen again, and the outstanding replay is what closes it. A batch that
-    /// reaches the cursor without a gap is the proof it closed.
     #[cfg(feature = "agent-pane")]
     fn apply_agent_updates(&mut self, pane: PaneId, first_seq: u64, items: Vec<Vec<u8>>) {
         if !self.agent_lenses.contains(&pane) {
@@ -3915,13 +3816,6 @@ impl MuxClient {
     #[cfg(not(feature = "agent-pane"))]
     fn apply_agent_updates(&mut self, _pane: PaneId, _first_seq: u64, _items: Vec<Vec<u8>>) {}
 
-    /// Ask the daemon to replay this pane's stream from where the shell is.
-    /// Sent on a lane overflow, a journal gap, and when a pane's view goes live.
-    /// The daemon serves `from_seq` inclusively, so asking from the cursor
-    /// re-sends one applied item rather than risking a skipped one. An ask that
-    /// reaches the wire is recorded as outstanding, which is what keeps a hole
-    /// from asking again on every batch until the replay lands; a caller that
-    /// asks explicitly is a lifecycle event, not a hole, so it always sends.
     #[cfg(feature = "agent-pane")]
     pub(crate) fn request_agent_replay_from_cursor(&mut self, pane: PaneId) -> bool {
         let from_seq = self.agent_cursors.get(&pane).copied().unwrap_or_default();
@@ -3956,9 +3850,6 @@ impl MuxClient {
             .retain(|(target, _)| *target != pane);
     }
 
-    /// Forget every pane's replay cursor. The core clears its agent state at
-    /// the same two moments, so the next attach replays from seq 0 rather than
-    /// filtering the new stream against the old connection's cursor.
     #[cfg(feature = "agent-pane")]
     fn clear_agent_streams(&mut self) {
         self.agent_cursors.clear();
@@ -3996,9 +3887,6 @@ impl MuxClient {
         !self.agent_events.is_empty()
     }
 
-    /// Ship one agent request to the daemon that owns `pane`. Returns whether
-    /// it reached the wire, which is what the composer reports as "not
-    /// connected".
     #[cfg(feature = "agent-pane")]
     pub(crate) fn send_agent_request(&self, pane: PaneId, request: AgentRequest) -> bool {
         #[cfg(test)]
@@ -4049,14 +3937,11 @@ impl MuxClient {
         std::mem::take(&mut self.screenshot_requests)
     }
 
-    /// Whether any daemon-issued GUI request is waiting for an answer.
     #[must_use]
     pub(crate) fn has_gui_requests(&self) -> bool {
         !self.screenshot_requests.is_empty()
     }
 
-    /// Answer a daemon request for GUI-owned work. A CLI client is blocked on
-    /// this, so the reply goes out even when the work failed.
     pub(crate) fn respond_to_request(&self, response: GuiResponse) {
         if let Some(client) = &self.attached_connection().client
             && let Err(error) = client.send_gui_response(response)
@@ -4392,10 +4277,6 @@ impl MuxClient {
             "handle_message begin message={message:#?}"
         );
         match message {
-            // The terminal frame path never reaches the core: the retained
-            // viewport carries the history ring, row revisions and diff
-            // scratch the painter reads, so delegating it would keep a second
-            // copy of every grid and re-apply every patch on the hot path.
             ProtocolMessage::Event(Event {
                 payload: EventPayload::TerminalViewport { pane, viewport },
                 ..
@@ -4409,9 +4290,6 @@ impl MuxClient {
                 ..
             }) => self.apply_command_output(pane, viewport),
             message => {
-                // `Detached` clears the attachment during reduction, so the
-                // session it names has to be compared against what the core
-                // held before.
                 let attached_before = self.core.attached_session();
                 self.core.handle_message(message);
                 while let Some(outbound) = self.core.poll_outbound() {
@@ -4443,12 +4321,6 @@ impl MuxClient {
         }
     }
 
-    /// Run the ala half of one reduced change: revisions, toasts, clipboard
-    /// and pane bookkeeping. The state itself already landed in the core.
-    ///
-    /// `attaching` records that this message also attached, so the snapshot it
-    /// carries does not re-request history for viewports the outgoing session
-    /// left behind — an `Attached` never did that.
     fn apply_core_event(
         &mut self,
         host: HostId,
@@ -4625,10 +4497,6 @@ impl MuxClient {
                     && let Some(state) = self.core.agent_state(pane).cloned()
                 {
                     self.agent_events.states.push((pane, state));
-                    // The daemon publishes state to every attached client and
-                    // pushes it again on resync, but never pushes the stream:
-                    // a pane the shell has no cursor for is one it has to ask
-                    // for, which is what makes a reattach replay-then-tail.
                     if let std::collections::btree_map::Entry::Vacant(slot) =
                         self.agent_cursors.entry(pane)
                     {
@@ -4639,9 +4507,6 @@ impl MuxClient {
                 #[cfg(not(feature = "agent-pane"))]
                 let _ = pane;
             }
-            // An overflow is a hole the daemon reports rather than one the shell
-            // infers, so it recovers the same way: from the shell's own cursor,
-            // which is at or behind the sequence the daemon dropped from.
             CoreEvent::AgentLagged { pane, next_seq } => {
                 log::warn!(
                     target: "zz::diagnostics::mux",
@@ -4654,9 +4519,6 @@ impl MuxClient {
             }
             CoreEvent::Message(message) => self.handle_unreduced_message(*message, cx),
             CoreEvent::KeyTableChanged => cx.emit(KeyTableChanged),
-            // Key tables are read straight off the core; the handshake is
-            // ingested rather than received; the frame path never reaches the
-            // core, so its two viewport events cannot fire here.
             CoreEvent::KeyTablesChanged
             | CoreEvent::HelloReceived
             | CoreEvent::ViewportChanged { .. }
@@ -4707,9 +4569,6 @@ impl MuxClient {
         }
     }
 
-    /// Re-derive the rendered appearance after the core reduced a reload. The
-    /// core keeps the daemon's value; localization and the client-local font
-    /// size offset are ala-side and stay here.
     fn adopt_core_appearance(&mut self, cx: &mut Context<Self>) {
         let previous_hash = self.appearance.stable_hash();
         let provenance = self.core.appearance_provenance().clone();
@@ -4861,8 +4720,6 @@ impl MuxClient {
         }
     }
 
-    /// Inbound messages the core does not reduce. Pasted-image previews are
-    /// assembled here because they end as ala `Image`s, not protocol state.
     fn handle_unreduced_message(&mut self, message: ProtocolMessage, cx: &mut Context<Self>) {
         match message {
             ProtocolMessage::PastedImageBegin {
@@ -5163,13 +5020,10 @@ mod tests {
         }
     }
 
-    /// Reduce a snapshot into the core the way a daemon event would, for a
-    /// test that needs one standing before it drives the client.
     fn seed_snapshot(mux: &mut MuxClient, snapshot: MuxSnapshot) {
         mux.seed_core(EventPayload::Snapshot(snapshot));
     }
 
-    /// Reduce an attachment into the core, session and snapshot together.
     fn seed_attachment(mux: &mut MuxClient, session: SessionId, snapshot: MuxSnapshot) {
         mux.core.handle_message(ProtocolMessage::Attached {
             session,
@@ -5832,23 +5686,6 @@ mod tests {
         });
     }
 
-    /// Derived from pinned tmux d77c9dc6.
-    ///
-    /// `window_copy_copy_buffer` (window-copy.c) writes the selection through
-    /// `screen_write_setselection(&ctx, "", buf, len)` — an empty selection
-    /// field — and only when `set-clipboard` is not `off`; measured on the pin
-    /// on a real pty, a `copy-selection-and-cancel` emits
-    /// `ESC ] 52 ; ; <base64> BEL` under `external` and under `on`, and emits
-    /// nothing at all under `off`. An empty field asks the outer terminal for
-    /// its default selection, which is the system clipboard. The desktop is
-    /// that outer terminal, so a drag selection has to reach CLIPBOARD, not
-    /// PRIMARY alone.
-    ///
-    /// `input_osc_52` (input.c) is the other producer and keeps the
-    /// application's own selection field, so an application write is left
-    /// alone. The two are told apart by the v99 `producer` field, not by
-    /// `request_id`: `deliver_buffer_clipboard_write` publishes a server write
-    /// with `request_id` zero as well, so the id was never the distinction.
     #[ala::test]
     fn a_copy_selection_reaches_the_clipboard_unless_set_clipboard_is_off(cx: &mut TestAppContext) {
         fn clipboard_write(

@@ -1,19 +1,5 @@
 ---
-// Web pages for the demo's browser panes — donors only, nothing visible.
-//
-// Astro scope-stamps a component's markup at build time, template innards
-// included, so a page's styles have to live in the same component as its
-// markup: chrome built with createElement would silently miss every scoped
-// rule. The demo script clones `template[data-page="…"]` into a pane's mount on
-// navigation (and once at boot for `[data-boot-page]`).
-//
-// None of this is zz chrome. Each page is web content inside the browser pane,
-// so it brings its own type scale and its own palette, and never touches a
-// --zz-* token.
 
-// ── gpui.rs ───────────────────────────────────────────────────────────────
-// gpui's hello_world example as the page shows it. Long lines are not wrapped:
-// the block clips, same as the capture.
 const rust = `use gpui::{
     div, prelude::*, px, rgb, size, App, Application, Bounds, Context, SharedString, Window,
     WindowBounds, WindowOptions,
@@ -96,10 +82,8 @@ function highlight(src: string): Tok[][] {
 
 const codeLines = highlight(rust);
 
-// 30 contributor tiles, greyscale placeholders for the avatar grid.
 const avatars = Array.from({ length: 30 }, (_, i) => 26 + ((i * 37) % 46));
 
-// ── ghostty.org ───────────────────────────────────────────────────────────
 const ghosttySession = [
 	'~ ❯ ghostty +version',
 	'Ghostty 1.2.2',
@@ -111,7 +95,6 @@ const ghosttySession = [
 ];
 ---
 
-{/* gpui.rs — the reference capture's page. */}
 <template data-page="gpui">
 	<div class="page">
 		<nav class="page-nav">
@@ -151,7 +134,6 @@ const ghosttySession = [
 	</div>
 </template>
 
-{/* python3 -m http.server serving an index.html — browser defaults, no CSS. */}
 <template data-page="plain">
 	<div class="plain">
 		<h1>hello from desktop</h1>
@@ -160,7 +142,6 @@ const ghosttySession = [
 	</div>
 </template>
 
-{/* ghostty.org */}
 <template data-page="ghostty">
 	<div class="gt">
 		<nav class="gt-nav">
@@ -184,7 +165,6 @@ const ghosttySession = [
 	</div>
 </template>
 
-{/* github.com/tmux/tmux */}
 <template data-page="tmux">
 	<div class="gh">
 		<div class="gh-head">
@@ -231,7 +211,6 @@ const ghosttySession = [
 	</div>
 </template>
 
-{/* What CEF puts up when the host does not resolve. */}
 <template data-page="err">
 	<div class="err">
 		<div class="err-box">
@@ -244,7 +223,6 @@ const ghosttySession = [
 </template>
 
 <style>
-	/* ── gpui.rs ───────────────────────────────────────────────────────────── */
 	.page {
 		width: 100%;
 		height: 100%;
@@ -313,8 +291,6 @@ const ghosttySession = [
 		line-height: 1.75;
 		color: #b8b8b8;
 	}
-	/* Rounded squares, not circles — that is what the capture shows. 34px tiles
-	   on a 43px pitch, measured off it. */
 	.avatars {
 		display: grid;
 		grid-template-columns: repeat(4, 34px);
@@ -342,15 +318,12 @@ const ghosttySession = [
 		line-height: 20px;
 	}
 	.code-line { display: block; white-space: pre; }
-	/* Sampled off the capture: keywords orange, types blue, calls amber,
-	   numbers purple, strings green. */
 	.t-kw { color: #c9743a; }
 	.t-type { color: #4a9fd0; }
 	.t-fnc { color: #cf9247; }
 	.t-num { color: #ab86cc; }
 	.t-str { color: #85a83e; }
 
-	/* ── the desktop host's index.html ─────────────────────────────────────── */
 	.plain {
 		width: 100%;
 		padding: 16px;
@@ -362,7 +335,6 @@ const ghosttySession = [
 	.plain hr { margin: 12px 0; border: 0; border-top: 1px solid #999; }
 	.plain p { font-size: 16px; }
 
-	/* ── ghostty.org ───────────────────────────────────────────────────────── */
 	.gt {
 		width: 100%;
 		height: 100%;
@@ -415,7 +387,6 @@ const ghosttySession = [
 		font-weight: 600;
 	}
 
-	/* A terminal, on a terminal's page, inside a terminal multiplexer. */
 	.gt-term {
 		max-width: 620px;
 		margin-top: 56px;
@@ -450,7 +421,6 @@ const ghosttySession = [
 	.gt-term-body span { display: block; white-space: pre; }
 	.gt-term-body span:first-child { color: #e6dfd6; }
 
-	/* ── github.com/tmux/tmux ──────────────────────────────────────────────── */
 	.gh {
 		width: 100%;
 		height: 100%;
@@ -552,7 +522,6 @@ const ghosttySession = [
 		color: #8b949e;
 	}
 
-	/* ── the DNS failure page ──────────────────────────────────────────────── */
 	.err {
 		display: flex;
 		align-items: center;

@@ -3,16 +3,11 @@ use std::fmt;
 use zz_protocol::{Binding, CommandInvocation, KeyTables, input_key_name};
 use zz_terminal::{KeyInput, Modifiers};
 
-/// The chrome table consulted for every key press.
 pub const UI_TABLE: &str = "ui";
-/// The chrome table consulted while the session tree has focus.
 pub const SIDEBAR_TABLE: &str = "sidebar";
-/// The chrome table consulted while a browser surface has focus.
 pub const BROWSER_TABLE: &str = "browser";
-/// The chrome table consulted while a terminal surface has focus.
 pub const TERMINAL_TABLE: &str = "terminal";
 pub const PREFIX_TABLE: &str = "prefix";
-/// Every table a chrome binding may name.
 pub const CHROME_TABLES: [&str; 5] = [
     UI_TABLE,
     SIDEBAR_TABLE,
@@ -45,9 +40,6 @@ const SELECT_WINDOW_NAMES: [&str; 9] = [
     "select-window-9",
 ];
 
-/// A chrome action resolved client-side before the skin applies its local or
-/// protocol-backed effect. Skins switch on the action instead of inspecting
-/// chords themselves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChromeAction {
     NewSession,
@@ -87,8 +79,6 @@ pub enum ChromeAction {
     BrowserNewTab,
     BrowserNextTab,
     BrowserPreviousTab,
-    /// Activate a tab by position. Named actions cover the `0..8` range that
-    /// [`ChromeAction::from_name`] accepts.
     BrowserSelectTab(u8),
     BrowserSelectLastTab,
     BrowserBack,
@@ -234,13 +224,9 @@ impl ChromeAction {
     }
 }
 
-/// The named action was not one [`ChromeAction`] knows.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnknownChromeAction(pub String);
 
-/// A chrome chord in the tmux `bind-key` spelling, extended with `D-` for
-/// Command/Super and `S-` for Shift. The wire grammar folds both away — a pane
-/// never receives them — so chrome, which never forwards a key, spells them out.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChromeKey {
     pub command: bool,
@@ -251,8 +237,6 @@ pub struct ChromeKey {
 }
 
 impl ChromeKey {
-    /// Parse a chord, accepting `D-`/`Cmd-`/`Super-`, `C-`/`Ctrl-`,
-    /// `M-`/`Alt-` and `S-`/`Shift-` in any order.
     #[must_use]
     pub fn parse(spelling: &str) -> Option<Self> {
         let mut key = Self::default();
@@ -283,10 +267,6 @@ impl ChromeKey {
         Some(key.normalized())
     }
 
-    /// Fold the two spellings of a shifted letter together: bare Shift lives in
-    /// the letter's case, the way the wire grammar spells it, and Shift beside
-    /// another modifier lives in the `S-` prefix, because the case of a chorded
-    /// letter is not something a keyboard reports.
     #[must_use]
     pub fn normalized(mut self) -> Self {
         let commanded = self.command || self.control || self.alt;
@@ -329,19 +309,14 @@ fn strip_modifier<'a>(value: &'a str, spellings: &[&str]) -> Option<&'a str> {
         .find_map(|spelling| value.strip_prefix(spelling))
 }
 
-/// Which skin's chrome conventions the built-in bindings follow.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChromeProfile {
-    /// The raw-terminal client, which no Command chord ever reaches.
     Tui,
-    /// The desktop client where Control carries chrome.
     Desktop,
-    /// The desktop client on Apple platforms, where Command carries chrome.
     DesktopApple,
 }
 
 impl ChromeProfile {
-    /// The desktop profile for the platform this build targets.
     pub const DESKTOP: Self = if cfg!(any(target_os = "macos", target_os = "ios")) {
         Self::DesktopApple
     } else {
@@ -359,9 +334,6 @@ impl ChromeProfile {
 
 type ChromeDefault = (&'static str, &'static str, ChromeAction);
 
-/// The raw-terminal client's chrome, whose chords all survive a PTY and reach
-/// only the browser surface that owns them. Every other key belongs to the
-/// daemon's key tables, which is where the pin resolves it too.
 const TUI_DEFAULTS: &[ChromeDefault] = &[
     (BROWSER_TABLE, "C-=", ChromeAction::BrowserZoomIn),
     (BROWSER_TABLE, "C-+", ChromeAction::BrowserZoomIn),
@@ -381,7 +353,6 @@ const TUI_SIDEBAR_DEFAULTS: &[ChromeDefault] = &[
     (SIDEBAR_TABLE, "q", ChromeAction::ToggleSidebar),
 ];
 
-/// Desktop chrome that spells the same chord on every platform.
 const DESKTOP_DEFAULTS: &[ChromeDefault] = &[
     (SIDEBAR_TABLE, "Escape", ChromeAction::SidebarCancel),
     (SIDEBAR_TABLE, "q", ChromeAction::SidebarCancel),
@@ -415,8 +386,6 @@ const DESKTOP_DEFAULTS: &[ChromeDefault] = &[
     (BROWSER_TABLE, "C-S-Tab", ChromeAction::BrowserPreviousTab),
 ];
 
-/// Desktop chrome on Apple platforms, where the browser conventions are
-/// Safari's.
 const DESKTOP_COMMAND_DEFAULTS: &[ChromeDefault] = &[
     (UI_TABLE, "D-1", ChromeAction::SelectWindow(0)),
     (UI_TABLE, "D-2", ChromeAction::SelectWindow(1)),
@@ -475,7 +444,6 @@ const DESKTOP_COMMAND_DEFAULTS: &[ChromeDefault] = &[
     (BROWSER_TABLE, "D-S-c", ChromeAction::BrowserElementSelector),
 ];
 
-/// Desktop chrome everywhere else, where the browser conventions are Chrome's.
 const DESKTOP_CONTROL_DEFAULTS: &[ChromeDefault] = &[
     (UI_TABLE, "C-1", ChromeAction::SelectWindow(0)),
     (UI_TABLE, "C-2", ChromeAction::SelectWindow(1)),
@@ -531,10 +499,6 @@ const DESKTOP_CONTROL_DEFAULTS: &[ChromeDefault] = &[
     (BROWSER_TABLE, "C-S-c", ChromeAction::BrowserElementSelector),
 ];
 
-/// The client-local half of the binding story: the same [`KeyTables`] data
-/// model and resolution semantics the daemon uses for pane input, instantiated
-/// over chrome tables that never cross the wire. Defaults are data; overrides
-/// arrive through [`ChromeKeymap::bind`]/[`ChromeKeymap::unbind`].
 #[derive(Clone, Debug)]
 pub struct ChromeKeymap {
     tables: KeyTables,
@@ -547,8 +511,6 @@ impl Default for ChromeKeymap {
 }
 
 impl ChromeKeymap {
-    /// The raw-terminal client's keymap. Desktop skins want
-    /// [`ChromeKeymap::for_profile`] with [`ChromeProfile::DESKTOP`].
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -568,14 +530,11 @@ impl ChromeKeymap {
         self.tables.has_table(table)
     }
 
-    /// Resolve a key press against one chrome table.
     #[must_use]
     pub fn resolve(&self, table: &str, input: &KeyInput) -> Option<ChromeAction> {
         binding_action(self.binding_for(table, input)?)
     }
 
-    /// Chrome names a press under its most specific spelling first, so a
-    /// binding written without `S-` still catches a chord the user shifts.
     fn binding_for(&self, table: &str, input: &KeyInput) -> Option<&Binding> {
         if !self.tables.has_table(table) {
             return None;
@@ -595,18 +554,12 @@ impl ChromeKeymap {
         self.tables.resolve_input(table, input)
     }
 
-    /// The action a chord is bound to right now, for surfaces that dispatched
-    /// on a chord and must not act on a binding the user has since replaced.
     #[must_use]
     pub fn action_for(&self, table: &str, key: &str) -> Option<ChromeAction> {
         let key = ChromeKey::parse(key)?;
         binding_action(self.tables.get(table, &key.to_string())?)
     }
 
-    /// Bind `key` in `table` to a named chrome action, replacing any default.
-    ///
-    /// # Errors
-    /// Returns the offending name when it is not a chrome action.
     pub fn bind(
         &mut self,
         table: &str,
@@ -619,13 +572,10 @@ impl ChromeKeymap {
         Ok(())
     }
 
-    /// Remove a chrome binding; true when one existed.
     pub fn unbind(&mut self, table: &str, key: &str) -> bool {
         self.tables.unbind(table, &canonical_chrome_key(key))
     }
 
-    /// One table's bindings, for the skins that turn chrome data into their own
-    /// binding model.
     #[must_use]
     pub fn table_bindings(&self, table: &str) -> Vec<(ChromeKey, ChromeAction)> {
         self.tables
@@ -636,8 +586,6 @@ impl ChromeKeymap {
             .collect()
     }
 
-    /// Every chrome binding, flattened for help and settings surfaces in the
-    /// same shape the daemon publishes its tables.
     #[must_use]
     pub fn bindings(&self) -> Vec<(String, String, ChromeAction)> {
         self.tables
@@ -686,8 +634,6 @@ fn pressed_key(input: &KeyInput, shift: bool) -> ChromeKey {
     .normalized()
 }
 
-/// The press's key name with every modifier stripped, so the chrome spelling
-/// owns the modifiers the wire fold would have erased.
 fn base_name(input: &KeyInput) -> String {
     let bare = KeyInput {
         action: input.action,

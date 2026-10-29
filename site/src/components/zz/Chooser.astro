@@ -2,14 +2,8 @@
 import Icon from './Icon.astro';
 import Kbd from './Kbd.astro';
 
-// PanePickerView (zz/src/pane/picker.rs:259). This is pane *content*, not an
-// overlay: a pane whose kind hasn't been chosen fills itself with the menu, so
-// there is no scrim and no modal. Editor and Agent rows are feature-gated
-// (picker.rs:30) and were off in the reference capture.
 interface Props {
-	/** `choice` is the pane kind the row commits to — the click/key hook. */
 	rows: { icon: string; label: string; key: string; choice?: string; selected?: boolean }[];
-	/** Selection follows the mouse, so hover == selection (picker.rs:205). */
 	maxWidth?: number;
 	class?: string;
 }

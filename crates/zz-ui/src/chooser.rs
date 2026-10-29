@@ -23,7 +23,6 @@ pub struct ChooserDimensions {
     pub row_count: usize,
 }
 
-/// The chooser modal, shared by the native choosers and the WASM fixtures.
 #[derive(IntoElement)]
 pub struct ChooserModal {
     id: &'static str,
@@ -64,18 +63,12 @@ impl ChooserModal {
         }
     }
 
-    /// The single-key confirmation the mode owns, drawn above the rows the way
-    /// `mode_tree_draw` puts `mtd->prompt` there. Rows keep answering keys
-    /// while it stands, so a client that does not draw it kills silently.
     #[must_use]
     pub fn prompt(mut self, prompt: Option<SharedString>) -> Self {
         self.prompt = prompt;
         self
     }
 
-    /// `mtd->help`: the mode's help screen stands until the next key of any
-    /// kind, and that key does nothing else. A client that draws nothing here
-    /// eats a key its viewer meant for a row.
     #[must_use]
     pub const fn help(mut self, help: bool) -> Self {
         self.help = help;

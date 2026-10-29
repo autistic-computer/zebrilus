@@ -76,17 +76,10 @@ await_gone() {
     return 1
 }
 
-# The visible rows are the observable: a detached pane's terminal has a
-# different row and column count on the two engines, so nothing here counts
-# rows or leans on the pin's clip at the pane width.
 screen() {
     main_client capture-pane -p -t "=$session:$1" | tr -d ' \n'
 }
 
-# The pin draws the notice inside server_destroy_pane, so `#{pane_dead}` and
-# the drawn row land together; zz marks the pane dead first and hands the
-# expanded text to the pane's worker straight after, so the row settles a beat
-# later. Both engines end on the same screen.
 check_screen() {
     attempt=0
     while [ "$attempt" -lt 400 ]; do
@@ -103,8 +96,6 @@ main_client new-session -d -s "$session" -n keep -x 40 -y 6
 main_client set-option -g remain-on-exit on
 main_client set-option -g remain-on-exit-format 'DEADFMT[#{pane_dead_status}][#{pane_dead_signal}]'
 
-# server_destroy_pane expands the format against the pane it has just marked
-# dead, so the status and signal names are the ones the child left behind.
 main_client new-window -t "=$session" -n wstatus 'sh -c "exit 7"'
 await_dead wstatus || { echo "remain-on-exit-format-$side: wstatus"; exit 0; }
 check_screen status-notice-is-drawn 'DEADFMT[7][]' wstatus
@@ -153,12 +144,6 @@ main_client new-window -t "=$session" -n wzero 'sh -c "exit 0"'
 await_dead wzero || { echo "remain-on-exit-format-$side: wzero"; exit 0; }
 check_screen zero-status-notice-is-drawn 'DEADFMT[0][]' wzero
 
-# The notice's linefeed scrolls the child's last output row out of the visible
-# screen, and a retained pane keeps that row: on the pin a 40x6 pane running ten
-# lines answers `capture-pane -p` with L07..L10 plus the notice and
-# `capture-pane -p -S -` with L01..L10 plus the notice. Thirty lines put rows out
-# of reach of both engines' screens, since zz spawns a detached pane's pty at 24
-# rows where the pin uses the window's six.
 cat >"$work/scroll.sh" <<'SCROLLED'
 i=1
 while [ $i -le 30 ]; do
@@ -197,15 +182,11 @@ check_equal dead-screen-drops-the-scrolled-rows 0 \
 check_equal dead-history-reaches-the-scrolled-rows 2 \
     "$(main_client capture-pane -p -S - -t "=$session:wscroll" | grep -cE '^L0[18]$' || true)"
 
-# `if (*s != '\0')` guards the whole draw, so an empty template leaves the
-# pane's own last output exactly where it was.
 main_client set-option -g remain-on-exit-format ''
 main_client new-window -t "=$session" -n wempty 'sh -c "printf MARKER; exit 4"'
 await_dead wempty || { echo "remain-on-exit-format-$side: wempty"; exit 0; }
 check_screen empty-template-draws-nothing MARKER wempty
 
-# remain-on-exit failed retains only a child that failed, and the retained one
-# still gets the notice.
 main_client set-option -g remain-on-exit-format 'DEADFMT[#{pane_dead_status}][#{pane_dead_signal}]'
 main_client set-option -g remain-on-exit failed
 main_client new-window -t "=$session" -n wfailed 'sh -c "exit 5"'
@@ -216,15 +197,10 @@ await_gone wok || { echo "remain-on-exit-format-$side: wok"; exit 0; }
 check_equal failed-closes-a-clean-exit 0 \
     "$(main_client list-windows -t "=$session" -F '#{window_name}' | grep -c '^wok$' || true)"
 
-# format_single runs with no job, so `#()` expands to nothing, and
-# format_draw paints the `#[...]` styles into the notice's cells.
 main_client set-option -g remain-on-exit-format '#[bold]X#(echo SHELL)Y'
 main_client new-window -t "=$session" -n wstyled 'sh -c "exit 3"'
 await_dead wstyled || { echo "remain-on-exit-format-$side: wstyled"; exit 0; }
 check_screen styled-notice-drops-the-shell-and-draws-text XY wstyled
-# capture-pane -e spells the run differently on the two engines (the pin
-# emits the bold alone, zz always names both colours), so only the bold
-# parameter ahead of the text is asserted.
 check_equal styled-notice-is-bold 1 \
     "$(main_client capture-pane -pe -t "=$session:wstyled" | grep -cE '\[(1|0;1;[0-9;]*)mXY' || true)"
 

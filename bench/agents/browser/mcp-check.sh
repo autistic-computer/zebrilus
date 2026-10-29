@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# mcp-check.sh - attach Playwright MCP and chrome-devtools-mcp to the zz CDP endpoint and exercise
-# navigate, snapshot, click, and screenshot on the fixture site. Appends rows to out/results.tsv
-# under the backends "zz-playwright-mcp" and "zz-chrome-devtools-mcp".
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 SITE=${SITE:-http://127.0.0.1:4173}

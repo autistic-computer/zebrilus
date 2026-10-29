@@ -36,7 +36,6 @@ pub const MAX_CONFIG_BYTES: usize = 64 * 1024;
 pub const MAX_PANE_MARGIN: f32 = 32.0;
 pub const MAX_WINDOW_CORNER_RADIUS: f32 = 32.0;
 
-// Tangent-circle fit of the native macOS 27 window corner, measured off a screenshot.
 pub const DEFAULT_WINDOW_CORNER_RADIUS: f32 = 13.5;
 
 pub const DEFAULT_PANE_GAPS: bool = false;
@@ -46,8 +45,6 @@ pub const DEFAULT_PANE_INACTIVE_OPACITY: f32 = 0.7;
 pub const MIN_PANE_INACTIVE_OPACITY: f32 = 0.0;
 pub const MAX_PANE_INACTIVE_OPACITY: f32 = 1.0;
 pub const DEFAULT_PANE_MARGIN: f32 = 6.0;
-/// The default theme's radius, until the client reads the active theme and
-/// calls [`AppConfig::follow_theme_radius`].
 pub const DEFAULT_WIDGET_CORNER_RADIUS: f32 = 24.0;
 pub const DEFAULT_CHROME_CONTRAST: f32 = 1.0;
 pub const DEFAULT_CHROME_TINT: f32 = 0.0;
@@ -64,8 +61,6 @@ pub const DEFAULT_CHECK_FOR_UPDATES: bool = true;
 pub const DEFAULT_BROWSER_ELEMENT_SELECTOR_HOTKEY: &str = "cmd-shift-c";
 #[cfg(not(target_os = "macos"))]
 pub const DEFAULT_BROWSER_ELEMENT_SELECTOR_HOTKEY: &str = "ctrl-shift-c";
-/// Repeatable chrome binding overrides: `<table>:<key>=<action>` and
-/// `<table>:<key>`.
 pub const CHROME_KEYBIND_KEY: &str = "chrome-keybind";
 pub const CHROME_UNBIND_KEY: &str = "chrome-unbind";
 pub const DEFAULT_BROWSER_SEARCH_PROVIDER: SearchProvider = SearchProvider::Google;
@@ -232,8 +227,6 @@ impl ConfigKey {
         }
     }
 
-    /// The inclusive range this numeric key accepts, or `None` for a key that
-    /// is not numeric.
     pub const fn numeric_range(self) -> Option<(f32, f32)> {
         match self {
             Self::PipBackgroundOpacity | Self::WindowBackgroundOpacity | Self::ChromeTint => {
@@ -286,8 +279,6 @@ impl ConfigKey {
         }
     }
 
-    /// The keys a picked theme replaces with its own: its corner radius. The
-    /// accent and the tint stay.
     pub const THEME_PICKS: [Self; 1] = [Self::WidgetCornerRadius];
 }
 
@@ -410,8 +401,6 @@ pub struct AppConfig {
     pub editor_vim_mode: ConfigValue<bool>,
     pub browser_egress: ConfigValue<bool>,
     pub theme_mode: ConfigValue<ThemeModeSetting>,
-    /// The built-in theme `interface-theme` names, or the default when it
-    /// names a saved one; see [`ParsedConfig::theme`].
     pub interface_theme: ConfigValue<&'static str>,
     pub app_icon: ConfigValue<AppIconSetting>,
 }
@@ -468,8 +457,6 @@ impl Default for AppConfig {
 }
 
 impl AppConfig {
-    /// Shows the active theme's radius in `widget-corner-radius` while
-    /// nothing overrides it.
     pub fn follow_theme_radius(&mut self, radius: f32) {
         if self.widget_corner_radius.provenance == ConfigProvenance::Default {
             self.widget_corner_radius.value = radius;
@@ -538,7 +525,6 @@ pub struct ParsedConfig {
     pub config: AppConfig,
     pub browser: BrowserConfig,
     pub ui_font: UiFontConfig,
-    /// The saved theme `interface-theme` names, when it names one.
     pub theme: Option<String>,
     pub hosts: Vec<HostEntry>,
     pub rejected_hosts: Vec<RejectedHost>,
@@ -761,8 +747,6 @@ pub fn read_config_source(path: &Path) -> io::Result<String> {
     Ok(source)
 }
 
-/// Read a settings editor file, capped at `max_bytes`. A missing file starts as
-/// an empty editor.
 pub fn read_config_editor_source(path: &Path, max_bytes: usize) -> io::Result<String> {
     let file = match File::open(path) {
         Ok(file) => file,
@@ -781,7 +765,6 @@ pub fn read_config_editor_source(path: &Path, max_bytes: usize) -> io::Result<St
     Ok(source)
 }
 
-/// Atomically replace a settings editor file after enforcing its surface's cap.
 pub fn write_config_editor_source(path: &Path, source: &str, max_bytes: usize) -> io::Result<()> {
     if source.len() > max_bytes {
         return Err(io::Error::new(
@@ -1329,9 +1312,6 @@ pub fn parse_config_string(value: &str) -> Result<String, String> {
     }
 }
 
-/// Write imported appearance values into `zz/config`, donor wins: each key is
-/// replaced in place when it exists and appended otherwise. Cumulative keys
-/// drop every prior occurrence; an empty group is a pure removal.
 pub fn import_appearance_values_at(
     path: &Path,
     values: &[(AppearanceConfigKey, Vec<String>)],
@@ -1383,8 +1363,6 @@ pub fn is_cumulative_appearance_key(key: AppearanceConfigKey) -> bool {
     )
 }
 
-/// Appearance keys an older zz wrote. Parsing reports them, and picking a theme
-/// in Settings removes them.
 pub const RETIRED_APPEARANCE_KEYS: [&str; 8] = [
     "chrome-preset",
     "chrome-preset-light",
@@ -1396,8 +1374,6 @@ pub const RETIRED_APPEARANCE_KEYS: [&str; 8] = [
     "chrome-danger",
 ];
 
-/// Material keys an older zz read, now a theme's to set. Parsing reports
-/// them, and picking a theme in Settings removes them.
 pub const RETIRED_MATERIAL_KEYS: [&str; 6] = [
     "interface-style",
     "widget-outline-width",
@@ -1407,7 +1383,6 @@ pub const RETIRED_MATERIAL_KEYS: [&str; 6] = [
     "widget-glass",
 ];
 
-/// Look keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_LOOK_KEYS: [&str; 4] = [
     "shadow-strength",
     "widget-shadows",
@@ -1415,7 +1390,6 @@ pub const RETIRED_LOOK_KEYS: [&str; 4] = [
     "widget-field",
 ];
 
-/// Pane keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_PANE_KEYS: [&str; 4] = [
     "pane-glass",
     "pane-corner-radius",
@@ -1423,7 +1397,6 @@ pub const RETIRED_PANE_KEYS: [&str; 4] = [
     "pane-background-opacity",
 ];
 
-/// Agent pane keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_AGENT_KEYS: [&str; 6] = [
     "experimental-agent-pane",
     "agent-working-directory",
@@ -1433,7 +1406,6 @@ pub const RETIRED_AGENT_KEYS: [&str; 6] = [
     "driver-hosts",
 ];
 
-/// Status bar keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_STATUS_KEYS: [&str; 2] = ["status-show-session", "status-agents"];
 
 pub fn is_app_config_key(key: &str) -> bool {
@@ -1448,8 +1420,6 @@ pub fn is_app_config_key(key: &str) -> bool {
         || key.starts_with("host-")
 }
 
-/// The Terminal page's editor buffer: `zz/config` with every app-side line
-/// removed. Comments, blank lines, and unrecognized keys stay visible.
 pub fn appearance_editor_view(source: &str) -> String {
     source
         .split_inclusive('\n')
@@ -1457,9 +1427,6 @@ pub fn appearance_editor_view(source: &str) -> String {
         .collect()
 }
 
-/// Replace the appearance view of the file at `path` with `edited`, keeping every
-/// app-side line. The inverse of [`appearance_editor_view`]. App-side keys in the
-/// buffer are rejected, not spliced.
 pub fn save_appearance_editor(path: &Path, edited: &str) -> io::Result<()> {
     for (index, line) in edited.lines().enumerate() {
         if let Some(key) = config_key_for_line(line).filter(|key| is_app_config_key(key)) {
@@ -1703,9 +1670,6 @@ pub fn set_config_key(key: ConfigKey, value: &str) -> io::Result<()> {
     set_config_key_name(key.as_str(), value)
 }
 
-/// Selects the theme `name`, a built-in id or a saved theme, and drops the
-/// explicit settings a theme decides and the retired appearance keys, so the
-/// theme shows as designed. A theme that sets a font decides the UI font too.
 pub fn set_interface_theme(name: &str, theme_sets_font: bool) -> io::Result<()> {
     if !is_builtin_theme(name) && !themes::is_theme_name(name) {
         return Err(io::Error::new(

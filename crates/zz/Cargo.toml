@@ -102,9 +102,6 @@ x11rb.workspace = true
 ala = { workspace = true, features = ["test-support"] }
 tempfile.workspace = true
 
-# The X11/Wayland backend also compiles into unix test builds so it
-# type-checks from a mac; wayland-sys cannot compile on Windows at all, which
-# is what an ungated dev-dependency used to break there.
 [target.'cfg(unix)'.dev-dependencies]
 wayland-client.workspace = true
 x11rb.workspace = true

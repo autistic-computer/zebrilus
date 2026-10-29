@@ -81,8 +81,6 @@ await_pane() {
     return 1
 }
 
-# Every assertion below reads a file a bound `run-shell` appends to, so the
-# wait is for a line rather than for a fixed delay.
 await_log() {
     attempt=0
     while [ "$attempt" -lt 400 ]; do
@@ -139,44 +137,31 @@ main_client bind-key -T count F6 \
     "run-shell 'echo saw-F6 >> $work/log' ; switch-client -c $alpha -T counted ; send-keys -c $alpha -N 2 -K"
 main_client bind-key -T counted F6 run-shell "echo counted-F6 >> $work/log"
 
-# A plain `send-keys` writes the key's bytes to the target pane and never
-# consults a key table, so the root binding on Z stays quiet.
 main_client send-keys -t "$pane" Z
 await_pane "$pane" Z || true
 check_equal plain-send-keys-writes-the-pane Z "$(main_client capture-pane -p -t "$pane" | tr -d '\n ')"
 check_equal plain-send-keys-runs-no-binding '' "$(log_body)"
 
-# `cmd_send_keys_inject_key` hands the key to `server_client_handle_key` on the
-# target client instead, so the same key now fires the client's root binding
-# and writes nothing to the pane.
 main_client send-keys -c "$alpha" -K Z
 await_log 1 || true
 check_equal inject-fires-the-root-binding root-Z "$(log_body)"
 check_equal inject-leaves-the-pane-alone Z "$(main_client capture-pane -p -t "$pane" | tr -d '\n ')"
 
-# The `-N` repeat wraps the injection loop, so the binding runs once per count.
 reset_log
 main_client send-keys -c "$alpha" -N 3 -K Z
 await_log 3 || true
 check_equal inject-repeats-with-a-count 'root-Z root-Z root-Z' "$(log_body)"
 
-# `cmd_send_keys_inject_string` resolves `-H` to `KEYC_LITERAL|n` before the
-# injection, and the table lookup masks the literal flag off, so hex 5a is the
-# same Z the name form injects.
 reset_log
 main_client send-keys -c "$alpha" -K -H 5a
 await_log 1 || true
 check_equal inject-hex-fires-the-binding root-Z "$(log_body)"
 
-# An unbound key falls through the client's key table to the pane that client
-# is looking at, and `-l` spends one key per character.
 reset_log
 main_client send-keys -c "$alpha" -K -l V
 await_pane "$pane" ZV || true
 check_equal unbound-key-reaches-the-client-pane ZV "$(main_client capture-pane -p -t "$pane" | tr -d '\n ')"
 
-# `cmd_send_keys_inject_key` never reads the target pane under `-K`, so a `-t`
-# naming a pane in another window changes nothing about where the key lands.
 main_client send-keys -c "$alpha" -t "$other" -K -l W
 await_pane "$pane" ZVW || true
 check_equal target-pane-is-ignored ZVW "$(main_client capture-pane -p -t "$pane" | tr -d '\n ')"
@@ -184,8 +169,6 @@ check_equal other-pane-never-sees-the-key 0 \
     "$(main_client capture-pane -p -t "$other" | grep -c W || true)"
 check_equal unbound-key-runs-no-binding '' "$(log_body)"
 
-# `cmd_send_keys_inject_key` returns the queue item untouched when the target
-# client is NULL, so an unresolvable `-c` injects nothing and still exits 0.
 if main_client send-keys -c /dev/zz-no-such-client -K Z; then
     missing_status=0
 else
@@ -196,18 +179,12 @@ main_client send-keys -c "$alpha" -K Z
 await_log 1 || true
 check_equal no-target-client-is-a-no-op root-Z "$(log_body)"
 
-# With no positional key `send-keys -K` injects `event->key`, the key of the
-# queue item that ran it, so a binding can replay the key that raised it into
-# whichever table the same command list just selected.
 main_client switch-client -c "$alpha" -T stage
 reset_log
 main_client send-keys -c "$alpha" -K F5
 await_log 1 || true
 check_equal no-key-replays-the-invoking-key replay-F5 "$(log_body)"
 
-# `cmd_send_keys_exec` returns before the injection loop whenever `-N` is given
-# with no positional key, so a count on the no-key form arms the pane's mode
-# count and injects nothing at all.
 main_client switch-client -c "$alpha" -T count
 reset_log
 main_client send-keys -c "$alpha" -K F6
@@ -216,8 +193,6 @@ main_client send-keys -c "$beta" -K Z
 await_log 2 || true
 check_equal count-without-a-key-injects-nothing 'saw-F6 root-Z' "$(log_body)"
 
-# `server_client_handle_key` reads the selected client's own key table, so the
-# same key resolves differently per client.
 main_client switch-client -c "$alpha" -T probe
 reset_log
 main_client send-keys -c "$alpha" -K Z

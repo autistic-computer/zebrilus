@@ -1,7 +1,3 @@
-//! Small motions the chrome shares: a disclosure chevron that turns as its
-//! group opens and closes, rows that settle into place as they appear, and
-//! controls that fade in as the pointer reaches their row.
-
 use std::{collections::HashMap, f32::consts::FRAC_PI_2};
 
 use web_time::Duration;
@@ -25,8 +21,6 @@ struct Turns(HashMap<ElementId, (bool, Option<Instant>)>);
 
 impl ala::Global for Turns {}
 
-/// When the two-state control `id` last turned to `on`, or `None` if it has
-/// not turned since it was first drawn.
 pub(crate) fn turned(id: impl Into<ElementId>, on: bool, cx: &mut App) -> Option<Instant> {
     let now = cx.background_executor().now();
     let entry = cx
@@ -40,9 +34,6 @@ pub(crate) fn turned(id: impl Into<ElementId>, on: bool, cx: &mut App) -> Option
     entry.1
 }
 
-/// How far a motion `span` long, starting `delay` after `since`, has come,
-/// eased: 1 once it has finished, when it never started, or while motion is
-/// reduced. Asks for the next frame while it runs.
 pub(crate) fn eased(
     since: Option<Instant>,
     delay: Duration,
@@ -64,10 +55,6 @@ pub(crate) fn eased(
     }
 }
 
-/// A chevron pointing right while its group is closed and down while it is
-/// open, turning between the two as the group opens and closes. `id` names
-/// the group, so the turn survives the row being rebuilt. Without
-/// [`Self::color`] it takes the text color around it.
 #[derive(IntoElement)]
 pub struct Disclosure {
     id: ElementId,
@@ -110,8 +97,6 @@ impl RenderOnce for Disclosure {
     }
 }
 
-/// `row` fading in and dropping into place over the first frames it is drawn
-/// under `id`: a row that just appeared, or one whose group just opened.
 pub fn enter(id: impl Into<ElementId>, row: impl IntoElement) -> impl IntoElement {
     div().relative().child(row).with_animation(
         id,
@@ -120,10 +105,6 @@ pub fn enter(id: impl Into<ElementId>, row: impl IntoElement) -> impl IntoElemen
     )
 }
 
-/// `row` fading in and dropping into place for a moment after `since`, the
-/// instant its group opened. Unlike [`enter`] it keys on that instant, not
-/// on the row's first frame, so a row a list only draws while it is in view
-/// does not replay it as it scrolls in. `row` must be positioned relative.
 pub fn enter_since<E: Styled>(row: E, since: Option<Instant>, window: &Window, cx: &App) -> E {
     let shown = eased(since, Duration::ZERO, ENTER, window, cx);
     if shown >= 1.0 {
@@ -132,8 +113,6 @@ pub fn enter_since<E: Styled>(row: E, since: Option<Instant>, window: &Window, c
     row.top(px(-ENTER_DROP * (1.0 - shown))).opacity(shown)
 }
 
-/// `control` fading in over the first frames it is drawn under `id`, for a
-/// control that only shows while the pointer is over its row.
 pub fn appear<E: IntoElement + Styled + 'static>(
     id: impl Into<ElementId>,
     control: E,

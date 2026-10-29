@@ -70,10 +70,6 @@ mod chat;
 const AGENT_KEY_CONTEXT: &str = "Agent";
 const STICK_FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
 
-/// Whether the pane shows busy chrome. This reads the connection phase and
-/// nothing else: an adapter that never sends a final tool update leaves rows
-/// unsettled forever, so tool statuses cannot be allowed to decide whether the
-/// pane looks alive.
 const fn pane_is_busy(connection: AgentConnectionState) -> bool {
     matches!(
         connection,
@@ -316,38 +312,24 @@ fn parented(mut entry: AgentEntry, parents: ToolParents<'_>) -> AgentEntry {
     entry
 }
 
-/// What a wizard interaction asks the controller to do.
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum PermissionStep {
     Stay,
-    /// `option_id` of `None` is the request's cancel path.
     Answer {
         request_id: u64,
         option_id: Option<String>,
     },
 }
 
-/// The pane's pending permission requests, one per page, in arrival order.
-///
-/// ACP v1 permission options are a closed, typed set, so a page is answered by
-/// picking one of them: a free-text override would only apply to kindless,
-/// question-shaped requests, which v1 cannot deliver (see
-/// `acp_v1_rejects_permission_options_with_an_unknown_kind`).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct PermissionWizard {
     page: usize,
     focused: Option<u64>,
     highlighted: usize,
-    /// Requests already answered, held until the controller drops them from the
-    /// pending list: a re-render must not re-show an answered page, and a pick
-    /// must never be taken twice.
     answered: BTreeSet<u64>,
 }
 
 impl PermissionWizard {
-    /// Re-seat the cursor over the pending requests. A request resolved
-    /// elsewhere — auto-approved, or cancelled with the turn — loses its page
-    /// while the cursor keeps its place among the rest.
     fn sync(&mut self, requests: &[AgentPermissionRequest]) {
         self.answered
             .retain(|id| requests.iter().any(|request| request.request_id == *id));
@@ -383,7 +365,6 @@ impl PermissionWizard {
         self.pages(requests).get(self.page).copied()
     }
 
-    /// `n/m`, only worth showing once a second request is waiting.
     fn page_label(&self, requests: &[AgentPermissionRequest]) -> Option<String> {
         let count = self.pages(requests).len();
         (count > 1).then(|| format!("{}/{count}", self.page + 1))
@@ -395,7 +376,6 @@ impl PermissionWizard {
         changed
     }
 
-    /// Answer the focused page and advance to the next pending request.
     fn answer(
         &mut self,
         requests: &[AgentPermissionRequest],
@@ -420,8 +400,6 @@ impl PermissionWizard {
         }
     }
 
-    /// Number keys 1-9. The composer wins the digit whenever the user is
-    /// actually typing into it.
     fn press_digit(
         &mut self,
         requests: &[AgentPermissionRequest],
@@ -487,7 +465,6 @@ pub(crate) struct AgentView {
     question: Option<QuestionCardState>,
     tray_open: Option<TrayPanel>,
     attachments: Vec<Arc<Image>>,
-    /// The `@` picker over the composer.
     mention: Entity<TargetPicker>,
     completions: Arc<[CommandCompletion]>,
     completion_selected: Option<usize>,
@@ -566,8 +543,6 @@ impl AgentView {
         let stick = TimelineStick::new(&timeline_scroll, cx.reduce_motion());
         let scroll_view = cx.weak_entity();
         timeline_scroll.set_scroll_handler(move |_, _, cx| {
-            // The list still holds its own borrow across this call, so reading
-            // the scroll state back here panics; run after the effect cycle.
             let view = scroll_view.clone();
             cx.defer(move |cx| {
                 view.update(cx, |view: &mut Self, cx| view.on_timeline_scroll(cx))
@@ -693,8 +668,6 @@ impl AgentView {
             let controller = controller.read(cx);
             self.synchronize_controller_state(controller, reduce_motion)
         };
-        // The tail entry of a live turn is the one still taking deltas, so it is
-        // the only one whose display copy may be mended.
         let streaming = self
             .pane_state
             .connection
@@ -832,9 +805,6 @@ impl AgentView {
                     self.timeline_scroll
                         .splice(splice_start..splice_start, added_rows);
                 }
-                // The grown rows are still unmeasured, so the distance to the
-                // end reads as zero until the next layout: wake the driver
-                // outright rather than waiting for a measurement to show up.
                 if self.stick.is_pinned() {
                     self.stick.wake();
                 }
@@ -882,9 +852,6 @@ impl AgentView {
         self.submit(window, cx);
     }
 
-    /// Enter over an empty composer confirms the highlighted permission option.
-    /// It never reaches [`ComposerAction::Stop`]: a stray Enter right after
-    /// sending must not kill the turn it just started.
     fn confirm_permission(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         if !self.input.read(cx).value().trim().is_empty() || self.asks_out_of_view() {
             return false;
@@ -921,8 +888,6 @@ impl AgentView {
         true
     }
 
-    /// The user is mid-sentence in the composer, so keys the wizard would claim
-    /// belong to the draft instead.
     fn composer_engaged(&self, window: &Window, cx: &ala::App) -> bool {
         let input = self.input.read(cx);
         !input.value().trim().is_empty() && input.focus_handle(cx).is_focused(window)
@@ -932,9 +897,6 @@ impl AgentView {
         !self.last_input.trim().is_empty() || !self.attachments.is_empty()
     }
 
-    /// Digits 1-9 pick an option on the focused permission page, Escape takes
-    /// its cancel path. Answered here rather than through a binding so the
-    /// digit can be swallowed before the composer types it.
     fn handle_permission_key(
         &mut self,
         event: &KeyDownEvent,
@@ -1160,8 +1122,6 @@ impl AgentView {
         empty_state(message, pane_is_busy(state.connection), view, cx)
     }
 
-    /// One pending permission request at a time, with its page counter, its
-    /// options numbered for the digit keys, and the cancel path.
     fn render_permission_wizard(
         &self,
         state: &AgentPaneState,
@@ -1317,8 +1277,6 @@ impl AgentView {
         }
     }
 
-    /// How many prompts are waiting behind the live turn, and the way back:
-    /// clicking hands the whole queue to the composer draft.
     fn render_queue_chip(&self, state: &AgentPaneState, cx: &ala::App) -> Option<impl IntoElement> {
         let queued = state.queued_prompts;
         if queued == 0 {
@@ -1568,9 +1526,6 @@ impl AgentView {
         Some(error_card(&error, stopped, cx))
     }
 
-    /// The jump-to-bottom pill, floated over the timeline just above the
-    /// composer: an absolute child, so showing it never resizes the scroll
-    /// viewport and moves the very tail it is offering to reveal.
     fn render_jump_to_end(&self, view: &Entity<Self>, cx: &ala::App) -> impl IntoElement {
         let view = view.clone();
         div()
@@ -1800,10 +1755,6 @@ impl AgentView {
         cx.notify();
     }
 
-    /// Ask for one spring frame, at most one callback in flight, paced to
-    /// 60 fps. Each step notifies while it still has travel left, which
-    /// re-enters `render` and arms the next frame; the loop stops itself once
-    /// the spring parks.
     fn drive_stick(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if cx.reduce_motion() || !self.stick.wants_frame(&self.timeline_scroll) {
             return;

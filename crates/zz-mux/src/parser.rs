@@ -781,15 +781,9 @@ impl ConfigContext for LiteralVariableContext {
     }
 }
 
-/// The names one line hands the daemon before it can be parsed the way the
-/// pin's server parses it: the `~` user names `yylex_get_word` resolves through
-/// the passwd database, and the `$NAME` variables `yylex_token_variable` reads
-/// through `environ_find(global_environ, name)`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ConfigExpansionNames {
-    /// Every `~` user name, with the empty name standing for a bare `~`.
     pub homes: BTreeSet<String>,
-    /// Every `$NAME` and `${NAME}` variable name.
     pub variables: BTreeSet<String>,
 }
 
@@ -960,9 +954,6 @@ pub(crate) fn parse_config_without_variable_expansion(
     parse_config_with(source, input, &mut LiteralVariableContext)
 }
 
-/// Every `~` user name and `$NAME` variable `input` needs before it can be
-/// parsed. The pass answers each lookup with an empty value so the walk records
-/// the whole line instead of stopping at the first unresolved name.
 pub fn config_expansion_names(source: impl Into<String>, input: &str) -> ConfigExpansionNames {
     if !input.contains(['$', '~']) {
         return ConfigExpansionNames::default();
@@ -974,11 +965,6 @@ pub fn config_expansion_names(source: impl Into<String>, input: &str) -> ConfigE
     context.names
 }
 
-/// Parse resolving every `~` from `homes` and every `$NAME` from `variables`
-/// instead of from this process's own passwd entry and environment. A user name
-/// missing from `homes` is a failed lookup and becomes the pin's located syntax
-/// error; a variable missing from `variables` is unset and expands to nothing,
-/// which is what `yylex_token_variable` does with a name `environ_find` misses.
 pub fn parse_config_with_expansions(
     source: impl Into<String>,
     input: &str,
@@ -1629,8 +1615,6 @@ fn expand_tilde<C: ConfigContext>(
     home.push_into(word, builder.input_kind);
 }
 
-/// The home directory this host's passwd database gives `name`, or the
-/// current user when `name` is `None`.
 #[cfg(unix)]
 #[must_use]
 pub fn user_home(name: Option<&str>) -> Option<String> {
@@ -2063,16 +2047,6 @@ mod tests {
         assert_eq!(command.args[12], "/users/alice/bin");
     }
 
-    /// Derived from pinned tmux d77c9dc6. `yylex` takes any unquoted word
-    /// beginning with `%` as a condition unless the rest is all `%` or digits,
-    /// and returns ERROR for a condition it does not recognise, for every word
-    /// on the line and not only the first. Measured over `-C` on the pin:
-    /// `refresh-client -A %1:pause`, `display-message -p a %1:pause` and
-    /// `set -g @x %1:pause` each answer `parse error: syntax error`;
-    /// `display-message -p %%`, `%12` and `%1` each print their word;
-    /// `display-message -p foo%bar` reaches strftime; and a quoted
-    /// `\'%1:pause\'` is an ordinary word, so at the head of a line it is
-    /// `unknown command: %1:pause` rather than a syntax error.
     #[test]
     fn an_unquoted_percent_word_is_a_condition_in_every_argument_position() {
         for line in [
@@ -2191,14 +2165,6 @@ mod tests {
         }
     }
 
-    /// Derived from pinned tmux d77c9dc6. `yylex_token_variable` expands
-    /// `$NAME` and `${NAME}` through `environ_find(global_environ, name)` while
-    /// the server parses the line, an unset name expands to nothing, and a
-    /// single-quoted `\'$NAME\'` never reaches the expansion at all. Measured
-    /// over `-C` on the pin: `display-message -p "$NOTIFY_ENV"` prints the value
-    /// set by an earlier `set-environment -g`, `display-message -p
-    /// "$NOPE_UNSET"` prints an empty line, and `display-message -p
-    /// \'$NOTIFY_ENV\'` prints the literal `$NOTIFY_ENV`.
     #[test]
     fn resolves_tildes_and_variables_from_the_supplied_batches() {
         let homes = BTreeMap::from([

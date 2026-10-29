@@ -1,5 +1,3 @@
-//! Location and permission policy for user-owned application data.
-
 #[cfg(unix)]
 use std::fs;
 use std::{io, path::Path};

@@ -1,10 +1,3 @@
-//! What a live `display-menu` keeps when its owning client resizes.
-//!
-//! The pin answers `MSG_RESIZE` with `menu_resize_cb`, which moves the box
-//! back inside the new viewport and touches nothing else — not the width, not
-//! the rows, not the choice, not the commands — and never closes the menu, not
-//! even when the box no longer fits.
-
 #![cfg(unix)]
 
 mod overlay;

@@ -1,8 +1,4 @@
 #!/bin/sh
-# tmux 3.8 ends an unquoted token at } and, outside a command block, that }
-# is a syntax error: a #{...} format written mid-word without quotes fails
-# the whole sourced file or control line, while quoted or escaped braces and
-# a { with no } still parse.
 set -eu
 
 export LC_ALL=C

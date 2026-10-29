@@ -1,5 +1,3 @@
-//! Native settings route backed by the application configuration.
-
 mod file_options;
 mod multiplexer;
 mod sources;
@@ -66,8 +64,6 @@ const NEEDS_PANE_GAPS: &str = "Needs pane gaps";
 pub(crate) struct PendingMuxImport(pub bool);
 impl ala::Global for PendingMuxImport {}
 
-/// What the Settings hint prints when the chrome keymap names no chord for
-/// `open-settings`. The binding itself is data; see `zz_client::ChromeKeymap`.
 #[cfg(target_os = "macos")]
 pub(crate) const KEYBIND: &str = "cmd-,";
 #[cfg(not(target_os = "macos"))]
@@ -2094,8 +2090,6 @@ fn search_provider_subscription(
     )
 }
 
-/// The themes Settings offers, the built-in ones first, with the active one
-/// picked and the overrides `zz/config` sets over it.
 pub(crate) fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R) -> R {
     let themes = config::themes(cx);
     let choices = interface_theme::builtin_themes()
@@ -2115,7 +2109,6 @@ pub(crate) fn with_theme_picks<R>(cx: &App, show: impl FnOnce(&ThemePicks) -> R)
     })
 }
 
-/// Reports a failed write, or shows a successful one at once.
 pub(crate) fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App) {
     match result {
         Ok(()) => refresh_settings_preview(key, cx),
@@ -2123,8 +2116,6 @@ pub(crate) fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App)
     }
 }
 
-/// The color the custom accent picker holds: a set color, or none while the
-/// accent is the theme's or a named one.
 fn custom_accent(accent: zz_client::appearance::AccentSetting) -> Option<ala::Hsla> {
     match accent {
         zz_client::appearance::AccentSetting::Color([r, g, b, a]) => {
@@ -2134,8 +2125,6 @@ fn custom_accent(accent: zz_client::appearance::AccentSetting) -> Option<ala::Hs
     }
 }
 
-/// The family the UI font select shows: the configured one, or the theme's
-/// font while nothing is configured, or `""` for the system font.
 fn shown_ui_font(
     family: &ConfigValue<Option<String>>,
     theme_font: Option<&SharedString>,
@@ -2463,8 +2452,6 @@ fn import_theme_from_clipboard(cx: &mut App) {
     }
 }
 
-/// Writes `theme` to the next free `themes/theme-N.json` and selects it. A
-/// theme without a name of its own is named after its file.
 fn save_and_select_theme(mut theme: InterfaceTheme, cx: &mut App) {
     let saved = config::themes::themes_directory().and_then(|directory| {
         let name = config::themes::next_theme_name(&directory);

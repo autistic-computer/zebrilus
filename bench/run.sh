@@ -16,14 +16,10 @@ RESULTS_DIR="$BENCH_DIR/results"
 FIXTURE_DIR="$BENCH_DIR/fixtures"
 INNER="$BENCH_DIR/inner.sh"
 
-# Short on purpose: macOS caps sun_path at ~104 bytes.
 ZZ_SOCKET="${ZZ_BENCH_SOCKET:-/tmp/zz-bench.sock}"
 TMUX_SOCKET_NAME="zzbench"
 
 GHOSTTY_BIN="${GHOSTTY_BIN:-$(command -v ghostty || echo /Applications/Ghostty.app/Contents/MacOS/ghostty)}"
-# Nightly, staged out of /Applications so it never touches the stable install:
-#   gh release download tip -R ghostty-org/ghostty -p Ghostty.dmg
-# then mount and copy Ghostty.app into bench/.cache/ghostty-tip/.
 GHOSTTY_TIP_BIN="${GHOSTTY_TIP_BIN:-$BENCH_DIR/.cache/ghostty-tip/Ghostty.app/Contents/MacOS/ghostty}"
 
 RUNS="${ZZ_BENCH_RUNS:-5}"
@@ -108,7 +104,6 @@ die() {
   exit 1
 }
 
-# The release-optimised bundle only. A debug build measures the wrong thing.
 find_zz() {
   local candidate
   for candidate in \
@@ -265,7 +260,6 @@ MANUAL
       return 1
     fi
   done
-  # The GUI still has to attach and lay out the first pane.
   sleep 3
 
   local pane
@@ -292,7 +286,7 @@ MANUAL
 }
 
 run_ghostty() {
-  # shellcheck disable=SC2086 # INNER_ARGS is a deliberate word list
+  # shellcheck disable=SC2086
   run_terminal ghostty "$GHOSTTY_BIN" -e "$INNER" ghostty $INNER_ARGS
 }
 
@@ -302,7 +296,6 @@ run_ghostty_tip() {
 }
 
 run_ghostty_tmux() {
-  # Dedicated server socket and -f /dev/null so no user tmux config leaks in.
   tmux -L "$TMUX_SOCKET_NAME" kill-server >/dev/null 2>&1
   run_terminal ghostty+tmux "$GHOSTTY_BIN" -e \
     tmux -L "$TMUX_SOCKET_NAME" -f /dev/null \

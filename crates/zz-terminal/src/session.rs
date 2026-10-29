@@ -90,10 +90,6 @@ pub fn forbid_actor_round_trips() -> RoundTripGuard {
     RoundTripGuard(ROUND_TRIPS_FORBIDDEN.with(|forbidden| forbidden.replace(true)))
 }
 
-/// Run as the pane launcher when the process was started as one: claim the
-/// terminal on stdin as the controlling terminal and exec the pane program.
-/// Returns `None` in every other process, which marks it as able to launch
-/// panes through itself.
 #[must_use]
 pub fn run_pty_exec_mode() -> Option<std::process::ExitCode> {
     #[cfg(unix)]
@@ -215,9 +211,6 @@ use pane_actor::PaneActor;
 
 const INITIAL_COLUMNS: u16 = 80;
 const INITIAL_ROWS: u16 = 24;
-/// `spawn_pane`'s `SPAWN_EMPTY` branch in the pin (spawn.c) gives a pane with no
-/// process newline mode and no cursor, so a stream written into it starts each
-/// line at column 0 and nothing blinks where nobody can type.
 const EMPTY_PANE_MODES: &str = "\x1b[20h\x1b[?25l";
 const INITIAL_CELL_WIDTH: u32 = 8;
 const INITIAL_CELL_HEIGHT: u32 = 18;
@@ -225,14 +218,10 @@ const MAX_LINK_URI_BYTES: usize = 16 * 1024;
 const LINK_URI_SCRATCH_BYTES: usize = 256;
 const GRAPHEME_CLUSTER_SCRATCH: usize = 32;
 const MAX_GRAPHEME_CLUSTER_CODEPOINTS: usize = 256;
-/// The `(prefix, suffix)` an agent CLI wraps around its own attachment number.
-/// Current Claude Code and Codex both print `[Image #2]`.
 const IMAGE_PLACEHOLDERS: [(&str, &str); 1] = [("[Image #", "]")];
 const MAX_PLACEHOLDER_CELLS: usize = 32;
 const MAX_CAPTURE_BYTES: usize = 32 * 1024 * 1024;
-/// Trailing output rows [`capture_last_command`] keeps.
 pub const MAX_LAST_COMMAND_LINES: usize = 200;
-/// Byte ceiling applied after the line cap, whichever bites first.
 pub const MAX_LAST_COMMAND_BYTES: usize = 256 * 1024;
 const MAX_OUTPUT_VIEW_SCROLLBACK: usize = 100_000;
 const MAX_STARTUP_OUTPUT_VIEW_SCROLLBACK: usize = 64 * 1024 * 1024;
@@ -252,13 +241,9 @@ const PTY_BUFFER_POOL_SIZE: usize = 4;
 #[cfg(all(not(target_os = "linux"), any(not(unix), test)))]
 const PTY_BUFFER_POOL_SIZE: usize = 8;
 const PTY_DRAIN_TURN_BYTES: usize = 256 * 1024;
-/// Wall-time bound on a single drain turn so the actor lane stays responsive even when the
-/// parser runs far below the byte bound's assumed rate (e.g. an unoptimized VT build).
 const PTY_DRAIN_TURN_TIME: Duration = Duration::from_millis(1);
 #[cfg(unix)]
 const PTY_BRIDGE_THRESHOLD_BYTES: usize = 1024;
-/// Nonblocking read retries bridging a saturated producer's kernel queue refill.
-/// Probed on Mac16,5/macOS 27: spin 64/256/512 gave 281/332/348 MB/s.
 #[cfg(all(unix, not(target_os = "linux")))]
 const PTY_BRIDGE_SPIN_MAX: u32 = 512;
 #[cfg(target_os = "linux")]
@@ -323,17 +308,12 @@ impl AllowPassthrough {
     }
 }
 
-/// The daemon answers every exit, with a notice for a retained pane and with
-/// nothing for one it is about to close, so this cap only has to cover the
-/// worst case where the pane is already gone from the daemon's map.
 const DEAD_NOTICE_WAIT: Duration = Duration::from_secs(5);
 const MAX_ENGINE_SEQUENCE_BYTES: usize = 256;
 const MAX_ENGINE_RENAME_BYTES: usize = 1024;
 const MAX_ENGINE_OSC_BYTES: usize = 64;
 const SHELL_INTEGRATION_TITLE_MARK: &[u8] = b"2626";
 
-/// `enum progress_bar_state`: what the `ConEmu` OSC 9;4 sequence's first argument
-/// selects. A pane that has never seen one is `hidden`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ProgressBarState {
     #[default]
@@ -345,7 +325,6 @@ pub enum ProgressBarState {
 }
 
 impl ProgressBarState {
-    /// The spellings `format_cb_pane_pb_state` prints.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -369,8 +348,6 @@ impl ProgressBarState {
     }
 }
 
-/// `struct progress_bar`: the state and percentage a pane's screen keeps after
-/// an OSC 9;4 sequence, read by `pane_pb_state` and `pane_pb_progress`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ProgressBar {
     pub state: ProgressBarState,
@@ -378,8 +355,6 @@ pub struct ProgressBar {
 }
 
 impl ProgressBar {
-    /// `screen_set_progress_bar`: the state always lands, and the percentage
-    /// only when the sequence carried one and the state is not indeterminate.
     fn apply(&mut self, state: ProgressBarState, progress: Option<u8>) {
         self.state = state;
         if let Some(progress) = progress
@@ -390,8 +365,6 @@ impl ProgressBar {
     }
 }
 
-/// Pane knobs the pin honors inside its own VT layer: `scroll-on-clear`,
-/// `alternate-screen`, `allow-rename`, and the byte `backspace` names.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EngineKnobs {
     pub scroll_on_clear: bool,
@@ -399,9 +372,6 @@ pub struct EngineKnobs {
     pub allow_rename: bool,
     pub erase_byte: Option<u8>,
     pub verase_byte: u8,
-    /// `mode-keys` resolved for the pane's window. window-copy.c reads the
-    /// option live in the cursor geometry, so it rides here rather than only
-    /// being latched when a mode opens.
     pub mode_keys_vi: bool,
 }
 
@@ -429,20 +399,11 @@ enum EngineState {
     Rename,
 }
 
-/// Rewrites the byte stream ahead of `vt_write` for the knobs libghostty has
-/// no switch for: it scrolls a full-screen erase into history, drops the
-/// alternate-screen mode switches, and takes `ESC k` off the wire. Everything
-/// else reaches the engine in the spans it arrived in: a chunk is scanned for
-/// the two rewrite points and handed over whole when it has none, and only a
-/// sequence that straddles two chunks is buffered.
 #[derive(Default)]
 struct EngineFilter {
     state: EngineState,
     sequence: Vec<u8>,
     title: Vec<u8>,
-    /// The head of the OSC payload being collected, passed through to the
-    /// engine as it is read; `osc_overflowed` once it outgrew the cap and only
-    /// its command number can still be parsed.
     osc: Vec<u8>,
     osc_dropped: usize,
     osc_overflowed: bool,
@@ -461,8 +422,6 @@ struct EngineFilter {
     output_marks: Vec<(Screen, TrackedGridRef)>,
 }
 
-/// `format_cb_pane_private_modes`' table, in its order: the DEC private mode
-/// numbers whose state the format lists.
 pub const PRIVATE_MODE_NUMBERS: [u16; 14] = [
     1, 6, 7, 12, 25, 1000, 1002, 1003, 1004, 1005, 1006, 2004, 2026, 2031,
 ];
@@ -471,11 +430,6 @@ const CURSOR_BLINK_MODE_BIT: usize = 3;
 const MOUSE_MODE_BITS: u16 = 0b111 << 5;
 
 impl EngineFilter {
-    /// The `input_csi_dispatch_sm_private` and `_rm_private` bookkeeping that
-    /// `pane_private_modes` reads and the engine does not keep: `?12h` and
-    /// `?12l` make the blink state the application's until `CSI 0 SP q` hands
-    /// it back, and the three mouse tracking modes replace each other, with
-    /// any of `?1000l` to `?1003l` clearing them all.
     fn track_private_modes(&mut self, parameters: &[u8], final_byte: u8) {
         if final_byte == b'q'
             && let Some(style) = parameters.strip_suffix(b" ")
@@ -505,8 +459,6 @@ impl EngineFilter {
         }
     }
 
-    /// `input_parse_pane` and `input_parse_buffer` count every read, before
-    /// anything decides what the bytes mean.
     fn count_output(&mut self) {
         self.output.output(unix_now());
     }
@@ -518,7 +470,6 @@ fn unix_now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
-/// Which OSC 133 mark `input_osc_133` fires an event for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellMarkKind {
     Prompt,
@@ -526,16 +477,12 @@ pub enum ShellMarkKind {
     CommandFinished,
 }
 
-/// One OSC 133 event, with the pane's command facts as the mark left them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ShellMark {
     pub kind: ShellMarkKind,
     pub facts: PaneOutputFacts,
 }
 
-/// What `input_parse_pane`, `input_parse_buffer` and `input_osc_133` keep on
-/// `struct window_pane`: the output generation and time, and the OSC 133
-/// prompt and command marks. Times are Unix seconds, 0 for never.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct PaneOutputFacts {
     pub output_generation: u64,
@@ -571,8 +518,6 @@ impl PaneOutputFacts {
         }
     }
 
-    /// `format_cb_pane_command_duration`: up to now while the command runs,
-    /// never negative.
     #[must_use]
     pub fn command_duration(&self, now: u64) -> Option<u64> {
         if self.command_start_time == 0 {
@@ -587,8 +532,6 @@ impl PaneOutputFacts {
     }
 }
 
-/// `input_osc_133_exit_status`: no status or a `key=value` field reads 0, a
-/// number outside 0..=255 reads 255.
 fn osc_133_exit_status(mark: &[u8]) -> u8 {
     let Some(rest) = mark.get(1..).and_then(|rest| rest.strip_prefix(b";")) else {
         return 0;
@@ -869,10 +812,6 @@ impl EngineFilter {
         }
     }
 
-    /// Scan a chunk from the ground state: text and sequences that need no
-    /// rewrite accumulate into one span, a rewrite point flushes the span and
-    /// writes its replacement, and the remainder of a chunk that ends inside
-    /// a sequence is handed back with the state set to resume it.
     fn write_ground<'b>(
         &mut self,
         bytes: &'b [u8],
@@ -967,11 +906,6 @@ impl EngineFilter {
         }
     }
 
-    /// Reads an OSC payload without changing it: the whole run up to the next
-    /// terminator goes to the engine in one write while a bounded copy is kept
-    /// for `input_exit_osc`, which runs on every way out of the state: BEL,
-    /// CAN and SUB commit the payload like ST does. `ESC` is left for the
-    /// escape state, which writes it back as the first byte of ST.
     fn write_osc<'b>(
         &mut self,
         bytes: &'b [u8],
@@ -1004,9 +938,6 @@ impl EngineFilter {
         &bytes[end + 1..]
     }
 
-    /// `input_state_osc_string_table` appends only 0x20..0xff to the payload;
-    /// every other control byte inside an OSC is a null transition the pin
-    /// drops.
     fn collect_osc(&mut self, bytes: &[u8]) {
         for &byte in bytes {
             if self.osc_overflowed {
@@ -1121,8 +1052,6 @@ impl EngineFilter {
         std::mem::take(&mut self.program_status_changed).then(|| self.program_status.clone())
     }
 
-    /// `input_exit_rename`: every way out of the rename state applies the
-    /// collected name, and `allow-rename` decides whether it lands.
     fn finish_rename(&mut self, knobs: EngineKnobs, renames: &mut Vec<String>) {
         if knobs.allow_rename
             && let Ok(name) = std::str::from_utf8(&self.title)
@@ -1199,9 +1128,6 @@ fn parse_osc_command_status(payload: &[u8]) -> Option<CommandStatusUpdate> {
     Some(CommandStatusUpdate::Exit(status.parse().ok()?))
 }
 
-/// `input_exit_osc` reads the leading digits as the OSC number, which must be
-/// followed by `;` or the end of the payload, and hands the rest to the
-/// per-number handler.
 fn osc_command(payload: &[u8]) -> Option<(u32, &[u8])> {
     let digits = payload
         .iter()
@@ -1229,10 +1155,6 @@ fn parse_osc_progress(payload: &[u8]) -> Option<(ProgressBarState, Option<u8>)> 
     (option == 9).then(|| parse_osc_9_progress(rest)).flatten()
 }
 
-/// `input_osc_9`: `4;<state>` with an optional `;<progress>`, where the state
-/// is one digit 0 through 4 and the progress is 0 through 100. A payload that
-/// stops after `4` or `4;` is silently ignored, and so is anything malformed;
-/// a missing progress leaves the pane's percentage where it was.
 fn parse_osc_9_progress(payload: &[u8]) -> Option<(ProgressBarState, Option<u8>)> {
     let rest = payload.strip_prefix(b"4")?;
     if rest.is_empty() || rest == b";" {
@@ -1279,11 +1201,6 @@ fn csi_needs_rewrite(parameters: &[u8], final_byte: u8, knobs: EngineKnobs) -> b
     }
 }
 
-/// `screen_write_clearscreen` and, with the cursor at the origin,
-/// `screen_write_clearendofscreen` hand a full-screen erase to
-/// `grid_view_clear_history`, which scrolls every used row into history first.
-/// libghostty always takes the other branch, so the used-row count goes back
-/// on the wire as an SU ahead of the erase.
 fn write_engine_csi(
     sequence: &[u8],
     final_byte: u8,
@@ -1367,10 +1284,6 @@ fn write_engine_csi(
     }
 }
 
-/// The semantic prompt flag of the row under the cursor. A shell that marks its
-/// prompt start and then erases the screen from the origin (zsh does this on
-/// every prompt) would otherwise lose the mark to the scroll-on-clear rewrite,
-/// which sends that row into history before the prompt is drawn.
 fn cursor_row_semantic_prompt(terminal: &Terminal<'_, '_>) -> Option<RowSemanticPrompt> {
     let row = terminal.cursor_y().ok()?;
     terminal
@@ -1401,8 +1314,6 @@ fn erases_whole_screen(sequence: &[u8], terminal: &Terminal<'_, '_>) -> bool {
     }
 }
 
-/// `grid_view_clear_history` scrolls one line per row up to the last row that
-/// holds a written cell, which is the pin's `cellused != 0` test.
 fn used_screen_rows(terminal: &Terminal<'_, '_>) -> Option<u16> {
     let rows = terminal.rows().ok()?;
     let columns = terminal.cols().ok()?;
@@ -1581,8 +1492,6 @@ impl PassthroughFilter {
 }
 
 #[inline]
-/// `spawn.c` copies the session termios into the child and then forces
-/// `VERASE` to the key the `backspace` option names.
 #[cfg(unix)]
 fn force_pty_erase(descriptor: std::os::fd::RawFd, erase: u8) {
     use rustix::termios::{OptionalActions, SpecialCodeIndex, tcgetattr, tcsetattr};
@@ -1721,13 +1630,10 @@ impl Default for CaptureOptions {
     }
 }
 
-/// The last completed command and its output, read from the OSC 133 marks
-/// libghostty records on rows and cells.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LastCommandCapture {
     pub command: String,
     pub output: String,
-    /// Leading output rows dropped by the line or byte cap; zero when none were.
     pub truncated_rows: usize,
     pub running: bool,
 }
@@ -1750,7 +1656,6 @@ pub enum TerminalCaptureError {
     Failed(String),
 }
 
-/// Cold payload produced after a native selection copy completes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TerminalCopyReady {
     pub request_id: u64,
@@ -1767,8 +1672,6 @@ pub struct TerminalOpenUri {
     pub uri: String,
 }
 
-/// A coalesced notification that a newer terminal snapshot is available or a
-/// reliable terminal-side effect is ready for the daemon.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TerminalEvent {
     ViewportReady {
@@ -1780,15 +1683,11 @@ pub enum TerminalEvent {
         copy: Box<TerminalCopyReady>,
     },
     OpenUri(Box<TerminalOpenUri>),
-    /// The program in the pane wrote to a clipboard itself (OSC 52, iTerm2
-    /// OSC 1337 Copy). Pane-scoped: every viewer of the pane is the audience.
     ClipboardSet {
         target: ClipboardTarget,
         text: String,
     },
-    /// The program wrote `ESC k <name> ST` while `allow-rename` was on.
     RenameWindow(String),
-    /// The program rang BEL. Raised once per occurrence.
     Bell,
     PlaceholderBound {
         token: u64,
@@ -1887,7 +1786,6 @@ impl OutputWake {
     }
 }
 
-/// Single-consumer terminal event stream with bounded reliable-event accounting.
 #[derive(Clone)]
 pub struct TerminalEvents {
     receiver: async_channel::Receiver<TerminalEvent>,
@@ -2080,7 +1978,6 @@ impl TerminalEvents {
         })
     }
 
-    /// Receives the next terminal event, blocking the caller.
     pub fn recv_blocking(&self) -> Result<TerminalEvent, async_channel::RecvError> {
         let mut event = self.receiver.recv_blocking()?;
         self.state.received(&mut event);
@@ -2135,15 +2032,11 @@ fn terminal_event_channel(state: &Arc<EventQueueState>) -> (TerminalEventSender,
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct TerminalFacts {
     pub output: PaneOutputFacts,
-    /// One bit per [`PRIVATE_MODE_NUMBERS`] entry that is set.
     pub private_modes: u16,
     pub history_size: usize,
     pub cursor_x: u16,
     pub cursor_y: u16,
     pub alternate_on: bool,
-    /// `ALL_MOUSE_MODES`: the three tracking modes `format_cb_mouse_any_flag`
-    /// reads off `wp->base.mode`, which is what every stock pane-body row
-    /// guards its `send -M` branch on.
     pub mouse_tracking: bool,
     pub cursor_hidden: bool,
     pub program_title_writes: u64,
@@ -2187,35 +2080,18 @@ impl PublishedViewports {
     }
 }
 
-/// What `window_copy_formats` reads off one pane's mode entry, computed for
-/// one client's frozen view. tmux keeps this on the pane because the mode
-/// entry is the pane's; zz keeps it per view because copy mode is per client,
-/// so the daemon reads whichever view the format tree's client owns.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CopyModeFacts {
-    /// `view-mode` rather than `copy-mode` for the read-only output overlay.
     pub view_mode: bool,
-    /// `data->cx`.
     pub cursor_x: u32,
-    /// `data->cy`, the cursor's row inside the visible screen.
     pub cursor_y: u32,
-    /// `window_copy_get_line`: the cursor's row with trailing blanks trimmed.
     pub cursor_line: String,
-    /// `window_copy_get_word`: the word the cursor sits in, or the one after
-    /// it when the cursor is on a single separator.
     pub cursor_word: String,
-    /// `data->oy`, rows between the visible screen and the bottom.
     pub scroll_position: u32,
-    /// `data->screen.sel`, whose absence removes the four coordinates too.
     pub selection: Option<CopyModeSelectionFacts>,
-    /// `data->searchmark != NULL`.
     pub search_present: bool,
-    /// `data->searchcount` and `data->searchmore`, both absent while the pin
-    /// holds -1 in the count.
     pub search_count: Option<(u32, bool)>,
-    /// `data->timeout`, which zz's synchronous copy-mode search never sets.
     pub search_timed_out: bool,
-    /// `window_copy_match_at_cursor`: the marked text the cursor stands in.
     pub search_match: String,
     pub rectangle_toggle: bool,
     pub selection_active: bool,
@@ -2242,8 +2118,6 @@ pub fn copy_line_number_mode(line_numbers: u8, option: &str) -> u8 {
     }
 }
 
-/// `data->selx`, `sely`, `endselx` and `endsely`: grid rows counted from the
-/// top of the history, not from the top of the visible screen.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CopyModeSelectionFacts {
     pub start_x: u32,
@@ -2252,7 +2126,6 @@ pub struct CopyModeSelectionFacts {
     pub end_y: u32,
 }
 
-/// What a terminal pane runs and the environment it starts with.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TerminalSize {
     pub columns: u16,
@@ -2308,9 +2181,6 @@ pub struct TerminalSpawn {
     pub terminal_type: Option<String>,
     pub initial_size: Option<TerminalSize>,
     pub non_login_shell: bool,
-    /// Extra environment (`ZZ_PANE` etc.) layered over the defaults. A Unix
-    /// environment name and value are byte strings, so this carries `OsString`
-    /// rather than text and a non-UTF-8 entry reaches the child verbatim.
     pub env: Vec<(std::ffi::OsString, Option<std::ffi::OsString>)>,
     pub word_separators: Option<WordSeparators>,
     pub allow_passthrough: Option<bool>,
@@ -2359,14 +2229,12 @@ pub struct TerminalSessionDiagnostics {
     pub viewport_status: SessionStatus,
 }
 
-/// One decoded Kitty image copied out of libghostty on the terminal actor.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct KittyImage {
     pub image_id: u32,
     pub generation: u64,
     pub width: u32,
     pub height: u32,
-    /// Premultiplied BGRA8 pixels, ready for ala's image atlas.
     pub bgra: Vec<u8>,
 }
 
@@ -2415,10 +2283,6 @@ impl std::fmt::Debug for TerminalSession {
 }
 
 impl TerminalSession {
-    /// Starts the platform's default shell in a new terminal actor.
-    ///
-    /// The scrollback limit is fixed at spawn; a later mux-option change reaches
-    /// only new panes. A `None` working directory inherits the daemon's.
     #[must_use]
     pub fn spawn(
         max_scrollback: usize,
@@ -2535,9 +2399,6 @@ impl TerminalSession {
         }
     }
 
-    /// Starts a PTY-free, frozen surface for native command output. It takes the
-    /// same resize, selection, search, and copy-mode actions as a live terminal
-    /// but never spawns a shell, and exits when its view mode is cancelled.
     #[must_use]
     pub fn spawn_output_view(title: String, text: String) -> Self {
         Self::spawn_output_view_with_appearance(
@@ -2547,7 +2408,6 @@ impl TerminalSession {
         )
     }
 
-    /// Start a PTY-free command-output surface with a resolved appearance.
     #[must_use]
     pub fn spawn_output_view_with_appearance(
         title: String,
@@ -2732,14 +2592,11 @@ impl TerminalSession {
         }
     }
 
-    /// The scrollback limit this actor captured at spawn.
     #[must_use]
     pub const fn max_scrollback(&self) -> usize {
         self.max_scrollback
     }
 
-    /// The process in the PTY foreground group, queried on each call. `None` for
-    /// output views, actors that have not started, and exited sessions.
     #[must_use]
     pub fn foreground_process_id(&self) -> Option<u32> {
         self.events.state.foreground.read().as_ref()?.process_id()
@@ -2819,8 +2676,6 @@ impl TerminalSession {
         self.events.state.foreground.read().as_ref()?.tty.clone()
     }
 
-    /// Replaces the word classifier used by desktop selection and copy mode.
-    /// Applied in command order, without touching the PTY.
     pub fn set_word_separators(&self, separators: WordSeparators) {
         *self.word_separators.write() = separators.clone();
         self.commands.with_slot(|slot| {
@@ -2829,9 +2684,6 @@ impl TerminalSession {
         });
     }
 
-    /// Apply new renderer defaults without replacing PTY or viewport state.
-    /// Re-sends of a byte-identical appearance are dropped so callers can
-    /// refresh eagerly without forcing terminal re-renders.
     pub fn set_appearance(&self, appearance: Arc<TerminalAppearance>) {
         let hash = appearance.stable_hash();
         if self.applied_appearance.swap(hash, Ordering::AcqRel) == hash {
@@ -2844,7 +2696,6 @@ impl TerminalSession {
     }
 
     pub fn set_allow_passthrough(&self, enabled: bool) {
-        // The daemon folds tmux `on` into `all` because this worker has no pane-visibility signal.
         self.commands.with_slot(|slot| {
             slot.pending.allow_passthrough = Some(if enabled {
                 AllowPassthrough::All
@@ -2869,28 +2720,20 @@ impl TerminalSession {
         });
     }
 
-    /// `window_copy_clone_screen` runs on the source pane, so the revision a
-    /// `copy-mode -s` entry needs has to be built on that pane's own worker.
     pub fn capture_copy_source(&self) -> Result<CapturedCopySource, TerminalCaptureError> {
         self.commands.request(|reply| Command::CaptureCopySource {
             reply: reply.into(),
         })?
     }
 
-    /// Hands a retained pane its expanded `remain-on-exit-format` while the
-    /// worker is still holding the VT open after the child exited. `None`
-    /// releases the worker without drawing anything.
     pub fn write_dead_notice(&self, text: Option<Arc<str>>) {
         self.send_command(Command::WriteDeadNotice(text));
     }
 
-    /// Arms the revision the next copy-mode entry on this worker takes instead
-    /// of cloning the pane's own screen.
     pub fn set_pending_copy_source(&self, source: Option<Box<CapturedCopySource>>) {
         self.send_command(Command::SetPendingCopySource(source));
     }
 
-    /// Apply pinned tmux's `send-keys -R` pane reset, preserving scrollback.
     pub fn reset_screen(&self) {
         self.send_command(Command::ResetScreen);
     }
@@ -2900,14 +2743,11 @@ impl TerminalSession {
         self.word_separators.read().clone()
     }
 
-    /// Clone the single-consumer event stream used by the UI.
     #[must_use]
     pub fn events(&self) -> TerminalEvents {
         self.events.clone()
     }
 
-    /// `wp->base.progress_bar`, which `pane_pb_state` and `pane_pb_progress`
-    /// read. A pane that has seen no OSC 9;4 answers hidden and zero.
     #[must_use]
     pub fn progress_bar(&self) -> ProgressBar {
         self.latest.read().bar
@@ -2923,7 +2763,6 @@ impl TerminalSession {
         self.latest.read().last_command_status
     }
 
-    /// The OSC 133 marks the pane wrote since the last call, oldest first.
     #[must_use]
     pub fn take_shell_marks(&self) -> Vec<ShellMark> {
         let mut latest = self.latest.write();
@@ -2933,8 +2772,6 @@ impl TerminalSession {
         latest.shell_marks.drain(..).collect()
     }
 
-    /// How many OSC 133 marks were dropped because the daemon fell
-    /// `MAX_PENDING_SHELL_MARKS` behind.
     #[must_use]
     pub fn shell_marks_dropped(&self) -> u64 {
         self.latest.read().shell_marks_dropped
@@ -3017,8 +2854,6 @@ impl TerminalSession {
             && self.preview_pending.swap(false, Ordering::AcqRel)
     }
 
-    /// The copy-mode facts published for one view, absent whenever that view
-    /// holds no frozen mode.
     #[must_use]
     pub fn copy_mode_facts(&self, view: TerminalViewId) -> Option<Arc<CopyModeFacts>> {
         self.latest.read().copy_facts.get(&view).cloned()
@@ -3029,7 +2864,6 @@ impl TerminalSession {
         self.latest.read().search_string.clone()
     }
 
-    /// Copy one stored Kitty image from the actor-owned VT as premultiplied BGRA8.
     pub fn kitty_image(&self, image_id: u32) -> Result<Option<KittyImage>, KittyImageRequestError> {
         self.commands
             .request(|reply| {
@@ -3041,7 +2875,6 @@ impl TerminalSession {
             .map_err(Into::into)
     }
 
-    /// Read an image's current storage generation without copying its pixels.
     pub fn kitty_image_generation(
         &self,
         image_id: u32,
@@ -3116,7 +2949,6 @@ impl TerminalSession {
         });
     }
 
-    /// Send a physical key event through libghostty's key encoder.
     pub fn send_key(&self, input: KeyInput) {
         self.try_send_key(input);
     }
@@ -3139,7 +2971,6 @@ impl TerminalSession {
         });
     }
 
-    /// Resize both the emulated terminal and the native PTY.
     pub fn resize(&self, columns: u16, rows: u16, cell_width_px: u32, cell_height_px: u32) {
         let geometry = Geometry {
             columns: columns.max(1),
@@ -3157,8 +2988,6 @@ impl TerminalSession {
         });
     }
 
-    /// Activate one client's view state. Frames for it flow only once
-    /// [`Self::set_view_stream`] turns its stream on.
     pub fn attach_view(&self, view: TerminalViewId) {
         self.commands.with_slot(|slot| {
             slot.known_views.insert(view);
@@ -3167,7 +2996,6 @@ impl TerminalSession {
         });
     }
 
-    /// Park one client's view state for a later reattach.
     pub fn detach_view(&self, view: TerminalViewId) {
         self.commands.with_slot(|slot| {
             if !slot.known_views.contains(&view) {
@@ -3178,7 +3006,6 @@ impl TerminalSession {
         });
     }
 
-    /// Permanently release a client view and all of its tracked terminal state.
     pub fn release_view(&self, view: TerminalViewId) {
         self.commands.with_slot(|slot| {
             if slot.view_areas.remove(&view).is_some() {
@@ -3237,14 +3064,10 @@ impl TerminalSession {
             .unwrap_or_else(|_| self.latest_viewport())
     }
 
-    /// Apply a native viewport, selection, copy, or paste action.
     pub fn view_action(&self, view: TerminalViewId, action: TerminalViewAction) {
         self.send_command(Command::ViewAction { view, action });
     }
 
-    /// Pastes daemon-prepared bytes without forcing them through UTF-8. The payload
-    /// must already carry tmux separator and safe/literal transforms. With
-    /// `bracketed`, markers are emitted only if the application enabled the mode.
     pub fn paste_prepared_bytes(
         &self,
         view: Option<TerminalViewId>,
@@ -3369,25 +3192,14 @@ impl TerminalSession {
         })
     }
 
-    /// Open the observation window that binds one pasted image to the next
-    /// numbered placeholder the application prints.
     pub fn open_pending_paste(&self, token: u64) {
         self.send_command(Command::PendingPasteOpened { token });
     }
 
-    /// Make an evicted pasted-image number inert in every terminal view.
     pub fn unbind_pasted_image(&self, number: u32) {
         self.send_command(Command::UnbindPastedImage { number });
     }
 
-    /// Captures canonical terminal content on the pane actor. Blocks only the
-    /// calling command or client thread.
-    /// The three formats the pin reads off the grid under a pointer cell,
-    /// answered synchronously by the worker that owns that grid. `column` and
-    /// `row` are the event's cell inside the pane, which is what
-    /// `cmd_mouse_at` hands `format_cb_mouse_word` and its two neighbours, and
-    /// `view` is the client the event came from, whose own frozen mode the
-    /// read answers off, the way `copy_mode_facts` addresses one.
     pub fn pointer_context(
         &self,
         view: TerminalViewId,
@@ -3432,9 +3244,6 @@ impl TerminalSession {
         capture_viewport(&self.latest_viewport(), options)
     }
 
-    /// Copies one absolute span of retained primary-screen history without moving
-    /// any viewport. Rows come oldest-first with a self-contained dictionary,
-    /// clamped to scrollback; live-grid rows are never included.
     #[allow(
         clippy::type_complexity,
         reason = "the tuple is the established public history-page response"
@@ -3462,13 +3271,6 @@ impl TerminalSession {
         })?
     }
 
-    /// Extracts the last completed command and its output from the pane actor.
-    /// Blocks the calling thread like [`Self::capture`].
-    ///
-    /// # Errors
-    ///
-    /// [`TerminalCaptureError::NoSemanticMarks`] when the shell emits no OSC 133
-    /// marks, plus the same failures as [`Self::capture`].
     pub fn capture_last_command(&self) -> Result<LastCommandCapture, TerminalCaptureError> {
         self.commands.request(|reply| {
             Command::SemanticCapture(Box::new(LastCommandRequest {
@@ -3477,9 +3279,6 @@ impl TerminalSession {
         })?
     }
 
-    /// Feed bytes straight into a PTY-free session's parser, as if a child
-    /// had written them: the daemon's projection of an agent transcript.
-    /// Sessions with a real child ignore it.
     pub fn feed(&self, bytes: Arc<[u8]>) -> bool {
         self.send_command(Command::Output(bytes))
     }
@@ -3596,10 +3395,6 @@ struct PointerContextRequest {
     reply: ActorReply<PointerContext>,
 }
 
-/// What `format_cb_mouse_word`, `format_cb_mouse_line` and
-/// `format_cb_mouse_hyperlink` answer for one cell of one pane. Each of the
-/// three answers NULL on the pin where there is nothing under the pointer,
-/// and NULL expands empty.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PointerContext {
     pub word: String,
@@ -4606,7 +4401,6 @@ mod request_e04_tests;
 #[path = "session/request_e05_tests.rs"]
 mod request_e05_tests;
 
-/// Where `recentre-top-bottom` parks the cursor line on its next press.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RecentreTarget {
     Middle,
@@ -4644,50 +4438,26 @@ struct CopyModeState {
     last_jump: Option<CopyJump>,
     selecting: bool,
     rectangle: bool,
-    /// `data->refresh_active`: the timer re-clones the backing from the live
-    /// pane while this is set.
     refresh: bool,
-    /// `wme->swp != wme->wp`: the backing came from another pane, so
-    /// `window_copy_refresh_start` refuses to re-sync it.
     sourced: bool,
     kind: FrozenModeKind,
-    /// `data->lastcx` and `data->lastsx`: the desired column a row change keeps
-    /// and the length of the row it was taken from.
     last_cx: u16,
     last_sx: u16,
-    /// `data->modekeys`: the option's value when the mode was entered. Three
-    /// branches in window-copy.c read this latch rather than the live option.
     mode_keys_vi_at_entry: bool,
-    /// `data->searchmark != NULL`: whether a copy-mode search laid marks down.
-    /// The marks themselves are the view's search state, so this only says
-    /// whether the mode owns them.
     search_marks: bool,
-    /// `data->searchcount` and `data->searchmore`. The mode is entered with a
-    /// zeroed count, which is why the pin publishes 0 before any search, and
-    /// `window_copy_clear_marks` puts -1 back, which publishes neither name.
     search_count: Option<(u32, bool)>,
-    /// `data->searchx`, `data->searchy` and `data->searcho`: where the mode
-    /// stood when the incremental prompt opened, which every changed string
-    /// goes back to.
     incremental_origin: Option<CopyModeIncrementalOrigin>,
-    /// `data->searchstr`, `data->searchtype` and `data->searchregex`: the
-    /// search the mode last ran, which `search-again` and `search-reverse`
-    /// re-run and which the incremental spellings compare against.
     search: Option<CopyModeSearch>,
     search_all: bool,
     line_numbers: u8,
 }
 
-/// `data->searchx`, `data->searchy` and `data->searcho`.
 #[derive(Clone, Copy, Debug)]
 struct CopyModeIncrementalOrigin {
     row: u32,
     viewport_offset: u32,
 }
 
-/// `window_copy_clone_screen` with `trim`: one pane's screen, its trailing
-/// blank rows dropped and its cursor pulled onto the last used row, ready to
-/// back another pane's copy mode.
 #[derive(Debug)]
 pub struct CapturedCopySource {
     revision: Arc<ModeRevision>,
@@ -5570,8 +5340,6 @@ impl KittyGraphicsState {
     }
 }
 
-/// The VT's default Kitty storage quota is 10 MB, under the 16 MiB wire cap.
-/// Aligned so anything the VT stores is shippable.
 fn configure_kitty_storage(terminal: &mut Terminal<'_, '_>) -> Result<(), WorkerError> {
     terminal.set_kitty_image_storage_limit(MAX_KITTY_IMAGE_BYTES as u64)?;
     Ok(())
@@ -6923,12 +6691,6 @@ fn complete_dead_notice_command(slot: &Mutex<ControlSlot>) {
     }
 }
 
-/// `server_destroy_pane` resets the scroll region, parks the cursor on the
-/// last row, linefeeds once so the screen scrolls, draws the expanded
-/// `remain-on-exit-format` clipped to the pane width rather than wrapped, and
-/// then hides the cursor; an empty template only hides the cursor. The text
-/// arrives with the daemon's SGR runs for its `#[...]` styles, which take no
-/// width and pass through the clip.
 fn write_dead_notice(terminal: &mut Terminal<'_, '_>, text: &str) -> Result<(), WorkerError> {
     if text.is_empty() {
         terminal.vt_write(b"\x1b[?25l");
@@ -8018,9 +7780,6 @@ fn mode_selection_drag(
     }
 }
 
-/// The end of the word at or after `point`, or the start of the word at or
-/// before it. A cursor parked in whitespace resolves outward, the way the pin's
-/// `window_copy_cursor_next_word_end_pos` and `..._previous_word_pos` do.
 fn mode_word_edge(
     revision: &ModeRevision,
     point: PointCoordinate,
@@ -8107,10 +7866,6 @@ fn mode_cursor_word(
     (!text.is_empty()).then_some(text)
 }
 
-/// `window_copy_init` reads its screen from `wme->swp`, so a `-s` entry clones
-/// the source pane's grid and takes its cursor; `window_copy_clone_screen`
-/// trims the trailing blank rows first and drops the cursor onto the last used
-/// row whenever it sat past them.
 fn capture_copy_source(terminal: &mut Terminal<'_, '_>) -> Result<CapturedCopySource, WorkerError> {
     let revision = ModeRevision::capture(terminal)?;
     let last_used = used_screen_rows(terminal).unwrap_or(0);
@@ -8574,7 +8329,6 @@ fn image_placeholder_occurrences(
                 column,
             )?);
         }
-        // Placeholders split by terminal wrapping keep the existing single-row behavior.
         for start in 0..cells.len() {
             for (prefix, suffix) in IMAGE_PLACEHOLDERS {
                 let Some(rest) = cells[start..].strip_prefix(prefix.as_bytes()) else {
@@ -10100,8 +9854,6 @@ const PANE_RESET_PRELUDE: &[u8] = b"\x1b\\\x1b[m\x1b(B\x1b)B\x1b[r\x1b[?7h\x1b[?
 
 const PANE_RESET_PALETTE: &[u8] = b"\x1b]104\x1b\\\x1b]110\x1b\\\x1b]111\x1b\\\x1b]112\x1b\\";
 
-/// Count the visible rows the pin's `grid_view_clear_history` would push into
-/// history: every row up to and including the last one holding content.
 fn used_visible_rows(terminal: &Terminal<'_, '_>) -> u16 {
     let rows = terminal.rows().unwrap_or(0);
     match capture_terminal(terminal, None, CaptureOptions::default()) {
@@ -10120,18 +9872,6 @@ fn used_visible_rows(terminal: &Terminal<'_, '_>) -> u16 {
     }
 }
 
-/// Apply pinned tmux's `send-keys -R` to the pane without losing scrollback.
-///
-/// `cmd-send-keys.c` runs `colour_palette_clear` plus `input_reset(ictx, 1)`,
-/// whose `screen_write_reset` restores default tab stops, drops the scroll
-/// region, sets the screen mode back to cursor plus wrap, clears the screen
-/// through the `scroll-on-clear` path, and homes the cursor. libghostty's own
-/// `reset` is RIS and discards history, and its parser ignores DECSTR outright,
-/// so the same result is composed here out of a scroll-up sized to the used
-/// rows plus one explicit reset per mode the pin's `MODE_CURSOR|MODE_WRAP`
-/// assignment drops, then tab, saved-cursor, and palette resets. The leading ST
-/// terminates any string sequence the pane left half parsed without printing a
-/// cell, which is what `input_clear` plus the return to the ground state does.
 fn reset_pane_screen(terminal: &mut Terminal<'_, '_>) -> Result<(), WorkerError> {
     let used = used_visible_rows(terminal);
     let columns = terminal.cols()?;
@@ -10292,8 +10032,6 @@ fn capture_mode_revision(
     )
 }
 
-/// Resolves `capture-pane` boundaries against a captured grid, whose visible
-/// screen starts at `viewport_offset` rows down from the top of the history.
 fn capture_revision(
     revision: &ModeRevision,
     viewport_offset: u32,
@@ -10754,9 +10492,6 @@ fn apply_copy_mode_action(
             *copy_mode = Some(mode);
             Ok(ViewActionResult::Snapshot)
         }
-        // `window_copy_refresh_start` refuses a view of another pane and
-        // view-mode, and does nothing when the refresh is already running;
-        // `window_copy_refresh_stop` always clears the bit.
         toggle @ (CopyModeAction::RefreshOn
         | CopyModeAction::RefreshOff
         | CopyModeAction::RefreshToggle) => {
@@ -10799,11 +10534,6 @@ fn apply_copy_mode_action(
             *copy_mode = Some(mode);
             Ok(ViewActionResult::Snapshot)
         }
-        // `window_copy_refresh_timer`: skip the tick unless the pane has
-        // unseen output and no selection or cursor drag is live, then
-        // `window_copy_do_refresh` re-clones the backing, keeps the view on
-        // the row it was already showing, and only follows new output when the
-        // view is at the bottom with the cursor on the last row.
         CopyModeAction::RefreshRevision => {
             if !mode.refresh
                 || mode.kind != FrozenModeKind::Copy
@@ -11151,10 +10881,6 @@ fn apply_counted_copy_mode_action(
     }
 }
 
-/// `window_copy_do_copy_line`'s selection: `selflag` back to `SEL_CHAR`, the
-/// cursor to the start of its logical line, `np - 1` rows down, then the end of
-/// that logical line. The cursor itself is left alone, because the pin puts
-/// `cx`, `cy` and `oy` back after the copy.
 fn select_copy_mode_whole_line(mode: &mut CopyModeState, count: u32, mode_keys_vi: bool) {
     if count == 0 {
         return;
@@ -11215,9 +10941,6 @@ fn select_copy_mode_lines(mode: &mut CopyModeState, count: u32, mode_keys_vi: bo
     reveal_copy_cursor(mode);
 }
 
-/// The pin's `window_copy_goto_line` with line numbers off: the argument is a
-/// scrollback offset counted from the bottom, clamped to the retained history,
-/// and the cursor keeps the screen row it was on.
 fn goto_copy_line(mode: &mut CopyModeState, line: Option<i32>, absolute: bool) {
     let Some(line) = line else {
         return;
@@ -11236,9 +10959,6 @@ fn goto_copy_line(mode: &mut CopyModeState, line: Option<i32>, absolute: bool) {
     mode.cursor = mode.revision.clamp_point(mode.cursor);
 }
 
-/// The pin's `window_copy_cmd_scroll_to`: move the view so the cursor's line
-/// lands on `row`, keeping the cursor on the same line, or do nothing when the
-/// retained revision cannot reach that far.
 fn scroll_copy_view_to_screen_row(mode: &mut CopyModeState, row: u32) {
     let Some(target) = mode.cursor.y.checked_sub(row) else {
         return;
@@ -11299,9 +11019,6 @@ fn cancel_copy_mode(
     Ok(ViewActionResult::Snapshot)
 }
 
-/// `grid_reader_cursor_jump`: the scan runs forward from the start point,
-/// bounded by each row's used length, and continues onto the row a wrap
-/// carried the line onto.
 fn reader_jump_forward(
     revision: &ModeRevision,
     mut point: PointCoordinate,
@@ -11324,9 +11041,6 @@ fn reader_jump_forward(
     }
 }
 
-/// `grid_reader_cursor_jump_back`: the scan runs backward from the cell before
-/// the start point and continues onto the row a wrap carried the line from,
-/// picking that row's used length back up as its right edge.
 fn reader_jump_backward(
     revision: &ModeRevision,
     mut point: PointCoordinate,
@@ -11353,13 +11067,6 @@ fn reader_jump_backward(
     }
 }
 
-/// `window_copy_cursor_jump` and its three siblings. The start point is the
-/// pin's: one cell on for `jump-forward`, two for `jump-to-forward`, one back
-/// for `jump-backward` and two for `jump-to-backward`, and the `to` spellings
-/// then take one reader step back toward where they came from.
-/// `window_copy_cursor_jump_to_back` is the one that reads mode-keys: its right
-/// step is allowed the emacs one-past column, so a target on the last cell of a
-/// wrapped row lands past that cell under emacs and on the next row under vi.
 fn apply_copy_jump(mode: &mut CopyModeState, jump: &CopyJump, vi: bool) {
     let start = mode.cursor;
     let found = match (jump.direction, jump.to) {
@@ -11547,12 +11254,6 @@ fn move_copy_cursor(
     reveal_copy_cursor(mode);
 }
 
-/// `window_copy_cursor_up` and `window_copy_cursor_down` with `scroll_only`.
-/// The view moves one row either way; what moves with it is the mode-keys
-/// branch. Under vi the cursor first steps one screen row against the scroll,
-/// so it keeps the text line it was on, unless it already sits on the screen
-/// row the step would leave. Under emacs it keeps its screen row instead, so
-/// the line under it changes.
 fn scroll_copy_cursor(mode: &mut CopyModeState, up: bool, vi: bool) {
     let previous = mode.viewport_offset;
     let page = u32::from(mode.revision.viewport_rows.max(1));
@@ -11657,8 +11358,6 @@ fn revision_copy_line_end(revision: &ModeRevision, row: u32) -> u16 {
     0
 }
 
-/// `grid_line_length`: the used width of a row, trailing blanks trimmed, so an
-/// empty row answers zero and a full one answers the column count.
 fn revision_line_length(revision: &ModeRevision, row: u32) -> u16 {
     for column in (0..revision.columns).rev() {
         if !revision_cell_is_whitespace(revision, PointCoordinate { x: column, y: row }) {
@@ -11668,9 +11367,6 @@ fn revision_line_length(revision: &ModeRevision, row: u32) -> u16 {
     0
 }
 
-/// `window_copy_cursor_limit`: the rightmost column the copy cursor may hold on
-/// one row. emacs parks one past the last cell, vi stops on it, and a
-/// rectangle selection is allowed the emacs answer whatever the keys say.
 fn copy_cursor_limit(revision: &ModeRevision, row: u32, vi: bool, allow_onemore: bool) -> u16 {
     let length = revision_line_length(revision, row);
     if allow_onemore || !vi {
@@ -11680,9 +11376,6 @@ fn copy_cursor_limit(revision: &ModeRevision, row: u32, vi: bool, allow_onemore:
     }
 }
 
-/// `window_copy_update_cursor` clamps every placement to that limit, and skips
-/// the clamp outright while a rectangle is being dragged so the cursor can
-/// stand past the line the way `virtualedit=block` does.
 fn copy_cursor_clamp(mode: &CopyModeState, point: PointCoordinate, vi: bool) -> PointCoordinate {
     let y = point.y.min(mode.revision.total_rows().saturating_sub(1));
     if mode.rectangle {
@@ -11708,9 +11401,6 @@ fn revision_cell_is_padding(revision: &ModeRevision, point: PointCoordinate) -> 
     )
 }
 
-/// `grid_reader_cursor_right` with wrapping: the row's own limit decides where
-/// the cursor stops, and reaching it walks onto the start of the next row
-/// rather than into the blanks past the text.
 fn reader_cursor_right(
     revision: &ModeRevision,
     point: &mut PointCoordinate,
@@ -11734,8 +11424,6 @@ fn reader_cursor_right(
     }
 }
 
-/// `grid_reader_cursor_left` with wrapping: column zero steps onto the end of
-/// the row above, which `window_copy_update_cursor` then clamps.
 fn reader_cursor_left(revision: &ModeRevision, point: &mut PointCoordinate, wrap: bool) {
     while point.x > 0 && revision_cell_is_padding(revision, *point) {
         point.x -= 1;
@@ -11751,8 +11439,6 @@ fn reader_cursor_left(revision: &ModeRevision, point: &mut PointCoordinate, wrap
     }
 }
 
-/// `grid_reader_cursor_end_of_line(gr, 1, 0)`: a wrapped row belongs to the row
-/// below it, so the walk ends on the last row of the logical line.
 fn reader_logical_line_end(revision: &ModeRevision, row: u32) -> u32 {
     let mut row = row;
     let last = revision.total_rows().saturating_sub(1);
@@ -11762,8 +11448,6 @@ fn reader_logical_line_end(revision: &ModeRevision, row: u32) -> u32 {
     row
 }
 
-/// `grid_reader_cursor_start_of_line(gr, 1)`: the mirror walk, up through the
-/// rows a wrap continued onto.
 fn reader_logical_line_start(revision: &ModeRevision, row: u32) -> u32 {
     let mut row = row;
     while row > 0 && revision.row(row - 1).wrapped() {
@@ -11772,10 +11456,6 @@ fn reader_logical_line_start(revision: &ModeRevision, row: u32) -> u32 {
     row
 }
 
-/// `grid_reader_handle_wrap`: keep the cursor inside the row's own bounds,
-/// stepping onto the next row when it runs past them, and answer false when
-/// there is no next row. A wrapped row bounds at the last column rather than at
-/// its used width, which is what keeps a wrapped word whole.
 fn reader_handle_wrap(
     revision: &ModeRevision,
     point: &mut PointCoordinate,
@@ -11801,10 +11481,6 @@ fn reader_row_bound(revision: &ModeRevision, row: u32) -> u16 {
     }
 }
 
-/// `grid_reader_cursor_next_word_end`: whitespace is stepped over one cell at a
-/// time, a run of separators counts as a word, and anything else runs to the
-/// first separator or blank. The cursor lands one past the word, which is the
-/// emacs answer; vi's wrapper pulls it back.
 fn reader_next_word_end(
     revision: &ModeRevision,
     point: &mut PointCoordinate,
@@ -11855,9 +11531,6 @@ fn reader_next_word_end(
     }
 }
 
-/// `window_copy_cursor_next_word_end`: emacs takes the reader's answer, and vi
-/// steps off the current cell first and pulls the cursor back onto the last
-/// cell of the word afterwards.
 fn move_revision_word_end(
     revision: &ModeRevision,
     mut point: PointCoordinate,
@@ -11876,11 +11549,6 @@ fn move_revision_word_end(
     point
 }
 
-/// `window_copy_cursor_up` and `window_copy_cursor_down` share one desired
-/// column: the column the cursor last held on a row it did not fill, kept with
-/// that row's own length. On the new row the desired column is clamped to the
-/// row's limit and then pushed to the line end whenever it had reached the
-/// remembered one.
 fn move_copy_cursor_row(
     mode: &mut CopyModeState,
     point: &mut PointCoordinate,
@@ -11910,18 +11578,9 @@ fn move_copy_cursor_row(
     }
 }
 
-/// window-copy.c's `close` and `open` bracket strings, which the emacs
-/// branches of the two matching-bracket commands also hand to their word
-/// fallbacks as the separator set.
 const CLOSING_BRACKETS: &str = "}])";
 const OPENING_BRACKETS: &str = "{[(";
 
-/// `window_copy_cmd_previous_matching_bracket` and its next twin, both reading
-/// `data->modekeys` as it stood when the mode was entered. vi scans the logical
-/// line for a bracket and, going forward, walks a closing one back to its
-/// opener. emacs looks at the cursor cell and then at exactly one neighbour,
-/// accepts only the direction's own bracket class, and leaves the word fallback
-/// to the caller.
 fn revision_matching_bracket(
     revision: &ModeRevision,
     point: PointCoordinate,
@@ -13376,10 +13035,6 @@ fn remember_copy_mode_search(
     }
 }
 
-/// `window_copy_cmd_search_again` and `window_copy_cmd_search_reverse` re-run
-/// the search the mode already holds, with the stored regex bit and either the
-/// stored direction or its opposite, so both go through the same placement
-/// rule the first search used.
 fn copy_mode_search_again(mode: Option<&CopyModeState>, reverse: bool) -> Option<CopyModeSearch> {
     let stored = mode?.search.as_ref()?;
     let direction = match (stored.direction, reverse) {
@@ -13397,11 +13052,6 @@ fn copy_mode_search_again(mode: Option<&CopyModeState>, reverse: bool) -> Option
     })
 }
 
-/// `window_copy_search` picks the match the cursor moves to. Forward, vi steps
-/// past the mark the cursor stands on first, so it lands on the next match's
-/// start, while emacs searches from the cursor itself and may find the mark it
-/// is already on. Backward, both move one cell left first, so both land on the
-/// start of the previous match.
 fn pick_copy_search_match(
     matches: &[SearchMatch],
     cursor: PointCoordinate,
@@ -13436,10 +13086,6 @@ fn pick_copy_search_match(
     }
 }
 
-/// The six `search-` entry points that carry a string. The pin runs the whole
-/// search inside the command, marks included, so zz runs it against the frozen
-/// revision here instead of queuing it on the search worker: everything the
-/// next command reads is already in place when this returns.
 #[allow(
     clippy::too_many_arguments,
     reason = "one call site threads the view's search state"
@@ -15364,7 +15010,6 @@ struct EngineOutput<'a> {
     filter: &'a mut EngineFilter,
     knobs: EngineKnobs,
     renames: &'a mut Vec<String>,
-    /// The pane's progress bar, set only by an OSC 9;4 that moved it.
     bar: &'a mut Option<ProgressBar>,
     last_command_status: &'a mut Option<CommandStatusUpdate>,
 }
@@ -16330,10 +15975,6 @@ fn refresh_copy_revision(
     Ok(())
 }
 
-/// `window_copy_formats` read off one frozen view. `data->cy` and `data->oy`
-/// are screen-relative and bottom-relative; the selection coordinates the pin
-/// stores in `selx`, `sely`, `endselx` and `endsely` are absolute grid rows,
-/// which is what the retained revision already indexes by.
 fn copy_mode_facts(
     mode: &CopyModeState,
     search: Option<&SearchState>,
@@ -16378,10 +16019,6 @@ fn copy_mode_facts(
     }
 }
 
-/// `window_copy_match_at_cursor`: the marked run the cursor stands in, read
-/// back off the revision. An unmarked cell steps one position back before
-/// giving up, which is how the emacs placement one past a match still answers
-/// that match.
 fn copy_mode_search_match(
     mode: &CopyModeState,
     search: Option<&SearchState>,
@@ -16432,10 +16069,6 @@ fn copy_mode_search_match(
     text
 }
 
-/// The grid a `format_grid_*` reader walks. The pin reads the three pointer
-/// formats off `wp->base.grid` for a live pane and off the copy mode's own
-/// backing for a pane in one, so the readers take rows and cells and nothing
-/// else and both grids answer them.
 trait FormatGrid {
     fn grid_columns(&self) -> u16;
     fn grid_rows(&self) -> u32;
@@ -16497,8 +16130,6 @@ impl FormatGrid for ModeRevision {
     }
 }
 
-/// `grid_line_length`: the row's width with trailing blank cells trimmed. An
-/// unwritten cell reads as a space in the pin's grid, so it trims too.
 fn format_grid_line_length<G: FormatGrid + ?Sized>(grid: &G, row: u32) -> u32 {
     (0..grid.grid_columns())
         .rev()
@@ -16509,8 +16140,6 @@ fn format_grid_line_length<G: FormatGrid + ?Sized>(grid: &G, row: u32) -> u32 {
         .map_or(0, |column| u32::from(column).saturating_add(1))
 }
 
-/// `format_grid_line`: one row's text, trailing blanks trimmed, wraps not
-/// followed. An empty row answers NULL on the pin, which expands empty.
 fn format_grid_line<G: FormatGrid + ?Sized>(grid: &G, row: u32) -> String {
     let mut text = String::new();
     for column in 0..format_grid_line_length(grid, row) {
@@ -16523,9 +16152,6 @@ fn format_grid_line<G: FormatGrid + ?Sized>(grid: &G, row: u32) -> String {
     text
 }
 
-/// `format_is_word_separator`: the configured set, plus tab and space, plus
-/// the unwritten cell the pin reads back as a space. Padding halves are never
-/// separators; the pin skips them before the test.
 fn format_grid_is_word_separator<G: FormatGrid + ?Sized>(
     grid: &G,
     point: PointCoordinate,
@@ -16545,10 +16171,6 @@ fn format_grid_is_word_separator<G: FormatGrid + ?Sized>(
     }
 }
 
-/// `format_grid_word`: walk back to the start of the word the cursor sits in,
-/// crossing a wrap, then collect forward to the next separator. A cursor on a
-/// separator collects the word that follows it, and answers empty when the
-/// next cell is a separator too.
 fn format_grid_word<G: FormatGrid + ?Sized>(
     grid: &G,
     cursor: PointCoordinate,
@@ -16609,11 +16231,6 @@ fn format_grid_word<G: FormatGrid + ?Sized>(
     text
 }
 
-/// The live pane grid the three pointer formats read. `wp->base.grid` is
-/// indexed from the top of the history, so the event's pane row `y` is
-/// `gd->hsize + y` and a word walk crosses out of the active area into the
-/// scrollback from there. A read that the engine refuses answers the way an
-/// unwritten cell does, which is what the pin's NULL expands to.
 struct LiveGrid<'terminal, 'alloc: 'callbacks, 'callbacks> {
     terminal: &'terminal Terminal<'alloc, 'callbacks>,
     columns: u16,
@@ -16631,8 +16248,6 @@ impl<'terminal, 'alloc: 'callbacks, 'callbacks> LiveGrid<'terminal, 'alloc, 'cal
         })
     }
 
-    /// `gd->hsize`: the first row of the active area, which is where a live
-    /// pane's own row 0 sits.
     fn active_base(&self) -> Result<u32, WorkerError> {
         Ok(self
             .rows
@@ -16706,13 +16321,6 @@ impl FormatGrid for LiveGrid<'_, '_, '_> {
     }
 }
 
-/// `format_cb_mouse_word`, `format_cb_mouse_line` and
-/// `format_cb_mouse_hyperlink` read the pane's CURRENT grid under the event's
-/// cell. A mode up answers off the copy mode's own backing instead, which
-/// `window_copy_get_word` and `window_copy_get_line` index at
-/// `gd->hsize + y - data->oy`: the retained revision's own absolute row. The
-/// pin holds one mode per pane, zz one per view, so the mode passed here is
-/// the requesting client's own.
 fn pointer_context(
     terminal: &Terminal<'_, '_>,
     mode: Option<&CopyModeState>,
@@ -16749,9 +16357,6 @@ fn pointer_context(
     })
 }
 
-/// `format_grid_hyperlink`: step left off a padding half onto the cell that
-/// owns it, then answer that cell's OSC 8 URI, or nothing when it carries no
-/// link id.
 fn pointer_hyperlink(
     grid: &LiveGrid<'_, '_, '_>,
     mut point: PointCoordinate,
@@ -17473,9 +17078,6 @@ fn resolve_style_color(value: StyleColor, palette: &[RgbColor; 256]) -> Option<C
     }
 }
 
-/// What a cell's colour class depends on beyond the cell: the class of each
-/// `pane-colours` entry, the class of the window-style ground a pane was given,
-/// and the configured default grounds, so an OSC 10 or OSC 11 over them shows.
 #[derive(Clone, Debug, Default)]
 struct ClassHints {
     palette: Vec<(u8, ColourClass)>,
@@ -17622,9 +17224,6 @@ mod tests {
         }
     }
 
-    /// The sample the pointer-format tests read, one row per line, written to
-    /// a live 80x24 pane. Every row here is a row of the pin's own measured
-    /// table in compat/tui/evidence/TUI-008/attempt-05/notes.md.
     fn pointer_sample() -> Vec<u8> {
         let long_word = format!("WRAPPEDHEAD{}LONGTAIL", "x".repeat(120));
         let mut bytes = Vec::new();
@@ -17750,9 +17349,6 @@ mod tests {
         assert_eq!(pointer_sample_context(4, 2, &rebound).word, "");
     }
 
-    /// The sample the scrollback-addressed pointer tests read: labelled rows,
-    /// then the 139-cell word, then enough rows to push the word's head off
-    /// the active area and leave its tail on screen row 0.
     fn pointer_scrollback_sample(word: &str) -> Vec<u8> {
         let mut bytes = Vec::new();
         for index in 0..30u16 {
@@ -17872,10 +17468,6 @@ mod tests {
         bar
     }
 
-    /// Measured on pinned tmux against `#{pane_pb_state}/#{pane_pb_progress}`
-    /// with one 40x6 pane: a fresh pane answers `hidden/0`, then `9;4;0` gives
-    /// `hidden/0`, `9;4;1;50` `normal/50`, `9;4;2;30` `error/30`, `9;4;3`
-    /// `indeterminate/30` and `9;4;4;10` `paused/10`.
     #[test]
     fn engine_filter_reads_the_pinned_progress_bar_walk() {
         assert_eq!(progress_after(&[]), ProgressBar::default());
@@ -18265,11 +17857,6 @@ mod tests {
         assert!(quiet.take_program_status().is_some());
     }
 
-    /// The same probe's edges. From `9;4;1;50`, the pin answered
-    /// `indeterminate/50` for `9;4;3;70` because `screen_set_progress_bar`
-    /// refuses a percentage in that state, then left `indeterminate/50` alone
-    /// through `9;4;5`, `9;4;1;101`, `9;4` and `9;4;`, moved to `error/50` on
-    /// `9;4;2;` and ignored `9;5;1`.
     #[test]
     fn engine_filter_holds_the_pinned_progress_bar_edges() {
         let normal = ProgressBar {
@@ -18305,13 +17892,6 @@ mod tests {
         );
     }
 
-    /// The OSC terminators the pin's `input_state_osc_string_table` shares
-    /// with `INPUT_STATE_ANYWHERE`: CAN and SUB leave the state through
-    /// `input_exit_osc` exactly as BEL and ST do, and a control byte inside the
-    /// payload is a null transition the table never appends. Measured on the
-    /// pin on 2026-09-02 with the bytes written to the pane's own tty: `9;4;1;50`
-    /// ended by CAN answers normal/50, `9;4;2;20` ended by SUB answers
-    /// error/20, and `9;4;1;<NUL>77` ended by BEL answers normal/77.
     #[test]
     fn engine_filter_commits_an_osc_on_can_sub_and_drops_control_bytes() {
         let (_, _, bar) =
@@ -18348,8 +17928,6 @@ mod tests {
         assert!(text.starts_with('z'), "{text:?}");
     }
 
-    /// The OSC has to reach the engine unchanged, whatever the filter reads out
-    /// of it, and it has to survive arriving in pieces or ending on ST.
     #[test]
     fn engine_filter_passes_an_osc_through_in_any_shape() {
         let (text, _, bar) = engine_filter_run(
@@ -27054,11 +26632,6 @@ PS1='zz-path-fixture> '
         }
     }
 
-    /// A popup is spawned at the size it wants and nobody ever resizes it, so
-    /// the placements a popup publishes have to be there before the first
-    /// `Command::Resize`. `Terminal::new` takes no cell pixel geometry, and the
-    /// Kitty placement's render info is measured in cell pixels, so a session
-    /// that never resized reported no placement at all.
     #[cfg(unix)]
     #[test]
     fn a_session_that_is_never_resized_still_publishes_kitty_placements() {

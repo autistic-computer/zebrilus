@@ -1,5 +1,3 @@
-//! Browser panes.
-
 pub(crate) mod controller;
 pub(crate) mod element;
 pub(crate) mod inline;

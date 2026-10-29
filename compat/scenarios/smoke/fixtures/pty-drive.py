@@ -1,13 +1,3 @@
-"""Attach a client on a real pty and drive it from step files.
-
-The overlay scenarios need an attached client they can resize and type into
-while a differential fixture runs CLI commands beside it. The shell writes
-``STEPDIR/step-N`` and waits for ``STEPDIR/ack-N``, so every step is ordered
-against the commands around it without sleeping on guesses.
-
-Steps are one line: ``size COLS ROWS``, ``keys HEXBYTES``, or ``quit``.
-"""
-
 import fcntl
 import os
 import pty

@@ -23,13 +23,10 @@ const TRAY_GLYPH_PNG: &[u8] = include_bytes!(concat!(
     "/../../assets/macos/tray-glyph-36.png"
 ));
 
-// 18pt is the macOS menu bar's conventional status-item size; 36px is its 2x raster.
 const TRAY_IMAGE_POINTS: f64 = 18.0;
 
-/// A live status item. Dropping it removes the icon from the menu bar.
 pub(super) struct StatusItem {
     item: Retained<NSStatusItem>,
-    // The button holds its target unretained.
     _target: Retained<TrayTarget>,
 }
 
@@ -74,13 +71,10 @@ pub(super) fn spawn(sender: Sender<TrayEvent>, source: Source) -> Option<StatusI
         unsafe_code,
         reason = "target/action wiring has no safe objc2 binding: AppKit cannot type-check either half"
     )]
-    // SAFETY: `trayClicked:` is declared on `TrayTarget` below, and `target` is
-    // one, so the message AppKit sends on a click is one it implements.
     unsafe {
         button.setTarget(Some(any_target));
         button.setAction(Some(sel!(trayClicked:)));
     }
-    // AppKit reports only the primary mouse-up by default.
     button.sendActionOn(NSEventMask::LeftMouseUp | NSEventMask::RightMouseUp);
 
     Some(StatusItem {
@@ -124,9 +118,6 @@ struct TrayIvars {
 }
 
 define_class!(
-    // SAFETY:
-    // - `NSObject` has no subclassing requirements.
-    // - `TrayTarget` does not implement `Drop`.
     #[unsafe(super(NSObject))]
     #[thread_kind = MainThreadOnly]
     #[ivars = TrayIvars]
@@ -172,8 +163,6 @@ impl TrayTarget {
             source,
             actions: std::cell::RefCell::new(Vec::new()),
         });
-        // SAFETY: `NSObject`'s designated initializer, on a freshly allocated
-        // instance whose ivars are already in place.
         unsafe { msg_send![super(this), init] }
     }
 
@@ -216,11 +205,8 @@ impl TrayTarget {
         let item = &self.ivars().item;
         item.setMenu(Some(&menu));
         if let Some(button) = item.button(mtm) {
-            // SAFETY: the click opens the menu just set, whose items target
-            // this object and whose actions it implements.
             unsafe { button.performClick(None) };
         }
-        // A status item that keeps a menu never fires its action again.
         item.setMenu(None);
     }
 
@@ -235,8 +221,6 @@ impl TrayTarget {
         mtm: MainThreadMarker,
     ) -> Retained<NSMenuItem> {
         let target: &AnyObject = self;
-        // SAFETY: every `action` passed here is declared on `TrayTarget`, which
-        // is what `target` is.
         unsafe {
             let item = NSMenuItem::initWithTitle_action_keyEquivalent(
                 NSMenuItem::alloc(mtm),

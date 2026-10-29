@@ -1,5 +1,3 @@
-//! Empty-workspace state: the one action available here, and the keys it unlocks.
-
 use crate::config::settings::OpenSettings;
 use crate::mux::client::MuxClient;
 use crate::mux::prefix::display_keystroke;
@@ -19,7 +17,6 @@ use zz_ui::{
     },
 };
 
-/// The daemon's own default (`zz_mux::KeyTables`), printed until it publishes one.
 const DEFAULT_PREFIX: &str = "C-b";
 
 struct Hint {

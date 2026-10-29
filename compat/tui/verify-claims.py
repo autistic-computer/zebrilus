@@ -1,26 +1,4 @@
 #!/usr/bin/env python3
-"""Re-measure a verified TUI obligation instead of trusting what a lane claimed.
-
-    python3 compat/tui/verify-claims.py                # structural checks only
-    python3 compat/tui/verify-claims.py --run TUI-009  # also run that id's fixtures
-
-`tracker.py check` validates the shape of a record. It cannot tell whether the
-fixture behind a `verified` claim still holds recorded cases, and twice a lane
-reported a clause proved while its own fixture recorded cases against it. Cycle
-8's reviewer caught one by re-running the fixture by hand; this does it
-mechanically at every close-out.
-
-With --run, each named obligation's fixtures are executed and their own tally
-line is parsed. A non-zero recorded count under a `verified` obligation is a
-defect in the ledger, not in the fixture.
-
-A fixture that several obligations share prints a per-owner tally beside its
-total, `owners TUI-017=6 decided:TUI-016=1 gap:capture.rich-transports=2
-unattributed=0`, and only the entry for the obligation under check plus every
-unattributed case counts against it. A fixture that prints no such tally is
-read the old way, its whole recorded count against every obligation mapped to
-it, so silence never buys a pass.
-"""
 import argparse
 import json
 import os
@@ -32,8 +10,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LEDGER = ROOT / "compat/tui/campaign.json"
 
-# Which fixture actually carries each obligation's cases. A `verified` id whose
-# fixture is not listed here cannot be re-measured, which is itself worth saying.
 FIXTURES = {
     "TUI-001": ["compat/tui-pane-geometry.sh", "compat/status-row.sh"],
     "TUI-002": ["compat/tui-screen-diff.sh"],

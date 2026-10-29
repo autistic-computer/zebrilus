@@ -1,8 +1,3 @@
-//! An in-process ACP agent the tests drive instead of spawning a child.
-//!
-//! It lives outside the host's test module because both the host's own tests
-//! and the daemon's end-to-end wiring tests open panes against it.
-
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -26,19 +21,13 @@ use crate::agent::{
     runtime::run_agent_connection,
 };
 
-/// What the fixture agent does when it is prompted.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Behavior {
-    /// One message chunk, then the turn ends.
     Chunk,
     Echo,
-    /// A tool call that asks permission before it settles, declaring no kind.
     AskPermission,
-    /// The same, with the tool kind the risk tier judges.
     AskKindedPermission(ToolKind),
-    /// A turn that never answers, so the pane stays RUNNING.
     Hang,
-    /// The first prompt fails, later ones end normally.
     FailFirst,
 }
 
@@ -150,9 +139,6 @@ pub(crate) fn fixture_agent(behavior: Behavior, load: bool) -> impl ConnectTo<Ac
                         responder.respond(PromptResponse::new(StopReason::EndTurn))
                     }
                     Behavior::Hang => Ok(()),
-                    // A real adapter answers the prompt from a task of its own;
-                    // awaiting the permission inline would wedge the fixture's
-                    // own dispatch loop.
                     Behavior::AskPermission | Behavior::AskKindedPermission(_) => {
                         let tool = ToolCallUpdate::new(
                             "tool-1",

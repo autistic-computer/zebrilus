@@ -1,6 +1,3 @@
-//! Editor panes, behind the `editor-pane` cargo feature. [`stub`] stands in
-//! when the feature is off.
-
 #[cfg(feature = "editor-pane")]
 mod view;
 

@@ -60,7 +60,6 @@ const HELP_BUFFER: &[(&str, &str)] = &[
     ("          e", "Open %1 in editor"),
     ("          f", "Enter a filter"),
 ];
-/// `window_client_help_lines`.
 const HELP_CLIENT: &[(&str, &str)] = &[
     ("          i", "Toggle info view"),
     ("      Enter", "Choose selected %1"),
@@ -169,9 +168,6 @@ pub(super) fn resolved(style: &TmuxStyle, theme: &ThemeColours) -> TmuxStyle {
     style
 }
 
-/// `tty_acs_table`: the VT100 line-drawing set a style's `acs` attribute draws
-/// its text through. An entry the table does not name is left alone, which is
-/// what `tty_acs_get` does with a character outside the range.
 fn acs_text(text: &str) -> String {
     text.chars().map(acs_glyph).collect()
 }
@@ -264,8 +260,6 @@ impl Grid {
         }
     }
 
-    /// The `width` by `height` window of the grid from `left`, `top`: what a
-    /// float clipped by the window's left or top edge shows of its pane.
     pub(super) fn cropped(&self, left: u16, top: u16, width: u16, height: u16) -> Self {
         let mut cropped = Self::new(width, height);
         for y in 0..height {

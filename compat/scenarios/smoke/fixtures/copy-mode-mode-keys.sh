@@ -104,28 +104,22 @@ main_client load-buffer -b cmmodekeys "$work/short.txt"
 main_client paste-buffer -b cmmodekeys -t "$pane"
 await_output 'lmnopq rst' || { echo "copy-mode-mode-keys-$side: short-output"; exit 0; }
 
-# `cat` echoes the paste and then prints it, so the three lines land twice and
-# the second copy sits three rows above the cursor. Row indices are the
-# attached client's screen rows, which both engines agree on for lines that fit.
-# Rows: `abcd efg` (length 8), `hijk` (4), `lmnopq rst` (10).
 for keys in vi emacs; do
     main_client set-window-option -t "=$session" mode-keys "$keys"
     if [ "$keys" = vi ]; then
-        eol=7      # window_copy_cursor_limit: vi stops on the last cell
-        prev=7     # the row above, reached by wrapping cursor-left
-        end1=3     # next-word-end on `hijk`
-        end2=3     # and again, because vi cannot leave the last cell
+        eol=7
+        prev=7
+        end1=3
+        end2=3
         end3=3
     else
-        eol=8      # emacs parks one past it
+        eol=8
         prev=8
         end1=4
-        end2=6     # one past `lmnopq` on the row below
-        end3=10    # one past `rst`
+        end2=6
+        end3=10
     fi
 
-    # window_copy_cursor_right reads the row's own limit, so four presses from
-    # the end of `abcd efg` wrap onto `hijk` and stop where that row ends.
     main_client copy-mode -t "$pane"
     X cursor-up
     X cursor-up
@@ -144,8 +138,6 @@ for keys in vi emacs; do
     check_equal "$keys-left-steps-back" '2,4' "$(xy)"
     main_client send-keys -t "$pane" -X cancel
 
-    # window_copy_cursor_next_word_end: emacs takes the reader's landing, vi
-    # steps off the cell first and is pulled back onto the word's last cell.
     main_client copy-mode -t "$pane"
     X cursor-up
     X cursor-up
@@ -167,9 +159,6 @@ for keys in vi emacs; do
     fi
     main_client send-keys -t "$pane" -X cancel
 
-    # window_copy_cursor_up and _down keep one desired column, clamped to each
-    # row's own limit and pushed to the line end once it reached the remembered
-    # one, so the walk down and back up is not a straight line.
     main_client copy-mode -t "$pane"
     X cursor-up
     X cursor-up
@@ -194,8 +183,6 @@ for keys in vi emacs; do
     fi
     main_client send-keys -t "$pane" -X cancel
 
-    # grid_reader_cursor_left wraps at column zero onto the end of the row
-    # above, which window_copy_update_cursor then clamps to that row's limit.
     main_client copy-mode -t "$pane"
     X cursor-up
     X cursor-up
@@ -205,10 +192,6 @@ for keys in vi emacs; do
     main_client send-keys -t "$pane" -X cancel
 done
 
-# A wrapped line is one logical line to the reader, and the pane is not the
-# same width on the two engines while a client is attached, so the line is
-# built from the pane's own width: the first row fills it and the second holds
-# twenty more letters, a space and `tail`.
 width="$(main_client display-message -p -t "$pane" '#{pane_width}')"
 long="$(awk -v n="$((width + 20))" 'BEGIN { while (i++ < n) printf "a" }')"
 printf '%s tail\n' "$long" >"$work/wrapped.txt"
@@ -219,19 +202,15 @@ await_output 'tail' || { echo "copy-mode-mode-keys-$side: wrapped-output"; exit 
 for keys in vi emacs; do
     main_client set-window-option -t "=$session" mode-keys "$keys"
     if [ "$keys" = vi ]; then
-        weol=24                     # the continuation row holds 25 cells
-        wend=19                     # the last cell of the wrapped word
-        wfull="$((width - 1))"      # the filled row's own last cell
+        weol=24
+        wend=19
+        wfull="$((width - 1))"
     else
         weol=25
         wend=20
         wfull="$width"
     fi
 
-    # The six short rows are still on the screen, so the wrapped line's echo
-    # sits on rows 6 and 7 and cat's copy of it on rows 8 and 9.
-    # grid_reader_cursor_end_of_line walks down through the rows a wrap
-    # continued onto, and start-of-line walks back up through them.
     main_client copy-mode -t "$pane"
     X cursor-up
     X cursor-up
@@ -241,16 +220,12 @@ for keys in vi emacs; do
     check_equal "$keys-wrapped-end-of-line" "$weol,9" "$(xy)"
     X start-of-line
     check_equal "$keys-wrapped-start-of-line" '0,8' "$(xy)"
-    # grid_reader_cursor_next_word_end bounds a wrapped row at its last column
-    # rather than its used width, so the word is not broken by the wrap.
     X next-word-end
     check_equal "$keys-wrapped-next-word-end" "$wend,9" "$(xy)"
     X next-word-end
     check_equal "$keys-wrapped-next-word-end-again" "$weol,9" "$(xy)"
     main_client send-keys -t "$pane" -X cancel
 
-    # Wrapping left off the continuation row lands on the filled row, whose
-    # length is the pane's own width, so this is the one check that reads it.
     main_client copy-mode -t "$pane"
     X cursor-up
     X cursor-up

@@ -1,66 +1,4 @@
 #!/usr/bin/env bash
-# The caller stream forms: every command that moves bytes between the invoking
-# process's standard streams and the server, compared on exit status, stdout
-# bytes, stderr bytes and the state each one leaves behind.
-#
-# TUI-018 asks for one bounded command-stream channel and for a comparison of
-# each form against pinned tmux d77c9dc6, including that the pin's
-# `source-file -` really APPLIES its stdin rather than reading and dropping it.
-# knowledge/designs/command-stream-channel.md is the channel; this file is the
-# measurement.
-#
-# THE ROSTER
-# ---------------------------------------------------------------------------
-# form                        sink        what it does with the caller's bytes
-# source-file -               Config      parsed and applied as a file named -
-# display-message -I          PaneInput   streamed into a pane with no process
-# split-window -I             PaneInput   builds that pane, then streams into it
-# load-buffer -               Argument    the bytes become a paste buffer
-# save-buffer - / -a -        (stdout)    the buffer's bytes, exactly, to stdout
-# ---------------------------------------------------------------------------
-#
-# FOUR CHANNELS PER CASE. exit status, stdout bytes and stderr bytes come from
-# the invocation; the state is a fixed set of list-* formats plus the option
-# values under test plus the first rows of every pane, which is where a
-# PaneInput sink's bytes land. `same` asserts all four. `decided` prints a
-# difference that is a recorded product decision and asserts nothing about it.
-# `record` asserts nothing and has to say why; a recorded case holds the
-# obligation's clause open.
-#
-# THE TARGET CAN ALSO DISAPPEAR while the caller still holds stdin open. The
-# pin's callback checks `wp == NULL` before it looks at end of file, so a pane
-# killed mid-stream exits 1, prints nothing more and drops the rest of the
-# caller's `\;` chain. Four cells cover it: both readers, and a writer that
-# closes its end or writes more bytes once the pane is gone.
-#
-# THE ONE DECIDED DIFFERENCE is the bound on a sink that holds its payload.
-# Pinned tmux accumulates a source-file - or load-buffer - payload in 16 KiB
-# chunks with no total limit; zz reads at most MAX_AGENT_SEND_BYTES (1 MiB) and
-# refuses the whole invocation at the reader, before the daemon sees a byte.
-# Bulk file transfer through a command client is a workload zz does not serve,
-# because an unbounded accumulation lets one caller grow daemon memory without
-# limit. Every case at and below the cap is asserted, so what is decided is the
-# bound and nothing else. A PaneInput sink holds nothing: it streams chunks into
-# the pane with backpressure and no total cap, like the pin, and
-# stream-display-fast asserts a payload over the cap.
-#
-# CONTROLLED DYNAMIC VALUES, set identically on both sides:
-#   the inner shell   ENV= PS1='$ ' exec /bin/sh: no rc file, and a prompt with
-#                     no host, user, path or clock.
-#   pane pids         a pid is never compared, only whether the pane has one:
-#                     that is what "holds no process" means and the number
-#                     differs by construction.
-#   default-shell     the pin fills an empty pane's #{pane_current_command}
-#                     from its build-time default shell and zz leaves it empty;
-#                     that belongs to split-window -E, which predates this
-#                     channel, so the state format below reads pane_dead and
-#                     the presence of a pid instead.
-#
-# --self-check runs the driver against a deliberate one-sided difference in
-# each channel - stdout, stderr with the exit status, the session state and the
-# pane content that carries a PaneInput sink's proof - and requires the
-# comparison to catch each one in that channel, plus two equivalences it must
-# NOT report.
 set -eEuo pipefail
 
 usage() {
@@ -103,7 +41,6 @@ resolve_binary() {
 ZZ_BIN="$(resolve_binary "$ZZ_INPUT")" || { printf 'error: zz binary not found: %s\n' "$ZZ_INPUT" >&2; exit 2; }
 TMUX_BIN="$(resolve_binary "$TMUX_INPUT")" || { printf 'error: tmux binary not found: %s\n' "$TMUX_INPUT" >&2; exit 2; }
 
-# crates/zz-protocol/src/message.rs: MAX_AGENT_SEND_BYTES.
 STREAM_CAP_BYTES=1048576
 COLUMNS_UNDER_TEST=80
 ROWS_UNDER_TEST=24
@@ -202,13 +139,8 @@ wait_for() {
   die "$label did not happen within 10 seconds"
 }
 
-# The options the config sink writes, read back by name so a case can prove the
-# stream was applied and not merely accepted.
 PROBE_OPTIONS=(@zzcs-after @zzcs-replay @zzcs-one @zzcs-two @zzcs-three @zzcs-parse @zzcs-cancel @zzcs-before @zzcs-control)
 
-# Everything a caller stream can move, read the same way from both servers. A
-# pane's pid is never printed, only whether it has one: that is what an empty
-# pane is, and the number differs by construction.
 state_of() {
   local side="$1"
   local option pane
@@ -224,13 +156,6 @@ state_of() {
   done
 }
 
-# The first three rows of one pane, with rows that are blank at the end of the
-# range dropped. Inside an explicit range the pin returns every row and zz
-# stops at the last written one; that is capture.rich-transports, which
-# TUI-017 owns and compat/tui-client-commands.sh records as
-# capture-preserve-trailing. Measured here on 2026-09-14 and left out of the
-# comparison so this file does not carry a second copy of another obligation's
-# case: what a PaneInput sink writes is on the rows that are not blank.
 capture_rows() {
   side_command "$1" capture-pane -p -t "=$SESSION:$WINDOW_NAME.$2" -S 0 -E 2 2>&1 | cat -v |
     tr -d '\000' |
@@ -256,9 +181,6 @@ pane_shows() {
     grep -Fq "$3"
 }
 
-# A state is settled when two consecutive reads are equal. A PaneInput sink
-# hands its bytes to the pane's parser, so the state a case compares is the one
-# that stopped moving, never a sleep.
 settle_state() {
   local side="$1"
   local previous="" current attempt
@@ -293,10 +215,6 @@ build_scene() {
   settle_state tmux
 }
 
-# --- running one case -------------------------------------------------------
-#
-# CASE_STDIN_FILE names the file a case pipes into both binaries; empty means
-# /dev/null, which is a caller that closed its standard input before writing.
 CASE_STDIN_FILE=''
 
 run_both() {
@@ -384,11 +302,6 @@ compare_channels() {
   return 1
 }
 
-# A zz side that produced nothing at all where the pin produced bytes did not
-# lose a comparison, it never ran: under concurrent load on this box a starved
-# command client answers with an empty stream. That is an environment failure,
-# reported the way a wait that never reached its execution point already is,
-# and never a parity difference.
 stream_output_starved() {
   [ ! -s "$SCRATCH_DIR/zz.out" ] && [ -s "$SCRATCH_DIR/tmux.out" ]
 }
@@ -399,11 +312,6 @@ report_stream_environment_failure() {
     "$1" "$(wc -c <"$SCRATCH_DIR/tmux.out")"
 }
 
-# NAME MODE REASON -- command...
-#   same     all four channels asserted
-#   decided  a difference this campaign decided to keep; asserts nothing and
-#            the reason has to carry the decision sentence
-#   record   nothing asserted, the reason says why
 case_run() {
   local name="$1"
   local mode="$2"
@@ -467,8 +375,6 @@ stdin_from_file() {
   CASE_STDIN_FILE="$1"
 }
 
-# Kill the pane a -I case built, on both sides, so the next case reads the
-# state the roster expects.
 drop_extra_panes() {
   local name="$1"
   local side pane
@@ -496,7 +402,6 @@ drop_extra_panes() {
   fi
 }
 
-# --- the roster's cases -----------------------------------------------------
 BOUND_DECISION="pinned tmux accumulates a source-file or load-buffer payload in 16 KiB chunks with no total limit and zz refuses one larger than MAX_AGENT_SEND_BYTES ($STREAM_CAP_BYTES) at the reader, before the daemon sees a byte: bulk file transfer through a command client is a workload zz does not serve, because an unbounded stream lets one caller grow daemon memory without limit; $DECISION"
 
 config_sink_cases() {
@@ -914,13 +819,6 @@ review_execution_cases() {
   review_control_case control-source-read-error-continues-state state
 }
 
-# A PaneInput sink parses each chunk into the pane as it arrives. Every sample
-# is taken while the caller still holds its stdin open, after a SIGTERM, or
-# after EOF, and each one reads the first pane row with its attributes plus the
-# cursor, so a sink that buffers until EOF shows a blank row at 0:0. The fast
-# shape reads the whole screen and leaves #{history_size} out: past history-limit
-# the retained row count is semantic:history-limit-product-default, not this
-# channel.
 pane_stream_sample() {
   local side="$1" pane="$2" label="$3" rows="${4:-0}" facts=' cursor=#{cursor_x}:#{cursor_y} history=#{history_size}'
   if [ "$rows" != 0 ]; then facts=' cursor=#{cursor_x}:#{cursor_y}'; fi
@@ -939,17 +837,6 @@ pane_stream_wait() {
   return 1
 }
 
-# NAME DESTINATION SHAPE
-#   partial  12 styled bytes, sampled while stdin stays open, then EOF
-#   eof      a first write sampled open, a second write completed by EOF
-#   term     12 styled bytes, then SIGTERM with stdin still open
-#   slow     six writes 150 ms apart, sampled after the third and at EOF
-#   fast     a numbered payload over the 1 MiB cap written as fast as the pipe takes it
-#   utf8     a multibyte character and an escape sequence cut between writes
-# DESTINATION is the pane the bytes reach: an existing empty pane through
-# `display-message -I`, a pane `split-window -I` builds, or `split-print`, the
-# same split asking for `-P`, whose caller stdout is read while stdin is still
-# open so a server that holds the printed line until the command ends is caught.
 pane_stream_case() {
   local name="$1" destination="$2" shape="$3" side pid rc pane attempt sabotage oracle=1 piece
   local -a base command
@@ -1089,22 +976,12 @@ pane_stream_case() {
   CASE_STATE_FILE=0
 }
 
-# `-P` is `cmdq_print`, which the pin writes through to the caller's stdout
-# while the input callback is still open, so the new pane's line is readable
-# before the stream ends. Only the shapes that carry -P read it; the others
-# print nothing here and stay byte-for-byte what they were.
 pane_stream_open_stdout() {
   local side="$1" destination="$2"
   [ "$destination" = split-print ] || return 0
   printf 'open-stdout=%s\n' "$(cat "$SCRATCH_DIR/$side.out" | cat -v | tr '\n' '|')"
 }
 
-# The target pane disappears while the caller's stream is still open.
-# `window_pane_input_callback` finds no pane, so the pin sets `c->retval = 1`
-# and `CLIENT_EXIT` and cancels the read: the invocation exits 1, prints
-# nothing of what came after it and the rest of the chain never runs. AFTER is
-# what the writer does once the pane is gone - close its end, or write more
-# bytes into a stream nobody reads any more.
 pane_death_case() {
   local name="$1" destination="$2" after="$3" side pid rc pane attempt sabotage oracle=1
   local -a base command
@@ -1201,9 +1078,6 @@ review_pane_death_cases() {
     if [[ -n "${ZZ_STREAM_MATRIX_FILTER:-}" && ! "stream-$1" =~ $ZZ_STREAM_MATRIX_FILTER ]]; then continue; fi
     pane_death_case "$1" "$2" "$3"
   done
-  # The tail these cases prove never runs is an option both sides carry, so a
-  # sabotage that lets it run leaves the scene one-sided. Put it back on both
-  # sides before the next case reads the state.
   for side in zz tmux; do
     side_command "$side" set-option -gu @zzcs-after >/dev/null 2>&1 || true
   done
@@ -1693,7 +1567,6 @@ run_stream_matrix() {
 write_payloads() {
   printf 'a\303\251b\377c\000d\n' >"$SCRATCH_DIR/binary.bin"
   awk 'BEGIN { for (i = 1; i <= 180000; i++) printf "%06d ", i }' >"$SCRATCH_DIR/stream-fast.bin"
-  # The cap counts bytes, so these are built by size and never by line count.
   head -c "$STREAM_CAP_BYTES" /dev/zero | tr '\0' 'x' >"$SCRATCH_DIR/at-cap.bin"
   head -c "$((STREAM_CAP_BYTES + 1))" /dev/zero | tr '\0' 'x' >"$SCRATCH_DIR/over-cap.bin"
   {
@@ -1742,7 +1615,6 @@ run_cases() {
     "$CHECKS" "$RECORDS" "$DECIDED" "$SIBLINGS"
 }
 
-# --- self-check -------------------------------------------------------------
 SELF_CHECK_FAILURES=0
 
 self_check_expect() {
@@ -1806,23 +1678,14 @@ run_self_check() {
   build_scene
   write_payloads
 
-  # The equivalence first: with nothing planted the same command on both sides
-  # must report nothing, or every sabotage below would be satisfied by a
-  # comparison that always reports.
   self_check_run equivalence-before display-message -p -t PANE0 '#{pane_index}'
   self_check_expect 'equivalence: the same command on both sides' \
     exit=0 stdout=0 stderr=0 state=0
 
-  # stdout: an option that only the zz side carries, read by name. The exit
-  # status and stderr are the same on both sides and must not be reported, and
-  # the option is outside PROBE_OPTIONS so the state does not move either.
   zz_command set-option -g @zzcs-sabotage SABOTAGE >/dev/null || die 'zz refused set-option'
   self_check_run stdout-sabotage show-options -gqv @zzcs-sabotage
   self_check_expect 'stdout, an option on one side only' exit=0 stdout=1 stderr=0 state=0
 
-  # exit status and stderr: saving a buffer one side does not have. stdout
-  # differs too - that is what an error instead of a payload means - and the
-  # two channels under test have to be reported by themselves.
   self_check_run exit-sabotage save-buffer -b zzcs-sabotage-missing -
   self_check_expect 'exit and stderr, a buffer missing on both sides' \
     exit=0 stdout=0 stderr=0 state=0
@@ -1832,8 +1695,6 @@ run_self_check() {
   zz_command delete-buffer -b zzcs-sabotage >/dev/null || die 'zz refused delete-buffer'
   zz_command set-option -gu @zzcs-sabotage >/dev/null || die 'zz refused set-option -u'
 
-  # session state: a second session on the zz side only. No CLI channel of an
-  # unrelated command may move.
   zz_command new-session -d -s zzcs-sab -x 80 -y 24 "$INNER_SHELL" >/dev/null ||
     die 'zz refused new-session'
   self_check_run state-sabotage display-message -p -t PANE0 '#{pane_index}'
@@ -1841,9 +1702,6 @@ run_self_check() {
     exit=0 stdout=0 stderr=0 state=1
   zz_command kill-session -t zzcs-sab >/dev/null || die 'zz refused kill-session'
 
-  # pane content, which is where a PaneInput sink's proof lives: bytes written
-  # into the zz side's pane and not the pin's. The channel that must report it
-  # is the state, and no CLI channel may move.
   zz_command split-window -E -d -t "=$SESSION:$WINDOW_NAME.0" >/dev/null ||
     die 'zz refused split-window -E'
   tmux_command split-window -E -d -t "=$SESSION:$WINDOW_NAME.0" >/dev/null ||
@@ -1907,8 +1765,6 @@ run_self_check() {
   review_pane_death_cases
   run_stream_matrix
 
-  # The second equivalence: with every sabotage withdrawn the comparison is
-  # silent again, so none of the four above was a difference the scene kept.
   self_check_run equivalence-after display-message -p -t PANE0 '#{pane_index}'
   self_check_expect 'equivalence: every sabotage withdrawn' \
     exit=0 stdout=0 stderr=0 state=0

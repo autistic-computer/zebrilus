@@ -51,12 +51,10 @@ pub trait TerminalHistorySource {
     fn row_count(&self) -> usize;
     fn row(&self, index: usize) -> Option<TerminalHistoryRow<'_>>;
 
-    /// How many rows newer than the viewport's last row are kept.
     fn below_count(&self) -> usize {
         0
     }
 
-    /// A row newer than the viewport's last row, `index` rows past it.
     fn below(&self, _index: usize) -> Option<TerminalHistoryRow<'_>> {
         None
     }
@@ -1412,12 +1410,6 @@ const ACCENT_BLUE_SPAN: f32 = 40.0;
 const YELLOW_LIFT: f32 = 0.08;
 const BRIGHT_STEP: f32 = 0.07;
 
-/// The colors a terminal draws in when it follows the interface theme, in
-/// the order [`LocalColors`] takes them: the theme's text on its background,
-/// black and white between the two, red and green from the theme's danger and
-/// success, and yellow, magenta and cyan at their lightness and chroma. Blue
-/// is the accent when the accent is blue. Bright colors stand further from
-/// the background, at the same chroma.
 pub fn theme_terminal_colors(cx: &App) -> [Color; 18] {
     let theme = cx.theme();
     let background = theme.background.opaque();
@@ -2419,7 +2411,6 @@ fn rounded_box_drawing_path(
     let vertical_edge = if connects_down { bottom } else { top };
     let horizontal_edge = if connects_right { right } else { left };
 
-    // Matches Ghostty's generated rounded box glyph.
     let mut path = PathBuilder::stroke(stroke);
     path.move_to(point(center.x, vertical_edge));
     path.line_to(point(center.x, center.y + radius * vertical_direction));
@@ -2444,7 +2435,6 @@ fn rounded_box_drawing_path(
     }
 }
 
-// Ghostty's `box_thickness`: face underline thickness rounded up to a whole device pixel.
 fn box_stroke_width(underline_thickness: Pixels, scale: f32) -> Pixels {
     px((f32::from(underline_thickness) * scale).ceil().max(1.0) / scale)
 }
@@ -2461,8 +2451,6 @@ fn diagonal_box_drawing_path(
         return None;
     }
 
-    // Matches Ghostty's generated diagonals, overshot at each corner to fill the
-    // notch where two cells' butt caps meet.
     let device = 1.0 / scale;
     let overshoot_x = px(0.5 * device * (width / height).min(1.0));
     let overshoot_y = px(0.5 * device * (height / width).min(1.0));
@@ -3171,10 +3159,6 @@ pub fn terminal_cell_size(
     size(width, line_height)
 }
 
-/// The whole cell grid one pane's pixel box carries, which is what the desktop
-/// client writes back as the pane's PTY size. Pure so the writeback contract can
-/// be pinned without a window: pixel extent and cell metrics in, cells and the
-/// physical cell size out.
 pub fn terminal_grid_size(
     available: ala::Size<Pixels>,
     cell_width: Pixels,
@@ -3273,7 +3257,6 @@ mod overlays {
 
     const IMAGE_PREVIEW_SIDE: f32 = 300.0;
 
-    /// What a button on the terminal find bar asks for.
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     pub enum FindBarAction {
         ToggleRegex,
@@ -3285,9 +3268,6 @@ mod overlays {
 
     pub use zz_client::terminal_view::search_result_text;
 
-    /// The find bar at the top of a terminal: the query field, the match
-    /// count, and the regex, case, previous, next and close buttons. It keeps
-    /// the pointer to itself; the caller wires its keys.
     pub fn terminal_find_bar(
         input: &Entity<InputState>,
         query: &SearchQuery,
@@ -3410,8 +3390,6 @@ mod overlays {
             )
     }
 
-    /// A pasted image shown over the link that names it, above the link when
-    /// it fits there and below it otherwise.
     pub fn pasted_image_preview(link: Bounds<Pixels>, image: Arc<Image>, cx: &App) -> AnyElement {
         let (anchor, position) = if link.origin.y >= px(IMAGE_PREVIEW_SIDE + 8.0) {
             (Anchor::BottomLeft, link.origin)
@@ -4441,7 +4419,6 @@ mod tests {
 
     #[test]
     fn box_stroke_rounds_the_face_underline_up_to_whole_device_pixels() {
-        // BerkeleyMono at 13pt reports a 1.3px underline.
         assert_eq!(box_stroke_width(px(1.3), 2.0), px(1.5));
         assert_eq!(box_stroke_width(px(1.3), 1.0), px(2.0));
         assert_eq!(box_stroke_width(px(0.0), 2.0), px(0.5));
@@ -4593,9 +4570,6 @@ mod tests {
         assert_eq!(grid_dimension(px(80.0), px(0.0), 1.0), 1);
     }
 
-    /// The pane's PTY size is this measurement, and the daemon's own allocation
-    /// is carved from the client's window extent, so a pixel box that is not a
-    /// whole number of cells is exactly where the two can differ by a cell.
     #[test]
     fn a_pane_box_measures_the_cells_it_wholly_contains() {
         let exact = terminal_grid_size(ala::size(px(640.0), px(384.0)), px(8.0), px(16.0), 1.0);
@@ -4613,9 +4587,6 @@ mod tests {
         assert_eq!(short.rows, 23);
     }
 
-    /// One device pixel of slack is tolerated so a box laid out at the exact
-    /// grid width does not lose its last column to float error, and the
-    /// physical cell size follows the scale factor the window is drawn at.
     #[test]
     fn the_measurement_tolerates_a_device_pixel_and_scales_its_cells() {
         let scaled = terminal_grid_size(ala::size(px(640.0), px(384.0)), px(8.0), px(16.0), 2.0);

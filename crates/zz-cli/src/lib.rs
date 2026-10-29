@@ -379,17 +379,11 @@ pub fn attach_parent_console() {
         unsafe_code,
         reason = "AttachConsole is a raw Win32 entry point with no safe wrapper"
     )]
-    // SAFETY: no pointers are involved; the call attaches this process to its
-    // parent's console or fails when there is none.
     unsafe {
         let _ = AttachConsole(ATTACH_PARENT_PROCESS);
     }
 }
 
-/// Answer one ssh prompt and exit, when `zz` was run as ssh's askpass helper.
-///
-/// Runs before everything else and must start nothing: any process that outlives
-/// it holds ssh's answer pipe open forever.
 #[cfg(any(unix, windows))]
 #[must_use]
 pub fn run_askpass_mode() -> Option<ExitCode> {
@@ -1396,8 +1390,6 @@ fn run_native_attach(
         eprintln!("zz: --restart-daemon is only supported for the local daemon");
         return exit_code_for(CliFailure::Usage);
     }
-    // -x has no RunOptions field: route it through the real attach command so
-    // the daemon sees the flag that picks the parent-hangup eviction.
     let needs_command_attach = options.no_update_environment
         || options.working_directory.is_some()
         || options.detach_others_hangup;
@@ -2002,10 +1994,6 @@ fn format_local_command_error(path: &Path, error: DaemonError) -> String {
     }
 }
 
-/// Whether the daemon says a `file_write` on `-` claimed this client's stdout
-/// for the run that produced these bytes. The pin's claim is a property of the
-/// writer: `show-buffer` on a buffer whose own last byte is a newline is still
-/// a raw write, and reading the claim off the bytes turned that into a print.
 const fn raw_command_output(claim: StdoutClaim) -> bool {
     matches!(claim, StdoutClaim::Raw)
 }
@@ -2066,7 +2054,6 @@ fn print_chain_output(output: &RawText, raw: bool) -> u8 {
     CHAIN_OUTPUT_WRITER.with(|writer| writer.borrow_mut().print(output, raw))
 }
 
-/// The daemon released a `cmdq_print` line while the command was still running.
 fn print_released_command_output(output: &RawText) {
     let _ = print_chain_output(output, false);
 }
@@ -2376,10 +2363,6 @@ mod readiness {
     }
 }
 
-/// A new process group alone is not enough: it stays in the launching
-/// terminal's session with a controlling tty, and the daemon's own children
-/// (the interactive login-shell PATH probe) can then stop the daemon's whole
-/// process group through tty job control. A new session drops the tty.
 #[cfg(unix)]
 #[allow(
     unsafe_code,
@@ -2389,9 +2372,6 @@ fn detach_daemon_session(command: &mut Command, ready_fd: std::os::fd::RawFd) {
     use std::os::unix::process::CommandExt as _;
 
     let mut inherited = InheritedDescriptors::new();
-    // SAFETY: the hook only calls setsid, fcntl, and close_range or
-    // proc_pidinfo into memory reserved before the fork, which are
-    // async-signal-safe.
     unsafe {
         command.pre_exec(move || {
             let _ = rustix::process::setsid();
@@ -2592,11 +2572,6 @@ fn spawn_and_connect_command_client(
     Ok((client, spawned_server_id))
 }
 
-/// The command list the pin's `server_client_default_command` runs for a client
-/// that arrives with no command of its own: `default-client-command`, parsed as
-/// a command list. `new-session` alone is the option's own default, and zz's
-/// launcher keeps answering that one with the create-or-attach `new-session -A`
-/// it has always used.
 fn default_client_command_chain(
     socket_path: &Path,
     mux_config_files: &[PathBuf],
@@ -4263,8 +4238,6 @@ mod tests {
                 Err(NativeAttachArgumentError::Command(expected))
             );
         }
-        // -x is -d with the parent-hangup exit action, so the native parser
-        // forwards it the way it forwards -d.
         let hangup = parse_native_attach_arguments(["-x"].map(RawText::from))
             .expect("attach-session -x parses");
         assert!(hangup.detach_others_hangup);

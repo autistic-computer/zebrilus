@@ -1,19 +1,15 @@
 ---
 import Icon from './Icon.astro';
 
-// button.rs:630-908. Icon-only buttons collapse to a square of their size's
-// control height (styled.rs:276): xsmall 24, small 28, medium 36.
 interface Props {
 	variant?: 'ghost' | 'default';
 	size?: 'xsmall' | 'small' | 'medium';
 	iconSize?: number;
-	/** Icon file stem; an icon with no slot content makes the button a square. */
 	icon?: string;
 	label: string;
 	pressed?: boolean;
 	disabled?: boolean;
 	class?: string;
-	/** Anything else lands on the element — the demo hangs its data hooks there. */
 	[key: string]: unknown;
 }
 

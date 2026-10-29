@@ -1,54 +1,9 @@
-//! Display-only repair of hanging inline markdown markers in streaming text.
-//!
-//! While an agent streams, an unclosed `**bold`, `*em`, `` `code ``, `~~gone`
-//! or `[label](half-url` renders as literal text; when the closer lands the
-//! markers vanish and the run restyles, so wrap points move and the tail of the
-//! paragraph visibly reflows. [`mend`] appends synthetic closers to the text the
-//! renderer parses, so a run styles from the moment content follows its opener
-//! and the settle is a no-op instead of a jump. Only the display copy is mended
-//! — the transcript keeps the raw text, so a marker that never closes settles
-//! honestly with one flip at the end of the turn instead of jittering
-//! throughout.
-//!
-//! Text in, text out: no parser is involved, so the repair holds for the
-//! `markdown` crate the renderer runs, or anything else that speaks
-//! `CommonMark`.
-//!
-//! Scope, and why the scan stays cheap: markers cannot hang across a blank line
-//! (`CommonMark` leaves an unclosed marker literal at the block boundary), so
-//! only the last top-level block is scanned and per-append work is O(tail), not
-//! O(message). Locating that block walks the lines of the whole text to track
-//! code fences, but that is a per-line prefix test rather than a per-character
-//! scan.
-//!
-//! Deliberate non-repairs: fenced and indented code (verbatim already),
-//! intraword `_`/`*` (`2*3` must not flash italic), and an opener with nothing
-//! after it yet (`**` alone stays literal until content arrives).
-//!
-//! Two repairs are not closers. A half-streamed URL is replaced by
-//! [`PENDING_LINK_URL`], so the label styles at once and the settling URL cannot
-//! collapse the line. And a trailing line of just `-` or `=` under a paragraph
-//! is a setext underline to the parser but almost always a list item still
-//! streaming, so it gets a zero-width space until the next characters decide —
-//! without it the paragraph above flashes into a heading.
-//!
-//! The scanner is approximate wherever exact `CommonMark` delimiter resolution
-//! would cost more than it is worth, on the grounds that any mid-stream
-//! misjudgment is corrected by the next append or by the settle. Known quirks:
-//! an intraword `**` closes (`2**3` briefly bolds the `3`), and a block that
-//! mixes a paragraph with a list without a blank line between them is mended as
-//! one inline run.
-
 use std::cmp::Reverse;
 
-/// Destination for a link whose URL is still streaming. The renderer styles it
-/// like any other link but must not make it clickable.
 pub const PENDING_LINK_URL: &str = "zz:pending-link";
 
 const ZERO_WIDTH_SPACE: char = '\u{200B}';
 
-/// Repair hanging inline markers in `text`, returning `None` when nothing hangs
-/// — the overwhelmingly common case, and the only one that allocates nothing.
 pub fn mend(text: &str) -> Option<String> {
     let start = tail_start(text)?;
     let mended = close_hanging(&text[start..])?;
@@ -61,8 +16,6 @@ pub fn mend(text: &str) -> Option<String> {
     Some(repaired)
 }
 
-/// Byte offset of the last top-level block, or `None` when that block must be
-/// left alone: an unterminated fence, or indented code.
 fn tail_start(text: &str) -> Option<usize> {
     let mut fence: Option<(char, usize)> = None;
     let mut start = 0;
@@ -98,7 +51,6 @@ fn tail_start(text: &str) -> Option<usize> {
     (!first.starts_with("    ") && !first.starts_with('\t')).then_some(start)
 }
 
-/// Fence character, run length, and info string of a code-fence line.
 fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
     let body = line.trim_start_matches(' ');
     if line.len() - body.len() > 3 {
@@ -112,36 +64,25 @@ fn fence_marker(line: &str) -> Option<(char, usize, &str)> {
     if len < 3 {
         return None;
     }
-    // A backtick fence's info string may not hold a backtick, which is what
-    // keeps a whole inline code span on one line from opening a fence.
     let info = body[len..].trim();
     (ch != '`' || !info.contains('`')).then_some((ch, len, info))
 }
 
-/// One unclosed emphasis-family delimiter run (`*`, `_`, or `~~`).
 struct OpenDelim {
     ch: char,
     len: usize,
-    /// Char index just past the run: nesting order for closers, and the
-    /// content-must-follow guard.
     pos: usize,
 }
 
-/// Close whatever hangs in one top-level block.
 fn close_hanging(text: &str) -> Option<String> {
     let cs: Vec<(usize, char)> = text.char_indices().collect();
     let n = cs.len();
     let at = |i: usize| cs.get(i).map(|&(_, c)| c);
 
     let mut delims: Vec<OpenDelim> = Vec::new();
-    // Char indices of unmatched `[`.
     let mut brackets: Vec<usize> = Vec::new();
-    // Open inline code span: (backtick run length, content char index).
     let mut code: Option<(usize, usize)> = None;
-    // Char index of the last substantive character — content that justifies
-    // closing an opener, as opposed to whitespace or a bare marker.
     let mut last_content: Option<usize> = None;
-    // Char index of the `]` of a `](…` whose URL runs off the end.
     let mut pending_url: Option<usize> = None;
 
     let mut i = 0;
@@ -181,8 +122,6 @@ fn close_hanging(text: &str) -> Option<String> {
             }
             ']' => {
                 if let Some(open) = brackets.pop() {
-                    // Emphasis opened inside a completed `[…]` and never closed
-                    // there stays literal, as the final parse will decide too.
                     delims.retain(|d| d.pos < open);
                     if at(i + 1) == Some('(') {
                         let mut j = i + 2;
@@ -221,12 +160,9 @@ fn close_hanging(text: &str) -> Option<String> {
 
     let mut base = text;
     if let Some(close) = pending_url {
-        // The URL is still arriving and never renders: drop the partial, keep
-        // the label, and point at the sentinel until the real one lands.
         base = &text[..cs[close].0];
     }
     let setext = setext_partial(base);
-    // Closers belong to the paragraph, so a setext underline stays below them.
     let head = match setext.then(|| base.rfind('\n')).flatten() {
         Some(nl) => &base[..nl],
         None => base,
@@ -237,9 +173,6 @@ fn close_hanging(text: &str) -> Option<String> {
         attach_point(head)
     };
 
-    // Closers, innermost first (descending open position). An open `[` splits
-    // them naturally: delimiters opened inside the link text close before the
-    // `](…)`, ones opened before it close after.
     let mut pending: Vec<(usize, String)> = Vec::new();
     if let Some(close) = pending_url {
         pending.push((close, format!("]({PENDING_LINK_URL})")));
@@ -247,9 +180,6 @@ fn close_hanging(text: &str) -> Option<String> {
         if let Some((ticks, content)) = code
             && last_content.is_some_and(|lc| lc >= content)
         {
-            // A span closes on a backtick run of exactly the opening length, so
-            // trailing backticks inside the span are part of the closer we
-            // append; when they already overrun it, nothing can close the span.
             let trailing = head[..end].chars().rev().take_while(|&c| c == '`').count();
             if trailing < ticks {
                 pending.push((content, "`".repeat(ticks - trailing)));
@@ -282,10 +212,6 @@ fn close_hanging(text: &str) -> Option<String> {
     Some(repaired)
 }
 
-/// Where a closer can attach and still close. A delimiter run is right-flanking
-/// only when a non-whitespace character precedes it, so appending onto trailing
-/// whitespace — or onto a marker run that is itself preceded by whitespace, which
-/// the closer would merge into — leaves the opener hanging anyway.
 fn attach_point(head: &str) -> usize {
     let mut end = head.trim_end().len();
     loop {
@@ -314,10 +240,6 @@ fn run_len(cs: &[(usize, char)], i: usize) -> usize {
     cs[i..].iter().take_while(|&&(_, x)| x == c).count()
 }
 
-/// Match or open one delimiter run. Closes against the innermost same-character
-/// openers outwards (partially, for half-streamed closers like `**a*`);
-/// delimiters opened after a consumed opener were inside the closed span and
-/// stay literal, exactly as the final parse treats them.
 fn delimiter(
     delims: &mut Vec<OpenDelim>,
     cs: &[(usize, char)],
@@ -327,9 +249,6 @@ fn delimiter(
 ) {
     let c = cs[i].1;
     let end = i + run;
-    // Strikethrough is `~~` only; longer tilde runs are literal. A run of one
-    // may still be the half-streamed first tilde of a closing `~~`, so it
-    // reaches the matcher, but it never opens.
     if c == '~' && run > 2 {
         *last_content = Some(end - 1);
         return;
@@ -337,8 +256,6 @@ fn delimiter(
     let prev = i.checked_sub(1).map(|p| cs[p].1);
     let next = cs.get(end).map(|&(_, c)| c);
     let word = |c: Option<char>| c.is_some_and(char::is_alphanumeric);
-    // Intraword `_` never delimits; intraword single `*` is treated the same,
-    // conservatively — `2*3` must not flash italic.
     if word(prev) && word(next) && (c == '_' || (c == '*' && run == 1)) {
         *last_content = Some(end - 1);
         return;
@@ -370,9 +287,6 @@ fn delimiter(
     }
 }
 
-/// Last line is only one or two `-` or `=` under a paragraph line — the
-/// incomplete-setext ambiguity, where a streaming list item reads as an
-/// underline and flashes the paragraph above it into a heading.
 fn setext_partial(text: &str) -> bool {
     let Some(nl) = text.rfind('\n') else {
         return false;
@@ -382,8 +296,6 @@ fn setext_partial(text: &str) -> bool {
     if !(underline('-') || underline('=')) {
         return false;
     }
-    // Both ends of the block: an underline only binds to a paragraph, and a
-    // paragraph that has already grown a list keeps growing one.
     let head = &text[..nl];
     head.lines().next().is_some_and(paragraph_line)
         && head
@@ -392,7 +304,6 @@ fn setext_partial(text: &str) -> bool {
             .is_some_and(|l| !l.trim().is_empty() && paragraph_line(l))
 }
 
-/// A line that starts no block of its own, so it is paragraph text.
 fn paragraph_line(line: &str) -> bool {
     let body = line.trim_start();
     if body.starts_with('>') || body.starts_with('#') {
@@ -496,8 +407,6 @@ mod tests {
 
     #[test]
     fn isolated_marker_runs_do_not_swallow_the_closer() {
-        // A closer merged onto a space-preceded run is not right-flanking, so it
-        // has to attach further back or the opener still hangs.
         mends("**outer *", "**outer** *");
         mends("**a **", "**a** **");
         mends("**a * *", "**a** * *");
@@ -522,10 +431,7 @@ mod tests {
     fn inline_code_closes_and_shields_markers() {
         mends("`code", "`code`");
         mends("call `a ** b", "call `a ** b`");
-        // The trailing tick is span content until the run reaches the opening
-        // length, so one more tick closes it.
         mends("``a`", "``a``");
-        // An overrun trailing run can never equal the opening length again.
         stays("`a``");
         stays("`done` after");
     }
@@ -559,7 +465,6 @@ mod tests {
         stays("para\n---");
         stays("-");
         stays("\n-");
-        // Inside a list `-` is the next item, never an underline.
         stays("- one **two**\n-");
         stays("# Title\n-");
     }
@@ -579,7 +484,6 @@ mod tests {
             "```\ncode\n```\n\nthen **bold",
             "```\ncode\n```\n\nthen **bold**",
         );
-        // A whole span on one line is a code span, not a fence.
         mends("```x``` and **b", "```x``` and **b**");
     }
 
@@ -596,9 +500,6 @@ mod tests {
         mends("*a\n \n*b", "*a\n \n*b*");
     }
 
-    /// The repair has to survive the renderer's parser, not merely look closed:
-    /// every marker the mend accounts for must be consumed as syntax. Inline
-    /// code is its own node, so its content never reaches the plain text.
     #[test]
     fn mended_text_parses_as_markup() {
         for (source, plain) in [
@@ -613,7 +514,6 @@ mod tests {
             ("see [do", "see do"),
             ("[docs](https://zzmux.sh/lo", "docs"),
             ("**a [b](htt", "a b"),
-            // An opener with nothing after it is deliberately left literal.
             ("**outer *", "outer *"),
         ] {
             let mended = mend(source).unwrap_or_else(|| panic!("{source:?} needs a repair"));

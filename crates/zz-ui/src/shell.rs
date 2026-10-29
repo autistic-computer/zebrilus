@@ -63,17 +63,10 @@ pub fn app_shell_surface(
         .children(overlays)
 }
 
-/// `titlebar` laid `gap` down over the workspace under it. The workspace
-/// keeps that gap above its panes as on every other side, so the panes still
-/// start where the titlebar ends but their rim and shadow are not cut off at
-/// the workspace's top edge.
 pub fn titlebar_over_panes(titlebar: impl IntoElement, gap: Pixels) -> ala::Div {
     div().flex_none().w_full().mb(-gap).child(titlebar)
 }
 
-/// Titlebar-height strip above the content column, carrying the client-side
-/// window controls at its trailing end and a drag region left of them. Mount
-/// only when [`crate::draws_window_controls`] says the buttons are ours.
 pub fn app_titlebar_strip(
     id: impl Into<ElementId>,
     controls: impl IntoElement,

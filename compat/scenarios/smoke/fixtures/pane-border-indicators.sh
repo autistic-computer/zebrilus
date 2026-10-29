@@ -71,9 +71,6 @@ arrows() {
     fi
 }
 
-# Under pane-border-lines number a border cell draws the index of the pane that
-# owns it, so which pane owns which half of the divider is legible as a glyph
-# and needs no colour encoding the two clients do not share.
 owns() {
     if grep -qE "$2{8}" "$snaps/$1" 2>/dev/null; then
         printf yes
@@ -102,9 +99,6 @@ recorder_started=1
 record set-option -g status off
 sleep 1.8
 
-# redraw_mark_border_arrows only marks when the option is arrows or both, and
-# redraw_mark_two_pane_colours only splits the divider's style when it is colour
-# or both, so the four values are the two independent switches crossed.
 indicators off
 check_equal off-draws-no-arrow no "$(arrows off)"
 check_equal off-gives-the-whole-divider-to-the-active-pane yes "$(owns off 1)"

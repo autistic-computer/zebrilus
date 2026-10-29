@@ -1,11 +1,6 @@
 ---
-// Inlines an icon from src/icons at build time: zz's own set, exported at the app's
-// default radius by `cargo run -p zz-gpui-kit --example export_icons -- site/src/icons 24 4`,
-// plus the brand marks. The app draws the same set (zz-gpui-kit/src/icon/glyphs.rs) and
-// paints it with currentColor, so an <img> would lose the colour inheritance; hence set:html.
 interface Props {
 	name: string;
-	/** 14 = tree markers and chevrons (navigation.rs:20); 12 = xsmall chrome buttons. */
 	size?: number;
 	class?: string;
 }
@@ -21,8 +16,6 @@ const files = import.meta.glob<string>('../../icons/*.svg', {
 const raw = files[`../../icons/${name}.svg`];
 if (!raw) throw new Error(`zz Icon: no src/icons/${name}.svg`);
 
-// Drop the authored 24x24 so the CSS size wins — but only off the root tag, or
-// the strip would also eat inner <rect> geometry (zz-mark).
 const open = raw.indexOf('<svg');
 const close = raw.indexOf('>', open);
 const root = raw.slice(open, close).replace(/\s(width|height)=(["'])[^"']*\2/g, '');

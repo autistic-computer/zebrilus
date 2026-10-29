@@ -6,11 +6,6 @@
 #
 #   compat/run.sh
 #   compat/run.sh windows panes
-#   compat/run.sh --strict-geometry
-#   compat/run.sh --check-summary | --strict-geometry --attached-client
-#   ZZ_COMPAT_ZZ=path/to/zz_cli compat/run.sh ...   (skip the build, use that binary)
-#   compat/run.sh --delta origin/main..HEAD --commands split-window,new-window
-#   compat/run.sh --delta origin/main..HEAD --list   (print selection, run nothing)
 set -euo pipefail
 while IFS= read -r credential; do unset "$credential"; done < <(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL')
 

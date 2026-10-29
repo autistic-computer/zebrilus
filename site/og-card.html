@@ -1,20 +1,4 @@
 <!doctype html>
-<!--
-  Source for public/og.png — the social card. Lives outside src/ on purpose, so
-  Astro never routes it; it is only ever rendered to a PNG.
-
-  Regenerate after editing:
-
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-      --headless --disable-gpu --hide-scrollbars \
-      --window-size=1200,630 --force-device-scale-factor=2 \
-      --virtual-time-budget=6000 \
-      --screenshot=public/og.png \
-      "file://$PWD/og-card.html"
-
-  Palette and type are copied from the :root block in src/pages/index.astro —
-  keep them in sync if the landing page ever re-themes.
--->
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
@@ -44,7 +28,6 @@
 				position: relative;
 				overflow: hidden;
 			}
-			/* Same two-stop bloom the landing page hangs above its hero. */
 			.bloom {
 				position: absolute;
 				inset: -120px 0 auto;

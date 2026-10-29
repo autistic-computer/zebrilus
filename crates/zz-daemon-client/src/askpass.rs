@@ -1,5 +1,3 @@
-//! ssh's password and host-key prompts, answered by the GUI through `SSH_ASKPASS`.
-
 use std::{fmt, path::PathBuf, sync::Arc};
 
 use zeroize::Zeroizing;
@@ -30,33 +28,23 @@ use std::{
 #[cfg(windows)]
 use crate::transport::{LocalListener, LocalStream, LocalTransport, Transport as _};
 
-/// Selects askpass mode and names the socket the helper dials.
 pub const ASKPASS_SOCKET_ENV: &str = "ZZ_ASKPASS_SOCKET";
 pub(crate) const SSH_ASKPASS_ENV: &str = "SSH_ASKPASS";
 pub(crate) const SSH_ASKPASS_REQUIRE_ENV: &str = "SSH_ASKPASS_REQUIRE";
-/// ssh sets this only for agent key-use confirmation and the FIDO touch notification.
 const SSH_ASKPASS_PROMPT_ENV: &str = "SSH_ASKPASS_PROMPT";
 
-/// The one stable fragment of ssh's host-key prompt; the rest of the body varies.
 const HOST_KEY_QUESTION: &str = "(yes/no/[fingerprint])";
-/// What ssh re-asks with after it rejects a host-key answer.
 const HOST_KEY_RETRY: &str = "Please type 'yes', 'no' or the fingerprint";
 const HOST_KEY_HEADER: &str = "The authenticity of host";
 
-/// ssh reads at most 1024 bytes of an answer and keeps only what precedes the first CR or LF.
 const MAX_REPLY_BYTES: usize = 1023;
 
-/// Whether ssh named a prompt shape zz does not drive.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum AskpassMode {
-    /// `SSH_ASKPASS_PROMPT` unset: password, passphrase, keyboard-interactive answer, or host key.
     #[default]
     Answer,
-    /// `confirm`: ssh-agent asking permission to use a key.
     AgentConfirm,
-    /// `none`: a FIDO token touch. ssh ignores stdout and SIGTERMs the helper on the tap.
     Notification,
-    /// Never from ssh: zz offering, after a password sign-in, to add its key to the host.
     SaveKey,
     KeyAdded,
 }
@@ -92,20 +80,11 @@ impl AskpassMode {
     }
 }
 
-/// What the dialog has to be, and how a cancel has to be spelled: an empty answer with a zero exit
-/// means an empty password, `no` for a host key, and consent for the agent.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AskpassPromptKind {
-    /// A password, passphrase or keyboard-interactive answer. Returned verbatim; cancelling prints
-    /// nothing and exits non-zero.
     Secret,
-    /// Host-key confirmation. Answered with exactly `yes` or `no`; cancelling is an explicit `no`.
     HostKey,
-    /// ssh-agent key-use confirmation. Cancelling must exit non-zero; an empty answer reads as
-    /// consent.
     AgentConfirm,
-    /// zz's offer to add its key to the host's `authorized_keys`. Any answer accepts; cancelling
-    /// declines.
     SaveKey,
     Notification,
     KeyAdded,
@@ -118,7 +97,6 @@ impl AskpassPromptKind {
     }
 }
 
-/// One question from ssh.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AskpassPrompt {
     mode: AskpassMode,
@@ -142,7 +120,6 @@ impl AskpassPrompt {
         self
     }
 
-    /// ssh's own words, shown to the user unedited.
     #[must_use]
     pub fn text(&self) -> &str {
         &self.text
@@ -182,7 +159,6 @@ fn is_host_key_prompt(text: &str) -> bool {
         || text.contains(HOST_KEY_HEADER)
 }
 
-/// The answer for one prompt, or the user declining to give one.
 pub enum AskpassReply {
     Answer(Zeroizing<String>),
     Cancel,
@@ -195,7 +171,6 @@ impl AskpassReply {
     }
 }
 
-/// Never renders the answer: a secret must not reach a log line or a panic message.
 impl fmt::Debug for AskpassReply {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(match self {
@@ -262,7 +237,6 @@ const MAX_PROMPT_BYTES: usize = 64 * 1024;
 #[cfg(windows)]
 static ASKPASS_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-/// How the GUI answers ssh, and the executable ssh runs to ask.
 #[derive(Clone)]
 pub struct SshPrompts {
     helper: PathBuf,
@@ -270,8 +244,6 @@ pub struct SshPrompts {
 }
 
 impl SshPrompts {
-    /// `helper` is the zz executable ssh runs; it re-enters askpass mode through
-    /// [`ASKPASS_SOCKET_ENV`].
     pub fn new<R>(helper: PathBuf, responder: R) -> Self
     where
         R: Fn(&AskpassPrompt) -> AskpassReply + Send + Sync + 'static,
@@ -282,7 +254,6 @@ impl SshPrompts {
         }
     }
 
-    // Only the in-process ssh tier (iOS) asks directly; every other tier goes through the helper.
     #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     pub(crate) fn respond(&self, prompt: &AskpassPrompt) -> AskpassReply {
         (self.responder)(prompt)
@@ -410,8 +381,6 @@ fn answer_one(
     stream.flush()
 }
 
-// A default-descriptor named pipe is readable by Everyone, so the random pipe name is the only
-// boundary this listener has.
 #[cfg(windows)]
 pub(crate) struct AskpassListener {
     helper: PathBuf,
@@ -512,8 +481,6 @@ fn answer_one(
     stream.flush()
 }
 
-/// A Windows named pipe has no half-close, so the request carries its own length; the reply still
-/// ends at end of stream, because the GUI closes once it has answered.
 #[cfg(windows)]
 fn read_request(stream: &mut LocalStream) -> io::Result<Option<Vec<u8>>> {
     let mut header = [0_u8; 4];
@@ -591,10 +558,6 @@ fn decode_reply(raw: &[u8]) -> AskpassReply {
     }
 }
 
-/// Answer one ssh prompt over `socket` and exit, writing the answer to stdout for ssh to read.
-///
-/// Never fork here: ssh leaks the write end of the answer pipe, so a surviving child blocks ssh in
-/// `read` forever.
 #[cfg(any(unix, windows))]
 #[must_use]
 pub fn run_helper(socket: &Path, prompt: &str) -> ExitCode {

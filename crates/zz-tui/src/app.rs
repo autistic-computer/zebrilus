@@ -53,7 +53,6 @@ enum MainEvent {
     Signal,
     Suspend,
     Resume,
-    /// The writer dropped output it could not paint and its block has cleared.
     Repaint,
 }
 
@@ -469,15 +468,8 @@ const MAX_COALESCED_EVENTS: usize = 256;
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum TuiExit {
     Detached(String),
-    /// `detach-client -P`, `attach-session -x`, `new-session -X`: the pin
-    /// prints a different notice and then hangs up its parent process.
     DetachedHangup(String),
-    /// `detach-client -E`: the client process is replaced by `shell -c command`
-    /// instead of printing a notice.
-    Exec {
-        command: String,
-        shell: String,
-    },
+    Exec { command: String, shell: String },
     Exited,
     ServerExited,
     ServerExitedUnexpectedly,
@@ -1110,11 +1102,7 @@ pub(crate) fn run(
         std::thread::yield_now();
     }
     match outcome {
-        Ok(TuiExit::Exec { command, shell }) => {
-            // The pin execs before it would have printed any exit notice, so the
-            // shell command inherits the client's terminal and process slot.
-            Err(exec_client_command(&shell, &command))
-        }
+        Ok(TuiExit::Exec { command, shell }) => Err(exec_client_command(&shell, &command)),
         Ok(exit) => {
             println!("{}", exit.notice());
             let hangup = matches!(exit, TuiExit::DetachedHangup(_));
@@ -1146,8 +1134,6 @@ pub(crate) fn run(
     Err("zz-tui currently requires a Unix terminal".to_owned())
 }
 
-/// `kill(getppid(), SIGHUP)` guarded the way client.c guards it, so a reparented
-/// client never signals init.
 #[cfg(unix)]
 fn hangup_parent() {
     use rustix::process::{Signal, getppid, kill_process};
@@ -1217,7 +1203,6 @@ fn paint_pending(
     }
 }
 
-/// Replace this process with `shell -c command`, matching `client_exec`.
 #[cfg(unix)]
 fn exec_client_command(shell: &str, command: &str) -> String {
     use std::os::unix::process::CommandExt as _;
@@ -1271,9 +1256,6 @@ fn prepare_connection(
     Ok(PreparedConnection { client, core })
 }
 
-/// The handshake hello is consumed by [`InteractiveClient`] before the reader
-/// thread exists, so it is fed to the core by hand; draining the resulting
-/// events keeps the reader's first drain free of handshake leftovers.
 fn seeded_core(hello: ServerHello) -> Arc<Mutex<ClientCore>> {
     let mut core = ClientCore::new();
     core.handle_message(ProtocolMessage::ServerHello(Box::new(hello)));
@@ -1291,8 +1273,6 @@ pub(crate) fn mouse_option_enabled(options: &zz_protocol::MuxOptions) -> bool {
         .is_some_and(|option| option.value == "on")
 }
 
-/// The pin reads `focus-follows-mouse` from the session the client is attached
-/// to; the daemon stamps that value into the map every client receives.
 pub(crate) fn focus_follows_mouse_enabled(options: &zz_protocol::MuxOptions) -> bool {
     options
         .get(zz_protocol::MuxOptionKey::FocusFollowsMouse)
@@ -1317,13 +1297,6 @@ fn refresh_terminal_options(model: &mut Model, core: &Mutex<ClientCore>, escape_
     model.copy_mouse_bindings = core.mouse_bindings().copy_keys().into_iter().collect();
 }
 
-/// Every mouse key name the ROOT table carries a binding for. The raw TUI only
-/// has to know WHETHER a gesture's name is bound before it hands the event to
-/// the daemon, which then walks the table stack itself the way
-/// `key_bindings_get` does. A gesture whose name the daemon then fails to find
-/// would have been swallowed here for nothing, so the client offers exactly
-/// the names the daemon's own lookup can reach: root always, and the mode
-/// tables below when the pane the pointer landed on holds a mode.
 #[cfg(test)]
 pub(crate) fn mouse_binding_names(
     tables: &[zz_protocol::KeyTableSnapshot],
@@ -1409,9 +1382,6 @@ fn replace_connection(
     Ok(())
 }
 
-/// Drives one connection's [`ClientCore`]: decoded messages in, wire requests
-/// straight back out, frames into the coalescing inbox, everything else to the
-/// main loop in stream order.
 fn forward_protocol_message(
     core: &Mutex<ClientCore>,
     message: ProtocolMessage,
@@ -1503,9 +1473,6 @@ fn forward_protocol_message(
     true
 }
 
-/// Refreshes the [`Model`] caches the event touched and decides how much of the
-/// screen that costs. State changes are notifications: the new value is read
-/// back from the core, side effects travel in the event itself.
 fn handle_core_event(
     model: &mut Model,
     core: &Mutex<ClientCore>,
@@ -1730,8 +1697,6 @@ fn handle_core_event(
         | CoreEvent::KittyImageBegin { .. }
         | CoreEvent::KittyImageChunk { .. }
         | CoreEvent::KittyImagesRemoved { .. }
-        // The agent lane needs a transcript reducer the TUI does not have; its
-        // panes stay the static card `placeholder_text` paints.
         | CoreEvent::AgentUpdates { .. }
         | CoreEvent::AgentStateChanged { .. }
         | CoreEvent::AgentLagged { .. }
@@ -1894,9 +1859,6 @@ fn recover_client_focus_after_attach_error(
     Ok(())
 }
 
-/// Tighten the browser's wait so the loop wakes up when a message's own
-/// duration runs out. Producers that carry no daemon deadline — the alert and
-/// read-only paths — expire on this timer alone.
 fn message_wait(model: &Model, wait: BrowserWait, now: Instant) -> BrowserWait {
     let Some(deadline) = model.client_message_deadline() else {
         return wait;
@@ -1908,8 +1870,6 @@ fn message_wait(model: &Model, wait: BrowserWait, now: Instant) -> BrowserWait {
     }
 }
 
-/// `evtimer_add(&c->click_timer, ...)`: the loop stops blocking long enough to
-/// notice a click sequence that has run out of time.
 fn click_wait(model: &Model, wait: BrowserWait, now: Instant) -> BrowserWait {
     let Some(sequence) = model.click.as_ref() else {
         return wait;
@@ -1991,7 +1951,6 @@ fn set_browser_tabs_command(
     Some(CommandInvocation::new("set-browser-tabs", args))
 }
 
-/// Hidpi terminals report cell heights near twice the logical ~16px.
 const fn hidpi_scale(cell_height_px: u32) -> f32 {
     if cell_height_px >= 28 { 2.0 } else { 1.0 }
 }
@@ -3425,11 +3384,6 @@ mod tests {
         );
     }
 
-    /// `menu.c` `menu_prepare` raises `MODE_MOUSE_ALL|MODE_MOUSE_BUTTON` on the
-    /// menu's own screen only when the menu is not `MENU_NOMOUSE`, which
-    /// `cmd-display-menu.c` sets for every menu raised without `-M` and
-    /// without an invoking mouse event. So the common menu leaves the arming
-    /// to the `mouse` option and only `-M` pins any-event tracking up.
     #[test]
     fn a_nomouse_menu_leaves_the_arming_to_the_mouse_option() {
         let (mut model, pane) = paned_model();

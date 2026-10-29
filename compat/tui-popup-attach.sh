@@ -1,24 +1,4 @@
 #!/usr/bin/env bash
-# Nested attach inside display-popup, against tmux 3.8.
-#
-# server_client_check_nested refuses attach-session and an attaching
-# new-session when $TMUX is set and the caller's tty is some pane's tty. In 3.8
-# a display-popup job runs on its own pty, which is no pane's, so
-# `display-popup -E "tmux attach -t scratch"` attaches a second client inside
-# the popup: the scratch-popup binding many configs carry. zz's popup is tmux
-# master's modal pane (34cd5da4), which has a pane tty, so the daemon leaves
-# popup panes out of the check. A `new-pane -O` modal is a pane in 3.8 too, and
-# both sides still refuse an attach from it.
-#
-# THE FACTS ARE THE CONTRACT: which session each server's clients sit on after
-# the key, and what the refused command printed and returned. Both binaries
-# attach inside ONE outer pinned tmux, one window each; the popup is opened by
-# a bound key typed into that window, as a user opens it.
-#
-# Cases:
-#   popup-attach        display-popup -E '<bin> attach-session -t =scratch'
-#   popup-new-session   display-popup -E '<bin> new-session -A -s scratch'
-#   modal-refused       new-pane -O running '<bin> attach-session -t =scratch'
 set -eEuo pipefail
 
 usage() {

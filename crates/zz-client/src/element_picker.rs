@@ -6,34 +6,22 @@ use thiserror::Error;
 
 pub const ELEMENT_PICKER_SCRIPT: &str = include_str!("element_picker.js");
 pub const MAX_ELEMENT_CONTEXT_BYTES: usize = 32 * 1024;
-// The slack covers the framing plus the eight-field geometry object.
 const MAX_PICKER_MESSAGE_BYTES: usize = MAX_ELEMENT_CONTEXT_BYTES + 1024;
 const MAX_PICK_TOKEN_BYTES: usize = 64;
 const PICKER_PROTOCOL_VERSION: u8 = 1;
 
-/// Semantic colors and metrics for the in-page element picker UI.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ElementPickerAppearance {
-    /// Selection outline color.
     pub highlight_outline: String,
-    /// Selection background color.
     pub highlight_fill: String,
-    /// Thin contrast ring color around the selection.
     pub highlight_contrast: String,
-    /// DOM preview background color.
     pub preview_background: String,
-    /// DOM preview text color.
     pub preview_foreground: String,
-    /// DOM preview border color.
     pub preview_border: String,
-    /// DOM preview shadow color, or `None` to disable its shadow.
     pub shadow: Option<String>,
-    /// Requested corner radius in unzoomed UI pixels.
     pub radius: f32,
-    /// Native font family name used by the DOM preview.
     pub font_family: String,
-    /// Browser page zoom used to keep picker chrome screen-sized.
     pub page_zoom: f64,
 }
 
@@ -48,8 +36,6 @@ pub fn element_picker_start_script(
     ))
 }
 
-/// Where the element sat, in CSS pixels: a viewport-relative rect plus the
-/// scroll offsets that turn it into page coordinates.
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct PickGeometry {

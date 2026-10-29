@@ -1,12 +1,3 @@
-//! The environment an ACP child is spawned with.
-//!
-//! A daemon started from a launch agent, a login session, or `zz` itself never
-//! runs the user's shell init, so its PATH misses everything the shell shapes:
-//! nvm's shell function, fnm's per-shell multishells, mise shims, custom npm
-//! prefixes. The agent CLIs live exactly there, so the child gets a repaired
-//! PATH: the login shell's own PATH, then ours, then the Node version-manager
-//! bin directories that exist on disk.
-
 use std::{
     process::{Command, Stdio},
     thread,
@@ -20,9 +11,6 @@ pub(crate) fn with_platform_environment(agent: AcpAgent) -> AcpAgent {
     with_executable_path(agent, executable_path())
 }
 
-/// Pre-populate the npx cache for the configured adapter packages, off the
-/// calling thread, so the first agent pane spawn doesn't pay the download —
-/// and take the login-shell PATH snapshot there too, off the spawn path.
 pub(crate) fn warm_adapter_cache(commands: &[String]) {
     let mut specs: Vec<String> = commands
         .iter()
@@ -75,7 +63,6 @@ fn is_environment_assignment(token: &str) -> bool {
     })
 }
 
-/// Which zz pane, session, and daemon an ACP child belongs to.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct AgentWorkspaceEnvironment {
     pub(crate) pane: Option<String>,
@@ -88,8 +75,6 @@ pub(crate) struct AgentWorkspaceEnvironment {
 }
 
 impl AgentWorkspaceEnvironment {
-    /// Adopt the identity of the pane being spawned, keeping the daemon-wide
-    /// socket: the spawn config is one-per-daemon, the child is one-per-pane.
     pub(crate) fn adopt_pane_identity(&mut self, pane: &Self) {
         if pane.pane.is_some() {
             self.pane.clone_from(&pane.pane);
@@ -140,8 +125,6 @@ impl AgentWorkspaceEnvironment {
     }
 }
 
-/// Add the workspace identity to an ACP child's environment, additively: a
-/// value the user configured through the adapter command wins.
 pub(crate) fn with_workspace_environment(
     agent: AcpAgent,
     workspace: &AgentWorkspaceEnvironment,
@@ -189,10 +172,6 @@ fn with_executable_path(agent: AcpAgent, path: Option<&str>) -> AcpAgent {
     AcpAgent::new(config)
 }
 
-/// The Claude adapter runs Claude Code through the agent SDK, whose newer
-/// releases ship the CLI as a platform-specific optional package that `npx`
-/// does not always install. The user's own `claude` on PATH is always the
-/// right binary anyway: current, and already signed in.
 const CLAUDE_CODE_EXECUTABLE: &str = "CLAUDE_CODE_EXECUTABLE";
 
 fn installed_claude(path: Option<&str>) -> Option<std::path::PathBuf> {
@@ -232,7 +211,6 @@ fn is_executable_file(candidate: &std::path::Path) -> bool {
 #[cfg(unix)]
 use login_shell::executable_path;
 
-/// Windows daemons inherit the user's PATH, so there is nothing to repair.
 #[cfg(not(unix))]
 fn executable_path() -> Option<&'static str> {
     None
@@ -256,22 +234,15 @@ mod login_shell {
 
     use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
-    /// A shell whose init hangs must not stall an agent pane spawn: every
-    /// attempt is killed at this deadline.
     const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(3);
     const POLL_INTERVAL: Duration = Duration::from_millis(10);
-    /// Tried in order: rc files that hang or `exec` a multiplexer when
-    /// interactive still answer a non-interactive login shell.
     const LOGIN_SHELL_FLAGS: [&[&str]; 2] = [&["-l", "-i", "-c"], &["-l", "-c"]];
     const DEFAULT_SHELLS: [&str; 3] = ["/bin/zsh", "/bin/bash", "/bin/sh"];
     const PATH_CAPTURE_COMMAND: &str = r#"printf '\036%s\037' "$PATH""#;
-    /// fish keeps `$PATH` as a list, so the POSIX quoting joins it with spaces.
     const FISH_PATH_CAPTURE_COMMAND: &str = r"printf '\036%s\037' (string join : $PATH)";
     const PATH_MARKER_START: u8 = 0x1e;
     const PATH_MARKER_END: u8 = 0x1f;
 
-    /// Resolved once per process, negative results included, so a broken shell
-    /// is probed once rather than on every pane spawn.
     pub(super) fn executable_path() -> Option<&'static str> {
         static PATH: OnceLock<Option<String>> = OnceLock::new();
 
@@ -345,11 +316,6 @@ mod login_shell {
             .stdout(Stdio::from(child_stdout))
             .stderr(Stdio::null())
             .env("ZZ_RESOLVING_ENVIRONMENT", "1");
-        // An interactive shell that inherits a controlling tty does job
-        // control against it, and a stop signal aimed at a background probe
-        // lands on the daemon's whole process group. A new session gives the
-        // probe no tty to fight over.
-        // SAFETY: the hook only calls setsid, which is async-signal-safe.
         unsafe {
             command.pre_exec(|| {
                 let _ = rustix::process::setsid();
@@ -363,7 +329,6 @@ mod login_shell {
         let mut child = command.spawn_unmasked().ok()?;
         let deadline = Instant::now() + LOGIN_SHELL_TIMEOUT;
         loop {
-            // Init that blocks after printing must not cost the whole timeout.
             if let Some(path) = read_captured_path(&mut capture) {
                 let _ = child.kill();
                 let _ = child.wait();
@@ -436,12 +401,7 @@ mod login_shell {
             .filter(|path| !path.is_empty())
     }
 
-    /// Bin directories where npm-installed CLIs land under Node version
-    /// managers. A GUI launch never sees them: fnm's multishell entries are
-    /// per-shell and nvm is a shell function, so both live in shell init only.
     fn node_version_manager_bins(home: &Path, fnm_dir: Option<&Path>) -> Vec<PathBuf> {
-        // fnm's active installation is reachable through the stable
-        // `aliases/default` symlink; its PATH entries are ephemeral.
         let mut dirs: Vec<PathBuf> = fnm_dir
             .map(Path::to_path_buf)
             .into_iter()
@@ -474,9 +434,6 @@ mod login_shell {
         dirs
     }
 
-    /// The login shell's PATH keeps precedence, our own PATH follows, and the
-    /// version-manager bins land last: they are a fallback for what the shell
-    /// never told us about, never a shadow over what it did.
     fn compose_executable_path(
         login: Option<&OsStr>,
         inherited: Option<&OsStr>,

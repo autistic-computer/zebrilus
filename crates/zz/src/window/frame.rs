@@ -1,5 +1,3 @@
-// Adapted from gpui-component's Apache-2.0 Linux client-side window border:
-// https://github.com/longbridge/gpui-component/blob/b004e595cf5de98a73b6b561394a559a94ae1e2a/crates/zz-ui/src/window_border.rs
 use ala::{
     AnyElement, App, BorderStyle, Bounds, CursorStyle, Decorations, Edges, Hsla,
     InteractiveElement as _, IntoElement, MouseButton, ParentElement, Pixels, Point, RenderOnce,
@@ -33,7 +31,6 @@ fn window_shadow(extent: Pixels, cx: &App) -> Vec<ala::BoxShadow> {
     }]
 }
 
-/// The rounded Linux client-side frame around the complete application shell.
 #[derive(IntoElement)]
 pub(crate) struct RoundedWindowFrame {
     children: Vec<AnyElement>,

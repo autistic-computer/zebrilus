@@ -1,5 +1,3 @@
-//! Process logging, resource sampling, and application diagnostics.
-
 use std::{
     sync::{
         Arc,
@@ -51,8 +49,6 @@ const DEBUG_MARK_KEYSTROKE: &str = "ctrl-shift-m";
 
 static DEBUG_MARK_SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// Binds a key that stamps a marker plus a state snapshot into the log,
-/// forwards the marker to the daemon, and shows a toast.
 pub fn init_debug_mark(
     controller: Entity<BrowserController>,
     mux: Entity<MuxClient>,
@@ -90,7 +86,6 @@ pub fn init_debug_mark(
 const STALL_THRESHOLD_US: u64 = 500_000;
 const STALL_HEARTBEAT_INTERVAL: Duration = Duration::from_millis(100);
 
-/// Logs main-thread freezes and recoveries from a watchdog thread.
 pub fn start_main_thread_watchdog(cx: &mut App) {
     let epoch = Instant::now();
     let stall_age: Box<dyn Fn() -> u64 + Send> = if let Some(busy) = cx.main_thread_busy() {

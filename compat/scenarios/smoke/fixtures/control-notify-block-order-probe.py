@@ -1,31 +1,3 @@
-"""Measure where a structural control notification lands relative to an open
-block, on either binary.
-
-``control.c``'s ``control_write`` appends to ``all_blocks`` whenever that list
-is not empty, so a line written while output blocks or a command block are
-pending is queued behind them instead of going straight out.  The question this
-probe answers is whether that ever moves a structural notification such as
-``%window-add`` or ``%layout-change`` inside a block on pinned tmux, which is
-where zz would differ: zz defers every notification it raises during a block
-past the guard, ``%pause`` and ``%continue`` included.
-
-Run it as ``python3 control-notify-block-order-probe.py <tmux|zz> <binary>``
-with a scrubbed ``HOME``.  It prints the two shapes it measured:
-
-``blocking-command`` runs ``run-shell 'sleep 1.2'`` on the control client, which
-holds that client's command queue, and raises ``new-window`` and
-``resize-window`` from a second client while the guard is open.
-
-``pending-output`` makes the attached pane write 400 lines so real output blocks
-queue up, then raises ``new-window`` from a second client mid-stream.
-
-Measured 2026-09-06 on pinned d77c9dc6 and on zz at PROTOCOL_VERSION 99: both
-shapes put every structural notification after the block on both binaries, so
-the two engines agree.  tmux 3.8 (6db5175e) writes every notification through
-``control_notify_write``, which holds it until the outermost guard closes, so
-``%pause`` and ``%continue`` now land after the block too.
-"""
-
 import os
 import pathlib
 import re

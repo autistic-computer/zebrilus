@@ -168,9 +168,6 @@ use {std::process::Child, zz_daemon_client::unmasked::SpawnUnmasked as _};
 #[cfg(windows)]
 const ACCEPT_WAIT_TIMEOUT: Duration = Duration::from_millis(20);
 const DIAGNOSTIC_STATE_INTERVAL: Duration = Duration::from_secs(5);
-/// How deep a `send-keys -K` chain may nest before the daemon stops replaying.
-/// The pin queues injected keys instead of recursing, so a self-injecting
-/// binding loops on its command queue there and would overflow the stack here.
 const MAX_CLIENT_KEY_INJECTION_DEPTH: u32 = 16;
 const CONTROL_SUBSCRIPTION_INTERVAL: Duration = Duration::from_secs(1);
 const CONTROL_CELL_WIDTH_PX: u32 = 8;
@@ -182,8 +179,6 @@ const MAX_RELIABLE_MESSAGES: usize = 256;
 const MAX_KITTY_IMAGE_CHUNK_BYTES: usize = 1024 * 1024;
 const MAX_PENDING_TERMINALS: usize = 128;
 const MAX_PENDING_COMMITTED_TEXT: usize = 32;
-/// What one pane's agent lane may hold before it is cleared in favour of a
-/// lag marker. A slow client degrades to replay instead of being closed.
 #[cfg(feature = "agent")]
 const MAX_PENDING_AGENT_BYTES: usize = MAX_AGENT_UPDATES_BYTES + MAX_GUI_TEXT_BYTES;
 #[cfg(feature = "agent")]
@@ -200,7 +195,6 @@ const MAX_COPY_PIPE_COMMAND_BYTES: usize = 8 * 1024;
 const COPY_PIPE_TIMEOUT: Duration = Duration::from_secs(30);
 #[cfg(any(test, not(unix)))]
 const COPY_PIPE_POLL_INTERVAL: Duration = Duration::from_millis(20);
-/// `WINDOW_COPY_REFRESH_INTERVAL`.
 const COPY_MODE_REFRESH_INTERVAL: Duration = Duration::from_millis(50);
 const CONTROL_BUFFER_HIGH: usize = 8192;
 const CONTROL_WRITE_MINIMUM: usize = 32;
@@ -212,7 +206,6 @@ const MAX_CONTEXT_PATH_BYTES: usize = 4 * 1024;
 const MAX_COMMAND_PROMPT_HISTORY_SNAPSHOT_ITEMS: usize = 20;
 const MAX_COMMAND_PROMPT_HISTORY_SNAPSHOT_BYTES: usize = 32 * 1024;
 const MAX_COMMAND_PROMPT_OUTPUT_BYTES: usize = 1024 * 1024;
-/// `cmd_display_panes_exec`'s `default_command`.
 const DISPLAY_PANES_DEFAULT_TEMPLATE: &str = "select-pane -t \"%%%\"";
 
 const COMMAND_PROMPT_OUTPUT_TRUNCATED: &str = "… output truncated";
@@ -855,9 +848,6 @@ fn schedule_window_silence(inner: &mut ServerState, window: WindowId) -> Option<
     Some(arm_silence_deadline(inner, window, seconds))
 }
 
-/// The pin's `status_message_set`: replace whatever the client was showing,
-/// arm a timer only for a positive delay (zero waits for a key), and raise the
-/// freeze unless `display-message -C` asked for `no_freeze`.
 fn arm_client_message(
     inner: &mut ServerState,
     client: ClientId,
@@ -890,11 +880,6 @@ fn take_client_message(inner: &mut ServerState, client: ClientId) -> Option<Acti
     message
 }
 
-/// The pin keeps one `TTY_FREEZE` bit and both `status_message_set` and
-/// `status_prompt_set` raise it, so zz reads the same gate off both records:
-/// a frozen message or a freezing prompt suppresses terminal publication.
-/// Unlike the pin this is derived rather than latched — see the message-freeze
-/// stickiness note in `knowledge/tmux/divergences.md`.
 fn client_terminal_publication_frozen(inner: &ServerState, client: ClientId) -> bool {
     inner
         .client(client)
@@ -1101,9 +1086,6 @@ fn tmux_colour_class(colour: TmuxColour) -> Option<ColourClass> {
     }
 }
 
-/// `colour_palette_from_option` copies the resolved `pane-colours` entries into
-/// the pane's default palette and leaves every other index alone, so the theme
-/// keeps the slots the option never named.
 fn pane_palette(
     base: &TerminalAppearance,
     pane_colours: &[(u8, String)],
@@ -1238,9 +1220,6 @@ fn expanded_style_value(
     expand_format_values(value, &context, &mut hooks)
 }
 
-/// `format_draw` paints the expanded `remain-on-exit-format` with its
-/// `#[...]` styles; the notice carries them to the pane as SGR runs, one
-/// reset-and-set per segment, so the worker can clip by width and draw.
 fn dead_notice_text(expanded: &str) -> String {
     let mut output = String::with_capacity(expanded.len());
     for segment in zz_protocol::parse_styled_segments(expanded) {
@@ -1764,7 +1743,6 @@ impl Daemon {
         self
     }
 
-    /// Run the persistent listener on the current thread until shutdown.
     pub fn run_foreground(&self) -> Result<(), DaemonError> {
         self.run_foreground_with_ready(|_| ())
     }
@@ -2543,13 +2521,8 @@ struct PendingCommandOutput {
     encoded: Vec<u8>,
 }
 
-/// One pane's undelivered agent frames. Unlike a terminal viewport an agent
-/// batch cannot be coalesced away — every item is transcript — so the lane
-/// queues them and drops the whole pane when it outgrows its share.
 #[derive(Default)]
 struct PendingAgent {
-    /// Encoded frames, each tagged with the first sequence it carries: what a
-    /// lagged client must replay from.
     frames: VecDeque<(u64, OutboundFrame)>,
     bytes: usize,
 }
@@ -3316,9 +3289,6 @@ impl OutboundMailbox {
         PastedImageEnqueue::Queued
     }
 
-    /// Queue one encoded `AgentUpdates` frame. Overflow clears the pane's lane
-    /// and answers with a lag marker on the reliable lane instead of closing
-    /// the connection: the journal makes the stream recoverable.
     #[cfg(feature = "agent")]
     fn enqueue_agent(
         &self,
@@ -4119,8 +4089,6 @@ fn pop_ready_frame(state: &mut OutboundState) -> Option<OutboundFrame> {
         state.queued_bytes = state.queued_bytes.saturating_sub(pending.encoded.len());
         return Some(pending.encoded.into());
     }
-    // One frame per pane per turn: a chatty agent never starves the
-    // pane beside it, and terminals still drain behind both.
     while let Some(pane) = state.agent_order.pop_front() {
         let Some(queued) = state.agent.get_mut(&pane) else {
             continue;
@@ -4704,9 +4672,6 @@ struct SharedServer {
     terminal_requests: Arc<terminal_requests::Inbox>,
     agent_state_waits: Mutex<BTreeMap<PaneId, Vec<Weak<agent_waits::TerminalWait>>>>,
     client_writers: Mutex<BTreeMap<ClientId, Arc<OutboundMailbox>>>,
-    /// One flag per connection that owns a command queue. `server_client_lost`
-    /// frees the lost client's `cmdq`, so every queue loop this client owns
-    /// stops between items once its reader has left.
     command_queue_cancels: Mutex<BTreeMap<ClientId, Arc<AtomicBool>>>,
     response_admissions: Mutex<ResponseAdmissionState>,
     response_admissions_changed: Condvar,
@@ -4719,8 +4684,6 @@ struct SharedServer {
     prompt_history_effects: Mutex<history_io::Saves>,
     background_insertions: Mutex<BackgroundInsertions>,
     next_background_insertion: AtomicU64,
-    /// Built on the first agent pane rather than at startup: a daemon that
-    /// never opens one never touches the journal directory.
     #[cfg(feature = "agent")]
     agent: Mutex<Option<Arc<crate::agent::fanout::AgentRuntime>>>,
     #[cfg(feature = "agent")]
@@ -5124,9 +5087,6 @@ enum SilenceDeadlineCommand {
     Cancel { window: WindowId, token: u64 },
 }
 
-/// One client's live status message: the pin's `c->message_string` plus
-/// `c->message_timer` and the `TTY_FREEZE` bit `status_message_set` raises,
-/// keyed by the `message_id` the client already received.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ActiveClientMessage {
     token: u64,
@@ -6452,10 +6412,6 @@ impl Shared {
         }
     }
 
-    /// `monitor_timer`: every second each `set-hook -B` subscription
-    /// re-expands its format per subscribed object, and the object whose string
-    /// changed since its baseline runs the subscription's own option value as a
-    /// hook carrying `notify_monitor_cb`'s nine names.
     fn run_format_monitors(self: &Arc<Self>) {
         let fires = {
             let mut inner = self.inner.lock();
@@ -7464,9 +7420,6 @@ impl Shared {
         }
     }
 
-    /// The wire half of `CMD_RETURN_WAIT`: the queue this thread runs is about
-    /// to block on something that answers later, so tell the client once that
-    /// nothing else it queued runs until this request resumes.
     fn report_command_queue_park(&self) {
         hook_events::release_input_change_window(self);
         if let Some(item) = &self.command_item {
@@ -7534,8 +7487,6 @@ impl Shared {
         (wait.finish(self, execution), Some(status))
     }
 
-    /// `window_pane_wait_finish` only sets `c->retval` when the client has no
-    /// session, so an attached client keeps the command's own status.
     fn finish_pane_command(
         &self,
         client: ClientId,
@@ -7584,9 +7535,6 @@ impl Shared {
         terminal_reads::pane_changed(inner, pane);
     }
 
-    /// Whether the connection that owns this client's command queue has gone.
-    /// `server_client_lost` frees the queue, so a loop that is between items
-    /// stops here and the items it has not started never run.
     fn command_queue_cancelled(&self, client: ClientId) -> bool {
         self.command_queue_cancels
             .lock()
@@ -7628,11 +7576,6 @@ impl Shared {
         commands
     }
 
-    /// Read the `$NAME` variables one Control line needs out of the server's
-    /// global environment, the way the pin's `yylex_token_variable` reads them
-    /// through `environ_find(global_environ, name)` while the server parses that
-    /// line. A name the server does not hold is `None`, which the pin expands to
-    /// nothing.
     fn resolve_environment(&self, names: &[String]) -> Vec<Option<String>> {
         if names.is_empty() {
             return Vec::new();
@@ -8639,10 +8582,6 @@ impl Shared {
                 queue_execution,
                 None,
             );
-            // `cmd_find_target` reports through `cmdq_error`, which is a
-            // message plus `c->retval = 1` and not a command failure, and
-            // `display-message` carries `CMD_FIND_CANFAIL`, so the command
-            // still runs, still prints, and the rest of the sequence follows.
             if result.is_ok() && route.command.is_none() {
                 self.route_source_error(client, kind, context.pane, "no current client");
             }
@@ -8671,13 +8610,6 @@ impl Shared {
         result
     }
 
-    /// `CMD_CLIENT_TFLAG`: `cmd_command_prompt_exec` runs against the client
-    /// `cmd_find_client` resolves from `-t`, or the invoking client's own best
-    /// client, and blocks the issuing command queue on `CMD_RETURN_WAIT` unless
-    /// `-b` or `-i` cleared the wait. `-P` prompts inside a pane instead and
-    /// stays native, so it keeps the untargeted path. A hook body runs with
-    /// no client and never waits: the thread it would park is the reader of
-    /// the connection whose event raised the hook.
     fn command_prompt_route(
         self: &Arc<Self>,
         client: ClientId,
@@ -8685,8 +8617,6 @@ impl Shared {
         context: &ExecutionContext,
         command: &CommandInvocation,
     ) -> Result<Option<CommandPromptRoute>, DaemonError> {
-        // Every flag diagnostic stays with the mux, so a spelling this scan
-        // cannot read routes nowhere and reaches the catalog's own message.
         let Ok(parsed) = parse_buffer_command_args(
             "command-prompt",
             &command.args,
@@ -8708,9 +8638,6 @@ impl Shared {
         let mut target_context = context.clone();
         retarget_context_to_attachment(&inner, target, &mut target_context);
         let positional_start = command.args.len().saturating_sub(parsed.positional.len());
-        // `args_make_commands_prepare` expands the template once, before any
-        // `%%` pass, and only for the string form: a `{ ... }` block already
-        // carries a parsed command list and returns before the expansion.
         let routed = if parsed.has('F')
             && !parsed.positional.is_empty()
             && !command.argument_is_command_block(positional_start)
@@ -8748,10 +8675,6 @@ impl Shared {
         }))
     }
 
-    /// `cmd_find_target`'s three client aliases: `@`, `{active}` and
-    /// `{current}` read `cmdq_get_client(item)->session->curw->window->active`,
-    /// so they answer the invoking client's own current pane and are a loud
-    /// miss when that client has no session, which is every command client.
     fn display_message_client_alias(
         self: &Arc<Self>,
         client: ClientId,
@@ -10875,8 +10798,6 @@ impl Shared {
                                 .command_item
                                 .as_ref()
                                 .and_then(|item| item.lock().raising_overlay.take());
-                            // `status_prompt_set` clears any message first, and
-                            // its own freeze then decides the gate.
                             prompt_cleared_message = take_client_message(&mut inner, client);
                             let state = prompt.state(prompt_history(&inner, prompt.prompt_type));
                             let fired =
@@ -11890,11 +11811,7 @@ impl Shared {
         }
         match detach {
             None => {}
-            // An empty -E is the pin's `server_client_exec` early return: the
-            // victim is neither replaced nor detached.
             Some((_, exit)) if exit.exec.as_deref() == Some("") => {}
-            // The pin's `MSG_EXEC` only acts in the pty client's attached
-            // dispatch, so a Control victim of `-E` stays attached and running.
             Some((scope, exit)) => {
                 let victims = requested_detach_victims(&self.inner.lock(), scope);
                 for (session, victim) in victims {
@@ -12726,9 +12643,6 @@ impl Shared {
         } else {
             self.run_event_hooks(pending_hook_events);
         }
-        // `prompt_incremental_start` fires the callback from inside
-        // `status_prompt_set`, and the callback queues its command behind the
-        // item that raised the prompt. Running it last is that ordering.
         if let Some(submission) = incremental_start {
             self.submit_command_prompt(source_client, source_kind, context, &submission);
         }
@@ -16415,9 +16329,6 @@ impl Shared {
         );
     }
 
-    /// The pin's `status_message_set(c, -1, 1, 0, 0, ...)` from a mode: logged
-    /// under the client's name, shown for the session's `display-time` until a
-    /// key clears it, with no command and so no `after-display-message`.
     fn publish_status_message(
         self: &Arc<Self>,
         client: ClientId,
@@ -17752,10 +17663,6 @@ impl Shared {
         )
     }
 
-    /// `send-text`: paste into a terminal pane, wait until the text is
-    /// visibly on screen, then press Enter. The actor brackets the paste
-    /// when the app asked for it; the echo poll is what makes the Enter
-    /// safe, which is the whole point over `send-keys`.
     fn send_text(
         self: &Arc<Self>,
         client: ClientId,
@@ -19346,12 +19253,6 @@ impl Shared {
         self.accept_wake.wake();
     }
 
-    /// Re-fit the overlays a client owns after its own terminal geometry
-    /// changed. The pin runs `menu_resize_cb` and `popup_resize_cb` from
-    /// `MSG_RESIZE` and closes neither: a menu keeps its rows, its width, its
-    /// selection and its stay-open policy and only slides back inside the
-    /// viewport, and a popup takes the smaller of the size it asked for and
-    /// the viewport, returning to its preferred origin whenever that fits.
     fn refit_client_overlays(self: &Arc<Self>, client: ClientId) {
         let Ok(Some(geometry)) = popup_client_geometry(&self.inner.lock(), client) else {
             return;
@@ -19387,13 +19288,6 @@ impl Shared {
         self.publish_to_client(client, EventPayload::Menu { state: Some(menu) });
     }
 
-    /// Re-read the overlay style options the way `menu_reapply_styles` and
-    /// `popup_reapply_styles` do on every draw, so a `set-option` that lands
-    /// while an overlay is up repaints it with no key pressed. Both read the
-    /// current window of the session their own client is attached to and give
-    /// up when that client has no session. `menu-border-lines` and
-    /// `popup-border-lines` are deliberately absent: the pin copies those into
-    /// the overlay when it is created and never looks at them again.
     fn restyle_client_overlays(self: &Arc<Self>) {
         let clients = {
             let inner = self.inner.lock();
@@ -20839,8 +20733,6 @@ impl Shared {
         }
     }
 
-    /// Detach every attached client but `stealer`, either across the server or
-    /// on one session.
     fn evict_clients_with_event_hooks(
         self: &Arc<Self>,
         session: Option<SessionId>,
@@ -22418,8 +22310,6 @@ impl Shared {
         let pane_focus = pane_focus_before
             .as_ref()
             .map(|before| pane_focus_hook_events(&mut inner, before));
-        // `tty_keys_next` updates pane focus before it notifies
-        // `client-focus-out` and after it notifies `client-focus-in`.
         let pane_focus = pane_focus.unwrap_or_default();
         if focused {
             hook_events.extend(client_focus_hook(&inner, kind, context, client, focused));
@@ -23078,9 +22968,6 @@ impl Shared {
         self.pane_mode_input(client, context, pane, PaneModeInput::Key(key))
     }
 
-    /// `window_pane_key`'s mode branch for a pointer: the pin forwards a mouse
-    /// key to the pane, and a pane holding a mode hands it to the mode's own
-    /// key callback with the cell `cmd_mouse_at` resolved.
     fn pane_mode_mouse(
         self: &Arc<Self>,
         client: ClientId,
@@ -23430,13 +23317,6 @@ impl Shared {
         self.apply_customize_result(client, &mut context, owner.pane, mode, &result);
     }
 
-    /// `server_client_key_callback`'s mouse half. A decoded pointer event the
-    /// client already resolved into one of the pin's mouse key names is looked
-    /// up in the table the client is in and then in the session's root table,
-    /// exactly as the pin looks a mouse key up, and its binding runs against
-    /// the pane and window the event landed on. A name with no binding does
-    /// nothing here: the pin forwards it to the pane and the client, which
-    /// still owns the pointer, has already decided what else the gesture does.
     fn input_mouse_key(
         self: &Arc<Self>,
         client: ClientId,
@@ -23658,13 +23538,6 @@ impl Shared {
         result
     }
 
-    /// `server_client_handle_key`'s `forward_key`: a mouse key that matched
-    /// nothing in the first table tried, and so was never looked up anywhere
-    /// but the root table, is handed to the pane the event landed on through
-    /// `window_pane_key`. `input_key_mouse` writes it only while that pane has
-    /// a mouse mode armed, so the pane input the client encoded with the event
-    /// is the write, and anything the client encoded for its own pointer
-    /// handling instead is dropped the way an unarmed pane drops a report.
     fn update_mouse_drag(
         self: &Arc<Self>,
         client: ClientId,
@@ -24983,10 +24856,6 @@ impl Shared {
         Ok(())
     }
 
-    /// `cmd_display_panes_key`: unzoom, then run the template with the chosen
-    /// pane's `%id` as its only argument. The default template is
-    /// `select-pane -t "%%%"`, whose trailing `%` is `cmd_template_replace`'s
-    /// quoting form.
     fn select_display_pane(
         self: &Arc<Self>,
         client: ClientId,
@@ -25084,8 +24953,6 @@ impl Shared {
         let (selection, session) = {
             let inner = self.inner.lock();
             let (selection, session) = match target {
-                // `window_client_mode` always carries a command, so a client
-                // row never reaches the tree's own activation.
                 ChooseTreeTarget::Client(_) => return Ok(()),
                 ChooseTreeTarget::Session(session) => (None, session),
                 ChooseTreeTarget::Window(window) => {
@@ -25196,9 +25063,6 @@ impl Shared {
         self.nudge_client_timers();
     }
 
-    /// `window_pane_reset_mode` kills a `copy-mode -k` pane once the mode is
-    /// gone, with every consequence killing the last pane of a window,
-    /// session, or server has.
     fn reap_copy_mode_kill_panes(self: &Arc<Self>) {
         let panes = std::mem::take(&mut self.inner.lock().copy_kill_panes);
         for pane in panes {
@@ -25735,16 +25599,10 @@ impl Shared {
         if let Some(submission) = outcome.submission {
             self.submit_command_prompt(client, kind, context, &submission);
         }
-        // `cmd_command_prompt_callback` calls `cmdq_continue` after
-        // `cmdq_insert_after`, so the answer's commands are already queued
-        // ahead of whatever the issuing client had left.
         drop(outcome.waiter);
         !outcome.pass
     }
 
-    /// `-i`'s per-edit fire: the template runs against the prefixed buffer
-    /// while the prompt stays open, the pin's `prompt_fire_callback` with
-    /// `PROMPT_KEY_HANDLED`.
     fn settle_pane_prompts(self: &Arc<Self>) {
         let events = hook_events::pane_prompt_hook_events(&mut self.inner.lock());
         self.run_event_hooks(events);
@@ -25851,8 +25709,6 @@ impl Shared {
                         inner.client_entry(client).command_prompt.replace(prompt);
                         (None, remembered, prompt_type, false, Some(state), None)
                     } else {
-                        // `-i` already ran the template on every edit; its Enter
-                        // only records history and closes.
                         let waiter = prompt.waiter.take();
                         let submission = (prompt.mode != CommandPromptMode::Incremental
                             && (prompt.answers.iter().any(|answer| !answer.is_empty())
@@ -25972,9 +25828,6 @@ impl Shared {
         self.submit_template(client, kind, context, submission, "command-prompt");
     }
 
-    /// `args_make_commands` plus the queue append behind it: `command-prompt`
-    /// and `display-panes` share the whole path and differ only in the name
-    /// their diagnostics and callback preparation carry.
     fn submit_template(
         self: &Arc<Self>,
         client: ClientId,
@@ -26332,8 +26185,6 @@ impl Shared {
             );
             return;
         };
-        // Record image PastePath bytes so remote placeholders can bind. Stage them before
-        // input_paste to preserve the terminal actor's FIFO command order.
         if let Some(format) = PastedImageFormat::from_extension(&upload.extension) {
             self.stage_pending_pasted_image(client, upload.pane, format, Arc::from(upload.bytes));
         }
@@ -26367,10 +26218,6 @@ impl Shared {
         }
     }
 
-    /// Stage pending bytes on the pane's terminal and open the bind window. The pending
-    /// entry is inserted while `inner` is held so a concurrent pane removal either sees
-    /// it (and purges it) or prevents the insert. Returns false when the client is no
-    /// longer attached to a terminal pane.
     fn stage_pending_pasted_image(
         &self,
         client: ClientId,
@@ -28306,11 +28153,6 @@ impl Shared {
         }
     }
 
-    /// `input_exit_rename` clears `automatic-rename` and sets the window name;
-    /// an empty name removes the local `automatic-rename` override instead.
-    /// The pin writes both straight into the option and window tables, so the
-    /// two commands run with their after-command hooks suppressed and only the
-    /// `window-renamed` event reaches hooks.
     fn rename_window_from_pane(
         self: &Arc<Self>,
         pane: PaneId,
@@ -28976,10 +28818,6 @@ impl Shared {
         }
     }
 
-    /// `tty_update_features`: the features a client learned from its own
-    /// terminal after the hello join its roster and never leave it, and the
-    /// status line is recomposed because the theme colours read
-    /// `#{client_colours}`.
     fn add_client_terminal_features(
         &self,
         client: ClientId,
@@ -29008,9 +28846,6 @@ impl Shared {
         }
     }
 
-    /// `tty_keys_extended_device_attributes` stores the reply on the client
-    /// before `tty_update_features` reads it, so the name lands whether or not
-    /// the daemon knows any feature by it.
     fn set_client_terminal_type(&self, client: ClientId, kind: ClientKind, term_type: &str) {
         if kind != ClientKind::Interactive || term_type.is_empty() {
             return;
@@ -29684,9 +29519,6 @@ impl Shared {
         }
     }
 
-    /// `window_pane_input_callback`: the caller's stream reaches a PTY-free
-    /// pane's parser as if a child had printed it. The mux has already refused
-    /// a pane that holds a process.
     fn feed_pane_stream_input(&self, pane: PaneId, bytes: &[u8]) -> bool {
         let (terminal, geometry) = {
             let inner = self.inner.lock();
@@ -29740,7 +29572,6 @@ impl Shared {
             .unwrap_or_else(spent_source_stream_error)
     }
 
-    /// Append one line to the running Command request's stderr.
     fn record_command_stderr(&self, client: ClientId, line: &str) {
         let deliver = {
             let mut inner = self.inner.lock();
@@ -29892,9 +29723,6 @@ impl Shared {
         Ok(Some(command))
     }
 
-    /// Name which of the pin's two stdout writers claimed this Command
-    /// request's stream. `file_write` on `-` beats `cmdq_print`, the way the
-    /// pin's first writer keeps the `dup`ed descriptor for the whole run.
     fn record_command_stdout_claim(&self, client: ClientId, claim: StdoutClaim) {
         if let Some(streams) = self
             .inner
@@ -29910,8 +29738,6 @@ impl Shared {
         }
     }
 
-    /// Raise the running Command request's exit status, mirroring the pin's
-    /// `c->retval = 1`.
     fn record_command_failure(&self, client: ClientId) {
         if let Some(streams) = self
             .inner
@@ -29923,8 +29749,6 @@ impl Shared {
         }
     }
 
-    /// The pin's `c->retval = 1; c->flags |= CLIENT_EXIT`: the status is raised
-    /// and the client stops, so nothing queued behind this command runs.
     fn request_command_client_exit(&self, client: ClientId) {
         let announce = {
             let mut inner = self.inner.lock();
@@ -29954,9 +29778,6 @@ impl Shared {
         })
     }
 
-    /// `cmdq_print` on a command client writes through to its stdout while the
-    /// item is still running, so a `-P` line is released before the caller's
-    /// stream opens rather than held until the command ends.
     fn release_command_stdout(&self, client: ClientId, output: &mut RawText) {
         if output.is_empty() {
             return;
@@ -30116,10 +29937,6 @@ impl Shared {
         report.delivered_replay_issues = report.replay_issues().len();
     }
 
-    /// Publish the complete option map with the recipient's session-effective
-    /// `mouse` value stamped in, skipping recipients whose published map is
-    /// already equal. `sessions` narrows the recipients to clients attached to
-    /// those sessions; `None` publishes to every subscriber.
     fn publish_effective_mux_options(&self, sessions: Option<&BTreeSet<SessionId>>) {
         let recipients = {
             let mut inner = self.inner.lock();
@@ -30486,12 +30303,6 @@ impl Shared {
         }
     }
 
-    /// Forward an application's own OSC 52 the way `input_osc_52` does.
-    /// `input_osc_52_parse` returns 0 unless `set-clipboard` is `on`
-    /// (`options_get_number(global_options, "set-clipboard") != 2`), so under
-    /// `external` and `off` alike the pin writes nothing to the outer terminal,
-    /// creates no buffer and raises no `pane-set-clipboard`. Measured on pinned
-    /// d77c9dc6 in `compat/scenarios/smoke/copy-selection-clipboard-bytes`.
     fn deliver_clipboard_write(
         self: &Arc<Self>,
         pane: PaneId,
@@ -30520,10 +30331,6 @@ impl Shared {
         self.raise_pane_set_clipboard(pane);
     }
 
-    /// Pick the victim's exit action the way `cmd_detach_client_exec` picks
-    /// between `server_client_exec`, `MSG_DETACHKILL`, and `MSG_DETACH`: `-E`
-    /// wins over `-P`, and the shell comes from the victim session's
-    /// `default-shell` with the pin's `_PATH_BSHELL` fallback.
     fn client_exit_action(&self, session: SessionId, exit: &DetachExit) -> ClientExitAction {
         if let Some(command) = exit.exec.clone() {
             let shell = {
@@ -30773,11 +30580,6 @@ impl Shared {
         }
     }
 
-    /// The pin's `status_message_clear`: drop the record, cancel its timer, and
-    /// when the client was frozen publish one full latest viewport before
-    /// patches resume — `CLIENT_ALLREDRAWFLAGS`, "was frozen and may have
-    /// changed". `notify` controls whether the wire also receives an
-    /// identity-specific clear.
     fn retire_client_message(
         self: &Arc<Self>,
         client: ClientId,
@@ -30852,8 +30654,6 @@ impl Shared {
         }
     }
 
-    /// The pin's `server_client_handle_key0`: a key press clears the message and
-    /// then goes on to be processed normally.
     fn dismiss_client_message(self: &Arc<Self>, client: ClientId) {
         let Some(retired) = ({
             let mut inner = self.inner.lock();
@@ -33111,9 +32911,6 @@ mod source_hook_queue_tests;
 #[cfg(all(test, unix))]
 mod chooser_keys_tests;
 
-/// Everything the daemon owns on behalf of agent panes. Nothing in here may be
-/// reached while the daemon's own state lock is held: the runtime calls back
-/// into it from its pane threads.
 #[cfg(feature = "agent")]
 impl Shared {
     fn agent_runtime(self: &Arc<Self>) -> Option<Arc<AgentRuntime>> {
@@ -33123,9 +32920,6 @@ impl Shared {
         if let Some(runtime) = self.agent.lock().as_ref() {
             return Some(Arc::clone(runtime));
         }
-        // Tests never journal and never spawn an adapter: the pane opens
-        // against a runner that reports there is none, and whoever wants a
-        // real conversation installs a fixture first.
         let journal = if cfg!(test) {
             None
         } else {
@@ -33159,7 +32953,6 @@ impl Shared {
         Some(runtime)
     }
 
-    /// The runtime only if a pane has already asked for one.
     fn open_agent_runtime(&self) -> Option<Arc<AgentRuntime>> {
         self.agent.lock().clone()
     }
@@ -33473,7 +33266,6 @@ impl Shared {
         runtime.shutdown();
     }
 
-    /// One client's answer to an agent message, or the reason it was refused.
     fn agent_message(
         self: &Arc<Self>,
         client: ClientId,
@@ -33652,8 +33444,6 @@ impl Shared {
             .ok_or(ServerError::PaneExited(pane))
     }
 
-    /// Submit to `pane` and, when its turn ends, hand the reply back to the
-    /// agent pane that asked, queued behind whatever that pane is doing.
     #[cfg(feature = "agent")]
     fn submit_agent_prompt_and_notify(
         self: &Arc<Self>,
@@ -33856,9 +33646,6 @@ impl Shared {
         wait.finish(self, Execution::default())
     }
 
-    /// Push the pane state of every agent pane a reattaching client can see.
-    /// The stream itself is not pushed: the client asks for the replay it
-    /// wants from the sequence it kept.
     fn send_agent_resync(&self, client: ClientId, outbound: &OutboundMailbox) {
         let Some(runtime) = self.open_agent_runtime() else {
             return;
@@ -33878,8 +33665,6 @@ impl Shared {
         }
     }
 
-    /// A pane entering a client's visible set gets its state pushed; the
-    /// client replays the stream from the sequence it cached.
     fn refresh_agent_visibility(&self) {
         let changes = {
             let mut inner = self.inner.lock();
@@ -34065,7 +33850,6 @@ impl Shared {
     }
 }
 
-/// Which pane an agent message addresses.
 #[cfg(feature = "agent")]
 fn agent_message_pane(message: &ProtocolMessage) -> Result<PaneId, ServerError> {
     match message {
@@ -34121,7 +33905,6 @@ struct SourceFileRequest {
     parse_only: bool,
     verbose: bool,
     context: ExecutionContext,
-    /// What `-` reads, when `path` is `-` and the caller brought a stream.
     stdin: Option<SourceStream>,
 }
 
@@ -34140,7 +33923,6 @@ struct PendingConfigFile {
     path: PathBuf,
     context: ExecutionContext,
     options: SourceFileLoadOptions,
-    /// Set when the file is the caller's standard input rather than a path.
     stdin: Option<RawText>,
 }
 
@@ -34364,11 +34146,6 @@ struct ConfigStdoutTranscript {
     raw_claimed: bool,
 }
 
-/// What the pin's client did with one replayed command's stdout. `file_write`
-/// on `-` and `file_vprint` both `dup` the command client's stdout once and
-/// then `close` it, so the first writer owns the stream: a later `file_write`
-/// answers `EBADF` and a later `cmdq_print` is dropped without an error,
-/// because `file_vprint` passes no callback for `file_fire_done` to report to.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum ReplayStdoutWrite {
     Written,
@@ -34492,11 +34269,6 @@ impl ConfigLoadReport {
         }
     }
 
-    /// Whether a `file_write` on `-` owned the command client's stdout while
-    /// this report replayed. The pin's claim is a property of the writer, not
-    /// of the bytes: a raw buffer ending in a newline looks exactly like a
-    /// print, which is what `semantic:cli-output-sourced-raw-newline-claim`
-    /// measured.
     fn stdout_raw_claimed(&self) -> bool {
         self.stdout_transcript
             .as_ref()
@@ -34597,8 +34369,6 @@ impl ConfigLoadReport {
         });
     }
 
-    /// Every invalid-line diagnostic in encounter order, duplicates kept. The
-    /// summary channels de-duplicate and cap; the CLI stream does neither.
     fn diagnostics(&self) -> &[String] {
         &self.diagnostics
     }
@@ -34995,7 +34765,6 @@ enum ResolvedDetach {
     Session(SessionId),
 }
 
-/// The `detach-client` modifiers that pick the victim's exit action.
 #[derive(Clone, Default)]
 struct DetachExit {
     exec: Option<String>,
@@ -35304,10 +35073,6 @@ struct ServerState {
     control_command_event_captures:
         HashMap<(ClientId, cmdq::ItemId), Vec<CapturedControlCommandEvents>>,
     client_file_waiters: BTreeMap<u64, ClientFileWaiter>,
-    /// `new_wp->wait_item` for `split-window -W`: registered when the pane is
-    /// created and woken with the child's status before the pane is retained or
-    /// removed. Both ends live here so a child that is already gone when the
-    /// invoking command returns still hands its status over.
     pane_exit_waits: BTreeMap<PaneId, PaneExitWait>,
     next_client_file_request: u64,
     attached: BTreeMap<SessionId, BTreeSet<ClientId>>,
@@ -35316,13 +35081,8 @@ struct ServerState {
     reported_pane_places: BTreeMap<PaneId, BTreeMap<ClientId, ReportedPlace>>,
     terminal_input_sequence: u64,
     chooser_kill_panes: Vec<PaneId>,
-    /// The pane a `copy-mode -k` in the current effect batch armed, consumed
-    /// by the entry that follows it.
     pending_copy_kill: Option<PaneId>,
-    /// `wme->swp`: the pane whose screen the next copy-mode entry clones.
     pending_copy_source: Option<(PaneId, PaneId)>,
-    /// Panes whose `copy-mode -k` session has ended, waiting for the kill that
-    /// `window_pane_reset_mode` runs.
     copy_kill_panes: Vec<PaneId>,
     pane_modes: BTreeMap<PaneId, Vec<PaneModeRequest>>,
     pane_mode_transitions: Vec<PaneModeTransition>,
@@ -35550,18 +35310,9 @@ struct CopySession {
     pane: PaneId,
     observed: bool,
     scroll_exit: bool,
-    /// `wme->kill`: the pane goes when this mode is torn down.
     kill: bool,
-    /// `data->refresh_active`, mirrored so the daemon knows which views its
-    /// refresh timer has to tick.
     refresh: bool,
-    /// `PANE_UNSEENCHANGES`: input.c raises it on output that arrives while the
-    /// pane holds a mode, and window.c drops it when the last mode goes. zz
-    /// carries it on the mode entry instead, which clears it the same way
-    /// because entering a mode writes a fresh record.
     unseen: bool,
-    /// `wme->swp != wme->wp`: the backing came from another pane, so
-    /// `window_copy_refresh_start` refuses to arm the timer.
     sourced: bool,
     exiting: bool,
 }
@@ -35759,13 +35510,8 @@ struct DisplayPanesSession {
     source_session: SessionId,
     selectable: bool,
     state: DisplayPanesState,
-    /// `cdata->state`: the optional template, kept whole so a selection can run
-    /// `args_make_commands` against the chosen pane the way
-    /// `cmd_display_panes_key` does.
     template: Option<CommandPromptTemplate>,
     source: Option<SourceSpan>,
-    /// `cdata->item`: the queue parked on the overlay, released when the
-    /// session is dropped, which `cmd_display_panes_free` mirrors exactly.
     waiter: Option<OverlayWait>,
     mode: Option<PaneId>,
 }
@@ -36013,14 +35759,8 @@ fn display_panes_escape_key() -> zz_terminal::KeyInput {
 enum ChooseBufferResult {
     Updated,
     Close,
-    /// `window_buffer_do_paste` over the current row or, for `P`, over every
-    /// tagged one. `P` closes the mode even when it pasted nothing.
     Paste(Vec<String>),
-    /// `window_buffer_do_delete` over the current row or, for `D`, over every
-    /// tagged one, which deletes nothing at all when nothing is tagged.
     Delete(Vec<String>),
-    /// `mode_tree_build`: the tags, the sort order and the help screen all
-    /// redraw the whole mode.
     Rebuild,
 }
 
@@ -36045,10 +35785,7 @@ struct ChooseBufferSession {
     filter: Option<String>,
     format: Option<String>,
     kill_source: bool,
-    /// `mode_tree_item.tagged`, kept by buffer name so a rebuild carries the
-    /// tags the way the tree chooser keeps them by target.
     tagged: BTreeSet<String>,
-    /// `mtd->help`: the screen `F1` and `C-h` raise, closed by the next key.
     help: bool,
     sort: TmuxSort,
     key_format: Option<String>,
@@ -36452,8 +36189,6 @@ impl ChooseBufferSession {
         Ok(ChooseBufferResult::Updated)
     }
 
-    /// `mode_tree_each_tagged` with no fallback to the current row, which is
-    /// what `D` and `P` pass, so an empty tag set means an empty run.
     fn tagged_names(&self) -> Vec<String> {
         self.names
             .iter()
@@ -36569,8 +36304,6 @@ fn bounded_choose_buffer_preview(data: &[u8]) -> String {
     preview
 }
 
-/// `window_tree_key`'s `x` arm: the prompt names the row it is about, and a
-/// row whose target has gone raises nothing at all.
 fn choose_tree_kill_prompt(engine: &MuxEngine, target: ChooseTreeTarget) -> Option<String> {
     match target {
         ChooseTreeTarget::Session(session) => engine
@@ -36591,15 +36324,10 @@ fn choose_tree_kill_prompt(engine: &MuxEngine, target: ChooseTreeTarget) -> Opti
                 .position(|candidate| *candidate == pane)?;
             Some(format!("Kill pane {index}? "))
         }
-        // `window_client_key` detaches straight from `d`, `x`, `D` and `X`:
-        // the client mode raises no confirm prompt.
         ChooseTreeTarget::Client(_) => None,
     }
 }
 
-/// `window_tree_pull_item`: a session row resolves to its current window's
-/// active pane and a window row to its own active pane, which is the pane
-/// `server_set_marked` takes.
 fn hold_chooser_zoom(inner: &mut ServerState, client: ClientId, pane: PaneId, zoom: bool) -> bool {
     if !zoom || inner.client(client).is_some_and(|c| c.native_chooser) {
         return false;
@@ -36665,16 +36393,10 @@ fn choose_tree_kill_command(target: ChooseTreeTarget) -> &'static str {
         ChooseTreeTarget::Session(_) => "kill-session -t %%",
         ChooseTreeTarget::Window(_) => "kill-window -t %%",
         ChooseTreeTarget::Pane(_) => "kill-pane -t %%",
-        // `window_client_do_detach` for `x` and `X`, which pass MSG_DETACHKILL.
         ChooseTreeTarget::Client(_) => "detach-client -P -t %%",
     }
 }
 
-/// `window_tree_get_target` hands `mode_tree_run_command` the row's own
-/// `cmd_find_state`, so a line typed at the `:` prompt with no `-t` resolves
-/// against the row the cursor sits on and not against the client's current
-/// window. A session row carries that session's current window and its active
-/// pane, a window row the window's active pane.
 fn choose_tree_target_context(
     engine: &MuxEngine,
     target: ChooseTreeTarget,
@@ -36708,7 +36430,6 @@ fn choose_tree_command_target(
     target: ChooseTreeTarget,
 ) -> Result<String, ServerError> {
     match target {
-        // `mode_tree_run_command` substitutes the client row's `ttyname`.
         ChooseTreeTarget::Client(id) => clients
             .iter()
             .find(|row| row.client == id)
@@ -36760,30 +36481,19 @@ enum ChooseTreeResult {
     Updated(ChooseTreeUpdateKind),
     Close,
     Activate(ChooseTreeTarget),
-    /// `window_tree_kill_each` over the current row or over every tagged one,
-    /// which leaves the mode open and rebuilds it.
     Kill(Vec<ChooseTreeTarget>),
-    /// `window_tree_command_each`: the line the `:` prompt took, run once per
-    /// tagged row or once for the current row when none is tagged.
     Command {
         template: String,
         targets: Vec<ChooseTreeTarget>,
     },
-    /// `window_tree_swap` through `mode_tree_swap`: two window rows trade
-    /// slots and the mode rebuilds on the row the current one moved to.
     Swap {
         current: zz_protocol::WindowId,
         other: zz_protocol::WindowId,
         row: u32,
     },
-    /// `server_set_marked` on the pane a row resolves to, or
-    /// `server_clear_marked` for `M`.
     Mark(Option<PaneId>),
 }
 
-/// `mtd->prompt`. `PROMPT_SINGLE` takes one character as the whole answer and
-/// is what the two kill keys raise; the `:` prompt is an edited line instead,
-/// which is also why `PROMPT_ACCEPT` never answers it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ChooserPromptKind {
     Kill,
@@ -36791,8 +36501,6 @@ enum ChooserPromptKind {
     Filter,
 }
 
-/// `mode_tree_set_prompt`'s state: the string the pin builds from the rows it
-/// is about, the line typed into it so far, and the rows the answer acts on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ChooserPrompt {
     kind: ChooserPromptKind,
@@ -36817,8 +36525,6 @@ impl ChooserPrompt {
         }
     }
 
-    /// mode-tree.c raises the filter prompt as `PROMPT_TYPE_SEARCH` and
-    /// window-tree.c the `:` prompt as `PROMPT_TYPE_COMMAND`.
     const fn history_type(&self) -> CommandPromptType {
         match self.kind {
             ChooserPromptKind::Filter => CommandPromptType::Search,
@@ -36856,21 +36562,16 @@ impl ChooserPrompt {
         }
     }
 
-    /// `prompt_add_history` on Enter for a non-empty line.
     fn remembered(&self) -> Option<(CommandPromptType, String)> {
         let input = self.input();
         (!input.is_empty()).then(|| (self.history_type(), input))
     }
 
-    /// What the mode's screen shows: the prompt string with the line typed so
-    /// far after it, which is empty for a `PROMPT_SINGLE` answer.
     fn line(&self) -> String {
         format!("{}{}", self.text, self.input())
     }
 }
 
-/// What a key press means to an open chooser prompt, which `prompt_key` decides
-/// from the prompt's own flags rather than from the chooser's key table.
 enum ChooserPromptStep {
     Single(char),
     Edit(ChooserPromptEdit),
@@ -36882,8 +36583,6 @@ enum ChooseTreeUpdateKind {
     Full,
 }
 
-/// `window_client_itemdata` plus the row text `window_client_build` expands in
-/// the client's own format tree, which the chooser cannot reach on a rebuild.
 #[derive(Clone, Debug)]
 struct ClientChooserRow {
     client: ClientId,
@@ -36894,13 +36593,10 @@ struct ClientChooserRow {
     width: u16,
     height: u16,
     matches: bool,
-    /// `c->session->curw->window`'s active pane, the preview's subject.
     pane: Option<PaneId>,
 }
 
-/// `WINDOW_CLIENT_DEFAULT_COMMAND`.
 const CLIENT_MODE_DEFAULT_COMMAND: &str = "detach-client -t '%%'";
-/// `window_client_do_detach` for `d` and `D`, which pass `MSG_DETACH`.
 const CLIENT_MODE_DETACH_COMMAND: &str = "detach-client -t %%";
 
 #[derive(Debug)]
@@ -36908,31 +36604,17 @@ struct ChooseTreeSession {
     source_pane: PaneId,
     source_session: SessionId,
     kind: ChooseTreeKind,
-    /// `data->preview_is_info`: the client mode's `i` view.
     info_preview: bool,
-    /// `window_client_build`'s item list, rebuilt from the server whenever the
-    /// daemon hands the chooser a fresh view of its clients.
     clients: Vec<ClientChooserRow>,
     sessions_only: bool,
     filter: Option<String>,
     format: Option<String>,
     hide_source: bool,
     kill_source: bool,
-    /// `data->prompt_flags`: `choose-tree -y` is `PROMPT_ACCEPT`, which
-    /// `mode_tree_set_prompt` turns into a queued `y` on the kill prompts and
-    /// on nothing else, because only they pass `PROMPT_SINGLE` beside it.
     prompt_accept: bool,
-    /// `mode_tree_item.tagged`, kept by target rather than by row so a rebuild
-    /// carries the tags.
     tagged: BTreeSet<ChooseTreeTarget>,
-    /// `mtd->prompt`: the chooser's own prompt, which answers a key before the
-    /// chooser's vocabulary sees it and dies with the chooser.
     prompt: Option<ChooserPrompt>,
-    /// `mtd->help`: the help screen `F1` and `C-h` raise, which the next key of
-    /// any kind closes without doing anything else.
     help: bool,
-    /// `mtd->current` is a line index, so the row a kill emptied keeps its
-    /// place in the rebuilt tree instead of falling back to the source pane.
     pending_row: Option<u32>,
     sort: TmuxSort,
     key_format: Option<String>,
@@ -37155,8 +36837,6 @@ impl ChooseTreeSession {
         branches
     }
 
-    /// `sort_winlink_cmp` for two window rows: the criterion first, then the
-    /// window name, and never the reversal, which the caller applies.
     fn window_sort_ordering(
         &self,
         engine: &MuxEngine,
@@ -37188,9 +36868,6 @@ impl ChooseTreeSession {
         ordering.then_with(|| left.name.cmp(&right.name))
     }
 
-    /// A `-K` format expands in the row's own context, the way
-    /// `window_tree_get_key` seeds `format_defaults` from the item type before
-    /// expanding `data->key_format`.
     fn assign_row_keys(
         &self,
         items: &mut [ChooseTreeItem],
@@ -37441,9 +37118,6 @@ impl ChooseTreeSession {
         );
     }
 
-    /// `window_client_build`: the flat client list, sorted by the mode's own
-    /// criterion and filtered by `-f`, with the row text already expanded in
-    /// each client's own format tree.
     fn rebuild_clients(
         &mut self,
         engine: &MuxEngine,
@@ -37861,10 +37535,6 @@ impl ChooseTreeSession {
         Ok(ChooseTreeResult::Updated(update))
     }
 
-    /// `mode_tree_swap`: walk to the next line at the same depth, skipping the
-    /// deeper rows under the current one, and hand the pair to
-    /// `window_tree_swap`, which trades only two window rows of one session and
-    /// refuses a trade the sort order would undo.
     fn swap(&mut self, engine: &MuxEngine, current: usize, down: bool) -> ChooseTreeResult {
         let stay = ChooseTreeResult::Updated(ChooseTreeUpdateKind::Delta);
         let Some(row) = self.rendered.items.get(current) else {
@@ -37920,8 +37590,6 @@ impl ChooseTreeSession {
         }
     }
 
-    /// `mode_tree_key`'s `t`: every parent and every child of the current row
-    /// loses its tag before the row takes one.
     fn relatives(&self, current: usize) -> Vec<ChooseTreeTarget> {
         let Some(row) = self.rendered.items.get(current) else {
             return Vec::new();
@@ -37947,8 +37615,6 @@ impl ChooseTreeSession {
         relatives
     }
 
-    /// `mode_tree_set_prompt` with `PROMPT_SINGLE`, plus the queued `y` that
-    /// `PROMPT_ACCEPT` adds when `-y` was given.
     fn raise_kill_prompt(
         &mut self,
         text: String,
@@ -37987,9 +37653,6 @@ impl ChooseTreeSession {
         self.select_search_match(&search.query, search.reverse, true);
     }
 
-    /// `prompt_key` on the `:` prompt, which is an ordinary edited line:
-    /// `window_tree_command_callback` runs it once per tagged row and an empty
-    /// line runs nothing at all.
     fn edit_command_prompt(
         &mut self,
         edit: &ChooserPromptEdit,
@@ -38029,9 +37692,6 @@ impl ChooseTreeSession {
         ChooseTreeResult::Updated(ChooseTreeUpdateKind::Full)
     }
 
-    /// `prompt_key` under `PROMPT_SINGLE`: one character closes the prompt and is
-    /// the whole answer, and `window_tree_kill_current_callback` kills only for
-    /// `y` or `Y`. A key that carries no character leaves the prompt open.
     fn answer_kill_prompt(&mut self, answer: char) -> ChooseTreeResult {
         let Some(prompt) = self.prompt.take() else {
             return ChooseTreeResult::Updated(ChooseTreeUpdateKind::Delta);
@@ -38155,8 +37815,6 @@ struct ClientFileWaiter {
     complete: file_commands::Completion,
 }
 
-/// The overlay styles a `display-menu` or `display-popup` command named, kept
-/// apart from the option-derived cell they override.
 #[derive(Clone, Debug, Default)]
 struct OverlayStyleOverrides {
     style: Option<String>,
@@ -38181,16 +37839,10 @@ struct ModeTreeMenu {
 #[cfg(all(test, unix))]
 mod menu_queue_e08_tests;
 
-/// A `-t` the daemon resolved for the mux. `command` is the rewritten
-/// invocation when the alias found a pane, and `None` when it did not, which is
-/// the pin's `no current client` case.
 struct ClientAliasRoute {
     command: Option<CommandInvocation>,
 }
 
-/// Rewrite one short option's value in place, whether it was spelled attached
-/// (`-t@`) or as the next argument, and answer `None` when the option is not
-/// there to rewrite.
 fn replace_short_option_value(
     args: &[RawText],
     value_options: &[char],
@@ -38226,9 +37878,6 @@ fn replace_short_option_value(
     None
 }
 
-/// `command-prompt` after `cmd_find_client`: the prompt is raised on the
-/// resolved target client with that client's own current pane as the format
-/// target, whoever issued the command.
 struct CommandPromptRoute {
     client: ClientId,
     kind: ClientKind,
@@ -38444,21 +38093,9 @@ struct CommandPrompt {
     prompt_type: CommandPromptType,
     mode: CommandPromptMode,
     no_freeze: bool,
-    /// `-P`'s `wp`: `window_pane_set_prompt` hangs the prompt on a pane, and
-    /// the client draws it over that pane rather than on the status row.
     pane: Option<PaneId>,
-    /// `prompt_create`'s `pr->last`: under `-i` the initial input seeds this
-    /// instead of the buffer, and `C-r`/`C-s` restore it into an empty buffer.
     last: String,
-    /// `cdata->item`: the command queue parked on this prompt. Dropping the
-    /// prompt is `cmd_command_prompt_free`, so every way the prompt ends wakes
-    /// the queue, and an answered prompt hands it to `PromptKeyOutcome` first
-    /// so the answer's commands run before the issuing queue resumes.
     waiter: Option<OverlayWait>,
-    /// `pr->keys` and `pr->word_separators`, filled by `prompt_set_options`
-    /// from the raising session's `status-keys` and `word-separators` and kept
-    /// for the prompt's whole life, plus the `PROMPT_COMMANDMODE` flag the vi
-    /// table toggles.
     vi_keys: bool,
     command_mode: bool,
     word_separators: String,
@@ -38538,16 +38175,12 @@ impl CommandPrompt {
         self
     }
 
-    /// `prompt_set_options`: the prompt keeps the session's `status-keys` and
-    /// `word-separators` as they were when it opened.
     fn with_key_options(mut self, vi_keys: bool, word_separators: String) -> Self {
         self.vi_keys = vi_keys;
         self.word_separators = word_separators;
         self
     }
 
-    /// `cmd_command_prompt_callback`: an Enter that is not the chain's last
-    /// answer records the buffer and reopens on the next label and input.
     fn advance(&mut self) -> bool {
         self.answers.push(std::mem::take(&mut self.input));
         let Some(step) = self.steps.get(self.current.saturating_add(1)) else {
@@ -38578,14 +38211,10 @@ impl CommandPrompt {
         }
     }
 
-    /// `status_prompt_set`: the prompt raises `TTY_FREEZE` unless it is
-    /// incremental or `-C` asked it not to.
     const fn freezes(&self) -> bool {
         !self.no_freeze && !matches!(self.mode, CommandPromptMode::Incremental)
     }
 
-    /// `-1`, `-N` and `-k` read key codes rather than committed text, so the
-    /// text half of a split key press must not reach the buffer.
     const fn reads_raw_keys(&self) -> bool {
         matches!(
             self.mode,
@@ -38642,9 +38271,6 @@ impl CommandPrompt {
         true
     }
 
-    /// `prompt_key`'s `C-r`/`C-s`: an empty incremental buffer is refilled from
-    /// `pr->last` and searches forward again, otherwise the direction prefix
-    /// changes and the buffer stands.
     fn incremental_prefix(&mut self, backward: bool) -> char {
         if self.input.is_empty() {
             self.input.clone_from(&self.last);
@@ -38683,8 +38309,6 @@ impl CommandPrompt {
         changed
     }
 
-    /// `prompt_backward_word`: step back over spaces, then back to the start of
-    /// the run that shares the character class the landing character has.
     fn backward_word_index(&self, separators: &str) -> usize {
         let buffer = self.input.chars().collect::<Vec<_>>();
         let mut index = self.cursor_index();
@@ -38712,9 +38336,6 @@ impl CommandPrompt {
         self.set_cursor_index(index)
     }
 
-    /// `prompt_forward_word`: emacs first skips spaces, both stop at the first
-    /// space or opposite character class, and vi then lands on the start of the
-    /// next word rather than the space.
     fn move_word_right(&mut self, vi: bool, separators: &str) -> bool {
         let buffer = self.input.chars().collect::<Vec<_>>();
         let size = buffer.len();
@@ -38747,7 +38368,6 @@ impl CommandPrompt {
         self.set_cursor_index(index)
     }
 
-    /// `prompt_end_word`: forward to the last character of the next word.
     fn move_end_word(&mut self, separators: &str) -> bool {
         let buffer = self.input.chars().collect::<Vec<_>>();
         let size = buffer.len();
@@ -38798,8 +38418,6 @@ impl CommandPrompt {
         true
     }
 
-    /// `prompt_key`'s `C-w`: the same span `prompt_backward_word` would move
-    /// over, deleted.
     fn delete_previous_word(&mut self, separators: &str) -> bool {
         let end = self.cursor;
         if !self.move_word_left(separators) {
@@ -38899,8 +38517,6 @@ fn append_prompt_history_output(output: &mut String, prompt_type: &str, history:
     output.push('\n');
 }
 
-/// `prompt_hlist[PROMPT_NTYPES]`: command and search prompts keep separate
-/// rings, and `-T` alone decides which one a prompt reads and writes.
 fn prompt_history(inner: &ServerState, prompt_type: CommandPromptType) -> &[String] {
     match prompt_type {
         CommandPromptType::Command => &inner.command_history,
@@ -38971,25 +38587,15 @@ fn next_char_boundary(text: &str, index: usize) -> usize {
         .map_or(text.len(), |(offset, _)| index + offset)
 }
 
-/// `prompt_key`'s return, split by what the daemon owes the client afterwards.
-/// `Handled`, `Updated` and `LimitExceeded` keep the prompt; everything else
-/// retires it. Only `SubmitAndPass` is the pin's `PROMPT_KEY_NOT_HANDLED`, the
-/// one answer that lets the key go on to the key tables.
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PromptKeyAction {
     Handled,
     Updated,
     Close,
     Submit,
-    /// `-i`: Enter records history and closes, because every edit already ran.
     SubmitIncremental,
-    /// `-1`/`-k`: the answer is the key itself, not the buffer, and the pin
-    /// records history only for Enter.
     SubmitAnswer(String),
-    /// `-N`: the buffer runs and the key still reaches the key tables.
     SubmitAndPass,
-    /// `-i`: the template runs against this prefix plus the buffer and the
-    /// prompt stays open.
     Incremental(char),
     LimitExceeded,
 }
@@ -39000,29 +38606,22 @@ struct CommandPromptSubmission {
     source: Option<SourceSpan>,
 }
 
-/// What the wire owes the client about the prompt after one key press.
 #[derive(Default)]
 enum PromptWireUpdate {
-    /// The prompt neither changed nor closed, so nothing is published.
     #[default]
     Silent,
     Republish(Box<CommandPromptState>),
     Retire,
 }
 
-/// What one key press owes the client once the prompt lock is released.
 #[derive(Default)]
 struct PromptKeyOutcome {
     event: PromptWireUpdate,
-    /// The retired prompt was freezing, so the client owes a full viewport.
     retired: bool,
     remember: Option<(CommandPromptType, String)>,
     submission: Option<CommandPromptSubmission>,
-    /// The pin's `PROMPT_KEY_NOT_HANDLED`: the key goes on to the key tables.
     pass: bool,
     limit_exceeded: bool,
-    /// The parked command queue, released once the answer's own commands have
-    /// run, the way `cmdq_insert_after` puts them ahead of `cmdq_continue`.
     waiter: Option<OverlayWait>,
 }
 
@@ -39301,9 +38900,6 @@ fn enter_copy_session(
         .key_engine
         .get_or_insert_default()
         .switch_table(Some(table));
-    // `window_pane_set_mode` returns before it assigns `wme->kill` when the
-    // pane already holds this mode, so a re-entry neither arms nor clears the
-    // bit an earlier `copy-mode -k` set.
     let kill = inner.pending_copy_kill.take() == Some(pane)
         || inner
             .client(client)
@@ -39415,13 +39011,6 @@ fn chooser_takes_keys(inner: &ServerState, client: ClientId) -> bool {
             .is_some_and(|c| c.display_panes.is_none() && c.command_prompt.is_none())
 }
 
-/// `cmd_send_keys_exec` answers `not in a mode` at status 1 whenever the target
-/// pane has no mode entry whose mode carries a command, which is the only
-/// guard `send-keys -X` runs before handing the arguments to that command.
-/// tmux keeps the mode entry on the pane; zz keeps copy mode on the client's
-/// terminal view, so the pane carries a mode command exactly while some client
-/// is still in copy mode on it, or while the caller is reading a command
-/// output overlay.
 fn command_output_owns_pane(inner: &ServerState, client: ClientId, pane: PaneId) -> bool {
     inner
         .client(client)
@@ -39510,13 +39099,6 @@ fn pane_carries_a_mode_command(inner: &ServerState, client: ClientId, pane: Pane
             .any(|session| session.pane == pane && !session.exiting)
 }
 
-/// Spend the pending copy-mode repeat prefix on one mode command. tmux keeps
-/// that count on the pane's mode entry as `wme->prefix`, so `send-keys -N 5`
-/// with no key and `send-keys -N 5 -X` with no action both leave it armed for
-/// whichever command runs next, and `window_copy_command` resets it to 1 after
-/// running one. zz keeps the same count on the client's key engine, which is
-/// where a copy-mode digit prefix typed by the client lands too, so a mode
-/// command arriving as an effect has to read and clear it the same way.
 fn counted_copy_mode_action(
     inner: &mut ServerState,
     client: ClientId,
@@ -39567,7 +39149,6 @@ fn copy_mode_refresh_ticks(inner: &ServerState) -> Vec<(ClientId, Arc<TerminalSe
         .collect()
 }
 
-/// Which of the three refresh actions a view action carries, if any.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CopyModeRefreshRequest {
     On,
@@ -39648,11 +39229,6 @@ fn begin_exit_copy_session(inner: &mut ServerState, client: ClientId) {
         .switch_table(None);
 }
 
-/// The `window_copy_formats` source for every pane some client is still in
-/// copy mode on. tmux answers those names off the pane's one mode entry; zz
-/// has one frozen view per client, so the map keeps every client's facts in
-/// client order and the format hooks pick the row the format tree's client
-/// owns, falling back to the earliest.
 fn copy_mode_format_facts(
     inner: &ServerState,
 ) -> BTreeMap<PaneId, Vec<(String, Arc<zz_terminal::CopyModeFacts>)>> {
@@ -39883,9 +39459,6 @@ fn reconcile_copy_session(
     }
 }
 
-/// The window `menu_reapply_styles` and `popup_reapply_styles` read their
-/// options from: the current window of the session the overlay's own client is
-/// attached to, which is not always the window the command targeted.
 fn client_overlay_style_window(inner: &ServerState, client: ClientId) -> Option<WindowId> {
     let session = client_attached_session(inner, client)?;
     inner
@@ -39896,14 +39469,6 @@ fn client_overlay_style_window(inner: &ServerState, client: ClientId) -> Option<
         .map(|state| state.active_window)
 }
 
-/// Fold a command line overlay style into the option-derived one the way
-/// `menu_reapply_styles` and `popup_reapply_styles` do: the option supplies the
-/// whole cell, and `style_parse` is read back for its foreground and background
-/// alone, both of which land on the default when the command line style never
-/// names them. An attribute the option asked for therefore survives a `-s` that
-/// carries none, and a colour the option asked for is dropped by a `-s` that
-/// only names the other half. A command line style `style_parse` rejects is
-/// dropped whole and leaves the option's cell alone.
 fn overlay_style(option: &str, explicit: Option<&str>) -> String {
     let Some(explicit) = explicit.filter(|explicit| zz_protocol::valid_style(explicit)) else {
         return option.to_owned();
@@ -40158,9 +39723,6 @@ fn resolve_client_target(
         .ok_or_else(|| ServerError::InvalidCommand("no current client".to_owned()))
 }
 
-/// `cmd_find_current_client`, cmd-find.c:1274: with no `-t` the pin answers the
-/// best client of the session the invocation came from, and otherwise the best
-/// client of the best session. A clientless CLI is not the end of the search.
 fn current_client(inner: &ServerState, invoking_client: ClientId) -> Option<ClientId> {
     if let Some(session) = inner
         .client(invoking_client)
@@ -40413,11 +39975,6 @@ fn client_colour_count_from_source(
     )
 }
 
-/// `tty_update_features`: a feature a client's terminal answered for goes on
-/// that client's own `tty_term`, so `#{I/f:<name>}` sees it beside the ones the
-/// `terminal-features` option asked for. The option array is the pin's channel
-/// for exactly that, so the learned set rides it as one more entry matching
-/// this client's own `TERM`.
 fn client_terminal_features_option_from_source(
     inner: &ClientFormatSource<'_>,
     client: ClientId,
@@ -40437,9 +39994,6 @@ fn client_terminal_features_option_from_source(
     features
 }
 
-/// `c->term_features`: what the client's flags asked for and what its terminal
-/// has since answered, folded with the set `tty_term_create` derives from the
-/// terminfo entry, the `terminal-features` array and `COLORTERM`.
 fn client_negotiated_features(inner: &ServerState, client: ClientId) -> String {
     client_negotiated_features_from_source(&ClientFormatSource::from_inner(inner), client)
 }
@@ -40551,10 +40105,6 @@ fn client_colour_count_with_from_source(
     Some(terminal_colour_count(term, colour_term, requested))
 }
 
-/// `tty_get_features(c->term_features)`: the bits the client's own roster
-/// carries and nothing else. A terminal that takes 256 colours because its
-/// terminfo entry says so carries no `256` feature, which is why this reads the
-/// mask rather than the colour count.
 #[cfg(test)]
 fn client_term_features(inner: &ServerState, client: ClientId) -> String {
     client_term_features_from_source(&ClientFormatSource::from_inner(inner), client)
@@ -41241,9 +40791,6 @@ fn client_format_facts_requested(
     }
 }
 
-/// The pane worker to ask for the screen under a pointer cell, and the cell
-/// inside that pane, which is what `cmd_mouse_at` hands the three grid-reading
-/// mouse formats.
 struct PointerProbe {
     terminal: Arc<TerminalSession>,
     view: TerminalViewId,
@@ -41251,19 +40798,6 @@ struct PointerProbe {
     row: u16,
 }
 
-/// The `mouse_*` formats the pin fills from `ft->m`. `format_cb_mouse_x` and
-/// `format_cb_mouse_y` answer the event's cell inside the pane it landed on,
-/// `format_cb_mouse_pane` the pane id, and each of them answers NULL, which
-/// expands empty, when the event has no pane. The three that read the screen
-/// under the pointer come off the pane's own grid, which only the worker that
-/// owns it can read, so the probe travels back for a read taken outside this
-/// lock, carrying the view the event came from so the read answers off that
-/// client's own frozen mode. The rectangle guard below is those three names'
-/// own: `cmd_mouse_at` fails for an event outside the pane's rectangle and
-/// the three then answer NULL, so no probe leaves here for one. `mouse_x` and
-/// `mouse_y` are published above that guard, off the pane's origin alone,
-/// which is their own divergence and is recorded against TUI-008. The two
-/// that name the status range it landed in stay unanswered.
 fn mouse_format_variables(
     inner: &ServerState,
     mouse: &MouseEventTarget,
@@ -41308,11 +40842,6 @@ fn mouse_format_variables(
     (variables, probe)
 }
 
-/// `format_cb_mouse_word`, `format_cb_mouse_line` and
-/// `format_cb_mouse_hyperlink` read the pane's own grid at the event's cell.
-/// Each answers NULL where there is nothing under the pointer, and a name the
-/// tree never carries expands the same empty a NULL does, so a read that finds
-/// nothing publishes nothing.
 fn pointer_format_variables(context: zz_terminal::PointerContext) -> BTreeMap<String, String> {
     let mut variables = BTreeMap::new();
     for (name, value) in [
@@ -41327,9 +40856,6 @@ fn pointer_format_variables(context: zz_terminal::PointerContext) -> BTreeMap<St
     variables
 }
 
-/// `tty_window_offset1` reads `c->session->curw->window` and
-/// `server_client_get_pane(c)`, so the comparison is the client's own current
-/// window and the pane that window is showing, never the format's window.
 fn client_viewport_facts_from_source(
     inner: &ClientFormatSource<'_>,
     client: ClientId,
@@ -41495,9 +41021,6 @@ fn client_focus_hook(
     client_hook_event(inner, name, client)
 }
 
-/// The client and layout facts `window_pane_update_focus` reads, captured
-/// before a change so the transitions the pin would evaluate can be replayed
-/// against the state that follows it.
 #[derive(Default)]
 struct PaneFocusProbe {
     window_active_panes: BTreeMap<WindowId, PaneId>,
@@ -41507,10 +41030,6 @@ struct PaneFocusProbe {
     client_overlays: BTreeSet<ClientId>,
 }
 
-/// The focus transitions a change produced, split at the anchor the pin queues
-/// them around: everything but a pane removal is notified before the window,
-/// session and client change hooks beside it, while `window_lost_pane`
-/// notifies `window-pane-changed` first and updates focus after.
 #[derive(Default)]
 struct PaneFocusEvents {
     leading: Vec<PendingHookEvent>,
@@ -41566,9 +41085,6 @@ fn capture_client_focus_probe(inner: &ServerState) -> PaneFocusProbe {
     }
 }
 
-/// `window_pane_update_focus`: a pane counts as focused only while it is its
-/// window's active pane and some attached, focused client with no overlay has
-/// that window current.
 fn pane_is_focused(inner: &ServerState, pane: PaneId) -> bool {
     let Some(window) = inner.engine.state.window_for_pane(pane) else {
         return false;
@@ -41591,8 +41107,6 @@ fn pane_is_focused(inner: &ServerState, pane: PaneId) -> bool {
         .any(|client| client_focused_window_for_attachment(inner, client) == Some(window))
 }
 
-/// One `window_pane_update_focus` call: a pane that has exited is skipped
-/// entirely, and a hook is raised only when the pane-level flag moves.
 fn pane_focus_transition(inner: &mut ServerState, pane: PaneId) -> Option<PendingHookEvent> {
     if inner.engine.state.pane(pane).is_none_or(|state| state.dead) {
         return None;
@@ -41666,11 +41180,6 @@ fn client_active_pane(inner: &ServerState, client: ClientId) -> Option<PaneId> {
     Some(inner.engine.state.windows.get(&window)?.active_pane)
 }
 
-/// Replay the pin's `window_pane_update_focus` call sites against the change
-/// `before` bounds. Attach and detach, the tty focus keys, an overlay opening
-/// or closing and a pane removal evaluate unconditionally; the pane and window
-/// switches in `window_set_active_pane` and `session_set_current` evaluate only
-/// while `focus-events` is on.
 fn pane_focus_candidates(
     inner: &ServerState,
     before: &PaneFocusProbe,
@@ -41786,9 +41295,6 @@ fn pane_focus_hook_events(inner: &mut ServerState, before: &PaneFocusProbe) -> P
     events
 }
 
-/// The input dispatch settle: an overlay that a key opened or closed moves pane
-/// focus the way `server_client_set_overlay` and `server_client_clear_overlay`
-/// do. Nothing is snapshotted while no call site would have evaluated a pane.
 fn pane_focus_settle(inner: &mut ServerState, before: &PaneFocusProbe) -> Vec<PendingHookEvent> {
     let (leading, removals) = pane_focus_candidates(inner, before);
     if leading.is_empty() && removals.is_empty() {
@@ -41800,8 +41306,6 @@ fn pane_focus_settle(inner: &mut ServerState, before: &PaneFocusProbe) -> Vec<Pe
     flattened
 }
 
-/// Splice the focus transitions into the change hooks the same batch produced,
-/// keeping the pin's queue order around `window-pane-changed`.
 fn splice_pane_focus_events(events: &mut Vec<PendingHookEvent>, at: usize, focus: PaneFocusEvents) {
     if focus.is_empty() {
         return;
@@ -41946,24 +41450,6 @@ fn control_command_is_read_only_safe(
     hook_events::command_is_read_only(name, &command.args)
 }
 
-/// `server_client_print` runs `utf8_sanitize` over a message bound for a
-/// client with no session of its own or for a control client, which is
-/// every shape but an attached one: an attached client is shown the message
-/// in a pane instead. The gate is tmux's `CLIENT_UTF8`, which the client
-/// raised for itself out of `$TMUX` and the locale before it dialled.
-///
-/// Three commands answer their client without passing through
-/// `server_client_print` at all, so the pin leaves their bytes alone for
-/// every client shape and every encoding. `capture-pane -p` writes
-/// `control_write` for a control client and `file_print_buffer` for
-/// everyone else. `save-buffer` always writes `file_write`, a real path and
-/// `-` alike. `show-buffer` reaches `cmdq_print_data` only when the client
-/// has a session of its own or is a control client, and it shapes its own
-/// output for the client that runs it, so an inserted or sourced
-/// `show-buffer` is printed the same way as a direct one: a control client
-/// gets the buffer up to its first NUL, sanitized as one message unless it
-/// raised `CLIENT_UTF8`, and a session-less command client, the only shape
-/// zz's `Command` kind has, gets the raw `file_write` bytes.
 fn sanitizes_output_for(
     inner: &ServerState,
     client: ClientId,
@@ -43153,9 +42639,6 @@ fn border_format_style(
     crate::status::expand_style(format, context, hooks)
 }
 
-/// `tty_default_colours` takes a pane's grounds from `window-style`, and
-/// from `window-active-style` where the active pane's sets one, so the
-/// client gets both, expanded, and resolves their theme colours itself.
 fn window_style_presentation(
     engine: &MuxEngine,
     active: bool,
@@ -43666,11 +43149,6 @@ const POPUP_POSITION_CONTEXT_FORMATS: [&str; 19] = [
     POPUP_WINDOW_STATUS_LINE_Y_CONTEXT_FORMAT,
 ];
 
-/// The `popup_*` names `cmd_display_menu_get_pos` builds its format tree from.
-/// The mouse ones are added only under `event->m.valid` and the window status
-/// ones only when the target window owns a range on the target client's status,
-/// so an absent one expands empty and `strtol` reads it as 0 rather than as the
-/// screen centre.
 fn popup_position_variables(
     engine: &MuxEngine,
     target: &ExecutionContext,
@@ -43758,10 +43236,6 @@ fn popup_position_variables(
     variables
 }
 
-/// The `popup_mouse_*` and `popup_window_status_line_*` positions
-/// `cmd_display_menu_get_pos` fills from `event->m` and from the status range
-/// the target window owns. Each is the popup's BOTTOM-left corner, which
-/// `popup_position` turns into a top by subtracting the height.
 fn popup_mouse_position_values(
     engine: &MuxEngine,
     target: &ExecutionContext,
@@ -44393,10 +43867,6 @@ fn clock_mode_time(facts: &dyn crate::status::FormatFactSource, style: u8) -> St
     time
 }
 
-/// Carries the window's pane border chrome to the client: the resolved
-/// `pane-border-status`, `pane-border-lines` and `pane-border-indicators`, and
-/// the `pane-border-format` expanded once per pane the way
-/// `window_make_pane_status` expands it before `format_draw` writes the row.
 fn stamp_pane_border_chrome(
     engine: &MuxEngine,
     config_files: &str,
@@ -44584,9 +44054,6 @@ fn truncate_pane_indicator_label(mut label: String) -> String {
     label
 }
 
-/// `key_string_lookup_key`'s two spellings `input_key_name` does not emit: the
-/// key table names 0x20 `Space`, and a shifted Tab is `BTab` rather than a Tab
-/// carrying a shift the pin never records on it.
 fn prompt_key_spelling(input: &zz_terminal::KeyInput) -> String {
     if input.key == zz_terminal::KeyCode::Tab
         && input.modifiers.shift()
@@ -44603,17 +44070,10 @@ fn prompt_key_spelling(input: &zz_terminal::KeyInput) -> String {
     name
 }
 
-/// `prompt_key`'s three head branches, taken before any editing: `-k` answers
-/// with the key's own name, `-N` collects digits and hands the first non-digit
-/// back to the key tables, and `-1` folds one key into a character and submits
-/// it — with the pin's quirk that a buffer seeded by `-I` can never be one
-/// character long, so the prompt closes with nothing submitted.
 fn command_prompt_raw_key(
     prompt: &mut CommandPrompt,
     input: &zz_terminal::KeyInput,
 ) -> PromptKeyAction {
-    // The pin has no platform modifier, and `input_key_name` spells such a
-    // chord as nothing at all, so a raw mode must not answer with it.
     if input.modifiers.platform() {
         return PromptKeyAction::Handled;
     }
@@ -44651,9 +44111,6 @@ fn command_prompt_raw_key(
     }
 }
 
-/// `prompt_key`'s `PROMPT_SINGLE` normalisation: backspace becomes `DEL`, a
-/// control chord masks down to `0x1f`, and anything the pin cannot squeeze into
-/// one character (arrows, function keys) leaves the prompt untouched.
 fn single_key_character(input: &zz_terminal::KeyInput) -> Option<char> {
     match input.key {
         zz_terminal::KeyCode::Backspace => Some('\u{7f}'),
@@ -44674,8 +44131,6 @@ fn single_key_character(input: &zz_terminal::KeyInput) -> Option<char> {
     }
 }
 
-/// `prompt_space`: only a single-width ASCII space counts, so a wide or
-/// multi-byte character is never whitespace and never a separator.
 fn prompt_space(character: Option<&char>) -> bool {
     character == Some(&' ')
 }
@@ -44684,9 +44139,6 @@ fn prompt_in_list(separators: &str, character: Option<&char>) -> bool {
     character.is_some_and(|character| character.is_ascii() && separators.contains(*character))
 }
 
-/// `prompt_translate_key`'s answer: the vi table rewrites a key into an emacs
-/// one, into one of the `KEYC_VI` word motions no emacs key produces, into a
-/// plain insertion, or into nothing at all.
 enum PromptViKey {
     Edit(zz_terminal::KeyInput),
     Motion(PromptWordMotion),
@@ -44736,11 +44188,6 @@ fn prompt_key_input(
     }
 }
 
-/// `prompt_translate_key`: the whole vi table. Insert mode passes a fixed list
-/// of control keys through to the emacs handler, takes Escape or `C-[` into
-/// command mode with the cursor stepped back, and appends everything else.
-/// Command mode maps the vi keys onto emacs keys and the `KEYC_VI` word
-/// motions, and drops what it does not name.
 fn prompt_translate_key(prompt: &mut CommandPrompt, input: &zz_terminal::KeyInput) -> PromptViKey {
     use zz_terminal::KeyCode;
     let control = input.modifiers.control();
@@ -44863,7 +44310,6 @@ fn prompt_translate_key(prompt: &mut CommandPrompt, input: &zz_terminal::KeyInpu
         Some('h') => PromptViKey::Edit(plain(KeyCode::ArrowLeft)),
         Some('a' | 'l') => PromptViKey::Edit(plain(KeyCode::ArrowRight)),
         Some('k') => PromptViKey::Edit(plain(KeyCode::ArrowUp)),
-        // `p` maps onto `C-y`, and zz has no `prompt_paste` to map it to.
         _ => PromptViKey::Handled,
     }
 }
@@ -44907,8 +44353,6 @@ fn command_prompt_key(
         Some(PromptViKey::Edit(key)) => {
             command_prompt_edit_key(prompt, &key, text_follows, history)
         }
-        // `append_key` inserts the key itself, so a chord the vi table does not
-        // name reaches the buffer only when it is one plain character.
         Some(PromptViKey::Append) => match input.key {
             zz_terminal::KeyCode::Character(character)
                 if !input.modifiers.control()
@@ -46459,8 +45903,6 @@ fn refresh_preview_watches(inner: &mut ServerState) {
     inner.preview_watched = next;
 }
 
-/// The agent panes a client can actually see, derived exactly like the
-/// terminal ones: attached session, focused window, zoom.
 #[cfg(feature = "agent")]
 fn visible_agent_panes(
     inner: &ServerState,
@@ -46485,8 +45927,6 @@ fn visible_agent_panes(
         .collect()
 }
 
-/// Who gets `pane`'s agent stream: attached clients the pane is visible to,
-/// `also` when it is attached, and every client that asked for a replay of it.
 #[cfg(feature = "agent")]
 fn agent_stream_subscribers(
     inner: &ServerState,
@@ -46517,8 +45957,6 @@ fn agent_stream_subscribers(
         .collect()
 }
 
-/// The clients that asked for a replay of `pane` and so follow it until they
-/// disconnect or the pane closes.
 #[cfg(feature = "agent")]
 fn agent_watchers(inner: &ServerState, pane: PaneId) -> impl Iterator<Item = ClientId> + '_ {
     inner
@@ -46528,11 +45966,6 @@ fn agent_watchers(inner: &ServerState, pane: PaneId) -> impl Iterator<Item = Cli
         .map(|(client, _)| *client)
 }
 
-/// The client a `send-keys` effect acts for. `-c` resolves through the
-/// target-client selector the popup and menu commands already use; a target
-/// that matches nothing is the pin's `CMD_CLIENT_CANFAIL` miss, which leaves
-/// `tc` NULL and still runs the command against the pane's own mode entry.
-/// Without `-c` the invoking client stands in for the pin's current client.
 fn selected_effect_client(
     inner: &ServerState,
     client: ClientId,
@@ -46675,13 +46108,6 @@ fn aggressive_terminal_geometry(inner: &ServerState, pane: PaneId) -> Option<Ter
     terminal_geometry_for_mode(inner, pane, true, WindowSize::Smallest)
 }
 
-/// Which number the owner client's report contributes. `window_pane_resize`
-/// sizes a pane's screen and its pty from the cell `layout_fix_panes` assigned,
-/// never from a client, so the pty takes `LaidOut`. A client's report is still
-/// what moves the layout in the first place - zz has no tty size for a GUI
-/// client, only its per-pane grid - so the write-back that back-solves the
-/// window extent takes `ClientReport`, and the pty is re-derived after that
-/// extent has settled.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum GeometrySource {
     ClientReport,
@@ -46938,11 +46364,6 @@ fn pane_place(inner: &ServerState, pane: PaneId) -> Option<PanePlace> {
     }
 }
 
-/// The layout learns what the owner client reported, so the cell the pty is
-/// then sized from is the cell the client draws. Every write-back runs: the
-/// owner set is already what `aggressive-resize` decides, and a pane whose
-/// owner moved without the layout following would report one size and run at
-/// another.
 fn write_back_terminal_geometries(inner: &mut ServerState, panes: &BTreeSet<PaneId>) -> bool {
     let measurements = panes
         .iter()
@@ -47153,12 +46574,6 @@ const READ_ONLY_SAFE_COMMANDS: &[&str] = &[
     "switch-client",
 ];
 
-/// The client whose read-only flag guards `command`. cmd-send-keys.c resolves
-/// `-c` through the target-client selector and then tests
-/// `tc != NULL && tc->flags & CLIENT_READONLY`, so the guard follows the
-/// selected client and a target that matches no attached client leaves the
-/// guard with no client to test at all. Every other command is guarded by its
-/// invoker.
 fn read_only_guard_client(
     inner: &ServerState,
     client: ClientId,
@@ -47427,11 +46842,6 @@ fn terminal_mouse_rejected(inner: &ServerState, client: ClientId, input: &InputM
     })
 }
 
-/// `server_client_handle_key`: with the client on its default key table and
-/// the pane `cmd_find_from_mouse` resolved holding a mode, a mouse key is
-/// looked up in `wme->mode->key_table(wme)` before the client's own table. The
-/// mode's table is the window's effective `mode-keys` table, and only a pane a
-/// client actually holds a copy session on is in a mode at all.
 fn mouse_mode_key_table(
     inner: &ServerState,
     client: ClientId,
@@ -47452,16 +46862,12 @@ fn mouse_mode_key_table(
         .map(str::to_owned)
 }
 
-/// What a pane's mode is being handed: a key name, or a mouse key name with the
-/// cell inside the pane it landed on.
 #[derive(Clone, Copy)]
 enum PaneModeInput<'a> {
     Key(&'a str),
     Pointer { key: &'a str, x: usize, y: usize },
 }
 
-/// `cmd_mouse_at`: the cell inside `pane` a pointer event landed on, or nothing
-/// when it landed outside the pane.
 fn mouse_pane_cell(
     inner: &ServerState,
     pane: PaneId,
@@ -47511,11 +46917,6 @@ fn find_buffer<'a>(inner: &'a ServerState, name: Option<&str>) -> Option<&'a Pas
         .find(|buffer| name.map_or(buffer.automatic, |name| buffer.name == name))
 }
 
-/// The row a keystroke selects, or `None` when nothing claims it. `mode_tree_key`
-/// scans every line for the first item holding that key and turns the press into
-/// `\r` right there, so a row shortcut beats the navigation table and the FIRST
-/// of several duplicate rows wins. The scan sits below the prompt handling, so a
-/// chooser mid-search keeps typing into the query instead.
 fn chooser_row_for_key<T>(
     items: &[T],
     input: &zz_terminal::KeyInput,
@@ -47536,12 +46937,6 @@ fn chooser_row_for_key<T>(
     u32::try_from(row).ok()
 }
 
-/// The pin's stock chooser shortcut ladder: `0`-`9`, then `M-a`-`M-z`, then
-/// nothing at all from row 36 on. `mode_tree_build_lines` spells it inline as
-/// the fallback for modes with no key callback, and `choose-tree` /
-/// `choose-buffer` reach the identical ladder through
-/// `WINDOW_TREE_DEFAULT_KEY_FORMAT` / `WINDOW_BUFFER_DEFAULT_KEY_FORMAT`,
-/// whose `#{line}` arithmetic produces exactly these strings.
 fn default_chooser_row_key(line: usize) -> String {
     match line {
         0..=9 => line.to_string(),
@@ -47553,9 +46948,6 @@ fn default_chooser_row_key(line: usize) -> String {
     }
 }
 
-/// A `-K` expansion becomes a shortcut only when it names a key some client can
-/// actually press. The pin drops the rest the same way: `key_string_lookup_string`
-/// answers `KEYC_UNKNOWN` and `mode_tree_build_lines` stores `KEYC_NONE`.
 fn parsed_chooser_row_key(expanded: &str) -> String {
     let canonical = canonical_key(expanded);
     if canonical.len() > MAX_CHOOSE_ITEM_KEY_BYTES || !is_key_name(&canonical) {
@@ -48479,9 +47871,6 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
                 .attached
                 .iter()
                 .map(|(session, clients)| {
-                    // format_cb_session_attached_list joins `loop->name`, which
-                    // is the tty for a pty client, not the device name the
-                    // hello carries.
                     let clients = clients
                         .iter()
                         .filter(|client| !inner.client(**client).is_some_and(|c| c.suspended))
@@ -48496,8 +47885,6 @@ fn format_hook_facts(inner: &ServerState) -> FormatHookFacts {
                 })
                 .collect(),
         ),
-        // format_cb_window_active_clients_list walks every client whose own
-        // current window is this one, which is not the session's client list.
         window_clients: Arc::new(inner.attached.values().flatten().fold(
             BTreeMap::<WindowId, Vec<String>>::new(),
             |mut windows, client| {
@@ -48552,9 +47939,6 @@ fn format_hook_facts_for_client(
     context: &ExecutionContext,
 ) -> FormatHookFacts {
     let mut facts = format_hook_facts(inner);
-    // format.c creates a command's tree with the invoking client, so `#{Vc:}`
-    // reads that client's environment even when the format's own client is the
-    // command's target.
     if let Some(invoking) = format_provenance_client(context, client) {
         facts.client_environment = inner
             .client(invoking)
@@ -48574,12 +47958,6 @@ fn format_hook_facts_for_client(
     facts
 }
 
-/// `notify_insert_one_hook` appends a hook body with `client = NULL`, so
-/// `cmdq_fire_command` resolves it through `cmd_find_client(item, NULL, 1)` ->
-/// `cmd_find_current_client` -> `cmd_find_best_client`: a pure activity
-/// comparison over the most recently active session, which the resize arm of
-/// `server_client_dispatch` never updates. The reporting client reaches the
-/// body as `#{hook_client}` and nothing else.
 fn hook_body_format_client(inner: &ServerState) -> Option<ClientId> {
     inner
         .engine
@@ -49456,10 +48834,6 @@ const fn stdout_claim_rank(claim: StdoutClaim) -> u8 {
     }
 }
 
-/// The claim a command with no replay transcript of its own makes. `save-buffer`
-/// and `show-buffer` reach a session-less command client through `file_write`,
-/// which owns the stream and terminates nothing; everything else that answers a
-/// command client goes through `cmdq_print`.
 fn default_stdout_claim(command: &str, output: &RawText) -> StdoutClaim {
     if output.is_empty() {
         return StdoutClaim::None;
@@ -50101,20 +49475,11 @@ pub fn load_buffer_reads_stdin(args: &[RawText]) -> bool {
         .is_ok_and(|parsed| parsed.positional == ["-"])
 }
 
-/// Where the caller's standard input goes for one command, and whether that
-/// sink takes bytes that are not valid UTF-8. One resolver answers for every
-/// caller: `knowledge/designs/command-stream-channel.md` names the three sinks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommandStdinSink {
-    /// The payload is the command's own text argument and the caller appends it
-    /// after the argument boundary.
-    Argument {
-        binary: bool,
-    },
-    /// The payload is a configuration file named `-`.
+    Argument { binary: bool },
     Config,
     ConfigReplay,
-    /// The payload is written into a pane that holds no process.
     PaneInput,
 }
 
@@ -50133,7 +49498,6 @@ impl CommandStdinSink {
     }
 }
 
-/// The one place that decides a command reads the caller's standard input.
 #[must_use]
 pub fn command_stdin_sink(canonical_name: &str, args: &[RawText]) -> Option<CommandStdinSink> {
     match canonical_name {
@@ -50474,10 +49838,6 @@ fn rename_paste_buffer(
     Ok(events)
 }
 
-/// Where a buffer path that is not absolute hangs from. The pin asks
-/// `server_client_get_cwd(c, NULL)` inside `file_get_path`: the config client
-/// during startup, an unattached client's own cwd, then that client's attached
-/// session cwd, then home.
 fn client_file_working_directory(inner: &ServerState, client: Option<ClientId>) -> PathBuf {
     if let Some(startup) = inner.startup_source_client_working_directory.clone() {
         return startup;
@@ -50497,9 +49857,6 @@ fn client_file_working_directory(inner: &ServerState, client: Option<ClientId>) 
         .map_or_else(default_job_working_directory, Path::to_owned)
 }
 
-/// The absolute path a buffer command names, expanded once in the daemon the
-/// way `file_get_path` does: a leading `~/` against the server's own home, and
-/// anything else relative against the invoking client's working directory.
 fn buffer_file_path(inner: &ServerState, client: Option<ClientId>, path: &str) -> PathBuf {
     let expanded = expand_path(path);
     if expanded.is_absolute() {
@@ -50549,9 +49906,6 @@ fn write_paste_buffer_file(path: &Path, data: &[u8], append: bool) -> Result<(),
         .map_err(|error| buffer_file_error(path, &error))
 }
 
-/// The pin reports a buffer file failure as `cmdq_error(item, "%s: %s",
-/// strerror(cf->error), cf->path)` in both cmd-load-buffer.c and
-/// cmd-save-buffer.c: the reason, then the path it expanded.
 fn buffer_file_error(path: &Path, error: &std::io::Error) -> ServerError {
     client_file_failure(&zz_daemon_client::strerror_text(error), path)
 }
@@ -51047,7 +50401,6 @@ fn parse_popup_number(value: &str, minimum: u64, maximum: u64) -> Result<u64, &'
     }
 }
 
-/// `window_pane_wait_finish`: `WEXITSTATUS`, or `WTERMSIG` plus 128.
 fn pane_wait_exit_code(terminal: &TerminalSession, status: &zz_terminal::SessionStatus) -> u8 {
     if let Some(completion) = terminal.completion() {
         return completion.signal.map_or_else(
@@ -51107,9 +50460,6 @@ fn any_overlay_present(inner: &ServerState, client: ClientId) -> bool {
     popup_other_overlay_present(inner, client)
 }
 
-/// The pin's overlay re-fit rule: an origin moves only when the box would fall
-/// off the viewport, and a box no smaller than the viewport parks at zero
-/// (`menu_resize_cb` in menu.c, `popup_resize_cb` in popup.c).
 fn overlay_origin_for_viewport(origin: u16, extent: u16, available: u16) -> u16 {
     if origin.saturating_add(extent) > available {
         available.saturating_sub(extent)
@@ -51118,16 +50468,8 @@ fn overlay_origin_for_viewport(origin: u16, extent: u16, available: u16) -> u16 
     }
 }
 
-/// The one key a menu row can carry that `input_key_name` never spells:
-/// `resolve_menu_key` rewrites a shifted Tab to it before matching rows, so a
-/// `BTab` row is pressable here even though no other surface emits the name.
 const MENU_BACK_TAB_KEY: &str = "BTab";
 
-/// A row shortcut becomes a key only when a client attached to the menu can
-/// press it. The spelling goes through the pin's own parser first — `^A`, hex
-/// codes and the named table all resolve there — and the pin drops what is
-/// left the same way: `key_string_lookup_string` answers `KEYC_UNKNOWN` and
-/// `menu_add_item` then renders no key at all.
 fn menu_shortcut(value: &str) -> Option<String> {
     let key = zz_protocol::canonical_key(&zz_mux::parse_tmux_key(value)?);
     (is_key_name(&key) || key == MENU_BACK_TAB_KEY).then_some(key)
@@ -51186,10 +50528,6 @@ fn menu_selectable_from(items: &[Option<MenuItem>], start: usize, reverse: bool)
     })
 }
 
-/// `menu_add_item` and `cmd_display_popup_exec` expand every value through
-/// `format_single(qitem, value, c, ...)` with the menu's or popup's own target
-/// client, so a `#{client_...}` variable in a title, a row, or a row's command
-/// reads that client and not the one that typed the command.
 fn expand_popup_value(
     inner: &ServerState,
     target: &ExecutionContext,
@@ -51209,10 +50547,6 @@ fn expand_popup_value(
     )
 }
 
-/// `format_expand` versus `format_expand_time`: only the latter runs the string
-/// through `strftime` first, and `format_single_from_target`, which is what
-/// `args_make_commands_prepare` uses for `-F`, takes the plain one, so a `%%`
-/// in the template survives to the answer pass.
 fn expand_command_format(
     inner: &ServerState,
     target: &ExecutionContext,
@@ -51276,8 +50610,6 @@ fn collapse_whitespace(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The part of a pasted text whose arrival on screen proves the paste landed:
-/// its last non-blank line, whitespace-collapsed, at most a few dozen chars.
 fn echo_tail(text: &str) -> String {
     let line = text
         .lines()
@@ -51310,7 +50642,6 @@ impl ParsedSendText {
     }
 }
 
-/// Whether `zz send-text` must read its payload from standard input.
 #[must_use]
 pub fn send_text_reads_stdin(args: &[RawText]) -> bool {
     parse_send_text_args(args).is_ok_and(|parsed| parsed.text.is_empty())
@@ -51883,9 +51214,6 @@ fn last_command_block(pane: PaneId, capture: &LastCommandCapture, status: Option
     fenced_block(&header, &body)
 }
 
-/// Whether `zz agent-send` must read its payload from standard input.
-///
-/// Malformed arguments answer `false` and let the daemon report the real error.
 #[must_use]
 pub fn agent_send_reads_stdin(args: &[RawText]) -> bool {
     parse_agent_send_args(args).is_ok_and(|parsed| parsed.text.is_empty())
@@ -53468,8 +52796,6 @@ fn handle_agent_message(
     shared.agent_message(client, message)
 }
 
-/// A daemon built without the agent feature still speaks the protocol; it just
-/// has nothing to run the adapter with.
 #[cfg(not(feature = "agent"))]
 fn handle_agent_message(
     _shared: &Arc<Shared>,
@@ -53652,10 +52978,6 @@ fn prepare_socket(path: &Path, ready: &mut BootstrapReady) -> Result<StartLock, 
     let mut lock_path = path.as_os_str().to_owned();
     lock_path.push(".lock");
     let lock = StartLock::acquire(PathBuf::from(lock_path))?;
-    // A stopping daemon releases its endpoint within one accept tick; wait
-    // that out so a spawn racing a kill-server binds instead of dying to a
-    // socket that only looks alive. The deadline is generous because loaded
-    // schedulers stretch the tick.
     let deadline = Instant::now() + Duration::from_secs(3);
     while path.exists() {
         match daemon_answers_at(path) {
@@ -53810,8 +53132,6 @@ fn prompt_history_path(path: &str) -> Option<PathBuf> {
     }
 }
 
-/// `prompt_load_history`: each line is `type:entry`, and `prompt_add_typed_history`
-/// files an untyped line under `command` for backward compatibility.
 fn load_command_prompt_history(path: &Path, limit: usize) -> (Vec<String>, Vec<String>) {
     let Ok(contents) = fs::read_to_string(path) else {
         return (Vec::new(), Vec::new());
@@ -53863,9 +53183,6 @@ struct SourceGlobMatches {
 
 const STANDARD_INPUT_SOURCE_WARNING: &str = "source-file from standard input is not supported";
 
-/// `file_read` on a `-` whose stream the caller already handed to an earlier
-/// `-` in the same invocation: the pin reopens a spent descriptor and reports
-/// what the kernel told it.
 fn spent_source_stream_error() -> String {
     source_glob_error_warning(Path::new("-"), "Bad file descriptor")
 }
@@ -59050,16 +58367,6 @@ mod tests {
         )));
     }
 
-    /// On pinned tmux d77c9dc6 only `cmdq_print` and `cmdq_print_data` reach
-    /// `server_client_print`, so only they are sanitized for a client that
-    /// never raised `CLIENT_UTF8`. `capture-pane -p` answers through
-    /// `control_write` or `file_print_buffer` and `save-buffer` through
-    /// `file_write`, both raw for every client shape; `show-buffer` reaches
-    /// `cmdq_print_data` only for a client with a session or a control client,
-    /// so a session-less command client gets the same raw `file_write`.
-    /// Measured under `env -u TMUX -u LANG -u LC_CTYPE LC_ALL=C` with a pane
-    /// holding `x` U+6F22 `y`: `capture-pane -p` answers `78 e6 bc a2 79 0a` on
-    /// the pin for a command client and for a `-C` control client alike.
     #[test]
     fn only_the_commands_that_print_through_the_pin_are_sanitized() {
         let shared = Arc::new(Shared::new(1));
@@ -63658,13 +62965,6 @@ mod tests {
         );
     }
 
-    /// The pin writes a border style's whole cell: measured on an attached
-    /// 79x24 pinned client on 2026-09-02 with `pane-border-style
-    /// 'bold,fg=colour190,bg=colour17'`, whose border cells arrived as
-    /// `ESC[1m`, `ESC[38;5;190m` and `ESC[48;5;17m`. zz's snapshot carries the
-    /// foreground alone, so the same style reaches a client as colour 190 with
-    /// no background and no attribute. This locks that residue: a wider
-    /// appearance bridge has to move this assertion, not slip past it.
     #[test]
     fn a_pane_border_style_reaches_a_client_as_its_foreground_alone() {
         let mut engine = MuxEngine::default();
@@ -65299,9 +64599,6 @@ mod tests {
         );
         shared.inner.lock().message_log.clear();
 
-        // `server_client_set_session` updates focus before it notifies
-        // `client-session-changed`, and `cmd_attach_session` notifies
-        // `client-attached` after that.
         shared.attach(first, session).expect("attach first client");
         assert_eq!(
             client_event_log(&shared)
@@ -65328,9 +64625,6 @@ mod tests {
                 .expect("report client focus");
         };
 
-        // The pane is focused while any attached, focused client holds its
-        // window, so only the last client to lose it and the first to regain it
-        // move the flag.
         report(first, false);
         assert!(
             !client_event_log(&shared)
@@ -65353,9 +64647,6 @@ mod tests {
         );
         assert!(shared.inner.lock().pane_focus.is_empty());
 
-        // Re-attaching re-sets CLIENT_FOCUSED the way `server_client_set_session`
-        // does, and the detach that follows raises the transition ahead of
-        // `client-detached`.
         shared.attach(first, session).expect("re-attach");
         shared.inner.lock().message_log.clear();
         shared.detach(first);
@@ -72724,9 +72015,6 @@ set-option -g @alias-mixed-next yes
             }
         );
 
-        // The pin decides %config-error from cfg_add_cause, so the diagnostic
-        // carries its own identity on the wire and no generic warning is sent
-        // alongside it for Control to classify by wording.
         let mut config_errors = Vec::new();
         let mut client_messages = Vec::new();
         for message in take_reliable_messages(&mailbox) {
@@ -80835,9 +80123,6 @@ set-option -g @alias-mixed-next yes
         );
     }
 
-    /// The pin re-arms one `c->message_timer` per client, so a replaced
-    /// message's timer is deleted outright. zz cannot delete across a channel,
-    /// so identity has to do the same job: the stale deadline must be inert.
     #[test]
     fn a_replaced_message_survives_the_deadline_it_replaced() {
         let shared = Arc::new(Shared::new(1));
@@ -80892,8 +80177,6 @@ set-option -g @alias-mixed-next yes
         );
     }
 
-    /// Two clients, one session, one message: the pin raises `TTY_FREEZE` on
-    /// `c->tty` alone, so only the requesting client stops receiving frames.
     #[test]
     fn an_ordinary_message_freezes_only_the_requesting_client() {
         let shared = Arc::new(Shared::new(1));
@@ -80992,8 +80275,6 @@ set-option -g @alias-mixed-next yes
         let _ = session;
     }
 
-    /// `display-message -C` is the pin's `no_freeze` argument: the message and
-    /// its timer are unchanged, only the freeze is skipped.
     #[test]
     fn display_message_dash_c_never_freezes_and_still_times_out() {
         let shared = Arc::new(Shared::new(1));
@@ -81035,7 +80316,6 @@ set-option -g @alias-mixed-next yes
         assert!(mailbox.state.lock().terminals.contains_key(&pane));
     }
 
-    /// The pin's `delay == 0` installs no timer at all and waits for a key.
     #[test]
     fn a_zero_duration_message_installs_no_timer_and_a_key_clears_it() {
         let shared = Arc::new(Shared::new(1));
@@ -81886,10 +81166,6 @@ set-option -g @alias-mixed-next yes
         }
     }
 
-    /// zz splits one physical press into `Key` plus a trailing `Text`, and the
-    /// suppression of that text happens later, in `input_text`. So a key bound
-    /// to `display-message` must not have its own trailing character wipe the
-    /// message it just raised.
     #[test]
     fn a_bound_key_that_displays_a_message_survives_its_own_trailing_text() {
         let shared = Arc::new(Shared::new(1));
@@ -82356,8 +81632,6 @@ set-option -g @alias-mixed-next yes
         )));
     }
 
-    /// No deadline may outlive its client: detaching drops the record so the
-    /// dispatcher's entry can never fire against a gone client.
     #[test]
     fn detaching_drops_the_message_and_its_deadline_stays_inert() {
         let shared = Arc::new(Shared::new(1));
@@ -82392,8 +81666,6 @@ set-option -g @alias-mixed-next yes
         assert!(cleared_message_ids(&take_reliable_messages(&mailbox)).is_empty());
     }
 
-    /// A control client takes the pin's `server_client_print` branch and never
-    /// reaches `status_message_set`, so it gets `%message` and nothing else.
     #[test]
     fn a_control_client_gets_no_timer_and_no_freeze() {
         let shared = Arc::new(Shared::new(1));
@@ -82649,12 +81921,6 @@ set-option -g @alias-mixed-next yes
         assert_eq!(log(&shared), "-");
     }
 
-    /// `prompt_key`'s head branches: `-1` folds one key into a character and
-    /// submits it, `-k` submits the key's own name, and `-N` collects digits
-    /// and returns `PROMPT_KEY_NOT_HANDLED` for the first non-digit so the key
-    /// still reaches the key tables. Measured on the pin: `-1` with `z` ran
-    /// `GOT[z]`, `-k` with `C-g` ran `KEY[C-g]`, and `-N` fed `1`, `2`, `z` ran
-    /// both `NUM[12]` and the binding on `z`.
     #[test]
     fn prompt_modes_read_keys_the_way_the_pin_does() {
         let shared = Arc::new(Shared::new(1));
@@ -82700,7 +81966,6 @@ set-option -g @alias-mixed-next yes
             shared.inner.lock().engine.state.windows[&context.window.expect("window")].name,
             "z"
         );
-        // The trailing text half of that split press must not reach the pane.
         assert_eq!(
             (*shared.inner.lock().clients[&client]
                 .suppressed_text
@@ -82737,9 +82002,6 @@ set-option -g @alias-mixed-next yes
             "C-g"
         );
 
-        // `-k` has no cancel: Escape is just another key with a name. A
-        // platform chord has no name in zz's grammar, so it is ignored rather
-        // than submitted as the empty string.
         shared
             .execute(
                 client,
@@ -82768,8 +82030,6 @@ set-option -g @alias-mixed-next yes
             "Escape"
         );
 
-        // The pin appends the key to whatever `-I` seeded, then refuses to
-        // submit a buffer that is not exactly one character long.
         shared
             .execute(
                 client,
@@ -82840,8 +82100,6 @@ set-option -g @alias-mixed-next yes
         );
     }
 
-    /// `-e` is `PROMPT_BSPACE_EXIT`: a backspace on an empty buffer ends the
-    /// prompt with nothing submitted, where a plain prompt swallows it.
     #[test]
     fn a_backspace_exit_prompt_ends_on_an_empty_backspace() {
         let shared = Arc::new(Shared::new(1));
@@ -82902,9 +82160,6 @@ set-option -g @alias-mixed-next yes
         assert!(prompt_state(&shared, client).is_none());
     }
 
-    /// `prompt_hlist[PROMPT_NTYPES]`: `-T` alone picks the ring. Measured on
-    /// the pin, a `search` entry never appears above a command prompt and vice
-    /// versa.
     #[test]
     fn command_and_search_prompt_histories_never_mix() {
         let shared = Arc::new(Shared::new(1));
@@ -82965,12 +82220,6 @@ set-option -g @alias-mixed-next yes
         assert_eq!(state.kind, CommandPromptKind::Command);
     }
 
-    /// `status_prompt_set` raises the same `TTY_FREEZE` as a message unless the
-    /// prompt is incremental or `-C` opted out, and `status_prompt_clear`
-    /// releases it with `CLIENT_ALLREDRAWFLAGS`. Measured on the pin: a plain
-    /// prompt pinned the view at `TICK10` while the pane really reached
-    /// `TICK42`, then jumped to `TICK64` on close; `-C` ticked 64 to 96 and
-    /// `-i` ticked 10 to 42 throughout.
     #[test]
     fn a_plain_prompt_freezes_publication_and_its_clear_resumes_it() {
         let shared = Arc::new(Shared::new(1));
@@ -83065,10 +82314,6 @@ set-option -g @alias-mixed-next yes
         }
     }
 
-    /// The pin's `status_prompt_set` calls `status_message_clear` first, so the
-    /// prompt's own flags decide the gate rather than inheriting the message's.
-    /// zz's predicate is derived rather than latched, which is where it
-    /// deliberately diverges: see `client_terminal_publication_frozen`.
     #[test]
     fn a_prompt_clears_the_message_it_covers_and_owns_the_freeze() {
         let shared = Arc::new(Shared::new(1));
@@ -83119,11 +82364,6 @@ set-option -g @alias-mixed-next yes
         ));
     }
 
-    /// `prompt_incremental_start` fires `=` before the first key, `prompt_key`
-    /// fires `prefix + buffer` on every edit, and Enter only records history —
-    /// the template does not run again. Measured on the pin: raising
-    /// `command-prompt -i -p I 'display-message -d 0 I[%%]'` printed `I[=]`
-    /// with no key pressed, then `I[=a]`, `I[=ab]`, `I[=a]` on backspace.
     #[test]
     fn an_incremental_prompt_fires_on_entry_and_on_every_edit() {
         let shared = Arc::new(Shared::new(1));
@@ -83146,8 +82386,6 @@ set-option -g @alias-mixed-next yes
             )
             .expect("incremental prompt");
         let window = context.window.expect("window");
-        // `-I` seeds `pr->last`, not the buffer, and the entry fire runs with
-        // an empty buffer.
         assert_eq!(prompt_state(&shared, client).expect("raised").input, "");
         assert_eq!(shared.inner.lock().engine.state.windows[&window].name, "=");
 
@@ -83166,8 +82404,6 @@ set-option -g @alias-mixed-next yes
         assert_eq!(prompt_state(&shared, client).expect("open").input, "a");
         assert_eq!(shared.inner.lock().engine.state.windows[&window].name, "=a");
 
-        // `C-r` on an empty buffer restores `pr->last`; on a full one it only
-        // flips the direction prefix.
         shared
             .input(
                 client,
@@ -83627,11 +82863,6 @@ set-option -g @alias-mixed-next yes
         assert!(beta_positions.is_empty(), "{beta_positions:?}");
     }
 
-    /// `cmd_source_file` hands its argument to `glob()` as it stood in argv, so
-    /// a path no UTF-8 string can spell reaches the file system whole. Measured
-    /// on tmux d77c9dc6 against a real file whose name carries 0xff:
-    /// `source-file` runs it, where zz used to answer No such file or directory
-    /// for the U+FFFD spelling.
     #[cfg(unix)]
     #[test]
     fn a_source_path_no_utf8_string_can_spell_reaches_the_file_system_whole() {
@@ -94785,15 +94016,6 @@ bind - split-window -v -c "#{pane_current_path}"
         assert!(inner.paste_buffers[0].automatic);
     }
 
-    /// Derived from pinned tmux d77c9dc6. `input_osc_52_parse` (input.c) opens
-    /// with `if (options_get_number(global_options, "set-clipboard") != 2)
-    /// return (0);`, so an application's own OSC 52 reaches the outer terminal,
-    /// the buffer stack and `pane-set-clipboard` only under `on`; under
-    /// `external` and `off` the pin does nothing at all. Measured on the pin
-    /// through `compat/scenarios/smoke/copy-selection-clipboard-bytes`: a pane
-    /// writing `ESC ] 52 ; c ; YXBwbGljYXRpb24= BEL` produces one
-    /// `selection=c payload=application` write and one buffer under `on`, and
-    /// no write and no buffer under `external` or `off`.
     #[test]
     fn app_clipboard_writes_reach_every_viewer_only_under_set_clipboard_on() {
         let shared = Arc::new(Shared::new(1));
@@ -94933,9 +94155,6 @@ bind - split-window -v -c "#{pane_current_path}"
         take_reliable_messages(&bravo_mailbox);
         take_reliable_messages(&charlie_mailbox);
 
-        // The pin writes the selection straight to the target client's tty from
-        // cmd-set-buffer.c, never through the set-clipboard gate that guards the
-        // application OSC 52 path.
         run(vec!["set-buffer", "-w", "-t", "bravo", "payload-one"]);
         assert!(take_clipboard_writes(&alpha_mailbox, pane).is_empty());
         assert_eq!(
@@ -94944,12 +94163,10 @@ bind - split-window -v -c "#{pane_current_path}"
         );
         assert!(take_clipboard_writes(&charlie_mailbox, pane).is_empty());
 
-        // Without -w nothing reaches any client.
         run(vec!["set-buffer", "-t", "bravo", "payload-two"]);
         assert!(take_clipboard_writes(&alpha_mailbox, pane).is_empty());
         assert!(take_clipboard_writes(&bravo_mailbox, pane).is_empty());
 
-        // -a writes the joined buffer, matching the pin's bufdata.
         run(vec![
             "set-buffer",
             "-w",
@@ -94992,19 +94209,13 @@ bind - split-window -v -c "#{pane_current_path}"
             vec![(ClipboardTarget::Clipboard, "payload-three".to_owned())]
         );
 
-        // A Control client advertises no clipboard terminal feature, so it is the
-        // pin's Ms-less client: the command still succeeds and stores the buffer.
         run(vec!["set-buffer", "-w", "-t", "charlie", "payload-four"]);
         assert!(take_clipboard_writes(&charlie_mailbox, pane).is_empty());
 
-        // CMD_CLIENT_CANFAIL: an unknown -t is quiet and still stores the buffer.
         run(vec!["set-buffer", "-w", "-t", "missing", "payload-five"]);
         assert!(take_clipboard_writes(&alpha_mailbox, pane).is_empty());
         assert!(take_clipboard_writes(&bravo_mailbox, pane).is_empty());
 
-        // The application OSC 52 path does raise pane-set-clipboard, which is what
-        // makes the buffer-write silence below a real difference and not a dead
-        // hook registration.
         run(vec!["set-option", "-g", "set-clipboard", "on"]);
         shared.deliver_clipboard_write(pane, ClipboardTarget::Clipboard, "app".to_owned());
         assert!(
@@ -95016,7 +94227,6 @@ bind - split-window -v -c "#{pane_current_path}"
         take_reliable_messages(&alpha_mailbox);
         take_reliable_messages(&bravo_mailbox);
 
-        // cmd-set-buffer.c never calls notify_pane, in either set-clipboard mode.
         run(vec!["set-buffer", "-w", "-t", "alpha", "payload-six"]);
         assert_eq!(
             take_clipboard_writes(&alpha_mailbox, pane),
@@ -96505,12 +95715,6 @@ bind - split-window -v -c "#{pane_current_path}"
     #[cfg(unix)]
     #[test]
     fn a_pending_repeat_prefix_is_spent_by_one_mode_command() {
-        // Measured on pinned tmux d77c9dc6 on 2026-09-01 with an attached
-        // client: a pane entering copy mode reports #{copy_cursor_y} 22, then
-        // `send-keys -N 5` with no positional key followed by a plain
-        // `send-keys -X cursor-up` leaves it at 17 and the next cursor-up at
-        // 16. window.c keeps the count on the pane's mode entry and
-        // window_copy_command resets it to 1 once a command has run.
         let (shared, client, _context, pane, _terminal, _mailbox) =
             copy_mode_fixture("copy-repeat-prefix", ":");
         let mut inner = shared.inner.lock();
@@ -96531,8 +95735,6 @@ bind - split-window -v -c "#{pane_current_path}"
         );
         assert_eq!(counted_copy_mode_action(&mut inner, client, &up), up);
 
-        // A count-once action spends the prefix without repeating, the way
-        // window_copy_command runs it once and still resets wme->prefix.
         let stop =
             zz_terminal::TerminalViewAction::CopyMode(zz_terminal::CopyModeAction::StopSelection);
         inner
@@ -97012,10 +96214,6 @@ bind - split-window -v -c "#{pane_current_path}"
         let target = pane.to_string();
         let session = context.session.expect("session");
 
-        // Detaching leaves the pane's terminal alive with no attached client,
-        // so `copy-mode -k` arms the kill in one effect and errors on the next
-        // (`pane is not attached`). The armed kill must not survive for the
-        // next unrelated entry on that pane.
         shared.detach(client);
         let mut errored = ExecutionContext::default();
         let denied = shared.execute(
@@ -97406,8 +96604,6 @@ bind - split-window -v -c "#{pane_current_path}"
                 )
                 .expect("vi copy key");
         }
-        // The copy cursor is also an overlay, so wait for the exact selection
-        // produced by 0 v E before allowing the yank to cancel copy mode.
         let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             if terminal.latest_viewport_for(view).is_some_and(|viewport| {
@@ -102244,14 +101440,6 @@ bind - split-window -v -c "#{pane_current_path}"
         }
     }
 
-    /// On pinned tmux d77c9dc6 a pane's pty is its layout cell: a 199x49
-    /// window split `-h` reports 99x49 for both panes, `pane_left` plus
-    /// `pane_width` minus one equals `pane_right` on both, `#{window_layout}`
-    /// encodes 99x49 twice, and both shells' `stty size` answers `49 99`;
-    /// `resize-window -x 199` on a 188/10 split moves both shells with the
-    /// cells. So a client's floored measurement has to reach the pty and the
-    /// pane formats as one number, and a report the extent guard swallows
-    /// leaves the pty on the cell rather than a cell below it.
     #[test]
     fn a_floored_client_measurement_sizes_the_pty_from_the_pane_it_reports() {
         let shared = Arc::new(Shared::new(1));
@@ -106900,13 +106088,6 @@ bind - split-window -v -c "#{pane_current_path}"
         assert!(!has(&roster, "256") && !has(&roster, "RGB"), "{roster}");
     }
 
-    /// `tty_update_features`: a reply reaches the client's own roster after the
-    /// hello, and `tty_term_create` had already given it the base its TERM
-    /// carries. The stock `terminal-features` array names `xterm*` five
-    /// features and the VT100-like check adds `bpaste`, so a client on
-    /// `TERM=xterm` that has answered nothing lists those six and counts eight
-    /// colours; the same client after a `tmux` secondary DA lists what
-    /// `tty_default_features` gives that name and counts sixteen million.
     #[test]
     fn a_reply_after_the_hello_joins_the_roster_the_terminfo_entry_started() {
         let shared = Arc::new(Shared::new(1));
@@ -108515,12 +107696,6 @@ bind - split-window -v -c "#{pane_current_path}"
             ));
             assert!(take_browser_literals(&mailbox, browser).is_empty());
         }
-        // cmd_send_keys_exec skips the read-only guard under -X and runs its
-        // own mode check first, so a read-only client reaching a peer pane that
-        // is in no mode gets the pin's `not in a mode` rather than the
-        // read-only refusal. Measured on the pin with a read-only client
-        // selected by -c: `send-keys -c <read-only tty> -X cursor-up` answers
-        // `not in a mode` at status 1.
         let peer_target = peer_pane.to_string();
         assert!(matches!(
             shared.execute_command_request(
@@ -123234,7 +122409,6 @@ bind - split-window -v -c "#{pane_current_path}"
                 .collect()
         }
 
-        /// Every stream item a mailbox has been handed, in delivery order.
         fn drain_items(mailbox: &OutboundMailbox) -> Vec<AgentStreamItem> {
             take_agent_frames(mailbox)
                 .into_iter()
@@ -123327,8 +122501,6 @@ bind - split-window -v -c "#{pane_current_path}"
             _journal: tempfile::TempDir,
         }
 
-        /// A daemon with one attached client and one materialized agent pane,
-        /// opened against the in-process fixture adapter.
         fn workspace(behavior: Behavior) -> Workspace {
             let shared = Arc::new(Shared::new(1));
             let mailbox = OutboundMailbox::new();
@@ -123577,8 +122749,6 @@ bind - split-window -v -c "#{pane_current_path}"
                     encoded_updates(pane, seq * 10 + 1, 1, chunk)
                 ));
             }
-            // Three frames of a quarter of the cap each fit; the fourth,
-            // with its framing overhead, does not.
             assert!(mailbox.enqueue_agent(pane, 31, encoded_updates(pane, 31, 1, chunk)));
 
             {

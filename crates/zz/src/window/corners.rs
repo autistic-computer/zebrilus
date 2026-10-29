@@ -98,8 +98,6 @@ impl WindowCorners {
         self.surface_radii(radius, px(0.0))
     }
 
-    /// Per-corner radii for a pane surface: `base` everywhere, `exposed` at
-    /// window-exposed corners.
     pub(crate) fn surface_radii(self, exposed: Pixels, base: Pixels) -> Corners<Pixels> {
         Corners {
             top_left: if self.top_left() { exposed } else { base },

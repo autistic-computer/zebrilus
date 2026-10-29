@@ -1,16 +1,9 @@
 ---
-// pane_surface (zz-ui/src/pane.rs:52) with pane-gaps ON: squircle corners,
-// a 1px theme.border ring, and a 6px gutter owned by the canvas. The stock config
-// has pane-gaps false (config/mod.rs:53) — pass `flush` for that look.
 interface Props {
 	flush?: boolean;
-	/** Pane content plane. Terminals paint their own; surface panes use theme.background. */
 	background?: string;
-	/** Surface-style panes take a flat scrim when unfocused (INACTIVE_PANE_FADE = 0.3). */
 	inactive?: boolean;
-	/** Stable id, so the sidebar and the canvas can address the same pane. */
 	id?: string;
-	/** The attached pane. Ring = foreground.alpha(0.2), 1px (styled.rs:76-78). */
 	focused?: boolean;
 	class?: string;
 }
@@ -43,8 +36,6 @@ const { flush = false, background, inactive = false, id, focused, class: cls } =
 	.pane[data-focused] {
 		border-color: var(--zz-focus-soft);
 	}
-	/* pane-gaps false: no margin, no border, no radius — a 1px hairline divides
-	   neighbours and only window-edge corners round (config/mod.rs:744). */
 	.pane--flush {
 		border: 0;
 		border-radius: 0;

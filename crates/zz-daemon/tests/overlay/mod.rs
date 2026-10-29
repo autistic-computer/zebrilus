@@ -1,11 +1,3 @@
-//! A headless daemon with one attached interactive client, for the overlay
-//! surfaces that only exist while a client is attached: `display-menu` and
-//! `display-popup`.
-//!
-//! Overlay commands from a command client block until the overlay closes, so
-//! every invocation runs on its own connection and its own thread while the
-//! attached client reads the published descriptor.
-
 #![allow(dead_code)]
 
 use std::{
@@ -112,8 +104,6 @@ impl Overlays {
         }
     }
 
-    /// Run one command on its own connection, so an overlay command that waits
-    /// for the overlay to close does not block the test thread.
     pub fn spawn_command(&self, command: CommandInvocation) -> JoinHandle<Result<String, String>> {
         let socket = self.socket.clone();
         thread::spawn(move || {
@@ -122,7 +112,6 @@ impl Overlays {
         })
     }
 
-    /// Read published events until a menu descriptor arrives.
     pub fn await_menu(&self) -> MenuState {
         self.await_event(|payload| match payload {
             EventPayload::Menu { state } => state,
@@ -137,7 +126,6 @@ impl Overlays {
         });
     }
 
-    /// The next menu descriptor of any kind, open or closed.
     pub fn next_menu_event(&self) -> Option<MenuState> {
         self.await_event(|payload| match payload {
             EventPayload::Menu { state } => Some(state),

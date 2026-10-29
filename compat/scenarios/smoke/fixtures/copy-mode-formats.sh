@@ -83,9 +83,6 @@ value() {
     main_client display-message -p -t "$pane" "#{$1}"
 }
 
-# Outside a mode window_copy_formats never runs, so every name it would add is
-# absent from the format tree and expands empty. pane_in_mode is a table entry
-# instead, so it answers 0 for a pane with no mode, and pane_mode answers NULL.
 absent_family() {
     for name in copy_cursor_line copy_cursor_word copy_cursor_x copy_cursor_y \
         scroll_position selection_end_x selection_end_y selection_present \
@@ -131,19 +128,11 @@ check_equal in-selection_start_y '' "$(value selection_start_y)"
 check_equal in-selection_end_x '' "$(value selection_end_x)"
 check_equal in-selection_end_y '' "$(value selection_end_y)"
 
-# The pane's own client and a named -c client answer the same mode, because
-# tmux keeps one mode entry on the pane and zz falls back to the one client
-# that holds a copy session on it.
 entry="$(value copy_cursor_y)"
 named="$(main_client display-message -p -t "$pane" -c "$client" '#{copy_cursor_y}')"
 check_equal entry-is-a-row 1 "$(expr "$entry" : '[0-9][0-9]*$' >/dev/null && echo 1 || echo 0)"
 check_equal entry-matches-named "$entry" "$named"
 
-# window.c stores the -N count as wme->prefix on the mode entry and
-# window_copy_command resets it to 1 only after a command actually ran, so a
-# bare `send-keys -N 5` and a `send-keys -N 4 -X` with no action each leave the
-# count armed for whichever mode command runs next. The pane geometry differs
-# between the two clients, so the proof is the distance each cursor-up moved.
 main_client send-keys -t "$pane" -N 5
 main_client send-keys -t "$pane" -X cursor-up
 after_counted="$(value copy_cursor_y)"
@@ -158,8 +147,6 @@ check_equal count-resets-after-one-command 1 "$((after_counted - after_plain))"
 check_equal empty-copy-count-spends-four 4 "$((after_plain - after_empty))"
 check_equal counts-leave-the-view 0 "$(value scroll_position)"
 
-# A count larger than the cursor's row scrolls the view by the remainder, so
-# the rows moved stay the count whatever the client's pane height is.
 main_client send-keys -t "$pane" -N 100 -X cursor-up
 check_equal counted-scroll-moves-one-hundred 100 \
     "$(($(value scroll_position) + after_empty - $(value copy_cursor_y)))"
@@ -167,9 +154,6 @@ check_equal counted-scroll-moves-one-hundred 100 \
 main_client send-keys -t "$pane" -X history-bottom
 check_equal history-bottom-returns 0 "$(value scroll_position)"
 
-# window_copy_get_line trims the row's trailing blanks and window_copy_get_word
-# returns the word the cursor sits in, so on a marker row the word is the
-# line's first token.
 main_client send-keys -t "$pane" -X cursor-up
 main_client send-keys -t "$pane" -X start-of-line
 line="$(value copy_cursor_line)"
@@ -179,8 +163,6 @@ check_equal cursor-line-is-a-marker 1 \
 check_equal cursor-word-is-the-first-token "${line%% *}" "$word"
 check_equal cursor-x-at-start-of-line 0 "$(value copy_cursor_x)"
 
-# format_grid_word walks back to the start of the word the cursor sits in, and
-# a cursor parked on a single separator collects the word that follows it.
 main_client send-keys -t "$pane" -N 4 -X cursor-right
 check_equal cursor-x-after-four-rights 4 "$(value copy_cursor_x)"
 check_equal cursor-word-on-the-separator "${line##* }" "$(value copy_cursor_word)"
@@ -190,8 +172,6 @@ check_equal cursor-word-inside-the-second-word "${line##* }" "$(value copy_curso
 check_equal cursor-line-unchanged-by-the-walk "$line" "$(value copy_cursor_line)"
 main_client send-keys -t "$pane" -X start-of-line
 
-# screen.sel is NULL until begin-selection, and selection_present stays 0 while
-# the selection is still one cell wide.
 main_client send-keys -t "$pane" -X begin-selection
 check_equal selection-armed-is-empty 0 "$(value selection_present)"
 start_x="$(value selection_start_x)"

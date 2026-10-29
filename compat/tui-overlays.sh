@@ -1,137 +1,4 @@
 #!/usr/bin/env bash
-# Whole-screen differential for the overlay surfaces: the command prompt,
-# confirm-before, display-menu, display-popup and display-panes.
-#
-# compat/attached-client.sh already drives every one of these surfaces as
-# BEHAVIOUR - which key closes what, which option a menu item sets, which byte
-# a popup's job receives - and those cases stay there as regressions. None of
-# them ever compared what the surface LOOKS like: where the prompt sits, which
-# cells a menu covers, what a popup border is drawn with, where the cursor is
-# left. That is TUI-007, and this fixture is its measurement.
-#
-# THE DECODED SCREEN IS THE CONTRACT, NOT THE BYTE STREAM. Both binaries attach
-# inside ONE outer pinned tmux, one window each, and the outer tmux is the
-# decoder: `capture-pane -p -e` re-emits SGR from its own grid, so attribute
-# order, batching, redundant resets and cursor-movement spelling collapse on
-# both sides before anything is compared, while the colour CLASS does not. The
-# whole visible screen is compared row index by row index, plus the cursor tuple
-# the inner client left in the outer terminal. The driver is tui-indicators.sh's.
-#
-# CONTROLLED DYNAMIC VALUES, set on both sides before the first checkpoint:
-#   status-right ''      the default ends in a clock and in %d-%b-%y, which the
-#                        pin expands through libc strftime and zz expands
-#                        locale-independently. That belongs to status-row.sh.
-#   status-left L        a fixed literal, so the left of the row is asserted.
-#   automatic-rename off plus rename-window win: the default name follows the
-#                        running command and would race a marker.
-#   select-pane -T title fixed: the pane.runtime-facts decision, not this
-#                        screen's.
-#   display-time         held at MESSAGE_HOLD_MS so a message cannot expire
-#                        between the two sides' captures.
-#   display-panes -d 0   display-panes-time would retire the labels on a clock;
-#                        -d 0 holds them until a key.
-#   default-shell        /bin/sh on both sides, so a popup's job runs under the
-#                        same shell whatever the box's $SHELL is.
-#   the inner shell      ENV= PS1='$ ' exec /bin/sh: no rc file, and a prompt
-#                        that carries no host, user, path or clock.
-#   the pane divider     the display-panes cases need two panes, so they carry
-#                        a vertical divider. Its COLOUR is not this surface's:
-#                        tui-screen-diff.sh records it under BORDER_STYLE_REASON
-#                        (the pin draws themegreen over a default ground, the
-#                        raw TUI its own blue over an explicit ground), inside
-#                        the recorded presentation:tui-status-row-theme-defaults
-#                        decision. So in those cases, and only there, the SGR
-#                        immediately around each divider glyph is stripped from
-#                        BOTH captures before they are compared. The divider
-#                        glyph itself, every column, the big digits, the
-#                        labels and every other cell's style are compared.
-# Nothing else is masked, apart from the three popup differences KNOWN DRIFT
-# (above compare_rows) names. Anything not in that list is compared.
-#
-# SETTLED CHECKPOINTS, MARKED BEFORE THE STATE. Every surface here swallows the
-# keystroke a marker is typed with, so each case types its marker into the pane
-# FIRST, waits for it to settle, and only then opens the surface. The marker
-# stays on the screen underneath (the surfaces are placed clear of row 1), so
-# every later settle is the same bounded wait: marker present AND the screen
-# unchanged between two polls. Every state also has its own observable, waited
-# for before the settle, so no comparison is taken while one side has the state
-# and the other does not:
-#   prompt, confirm      the prompt text on the status row
-#   menu                 its title on the screen
-#   popup                its title, then the job's own POPUP-BODY line
-#   display-panes        the big digits are cells, not text, so the observable
-#                        is the screen CHANGING from the marked one on both
-#                        sides and then settling
-#   message              the message text on the status row
-#   a resize             #{client_width}x#{client_height} on the inner client
-# Surfaces are opened through the client's own key table (prefix, then a bound
-# key), because display-menu and command-prompt from a one-shot client do not
-# return until the surface is answered.
-#
-# MODES. `same` asserts the whole decoded screen and the cursor, the prompt and
-# message row included: TUI-004 landed message-style and message-command-style,
-# so every case here is asserted and nothing is left out of a comparison.
-# `record` asserts nothing and has to say why; no case uses it.
-#
-# TRAILING SPACES ON THE PROMPT AND MESSAGE ROW. Measured 2026-09-11 against
-# the pin, and only while a status row sits under the overlay, which every case
-# in this file does: a space at the END of a message string or of the command
-# prompt's input is not painted in message-style. The pin's decoded row carries
-# the message-style run up to the last non-blank glyph and then the fill's own
-# cell (capture-pane -e emits the fill's SGR right after that glyph and trims
-# the blanks behind it); a side that paints those spaces shows them inside the
-# message-style run instead. Two cases measure it: prompt-trailing-space types
-# two spaces at the end of a command, and popup-under-message passes a message
-# that ends in two spaces (menu-under-message passes one with no trailing
-# space, and measures the nesting rather than the fill).
-#
-# The fill is what absorbs them, so the rule stops where the fill does. With
-# `status off` the pin draws the prompt straight onto the pane's own ground,
-# tty_draw_line cannot fold a message-background space into an erase on a
-# default-background row, and the pin paints it: compat/tui-copy-mode.sh runs
-# with status off and its four *-search-prompt cases assert the pin's
-# `(search down) ` with the trailing space inside the message-style run.
-#
-# ODD SIZE AND USER STYLES. The pin centres a popup and a -x C -y C menu on the
-# client's full height (cmd_display_menu_get_pos: tty->sy), which at an even
-# height rounds to the same row as the window's height and at an odd height
-# does not, and a user style with a foreground and no background leaves the
-# terminal's default ground under the cell. So the last section resizes to
-# 79x23 and opens a centred menu, a centred -M menu chosen by a click and a
-# centred popup of the default size, first with menu-style,
-# menu-selected-style, menu-border-style, popup-style and popup-border-style
-# set fg-only on both sides and then set fg plus bg, and shows display-panes
-# with display-panes-colour and display-panes-active-colour set to
-# non-default values on both sides.
-#
-# NO INPUT REACHES A COVERED PANE. Three cases type a key the surface does not
-# answer - `z` into an open menu, `z` into an open popup's job, `Z` into
-# display-panes - and the restoration comparison afterwards covers the pane the
-# surface sat on: a key that leaked would be on that pane's prompt line.
-#
-# --self-check runs the driver against a deliberate one-sided difference in each
-# channel - a menu item only one side has, a keystroke only one side's covered
-# pane receives, a popup border only one side draws rounded, a prompt cursor
-# only one side moves, an fg-only menu-border-style only one side sets, a
-# message-style only one side sets under a message, the same message-style
-# under the command prompt, and a display-panes-active-colour only one side
-# sets - and requires the comparison to report each one, plus one equivalence
-# it must NOT report. The two message-style sabotages name the row they expect:
-# the comparison has to report the message row and NOTHING else, which is what
-# holds the prompt, confirm and *-under-message cases to the whole row now that
-# no row is left out. A fixture that only passes has proved nothing.
-#
-# A KEY THAT CLEARS A MESSAGE ALSO REACHES THE PANE, on both binaries. The two
-# self-check cases that leave something in the inner pane's input line - the
-# deliberately leaked `z` under the menu, and the C-l that dismisses the styled
-# message - flush it with a bare Enter before the next marker is typed, because
-# the inner shell is /bin/sh and on a box where that is dash there is no line
-# editing to swallow the stray byte: it would prefix the next printf and the
-# marker would never print.
-#
-# A divergence is a finding: the script exits 1 so a caller can gate on it, and
-# prints both sides so the next lane has the measurement. It reaps every server
-# and daemon it starts.
 set -eEuo pipefail
 
 usage() {
@@ -222,8 +89,6 @@ side_command() {
   esac
 }
 
-# Every server this script made, plus any daemon a scrubbed zz invocation
-# autostarted under the scratch HOME, is reaped on the way out.
 cleanup() {
   local status=$?
   local pid
@@ -557,24 +422,6 @@ mark_both() {
   settle_both "MARK-$name" "$name"
 }
 
-# KNOWN DRIFT, gap:display-popup.modal-pane. fabrico ruled on 2026-10-09 that
-# display-popup is upstream master's modal floating pane (34cd5da4 deleted
-# popup.c), so zz's popup is a pane where the 3.8 pin still draws popup.c's
-# client box. Exactly three things that model draws differ from the box, and
-# each popup case names the ones it shows:
-#   title   the -T title is the pane's border format on its top border, drawn
-#           after two horizontals (`┌──TITLE`) where popup_draw_cb draws it
-#           after one (`┌─TITLE─`)
-#   flag    the modal is a floating pane, so the status row's window list
-#           shows the window's O flag while it is up
-#   row     the modal is placed in window cells (knowledge/designs/
-#           floating-panes.md), so at an odd height a centred one sits a row
-#           above the client-centred box
-# For a case with known drift, compare_rows rewrites the zz capture by exactly
-# those differences (the title bytes, the `*O` of this window's entry, and the
-# box rows moved down one with the cursor) and then compares the whole screen
-# as usual: every other cell, every style and the cursor stay asserted, and a
-# rewrite that does not apply leaves the difference to fail the case.
 POPUP_DRIFT_OWNER=gap:display-popup.modal-pane
 POPUP_TITLES=(OVERLAY-POPUP CENTRE-POPUP)
 known_drift() {
@@ -732,14 +579,6 @@ verdict() {
   return 0
 }
 
-# --- the cases -------------------------------------------------------------
-#
-# THE COMMAND PROMPT. status.c status_prompt_redraw draws the prompt on the
-# message line (status_prompt_line_at) inside status_message_area, and
-# prompt_draw scrolls the input horizontally once it outgrows that area. The
-# cursor is the prompt's own (status_prompt_cursor). Cases: opened, typed, a
-# long input past the width with the cursor moved back into it, a size change
-# while open, the prompt at the top when status-position is top, and cancelled.
 prompt_case() {
   CASE_LABEL=command-prompt
   mark_both prompt
@@ -792,9 +631,6 @@ prompt_case() {
   set_on_both status-position bottom
 }
 
-# CONFIRM-BEFORE is a prompt too (status_prompt_set with PROMPT_SINGLE), so its
-# row style is the same sibling's. -b returns at once, so it can be raised from
-# a one-shot client. `n` refuses, and the restoration is asserted whole.
 confirm_case() {
   CASE_LABEL=confirm-before
   mark_both confirm
@@ -814,10 +650,6 @@ confirm_case() {
   verdict confirm-refused same
 }
 
-# DISPLAY-MENU, bound to prefix M: -x 4 -y 12, a -T title, shortcut keys, a
-# separator and a disabled row. menu.c menu_draw_cb draws screen_write_box and
-# screen_write_menu into the menu's own screen and copies it to the tty at
-# px,py; the cursor is whatever the client's reset state leaves.
 menu_case() {
   CASE_LABEL=display-menu
   mark_both menu
@@ -873,9 +705,6 @@ menu_case() {
   verdict menu-click-closed same
 }
 
-# A button-1 press and release at the first cell of TEXT as the pin's screen
-# draws it, written as SGR mouse reports into both outer panes. The comparison
-# before this has already asserted both menus sit on the same cells.
 click_item_on_both() {
   local text="$1"
   local side row column line index
@@ -897,10 +726,6 @@ click_item_on_both() {
   done
 }
 
-# DISPLAY-POPUP, bound to prefix P: -w 34 -h 9, -T title and -E, over a job that
-# prints POPUP-BODY and reads two lines. popup.c popup_draw_cb draws the box
-# with the title, copies the job's screen inside it and places the job's cursor.
-# `z` typed into the popup goes to the job, never to the pane under it.
 popup_case() {
   CASE_LABEL=display-popup
   mark_both popup
@@ -931,25 +756,6 @@ popup_case() {
   verdict popup-closed same
 }
 
-# DISPLAY-PANES over a horizontal split. cmd-display-panes.c
-# cmd_display_panes_draw_pane draws each pane's index centred in the pane, in
-# the window_clock_table digits when the pane is large enough, in
-# display-panes-active-colour for the active pane and display-panes-colour for
-# the rest, with display-panes-format beneath. A digit selects that pane; `Z` is
-# not a pane key, closes the labels and goes on to the pane (the -1 return of
-# cmd_display_panes_key falls through server_client_clear_overlay to the key
-# table). A size change clears the labels without delivering any key:
-# display-panes registers no resize callback, and server-client.c:2465 clears
-# an overlay whose overlay_resize is NULL.
-#
-# THE RESIZE HERE CHANGES THE HEIGHT ONLY, for two measured reasons that belong
-# to the pane-geometry record and not to this surface. Growing an 80-column -h
-# split to 100 columns gives the pin 50|49 and zz 49|50 (the divider one column
-# apart), and shrinking back leaves zz's left pane showing scrollback lines the
-# pin's does not. Both were measured 2026-09-10 on this pair and are reported
-# with the lane's notes; a height-only change keeps the divider where it is, and
-# the case re-marks after the round trip so no later comparison carries the
-# residue.
 display_panes_case() {
   CASE_LABEL=display-panes
   run_on_both split-window -h -t "=$INNER_SESSION:0.0" "$INNER_SHELL"
@@ -999,16 +805,6 @@ display_panes_case() {
   DIVIDER_RULE=0
 }
 
-# ODD SIZE AND USER STYLES. cmd_display_menu_get_menu_pos centres a menu on
-# window->sy and cmd_display_menu_get_popup_pos a popup on tty->sy, the
-# client's full height, so at 79x23 each sits where (sy - 1) / 2 + h / 2 - h
-# puts it in its own frame, the menu a row higher. menu.c and
-# popup.c leave a user style's missing background as the terminal's default
-# ground. The split display-panes left behind is closed first and the pane
-# re-marked after the resize, so no residue of resizing a -h split reaches a
-# comparison. The popup takes display-popup's default size, half the client
-# each way. The display-panes part runs last because its divider rule strips
-# the SGR around every vertical line, a menu border's included.
 CENTRE_MENU_ITEMS=(
   'First item' f 'set-option -g @overlay_menu first'
   ''
@@ -1109,17 +905,6 @@ if ! tmux_inner_command -f /dev/null start-server \; list-commands display-panes
   ZOOM_REFLOW_MODE=record
 fi
 
-# THE PROMPT CURSOR. prompt_set_options reads prompt-cursor-style and
-# prompt-cursor-colour, and the prompt-command-cursor-* pair for vi command
-# mode, from the session as the prompt opens (prompt.c:131-155); prompt_draw
-# hangs them on the status screen (prompt.c:613-621), so tty_update_cursor
-# sends Ss and Cs while the prompt is up and Se and Cr once it is gone
-# (tty.c:788-880). The outer tmux reads them back as cursor_shape,
-# cursor_blinking and cursor_colour, which the cursor tuple asserts. With
-# status-keys vi, Escape puts the prompt in command mode, which swaps the pair
-# and paints the row in message-command-style. confirm-before raises a prompt
-# through the same status_prompt_set, so it carries the first pair too. The
-# case runs on a fresh outer server and puts every option back after.
 PROMPT_CURSOR_OPTIONS=(
   prompt-cursor-style bar
   prompt-cursor-colour red
@@ -1195,7 +980,6 @@ run_cases() {
   printf 'all %s asserted comparisons identical, %s recorded not asserted (%s)\n' "$CHECKS" "$RECORDS" "$(owner_tally)"
 }
 
-# --- self-check ------------------------------------------------------------
 SELF_CHECK_FAILURES=0
 
 self_check_case() {

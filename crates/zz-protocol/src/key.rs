@@ -22,7 +22,6 @@ pub struct Binding {
 }
 
 impl Binding {
-    /// The default `<prefix> <prefix>` binding that delivers a literal prefix.
     #[must_use]
     pub fn send_prefix() -> Self {
         Self {
@@ -32,7 +31,6 @@ impl Binding {
         }
     }
 
-    /// Whether this is exactly the stock `send-prefix` binding.
     #[must_use]
     pub fn is_send_prefix(&self) -> bool {
         matches!(self.commands.as_slice(), [command]
@@ -1223,17 +1221,12 @@ impl Default for KeyTables {
             );
         }
         tables.bind_copy_mode_search_defaults();
-        // tmux's stock `bind C-b send-prefix`.
         let prefix = tables.prefix.clone();
         tables.bind("prefix", &prefix, Binding::send_prefix());
         tables
     }
 }
 
-/// `key-bindings.c`'s `DEFAULT_WINDOW_MENU`, the eleven-item menu the pin's
-/// `MouseDown3Status` and `M-MouseDown3Status` raise over the window range the
-/// pointer landed in. Each item is stored in the text `cmd_print` gives it
-/// back, so `list-keys -T root` prints the row the way the pin prints its own.
 fn window_menu_command() -> CommandInvocation {
     let mut args = vec![
         "-t".to_owned(),
@@ -1310,8 +1303,6 @@ fn empty_menu_command() -> CommandInvocation {
     CommandInvocation::new("display-menu", args).with_command_blocks([10, 13])
 }
 
-/// `key-bindings.c`'s `DEFAULT_PANE_MENU`, the thirty-one items the pin's
-/// pane menu carries, each stored in the text `cmd_print` gives it back.
 fn pane_menu_command() -> CommandInvocation {
     let mut args = vec![
         "-t".to_owned(),
@@ -1462,8 +1453,6 @@ fn pane_menu_command() -> CommandInvocation {
     CommandInvocation::new("display-menu", args).with_command_blocks(blocks)
 }
 
-/// The same menu as the block `MouseDown3Pane`'s `if-shell` runs when the pane
-/// neither tracks the mouse itself nor holds a mode of its own.
 const PANE_MENU_BLOCK: &str = "{ display-menu -T \"#[align=centre]#{pane_index} (#{pane_id})\" -t = -x M -y M \"#{?#{m/r:(copy|view)-mode,#{pane_mode}},Go To Top,}\" < { send-keys -X history-top } \"#{?#{m/r:(copy|view)-mode,#{pane_mode}},Go To Bottom,}\" > { send-keys -X history-bottom } '' \"#{?#{==:#{pane_mode},copy-mode},#{?copy_line_numbers,Hide Line Numbers,Show Line Numbers},}\" L { send-keys -X line-numbers-toggle } \"#{?#{==:#{pane_mode},copy-mode},#{?refresh_active,Refresh Off,Refresh On},}\" r { send-keys -X refresh-toggle } '' \"#{?#{&&:#{buffer_size},#{!:#{pane_in_mode}}},Paste #[underscore]#{=/9/...:buffer_sample},}\" p { paste-buffer } '' \"#{?mouse_word,Search For #[underscore]#{=/9/...:mouse_word},}\" C-r { if-shell -F \"#{?#{m/r:(copy|view)-mode,#{pane_mode}},0,1}\" \"copy-mode -t=\" ; send-keys -X -t = search-backward -- \"#{q:mouse_word}\" } \"#{?mouse_word,Type #[underscore]#{=/9/...:mouse_word},}\" C-y { copy-mode -q ; send-keys -l \"#{q:mouse_word}\" } \"#{?mouse_word,Copy #[underscore]#{=/9/...:mouse_word},}\" c { copy-mode -q ; set-buffer \"#{q:mouse_word}\" } \"#{?mouse_line,Copy Line,}\" l { copy-mode -q ; set-buffer \"#{q:mouse_line}\" } '' \"#{?mouse_hyperlink,Type #[underscore]#{=/9/...:mouse_hyperlink},}\" C-h { copy-mode -q ; send-keys -l \"#{q:mouse_hyperlink}\" } \"#{?mouse_hyperlink,Copy #[underscore]#{=/9/...:mouse_hyperlink},}\" h { copy-mode -q ; set-buffer \"#{q:mouse_hyperlink}\" } '' \"#{?#{#{pane_floating_flag}},Move,}\" '' { display-menu -T \"#[align=centre]Move\" -x L -y L Centre c { move-pane -P centre } '' \"Top Left\" 1 { move-pane -P top-left } \"Top Right\" 2 { move-pane -P top-right } \"Bottom Left\" 3 { move-pane -P bottom-left } \"Bottom Right\" 4 { move-pane -P bottom-right } '' Top t { move-pane -P top-centre } Bottom b { move-pane -P bottom-centre } Left l { move-pane -P centre-left } Right r { move-pane -P centre-right } } \"#{?#{#{pane_floating_flag}},Move & Resize,}\" '' { display-menu -T \"#[align=centre]Move & Resize\" -x L -y L Fill 0 { resize-pane -x \"100%\" -y \"100%\" ; move-pane -P top-left } '' \"Top Left\" 1 { resize-pane -x \"50%\" -y \"50%\" ; move-pane -P top-left } \"Top Right\" 2 { resize-pane -x \"50%\" -y \"50%\" ; move-pane -P top-right } \"Bottom Left\" 3 { resize-pane -x \"50%\" -y \"50%\" ; move-pane -P bottom-left } \"Bottom Right\" 4 { resize-pane -x \"50%\" -y \"50%\" ; move-pane -P bottom-right } '' Top t { resize-pane -x \"100%\" -y \"50%\" ; move-pane -P top-centre } Bottom b { resize-pane -x \"100%\" -y \"50%\" ; move-pane -P bottom-centre } Left l { resize-pane -x \"50%\" -y \"100%\" ; move-pane -P centre-left } Right r { resize-pane -x \"50%\" -y \"100%\" ; move-pane -P centre-right } } \"#{?#{#{pane_floating_flag}},Tile,}\" t { join-pane } \"#{?#{!:#{pane_floating_flag}},Float,}\" f { break-pane -W } \"#{?#{!:#{pane_floating_flag}},Horizontal Split,}\" h { split-window -h } \"#{?#{!:#{pane_floating_flag}},Vertical Split,}\" v { split-window -v } '' \"#{?#{&&:#{!:#{pane_floating_flag}},#{>:#{window_panes},1}},Swap Up,}\" u { swap-pane -U } \"#{?#{&&:#{!:#{pane_floating_flag}},#{>:#{window_panes},1}},Swap Down,}\" d { swap-pane -D } \"#{?pane_marked_set,,-}Swap Marked\" s { swap-pane } '' Kill X { kill-pane } Respawn R { respawn-pane -k } \"#{?pane_marked,Unmark,Mark}\" m { select-pane -m } \"#{?#{>:#{window_panes},1},,-}#{?window_zoomed_flag,Unzoom,Zoom}\" z { resize-pane -Z } }";
 
 #[cfg(test)]
@@ -1473,8 +1462,6 @@ mod generation_tests;
 mod overlay_tests;
 
 impl KeyTables {
-    /// Tables with no bindings at all, for key surfaces that seed their own
-    /// defaults (client-local chrome tables) instead of the tmux set.
     #[must_use]
     pub fn empty() -> Self {
         Self {
@@ -1516,11 +1503,6 @@ impl KeyTables {
         self.touch();
     }
 
-    /// The pin's stock prompted copy-mode bindings. All of them are
-    /// `command-prompt -P`, whose resolved pane rides the wire: the raw TUI
-    /// draws the prompt over that pane's last row the way the pin does, while
-    /// the ala, iOS and web clients read nothing from it and keep the prompt
-    /// on their own client surface. The stored command is the pin's either way.
     fn bind_copy_mode_search_defaults(&mut self) {
         for (table, key, label, action) in [
             ("copy-mode-vi", "/", "(search down)", "search-forward"),
@@ -1619,9 +1601,6 @@ impl KeyTables {
         self.prefix2.as_deref()
     }
 
-    /// Set or clear the secondary prefix. The pin's default bindings carry no
-    /// `send-prefix -2` entry, so unlike [`Self::set_prefix`] this never
-    /// touches the tables.
     pub fn set_prefix2(&mut self, prefix2: Option<&str>) {
         let prefix2 = prefix2
             .filter(|key| !key.eq_ignore_ascii_case("none"))
@@ -1632,15 +1611,11 @@ impl KeyTables {
         }
     }
 
-    /// Whether a canonical key arms the prefix table: the prefix or, when
-    /// set, the secondary prefix.
     #[must_use]
     pub fn is_prefix(&self, key: &str) -> bool {
         key == self.prefix || self.prefix2.as_deref() == Some(key)
     }
 
-    /// Change the effective prefix, carrying a stock `send-prefix` binding with
-    /// it. A binding the user customized stays on the old key.
     pub fn set_prefix(&mut self, prefix: impl Into<String>) {
         let next = canonical_key(&prefix.into());
         let previous = std::mem::replace(&mut self.prefix, next);
@@ -1762,11 +1737,6 @@ impl KeyTables {
         self.tables.keys().map(String::as_str)
     }
 
-    /// The binding a key press resolves to in `table`, preferring the
-    /// character the press typed (`?` from shift+`/`) over the folded
-    /// physical key name, with an `Any` fallback. This is the one lookup
-    /// semantic shared by the daemon's overlay routing and client-local
-    /// chrome tables.
     #[must_use]
     pub fn resolve_input(&self, table: &str, input: &KeyInput) -> Option<&Binding> {
         if let Some(text) = input_typed_text(input)
@@ -1779,8 +1749,6 @@ impl KeyTables {
             .or_else(|| self.get(table, "Any"))
     }
 
-    /// Every table flattened for the wire, with command names canonicalized
-    /// so a client matching on `split-window` also catches `splitw`.
     #[must_use]
     pub fn snapshot(&self) -> Vec<KeyTableSnapshot> {
         self.tables
@@ -1878,9 +1846,6 @@ impl KeyEngine {
         self.repeat_deadline.or(self.prefix_deadline)
     }
 
-    /// Consume the copy-mode repeat prefix the way `window_copy_command` reads
-    /// `wme->prefix` and then resets it to 1: one command spends the count and
-    /// the next one starts over.
     pub fn take_repeat_count(&mut self) -> Option<u32> {
         self.repeat_count
             .take()
@@ -2046,7 +2011,6 @@ impl KeyEngine {
             && self.prefix_deadline.is_some_and(|deadline| now > deadline)
             && !(self.repeat_deadline.is_some()
                 && exact_binding.is_some_and(|binding| binding.repeat));
-        // prefix-timeout expires lazily on the next key; there is no timer to clear the client indicator.
         if prefix_expired {
             self.clear_explicit_table();
             root_table.clone_into(&mut table);
@@ -2343,8 +2307,6 @@ fn copy_jump_needs_target(command: &CommandInvocation) -> bool {
 
 const INLINE_KEY_NAME_BYTES: usize = 16;
 
-/// A tmux-grammar key name assembled without heap allocation for every
-/// common chord.
 pub struct KeyName {
     bytes: SmallVec<[u8; INLINE_KEY_NAME_BYTES]>,
 }
@@ -2375,7 +2337,6 @@ impl KeyName {
         String::from_utf8(self.bytes.into_vec()).expect("key names are assembled from valid UTF-8")
     }
 
-    /// Whether the name outgrew its inline storage; diagnostics only.
     #[must_use]
     pub fn spilled(&self) -> bool {
         self.bytes.spilled()
@@ -2542,7 +2503,6 @@ fn tty_named_key(key: KeyCode, modifier: u8) -> KeyInput {
     }
 }
 
-/// Fold a wire key press into the tmux-grammar name the key tables index by.
 #[must_use]
 pub fn input_key_name(input: &KeyInput) -> KeyName {
     let mut name = KeyName::new();
@@ -2590,8 +2550,6 @@ pub fn input_key_name(input: &KeyInput) -> KeyName {
     name
 }
 
-/// Printable text a key press typed, if the chord carries no command
-/// modifiers.
 #[must_use]
 pub fn input_typed_text(input: &KeyInput) -> Option<&str> {
     if input.modifiers.control() || input.modifiers.alt() || input.modifiers.platform() {
@@ -2601,12 +2559,6 @@ pub fn input_typed_text(input: &KeyInput) -> Option<&str> {
     (!text.is_empty() && !text.chars().any(char::is_control)).then_some(text)
 }
 
-/// Whether `value` spells a key some [`KeyInput`] can produce, in exactly the
-/// grammar [`input_key_name`] emits. Callers that resolve a key from user text
-/// — chooser row shortcuts, for one — follow the pin's rule that a spelling
-/// nothing can press means no key at all, the way `key_string_lookup_string`
-/// answers `KEYC_UNKNOWN` in key-string.c. Canonicalize with [`canonical_key`]
-/// first: this accepts only the `C-` before `M-` order the emitter uses.
 #[must_use]
 pub fn is_key_name(value: &str) -> bool {
     let rest = value.strip_prefix("C-").unwrap_or(value);
@@ -2643,17 +2595,12 @@ pub fn is_key_name(value: &str) -> bool {
     )
 }
 
-/// Fold a tmux key spelling into its canonical form: `Ctrl-`/`Alt-` become
-/// `C-`/`M-` and `Space` becomes a literal space, on both sides of any
-/// modifier chain.
 #[must_use]
 pub fn canonical_key(value: &str) -> String {
     let trimmed = value.trim();
     if value == " " || trimmed == "Space" {
         return " ".to_owned();
     }
-    // The pin's key_string_table spells the empty key `None` and parses it
-    // case-insensitively (key-string.c), so every spelling round-trips as `None`.
     if trimmed.eq_ignore_ascii_case("none") {
         return "None".to_owned();
     }
@@ -2854,10 +2801,6 @@ mod tests {
         }
     }
 
-    /// A terminal writes `\033s` for M-s and `\033S` for M-S, two byte
-    /// sequences the pin binds separately, so Alt keeps the shift a client
-    /// reported. Control does not: a control byte carries no case, and 0x13 is
-    /// C-s whichever way it was typed.
     #[test]
     fn alt_keeps_the_shift_and_control_folds_it_away() {
         let alt_shift = press(
@@ -5400,11 +5343,6 @@ mod tests {
         ));
     }
 
-    /// The stock jump keys are the pin's `command-prompt -1P` bindings now, so
-    /// the single key that answers them is the prompt's, not the engine's. The
-    /// engine keeps the capture for an argument-less `send-keys -X
-    /// jump-forward` a configuration binds itself, which the pin treats as a
-    /// no-op.
     #[test]
     fn copy_jump_bindings_capture_exactly_one_following_key() {
         let mut tables = KeyTables::default();

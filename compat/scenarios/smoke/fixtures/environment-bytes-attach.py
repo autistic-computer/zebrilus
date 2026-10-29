@@ -1,10 +1,3 @@
-"""Attach a real client whose own environment holds a non-UTF-8 value.
-
-`update-environment` copies a client's entries into the session it attaches to,
-so the byte has to survive the client's hello. The client runs on a pty because
-a detached `new-session` never carries a client environment at all.
-"""
-
 import os
 import pty
 import subprocess

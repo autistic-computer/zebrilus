@@ -15,7 +15,6 @@ const CHROMIUM_EPOCH_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
 const MAX_HISTORY_DATABASE_BYTES: u64 = 512 * 1024 * 1024;
 pub const MAX_HISTORY_IMPORT_COUNT: usize = 5_000;
 
-/// One imported history row; the caller maps this onto its own store.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImportedPage {
     pub url: String,
@@ -25,7 +24,6 @@ pub struct ImportedPage {
     pub typed_count: u32,
 }
 
-/// Byte/entry caps the caller wants enforced during extraction.
 #[derive(Clone, Copy, Debug)]
 pub struct ImportLimits {
     pub max_count: usize,
@@ -60,8 +58,6 @@ pub struct ChromeHistoryImport {
     pub skipped: usize,
 }
 
-/// Read the selected installed Chrome profile's history through a private,
-/// read-only `SQLite` snapshot. The source database is never opened for writes.
 pub fn import_history(
     source_profile: &str,
     limits: ImportLimits,

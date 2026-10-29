@@ -18,9 +18,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # The harness builds zz, so this needs everything the CI Linux leg
-      # needs to compile it, plus the pinned tmux's own build dependencies.
-      # Neovim is what the pane-tmux-path fixture drives vim-tmux-navigator with.
       - name: Install Linux dependencies
         run: |
           sudo apt-get update

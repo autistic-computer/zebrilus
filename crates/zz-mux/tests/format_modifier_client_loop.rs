@@ -1,12 +1,3 @@
-//! The `L` modifier's row order, straight against a roster the test controls.
-//!
-//! sort.c `sort_qsort` leaves the default order alone, so the rows keep the
-//! order the clients connected and `r` reverses that list. Only `n` and `t`
-//! reach `sort_client_cmp`, which compares the name or the activity, newest
-//! first, breaks ties by name, and negates the finished comparison for `r`. A
-//! daemon carrying two GUI clients on one host cannot hand those cases distinct
-//! names, so the roster here is synthetic.
-
 use std::collections::BTreeMap;
 
 use zz_mux::{FormatClientRow, FormatJobTag, StatusContext, StatusHooks, expand_status};
@@ -16,8 +7,6 @@ struct Roster {
 }
 
 impl Roster {
-    /// `(name, activity, session)` triples in the order the clients connected,
-    /// which is neither name nor activity order so nothing passes by accident.
     fn new(rows: &[(&str, u64, &str)]) -> Self {
         Self {
             rows: rows
@@ -47,8 +36,6 @@ impl StatusHooks for Roster {
     }
 
     fn variable(&mut self, name: &str, _context: &StatusContext) -> Option<String> {
-        // Outside a row the client formats answer for one outer client, the way
-        // a daemon expansion does.
         (name == "client_name").then(|| "outer".to_owned())
     }
 
@@ -113,7 +100,6 @@ fn reversal_negates_the_finished_comparison_including_the_name_tie_break() {
         "<beta><gamma><alpha>"
     );
 
-    // Equal activity leaves only the name comparison, and r negates that too.
     let tied: &[(&str, u64, &str)] = &[("b", 4, "s"), ("a", 4, "s"), ("c", 4, "s")];
     assert_eq!(expand(tied, "#{Lt:#{client_name}}"), "abc");
     assert_eq!(expand(tied, "#{Ltr:#{client_name}}"), "cba");
@@ -128,8 +114,6 @@ fn an_unknown_order_letter_falls_back_to_the_connect_order_without_reversing() {
             "{form}"
         );
     }
-    // r is read from the same argument as the order letter, so it still applies
-    // when the order letter itself is unknown.
     assert_eq!(expand(THREE, "#{Lzr:#{client_name}}"), "gammaalphabeta");
 }
 
@@ -139,10 +123,7 @@ fn a_row_answers_only_for_its_own_client_and_leaks_nothing_outside_the_loop() {
         expand(THREE, "#{L:<#{client_name}:#{client_session}>}"),
         "<beta:s2><alpha:s1><gamma:s3>"
     );
-    // A client format the row does not carry is empty inside the loop rather
-    // than the outer client's value.
     assert_eq!(expand(THREE, "#{L:<#{client_tty}>}"), "<><><>");
-    // And the outer client is untouched on either side of the loop.
     assert_eq!(
         expand(THREE, "[#{client_name}]#{L:x}[#{client_name}]"),
         "[outer]xxx[outer]"

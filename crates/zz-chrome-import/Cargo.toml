@@ -20,8 +20,6 @@ url.workspace = true
 zeroize.workspace = true
 zz-protocol.workspace = true
 
-# Chrome derives its cookie key with PBKDF2-HMAC-SHA1 and seals values with
-# AES-128-CBC everywhere except Windows, which uses AES-256-GCM instead.
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 aes.workspace = true
 cbc = { workspace = true, features = ["alloc"] }
@@ -37,8 +35,6 @@ oo7 = { workspace = true, features = ["async-std", "native_crypto"] }
 smol.workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
-# Chrome on Windows seals cookies with AES-256-GCM under a master key DPAPI
-# protects, and stores that key base64-encoded in `Local State`.
 aes-gcm.workspace = true
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
 

@@ -26,8 +26,6 @@ use zz_protocol::{
     ExecResumeKind,
 };
 
-/// `EIO`, the error the pin's client reports for anything that fails after the
-/// file opened.
 const CLIENT_FILE_READ_ERRNO: i32 = 5;
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -67,7 +65,6 @@ fn client_instance_id() -> ClientInstanceId {
 }
 use zz_terminal::TerminalColorScheme;
 
-// iOS cannot run ssh, so it tunnels in-process instead of forwarding a socket.
 #[cfg(all(any(unix, windows), not(any(target_os = "ios", target_os = "android"))))]
 use crate::endpoint::{SshForward, connect_kept};
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -153,18 +150,12 @@ impl TransportStream for ClientStream {
 
 static REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 
-/// Both output streams and the exit status of one completed command.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CommandOutcome {
     pub stdout: RawText,
     pub stderr: String,
     pub exit_code: u8,
-    /// Which of the pin's two stdout writers claimed the command client's
-    /// stream while `stdout` was produced. The CLI writer reads this instead of
-    /// guessing from the bytes.
     pub stdout_claim: StdoutClaim,
-    /// The pin's `CLIENT_EXIT`: the daemon asked this client to stop before the
-    /// rest of its command chain runs.
     pub client_exit: bool,
 }
 
@@ -549,7 +540,6 @@ impl CommandClient {
         }
     }
 
-    /// Connect a short-lived command client to a configured fleet endpoint.
     pub fn connect_endpoint(endpoint: &Endpoint, read_only: bool) -> Result<Self, DaemonError> {
         #[cfg(not(all(unix, not(any(target_os = "ios", target_os = "android")))))]
         let _ = read_only;
@@ -621,10 +611,6 @@ impl CommandClient {
         self.stdin_enabled = true;
     }
 
-    /// Run one command and keep only its stdout, folding a nonzero exit into
-    /// `DaemonError::CommandExit`. Callers that need the command's stderr or
-    /// that must treat a nonzero exit as a completed command use
-    /// [`CommandClient::execute_streams`].
     pub fn execute(&mut self, command: CommandInvocation) -> Result<String, DaemonError> {
         stdout_or_exit(self.execute_streams(command)?)
     }
@@ -639,9 +625,6 @@ impl CommandClient {
         self.run_single(chain)?.map(stdout_or_exit).transpose()
     }
 
-    /// Run one command and keep all three of its streams. A command that ran to
-    /// completion is `Ok` whatever its exit status; `Err` stays reserved for
-    /// dispatch, transport, and server failures.
     pub fn execute_streams(
         &mut self,
         command: CommandInvocation,
@@ -1624,9 +1607,6 @@ impl InteractiveClient {
         )
     }
 
-    /// Connect, letting `prompts` answer whatever ssh asks along the way.
-    ///
-    /// Only a windowed caller passes them; a CLI invocation has ssh's own terminal.
     pub fn connect_endpoint_with_prompts(
         endpoint: &Endpoint,
         color_scheme: TerminalColorScheme,
@@ -1676,10 +1656,6 @@ impl InteractiveClient {
         )
     }
 
-    /// A client that runs inside somebody else's terminal has no theme of its
-    /// own to report until that terminal answers an OSC 11 query. `c->theme`
-    /// stays `THEME_UNKNOWN` for the pin until then, and
-    /// `format_cb_client_theme` gives nothing for it.
     pub fn connect_endpoint_without_theme(
         endpoint: &Endpoint,
         client_has_terminal: bool,
@@ -1825,7 +1801,6 @@ impl InteractiveClient {
         &self.hello
     }
 
-    /// The loopback SOCKS5 port this client's ssh forward opened, if it has one.
     #[must_use]
     pub fn socks_port(&self) -> Option<u16> {
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1844,9 +1819,6 @@ impl InteractiveClient {
         }
     }
 
-    /// Whether an embedded ssh connection mirrors the host's listening
-    /// localhost ports onto this device. Off until turned on, so a client
-    /// holding several hosts forwards only the one on screen.
     pub fn set_loopback_discovery(&self, enabled: bool) {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(forward) = &self.russh_forward {
@@ -1951,8 +1923,6 @@ impl InteractiveClient {
         self.send(&ProtocolMessage::Input(input))
     }
 
-    /// Stream one pasted image to the daemon, which writes it on its own host
-    /// and pastes the resulting path into `pane`.
     pub fn send_paste_upload(
         &self,
         upload_id: u64,
@@ -1969,7 +1939,6 @@ impl InteractiveClient {
         )
     }
 
-    /// Stream one pasted image into the daemon-owned placeholder binding store.
     pub fn record_pasted_image(
         &self,
         upload_id: u64,
@@ -2114,8 +2083,6 @@ impl InteractiveClient {
         client_instance_id()
     }
 
-    /// Submit a prompt to the pane's daemon-owned agent. Images cross as
-    /// bytes plus MIME format; the daemon turns them into ACP content blocks.
     pub fn agent_prompt(
         &self,
         pane: PaneId,
@@ -2129,12 +2096,10 @@ impl InteractiveClient {
         self.send(&ProtocolMessage::AgentCancel { pane })
     }
 
-    /// Reclaim the pane's queued prompts; they come back inside the stream.
     pub fn agent_unqueue(&self, pane: PaneId) -> Result<(), DaemonError> {
         self.send(&ProtocolMessage::AgentUnqueue { pane })
     }
 
-    /// Answer a parked permission request; `None` cancels it.
     pub fn agent_respond_permission(
         &self,
         pane: PaneId,
@@ -2177,7 +2142,6 @@ impl InteractiveClient {
         self.send(&ProtocolMessage::AgentSessionOp { pane, op })
     }
 
-    /// Replay the pane's agent stream from `from_seq`, then tail it.
     pub fn agent_replay(&self, pane: PaneId, from_seq: u64) -> Result<(), DaemonError> {
         self.send(&ProtocolMessage::AgentReplay { pane, from_seq })
     }
@@ -2190,7 +2154,6 @@ impl InteractiveClient {
         self.send(&ProtocolMessage::AgentAcknowledgePromptRestore { pane, reclaim_id })
     }
 
-    /// Answer one daemon-issued request for GUI-owned work, success or failure.
     pub fn send_gui_response(&self, response: GuiResponse) -> Result<(), DaemonError> {
         self.send(&ProtocolMessage::GuiResponse(response))
     }
@@ -2765,11 +2728,6 @@ fn client_terminal_flags() -> &'static ClientTerminalFlags {
     CLIENT_TERMINAL_FLAGS.get_or_init(ClientTerminalFlags::default)
 }
 
-/// What `tty_check_fg` and `tty_check_bg` ask before they write a cell: how
-/// many colours the terminal this client runs in takes, from its own `TERM`
-/// and `COLORTERM` and the features `-2` and `-T` requested, folded with what
-/// its terminal has answered since (`tty_update_features`, which raises the
-/// pin's count the same way and never lowers it).
 pub fn client_terminal_colour_count() -> u32 {
     let flags = client_terminal_flags();
     crate::terminal_features::terminal_colour_count(
@@ -2781,10 +2739,6 @@ pub fn client_terminal_colour_count() -> u32 {
     )
 }
 
-/// Whether this client's terminal takes UTF-8, the `CLIENT_UTF8` flag
-/// `tty_check_codeset` reads before it writes a cell: `-u` raises it and
-/// otherwise the locale decides. A writer with no terminal behind it never
-/// asks.
 #[must_use]
 pub fn client_takes_utf8_terminal() -> bool {
     client_terminal_flags().utf8 || client_takes_utf8(|name| std::env::var_os(name))
@@ -2796,11 +2750,6 @@ fn client_utf8_capability(capabilities: &mut Vec<String>) {
     }
 }
 
-/// What this client's terminal answered after the hello. `tty_update_features`
-/// folds a reply straight into the pin's own `c->term_features` because the
-/// client and the server share one process there; here the client learns it,
-/// keeps it for the next hello and reports it over the connection it already
-/// holds.
 static LEARNED_TERMINAL_FEATURES: AtomicU32 = AtomicU32::new(0);
 
 static NEGOTIATED_TERMINAL_FEATURES: AtomicU32 = AtomicU32::new(0);
@@ -2820,8 +2769,6 @@ fn register_interactive_writer(writer: &Arc<Mutex<ProtocolSender<ClientStream>>>
     report_learned_terminal_features(LEARNED_TERMINAL_FEATURES.load(Ordering::Relaxed));
 }
 
-/// Record one `tty_default_features` list, or one feature name a device
-/// attributes reply named, and report the union to the daemon.
 pub fn learn_client_terminal_features(features: &str) {
     let mask = crate::terminal_features::terminal_feature_mask([features]);
     if mask == 0 {
@@ -2831,8 +2778,6 @@ pub fn learn_client_terminal_features(features: &str) {
     report_learned_terminal_features(learned);
 }
 
-/// `c->term_features` as the client process itself knows it: what `-2` and
-/// `-T` asked for, plus everything its terminal has answered with since.
 #[must_use]
 pub fn client_terminal_feature_mask() -> u32 {
     crate::terminal_features::terminal_feature_mask(
@@ -2857,9 +2802,6 @@ fn report_learned_terminal_features(learned: u32) {
         .send(&ProtocolMessage::ClientTerminalFeatures { features });
 }
 
-/// `tty_keys_extended_device_attributes` keeps the XTVERSION reply on the
-/// client as `c->term_type` beside the features it implies, so the raw name
-/// travels too and the daemon can answer `#{client_termtype}` with it.
 pub fn report_terminal_type(term_type: &str) {
     if term_type.is_empty() || term_type.len() > zz_protocol::MAX_CLIENT_TERMINAL_TYPE_BYTES {
         return;
@@ -2875,9 +2817,6 @@ pub fn report_terminal_type(term_type: &str) {
 const MAX_CLIENT_FEATURE_SPECS: usize = 16;
 const MAX_CLIENT_FEATURE_SPEC_BYTES: usize = 200;
 
-/// A reconnecting client already knows what its terminal answered, so the
-/// learned set rides the hello as one more spec rather than waiting for the
-/// terminal to answer the same questions again.
 fn client_learned_features_capability(capabilities: &mut Vec<String>) {
     let learned = LEARNED_TERMINAL_FEATURES.load(Ordering::Relaxed);
     if learned == 0 {
@@ -2900,12 +2839,6 @@ fn client_features_capabilities(features: &[String], capabilities: &mut Vec<Stri
     );
 }
 
-/// tmux.c decides this in the client process, before it ever dials the server:
-/// `-u` raises it outright, `$TMUX` being set at all means the terminal is
-/// tmux's own and takes UTF-8, and otherwise the first of `LC_ALL`, `LC_CTYPE`
-/// and `LANG` that is set and non-empty decides it, by holding `UTF-8` or
-/// `UTF8` in any case. This reads the last two; `-u` arrives through
-/// `set_client_terminal_flags`.
 fn client_takes_utf8(lookup: impl Fn(&str) -> Option<OsString>) -> bool {
     if lookup("TMUX").is_some() {
         return true;
@@ -2965,9 +2898,6 @@ fn client_working_directory(
         .filter(|working_directory| working_directory.len() <= MAX_CLIENT_WORKING_DIRECTORY_BYTES)
 }
 
-/// The directory this client reports as its own. The pin's `find_cwd` prefers
-/// `PWD` over `getcwd` whenever both resolve to the same place, so a client
-/// started under a symlinked path reports the path the user typed.
 fn logical_current_dir() -> Option<PathBuf> {
     let current = std::env::current_dir().ok()?;
     let Some(declared) = std::env::var_os("PWD").filter(|value| !value.is_empty()) else {
@@ -2984,9 +2914,6 @@ fn client_environment(facts: EndpointFactsScope) -> Vec<RawText> {
     client_environment_with(scoped_environment(facts, std::env::vars_os()))
 }
 
-/// The caller's environment as the bytes the OS gave it. A Unix name and value
-/// are byte strings, so an entry holding a byte past ASCII rides the hello
-/// verbatim instead of being dropped for failing `into_string`.
 fn client_environment_with<I, K, V>(environment: I) -> Vec<RawText>
 where
     I: IntoIterator<Item = (K, V)>,
@@ -3449,9 +3376,6 @@ fn answer_client_file(request: &ClientFileRequest) -> ClientFileResponse {
     }
 }
 
-/// The pin's client opens the file itself and reads it through a bufferevent,
-/// so an open failure reports its own `errno` while anything that goes wrong
-/// afterwards reports `EIO` (`file_read_error_callback`).
 fn read_client_file(path: &Path) -> Result<Vec<u8>, String> {
     let file = std::fs::File::open(path).map_err(|error| crate::strerror_text(&error))?;
     let limit = u64::try_from(MAX_CLIENT_FILE_BYTES).unwrap_or(u64::MAX);
@@ -3748,11 +3672,6 @@ mod tests {
         assert_eq!(published.to_path_buf(), Some(fixture));
     }
 
-    /// tmux.c: `$TMUX` set at all wins outright, otherwise the FIRST of
-    /// `LC_ALL`, `LC_CTYPE` and `LANG` that is set and non-empty decides on its own,
-    /// so an `LC_CTYPE=C` masks a UTF-8 `LANG` behind it; the test is `strcasestr`
-    /// for `UTF-8` or `UTF8`, so either spelling in any case answers. Measured
-    /// on tmux d77c9dc6 against show-environment of a byte value.
     #[test]
     fn the_client_utf8_flag_reads_the_inputs_tmux_c_reads_in_the_order_it_reads_them() {
         let takes = |pairs: &[(&str, &str)]| {
@@ -3858,12 +3777,6 @@ mod tests {
         );
     }
 
-    /// The pin keeps an environment name and value as a C string, so a byte past
-    /// ASCII reaches the session it attaches to. Measured on 2026-09-04 against
-    /// tmux d77c9dc6 with `update-environment ZZBYTES` and a pty client launched
-    /// with `ZZBYTES=a<0xff>b`: `show-environment -t <session> ZZBYTES` answers
-    /// the bytes `5a 5a 42 59 54 45 53 3d 61 ff 62 0a`. The hello therefore has
-    /// to carry the entry rather than drop it for failing `into_string`.
     #[cfg(unix)]
     #[test]
     fn client_environment_carries_non_utf8_os_strings_as_bytes() {
@@ -3893,8 +3806,6 @@ mod tests {
         );
     }
 
-    /// A NUL anywhere and an empty or `=`-bearing name are still refused, on
-    /// bytes now rather than on text.
     #[cfg(unix)]
     #[test]
     fn client_environment_still_rejects_nul_and_malformed_names() {

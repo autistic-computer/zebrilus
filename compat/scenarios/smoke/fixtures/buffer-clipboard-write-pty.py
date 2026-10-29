@@ -1,12 +1,3 @@
-"""Record an attached client's terminal writes and scan them for OSC 52.
-
-``record OUT COLS ROWS COMMAND...`` attaches COMMAND on a real pty of the given
-size and appends every byte the multiplexer writes to OUT until the process is
-killed. ``scan OUT`` prints the decoded payload of each OSC 52 selection write
-in the recording, one per line, so the differential can compare payloads without
-depending on the selection field each side chooses.
-"""
-
 import base64
 import fcntl
 import os

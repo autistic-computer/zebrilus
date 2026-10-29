@@ -88,8 +88,6 @@ impl From<serde_json::Error> for ChromeProfileDiscoveryError {
     }
 }
 
-/// Read Google Chrome profile metadata without opening a profile database or
-/// credential store.
 pub fn discover_profiles() -> Result<Vec<DetectedChromeProfile>, ChromeProfileDiscoveryError> {
     let Some(path) = chrome_local_state_path() else {
         return Ok(Vec::new());
@@ -271,8 +269,6 @@ fn profile_from_cache_entry(storage_key: &str, fields: &Value) -> Option<Detecte
     })
 }
 
-/// Return the installed Chrome directory name encoded in a zz Chrome profile.
-/// The value is safe to append to Chrome's user-data root as one path component.
 pub fn chrome_storage_key(zz_profile: &str) -> Option<&str> {
     clean_storage_key(zz_profile.strip_prefix(ZZ_PROFILE_PREFIX)?)
 }

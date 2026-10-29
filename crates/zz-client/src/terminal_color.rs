@@ -1,9 +1,5 @@
-//! The text colors a terminal paints: faint mixing, the minimum-contrast
-//! lift, and which glyphs are decorative and keep their own color.
-
 use zz_terminal::{Color, Glyph, PackedStyle};
 
-/// A cell's text color after faint mixing and the minimum-contrast lift.
 #[must_use]
 pub fn resolved_foreground(style: PackedStyle, minimum_contrast: f32, decorative: bool) -> Color {
     let foreground = faint_foreground(style, style.foreground());

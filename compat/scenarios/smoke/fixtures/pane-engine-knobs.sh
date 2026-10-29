@@ -64,11 +64,6 @@ await_line() {
     return 1
 }
 
-# The scrollback is the observable: `#{history_size}` and `#{alternate_on}`
-# are still pinned to their inactive values on zz under
-# formats.terminal-runtime, and the two engines give a detached pane's
-# terminal different row counts, so every check below counts markers rather
-# than rows.
 retained() {
     main_client capture-pane -p -S - -t "$1" | grep -cE "$2" || true
 }
@@ -77,8 +72,6 @@ visible() {
     main_client capture-pane -p -t "$1" | grep -cE "$2" || true
 }
 
-# `cat` under -icanon echoes every byte the fixture writes straight back into
-# the pane, so send-keys -H drives the pane's own VT.
 raw="sh -c 'stty -echo -icanon min 1 time 0; exec cat'"
 
 main_client new-session -d -s "$session" -n socon -x 40 -y 6 "$raw"
@@ -104,9 +97,6 @@ feed_twelve_lines "$off_pane"
 check_equal all-twelve-lines-reachable-on 12 "$(retained "$on_pane" '^L(0[1-9]|1[0-2])$')"
 check_equal all-twelve-lines-reachable-off 12 "$(retained "$off_pane" '^L(0[1-9]|1[0-2])$')"
 
-# screen_write_clearscreen hands the erase to grid_view_clear_history when
-# scroll-on-clear is set: every row up to the last used one is scrolled into
-# history first, so nothing on the screen is lost.
 main_client send-keys -t "$on_pane" -H 1b 5b 48 1b 5b 32 4a
 main_client send-keys -t "$off_pane" -H 1b 5b 48 1b 5b 32 4a
 sleep 0.5
@@ -116,8 +106,6 @@ check_equal clear-blanks-the-screen-on "" "$(main_client capture-pane -p -t "$on
 check_equal clear-blanks-the-screen-off "" "$(main_client capture-pane -p -t "$off_pane" | tr -d ' \n')"
 check_equal first-history-row-on L01 "$(main_client capture-pane -p -S - -t "$on_pane" | head -1)"
 
-# screen_write_clearendofscreen takes the same branch only with the cursor at
-# the origin, so an erase-to-end after printing leaves the row on the screen.
 main_client send-keys -t "$on_pane" -l AWAY
 main_client send-keys -t "$on_pane" -H 1b 5b 4a
 sleep 0.4
@@ -129,8 +117,6 @@ sleep 0.4
 check_equal ed0-at-the-origin-blanks-the-screen "" "$(main_client capture-pane -p -t "$on_pane" | tr -d ' \n')"
 check_equal ed0-at-the-origin-scrolls 1 "$(retained "$on_pane" '^AWAY$')"
 
-# grid_view_clear_history finds no used row on a blank screen and falls back
-# to the plain clear, so a second erase adds nothing.
 main_client send-keys -t "$on_pane" -H 1b 5b 32 4a
 sleep 0.4
 check_equal empty-clear-adds-nothing 1 "$(retained "$on_pane" '^AWAY$')"
@@ -151,9 +137,6 @@ for pane in "$alt_on_pane" "$alt_off_pane"; do
     await_line "$pane" '^PRIMARY$'
 done
 
-# screen_write_alternateon returns before touching the screen when the pane
-# option is off, so 1049 never switches and the text keeps landing on the
-# primary grid beside what is already there.
 for pane in "$alt_on_pane" "$alt_off_pane"; do
     main_client send-keys -t "$pane" -H 1b 5b 3f 31 30 34 39 68
     main_client send-keys -t "$pane" -l ALTERNATE
@@ -166,7 +149,6 @@ check_equal alternate-on-shows-the-alternate-grid 1 "$(visible "$alt_on_pane" '^
 check_equal alternate-off-keeps-both-lines 1 "$(visible "$alt_off_pane" '^PRIMARY$')"
 check_equal alternate-off-appended-in-place 1 "$(visible "$alt_off_pane" '^ALTERNATE$')"
 
-# The paired 1049l is dropped too, so the off pane has nothing to restore.
 for pane in "$alt_on_pane" "$alt_off_pane"; do
     main_client send-keys -t "$pane" -H 1b 5b 3f 31 30 34 39 6c
 done
@@ -175,8 +157,6 @@ check_equal alternate-on-restores-the-primary-grid 1 "$(visible "$alt_on_pane" '
 check_equal alternate-on-drops-the-alternate-grid 0 "$(visible "$alt_on_pane" '^ALTERNATE$')"
 check_equal alternate-off-untouched-by-the-restore 1 "$(visible "$alt_off_pane" '^ALTERNATE$')"
 
-# 47 and 1047 are the same two branches, and a mode list keeps its other
-# members when the alternate-screen numbers are taken out of it.
 main_client send-keys -t "$alt_off_pane" -H 1b 5b 3f 34 37 68
 main_client send-keys -t "$alt_off_pane" -H 1b 5b 3f 31 30 34 37 68
 main_client send-keys -t "$alt_off_pane" -H 1b 5b 3f 31 30 34 39 3b 32 30 30 34 68

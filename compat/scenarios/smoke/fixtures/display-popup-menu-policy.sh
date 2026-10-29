@@ -77,8 +77,6 @@ drive() {
     return 0
 }
 
-# The cursor position the client wrote before the popup's top-left corner
-# glyph, which is where the box is drawn from.
 corner() {
     python3 -c 'import re, sys
 data = open(sys.argv[1], "rb").read()
@@ -94,9 +92,6 @@ for match in cursor.finditer(data, 0, index):
 sys.stdout.write("%d,%d" % found if found else "none")' "$snaps/$1"
 }
 
-# The run of horizontal border the client drew after the box's top-left
-# corner, which is the box's inside width without assuming where either binary
-# put the box.
 box_width() {
     python3 -c 'import sys
 data = open(sys.argv[1], "rb").read()
@@ -149,8 +144,6 @@ close_popup() {
     sleep 1.5
 }
 
-# A popup job that records every SIGWINCH the pty hands it, so a resize of the
-# box that does not reach the job is measurable.
 cat >"$work/popup.sh" <<POPUP
 trap 'printf winch >>"$work/winch"' WINCH
 echo POPUPBODY
@@ -198,8 +191,6 @@ fi
 row="${opened%,*}"
 column="${opened#*,}"
 
-# The control for the two Fill Space checks below: popup_resize_cb does call
-# job_resize, so a client narrower than the box does reach the job.
 rm -f "$work/winch"
 drive "size 50 30"
 sleep 1.5
@@ -207,8 +198,6 @@ check_equal a-client-resize-reaches-the-popup-job yes "$(winched)"
 drive "size 100 30"
 sleep 1.5
 
-# Fill Space is a box move: popup_menu_done sets pd->sx/sy/px/py and redraws,
-# and pd->s and the job keep the size they had.
 rm -f "$work/winch"
 drive "$(sgr 2 $((column + 40)) $((row + 12)))"
 sleep 0.8
@@ -222,8 +211,6 @@ check_equal fill-space-widens-the-box yes \
 check_equal fill-space-leaves-the-popup-job-at-its-size no "$(winched)"
 close_popup
 
-# Centre moves the box without touching ppx/ppy/psx/psy, so the next
-# owning-client resize puts it back where display-popup asked for it.
 open_popup -x 5 -y 5 -w 30 -h 8 "sh $work/popup.sh"
 drive "snap reopened"
 reopened="$(corner reopened)"
@@ -253,9 +240,6 @@ drive "size 100 30"
 sleep 1.0
 close_popup
 
-# The popup's menu is pd->md: it is drawn by popup_draw_cb and freed by
-# popup_free, so it cannot outlive the popup and cannot swallow the keys that
-# follow an -E popup whose job has exited.
 rm -f "$work/orphan"
 open_popup -E -x 5 -y 5 -w 30 -h 8 "sleep 5"
 drive "$(sgr 2 $((column + 40)) $((row + 12)))"

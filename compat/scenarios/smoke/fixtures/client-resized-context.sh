@@ -130,9 +130,6 @@ attach() {
     echo $!
 }
 
-# The two client ttys are the only stable identity across the binaries: zz names
-# a pty client by its tty exactly as the pin does, while session_attached_list
-# and the client name a device reports are not comparable.
 labelled() {
     sed "s|$first_tty|A|g; s|$second_tty|B|g" "$log" | tr '\n' ';'
 }
@@ -145,8 +142,6 @@ main_client set-hook -g client-resized \
 main_client set-hook -g client-active \
     "run-shell 'sh ~/format-hook-log.sh $log active h:#{hook_client} t:#{client_tty}'"
 
-# refresh-client -C on a control client resizes the window and raises neither
-# hook, repeat invocations included.
 printf 'refresh-client -C 120,40\n' | control_client >/dev/null 2>&1 || true
 printf 'refresh-client -C 120,40\n' | control_client >/dev/null 2>&1 || true
 await_clients 0 || { echo "client-resized-context-$side: control-detach"; exit 0; }
@@ -159,8 +154,6 @@ await_clients 1 || { echo "client-resized-context-$side: attach-one"; exit 0; }
 first_tty="$(main_client list-clients -t "=$session" -F '#{client_tty}' | sed -n '1p')"
 : >"$log"
 
-# One client, changed report: the hook fires once, the client size it reads is
-# the new one and the window geometry is the one the resize replaced.
 before="$(main_client display-message -p -t "$pane" '#{window_width}x#{window_height}')"
 drive_first "size 100 30"
 await_lines 1 || { echo "client-resized-context-$side: resize-one"; exit 0; }
@@ -168,13 +161,11 @@ check_equal single-changed-count 1 "$(grep -c resized "$log")"
 check_equal single-changed-client c:100x30 "$(sed -n '1s/.* \(c:[^ ]*\).*/\1/p' "$log")"
 check_equal single-changed-window "w:$before" "$(sed -n '1s/.* \(w:[^ ]*\).*/\1/p' "$log")"
 
-# An unchanged report emits nothing at all.
 : >"$log"
 drive_first "size 100 30"
 sleep 0.8
 check_equal single-unchanged '' "$(cat "$log")"
 
-# A second changed report is again one line, one resize behind.
 before="$(main_client display-message -p -t "$pane" '#{window_width}x#{window_height}')"
 drive_first "size 61 19"
 await_lines 1 || { echo "client-resized-context-$side: resize-one-again"; exit 0; }
@@ -191,16 +182,11 @@ second_tty="$(main_client list-clients -t "=$session" -F '#{client_tty}' \
     | grep -v "^$first_tty$" | sed -n '1p')"
 : >"$log"
 
-# cmd_find_best_client compares activity_time and the resize arm never touches
-# it, so the hook body reads the other client while hook_client names the
-# reporter, and the client-active the resize provokes precedes it.
 drive_first "size 100 30"
 await_lines 2 || { echo "client-resized-context-$side: resize-older"; exit 0; }
 check_equal older-resize 'active h:A t:B;resized h:A t:B c:80x24 w:;' \
     "$(labelled | sed 's/w:[0-9]*x[0-9]*/w:/')"
 
-# One key in the older client makes it the activity winner, and the next resize
-# of the other client reads it instead.
 : >"$log"
 drive_first "keys 61"
 sleep 0.5

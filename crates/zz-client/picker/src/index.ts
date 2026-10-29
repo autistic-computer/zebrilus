@@ -6,9 +6,6 @@ const QUERY_NAME = "__zzElementPickerQuery";
 const OVERLAY_ATTRIBUTE = "data-zz-element-picker";
 const CONTEXT_TIMEOUT_MS = 9_000;
 
-/// Everything the native side needs to clip a screenshot around the pick.
-/// CSS pixels, viewport-relative rect plus the scroll offsets that turn it into
-/// page coordinates.
 interface PickGeometry {
   x: number;
   y: number;
@@ -340,8 +337,6 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
 
   function commit(element: Element): void {
     pending = true;
-    // Measured now: resolving the source context is async and the page can
-    // scroll or reflow before it settles.
     const geometry = geometryFor(element);
     label.textContent = "Inspecting source…";
     positionLabel(element.getBoundingClientRect());

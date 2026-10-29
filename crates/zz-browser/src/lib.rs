@@ -2,10 +2,9 @@
 use zz_client::element_picker;
 mod artifact;
 mod event;
-mod ime;
-// Without the CEF runtime nothing reaches the GPU-import and egress-profile halves.
 #[cfg_attr(not(feature = "cef-runtime"), allow(dead_code))]
 mod frame;
+mod ime;
 mod input;
 mod lifecycle;
 #[cfg(any(feature = "cef-runtime", test))]

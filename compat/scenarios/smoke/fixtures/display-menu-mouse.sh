@@ -85,9 +85,6 @@ keys() {
     sleep 0.6
 }
 
-# SGR reports, written straight to the client's pty. Encoded button 0 with a
-# final `M` is a press, with a final `m` a release, and 35 with `M` is a motion
-# with no button held, which is the pin's highlight-only `move`.
 pointer() {
     keys "$(printf '\033[<%s;%s;%sM' "$1" "$2" "$3")"
 }
@@ -106,11 +103,6 @@ open_menu() {
     sleep 1.0
 }
 
-# tmux 3.8 returns from display-menu as soon as the menu is up
-# (cmd-display-menu.c:556), so whether the menu is still there is read off the
-# client: a full redraw draws the menu's rows only while it is up. The d77c9dc6
-# pin held the display-menu command until the menu closed, and this fixture
-# used to ask whether that command was still running.
 probe_menu() {
     drive "snap flush-$step"
     main_client refresh-client -t "$client"
@@ -147,8 +139,6 @@ chosen() {
 main_client kill-session -t "=$session" >/dev/null 2>&1 || true
 main_client new-session -d -s "$session" -x 79 -y 24
 main_client set-option -g status off
-# menu_key_cb reads the pointer before the mouse option decides what a mouse key
-# becomes, so the menu answers pointer reports with `mouse` off.
 main_client set-option -g mouse off
 
 env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
@@ -176,15 +166,6 @@ if [ -z "$client" ]; then
 fi
 sleep 0.8
 
-# `display-menu -x 5 -y 5` anchors -y at the bottom of a box that is
-# menu->count + 2 rows tall, so a two-row menu draws its top border on row 1 and
-# its rows on rows 2 and 3: one-based rows 3 and 4 for an SGR report. The client
-# is 79 columns because zz's raw TUI hides its sidebar below 80 and then centres
-# the overlay grid on the same viewport the pin uses, so both engines draw the
-# box at the same cell.
-
-# A display-menu typed on a command line has no invoking mouse event, so the pin
-# marks it MENU_NOMOUSE: it ignores button 1 whole and leaves on anything else.
 open_menu ''
 pointer 0 8 3
 check_menu nomouse-ignores-button-one alive
@@ -213,8 +194,6 @@ sleep 0.5
 check_menu nomouse-button-three-leaves gone
 drop_menu
 
-# -M gives the menu the full mouse policy, and menu_prepare then leaves
-# md->choice at -1 rather than resolving a starting choice.
 open_menu -M
 keys "$(printf '\r')"
 sleep 0.8
@@ -222,8 +201,6 @@ check_equal mouse-menu-starts-with-no-highlight 'DISPLAY_MENU_MOUSE_ROW=pending'
 check_menu enter-with-no-highlight-closes gone
 drop_menu
 
-# menu_key_cb reaches `chosen` before it rewrites md->choice from the pointer
-# row, so a release runs the row the press left the highlight on.
 open_menu -M
 pointer 0 8 4
 check_menu press-does-not-choose alive
@@ -234,7 +211,6 @@ check_menu release-closes-the-menu gone
 check_equal release-runs-the-highlighted-row 'DISPLAY_MENU_MOUSE_ROW=bravo' "$(chosen)"
 drop_menu
 
-# Outside the box a press is not a release, so it only clears the highlight.
 open_menu -M
 pointer 0 41 21
 check_menu outside-press-leaves-the-menu-up alive
@@ -244,8 +220,6 @@ check_menu outside-release-closes-the-menu gone
 check_equal outside-release-runs-nothing 'DISPLAY_MENU_MOUSE_ROW=pending' "$(chosen)"
 drop_menu
 
-# A motion with no button held is highlight-only: it never selects or closes,
-# but it does move the highlight Enter then runs.
 open_menu -M
 pointer 35 8 4
 check_menu motion-leaves-the-menu-up alive
@@ -255,8 +229,6 @@ sleep 0.8
 check_equal motion-moved-the-highlight 'DISPLAY_MENU_MOUSE_ROW=bravo' "$(chosen)"
 drop_menu
 
-# A motion outside the box clears the highlight, so Enter closes the menu with
-# nothing to run.
 open_menu -M
 pointer 35 8 4
 pointer 35 41 21

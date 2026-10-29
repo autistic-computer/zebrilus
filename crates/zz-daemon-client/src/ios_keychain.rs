@@ -1,5 +1,3 @@
-//! The iOS ssh identity, kept in the Keychain.
-
 use std::fmt;
 
 use core_foundation::{
@@ -25,7 +23,6 @@ use zeroize::Zeroizing;
 const SERVICE: &str = "dev.zz.ios.ssh";
 const ACCOUNT: &str = "id_ed25519";
 
-/// `errSecMissingEntitlement`, which `security-framework-sys` does not export.
 const ERR_SEC_MISSING_ENTITLEMENT: OSStatus = -34018;
 
 #[allow(
@@ -34,7 +31,6 @@ const ERR_SEC_MISSING_ENTITLEMENT: OSStatus = -34018;
 )]
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
-    /// `kSecAttrAccessible`, which `security-framework-sys` does not export.
     static kSecAttrAccessible: CFStringRef;
 }
 
@@ -71,7 +67,6 @@ impl fmt::Display for KeychainError {
 )]
 pub(crate) fn load_identity() -> Result<Option<Zeroizing<String>>, KeychainError> {
     let mut query = identity_query();
-    // SAFETY: `kSecReturnData` is a framework-owned constant, so the get rule applies.
     query.push((
         unsafe { CFString::wrap_under_get_rule(kSecReturnData) },
         CFBoolean::true_value().into_CFType(),
@@ -79,8 +74,6 @@ pub(crate) fn load_identity() -> Result<Option<Zeroizing<String>>, KeychainError
     let query = CFDictionary::from_CFType_pairs(&query);
 
     let mut found: CFTypeRef = std::ptr::null();
-    // SAFETY: `query` outlives the call and is only read; `found` is a live local the call fills
-    // with a +1 reference.
     let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &raw mut found) };
     if status == errSecItemNotFound {
         return Ok(None);
@@ -92,8 +85,6 @@ pub(crate) fn load_identity() -> Result<Option<Zeroizing<String>>, KeychainError
         return Err(KeychainError::Malformed);
     }
 
-    // SAFETY: `SecItemCopyMatching` hands back an owned reference on success, so the create rule
-    // applies.
     let value = unsafe { CFType::wrap_under_create_rule(found) };
     let data = value
         .downcast_into::<CFData>()
@@ -111,8 +102,6 @@ pub(crate) fn store_identity(identity: &str) -> Result<(), KeychainError> {
     attributes.extend(identity_value(identity));
     let attributes = CFDictionary::from_CFType_pairs(&attributes);
 
-    // SAFETY: `attributes` outlives the call and is only read; a null result pointer is the
-    // documented "hand nothing back".
     let status = unsafe { SecItemAdd(attributes.as_concrete_TypeRef(), std::ptr::null_mut()) };
     if status == errSecSuccess {
         return Ok(());
@@ -123,7 +112,6 @@ pub(crate) fn store_identity(identity: &str) -> Result<(), KeychainError> {
 
     let query = CFDictionary::from_CFType_pairs(&identity_query());
     let update = CFDictionary::from_CFType_pairs(&identity_value(identity));
-    // SAFETY: both dictionaries outlive the call and are only read by it.
     let status =
         unsafe { SecItemUpdate(query.as_concrete_TypeRef(), update.as_concrete_TypeRef()) };
     if status == errSecSuccess {
@@ -138,7 +126,6 @@ pub(crate) fn store_identity(identity: &str) -> Result<(), KeychainError> {
     reason = "the kSec* constants are framework-owned CFStrings"
 )]
 fn identity_query() -> Vec<(CFString, CFType)> {
-    // SAFETY: every one of these is a framework-owned static CFString, so the get rule applies.
     unsafe {
         vec![
             (
@@ -164,7 +151,6 @@ fn identity_query() -> Vec<(CFString, CFType)> {
 )]
 fn delete_identity() -> Result<(), KeychainError> {
     let query = CFDictionary::from_CFType_pairs(&identity_query());
-    // SAFETY: `query` outlives the call and the framework only reads it.
     let status = unsafe { SecItemDelete(query.as_concrete_TypeRef()) };
     if status == errSecSuccess || status == errSecItemNotFound {
         Ok(())
@@ -178,7 +164,6 @@ fn delete_identity() -> Result<(), KeychainError> {
     reason = "the kSec* constants are framework-owned CFStrings"
 )]
 fn identity_value(identity: &str) -> Vec<(CFString, CFType)> {
-    // SAFETY: as in `identity_query` — framework-owned statics, get rule.
     unsafe {
         vec![
             (

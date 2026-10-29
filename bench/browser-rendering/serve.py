@@ -24,7 +24,7 @@ PAGES = HERE / "pages"
 RESULTS = HERE / "results"
 ENGINE_JSONL = RESULTS / "engine.jsonl"
 
-MAX_BODY = 1 << 20  # 1 MiB; reports are ~1 KiB
+MAX_BODY = 1 << 20
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -32,11 +32,10 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(PAGES), **kwargs)
 
     def end_headers(self):
-        # A cached flicker.html would silently benchmark a stale page.
         self.send_header("Cache-Control", "no-store, max-age=0")
         super().end_headers()
 
-    def do_POST(self):  # noqa: N802 - stdlib naming
+    def do_POST(self):  # noqa: N802
         if self.path.split("?")[0] != "/report":
             self.send_error(404)
             return
@@ -58,7 +57,6 @@ class Handler(SimpleHTTPRequestHandler):
             "%Y-%m-%dT%H:%M:%SZ"
         )
         RESULTS.mkdir(exist_ok=True)
-        # Single write to an O_APPEND handle stays atomic if two panes report at once.
         with ENGINE_JSONL.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
@@ -80,14 +78,13 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def log_message(self, fmt, *args):
-        pass  # the /report line above is the only output worth having
+        pass
 
 
 def lan_ip():
-    """Best-effort LAN address, for driving the page from another machine."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        sock.connect(("192.0.2.1", 9))  # TEST-NET-1: routed nowhere, never sends
+        sock.connect(("192.0.2.1", 9))
         return sock.getsockname()[0]
     except OSError:
         return None
@@ -113,8 +110,6 @@ def main():
     if not (PAGES / "flicker.html").is_file():
         sys.exit("missing %s" % (PAGES / "flicker.html"))
 
-    # Redirected to a file or a pane's log, stdout is block-buffered and the
-    # banner (and every report) would sit invisible in the buffer for minutes.
     try:
         sys.stdout.reconfigure(line_buffering=True)
     except AttributeError:

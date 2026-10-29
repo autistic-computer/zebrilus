@@ -16,9 +16,6 @@ const ALERT_LINE: f32 = 16.0;
 const ALERT_TITLE_SIZE: f32 = 13.0;
 const ALERT_MESSAGE_SIZE: f32 = 12.0;
 
-/// A failure shown in place, in the alert dialog's layout on the popover
-/// surface: a danger icon, an optional title, the message, and
-/// [`alert_actions`] below when the failure can be acted on.
 pub fn inline_alert(
     title: Option<SharedString>,
     message: impl Into<SharedString>,
@@ -67,12 +64,10 @@ pub fn inline_alert(
         )
 }
 
-/// The buttons under an [`inline_alert`], right-aligned with the main action last.
 pub fn alert_actions(cx: &App) -> Div {
     dialog_footer(cx).flex_wrap()
 }
 
-/// What the buttons in an [`inline_alert`] sit on.
 pub fn alert_ground(cx: &App) -> Ground {
     cx.theme().ground_of(roles::INLINE_PANEL)
 }
@@ -82,8 +77,6 @@ const ADD_HOST_DESCRIPTION: &str = "Connects over SSH with this device's built-i
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 const ADD_HOST_DESCRIPTION: &str = "Connects over SSH · your ~/.ssh/config still applies.";
 
-/// Browser clear-data confirmation. The caller appends the completion
-/// callback with `on_ok`.
 pub fn browser_clear_site_data_alert(alert: AlertDialog, cx: &App) -> AlertDialog {
     alert
         .icon(Icon::new(IconName::TriangleAlert).text_color(cx.theme().danger))
@@ -100,7 +93,6 @@ pub fn browser_clear_site_data_alert(alert: AlertDialog, cx: &App) -> AlertDialo
         )
 }
 
-/// Confirmation for importing one donor into one zz-owned configuration file.
 pub fn import_configuration_file_alert(
     alert: AlertDialog,
     title: impl Into<SharedString>,
@@ -118,7 +110,6 @@ pub fn import_configuration_file_alert(
         )
 }
 
-/// Add-host prompt. The caller appends the submit handler with `on_ok`.
 pub fn add_host_prompt_dialog(
     dialog: Dialog,
     input: &Entity<InputState>,
@@ -147,9 +138,6 @@ pub fn add_host_prompt_dialog(
         )
 }
 
-/// Prompt for a secret ssh asked for: a password, a key passphrase, or a
-/// keyboard-interactive question. The caller answers the channel from
-/// `on_ok`/`on_cancel`.
 pub fn ssh_secret_prompt_dialog(
     dialog: Dialog,
     title: impl Into<SharedString>,
@@ -182,8 +170,6 @@ pub fn ssh_text_prompt_dialog(
         ))
 }
 
-/// Confirmation for ssh's yes/no questions: an unrecognised host key, or an
-/// agent asking permission to sign.
 pub fn ssh_confirm_prompt_dialog(
     dialog: Dialog,
     title: impl Into<SharedString>,
@@ -201,7 +187,6 @@ pub fn ssh_confirm_prompt_dialog(
         .child(prompt_question(question, cx))
 }
 
-/// An offer the user can turn down without consequence, such as saving a key after sign-in.
 pub fn ssh_offer_prompt_dialog(
     dialog: Dialog,
     title: impl Into<SharedString>,

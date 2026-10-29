@@ -4,7 +4,7 @@ set working-directory := "../.."
 
 org := "git@github.com:autistic-computer"
 
-# Lint and test a lib (ala|penna) on its own, the way its repo's CI does, against the ala in libs/.
+[doc("Lint and test a lib (ala|penna) on its own, the way its repo's CI does, against the ala in libs/.")]
 check lib:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -20,10 +20,10 @@ check lib:
         cargo test --manifest-path libs/penna/Cargo.toml "${args[@]}" --all-features
     fi
 
-# Push zz's commits under libs/<lib> to autistic-computer/<lib> main.
+[doc("Push zz's commits under libs/<lib> to autistic-computer/<lib> main.")]
 push lib:
     git subtree push --prefix=libs/{{ lib }} {{ org }}/{{ lib }}.git main
 
-# Merge autistic-computer/<lib> main into libs/<lib>.
+[doc("Merge autistic-computer/<lib> main into libs/<lib>.")]
 pull lib:
     git subtree pull --prefix=libs/{{ lib }} {{ org }}/{{ lib }}.git main -m "Pull {{ lib }} from autistic-computer/{{ lib }}"

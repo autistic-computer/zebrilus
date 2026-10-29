@@ -1,14 +1,3 @@
-"""Record what an attached client writes for a copy-selection and name the
-OSC 52 selection field it chose.
-
-``record OUT COLS ROWS COMMAND...`` attaches COMMAND on a real pty of the given
-size and appends every byte the multiplexer writes to OUT until the process
-exits.  ``scan OUT`` prints one ``selection=<field> payload=<text>`` line per
-OSC 52 write in the recording; unlike ``buffer-clipboard-write-pty.py`` this
-keeps the selection field, which is exactly what the drag-to-clipboard
-derivation turns on.
-"""
-
 import base64
 import fcntl
 import os

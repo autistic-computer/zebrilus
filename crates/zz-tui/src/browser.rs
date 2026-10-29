@@ -28,7 +28,6 @@ const FILE_MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
 const FRAME_BYTE_HEADROOM: usize = 1024 * 1024;
 const DEFAULT_INLINE_BUDGET_BYTES_PER_SECOND: f64 = 3.0 * 1024.0 * 1024.0;
 
-/// A complete browser frame in CEF's native OSR byte order.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderFrame {
     pub width: u32,
@@ -37,7 +36,6 @@ pub struct ProviderFrame {
     pub damage: Option<(u32, u32, u32, u32)>,
 }
 
-/// Work produced by one browser-runtime pump.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProviderTick {
     pub frames: Vec<(PaneId, ProviderFrame)>,
@@ -113,7 +111,6 @@ impl ProviderModifiers {
     }
 }
 
-/// Pointer input relative to a browser pane's content surface, in pixels.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProviderPointerInput {
     pub x: i32,
@@ -126,9 +123,6 @@ pub struct ProviderPointerInput {
     pub modifiers: ProviderModifiers,
 }
 
-/// Supplies client-local browser frames without adding CEF to `zz-tui`.
-///
-/// Every method runs on the TUI's main thread.
 pub trait BrowserFrameProvider {
     fn open(&mut self, pane: PaneId, descriptor: &BrowserDescriptor, px: (u32, u32), scale: f32);
     fn resize(&mut self, pane: PaneId, px: (u32, u32), scale: f32);
@@ -137,7 +131,6 @@ pub trait BrowserFrameProvider {
     fn pointer(&mut self, pane: PaneId, input: ProviderPointerInput);
     fn command(&mut self, pane: PaneId, command: &BrowserCommand);
 
-    /// Drives the browser runtime from the TUI's receive loop.
     fn pump(&mut self) -> ProviderTick;
 }
 

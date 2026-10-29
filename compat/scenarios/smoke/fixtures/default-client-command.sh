@@ -51,8 +51,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# A client with an empty command vector reaches the server as a terminal
-# client, so the probe hands it a pty instead of a pipe.
 bare() {
     # shellcheck disable=SC2086
     env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
@@ -69,14 +67,11 @@ main_client kill-session -t "=$session" >/dev/null 2>&1 || true
 main_client new-session -d -s "$session"
 main_client set-option -g status off
 
-# One command: server_client_default_command inserts the option's list after
-# the callback, so the bare client runs it and exits with its status.
 main_client set-option -s default-client-command 'display-message -p custom'
 status="$(bare single)"
 check_equal single-command-status exit=0 "$status"
 check_equal single-command-output custom "$(drawn single)"
 
-# A multi-command list is one cmd_list, so every member runs in order.
 main_client set-option -s default-client-command \
     'display-message -p one ; display-message -p two'
 status="$(bare multiple)"
@@ -84,8 +79,6 @@ check_equal multiple-command-status exit=0 "$status"
 check_equal multiple-command-output 'one
 two' "$(drawn multiple)"
 
-# The list runs through the same path an explicit argument takes, so a session
-# command in it creates the session and a detached one lets the client exit.
 main_client set-option -s default-client-command "new-session -d -s $spawned"
 status="$(bare session)"
 check_equal session-command-status exit=0 "$status"
@@ -96,8 +89,6 @@ else
 fi
 main_client kill-session -t "=$spawned" >/dev/null 2>&1 || true
 
-# OPTIONS_TABLE_COMMAND parses at set time, so an unknown command is refused
-# there and the stored list is left alone.
 if refusal="$(main_client set-option -s default-client-command 'no-such-command' 2>&1)"; then
     check_equal refused-unknown-command failed succeeded
 else

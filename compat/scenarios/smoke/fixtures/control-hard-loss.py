@@ -1,11 +1,3 @@
-"""What a Control client's command queue does when the connection is lost.
-
-`server_client_lost` frees the client's `cmdq`, so the item already running
-finishes and every later item of that queue -- including the ones a sourced
-file inserted -- never runs. Each case prints one observation line; the
-differential compares those, so the shapes are the pin's, not this script's.
-"""
-
 import os
 import signal
 import subprocess
@@ -44,7 +36,6 @@ def clear(work):
 
 
 def reap(client, deadline=20.0):
-    """Wait for one client, reporting a stall instead of blocking forever."""
     limit = time.time() + deadline
     while time.time() < limit:
         if client.poll() is not None:
@@ -66,8 +57,6 @@ def main():
     prefix = sys.argv[2:]
     os.makedirs(work, exist_ok=True)
 
-    # One item of this client's queue is parked on its job; two more are queued
-    # behind it when the connection dies.
     clear(work)
     client = control(prefix)
     client.stdin.write("run-shell 'sleep 2; touch %s'\n" % marker(work, 1))
@@ -82,7 +71,6 @@ def main():
     time.sleep(3.0)
     print("hard-direct status=%s ran=[%s]" % (status, markers(work)))
 
-    # The same queue, filled by a sourced file instead of by input.
     queue = os.path.join(work, "queue.conf")
     with open(queue, "w") as handle:
         handle.write("run-shell 'sleep 2; touch %s'\n" % marker(work, 1))
@@ -95,7 +83,6 @@ def main():
     time.sleep(0.8)
     client.send_signal(signal.SIGKILL)
     status = reap(client)
-    # A replacement Control client must not be handed the dead queue's work.
     replacement = control(prefix)
     time.sleep(3.0)
     print("hard-source status=%s ran=[%s]" % (status, markers(work)))
@@ -108,8 +95,6 @@ def main():
     ]
     print("replacement extra-lines=%d" % len(seen))
 
-    # The same sourced queue with the client left alive runs to the end, so the
-    # cases above measure the loss and not the file.
     clear(work)
     client = control(prefix)
     client.stdin.write("source-file %s\n" % queue)

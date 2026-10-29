@@ -1,14 +1,3 @@
-"""Run one client on a real pty and report what it wrote and how it exited.
-
-``server_client_default_command`` only runs for a client that reaches the
-server with an empty command vector, and such a client is a terminal client, so
-the probe has to give it a pty rather than a pipe. Everything the client writes
-before it exits lands in ``OUTFILE``; the exit status goes to stdout as
-``exit=N``.
-
-    bare-client.py OUTFILE SECONDS COMMAND [ARG...]
-"""
-
 import fcntl
 import os
 import pty

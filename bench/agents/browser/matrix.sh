@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# matrix.sh zz|own  - run the browser primitive parity matrix through agent-browser
-# against a zz browser pane (CDP attach) or agent-browser's own managed Chromium.
 set -uo pipefail
 BACKEND=${1:?usage: matrix.sh zz|own}
 HERE=$(cd "$(dirname "$0")" && pwd)

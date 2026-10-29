@@ -1,14 +1,8 @@
-//! Floating panes for GUI clients: where a float sits in pixels, and the
-//! commands a title-bar or edge drag commits. Geometry is the daemon's, in
-//! window cells; a GUI only previews a drag locally and lands it with
-//! ordinary commands.
-
 use zz_protocol::{
     CommandInvocation, FloatingPaneSnapshot, MuxSnapshot, PaneBorderLines, PaneBorderStatus,
     PaneId, TmuxAlign,
 };
 
-/// A float's content box in window cells, borders outside it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FloatCells {
     pub xoff: i32,
@@ -51,16 +45,12 @@ impl PixelRect {
     }
 }
 
-/// The float's box with its borders (`frame`) and its content box, in pixels
-/// from the canvas origin, both clipped to the canvas.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FloatPixels {
     pub frame: PixelRect,
     pub content: Option<PixelRect>,
 }
 
-/// Places a float on a canvas of `canvas` pixels with cells of `cell`
-/// pixels. `None` when nothing of it is on the canvas.
 #[must_use]
 #[allow(
     clippy::cast_precision_loss,
@@ -91,9 +81,6 @@ pub fn float_pixels(
     })
 }
 
-/// A float's box with its borders (`frame`) and its content box in pixels
-/// from the canvas origin, unclipped. `None` when nothing of it is on a
-/// canvas of `canvas` pixels; an empty canvas places every float.
 #[must_use]
 #[allow(
     clippy::cast_precision_loss,
@@ -136,9 +123,6 @@ pub fn float_placement(
 
 pub const PIP_MARGIN: f32 = 12.0;
 
-/// Where a GUI draws a floating pane as a picture in picture: scaled from
-/// the window's `window` cells onto a `canvas` of pixels, with a `header`
-/// tall title strip when the float has borders.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PipGeometry {
     pub window: (u16, u16),
@@ -252,14 +236,11 @@ impl PipGeometry {
         )
     }
 
-    /// The height, borders included, of the tallest float that fits: what
-    /// Float asks `break-pane -y` for.
     #[must_use]
     pub fn fill_rows(&self) -> u16 {
         self.max_cells().1 + if self.bordered() { 2 } else { 0 }
     }
 
-    /// The canvas, or the window's own pixels while the canvas is unknown.
     #[must_use]
     pub fn area(&self) -> (f32, f32) {
         if self.canvas.0 > 0.0 && self.canvas.1 > 0.0 {
@@ -272,7 +253,6 @@ impl PipGeometry {
         }
     }
 
-    /// The place a float whose centre lands at `centre` pixels snaps to.
     #[must_use]
     pub fn place_at(&self, centre: (f32, f32)) -> FloatPlace {
         let area = self.area();
@@ -314,8 +294,6 @@ pub fn float_title(border_status_text: &str) -> FloatTitle {
     title
 }
 
-/// What a pointer drag on a float grabbed: its title bar, or any mix of its
-/// edges (a corner is two).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FloatGrip {
     pub left: bool,
@@ -337,16 +315,12 @@ impl FloatGrip {
         !(self.left || self.top || self.right || self.bottom)
     }
 
-    /// `resize-pane` keeps the offsets (`layout_resize_floating_pane_to`), so
-    /// a drag that moves the origin also needs a `move-pane`.
     #[must_use]
     pub const fn moves_origin(self) -> bool {
         self.is_move() || self.left || self.top
     }
 }
 
-/// The rectangle a drag of `delta` cells previews from `start`. A resize
-/// never shrinks the content below one cell; the far edge stays put.
 #[must_use]
 pub fn float_drag_preview(start: FloatCells, grip: FloatGrip, delta: (i32, i32)) -> FloatCells {
     if grip.is_move() {
@@ -393,22 +367,12 @@ fn drag_axis(offset: i32, size: u16, near: bool, far: bool, delta: i32) -> (i32,
     (offset, u16::try_from(size).unwrap_or(u16::MAX))
 }
 
-/// The window a drag happens in, as `resize-pane -y` reads it: the tiled
-/// `pane-border-status` and the height in cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FloatWindow {
     pub border_status: PaneBorderStatus,
     pub rows: u16,
 }
 
-/// The one command that lands a dragged float on `target`, in the 3.8
-/// command surface, where sizes and positions are outer (borders included).
-/// A move is `move-pane -X -Y`; a right or bottom edge is `resize-pane -x
-/// -y`; an edge that moves the origin is the command list `resize-pane -x -y
-/// ; move-pane -X -Y`, carried by `run-shell -C` so one request parses and
-/// runs it, and a failed resize stops the move. `resize-pane -y` adds a row
-/// for a float on the row under a top pane status (or above a bottom one),
-/// so the height sent takes that row back.
 #[must_use]
 pub fn float_drag_command(
     pane: PaneId,
@@ -589,9 +553,6 @@ pub fn zoom_pane_command(pane: PaneId) -> CommandInvocation {
     )
 }
 
-/// Floats `pane` a third of the window wide on its right side, `rows` tall
-/// (borders included), the tallest float the client can fit; without `rows`, the
-/// window's height.
 #[must_use]
 pub fn float_pane_commands(pane: PaneId, rows: Option<u16>) -> [CommandInvocation; 2] {
     [
@@ -686,7 +647,6 @@ mod tests {
             .join(" ")
     }
 
-    /// The list a command carries, split the way `run-shell -C` parses it.
     fn list(command: &CommandInvocation) -> Vec<Vec<String>> {
         if command.name == "run-shell" {
             return command.args[1]
@@ -697,9 +657,6 @@ mod tests {
         vec![words(command).split(' ').map(str::to_owned).collect()]
     }
 
-    /// zz's `resize-pane` and `move-pane` on a float (and 3.8's): `-X`/`-Y`
-    /// are the outer corner, `-x`/`-y` the outer size, and `-y` gains a row
-    /// on the row under a top pane status or above a bottom one.
     fn apply(start: FloatCells, window: FloatWindow, command: &CommandInvocation) -> FloatCells {
         let mut float = start;
         for words in list(command) {

@@ -43,8 +43,6 @@ impl SwitchMode {
         }
     }
 
-    /// `prompt_set_options`: the `(search)` prompt keeps the raising session's
-    /// `status-keys` for its whole life.
     #[must_use]
     pub fn with_status_keys(mut self, vi: bool) -> Self {
         self.prompt = std::mem::take(&mut self.prompt).with_status_keys(vi);
@@ -65,10 +63,6 @@ impl SwitchMode {
         }
     }
 
-    /// `window_switch_key`'s mouse half: a button-1 press on the prompt row
-    /// moves the prompt cursor, the wheel steps the selection one row without
-    /// wrapping, a press picks the row under the pointer and a double click
-    /// runs it.
     pub fn mouse(
         &mut self,
         name: &str,

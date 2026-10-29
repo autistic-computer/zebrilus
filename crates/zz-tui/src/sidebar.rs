@@ -11,10 +11,6 @@ use crate::layout::Rect;
 
 pub(crate) const WIDTH: u16 = 28;
 pub(crate) const BORDER_WIDTH: u16 = 1;
-/// Terminal width never invokes the sidebar: it is client-local chrome that
-/// only `focus-sidebar` or a user binding shows, so at every width a terminal
-/// client's canvas is the one pinned tmux draws. It still needs room to sit
-/// beside a pane, and below this the command leaves the canvas alone.
 pub(crate) const MIN_MANUAL_COLUMNS: u16 = 50;
 pub(crate) const STATUS_ROWS: u16 = 3;
 

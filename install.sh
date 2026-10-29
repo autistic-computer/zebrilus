@@ -1,14 +1,4 @@
 #!/bin/sh
-# Install zz from the latest GitHub release.
-#
-#   curl -fsSL https://zzmux.sh/install.sh | sh
-#   curl -fsSL https://zzmux.sh/install.sh | sh -s -- --beta
-#
-# macOS (Apple Silicon): the notarized disk image, copied to /Applications and
-# linked onto your PATH. Linux with dpkg and apt: the .deb, which also carries
-# the AppArmor profile Ubuntu 24.04+ needs for browser panes. Any other Linux:
-# the release tarball unpacked under ~/.local, no root required. Rerun the same
-# command to upgrade.
 set -eu
 
 repo=autistic-computer/zz

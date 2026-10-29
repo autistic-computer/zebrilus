@@ -1,8 +1,4 @@
 #!/bin/sh
-# What a Control client's command queue does when its input reaches end of
-# file: tmux runs every queued command up to and including the first one that
-# yields the queue (CMD_RETURN_WAIT), then the client exits and the queue it
-# owned is freed with everything later unrun.
 set -eu
 
 export LC_ALL=C
@@ -43,17 +39,12 @@ clear_markers() {
     rm -f "$work"/m*
 }
 
-# The guard numbers are a server-wide counter on the pin and a per-client one in
-# zz, and the times are wall clock, so the comparable fact is the guard shape.
 normalize() {
     sed -E \
         -e 's/^%(begin|end|error) [0-9]+ [0-9]+ ([0-9]+)$/%\1 \2/' \
         -e 's/^%session-changed \$[0-9]+ /%session-changed /'
 }
 
-# `at-exit` is only reported for the cases whose job sleeps: whether an instant
-# job has already touched its marker when the client exits is a race on both
-# binaries, and what the queue ran is the fact under test.
 drive() {
     label="$1"
     late="$2"
@@ -96,7 +87,6 @@ drive block-last 1 1 \
     'display-message -p TWO' \
     "run-shell 'sleep 2; touch $work/m3'"
 
-# A blank Return ends the client the same way end of file does.
 drive blank-return 1 1 \
     "run-shell 'sleep 2; touch $work/m1'" \
     '' \
@@ -106,20 +96,12 @@ drive fast-run-first 1 0 \
     "run-shell 'touch $work/m1'" \
     'display-message -p AFTER'
 
-# `run-shell 'echo hi'` belongs in this list and is left out on purpose: at
-# d77c9dc6 the pinned server dies when the next client connects after a Control
-# client exits at end of file with a job whose output has nowhere to go.
-
 drive size-reports 0 0 \
     'refresh-client -C 120,40' \
     'refresh-client -C 120,40' \
     'display-message -p SIZE' \
     'detach-client'
 
-# A sourced queue is the same queue: the pin discards what follows the sourced
-# command that parked. Only the payload lines and the side effects are compared
-# here, because zz closes a sourced command's control guard when the command
-# finishes and the pin closes it when the command fires.
 conf="$work/queue.conf"
 {
     printf '%s\n' 'display-message -p SRC-A'

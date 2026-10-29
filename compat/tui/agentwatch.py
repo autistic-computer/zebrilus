@@ -1,37 +1,4 @@
 #!/usr/bin/env python3
-"""Tell a spinning agent from a slow one, on a timer, for a whole cycle.
-
-    python3 compat/tui/agentwatch.py
-
-Reads every workflow run still moving and prints a line only when something is
-wrong. Run it from a 15-minute monitor for the length of a cycle. fabrico asked
-for this in cycle 8 after two cycles ran a day longer than they should have and
-nobody could say which agent was stuck.
-
-What it judges, and why each rule is shaped the way it is:
-
-  SPINNING   the identical FULL command four times in the last sixty calls. The
-             first version truncated commands at 180 characters, which made a
-             series of different file edits look like one repeated command.
-  STUCK      the identical FAILURE signature four times, read off tool RESULTS
-             rather than command text. Different failures in a row are a fix
-             loop making progress and must never be flagged. The first version
-             matched "timeout 580" in a command and called it a timeout.
-  SILENT     no transcript write in twenty minutes. A label whose live attempt
-             already returned is dropped whole: the harness leaves a dead
-             earlier attempt behind under the same label, and without that rule
-             the finished lane reappears as the newest unfinished transcript.
-  NO COMMIT  many new calls and nothing landed in three hours, workers only.
-  SECOND HALF  a worker finished with its obligation still active. That is an
-             opportunity, not a failure. A runner's gates are serial, so while
-             they run every slot but one is idle; if the worker's report names
-             the files its remaining items need, a second-half lane closes the
-             obligation in the same cycle. Cycle 9 earned this one: the mouse
-             lane stopped on budget with three checks recorded and an exact
-             handover, and the follow-on lane took the idle capacity.
-
-Set ROOT to the session's workflow directory before running.
-"""
 
 import json, os, glob, sys, time, re, subprocess, hashlib, collections
 
@@ -45,16 +12,14 @@ if not ROOT:
     ROOT = cands[-1]
 DEV = os.environ.get('ZZ_WATCH_DEV') or os.path.expanduser('~/dev')
 NOW = time.time()
-TAIL = 60           # tool calls to look back over
-REPEAT = 4          # identical full command this many times = spinning
-FAILRUN = 4         # this many failing results in the window = thrash
+TAIL = 60
+REPEAT = 4
+FAILRUN = 4
 
 def jload(p, d=None):
     try: return json.load(open(p))
     except Exception: return d if d is not None else {}
 
-# Watch every run still moving, not just the newest: a second runner launched
-# beside a cycle (run-9b beside run-9) would otherwise silence the first.
 allruns = sorted(glob.glob(ROOT + '/wf_*'), key=os.path.getmtime)
 if not allruns: sys.exit(0)
 runs = [r for r in allruns if NOW - os.path.getmtime(r) < 6 * 3600] or allruns[-1:]
@@ -88,7 +53,6 @@ for run in runs:
     OK = re.compile(r'\bexit(?: code)?[: =]*0\b|PASS\b|all \d+ .*identical|test result: ok', re.I)
 
     def scan(path):
-        """Walk one agent transcript, pairing tool calls with their results."""
         calls, results = [], []
         try: lines = open(path, errors='replace').read().splitlines()
         except Exception: return calls, results, 0
@@ -114,12 +78,6 @@ for run in runs:
     prev = st.get(run, {})
     cur = {}
 
-    # The harness restarts an agent that dies on a terminal error, leaving the dead
-    # attempt's transcript behind under the same label. Only the newest transcript
-    # per label is live; an older one is superseded, not silent.
-    # A label whose live attempt already returned is done. Its dead earlier attempt
-    # is still unfinished on paper, so without this the finished lane reappears as
-    # the newest unfinished transcript and gets flagged SILENT forever.
     done_labels = {label for aid, label in meta.items() if aid in finished}
 
     live, superseded = {}, []
@@ -139,11 +97,6 @@ for run in runs:
                          f'watching the live one only')
     cur['seen_superseded'] = {aid: True for _, aid in superseded}
 
-    # A worker that finished with its obligation still short is a SECOND-HALF
-    # opportunity, not a failure: its report names the remaining items and the
-    # files that own them. Cycle 9 earned this. A runner's gates are serial, so
-    # while they run, every slot but one is idle and a second-half lane costs
-    # nothing but tokens. Announce each obligation once.
     seen_short = dict(prev.get('seen_short', {}))
     for aid, oid, status, nopen in shortfall:
         k = f'{aid}:{oid}'
@@ -167,7 +120,6 @@ for run in runs:
         if idle > 20:
             flags.append(f'{label}: SILENT {idle:.0f}m, no transcript write ({nrec} records)')
 
-        # identical FULL command repeated -> real spinning
         win = calls[-TAIL:]
         h = collections.Counter(hashlib.sha1(re.sub(r'\s+', ' ', c).strip().encode()).hexdigest() for c in win)
         if h:
@@ -178,8 +130,6 @@ for run in runs:
                 flags.append(f'{label}: SPINNING, ran an identical command {k}x in its last {len(win)} calls -> '
                              + re.sub(r'\s+', ' ', sample)[:180])
 
-        # STUCK: the SAME failure signature over and over. Different signatures in a row
-        # are a fix loop making progress, which is normal and must not be flagged.
         rw = results[-TAIL:]
         sigs = []
         for r in rw:
@@ -197,12 +147,10 @@ for run in runs:
         if kills >= 2: flags.append(f'{label}: {kills} memory kills in recent results (cap too low or --jobs too high)')
         if touts >= 4: flags.append(f'{label}: {touts} command timeouts in recent results (work does not fit the 600s cap)')
 
-        # burning calls with nothing landing
         key = label.split(':')[-1]
         cands = [c for c in glob.glob(DEV + '/zz-tui-*') + glob.glob(DEV + '/zz-gate-*')
                  if not os.path.basename(c).endswith('-review')
                  and re.fullmatch(r'zz-(?:tui|gate)-' + re.escape(key) + r'(?:-\d+)?', os.path.basename(c))]
-        # a lane worktree carrying a suffix (zz-tui-keys-8) is this cycle's; bare is an older cycle's
         cands.sort(key=lambda c: (len(os.path.basename(c)), os.path.getmtime(c)), reverse=True)
         wd = cands[0] if cands else None
         age = None

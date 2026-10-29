@@ -1,11 +1,3 @@
-//! Release check against GitHub and the in-app update offer.
-//!
-//! The check is one anonymous GET of the release list, ten seconds after
-//! launch and daily after that. Applying an update reuses the shipped
-//! installer: the offer opens a terminal window running whichever route
-//! matches how this copy was installed, and the daemon keeps that pane alive
-//! while the installer swaps the app underneath it.
-
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -57,7 +49,6 @@ pub(crate) struct UpdateState {
 
 impl Global for UpdateState {}
 
-/// What the Settings page shows.
 pub(crate) struct Status {
     pub current: Version,
     pub channel: Channel,
@@ -73,8 +64,6 @@ pub(crate) fn status(cx: &App) -> Option<Status> {
     })
 }
 
-/// Registers the update state and, when checks are enabled, starts the
-/// daily check loop. Call once, as the workspace window opens.
 pub(crate) fn start(mux: Entity<MuxClient>, cx: &mut App) {
     let current = match Version::parse(env!("CARGO_PKG_VERSION")) {
         Ok(version) => version,
@@ -105,7 +94,6 @@ pub(crate) fn start(mux: Entity<MuxClient>, cx: &mut App) {
     .detach();
 }
 
-/// A user-initiated check; reports the outcome as a toast either way.
 pub(crate) fn check_now(cx: &mut App) {
     let checking = cx
         .try_global::<UpdateState>()
@@ -117,8 +105,6 @@ pub(crate) fn check_now(cx: &mut App) {
         .detach();
 }
 
-/// Applies the offered release: a terminal window running the installer, or
-/// the release page when nothing can be run in place.
 pub(crate) fn install(window: &mut Window, cx: &mut App) {
     let Some(state) = cx.try_global::<UpdateState>() else {
         return;
@@ -299,12 +285,10 @@ fn write_dismissed(version: &Version) -> io::Result<()> {
     user_data::restrict_to_current_user(&path)
 }
 
-/// Facts about this copy of zz that pick the install route.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct Environment {
     os: &'static str,
     executable: Option<PathBuf>,
-    /// The Homebrew prefix whose Caskroom holds a zz cask, and that cask's token.
     homebrew: Option<(PathBuf, &'static str)>,
     pacman_owned: bool,
     appimage: bool,
@@ -346,9 +330,7 @@ fn on_path(program: &str) -> bool {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum InstallPlan {
-    /// A shell command to run in a terminal window.
     Terminal(String),
-    /// A URL to open when nothing can be run in place.
     Open(String),
 }
 
@@ -384,8 +366,6 @@ fn install_plan(release: &Release, channel: Channel, environment: &Environment) 
     }
 }
 
-/// The unpack prefix of a tarball install (`<prefix>/lib/zz/zz`); `None` for
-/// the apt-managed `/usr` tree, which the installer upgrades through apt.
 fn tarball_prefix(executable: &Path) -> Option<&Path> {
     let prefix = executable.parent()?.parent()?.parent()?;
     (executable.ends_with("lib/zz/zz") && prefix != Path::new("/usr")).then_some(prefix)
@@ -409,8 +389,6 @@ fn install_script_command(channel: Channel, prefix: Option<&Path>) -> String {
     }
 }
 
-/// Wraps the install command so the window outlives it: the log stays
-/// readable, and a failure says so instead of closing the pane.
 fn terminal_script(command: &str) -> String {
     let quoted = command.replace('\'', "'\\''");
     format!(

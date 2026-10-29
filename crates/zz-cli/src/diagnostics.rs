@@ -133,9 +133,6 @@ pub struct RingLogWriter {
 }
 
 impl RingLogWriter {
-    /// `mirror_to_terminal` is what a developer running the app from a shell
-    /// wants and what the raw-terminal client cannot have: that terminal is
-    /// the client's screen, and pinned tmux writes nothing on it.
     fn open(path: &Path, mirror_to_terminal: bool) -> io::Result<Self> {
         let (path, file) = open_log_file(Some(path))?;
         let written = file.metadata().map_or(0, |metadata| metadata.len());
@@ -175,8 +172,6 @@ impl Write for RingLogWriter {
     }
 }
 
-/// Path CEF should write its log to; its subprocesses inherit the setting.
-/// Renames the previous session's log aside, because CEF truncates on startup.
 pub fn cef_log_file() -> PathBuf {
     let path = platform_log_dir().join("cef.log");
     if path.exists() {
@@ -190,8 +185,6 @@ pub fn enabled() -> bool {
     VERBOSE_LOG.get().is_some()
 }
 
-/// Returns a start instant only when `target` is tracing, so hot paths skip the
-/// clock read otherwise.
 #[must_use]
 pub fn timer(target: &str) -> Option<Instant> {
     log::log_enabled!(target: target, log::Level::Trace).then(Instant::now)
@@ -266,9 +259,6 @@ pub const STALL_SAMPLE_COOLDOWN: Duration = Duration::from_mins(1);
 #[cfg(target_os = "macos")]
 pub const STALL_SAMPLE_KEEP: usize = 8;
 
-/// Writes two seconds of 10 ms stacks to `zz.stall-<unix-seconds>.sample.txt`
-/// beside the ring logs. `/usr/bin/sample` can only attach because the installed
-/// bundle is signed without hardened runtime.
 #[cfg(target_os = "macos")]
 pub fn capture_stall_sample(reason: &str) {
     static LAST_CAPTURE: Mutex<Option<Instant>> = Mutex::new(None);
@@ -426,11 +416,6 @@ pub fn process_type(arguments: &[OsString]) -> Option<String> {
     None
 }
 
-/// Whether these arguments hand the process to the raw-terminal client. Every
-/// spelling counts, because the log target follows the process and not the way
-/// its command was typed: `attach`, `attach-session` and `new-session` all end
-/// in the same client, and a client that logs to stderr writes on the screen
-/// the pin leaves untouched.
 #[must_use]
 pub fn raw_terminal_command(arguments: &[OsString]) -> bool {
     application_arguments(arguments)
@@ -820,15 +805,6 @@ mod tests {
         }
     }
 
-    /// `--bootstrap-client-cwd` hands a daemon zz spawns the working directory
-    /// the invoking client was in. Before protocol v98 the argument list was
-    /// `Vec<String>` and `into_string` dropped a directory that only exists as
-    /// bytes to an empty string, which
-    /// `validated_bootstrap_client_working_directory` then refused, so the
-    /// daemon started with no client cwd at all. The list is `RawText` now, so
-    /// the bytes survive argv and `PathBuf::from(cwd.to_os_string())` rebuilds
-    /// the same directory, matching `ClientHello.working_directory`, byte
-    /// preserving since v92.
     #[cfg(unix)]
     #[test]
     fn non_utf8_bootstrap_client_cwd_reaches_the_daemon_as_bytes() {

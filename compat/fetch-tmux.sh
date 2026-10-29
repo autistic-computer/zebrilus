@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Fetches and builds the pinned tmux behavioral reference, caching the binary
-# under compat/.cache. ZZ_COMPAT_TMUX may provide an already-built binary.
 set -euo pipefail
 
 COMPAT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -124,9 +122,6 @@ log "building $TMUX_VERSION"
 (
   cd "$SOURCE_DIR"
   sh autogen.sh
-  # The pin hard-errors on macOS unless the utf8proc choice is explicit; the
-  # harness diffs topology and geometry, never glyph widths, so pick the
-  # dependency-free build everywhere.
   ac_cv_prog_found_vlock=no ./configure --disable-utf8proc
   make clean
   make

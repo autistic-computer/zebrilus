@@ -113,16 +113,6 @@ env -u TMUX -u TMUX_PANE -u ZZ_SOCKET -u ZZ_SESSION -u ZZ_PANE \
 attach_pid=$!
 await_clients 1 || { echo "copy-selection-clipboard-bytes-$side: attach"; exit 0; }
 
-# Pinned tmux d77c9dc6: window_copy_copy_buffer writes the selection with
-# screen_write_setselection(&ctx, "", ...) — an empty OSC 52 selection field,
-# which asks the outer terminal for its default target — and only while
-# set-clipboard is not off. Measured on the pin: external and on each emit one
-# write with an empty field, off emits none.
-#
-# Both sides write the empty field: EventPayload::Clipboard carries the
-# producer since PROTOCOL_VERSION 99, so the raw TUI writes the pin's empty
-# field for every selection the server wrote itself and keeps the named field
-# only for an application's own OSC 52, which the second phase below measures.
 for spec in \
     'external|selection=<empty> payload=alpha-bravo' \
     'on|selection=<empty> payload=alpha-bravo' \
@@ -151,13 +141,6 @@ for spec in \
     check_equal "selection-field-$value" "$want" "$got"
 done
 
-# Pinned tmux d77c9dc6: input_osc_52_parse returns 0 unless
-# options_get_number(global_options, "set-clipboard") == 2, so an application
-# writing its own ESC ] 52 ; c ; <base64> BEL reaches the outer terminal only
-# under set-clipboard on, and under external and off the pin writes nothing and
-# creates no buffer. Measured on the pin with this fixture: on emits
-# selection=c payload=application and one buffer, external and off emit
-# neither.
 cat >"$work/emitter.sh" <<EOF
 #!/bin/sh
 printf 'emitter-ready\n'

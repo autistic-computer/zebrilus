@@ -41,11 +41,9 @@ const ADAPTIVE_BEGIN_FRAME_PROBE_PERCENT: u64 = 95;
 const MIN_ADAPTIVE_BEGIN_FRAME_RATE: i32 = 30;
 const PUMP_HOT_WINDOW: Duration = Duration::from_millis(500);
 const SHARED_TEXTURE_FIRST_FRAME_TIMEOUT: Duration = Duration::from_secs(2);
-// Mirrors cefclient's 30 Hz `kMaxTimerDelay` watchdog.
 const VISIBLE_PUMP_WATCHDOG_INTERVAL: Duration = Duration::from_millis(1000 / 30);
 const UNFOCUSED_FRAME_RATE_CAP: i32 = 30;
 
-/// Desktop builds include the CEF browser runtime.
 pub(crate) fn is_available(_cx: &App) -> bool {
     true
 }
@@ -440,8 +438,6 @@ struct PendingBrowser {
     background: Option<u32>,
 }
 
-/// One pending browser resolved into the arguments of a `create_session`
-/// call, so the creation can run with the runtime detached.
 struct BrowserCreateSpec {
     key: BrowserKey,
     url: String,
@@ -455,7 +451,6 @@ struct BrowserCreateSpec {
     watch_first_frame: bool,
 }
 
-/// How a browser pane routes its traffic through the ssh host it is attached to.
 #[derive(Clone, Debug)]
 pub(crate) struct EgressSpec {
     pub(crate) composite_profile: String,
@@ -510,7 +505,6 @@ impl BrowserSessionRequest {
     }
 }
 
-/// The paintable payload for the newest browser frame.
 #[derive(Clone)]
 pub(crate) enum BrowserPaneFrameContent {
     OwnedBgra(Arc<RenderImage>),
@@ -521,7 +515,6 @@ pub(crate) enum BrowserPaneFrameContent {
     WinGpu(WinGpuTexture),
 }
 
-/// The newest OSR frame for a browser tab: a decoded ala image or a GPU texture.
 #[derive(Clone)]
 pub(crate) struct BrowserPaneFrame {
     pub(crate) session: SessionId,
@@ -772,7 +765,6 @@ impl BrowserController {
             return;
         }
         cx.spawn(async move |this, cx| {
-            // Take the burst under ala, then enter CEF only after that borrow is gone.
             let work = this.update(cx, |controller, _| {
                 std::mem::take(&mut controller.queued_cef_work)
             });
@@ -852,7 +844,6 @@ impl BrowserController {
         self.latest_frames.get(&(pane, tab)).cloned()
     }
 
-    /// Return a retired frame's pixel buffer to the tab's paint pool.
     pub(crate) fn recycle_frame(&self, pane: PaneId, tab: TabId, bgra: Vec<u8>) {
         if let Some(session) = self.sessions.get(&(pane, tab)) {
             session.recycle_frame(bgra);
@@ -1867,8 +1858,6 @@ impl BrowserController {
         keys
     }
 
-    /// Point every route this pane recorded at the SOCKS port a reconnect brought
-    /// up. Best effort: callers run this on every snapshot refresh.
     pub(crate) fn refresh_egress(&mut self, pane: PaneId, spec: Option<EgressSpec>) {
         let Some(spec) = spec else {
             return;
@@ -2168,11 +2157,6 @@ impl BrowserController {
         }
     }
 
-    /// `cef::initialize` runs Chromium startup work on this thread, and that
-    /// work can service the GCD main queue: a ala runnable drained there must
-    /// find the App borrow free or it panics with `RefCell already borrowed`.
-    /// So, like the pump calls, the runtime leaves the controller and
-    /// initializes at task top level, outside every borrow.
     fn start_runtime(&mut self, cx: &mut Context<Self>) {
         let Some(mut runtime) = self.detach_runtime(RuntimePhase::Initializing) else {
             return;
@@ -2210,9 +2194,6 @@ impl BrowserController {
         .detach();
     }
 
-    /// Takes the runtime out of the controller for a borrow-free CEF call.
-    /// While it is out, [`Self::runtime_phase`] reports `phase` and runtime
-    /// signals are deferred until [`Self::reattach_runtime`].
     fn detach_runtime(&mut self, phase: RuntimePhase) -> Option<BrowserRuntime> {
         let runtime = self.runtime.take()?;
         self.detached_runtime_phase = Some(phase);
@@ -2348,11 +2329,6 @@ impl BrowserController {
         .interval()
     }
 
-    /// Like `cef::initialize`, `browser_host_create_browser_sync` runs
-    /// Chromium work that can service the GCD main queue, so the creation
-    /// calls happen with the runtime detached, outside the App borrow. The
-    /// in-flight entries stay in `pending_browsers`: an entry gone by
-    /// completion means the tab closed and the fresh browser is discarded.
     fn try_create_browsers(&mut self, cx: &mut Context<Self>) {
         if self.shutting_down || self.detached_runtime_phase.is_some() {
             return;

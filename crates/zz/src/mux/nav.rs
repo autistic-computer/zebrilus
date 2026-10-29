@@ -1,5 +1,3 @@
-//! Shared navigation model and activation machinery for mux-backed shells.
-
 use std::collections::BTreeSet;
 
 use ala::{App, Entity, SharedString};
@@ -235,8 +233,6 @@ impl MuxTreeModel {
             .map(|window| window.id)
     }
 
-    /// The current name a rename prompt would prefill, or `None` where the
-    /// target cannot be renamed.
     #[must_use]
     pub fn renameable_name(&self, host: HostId, target: TreeTarget) -> Option<&str> {
         let sessions = &self.host(host)?.sessions;
@@ -254,8 +250,6 @@ impl MuxTreeModel {
         }
     }
 
-    /// The session or window a node's rename would retitle. Whether that rename
-    /// can actually be raised is [`Self::renameable_name`]'s call.
     #[must_use]
     pub fn rename_target_for_node(&self, node: TreeNode) -> Option<(HostId, TreeTarget)> {
         match node {
@@ -273,9 +267,6 @@ impl MuxTreeModel {
         }
     }
 
-    /// Build the prompt action for a tree rename. A prompt belongs to the
-    /// daemon connection that raised it, so a target on another machine must
-    /// become attached before that daemon opens the prompt.
     #[must_use]
     pub fn rename_activation_for_node(
         &self,
@@ -302,9 +293,6 @@ impl MuxTreeModel {
         Some((label, activation))
     }
 
-    /// Whether this node or anything hidden below it has an uncleared bell.
-    /// Bubbling the level state keeps a collapsed host/session/window useful as
-    /// a notification surface.
     #[must_use]
     pub fn has_pending_bell(&self, node: TreeNode) -> bool {
         let Some(host) = self.host(node.host()) else {
@@ -412,12 +400,7 @@ pub struct MuxTreeHost {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HostIndicator {
     Connecting,
-    /// A host that is not going to connect on its own. `detail` is
-    /// [`HostState::failure_detail`]: the typed ssh advice a shell should keep
-    /// visible.
-    Failed {
-        detail: Option<SharedString>,
-    },
+    Failed { detail: Option<SharedString> },
 }
 
 impl MuxTreeHost {
@@ -510,7 +493,6 @@ pub struct MuxTreePane {
     pub label: String,
     pub cwd: String,
     pub kind: MuxTreePaneKind,
-    /// A BEL rang here and nobody has been back since.
     pub bell: bool,
     pub status: Option<PaneStatusState>,
     pub program: Option<&'static Program>,
@@ -577,12 +559,8 @@ pub fn active_tree_target(
     }
 }
 
-/// A session's label as every navigation surface writes it: its name, or for
-/// a numbered session, where its panes are.
 pub use zz_client::navigation::{SessionLabel, session_label};
 
-/// Open every ancestor of `node`, so attaching anywhere in the fleet reveals
-/// the row the mux moved to.
 pub fn expand_path_to(expanded: &mut BTreeSet<TreeNode>, model: &MuxTreeModel, node: TreeNode) {
     let TreeNode::Target(host, target) = node else {
         return;

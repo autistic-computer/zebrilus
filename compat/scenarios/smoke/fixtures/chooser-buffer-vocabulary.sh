@@ -143,10 +143,6 @@ check_equal setup-buffers 'b1 b2 b3 ' "$(buffers)"
 
 main_client bind-key -n C-o choose-buffer 'set-environment -g CHOOSER_BUF %%'
 
-# window_buffer_order_seq starts at creation, which is newest first, and O steps
-# it to name and then to size before sort_next_order wraps it back. mode_tree_build
-# puts the cursor back on the item it was on, not on the line, so the order is
-# read from the first row after a g rather than from where the cursor stayed.
 open_chooser
 press 67
 press 0d
@@ -184,8 +180,6 @@ press 0d
 settle
 check_equal r-reverses-creation b1 "$(chosen_buffer)"
 
-# mode_tree_display_help is the same screen here, and the next key of any kind
-# closes it without reaching the chooser's own vocabulary.
 open_chooser
 press 67
 press 1b4f50
@@ -202,9 +196,6 @@ press 0d
 settle
 check_equal ctrl-h-raises-the-same-help b3 "$(chosen_buffer)"
 
-# P is mode_tree_each_tagged over window_buffer_do_paste with no fallback to the
-# current row, so it runs once per tagged buffer in row order and the last one
-# is the last write.
 open_chooser
 press 67
 press 74
@@ -213,7 +204,6 @@ press 50
 settle
 check_equal P-pastes-every-tagged-buffer b2 "$(chosen_buffer)"
 
-# It closes the mode even when nothing is tagged, and pastes nothing at all.
 open_chooser
 press 67
 press 74
@@ -222,7 +212,6 @@ press 50
 sleep 0.6
 check_equal T-untags-and-P-pastes-nothing pending "$(chosen_buffer)"
 
-# C-t tags every row, because no buffer row has a parent.
 open_chooser
 press 67
 press 14
@@ -230,8 +219,6 @@ press 50
 settle
 check_equal ctrl-t-tags-every-row b1 "$(chosen_buffer)"
 
-# D is the same each_tagged walk over window_buffer_do_delete, so it deletes
-# nothing when nothing is tagged and leaves the mode standing.
 open_chooser
 press 67
 press 44

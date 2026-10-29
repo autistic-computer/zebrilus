@@ -1,5 +1,3 @@
-"""Shared Instruments plumbing for the macOS profiling summary scripts."""
-
 from __future__ import annotations
 
 import re
@@ -12,7 +10,6 @@ _SUMMARY_NAME = "zz summary"
 
 
 def use_summary_name(name: str) -> None:
-    """Prefix this script's failures with its own summary name."""
     global _SUMMARY_NAME
     _SUMMARY_NAME = name
 

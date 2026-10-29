@@ -11,11 +11,6 @@ binary="$target/Contents/MacOS/zz"
 
 [[ -d "$bundle/Contents" ]] || die "application bundle does not exist: $bundle (run: just build mac)"
 
-# The GUI instance of the installed bundle, and only that: the daemon runs
-# from `cli` beside the GUI, as do CLI invocations and agent adapters. Those
-# processes must survive the swap. The daemon keeps the sessions and never
-# loads CEF helpers by bundle path, so it is safe with its binary unlinked.
-# dist/zz-dev instances don't match either.
 gui_pids() {
     pgrep -f "^$binary" 2>/dev/null | while read -r pid; do
         case "$(ps -o command= -p "$pid" 2>/dev/null)" in
@@ -24,9 +19,6 @@ gui_pids() {
     done
 }
 
-# Quit a running GUI before replacing its bundle: CEF spawns helper processes
-# by bundle path at runtime, so deleting the bundle under a live GUI is how
-# you get the next mystery crash report.
 if [[ -n "$(gui_pids)" ]]; then
     echo "quitting running zz..."
     osascript -e 'tell application id "dev.zz.app" to quit' >/dev/null 2>&1 || true
@@ -37,9 +29,6 @@ if [[ -n "$(gui_pids)" ]]; then
     [[ -n "$(gui_pids)" ]] && die "zz did not quit; close it and rerun"
 fi
 
-# Symlink the bundle's headless `cli`: macOS resolves
-# the app bundle from the launch path without following symlinks, so a
-# symlinked `zz` would run with no Info.plist and no CEF framework beside it.
 install_cli_link() {
     local cli="$target/Contents/MacOS/cli" dir link existing
     for dir in /opt/homebrew/bin /usr/local/bin; do

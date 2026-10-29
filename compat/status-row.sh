@@ -1,19 +1,4 @@
 #!/usr/bin/env bash
-# Row-level differential for the tmux status line.
-#
-# The scenario harness compares daemon facts and never a rendered row, and the
-# attached-client fixture drives the raw TUI at a width where its sidebar is
-# visible, so no campaign proof ever compared what a status format DRAWS.
-# This fixture runs both binaries inside an outer pinned tmux at a width below
-# the sidebar's auto-hide threshold, where the zz TUI paints the daemon's
-# expanded status rows across the full width, applies the same status options
-# to both, and diffs the bytes of the last row of each pane after every step,
-# escapes included. It also walks the band the sidebar's auto-hide covers, 80
-# and 100 columns, and diffs the row's TEXT there: status-left, the window
-# list and status-right have to be drawn in the pin's order at a width where
-# the raw TUI has no sidebar to hide status-left in. A divergence is a finding, not a failure of this script:
-# it exits 1 so a caller can gate on it, and prints both rows so the next
-# lane has the measurement.
 set -eEuo pipefail
 
 usage() {
@@ -156,8 +141,6 @@ client_attached() {
   [ "$(side_command "$side" list-clients -F '#{client_session}' 2>/dev/null)" = "$INNER_SESSION" ]
 }
 
-# Both binaries attached to a session of the given width, inside one outer
-# pinned tmux window each. Called once per width under test.
 attach_both_at() {
   local columns="$1"
   tmux_outer_command kill-server >/dev/null 2>&1 || true
@@ -176,12 +159,6 @@ attach_both_at() {
   wait_for "outer tmux pane at ${columns}x${ROWS_UNDER_TEST}" outer_pane_is "=$OUTER_SESSION:tmux" "${columns}x${ROWS_UNDER_TEST}"
   wait_for "zz client attached" client_attached zz
   wait_for "tmux client attached" client_attached tmux
-  # The default status-right ends in #{=21:pane_title}. window.c:1141 seeds a
-  # pane's title from gethostname, while a zz pane with the default shell
-  # reports its shell name through zz's shell integration - the recorded
-  # pane.runtime-facts decision, not a divergence of this row. Pinning the
-  # title on both sides takes that one token out of the comparison so the
-  # WHOLE row can be asserted.
   side_command zz select-pane -t "=$INNER_SESSION:0.0" -T "$PANE_TITLE" ||
     die "zz refused select-pane -T"
   side_command tmux select-pane -t "=$INNER_SESSION:0.0" -T "$PANE_TITLE" ||
@@ -198,12 +175,6 @@ unset_on_both() {
   side_command tmux set-option -gu "$1" || die "tmux refused set-option -gu $1"
 }
 
-# Server options. status-style defaults to bg=themegreen,fg=themeblack, and
-# server_client_update_theme_colours expands the dark-theme-* or light-theme-*
-# option for each client from the `theme` option and the theme the client
-# reported (server-client.c:3085). Both binaries' clients run inside the same
-# outer pinned tmux, so both are answered the same way and the resolved set has
-# to be the same on both sides.
 set_server_on_both() {
   side_command zz set-option -s "$1" "$2" || die "zz refused set-option -s $1"
   side_command tmux set-option -s "$1" "$2" || die "tmux refused set-option -s $1"
@@ -217,10 +188,6 @@ unset_server_on_both() {
 write_attach zz "$SCRATCH_DIR/attach-zz.sh"
 write_attach tmux "$SCRATCH_DIR/attach-tmux.sh"
 
-# The band the sidebar's auto-hide covers. status.c draws status-left, the
-# window list and status-right in one row at every width; the raw TUI has no
-# sidebar below 109 columns, so all three have to be in that row there too.
-# Text, not bytes: colour encoding is the corpus's claim below, not this one.
 last_row_text() {
   tmux_outer_command capture-pane -p -t "=$OUTER_SESSION:$1" | tail -n 1
 }
@@ -268,19 +235,6 @@ done
 
 attach_both_at "$COLUMNS_UNDER_TEST"
 
-# The corpus: one status option per step, applied identically to both servers.
-# Each step names the option and the value; the row is captured after both
-# sides have repainted at least once. Keep the values free of clocks and of
-# anything host-specific so the bytes can be equal at all.
-# ASSERTED since 2026-09-10, when the daemon began publishing the ten resolved
-# theme colours on StatusLine and presentation:tui-status-row-theme-colours-per-
-# client closed. Before that the raw TUI resolved themeX from a hard-coded copy
-# of the pin's dark defaults, so it could not follow a user-set dark-theme-* and
-# could not follow a forced `theme` at all, and these three rows only printed
-# both sides. They are whole-row byte comparisons like the rest now, and the
-# COLOUR CLASS is the point of them: `colour124` has to leave as \e[48;5;124m on
-# both sides and not as truecolor, which is why the wire carries a TmuxColour
-# per slot rather than an RGB triple.
 SERVER_CORPUS=(
   "dark-theme-green|colour124"
   "dark-theme-black|colour231"
@@ -298,18 +252,11 @@ CORPUS=(
   "status-position|bottom"
 )
 
-# The pane border's TEXT, with the line glyphs taken out: the pin draws them in
-# the terminal's ACS charset (SO q SI) and the raw TUI as UTF-8 box drawing,
-# which is the border renderer's business (tui-screen-diff.sh), not whether a
-# runtime fact reached the border format.
 border_text() {
   tmux_outer_command capture-pane -p -e -t "=$OUTER_SESSION:$1" | head -n 1 |
     LC_ALL=C sed -e $'s/\033\\[[0-9;]*m//g' -e $'s/\016[^\017]*\017*//g' -e 's/\xe2\x94\x80//g'
 }
 
-# The default status-right carries a clock, and the two sides are captured one
-# after the other, so a minute boundary between the captures is a difference
-# that says nothing. Retry a bounded number of times before reporting one.
 compare_step() {
   local step="$1"
   local row="${2:-last_row_bytes}"
@@ -349,12 +296,6 @@ for entry in "${CORPUS[@]}"; do
   compare_step "$option = $value"
 done
 
-# Runtime facts: the command and working directory of a pane come from the
-# process table, not from a command, so they reach the row only through the
-# daemon's runtime-fact publication. Every template kind that can read them is
-# checked: the window list and status-right, a whole status-format row, a pane
-# border line, and a row a client first sees when it attaches after the facts
-# changed while no client was there.
 send_on_both() {
   side_command zz send-keys -t "=$INNER_SESSION:0.0" "$@" || die "zz refused send-keys"
   side_command tmux send-keys -t "=$INNER_SESSION:0.0" "$@" || die "tmux refused send-keys"

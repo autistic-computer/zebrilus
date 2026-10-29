@@ -5,10 +5,8 @@ use crate::{
     window_summary::pane_agent,
 };
 
-/// The most window tabs a status bar shows before it adds an overflow menu.
 pub const MAX_VISIBLE_WINDOWS: usize = 5;
 
-/// The `limit` windows of `total` a status bar shows, centred on `active`.
 #[must_use]
 pub fn visible_window_range(total: usize, active: usize, limit: usize) -> std::ops::Range<usize> {
     if total <= limit || limit == 0 {

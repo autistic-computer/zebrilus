@@ -107,10 +107,6 @@ await_clients() {
     return 1
 }
 
-# Every case reports the exit status, stderr, and whether the keys landed. The
-# pin's contract is cmd-send-keys.c CMD_CLIENT_CFLAG|CMD_CLIENT_CANFAIL: -c
-# resolves through the target-client selector, a miss leaves tc NULL and is
-# quiet, and the read-only guard tests the selected client, not the invoker.
 send_case() {
     label="$1"
     shift
@@ -164,47 +160,32 @@ if [ -z "$writer" ] || [ -z "$reader" ]; then
     exit 0
 fi
 
-# A resolved read-write client delivers.
 send_case writer -c "$writer" -t "$pane" -l A
 expect_case writer 0 ''
 
-# The guard follows the selected client: the invoker here is an unattached
-# command client, so only the reader's own read-only flag can refuse this.
 send_case reader -c "$reader" -t "$pane" -l B
 expect_case reader 1 'client is read-only'
 
-# CMD_CLIENT_CANFAIL: an unresolvable client is quiet and the keys still land.
 send_case miss -c /dev/pts/nonexistent-client -t "$pane" -l C
 expect_case miss 0 ''
 
-# The empty target matches nothing either, and is equally quiet.
 send_case empty -c '' -t "$pane" -l D
 expect_case empty 0 ''
 
-# cmd_find_client also matches a tty with the /dev/ prefix stripped, so this
-# still selects the read-only client.
 send_case short -c "${reader#/dev/}" -t "$pane" -l E
 expect_case short 1 'client is read-only'
 
 await_pane ACD delivered || true
 
-# The guard is `tc != NULL && CLIENT_READONLY && !args_has(args, 'X')`, so -X
-# skips it entirely and falls through to the mode command.
 main_client copy-mode -t "$pane"
 send_case readonly-x -c "$reader" -t "$pane" -X cursor-up
 expect_case readonly-x 0 ''
 
-# Without -X the same selected client is refused again, in a mode or not.
 send_case readonly-again -c "$reader" -t "$pane" -l F
 expect_case readonly-again 1 'client is read-only'
 
 main_client send-keys -t "$pane" -X cancel
 
-# The bound-key path tests the same client. key_bindings_dispatch admits a
-# send-keys binding on a read-only client because cmd_send_keys_entry carries
-# CMD_READONLY, and cmd_send_keys_exec then tests the -c client, so the
-# reader's own bindings deliver through a read-write or missing target client
-# and only the binding with no -c is refused.
 main_client bind-key -n x send-keys -t "$pane" -l U
 main_client bind-key -n z send-keys -c "$writer" -t "$pane" -l K
 main_client bind-key -n y send-keys -c /dev/pts/nonexistent-client -t "$pane" -l N

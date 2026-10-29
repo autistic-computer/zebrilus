@@ -234,7 +234,6 @@ pub fn same_arrangement(left: &LayoutNode, right: &LayoutNode) -> bool {
     }
 }
 
-/// A split's ratio as the protocol's fixed point, for `ResizeSplit`.
 #[must_use]
 #[allow(
     clippy::cast_possible_truncation,
@@ -245,8 +244,6 @@ pub fn split_ratio_basis(ratio: f32) -> u16 {
     (ratio.clamp(0.0, 1.0) * f32::from(zz_protocol::SPLIT_RATIO_BASIS)).round() as u16
 }
 
-/// Splits `pane` along `axis` into a pane picker that asks what the new
-/// pane should be.
 #[must_use]
 pub fn picker_split_command(pane: PaneId, axis: Axis) -> CommandInvocation {
     CommandInvocation::new(

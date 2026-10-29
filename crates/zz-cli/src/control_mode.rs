@@ -3949,12 +3949,6 @@ mod tests {
         );
     }
 
-    /// A control client's command block carries the daemon's output bytes, the
-    /// way the plain CLI does. Measured against the pin on 2026-09-04 with
-    /// `set-environment -g ZZBYTES a<0xff>b`:
-    /// `printf 'show-environment -g ZZBYTES\\n' | <bin> -C` puts
-    /// `5a5a42595445533d61ff620a` inside the block on both binaries, where a
-    /// lossy `&str` sink put `5a5a42595445533d61efbfbd620a` there instead.
     #[test]
     fn a_command_block_carries_the_output_bytes_it_was_given() {
         let needle: &[u8] = b"ZZBYTES=a\xffb";
@@ -4685,9 +4679,6 @@ mod tests {
 
     #[test]
     fn config_errors_route_on_their_payload_type_and_not_on_their_prose() {
-        // The pin decides %config-error from where the diagnostic was raised
-        // (cfg_add_cause, printed by cfg_print_causes and cfg_show_causes), not
-        // from how the text reads, so every shape below routes the same way.
         for text in [
             "/tmp/mux.conf:51: unknown command: wibble",
             "skipped 1 unsupported tmux command: new-pane",
@@ -4714,8 +4705,6 @@ mod tests {
             assert_eq!(completed_exit_code(0, &state), 0);
         }
 
-        // A generic warning that merely reads like a config diagnostic no longer
-        // promotes itself.
         for text in [
             "/tmp/mux.conf:51: unknown command: wibble",
             "skipped 1 unsupported tmux command: new-pane",
@@ -4890,15 +4879,6 @@ mod tests {
         );
     }
 
-    /// Derived from pinned tmux d77c9dc6. `yylex_token_variable` expands a
-    /// `$NAME` on a control line through `environ_find(global_environ, name)`
-    /// in the server, so the value an earlier `set-environment -g` stored
-    /// reaches the next line, an unset name expands to nothing, and a
-    /// single-quoted `\'$NAME\'` stays literal. Measured over `-C` on the pin:
-    /// `set-environment -g NOTIFY_ENV EXPANDED` then `display-message -p
-    /// "$NOTIFY_ENV"` prints `EXPANDED`, `display-message -p "$NOPE_UNSET"`
-    /// prints an empty line, and `display-message -p \'$NOTIFY_ENV\'` prints
-    /// `$NOTIFY_ENV`.
     #[test]
     fn control_lines_expand_variables_from_the_daemon_global_environment() {
         let variables = BTreeMap::from([("NOTIFY_ENV".to_owned(), "EXPANDED".to_owned())]);

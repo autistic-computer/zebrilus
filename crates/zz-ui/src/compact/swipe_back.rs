@@ -24,9 +24,6 @@ struct HorizontalScrollers(HashMap<ElementId, (Hitbox, Option<ScrollHandle>)>);
 
 impl Global for HorizontalScrollers {}
 
-/// Lets a horizontal scroller keep a rightward pan that starts on it while it
-/// can still scroll back, instead of the page's back swipe taking it. Place it
-/// over the scroller (absolute, `inset_0`, in a relative parent).
 pub fn yield_back_swipe(id: impl Into<ElementId>, scroll: &ScrollHandle) -> impl IntoElement {
     let id = id.into();
     let scroll = scroll.clone();
@@ -42,9 +39,6 @@ pub fn yield_back_swipe(id: impl Into<ElementId>, scroll: &ScrollHandle) -> impl
     .inset_0()
 }
 
-/// Keeps every horizontal pan that starts on an element for the element, as
-/// the overview's pill keeps its swipe between hosts. Place it like
-/// [`yield_back_swipe`].
 pub fn claim_back_swipe(id: impl Into<ElementId>) -> impl IntoElement {
     let id = id.into();
     canvas(
@@ -107,8 +101,6 @@ impl SwipeBack {
         self
     }
 
-    /// Builds what shows under the page only while the page moves, for a
-    /// backdrop that costs something to build.
     #[must_use]
     pub fn under_with(
         mut self,
@@ -118,7 +110,6 @@ impl SwipeBack {
         self
     }
 
-    /// Slides the page in when it first appears.
     #[must_use]
     pub fn enters(mut self, enters: bool) -> Self {
         self.enters = enters;

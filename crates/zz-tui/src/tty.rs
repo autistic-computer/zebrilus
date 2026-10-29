@@ -77,18 +77,9 @@ pub(crate) struct TerminalGuard {
 
 const MOUSE_CLEAR_SEQUENCE: &[u8] = b"\x1b[?1016l\x1b[?1006l\x1b[?1000l\x1b[?1002l\x1b[?1003l";
 
-/// `tty_send_requests`: the primary device attributes the kitty probe already
-/// fences on, then the secondary and the extended ones, whose replies name the
-/// terminal and the features it carries.
 const TERMINAL_REQUESTS: &[u8] = b"\x1b[c\x1b[>c\x1b[>q\x1b[?2026$p";
 const DEVICE_ATTRIBUTES_REQUEST: &[u8] = b"\x1b[c";
 
-/// How many colours the terminal this client writes to takes. `tty.c` asks it
-/// of every cell it sends (`tty_check_fg` and `tty_check_bg`) and never lowers
-/// it: `tty_term_create` decides it from `TERM`, `COLORTERM` and the requested
-/// features, and `tty_update_features` raises it when the terminal answers a
-/// request. Zero until a terminal is entered, and a writer with no terminal
-/// behind it changes no colour at all.
 static TERMINAL_COLOURS: AtomicU32 = AtomicU32::new(0);
 
 pub(crate) fn terminal_colours() -> Option<u32> {
@@ -102,9 +93,6 @@ fn raise_terminal_colours(colours: u32) {
     TERMINAL_COLOURS.fetch_max(colours, Ordering::Relaxed);
 }
 
-/// `CLIENT_UTF8`, the flag `tty_check_codeset` reads before it writes a cell.
-/// `tmux.c` decides it in the client process from `-u` and the locale, and
-/// `tty_apply_features` sets it again once the `utf8` feature applies.
 pub(crate) fn terminal_takes_utf8() -> bool {
     static TAKES_UTF8: OnceLock<bool> = OnceLock::new();
     *TAKES_UTF8.get_or_init(zz_daemon_client::client_takes_utf8_terminal)
@@ -124,8 +112,6 @@ pub(crate) fn take_utf8_repaint() -> bool {
     UTF8_REPAINT.swap(false, Ordering::Relaxed)
 }
 
-/// `tty_keys_device_attributes2` reads the first parameter of a secondary DA
-/// as a letter and hands `tty_default_features` the terminal it names.
 pub(crate) fn note_secondary_device_attributes(kind: u8) {
     learn_terminal_features(terminal_default_features(secondary_device_attributes_name(
         kind,
@@ -145,9 +131,6 @@ fn secondary_device_attributes_name(kind: u8) -> &'static str {
     }
 }
 
-/// `tty_keys_extended_device_attributes`: an XTVERSION reply names the
-/// terminal outright, and `tty_default_features` decides what that name
-/// carries.
 pub(crate) fn note_extended_device_attributes(name: &str) {
     zz_daemon_client::report_terminal_type(name);
     learn_terminal_features(terminal_default_features(extended_device_attributes_name(
@@ -172,9 +155,6 @@ fn extended_device_attributes_name(reply: &str) -> &'static str {
         .map_or("", |(_, name)| *name)
 }
 
-/// `tty_update_features`: the reply reaches this client's own feature set,
-/// which decides the colours the cell writer may send, the roster its daemon
-/// publishes and whether the extended-key request goes out at all.
 fn learn_terminal_features(features: &str) {
     if features.is_empty() {
         return;
@@ -230,11 +210,6 @@ fn arm_application_escape() {
 static EXTENDED_KEYS_OPTION: AtomicBool = AtomicBool::new(false);
 static EXTENDED_KEYS_ARMED: AtomicBool = AtomicBool::new(false);
 
-/// `tty_update_features` writes `Eneks` while `extended-keys` is on, and
-/// `tty_term_string` answers empty unless the terminal carries the `extkeys`
-/// feature, so a terminal that has not named itself never sees the request.
-/// `tty_start_tty` writes it never: the pin's own first chance is the reply,
-/// or the query timeout firing with none.
 fn arm_extended_keys() {
     if !EXTENDED_KEYS_OPTION.load(Ordering::Relaxed) || !terminal_carries_extended_keys() {
         return;
@@ -267,16 +242,9 @@ pub(crate) fn note_cursor_style_sent() {
 pub(crate) fn cursor_style_needs_restore() -> bool {
     CURSOR_STYLE_SENT.load(Ordering::Relaxed)
 }
-/// `smkx` and `rmkx` on every vt100-like terminal: `tty_start_tty` puts the
-/// keypad and the cursor keys into application mode for the whole attach and
-/// `tty_stop_tty` puts them back, and `tty_default_raw_keys` decodes what they
-/// then send.
 const KEYPAD_TRANSMIT: &[u8] = b"\x1b[?1h\x1b=";
 const KEYPAD_LOCAL: &[u8] = b"\x1b[?1l\x1b>";
 
-/// `tty_start_tty` subscribes to theme changes and asks for the theme now;
-/// `tty_stop_tty` unsubscribes. The terminal answers, and goes on answering,
-/// with `\e[?997;1n` for dark and `\e[?997;2n` for light.
 const THEME_SUBSCRIBE: &[u8] = b"\x1b[?2031h\x1b[?996n";
 const THEME_UNSUBSCRIBE: &[u8] = b"\x1b[?2031l";
 const FOCUS_EVENTS_ENABLE: &[u8] = b"\x1b[?1004h";
@@ -337,9 +305,6 @@ fn extended_keys_armed(value: &str) -> bool {
     !matches!(value.trim(), "" | "off")
 }
 
-/// `tty_update_mode`: which of the pin's three mouse trackings the outer
-/// terminal is put in. `Button` is `\e[?1000h\e[?1002h`, `Any` adds
-/// `\e[?1003h`, and every change clears all four first.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum MouseArming {
     #[default]

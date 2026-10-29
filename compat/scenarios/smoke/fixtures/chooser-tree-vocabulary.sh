@@ -159,10 +159,6 @@ check_equal setup-windows '*0:d 1:c 2:e 3:a 4:b ' "$(windows)"
 main_client bind-key -n C-o choose-tree -w -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 
-# mode_tree_swap hands the current row and the next one at the same depth to
-# window_tree_swap, which trades the two windows between their slots and moves
-# curw so the same window stays current. mtd->current follows the row it moved
-# to, so J puts them back and the Enter after it lands on the same window.
 open_chooser
 press 67
 press 6a
@@ -179,9 +175,6 @@ press 0d
 settle
 check_equal swap-keeps-the-row-on-the-moved-window "=$session:1." "$(chosen_row)"
 
-# The first window row has only the session row above it, one depth up, so
-# mode_tree_swap gives up before it reaches window_tree_swap; the last row has
-# nothing below it at all.
 open_chooser
 press 67
 press 6a
@@ -196,10 +189,6 @@ press 0d
 settle
 check_equal refused-swap-still-activates "=$session:4." "$(chosen_row)"
 
-# O steps window_tree_order_seq, which starts at index; one step is name, and
-# a name order makes the second window row the window named b at index 4.
-# sort_would_window_tree_swap then refuses K, because the two rows do not
-# compare equal under that order.
 open_chooser
 press 67
 press 4f
@@ -212,8 +201,6 @@ press 0d
 settle
 check_equal O-steps-to-name-order "=$session:4." "$(chosen_row)"
 
-# The sequence is index, name, activity, z, and sort_next_order wraps from the
-# end, so four steps are back where it started.
 open_chooser
 press 67
 press 4f
@@ -225,8 +212,6 @@ press 0d
 settle
 check_equal O-wraps-back-to-index "=$session:0." "$(chosen_row)"
 
-# r flips sort_crit.reversed and rebuilds, so the second window row under a
-# reversed index order is the window at index 3.
 open_chooser
 press 67
 press 72
@@ -236,8 +221,6 @@ press 0d
 settle
 check_equal r-reverses-the-order "=$session:3." "$(chosen_row)"
 
-# M-- collapses every top-level item rather than the current one, which leaves
-# the session row alone in the tree, and M-+ expands them all again.
 open_chooser
 press 67
 press 1b2d
@@ -256,9 +239,6 @@ press 0d
 settle
 check_equal meta-plus-expands-every-top-level "=$session:0." "$(chosen_row)"
 
-# mode_tree_display_help puts the help screen up, and the next key of any kind
-# closes it and does nothing else: the q that follows F1 does not cancel the
-# chooser, so the Enter after it still activates the row.
 open_chooser
 press 67
 press 6a
@@ -277,8 +257,6 @@ press 0d
 settle
 check_equal ctrl-h-raises-the-same-help "=$session:0." "$(chosen_row)"
 
-# window_tree_key's m is server_set_marked on the pane the row pulls, which for
-# a window row is that window's active pane, and M is server_clear_marked.
 open_chooser
 press 67
 press 6a
@@ -292,9 +270,6 @@ check_equal M-clears-the-mark '0- 1- 2- 3- 4- ' "$(marks)"
 press 71
 sleep 0.3
 
-# ':' raises the mode's own command prompt, which is an edited line rather than
-# a single key, and window_tree_command_each runs it once for the current row
-# when nothing is tagged.
 open_chooser
 press 67
 press 6a
@@ -307,8 +282,6 @@ check_equal colon-runs-on-the-current-row "=$session:1." "$(chosen_row)"
 press 71
 sleep 0.3
 
-# With rows tagged it runs once per tagged row instead, so the last write is
-# the second tagged row and never the row the cursor sits on.
 open_chooser
 press 67
 press 6a
@@ -323,9 +296,6 @@ check_equal colon-runs-on-every-tagged-row "=$session:2." "$(chosen_row)"
 press 71
 sleep 0.3
 
-# window_tree_command_each hands mode_tree_run_command the row's own
-# cmd_find_state, so a line with no -t moves the window the cursor sits on and
-# never the window the client is looking at.
 open_chooser
 press 67
 press 6a
@@ -339,9 +309,6 @@ press 71
 sleep 0.3
 main_client rename-window -t "=$session:1" c >/dev/null 2>&1 || true
 
-# mode_tree_set_prompt only queues the PROMPT_ACCEPT answer when PROMPT_SINGLE
-# is set beside it, which ':' does not pass: -y leaves this prompt to be typed,
-# and the x that follows is text in the line rather than a kill.
 main_client bind-key -n C-o choose-tree -y -w -f "$mine" \
     'set-environment -g CHOOSER_ROW %%'
 open_chooser

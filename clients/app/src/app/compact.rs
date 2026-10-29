@@ -881,9 +881,6 @@ impl AppShell {
             .into_any_element()
     }
 
-    /// Counts how far the current page's content moved toward its end
-    /// (negative toward its start), shrinking the pill once it travels far
-    /// enough one way and bringing it back once it travels the other way.
     pub(super) fn compact_content_scrolled(&mut self, travel: f32, cx: &mut Context<Self>) {
         if travel == 0.0 || !travel.is_finite() {
             return;

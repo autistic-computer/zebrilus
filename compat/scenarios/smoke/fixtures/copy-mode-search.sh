@@ -111,17 +111,10 @@ main_client load-buffer -b cmsearch "$work/in.txt"
 main_client paste-buffer -b cmsearch -t "$pane"
 await_output 'zeta alpha' || { echo "copy-mode-search-$side: output"; exit 0; }
 
-# `cat` echoes the paste and prints it again, so the six rows at the top of the
-# history are `alpha beta gamma`, `delta alpha epsilon`, `zeta alpha` twice, and
-# history-top parks the cursor on the first of them.
 main_client set-window-option -t "=$session" mode-keys vi
 enter
 check_equal 'vi-top' '0,0|0||0|0|0' "$(row)"
 
-# window_copy_search under vi steps past the mark the cursor stands on before
-# searching forward, so it lands on the start of the next match, and searching
-# backward lands on the start of the previous one. searchcount is the whole
-# backing's match count, not the visible screen's.
 X search-forward alpha
 check_equal 'vi-search-forward' '6,1|1|alpha|6|0|0' "$(row)"
 X search-again
@@ -131,41 +124,27 @@ check_equal 'vi-search-reverse' '6,1|1|alpha|6|0|0' "$(row)"
 X search-backward delta
 check_equal 'vi-search-backward' '0,1|1|delta|2|0|0' "$(row)"
 
-# The -text spellings clear data->searchregex, so the dot is a literal cell and
-# nothing matches; the failed search leaves the cursor alone and clears the
-# marks it had, which puts -1 back in searchcount and publishes neither count.
 X search-forward-text 'al.ha'
 check_equal 'vi-search-forward-text' '0,1|0||||0' "$(row)"
 X search-forward 'al.ha'
 check_equal 'vi-search-forward-regex' '6,1|1|alpha|6|0|0' "$(row)"
 
-# wme->prefix repeats the whole search, so three of them walk three matches on.
 enter
 main_client send-keys -t "$pane" -N 3 -X search-forward alpha
 check_equal 'vi-counted' '0,3|1|alpha|6|0|0' "$(row)"
 
-# A miss on a mode that never laid marks down does not run clear_marks at all,
-# so the zeroed searchcount the mode was entered with survives it, and a missing
-# or empty string is window_copy_expand_search_string answering zero.
 enter
 X search-forward nosuchword
 check_equal 'vi-miss' '0,0|0||0|0|0' "$(row)"
 X search-forward ''
 check_equal 'vi-empty' '0,0|0||0|0|0' "$(row)"
 
-# send-keys -F reaches exactly one place in the pin: the search string goes
-# through format_single in the target pane's context. Without it the braces are
-# searched for literally.
 X history-top
 main_client send-keys -t "$pane" -FX search-forward '#{copy_cursor_word}'
 check_equal 'vi-format-expanded' '6,1|1|alpha|6|0|0' "$(row)"
 X search-forward '#{copy_cursor_word}'
 check_equal 'vi-format-literal' '6,1|0||||0' "$(row)"
 
-# Under emacs the forward search starts from the cursor itself, so it may find
-# the mark the cursor is already on, and parks one cell past the match.
-# window_copy_match_at_cursor steps one position back before giving up, so that
-# cell still answers the match it just left.
 main_client set-window-option -t "=$session" mode-keys emacs
 enter
 check_equal 'emacs-top' '0,0|0||0|0|0' "$(row)"
@@ -180,10 +159,6 @@ check_equal 'emacs-search-backward' '0,1|1|delta|2|0|0' "$(row)"
 X search-backward-text alpha
 check_equal 'emacs-search-backward-text' '0,0|1|alpha|6|0|0' "$(row)"
 
-# The incremental spellings read the prefix command-prompt -i prepends: '=' is
-# the spelling's own direction, '+' is down and '-' is up. The mode latches
-# where it stood on the first step and every changed string goes back to the end
-# of that row before searching again, and an empty string clears the marks.
 main_client set-window-option -t "=$session" mode-keys vi
 enter
 X search-forward-incremental '=alpha'
@@ -203,7 +178,6 @@ check_equal 'incremental-backward-down' '0,0|1|alpha|6|0|0' "$(row)"
 X search-backward-incremental '=zeta'
 check_equal 'incremental-backward-changed' '0,5|1|zeta|2|0|0' "$(row)"
 
-# Outside a mode window_copy_formats never runs, so every name expands empty.
 X cancel
 check_equal 'outside-the-mode' ',|||||' "$(row)"
 

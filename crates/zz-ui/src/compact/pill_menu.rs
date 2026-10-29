@@ -38,9 +38,6 @@ const CLOSE_ICON: f32 = 22.0;
 const RISE: f32 = 14.0;
 const STAGGER: f32 = 0.06;
 
-/// How a chip in the [`compact_pill_menu`] paints: at rest, quieter for the
-/// way out to more, in the danger ink for what cannot be undone, or filled
-/// for the one thing this pane does that others do not.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PillMenuLook {
     #[default]
@@ -87,8 +84,6 @@ struct Spacing {
 }
 
 impl Spacing {
-    /// The roomiest spacing that fits `chips` chips in `groups` groups into
-    /// `room`, the tightest when none does.
     fn fitting(chips: usize, groups: usize, room: Pixels) -> Self {
         let gaps = chips.saturating_sub(groups) as f32;
         let breaks = groups.saturating_sub(1) as f32;
@@ -103,20 +98,12 @@ impl Spacing {
     }
 }
 
-/// Where the chips line up over what opened the menu: centered over the
-/// pill, or from the start edge of a key at the start of a row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PillMenuAlign {
     Center,
     Start,
 }
 
-/// The menu that rises out of the phone's pill or its prefix key, the way
-/// Calendar's + rises into its actions: a scrim over the page, `groups` of
-/// chips stacked top to bottom above `close`, the bounds of what opened it,
-/// which turns into a round close button, and below `top`, drawing closer
-/// together when the room between is short. `progress` runs from 0, shut, to
-/// 1, open; the chips nearest the button rise first.
 #[allow(clippy::too_many_arguments)]
 pub fn compact_pill_menu(
     groups: Vec<Vec<PillMenuItem>>,

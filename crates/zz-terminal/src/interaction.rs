@@ -73,7 +73,6 @@ impl TerminalMouseInput {
     const MODIFIERS_MASK: u16 = 0b1111;
     const FORCE_SELECTION: u16 = 1 << 9;
 
-    /// Build one compact terminal pointer event.
     #[must_use]
     pub const fn new(
         phase: TerminalMousePhase,
@@ -289,21 +288,11 @@ impl SearchQuery {
     }
 }
 
-/// The string one `search-forward`, `search-backward` or `-text` spelling
-/// carries, plus the two bits `window_copy_cmd_search_*` sets on the mode
-/// before it runs: `data->searchtype` and `data->searchregex`. The
-/// `-incremental` spellings arrive here with the prefix character already read
-/// off the argument, which is what picks their direction.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CopyModeSearch {
     pub text: String,
     pub direction: SearchDirection,
-    /// `data->searchregex`: the plain spellings search a regular expression
-    /// and the `-text` ones a literal string.
     pub regex: bool,
-    /// `window_copy_cmd_search_forward_incremental`: the prompt re-runs the
-    /// search on every keystroke from the point the mode was at when the
-    /// prompt opened.
     pub incremental: bool,
 }
 
@@ -343,7 +332,6 @@ pub enum CopyModeAction {
     SelectWord,
     SelectLine,
     ClearSelection,
-    /// Clear an active selection, or leave copy mode when there is none.
     ClearSelectionOrCancel,
     ToggleRectangle,
     RectangleOn,
@@ -374,14 +362,9 @@ pub enum CopyModeAction {
     },
     PageDownScrollExit,
     SelectionMode(CopySelectionMode),
-    /// Stop the selection following the cursor without clearing it.
     StopSelection,
     HalfPageDownScrollExit,
-    /// Scroll one row toward the bottom and leave copy mode once the viewport
-    /// lands there, selection or not.
     ScrollDownAndCancel,
-    /// Move the cursor down and leave copy mode only when the whole run was
-    /// stuck at the bottom of the retained history.
     CursorDownAndCancel,
     ScrollExitOn,
     ScrollExitOff,
@@ -390,13 +373,10 @@ pub enum CopyModeAction {
     CursorCentreHorizontal,
     ScrollTop,
     ScrollBottom,
-    /// Flip the mode's position readout, the pin's `hide_position`.
     TogglePosition,
     RecentreTopBottom,
     PreviousMatchingBracket,
-    /// `refresh-on`: start re-cloning the frozen backing from the live pane.
     RefreshOn,
-    /// `refresh-off`: stop re-cloning it.
     RefreshOff,
     RefreshToggle,
     RefreshNow,
@@ -407,27 +387,12 @@ pub enum CopyModeAction {
     LineNumbersToggle {
         option_off: bool,
     },
-    /// One tick of the refresh timer, which is the daemon's here. It is not a
-    /// pinned action name; `window_copy_refresh_timer` is a libevent timer.
     RefreshRevision,
-    /// `copy-line` and its pipe and cancel spellings: `window_copy_do_copy_line`
-    /// selects the whole logical line the cursor sits on without needing a
-    /// selection, copies it, then puts the cursor and view back.
     CopyLine(Box<CopyModeCopy>),
-    /// The six `search-` entry points that carry a string: `search-forward`,
-    /// `search-backward`, their `-text` and `-incremental` spellings.
     Search(Box<CopyModeSearch>),
-    /// `window_copy_move_mouse`: put the copy cursor on the cell an invoking
-    /// mouse event landed on and touch nothing else. Every `send -X` run from
-    /// a mouse binding that is not a wheel does this first.
     MouseCursor(PointerCellEvent),
 }
 
-/// `window_copy_cmd_table`'s `clear` column, which `window_copy_command` reads
-/// after every command whose name does not begin with `search-`: the marks a
-/// search laid down go away, and `data->searchx`/`searchy` go back to -1, for
-/// 52 names always, for 36 more only under emacs, and never for the remaining
-/// seven.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CopyModeClear {
     Always,
@@ -435,7 +400,6 @@ pub enum CopyModeClear {
     Never,
 }
 
-/// The pin's `selflag`: the unit a live selection extends by.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CopySelectionMode {
     #[default]
@@ -466,10 +430,6 @@ impl CopyModeAction {
         Self::CopyEndOfLine(Box::new(copy))
     }
 
-    /// `window_copy_command` compares the name against `search-` before it
-    /// reads the clear column at all, so the six search entry points and
-    /// `search-again`/`search-reverse` leave the marks they just laid down
-    /// alone. zz's own `search-forward-cursor-word` spelling shares the prefix.
     #[must_use]
     pub fn is_search_command(&self) -> bool {
         matches!(
@@ -478,9 +438,6 @@ impl CopyModeAction {
         )
     }
 
-    /// Whether running this action drops `data->searchmark` and puts
-    /// `data->searchx`/`searchy` back to -1, which is the tail of
-    /// `window_copy_command` read against the live `mode-keys`.
     #[must_use]
     pub fn clears_search_marks(&self, mode_keys_vi: bool) -> bool {
         if self.is_search_command() {
@@ -493,10 +450,6 @@ impl CopyModeAction {
         }
     }
 
-    /// The row this action's pinned name holds in `window_copy_cmd_table`.
-    /// `copy-selection-no-clear`, `copy-pipe-no-clear` and `pipe-no-clear` are
-    /// the three copy spellings that leave the marks alone, and they are the
-    /// three that neither clear the selection nor cancel.
     #[must_use]
     pub fn clear_class(&self) -> CopyModeClear {
         match self {
@@ -676,13 +629,10 @@ impl CopyModeAction {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TerminalViewAction {
-    /// Scroll by logical rows. Negative values move toward older history.
     ScrollLines(i32),
-    /// Scroll by terminal pages. Negative values move toward older history.
     ScrollPages(i32),
     ScrollTop,
     ScrollBottom,
-    /// Move to an absolute scrollbar fraction (`0` is top, `u32::MAX` bottom).
     ScrollToFraction(u32),
     SelectionPress(PointerCellEvent),
     SelectionDrag(PointerCellEvent),
@@ -692,7 +642,6 @@ pub enum TerminalViewAction {
     },
     SelectionRelease(PointerCellEvent),
     Mouse(TerminalMouseInput),
-    /// Clear presentation-only URI hover without synthesizing application mouse input.
     ClearLinkHover,
     ScrollWheel {
         lines: i32,
@@ -714,12 +663,8 @@ pub enum TerminalViewAction {
     },
     Focus(bool),
     Paste(String),
-    /// Move the live viewport top to an absolute scrollbar offset.
     ScrollToOffset(u32),
     EnterCopyModeScrollExit,
-    /// Enter copy mode with `-e` and `-H` composed. Handled identically to the
-    /// composition of [`Self::EnterCopyMode`] and
-    /// [`Self::EnterCopyModeScrollExit`]; nothing produces it yet.
     EnterCopyModeWith {
         scroll_exit: bool,
         hide_position: bool,

@@ -71,8 +71,6 @@ present() {
     fi
 }
 
-# A run of one repeated digit, which is what the `number` family draws along a
-# border and nothing else on either screen draws.
 digit_run() {
     if grep -qE '(0{8}|1{8}|2{8}|3{8})' "$snaps/$1" 2>/dev/null; then
         printf yes
@@ -101,9 +99,6 @@ recorder_started=1
 record set-option -g status off
 sleep 1.8
 
-# A T split: the horizontal divider meets the vertical one from below, so the
-# junction cell is CELL_LRD and screen_redraw_type_of_cell picks the family's
-# down tee rather than letting one divider overwrite the other.
 lines single
 check_equal single-draws-light "yes" "$(present single '─')"
 check_equal single-draws-the-tee "yes" "$(present single '┬')"
@@ -136,8 +131,6 @@ lines none
 check_equal none-draws-no-light "no" "$(present none '─')"
 check_equal none-draws-no-tee "no" "$(present none '┬')"
 
-# A cross split: both halves are split at the same column, so the horizontal
-# divider cell there continues in all four directions and takes CELL_LRUD.
 main_client kill-pane -t "=$session:0.2"
 main_client split-window -h -t "=$session:0.0"
 main_client split-window -h -t "=$session:0.2"

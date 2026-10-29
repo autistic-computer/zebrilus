@@ -188,8 +188,6 @@ mod macos {
             log::warn!(target: "zz::app_icon", "could not reset the Dock icon outside the main thread");
             return;
         };
-        // SAFETY: nil is the documented "use the bundle icon" value, and the
-        // marker proves this is the main thread NSApplication requires.
         unsafe {
             NSApplication::sharedApplication(main_thread).setApplicationIconImage(None);
         }
@@ -213,8 +211,6 @@ mod macos {
             log::warn!(target: "zz::app_icon", "AppKit rejected the encoded Dock icon");
             return;
         };
-        // SAFETY: the setter accepts any NSImage, and the marker proves this is
-        // the main thread NSApplication requires.
         unsafe {
             NSApplication::sharedApplication(main_thread).setApplicationIconImage(Some(&image));
         }

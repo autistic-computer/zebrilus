@@ -63,9 +63,6 @@ snap() {
     record capture-pane -p -t recorder >"$snaps/$1" 2>/dev/null || : >"$snaps/$1"
 }
 
-# How many rows carry the marker, and the first row that does. The two clients
-# do not share a screen geometry, so the comparable facts are whether the row
-# was drawn at all and whether it moved from the top of a pane to its bottom.
 hits() {
     count=$(grep -c "$2" "$snaps/$1" 2>/dev/null) || count=0
     printf '%s' "$count"

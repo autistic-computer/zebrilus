@@ -7,7 +7,6 @@ use zz_protocol::{
 };
 use zz_terminal::{KeyAction, KeyCode, KeyInput, Modifiers, TerminalSession};
 
-/// The `send-keys -X <action>` name a chooser table resolves a key press to.
 pub(crate) fn overlay_key_action<'a>(
     keys: &'a KeyTables,
     table: &str,
@@ -78,9 +77,6 @@ pub(crate) fn choose_tree_key_action(
     }
 }
 
-/// `window_client_key`: the keys the client mode answers after
-/// `mode_tree_key` has had the press. They are not in the `choose-tree` table
-/// because the pin keeps them in the mode rather than in a key table.
 pub(crate) fn client_mode_key_action(input: &KeyInput) -> Option<ChooseTreeAction> {
     match input_typed_text(input)? {
         "d" => Some(ChooseTreeAction::ClientDetach),
@@ -90,18 +86,11 @@ pub(crate) fn client_mode_key_action(input: &KeyInput) -> Option<ChooseTreeActio
     }
 }
 
-/// `prompt_key` under `PROMPT_TYPE_COMMAND` without `PROMPT_SINGLE`: the line
-/// is edited until the prompt itself closes, so a key is typed text or a key
-/// the prompt's own table (`status-keys`) interprets.
 pub(crate) enum ChooserPromptEdit {
     Append(String),
     Key(ModeKey),
 }
 
-/// A key the chooser's `(search) ` prompt edits its line with: everything
-/// `choose_tree_key_action` and `choose_buffer_key_action` leave alone while a
-/// search is open, which is neither typed text nor a closer, `BSpace`, `Up` or
-/// `Down`.
 pub(crate) fn chooser_search_edit_key(input: &KeyInput) -> Option<ModeKey> {
     if input_typed_text(input).is_some() {
         return None;
@@ -129,8 +118,6 @@ pub(crate) fn chooser_prompt_edit(input: &KeyInput) -> Option<ChooserPromptEdit>
     }
 }
 
-/// `prompt_key` under `PROMPT_SINGLE` takes one character as the whole answer;
-/// a key that carries none is handled and leaves the prompt open.
 pub(crate) fn chooser_prompt_answer(input: &KeyInput) -> Option<char> {
     if let Some(text) = input_typed_text(input) {
         return text.chars().next();
@@ -237,11 +224,6 @@ pub(crate) fn send_tokens(sessions: &[Arc<TerminalSession>], tokens: &[KeyToken]
     sent
 }
 
-/// The key presses `cmd_send_keys_inject_key` hands to
-/// `server_client_handle_key` for one `send-keys -K` argument.
-/// `cmd_send_keys_inject_string` looks the argument up as a key name first and
-/// falls back to injecting one key per character, so a literal token spends a
-/// press per character rather than writing text.
 pub(crate) fn client_key_inputs(token: &KeyToken) -> Vec<KeyInput> {
     match token {
         KeyToken::Named(name) => named_key(name).into_iter().collect(),

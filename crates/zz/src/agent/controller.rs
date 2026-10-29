@@ -21,14 +21,9 @@ use crate::{
     mux::client::{AgentRequest, MuxClient},
 };
 
-/// A skipped update is described by its `sessionUpdate` tag and nothing else:
-/// the payload behind it is adapter-supplied and can be megabytes of tool
-/// output, so neither it nor the serde error quoting it belongs in a log line.
 const MAX_SESSION_UPDATE_TAG_BYTES: usize = 64;
 const MAX_DECODE_ERROR_BYTES: usize = 256;
 const UNTAGGED_SESSION_UPDATE: &str = "<untagged>";
-/// Tool payloads live in the thread for as long as the pane does, so the
-/// reducer caps what it keeps: agents happily emit multi-megabyte outputs.
 #[cfg(test)]
 const MAX_TOOL_PAYLOAD_BYTES: usize = 512 * 1024;
 #[cfg(test)]
@@ -91,8 +86,6 @@ pub(crate) struct AgentSessionCapabilities {
     pub(crate) close: bool,
     pub(crate) delete: bool,
     pub(crate) additional_directories: bool,
-    /// A prompt capability rather than a session one, but it arrives in the
-    /// same handshake and gates the composer the same way.
     pub(crate) images: bool,
     pub(crate) verbs: bool,
     pub(crate) watch: bool,
@@ -112,10 +105,7 @@ pub(crate) struct AgentPaneState {
     pub(crate) usage: Option<(u64, u64)>,
     pub(crate) git: Option<AgentGitSummary>,
     pub(crate) tasks: Arc<[AgentTaskWire]>,
-    /// Text `agent-send` routed here, waiting for the pane's view to fold it
-    /// into the composer draft.
     pub(crate) pending_composer: Option<Arc<str>>,
-    /// Prompts typed during the live turn, waiting for it to settle.
     pub(crate) queued_prompts: usize,
 }
 
@@ -136,11 +126,6 @@ struct AgentThread {
     session_id: Option<Arc<str>>,
     session_capabilities: AgentSessionCapabilities,
     session_reset: bool,
-    /// How many `session/update`s this build could not read. ACP reserves
-    /// unknown `sessionUpdate` values for future variants, so skipping one is
-    /// forward compatibility rather than a fault — the running count is what
-    /// keeps a silent skip diagnosable. Survives a session reset: it describes
-    /// the adapter zz is talking to, not the conversation.
     unknown_updates: u64,
 }
 
@@ -210,8 +195,6 @@ impl AgentThread {
         self.image_refusal(has_images)
     }
 
-    /// Checked before a prompt is queued as well as before it is sent: an agent
-    /// that takes no images will not take them a turn later either.
     fn image_refusal(&self, has_images: bool) -> Option<Arc<str>> {
         (has_images && !self.session_capabilities.images)
             .then(|| Arc::<str>::from("this agent does not accept images"))
@@ -438,9 +421,6 @@ impl AgentController {
         }
     }
 
-    /// Send the prompt. The daemon queues it behind a turn already running and
-    /// hands it back through the stream if that turn is stopped, so the
-    /// at-least-once rule holds without a client-side queue.
     pub(crate) fn prompt(
         &mut self,
         pane: PaneId,
@@ -484,8 +464,6 @@ impl AgentController {
             return Ok(());
         }
         if queueing {
-            // The daemon publishes the queue depth; showing it immediately keeps
-            // the composer's Queue affordance honest between publications.
             self.viewport_mut(pane).queued_prompts += 1;
             cx.notify();
             return Ok(());
@@ -511,8 +489,6 @@ impl AgentController {
         self.viewports.entry(pane).or_default()
     }
 
-    /// Empty the pane's queue back into its composer draft on the user's ask.
-    /// The prompts themselves come back through the stream.
     pub(crate) fn unqueue_prompts(&mut self, pane: PaneId, cx: &mut Context<Self>) {
         if self.queued_count(pane) == 0 {
             return;
@@ -532,15 +508,12 @@ impl AgentController {
         true
     }
 
-    /// Hand the queued composer text to the pane's view, which owns the draft.
     pub(crate) fn take_pending_composer(&mut self, pane: PaneId) -> Option<String> {
         self.pending_composer
             .remove(&pane)
             .filter(|text| !text.is_empty())
     }
 
-    /// Hand back the images a reclaimed prompt carried, for the view to put in
-    /// its attachment strip again.
     pub(crate) fn take_pending_images(&mut self, pane: PaneId) -> Vec<Arc<Image>> {
         self.pending_images.remove(&pane).unwrap_or_default()
     }
@@ -644,8 +617,6 @@ impl AgentController {
         self.shutting_down
     }
 
-    /// Nothing to wind down: the adapters are the daemon's children and a
-    /// running turn is meant to outlive the window.
     pub(crate) fn shutdown(&mut self, _cx: &mut Context<Self>) -> Task<bool> {
         self.shutting_down = true;
         Task::ready(true)
@@ -657,11 +628,6 @@ impl AgentController {
             .is_some_and(|mux| mux.read(cx).send_agent_request(pane, request))
     }
 
-    /// Apply one batch of stream items, in seq order, to the pane's reducer.
-    /// A pane's viewport and its transcript are dropped together, so an item at
-    /// or below the applied cursor is one this transcript already holds: an
-    /// attach clears the mux client's cursor and replays from the top, and the
-    /// pane it replays into may be the same one that reduced those items.
     pub(crate) fn apply_stream_items(
         &mut self,
         pane: PaneId,
@@ -700,8 +666,6 @@ impl AgentController {
         }
     }
 
-    /// Adopt the daemon's published pane state: connection phase, queue depth,
-    /// and the permission request a late-attaching client has to see.
     pub(crate) fn apply_pane_state(
         &mut self,
         pane: PaneId,
@@ -767,9 +731,6 @@ impl AgentController {
         }
     }
 
-    /// Turn one wire item into the reducer's input. `None` is an item the
-    /// reducer has nothing to do with, or one whose payload did not survive
-    /// re-typing — the stream carries the ACP SDK's JSON verbatim.
     fn translate_stream_payload(
         &mut self,
         pane: PaneId,
@@ -937,13 +898,6 @@ impl AgentController {
         })
     }
 
-    /// Re-type one `session/update`, skipping what this build cannot read.
-    /// ACP reserves unknown `sessionUpdate` values for future variants and
-    /// `_`-prefixed ones for adapter extensions, so a shape zz does not know is
-    /// forward compatibility, not a fault: the item is counted on the pane and
-    /// dropped on its own, leaving the rest of its batch — and any message it
-    /// interrupts mid-coalesce — untouched. Only the discriminant and a clipped
-    /// error reach the log; the payload can be megabytes of tool output.
     fn decode_session_update(
         &mut self,
         pane: PaneId,
@@ -1774,9 +1728,6 @@ mod tests {
         assert!(thread.prompt_refusal(false).is_some());
     }
 
-    /// The question branch is unreachable while zz speaks ACP v1: the schema
-    /// types an option kind as a closed enum, so a question-shaped kind never
-    /// survives deserialization to reach [`is_user_question`].
     #[test]
     fn acp_v1_rejects_permission_options_with_an_unknown_kind() {
         assert!(
@@ -1862,7 +1813,6 @@ mod tests {
         ));
     }
 
-    /// back, standing in for the daemon on the other end of the wire.
     fn proxy_controller(
         cx: &mut TestAppContext,
     ) -> (
@@ -1890,7 +1840,6 @@ mod tests {
         })
     }
 
-    /// A registered pane whose agent is connected and taking prompts.
     fn ready_pane(controller: &mut AgentController, pane: PaneId) {
         let mut thread = thread();
         thread.connection = AgentConnectionState::Ready;
@@ -1908,8 +1857,6 @@ mod tests {
         serde_json::to_value(value).expect("the ACP schema encodes")
     }
 
-    /// One `session/update` carrying a `sessionUpdate` this build has no
-    /// variant for: a future ACP addition, or an `_`-prefixed extension.
     fn unknown_update(tag: &str) -> AgentStreamPayload {
         AgentStreamPayload::Update {
             update: serde_json::json!({"sessionUpdate": tag, "payload": {"opaque": true}}),

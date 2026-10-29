@@ -252,8 +252,6 @@ impl AppShell {
             })
     }
 
-    /// How tall, borders included, Float makes a pane of the window on screen:
-    /// the tallest float it fits.
     pub(super) fn pip_fill_rows(&self, cx: &App) -> Option<u16> {
         let active = self.active_window(cx)?;
         let cell = self.cell_size(&active, cx);

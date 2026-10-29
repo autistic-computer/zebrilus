@@ -103,10 +103,6 @@ data = open(sys.argv[1], "rb").read()
 sys.stdout.write("yes" if b"\x1b_Ga=d,d=i," in data else "no")' "$snaps/$1"
 }
 
-# Where the placement sits relative to the popup box. The box is drawn from its
-# frame origin and the placement from the content origin inside the border, so
-# a placement one row down and one column right of the corner is anchored the
-# way the renderer intends.
 anchor() {
     python3 -c 'import re, sys
 data = open(sys.argv[1], "rb").read()
@@ -173,12 +169,6 @@ sleep 1.2
 main_client display-popup -c "$client" -x 5 -y 5 -w 40 -h 14 "sh $work/popup.sh" &
 popup_pid=$!
 sleep 2.5
-# A client resize republishes the popup's per-view terminal snapshot. zz only
-# carries a pane's Kitty placements on that snapshot - TerminalSession's
-# fallback viewport publishes an empty placement list - so the resize is what
-# hands the popup's image to the client. The residue is recorded in the
-# registry; the assertions below are about what the client does with the image
-# once it has it.
 drive "size 100 29"
 sleep 2.5
 drive "snap opened"

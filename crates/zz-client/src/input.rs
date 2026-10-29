@@ -140,8 +140,6 @@ impl InputRouter {
         }
     }
 
-    /// A focused modal that captures keys takes every press unresolved: no
-    /// chrome binding, no prefix claim, straight to the pane.
     pub fn set_capture(&mut self, pane: Option<PaneId>) {
         self.capture = pane;
     }

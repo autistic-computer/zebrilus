@@ -186,7 +186,6 @@ pub fn card_close(button: Button, cx: &App) -> Div {
         )
 }
 
-/// `button` on a card, drawn on the card's surface.
 pub fn card_button(button: Button, cx: &App) -> Button {
     button.on(cx.theme().ground_of(roles::INLINE_PANEL))
 }
@@ -257,9 +256,6 @@ pub(crate) fn card_tiles() -> Div {
     v_flex().w_full().gap(px(CARD_TILE_GAP)).px(px(CARD_GUTTER))
 }
 
-/// An option tile in a card: neutral, or danger for a destructive choice,
-/// selectable. What sits inside it (its description, keycaps, checks) paints
-/// on the tile's ground.
 #[derive(Clone, Copy)]
 pub(crate) struct CardTile {
     surface: Surface,

@@ -1,5 +1,3 @@
-//! The sidebar's `+ add host` dialog.
-
 use ala::{App, AppContext as _, Entity, Focusable as _, SharedString, Window};
 use zz_daemon_client::Endpoint;
 use zz_ui::{WindowExt as _, feedback::add_host_prompt_dialog, input::InputState};

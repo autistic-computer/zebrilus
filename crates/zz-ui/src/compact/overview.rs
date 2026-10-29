@@ -2,7 +2,6 @@ use ala::{AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, d
 
 use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _};
 
-/// `n` of `noun`, as the overview counts panes and windows.
 pub fn overview_count(n: usize, noun: &str) -> String {
     if n == 1 {
         format!("1 {noun}")
@@ -11,8 +10,6 @@ pub fn overview_count(n: usize, noun: &str) -> String {
     }
 }
 
-/// A session's name over its windows on a host's overview page: bold, in
-/// the muted ink so the windows under it lead.
 pub fn overview_session_heading(title: &str, cx: &App) -> Div {
     div()
         .flex()
@@ -33,7 +30,6 @@ pub fn overview_session_heading(title: &str, cx: &App) -> Div {
         )
 }
 
-/// Where a host stands, as the overview and the hosts drawer show it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum HostState {
     Connected,
@@ -41,8 +37,6 @@ pub enum HostState {
     Offline,
 }
 
-/// The dot in front of a host's name: green while connected, amber while
-/// connecting, faint otherwise.
 pub fn host_state_dot(state: HostState, cx: &App) -> Div {
     let theme = cx.theme();
     div()
@@ -56,8 +50,6 @@ pub fn host_state_dot(state: HostState, cx: &App) -> Div {
         })
 }
 
-/// A host's overview page while it has nothing to show: its name, a line
-/// saying why, and the one thing to do about it.
 pub fn overview_host_empty(
     title: impl Into<SharedString>,
     detail: impl Into<SharedString>,

@@ -1,4 +1,3 @@
-//! Persistent mux daemon: session state, PTY workers, and client connections.
 #![cfg_attr(
     test,
     allow(

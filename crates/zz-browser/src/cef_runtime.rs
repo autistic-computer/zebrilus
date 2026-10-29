@@ -248,7 +248,6 @@ fn screenshot_params(clip: ScreenshotClip) -> Option<DictionaryValue> {
         && region.set_double(Some(&CefString::from("y")), clip.y) != 0
         && region.set_double(Some(&CefString::from("width")), clip.width) != 0
         && region.set_double(Some(&CefString::from("height")), clip.height) != 0
-        // CEF's OSR view ignores `scale` (`SetSize` is a no-op, CEF #3103) and tiles above 1.0.
         && region.set_double(Some(&CefString::from("scale")), 1.0) != 0
         && params.set_string(
             Some(&CefString::from("format")),
@@ -416,9 +415,6 @@ impl Drop for PumpGuard<'_> {
     }
 }
 
-/// Main-thread handle for stepping CEF without borrowing the owning runtime.
-/// CEF can re-enter the host's `AppKit` callbacks mid-iteration, so the ala
-/// client drops its app/entity borrow before pumping.
 #[derive(Clone)]
 pub struct BrowserMessagePump {
     inner: Rc<BrowserMessagePumpInner>,
@@ -614,8 +610,6 @@ impl BrowserRuntime {
         &self.profile_paths
     }
 
-    /// Route CEF's own log output (subprocesses included) to this file
-    /// instead of stderr. Takes effect at [`Self::start`].
     pub fn set_log_file(&mut self, path: PathBuf) {
         self.log_file = Some(path);
     }
@@ -655,9 +649,6 @@ impl BrowserRuntime {
         self.active_data_operations.load(Ordering::Relaxed)
     }
 
-    /// Initialize CEF on demand, on the process main thread CEF requires.
-    /// One-way, and a no-op unless the runtime is still
-    /// [`RuntimePhase::Uninitialized`].
     pub fn start(&mut self) -> Result<(), BrowserError> {
         if self.phase() != RuntimePhase::Uninitialized {
             return Ok(());
@@ -705,7 +696,6 @@ impl BrowserRuntime {
             background_color: self.background_color,
             ..Default::default()
         };
-        // Native CEF windows send `CefAppProtocol` selectors ala's `NSApp` class lacks.
         #[cfg(target_os = "macos")]
         mac_app_protocol::install();
         self.message_pump.set_phase(RuntimePhase::Initializing);
@@ -734,8 +724,6 @@ impl BrowserRuntime {
         Ok(())
     }
 
-    /// Create the default persistent request context after CEF global
-    /// initialization.
     pub fn handle_context_initialized(&mut self) -> Result<(), BrowserError> {
         if self.phase() == RuntimePhase::Running {
             return Ok(());
@@ -751,7 +739,6 @@ impl BrowserRuntime {
         Ok(())
     }
 
-    /// Mark one persistent request context ready after its CEF callback.
     pub fn handle_request_context_initialized(
         &mut self,
         profile: &str,
@@ -771,8 +758,6 @@ impl BrowserRuntime {
         Ok(false)
     }
 
-    /// Ensure a named persistent request context exists. Returns `true` once
-    /// CEF has reported that the context is ready for browser creation.
     pub fn ensure_profile_context(&mut self, profile: &str) -> Result<bool, BrowserError> {
         if self.phase() != RuntimePhase::Running {
             return Err(BrowserError::NotReady);
@@ -785,8 +770,6 @@ impl BrowserRuntime {
         Ok(false)
     }
 
-    /// Ensure a client-local composite egress context exists. Its name carries
-    /// an internal suffix past the protocol's name cap and never crosses the wire.
     pub fn ensure_egress_profile_context(&mut self, profile: &str) -> Result<bool, BrowserError> {
         if self.phase() != RuntimePhase::Running {
             return Err(BrowserError::NotReady);
@@ -845,7 +828,6 @@ impl BrowserRuntime {
         Ok(())
     }
 
-    /// `CefString::default()` marshals to NULL, which libcef out-parameters reject; this passes real storage.
     fn with_error_string<R>(f: impl FnOnce(&mut CefString) -> R) -> (R, String) {
         let mut storage: cef::sys::_cef_string_utf16_t = unsafe { std::mem::zeroed() };
         let mut error = CefString::from(&raw mut storage);
@@ -855,8 +837,6 @@ impl BrowserRuntime {
         (result, message)
     }
 
-    /// Report the current proxy value and whether any preference can be written,
-    /// separating a policy on `proxy` from a broken `set_preference` dispatch.
     pub fn probe_preference_system(&mut self, profile: &str) -> String {
         let Some(profile_context) = self.profile_contexts.get_mut(profile) else {
             return "context missing".to_owned();
@@ -911,9 +891,6 @@ impl BrowserRuntime {
         )
     }
 
-    /// Point one ready request context at the `ssh -D` SOCKS5 listener on `port`.
-    /// Chromium reads a bare `host:port` as an HTTP proxy, so the `socks5://`
-    /// scheme and the `<-loopback>` bypass are both required.
     pub fn set_profile_proxy(&mut self, profile: &str, port: u16) -> Result<(), BrowserError> {
         if self.phase() != RuntimePhase::Running {
             return Err(BrowserError::NotReady);
@@ -958,8 +935,6 @@ impl BrowserRuntime {
         });
         if rejected {
             return Err(BrowserError::ProxyPreference(if error.is_empty() {
-                // An empty reason means CEF's VerifyBrowserContext guard rejected the
-                // call before the pref service, silently.
                 let on_ui_thread = currently_on(ThreadId::UI) != 0;
                 let has_preference = profile_context.context.has_preference(Some(&preference)) != 0;
                 let can_set_preference = profile_context
@@ -983,8 +958,6 @@ impl BrowserRuntime {
         self.message_pump.do_message_loop_work();
     }
 
-    /// Import cookies into the persistent request context and flush its store.
-    /// Per-cookie rejections arrive in [`CookieImportResult::rejected`].
     pub fn import_cookies(
         &self,
         profile: &str,
@@ -1031,7 +1004,6 @@ impl BrowserRuntime {
         Ok(result_rx)
     }
 
-    /// Create a windowless browser session in a named persistent profile.
     #[allow(
         clippy::needless_pass_by_value,
         reason = "CEF client wiring, initial ownership, and cross-platform GPU context transfer form one ordered operation"
@@ -1099,7 +1071,6 @@ impl BrowserRuntime {
         Ok(prepared.into_session(browser))
     }
 
-    /// Release the request context and shut CEF down exactly once.
     pub fn shutdown(&mut self) -> Result<(), BrowserError> {
         let state = self.message_pump.state();
         if state.phase == RuntimePhase::Closed {
@@ -1264,7 +1235,6 @@ fn site_origin(input: &str) -> Result<String, BrowserError> {
         .ok_or(BrowserError::UnsupportedOrigin)
 }
 
-/// Main-thread CEF handle used after releasing the UI-state borrow that acquired it.
 #[derive(Clone)]
 pub struct BrowserCommandSink {
     id: SessionId,
@@ -1640,8 +1610,6 @@ impl BrowserSession {
         self.events.clone()
     }
 
-    /// Clear cookies and origin-owned web storage through Chromium's `DevTools`
-    /// protocol. The receiver resolves when Chromium reports the method result.
     pub fn clear_site_data(&mut self) -> Result<Receiver<SiteDataClearResult>, BrowserError> {
         if self.phase != SessionPhase::Ready {
             return Err(BrowserError::NotReady);
@@ -1719,8 +1687,6 @@ impl BrowserSession {
         Ok((message_id, result_rx))
     }
 
-    /// Release the screenshot observer once its pick has been delivered, so the
-    /// `DevTools` agent does not stay attached between picks.
     pub fn finish_element_capture(&self) {
         self.pending_capture.lock().take();
     }
@@ -1784,8 +1750,6 @@ impl BrowserSession {
         edit_browser(&self.browser, command);
     }
 
-    /// Open (or focus) `DevTools` with the node at these pane-local logical
-    /// coordinates selected.
     pub fn inspect_element_at(&self, x: i32, y: i32) {
         let Some(host) = self.browser.host() else {
             return;
@@ -1798,8 +1762,6 @@ impl BrowserSession {
         host.show_dev_tools(None, None, None, Some(&point));
     }
 
-    /// Toggle Chromium's `DevTools`. All-`None` arguments make CEF open and own
-    /// a native top-level window instead of a windowless browser zz must render.
     pub fn toggle_dev_tools(&self) {
         let Some(host) = self.browser.host() else {
             return;
@@ -1884,14 +1846,11 @@ impl BrowserSession {
                 host.set_zoom_level(effective_chromium_zoom_level(next, self.page_zoom_factor()));
             }
 
-            // CEF reads the screen scale at WasResized, so screen info goes first.
             if force || scale_changed || screen_changed {
                 host.notify_screen_info_changed();
             }
             if force || size_changed || scale_changed {
                 host.was_resized();
-                // Chromium's OSR scheduler can skip the last resize of a burst as
-                // damage-free; this forces one paint at the settled size.
                 host.invalidate(PaintElementType::VIEW);
             }
             log::trace!(
@@ -1923,17 +1882,12 @@ impl BrowserSession {
         host.set_focus(i32::from(focused));
     }
 
-    /// Change the OSR paint ceiling for this session at runtime, clamped to
-    /// CEF's supported `1..=MAX_BROWSER_FRAME_RATE` range.
     pub fn set_frame_rate(&self, frames_per_second: i32) {
         if let Some(host) = self.browser.host() {
             host.set_windowless_frame_rate(frames_per_second.clamp(1, MAX_BROWSER_FRAME_RATE));
         }
     }
 
-    /// Drive one Chromium frame from zz's clock. No-op on Windows, where
-    /// sessions never set `external_begin_frame_enabled` and CEF keeps its own
-    /// scheduler.
     pub fn send_external_begin_frame(&self) {
         if let Some(host) = self.browser.host() {
             host.send_external_begin_frame();
@@ -2075,14 +2029,12 @@ impl Drop for BrowserSession {
     }
 }
 
-/// Dispatch a CEF subprocess or prepare a cold main browser runtime.
 pub fn bootstrap() -> Result<BrowserBootstrap, BrowserError> {
     let profile_paths =
         resolve_profile_paths().map_err(|error| BrowserError::Profile(error.into()))?;
     bootstrap_with_profile_paths(profile_paths)
 }
 
-/// Dispatch a CEF subprocess or prepare a cold runtime with an explicit cache root.
 pub fn bootstrap_with_profile_paths(
     profile_paths: BrowserProfilePaths,
 ) -> Result<BrowserBootstrap, BrowserError> {
@@ -2090,7 +2042,6 @@ pub fn bootstrap_with_profile_paths(
 }
 
 #[cfg(target_os = "windows")]
-/// Dispatch a subprocess or prepare CEF through its sandbox bootstrap executable.
 pub fn bootstrap_windows(
     instance: cef::sys::HINSTANCE,
     sandbox_info: *mut u8,
@@ -2235,8 +2186,6 @@ pub fn run_subprocess() -> i32 {
         loader
     };
 
-    // cef-rs binds the experimental header layout, so declare `CEF_API_VERSION`
-    // and never `CEF_API_VERSION_LAST`.
     let _ = api_hash(cef::sys::CEF_API_VERSION, 0);
     let (signal_tx, _signal_rx) = async_channel::unbounded();
     let mut app = RuntimeApp::new(
@@ -2474,7 +2423,6 @@ fn cancel_browser_composition(browser: &Browser) {
     }
 }
 
-// CEF's generated bindings type unscoped C enums as `i32` on MSVC, `u32` elsewhere.
 #[cfg(windows)]
 fn cef_enum_bits(value: i32) -> u32 {
     value.cast_unsigned()
@@ -2629,7 +2577,6 @@ fn native_key_code(key: BrowserKey) -> i32 {
     reason = "macOS assigns virtual key code zero to A, which is also CEF's unavailable-code sentinel"
 )]
 fn mac_character_key_code(character: char) -> i32 {
-    // macOS ANSI virtual key codes; CEF rebuilds Chromium's key code from them.
     match character {
         'a' | 'A' => 0x00,
         's' | 'S' => 0x01,
@@ -3003,8 +2950,6 @@ fn accelerated_paint_platform_info(info: &AcceleratedPaintInfo) -> AcceleratedPa
         });
         let metadata = (plane.fd >= 0)
             .then(|| {
-                // SAFETY: CEF owns this plane descriptor for the callback, and
-                // ManuallyDrop keeps File from closing the borrowed fd.
                 let file = ManuallyDrop::new(unsafe { File::from_raw_fd(plane.fd) });
                 file.metadata()
             })
@@ -3106,8 +3051,6 @@ struct ExpectedFrameSize {
 
 impl ExpectedFrameSize {
     fn from_viewport(viewport: Viewport) -> Self {
-        // CEF rasters the shared surface at device pixels on macOS and Windows;
-        // Wayland folds that scale into `osr_raster_scale` instead.
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         let scale_factor = viewport.scale_factor;
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -3362,7 +3305,6 @@ fn import_accelerated_texture(
         return Err(AcceleratedFrameError::WgpuValidation(error.to_string()));
     }
     let imported = imported?;
-    // cef-rs's import helper returns a blank COPY_DST-only fallback; real imports never do.
     if imported.usage().contains(wgpu::TextureUsages::COPY_DST)
         && !imported.usage().contains(wgpu::TextureUsages::COPY_SRC)
     {
@@ -3735,7 +3677,6 @@ impl SessionBridge {
             return false;
         }
         expected_id.store(message_id, Ordering::Release);
-        // CEF runs observers on this thread, so releasing the previous one here is safe.
         *self.pending_capture.lock() = Some(registration);
         true
     }
@@ -4271,8 +4212,6 @@ cef::wrap_app! {
                         Some(&CefString::from(port.to_string().as_str())),
                     );
                 }
-                // Chromium 151's Immersive Reading Mode crashes the browser process on
-                // any SPA navigation in a windowless WebContents.
                 let disable_features = CefString::from("disable-features");
                 let existing =
                     CefString::from(&command_line.switch_value(Some(&disable_features)))
@@ -4288,8 +4227,6 @@ cef::wrap_app! {
                 );
                 #[cfg(all(target_os = "macos", debug_assertions))]
                 {
-                    // Ad-hoc debug signatures re-prompt for the real Safe Storage item,
-                    // so debug profiles use Chromium's deterministic test key.
                     command_line
                         .append_switch(Some(&CefString::from("use-mock-keychain")));
                 }
@@ -4305,8 +4242,6 @@ cef::wrap_app! {
                     Some(&CefString::from("ozone-platform-hint")),
                     Some(&CefString::from("auto")),
                 );
-                // Dev bundles cannot carry the root-owned setuid helper bit; only the
-                // legacy setuid layer goes, and the user-namespace sandbox stays on.
                 command_line.append_switch(Some(&CefString::from("disable-setuid-sandbox")));
             }
         }
@@ -4463,7 +4398,6 @@ cef::wrap_dev_tools_message_observer! {
             if self.expected_id.load(Ordering::Acquire) != message_id {
                 return;
             }
-            // A protocol error also lands here, with the error body as result.
             let screenshot = (success != 0)
                 .then(|| result.and_then(decode_screenshot_result))
                 .flatten();
@@ -4603,8 +4537,6 @@ cef::wrap_render_handler! {
             };
             let viewport = *self.bridge.viewport.lock();
             info.device_scale_factor = if uses_wayland_physical_osr() {
-                // The Wayland host already rasters at physical size; reporting
-                // the scale again would scale the OSR surface twice.
                 1.0
             } else {
                 viewport.scale_factor
@@ -4679,8 +4611,6 @@ cef::wrap_render_handler! {
                 let Ok(length) = frame_byte_len(width, height) else {
                     return;
                 };
-                // SAFETY: CEF guarantees `buffer` holds `width * height * 4` BGRA bytes
-                // for the length of this callback, and the dimensions were checked above.
                 let pixels = unsafe { std::slice::from_raw_parts(buffer, length) };
                 if self.bridge.popup.lock().store_pixels(
                     pixels,
@@ -4701,8 +4631,6 @@ cef::wrap_render_handler! {
                     return;
                 }
             };
-            // SAFETY: CEF guarantees `buffer` holds `width * height * 4` BGRA bytes
-            // for the length of this callback, and the dimensions were checked above.
             let copy_started = diagnostic_timer();
             let source = unsafe { std::slice::from_raw_parts(buffer, length) };
             let mut bytes = self.bridge.mailbox.take_buffer(length);
@@ -4800,8 +4728,6 @@ cef::wrap_render_handler! {
                     dirty_rects.map(|rects| rects.iter().map(|rect| (rect.x, rect.y, rect.width, rect.height)).collect::<Vec<_>>()),
                 );
             }
-            // The accelerated session lives on until CEF acknowledges close, so late
-            // GPU frames must not replace the surface held for the readback swap.
             if self.bridge.shared_texture_fallback_requested() {
                 return;
             }
@@ -4843,8 +4769,6 @@ cef::wrap_render_handler! {
             {
                 let _ = popup;
                 self.bridge.accelerated_paint.record_gpu_import_attempt();
-                // CEF returns the shared texture to its pool once this callback
-                // returns, so both the import and the copy happen here.
                 match self.bridge.d3d11_frames.produce(info, recorded.callback) {
                     Ok(D3d11FrameOutcome::Frame(frame)) => {
                         self.bridge.publish_d3d11_frame(frame);
@@ -5311,7 +5235,6 @@ cef::wrap_context_menu_handler! {
             _model: Option<&mut MenuModel>,
             callback: Option<&mut RunContextMenuCallback>,
         ) -> i32 {
-            // `params` dies with this callback, so copy the request out first.
             if let Some(params) = params {
                 self.bridge.emit(BrowserEvent::ContextMenuRequested {
                     session: self.bridge.id,

@@ -52,10 +52,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# window_width is not comparable: the zz raw client reserves a sidebar and two
-# rows, so its window is smaller than the pin's for the same pty. The boolean
-# and the two offsets are derived from the client viewport and the pane cursor,
-# so they answer the same on both.
 probe='big=[#{window_bigger}] ox=[#{window_offset_x}] oy=[#{window_offset_y}]'
 
 expand() {
@@ -99,10 +95,6 @@ await_window_width() {
     return 1
 }
 
-# Park the cursor at an exact cell by writing to the pane's own tty, leaving a
-# marker there so the poll can tell the sequence was consumed before the offsets
-# are read. tty_window_offset caches its answer until the client redraws, so the
-# marker is the signal that the redraw has something to do.
 park_cursor() {
     row="$1"
     column="$2"
@@ -126,15 +118,11 @@ main_client kill-session -t "=$session" >/dev/null 2>&1 || true
 main_client new-session -d -s "$session" -x 80 -y 24
 pane="$(main_client list-panes -t "=$session" -F '#{pane_id}' | sed -n '1p')"
 
-# format_cb_window_bigger and both offset callbacks return NULL without a
-# client in the format tree, whatever the window measures.
 check_equal no-client 'big=[] ox=[] oy=[]' "$(expand)"
 
 client_pid="$(attach)"
 await_clients 1 || { echo "format-window-bigger-$side: attach"; exit 0; }
 
-# A window that fits the client viewport is not bigger, with the status line
-# taking a row and with it off.
 check_equal fits 'big=[0] ox=[] oy=[]' "$(expand)"
 main_client set -g status off
 sleep 0.4
@@ -142,13 +130,10 @@ check_equal fits-without-status 'big=[0] ox=[] oy=[]' "$(expand)"
 main_client set -g status on
 sleep 0.4
 
-# resize-window past the viewport flips the boolean, and the offsets appear.
 main_client resize-window -t "=$session:" -x 200 -y 60
 await_window_width 200 || { echo "format-window-bigger-$side: resize"; exit 0; }
 pane_tty="$(main_client display-message -p -t "$pane" '#{pane_tty}')"
 
-# tty_window_offset1's three x branches and three y branches, driven by the
-# cursor of the pane the client is showing. sx is 80 and sy is 23.
 park_cursor 31 151 Q || { echo "format-window-bigger-$side: park-31"; exit 0; }
 check_equal cursor-past-right 'big=[1] ox=[120] oy=[8]' "$(expand)"
 park_cursor 3 61 R || { echo "format-window-bigger-$side: park-3"; exit 0; }
@@ -156,10 +141,6 @@ check_equal cursor-inside 'big=[1] ox=[0] oy=[0]' "$(expand)"
 park_cursor 26 101 S || { echo "format-window-bigger-$side: park-26"; exit 0; }
 check_equal cursor-centred 'big=[1] ox=[60] oy=[3]' "$(expand)"
 
-# tmux 3.8 (d9692f7e) builds list rows with the invoking client, here the
-# unattached command client, whose tty never set an offset, so a row answers 0
-# with null offsets even while another client sees a bigger window. The
-# d77c9dc6 pin passed a null client and answered null for all three.
 check_equal list-windows-row 'big=[0] ox=[] oy=[]' \
     "$(main_client list-windows -t "=$session" -F "$probe")"
 check_equal list-panes-row 'big=[0] ox=[] oy=[]' \

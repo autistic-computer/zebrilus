@@ -1,78 +1,4 @@
 #!/usr/bin/env bash
-# Stock bindings and key ownership, driven through the attached client's stdin.
-#
-# tui-screen-diff.sh drives both sides with `send-keys` against the inner
-# SERVER, so it proves what a command does and never what a KEY does: the key
-# it types is pane input, and the binding that would have run it is never
-# consulted. This fixture types the stock chords into the attached CLIENT's
-# stdin instead. Both binaries are attached inside one outer pinned tmux, one
-# window each, and every chord is sent with `send-keys` against the OUTER pane,
-# so the bytes arrive on the inner client's terminal exactly as a user's
-# keyboard would deliver them: prefix, then the key.
-#
-# THE DECODED SCREEN IS THE CONTRACT (see tui-screen-diff.sh's header for the
-# full rule). The outer pinned tmux is the decoder; every visible cell is
-# compared with its escapes, plus the cursor tuple, plus a SERVER FACTS line
-# read from each side's own server. Facts are the second channel because two
-# screens can agree while the servers do not: after a split both panes run the
-# same shell and paint the same prompt, and only `#{pane_active}` says which
-# one the next key reaches.
-#
-# CONTROLLED DYNAMIC VALUES, set on both sides before any chord is typed:
-#   status-right ''      the default ends in a clock and carries %d-%b-%y,
-#                        which status-row.sh owns.
-#   status-left L        fixed literal, so the left of the row is asserted.
-#   automatic-rename off the default name follows the running command and would
-#                        race a rename case.
-#   default-command      "ENV= PS1='$ ' exec /bin/sh": a stock split runs the
-#                        session's default command, not a command this fixture
-#                        can pass, so the default itself is pinned. No rc file,
-#                        and a prompt with no host, user, path or clock.
-#   select-pane -T       fixed title: the pin seeds one from gethostname and zz
-#                        reports the shell through its shell integration. That
-#                        is the recorded pane.runtime-facts decision.
-#   pane-border-style, pane-active-border-style, message-style, mode-style,
-#   status-style, window-status-current-style
-#                        every surface a case paints, pinned to the same
-#                        explicit value on both sides. zz ships its own theme
-#                        palette in these defaults (`fg=themelightgrey`,
-#                        `bg=themeyellow`, …) where the pin ships tmux's, which
-#                        is the recorded status-row theme divergence and none of
-#                        this fixture's business: a key case must fail on the
-#                        key, never on a palette. Both a foreground and a
-#                        background are always named, so the recorded
-#                        explicit-default-foreground divergence cannot reach a
-#                        case either.
-# Nothing else is masked.
-#
-# SETTLE. A case names a bounded OBSERVABLE (a server fact, or a substring on
-# the screen) and waits for it per side, then waits for that side's screen to
-# stop changing between two polls. A side that never reaches its observable is
-# a comparison RESULT, not a crash: the case still captures and compares both
-# screens, and reports the side that never got there. No wait here is a sleep.
-#
-# CASES. Every stock chord this obligation names is typed, never executed as a
-# command: split (prefix % and "), chooser (prefix s and w), rename (prefix ,
-# and $), selection (prefix o and the arrows), zoom (prefix z) and detach
-# (prefix d). Then key ownership: C-\, M-s and M-S bound in the ROOT table to
-# an observable command, and the same three chords typed at an application that
-# has turned its signal keys off, where both sides must hand the bytes to the
-# program.
-#
-# THREE CHANNELS. Every case compares the rows, the cursor and the server
-# facts, and NAMES the channels it asserts; a channel it does not name is
-# recorded with the reason it cannot be asserted yet. The default is all three.
-# A case that names fewer says so on every run, so a channel is never waived by
-# omission, and the reasons are measurements: see BORDER_REASON, CHOOSER_REASON
-# and PROMPT_REASON below.
-#
-# --self-check drives one deliberate one-sided difference per channel and
-# requires the comparison to catch it in that channel, plus two differences it
-# must NOT report. A fixture that only passes has proved nothing.
-#
-# ZZ_KEYS_CAPTURE_DIR, when set, keeps every capture, cursor tuple and facts
-# line as text. A bounded wait that runs out dumps diagnostics into
-# ZZ_KEYS_DIAGNOSTICS_DIR or a fresh /tmp directory it names.
 set -eEuo pipefail
 
 usage() {
@@ -118,9 +44,6 @@ TMUX_BIN="$(resolve_binary "$TMUX_INPUT")" || {
   exit 2
 }
 
-# Both asserted sizes stay below the 109 column sidebar threshold
-# (crates/zz-tui/src/sidebar.rs AUTO_HIDE_COLUMNS), so an asserted case can
-# never invoke zz's own chrome by accident.
 SIZES=(80x24 100x24)
 PANE_TITLE="stockkeys"
 WINDOW_NAME="win"
@@ -152,17 +75,6 @@ LAST_MISSING_OBSERVABLE=""
 INNER_SHELL="ENV= PS1='\$ ' exec /bin/sh"
 CHOOSER_REASON='zz renders choose-tree as its own client overlay, the pin renders a mode tree in the pane'
 PROMPT_REASON='zz paints the command prompt from its own palette and ignores message-style'
-# Two measurements, both 2026-09-09, both outside a key's reach:
-#  * the border cell carries no background on the wire. PaneSnapshot has
-#    border_colour, a foreground, and nothing else, so zz paints its own theme
-#    background under every border glyph where the pin paints the style's.
-#  * crates/zz-tui/src/layout.rs scaled_extent floors an f32 product of the
-#    split ratio, so at some client widths the drawn border sits one column
-#    left of the geometry the daemon reports and the right pane's cursor with
-#    it. Measured against the daemon's own #{pane_left}/#{pane_right}: wrong at
-#    98 and 100 columns, right at 80, 88, 90, 96, 99, 101, 102, 104 and 108.
-# The split geometry itself is asserted through each pane's width and height in
-# the facts line, which is where a key's effect actually lives.
 BORDER_REASON='the border cell has no background on the wire and layout.rs floors the split ratio'
 mkdir -p "$ZZ_HOME" "$TMUX_HOME" "$OUTER_HOME" "$ZZ_LOG_DIR"
 [ -z "$CAPTURE_DIR" ] || mkdir -p "$CAPTURE_DIR"
@@ -277,9 +189,6 @@ wait_for() {
 }
 
 CURSOR_FORMAT='#{cursor_x},#{cursor_y} flag=#{cursor_flag} pane=#{pane_width}x#{pane_height}'
-# The facts a screen cannot show. Pane ids are left out on purpose: the two
-# servers number their panes from different origins and the campaign has never
-# claimed they match.
 FACTS_FORMAT='#{session_name}:#{window_index}.#{pane_index} #{pane_width}x#{pane_height} active=#{pane_active} zoomed=#{window_zoomed_flag} window=#{window_name} panes=#{window_panes} cmd=#{pane_current_command}'
 
 outer_pane_is() {
@@ -291,18 +200,6 @@ client_attached() {
 client_gone() {
   [ -z "$(side_command "$1" list-clients -F '#{client_session}' 2>/dev/null)" ]
 }
-# THE ONE UNFIXABLE VALUE ON THIS SCREEN. The two detach cases compare the
-# outer pane's screen after the inner client has exited, and `remain-on-exit`
-# makes the OUTER pinned tmux paint `remain-on-exit-format` over it, whose
-# default ends in `#{t:pane_dead_time}` - the wall-clock second that side's
-# client died on. The two clients exit one after the other, zz always the
-# later, so the two sides straddle a second whenever the run crosses one:
-# cycle 7's gate got one green in four runs on that alone. Nothing in any
-# binary can make two processes exit inside the same second, so the second is
-# normalised out and everything else on the line - the words, the exit status
-# or signal, the styling around them, and every other cell of every row - is
-# still compared. `status 0` staying in the pattern is deliberate: a pane that
-# died with a different status, or with a signal instead, still differs here.
 capture_screen() {
   tmux_outer_command capture-pane -p -e -S 0 -E "$((ROWS_UNDER_TEST - 1))" \
     -t "=$OUTER_SESSION:$1" |
@@ -333,9 +230,6 @@ write_attach() {
   chmod +x "$destination"
 }
 
-# The self-check's one-sided sabotage for the dead-pane message: the same
-# attach, run without `exec` so the wrapper outlives the client and can hand
-# the outer pane a different exit status to paint.
 write_attach_exiting() {
   local side="$1" status="$2" destination="$3"
   write_attach "$side" "$destination"
@@ -349,14 +243,6 @@ OWNED_OPTIONS=(
   pane-border-style pane-active-border-style message-style mode-style status-style
   window-status-current-style
 )
-# RGB on purpose. Measured 2026-09-09: with these styles named
-# (`fg=colour8,bg=colour0`) the pin writes `\e[90m\e[40m` and zz writes
-# `\e[38;2;127;127;127m\e[48;2;16;19;24m`, because zz resolves a named or
-# indexed colour through its palette before it writes and the pin keeps the
-# class it was given. That is the recorded colour-promotion divergence
-# tui-screen-diff.sh's colour-classes case owns, and an RGB value is the one
-# class both binaries pass through unchanged, so a key case is compared on the
-# key rather than on somebody else's record.
 PINNED_STYLES=(
   'status-style bg=#00af00,fg=#101010'
   'window-status-current-style bg=#00af00,fg=#101010'
@@ -382,8 +268,6 @@ pin_dynamic_values() {
   done
 }
 
-# Root bindings a case installed outlive the session it installed them in, so
-# every attach starts by clearing the three chords this fixture ever binds.
 reset_root_bindings() {
   local side="$1"
   local chord
@@ -392,8 +276,6 @@ reset_root_bindings() {
   done
 }
 
-# Every session, not just this fixture's: a rename case leaves one behind under
-# its new name and the facts channel reads the whole server.
 kill_every_session() {
   local side="$1"
   local session
@@ -436,9 +318,6 @@ attach_both_at() {
   wait_settled tmux 'the fresh tmux screen'
 }
 
-# THE KEYSTROKE. `send-keys` against the OUTER pane writes the bytes on the
-# inner client's terminal, which is the only way a stock binding is exercised
-# at all: the same keys sent to the inner server would be pane input.
 type_side() {
   local side="$1"
   shift
@@ -449,13 +328,10 @@ type_both() {
   type_side zz "$@"
   type_side tmux "$@"
 }
-# The prefix and the key in one call: they reach the client's terminal in one
-# write, which is what a user's keyboard does too.
 type_prefix_both() {
   type_both C-b "$@"
 }
 
-# Stability only: the screen has to stop changing between two polls.
 wait_settled() {
   local side="$1"
   local label="$2"
@@ -473,9 +349,6 @@ wait_settled() {
   die "$label did not settle within 10 seconds"
 }
 
-# A bounded wait for one side's observable that REPORTS instead of dying: a
-# side that never gets there is the measurement, and both screens are still
-# compared and printed.
 await_observable() {
   local side="$1"
   local kind="$2"
@@ -566,9 +439,6 @@ compare_sides() {
   return 1
 }
 
-# A case: type the chord, wait for each side's observable, settle, compare.
-# MODE `same` asserts; `record` prints the same report, keeps going, and says
-# WHY it is recorded rather than asserted.
 key_case() {
   local name="$1"
   local kind="$2"
@@ -610,26 +480,18 @@ key_case() {
   return 0
 }
 
-# --- the corpus ------------------------------------------------------------
-
 run_stock_bindings() {
   local size="$1"
   local columns="${size%x*}"
   local rows="${size#*x}"
   SIZE_LABEL="$size"
 
-  # split: prefix % and prefix ". The pin binds `split-window -h` and
-  # `split-window`; a stock split has to produce a shell pane on both sides,
-  # which is why default-command is pinned above.
   attach_both_at "$columns" "$rows"
   type_prefix_both '%'
   key_case split-horizontal format '#{window_panes}=2' facts "$BORDER_REASON"
   type_prefix_both '"'
   key_case split-vertical format '#{window_panes}=3' facts "$BORDER_REASON"
 
-  # selection: prefix o walks the panes, the arrows pick a direction. Three
-  # panes exist by now, so both have somewhere to go, and the active pane index
-  # is the observable rather than the fact that some pane is active.
   type_prefix_both o
   key_case select-next-pane format '#{pane_index}=0' facts "$BORDER_REASON"
   type_prefix_both Right
@@ -639,15 +501,11 @@ run_stock_bindings() {
   type_prefix_both Up
   key_case select-pane-up format '#{pane_index}=2' facts "$BORDER_REASON"
 
-  # zoom: prefix z, then prefix z again.
   type_prefix_both z
   key_case zoom format '#{window_zoomed_flag}=1'
   type_prefix_both z
   key_case unzoom format '#{window_zoomed_flag}=0' facts "$BORDER_REASON"
 
-  # chooser: prefix s and prefix w open the pin's session and window trees.
-  # `q` cancels on both sides; a bare Escape would race the pin client's
-  # escape-time window instead of ending the mode.
   attach_both_at "$columns" "$rows"
   type_prefix_both s
   key_case chooser-sessions screen "$SESSION_NAME" facts "$CHOOSER_REASON"
@@ -658,8 +516,6 @@ run_stock_bindings() {
   type_both q
   key_case chooser-windows-cancel screen '$'
 
-  # rename: prefix , and prefix $ open a command prompt seeded with the current
-  # name; the typed answer is the observable on the server.
   attach_both_at "$columns" "$rows"
   type_prefix_both ','
   key_case rename-window-prompt screen "$WINDOW_NAME" facts "$PROMPT_REASON"
@@ -674,8 +530,6 @@ run_stock_bindings() {
   type_both Enter
   key_case rename-session sessions renamedses
 
-  # detach: prefix d. The client exits, the outer pane keeps its last screen
-  # (remain-on-exit is on), and both sides' farewell is compared.
   attach_both_at "$columns" "$rows"
   type_prefix_both d
   key_case detach gone ''
@@ -687,9 +541,6 @@ run_key_ownership() {
   local rows="${size#*x}"
   SIZE_LABEL="$size"
 
-  # Root bindings on the three chords zz's raw client used to own. A root
-  # binding is consulted before the pane on both sides, so the bound command is
-  # what a user sees.
   attach_both_at "$columns" "$rows"
   side_command zz bind-key -n 'C-\' rename-window boundbackslash || die 'zz refused bind-key -n C-\'
   side_command tmux bind-key -n 'C-\' rename-window boundbackslash || die 'tmux refused bind-key -n C-\'
@@ -706,18 +557,12 @@ run_key_ownership() {
   type_both M-S
   key_case root-binding-alt-shift-s format '#{window_name}=boundaltshifts'
 
-  # The chord the raw client used to own, restored the way the pin restores
-  # anything: as a binding. `bind -n C-\ detach-client` is what a user who wants
-  # the old behaviour writes, and both sides answer it the same way.
   attach_both_at "$columns" "$rows"
   side_command zz bind-key -n 'C-\' detach-client || die 'zz refused bind-key -n C-\'
   side_command tmux bind-key -n 'C-\' detach-client || die 'tmux refused bind-key -n C-\'
   type_both 'C-\'
   key_case root-binding-detaches gone ''
 
-  # Application keys. With the root bindings gone and the program's signal keys
-  # turned off, C-\, M-s and M-S are ordinary bytes the program must receive.
-  # `cat -v` renders them, so the screen is the receipt.
   attach_both_at "$columns" "$rows"
   side_command zz send-keys -t "=$SESSION_NAME:0.0" 'stty -isig; cat -v' Enter ||
     die 'zz refused send-keys'
@@ -731,8 +576,6 @@ run_key_ownership() {
   type_both M-S
   key_case application-alt-shift-s screen '^[S'
 }
-
-# --- self-check ------------------------------------------------------------
 
 SELF_CHECK_FAILURES=0
 
@@ -769,7 +612,6 @@ self_check_compare() {
 run_self_check() {
   printf 'self-check: one deliberate one-sided difference per channel, plus two the fixture must not report\n'
 
-  # rows: the stock split chord typed on one side only.
   SIZE_LABEL='80x24-one-sided-chord'
   attach_both_at 80 24
   type_side zz C-b '%'
@@ -777,9 +619,6 @@ run_self_check() {
   self_check_compare one-sided-chord
   self_check_case 'rows: prefix % typed on one side only' rows
 
-  # facts: the same three panes on both sides with a different active pane. The
-  # panes run the same shell and paint the same prompt, so this is the
-  # difference only the server facts can see.
   SIZE_LABEL='80x24-active-pane'
   attach_both_at 80 24
   type_prefix_both '%'
@@ -789,7 +628,6 @@ run_self_check() {
   self_check_compare active-pane
   self_check_case 'facts: the active pane moved on one side' facts
 
-  # cursor: one side's program leaves the cursor further along the row.
   SIZE_LABEL='80x24-cursor'
   attach_both_at 80 24
   side_command zz send-keys -t "=$SESSION_NAME:0.0" 'printf CURSORMARK-WITH-A-LONGER-TAIL' Enter ||
@@ -801,10 +639,6 @@ run_self_check() {
   self_check_compare cursor
   self_check_case 'cursor: a different-length unterminated line' cursor
 
-  # none: the same chord delivered as two writes on one side and one write on
-  # the other. The fixture compares the RESULT of a keystroke, never the way it
-  # was typed. The chord is the zoom, whose screen carries no pane border: an
-  # equivalence must not be built on top of the recorded border divergence.
   SIZE_LABEL='80x24-write-splitting'
   attach_both_at 80 24
   type_prefix_both '%'
@@ -818,9 +652,6 @@ run_self_check() {
   self_check_compare write-splitting
   self_check_case 'equivalence: the prefix and the key in one write or two' none
 
-  # none: the same root binding installed through the two spellings of the root
-  # table, `-n` on one side and `-T root` on the other. What the fixture reads
-  # is the key's effect, never the way the binding was written.
   SIZE_LABEL='80x24-binding-spelling'
   attach_both_at 80 24
   side_command zz bind-key -T root M-s rename-window spellcheck || die 'zz refused bind-key'
@@ -831,12 +662,6 @@ run_self_check() {
   self_check_compare binding-spelling
   self_check_case 'equivalence: -n and -T root name the same table' none
 
-  # none: both sides detach and both outer panes carry the dead-pane message.
-  # This is the control for the ONE normalised value on this screen. The two
-  # clients exit one after the other, so `#{t:pane_dead_time}` straddles a
-  # wall-clock second whenever the run crosses one; with the second normalised
-  # the two farewells are the same screen, and this case says so on every run
-  # rather than one in four.
   SIZE_LABEL='80x24-detach-time'
   attach_both_at 80 24
   type_prefix_both d
@@ -845,9 +670,6 @@ run_self_check() {
   self_check_compare detach-time
   self_check_case 'equivalence: the second two clients exit on' none
 
-  # rows: the same two farewells with one side's client exiting non-zero. The
-  # normalisation blanks the time and nothing else, so the exit STATUS the
-  # dead-pane message carries is still a difference the fixture reports.
   SIZE_LABEL='80x24-detach-status'
   write_attach_exiting zz 3 "$SCRATCH_DIR/attach-zz.sh"
   attach_both_at 80 24
@@ -865,8 +687,6 @@ run_self_check() {
   printf 'self-check complete: every sabotage was caught in its own channel and every equivalence passed\n'
   return 0
 }
-
-# --- run -------------------------------------------------------------------
 
 write_attach zz "$SCRATCH_DIR/attach-zz.sh"
 write_attach tmux "$SCRATCH_DIR/attach-tmux.sh"

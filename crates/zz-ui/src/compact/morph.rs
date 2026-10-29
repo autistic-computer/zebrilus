@@ -22,9 +22,6 @@ const MINI_MIN_WIDTH: f32 = 88.0;
 const MINI_DROP: f32 = 14.0;
 const MINI_BOTTOM_MIN: f32 = 6.0;
 
-/// A spring between two shapes of the floating pill: 1 is the full pill, 0
-/// the other shape, the key row above the keyboard or the small pill a
-/// scrolled page shrinks it to.
 #[derive(Clone, Copy, Debug)]
 pub struct PillSpring {
     state: SpringState,
@@ -46,7 +43,6 @@ impl Default for PillSpring {
 }
 
 impl PillSpring {
-    /// A spring at rest on the other shape, 0.
     pub fn shut() -> Self {
         Self {
             state: SpringState {
@@ -62,13 +58,10 @@ impl PillSpring {
         self.state.position
     }
 
-    /// Where the spring is heading: true for the full pill.
     pub fn full(&self) -> bool {
         self.target == 1.0
     }
 
-    /// Springs toward the full pill when `full`, toward the other shape
-    /// otherwise, keeping the velocity it has.
     pub fn aim(&mut self, full: bool, now: Instant) {
         let target = if full { 1.0 } else { 0.0 };
         if target != self.target {
@@ -77,7 +70,6 @@ impl PillSpring {
         }
     }
 
-    /// Advances the spring; true while it still moves.
     pub fn tick(&mut self, now: Instant) -> bool {
         let Some(at) = self.at else {
             return false;
@@ -102,12 +94,6 @@ impl PillSpring {
     }
 }
 
-/// The key row partway to the floating pill, `progress` of the way: one
-/// surface moving and reshaping between the key row's pill and the floating
-/// pill while the keys and the lead key's pill fade out and `label` fades in. Positions are measured
-/// from the top of the strip the key row sits in: `pill_top` is where the
-/// floating pill's top would be and `floor` is the keyboard's top edge, which
-/// pushes the surface up so it never slips under the keyboard.
 pub fn compact_pill_morph(
     keys: KeyRow,
     label: Div,
@@ -174,10 +160,6 @@ pub fn compact_pill_morph(
         )
 }
 
-/// Where the floating pill sits in its strip, `progress` of the way from the
-/// small pill a scrolled page shrinks it to (0) to the full pill (1): the
-/// small one is `mini` wide, centered, and sits lower, over the home
-/// indicator's edge. `width` is the strip's width.
 pub fn pill_bounds(
     progress: f32,
     width: Pixels,
@@ -200,9 +182,6 @@ pub fn pill_bounds(
     )
 }
 
-/// The corner radius of the floating pill at `bounds`, `progress` of the way
-/// from the small pill to the full one: the small pill is a capsule unless
-/// the role is square.
 pub fn pill_corner(
     progress: f32,
     bounds: Bounds<Pixels>,
@@ -225,7 +204,6 @@ pub fn pill_corner(
     }
 }
 
-/// How wide the small pill is around `text`.
 pub fn mini_pill_width(text: &SharedString, window: &Window, cx: &App) -> Pixels {
     let font_size = rems_from_px(MINI_TEXT).to_pixels(window.rem_size());
     let mut font = ala::font(cx.theme().font_family.clone());
@@ -244,10 +222,6 @@ pub fn mini_pill_width(text: &SharedString, window: &Window, cx: &App) -> Pixels
     (line.width + px(MINI_PADDING_X * 2.0)).max(px(MINI_MIN_WIDTH))
 }
 
-/// The floating pill at `bounds` from [`pill_bounds`], `progress` of the way
-/// from the small pill to the full one: one surface shrinking toward the
-/// bottom center while `label`, the full pill's content, fades out and
-/// `short` fades in.
 pub fn compact_pill_collapse(
     id: impl Into<ElementId>,
     label: Div,

@@ -10,23 +10,17 @@ use std::{
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 
-/// Marks a glyph as an index into [`TerminalDictionary::grapheme_bytes`].
 pub const GRAPHEME_TABLE_BIT: u32 = 1 << 31;
-/// Sentinel used for an optional packed RGB color.
 pub const NO_COLOR: u32 = u32::MAX;
 
 const CELL_WIDTH_MASK: u16 = 0b11;
 const MAX_HOVERED_URI_BYTES: usize = 16 * 1024;
 
-/// Scrollback rows a pane keeps, and the ceiling `history-limit` accepts.
 pub const DEFAULT_HISTORY_LIMIT: usize = 10_000;
 pub const MAX_HISTORY_LIMIT: usize = 1_000_000;
-/// Largest decoded Kitty image zz will move across the daemon boundary.
 pub const MAX_KITTY_IMAGE_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_KITTY_PLACEMENTS: usize = 64 * 1024;
 
-/// Wire scheme for a recognized agent-CLI image placeholder (`zz-image://2`).
-/// The daemon writes the URI; the client that holds the pixels resolves it.
 pub const IMAGE_PLACEHOLDER_SCHEME: &str = "zz-image";
 
 pub const ATTR_BOLD: u16 = 1 << 0;
@@ -39,9 +33,6 @@ pub const ATTR_OVERLINE: u16 = 1 << 6;
 pub const ATTR_EXPLICIT_RGB: u16 = 1 << 7;
 pub const ATTR_HYPERLINK: u16 = 1 << 8;
 
-/// The highest attribute bit defined above. [`PackedStyle`] spends bits
-/// `CLASS_SHIFT`..15 on the two colour-class codes and masks the rest away, so
-/// an attribute that reached them would be dropped without a word.
 const ATTR_HIGHEST: u16 = ATTR_HYPERLINK;
 const _: () = assert!(ATTR_HIGHEST < 1 << CLASS_SHIFT);
 
@@ -108,7 +99,6 @@ pub enum UnderlineStyle {
     Dashed = 5,
 }
 
-/// The hot terminal cell record. Eight cells fit in a typical cache line.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PackedCell {
@@ -241,7 +231,6 @@ impl ColourClass {
     }
 }
 
-/// A resolved, interned terminal style referenced by [`PackedCell::style_id`].
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PackedStyle {
@@ -371,8 +360,6 @@ impl PackedStyle {
         Color::from_packed(self.background)
     }
 
-    /// This style drawn in `foreground` on `background`, keeping where its
-    /// colors came from.
     #[must_use]
     pub const fn with_grounds(self, foreground: Color, background: Color) -> Self {
         Self {
@@ -465,7 +452,6 @@ pub enum OverlayKind {
     CopyCursor = 4,
 }
 
-/// A half-open visual span. Overlays stay out of the hot cell plane.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OverlaySpan {
@@ -523,7 +509,6 @@ impl OverlaySpan {
     }
 }
 
-/// Coarse paint layer for a Kitty graphics placement.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum KittyLayer {
@@ -533,7 +518,6 @@ pub enum KittyLayer {
     AboveText = 2,
 }
 
-/// Renderer-neutral geometry for one visible Kitty graphics placement.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KittyPlacement {
     pub image_id: u32,
@@ -788,7 +772,6 @@ impl SearchStatus {
         self.current_and_flags.get() & Self::INVALID_PATTERN != 0
     }
 
-    /// One-based current match, or zero when there is no current match.
     #[must_use]
     pub const fn current(self) -> u32 {
         self.current_and_flags.get() & Self::CURRENT_MASK
@@ -802,8 +785,6 @@ pub enum Glyph<'a> {
     Grapheme(&'a str),
 }
 
-/// Immutable style and grapheme tables shared by viewport generations. The two
-/// planes are shared separately, so appending styles never copies graphemes.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalDictionary {
     pub styles: Arc<[PackedStyle]>,
@@ -811,7 +792,6 @@ pub struct TerminalDictionary {
     pub grapheme_bytes: Arc<[u8]>,
 }
 
-/// Cold, shared presentation metadata kept out of the hot viewport record.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalPresentation {
     pub title: Arc<str>,
@@ -859,8 +839,6 @@ impl TerminalDictionary {
     }
 }
 
-/// A compact immutable viewport snapshot. Cells are row-major, styles interned,
-/// and graphemes live in one UTF-8 arena. No visible cell owns an allocation.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalViewport {
     pub generation: u64,
@@ -1030,8 +1008,6 @@ struct TerminalDictionaryPatchData {
     grapheme_bytes: Box<[u8]>,
 }
 
-/// Append-only dictionary payload for a retained viewport patch. The empty
-/// case is a null niche, since most patches extend neither table.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TerminalDictionaryPatch(Option<Box<TerminalDictionaryPatchData>>);
 
@@ -1091,7 +1067,6 @@ pub struct TerminalViewportPatch {
     pub dictionary_generation: u32,
     pub columns: u16,
     pub rows: u16,
-    /// Destination row shift applied to retained rows before replacements.
     pub scroll: i16,
     pub changed_rows: TerminalPatchRows,
     pub style_base: u32,
@@ -1304,7 +1279,6 @@ pub enum PatchError {
     Metadata,
 }
 
-/// Reusable working storage for retained viewport differencing.
 #[derive(Debug, Default)]
 pub struct TerminalDiffScratch {
     cached_cells: Option<Arc<[PackedCell]>>,
@@ -1340,7 +1314,6 @@ static NEXT_SHARED_DIFF: AtomicU64 = AtomicU64::new(1);
 const TRACKED_CHANGED_ROWS: usize = 8;
 
 impl TerminalDiffScratch {
-    /// Rebinds cached fingerprints after a patch applied.
     pub fn remember_applied(&mut self, viewport: &TerminalViewport) {
         if self.row_fingerprints.len() == usize::from(viewport.rows) {
             self.cached_cells = Some(Arc::clone(&viewport.cells));
@@ -1349,7 +1322,6 @@ impl TerminalDiffScratch {
         }
     }
 
-    /// Drops the cached source identity, keeping fingerprint capacity.
     pub fn invalidate(&mut self) {
         self.cached_cells = None;
         self.row_fingerprints.clear();
@@ -1456,7 +1428,6 @@ impl TerminalDiffScratch {
 }
 
 impl TerminalViewport {
-    /// An empty viewport for a session that has not published yet.
     #[must_use]
     pub fn blank(columns: u16, rows: u16, status: SessionStatus) -> Self {
         Self::blank_with_appearance(
@@ -1467,7 +1438,6 @@ impl TerminalViewport {
         )
     }
 
-    /// An empty viewport using the daemon's resolved appearance.
     #[must_use]
     pub fn blank_with_appearance(
         columns: u16,
@@ -1626,7 +1596,6 @@ impl TerminalViewport {
         }
     }
 
-    /// A compact retained-grid patch, or `None` when the viewport needs a reset.
     #[must_use]
     pub fn diff(previous: &Self, current: &Self) -> Option<TerminalViewportPatch> {
         Self::diff_with_scratch(previous, current, &mut TerminalDiffScratch::default())
@@ -1715,12 +1684,6 @@ impl TerminalViewport {
         Some(patch)
     }
 
-    /// Applies a patch to this retained viewport.
-    ///
-    /// # Errors
-    ///
-    /// [`PatchError`] when the patch is inconsistent with this viewport. An
-    /// error leaves the viewport unchanged.
     pub fn apply_patch(&mut self, patch: TerminalViewportPatch) -> Result<(), PatchError> {
         if self.generation != patch.base_generation
             || self.view_generation != patch.base_view_generation

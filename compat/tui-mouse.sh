@@ -1,146 +1,4 @@
 #!/usr/bin/env bash
-# Pointer, paste and focus differential for the raw TUI.
-#
-# Every other TUI fixture drives KEYS. Nothing in the campaign ever drove a
-# POINTER at an attached client and compared what the two binaries did with
-# it, and pointer handling is the largest single thing the tmux-compat
-# campaign accepted as native (keys.root-native-mouse, 27 items,
-# keys.copy-mode-native-mouse, 14, mouse.bound-context, 5, and
-# formats.mouse-context, 8). Under the 2026-09-10 triage the raw TUI renders
-# the pin's cells and runs the pin's commands, so those accepted decisions no
-# longer cover it and each of their items is a measurement waiting to be
-# taken. This fixture takes them. It is TUI-008's proof surface.
-#
-# THE OUTER PINNED TMUX IS THE DECODER AND THE INJECTOR. Both binaries attach
-# inside ONE outer pinned tmux, one window each. Reading is
-# `capture-pane -p -e` on the outer pane, so attribute order, batching and
-# cursor-movement spelling collapse before anything is compared and the colour
-# class does not. Writing is `send-keys -H` on the outer pane, which puts raw
-# bytes on the inner client's stdin exactly as a terminal would: every gesture
-# here is a REAL SGR mouse report (`\e[<b;col;rowM`, `\e[<b;col;rowm`, the
-# 1006 encoding both clients ask for), a real bracketed paste
-# (`\e[200~ ... \e[201~`) or a real focus report (`\e[I`, `\e[O`). No gesture
-# is faked through a command, and no client is asked to pretend.
-#
-# WHERE A GESTURE IS AIMED. Never at a hard-coded cell. Each case reads
-# `#{pane_left} #{pane_top} #{pane_right} #{pane_bottom}` and the status line's
-# own row from the SIDE it is aiming at, and turns that into the 1-based
-# screen column and row the SGR report carries. compat/tui-pane-geometry.sh
-# already asserts that those numbers agree between the two binaries, so a case
-# that aims at pane 1's third cell aims at the same cell on both.
-#
-# THE CHANNEL OF EVERY CASE. A pointer gesture is only interesting for what it
-# CHANGES, so every case names the observable it compares and compares nothing
-# else:
-#
-#   case                        channel
-#   -------------------------------------------------------------------------
-#   click-selects-pane          the inner server's active pane index
-#   click-user-binding          a global option a user's own
-#                               `bind -n MouseDown1Pane` sets
-#   click-user-binding-target   `#{mouse_x}`, `#{mouse_y}` and `#{mouse_pane}`
-#                               as that binding's own command expands them
-#   border-user-binding         a global option a user's own
-#                               `bind -n MouseDown1Border` sets
-#   status-user-binding         a global option a user's own
-#                               `bind -n WheelDownStatus` sets
-#   drag-selects                the paste buffer the drag leaves, plus
-#                               `#{pane_in_mode}` and `#{selection_present}`
-#                               once the button is up
-#   wheel-up-pane               `#{pane_in_mode}` and `#{pane_mode}`
-#   wheel-up-alternate          the same, with an alternate-screen program up
-#   double-click-word           the paste buffer the gesture leaves
-#   triple-click-line           the paste buffer the gesture leaves
-#   right-click-pane            the decoded screen (a menu, or nothing), at a
-#                               blank cell and at a cell whose row carries
-#                               text, where the pin's own menu renders four
-#                               of its items off the three names that read
-#                               the screen under the pointer
-#   mouse-context               `#{mouse_word}`, `#{mouse_line}` and
-#                               `#{mouse_hyperlink}` as a user's own
-#                               `bind -n C-MouseDown3Pane` expands them, over
-#                               a plain word, a wrapped line's head and tail,
-#                               an OSC 8 hyperlink and a blank cell
-#   border-click                `#{pane_marked_set}` and the active pane
-#                               index
-#   border-drag-resize          `#{pane_width}` of the pane left of the border
-#   status-click-window         the current window index
-#   status-wheel-up/down        the current window index
-#   status-right-click          the decoded screen (a window menu, or nothing),
-#                               for the plain and the alt-modified gesture
-#   copy-mode-wheel             the copy cursor's line
-#   copy-mode-drag              `#{selection_present}` and the copy cursor
-#   copy-mode-double-click      the paste buffer
-#   app-mouse-report            the SGR report a program in the pane received,
-#                               read off the pane's own decoded screen
-#   app-mouse-report-mouse-off  the same with `mouse off`
-#   app-mouse-drag              the three reports a program under button-event
-#                               tracking received from a press, a motion with
-#                               the button held and the release that ends the
-#                               drag, in order
-#   app-mouse-double-click      the four reports the same program received from
-#                               two clicks inside the click timeout, in order
-#   paste-into-pane             the bracketed paste a program in the pane
-#                               received, read off its decoded screen
-#   paste-into-copy-mode        the decoded screen and `#{pane_in_mode}` while
-#                               the mode is up, and the decoded screen again
-#                               once it is left
-#   paste-into-prompt           the command prompt's own row
-#   paste-under-menu            the decoded screen and the menu's option
-#   focus-in-out-on             the focus reports a program in the pane
-#                               received, with `focus-events on`
-#   focus-in-out-off            the same with `focus-events off`
-#
-# CONTROLLED DYNAMIC VALUES, set on both sides before the first case:
-#   status-right ''      the default ends in a clock and in %d-%b-%y; that
-#   status-left L        belongs to compat/status-row.sh, not here.
-#   automatic-rename off plus a fixed window name: the default follows the
-#                        running command and would race a gesture.
-#   display-time         held at MESSAGE_HOLD_MS so a message a gesture raises
-#                        cannot expire between the two sides' readings.
-#   default-shell        /bin/sh, so a job runs under the same shell whatever
-#                        the box's $SHELL is.
-#   the inner shell      ENV= PS1='$ ' exec /bin/sh: no rc file, and a prompt
-#                        with no host, user, path or clock.
-#   mouse on             every case but the two that name `mouse off`.
-#   the outer decoder    status off, and its own `mouse` left alone: nothing
-#                        this fixture writes ever reaches the outer server's
-#                        key handling, because `send-keys -H` writes bytes
-#                        straight to the pane.
-#
-# THE ESCAPE THAT CLOSES A MENU IS NOT SYMMETRIC IN ITS EFFECT: on the side
-# that has a menu up it closes the menu, and on a side that has none it
-# reaches the pane's own program. Both menu cases therefore respawn the pane's
-# shell once the comparison is taken, so the next case starts from the same
-# pane on both sides whatever the escape did.
-#
-# A SETTLE MARKER IS READ OFF THE STYLED CAPTURE, so it is always a run of
-# cells the case's own gesture cannot put a style boundary inside: the two
-# cases that select text on the screen settle on the last word of the sample,
-# which no gesture here covers.
-#
-# SETTLED READINGS. Every reading is taken after the case's marker has reached
-# the side's screen AND that screen has stopped changing between two polls, and
-# every state a gesture creates has its own bounded `wait_for` on an
-# observable before that settle, so no comparison is taken while one side has
-# the state and the other does not. No wait here is a sleep. The one place a
-# bounded wait cannot be written is a gesture whose CORRECT result on one side
-# is "nothing happened": those cases wait for the OTHER observable both sides
-# do share (a settled screen after a marker that the gesture cannot swallow)
-# and then read.
-#
-# RECORDED CASES. A recorded case prints both measured values and does not
-# fail the run; every one says why in the driver, never at runtime. TUI-008 is
-# not verified while any case here is recorded.
-#
-# --self-check drives the same driver with ONE deliberate one-sided difference
-# per channel and requires the comparison to report it in the channel that was
-# sabotaged, plus controls that sabotage nothing and must stay quiet. A fixture
-# that only passes has proved nothing.
-#
-# A divergence is a finding: the script exits 1 so a caller can gate on it, and
-# prints both sides so the next lane has the measurement. It reaps every server
-# and daemon it starts.
 set -eEuo pipefail
 
 usage() {
@@ -277,11 +135,6 @@ wait_for() {
   die "$label did not happen within 10 seconds"
 }
 
-# `wait_for` dies when it runs out, which is right for a state both sides must
-# reach before a reading is taken. A reading that IS the comparison cannot be
-# waited on that way: a side that never answers is a divergence to report, not
-# a harness failure. This waits the same bounded ten seconds and then lets the
-# comparison speak.
 wait_at_most() {
   local attempt
   for ((attempt = 0; attempt < 200; attempt++)); do
@@ -341,12 +194,6 @@ settle_both() {
   wait_settled tmux "$1" "$2 settled on the tmux screen"
 }
 
-# --- the injector ----------------------------------------------------------
-#
-# `send-keys -H` on the OUTER pane writes the bytes it is given straight to
-# that pane's pty, which is the inner client's stdin. Nothing in the outer
-# server's own key handling sees them, so the outer `mouse` option and the
-# outer key tables cannot colour a result.
 send_bytes() {
   local side="$1" text="$2" hex
   hex="$(printf '%s' "$text" | od -An -tx1 | tr -s ' \n' '  ')"
@@ -354,8 +201,6 @@ send_bytes() {
   tmux_outer_command send-keys -t "=$OUTER_SESSION:$side" -H $hex ||
     die "the outer tmux refused send-keys -H for $side"
 }
-# An SGR 1006 mouse report: button code, 1-based column, 1-based row, and M
-# for a press or m for a release.
 send_mouse() {
   local side="$1" button="$2" column="$3" row="$4" kind="$5"
   send_bytes "$side" "$(printf '\033[<%s;%s;%s%s' "$button" "$column" "$row" "$kind")"
@@ -364,9 +209,6 @@ send_mouse_both() {
   send_mouse zz "$@"
   send_mouse tmux "$@"
 }
-# A press and its release at the same cell. The self-check can aim one side's
-# click at a different column, which is the one-sided difference a pointer
-# fixture most needs to be able to make.
 CLICK_SABOTAGE_SIDE=""
 CLICK_SABOTAGE_COLUMN=""
 CLICK_SABOTAGE_ROW=""
@@ -385,8 +227,6 @@ click_both() {
     send_mouse "$side" "$button" "$aimed" "$aimed_row" m
   done
 }
-# A wheel press on both sides. The self-check can hold one side's wheel back,
-# which is the one-sided difference a mode's own wheel row needs.
 WHEEL_SABOTAGE_SIDE=""
 send_wheel_both() {
   local button="$1" column="$2" row="$3" side
@@ -396,25 +236,12 @@ send_wheel_both() {
   done
 }
 
-# A right press inside `KEYC_CLICK_TIMEOUT` of the previous one is a
-# `SecondClick3Pane`, which nothing binds: `server_client_check_mouse` resets
-# the sequence when the BUTTON differs, not when the cell does. A left click
-# between two right clicks is that reset. It is inert in the cases that use it:
-# one pane, so `select-pane -t=` selects the pane that is already active, and
-# no program asking for mouse reports, so the row's `send -M` branch writes
-# nothing.
 reset_click_sequence_both() {
   local column="$1" row="$2"
   send_mouse_both 0 "$column" "$row" M
   send_mouse_both 0 "$column" "$row" m
 }
 
-# --- geometry --------------------------------------------------------------
-#
-# Where a pane sits, read from the side being aimed at. `pane_left` and
-# `pane_top` are 0-based in the client's own screen; an SGR report is 1-based,
-# so a gesture at the pane's own (dx, dy) is at (pane_left + 1 + dx,
-# pane_top + 1 + dy).
 pane_geometry() {
   side_command "$1" display-message -p -t "$2" \
     '#{pane_left} #{pane_top} #{pane_right} #{pane_bottom} #{pane_width} #{pane_height}'
@@ -422,8 +249,6 @@ pane_geometry() {
 pane_field() {
   pane_geometry "$1" "$2" | awk -v n="$3" '{ print $n }'
 }
-# The status row is the last row of the client's screen while status-position
-# is bottom, which every case here leaves it at.
 status_row() {
   printf '%s\n' "$ROWS_UNDER_TEST"
 }
@@ -441,15 +266,9 @@ pane_in_mode_is() {
   [ "$(pane_in_mode "$1" "$2")" = "$3" ]
 }
 
-# --- the comparison --------------------------------------------------------
-#
-# Every case compares one named value between the two sides. `same` asserts;
-# `record` prints both and says why.
 assert_value() {
   compare_value same "$1" "$2" "$3"
 }
-# `check_value PREFIX name zz pin` reads PREFIX_MODE and PREFIX_REASON from
-# the disposition block, so a case never decides at runtime whether it asserts.
 check_value() {
   local prefix="$1" mode_name="${1}_MODE" reason_name="${1}_REASON"
   shift
@@ -507,7 +326,6 @@ record_value() {
   compare_value record "$1" "$3" "$4"
   RECORD_REASON=""
 }
-# The whole decoded screen as one value, row index by row index.
 assert_screen() {
   local name="$1" zz_rows tmux_rows index count differing
   mapfile -t zz_rows < <(capture_screen zz)
@@ -570,8 +388,6 @@ record_screen() {
   done
   return 0
 }
-
-# --- the session -----------------------------------------------------------
 
 write_attach() {
   local side="$1" destination="$2"
@@ -650,8 +466,6 @@ start_both() {
   run_on_both rename-window -t "=$INNER_SESSION:0" "$WINDOW_NAME"
 }
 
-# Two panes side by side, pane 0 active, for every case that needs a border or
-# a second target.
 split_both() {
   run_on_both split-window -h -t "=$INNER_SESSION:0.0" "$INNER_SHELL"
   run_on_both select-pane -t "=$INNER_SESSION:0.0"
@@ -666,9 +480,6 @@ unsplit_both() {
 pane_count_is() {
   [ "$(side_command "$1" list-panes -t "=$INNER_SESSION" -F x 2>/dev/null | wc -l)" = "$2" ]
 }
-# A side that never entered copy mode has no mode to cancel, so this is the
-# one place the two sides are driven separately and tolerantly. Both are then
-# waited back to "not in a mode" before the next case.
 leave_copy_mode_both() {
   local side
   for side in zz tmux; do
@@ -678,11 +489,6 @@ leave_copy_mode_both() {
   wait_for 'zz out of copy mode' pane_in_mode_is zz "=$INNER_SESSION:0.0" 0
 }
 
-# A pane running a program instead of the interactive shell, so a case can
-# arm a mode the shell never arms and read back exactly what reached it. The
-# line discipline is put in non-canonical mode with echo off first: a mouse
-# report, a bracketed paste and a focus report all arrive without a newline,
-# and a canonical read would hold them until one came.
 respawn_program_both() {
   run_on_both respawn-pane -k -t "=$INNER_SESSION:0.0" "$@"
 }
@@ -690,19 +496,12 @@ respawn_shell_both() {
   respawn_program_both sh -c "$INNER_SHELL"
   settle_both '$' 'the shell back in pane 0'
 }
-# What a program in pane 0 has printed, with the marker line and every blank
-# line dropped, as one value.
 program_output() {
   local side="$1" marker="$2"
   capture_plain "$side" | sed -n "/$marker/,\$p" | sed "1d" | sed '/^[[:space:]]*$/d' |
     head -n 4 | cat -v | tr '\n' '|'
 }
 
-# --- the cases -------------------------------------------------------------
-
-# `bind -n MouseDown1Pane { select-pane -t=; send -M }`: a click in a pane that
-# is not the active one makes it active. Channel: the inner server's own active
-# pane index, which is not a screen reading at all.
 case_click_selects_pane() {
   CASE_LABEL=click-selects-pane
   split_both
@@ -720,10 +519,6 @@ case_click_selects_pane() {
   unsplit_both
 }
 
-# A user's OWN root mouse binding. This is the premise the whole accepted
-# group rests on: zz parses and stores every mouse key name (zz-mux
-# command.rs parse_mouse_key), so the bind is accepted, and the question is
-# whether the gesture ever reaches it.
 case_click_user_binding() {
   CASE_LABEL=click-user-binding
   run_on_both set-option -gu @mousekey
@@ -747,16 +542,6 @@ case_click_user_binding() {
   run_on_both set-option -gu @mousekey
 }
 
-# The event the binding was invoked FROM. `set-option -F` expands its value
-# through the command's own format tree, which is where format.c publishes
-# mouse_x, mouse_y and mouse_pane from the invoking mouse record.
-#
-# Every first click of a case waits out KEYC_CLICK_TIMEOUT first. A press on
-# the button, location and pane of a press inside its timeout is a SecondClick,
-# and a sabotage can aim one side's click at the pane the next case clicks in.
-# That side then takes the next case's click as a SecondClick no binding
-# claims, the DoubleClick its timer replays raises copy mode, and the copy mode
-# eats the next marker as a jump prompt, on a fast box only.
 outlast_the_pin_click_timeout() {
   sleep 0.35
 }
@@ -778,12 +563,6 @@ case_click_user_binding_target() {
   run_on_both unbind-key -n MouseDown1Pane
   run_on_both set-option -gu @mousectx
 }
-# The target spelling only a bound mouse event can resolve. `cmd_find_target`
-# answers a bare `=` and a bare `{mouse}` from `cmdq_get_event(item)->m`, so a
-# command a mouse binding runs against `-t=` reaches the pane the pointer
-# landed on rather than the active one. The click here lands in pane 1 while
-# pane 0 is active and the binding writes a PANE option through `-t=`, so the
-# pane the spelling resolved to is the pane that carries the option afterwards.
 case_click_mouse_target() {
   CASE_LABEL=click-mouse-target
   split_both
@@ -821,8 +600,6 @@ pin_pane_option_set() {
   [ -n "$(pane_option_value tmux "$1" "$2")" ]
 }
 
-# What the root mouse binding sets. Both sides set the same word in every
-# driven case; the self-check gives one side another.
 BINDING_VALUE_ZZ=""
 BINDING_VALUE_TMUX=""
 binding_value_for() {
@@ -833,14 +610,6 @@ pin_option_set() {
   [ -n "$(option_value tmux "$1")" ]
 }
 
-# The LOCATION half of a mouse key name, on the two locations that are not a
-# pane body. These run AFTER case_status_clicks, because rebinding a name the
-# pin has a stock binding for takes that stock binding away for the rest of the
-# run and status-clicks is what measures it. `server_client_check_mouse` resolves a divider cell to
-# KEYC_MOUSE_LOCATION_BORDER and a status cell inside a window range to
-# KEYC_MOUSE_LOCATION_STATUS, so `MouseDown1Border` and `WheelDownStatus` are
-# the names those gestures carry, and a user's own binding on either has to
-# fire on both binaries.
 case_border_user_binding() {
   CASE_LABEL=border-user-binding
   local right top
@@ -888,8 +657,6 @@ case_status_user_binding() {
   wait_for 'the pin back to one window' pin_window_count_is 1
 }
 
-# `bind -n WheelUpPane { if -F '#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}' { send -M } { copy-mode -e } }`:
-# a wheel over a pane whose program asked for nothing enters copy mode.
 case_wheel_up_pane() {
   CASE_LABEL=wheel-up-pane
   mark_both wheel
@@ -907,13 +674,6 @@ case_wheel_up_pane() {
   leave_copy_mode_both
 }
 
-# `bind -n MouseDrag1Pane { if -F '#{||:#{pane_in_mode},#{mouse_any_flag}}' { send -M } { copy-mode -M } }`
-# with the copy table's `bind -Tcopy-mode MouseDragEnd1Pane { send -X
-# copy-pipe-and-cancel }` behind it: a press, a motion with the button held and
-# a release over a pane whose program asked for nothing enters copy mode,
-# selects, copies and leaves again. The mode is gone by the time the release
-# has been handled, so the observable is the PASTE BUFFER the gesture left,
-# plus the mode midway through the drag, before the release.
 case_drag_selects() {
   CASE_LABEL=drag-selects
   respawn_program_both sh -c "printf 'DRAGLINE alpha beta gamma\n'; exec sleep 600"
@@ -939,10 +699,6 @@ case_drag_selects() {
   respawn_shell_both
 }
 
-# `bind -n DoubleClick1Pane { ... copy-mode -H; send -X select-word; run -d0.3;
-# send -X copy-pipe-and-cancel }` and the TripleClick line sibling. input.rs
-# never sets click_count above 1, so zz-terminal's own double and triple click
-# paths are unreachable from the raw TUI whatever the key tables say.
 case_multi_click() {
   CASE_LABEL=multi-click
   respawn_program_both sh -c "printf 'MULTI alpha beta gamma\n'; exec sleep 600"
@@ -971,7 +727,6 @@ case_multi_click() {
   delete_buffer_both
   respawn_shell_both
 }
-# A side with no buffer at all is not an error here, so this never dies.
 delete_buffer_both() {
   local side
   for side in zz tmux; do
@@ -988,9 +743,6 @@ pin_buffer_has() {
   esac
 }
 
-# `bind -n MouseDown3Pane { ... display-menu ... }`: a right click with no
-# application mouse raises the pin's own pane menu. Channel: the decoded
-# screen, because a menu IS cells.
 case_right_click_pane() {
   CASE_LABEL=right-click-pane
   mark_both rightclick
@@ -1008,27 +760,6 @@ case_right_click_pane() {
   respawn_shell_both
 }
 
-# The sample the two context cases read, printed by a program so the grid is
-# exactly these rows with no prompt and no job-control noise:
-#
-#   row 0  MOUSECTX alpha beta gamma        a plain word, and the marker
-#   row 1  WRAPPEDHEADxxx...                a 139-cell word, so it wraps
-#   row 2  ...xxxLONGTAIL                   the tail of that wrap
-#   row 3  LINKTEXT                         an OSC 8 hyperlink
-#   row 4  MOUSECTXEND                      the settle marker
-#   row 6                                   a blank row
-#
-# The tab row the oracle measured is deliberately absent: the pin's grid keeps
-# a tab as a cell of its own and libghostty keeps the columns it skipped
-# unwritten, which `capture-pane -p` shows on both binaries and which belongs
-# to the engines' grids rather than to these formats.
-#
-# The hyperlink row is absent from the MENU sample for a reason of the same
-# kind, measured here: the pin's client re-emits the OSC 8 sequence when it
-# draws that cell (`^[]8;id=tmux1;https://example.com/page^[\` around the text)
-# and the raw TUI draws the underline without it, so a screen-channel case
-# whose sample carries a link compares that and not the menu. The format probes
-# compare an option's value, not the screen, so they keep the link row.
 CONTEXT_LONG_WORD="WRAPPEDHEAD$(printf 'x%.0s' $(seq 1 120))LONGTAIL"
 context_sample_both() {
   local link=""
@@ -1038,13 +769,6 @@ context_sample_both() {
   settle_both MOUSECTXEND 'the mouse context sample'
 }
 
-# The same stock gesture as right-click-pane/screen, at a cell whose row
-# carries text. `DEFAULT_PANE_MENU` renders four of its items off
-# `#{mouse_word}`, `#{mouse_line}` and `#{mouse_hyperlink}` - Search For, Type
-# and Copy over the word, and Copy Line over the row - so over a written cell
-# the menu the pin draws is taller than the one it draws over a blank one and
-# a side that answers none of the three draws neither. Channel: the decoded
-# screen, the same as the blank-cell case beside it.
 case_right_click_pane_over_a_word() {
   CASE_LABEL=right-click-pane-over-a-word
   context_sample_both
@@ -1062,11 +786,6 @@ case_right_click_pane_over_a_word() {
   respawn_shell_both
 }
 
-# The three names read directly, the way a user's own binding reads them:
-# `set-option -gF` expands its value through the invoking command's format
-# tree, which is where `format_cb_mouse_word`, `format_cb_mouse_line` and
-# `format_cb_mouse_hyperlink` publish the grid under the pointer. Channel: that
-# option's value, one asserted check per cell the gesture lands on.
 CONTEXT_SABOTAGE_CHANNEL=""
 CONTEXT_SABOTAGE_COLUMN=""
 CONTEXT_SABOTAGE_ROW=""
@@ -1096,11 +815,6 @@ context_probe() {
 option_nonempty() {
   [ -n "$(option_value "$1" "$2")" ]
 }
-# The brackets keep the value non-empty whatever the three names answer, so a
-# run where BOTH sides read nothing would compare equal and pass. Every cell
-# but blank-cell carries text, so the pin answering `[][][]` there is the
-# fixture failing to aim, not a difference: hold the run to the pin's own
-# answer before the two sides are compared.
 pin_option_answered() {
   [ "$(option_value tmux "$1")" != '[][][]' ]
 }
@@ -1108,14 +822,6 @@ case_mouse_context_formats() {
   CASE_LABEL=mouse-context
   context_sample_both with-link
   run_on_both set-option -gu @mousectx
-  # A key of its own, so the stock `MouseDown3Pane` the two menu cases need
-  # stays exactly as `key-bindings.c` installed it. `C-MouseDown3Pane` is bound
-  # by neither binary and the gesture is still a real SGR report: the control
-  # bit is 16, so a right press carries button 18.
-  #
-  # The brackets keep the value non-empty whatever the three names answer, so
-  # "the binding ran" and "the binding answered something" are different
-  # questions and the second one is never asked of the comparison.
   run_on_both bind-key -n C-MouseDown3Pane set-option -gF @mousectx \
     '[#{mouse_word}][#{mouse_line}][#{mouse_hyperlink}]'
   local left top
@@ -1131,9 +837,6 @@ case_mouse_context_formats() {
   respawn_shell_both
 }
 
-# `bind -n MouseDrag1Border { resize-pane -M }`. Channel: the width of the
-# pane left of the border. input.rs has no border hit test at all, so a drag
-# that starts on a divider column falls through to whatever owns that cell.
 case_border_drag() {
   CASE_LABEL=border-drag
   split_both
@@ -1160,10 +863,6 @@ pin_pane_width_changed() {
   [ "$(pane_field tmux "=$INNER_SESSION:0.0" 5)" != "$1" ]
 }
 
-# `bind -n MouseDown1Border { select-pane -M }`, and cmd-select-pane.c:137-149
-# makes `-M` on the already-marked pane `server_clear_marked` and never a
-# change of the active pane. Channel: `#{pane_marked_set}` and the active pane
-# index, with pane 1 marked and pane 0 active before the click.
 case_border_click() {
   CASE_LABEL=border-click
   split_both
@@ -1201,13 +900,6 @@ pin_marked_set_is() {
   [ "$(marked_set tmux)" = "$1" ]
 }
 
-# The status line's own ranges. `bind -n MouseDown1Status { switch-client -t= }`
-# resolves the window under the pointer from the range the status line
-# published, so every gesture here is aimed at a WINDOW range: the pin's
-# status keys carry their location, and the empty right of the row is
-# StatusDefault, whose own names (`WheelDownStatusDefault` and the rest) the
-# pin leaves unbound. `WheelUpStatus` and `WheelDownStatus` are
-# previous-window and next-window, and `MouseDown3Status` is the window menu.
 case_status_clicks() {
   CASE_LABEL=status-clicks
   run_on_both new-window -d -t "=$INNER_SESSION:" -n second "$INNER_SHELL"
@@ -1286,10 +978,6 @@ pin_window_count_is() {
   [ "$(side_command tmux list-windows -t "=$INNER_SESSION" -F x | wc -l)" = "$1" ]
 }
 
-# The forward path, which both binaries already have: a program that asked for
-# mouse reporting gets the event, and the two clients have to hand it the same
-# bytes. With `mouse on` the pin reaches it through `send -M` inside its own
-# stock binding; with `mouse off` it never consults a table at all.
 case_app_mouse() {
   local label="$1" mouse="$2"
   CASE_LABEL="app-mouse-$label"
@@ -1313,10 +1001,6 @@ case_app_mouse() {
   respawn_shell_both
   set_on_both mouse on
 }
-# The SGR extension one side's program asks for. Both ask for it in every
-# driven case; the self-check names a side here, whose program then arms the
-# old X10 reporting alone, which changes the spelling of every report that
-# side receives and nothing else.
 SABOTAGE_ENCODING=""
 app_mouse_extra() {
   [ "$SABOTAGE_ENCODING" = "$1" ] && return 0
@@ -1329,16 +1013,6 @@ program_saw() {
   esac
 }
 
-# --- the pin's fallthrough, with tracking armed ----------------------------
-#
-# `\033[?1002h` is BUTTON-EVENT tracking: the pane asks for presses, releases
-# and motion with a button held, which is what a program that wants drags arms.
-# `#{mouse_any_flag}` is then 1 on both binaries, so the pin's own
-# `MouseDown1Pane` and `MouseDrag1Pane` rows take their `send -M` branch and
-# hand their event to the pane. What the two cases below drive is the gestures
-# whose remaining events are bound to NOTHING in the root table, which is where
-# `server_client_handle_key` ends at `forward_key` and `window_pane_key` hands
-# the event to the pane rather than swallowing it.
 arm_button_event_both() {
   local marker="$1" side
   for side in zz tmux; do
@@ -1348,30 +1022,16 @@ arm_button_event_both() {
   done
   settle_both "$marker" "the button-event program behind $marker"
 }
-# The one row a program under tracking prints its reports onto: `cat -v` wraps
-# nothing, so every report of a gesture lands on the row under the marker. The
-# two cases below read that row and nothing else, where the rest of the fixture
-# reads four rows: a message another case left on the row below would otherwise
-# ride along in a channel that is about the reports.
 app_reports() {
   capture_plain "$1" | sed -n "/$2/,\$p" | sed "1d" | sed '/^[[:space:]]*$/d' |
     head -n 1 | cat -v
 }
-# How many SGR reports that row carries: every report this fixture can produce
-# starts `\e[<`.
 report_count() {
   app_reports "$1" "$2" | grep -o -- '\[<' | wc -l | tr -d ' '
 }
 program_saw_reports() {
   [ "$(report_count "$1" "$2")" -ge "$3" ]
 }
-# `KEYC_CLICK_TIMEOUT` is 300 ms and the timer that runs out at the end of it
-# replays the stored press under a `DoubleClick` name, so a reading taken
-# before that has happened cannot see what the replay did. This waits for the
-# report count to HOLD at what it should be for longer than the timeout:
-# twelve consecutive polls at 50 ms, with any poll that finds a different count
-# starting the twelve again. It is a bounded wait on an observable, not a
-# sleep: a count that moves is what it is watching for.
 reports_held() {
   local side="$1" marker="$2" want="$3" attempt held=0
   for ((attempt = 0; attempt < 200; attempt++)); do
@@ -1387,14 +1047,6 @@ reports_held() {
   die "the $side report count never held at $want"
 }
 
-# A press, a motion with the button held and the release that ends the drag.
-# The press is `MouseDown1Pane` and the motion `MouseDrag1Pane`, both stock
-# root rows that run `send -M` while the pane tracks. The release is
-# `MouseDragEnd1Pane`, which `key-bindings.c` installs in the two copy tables
-# and in NEITHER root table: with the client on root and the pane in no mode,
-# root is the first and only table tried, nothing matches, and the pin forwards
-# the release to the pane. Channel: the three reports the program received, in
-# the order it received them.
 case_app_mouse_drag() {
   CASE_LABEL=app-mouse-drag
   arm_button_event_both DRAGREPORT
@@ -1413,16 +1065,6 @@ case_app_mouse_drag() {
   respawn_shell_both
 }
 
-# Two clicks at one cell inside the click timeout. The first press is
-# `MouseDown1Pane` and the first release `MouseUp1Pane`, which root does not
-# bind; the second press is `SecondClick1Pane`, which root does not bind
-# either, so both fall through to the pane the moment they arrive. The timer
-# behind them replays the stored press as `DoubleClick1Pane`, whose stock row
-# does run `send -M` while the pane tracks - and that replayed event is the one
-# `server_client_check_mouse` marks `m->ignore`, which `input_key_mouse` drops.
-# So the pane sees press, release, press, release and nothing else, and the
-# ORDER is the whole point: a second press held back until its timer expires
-# would arrive behind its own release.
 case_app_mouse_double_click() {
   CASE_LABEL=app-mouse-double-click
   arm_button_event_both CLICKREPORT
@@ -1442,9 +1084,6 @@ case_app_mouse_double_click() {
   respawn_shell_both
 }
 
-# Bracketed paste, into a pane, into copy mode, into the command prompt and
-# under a menu. The bytes are a real `\e[200~ ... \e[201~`, which is what the
-# outer terminal sends when a user pastes.
 PASTE_BYTES=$'\033[200~pasted-text\033[201~'
 PASTE_BYTES_ZZ=""
 PASTE_BYTES_TMUX=""
@@ -1547,9 +1186,6 @@ focus_bytes_for() {
   local override="FOCUS_BYTES_${1^^}"
   printf '%s' "${!override:-$FOCUS_BYTES}"
 }
-# Focus reporting, with `focus-events` on and off. The bytes are a real
-# `\e[O` and `\e[I`, which is what a terminal sends when its window loses and
-# regains focus.
 case_focus() {
   local label="$1" events="$2"
   CASE_LABEL="focus-$label"
@@ -1573,21 +1209,6 @@ case_focus() {
   set_on_both focus-events off
 }
 
-# --- the pane modes' own pointer -------------------------------------------
-#
-# `window_pane_key`: a mouse key the root table forwards with `send -M` reaches
-# the PANE, and a pane holding a mode hands it to that mode's key callback with
-# the cell `cmd_mouse_at` resolved. `mode_tree_key` and `window_switch_key` both
-# answer a pointer, so customize-mode and switch-mode each have pointer rows of
-# their own that no key fixture can reach.
-#
-# THE SETTLE FOR A POINTER IN A MODE. The mode's screen is the only observable
-# either binary offers for a selection, so a case cannot wait on a state that is
-# not the comparison itself. Each one waits a bounded two seconds for the two
-# screens to agree - which only gives the slower client time to repaint, and
-# cannot hide a divergence, because the comparison is still taken afterwards on
-# a settled screen and a screen that never agrees still fails - and then settles
-# both sides on four consecutive identical captures.
 MODE_POINTER_SETTLE_POLLS=8
 mode_screens_agree() {
   [ "$(capture_screen zz)" = "$(capture_screen tmux)" ]
@@ -1628,9 +1249,6 @@ mode_leave_both() {
   wait_for 'the pin left its pane mode' pane_in_mode_is tmux "=$INNER_SESSION:0.0" 0
   wait_for 'zz left its pane mode' pane_in_mode_is zz "=$INNER_SESSION:0.0" 0
 }
-# The customize tree and the pin's own tree agree only when the two servers'
-# option values do; `history-limit` and `default-size` are the two this scene
-# has to pin, exactly as compat/tui-client-commands.sh's customize scene does.
 mode_pointer_scene() {
   run_on_both set-option -g history-limit 2000
   run_on_both set-option -t "$INNER_SESSION" default-size \
@@ -1642,9 +1260,6 @@ customize_open_both() {
   settle_pointer
 }
 
-# `mode_tree_key`: a left press inside the tree puts the selection on the line
-# under the pointer, whatever the offset is. The whole decoded screen carries
-# it: the row's own selection style AND the preview title the new line names.
 case_customize_mouse_click() {
   CASE_LABEL=customize-mouse-click
   local left top
@@ -1658,9 +1273,6 @@ case_customize_mouse_click() {
   mode_leave_both
 }
 
-# `mode_tree_key` again: a double click selects the line under the pointer AND
-# turns itself into `\r`, which on an option line is `window_customize_set`
-# raising that option's edit prompt.
 case_customize_mouse_double_click() {
   CASE_LABEL=customize-mouse-double-click
   local left top
@@ -1680,11 +1292,6 @@ case_customize_mouse_double_click() {
   mode_leave_both
 }
 
-# The wheel and a press outside the tree are the two gestures `mode_tree_key`
-# swallows: with a real mouse event in hand it turns every key that is not
-# MouseDown1, MouseDown3 or DoubleClick1 into `KEYC_NONE`, and a press below
-# the tree's own height leaves the selection alone. Both are asserted BECAUSE
-# they do nothing: a client that scrolled or entered copy mode here would not.
 case_customize_mouse_quiet() {
   CASE_LABEL=customize-mouse-quiet
   local left top
@@ -1705,9 +1312,6 @@ case_customize_mouse_quiet() {
   mode_leave_both
 }
 
-# `prompt_mouse`: a left press on the prompt's own row moves the prompt cursor
-# to the cell it landed on. The cursor is not in a capture, so the case types a
-# character afterwards and compares where it landed.
 case_customize_mouse_prompt() {
   CASE_LABEL=customize-mouse-prompt
   local left top
@@ -1729,10 +1333,6 @@ case_customize_mouse_prompt() {
   mode_leave_both
 }
 
-# `window_switch_key`'s mouse half: the wheel steps the selection one row
-# without wrapping, a left press picks the row under the pointer, and a double
-# click runs the template on it, which is a session switch the client itself
-# reports.
 case_switch_mouse() {
   CASE_LABEL=switch-mouse
   local left top
@@ -1772,12 +1372,6 @@ client_session() {
 client_session_is() {
   [ "$(client_session "$1")" = "$2" ]
 }
-# The tree menu opens with its top border on the press row, so its items start
-# one row lower: Select, Edit (3.8's window_customize_menu_items), Expand, a
-# separator, Tag, Tag All, Tag None, a separator, Changed Only, a separator and
-# Cancel. Tag is the press row plus five and Tag All plus six; a release on a
-# separator closes the menu as quietly as a release on the press cell, so the
-# drag sabotage could only be caught by a gesture aimed at a real item.
 MENU_RELEASE_SABOTAGE_SIDE=""
 MENU_DRAG_SABOTAGE=""
 MENU_TAGALL_SABOTAGE=""
@@ -1939,17 +1533,6 @@ case_customize_mouse_menu_outside() {
   check_screen MODE_POINTER customize-mouse-menu-outside-cancel/screen
 }
 
-# Floating panes under the pointer, tmux 3.8's bound drags: `C-MouseDrag1Pane`
-# and `C-MouseDrag1Empty` run `new-pane -M`, which creates a float spanning the
-# press to the pointer (`cmd_split_window_mouse_resize`); `M-MouseDrag1Pane`
-# runs `move-pane -M`; `MouseDrag1Border` on a float resizes it from the edge
-# or corner the press grabbed and moves it from the top border
-# (`cmd_resize_pane_mouse_resize_move_floating`). Each command arms
-# `c->tty.mouse_drag_update`, so every later report of the gesture drives the
-# same float until the release, whatever key it would name: each gesture's
-# last motion drops its modifier and runs over the float it drives. Channel:
-# every floating pane's size and position, and the active pane's id.
-# FLOAT_SABOTAGE_COLUMN moves zz's last motion of each gesture.
 FLOAT_SABOTAGE_COLUMN=""
 FLOAT_ROW_OFFSET=0
 FLOAT_PREFIX=""
@@ -2093,11 +1676,6 @@ run_float_cases() {
   case_float_status_top
 }
 
-# --- dispositions ----------------------------------------------------------
-#
-# Each mode below is `same` where the two binaries are measured to agree and
-# `record` where they do not, fixed here and never discovered at runtime, so a
-# sabotage can drive a recorded channel in a case where it asserts.
 USER_BINDING_MODE=same
 USER_BINDING_REASON=""
 FLOAT_MODE=same
@@ -2180,11 +1758,6 @@ run_cases() {
   exit 0
 }
 
-# --- self-check ------------------------------------------------------------
-#
-# Each sabotage drives the same case with ONE deliberate one-sided difference
-# and requires an ASSERTED check in that case to report it. A recorded check
-# cannot satisfy a sabotage: it never fails.
 SELF_CHECK_FAILURES=0
 
 customize_sabotage() {
@@ -2213,23 +1786,16 @@ self_check_case() {
     "$name" "$differed" "$expectation"
 }
 
-# The same root mouse binding set to a different value on one side. Both
-# binaries run their own binding now, so click-user-binding/option carries the
-# difference and nothing else can.
 sc_one_sided_binding_value() {
   BINDING_VALUE_ZZ=other
   case_click_user_binding
   BINDING_VALUE_ZZ=""
 }
-# The border name's own binding set differently on one side.
 sc_one_sided_border_binding() {
   BINDING_VALUE_ZZ=other
   case_border_user_binding
   BINDING_VALUE_ZZ=""
 }
-# zz's click aimed at the pane it is already in while the pin's lands in the
-# other one. click-selects-pane/active-pane is the only asserted check in that
-# case and has to carry the difference.
 sc_one_sided_click_target() {
   CLICK_SABOTAGE_SIDE=zz
   CLICK_SABOTAGE_COLUMN=3
@@ -2237,37 +1803,27 @@ sc_one_sided_click_target() {
   CLICK_SABOTAGE_SIDE=""
   CLICK_SABOTAGE_COLUMN=""
 }
-# A different paste on one side. paste-into-pane/received is the only asserted
-# check in that case and has to carry the difference.
 sc_one_sided_paste() {
   PASTE_BYTES_ZZ=$'\033[200~other-text\033[201~'
   case_paste_into_pane
   PASTE_BYTES_ZZ=""
 }
-# The SGR extension dropped from one side's program. Both clients then hand
-# that program a report in the old X10 spelling and the other side an SGR one,
-# and app-mouse-mouse-on/report is where that shows.
 sc_one_sided_mouse_encoding() {
   SABOTAGE_ENCODING=zz
   case_app_mouse sc-encoding on
   SABOTAGE_ENCODING=""
 }
-# Only the focus-out report sent to one side.
 sc_one_sided_focus() {
   FOCUS_BYTES_ZZ=$'\033[O'
   case_focus sc-focus on
   FOCUS_BYTES_ZZ=""
 }
-# A status-left only one side carries. status-clicks/row is asserted whole.
 sc_one_sided_status_left() {
   side_command zz set-option -g status-left LL >/dev/null
   case_status_clicks
   side_command zz set-option -g status-left L >/dev/null
 }
 
-# The context click aimed one cell further along on zz. The binding sets the
-# same word on both sides, so click-user-binding-target/context is the only
-# asserted check that can carry it, and it carries it in mouse_x.
 sc_one_sided_mouse_context() {
   CLICK_SABOTAGE_SIDE=zz
   CLICK_SABOTAGE_COLUMN=$(($(pane_field tmux "=$INNER_SESSION:0.0" 1) + 9))
@@ -2275,8 +1831,6 @@ sc_one_sided_mouse_context() {
   CLICK_SABOTAGE_SIDE=""
   CLICK_SABOTAGE_COLUMN=""
 }
-# zz's target click aimed into pane 0 while the pin's lands in pane 1, so the
-# pane each side's `-t=` resolved to is a different pane.
 sc_one_sided_mouse_target() {
   CLICK_SABOTAGE_SIDE=zz
   CLICK_SABOTAGE_COLUMN=3
@@ -2284,7 +1838,6 @@ sc_one_sided_mouse_target() {
   CLICK_SABOTAGE_SIDE=""
   CLICK_SABOTAGE_COLUMN=""
 }
-# zz's border drag released four cells short of the pin's.
 sc_one_sided_border_drag() {
   local right
   right="$(pane_field tmux "=$INNER_SESSION:0.0" 3)"
@@ -2297,17 +1850,11 @@ sc_one_sided_float_drag() {
   case_float_move
   FLOAT_SABOTAGE_COLUMN=""
 }
-# The pin's own `WheelDownStatus` unbound on zz only, so a wheel over the
-# status row steps the pin's window and leaves zz's where it was. Both wheel
-# checks carry it: the wheel up then steps zz back from window 0.
 sc_one_sided_status_wheel() {
   side_command zz unbind-key -T root WheelDownStatus >/dev/null 2>&1
   case_status_clicks
   side_command zz bind-key -T root WheelDownStatus next-window >/dev/null 2>&1
 }
-# The pin's own `WheelUpPane` unbound on zz only, so the wheel enters the pin's
-# copy mode and leaves zz scrolling its own viewport, which is no mode at all.
-# Both wheel checks carry it.
 sc_one_sided_wheel_up_pane() {
   side_command zz unbind-key -T root WheelUpPane >/dev/null 2>&1
   case_wheel_up_pane
@@ -2315,20 +1862,12 @@ sc_one_sided_wheel_up_pane() {
     'if-shell -F "#{||:#{alternate_on},#{pane_in_mode},#{mouse_any_flag}}" { send-keys -M } { copy-mode -e }' \
     >/dev/null 2>&1
 }
-# The copy table's own `MouseDragEnd1Pane` unbound on zz only, so zz's drag
-# selects and stays in the mode where the pin's copies and leaves. All three
-# drag checks carry it.
 sc_one_sided_drag_end() {
   side_command zz unbind-key -T copy-mode MouseDragEnd1Pane >/dev/null 2>&1
   case_drag_selects
   side_command zz bind-key -T copy-mode MouseDragEnd1Pane \
     send-keys -X copy-pipe-and-cancel >/dev/null 2>&1
 }
-# The pin's own `DoubleClick1Pane` unbound on zz only. The second press still
-# becomes a `SecondClick` on both sides and the timer still expires, so the
-# difference is only in what the expiring timer runs, and multi-click's double
-# check is the one that can carry it: the triple click that follows runs the
-# row that is still bound on both sides.
 sc_one_sided_double_click() {
   side_command zz unbind-key -T root DoubleClick1Pane >/dev/null 2>&1
   case_multi_click
@@ -2336,40 +1875,22 @@ sc_one_sided_double_click() {
     'select-pane -t= ; if-shell -F "#{||:#{pane_in_mode},#{mouse_any_flag}}" { send-keys -M } { copy-mode -H ; send-keys -X select-word ; run-shell -d 0.3 ; send-keys -X copy-pipe-and-cancel }' \
     >/dev/null 2>&1
 }
-# A longer paste on zz only. The menu eats the same leading characters on both
-# sides and `a` picks the same item on both, so the option is unmoved and the
-# tail the pane is left holding is the whole difference.
-# paste-under-menu/screen is the only channel that can carry it.
 sc_one_sided_menu_paste_tail() {
   PASTE_BYTES_ZZ=$'\033[200~pasted-text-and-more\033[201~'
   case_paste_under_menu
   PASTE_BYTES_ZZ=""
   respawn_shell_both
 }
-# zz's own pane marked and the pin's not. Both sides still raise the pin's pane
-# menu, so the case's waits are unmoved and the two rows the mark decides -
-# `#{?pane_marked_set,,-}Swap Marked` and `#{?pane_marked,Unmark,Mark}` - are
-# the whole difference. right-click-pane/screen is the only channel that can
-# carry it.
 sc_one_sided_marked_pane() {
   side_command zz select-pane -m -t "=$INNER_SESSION:0.0" >/dev/null 2>&1
   case_right_click_pane
   side_command zz select-pane -M >/dev/null 2>&1
 }
-# zz's own `word-separators` set to a value that cuts the word under the
-# pointer differently. Both sides still raise the pin's pane menu over the same
-# cell and both still carry `Copy Line`, so the case's waits are unmoved and
-# the three items the menu renders off `#{mouse_word}` are the whole
-# difference. right-click-pane/over-a-word is the only channel that can carry
-# it.
 sc_one_sided_menu_context_word() {
   side_command zz set-option -g word-separators 'aeiou' >/dev/null
   case_right_click_pane_over_a_word
   side_command zz set-option -gu word-separators >/dev/null
 }
-# One of the five context probes aimed at a different cell on zz. Every other
-# probe in the case is aimed at the same cell on both sides, so the sabotaged
-# channel is the only one that can report.
 sc_one_sided_context_channel() {
   local channel="$1" left top
   left="$(pane_field tmux "=$INNER_SESSION:0.0" 1)"
@@ -2388,10 +1909,6 @@ sc_one_sided_context_channel() {
   CONTEXT_SABOTAGE_ROW=""
 }
 
-# `key-bindings.c`'s own `DEFAULT_WINDOW_MENU`, the eleven items the pin's
-# `MouseDown3Status` raises. It is spelled out once here so the position
-# sabotage below can rebind zz with the SAME menu and nothing but the position
-# changed.
 WINDOW_MENU_ITEMS=(
   '#{?#{>:#{session_windows},1},,-}Swap Left' l '{ swap-window -t :-1 }'
   '#{?#{>:#{session_windows},1},,-}Swap Right' r '{ swap-window -t :+1 }'
@@ -2413,70 +1930,39 @@ bind_window_menu_on_zz() {
       "${WINDOW_MENU_ITEMS[@]}" >/dev/null 2>&1
   done
 }
-# zz's window menu raised at the screen CENTRE instead of over the status
-# range the gesture landed in. The eleven items, the title and the borders are
-# the pin's on both sides and only where the menu sits differs, so
-# status-clicks/right-click-screen is the only channel that can carry it and it
-# carries exactly the `-x W` and `-y W` this landing made answer from the
-# invoking event.
 sc_one_sided_status_menu_position() {
   bind_window_menu_on_zz C C
   case_status_clicks
   bind_window_menu_on_zz W W
 }
-# The pin's own `MouseDown1Border` unbound on zz only, so zz's border click
-# runs nothing and the pane it had marked stays marked. This has to run before
-# the border-binding sabotage: that one's case rebinds `MouseDown1Border` and
-# unbinds it again, which takes the pin's stock binding away for the rest of
-# the run.
 sc_one_sided_border_click() {
   side_command zz unbind-key -T root MouseDown1Border >/dev/null 2>&1
   case_border_click
   side_command zz bind-key -T root MouseDown1Border select-pane -M >/dev/null 2>&1
 }
-# `MouseDragEnd1Pane` bound in zz's ROOT table only. The name is the one a
-# release that ends a drag carries, and a binding that claims it is a binding
-# that stops it falling through to the pane, so zz's program sees the press and
-# the motion and never the release. The binding sets a user option, which is
-# silent: nothing but the missing report reaches the screen. app-mouse-drag/reports is the only asserted
-# check in that case and has to carry it.
 sc_one_sided_drag_release() {
   side_command zz bind-key -T root MouseDragEnd1Pane set-option -g @claimed dragend >/dev/null
   case_app_mouse_drag
   side_command zz unbind-key -T root MouseDragEnd1Pane >/dev/null
   side_command zz set-option -gu @claimed >/dev/null 2>&1
 }
-# `SecondClick1Pane` bound in zz's ROOT table only, so zz's second press is
-# claimed by a binding where the pin's falls through to the pane and zz's
-# program sees three reports where the pin's sees four.
-# app-mouse-double-click/reports is the only asserted check in that case and
-# has to carry it.
 sc_one_sided_second_click() {
   side_command zz bind-key -T root SecondClick1Pane set-option -g @claimed second >/dev/null
   case_app_mouse_double_click
   side_command zz unbind-key -T root SecondClick1Pane >/dev/null
   side_command zz set-option -gu @claimed >/dev/null 2>&1
 }
-# zz out of copy mode before the paste, so its pane takes the text the mode
-# would have eaten. paste-into-copy-mode/after-cancel-screen is where the two
-# screens part.
 sc_one_sided_copy_mode_paste() {
   COPY_PASTE_SABOTAGE_SIDE=zz
   case_paste_into_copy_mode
   COPY_PASTE_SABOTAGE_SIDE=""
 }
-# Only the focus-out report sent to one side, with focus-events OFF: the pane
-# asked for reports and gets them on both sides whatever the option says, so
-# the case asserts and the missing report is a difference.
 sc_one_sided_focus_off() {
   FOCUS_BYTES_ZZ=$'\033[O'
   case_focus sc-focus-off off
   FOCUS_BYTES_ZZ=""
 }
 
-# zz's click inside the customize tree aimed at another line while the pin's
-# lands on the one the case names. customize-mouse-click/screen is the only
-# asserted check in that case and has to carry the difference.
 sc_one_sided_customize_click() {
   mode_pointer_scene
   CLICK_SABOTAGE_SIDE=zz
@@ -2485,8 +1971,6 @@ sc_one_sided_customize_click() {
   CLICK_SABOTAGE_SIDE=""
   CLICK_SABOTAGE_ROW=""
 }
-# switch-mode's own wheel row not driven on zz. switch-mouse-wheel-up/screen is
-# the check that has to report it.
 sc_one_sided_switch_wheel() {
   mode_pointer_scene
   WHEEL_SABOTAGE_SIDE=zz

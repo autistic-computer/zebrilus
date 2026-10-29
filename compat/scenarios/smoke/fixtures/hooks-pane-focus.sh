@@ -59,8 +59,6 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 
-# Each walk gets its own server name: reusing one across the two walks raced the
-# kill-server that ended the first one.
 start_probe() {
     if [ -n "${ZZ_SMOKE_ZZ_BIN:-}" ]; then
         probe_socket="/tmp/zzpf-$$-$1.sock"
@@ -96,7 +94,6 @@ stop_probe() {
     probe_label=""
 }
 
-# Every hook body is a blocking run-shell, so the log is the queue order.
 install_hooks() {
     for hook in pane-focus-in pane-focus-out window-pane-changed \
         session-window-changed client-session-changed client-attached \

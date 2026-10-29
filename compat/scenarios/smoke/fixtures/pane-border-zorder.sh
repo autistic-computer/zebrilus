@@ -64,10 +64,6 @@ lines_snap() {
     record capture-pane -p -t recorder >"$snaps/$2" 2>/dev/null || : >"$snaps/$2"
 }
 
-# The one cell where the middle row's vertical divider ends on the row below it
-# is the only tie: the panes on both sides of that divider each own the cell's
-# top. Locate it by its up tee under `single` and read the owner's index off the
-# same cell under `number`, which is a plain ASCII digit on both clients.
 junction_owner() {
     python3 - "$snaps/single" "$snaps/number" <<'PY'
 import io, sys
@@ -102,10 +98,6 @@ recorder_started=1
 record set-option -g status off
 sleep 1.8
 
-# The three panes were all created in this window, so w->z_index is their
-# creation order and matches their ids. Split the middle row and the tie at the
-# junction goes to the older of the two panes beside it, which is the middle
-# row's original pane at index 1.
 main_client split-window -h -t "=$session:joined.1"
 main_client select-pane -t "=$session:joined.0"
 lines_snap single single
@@ -113,11 +105,6 @@ lines_snap number number
 check_equal created-here-gives-the-junction-to-the-older-pane 1 "$(junction_owner)"
 main_client kill-pane -t "=$session:joined.2"
 
-# Now put the same pane there by joining the oldest pane on the server instead.
-# window_add_pane appends every tiled pane to the tail of z_index and join-pane
-# inserts the moved pane right after its destination, so the joined pane is
-# after the middle row's own pane in z_index even though it is older and carries
-# the lower pane id. The junction stays with the destination pane at index 1.
 main_client join-pane -h -s "=$session:0.0" -t "=$session:joined.1"
 main_client select-pane -t "=$session:joined.0"
 lines_snap single single

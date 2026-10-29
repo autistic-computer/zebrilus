@@ -1,91 +1,4 @@
 #!/usr/bin/env bash
-# Whole-screen differential for the indicator, message and prompt surfaces.
-#
-# tui-screen-diff.sh drives the canvas: splits, zooms, borders, sizes, status
-# options. Every state it reaches is one an ordinary tmux command produces and
-# leaves. None of them is TRANSIENT chrome - copy mode's position indicator, the
-# view surface, the armed prefix, a message that expires, a prompt that is typed
-# into and cancelled. Those five are what TUI-004's third acceptance clause is
-# about, and no campaign proof ever drew one.
-#
-# THE DECODED SCREEN IS THE CONTRACT, NOT THE BYTE STREAM. Both binaries attach
-# inside ONE outer pinned tmux, one window each, and the outer tmux is the
-# decoder: `capture-pane -p -e` re-emits SGR from its own grid, so attribute
-# order, batching, redundant resets and cursor-movement spelling collapse on
-# both sides before anything is compared, while the colour CLASS does not. The
-# whole visible screen is compared row index by row index, plus the cursor tuple
-# the inner client left in the outer terminal. This is the same contract
-# tui-screen-diff.sh states at greater length; the driver below is
-# status-row.sh's, widened from one row to the screen.
-#
-# CONTROLLED DYNAMIC VALUES, set on both sides before the first checkpoint:
-#   status-right ''      the default ends in a clock and in %d-%b-%y, which the
-#                        pin expands through libc strftime and zz expands
-#                        locale-independently. That belongs to status-row.sh.
-#   status-left L        a fixed literal, so the left of the row is asserted
-#                        rather than emptied.
-#   automatic-rename off plus rename-window win: the default name follows the
-#                        running command and would race a marker.
-#   select-pane -T title fixed: the pin seeds a pane title from gethostname and
-#                        zz reports the shell name through its shell
-#                        integration - the recorded pane.runtime-facts
-#                        decision, not a divergence of this screen.
-#   display-time         the message case's own clock. status.c
-#                        status_message_set arms a timer of display-time
-#                        milliseconds (default 750, options-table.c:844), so a
-#                        message left at the default would expire between the
-#                        two sides' captures. MESSAGE_HOLD_MS holds it open for
-#                        the during-comparison and MESSAGE_EXPIRE_MS retires it
-#                        for the restoration one; both are set on both sides.
-#   copy-mode-position-format
-#                        the pin's default begins with #{t/p:top_line_time},
-#                        the timestamp of the line at the top of the copy-mode
-#                        screen. Pinned on both sides to the rest of that
-#                        default - #[align=right][#{copy_position}/#{copy_
-#                        position_limit}] - so the indicator still draws and
-#                        carries no clock.
-#   the inner shell      ENV= PS1='$ ' exec /bin/sh: no rc file, and a prompt
-#                        that carries no host, user, path or clock.
-# Nothing else is masked. Anything not in that list is compared.
-#
-# SETTLED CHECKPOINTS, AND WHY THIS FIXTURE MARKS BEFORE IT ACTS. tui-screen-
-# diff.sh ends every checkpoint by typing `printf 'MARK-%s\n' NAME` into the
-# pane. Three of the five surfaces here SWALLOW that keystroke: a pane in copy
-# mode feeds it to the mode's key table, an armed prefix eats it, and an open
-# command prompt puts it in the prompt. So each case here marks FIRST, waits for
-# the marker to settle on both screens, and only then applies the state. The
-# marker stays on the screen underneath every one of these surfaces, so the
-# settle after the state is the same bounded wait: the marker present AND the
-# screen unchanged between two polls.
-#
-# AND EVERY STATE HAS ITS OWN OBSERVABLE, waited for before the settle, so no
-# comparison can be taken while one side has the state and the other does not:
-#   copy and view       #{pane_in_mode} against the pane
-#   prefix              #{client_prefix} against the client, which is why the
-#                       prefix is pressed as a real key into the outer pane and
-#                       not injected with send-keys: the prefix is a CLIENT key
-#                       table state and send-keys writes to the pane, under it.
-#   message and prompt  the text itself, on the last row of both screens
-#
-# MODES. `same` asserts the whole decoded screen and the cursor. `text` asserts
-# every glyph, every column and the cursor and records only the styles, for a
-# surface whose colours belong to a decision this lane does not own. `record`
-# asserts nothing and has to say why. A recorded case still prints both sides,
-# so the lane that closes it has the bytes without re-deriving them.
-#
-# --self-check runs the driver against a deliberate one-sided difference in each
-# channel - an extra hint cell on the status row, a message whose text differs,
-# a prompt that one side leaves open as residue, the copy position painted in
-# another style, the view surface drawn from another position format, the
-# message and the prompt painted in another style, a selection one side makes
-# with the vi table, and a view one side opens on the active pane so that it
-# swallows the typed keys - and requires the comparison to report each one,
-# plus one equivalence it must NOT report. A fixture that only passes has
-# proved nothing.
-#
-# A divergence is a finding, not a failure of this script: it exits 1 so a
-# caller can gate on it, and prints both sides so the next lane has the
-# measurement.
 set -eEuo pipefail
 
 usage() {
@@ -200,8 +113,6 @@ die() {
   exit 2
 }
 
-# A wait that runs out has to say what it was waiting for and what both screens
-# held at that moment, or the next run starts from nothing.
 dump_state() {
   local label="$1"
   local side
@@ -283,9 +194,6 @@ run_on_both() {
   side_command zz "$@" || die "zz refused $1"
   side_command tmux "$@" || die "tmux refused $1"
 }
-# The pane id is substituted where the caller wrote PANE, never appended: tmux's
-# argument parser stops at the first positional, so `run-shell 'cmd' -t %0` would
-# hand the -t to the shell.
 on_both_active() {
   local side pane argument
   local -a arguments
@@ -311,9 +219,6 @@ send_both() {
     side_command "$side" send-keys -t "$pane" "$1" Enter || die "$side refused send-keys"
   done
 }
-# A real key into the outer pane, which the attached inner client reads as a
-# keystroke. This is the only way to reach a CLIENT key table: send-keys writes
-# into the pane, underneath it.
 type_on_both() {
   local side
   for side in zz tmux; do
@@ -355,11 +260,6 @@ attach_both_at() {
 screen_has_marker() {
   capture_plain "$1" | grep -Fq "$2"
 }
-# THE SETTLE. The marker alone is not enough: the shell writes a marker and its
-# next prompt as two separate writes, and a capture can land between them. A
-# checkpoint is settled when the marker is on the screen AND the screen has not
-# changed between two polls. Both halves are observable and the whole wait is
-# bounded. No wait in this file is a sleep.
 wait_settled() {
   local side="$1"
   local marker="$2"
@@ -383,9 +283,6 @@ settle_both() {
   wait_settled tmux "$1" "$2 settled on the tmux screen"
 }
 
-# The marker this case's comparisons settle on, typed into the pane BEFORE the
-# state under test is applied. Everything after this in the case leaves it on
-# the screen.
 mark_both() {
   local name="$1"
   send_both "printf 'MARK-%s\\n' $name"
@@ -433,9 +330,6 @@ compare_rows() {
   return 1
 }
 
-# The named comparison. `same` asserts the whole decoded screen and the cursor.
-# `text` asserts every glyph, every column and the cursor and records only the
-# styles. `record` asserts nothing and has to say why.
 verdict() {
   local name="$1"
   local mode="$2"
@@ -476,12 +370,6 @@ verdict() {
   return 0
 }
 
-# The two-pane comparison: every row styled, the divider row included, plus the
-# cursor. MEASURED 2026-09-11 (TUI-004 attempt-04): redraw_draw_border_span
-# paints the divider in window_pane_get_border_style over the default ground,
-# fg=themelightgrey over the inactive pane's half and fg=themegreen over the
-# active pane's (redraw_mark_two_pane_colours), and the raw TUI paints the same
-# cells, so the divider is asserted whole like every other row.
 compare_split_rows() {
   local name="$1"
   local divider="$2"
@@ -585,20 +473,6 @@ seed_scrollback() {
   send_both 'seq 1 60'
 }
 
-# --- the cases -------------------------------------------------------------
-#
-# COPY MODE. window-copy.c:5228 draws copy-mode-position-format at the top right
-# of the pane's own grid, in copy-mode-position-style, whenever the mode
-# screen's first line is written and hide_position is off, and leaves the status
-# row alone. Measured 2026-09-10 on this pair: the pin paints `[0/45]` at
-# columns 74..79 of row 0, themeblack on themeyellow, with its cursor in the
-# pane at the copy cursor. Until cycle 5 the raw TUI painted nothing in the pane
-# and a ` COPY 62/62 ` badge on the STATUS ROW. The daemon now expands the
-# format against the pane's mode - #{copy_position} is the rows below the view
-# and #{copy_position_limit} the history size, the pin's own oy and hsize - and
-# publishes it on StatusLine with the two resolved styles, and the raw TUI draws
-# exactly those cells over the pane's first row. Asserted whole, and so is the
-# restoration once the mode is cancelled.
 copy_mode_case() {
   CASE_LABEL=copy-mode
   mark_both copy
@@ -612,34 +486,12 @@ copy_mode_case() {
   verdict copy-mode-restored same
 }
 
-# THE VIEW SURFACE, measured before it was written. The pin has no `view-mode`
-# command: window_view_mode (window-copy.c:184) is reached from cfg.c:271 for a
-# config error, from cmd-run-shell.c:103 for the output of run-shell, and from
-# server-client.c:3061; `copy-mode -e` is not a second surface at all, it is
-# copy mode with window-copy.c:616 scroll_exit set, and both binaries answer
-# #{pane_mode} copy-mode for it. So the view surface the pin actually reaches is
-# run-shell's, and that is what this case drives.
-#
-# MEASURED 2026-09-10: run-shell -t pane 'printf VIEWLINE-1' puts the pin's pane
-# in view-mode with the output as the pane's whole screen, `[0/0]` at the top
-# right and the cursor at the pane's origin; longer output opens at its top
-# (`[78/78]` for 101 lines in 23 rows) and Enter or q leaves it. Until cycle 5 zz
-# drew a client-side command-output overlay with a ` command output ` rule
-# across row 0 and a ` VIEW 1/21 ` badge on the status row. The raw TUI now draws
-# the output inside the target pane's own rectangle, sized to it, with the
-# position cells copy mode draws, and clears a trailing blank run the way
-# tty_draw_line does, which is what makes the row under `[0/0]` decode the same
-# on both sides. Asserted whole; Escape into each client brings both screens
-# back.
 view_surface_case() {
   CASE_LABEL=view-surface
   mark_both view
   on_both_active run-shell -t PANE 'printf VIEWLINE-1'
   both_screen_has VIEWLINE-1 'the run-shell output'
   wait_for 'the pin entered view mode' pane_in_mode_is tmux 1
-  # The view surface REPLACES the screen on both sides, so the marker typed
-  # before it is no longer on either screen. The output itself is what both
-  # sides show, so it is what this checkpoint settles on.
   settle_both VIEWLINE-1 'the view surface'
   verdict view-surface-shown same
   type_on_both Escape
@@ -648,12 +500,6 @@ view_surface_case() {
   verdict view-surface-restored same
 }
 
-# LONG OUTPUT, the surface the choosers lane relies on. MEASURED 2026-09-10: the
-# pin opens a hundred-line run-shell output at its TOP, `[78/78]` in the first
-# row (oy is the whole history, the view scrolled all the way up), the cursor at
-# the pane's origin, and two Downs move the cursor two rows without moving the
-# view. q leaves it. The raw TUI now draws the same cells at each of those
-# checkpoints. Asserted whole at each.
 view_long_case() {
   CASE_LABEL=view-long
   mark_both vlong
@@ -671,16 +517,6 @@ view_long_case() {
   verdict view-long-restored same
 }
 
-# THE PREFIX. The pin paints NOTHING when the prefix is armed: status.c redraws
-# the row from the same formats it always uses and no default format reads
-# #{client_prefix}. Measured 2026-09-10 at the tip this fixture was written
-# against, the raw TUI painted ` PREFIX ` over the right of the status row, so
-# the two screens differed in six cells for as long as a user held C-b. That is
-# the divergence this case exists to catch and it is not waivable: the cells are
-# on the screen the contract compares. crates/zz-tui/src/render.rs now keeps the
-# hint to the sidebar, which is client-local chrome the pin has no counterpart
-# for and which only focus-sidebar shows, and the status row overlay carries the
-# mode badge alone.
 prefix_case() {
   CASE_LABEL=prefix
   mark_both prefix
@@ -694,19 +530,6 @@ prefix_case() {
   verdict prefix-released same
 }
 
-# DISPLAY-MESSAGE. status.c status_message_set puts the message on the status
-# row and arms a display-time timer; when it fires the row is redrawn from its
-# formats. Both halves are compared: the row while the message is up, and the
-# row once it has expired.
-#
-# MEASURED 2026-09-10: status_message_redraw paints the text in message-style
-# (bg=themeyellow,fg=themeblack, options-table.c:941) and clears the rest of the
-# row to that background with the default foreground, which the decoder shows as
-# a trailing \e[39m. Until cycle 5 the raw TUI painted its own overlay
-# appearance, \e[38;2;16;19;24m\e[48;2;216;222;233m, because the daemon
-# published no resolved message style. StatusLine now carries message-style and
-# message-command-style resolved per client, and the raw TUI paints the pin's
-# cells. Asserted whole.
 message_case() {
   CASE_LABEL=display-message
   mark_both message
@@ -730,12 +553,6 @@ message_case() {
   set_on_both display-time "$MESSAGE_HOLD_MS"
 }
 
-# A KEY BINDING THAT FAILS. cmd-queue.c cmdq_error gives a client with a
-# session the uppercased error through status_message_set(c, -1, 1, 0, 0): a
-# message like any other, timed by display-time, and the next key clears it
-# (server_client_handle_key) and still reaches the pane. Three rows are
-# compared: the message held up, the row a key cleared, and the row once
-# display-time expired.
 binding_error_case() {
   CASE_LABEL=binding-error
   mark_both binderror
@@ -760,17 +577,6 @@ binding_error_case() {
   set_on_both display-time "$MESSAGE_HOLD_MS"
 }
 
-# THE COMMAND PROMPT. Opened through the client's own keys - prefix then `:`,
-# which is bind-key -T prefix : command-prompt on both sides - because
-# `command-prompt -t <client>` from a one-shot client does not return until the
-# prompt is answered, so a fixture that drove it that way would deadlock. That
-# was measured, not assumed.
-#
-# MEASURED 2026-09-10: `:` alone, then `:list`, with the cursor at column 1 and
-# then column 5 of the last row, in message-style and cleared to the row's end
-# the way the message row is. prompt.c prompt_draw takes message-command-style
-# only for a prompt in its vi command mode, which neither side is in here.
-# Asserted whole, and so is the cancelled prompt.
 prompt_case() {
   CASE_LABEL=command-prompt
   mark_both prompt
@@ -790,15 +596,6 @@ prompt_case() {
   verdict prompt-cancelled same
 }
 
-# THE SELECTION. window_copy_update_selection paints the selection in
-# copy-mode-selection-style, merged the way screen_select_cell merges it, and
-# screen_check_selection drops the bottom-right-most cell of a non-rectangle
-# selection when the emacs table is in use, where the vi table keeps it. So the
-# one selection is compared three ways: the emacs table with the default style,
-# the vi table, and one custom style set on both sides. The selection is drawn
-# with send-keys -X on the pane: up to the marker line, to its start, begin,
-# then four cells right. The observable is the styled screen itself changing on
-# both sides, waited for before the settle.
 styled_screen_differs() {
   [ "$(capture_screen "$1" 2>/dev/null)" != "$2" ]
 }
@@ -834,24 +631,6 @@ selection_case() {
   [ -z "$style" ] || run_on_both set-option -gu copy-mode-selection-style
 }
 
-# KEYS WHILE A VIEW SURFACE SITS ON ANOTHER PANE. The pin's view mode belongs to
-# the pane it was opened on: server_client_handle_key takes a mode's key table
-# only from the ACTIVE pane of the client's window, so keys typed while the view
-# sits on a pane the client is not in go to the active pane as usual.
-#
-# MEASURED 2026-09-10 (the reviewer's R9 and R10): run-shell -t on a pane in a
-# window the client is not showing, or on a visible pane that is not the active
-# one, and then typing through the client. The pin runs the typed command in the
-# active pane. zz at the first cycle-5 tip drew the output only inside its
-# pane's rectangle but kept the command output client-modal: the TUI sent every
-# key to it and the daemon swallowed every key that did not bind in the copy
-# table, so the screen never changed. The TUI now routes keys to the output only
-# while its pane is the active pane, and the daemon hands the client's key table
-# back while keys target another pane, so both screens run the command.
-#
-# Each case waits for the pin's pane to be in view mode, and for zz's client key
-# table to read a copy table, which is what zz sets when it opens an output, so
-# neither side is typed into before its surface exists.
 client_key_table_is_a_copy_table() {
   case "$(side_command zz list-clients -F '#{client_key_table}' 2>/dev/null | head -n 1)" in
   copy-mode | copy-mode-vi) return 0 ;;
@@ -874,9 +653,6 @@ window_count_is() {
 pane_count_is() {
   [ "$(side_command "$1" list-panes -t "=$INNER_SESSION" -F x 2>/dev/null | wc -l)" = "$2" ]
 }
-# The typed command's output is the marker: it exists only once the command ran
-# in the pane the keys reached. A side whose keys were swallowed never shows it,
-# so its wait is soft and the comparison reports the two screens instead.
 soft_settled() {
   local side="$1"
   local marker="$2"
@@ -1008,10 +784,6 @@ run_cases() {
   printf 'all %s asserted comparisons identical, %s recorded not asserted\n' "$CHECKS" "$RECORDS"
 }
 
-# --- self-check ------------------------------------------------------------
-#
-# One deliberate one-sided difference per channel, plus one equivalence that
-# must not be reported. Each case runs the same driver against a fresh pair.
 SELF_CHECK_FAILURES=0
 
 self_check_case() {
@@ -1039,10 +811,6 @@ self_check_case() {
 run_self_check() {
   printf 'self-check: one deliberate difference per channel, plus one the pin collapses\n'
 
-  # A hint cell that comes back. The prefix case's whole claim is that no cell
-  # of the status row may carry chrome the pin does not draw, so the sabotage
-  # is exactly that: one side's status row carries a PREFIX label while the
-  # prefix is armed on both.
   CASE_LABEL='self-check prefix hint'
   attach_both_at 80 24
   mark_both hint
@@ -1054,9 +822,6 @@ run_self_check() {
   self_check_case 'prefix, an extra hint cell on one status row' rows
   type_on_both C-g
 
-  # A message whose text differs by one character. The message channel has to
-  # report it in the rows, and the `text` mode this fixture uses for the shown
-  # message reads the plain capture, so the sabotage is planted in the text.
   CASE_LABEL='self-check message text'
   attach_both_at 80 24
   mark_both msg
@@ -1070,8 +835,6 @@ run_self_check() {
   compare_rows self-check-message plain || true
   self_check_case 'message, one character of the text differs' rows
 
-  # A prompt that one side leaves open. The restoration comparison is what the
-  # prompt case asserts, so the sabotage is a prompt cancelled on one side only.
   CASE_LABEL='self-check prompt residue'
   attach_both_at 80 24
   mark_both residue
@@ -1087,9 +850,6 @@ run_self_check() {
   compare_rows self-check-prompt-residue styled || true
   self_check_case 'prompt, one side leaves the prompt open as residue' rows
 
-  # The copy position's style. The copy case asserts the cells
-  # window_copy_write_line draws over the pane's first row, so the sabotage is
-  # one side's copy-mode-position-style changed while both are in copy mode.
   CASE_LABEL='self-check copy position style'
   attach_both_at 80 24
   side_command zz set-option -g copy-mode-position-style 'bg=red,fg=white' ||
@@ -1104,8 +864,6 @@ run_self_check() {
   both_pane_in_mode 0 'copy mode left'
   side_command zz set-option -gu copy-mode-position-style || die 'zz refused -gu'
 
-  # The view surface's position. The view case asserts the pin's view-mode
-  # cells, so the sabotage is one side drawing another position format there.
   CASE_LABEL='self-check view position'
   attach_both_at 80 24
   side_command zz set-option -g copy-mode-position-format '#[align=right]<#{copy_position}>' ||
@@ -1122,8 +880,6 @@ run_self_check() {
   side_command zz set-option -g copy-mode-position-format "$COPY_POSITION_FORMAT" ||
     die 'zz refused copy-mode-position-format'
 
-  # The message style. The message case now asserts styles, so the sabotage is
-  # one side's message-style changed with the same text on both rows.
   CASE_LABEL='self-check message style'
   attach_both_at 80 24
   side_command zz set-option -g message-style 'bg=red,fg=white' ||
@@ -1139,7 +895,6 @@ run_self_check() {
   compare_rows self-check-message-style styled || true
   self_check_case 'message, one side paints the message in another style' rows
 
-  # The prompt style, the same sabotage on the prompt row.
   CASE_LABEL='self-check prompt style'
   attach_both_at 80 24
   side_command zz set-option -g message-style 'bg=red,fg=white' ||
@@ -1156,10 +911,6 @@ run_self_check() {
   both_last_row_starts_with L 'the cancelled prompt'
   side_command zz set-option -gu message-style || die 'zz refused -gu'
 
-  # The selection's table. The selection cases assert where the selection
-  # stops, so the sabotage is one side selecting with the vi table while the
-  # other keeps emacs: the same four cells right keep the cursor cell on one
-  # side and drop it on the other.
   CASE_LABEL='self-check selection keys'
   attach_both_at 80 24
   side_command zz set-option -g mode-keys vi || die 'zz refused mode-keys'
@@ -1175,9 +926,6 @@ run_self_check() {
   both_pane_in_mode 0 'copy mode left'
   side_command zz set-option -gu mode-keys || die 'zz refused -gu'
 
-  # The view's owner. The hidden-view cases assert that keys typed while a
-  # view sits on another pane reach the active pane, so the sabotage is one
-  # side opening its view on the ACTIVE pane, where the keys do go to the view.
   CASE_LABEL='self-check view on the active pane'
   attach_both_at 80 24
   mark_both hidsab
@@ -1191,10 +939,6 @@ run_self_check() {
   compare_rows self-check-view-owner styled || true
   self_check_case 'view, one side opens it on the active pane and swallows the keys' rows
 
-  # The same owner, through the two-pane comparison. view-inactive-* compare
-  # every row, the divider's styles included, so the sabotage is one side opening the
-  # view on the active pane of the split while the other opens it on the
-  # inactive one: that side's typed keys go into the view.
   CASE_LABEL='self-check view owner in a split'
   attach_both_at 80 24
   mark_both splitsab
@@ -1204,8 +948,6 @@ run_self_check() {
   compare_split_rows self-check-view-owner-split "$(divider_row_below "$(inactive_pane tmux)")" || true
   self_check_case 'view in a split, one side opens it on the active pane' rows
 
-  # The divider's style. view-inactive-* assert the divider row whole, so the
-  # sabotage is one side drawing its inactive borders in red.
   CASE_LABEL='self-check divider style'
   attach_both_at 80 24
   mark_both divsab
@@ -1216,9 +958,6 @@ run_self_check() {
   compare_split_rows self-check-divider-style "$(divider_row_below "$(inactive_pane tmux)")" || true
   self_check_case 'divider, pane-border-style fg=red on one side' rows
 
-  # The equivalence: the same prefix, armed and released on both sides with
-  # nothing planted, must report nothing at all. Without it the three sabotages
-  # above would be satisfied by a comparison that always reports a difference.
   CASE_LABEL='self-check equivalence'
   attach_both_at 80 24
   mark_both equal

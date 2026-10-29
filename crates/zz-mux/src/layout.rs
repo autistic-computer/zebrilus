@@ -270,10 +270,6 @@ impl CellLayout {
         pane_cell(&self.root, pane).is_some_and(|node| matches!(node, CellNode::Float { .. }))
     }
 
-    /// `layout_cell_is_top` and `layout_cell_is_bottom`: under every
-    /// top-bottom ancestor the cell has to be the first (or last) child that is
-    /// or holds a tiled pane. A float is never that child of its own parent, so
-    /// it is an edge cell only when no top-bottom node sits above it.
     pub(crate) fn is_edge_cell(&self, pane: PaneId, top: bool) -> bool {
         let Some(path) = pane_path(&self.root, pane) else {
             return false;
@@ -327,11 +323,6 @@ impl CellLayout {
         pane_geometry(&self.root, pane)
     }
 
-    /// The cell geometry with the `pane-border-status` row carved out of it,
-    /// the way `layout_fix_panes` calls `layout_add_horizontal_border`: only a
-    /// cell whose top edge is the root's top edge takes the `top` row (`yoff++`
-    /// and `sy--`), only a cell whose bottom edge is the root's bottom edge
-    /// takes the `bottom` row (`sy--`), and a one-row cell keeps its row.
     pub(crate) fn pane_geometry_with_border(
         &self,
         pane: PaneId,
@@ -840,9 +831,6 @@ impl CellLayout {
         Ok(changed)
     }
 
-    /// The pinned tmux spreads only leaf children and corrupts the cell sums of a
-    /// parent that mixes leaves with nested nodes; zz refuses that parent instead
-    /// and stops the walk where the pin would have stopped after corrupting.
     pub(crate) fn spread(&mut self, pane: PaneId) -> Result<bool, LayoutError> {
         let path = pane_path(&self.root, pane).ok_or(LayoutError::UnknownPane)?;
         for depth in (0..path.len()).rev() {
@@ -863,7 +851,6 @@ impl CellLayout {
         Ok(false)
     }
 
-    /// Unlike the pinned tmux bug for two panes, main presets always size the other pane.
     pub(crate) fn apply_preset(
         &mut self,
         preset: LayoutPreset,

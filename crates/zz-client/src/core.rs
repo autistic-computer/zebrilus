@@ -21,24 +21,14 @@ use crate::scrollback::{
     apply_retained_patch, new_retained_viewport, replace_retained_viewport,
 };
 
-/// Which viewport rows a terminal frame or patch touched, so a skin repaints
-/// only damaged panes and rows instead of the world.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ViewportDamage {
     All,
     Rows(Vec<u16>),
 }
 
-/// A wire request the core needs its shell to send. Drained with
-/// [`ClientCore::poll_outbound`] after every [`ClientCore::handle_message`].
-///
-/// Event sequence numbers are deliberately **not** gap-checked: the daemon's
-/// outbound mailbox supersedes stale terminal frames under backpressure, so a
-/// healthy stream legitimately skips sequences. `Resync` stays a shell-level
-/// error-path request, never an automatic reaction.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Outbound {
-    /// A patch could not apply; ask the daemon for a full viewport.
     RequestFull(PaneId),
     TreeSync,
 }
@@ -95,10 +85,6 @@ fn agent_attention_edge(
     }
 }
 
-/// One state change or side effect produced by reduction. State changes are
-/// notifications — read the new value through the accessors; side effects
-/// (clipboard, URIs, GUI work) carry their payload because the core stores
-/// none of it.
 #[derive(Clone, Debug, PartialEq)]
 pub enum CoreEvent {
     HelloReceived,
@@ -151,12 +137,8 @@ pub enum CoreEvent {
         kind: ClientMessageKind,
         text: String,
         duration_ms: Option<u32>,
-        /// Present only for daemon-timed messages, which are the only ones the
-        /// daemon can retire early with [`CoreEvent::ClientMessageCleared`].
         message_id: Option<u64>,
     },
-    /// The daemon retired the identified message. Surfaces must drop it only
-    /// when the identity still matches what they are showing.
     ClientMessageCleared {
         message_id: u64,
     },
@@ -165,8 +147,6 @@ pub enum CoreEvent {
         request_id: u64,
         target: ClipboardTarget,
         text: String,
-        /// Which of the pin's two OSC 52 writers produced this selection, which
-        /// is what decides the field a raw client names.
         producer: ClipboardProducer,
     },
     OpenUri {
@@ -208,22 +188,15 @@ pub enum CoreEvent {
         pane: PaneId,
         image_ids: Vec<u32>,
     },
-    /// One coalesced batch of JSON agent stream items. The core stores none of
-    /// them: the transcript reducer lives in the shell, and `first_seq` is the
-    /// replay cursor it must track to answer
-    /// [`CoreEvent::AgentLagged`].
     AgentUpdates {
         pane: PaneId,
         first_seq: u64,
         items: Vec<Vec<u8>>,
     },
-    /// The pane's agent state changed; read it with [`ClientCore::agent_state`].
     AgentStateChanged {
         pane: PaneId,
         attention: Option<AgentAttentionEdge>,
     },
-    /// The daemon cleared this pane's agent lane; the shell answers with
-    /// `AgentReplay` from `next_seq`.
     AgentLagged {
         pane: PaneId,
         next_seq: u64,
@@ -234,8 +207,6 @@ pub enum CoreEvent {
         result: String,
     },
     ProvidersChanged,
-    /// An inbound message the core does not reduce (pasted-image previews,
-    /// echoing of client-to-daemon variants); the shell keeps its own handling.
     Message(Box<ProtocolMessage>),
 }
 
@@ -279,10 +250,6 @@ pub enum CoreDetachReason {
     ServerStopping,
 }
 
-/// The sans-IO client brain: decoded protocol messages in, [`CoreEvent`]s and
-/// [`Outbound`] requests out, reduced state behind accessors. One instance per
-/// daemon connection; a [`ProtocolMessage::ServerHello`] resets it for reuse
-/// across reconnects.
 #[derive(Debug, Default)]
 pub struct ClientCore {
     hello_received: bool,
@@ -342,8 +309,6 @@ impl ClientCore {
         std::mem::take(&mut self.clipboard_query)
     }
 
-    /// Reduce one decoded message. Drain [`Self::poll_outbound`] and
-    /// [`Self::poll_event`] afterwards.
     pub fn handle_message(&mut self, message: ProtocolMessage) {
         match message {
             ProtocolMessage::ServerHello(hello) => self.reset_connection(*hello),
@@ -441,12 +406,10 @@ impl ClientCore {
         }
     }
 
-    /// The next wire request the shell must send, if any.
     pub fn poll_outbound(&mut self) -> Option<Outbound> {
         self.outbound.pop_front()
     }
 
-    /// The next state change or side effect, if any.
     pub fn poll_event(&mut self) -> Option<CoreEvent> {
         self.events.pop_front()
     }
@@ -543,7 +506,6 @@ impl ClientCore {
         self.command_output_watermark = 0;
     }
 
-    /// The published prefix table's bindings, or empty before the hello.
     #[must_use]
     pub fn prefix_bindings(&self) -> &[KeyBindingSnapshot] {
         self.key_tables
@@ -567,9 +529,6 @@ impl ClientCore {
         self.attached_session
     }
 
-    /// The pane of the attached window's modal when it captures keys
-    /// (`new-pane -O -K`, and every `display-popup`): every key, the prefix
-    /// included, goes to it unresolved.
     #[must_use]
     pub fn modal_capture(&self) -> Option<PaneId> {
         let session = self.attached_session?;
@@ -679,8 +638,6 @@ impl ClientCore {
         applied
     }
 
-    /// The daemon-published state of an agent pane, or `None` before its first
-    /// publication. Read after [`CoreEvent::AgentStateChanged`].
     #[must_use]
     pub fn agent_state(&self, pane: PaneId) -> Option<&AgentPaneWire> {
         self.agent_states.get(&pane)
@@ -779,13 +736,6 @@ impl ClientCore {
         self.confirm.as_ref()
     }
 
-    /// Adopt a handshake's settings — capabilities, appearance, options, key
-    /// tables, status — and nothing else. A shell that keeps rendering its
-    /// last frame across a reconnect calls this instead of feeding the hello
-    /// through [`Self::handle_message`], which is the whole reset:
-    /// `adopt_hello` + [`Self::clear_attachment`] + [`Self::reset_session`].
-    ///
-    /// Emits no events, for the same reason as [`Self::reset_session`].
     pub fn adopt_hello(&mut self, hello: ServerHello) {
         self.command_output_watermark = 0;
         let ServerHello {
@@ -813,14 +763,6 @@ impl ClientCore {
         self.status = status;
     }
 
-    /// Drop the per-session state a reattach republishes — prefix arming,
-    /// prompt, command output, choosers, display-panes, agent pane state —
-    /// while keeping what the hello established. A shell calls this when the session goes away
-    /// under it (detach, server stopping, host loss) so stale overlays do not
-    /// outlive it.
-    ///
-    /// Emits no events: the caller drove the reset and already knows what it
-    /// cleared, so events here would double-fire against its own bookkeeping.
     pub fn reset_session(&mut self) {
         self.prefix_armed = false;
         self.key_table = None;
@@ -835,11 +777,6 @@ impl ClientCore {
         self.agent_states.clear();
     }
 
-    /// Forget the current attachment — session, snapshot, retained viewports
-    /// and agent pane state — without disturbing hello state. A shell calls this when it
-    /// moves to a different daemon, so the old machine's layout cannot render
-    /// against the new one. Emits no events, for the same reason as
-    /// [`Self::reset_session`].
     pub fn clear_attachment(&mut self) {
         self.attached_session = None;
         self.attached_read_only = false;
@@ -1390,8 +1327,6 @@ impl ClientCore {
         }
     }
 
-    /// Drop retained viewports and agent state for panes the snapshot no
-    /// longer contains.
     fn retain_snapshot_panes(&mut self) {
         let live: HashSet<PaneId> = self
             .snapshot
@@ -1423,9 +1358,6 @@ impl ClientCore {
     }
 }
 
-/// A cursor delta indexes the item list the client already holds. The daemon
-/// only sends one when that list is unchanged, so an out-of-range index means
-/// the two sides disagree; parking on the last row beats pointing past the end.
 fn clamp_selected(selected: u32, items: usize) -> u32 {
     selected.min(u32::try_from(items.saturating_sub(1)).unwrap_or(u32::MAX))
 }
@@ -1472,7 +1404,6 @@ fn adopt_spare_cells(
     Some((retired, stale))
 }
 
-/// Which rows a patch will touch, computed against the pre-apply viewport.
 fn patch_damage(previous: &TerminalViewport, patch: &TerminalViewportPatch) -> ViewportDamage {
     if patch.scroll != 0
         || patch.carries(TerminalPatchFields::COLORS)
@@ -1622,9 +1553,6 @@ mod tests {
         events
     }
 
-    /// Identity has to reach every surface: the timed message carries the id
-    /// the daemon can retire it by, the untimed one carries none, and the clear
-    /// arrives as its own event rather than folded into a message.
     #[test]
     fn timed_messages_carry_their_identity_and_the_clear_arrives_on_its_own() {
         let mut core = ClientCore::new();

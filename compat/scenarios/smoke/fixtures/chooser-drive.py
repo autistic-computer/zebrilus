@@ -1,15 +1,3 @@
-"""Attach a client on a real pty, drive it, and snapshot what it drew.
-
-Same step protocol as ``pty-drive.py`` with one addition: ``snap NAME`` writes
-everything the client has written since the previous snapshot to
-``SNAPDIR/NAME``. The chooser row-format probes need the bytes an attached
-client drew, because ``capture-pane`` reads the pane's own screen and never the
-chooser the client is showing over it.
-
-Steps are one line: ``size COLS ROWS``, ``keys HEXBYTES``, ``snap NAME``, or
-``quit``.
-"""
-
 import fcntl
 import os
 import pty

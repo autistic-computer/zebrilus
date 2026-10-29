@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# report.sh [results.tsv] - render the parity matrix as markdown: one row per primitive, one column per backend.
 set -uo pipefail
 RESULTS=${1:-$(cd "$(dirname "$0")" && pwd)/out/results.tsv}
 [ -s "$RESULTS" ] || { echo "no results at $RESULTS" >&2; exit 1; }

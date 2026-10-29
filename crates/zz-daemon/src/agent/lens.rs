@@ -1086,10 +1086,6 @@ impl Lens {
         }
     }
 
-    /// Type a `/steer` into the CLI without opening a turn, so the one
-    /// running keeps its tracking. Claude Code and Codex read text typed
-    /// mid-turn as steering; text the terminal refuses goes back to the
-    /// composer.
     fn steer(&mut self, prompt: AgentPrompt) -> Vec<AgentStreamPayload> {
         let Some(("steer", text)) = agent_verb(&prompt.text) else {
             return Vec::new();

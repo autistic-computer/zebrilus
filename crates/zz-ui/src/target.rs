@@ -1,15 +1,3 @@
-//! zz's target grammar and the picker that lists it. A target is tmux's `-t`
-//! with an optional host in front, `host:session:window.pane`, or a file on a
-//! host in scp form, `host:/abs/path` or `host:~/path`. Without a host it means
-//! the host the window is attached to, the way tmux's `-t` means the current
-//! server, and a host's name wins over a session of the same name: `work:2`,
-//! `~/dev/`, `xps:work:2.%7`, `%7`. Typing filters the level the cursor is in,
-//! and after the last `/` it searches everything under that folder. Tab opens
-//! the level under the highlighted row, and `:`, `.` and `/` typed by hand do
-//! the same. One [`TargetPicker`] serves the command palette's `@` mode,
-//! `prefix F`, and the lens composer's `@` mentions, which go out with their
-//! host written.
-
 use std::{ops::Range, rc::Rc, sync::Arc};
 
 use ala::{
@@ -35,18 +23,10 @@ pub const TARGET_MAX_ROWS: usize = 200;
 pub const TARGET_VISIBLE_ROWS: usize = 8;
 const HEADER_HEIGHT: f32 = 28.0;
 const BOTTOM_PADDING: f32 = 6.0;
-/// The floating picker's height besides its rows: the header, the paddings
-/// under the rows and the surface's edge.
 const CHROME_HEIGHT: f32 = HEADER_HEIGHT + 2.0 * BOTTOM_PADDING + 2.0;
 
-/// Where the picker reads the fleet and lists a host's files.
 pub trait TargetBackend {
-    /// Every host in fleet order, this machine under its own name.
     fn hosts(&self, cx: &App) -> Vec<TargetHost>;
-    /// Ask `host` for everything under `dir`, an absolute or `~` path, through
-    /// `anchor` when that is a terminal on `host`, whose shell then decides how
-    /// a path is inserted. The listing arrives through
-    /// [`TargetPicker::apply_begin`] and the rest.
     fn list(
         &self,
         host: &str,
@@ -62,7 +42,6 @@ pub struct TargetHost {
     pub id: PaletteHostId,
     pub name: String,
     pub status: PaletteStatus,
-    /// The host the window is attached to, which a target without a host means.
     pub here: bool,
     pub sessions: Vec<TargetSession>,
 }
@@ -114,17 +93,12 @@ impl TargetKind {
     }
 }
 
-/// The `@` word the cursor is in.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TargetToken {
-    /// From the `@` to the end of the word, which may run past the cursor.
     pub range: Range<usize>,
-    /// What follows the `@` up to the cursor.
     pub body: String,
 }
 
-/// The `@` word around `cursor`: one that starts the text or follows
-/// whitespace. A backslash keeps the whitespace after it in the word.
 #[must_use]
 pub fn target_at(text: &str, cursor: usize) -> Option<TargetToken> {
     let mut cursor = cursor.min(text.len());
@@ -165,8 +139,6 @@ pub fn target_at(text: &str, cursor: usize) -> Option<TargetToken> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TargetLevel {
-    /// Before any `:`, `/` or `~`: the sessions here, the other hosts and the
-    /// files here, and anything in the fleet once you type.
     Top,
     Sessions {
         host: String,
@@ -180,7 +152,6 @@ pub enum TargetLevel {
         session: String,
         window: String,
     },
-    /// `dir` as typed, ending in `/`, backslashes kept.
     Files {
         host: String,
         dir: String,
@@ -191,12 +162,9 @@ pub enum TargetLevel {
 pub struct TargetQuery {
     pub level: TargetLevel,
     pub filter: String,
-    /// Whether the host was written, which completions then keep.
     pub written: bool,
 }
 
-/// Read a target: the level it names and the text filtering it. A first
-/// part before `:` is a host when one has that name, else a session here.
 #[must_use]
 pub fn parse_target(body: &str, hosts: &[TargetHost]) -> TargetQuery {
     let here = hosts
@@ -272,9 +240,6 @@ fn files(host: String, path: &str, written: bool) -> TargetQuery {
     }
 }
 
-/// The target one level up from `body` when it ends on a level's edge:
-/// `xps:work:` gives `xps:`, `~/dev/zz/` gives `~/dev/`, `~/` and `xps:`
-/// give nothing. `None` while `body` filters a level.
 #[must_use]
 pub fn pop_level(body: &str) -> Option<String> {
     let trimmed = body.strip_suffix([':', '.', '/'])?;
@@ -301,7 +266,6 @@ pub(crate) fn unescape(text: &str) -> String {
     plain
 }
 
-/// `name` as a target spells it: a backslash before each space or backslash.
 #[must_use]
 pub fn escape(name: &str) -> String {
     let mut escaped = String::with_capacity(name.len());
@@ -314,7 +278,6 @@ pub fn escape(name: &str) -> String {
     escaped
 }
 
-/// One row: what it is, how it shows and the target it finishes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TargetItem {
     pub kind: TargetKind,
@@ -326,14 +289,9 @@ pub struct TargetItem {
     pub icon: IconName,
     pub host: String,
     pub host_id: PaletteHostId,
-    /// The session, window or pane, for the palette to go to.
     pub target: Option<PaletteTarget>,
-    /// The file or folder, relative to the listing's root.
     pub entry: Option<PathEntry>,
-    /// The target as you would type it: without its host when that is the
-    /// host here and you did not write it.
     pub typed: String,
-    /// The target with its host, which a mention carries.
     pub token: String,
     score: usize,
 }
@@ -371,8 +329,6 @@ impl TargetItem {
         self
     }
 
-    /// Match `filter` on the label, else on `metadata` behind every label
-    /// match.
     fn matching(mut self, filter: &str, metadata: &str) -> Option<Self> {
         if let Some((score, matches)) = fuzzy_match(filter, &self.label) {
             self.score = score;
@@ -385,7 +341,6 @@ impl TargetItem {
         Some(self)
     }
 
-    /// Whether the row has a level under it that Tab opens.
     #[must_use]
     pub const fn drills(&self) -> bool {
         matches!(
@@ -394,8 +349,6 @@ impl TargetItem {
         )
     }
 
-    /// What Tab leaves: the target as typed, and after a row with more under
-    /// it the character that opens that level, so the picker lists it.
     #[must_use]
     pub fn completion(&self) -> String {
         let next = match self.kind {
@@ -407,8 +360,6 @@ impl TargetItem {
         format!("{}{next}", self.typed)
     }
 
-    /// What Enter leaves in a composer: the finished mention, its host
-    /// written, and a space.
     #[must_use]
     pub fn insertion(&self) -> String {
         format!("@{} ", self.token)
@@ -427,14 +378,12 @@ impl TargetItem {
     }
 }
 
-/// Where rows sit: their host, and whether the target was written with it.
 struct Place<'a> {
     host: &'a TargetHost,
     written: bool,
 }
 
 impl Place<'_> {
-    /// `rest` behind the host as typed here, and with the host written.
     fn target(&self, rest: &str) -> (String, String) {
         let token = if rest.is_empty() {
             self.host.name.clone()
@@ -450,21 +399,16 @@ impl Place<'_> {
     }
 }
 
-/// What the files level ranks off the main thread.
 struct FileQuery {
     chunks: Vec<Arc<[PathEntry]>>,
     marks: Arc<GitMarks>,
-    /// Where `dir` sits under the listing's folder.
     base: String,
     filter: String,
     host: TargetHost,
     written: bool,
-    /// The folder as typed, ending in `/`.
     dir: String,
 }
 
-/// The rows under `query.dir`: its own entries, folders first, while the
-/// filter is empty, and the best matches anywhere under it once you type.
 fn file_items(query: &FileQuery) -> Vec<TargetItem> {
     let place = Place {
         host: &query.host,
@@ -497,8 +441,6 @@ pub(crate) fn count(value: usize, noun: &str) -> String {
     format!("{value} {noun}{}", if value == 1 { "" } else { "s" })
 }
 
-/// A session as a target names it: its name when tmux can read that back, else
-/// its id.
 pub(crate) fn session_ref(session: &TargetSession) -> String {
     let plain = !session.name.is_empty()
         && !session.name.starts_with(['$', '@', '%', '~', '/'])
@@ -604,7 +546,6 @@ fn home_item(place: &Place) -> TargetItem {
     TargetItem::new(TargetKind::Dir, "~/", "files", place, "~", IconName::Folder)
 }
 
-/// Every pane on `host` whose id `filter` matches, with where it sits.
 fn panes_by_id(host: &TargetHost, place: &Place, filter: &str) -> Vec<TargetItem> {
     host.sessions
         .iter()
@@ -625,8 +566,6 @@ fn panes_by_id(host: &TargetHost, place: &Place, filter: &str) -> Vec<TargetItem
         .collect()
 }
 
-/// Everything in the fleet `filter` matches: hosts, then each connected
-/// host's sessions, windows and panes, labelled as you would type them.
 fn fleet_items(hosts: &[TargetHost], filter: &str) -> Vec<TargetItem> {
     let mut items = Vec::new();
     for host in hosts {
@@ -665,7 +604,6 @@ fn fleet_items(hosts: &[TargetHost], filter: &str) -> Vec<TargetItem> {
     items
 }
 
-/// The rows for `query` above the files level, best first.
 fn target_items(query: &TargetQuery, hosts: &[TargetHost]) -> Vec<TargetItem> {
     let filter = query.filter.as_str();
     let host_named = |name: &str| hosts.iter().find(|host| host.name == name);
@@ -780,7 +718,6 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost]) -> Vec<TargetItem> {
     items
 }
 
-/// Where the cursor is, for the floating picker's header: `@ ubuntu › work › 2`.
 fn breadcrumb(query: &TargetQuery, root: Option<&PathListRoot>) -> String {
     let parts: Vec<String> = match &query.level {
         TargetLevel::Top => Vec::new(),
@@ -819,17 +756,11 @@ const HINTS: [PaletteHint; 3] = [
 ];
 
 pub enum TargetPickerEvent {
-    /// A row was clicked in the palette: go to it, or with `open` list what
-    /// is under it.
     Picked { open: bool },
 }
 
 impl EventEmitter<TargetPickerEvent> for TargetPicker {}
 
-/// The picker over a target. In a composer it follows the input on its own:
-/// open while the cursor is in an `@` word, closed by Esc until the cursor
-/// leaves it, and drawn floating over the input. In the palette its owner sets
-/// what is typed with [`Self::set_body`], and it draws as the palette's rows.
 pub struct TargetPicker {
     backend: Rc<dyn TargetBackend>,
     composer: Option<Entity<InputState>>,
@@ -850,7 +781,6 @@ pub struct TargetPicker {
 }
 
 impl TargetPicker {
-    /// The palette's picker; its owner feeds it what is typed.
     pub fn new(backend: Rc<dyn TargetBackend>, cx: &mut Context<Self>) -> Self {
         cx.on_release(|picker, cx| {
             if let Some(listing) = picker.listing.take() {
@@ -878,7 +808,6 @@ impl TargetPicker {
         }
     }
 
-    /// The picker over a composer's `input`, for `@` mentions.
     pub fn for_composer(
         backend: Rc<dyn TargetBackend>,
         input: Entity<InputState>,
@@ -891,13 +820,10 @@ impl TargetPicker {
         }
     }
 
-    /// Keep `subscription`, such as the one that feeds listings, for as long
-    /// as the picker lives.
     pub fn keep(&mut self, subscription: Subscription) {
         self.subscriptions.push(subscription);
     }
 
-    /// The terminal files are listed through, and so inserted into, on its host.
     pub fn set_anchor(&mut self, anchor: Option<PaneId>) {
         self.anchor = anchor;
     }
@@ -927,15 +853,11 @@ impl TargetPicker {
         self.query.as_ref()
     }
 
-    /// The folder the files level lists, once its host said where that is.
     #[must_use]
     pub fn listing_root(&self) -> Option<&PathListRoot> {
         self.listing.as_ref()?.root.as_ref()
     }
 
-    /// Show only as many rows as fit in `room`: for the floating picker the
-    /// height above the input it floats over, so it never reaches past the
-    /// window, and for the palette the height its rows may take.
     pub fn fit(&mut self, room: Pixels) {
         let chrome = if self.composer.is_some() {
             CHROME_HEIGHT
@@ -950,7 +872,6 @@ impl TargetPicker {
         });
     }
 
-    /// The palette's text: list what it names.
     pub fn set_body(&mut self, body: &str, cx: &mut Context<Self>) {
         if self.body.as_deref() == Some(body) {
             return;
@@ -959,7 +880,6 @@ impl TargetPicker {
         self.rebuild(cx);
     }
 
-    /// Follow the composer: open, refilter or close for the word at the cursor.
     pub fn sync(&mut self, cx: &mut Context<Self>) {
         let Some(input) = &self.composer else {
             return;
@@ -1161,7 +1081,6 @@ impl TargetPicker {
         self.relist(cx);
     }
 
-    /// Up or Down: move the highlight. Whether the picker took the key.
     pub fn navigate(&mut self, direction: isize, cx: &mut Context<Self>) -> bool {
         if !self.is_open() {
             return false;
@@ -1180,7 +1099,6 @@ impl TargetPicker {
         true
     }
 
-    /// Highlight the first or the last row.
     pub fn select_edge(&mut self, first: bool, cx: &mut Context<Self>) {
         if self.items.is_empty() {
             return;
@@ -1191,8 +1109,6 @@ impl TargetPicker {
         cx.notify();
     }
 
-    /// Tab in a composer: complete the highlighted row into the word, opening
-    /// the level under it when it has one.
     pub fn complete(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.sync(cx);
         let Some(token) = self.token.clone() else {
@@ -1204,7 +1120,6 @@ impl TargetPicker {
         true
     }
 
-    /// Enter in a composer: put the finished mention in with a space after it.
     pub fn accept(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         self.sync(cx);
         let Some(token) = self.token.clone() else {
@@ -1222,7 +1137,6 @@ impl TargetPicker {
         true
     }
 
-    /// Esc in a composer: close until the cursor leaves this word.
     pub fn dismiss(&mut self, cx: &mut Context<Self>) -> bool {
         let Some(token) = self.token.take() else {
             return false;
@@ -1404,8 +1318,6 @@ impl Render for TargetPicker {
     }
 }
 
-/// Put `text` at the caret of `input`, a space before it unless one is
-/// there, and focus the field: what a composer's `+` does with `@`.
 pub fn mention_at_caret(input: &Entity<InputState>, text: &str, window: &mut Window, cx: &mut App) {
     input.update(cx, |input, cx| {
         let before = input.value()[..input.cursor()].chars().next_back();
@@ -1417,10 +1329,6 @@ pub fn mention_at_caret(input: &Entity<InputState>, text: &str, window: &mut Win
     });
 }
 
-/// Route a composer's keys to `picker` while it is open: Up and Down move the
-/// highlight, Tab opens the level under the row, Enter inserts and Esc closes
-/// only the picker. Hang it on an element around the input; it captures the
-/// input's own actions.
 pub fn mention_keys<E: InteractiveElement>(element: E, picker: &Entity<TargetPicker>) -> E {
     let enter = picker.clone();
     element
