@@ -2,7 +2,7 @@
 type: Subsystem
 title: Input translation (ala → CEF)
 description: Browser-neutral pointer/wheel/keyboard/text/IME input, IME candidate placement, ordered GPUI-to-CEF dispatch, pane shortcuts, address resolution, history-backed omnibox interaction, and why page drag and drop is off.
-resource: crates/zz-browser/src/input.rs
+resource: libs/ala-cef/src/input.rs
 tags: [browser, input, ime, keyboard, url, history, omnibox]
 timestamp: 2026-10-19T00:00:00Z
 ---
@@ -309,4 +309,4 @@ assert_eq!(
   focus/cursor state feeds the [lifecycle events](/browser/lifecycle.md).
 - Address-field results and successful-use learning are detailed in
   [history and omnibox autocomplete](/browser/history-autocomplete.md).
-- Part of the [zz-browser crate](/crates/zz-browser.md).
+- Part of the [ala-cef crate](/crates/ala-cef.md).

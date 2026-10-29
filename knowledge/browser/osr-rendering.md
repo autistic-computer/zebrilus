@@ -2,7 +2,7 @@
 type: Concept
 title: Off-screen rendering & the frame mailbox
 description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, and how zz paces visible sessions.
-resource: crates/zz-browser/src/frame.rs
+resource: libs/ala-cef/src/frame.rs
 tags: [browser, osr, frame, gpu, iosurface, hidpi, wayland, pacing]
 timestamp: 2026-10-19T00:00:00Z
 ---
@@ -85,7 +85,7 @@ destination texture. `pool_generation` distinguishes resize generations and
 `sequence` tracks accelerated callbacks. CEF may recycle its source after the
 callback, so only the zz-owned copy crosses the mailbox.
 
-`crates/zz-browser/src/linux_dmabuf.rs` owns the imported Vulkan image and memory
+`libs/ala-cef/src/linux_dmabuf.rs` owns the imported Vulkan image and memory
 until it transfers both to wgpu. `TextureMemory::Dedicated` lets wgpu destroy
 the image and free its imported memory after queued GPU work completes. On an
 import error, the local guard destroys the image before freeing any allocated
@@ -95,7 +95,7 @@ accumulated during long animations. Repeated imports can refer to the
 same backing storage, so allocation counts do not measure physical VRAM growth.
 
 The local importer derives from cef-rs's DMA-BUF implementation. Its upstream
-revision, license, and removal conditions are in `crates/zz-browser/UPSTREAM.md`.
+revision, license, and removal conditions are in `libs/ala-cef/UPSTREAM.md`.
 
 ## macOS Metal-IOSurface
 
@@ -190,7 +190,7 @@ cannot be reassigned while it is cached. Entries drop when the frame size
 changes. Creating the Metal texture is a kernel call
 (`IOGPUResourceCreate`); doing it per frame was about 40% of the main thread's
 busy time at 120 fps. Misses log at debug level on
-`zz_browser::accelerated_paint` with running hit and miss counts.
+`ala_cef::accelerated_paint` with running hit and miss counts.
 
 ## Windows D3D11
 
@@ -364,11 +364,11 @@ suppressed by equality checks.
 
 | File | Role |
 | --- | --- |
-| `crates/zz-browser/src/frame.rs` | Frame variants, delivery state, mailbox, recycling, and diagnostics. |
-| `crates/zz-browser/src/cef_runtime.rs` | CEF readback/accelerated callbacks, pool generation, fallback, scale, and external BeginFrame host calls. |
-| `crates/zz-browser/src/popup.rs` | Popup state, placement inside the frame, and CPU compositing. |
-| `crates/zz-browser/src/metal_osr.rs` | macOS Metal source import, synchronized blit, and destination `IOSurface` pool. |
-| `crates/zz-browser/src/d3d11_osr.rs` | Windows shared-NT-handle import, in-callback `CopyResource`, and destination D3D11 texture pool. |
+| `libs/ala-cef/src/frame.rs` | Frame variants, delivery state, mailbox, recycling, and diagnostics. |
+| `libs/ala-cef/src/cef_runtime.rs` | CEF readback/accelerated callbacks, pool generation, fallback, scale, and external BeginFrame host calls. |
+| `libs/ala-cef/src/popup.rs` | Popup state, placement inside the frame, and CPU compositing. |
+| `libs/ala-cef/src/metal_osr.rs` | macOS Metal source import, synchronized blit, and destination `IOSurface` pool. |
+| `libs/ala-cef/src/d3d11_osr.rs` | Windows shared-NT-handle import, in-callback `CopyResource`, and destination D3D11 texture pool. |
 | `crates/zz/src/browser/controller.rs` | Tier decoding, frame-rate policy, fallback recreation, and external BeginFrame activity state. |
 | `crates/zz/src/browser/view.rs` | Latest-frame consumption, retained surfaces, and hot/idle BeginFrame scheduling. |
 | `crates/zz/src/browser/macos_surface.rs` | Cached `IOSurface` to `CVPixelBuffer` wrapping. |
@@ -382,4 +382,4 @@ suppressed by equality checks.
 - [Browser lifecycle](/browser/lifecycle.md)
 - [Input translation](/browser/input-translation.md)
 - [ala revision](/references/ala.md)
-- [Browser-core crate](/crates/zz-browser.md)
+- [Browser-core crate](/crates/ala-cef.md)

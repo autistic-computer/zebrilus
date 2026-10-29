@@ -1,15 +1,15 @@
 # CEF bindings with deferred Linux loading
 
 This package preserves the `cef-dll-sys` 154.0.0+154.0.23 API and re-exports its types
-from cef-rs commit `6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7`. The workspace patches
-the crates.io package to this adapter. Cargo resolves the adapter's upstream
+from cef-rs commit `6a6ed14be68c5b8d90b1e5f5a6705a7f899b18b7`. ala-cef patches
+the crates.io package to this adapter, and so must any workspace that builds it. Cargo resolves the adapter's upstream
 dependency from its pinned Git source, which avoids a dependency cycle.
 
 On Linux x86_64, the upstream `dox` feature supplies generated types without its
 native `-lcef` link. The adapter resolves 193 C functions with `libloading` when
 `load_library()` first runs. It validates the complete symbol table before
 publishing it and keeps the library handle for the process lifetime. Calls through
-the generated wrappers require a successful load. zz checks this before subprocess
+the generated wrappers require a successful load. ala-cef checks this before subprocess
 dispatch or the first browser operation and reports failures through `BrowserError`.
 
 On Linux x86_64, native CEF archive resolution and development resource copying
@@ -41,13 +41,13 @@ Run the generator against the `sys/src/bindings/x86_64_unknown_linux_gnu.rs` fil
 from the pinned checkout:
 
 ```sh
-python3 third_party/rust/cef-dll-sys/generate.py /path/to/cef-rs/sys/src/bindings/x86_64_unknown_linux_gnu.rs --check
+python3 third_party/cef-dll-sys/generate.py /path/to/cef-rs/sys/src/bindings/x86_64_unknown_linux_gnu.rs --check
 ```
 
 For an upgrade, review the new published source and update the commit, package
 version, binding hash, expected function count, and CEF distribution version
 together. Regenerate without `--check`, then run the adapter's loading tests,
-zz-browser tests, and native browser smoke tests. Keep the ABI checks intact.
+ala-cef tests, and native browser checks. Keep the ABI checks intact.
 
 The CEF distribution follows the build metadata of two package versions. This
 adapter's version picks it on Linux x86_64; everywhere else the upstream
@@ -59,8 +59,8 @@ Two packages named `cef-dll-sys` sit in the lock, so select this one by path
 when refreshing it:
 
 ```sh
-cargo update -p cef -p 'path+file://'"$PWD"'/third_party/rust/cef-dll-sys'
-cargo update --manifest-path third_party/rust/cef-dll-sys/Cargo.toml --workspace
+cargo update -p cef -p 'path+file://'"$PWD"'/third_party/cef-dll-sys'
+cargo update --manifest-path third_party/cef-dll-sys/Cargo.toml --workspace
 ```
 
 ## Native probe

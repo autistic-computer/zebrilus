@@ -23,7 +23,7 @@ pub fn get_cef_dir() -> Option<std::path::PathBuf> {
         ]
         .into_iter()
         .find(|path| path.is_dir())?,
-        None => std::path::PathBuf::from(option_env!("ZZ_CEF_DISTRIBUTION_DIR")?),
+        None => std::path::PathBuf::from(option_env!("ALA_CEF_DISTRIBUTION_DIR")?),
     };
     directory.canonicalize().ok()
 }

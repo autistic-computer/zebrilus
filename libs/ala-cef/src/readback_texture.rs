@@ -81,7 +81,7 @@ impl ReadbackTexture {
             },
         );
         log::trace!(
-            target: "zz_browser::diagnostics::readback_upload",
+            target: "ala_cef::diagnostics::readback_upload",
             "session={} generation={} width={} height={} upload_x={} upload_y={} upload_width={} upload_height={} bytes={} reused={}",
             frame.session.0,
             frame.generation,

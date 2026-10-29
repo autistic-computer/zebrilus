@@ -2,7 +2,7 @@
 type: Concept
 title: Named zz profiles & persistent request contexts
 description: Named zz-owned CEF profiles isolate browser state on the client's disk, remote egress uses host-keyed composite contexts, and explicit Chrome import uses bounded read-only snapshots.
-resource: crates/zz-browser/src/profile.rs
+resource: libs/ala-cef/src/profile.rs
 tags: [browser, profile, cef, request-context, cookies, security]
 timestamp: 2026-08-13T02:00:00Z
 ---
@@ -235,4 +235,4 @@ egress host.
   [input translation](/browser/input-translation.md).
 - Host-keyed composite contexts and their SSH SOCKS route are detailed in
   [remote browser egress](/designs/remote-browser-egress.md).
-- Part of the [zz-browser crate](/crates/zz-browser.md).
+- Part of the [ala-cef crate](/crates/ala-cef.md).

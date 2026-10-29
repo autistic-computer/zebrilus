@@ -133,7 +133,7 @@ fn element_picker_router_config() -> MessageRouterConfig {
 }
 
 fn diagnostic_timer() -> Option<Instant> {
-    log::log_enabled!(target: "zz_browser::diagnostics", log::Level::Trace).then(Instant::now)
+    log::log_enabled!(target: "ala_cef::diagnostics", log::Level::Trace).then(Instant::now)
 }
 
 fn diagnostic_elapsed_us(started: Option<Instant>) -> u128 {
@@ -522,7 +522,7 @@ impl BrowserMessagePump {
                 work();
             }
             log::trace!(
-                target: "zz_browser::diagnostics::message_pump",
+                target: "ala_cef::diagnostics::message_pump",
                 "work initialized={} phase={:?} active_sessions={} elapsed_us={}",
                 state.initialized,
                 state.phase,
@@ -743,7 +743,7 @@ impl BrowserRuntime {
         self.message_pump.enable();
 
         log::debug!(
-            target: "zz_browser::diagnostics::lifecycle",
+            target: "ala_cef::diagnostics::lifecycle",
             "runtime initialized profile_paths={:?} windowless_frame_rate={} shared_texture_enabled={} wayland_physical_osr={} elapsed_us={}",
             self.profile_paths,
             self.windowless_frame_rate,
@@ -1112,7 +1112,7 @@ impl BrowserRuntime {
         if state.phase == RuntimePhase::Uninitialized {
             self.message_pump.mark_closed();
             log::debug!(
-                target: "zz_browser::diagnostics::lifecycle",
+                target: "ala_cef::diagnostics::lifecycle",
                 "closed browser runtime without initializing CEF"
             );
             return Ok(());
@@ -1887,7 +1887,7 @@ impl BrowserSession {
                 host.invalidate(PaintElementType::VIEW);
             }
             log::trace!(
-                target: "zz_browser::diagnostics::viewport",
+                target: "ala_cef::diagnostics::viewport",
                 "apply session={} force={} previous={previous:?} next={next:?} size_changed={} scale_changed={} screen_changed={} elapsed_us={}",
                 self.id.0,
                 force,
@@ -2159,7 +2159,7 @@ fn bootstrap_args_with_paths(
         }
     }
     log::debug!(
-        target: "zz_browser::diagnostics::lifecycle",
+        target: "ala_cef::diagnostics::lifecycle",
         "cold runtime prepared profile_paths={profile_paths:?} windowless_frame_rate={windowless_frame_rate} shared_texture_enabled={shared_texture_enabled} wayland_physical_osr={} elapsed_us={}",
         uses_wayland_physical_osr(),
         diagnostic_elapsed_us(started),
@@ -3515,7 +3515,7 @@ impl AcceleratedFrameProducer {
         destinations.next = (destination_index + 1) % destinations.textures.len();
         let expected = state.pool.expected;
         log::trace!(
-            target: "zz_browser::diagnostics::accelerated_copy",
+            target: "ala_cef::diagnostics::accelerated_copy",
             "produce callback={sequence} device={}x{} import_us={import_us} copy_us={}",
             layout.width,
             layout.height,
@@ -3588,7 +3588,7 @@ impl SessionBridge {
         match result {
             Ok(()) => invalidate_view(browser),
             Err(error) => log::warn!(
-                target: "zz_browser::accelerated_paint",
+                target: "ala_cef::accelerated_paint",
                 "popup frame import failed session={}: {error}",
                 self.id.0,
             ),
@@ -3695,7 +3695,7 @@ impl SessionBridge {
         let count = self.accelerated_paint.record_stale_pool_frame();
         if count.is_power_of_two() {
             log::warn!(
-                target: "zz_browser::accelerated_paint",
+                target: "ala_cef::accelerated_paint",
                 "discarded stale macOS accelerated frame #{count} session={} callback={sequence} reason={reason:?}",
                 self.id.0,
             );
@@ -3709,7 +3709,7 @@ impl SessionBridge {
         let count = self.accelerated_paint.record_gpu_import_failure(false);
         if count.is_power_of_two() {
             log::warn!(
-                target: "zz_browser::accelerated_paint",
+                target: "ala_cef::accelerated_paint",
                 "macOS Metal-IOSurface import/blit failed #{count} session={} callback={sequence}: {error}; retaining the last valid frame while awaiting readback fallback",
                 self.id.0,
             );
@@ -3737,7 +3737,7 @@ impl SessionBridge {
                 self.accelerated_paint
                     .record_gpu_frame_delivered(pool_generation);
                 log::trace!(
-                    target: "zz_browser::accelerated_paint",
+                    target: "ala_cef::accelerated_paint",
                     "delivered macOS Metal-IOSurface frame session={} callback={} pool_generation={} device={}x{} wake={wake:?}",
                     self.id.0,
                     sequence,
@@ -3766,7 +3766,7 @@ impl SessionBridge {
         let count = self.accelerated_paint.record_stale_pool_frame();
         if count.is_power_of_two() {
             log::warn!(
-                target: "zz_browser::accelerated_paint",
+                target: "ala_cef::accelerated_paint",
                 "discarded stale Windows accelerated frame #{count} session={} callback={sequence} reason={reason:?}",
                 self.id.0,
             );
@@ -3780,7 +3780,7 @@ impl SessionBridge {
         let count = self.accelerated_paint.record_gpu_import_failure(false);
         if count.is_power_of_two() {
             log::warn!(
-                target: "zz_browser::accelerated_paint",
+                target: "ala_cef::accelerated_paint",
                 "Windows D3D11 shared-texture import/copy failed #{count} session={} callback={sequence}: {error}; retaining the last valid frame while awaiting readback fallback",
                 self.id.0,
             );
@@ -3808,7 +3808,7 @@ impl SessionBridge {
                 self.accelerated_paint
                     .record_gpu_frame_delivered(pool_generation);
                 log::trace!(
-                    target: "zz_browser::accelerated_paint",
+                    target: "ala_cef::accelerated_paint",
                     "delivered Windows D3D11 frame session={} callback={} pool_generation={} device={}x{} wake={wake:?}",
                     self.id.0,
                     sequence,
@@ -3943,7 +3943,7 @@ impl BrowserSideHandler for ElementPickerQueryHandler {
             }
             Err(error) => {
                 log::debug!(
-                    target: "zz_browser::diagnostics::element_picker",
+                    target: "ala_cef::diagnostics::element_picker",
                     "rejected element picker query for session {}: {error}",
                     self.bridge.id.0,
                 );
@@ -4609,7 +4609,7 @@ cef::wrap_render_handler! {
                 .mailbox
                 .publish(self.bridge.id, width, height, bytes, damage);
             log::trace!(
-                target: "zz_browser::diagnostics::cef_paint",
+                target: "ala_cef::diagnostics::cef_paint",
                 "on_paint session={} width={width} height={height} bytes={length} dirty_rects={:?} viewport={:?} copy_us={} publish_result={publish_result:?} elapsed_us={}",
                 self.bridge.id.0,
                 dirty_rects.map(|rects| rects.iter().map(|rect| (rect.x, rect.y, rect.width, rect.height)).collect::<Vec<_>>()),
@@ -4645,7 +4645,7 @@ cef::wrap_render_handler! {
             let Some(info) = info else {
                 let callback = self.bridge.accelerated_paint.record_missing_info(type_);
                 log::warn!(
-                    target: "zz_browser::accelerated_paint",
+                    target: "ala_cef::accelerated_paint",
                     "on_accelerated_paint session={} callback={callback} paint_element={} paint_element_raw={} info=missing",
                     self.bridge.id.0,
                     paint_element_name(type_),
@@ -4659,7 +4659,7 @@ cef::wrap_render_handler! {
                 .accelerated_paint
                 .record(type_, observation);
             if log::log_enabled!(
-                target: "zz_browser::accelerated_paint",
+                target: "ala_cef::accelerated_paint",
                 log::Level::Trace
             ) {
                 let observation = observation.diagnostics(recorded.callback);
@@ -4668,7 +4668,7 @@ cef::wrap_render_handler! {
                     |modifier| format!("{modifier:#018x}"),
                 );
                 log::trace!(
-                    target: "zz_browser::accelerated_paint",
+                    target: "ala_cef::accelerated_paint",
                     "on_accelerated_paint session={} callback={} paint_element={} paint_element_raw={} width={} height={} pixel_format={} pixel_format_raw={} drm_modifier={} plane_count={} planes={:?} handle_identity={:?} unique_handles={} same_as_previous={} reuse_gap_callbacks={:?} dirty_rects={:?}",
                     self.bridge.id.0,
                     recorded.callback,
@@ -4773,7 +4773,7 @@ cef::wrap_render_handler! {
                                 .accelerated_paint
                                 .record_gpu_frame_delivered(pool_generation);
                             log::trace!(
-                                target: "zz_browser::accelerated_paint",
+                                target: "ala_cef::accelerated_paint",
                                 "delivered GPU frame session={} callback={} pool_generation={} device={}x{} wake={wake:?}",
                                 self.bridge.id.0,
                                 sequence,
@@ -4806,7 +4806,7 @@ cef::wrap_render_handler! {
                         .record_stale_pool_frame();
                     if count.is_power_of_two() {
                         log::warn!(
-                            target: "zz_browser::accelerated_paint",
+                            target: "ala_cef::accelerated_paint",
                             "discarded stale accelerated frame #{count} session={} callback={} reason={stale:?}",
                             self.bridge.id.0,
                             recorded.callback,
@@ -4823,7 +4823,7 @@ cef::wrap_render_handler! {
                         .record_gpu_import_failure(error.is_helper_fallback());
                     if count.is_power_of_two() {
                         log::warn!(
-                            target: "zz_browser::accelerated_paint",
+                            target: "ala_cef::accelerated_paint",
                             "accelerated frame import/blit failed #{count} session={} callback={}: {error}; retaining the last valid frame while awaiting readback fallback",
                             self.bridge.id.0,
                             recorded.callback,

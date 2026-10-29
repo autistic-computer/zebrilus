@@ -267,7 +267,7 @@ impl SourceTextureCache {
             texture: texture.clone(),
         });
         log::debug!(
-            target: "zz_browser::accelerated_paint",
+            target: "ala_cef::accelerated_paint",
             "metal source texture cache miss surface_id={id} cached={} hits={} misses={}",
             self.entries.len(),
             self.hits,

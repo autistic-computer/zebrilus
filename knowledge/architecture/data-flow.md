@@ -48,7 +48,7 @@ PTY child ──bytes──▶ libghostty-vt (worker thread)  [zz-terminal]
 # Browser path (local to the GUI process)
 
 ```
-CEF renderer ──shared GPU texture or BGRA──▶ one-slot mailbox (latest only)  [zz-browser]
+CEF renderer ──shared GPU texture or BGRA──▶ one-slot mailbox (latest only)  [ala-cef]
         │
         ▼
    browser_element paints the latest frame (external_texture / paint_surface / D3D11 / BGRA)  [zz]

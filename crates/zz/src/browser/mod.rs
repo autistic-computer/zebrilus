@@ -14,18 +14,16 @@ pub(crate) mod view;
 
 use std::io;
 
-use zz_browser::{BrowserKey, BrowserProfilePaths, KeyAction, KeyInput, Modifiers};
+use ala_cef::{BrowserKey, BrowserProfilePaths, KeyAction, KeyInput, Modifiers};
 use zz_terminal::{KeyAction as Action, KeyCode as Key};
 
 const DEFAULT_PROFILE_DIRECTORY: &str = "zz-default";
 
-const _: () = assert!(zz_browser::MAX_ARTIFACT_PATH_BYTES == zz_protocol::MAX_ARTIFACT_PATH_BYTES);
+const _: () = assert!(ala_cef::MAX_ARTIFACT_PATH_BYTES == zz_protocol::MAX_ARTIFACT_PATH_BYTES);
+const _: () = assert!(ala_cef::MAX_ARTIFACT_REPLY_BYTES == zz_protocol::MAX_ARTIFACT_REPLY_BYTES);
 const _: () =
-    assert!(zz_browser::MAX_ARTIFACT_REPLY_BYTES == zz_protocol::MAX_ARTIFACT_REPLY_BYTES);
-const _: () = assert!(
-    zz_browser::MAX_BROWSER_PROFILE_NAME_BYTES == zz_protocol::MAX_BROWSER_PROFILE_NAME_BYTES
-);
-const _: () = assert!(zz_browser::MAX_FAVICON_BYTES == zz_protocol::MAX_FAVICON_BYTES);
+    assert!(ala_cef::MAX_BROWSER_PROFILE_NAME_BYTES == zz_protocol::MAX_BROWSER_PROFILE_NAME_BYTES);
+const _: () = assert!(ala_cef::MAX_FAVICON_BYTES == zz_protocol::MAX_FAVICON_BYTES);
 
 pub(crate) fn profile_paths() -> io::Result<BrowserProfilePaths> {
     Ok(BrowserProfilePaths::under(

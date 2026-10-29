@@ -18,8 +18,8 @@ use ala_platform::android::{
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use zz_daemon_client::InteractiveClient;
 
-pub use zz_browser::element_picker::ElementPickerAppearance;
-use zz_browser::element_picker::{
+pub use ala_cef::element_picker::ElementPickerAppearance;
+use ala_cef::element_picker::{
     ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT, ElementPickOutcome, ElementPickState, PickGeometry,
     element_picker_start_script,
 };
