@@ -2,7 +2,7 @@
 type: Research
 title: What the 2026-10-16 visual changes cost on macOS
 description: Frame, GPU and memory A/B of the Rex-sized chrome, text fade and glass-over-pages commit against the tree before it, the Primitive size fix that pays the regression back, the Metal glass backdrop blit that cost 170 MB of driver memory, and the follow-ups.
-resource: crates/zz-gpui/src/scene.rs
+resource: libs/gpui/crates/zz-gpui/src/scene.rs
 tags:
 - performance
 - macos

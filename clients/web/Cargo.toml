@@ -17,21 +17,21 @@ crate-type = ["cdylib", "rlib"]
 syntax-highlighting = ["zz-ui/tree-sitter"]
 
 [dependencies]
-zz-gpui = { path = "../../crates/zz-gpui" }
-zz-gpui-platform = { path = "../../crates/zz-gpui-platform", default-features = false }
+zz-gpui = { path = "../../libs/gpui/crates/zz-gpui" }
+zz-gpui-platform = { path = "../../libs/gpui/crates/zz-gpui-platform", default-features = false }
 zz-app = { path = "../app" }
 zz-protocol = { path = "../../crates/zz-protocol" }
 zz-ui = { path = "../../crates/zz-ui", features = ["agent"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-zz-gpui-platform = { path = "../../crates/zz-gpui-platform", default-features = false, features = ["font-kit", "wayland", "x11"] }
+zz-gpui-platform = { path = "../../libs/gpui/crates/zz-gpui-platform", default-features = false, features = ["font-kit", "wayland", "x11"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 wasm-bindgen = "=0.2.128"
-zz-gpui-platform = { path = "../../crates/zz-gpui-platform", default-features = false, features = ["multithreaded"] }
+zz-gpui-platform = { path = "../../libs/gpui/crates/zz-gpui-platform", default-features = false, features = ["multithreaded"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
-zz-gpui = { path = "../../crates/zz-gpui", features = ["test-support"] }
+zz-gpui = { path = "../../libs/gpui/crates/zz-gpui", features = ["test-support"] }
 
 [lints.rust]
 unsafe_code = "deny"
@@ -60,3 +60,6 @@ debug = 1
 opt-level = 3
 lto = "fat"
 codegen-units = 1
+
+[patch."https://github.com/autistic-computer/gpui"]
+zz-gpui = { path = "../../libs/gpui/crates/zz-gpui" }

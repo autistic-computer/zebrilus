@@ -2,7 +2,7 @@
 type: Reference
 title: zz-gpui web windows for agents
 description: How zz-gpui's web platform hosts several windows in one page (WindowOptions::mount), mirrors each window's AccessKit tree into ARIA elements, and exposes globalThis.zzGpui so agents can find, click, wait for and capture GPUI content.
-resource: crates/zz-gpui-platform/src/web/automation.rs
+resource: libs/gpui/crates/zz-gpui-platform/src/web/automation.rs
 tags: [zz-gpui, web, wasm, accessibility, accesskit, agents, automation]
 timestamp: 2026-10-14T00:00:00Z
 ---
@@ -37,13 +37,13 @@ and fills it (`position: absolute; inset: 0`), so the page decides the window's 
   drawn when it comes back. `zzGpui.idle()` draws skipped frames and waits on them like pending
   ones, so captures of a long page stay current. Windows that fill the page are never skipped.
 
-Sources: `crates/zz-gpui-platform/src/web/platform.rs` (`open_window`, `find_mount`) and
-`crates/zz-gpui-platform/src/web/window.rs` (`mount_canvas`).
+Sources: `libs/gpui/crates/zz-gpui-platform/src/web/platform.rs` (`open_window`, `find_mount`) and
+`libs/gpui/crates/zz-gpui-platform/src/web/window.rs` (`mount_canvas`).
 
 # The accessibility mirror
 
 GPUI core builds an AccessKit tree every frame once accessibility is active (see
-`crates/zz-gpui/src/_accessibility.rs`). The web backend used to drop it. `crates/zz-gpui-platform/src/web/a11y.rs`
+`libs/gpui/crates/zz-gpui/src/_accessibility.rs`). The web backend used to drop it. `libs/gpui/crates/zz-gpui-platform/src/web/a11y.rs`
 now keeps one transparent layer per window, next to the canvas, holding one `div` per node.
 
 - Each node gets the matching ARIA role, `aria-label`, value, checked, selected, expanded,
@@ -68,13 +68,13 @@ Accessibility is off until asked for, because the tree costs work every frame:
 - `zzGpui.enableAccessibility()` turns it on later. Until then a visually hidden "Enable
   accessibility" button lets a screen reader do it.
 
-Core change: `Window::new` in `crates/zz-gpui/src/window.rs` used to skip `a11y_init` on wasm because
+Core change: `Window::new` in `libs/gpui/crates/zz-gpui/src/window.rs` used to skip `a11y_init` on wasm because
 `async_channel::Sender::send_blocking` does not exist there. It now uses `try_send`, which never
 fails on the unbounded channels involved.
 
 # The zzGpui global
 
-`crates/zz-gpui-platform/src/web/automation.rs` installs `globalThis.zzGpui` when the first window opens.
+`libs/gpui/crates/zz-gpui-platform/src/web/automation.rs` installs `globalThis.zzGpui` when the first window opens.
 
 | Call | Result |
 |---|---|

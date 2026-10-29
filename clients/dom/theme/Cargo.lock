@@ -8701,7 +8701,7 @@ dependencies = [
 
 [[package]]
 name = "zz-gpui-kit"
-version = "0.22.0"
+version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",

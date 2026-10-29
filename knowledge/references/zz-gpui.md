@@ -1,10 +1,10 @@
 ---
 type: Reference
 title: zz-gpui
-description: zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
-resource: crates/zz-gpui/Cargo.toml
+description: zz-gpui, our GPUI fork (libs/gpui/crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
+resource: libs/gpui/crates/zz-gpui/Cargo.toml
 tags: [zz-gpui, gpui, reference, vendored]
-timestamp: 2026-10-22T00:00:00Z
+timestamp: 2026-10-29T00:00:00Z
 ---
 
 # Overview
@@ -12,13 +12,19 @@ timestamp: 2026-10-22T00:00:00Z
 zz-gpui is zz's UI framework: Zed's GPUI, split out on 2026-10-05 and owned since. It spent
 four days as its own repository, [`demfabris/gpui`](https://github.com/demfabris/gpui), moved
 into this repo on 2026-10-09 with its history (`git subtree add` of `99114ccc`), and the same day
-went from 22 crates to three:
+went from 22 crates to three. On 2026-10-29 it moved out again, to
+[`autistic-computer/gpui`](https://github.com/autistic-computer/gpui) (the old `demfabris/gpui`,
+transferred), and zz carries it back as a git subtree in `libs/gpui`: edited in place, committed with
+the zz code that needs it, and synced with `just libs push gpui` and `just libs pull gpui`. The
+widget kit took the same road to [`autistic-computer/kit`](https://github.com/autistic-computer/kit)
+and `libs/kit`. `libs/gpui` is its own Cargo workspace, excluded from zz's:
+
 
 | Crate | What it holds |
 | --- | --- |
-| `crates/zz-gpui` | gpui core, plus the Zed utility crates it needed, now modules: `collections`, `util` (merged with gpui's own), `shared_string`, `refineable`, `scheduler`, `sum_tree`, `http_client` |
-| `crates/zz-gpui-macros` | gpui's proc macros and the `Refineable` derive |
-| `crates/zz-gpui-platform` | `current_platform` and every backend as a module built only for its target: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows` (DirectX), `web`, `ios` (UIKit), and `wgpu`, the renderer Linux, web and iOS share. One build script compiles the Metal shaders on macOS and the HLSL ones on Windows |
+| `libs/gpui/crates/zz-gpui` | gpui core, plus the Zed utility crates it needed, now modules: `collections`, `util` (merged with gpui's own), `shared_string`, `refineable`, `scheduler`, `sum_tree`, `http_client` |
+| `libs/gpui/crates/zz-gpui-macros` | gpui's proc macros and the `Refineable` derive |
+| `libs/gpui/crates/zz-gpui-platform` | `current_platform` and every backend as a module built only for its target: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows` (DirectX), `web`, `ios` (UIKit), and `wgpu`, the renderer Linux, web and iOS share. One build script compiles the Metal shaders on macOS and the HLSL ones on Windows |
 
 zz never depended on the utility crates directly, and each target only ever compiled one
 backend, so the split bought nothing: the utility crates sat on the build's critical path before
@@ -29,7 +35,7 @@ gpui could start, and editing a backend still rebuilds only the platform crate. 
 layout bench. Runtime names did not change: `GPUI_*` and `ZZ_GPUI_*` environment variables, iOS
 bundle ids, and the `zz-gpui` data directory. The `fork-rebase` skill maps Zed's paths to ours.
 
-`git log -- 'crates/zz-gpui*' 'crates/zpui*' zpui gpui` reaches back to the split. The first
+`git log -- 'libs/gpui/crates/zz-gpui*' 'crates/zz-gpui*' 'crates/zpui*' zpui gpui` reaches back to the split. The first
 commit there is upstream `zed-industries/zed` at `933d8d9381`, limited to those crates; the next
 89 are the commits that lived on the old `demfabris/zed` `zz-patches` branch (tip `5a00ac89a4`),
 replayed under new commit IDs. Upstream fixes come in by hand, when we want them; Zed patches
@@ -42,12 +48,12 @@ On Linux, `zz-gpui-platform` is built with `font-kit`, Wayland, and X11 enabled;
 selects the native macOS and Windows backends automatically. The web client turns on its
 `multithreaded` feature.
 
-The zz-gpui crates are members of the root workspace, so the root clippy run covers them with all
-features, but only for the host OS. The `fork-rebase` skill has the recipe for cross-checking the
+The zz-gpui crates sit outside the root workspace, so the root clippy run skips them;
+`just libs check gpui` lints them with all features, but only for the host OS. The `fork-rebase` skill has the recipe for cross-checking the
 other backends from macOS. Zed's extras zz never used are gone: screen capture (the `scap` and
 ScreenCaptureKit backends; the `ScreenCaptureSource` API stays and reports unsupported), the
-tracy profiler, and Zed's `#[perf]` test harness (`tooling/perf`). CI's `cargo ci-test` alias
-runs every test except zz-gpui-platform's. The Linux leg runs that crate's whole suite on its
+tracy profiler, and Zed's `#[perf]` test harness (`tooling/perf`). CI's "Test libs" step runs
+every gpui test except zz-gpui-platform's. The Linux leg runs that crate's whole suite on its
 own step with Mesa lavapipe, a software Vulkan driver (`mesa-vulkan-drivers`, selected with
 `VK_ICD_FILENAMES`), so the wgpu headless renderer's pixel tests run without a GPU. That step
 includes `tests/headless.rs`, which renders a laid-out window through `HeadlessAppContext` and
@@ -66,16 +72,16 @@ zz crates:
 | What | Where | Why |
 | --- | --- | --- |
 | Zed's relaxed `[lints]` table | each Zed-derived crate's `Cargo.toml` | cargo allows one shared lint set per workspace, and the workspace one is zz's pedantic set |
-| `opt-level = 2` (3 for `zz-gpui`) | `[profile.dev.package]` in the root `Cargo.toml` | the `"*"` entry only reaches non-members, and an unoptimized renderer makes debug builds too slow to use |
+| `opt-level = 2` (3 for `zz-gpui`) | `[profile.dev.package]` in the root `Cargo.toml` | an unoptimized renderer makes debug builds too slow to use |
 
-`crates/zz-gpui/clippy.toml` empties `disallowed-methods`, since the root list bans `zz_gpui::rgb` and
+`libs/gpui/crates/zz-gpui/clippy.toml` empties `disallowed-methods`, since the root list bans `zz_gpui::rgb` and
 friends, which cannot resolve inside `zz-gpui` itself. `clients/web` has its own workspace and
-depends on the crates by path (`../../crates/zz-gpui`).
+depends on the crates by path (`../../libs/gpui/crates/zz-gpui`).
 
-**`gpui-component` is not a dependency.** It was forked into `crates/zz-gpui-kit` and both
+**`gpui-component` is not a dependency.** It was forked into `libs/kit` and both
 `gpui-component` and `gpui-component-assets` are gone from the workspace and its lockfiles; nothing
 outside zz-gpui itself is left. The fork's source revision and per-module port notes live in
-`crates/zz-gpui-kit/UPSTREAM.md`, not here.
+`libs/kit/UPSTREAM.md`, not here.
 
 # Pane renderer changes
 
@@ -84,7 +90,7 @@ use position-seeded stochastic alpha rounding in 1/128 steps to reduce banding. 
 this before any required premultiplication. Dithering changes only alpha.
 The GPU test `faint_inset_shadows_dither_dark_composites` checks variation, noise size,
 brightness, and opaque composition. Both workspaces build these changes
-from `crates/zz-gpui*`.
+from `libs/gpui/crates/zz-gpui*`.
 
 Blurred shadows also follow the element's superellipse cross-section in Metal, WGPU, and
 DirectX. The earlier carried smoothing fix covered only unblurred shadows, leaving the 2px
@@ -141,7 +147,7 @@ viewport comes to rest once a keyboard transition ends (default: the current vis
 # zz changes to GPUI
 
 Fork commit `7bdd43258b` gives the native macOS Window menu first chance to handle
-`performKeyEquivalent:` in `crates/zz-gpui-platform/src/macos/window.rs` `handle_key_equivalent`.
+`performKeyEquivalent:` in `libs/gpui/crates/zz-gpui-platform/src/macos/window.rs` `handle_key_equivalent`.
 Users can tile the app with their macOS keyboard shortcuts while a terminal has focus.
 Unmatched keys continue through GPUI's existing input path. The menu call precedes
 the window-state lock and GPUI event callback because menu validation can call back
@@ -307,7 +313,7 @@ next to bounds, content mask and text style, divs apply opacity in prepaint as w
 liquid glass content always misses (its opacity is known only at paint), and views inside a
 glass group still render with the group. A reused view replays its accessibility nodes, focus
 ids, bounds and `on_a11y_action` listeners from the previous frame's tree. Tests live in
-`window/invalidation_tests.rs`; `crates/zz-gpui-platform/benches/invalidation.rs` measures a
+`window/invalidation_tests.rs`; `libs/gpui/crates/zz-gpui-platform/benches/invalidation.rs` measures a
 nine-pane window.
 
 The web backend hosts several windows per page through `WindowOptions::mount`, mirrors each
@@ -320,7 +326,7 @@ above).
 
 # Liquid glass
 
-`crates/zz-gpui/src/glass.rs` holds the `Glass` primitive, `GlassMaterial` and `plan_glass`;
+`libs/gpui/crates/zz-gpui/src/glass.rs` holds the `Glass` primitive, `GlassMaterial` and `plan_glass`;
 `glass.wgsl` is the one shader Metal (through naga) and wgpu draw it with. Glass whose tint is
 translucent reads its backdrop: a pass break, a copy of its region and a blur chain the size of that
 region. It writes its pixels with blending off (`reading_pipeline` in both renderers): its face
@@ -438,9 +444,9 @@ costs nothing measurable over plain edge glass.
 
 ```toml
 # Cargo.toml [workspace.dependencies]
-zz-gpui = { path = "crates/zz-gpui", default-features = false }
-zz-gpui-macros = { path = "crates/zz-gpui-macros" }
-zz-gpui-platform = { path = "crates/zz-gpui-platform", default-features = false }
+zz-gpui = { path = "libs/gpui/crates/zz-gpui", default-features = false }
+zz-gpui-macros = { path = "libs/gpui/crates/zz-gpui-macros" }
+zz-gpui-platform = { path = "libs/gpui/crates/zz-gpui-platform", default-features = false }
 
 # crates/zz/Cargo.toml
 zz-gpui = { workspace = true, features = ["default"] }

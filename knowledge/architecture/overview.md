@@ -74,7 +74,7 @@ from the CLI's own transcript.
 | [zz-xtask](/crates/zz-xtask.md) | builds and validates platform CEF bundles |
 
 Workspace members without a dedicated page here: the zz-gpui crates (see [zz-gpui](/references/zz-gpui.md)), `zz-gpui-kit`, `zz-ui`, `zz-app`, `zz-ios`, and `zz-tui` (`zz attach`).
-The UIKit backend is `crates/zz-gpui-platform/src/ios`; the iOS app and its launch resources live in `clients/ios`.
+The UIKit backend is `libs/gpui/crates/zz-gpui-platform/src/ios`; the iOS app and its launch resources live in `clients/ios`.
 See [crates](/crates/index.md).
 
 # Platform status

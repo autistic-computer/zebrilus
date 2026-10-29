@@ -6,5 +6,5 @@
 * [proc-macro-error2 patch (retired)](proc-macro-error2-patch.md) - Retired on 2026-09-12 after the dependency graph stopped using proc-macro-error2.
 * [tmux behavioral reference pin](tmux-upstream.md) - The pinned upstream tmux commit zz's Rust multiplexer reimplementation is checked against, and where the per-behavior file map lives.
 * [zz-gpui web windows for agents](zz-gpui-web-agents.md) - How zz-gpui's web platform hosts several windows in one page (WindowOptions::mount), mirrors each window's AccessKit tree into ARIA elements, and exposes globalThis.zzGpui so agents can find, click, wait for and capture GPUI content.
-* [zz-gpui](zz-gpui.md) - zz-gpui, our GPUI fork (crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
+* [zz-gpui](zz-gpui.md) - zz-gpui, our GPUI fork (libs/gpui/crates/zz-gpui, zz-gpui-macros, zz-gpui-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 <!-- okf:listing:end -->

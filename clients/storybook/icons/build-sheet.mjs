@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "../../..");
 const out = process.argv[2] ?? join(root, "target/icon-sheet/zz-icons.html");
 
-const sets = [JSON.parse(readFileSync(join(root, "crates/zz-gpui-kit/src/icon/solar.json"), "utf8"))];
+const sets = [JSON.parse(readFileSync(join(root, "libs/kit/src/icon/solar.json"), "utf8"))];
 const set = sets[0];
 const renderer = readFileSync(join(here, "glyph.js"), "utf8");
 const template = readFileSync(join(here, "sheet.html"), "utf8");
@@ -19,7 +19,7 @@ for (const icon of set.icons) {
   let files = 0;
   try {
     files = execFileSync("rg", ["-l", `IconName::${icon.variant}\\b`, "crates", "clients", "-g", "*.rs",
-      "-g", "!crates/zz-gpui-kit/src/icon/**", "-g", "!clients/storybook/**"], { cwd: root, encoding: "utf8" })
+      "-g", "!libs/kit/src/icon/**", "-g", "!clients/storybook/**"], { cwd: root, encoding: "utf8" })
       .split("\n").filter(Boolean).length;
   } catch {
     files = 0;
