@@ -7,6 +7,7 @@
 #   compat/run.sh
 #   compat/run.sh windows panes
 set -euo pipefail
+export LC_COLLATE=C
 while IFS= read -r credential; do unset "$credential"; done < <(compgen -e | grep -E 'TOKEN|SECRET|PASSWORD|API_KEY|CREDENTIAL')
 
 COMPAT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
