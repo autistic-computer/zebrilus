@@ -1,9 +1,9 @@
 import { getElementContext } from "react-grab/primitives";
 import { fallbackContext, reactGrabContext } from "./format";
 
-const API_NAME = "__zzElementPicker";
-const QUERY_NAME = "__zzElementPickerQuery";
-const OVERLAY_ATTRIBUTE = "data-zz-element-picker";
+const API_NAME = "__alaCefElementPicker";
+const QUERY_NAME = "__alaCefElementPickerQuery";
+const OVERLAY_ATTRIBUTE = "data-ala-cef-element-picker";
 const CONTEXT_TIMEOUT_MS = 9_000;
 
 interface PickGeometry {
@@ -57,8 +57,8 @@ interface HeldPicker {
 
 declare global {
   interface Window {
-    __zzElementPicker?: PickerApi;
-    __zzElementPickerQuery?: QueryFunction;
+    __alaCefElementPicker?: PickerApi;
+    __alaCefElementPickerQuery?: QueryFunction;
   }
 }
 
@@ -162,27 +162,27 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
   host.setAttribute(OVERLAY_ATTRIBUTE, "");
   host.style.cssText =
     "position:fixed;inset:0;z-index:2147483646;pointer-events:none;contain:strict";
-  host.style.setProperty("--zz-picker-highlight-outline", appearance.highlightOutline);
-  host.style.setProperty("--zz-picker-highlight-fill", appearance.highlightFill);
-  host.style.setProperty("--zz-picker-highlight-contrast", appearance.highlightContrast);
-  host.style.setProperty("--zz-picker-preview-background", appearance.previewBackground);
-  host.style.setProperty("--zz-picker-preview-foreground", appearance.previewForeground);
-  host.style.setProperty("--zz-picker-preview-border", appearance.previewBorder);
-  host.style.setProperty("--zz-picker-preview-shadow", appearance.shadow ?? "transparent");
+  host.style.setProperty("--ala-cef-picker-highlight-outline", appearance.highlightOutline);
+  host.style.setProperty("--ala-cef-picker-highlight-fill", appearance.highlightFill);
+  host.style.setProperty("--ala-cef-picker-highlight-contrast", appearance.highlightContrast);
+  host.style.setProperty("--ala-cef-picker-preview-background", appearance.previewBackground);
+  host.style.setProperty("--ala-cef-picker-preview-foreground", appearance.previewForeground);
+  host.style.setProperty("--ala-cef-picker-preview-border", appearance.previewBorder);
+  host.style.setProperty("--ala-cef-picker-preview-shadow", appearance.shadow ?? "transparent");
   host.style.setProperty(
-    "--zz-picker-font-family",
+    "--ala-cef-picker-font-family",
     `${JSON.stringify(appearance.fontFamily)}, monospace`,
   );
-  host.style.setProperty("--zz-picker-outline-width", `${scale}px`);
-  host.style.setProperty("--zz-picker-hairline", `${scale}px`);
-  host.style.setProperty("--zz-picker-viewport-inset", `${16 * scale}px`);
-  host.style.setProperty("--zz-picker-label-max-width", `${360 * scale}px`);
-  host.style.setProperty("--zz-picker-padding-y", `${3 * scale}px`);
-  host.style.setProperty("--zz-picker-padding-x", `${6 * scale}px`);
-  host.style.setProperty("--zz-picker-font-size", `${11 * scale}px`);
-  host.style.setProperty("--zz-picker-line-height", `${15 * scale}px`);
-  host.style.setProperty("--zz-picker-shadow-y", `${scale}px`);
-  host.style.setProperty("--zz-picker-shadow-blur", `${3 * scale}px`);
+  host.style.setProperty("--ala-cef-picker-outline-width", `${scale}px`);
+  host.style.setProperty("--ala-cef-picker-hairline", `${scale}px`);
+  host.style.setProperty("--ala-cef-picker-viewport-inset", `${16 * scale}px`);
+  host.style.setProperty("--ala-cef-picker-label-max-width", `${360 * scale}px`);
+  host.style.setProperty("--ala-cef-picker-padding-y", `${3 * scale}px`);
+  host.style.setProperty("--ala-cef-picker-padding-x", `${6 * scale}px`);
+  host.style.setProperty("--ala-cef-picker-font-size", `${11 * scale}px`);
+  host.style.setProperty("--ala-cef-picker-line-height", `${15 * scale}px`);
+  host.style.setProperty("--ala-cef-picker-shadow-y", `${scale}px`);
+  host.style.setProperty("--ala-cef-picker-shadow-blur", `${3 * scale}px`);
   const shadow = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = `
@@ -191,9 +191,9 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
       position: fixed;
       display: none;
       box-sizing: border-box;
-      border: var(--zz-picker-outline-width) solid var(--zz-picker-highlight-outline);
-      background: var(--zz-picker-highlight-fill);
-      box-shadow: 0 0 0 calc(var(--zz-picker-hairline) / 2) var(--zz-picker-highlight-contrast);
+      border: var(--ala-cef-picker-outline-width) solid var(--ala-cef-picker-highlight-outline);
+      background: var(--ala-cef-picker-highlight-fill);
+      box-shadow: 0 0 0 calc(var(--ala-cef-picker-hairline) / 2) var(--ala-cef-picker-highlight-contrast);
       pointer-events: none;
     }
     .label {
@@ -201,22 +201,22 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
       display: none;
       box-sizing: border-box;
       max-width: min(
-        var(--zz-picker-label-max-width),
-        calc(100vw - var(--zz-picker-viewport-inset))
+        var(--ala-cef-picker-label-max-width),
+        calc(100vw - var(--ala-cef-picker-viewport-inset))
       );
       overflow: hidden;
-      padding: var(--zz-picker-padding-y) var(--zz-picker-padding-x);
-      border: var(--zz-picker-hairline) solid var(--zz-picker-preview-border);
-      background: var(--zz-picker-preview-background);
+      padding: var(--ala-cef-picker-padding-y) var(--ala-cef-picker-padding-x);
+      border: var(--ala-cef-picker-hairline) solid var(--ala-cef-picker-preview-border);
+      background: var(--ala-cef-picker-preview-background);
       box-shadow:
-        0 var(--zz-picker-shadow-y) var(--zz-picker-shadow-blur)
-        var(--zz-picker-preview-shadow);
-      color: var(--zz-picker-preview-foreground);
+        0 var(--ala-cef-picker-shadow-y) var(--ala-cef-picker-shadow-blur)
+        var(--ala-cef-picker-preview-shadow);
+      color: var(--ala-cef-picker-preview-foreground);
       corner-shape: squircle;
-      font-family: var(--zz-picker-font-family);
-      font-size: var(--zz-picker-font-size);
+      font-family: var(--ala-cef-picker-font-family);
+      font-size: var(--ala-cef-picker-font-size);
       font-weight: 500;
-      line-height: var(--zz-picker-line-height);
+      line-height: var(--ala-cef-picker-line-height);
       text-overflow: ellipsis;
       white-space: nowrap;
       pointer-events: none;
@@ -231,8 +231,8 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
   const cursorStyle = document.createElement("style");
   cursorStyle.setAttribute(OVERLAY_ATTRIBUTE, "");
   cursorStyle.textContent =
-    "html[data-zz-picking], html[data-zz-picking] body, html[data-zz-picking] body * { cursor: crosshair !important; -webkit-tap-highlight-color: transparent !important; }";
-  document.documentElement.setAttribute("data-zz-picking", "");
+    "html[data-ala-cef-picking], html[data-ala-cef-picking] body, html[data-ala-cef-picking] body * { cursor: crosshair !important; -webkit-tap-highlight-color: transparent !important; }";
+  document.documentElement.setAttribute("data-ala-cef-picking", "");
   document.documentElement.append(cursorStyle, host);
 
   let selected: Element | null = null;
@@ -293,7 +293,7 @@ function start(token: string, requestedAppearance: ElementPickerAppearance): voi
     window.removeEventListener("keydown", onKeyDown, true);
     window.removeEventListener("scroll", paint, true);
     window.removeEventListener("resize", paint);
-    document.documentElement.removeAttribute("data-zz-picking");
+    document.documentElement.removeAttribute("data-ala-cef-picking");
     cursorStyle.remove();
     host.remove();
     if (cleanupActivePicker === cleanup) cleanupActivePicker = null;

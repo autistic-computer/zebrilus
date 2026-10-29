@@ -208,7 +208,7 @@ A page starts with:
 The only bridge is the reply, and it rides the element picker's message router rather than a
 second one. `ArtifactReplyHandler` sits on that router before the picker's handler and takes only
 queries that start with `page.reply:`. `on_context_created` runs a small script on main frames whose
-URL is `zz://` that defines `window.zz.reply(text)` over `__zzElementPickerQuery`. The scheme and
+URL is `zz://` that defines `window.zz.reply(text)` over `__alaCefElementPickerQuery`. The scheme and
 the `zz` global come from the `RuntimeConfig` zz hands ala-cef at bootstrap
 (`crates/zz/src/browser/environment.rs`). The handler
 takes the token from the frame's own URL, never from the query, and answers only the main frame,
