@@ -11390,7 +11390,6 @@ dependencies = [
  "serde_json",
  "tempfile",
  "ureq",
- "zz-browser",
  "zz-client",
  "zz-daemon-client",
  "zz-mux",

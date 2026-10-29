@@ -15,7 +15,6 @@ mod page_zoom;
 mod popup;
 #[cfg_attr(not(feature = "cef-runtime"), allow(dead_code, unused_imports))]
 mod profile;
-pub mod url_input;
 
 #[cfg(all(feature = "host", any(target_os = "linux", target_os = "freebsd")))]
 mod readback_texture;
@@ -68,9 +67,6 @@ pub use lifecycle::{RuntimePhase, SessionPhase};
 pub use profile::{
     BrowserProfileError, BrowserProfileNameError, BrowserProfilePaths, DEFAULT_BROWSER_PROFILE,
     MAX_BROWSER_PROFILE_NAME_BYTES, normalize_browser_profile_name,
-};
-pub use url_input::{
-    SearchProvider, UrlInputError, diagnostic_url, normalize_url, resolve_address,
 };
 
 #[cfg(feature = "cef-runtime")]
