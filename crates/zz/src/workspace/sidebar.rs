@@ -1,5 +1,3 @@
-#[cfg(feature = "agent-pane")]
-mod driver;
 mod flat;
 
 use std::{
@@ -126,10 +124,6 @@ fn workspace_tree_key_bindings(chords: &[ChromeChord]) -> Vec<KeyBinding> {
 pub(crate) struct SidebarReleaseFocus;
 pub(crate) struct SidebarModeChanged;
 pub(crate) struct SidebarRouteChanged;
-/// A click on the driver's last message: open the chat.
-pub(crate) struct SidebarOpenDriver;
-/// "Show terminal" on the driver's last message: switch to the driver's pane.
-pub(crate) struct SidebarShowDriverTerminal;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ChromeMode {
@@ -188,8 +182,6 @@ pub struct WorkspaceSidebar {
     flat: bool,
     flat_view: flat::FlatView,
     window_shortcuts: bool,
-    #[cfg(feature = "agent-pane")]
-    driver: driver::DriverSection,
 }
 
 const WINDOW_SHORTCUTS: u8 = 9;
@@ -213,10 +205,9 @@ fn shortcut_windows(model: &MuxTreeModel) -> impl Iterator<Item = (HostId, Windo
 impl WorkspaceSidebar {
     pub(crate) fn new(mux: Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
         let local_hostname = local_hostname();
-        let mut observed_revision =
-            SidebarRevision::for_mux(mux.read(cx), crate::agent::hidden_session(cx));
+        let mut observed_revision = SidebarRevision::for_mux(mux.read(cx));
         cx.observe(&mux, move |sidebar, mux, cx| {
-            let revision = SidebarRevision::for_mux(mux.read(cx), crate::agent::hidden_session(cx));
+            let revision = SidebarRevision::for_mux(mux.read(cx));
             if revision != observed_revision {
                 observed_revision = revision;
                 sidebar.synchronize_tree(cx);
@@ -226,16 +217,7 @@ impl WorkspaceSidebar {
             }
         })
         .detach();
-        cx.observe_global::<crate::config::AppConfig>(|sidebar, cx| {
-            if sidebar.synchronize_tree(cx) {
-                sidebar.reconcile_attention(cx);
-                cx.notify();
-            }
-        })
-        .detach();
         Self {
-            #[cfg(feature = "agent-pane")]
-            driver: driver::DriverSection::new(mux.clone(), local_hostname.clone(), cx),
             mux,
             tree_model: Rc::new(MuxTreeModel::default()),
             tree_revision: None,
@@ -731,12 +713,11 @@ impl WorkspaceSidebar {
 
     fn synchronize_tree(&mut self, cx: &App) -> bool {
         let mux = self.mux.read(cx);
-        let hidden = crate::agent::hidden_session(cx);
-        let revision = SidebarRevision::for_mux(mux, hidden);
+        let revision = SidebarRevision::for_mux(mux);
         if self.tree_revision.as_ref() == Some(&revision) {
             return false;
         }
-        let model = MuxTreeModel::from_mux(mux).without_session(hidden);
+        let model = MuxTreeModel::from_mux(mux);
         self.tree_revision = Some(revision);
         self.reconcile_tree(model)
     }
@@ -998,12 +979,6 @@ impl Render for WorkspaceSidebar {
         } else {
             self.render_navigation(&sidebar, attached_host, attached, window, cx)
         };
-        #[cfg(feature = "agent-pane")]
-        let navigation = if settings_route {
-            navigation
-        } else {
-            self.with_driver_latest(navigation, cx)
-        };
         let controls = if settings_route {
             None
         } else {
@@ -1061,8 +1036,6 @@ impl Render for WorkspaceSidebar {
 impl EventEmitter<SidebarReleaseFocus> for WorkspaceSidebar {}
 impl EventEmitter<SidebarModeChanged> for WorkspaceSidebar {}
 impl EventEmitter<SidebarRouteChanged> for WorkspaceSidebar {}
-impl EventEmitter<SidebarOpenDriver> for WorkspaceSidebar {}
-impl EventEmitter<SidebarShowDriverTerminal> for WorkspaceSidebar {}
 
 #[derive(Clone, Debug)]
 struct VisibleTreeEntry {
@@ -1255,11 +1228,10 @@ struct SidebarRevision {
     attached_host: HostId,
     attached_session: Option<SessionId>,
     active_target: Option<TreeNode>,
-    hidden: Option<&'static str>,
 }
 
 impl SidebarRevision {
-    fn for_mux(mux: &MuxClient, hidden: Option<&'static str>) -> Self {
+    fn for_mux(mux: &MuxClient) -> Self {
         let attached_host = mux.attached_host();
         let attached_session = mux.attached_session();
         let mut active_target = None;
@@ -1284,7 +1256,6 @@ impl SidebarRevision {
             attached_host,
             attached_session,
             active_target,
-            hidden,
         }
     }
 }
@@ -2308,77 +2279,6 @@ mod tests {
         assert_eq!(
             node_agent_badge(&model, &BTreeMap::new(), TreeNode::Host(HostId::LOCAL)),
             None
-        );
-    }
-
-    #[cfg(feature = "agent-pane")]
-    #[zz_gpui::test]
-    fn the_driver_session_leaves_the_sidebar_only_while_the_driver_agent_is_on(
-        cx: &mut TestAppContext,
-    ) {
-        let mut snapshot = snapshot_with_two_panes();
-        let mut window = mux_window(21, 0, "claude", 301);
-        window.panes.get_mut(&PaneId(301)).unwrap().summary.process = vec!["claude".to_owned()];
-        window.panes.get_mut(&PaneId(301)).unwrap().status = Some(PaneStatus {
-            state: PaneStatusState::Blocked,
-            kind: None,
-            progress: None,
-            app: String::new(),
-            title: String::new(),
-            message: String::new(),
-        });
-        snapshot.sessions.push(SessionSnapshot {
-            id: SessionId(2),
-            name: "driver".to_owned(),
-            active_window: window.id,
-            windows: vec![window],
-            viewers: Vec::new(),
-        });
-        let hidden = |on: bool, cx: &mut TestAppContext| {
-            cx.update(|cx| {
-                let mut config = crate::config::AppConfig::default();
-                config.driver_agent.value = on;
-                cx.set_global(config);
-                crate::agent::hidden_session(cx)
-            })
-        };
-        let badges = BTreeMap::from([((HostId::LOCAL, PaneId(301)), AgentBadge::NeedsInput)]);
-        let lists = |hidden: Option<&str>, attached: SessionId| {
-            let model = local_model(&snapshot, Some(attached)).without_session(hidden);
-            let (chats, rollup) = flat::listed_summary(
-                &snapshot,
-                HostId::LOCAL,
-                hidden,
-                (HostId::LOCAL, Some(attached)),
-            );
-            (
-                model.hosts[0]
-                    .sessions
-                    .iter()
-                    .map(|session| session.name.clone())
-                    .collect::<Vec<_>>(),
-                node_agent_badge(&model, &badges, TreeNode::Host(HostId::LOCAL)),
-                chats.len(),
-                rollup.needs_you,
-            )
-        };
-        let both = vec!["main workspace".to_owned(), "driver".to_owned()];
-
-        let on = hidden(true, cx);
-        assert_eq!(
-            lists(on, SessionId(1)),
-            (vec!["main workspace".to_owned()], None, 0, 0)
-        );
-        assert_eq!(
-            lists(on, SessionId(2)),
-            (both.clone(), Some(AgentBadge::NeedsInput), 1, 1),
-            "the attached driver session stays listed"
-        );
-        let off = hidden(false, cx);
-        assert_eq!(off, None);
-        assert_eq!(
-            lists(off, SessionId(1)),
-            (both, Some(AgentBadge::NeedsInput), 1, 1)
         );
     }
 

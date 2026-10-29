@@ -5586,6 +5586,10 @@ impl MuxEngine {
                 .scalar_option_effective(TmuxOptionTarget::Server, "clear-on-attach")
                 .unwrap_or("on")
                 .to_owned(),
+            MuxOptionKey::CommandAlias => self
+                .array_option(TmuxOptionTarget::Server, "command-alias")
+                .map(|aliases| aliases.values().cloned().collect::<Vec<_>>().join("\n"))
+                .unwrap_or_default(),
         }
     }
 
@@ -16890,6 +16894,12 @@ fn server_option_execution(option: ServerOption) -> Execution {
 }
 
 fn stored_array_execution(name: &str, changed: bool) -> Execution {
+    if name == "command-alias" && changed {
+        return Execution::effect(MuxEffect::MuxOptionChanged {
+            option: MuxOptionKey::CommandAlias,
+            session: None,
+        });
+    }
     if name == "pane-colours" && changed {
         return Execution::effect(MuxEffect::TerminalKnobsChanged {
             window: None,

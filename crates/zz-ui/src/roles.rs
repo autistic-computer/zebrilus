@@ -26,7 +26,7 @@ pub const CHROME_BUTTON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
     "chrome.button",
     "Chrome buttons",
-    "Icon buttons on the window chrome: sidebar toggle, settings, add host, list view, search, the driver chat, window overflow",
+    "Icon buttons on the window chrome: sidebar toggle, settings, add host, list view, search, window overflow",
 )
 .with(P.ink(Ink::Rest));
 pub const WINDOW_TAB: SurfaceRole = SurfaceRole::under(
@@ -211,31 +211,18 @@ pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "Message bubbles",
     "Your messages in the agent lens",
 );
-pub const CHAT_BUBBLE: SurfaceRole = SurfaceRole::new(
-    "chat.bubble",
-    Kind::Card,
-    "Chat bubbles",
-    "The driver's replies and agents' messages in the driver chat",
-);
-pub const CHAT_MINE: SurfaceRole = SurfaceRole::under(
-    &CHAT_BUBBLE,
-    "chat.bubble.mine",
-    "Your chat bubbles",
-    "Your messages to the driver, washed in the accent",
-)
-.with(P.fill(Fill::Tint));
 pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
     "agent.composer",
     "Composer",
-    "The pill you write to an agent or the driver in",
+    "The pill you write to an agent in",
 )
 .with(P.shape(Shape::Pill));
 pub const AGENT_SEND: SurfaceRole = SurfaceRole::new(
     "agent.send",
     Kind::Button,
     "Composer buttons",
-    "Send, stop and + in the composer the lens and the driver chat share, filled in every theme",
+    "Send, stop and + in the lens composer, filled in every theme",
 )
 .with(
     P.fill(Fill::Solid)
@@ -291,7 +278,7 @@ pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
     "inline-panel",
     Kind::Floating,
     "Inline panels",
-    "Panels raised inside a pane or the driver chat: question and approval cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
+    "Panels raised inside a pane: question and approval cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
 )
 .with_knobs(SurfaceRole::DIALOG.knobs());
 
@@ -375,13 +362,7 @@ pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
     "phone.pill",
     Kind::Button,
     "Phone pill",
-    "The pills floating at the bottom of the phone: the pane pill and the actions its menu stacks above it, the host pill, Message the driver and the Settings button beside it, and the pills the keys sit in over the keyboard",
-);
-pub const PHONE_DRIVER_CARD: SurfaceRole = SurfaceRole::under(
-    &PHONE_PILL,
-    "phone.driver-card",
-    "Driver card",
-    "The driver's last message on the phone's Hosts page",
+    "The pills floating at the bottom of the phone: the pane pill and the actions its menu stacks above it, the host pill, the Hosts page's Settings button, and the pills the keys sit in over the keyboard",
 );
 pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
@@ -443,7 +424,7 @@ pub const PALETTE: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::POPOVER,
     "palette",
     "Command palette",
-    "The command palette, its Driver mode and the path picker",
+    "The command palette and the path picker",
 );
 pub const PICKER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DIALOG,
@@ -480,12 +461,6 @@ pub const BINDINGS_DRAWER: SurfaceRole = SurfaceRole::under(
     "drawer.bindings",
     "Bindings drawer",
     "Every key binding on the phone, each sent when picked",
-);
-pub const DRIVER_DRAWER: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::DRAWER,
-    "drawer.driver",
-    "Driver drawer",
-    "The Driver Agent's chat on the phone",
 );
 
 pub const PICKER_NOTICE: SurfaceRole = SurfaceRole::new(
@@ -525,12 +500,6 @@ pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
     "Tree guides",
     "The lines that join a tree's children",
 );
-pub const CHAT_RULE: SurfaceRole = SurfaceRole::new(
-    "rule.chat",
-    Kind::Rule,
-    "Chat line",
-    "The line over the driver's last message in the flat sidebar",
-);
 
 /// zz's own roles, after the kit's. The theme creator lists every role
 /// under its kind and group, in this order.
@@ -542,8 +511,6 @@ const ZZ: &[SurfaceRole] = &[
     PHONE_BAR,
     PICKER_NOTICE,
     AGENT_BUBBLE,
-    CHAT_BUBBLE,
-    CHAT_MINE,
     CODE,
     FIGURE,
     AGENT_ATTACHMENT,
@@ -557,7 +524,6 @@ const ZZ: &[SurfaceRole] = &[
     NEW_PANE_DRAWER,
     TABS_DRAWER,
     BINDINGS_DRAWER,
-    DRIVER_DRAWER,
     INLINE_PANEL,
     FLOATING_PANE,
     PIP,
@@ -569,7 +535,6 @@ const ZZ: &[SurfaceRole] = &[
     PANE_PICKER,
     AGENT_OPTION,
     PHONE_PILL,
-    PHONE_DRIVER_CARD,
     PHONE_KEY,
     CHROME_BUTTON,
     WINDOW_CONTROLS,
@@ -606,10 +571,17 @@ const ZZ: &[SurfaceRole] = &[
     SPLIT_RULE,
     LIST_RULE,
     TREE_RULE,
-    CHAT_RULE,
 ];
 
-pub const RETIRED: [&str; 2] = ["agent.status", "agent.picker"];
+pub const RETIRED: [&str; 7] = [
+    "agent.status",
+    "agent.picker",
+    "chat.bubble",
+    "chat.bubble.mine",
+    "phone.driver-card",
+    "drawer.driver",
+    "rule.chat",
+];
 
 /// Every role a theme file may name: the kit's kinds and groups, then zz's.
 pub fn all() -> impl Iterator<Item = SurfaceRole> {

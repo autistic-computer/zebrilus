@@ -1,10 +1,12 @@
-use zz_client::{completion::PaneKindAvailability, recents::Recents};
+use std::rc::Rc;
+
+use zz_client::{completion::PaneKindAvailability, recents::Recents, verbs::Verb};
 use zz_protocol::{PaneId, SessionId, WindowId};
 
 use super::*;
 use crate::command::{
     PaletteHostId, PaletteTreeHost, PaletteTreeSession, PaletteTreeWindow,
-    palette_model::PaletteMode,
+    palette_model::{PaletteAction, PaletteMode},
 };
 
 fn pane(id: u64, index: u32, label: &str, needs_you: bool) -> PaletteTreePane {
@@ -126,6 +128,7 @@ fn availability() -> PaneKindAvailability {
 fn palette(chips: Vec<Chip>) -> UnifiedPalette {
     let mut palette = UnifiedPalette::new(None);
     palette.chips = chips;
+    palette.verbs = Rc::from(zz_client::verbs::verbs(availability(), &[], true, ""));
     palette
 }
 
@@ -133,8 +136,31 @@ fn auto_host() -> Chip {
     let fleet = palette_fleet(&tree());
     Chip {
         auto: true,
-        ..chip_for(&fleet, Place::host(0), None).expect("host chip")
+        ..chip_for(&fleet, Place::host(0)).expect("host chip")
     }
+}
+
+fn session_chip() -> Chip {
+    let fleet = palette_fleet(&tree());
+    chip_for(
+        &fleet,
+        Place {
+            host: Some(0),
+            session: Some(SessionId(3)),
+            window: None,
+            pane: None,
+        },
+    )
+    .expect("session chip")
+}
+
+fn verb(palette: &UnifiedPalette, name: &str) -> Verb {
+    palette
+        .verbs
+        .iter()
+        .find(|verb| verb.name == name)
+        .cloned()
+        .expect("verb")
 }
 
 fn rows(
@@ -158,7 +184,7 @@ fn rows(
 }
 
 #[test]
-fn the_empty_palette_lists_what_needs_you_then_recents_then_hosts() {
+fn the_empty_palette_lists_what_needs_you_recents_then_this_hosts_sessions() {
     let mut recents = Recents::default();
     recents.record(
         RecentKey::Place {
@@ -171,13 +197,8 @@ fn the_empty_palette_lists_what_needs_you_then_recents_then_hosts() {
         0,
     );
     recents.record(
-        RecentKey::Place {
-            host: "macbook".to_owned(),
-            session: SessionId(3),
-            window: Some(WindowId(10)),
-            pane: None,
-        },
-        "claude",
+        RecentKey::Command("capture-pane -p -t %52".to_owned()),
+        "capture-pane -p -t ci:3.0",
         0,
     );
     let mut palette = palette(vec![auto_host()]);
@@ -185,102 +206,105 @@ fn the_empty_palette_lists_what_needs_you_then_recents_then_hosts() {
         rows(&mut palette, "", &["split-window -h".to_owned()], &recents),
         [
             "Needs you",
-            "  macbook / Working on foo / @1 claude",
+            "  macbook › Working on foo › 1 claude",
             "Recent places",
-            "  xps / ci / @3 cargo test",
-            "Recent commands",
+            "  xps › ci › 3 cargo test",
+            "Recent actions",
+            "  capture-pane -p -t ci:3.0",
             "  split-window",
-            "Hosts",
-            "  ^macbook",
-            "  ^xps",
+            "Sessions on macbook",
+            "  Working on foo",
+            "  zz 1",
+            "Other hosts",
+            "  xps",
         ]
     );
 }
 
 #[test]
-fn a_sigil_lists_its_level_under_the_chips() {
-    let mut palette = palette(vec![auto_host()]);
-    let recents = Recents::default();
-    assert_eq!(
-        rows(&mut palette, "$", &[], &recents),
-        ["Sessions on macbook", "  $Working on foo", "  $zz 1"]
-    );
-    assert_eq!(
-        rows(&mut palette, "$1", &[], &recents),
-        ["Sessions on macbook", "  $zz 1"]
-    );
-    assert_eq!(
-        rows(&mut palette, "$worki@", &[], &recents),
-        [
-            "Windows in Working on foo",
-            "  @1 claude",
-            "  @2 cargo watch"
-        ]
-    );
-    assert_eq!(rows(&mut palette, "^", &[], &recents)[0], "Hosts");
-    assert!(rows(&mut palette, "$nothing", &[], &recents).is_empty());
-}
-
-#[test]
-fn plain_text_searches_places_and_commands_and_hosts_only_without_a_host_chip() {
+fn typing_matches_places_and_actions_with_no_sigils() {
     let recents = Recents::default();
     let mut scoped = palette(vec![auto_host()]);
-    let found = rows(&mut scoped, "cargo", &[], &recents);
+    let found = rows(&mut scoped, "foo 2", &[], &recents);
     assert_eq!(found[0], "Places");
-    assert_eq!(found[1], "  Working on foo / @2 cargo watch");
+    assert_eq!(found[1], "  Working on foo › 2 cargo watch");
+    let found = rows(&mut scoped, "rea", &[], &recents);
+    assert_eq!(found[0], "Actions");
+    assert_eq!(found[1], "  read pane");
+    let found = rows(&mut scoped, "cargo", &[], &recents);
     assert!(
         !found.iter().any(|row| row.contains("cargo test")),
         "the host chip filters"
     );
     assert!(!found.contains(&"Hosts".to_owned()));
     let mut fleet = palette(Vec::new());
-    let found = rows(&mut fleet, "xps", &[], &recents);
-    assert!(found.contains(&"Hosts".to_owned()));
-    let found = rows(&mut fleet, "cargo", &[], &recents);
-    assert!(found.iter().any(|row| row == "  xps / ci / @3 cargo test"));
+    assert!(rows(&mut fleet, "xps", &[], &recents).contains(&"Hosts".to_owned()));
+    assert!(
+        rows(&mut fleet, "cargo", &[], &recents)
+            .iter()
+            .any(|row| row == "  xps › ci › 3 cargo test")
+    );
 }
 
 #[test]
-fn an_entered_level_lists_its_children_and_the_chips_draw_as_pills() {
-    let fleet = palette_fleet(&tree());
-    let session = chip_for(
-        &fleet,
-        Place {
-            host: Some(0),
-            session: Some(SessionId(3)),
-            window: None,
-            pane: None,
-        },
-        None,
-    )
-    .expect("session chip");
-    let mut palette = palette(vec![auto_host(), session]);
+fn on_a_place_typing_lists_the_actions_that_take_it_first() {
+    let recents = Recents::default();
+    let mut palette = palette(vec![auto_host(), session_chip()]);
     assert_eq!(
-        rows(&mut palette, "", &[], &Recents::default()),
-        [
-            "Windows in Working on foo",
-            "  @1 claude",
-            "  @2 cargo watch"
-        ]
+        rows(&mut palette, "", &[], &recents),
+        ["Windows in Working on foo", "  1 claude", "  2 cargo watch"]
     );
-    assert_eq!(
-        palette.placeholder(),
-        "Search Working on foo, or type ^ $ @ % : > & ?"
-    );
+    let found = rows(&mut palette, "kil", &[], &recents);
+    assert_eq!(found[0], "Actions on Working on foo");
+    assert!(found[1].starts_with("  kill "));
+    assert!(found.iter().all(|row| row != "  detach"));
     let pills = palette.pills();
     assert_eq!(pills.len(), 2);
-    assert!(
-        matches!(&pills[1], PalettePill::Mode { prefix, label } if prefix == "$" && label == "Working on foo")
-    );
+    assert!(matches!(&pills[1], PalettePill::Place(label) if label == "Working on foo"));
 }
 
 #[test]
-fn a_colon_lists_commands_and_other_actions_leave_rows_to_their_level() {
+fn a_verb_waiting_on_a_pane_lists_panes_with_the_current_one_first() {
+    let recents = Recents::default();
+    let mut palette = palette(vec![auto_host()]);
+    palette.draft = Some(Draft::new(verb(&palette, "read pane")));
+    let found = rows(&mut palette, "", &[], &recents);
+    assert_eq!(found[0], "Panes on macbook");
+    assert_eq!(found[1], "  Working on foo › 1 claude › 0 Review sidebar");
+    assert!(matches!(
+        palette.rows[1].action,
+        Some(PaletteAction::Fill(_))
+    ));
+    assert_eq!(palette.placeholder(), "Pick a pane");
+    let pills = palette.pills();
+    assert!(matches!(&pills[1], PalettePill::Verb(label) if label == "read pane"));
+    let found = rows(&mut palette, "flat", &[], &recents);
+    assert_eq!(found[1], "  zz 1 › 1 nvim › 0 flat.rs");
+}
+
+#[test]
+fn a_text_slot_offers_what_you_typed_and_other_slots_leave_rows_to_their_level() {
+    let recents = Recents::default();
+    let mut palette = palette(vec![auto_host(), session_chip()]);
+    let mut draft = Draft::new(verb(&palette, "rename session"));
+    draft.filled.push((
+        zz_client::verbs::Filled::Place(session_chip().place),
+        String::new(),
+    ));
+    palette.draft = Some(draft);
+    assert!(rows(&mut palette, "", &[], &recents).is_empty());
+    assert_eq!(palette.placeholder(), "New name");
+    assert_eq!(rows(&mut palette, "api", &[], &recents), ["  api"]);
+    palette.draft = Some(Draft::new(verb(&palette, "insert path")));
+    assert!(rows(&mut palette, "~/dev/", &[], &recents).is_empty());
+    assert_eq!(palette.placeholder(), "A folder or file");
+}
+
+#[test]
+fn a_colon_lists_tmux_commands() {
     let recents = Recents::default();
     let mut palette = palette(vec![auto_host()]);
     let found = rows(&mut palette, ":kill-w", &[], &recents);
     assert_eq!(found.first().map(String::as_str), Some("  kill-window"));
-    assert!(rows(&mut palette, ">theme", &[], &recents).is_empty());
-    assert!(rows(&mut palette, "&~/dev/", &[], &recents).is_empty());
     assert!(!UnifiedPalette::new(Some(PaletteMode::Command)).is_places());
 }

@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
 use zz_gpui::{
-    App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, Hsla, IntoElement, MouseButton,
-    ParentElement as _, Pixels, SharedString, Styled as _, Window, div, prelude::*, px,
+    App, Bounds, Div, ElementId, FULL_CORNER_RADIUS, IntoElement, MouseButton, ParentElement as _,
+    Pixels, SharedString, Styled as _, Window, div, prelude::*, px,
 };
 
 use crate::{
@@ -35,7 +35,6 @@ const SPACINGS: [Spacing; 4] = [
     },
 ];
 const CLOSE_ICON: f32 = 22.0;
-const DOT: f32 = 8.0;
 const RISE: f32 = 14.0;
 const STAGGER: f32 = 0.06;
 
@@ -57,7 +56,6 @@ pub struct PillMenuItem {
     pub label: SharedString,
     pub icon: IconName,
     pub look: PillMenuLook,
-    pub dot: Option<Hsla>,
 }
 
 impl PillMenuItem {
@@ -71,20 +69,12 @@ impl PillMenuItem {
             label: label.into(),
             icon,
             look: PillMenuLook::Rest,
-            dot: None,
         }
     }
 
     #[must_use]
     pub fn look(mut self, look: PillMenuLook) -> Self {
         self.look = look;
-        self
-    }
-
-    /// A dot in `color` after the label, for what waits behind the chip.
-    #[must_use]
-    pub fn dot(mut self, color: Option<Hsla>) -> Self {
-        self.dot = color;
         self
     }
 }
@@ -316,15 +306,6 @@ fn chip(
         ))
         .child(Icon::new(item.icon).size(rems_from_px(CHIP_ICON)))
         .child(item.label)
-        .when_some(item.dot, |chip, color| {
-            chip.child(
-                div()
-                    .flex_none()
-                    .size(rems_from_px(DOT))
-                    .rounded_full()
-                    .bg(color),
-            )
-        })
         .on_click(move |_, window, cx| {
             cx.stop_propagation();
             on_pick(&id, window, cx);

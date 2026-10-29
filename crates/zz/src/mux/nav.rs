@@ -166,17 +166,6 @@ impl MuxTreeModel {
     }
 
     #[must_use]
-    pub fn without_session(mut self, hidden: Option<&str>) -> Self {
-        if hidden.is_some() {
-            for host in &mut self.hosts {
-                host.sessions
-                    .retain(|session| lists_session(hidden, &session.name, session.active));
-            }
-        }
-        self
-    }
-
-    #[must_use]
     pub fn is_expandable(&self, node: TreeNode) -> bool {
         match node {
             TreeNode::Host(host) => self.host(host).is_some(),
@@ -562,11 +551,6 @@ pub enum TreeNodeKind {
     Session,
     Window,
     Pane { kind: MuxTreePaneKind },
-}
-
-#[must_use]
-pub fn lists_session(hidden: Option<&str>, name: &str, attached: bool) -> bool {
-    attached || hidden != Some(name)
 }
 
 #[must_use]

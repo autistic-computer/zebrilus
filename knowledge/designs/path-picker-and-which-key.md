@@ -16,7 +16,7 @@ timestamp: 2026-10-13T00:00:00Z
 # Summary
 
 > **2026-10-26:** the picker's view is gone. `prefix F` now opens the command palette on the pane's
-> folder (in `@` mode until 2026-10-27, on `&` since), which shares its grammar, rows and keys with the palette and the Driver chat's
+> folder (in `@` mode until 2026-10-27, on `&` since), which shares its grammar, rows and keys with the palette and the lens composer's
 > mentions ([command palette, Targets](/concepts/command-palette.md#targets)). Its listing goes
 > through `MuxClient::request_host_path_list` with the pane as the anchor, so the daemon side below
 > (`choose-path`, `OpenPathPicker`, the walker, the insert style) is unchanged, and the client still
@@ -28,6 +28,9 @@ timestamp: 2026-10-13T00:00:00Z
 > after the `&` and Alt-Enter copying the plain path ([command palette, Files](/concepts/command-palette.md#files)).
 > The listing and insert path are the same. The web and iOS clients now announce
 > `client-path-picker-v1` and list, insert and open `prefix F` the same way.
+>
+> **2026-10-28:** the palette lost its sigils; the files mode is the `insert path` verb now, and
+> `prefix F` opens straight into it with the folder in the field.
 
 Two features from the [terminal augmentation survey](../research/2026-09-25-terminal-augmentation-survey.md):
 
@@ -115,9 +118,8 @@ One active walk per client: a local `Option<(request_id, Arc<AtomicBool>)>`; a n
 `PathListCancel`, or loop exit sets the flag. Clients that are read-only, lack
 `client-path-picker-v1`, or are not attached to the pane's session get an error `Begin`. Since
 2026-10-26 a `dir` that names its own root (absolute, or starting with `~`) is listed through any
-terminal pane on the daemon, attached or not, so the Driver chat's `@` picker can list files on a
-host it only watches ([durable driver chat](/designs/durable-driver-chat.md#chat-ui)); the pane then
-only decides the insert style and the remote-foreground refusal below. Same messages, no wire bump.
+terminal pane on the daemon, attached or not, so an `@` picker can list files on a host it only
+watches (the Driver Agent's chat did, until it was removed on 2026-10-28); the pane then only decides the insert style and the remote-foreground refusal below. Same messages, no wire bump.
 
 **Root**, in order, each step checked with `is_dir()`:
 

@@ -10,18 +10,15 @@ use zz_protocol::{
 use zz_ui::{
     IconName,
     command::{
-        AskLevel, GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
+        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
         PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
-        PaletteTreeSession, PaletteTreeWindow, target_hosts,
+        PaletteTreeSession, PaletteTreeWindow,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
-    link::resolve_link,
-    target::{TargetKind, TargetPicker},
+    target::TargetPicker,
 };
 
-pub(crate) use zz_ui::command::{
-    CommandPaletteEvent, CommandPaletteView, DriverOffer, GuiEvent, PaletteMode,
-};
+pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, GuiEvent, PaletteMode};
 
 use crate::{
     mux::{
@@ -73,53 +70,13 @@ pub(crate) fn palette_backend(mux: Entity<MuxClient>) -> Rc<dyn PaletteBackend> 
 pub(crate) fn palette_backend_with(
     mux: Entity<MuxClient>,
     gui: Vec<GuiOffer>,
-    driver: Option<DriverOffer>,
 ) -> Rc<dyn PaletteBackend> {
-    Rc::new(MuxPalette { mux, gui, driver })
-}
-
-/// Go to what the zz link `address` names: attach its host, switch to its
-/// session, window or pane, or paste its path into the active pane.
-pub(crate) fn open_link(mux: &Entity<MuxClient>, address: &str, cx: &mut App) -> bool {
-    let backend = MuxPalette::new(mux.clone());
-    let Some(link) = resolve_link(address, &target_hosts(&backend.tree(cx))) else {
-        return false;
-    };
-    let host = HostId::from(link.host_id);
-    match link.kind {
-        TargetKind::Host => {
-            let client = mux.read(cx);
-            let Some(activation) = MuxTreeModel::from_mux(client).activation_for_node(
-                TreeNode::Host(host),
-                client.attached_host(),
-                client.attached_session(),
-            ) else {
-                return false;
-            };
-            crate::mux::nav::activate_nav(mux, activation, cx);
-            true
-        }
-        TargetKind::File | TargetKind::Dir => {
-            let client = mux.read(cx);
-            let (Some(pane), Some(text)) = (
-                client.active_pane(),
-                link.paste_text(host == client.attached_host()),
-            ) else {
-                return false;
-            };
-            client.paste_to_pane(pane, text);
-            true
-        }
-        TargetKind::Session | TargetKind::Window | TargetKind::Pane => link
-            .target
-            .is_some_and(|target| backend.activate(link.host_id, target, cx)),
-    }
+    Rc::new(MuxPalette { mux, gui })
 }
 
 struct MuxPalette {
     mux: Entity<MuxClient>,
     gui: Vec<GuiOffer>,
-    driver: Option<DriverOffer>,
 }
 
 impl MuxPalette {
@@ -127,7 +84,6 @@ impl MuxPalette {
         Self {
             mux,
             gui: Vec::new(),
-            driver: None,
         }
     }
 }
@@ -156,12 +112,23 @@ pub(crate) fn path_insert_text(root: &PathListRoot, entry: &PathEntry) -> Option
 }
 
 impl PaletteBackend for MuxPalette {
+    fn verbs(&self, cx: &App) -> Vec<zz_client::verbs::Verb> {
+        let gui = self
+            .gui
+            .iter()
+            .map(|offer| offer.action.id)
+            .collect::<Vec<_>>();
+        zz_client::verbs::verbs(
+            self.availability(cx),
+            &gui,
+            true,
+            &self.mux.read(cx).command_aliases(),
+        )
+    }
+
     fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
         match kind {
-            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
-            ActionKind::Ask => self
-                .driver
-                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone()))),
             ActionKind::Files => Some(Box::new(FilesAction::new(palette_backend(
                 self.mux.clone(),
             )))),
@@ -188,7 +155,6 @@ impl PaletteBackend for MuxPalette {
         PaletteTree {
             attached: attached.into(),
             hosts: MuxTreeModel::from_mux(mux)
-                .without_session(crate::agent::hidden_session(cx))
                 .hosts
                 .iter()
                 .map(|host| PaletteTreeHost {

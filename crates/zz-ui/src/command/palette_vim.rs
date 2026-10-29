@@ -207,8 +207,8 @@ mod tests {
             ("i", VimCommand::Insert { after: false }),
             ("a", VimCommand::Insert { after: true }),
             ("/", VimCommand::ClearAndInsert),
-            ("$", VimCommand::InsertWith('$')),
-            ("?", VimCommand::InsertWith('?')),
+            (":", VimCommand::InsertWith(':')),
+            ("$", VimCommand::Swallow),
             ("z", VimCommand::Swallow),
             ("5", VimCommand::Swallow),
             ("cmd-k", VimCommand::Pass),
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn insert_commands_leave_normal_mode() {
-        for key in ["i", "a", "/", "@"] {
+        for key in ["i", "a", "/", ":"] {
             let mut vim = normal();
             press(&mut vim, key);
             assert_eq!(vim.mode(), PaletteVimMode::Insert, "{key}");
@@ -262,14 +262,14 @@ mod tests {
     }
 
     #[test]
-    fn a_sigil_typed_with_option_still_starts_insert() {
+    fn a_colon_typed_with_option_still_starts_insert() {
         let mut vim = normal();
-        let at = Keystroke {
+        let colon = Keystroke {
             modifiers: Modifiers::alt(),
             key: "l".into(),
-            key_char: Some("@".into()),
+            key_char: Some(":".into()),
         };
-        assert_eq!(vim.key(&at, is_sigil), VimCommand::InsertWith('@'));
+        assert_eq!(vim.key(&colon, is_sigil), VimCommand::InsertWith(':'));
     }
 
     #[test]

@@ -321,7 +321,6 @@
         "native-command:choose-path",
         "native-command:copy-mode-search-prompt",
         "native-command:debug-marker",
-        "native-command:driver",
         "native-command:events",
         "native-command:fleet",
         "native-command:focus-sidebar",

@@ -485,7 +485,7 @@ pub(crate) struct AgentView {
     question: Option<QuestionCardState>,
     tray_open: Option<TrayPanel>,
     attachments: Vec<Arc<Image>>,
-    /// The `@` picker over the composer, the Driver chat's.
+    /// The `@` picker over the composer.
     mention: Entity<TargetPicker>,
     completions: Arc<[CommandCompletion]>,
     completion_selected: Option<usize>,

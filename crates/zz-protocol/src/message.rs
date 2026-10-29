@@ -25,7 +25,7 @@ use crate::{
 
 /// Client and daemon must match this exactly. The handshake rejects any
 /// mismatch instead of negotiating down.
-pub const PROTOCOL_VERSION: u16 = 116;
+pub const PROTOCOL_VERSION: u16 = 117;
 pub const NEW_SESSION_ATTACH_CAPABILITY: &str = "new-session-attach-v1";
 pub const PANE_FRAME_CAPABILITY: &str = "pane-frame-v1";
 pub const CLIENT_TERMINAL_CAPABILITY: &str = "client-terminal-v1";
@@ -238,10 +238,11 @@ pub enum MuxOptionKey {
     ExtendedKeys,
     FocusEvents,
     ClearOnAttach,
+    CommandAlias,
 }
 
 impl MuxOptionKey {
-    pub const ALL: [Self; 20] = [
+    pub const ALL: [Self; 21] = [
         Self::Prefix,
         Self::ModeKeys,
         Self::HistoryLimit,
@@ -262,6 +263,7 @@ impl MuxOptionKey {
         Self::ExtendedKeys,
         Self::FocusEvents,
         Self::ClearOnAttach,
+        Self::CommandAlias,
     ];
 
     #[must_use]
@@ -287,6 +289,7 @@ impl MuxOptionKey {
             Self::ExtendedKeys => "extended-keys",
             Self::FocusEvents => "focus-events",
             Self::ClearOnAttach => "clear-on-attach",
+            Self::CommandAlias => "command-alias",
         }
     }
 
@@ -323,7 +326,7 @@ impl MuxOptionKey {
             Self::ModeKeys => "emacs".to_owned(),
             Self::HistoryLimit => DEFAULT_HISTORY_LIMIT.to_string(),
             Self::WordSeparators => DEFAULT_WORD_SEPARATORS.to_owned(),
-            Self::CopyCommand => String::new(),
+            Self::CopyCommand | Self::CommandAlias => String::new(),
             Self::SetClipboard => "external".to_owned(),
             Self::BufferLimit => "50".to_owned(),
             Self::SynchronizePanes
@@ -5772,7 +5775,7 @@ mod tests {
 
     #[test]
     fn detached_reason_holds_its_appended_wire_field() {
-        assert_eq!(super::PROTOCOL_VERSION, 116);
+        assert_eq!(super::PROTOCOL_VERSION, 117);
         for (reason, tag) in [
             (super::DetachReason::Requested, 0),
             (super::DetachReason::Evicted, 1),

@@ -23,7 +23,7 @@ thing that opens it is the [agent lens](/concepts/agent-lens.md): a terminal pan
 Code or Codex gets a lens runtime (`agent/lens.rs`, opened by `daemon/lens.rs`) that reads the
 transcript the CLI writes and types prompts into it, on its own thread, until the pane closes. A
 client that opens the lens replays the stream and tails it. The native drivers and the ACP runtime
-stay in the crate for a later driver chat; no pane opens them.
+stay in the crate; no pane opens them.
 
 The daemon speaks the versioned [wire protocol](/protocol/wire-protocol.md) from
 [zz-protocol](/crates/zz-protocol.md), applies commands through the serialized `MuxEngine`, and
@@ -502,7 +502,7 @@ focused window, honoring zoom), while the small typed `AgentState` goes to every
 the session so permission prompts work for a pane nobody is looking at. A client that sends
 `AgentReplay` for a pane also watches it (`watched_agents`), attached or not, and gets its
 `AgentUpdates` and `AgentState` until it disconnects or the pane closes (`agent_stream_subscribers`,
-`agent_watchers`); that is how the driver chat follows an agent on another host without attaching.
+`agent_watchers`), so a client can follow an agent on another host without attaching.
 
 A command-output watcher publishes in two phases: it validates the current terminal and captures the
 subscriber under `ServerState`, encodes the potentially megabyte-scale viewport after releasing that global

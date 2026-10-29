@@ -6,13 +6,13 @@ use std::{
 
 use zz_client::{
     new_chat::open_picker_commands,
-    window_summary::{AttentionRollup, WindowSummary, age_label, summarize_chats},
+    window_summary::{age_label, summarize_chats},
 };
 use zz_gpui::{
     AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
     ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
-use zz_protocol::{MuxSnapshot, PaneKindSnapshot, SessionId, WindowId};
+use zz_protocol::{PaneKindSnapshot, SessionId, WindowId};
 use zz_ui::{
     command::PaletteHostId,
     menu::PopupMenuItem,
@@ -30,7 +30,7 @@ use super::{WorkspaceSidebar, activate_sidebar};
 use crate::mux::{
     client::MuxClient,
     hosts::{HostId, HostState},
-    nav::{MuxTreeHost, TreeNode, TreeTarget, kill_target_command, lists_session},
+    nav::{MuxTreeHost, TreeNode, TreeTarget, kill_target_command},
 };
 
 #[derive(Default)]
@@ -67,17 +67,6 @@ fn unix_now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_secs())
-}
-
-pub(super) fn listed_summary(
-    snapshot: &MuxSnapshot,
-    host: HostId,
-    hidden: Option<&str>,
-    attached: (HostId, Option<SessionId>),
-) -> (Vec<WindowSummary>, AttentionRollup) {
-    summarize_chats(snapshot.sessions.iter().filter(|session| {
-        lists_session(hidden, &session.name, attached == (host, Some(session.id)))
-    }))
 }
 
 fn current_window(mux: &MuxClient) -> Option<(PaletteHostId, WindowId)> {
@@ -131,8 +120,6 @@ impl WorkspaceSidebar {
     pub(super) fn render_flat_navigation(&self, sidebar: &Entity<Self>, cx: &App) -> AnyElement {
         let mux = self.mux.read(cx);
         let now = unix_now();
-        let hidden = crate::agent::hidden_session(cx);
-        let attached = (mux.attached_host(), mux.attached_session());
         let shortcuts = self.window_shortcut_keys(cx);
         let hosts = mux
             .fleet_hosts()
@@ -147,7 +134,7 @@ impl WorkspaceSidebar {
                     id != HostId::LOCAL,
                     connection(state, snapshot.is_some()),
                     snapshot
-                        .map(|snapshot| listed_summary(snapshot, id, hidden, attached))
+                        .map(|snapshot| summarize_chats(snapshot.sessions.iter()))
                         .unwrap_or_default(),
                     |changed| age_label(changed, now),
                 );

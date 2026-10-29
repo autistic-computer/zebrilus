@@ -29,7 +29,7 @@ pub fn composer_ground(cx: &App) -> Ground {
     cx.theme().ground_of(roles::AGENT_COMPOSER)
 }
 
-/// The box you write in, the agent lens's and the Driver chat's alike: a pill
+/// The box you write in on the agent lens: a pill
 /// with a round button at its start (`+`), the field, the context ring and the
 /// round send button, each inset the same from the edge. A longer draft grows
 /// the pill and keeps the buttons on its last line.
