@@ -382,7 +382,7 @@ record.
 owner applies only where that pane touches the span. Directional ownership falls back through top,
 bottom, left, then right; ordinary split-built same-side ties choose the lower `PaneId`. The focused
 `pane-border-span-owner` row passes all ten steps with every comparison channel clean. Protocol,
-snapshots, and GPUI retain their prior contracts. Mutable tiled order after `join-pane`,
+snapshots, and ala retain their prior contracts. Mutable tiled order after `join-pane`,
 `swap-pane`, or serialized `select-layout` remains under `F-PANE-BORDER-ZORDER`.
 
 `F-ALIASES-MULTI-BODY` closes executable empty and multi-command user aliases. Preparation stores one
@@ -549,7 +549,7 @@ cells. zz publishes daemon-owned state and renders it in its clients:
 - `status-format[]` rows render in the TUI. The desktop builds native status items from structured
   state and app settings, shows them in the title bar when the sidebar is retracted, and hides
   them when the sidebar is expanded.
-- The GPUI client uses native surfaces for prompts, choosers, menus, popups, copy mode, and pane
+- The ala client uses native surfaces for prompts, choosers, menus, popups, copy mode, and pane
   indicators.
 - The raw TUI consumes command prompts, confirmations, menus, popups, choose trees, choose buffers,
   and display-panes. `display-menu.behavior-fidelity` and `display-popup.behavior-fidelity` retain

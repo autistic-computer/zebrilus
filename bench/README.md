@@ -72,13 +72,13 @@ config replay, chatty panes, idle cost, memory, attach, echo latency,
 throughput, control mode and status jobs. `just perf gate [stage]` runs it;
 see `bench/perf/README.md`.
 
-# GPUI frame cost (macOS and Linux)
+# ala frame cost (macOS and Linux)
 
 `bench/gpui/frames.py` compares zz app bundles frame by frame. Each launch gets its own `HOME`
 and socket, a 1280x900 window, and six scenarios driven through the CLI (idle, stream, a
 nine-pane grid with one pane streaming, copy-mode scrolling, 24 sessions whose long names overflow
 the sidebar while one pane streams, and 25 sessions with the palette open). It records main-thread
-CPU, footprint, and per-phase frame costs from `GPUI_FRAME_STATS`, which needs a fork with the
+CPU, footprint, and per-phase frame costs from `ALA_FRAME_STATS`, which needs a fork with the
 frame recorder (`cc9e4d1804` or later).
 
 `--scenarios ...,browser` adds a browser pane on an animated canvas. Run it alone or last: on an

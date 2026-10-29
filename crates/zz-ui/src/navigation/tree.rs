@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, ops::Range, rc::Rc};
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, Element, ElementId, GlobalElementId, Hsla, InspectorElementId,
     IntoElement, LayoutId, Pixels, Point, Style, UniformListDecoration, Window, fill, point, size,
 };
@@ -90,12 +90,12 @@ impl UniformListDecoration for WorkspaceIndentGuides {
             visible_range.start,
             includes_trailing_depth,
         );
-        let hairline = zz_gpui::px(1.0) / window.scale_factor();
+        let hairline = ala::px(1.0) / window.scale_factor();
         let guides = layouts
             .into_iter()
             .map(|layout| {
                 let padding = if layout.continues_offscreen {
-                    zz_gpui::px(0.0)
+                    ala::px(0.0)
                 } else {
                     self.end_padding
                 };

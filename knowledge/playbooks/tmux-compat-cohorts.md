@@ -65,7 +65,7 @@ first `%%` and every `%1`, with trailing-percent quoting. Typed callbacks retain
 while string templates and free input form one group. Prompt chaining and multi-answer `%2` retain
 their existing prompt owner. The strict fixture proves exact construction,
 parser, readback, and source-file plus Control channels. Reply and `-y` Enter-default behavior has
-daemon and GPUI coverage, and slice 10n later adds raw-TUI unit and attached-client proof.
+daemon and ala coverage, and slice 10n later adds raw-TUI unit and attached-client proof.
 
 The nineteenth milestone reuses protocol v84 for `command-prompt`. The command accepts zero or one
 template positional as a typed block or string while `-I`, `-p`, `-t`, and `-T` values remain
@@ -139,7 +139,7 @@ one-byte pane sentinel proves no reply key leaks into terminal input.
 
 The twenty-seventh milestone closes slice 10o. Raw zz-tui retains the daemon-published menu
 descriptor, renders it after chooser and command-output bases, and routes keyboard input through the
-same renderer-free resolver as GPUI before confirmation, global shortcuts, or pane delivery. The
+same renderer-free resolver as ala before confirmation, global shortcuts, or pane delivery. The
 attached fixture covers a title, shortcut-before-cancel behavior, disabled and separator skipping,
 Escape, an unusable PageUp landing plus stay-open Enter, nonactivating paste, and a one-byte pane
 sentinel. Focused resolver coverage pins exact raw-row-zero and all-disabled boundary behavior.

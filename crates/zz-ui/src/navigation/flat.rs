@@ -3,13 +3,13 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use zz_client::window_summary::{
-    Attention, AttentionRollup, PaneTag, PaneTile, Tone as DetailTone, WindowSummary,
-};
-use zz_gpui::{
+use ala::{
     AnyElement, App, ClickEvent, Context, Div, ElementId, FULL_CORNER_RADIUS, FontFeatures,
     FontWeight, HighlightStyle, Hsla, IntoElement, Keystroke, ParentElement as _, Pixels, Role,
     SharedString, Stateful, StyledText, Window, div, font, prelude::*, px,
+};
+use zz_client::window_summary::{
+    Attention, AttentionRollup, PaneTag, PaneTile, Tone as DetailTone, WindowSummary,
 };
 use zz_protocol::{PaneId, WindowId};
 
@@ -910,7 +910,7 @@ mod tests {
 
     struct Sidebar;
 
-    impl zz_gpui::Render for Sidebar {
+    impl ala::Render for Sidebar {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let chrome = |id: &'static str| {
                 div()
@@ -957,9 +957,9 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn trailing_buttons_share_the_row_actions_column_beside_the_scrollbar(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| Sidebar);

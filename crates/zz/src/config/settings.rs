@@ -11,7 +11,7 @@ use std::{
     path::PathBuf,
 };
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, ClipboardItem, Context, Entity, FocusHandle, Focusable, IntoElement, Render,
     SharedString, Subscription, Window, WindowControlArea, div, img, prelude::*, px,
 };
@@ -59,12 +59,12 @@ use zz_ui::settings::{
     settings_scroll_column,
 };
 
-zz_gpui::actions!(zz, [OpenSettings]);
+ala::actions!(zz, [OpenSettings]);
 
 const NEEDS_PANE_GAPS: &str = "Needs pane gaps";
 
 pub(crate) struct PendingMuxImport(pub bool);
-impl zz_gpui::Global for PendingMuxImport {}
+impl ala::Global for PendingMuxImport {}
 
 /// What the Settings hint prints when the chrome keymap names no chord for
 /// `open-settings`. The binding itself is data; see `zz_client::ChromeKeymap`.
@@ -911,7 +911,7 @@ impl SettingsView {
     fn accent_setting(&self, cx: &Context<Self>) -> SettingEntry {
         let title = AppearancePageItem::Accent.title().unwrap_or_default();
         let mode = cx.theme().mode;
-        let custom = ColorPicker::new(&self.accent_picker, zz_gpui::transparent_black())
+        let custom = ColorPicker::new(&self.accent_picker, ala::transparent_black())
             .label("Accent")
             .swatch(px(SWATCH));
         let swatches = with_theme_picks(cx, |picks| {
@@ -1389,7 +1389,7 @@ impl SettingsView {
                 .label(label)
                 .dropdown_caret(true)
                 .on(settings_card_ground(cx))
-                .dropdown_menu_with_anchor(zz_gpui::Anchor::TopRight, move |menu, _, _| {
+                .dropdown_menu_with_anchor(ala::Anchor::TopRight, move |menu, _, _| {
                     choices.iter().fold(menu, |menu, &(choice, label)| {
                         menu.item(PopupMenuItem::new(label).checked(choice == value).on_click(
                             move |_, _, cx| {
@@ -1893,14 +1893,14 @@ fn boolean_control(
         .on_click(commit)
 }
 
-fn numeric_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
+fn numeric_control(input: &Entity<InputState>, cx: &App) -> ala::Div {
     div()
         .w(px(CONTROL_WIDTH))
         .flex_none()
         .child(NumberInput::new(input).on(settings_card_ground(cx)))
 }
 
-fn select_control(select: &Entity<SelectState<Vec<SettingsSelectItem>>>, cx: &App) -> zz_gpui::Div {
+fn select_control(select: &Entity<SelectState<Vec<SettingsSelectItem>>>, cx: &App) -> ala::Div {
     div()
         .flex_none()
         .child(Select::new(select).on(settings_card_ground(cx)))
@@ -2125,10 +2125,10 @@ pub(crate) fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App)
 
 /// The color the custom accent picker holds: a set color, or none while the
 /// accent is the theme's or a named one.
-fn custom_accent(accent: zz_client::appearance::AccentSetting) -> Option<zz_gpui::Hsla> {
+fn custom_accent(accent: zz_client::appearance::AccentSetting) -> Option<ala::Hsla> {
     match accent {
         zz_client::appearance::AccentSetting::Color([r, g, b, a]) => {
-            Some(zz_gpui::Rgba { r, g, b, a }.into())
+            Some(ala::Rgba { r, g, b, a }.into())
         }
         _ => None,
     }
@@ -2564,8 +2564,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn heavy_section_state_is_initialized_on_first_visit(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn heavy_section_state_is_initialized_on_first_visit(cx: &mut ala::TestAppContext) {
         use std::{cell::RefCell, rc::Rc};
 
         cx.update(zz_ui::init);
@@ -2639,8 +2639,8 @@ mod tests {
         assert!(!initialized);
     }
 
-    #[zz_gpui::test]
-    fn ui_font_select_follows_live_config_reloads(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn ui_font_select_follows_live_config_reloads(cx: &mut ala::TestAppContext) {
         use std::{cell::RefCell, rc::Rc};
 
         cx.update(zz_ui::init);
@@ -2712,10 +2712,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn submit_add_host_rejects_a_duplicate_without_changing_config(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    #[ala::test]
+    fn submit_add_host_rejects_a_duplicate_without_changing_config(cx: &mut ala::TestAppContext) {
         use std::{cell::RefCell, rc::Rc};
 
         cx.update(zz_ui::init);
@@ -2769,9 +2767,9 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_zoom_field_applies_complete_values_and_ignores_partial_ones(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         use std::{cell::RefCell, rc::Rc};
 
@@ -2792,7 +2790,7 @@ mod tests {
         let settings = captured.borrow().clone().expect("captured settings view");
         let input = settings.read_with(cx, |settings, _| settings.ui_zoom.clone());
 
-        let typed = |value: &str, cx: &mut zz_gpui::VisualTestContext| {
+        let typed = |value: &str, cx: &mut ala::VisualTestContext| {
             let value = value.to_owned();
             cx.update(|window, cx| {
                 input.update(cx, |input, cx| input.set_value(value, window, cx));

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use zz_gpui::{
+use ala::{
     AnimationElement, App, Bounds, Div, ElementId, Hsla, Keystroke, Pixels, Point, Role,
     SharedString, Size, Stateful, div, point, prelude::*, px, rems, size,
 };
@@ -79,7 +79,7 @@ pub fn display_menu(
     let rows_hits = hits.clone();
     let rows = state.items.iter().enumerate().map(|(index, item)| {
         let tops = hits.clone();
-        let record = move |bounds: Bounds<Pixels>, _: &mut zz_gpui::Window, _: &mut App| {
+        let record = move |bounds: Bounds<Pixels>, _: &mut ala::Window, _: &mut App| {
             if let Some(top) = tops.borrow_mut().tops.get_mut(index) {
                 *top = bounds.top();
             }
@@ -149,7 +149,7 @@ fn literal_edge(surface: Stateful<Div>, color: Hsla, cx: &App) -> Stateful<Div> 
 }
 
 pub fn menu_enter(surface: Stateful<Div>) -> AnimationElement<Stateful<Div>> {
-    zz_gpui_kit::foundation::surface_enter(surface, "display-menu-open", Pixels::ZERO)
+    penna::foundation::surface_enter(surface, "display-menu-open", Pixels::ZERO)
 }
 
 fn menu_row(
@@ -339,19 +339,19 @@ pub fn floating_frame(
 pub const RELEASE_BUTTONS: u8 = 3;
 pub const WHEEL_BUTTONS: u8 = 64;
 
-pub const fn menu_press_buttons(button: zz_gpui::MouseButton) -> u8 {
+pub const fn menu_press_buttons(button: ala::MouseButton) -> u8 {
     match button {
-        zz_gpui::MouseButton::Left => 0,
-        zz_gpui::MouseButton::Middle => 1,
-        zz_gpui::MouseButton::Right => 2,
-        zz_gpui::MouseButton::Navigate(_) => 128,
+        ala::MouseButton::Left => 0,
+        ala::MouseButton::Middle => 1,
+        ala::MouseButton::Right => 2,
+        ala::MouseButton::Navigate(_) => 128,
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use ala::{Bounds, point, px, size};
     use zz_client::MenuBox;
-    use zz_gpui::{Bounds, point, px, size};
     use zz_protocol::{MenuItem, MenuState, PopupBorderLines};
 
     use super::{MenuHits, menu_hit_cell};

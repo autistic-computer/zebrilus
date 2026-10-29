@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, Div, ElementId, GlassMaterial, ParentElement as _, Pixels, ScrollHandle, SharedString,
     Styled as _, div, prelude::*, px, transparent_black,
 };

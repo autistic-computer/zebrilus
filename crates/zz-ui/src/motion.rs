@@ -7,7 +7,7 @@ use std::{collections::HashMap, f32::consts::FRAC_PI_2};
 use web_time::Duration;
 pub use web_time::Instant;
 
-use zz_gpui::{
+use ala::{
     Animation, AnimationElement, AnimationExt as _, App, ElementId, Hsla, IntoElement, Length,
     ParentElement as _, RenderOnce, Styled, Transformation, Window, div, ease_out_quint,
     prelude::FluentBuilder as _, px, radians,
@@ -23,7 +23,7 @@ const APPEAR: Duration = Duration::from_millis(120);
 #[derive(Default)]
 struct Turns(HashMap<ElementId, (bool, Option<Instant>)>);
 
-impl zz_gpui::Global for Turns {}
+impl ala::Global for Turns {}
 
 /// When the two-state control `id` last turned to `on`, or `None` if it has
 /// not turned since it was first drawn.
@@ -54,8 +54,7 @@ pub(crate) fn eased(
         return 1.0;
     };
     let now = cx.background_executor().now();
-    let elapsed =
-        zz_gpui::animation_time(now.saturating_duration_since(since)).saturating_sub(delay);
+    let elapsed = ala::animation_time(now.saturating_duration_since(since)).saturating_sub(delay);
     let t = (elapsed.as_secs_f32() / span.as_secs_f32()).clamp(0.0, 1.0);
     if t < 1.0 && !cx.reduce_motion() {
         window.request_animation_frame();

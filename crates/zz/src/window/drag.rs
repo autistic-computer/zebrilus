@@ -1,6 +1,6 @@
 //! Making a titlebar-height strip move the window, the way a title bar does.
 
-use zz_gpui::{App, ElementId, MouseButton, MouseMoveEvent, Window, prelude::FluentBuilder};
+use ala::{App, ElementId, MouseButton, MouseMoveEvent, Window, prelude::FluentBuilder};
 use zz_ui::InteractiveElementExt;
 
 struct DragCandidate {
@@ -71,7 +71,7 @@ pub(crate) fn window_drag_handle<E: InteractiveElementExt + FluentBuilder>(
 #[cfg(all(test, not(target_os = "windows")))]
 mod tests {
     use super::*;
-    use zz_gpui::{AppContext as _, Context, Entity, FocusHandle, Render, div, prelude::*, px};
+    use ala::{AppContext as _, Context, Entity, FocusHandle, Render, div, prelude::*, px};
     use zz_ui::{
         IconName,
         button::Button,
@@ -143,10 +143,8 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
-    fn background_drag_yields_to_buttons_text_fields_and_pane_titles(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    #[ala::test]
+    fn background_drag_yields_to_buttons_text_fields_and_pane_titles(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         let (preview, cx) = cx.add_window_view(|window, cx| Preview {
             focus: cx.focus_handle(),
@@ -158,10 +156,10 @@ mod tests {
             _ = window.draw(cx);
         });
         let state = preview.read_with(cx, |preview, _| preview.drag.clone().unwrap());
-        let background = zz_gpui::point(px(360.0), px(15.0));
-        cx.simulate_mouse_down(background, MouseButton::Left, zz_gpui::Modifiers::default());
+        let background = ala::point(px(360.0), px(15.0));
+        cx.simulate_mouse_down(background, MouseButton::Left, ala::Modifiers::default());
         assert!(state.read_with(cx, |state: &DragCandidate, _| state.armed));
-        cx.simulate_mouse_up(background, MouseButton::Left, zz_gpui::Modifiers::default());
+        cx.simulate_mouse_up(background, MouseButton::Left, ala::Modifiers::default());
         assert!(!state.read_with(cx, |state, _| state.armed));
 
         for selector in ["drag-button", "drag-input", "drag-title"] {
@@ -169,7 +167,7 @@ mod tests {
             cx.simulate_mouse_down(
                 bounds.center(),
                 MouseButton::Left,
-                zz_gpui::Modifiers::default(),
+                ala::Modifiers::default(),
             );
             assert!(!state.read_with(cx, |state, _| state.armed), "{selector}");
             assert!(
@@ -179,12 +177,12 @@ mod tests {
             cx.simulate_mouse_move(
                 bounds.center(),
                 Some(MouseButton::Left),
-                zz_gpui::Modifiers::default(),
+                ala::Modifiers::default(),
             );
             cx.simulate_mouse_up(
                 bounds.center(),
                 MouseButton::Left,
-                zz_gpui::Modifiers::default(),
+                ala::Modifiers::default(),
             );
         }
     }

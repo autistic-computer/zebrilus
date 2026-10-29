@@ -5,6 +5,10 @@ use std::{
     sync::{Arc, Mutex, PoisonError, Weak},
 };
 
+use ala::{
+    App, Bounds, Corners, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Position, Style, Window,
+};
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindowOrderingMode};
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
@@ -12,10 +16,6 @@ use objc2_core_graphics::CGMutablePath;
 use objc2_quartz_core::{CALayer, CAShapeLayer, CATransaction, kCAGravityResize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use zz_browser::{MacFramePresenter, MacIoSurface};
-use zz_gpui::{
-    App, Bounds, Corners, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
-    LayoutId, Pixels, Position, Style, Window,
-};
 
 const CORNER_SEGMENTS: u32 = 16;
 
@@ -186,8 +186,8 @@ struct Host {
 }
 
 impl Host {
-    fn new(gpui_view: &NSView, mtm: MainThreadMarker) -> Option<Self> {
-        let content = gpui_view_superview(gpui_view)?;
+    fn new(ala_view: &NSView, mtm: MainThreadMarker) -> Option<Self> {
+        let content = ala_view_superview(ala_view)?;
         let root = CALayer::new();
         let view = NSView::initWithFrame(NSView::alloc(mtm), content.bounds());
         view.setLayer(Some(&root));
@@ -199,7 +199,7 @@ impl Host {
         content.addSubview_positioned_relativeTo(
             &view,
             NSWindowOrderingMode::Below,
-            Some(gpui_view),
+            Some(ala_view),
         );
         Some(Self {
             view,
@@ -208,11 +208,8 @@ impl Host {
         })
     }
 
-    fn serves(&self, gpui_view: &NSView) -> bool {
-        match (
-            gpui_view_superview(&self.view),
-            gpui_view_superview(gpui_view),
-        ) {
+    fn serves(&self, ala_view: &NSView) -> bool {
+        match (ala_view_superview(&self.view), ala_view_superview(ala_view)) {
             (Some(ours), Some(theirs)) => Retained::as_ptr(&ours) == Retained::as_ptr(&theirs),
             _ => false,
         }
@@ -227,7 +224,7 @@ thread_local! {
     unsafe_code,
     reason = "NSView.superview is marked unsafe in objc2-app-kit"
 )]
-fn gpui_view_superview(view: &NSView) -> Option<Retained<NSView>> {
+fn ala_view_superview(view: &NSView) -> Option<Retained<NSView>> {
     // SAFETY: the view is alive and this runs on the main thread.
     unsafe { view.superview() }
 }
@@ -236,7 +233,7 @@ fn gpui_view_superview(view: &NSView) -> Option<Retained<NSView>> {
     unsafe_code,
     reason = "raw-window-handle hands out the window's NSView as a raw pointer"
 )]
-fn gpui_view(window: &Window) -> Option<Retained<NSView>> {
+fn ala_view(window: &Window) -> Option<Retained<NSView>> {
     let handle = HasWindowHandle::window_handle(window).ok()?;
     let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
         return None;
@@ -254,18 +251,18 @@ pub(crate) fn place(
     let Some(mtm) = MainThreadMarker::new() else {
         return false;
     };
-    let Some(gpui_view) = gpui_view(window) else {
+    let Some(ala_view) = ala_view(window) else {
         return false;
     };
-    let key = Retained::as_ptr(&gpui_view).addr();
+    let key = Retained::as_ptr(&ala_view).addr();
     HOSTS.with_borrow_mut(|hosts| {
-        if hosts.get(&key).is_some_and(|host| !host.serves(&gpui_view)) {
+        if hosts.get(&key).is_some_and(|host| !host.serves(&ala_view)) {
             hosts.remove(&key);
         }
         let host = match hosts.entry(key) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
-                let Some(host) = Host::new(&gpui_view, mtm) else {
+                let Some(host) = Host::new(&ala_view, mtm) else {
                     return false;
                 };
                 entry.insert(host)
@@ -309,10 +306,10 @@ pub(crate) fn place(
 }
 
 fn finish_frame(window: &Window) {
-    let Some(gpui_view) = gpui_view(window) else {
+    let Some(ala_view) = ala_view(window) else {
         return;
     };
-    let key = Retained::as_ptr(&gpui_view).addr();
+    let key = Retained::as_ptr(&ala_view).addr();
     let any_painted = HOSTS.with_borrow_mut(|hosts| {
         let host = hosts.get_mut(&key)?;
         let mut any_painted = false;

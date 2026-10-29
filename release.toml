@@ -11,14 +11,14 @@ tag-name = "v{{version}}"
 
 [[pre-release-replacements]]
 file = "../../clients/web/Cargo.lock"
-search = '(?m)(name = "zz-(?:app|client|daemon-client|gpui-kit|protocol|terminal|ui)"\nversion = ")[^"]+'
+search = '(?m)(name = "zz-(?:app|client|daemon-client|protocol|terminal|ui)"\nversion = ")[^"]+'
 replace = '${1}{{version}}'
-exactly = 7
+exactly = 6
 prerelease = true
 
 [[pre-release-replacements]]
 file = "../../clients/storybook/Cargo.lock"
-search = '(?m)(name = "zz-(?:client|gpui-kit|protocol|terminal|ui)"\nversion = ")[^"]+'
+search = '(?m)(name = "zz-(?:client|protocol|terminal|ui)"\nversion = ")[^"]+'
 replace = '${1}{{version}}'
-exactly = 5
+exactly = 4
 prerelease = true

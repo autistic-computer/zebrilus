@@ -163,7 +163,7 @@ constant values, as asserted by `compat_manifest_tests.rs`. The 45-step `formats
 Source Replay V3 contributes a 60-step clean row for located source diagnostics, physical command
 groups, Command stderr, Control frames, and detached callback shutdown order. The ten-step
 `pane-border-span-owner` row proves raw zz-tui's adjacent-span ownership without changing the format
-partition, protocol, snapshots, or GPUI theme ownership.
+partition, protocol, snapshots, or ala theme ownership.
 
 The historical 10aa checkpoint covered 101 scenarios and 1,550 steps with a 28-step
 `formats-values` row, attached-client `PASS`, and SHA-256
@@ -479,7 +479,7 @@ valid home directory and then `/` when that path does not exist.
 | `crates/zz-daemon/src/daemon.rs` | Pane runtime-fact feeds, buffer-row hooks, `refresh_status`, the sampler thread, and status publication. |
 | `crates/zz-client/src/status.rs` | Cell-accurate row composition, style runs, alignment, list truncation, and semantic hit ranges. |
 | `crates/zz-client/src/status_bar.rs` | Pure native status-bar projection from snapshot data and typed settings. |
-| `crates/zz-ui/src/navigation.rs` | Shared GPUI native status-item and window-control geometry. |
+| `crates/zz-ui/src/navigation.rs` | Shared ala native status-item and window-control geometry. |
 | `crates/zz/src/status_bar.rs` | Renders the desktop session, window, Agent, host, update, and clock items with actions, alignment, overflow, and chrome-mode placement. |
 | `crates/zz/src/app_shell.rs` | Mounts the status surface above titlebar mode or below the full sidebar/workspace shell. |
 

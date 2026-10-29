@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
 };
@@ -18,7 +18,7 @@ pub const STORY: Story = Story {
     id: "icon-set",
     name: "Icon set",
     group: "Foundation",
-    summary: "Every zz icon drawn from the theme, adapted from Solar (libs/kit/src/icon/solar.json). Corners take half the theme radius in 24-grid units and the fixed corner smoothing, capped at 0.45 of the shorter side like every zz corner. Radius 0 is flat: sharp corners, square caps, miter joins.",
+    summary: "Every zz icon drawn from the theme, adapted from Solar (libs/penna/src/icon/solar.json). Corners take half the theme radius in 24-grid units and the fixed corner smoothing, capped at 0.45 of the shorter side like every zz corner. Radius 0 is flat: sharp corners, square caps, miter joins.",
     sections: &[
         Section {
             id: "catalog",

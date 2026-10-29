@@ -1,4 +1,4 @@
-use zz_gpui::Keystroke;
+use ala::Keystroke;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum PaletteVimMode {
@@ -149,8 +149,8 @@ fn typed(keystroke: &Keystroke) -> Option<char> {
 
 #[cfg(test)]
 mod tests {
+    use ala::{Keystroke, Modifiers};
     use zz_client::place::is_sigil;
-    use zz_gpui::{Keystroke, Modifiers};
 
     use super::*;
 

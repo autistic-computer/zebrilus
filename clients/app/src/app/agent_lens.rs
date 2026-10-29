@@ -6,6 +6,11 @@ use std::{
     sync::Arc,
 };
 
+use ala::{
+    AnyElement, App, Context, Corners, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
+    ListAlignment, ListState, Pixels, Render, ScrollWheelEvent, Subscription, Window, div,
+    prelude::*, px,
+};
 use serde_json::Value;
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, active_command_hint, bare_command_name, completion_query,
@@ -17,11 +22,6 @@ use zz_client::agent_lens::{
     turn_running,
 };
 use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
-use zz_gpui::{
-    AnyElement, App, Context, Corners, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
-    ListAlignment, ListState, Pixels, Render, ScrollWheelEvent, Subscription, Window, div,
-    prelude::*, px,
-};
 use zz_protocol::chat::RequestView;
 use zz_protocol::{
     AgentConnectionPhase, AgentImage, AgentQuestionAnswer, PaneId, PaneSnapshot, ProtocolMessage,
@@ -66,7 +66,7 @@ pub(super) struct AgentLens {
     completions: Arc<[CommandCompletion]>,
     completion_selected: Option<usize>,
     completion_dismissed: bool,
-    completion_scroll: zz_gpui::UniformListScrollHandle,
+    completion_scroll: ala::UniformListScrollHandle,
     last_input: String,
     last_cursor: usize,
     transcript: Transcript,
@@ -196,7 +196,7 @@ impl AgentLens {
             completions: Arc::from([]),
             completion_selected: None,
             completion_dismissed: false,
-            completion_scroll: zz_gpui::UniformListScrollHandle::new(),
+            completion_scroll: ala::UniformListScrollHandle::new(),
             last_input: String::new(),
             last_cursor: 0,
             transcript: Transcript::default(),
@@ -309,7 +309,7 @@ impl AgentLens {
         );
         if let Some(selected) = self.completion_selected {
             self.completion_scroll
-                .scroll_to_item(selected, zz_gpui::ScrollStrategy::Nearest);
+                .scroll_to_item(selected, ala::ScrollStrategy::Nearest);
         }
         true
     }
@@ -375,7 +375,7 @@ impl AgentLens {
         };
         self.completion_selected = Some(selected);
         self.completion_scroll
-            .scroll_to_item(selected, zz_gpui::ScrollStrategy::Nearest);
+            .scroll_to_item(selected, ala::ScrollStrategy::Nearest);
         cx.notify();
     }
 
@@ -401,7 +401,7 @@ impl AgentLens {
         let selected = self.completion_selected;
         let view = cx.entity();
         let pane = self.pane;
-        let rows = zz_gpui::uniform_list(
+        let rows = ala::uniform_list(
             ("web-agent-completion-rows", pane.0),
             completions.len(),
             move |range, _, cx| {
@@ -987,12 +987,7 @@ impl AgentLens {
         self.entry_to_row.get(index).copied()
     }
 
-    fn key_down(
-        &mut self,
-        event: &zz_gpui::KeyDownEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn key_down(&mut self, event: &ala::KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         if self.completions.is_empty() {
             self.permission_key_down(event, window, cx);
             return;
@@ -1014,7 +1009,7 @@ impl AgentLens {
 
     fn permission_key_down(
         &mut self,
-        event: &zz_gpui::KeyDownEvent,
+        event: &ala::KeyDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1559,7 +1554,7 @@ impl AgentLens {
     }
 }
 
-fn decode_transcript_image(format: &str, data: Vec<u8>) -> Option<Arc<zz_gpui::Image>> {
+fn decode_transcript_image(format: &str, data: Vec<u8>) -> Option<Arc<ala::Image>> {
     let image = AgentImage {
         format: format.to_owned(),
         data,
@@ -1568,15 +1563,15 @@ fn decode_transcript_image(format: &str, data: Vec<u8>) -> Option<Arc<zz_gpui::I
     preview_image(&image)
 }
 
-fn preview_image(image: &AgentImage) -> Option<Arc<zz_gpui::Image>> {
-    Some(Arc::new(zz_gpui::Image::from_bytes(
-        zz_gpui::ImageFormat::from_mime_type(&image.format)?,
+fn preview_image(image: &AgentImage) -> Option<Arc<ala::Image>> {
+    Some(Arc::new(ala::Image::from_bytes(
+        ala::ImageFormat::from_mime_type(&image.format)?,
         image.data.clone(),
     )))
 }
 
 struct Transcript {
-    lens: LensTranscript<Arc<zz_gpui::Image>>,
+    lens: LensTranscript<Arc<ala::Image>>,
     entries: Vec<AgentEntry>,
     markdown: HashMap<u64, AgentMarkdown>,
     tool_payloads: HashMap<(u64, usize), AgentToolPayload>,
@@ -1660,7 +1655,7 @@ fn replaced_markdown(
 }
 
 fn ui_entry_with_markdown(
-    entry: &AgentThreadEntry<Arc<zz_gpui::Image>>,
+    entry: &AgentThreadEntry<Arc<ala::Image>>,
     parent: Option<u64>,
     markdown_sources: &mut HashMap<u64, AgentMarkdown>,
     tool_payloads: &mut HashMap<(u64, usize), AgentToolPayload>,
@@ -1675,7 +1670,7 @@ fn ui_entry_with_markdown(
             id: *id,
             markdown: streaming_markdown(markdown_sources, *id, markdown),
             images: images.clone().into(),
-            rewind_id: entry.rewind_id().map(zz_gpui::SharedString::from),
+            rewind_id: entry.rewind_id().map(ala::SharedString::from),
         },
         AgentThreadEntry::Assistant {
             id,
@@ -1697,7 +1692,7 @@ fn ui_entry_with_markdown(
             default_expanded,
         } => AgentEntry::Reasoning {
             id: *id,
-            label: zz_gpui::SharedString::from(label.clone()),
+            label: ala::SharedString::from(label.clone()),
             markdown: streaming_markdown(markdown_sources, *id, markdown),
             default_expanded: *default_expanded,
         },
@@ -1722,8 +1717,8 @@ fn ui_entry_with_markdown(
                 id: *id,
                 kind: AgentToolKind::from(*kind),
                 status: AgentToolStatus::from(*status),
-                label: zz_gpui::SharedString::from(label.clone()),
-                location: location.clone().map(zz_gpui::SharedString::from),
+                label: ala::SharedString::from(label.clone()),
+                location: location.clone().map(ala::SharedString::from),
                 input: input
                     .as_ref()
                     .map(|payload| retained_tool_payload(tool_payloads, *id, 0, payload)),

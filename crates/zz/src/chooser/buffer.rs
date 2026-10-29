@@ -1,6 +1,6 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use zz_gpui::{AnyElement, Entity, MouseButton, prelude::*};
+use ala::{AnyElement, Entity, MouseButton, prelude::*};
 use zz_protocol::{ChooseBufferAction, ChooseBufferItem, ChooseBufferState, InputMessage};
 use zz_terminal::KeyInput;
 

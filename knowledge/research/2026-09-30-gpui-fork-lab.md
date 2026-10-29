@@ -35,7 +35,7 @@ list. Numbers copied from a README did not count. The sections up to Hot reload 
 # Yardstick
 
 The fork now carries `gpui: Record env-gated frame phase costs and counts`. With
-`GPUI_FRAME_STATS=<path>` set, every drawn frame appends one JSONL record with wall and thread CPU
+`ALA_FRAME_STATS=<path>` set, every drawn frame appends one JSONL record with wall and thread CPU
 time for request_layout, prepaint, paint, scene finish and platform submit, plus counts (views,
 layout nodes, sprites, glyphs shaped). Unset, it costs one cached branch. The thread clock is
 `clock_gettime(CLOCK_THREAD_CPUTIME_ID)` on every unix target.
@@ -159,7 +159,7 @@ click, and an ACP agent reply all rendered correctly.
 
 Eleven upstream commits since `933d8d93819c` touch GPUI; none is a frame-pacing or renderer
 change. All carried patches replayed onto upstream `decbf641b1` with five conflict steps, and
-`cargo check -p gpui -p zz_gpui_platform` passed with the Linux backends. That trial branch predates
+`cargo check -p gpui -p ala_platform` passed with the Linux backends. That trial branch predates
 the 27 commits above.
 
 zed PR #62379 composes native views inside a GPUI window with GPUI overlays above them. For zz's
@@ -174,7 +174,7 @@ promising for idle and agent panes but unmeasured.
 0.7.10 with a separate `zz-hotreload` launcher crate. Dioxus's own same-package bin/library layout
 reported successful patches while the app kept running the old code. Patches land on the
 foreground executor and refresh every window. The lab hot-patched the sidebar render path only;
-since 2026-10-19 zz-gpui's `hot-reload` feature (upstream zed `670a779a5e`, enabled by zz's
+since 2026-10-19 ala's `hot-reload` feature (upstream zed `670a779a5e`, enabled by zz's
 `hotreload`) routes every view and component render through `subsecond::HotFn`.
 
 | Loop | Save to pixels |
@@ -200,7 +200,7 @@ bundle (`cargo xtask bundle-cef --profile profiling`: release, fat LTO, full deb
 pins the window to 1280x900 through `window-state.json`, and drives the five Linux scenarios
 through the CLI (stream: a Perl writer at 240 rows/s; scroll: copy mode at 20 commands/s). Each
 scenario gets 5 s of warmup and a 20 s window, and builds alternate within each repeat.
-Main-thread CPU comes from the first thread in `ps -M`; phases come from `GPUI_FRAME_STATS`.
+Main-thread CPU comes from the first thread in `ps -M`; phases come from `ALA_FRAME_STATS`.
 
 The Mac shared the machine with the daemon perf lanes. A window that overlapped a compile, a perf
 gate or a compat run was retried, because the performance cores clock up under load and the same
@@ -235,7 +235,7 @@ The retained port (`68fda66d21`) was rebased onto `zz-patches` as `33656c6f51`: 
 fixes, with duplicate implementations that `zz-patches` already carried dropped (global element
 ids, line layout carry-over, lazy listeners, dispatch copy), and all 475 gpui library tests
 passing. D is that fork with the seven zz-side fixes from zz commit `1b00da9ca`; D0 is D with
-`GPUI_VIEW_RETENTION=0`. Three repeats each against B:
+`ALA_VIEW_RETENTION=0`. Three repeats each against B:
 
 | Scenario | B | D | D0 |
 | --- | --- | --- | --- |
@@ -330,7 +330,7 @@ was about 10% on main-thread CPU with the machine in use, so only large effects 
 | Track the pointer position from MouseExited | makekosmos/imago (reimplemented) | stale hover after the pointer left, reproduced in a test | Carried |
 | Skip the focus handle scan when no handle was released | XeTK/zed `531f25c3` | 100 notifies with 1,000 handles: 47.9 to 4.0 us per flush; frames.py flat | Carried |
 | Bound notifications per entity within one effect flush | slgobinath/bench `b554d5e8` | notify cycle hung forever on base, ends in 0.01 s | Carried |
-| Round device pixel canvas sizes in zz_gpui_platform::web | zed PR #63536 (closed, never fixed upstream) | N/N+1 flip at fractional DPR, reproduced in a test | Carried |
+| Round device pixel canvas sizes in ala_platform::web | zed PR #63536 (closed, never fixed upstream) | N/N+1 flip at fractional DPR, reproduced in a test | Carried |
 | Keep fractional scale on wl_compositor v5 | zed PR #65038 | test only; GNOME and KDE advertise v6 | Carried |
 | Keep the Wayland IME off while a GPUI chord is pending | zed PR #64597 | test only; no IME on alienware | Carried |
 | Skip presenting frames whose scene matches the screen | zed PR #62455 (present-skip part) | 0 to 8 of about 3,650 frames skipped per scenario; costs a comparison on every frame | Rejected, branch `lab/present-skip` |

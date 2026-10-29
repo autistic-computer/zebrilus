@@ -3,12 +3,12 @@ type: Design Plan
 title: "Design system: tone, emphasis and ground"
 description: "How zz chrome picks colors and shapes: every filled, tinted or outlined widget names a tone (what it means) and an emphasis (how loud it is), the theme turns the pair into one Paint on the ground it sits on, planes name an elevation, every surface takes its fill, edge, corners and shadow from its surface role, and clippy rejects hand-mixed washes, opacities, borders and shadows outside the kit."
 status: Built
-resource: libs/kit/src/foundation/variant.rs
+resource: libs/penna/src/foundation/variant.rs
 tags:
 - ui
 - theme
 - design-system
-- zz-gpui-kit
+- penna
 - design-plan
 timestamp: 2026-10-15T00:00:00Z
 ---
@@ -45,7 +45,7 @@ A widget picks two things and the theme does the rest.
 
   `fill_at`, `border_at`, `text_at`, `muted_at` and `faint_at` read any `PaintState`: rest, hover, active (pressed), selected, current, focused, disabled.
 - **`painted(paint, state)`** draws a paint on any element.
-- **`painted_interactive(paint, selected, enabled)`** draws one on an element with an id and adds live hover and press. Hover only changes the fill, which GPUI can repaint; text color cannot follow a hover style.
+- **`painted_interactive(paint, selected, enabled)`** draws one on an element with an id and adds live hover and press. Hover only changes the fill, which ala can repaint; text color cannot follow a hover style.
 
 ## Recipes
 
@@ -94,7 +94,7 @@ Surfaces take their fill, edge, corners and shadow from their **surface role**, 
 
 A ground remembers its `elevation` and whether it is glass, and `paint.ground_at` and `Layer::ground` pass them on. Controls (rows, tabs, chips, buttons, icon buttons, fields, badges, keycaps) cast their shadow only on the window: on a panel or a popover they keep the outline and drop the shadow, so a stepper in a menu or a field on a settings card does not stack a third layer on a surface that already stands off the window. Glass on a glass ground paints a tint instead.
 
-GPUI draws a shadow under the whole box, not only outside it, so a translucent fill over a shadow turns muddy (a 12% wash over a 20% shadow reads as 30%). A surface that casts a shadow or shows a ring composites its fill over its ground first.
+ala draws a shadow under the whole box, not only outside it, so a translucent fill over a shadow turns muddy (a 12% wash over a 20% shadow reads as 30%). A surface that casts a shadow or shows a ring composites its fill over its ground first.
 
 A pane paints no fill of its own: the window shows through it. `theme.pane_color(fill)` is the solid color of a pane's fill (the window color, or a terminal's background) over the window, which a PiP lays at `pip-background-opacity` (`Theme::pip_opacity`).
 
@@ -175,7 +175,7 @@ Kit widgets on the model:
 # Rules
 
 - Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit. Clippy enforces it: the root `clippy.toml` disallows `Hsla::opacity` and the mixing transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`, `hover`, `active`, `on`, `floating`). The kit's own `clippy.toml` leaves them out, since the kit is where the recipes are mixed. `muted()`, `faint()` and `opaque()` stay open.
-- Paint surfaces through a surface role: `.surface(role)`, `.rule_on(role, edge)`, or a widget's `.surface_role(role)`. The root `clippy.toml` disallows, outside the kit, `zz_gpui::Styled::border` and its sized and per-side forms (`border_1` to `border_4`, and `border_t`, `border_b`, `border_l`, `border_r`, `border_x` and `border_y` with their sizes), `shadow_2xs` through `shadow_2xl`, the type `zz_gpui::BoxShadow`, and the kit helpers that would get around the roles: `StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `lifted_shadow`, and `Theme::control_radius`, `menu_radius` and `row_radius`. The old recipes (`card_style`, `popover_style`, `control_surface`, `control_highlight`, `surface_fill`, `menu_item_corners`, `selection_highlight`, the `rule_*` family, `contact_shadow`, `control_shadow`, `floating_shadow`) are deleted. The kit's `clippy.toml` keeps only the raw-color ban, since the engine is built there.
+- Paint surfaces through a surface role: `.surface(role)`, `.rule_on(role, edge)`, or a widget's `.surface_role(role)`. The root `clippy.toml` disallows, outside the kit, `ala::Styled::border` and its sized and per-side forms (`border_1` to `border_4`, and `border_t`, `border_b`, `border_l`, `border_r`, `border_x` and `border_y` with their sizes), `shadow_2xs` through `shadow_2xl`, the type `ala::BoxShadow`, and the kit helpers that would get around the roles: `StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `lifted_shadow`, and `Theme::control_radius`, `menu_radius` and `row_radius`. The old recipes (`card_style`, `popover_style`, `control_surface`, `control_highlight`, `surface_fill`, `menu_item_corners`, `selection_highlight`, the `rule_*` family, `contact_shadow`, `control_shadow`, `floating_shadow`) are deleted. The kit's `clippy.toml` keeps only the raw-color ban, since the engine is built there.
 - A piece of UI that is new and distinct gets its own role in `crates/zz-ui/src/roles.rs` instead of a local style (see [UI conventions](/configuration/ui-conventions.md)).
 - A color, edge or shadow that is deliberately not a role takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function, or `clippy::disallowed_types` where it names `BoxShadow`. In chrome, today that is:
   - the theme previews in Appearance, and the focus halo around its tiles;
@@ -227,12 +227,12 @@ Kit widgets on the model:
 
 # Where to look
 
-- `libs/kit/src/foundation/variant.rs`: `Tone`, `Emphasis`, `Paint`, `Ground`, the recipes.
-- `libs/kit/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
-- `libs/kit/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule_on`, `list_inset`, `focus_ring`, `row_corners` and `row_radius`.
-- `libs/kit/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows`, `outer_radius` and `inner_radius`.
+- `libs/penna/src/foundation/variant.rs`: `Tone`, `Emphasis`, `Paint`, `Ground`, the recipes.
+- `libs/penna/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
+- `libs/penna/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule_on`, `list_inset`, `focus_ring`, `row_corners` and `row_radius`.
+- `libs/penna/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows`, `outer_radius` and `inner_radius`.
 - `crates/zz-ui/src/roles.rs`: zz's roles by region.
-- `libs/kit/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
+- `libs/penna/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
 - The storybook's Foundation → Design system story (`#/design-system`) draws every recipe from the same code. Its sections are:
   - tones;
   - a tone × emphasis × state matrix;
@@ -252,7 +252,7 @@ One component family at a time, each checked in the storybook and in the app:
 2. **Fields** (done): `Input`, `NumberInput`, the `Select` trigger, `Switch` and `DiscreteSlider` draw from paints. The zz-ui fields that wrap a bare `Input` in their own chrome (the composer, the palette, the browser address bar, the agent title) still pick their colors and move with the clean-up.
 3. **Badges** (done): `Tag` is deleted. `Badge` carries the editor's vim mode, settings provenance, the palette's mode, host and command pills, chooser and picker chips and the command kind; the palette shortcut is a `Keycap`. The agent status pill, the trace count, the plan chip and the pane's status badge, drag chip and overlay lines paint from tones too. `Badge::opaque()` and `Paint::opaque()` fill over the window for anything floating over content. The compact bar pill, browser tab pill and queue chip are controls and move with buttons and rows.
 4. **Buttons** (done): the old variants, the `outline` flag and `ButtonCustomVariant` are deleted, and `.accent()` callers use `.primary()`. The neutral soft button paints opaque over the window so its resting shadow does not show through.
-5. **Rows and selection** (done): a selected row is the neutral ghost paint's selected fill with its selected text, so `ListItem`, menus, the chooser, the palette, the picker and the slash menu all agree, and an accent selection gets text that reads on the accent. A hovered row that is not selected takes the ghost hover wash instead of the selection fill: GPUI repaints a hover's fill but not its text, so an accent hover would keep text picked for the window. Menus already move their selection with the pointer, so their hover becomes a real selection. The submenu parent and the agent picker's open provider row use the ghost hover. Since step 8 rows draw through a role: `menu-item` for rows you press, `row` for rows that show which one is current.
+5. **Rows and selection** (done): a selected row is the neutral ghost paint's selected fill with its selected text, so `ListItem`, menus, the chooser, the palette, the picker and the slash menu all agree, and an accent selection gets text that reads on the accent. A hovered row that is not selected takes the ghost hover wash instead of the selection fill: ala repaints a hover's fill but not its text, so an accent hover would keep text picked for the window. Menus already move their selection with the pointer, so their hover becomes a real selection. The submenu parent and the agent picker's open provider row use the ghost hover. Since step 8 rows draw through a role: `menu-item` for rows you press, `row` for rows that show which one is current.
 6. **Clean-up** (done):
    - `Kbd` draws through `Keycap`; menus and tooltips show bindings as text. The phone key row, popover keys, arrow pad, bar pill, bindings list and overview tiles paint from neutral soft, selected and solid.
    - `Elevation` and `theme.surface()` name panels and popovers; `theme.pane_background()` names the pane fill.

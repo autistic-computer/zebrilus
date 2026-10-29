@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, ElementId, IntoElement, PathBuilder, Role, SharedString, Window, canvas, div,
     point, prelude::*, px,
 };
@@ -65,7 +65,7 @@ pub fn agent_queue_chip(
     enabled: bool,
     on_click: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     h_flex().w_full().justify_end().child(
         Button::new(id)
             .ghost()
@@ -155,7 +155,7 @@ pub fn context_usage_meter(
     id: impl Into<ElementId>,
     used: u64,
     size: u64,
-    cx: &zz_gpui::App,
+    cx: &ala::App,
 ) -> AnyElement {
     let progress = context_usage_fraction(used, size) as f32;
     let tooltip = context_usage_tooltip(used, size);

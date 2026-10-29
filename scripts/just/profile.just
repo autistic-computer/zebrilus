@@ -28,7 +28,7 @@ system platform duration="20s":
     @if [[ "{{ platform }}" != "mac" ]]; then echo "System Trace capture currently supports macOS only" >&2; exit 2; fi
     @scripts/profile-macos.sh system all "{{ duration }}"
 
-# Profile CEF and GPUI Metal work in a fresh isolated macOS run.
+# Profile CEF and ala Metal work in a fresh isolated macOS run.
 metal platform duration="20s":
     @if [[ "{{ platform }}" != "mac" ]]; then echo "Metal capture currently supports macOS only" >&2; exit 2; fi
     @scripts/profile-macos.sh metal gui "{{ duration }}"

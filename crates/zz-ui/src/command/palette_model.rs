@@ -1,5 +1,6 @@
 use std::{fmt, rc::Rc};
 
+use ala::SharedString;
 pub(crate) use zz_client::fuzzy::fuzzy_match;
 pub(crate) use zz_client::palette::{count, needs_arguments, target_kind};
 use zz_client::{
@@ -8,7 +9,6 @@ use zz_client::{
     recents::RecentKey,
     verbs::Verb,
 };
-use zz_gpui::SharedString;
 use zz_protocol::{
     ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, PaneId, SessionId, WindowId,
     command_specs,

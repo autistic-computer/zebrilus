@@ -1,5 +1,10 @@
 use super::AppShell;
 use crate::connection::Connection;
+use ala::{
+    AnyElement, App, Context, Entity, FocusHandle, Hsla, ListSizingBehavior, MouseButton,
+    ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
+    uniform_list,
+};
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     ChromeAction,
@@ -10,11 +15,6 @@ use zz_client::{
         sidebar_rows,
     },
     window_summary::{DaemonClock, PaneTag, age_label, summarize_chats},
-};
-use zz_gpui::{
-    AnyElement, App, Context, Entity, FocusHandle, Hsla, ListSizingBehavior, MouseButton,
-    ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
-    uniform_list,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
 use zz_ui::{

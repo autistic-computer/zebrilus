@@ -2,7 +2,7 @@
 type: Research
 title: What the 2026-10-16 visual changes cost on macOS
 description: Frame, GPU and memory A/B of the Rex-sized chrome, text fade and glass-over-pages commit against the tree before it, the Primitive size fix that pays the regression back, the Metal glass backdrop blit that cost 170 MB of driver memory, and the follow-ups.
-resource: libs/gpui/crates/zz-gpui/src/scene.rs
+resource: libs/ala/crates/ala/src/scene.rs
 tags:
 - performance
 - macos
@@ -85,7 +85,7 @@ reference so nothing clones it, and a const assertion keeps it from growing back
 
 c1 against main: stream draw down 7 to 14% (paint down 30%), grid down 5 to 9%, the long sidebar
 down 16%, which leaves it 6 to 10% under base despite the extra fade sprites. The palette goes
-back to base. zz-gpui and the Metal platform tests pass.
+back to base. ala and the Metal platform tests pass.
 
 # Memory
 

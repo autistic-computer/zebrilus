@@ -1,4 +1,4 @@
-use zz_gpui::{Context, prelude::*};
+use ala::{Context, prelude::*};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,

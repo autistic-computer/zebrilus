@@ -151,8 +151,8 @@ The same checkpoint closes `F-PANE-BORDER-SPANS-V2` in raw zz-tui. The renderer 
 border into adjacent pane spans and applies the active owner only where that pane touches the span.
 Directional ownership falls back through top, bottom, left, then right; ordinary split-built
 same-side ties choose the lower `PaneId`. The focused `pane-border-span-owner` row passes all ten
-steps with zero TOPO, GEO, FMT, OUT, or WARN differences. Protocol, snapshots, and GPUI retain their
-prior contracts, and GPUI continues to take pane colors from its theme. Mutable tiled order after
+steps with zero TOPO, GEO, FMT, OUT, or WARN differences. Protocol, snapshots, and ala retain their
+prior contracts, and ala continues to take pane colors from its theme. Mutable tiled order after
 `join-pane`, `swap-pane`, or serialized `select-layout` remains under `F-PANE-BORDER-ZORDER`.
 
 At the 2026-09-07 cycle-18 integration checkpoint, the merged registry has 46 active groups
@@ -432,7 +432,7 @@ first `%%` and every `%1`, with trailing-percent quoting. Typed callbacks retain
 while string templates and free input form one group. Both sides publish
 `ARGS_PARSE_CONFIRM_BEFORE=clean:19`. The scenario proves construction, parsing, readback, and
 output channels. Accept, reject, `-y` Enter-default, blocking, and background replies have daemon
-and GPUI unit coverage. Raw zz-tui confirmation replies later closed under
+and ala unit coverage. Raw zz-tui confirmation replies later closed under
 `clients.tui-confirm-before-overlay` with focused and attached-client proof. Bounded raw-TUI menu
 descriptor consumption later closed under `clients.tui-display-menu-overlay`, and popup
 consumption later closed under `clients.tui-display-popup-overlay`. This row does not close eager

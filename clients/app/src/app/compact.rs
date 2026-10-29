@@ -6,13 +6,13 @@ use std::{
     time::Duration,
 };
 
-use zz_client::StatusBarModel;
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, Context, Corners, DispatchPhase, Entity, Focusable as _,
     HitboxBehavior, IntoElement, Keystroke, ParentElement as _, PinchEvent, Pixels, ScrollDelta,
     ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled as _, Subscription, TouchPhase,
     Window, canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px,
 };
+use zz_client::StatusBarModel;
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
@@ -99,7 +99,7 @@ pub(super) struct CompactState {
     landing: Option<(PaneId, Instant)>,
     cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
     text: Option<TerminalText>,
-    page_background: Option<zz_gpui::Hsla>,
+    page_background: Option<ala::Hsla>,
     lens_dismissed: BTreeSet<PaneId>,
     menu: Option<(MenuFrom, PillSpring)>,
     pill_at: Rc<Cell<Bounds<Pixels>>>,
@@ -134,8 +134,7 @@ impl CompactState {
         self.zoom_intent = None;
         self.last_current = None;
         self.previous = None;
-        self.bindings =
-            std::env::var("ZZ_GPUI_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
+        self.bindings = std::env::var("ZZ_ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
         self.menu = None;
         self.close_sheets();
     }
@@ -294,9 +293,8 @@ fn key_row_top(zone: Pixels, overlap: Pixels) -> Pixels {
 
 fn screen_radius(window: &Window) -> Option<Pixels> {
     #[cfg(target_os = "ios")]
-    if zz_gpui_platform::ios::phone() {
-        return zz_gpui_platform::ios::display_corner_radius()
-            .map(|radius| px(radius / window.zoom()));
+    if ala_platform::ios::phone() {
+        return ala_platform::ios::display_corner_radius().map(|radius| px(radius / window.zoom()));
     }
     let _ = window;
     None
@@ -372,11 +370,11 @@ impl AppShell {
         if self.compact.compact_keyboard != Some(compact) {
             self.compact.compact_keyboard = Some(compact);
             #[cfg(target_os = "ios")]
-            zz_gpui_platform::ios::set_compact_keyboard(compact);
+            ala_platform::ios::set_compact_keyboard(compact);
         }
         if !compact {
             #[cfg(target_os = "ios")]
-            zz_gpui_platform::ios::set_status_bar_on_dark(None);
+            ala_platform::ios::set_status_bar_on_dark(None);
             zz_ui::compact::StickyModifiers::take(cx);
             if self.compact.pinch.take().is_some() {
                 self.terminal_resize_suppressed.set(false);
@@ -845,7 +843,7 @@ impl AppShell {
         }
         #[cfg(target_os = "ios")]
         if current {
-            zz_gpui_platform::ios::set_status_bar_on_dark(Some(background.l < 0.5));
+            ala_platform::ios::set_status_bar_on_dark(Some(background.l < 0.5));
         }
         let browser = matches!(pane.kind, PaneKindSnapshot::Browser(_));
         let fade = top_inset + px(TOP_FADE);
@@ -1070,7 +1068,7 @@ impl AppShell {
         overlays: Vec<AnyElement>,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Stateful<zz_gpui::Div> {
+    ) -> Stateful<ala::Div> {
         self.prune_pane_entities(cx);
         let model = self.status_model(cx);
         let (pages, current) = pages(&model, &self.unseen_agents);
@@ -1501,7 +1499,7 @@ impl AppShell {
                 .unwrap_or_else(|| {
                     Bounds::new(
                         point(px(BENTO_INSET), top_inset + px(LIFT_FALLBACK_TOP)),
-                        zz_gpui::size(
+                        ala::size(
                             stage.width - px(BENTO_INSET * 2.0),
                             px(LIFT_FALLBACK_HEIGHT),
                         ),
@@ -1653,7 +1651,7 @@ impl AppShell {
         (title, meta.into(), false)
     }
 
-    fn browser_backdrop(&self, page: &Page, cx: &App) -> Option<zz_gpui::Hsla> {
+    fn browser_backdrop(&self, page: &Page, cx: &App) -> Option<ala::Hsla> {
         #[cfg(target_os = "ios")]
         if let Some(browser) = self.browsers.get(&page.pane) {
             return browser.read(cx).backdrop_color();

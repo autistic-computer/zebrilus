@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, InteractiveElement as _,
     IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
     Styled as _, Window, div, px,
@@ -667,7 +667,7 @@ impl Render for Playground {
         };
         let reset = {
             let me = me.clone();
-            move |_: &zz_gpui::ClickEvent, _: &mut Window, cx: &mut App| {
+            move |_: &ala::ClickEvent, _: &mut Window, cx: &mut App| {
                 me.update(cx, |playground, cx| {
                     *playground = Playground::new();
                     cx.notify();

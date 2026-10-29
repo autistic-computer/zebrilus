@@ -453,12 +453,12 @@ remains unchanged. The daemon strips only a typed action's
 structural wrapper before its fresh selection parse. The strict three-step fixture runs 34 type,
 state, option, precedence, alias, readback, preservation, incomplete, source-file, and Control
 checks through a PID-unique FIFO, finishes `ARGS_PARSE_DISPLAY_MENU=clean:34` on both servers, and
-reports zero differences. Confirmation reply and `-y` Enter-default behavior now has daemon, GPUI,
+reports zero differences. Confirmation reply and `-y` Enter-default behavior now has daemon, ala,
 raw-TUI unit, and attached-client proof. Eager whole-file
 source construction, same-source alias mutation, multiline inner-source placement, generic alias
 recursion, selected-action runtime errors, and the broader replay-channel placement difference
 remain open. Raw zz-tui now consumes the daemon-published menu descriptor and shares keyboard
-resolution with GPUI. Action context and errors, mouse policy, paste-close ordering, queue ordering,
+resolution with ala. Action context and errors, mouse policy, paste-close ordering, queue ordering,
 rendered width, resize lifecycle, shortcut display and grammar, and style refresh remain open under
 `display-menu.behavior-fidelity`. `choose-buffer` and `choose-tree` accept zero or one
 selection template as a string or typed block; their `-F`, `-f`, `-K`, `-O`, and `-t` values stay
@@ -803,7 +803,7 @@ terminal lane retains its explicit byte layout.
 | Mux options | Append `MuxOptionKey::{Mouse, EscapeTime, Prefix2}` with tags 14 through 16. Keep `Prefix` and `Prefix2` global in v71 because the shared `KeyTables` own one prefix pair; tmux-style session-scoped prefixes require a separate core refactor. | B2, B3, C2. `Mouse` publishes the attached session's effective value; `EscapeTime` and `Prefix2` publish the global values. |
 | Status | Append `StatusLine.{title: String, base_style: String, rows: Vec<String>, position: StatusPosition, message_line: u8, customized: bool}`. Keep the existing `left` and `right` first for v70 layout. Move `StatusPosition` into `zz-protocol` and re-export it from `zz-mux`; keep justify inside the expanded row formats. Cap rows at five and every string at 4 KiB. Reject a sixth row before allocation, require `base_style` to parse as a style, and require `message_line == 0` for no rows or less than `rows.len()` otherwise. | B1 and B4, C3. `rows` is the authoritative personalized status block and drives `is_empty`: zero rows means off, blank rows still consume geometry, and sparse `status-format` indices do not compact. `base_style` paints blank rows. `customized` controls zz-native hints even when an explicit value equals the default. Title still publishes while status is off. |
 | Display panes | Append `PaneIndicator.label: String`, bounded to 1 KiB; remove its current `Copy` shape and borrow it in helpers. | C4. The daemon expands `display-panes-format` separately in each pane context and both clients paint the result. |
-| Pane borders | Append `PaneSnapshot.{border_colour, active_border_colour}: Option<TmuxColour>` and give `TmuxColour` validated wire serialization. `None` means client fallback. | C9. Pane-scoped fields preserve pane to window to global inheritance; one pair on `WindowSnapshot` cannot represent distinct pane overrides. The raw TUI consumes the fields. The GPUI client keeps pane chrome under its local theme. Keep non-color attributes ledgered. |
+| Pane borders | Append `PaneSnapshot.{border_colour, active_border_colour}: Option<TmuxColour>` and give `TmuxColour` validated wire serialization. `None` means client fallback. | C9. Pane-scoped fields preserve pane to window to global inheritance; one pair on `WindowSnapshot` cannot represent distinct pane overrides. The raw TUI consumes the fields. The ala client keeps pane chrome under its local theme. Keep non-color attributes ledgered. |
 | Prompt | Keep `CommandPromptKind::{Command, Value}`. Append `prompt_type: CommandPromptType`, `mode: CommandPromptMode`, and `no_freeze: bool`; types are `Command|Search` and `Text|Single|Numeric|Incremental|Key|BackspaceExit`. Do not add a prompt-key action. | D1. `kind` remains presentation state, while `-T` is independent. Resolve mode flags with pinned priority `-1`, `-N`, `-i`, `-k`, `-e`; preserve `-C` independently. Route raw special-mode keys through the existing pane-targeted `InputMessage::Key`. The daemon prompt state machine returns handled or pass so `-N` can submit digits and then feed the first non-digit into normal key processing. |
 | Copy mode | Append `hide_position: bool` after `TerminalMode::Copy.total`; encode Copy as tag plus two `u64`s plus one canonical bool byte. Append `TerminalViewAction::EnterCopyModeWith { scroll_exit, hide_position }` at tag 27 while preserving both old variants. | D2. The action shape lets `-e` and `-H` compose; both clients suppress only the position text. |
 | Choosers | Append bounded `key: String` to `ChooseTreeItem` and `ChooseBufferItem`; cap it at 64 bytes and use empty for no shortcut. | D4. Existing actions already carry `KeyInput`. Default rows use `0..9`, then `M-a..M-z`; invalid keys become empty and duplicate keys select the first row before navigation. `-N` preview state remains internal. |
@@ -913,7 +913,7 @@ findings after rerunning those gates.
      leave pane content. Blank rows still consume height and paint `base_style`.
    - Keep the three-row zz-native sidebar beside the main content. Render every tmux row
      across the main columns rather than replacing pane/session rows with sidebar content.
-     GPUI gets a dedicated top or bottom N-row container.
+     ala gets a dedicated top or bottom N-row container.
    - Treat row count and position changes as layout events: recompute geometry, repaint,
      resend terminal sizes, and resynchronize browser surfaces.
    - `message_line` selects the row that prompts and messages replace. With status off,
@@ -936,7 +936,7 @@ findings after rerunning those gates.
 4. Title source and sinks:
    - Implement C3's `set-titles` and `set-titles-string` expansion first. Publish the title
      even when `status off` bypasses status-row rendering.
-   - Write OSC 2 from the TUI when a non-empty `StatusLine.title` changes and set the GPUI
+   - Write OSC 2 from the TUI when a non-empty `StatusLine.title` changes and set the ala
      window title from the same field.
 5. Attach residue through capability tokens:
    - Collect tty and size before the connection. `client-tty-v1:/dev/ttysN` retains the local tty
@@ -1016,7 +1016,7 @@ lifecycle, exact bounded log identity, and repeated pre-visit BEL delivery.
 2. `prefix2` and `send-prefix -2`: **shipped 2026-08-21 (run 2).** `KeyTables` carries an
    optional canonical second prefix (`set_prefix2` never touches bindings — the pin has
    no stock `send-prefix -2` binding), both `KeyEngine` arming sites accept either
-   prefix, and the GPUI client claims prefix2 keystrokes beside the primary. The value
+   prefix, and the ala client claims prefix2 keystrokes beside the primary. The value
    lives in the `prefix2` stored scalar, syncs into the key tables on every
    global-session write, publishes through `MuxOptionKey::Prefix2`, and became
    config-writable (`from_config_key`). `send-prefix -2` sends the second prefix and is
@@ -1131,7 +1131,7 @@ lifecycle, exact bounded log identity, and repeated pre-visit BEL delivery.
      Owner lookup falls back through top, bottom, left, then right; ordinary split-built
      same-side ties choose the lower `PaneId`. A `None` field selects the normal TUI colour.
      Same-side ties created by `join-pane`, `swap-pane`, or serialized `select-layout` remain
-     open because `PaneSnapshot` does not carry mutable tiled order. The GPUI client ignores both
+     open because `PaneSnapshot` does not carry mutable tiled order. The ala client ignores both
      fields and derives pane frames, split hairlines, and active-split highlights from `cx.theme()`.
      Non-colour attributes stay ledgered.
 
@@ -1212,7 +1212,7 @@ deltas in tests.
    emits it only when `-H` is present, so `-e` alone and bare entry keep their old variants
    byte for byte. `CopyModeState` latches `hide_position` at entry beside `scroll_exit`, both
    snapshot builders publish it on `TerminalMode::Copy`, and the two clients drop the
-   position text alone — the TUI's badge becomes `COPY`, the GPUI tag keeps `COPY MODE` and
+   position text alone — the TUI's badge becomes `COPY`, the ala tag keeps `COPY MODE` and
    any `+N output`. That is exactly what the pin hides: `window_copy_init` reads
    `args_has(args, 'H')` into `data->hide_position` and `window_copy_write_line` guards the
    whole `copy-mode-position-format` draw on `!data->hide_position`, measured on the pin as
@@ -1961,7 +1961,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
 
 - **Wave 5d-1** (`2a0eb23` + `bbfc9aa`, CONFIRMED-CLOSED 2026-08-18) —
   `display-popup`/`popup` as a daemon-owned popup TerminalSession rendered by
-  the GPUI client as a floating zz-design-language pane (maintainer decision:
+  the ala client as a floating zz-design-language pane (maintainer decision:
   native visuals, one ledger row; zz-ui FloatingSurface hosts the terminal
   element, keys claimed above the prefix). Pin-exact behavior: client
   resolution (bare `no current client` byte-match, correct precedence),
@@ -1981,7 +1981,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   (maintainer): blocking retvals, close matrix, input capture above the
   prefix, dead-job modify, -C cross-client, position letters, -e/-d live.
 
-  Current qualification: daemon and GPUI popup behavior remain shipped. Raw zz-tui popup rendering,
+  Current qualification: daemon and ala popup behavior remain shipped. Raw zz-tui popup rendering,
   lifecycle, and bounded input ownership shipped in slice 10p under
   `clients.tui-display-popup-overlay`; the six broader behavior classes remain under
   `display-popup.behavior-fidelity`.
@@ -2029,7 +2029,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   Hardware smoke pending (maintainer): menu keyboard walk + shortcut fire,
   confirm prompt accept/reject live, paging clamp feel on a long menu.
 
-  Current qualification: menu and confirm command execution plus GPUI surfaces remain shipped.
+  Current qualification: menu and confirm command execution plus ala surfaces remain shipped.
   Raw zz-tui confirmation rendering and input handling closed under
   `clients.tui-confirm-before-overlay`. Raw zz-tui menu descriptor consumption and shared keyboard
   ownership closed under `clients.tui-display-menu-overlay`. The remaining nine menu behavior
@@ -2072,7 +2072,7 @@ Original phase-5 tiering, kept for the record:
   executing the stored branches.
 - `set-hook`/`show-hooks` — an event bus, not a spawn: tmux has **68** hook points at the pin,
   and control-mode notifications (phase 6) are fed by the same events (~1 week).
-- `display-popup`, `display-menu`, `confirm-before`, the `lock-*` trio: daemon execution and GPUI
+- `display-popup`, `display-menu`, `confirm-before`, the `lock-*` trio: daemon execution and ala
   surfaces shipped. Raw TUI confirmation handling shipped in slice 10n, and bounded menu descriptor
   consumption shipped in slice 10o. Bounded popup descriptor, terminal, and input consumption
   shipped in slice 10p. Broader menu and popup behavior remain under
@@ -2599,7 +2599,7 @@ own-conf's skip warning dropped 9 → 8 (`status-position` now stores).
 maintainer):** the daemon pre-styles each `status_label` with the pin's overlay chain
 (current-unless-exactly-`default` or base, then last-style, then bell-style —
 additive `style_parse` tokens in one marker, probe-matched), the styled-run builder
-maps `parse_styled_segments` onto gpui highlight runs (byte-range math UTF-8-safe,
+maps `parse_styled_segments` onto ala highlight runs (byte-range math UTF-8-safe,
 reverse swaps resolved colors, dim fades, theme slots via the `tmux_style_colour`
 conventions), both status surfaces (titlebar strip + expanded-sidebar footer) render
 literal styles with NO trimming, and tab pills consume labels while keeping widget
@@ -2615,7 +2615,7 @@ padding preserved, default `[#S]` beside the badge (accepted duplication — UX 
 open), `#[reverse]` on status halves, empty-vs-blank status halves.
 
 **GUI status replacement SHIPPED 2026-08-23:** the Wave B tab pills, titlebar halves,
-and sidebar footer were deleted. One native GPUI status surface now consumes every
+and sidebar footer were deleted. One native ala status surface now consumes every
 semantic status region: `status-left`, the attached session's snapshot windows, and
 `status-right`. The GUI no longer paints `status-format[]` terminal cells or any tmux
 style. Powerline glyphs divide left/right content into borderless theme-owned chunks,
@@ -2699,8 +2699,8 @@ Layout: `main-pane-width/height`, `other-pane-width/height`, `tiled-layout-max-c
 for each adjacent pane span, applies the active style only to spans touching the active pane, uses
 the top, bottom, left, then right fallback, and gives ordinary split-built same-side ties to the
 lower `PaneId`. Mutable tiled order after `join-pane`, `swap-pane`, or serialized `select-layout`
-remains open because the snapshot does not transport it. The GPUI client keeps pane borders under
-the zz chrome theme; this closure changes no GPUI behavior. Attributes beyond color remain ignored.
+remains open because the snapshot does not transport it. The ala client keeps pane borders under
+the zz chrome theme; this closure changes no ala behavior. Attributes beyond color remain ignored.
 `window-style`/`window-active-style` (inactive-pane dimming) and the
 `mode-style`/`copy-mode-*-style` selection/match/mark styles ALL render in the GUI
 terminal renderer — content styling, no chrome-doctrine conflict. The remaining lifecycle

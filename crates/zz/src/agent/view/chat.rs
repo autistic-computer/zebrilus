@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, Context, Entity, IntoElement, ScrollWheelEvent, Window, div, prelude::*, px,
 };
 use zz_protocol::chat::{ChatView, RequestView};
@@ -47,7 +47,7 @@ impl AgentView {
         request: &RequestView,
         state: &AgentPaneState,
         view: &Entity<Self>,
-        cx: &zz_gpui::App,
+        cx: &ala::App,
     ) -> Option<AnyElement> {
         let permission = state
             .pending_permissions
@@ -87,7 +87,7 @@ impl AgentView {
         let show_jump = self.chat.shows_jump();
         let jump = {
             let view = view.clone();
-            move |_: &zz_gpui::ClickEvent, _: &mut Window, cx: &mut zz_gpui::App| {
+            move |_: &ala::ClickEvent, _: &mut Window, cx: &mut ala::App| {
                 view.update(cx, |view, cx| {
                     view.chat.follow();
                     cx.notify();
@@ -96,13 +96,12 @@ impl AgentView {
             }
         };
         let now = zz_client::chat_rows::now_ms();
-        let app: &zz_gpui::App = cx;
+        let app: &ala::App = cx;
         let Some(chat) = self.controller.read(app).pane_chat(self.pane) else {
             return div().into_any_element();
         };
         self.chat.sync(chat);
-        let ask =
-            |request: &RequestView, cx: &zz_gpui::App| self.inline_ask(request, state, view, cx);
+        let ask = |request: &RequestView, cx: &ala::App| self.inline_ask(request, state, view, cx);
         let hooks = ChatHooks {
             click: Some(click),
             ask: Some(&ask),

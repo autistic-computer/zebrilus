@@ -1,4 +1,4 @@
-use zz_gpui::{AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, div, px};
+use ala::{AnyElement, App, Div, ParentElement as _, SharedString, Styled as _, div, px};
 
 use crate::{ActiveTheme as _, Colorize as _, Icon, IconName, StyledExt as _};
 

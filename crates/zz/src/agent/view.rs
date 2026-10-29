@@ -20,17 +20,17 @@ use zz_ui::agent::presentation::{
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
 
-use zz_client::agent_completion::{
-    CommandCompletion, active_command_hint, bare_command_name, completion_query,
-    meaningful_command_description, pane_commands, ranked_completions,
-};
-use zz_client::agent_transcript::rewind_command;
-use zz_gpui::{
+use ala::{
     AnyElement, Context, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Image,
     IntoElement, KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render,
     ScrollStrategy, SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*,
     px, uniform_list,
 };
+use zz_client::agent_completion::{
+    CommandCompletion, active_command_hint, bare_command_name, completion_query,
+    meaningful_command_description, pane_commands, ranked_completions,
+};
+use zz_client::agent_transcript::rewind_command;
 use zz_ui::{
     command::target_picker,
     target::{TargetPicker, mention_at_caret, mention_keys},
@@ -627,7 +627,7 @@ impl AgentView {
         }
     }
 
-    pub(crate) fn focus(&self, cx: &zz_gpui::App) -> FocusHandle {
+    pub(crate) fn focus(&self, cx: &ala::App) -> FocusHandle {
         self.input.read(cx).focus_handle(cx)
     }
 
@@ -923,7 +923,7 @@ impl AgentView {
 
     /// The user is mid-sentence in the composer, so keys the wizard would claim
     /// belong to the draft instead.
-    fn composer_engaged(&self, window: &Window, cx: &zz_gpui::App) -> bool {
+    fn composer_engaged(&self, window: &Window, cx: &ala::App) -> bool {
         let input = self.input.read(cx);
         !input.value().trim().is_empty() && input.focus_handle(cx).is_focused(window)
     }
@@ -1116,11 +1116,7 @@ impl AgentView {
         cx.notify();
     }
 
-    fn render_attachments(
-        &self,
-        view: &Entity<Self>,
-        cx: &zz_gpui::App,
-    ) -> Option<impl IntoElement> {
+    fn render_attachments(&self, view: &Entity<Self>, cx: &ala::App) -> Option<impl IntoElement> {
         if self.attachments.is_empty() {
             return None;
         }
@@ -1145,7 +1141,7 @@ impl AgentView {
     fn render_empty_state(
         state: &AgentPaneState,
         view: EntityId,
-        cx: &mut zz_gpui::App,
+        cx: &mut ala::App,
     ) -> impl IntoElement {
         let agent = state
             .agent_name
@@ -1170,7 +1166,7 @@ impl AgentView {
         &self,
         state: &AgentPaneState,
         view: &Entity<Self>,
-        cx: &zz_gpui::App,
+        cx: &ala::App,
     ) -> Option<AnyElement> {
         let permission = self.permission_wizard.current(&state.pending_permissions)?;
         self.render_permission(permission, state, view, cx)
@@ -1181,7 +1177,7 @@ impl AgentView {
         permission: &AgentPermissionRequest,
         state: &AgentPaneState,
         view: &Entity<Self>,
-        cx: &zz_gpui::App,
+        cx: &ala::App,
     ) -> Option<AnyElement> {
         let request_id = permission.request_id;
         let current = self
@@ -1323,11 +1319,7 @@ impl AgentView {
 
     /// How many prompts are waiting behind the live turn, and the way back:
     /// clicking hands the whole queue to the composer draft.
-    fn render_queue_chip(
-        &self,
-        state: &AgentPaneState,
-        cx: &zz_gpui::App,
-    ) -> Option<impl IntoElement> {
+    fn render_queue_chip(&self, state: &AgentPaneState, cx: &ala::App) -> Option<impl IntoElement> {
         let queued = state.queued_prompts;
         if queued == 0 {
             return None;
@@ -1544,7 +1536,7 @@ impl AgentView {
         &self,
         state: &AgentPaneState,
         view: &Entity<Self>,
-        cx: &mut zz_gpui::App,
+        cx: &mut ala::App,
     ) -> Option<impl IntoElement> {
         let phase = if state.tasks.is_empty() {
             0.0
@@ -1567,7 +1559,7 @@ impl AgentView {
         )
     }
 
-    fn render_error(&self, state: &AgentPaneState, cx: &zz_gpui::App) -> Option<impl IntoElement> {
+    fn render_error(&self, state: &AgentPaneState, cx: &ala::App) -> Option<impl IntoElement> {
         let runtime_error = state.error.clone();
         let error = runtime_error
             .clone()
@@ -1579,7 +1571,7 @@ impl AgentView {
     /// The jump-to-bottom pill, floated over the timeline just above the
     /// composer: an absolute child, so showing it never resizes the scroll
     /// viewport and moves the very tail it is offering to reveal.
-    fn render_jump_to_end(&self, view: &Entity<Self>, cx: &zz_gpui::App) -> impl IntoElement {
+    fn render_jump_to_end(&self, view: &Entity<Self>, cx: &ala::App) -> impl IntoElement {
         let view = view.clone();
         div()
             .absolute()
@@ -1598,11 +1590,7 @@ impl AgentView {
             )
     }
 
-    fn render_completions(
-        &self,
-        view: &Entity<Self>,
-        cx: &zz_gpui::App,
-    ) -> Option<zz_gpui::AnyElement> {
+    fn render_completions(&self, view: &Entity<Self>, cx: &ala::App) -> Option<ala::AnyElement> {
         if self.completions.is_empty() {
             return None;
         }
@@ -1665,7 +1653,7 @@ impl AgentView {
         &self,
         state: &AgentPaneState,
         view: &Entity<Self>,
-        cx: &mut zz_gpui::App,
+        cx: &mut ala::App,
     ) -> impl IntoElement {
         let can_submit = state.connection.accepts_prompt();
         let action_kind = composer_action(
@@ -1764,7 +1752,7 @@ pub(crate) struct ShowTerminal;
 impl EventEmitter<ShowTerminal> for AgentView {}
 
 impl Focusable for AgentView {
-    fn focus_handle(&self, cx: &zz_gpui::App) -> FocusHandle {
+    fn focus_handle(&self, cx: &ala::App) -> FocusHandle {
         self.focus(cx)
     }
 }
@@ -2179,9 +2167,9 @@ mod completion_tests {
     use std::{cell::RefCell, rc::Rc};
 
     #[cfg(not(target_os = "macos"))]
-    use zz_daemon_client::DaemonError;
+    use ala::{TestAppContext, VisualTestContext};
     #[cfg(not(target_os = "macos"))]
-    use zz_gpui::{TestAppContext, VisualTestContext};
+    use zz_daemon_client::DaemonError;
     #[cfg(not(target_os = "macos"))]
     use zz_ui::Root;
 
@@ -2362,7 +2350,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn non_append_timeline_rebuild_clears_retained_store(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let (view, cx) = cx.add_window_view(|window, cx| {
@@ -2453,7 +2441,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn arrow_actions_navigate_completions_before_the_multiline_input(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let view_slot = Rc::new(RefCell::new(None));
@@ -2653,7 +2641,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_question_card_answers_choices_and_typed_text_from_the_keyboard(cx: &mut TestAppContext) {
         let pane = PaneId(41);
         let (view, controller, sink, cx) = wired_view(cx, pane);
@@ -2699,7 +2687,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn one_plain_question_answers_on_its_digit_and_escape_dismisses(cx: &mut TestAppContext) {
         let pane = PaneId(42);
         let (_view, controller, sink, cx) = wired_view(cx, pane);
@@ -2743,7 +2731,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_task_tray_opens_and_stops_a_task(cx: &mut TestAppContext) {
         let pane = PaneId(43);
         let (view, controller, sink, cx) = wired_view(cx, pane);
@@ -2773,7 +2761,7 @@ mod completion_tests {
         let chip = cx
             .debug_bounds("agent-task-tray")
             .expect("the tray chip should be painted");
-        cx.simulate_click(chip.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(chip.center(), ala::Modifiers::none());
         cx.run_until_parked();
         cx.update(|window, cx| {
             _ = window.draw(cx);
@@ -2785,7 +2773,7 @@ mod completion_tests {
         let stop = cx
             .debug_bounds("agent-task-stop-0")
             .expect("an open tray lists the task");
-        cx.simulate_click(stop.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(stop.center(), ala::Modifiers::none());
         cx.run_until_parked();
 
         assert_eq!(
@@ -2800,7 +2788,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn subagent_steps_nest_from_the_controllers_parent_links(cx: &mut TestAppContext) {
         let pane = PaneId(44);
         let (view, controller, _sink, cx) = wired_view(cx, pane);
@@ -2929,7 +2917,7 @@ mod completion_tests {
         cx.update(|_, cx| {
             view.update(cx, |view, _| {
                 view.attachments.push(Arc::new(Image::from_bytes(
-                    zz_gpui::ImageFormat::Png,
+                    ala::ImageFormat::Png,
                     vec![0x89, b'P', b'N', b'G'],
                 )));
             });
@@ -2937,7 +2925,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn one_enter_answers_the_card_and_nothing_behind_it(cx: &mut TestAppContext) {
         let pane = PaneId(45);
         let (view, controller, sink, cx) = wired_view(cx, pane);
@@ -2993,7 +2981,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_enter_that_answers_a_card_keeps_the_attached_images(cx: &mut TestAppContext) {
         let pane = PaneId(48);
         let (view, controller, sink, cx) = wired_view(cx, pane);
@@ -3020,7 +3008,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_card_resolved_elsewhere_hands_the_keyboard_back(cx: &mut TestAppContext) {
         let pane = PaneId(46);
         let (view, controller, _sink, cx) = wired_view(cx, pane);
@@ -3058,7 +3046,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_step_that_arrives_before_its_agent_nests_once_the_agent_shows_up(cx: &mut TestAppContext) {
         let pane = PaneId(47);
         let (view, controller, _sink, cx) = wired_view(cx, pane);
@@ -3112,7 +3100,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_step_that_lands_in_the_same_batch_before_its_agent_still_nests(cx: &mut TestAppContext) {
         let pane = PaneId(49);
         let (view, controller, _sink, cx) = wired_view(cx, pane);
@@ -3226,11 +3214,11 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    fn hover_prompt(cx: &mut VisualTestContext) -> Option<zz_gpui::Bounds<zz_gpui::Pixels>> {
+    fn hover_prompt(cx: &mut VisualTestContext) -> Option<ala::Bounds<ala::Pixels>> {
         let bubble = cx
             .debug_bounds("agent-user-bubble")
             .expect("the prompt row is painted");
-        cx.simulate_mouse_move(bubble.center(), None, zz_gpui::Modifiers::none());
+        cx.simulate_mouse_move(bubble.center(), None, ala::Modifiers::none());
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
@@ -3238,14 +3226,14 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn rewind_to_here_sends_the_rows_id_the_way_the_composer_sends(cx: &mut TestAppContext) {
         let pane = PaneId(50);
         let (view, controller, sink, cx) = wired_view(cx, pane);
         ready_with_a_prompt(cx, &controller, pane, true, "fix the flaky test");
 
         let rewind = hover_prompt(cx).expect("an idle pane offers the rewind");
-        cx.simulate_click(rewind.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(rewind.center(), ala::Modifiers::none());
         cx.run_until_parked();
 
         assert_eq!(
@@ -3264,7 +3252,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn rewind_to_here_waits_for_the_turn_to_end(cx: &mut TestAppContext) {
         let pane = PaneId(51);
         let (_view, controller, sink, cx) = wired_view(cx, pane);
@@ -3291,7 +3279,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_slash_command_row_is_not_a_rewind_point(cx: &mut TestAppContext) {
         let pane = PaneId(52);
         let (_view, controller, _sink, cx) = wired_view(cx, pane);
@@ -3300,7 +3288,7 @@ mod completion_tests {
     }
 
     #[cfg(not(target_os = "macos"))]
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_agent_without_zz_commands_offers_no_rewind(cx: &mut TestAppContext) {
         let pane = PaneId(53);
         let (_view, controller, _sink, cx) = wired_view(cx, pane);
@@ -3772,10 +3760,7 @@ mod tests {
 
     #[test]
     fn user_attachments_reach_the_timeline_without_a_second_copy() {
-        let image = Arc::new(Image::from_bytes(
-            zz_gpui::ImageFormat::Png,
-            vec![0x89, 0x50],
-        ));
+        let image = Arc::new(Image::from_bytes(ala::ImageFormat::Png, vec![0x89, 0x50]));
         let entries = ui_entries(&[AgentThreadEntry::User {
             id: 1,
             markdown: String::new(),
@@ -3789,7 +3774,7 @@ mod tests {
         assert_eq!(images.len(), 1);
         assert!(
             Arc::ptr_eq(&images[0], &image),
-            "the bytes should travel by handle, not by clone, so zz_gpui decodes them once"
+            "the bytes should travel by handle, not by clone, so ala decodes them once"
         );
     }
 }

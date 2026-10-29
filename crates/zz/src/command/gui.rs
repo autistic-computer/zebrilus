@@ -1,7 +1,7 @@
+use ala::{App, Entity};
 use zz_client::gui_actions::{
     GuiAction, GuiOffer, PANE_GAPS, SIDEBAR_LAYOUT, THEME, TITLEBAR_MODE, WINDOW_BLUR,
 };
-use zz_gpui::{App, Entity};
 use zz_ui::interface_theme;
 
 use crate::{

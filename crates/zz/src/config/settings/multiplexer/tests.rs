@@ -94,9 +94,9 @@ fn test_server(tables: Vec<KeyTableSnapshot>) -> (InteractiveClient, TestServer)
     )
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn split_controls_follow_wire_bindings_preserve_drafts_and_keep_renamed_keys(
-    cx: &mut zz_gpui::TestAppContext,
+    cx: &mut ala::TestAppContext,
 ) {
     cx.executor().allow_parking();
     cx.update(zz_ui::init);

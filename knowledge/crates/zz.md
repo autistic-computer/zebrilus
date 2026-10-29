@@ -1,15 +1,15 @@
 ---
 type: Rust Crate
-title: zz crate (the GPUI client)
-description: The long-lived GPUI desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal and Chromium browser panes plus the agent lens over terminals running Claude Code or Codex.
+title: zz crate (the ala client)
+description: The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal and Chromium browser panes plus the agent lens over terminals running Claude Code or Codex.
 resource: crates/zz/src/lib.rs
-tags: [gpui, crate, client, terminal, browser, agent, ui]
+tags: [ala, crate, client, terminal, browser, agent, ui]
 timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
 
-`zz` (package and binary name `zz`) is the **long-lived GPUI desktop client**. It links
+`zz` (package and binary name `zz`) is the **long-lived ala desktop client**. It links
 [`zz-cli`](/crates/zz-cli.md) for CLI dispatch, daemon spawning, and terminal attach.
 The GUI uses `daemon_executable` to spawn the sibling `cli`; the headless binary spawns itself, and
 never a `cli` it finds in a `bin` directory.
@@ -30,9 +30,9 @@ generation, attached session, and active target before constructing its `MuxTree
 notifications unrelated to mux structure also skip the full tree projection.
 
 The crate's job is narrow and mechanical by design: turn `MuxSnapshot` + protocol events into a
-tree of stable GPUI entities (`Entity<PanePickerView>` / `Entity<TerminalView>` /
+tree of stable ala entities (`Entity<PanePickerView>` / `Entity<TerminalView>` /
 `Entity<BrowserView>`, one per `PaneId`, plus an `Entity<AgentView>` for each terminal whose lens is open,
-created once and retained across re-renders) and two custom `zz_gpui::Element` implementations
+created once and retained across re-renders) and two custom `ala::Element` implementations
 (`TerminalElement`, `BrowserElement`) that do the per-frame painting. All tmux-compatible
 parsing, layout math, and session/window/pane lifecycle live in [`zz-mux`](/crates/zz-mux.md) and
 [`zz-daemon`](/crates/zz-daemon.md); this crate renders, forwards input, and owns the GUI-scoped CEF
@@ -60,7 +60,7 @@ daemon reads the CLI's transcript and this crate reduces the stream it publishes
    …) is sent through a short-lived `zz_daemon_client::CommandClient` to an existing or freshly spawned
    daemon. A read-only command can leave a newly spawned daemon empty; the first explicit
    `new-session` then receives numeric name `0` and zero-based ids. Output prints to stdout and the
-   process exits without opening GPUI. `--version`/`-V` is
+   process exits without opening ala. `--version`/`-V` is
    answered in place, before that connection: routing it to the daemon would spawn one just to
    report an unknown command. Live alias preparation may return an opaque multi-command group.
    Client-owned attach and attaching `new-session` scan every child for TUI handoff, while stdin
@@ -129,7 +129,7 @@ its `Attached` message, while the attach frame remains open. The event itself do
 An Interactive client does not receive that raw vector. The daemon delivers an ordered, UTF-8-safe
 64 KiB preview through the existing command-output model under the title `configuration errors`,
 replacing every Unicode control except LF and TAB. The normal output actor and exact output ID drive
-presentation and cleanup, so this crate needs no startup-specific GPUI surface. The truncation
+presentation and cleanup, so this crate needs no startup-specific ala surface. The truncation
 notice tells the user to restart in Control mode for full output; exact Interactive recovery of the
 full retained 1 MiB vector is intentionally not promised.
 
@@ -188,7 +188,7 @@ steps.
 # Application configuration (`config/mod.rs`)
 
 On GUI startup, the app loads the first bounded [`zz/config`](/configuration/app-config.md) file from
-the platform's user configuration roots into GPUI globals. `ConfigKey` identifies client-local
+the platform's user configuration roots into ala globals. `ConfigKey` identifies client-local
 switches, geometry, theme choices, font family, browser controls, and `chrome-*` palette overrides.
 `AppConfig` stays `Copy`;
 the string-valued browser shortcut is published through `BrowserConfig`, and the interface font
@@ -245,9 +245,9 @@ calls `MuxClient::detach()`, leaving the daemon alive for the next launch; with 
 `kill-server` instead, stopping the daemon even while sessions are live. It defaults off.
 
 The background-blur switch becomes a platform blur request in `window/background.rs`. Window
-creation uses the resolved value, and every watcher update reapplies it to all open GPUI windows in
-place. macOS keeps a transparent GPUI surface and sets the WindowServer background-blur radius;
-Windows uses DWM's system backdrop; Wayland uses GPUI's standard `ext-background-effect-v1` path
+creation uses the resolved value, and every watcher update reapplies it to all open ala windows in
+place. macOS keeps a transparent ala surface and sets the WindowServer background-blur radius;
+Windows uses DWM's system backdrop; Wayland uses ala's standard `ext-background-effect-v1` path
 when advertised and retains the legacy KDE protocol as a fallback. X11 publishes KDE's rounded
 blur-behind region and refreshes it as window bounds change. The request is capability-gated:
 unsupported compositors retain opaque app paint instead of exposing an unblurred desktop.
@@ -258,10 +258,10 @@ switch above is the only native blur request. The pane picker, agent lens, Edito
 state, and terminal cover the native backdrop. Browser blank, loading, error, and toolbar states
 share that surface; Chromium page frames retain their own pixels.
 
-The Linux-only system-titlebar switch requests GPUI server-side decorations for new and open
+The Linux-only system-titlebar switch requests ala server-side decorations for new and open
 workspace/Settings windows. KDE can honor it on Wayland and X11; unsupported Wayland compositors
 negotiate back to the existing client frame. Decoration changes are live, and returning the frame
-to desktop ownership clears GPUI's client-side shadow inset while retaining the app's
+to desktop ownership clears ala's client-side shadow inset while retaining the app's
 navigation/status strip.
 
 Terminal is again a structured mirror of daemon-resolved appearance, with provenance-aware Reset
@@ -276,7 +276,7 @@ light or dark color set applies by the OS appearance unless `theme-mode` pins Sy
 Dark. A Ghostty palette cannot repaint the window. `config::Themes` holds the active theme, the
 selected id and the saved themes; `install_config` loads them with the configuration.
 
-`theme.rs` keeps the latest immutable `TerminalAppearance` and `AppearanceProvenance` as GPUI
+`theme.rs` keeps the latest immutable `TerminalAppearance` and `AppearanceProvenance` as ala
 globals for chrome crossovers and Terminal Settings badges, and owns the two entry points that
 install a theme: `refresh_current_theme` (the terminal appearance or `zz/config` changed) and
 `sync_system_appearance` (the OS appearance changed). Both restore the zz-ui base first, then call
@@ -339,10 +339,10 @@ the selected display's usable area, and centers it on the primary display when t
 is gone. Bounds changes are written atomically after a 250ms debounce and flushed during both the
 window-close and app-quit paths. Settings windows are intentionally excluded.
 
-GPUI's `overflow_hidden` mask is rectangular, so square-edged descendants (scrollbars, the Chromium
+ala's `overflow_hidden` mask is rectangular, so square-edged descendants (scrollbars, the Chromium
 texture) escape rounded corners. The frame therefore registers a scene-wide rounded clip via
 `Window::set_window_corner_mask` (a zz change in `demfabris/gpui`): every primitive except drop
-shadows is clipped to the frame's outer arc in the wgpu fragment shaders. Because gpui paints a
+shadows is clipped to the frame's outer arc in the wgpu fragment shaders. Because ala paints a
 div's border under its children and clipped content would cover it at the corners, the frame's 1px
 border is painted as a `border_ring` canvas over the children (padding, not a border, insets the
 content). `window/corners.rs` derives the currently exposed corners from Linux tiling state
@@ -353,10 +353,10 @@ internal presentation geometry; only pane corner radius and margin remain config
 edges remain square at every layer.
 
 `menus.rs` declares one menu tree: zz, File, Edit, View, Window (macOS), and Help.
-macOS displays it through GPUI's native menu API; Linux and Windows retain it for a future menu bar.
+macOS displays it through ala's native menu API; Linux and Windows retain it for a future menu bar.
 `menus::install` rebuilds on chrome-keymap replacement after config reload and on changes to the
 `BTreeSet<String>` of live session names. Other mux notifications leave the menu tree alone.
-GPUI uses the focused surface's action handlers to decide which commands are available.
+ala uses the focused surface's action handlers to decide which commands are available.
 
 The macOS chrome defaults assign `Cmd+N` to New Session, `Cmd+Shift+N` to New Window, `Cmd+D` to
 Split Right, and `Cmd+Shift+D` to Split Down. `macos_app.rs` retains the application actions and
@@ -383,12 +383,12 @@ built:
   entity exactly once. That keeps a terminal's scrollback, selection, and search state
   alive across re-renders and layout changes: **the entity is keyed by `PaneId`, never recreated
   while the pane exists.**
-- `PanePickerView` owns only a GPUI focus handle and the local row selection. Arrow keys or
+- `PanePickerView` owns only an ala focus handle and the local row selection. Arrow keys or
   `hjkl` cycle Terminal/Browser/Editor; Enter issues `select-pane-kind`, after which reconciliation
   drops the picker and focuses the newly materialized entity under the same `PaneId`. Plain
   `t`/`b`/`e` activate those choices directly (Browser only when CEF is available, Editor only when
   `experimental-editor-pane` is on), while Escape issues `kill-pane` for the still-empty
-  pane. Clicking its background issues `select-pane` before taking GPUI focus, keeping the mux-active
+  pane. Clicking its background issues `select-pane` before taking ala focus, keeping the mux-active
   state and inactive surface treatment synchronized. The picker presents compact, headerless,
   full-width washed rows with visible key badges.
 - A post-snapshot state with zero sessions and no daemon error renders `NewSessionView` instead of
@@ -413,7 +413,7 @@ built:
 - Drains queued `TerminalUiCommand` / `BrowserCommand` per pane (`MuxClient::take_terminal_commands`
   / `take_browser_commands`) and applies them to the matching entity.
 - Retains only wanted terminals; for browsers no longer wanted, tells `BrowserController::close_pane`
-  before dropping the entity, so the CEF session closes with the GPUI view.
+  before dropping the entity, so the CEF session closes with the ala view.
 - Keeps the lens toggle per client in `AppView::lenses`. A terminal header shows the toggle when
   `window_summary::pane_agent` finds `claude` or `codex` in the pane's process list; opening it
   creates the pane's `AgentView` (`ensure_lens_view`) and asks the daemon for a replay, which opens
@@ -448,10 +448,10 @@ owned prompt state. See [the command palette concept](/concepts/command-palette.
 
 # The daemon connection (`mux/client.rs`)
 
-`MuxClient` is the single GPUI entity that owns the wire connection. On construction it spawns a
+`MuxClient` is the single ala entity that owns the wire connection. On construction it spawns a
 dedicated `zz-mux-reader` OS thread that blocks on `InteractiveClient::recv` and forwards decoded
 `ProtocolMessage`s through a **bounded `async_channel` of depth 1** into a `cx.spawn` task that
-calls `handle_message`. That depth-1 bound is deliberate backpressure: if the GPUI thread falls
+calls `handle_message`. That depth-1 bound is deliberate backpressure: if the ala thread falls
 behind, the reader thread stops draining the socket instead of buffering unbounded terminal frames
 client-side (pressure then lands on the daemon's own per-pane mailbox).
 
@@ -459,7 +459,7 @@ client-side (pressure then lands on the daemon's own per-pane mailbox).
 and command-output frames go straight into `RetainedTerminalViewport` and `CommandOutputModel`,
 preserving the history ring, row revisions, and diff scratch the painter consumes. Every other
 message goes through `zz_client::ClientCore`; `MuxClient` drains its `Outbound` requests and typed
-`CoreEvent`s into GPUI revisions, queued browser/terminal commands, clipboard effects, and local UI
+`CoreEvent`s into ala revisions, queued browser/terminal commands, clipboard effects, and local UI
 state. For a browser-supported URL, the source pane's
 layout-tree path selects the topologically nearest browser in the same mux window (layout distance
 and forward layout order break ties), then queues `BrowserCommand::Navigate` without changing pane
@@ -505,13 +505,13 @@ local socket connection dies.
 
 # Terminal rendering (`terminal/view.rs`, `terminal/element.rs`)
 
-`TerminalView` is the per-pane (or per-command-output) GPUI entity: focus handle, IME/marked-text
+`TerminalView` is the per-pane (or per-command-output) ala entity: focus handle, IME/marked-text
 state, mouse selection and autoscroll, search-prompt state, scrollbar drag, and cursor-blink task.
-It translates GPUI input events into `zz_protocol::InputMessage` variants
+It translates ala input events into `zz_protocol::InputMessage` variants
 (`TerminalView`/`CommandOutputView` wrapping `TerminalViewAction`, `Key`, `ResizeTerminal`,
 `ResizeCommandOutput`) and sends them through `MuxClient::send_input`; it does not interpret VT
 state itself. It also owns a `TerminalRenderAppearance` bundle containing the current appearance,
-derived GPUI `Font`, and stable appearance hash. The mux observer replaces that bundle only when the
+derived ala `Font`, and stable appearance hash. The mux observer replaces that bundle only when the
 appearance changes, so steady-state renders neither rebuild font allocations nor rehash the full palette;
 the cached hash is passed into each fresh `TerminalElement`. Hovered-link presentation keeps one bounded
 layout entry per terminal view, keyed by URI, surface size, appearance hash, and display scale. It reuses
@@ -536,7 +536,7 @@ overlay only ever rendered above a 40 ms transport RTT, which the deleted QUIC a
 for. Should ssh latency ever justify bringing it back, the RTT it gated on has to come from an
 application-level ping . the client no longer has a transport that reports one.
 
-`TerminalElement` is a custom `zz_gpui::Element` (not an entity) instantiated fresh each render but reading
+`TerminalElement` is a custom `ala::Element` (not an entity) instantiated fresh each render but reading
 the same `Arc<RwLock<RetainedTerminalViewport>>` and a persistent `Rc<RefCell<RowRenderCache>>`
 owned by `TerminalView`. Each `prepaint` it shapes only the rows whose revision changed
 (`RowRenderCache::prepare` invalidates on a `RowCacheSignature` covering dictionary generation,
@@ -644,7 +644,7 @@ Neither path writes Chrome's profile or transfers passwords, autofill, cache, or
 Import/clear completion is surfaced through the mounted notification layer, and successful cookie
 imports reload the page.
 
-`BrowserElement` is the browser's custom `zz_gpui::Element`: it reports its content bounds back to
+`BrowserElement` is the browser's custom `ala::Element`: it reports its content bounds back to
 `BrowserView::update_content_bounds` (which resizes the CEF viewport or holds it during a resize),
 then paints whichever frame the view handed it: the Linux/Windows GPU texture through
 `window.paint_external_texture`, the macOS surface or underlay, or the `Arc<RenderImage>` through
@@ -718,7 +718,7 @@ then paints whichever frame the view handed it: the Linux/Windows GPU texture th
 
 Process-wide `--verbose`/`--zz-verbose-log` wiring shared by every mode above: `env_logger` init
 with per-target filters (terse `NORMAL_FILTER` vs. exhaustive `VERBOSE_FILTER` covering
-`zz`/`zz_browser`/`zz_daemon`/`zz_terminal`/`zz_mux`/`cef`/`gpui`/`wgpu`), a panic hook that logs a
+`zz`/`zz_browser`/`zz_daemon`/`zz_terminal`/`zz_mux`/`cef`/`ala`/`wgpu`), a panic hook that logs a
 captured backtrace before delegating to the previous hook, a background process/process-tree
 resource sampler (`zz_daemon_client::process_info`, every 2s), and a periodic app-state sampler that calls
 `log_diagnostic_snapshot` on both `MuxClient` and `BrowserController` (every 5s, plus on
@@ -738,7 +738,7 @@ log . subprocesses included . lands beside the app's instead of on stderr. Comma
 plain stderr logging.
 
 Four always-on incident hooks ride that production log. `DebugMark` (`cmd-shift-m` /
-`ctrl-shift-m`; a direct gpui binding on purpose, since the mux chord path is one of the things a
+`ctrl-shift-m`; a direct ala binding on purpose, since the mux chord path is one of the things a
 marker may be flagging) stamps `user_marker seq=N` plus a full `log_diagnostic_snapshot` pass into
 the app log, forwards the `debug-marker` daemon verb so both ring logs carry the flag, and
 confirms with a toast; `zz debug-marker [NOTE]` does the same from any shell or agent. The
@@ -757,7 +757,7 @@ the OS profiler can. Captures land beside the ring logs as `zz.stall-<unix-secon
 newest 8 kept, one per 60 s cooldown; attachment works because the locally installed bundle is
 signed without hardened runtime.
 
-zz builds GPUI without its `profiler` feature. That feature kept a 4 MiB foreground-task journal
+zz builds ala without its `profiler` feature. That feature kept a 4 MiB foreground-task journal
 and per-window frame histograms in every build, and its only users were a `show-fps` overlay and a
 verbose-mode frame trace, both removed on 2026-09-22. For frame timing, use the Instruments recipes
 in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_render` trace target.
@@ -779,7 +779,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz-cli/src/fleet.rs` | `zz fleet add <name> <ssh-destination>` / `list` / `remove` . each one config-file edit, plus `install [--restart-daemon] <name>`, which runs install.sh on the host over ssh, sharing `Endpoint::parse` and `config::validate_fleet_host` with the GUI dialog |
 | `crates/zz/src/macos_app.rs` | macOS application/window actions, native app menu, and standard command-key bindings |
 | `crates/zz/src/config/mod.rs` | Platform-aware bounded `zz/config` discovery/parsing, `host-<name>` fleet entries and their add/remove/republish helpers, ordered daemon overrides (the three agent adapter keys among them), per-knob provenance, and comment-preserving atomic edits |
-| `crates/zz/src/keymap.rs` | Bridges `ChromeKeymap` defaults and `chrome-keybind`/`chrome-unbind` overrides into GPUI bindings and action resolution |
+| `crates/zz/src/keymap.rs` | Bridges `ChromeKeymap` defaults and `chrome-keybind`/`chrome-unbind` overrides into ala bindings and action resolution |
 | `crates/zz/src/config/settings.rs` | Root-managed native settings dialog with local and Terminal appearance controls, plus a compact full-file `zz/mux.conf` editor, explicit Save, and confirmed tmux import |
 | `crates/zz/src/app_shell.rs` | `AppShell` . root application surface: floating window controls (non-macOS), dialog/notification layers, hosts `AppView` and the Linux client frame |
 | `crates/zz/src/theme.rs` | Centralized theme customization over zz-ui's own light/dark palettes: retains the daemon appearance, applies the terminal `mono_font_family` crossover, and owns the translucent chrome plus opaque app-pane fills |
@@ -792,7 +792,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/agent/controller.rs` | The client half of the agent lens: the stream reducer over `zz_daemon::AgentStreamPayload`, per-pane replay cursors, and every user gesture turned into an `AgentRequest` on the wire (behind the `agent-pane` cargo feature; `agent/stub.rs` stands in without it) |
 | `crates/zz/src/agent/view.rs` | The lens body for one terminal pane: live timeline, slash completion, composer, cancel, permission cards, and errors |
 | `crates/zz/src/workspace/new_session.rs` | Zero-session which-key panel: the New session and Settings rows that work from an empty workspace, then the prefix bindings that need a session, with click and Enter activation; with no host, the Connect to a computer screen. It resolves the keys and wires focus; `zz_ui::shell::empty_workspace*` draws it, so the storybook can too |
-| `crates/zz/src/mux/client.rs` | `MuxClient` . host-keyed `HostConnection` map (client `Arc`, reader thread + depth-1 channel, per-host state/snapshot), delegates non-frame protocol reduction to `ClientCore`, intercepts the retained terminal hot path, drains core effects into GPUI state, and owns `HistoryRing`, remote connect machinery, cross-host attach, and generation-guarded reconnect backoff |
+| `crates/zz/src/mux/client.rs` | `MuxClient` . host-keyed `HostConnection` map (client `Arc`, reader thread + depth-1 channel, per-host state/snapshot), delegates non-frame protocol reduction to `ClientCore`, intercepts the retained terminal hot path, drains core effects into ala state, and owns `HistoryRing`, remote connect machinery, cross-host attach, and generation-guarded reconnect backoff |
 | `crates/zz/src/mux/hosts.rs` | `HostId`/`HostRegistry`/`HostState` (including `Reconnecting { attempt }`) . fleet host identity from `host-*` config entries, `local` pinned at id 0, retained-host range for a removed-but-attached host |
 | `crates/zz/src/mux/prefix.rs` | Window-root prefix claim, its display keystroke for key hints, and GPUI-to-terminal key translation shared by workspace and browser input |
 | `crates/zz/src/terminal/view.rs` | `TerminalView` . per-pane terminal entity: input translation, selection, search, IME, cursor blink |
@@ -827,7 +827,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 - [Protocol](/crates/zz-protocol.md) . `MuxSnapshot`, `InputMessage`, `EventPayload`, and the IDs
   (`PaneId`, `WindowId`, `SessionId`, `SplitId`) this crate keys every entity by.
 - [Shared client core](/crates/zz-client.md) . renderer-free protocol reduction and chrome actions
-  consumed by this GPUI shell.
+  consumed by this ala shell.
 - [Browser core](/crates/zz-browser.md) . `BrowserRuntime`/`BrowserSession`/`OsrFrame` consumed by
   `browser/controller.rs`.
 - [Terminal core](/crates/zz-terminal.md) . `TerminalViewport`/`TerminalAppearance`/`PackedCell`

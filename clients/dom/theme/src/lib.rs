@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 use zz_app::preferences::Preferences;
-use zz_gpui::Hsla;
+use ala::Hsla;
 use zz_protocol::{ProviderStatus, ProviderTask, ProvidersReport};
 use zz_ui::{
     Colorize as _, Emphasis, Fill, Highlight, PrimaryStyle, SurfaceRole, Theme, ThemeColor,

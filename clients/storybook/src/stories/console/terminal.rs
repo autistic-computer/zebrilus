@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use zz_gpui::{
+use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels,
     Render, RenderImage, Styled as _, TextRun, Window, canvas, div, px,
 };

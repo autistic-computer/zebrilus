@@ -5,7 +5,7 @@ set -euo pipefail
 udid="$1"
 app="$2"
 endpoint="$3"
-bundle_id=dev.zz.gpui-poc
+bundle_id=dev.zz.ala-poc
 cli="${ZZ_BENCH_CLI:-zz-dev}"
 session="${ZZ_BENCH_SESSION:-iphone-bench}"
 cycles="${ZZ_BENCH_CYCLES:-16}"
@@ -28,7 +28,7 @@ try:
 except Exception:
     processes = []
 for process in processes:
-    if process.get("executable", "").rstrip("/").endswith("/ZZGPUI"):
+    if process.get("executable", "").rstrip("/").endswith("/ZZAla"):
         print(process["processIdentifier"])
 PY
         xcrun devicectl device process terminate --device "$udid" --pid "$pid" >/dev/null 2>&1 || true
@@ -55,8 +55,8 @@ run() {
     local kind="$1" seconds="$2" log="$out/$1.log" env_json launch elapsed=0
     shift 2
     env_json="$(python3 -c 'import json, sys; print(json.dumps(dict(arg.split("=", 1) for arg in sys.argv[1:])))' \
-        "ZZ_GPUI_ENDPOINT=$endpoint" "ZZ_GPUI_SESSION=$session" ZZ_GPUI_FRAME_LOG=1 \
-        ${ZZ_GPUI_GLASS:+"ZZ_GPUI_GLASS=$ZZ_GPUI_GLASS"} "$@")"
+        "ZZ_ALA_ENDPOINT=$endpoint" "ZZ_ALA_SESSION=$session" ZZ_ALA_FRAME_LOG=1 \
+        ${ZZ_ALA_GLASS:+"ZZ_ALA_GLASS=$ZZ_ALA_GLASS"} "$@")"
     xcrun devicectl device process launch --device "$udid" --terminate-existing --console \
         --environment-variables "$env_json" "$bundle_id" > "$log" 2>&1 &
     launch=$!
@@ -70,9 +70,9 @@ run() {
 }
 
 kinds=" ${ZZ_BENCH_KINDS:-swipe scroll sheet idle} "
-[[ "$kinds" != *" swipe "* ]] || run swipe $((15 + cycles * 14 / 10)) "ZZ_GPUI_BENCH=swipe:$cycles"
-[[ "$kinds" != *" scroll "* ]] || run scroll $((15 + cycles * 3)) "ZZ_GPUI_BENCH=scroll:$cycles"
-[[ "$kinds" != *" sheet "* ]] || run sheet $((15 + cycles * 3)) "ZZ_GPUI_BENCH=sheet:$cycles"
+[[ "$kinds" != *" swipe "* ]] || run swipe $((15 + cycles * 14 / 10)) "ZZ_ALA_BENCH=swipe:$cycles"
+[[ "$kinds" != *" scroll "* ]] || run scroll $((15 + cycles * 3)) "ZZ_ALA_BENCH=scroll:$cycles"
+[[ "$kinds" != *" sheet "* ]] || run sheet $((15 + cycles * 3)) "ZZ_ALA_BENCH=sheet:$cycles"
 [[ "$kinds" != *" idle "* ]] || run idle 25
 
 echo "logs: $out"

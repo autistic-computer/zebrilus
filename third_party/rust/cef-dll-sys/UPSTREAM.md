@@ -73,5 +73,5 @@ with exit status zero. The adapter uses `RTLD_LOCAL`.
 
 The scratch source and logs are in
 `target/profiles/linux-trim-20260922/cef-loader-probe/`. This probe covers the CEF
-loader and readback callbacks; the GPUI integration and shared GPU texture path
+loader and readback callbacks; the ala integration and shared GPU texture path
 still require the app's native smoke tests.

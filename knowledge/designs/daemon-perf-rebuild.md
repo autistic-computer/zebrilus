@@ -544,7 +544,7 @@ Scope:
    `/etc/localtime` re-read per new thread (3.5% of the split loop).
 5. CoreFoundation: `cargo tree -p zz-cli -i core-foundation-sys` shows chrono -> iana-time-zone as
    the only path, but xtask `build_linux_binaries` and `build_macos_binaries` build
-   `-p zz -p zz-cli` in one invocation, and gpui, zlog and crates/zz (`agent/view.rs` uses
+   `-p zz -p zz-cli` in one invocation, and ala, zlog and crates/zz (`agent/view.rs` uses
    `Local`) enable chrono's clock, so features unify back. CF leaves `zz_cli` only if `zz_cli`
    builds in its own cargo invocation (xtask, deb, pacman, headless recipes) or links with
    `-Wl,-dead_strip_dylibs` for that target alone. Do it only if the dual build measures a gain;
@@ -1601,7 +1601,7 @@ hiding `exec-v1` (one rerun over hello), and a `LAST` Exec closed by the daemon.
 Checks before review: `cargo test` for zz-protocol, zz-mux, zz-daemon (lib and every test target),
 zz-cli (also with the legacy-command knob), zz-tui, zz-client, zz-client-ffi, zz-web and
 zz-config; clippy `-D warnings` on those and `zz`; Linux `cargo check` of zz-daemon and zz-cli,
-Windows of the client half; `just web-build`; `just ios-gpui iPad build`. `compat/run.sh` (316
+Windows of the client half; `just web-build`; `just ios-ala iPad build`. `compat/run.sh` (316
 rows) on this macbook: nine rows fail on both passes here, and the same nine fail with the
 pre-campaign `main` binary on this host (`census-hooks` needs `/etc/hostname`, `prompt-history`,
 `smoke/keys-prefix-attached`, `smoke/plugin-runtime-continuum`, `-oh-my-tmux`,
@@ -1732,7 +1732,7 @@ where the build departs from the scope above:
 - Item 1: `send_attached` calls `send_resync_as(.., ResyncScope::Attach)`: no Snapshot, and an
   overlay event only for an overlay that exists (a command output that exists is still replayed;
   a close for none is not sent). The zz-client core clients (TUI, web, iOS) reset overlays and
-  viewports on `Attached`; the GPUI desktop client keeps its retained viewports across it
+  viewports on `Attached`; the ala desktop client keeps its retained viewports across it
   (`finish_attach` in `crates/zz/src/mux/client.rs`), so for it a Full it did not need costs only
   bytes. A requested `Resync` keeps the full scope. `send_attached` queues `Attached` and records the
   client's snapshot digest under `snapshot_order`, so no publisher can slip a Snapshot between
@@ -1925,7 +1925,7 @@ Handed on:
 - A snapshot still goes to a TUI that is exiting after `Detached`; the daemon cannot tell it from a
   browser client, which stays connected and needs it.
 - macOS-only, not measured here: the 8 KiB `net.local.stream.sendspace` effect on the writev
-  batches (the reason for the daemon's `SO_SNDBUF`), `just ios-gpui iPad build` for the two hello
+  batches (the reason for the daemon's `SO_SNDBUF`), `just ios-ala iPad build` for the two hello
   capability constants.
 
 Merged onto the five lanes above and the Linux THP fix (`perf/wave1`, merge `ce1b34cd`, a clean
@@ -1980,7 +1980,7 @@ Gate vs wave-1 exit JSON: throughput rows; headless-client throughput (TODO in W
 `echo.wire_bytes.idle` <= 64 B; terminal bytes in `attach.wire_s2c.p4` <= 15 KB; chatty CPU no
 worse. Tests: codec round-trip and property tests (random grids, wide cells, graphemes, hyperlinks,
 dictionary growth), zz-client, zz-tui, GUI mux client tests, `tui-screen-diff.sh`,
-`tui-output-backpressure.sh`, `tui-copy-mode.sh`, `just web-build`, `just ios-gpui iPad build`,
+`tui-output-backpressure.sh`, `tui-copy-mode.sh`, `just web-build`, `just ios-ala iPad build`,
 `bench/run.sh`.
 
 Expected (re-encoded captures): patches 15x smaller, Full 10x, blank screens ~140x, echo ~30-40 B.
@@ -2141,7 +2141,7 @@ same on the base binary) fail as on the base. `compat/run.sh` over the whole cor
 `lock-command`) and `smoke/plugin-runtime-resurrect-restore` fail twice, the three host rows the
 wave-1 merge recorded, and the `known/` rows keep their documented divergences.
 `compat/tui/tracker.py check` passes. `compat/wire-version.py`: 107 unreleased.
-`just web-build` builds. Not run here: `just ios-gpui iPad build` (needs the Mac; gpui-shared
+`just web-build` builds. Not run here: `just ios-ala iPad build` (needs the Mac; gpui-shared
 decodes through zz-client core and did not change), and `bench/run.sh` (it drives the packaged GUI
 app in a window, not the daemon; the gate's throughput rows and the headless client cover the
 wire).
@@ -2189,7 +2189,7 @@ output-backpressure 9/9, copy-mode 141/147 (the six fresh-entry search prompt ca
 `diff-scenario.sh` on capture-pane, the eight copy-mode scenarios, zoom, resize, resize-window,
 switch-client, alerts, panes, display-panes-format, pane-dead-time and windows: 18/18.
 `just web-build` builds. `compat/tui/tracker.py check`, `compat/wire-version.py` (107 unreleased),
-`bench/perf/test_gate.py` and the OKF validator pass. Not run: `just ios-gpui iPad build` and
+`bench/perf/test_gate.py` and the OKF validator pass. Not run: `just ios-ala iPad build` and
 `bench/run.sh`, for the reasons above.
 
 Handed on:
@@ -2278,7 +2278,7 @@ session <= 100 B per client; `control.latency` <= 1.2x, `control.burst_cmds_per_
 `chatty.tty_kibps.visible` <= 1.5x; cli and throughput no
 regression. Tests: zz-client simulator convergence, zz-client-ffi + C integration client, daemon
 clients and overlay tests, `cargo test -p zz`, every compat/tui fixture, control-mode fixtures
-(`%begin`/`%end`, `%layout-change`), `compat/run.sh`, `just web-build`, `just ios-gpui iPad build`.
+(`%begin`/`%end`, `%layout-change`), `compat/run.sh`, `just web-build`, `just ios-ala iPad build`.
 
 Expected: attach ~10 round trips -> 1; hello 28.3 KB -> ~40 B + subscribed state;
 KeyTablesChanged 26 KB -> ~20 B for hash subscribers; tree change 20-60 B, encoded once;
@@ -2501,13 +2501,13 @@ Exact review/integration commands, exits and captured output stay in scratch JSO
 
 | Focused rollback attachment | `timeout 1800 cargo test -p zz-daemon legacy_command_attach_reconnects_with_the_original_route -- --test-threads=1` | 0 | `/tmp/zzpc/ctrl-fix-legacy-unit-passed.json` |
 | Merged formatting | `cargo fmt --all -- --check` | 0 | `/tmp/zzpc/ctrl-fix-merge-fmt.json` |
-| Merged lint | `timeout 1800 cargo clippy -p zz-daemon -p zz-mux -p zz-terminal -p zz-client -p zz-tui -p zz-protocol -p zz-cli -p zz-gpui-ios --all-targets --all-features -- -D warnings` | 0 | `/tmp/zzpc/ctrl-fix-merge-lint.json` |
-| Merged serial suite | `timeout 1800 cargo test -p zz-daemon -p zz-client -p zz-tui -p zz-protocol -p zz-mux -p zz-terminal -p zz-gpui-ios -p zz-cli --all-features -- --test-threads=1 --skip concurrent_default_interactive_attaches_atomically_share_session_zero` | 0 | `/tmp/zzpc/ctrl-fix-merge-tests.json` |
+| Merged lint | `timeout 1800 cargo clippy -p zz-daemon -p zz-mux -p zz-terminal -p zz-client -p zz-tui -p zz-protocol -p zz-cli -p ala-ios --all-targets --all-features -- -D warnings` | 0 | `/tmp/zzpc/ctrl-fix-merge-lint.json` |
+| Merged serial suite | `timeout 1800 cargo test -p zz-daemon -p zz-client -p zz-tui -p zz-protocol -p zz-mux -p zz-terminal -p ala-ios -p zz-cli --all-features -- --test-threads=1 --skip concurrent_default_interactive_attaches_atomically_share_session_zero` | 0 | `/tmp/zzpc/ctrl-fix-merge-tests.json` |
 | CLI build | `timeout 1800 cargo build -p zz-cli --bin zz_cli` | 0 | `/tmp/zzpc/ctrl-fix-cli-build.json` |
 | Non-TTY attachment pair | `timeout 1800 python3 /tmp/zzpc/ctrl-fix-legacy-probe.py` | 0 | `/tmp/zzpc/ctrl-fix-legacy-probe-built.json` |
 | PTY attachment pair | `timeout 1800 python3 /tmp/zzpc/ctrl-fix-legacy-pty-probe.py` | 0 | `/tmp/zzpc/ctrl-fix-legacy-pty-probe-built.json` |
-| iOS example build | `timeout 1800 env ZZ_GPUI_DEMO=terminal just ios-gpui iPad build` | 0 | `/tmp/zzpc/ctrl-fix-ios-terminal-build.json` |
-| iOS example lint | `timeout 1800 env IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo clippy -p zz-gpui-ios --target aarch64-apple-ios-sim --example terminal -- -D warnings` | 0 | `/tmp/zzpc/ctrl-fix-ios-terminal-lint.json` |
+| iOS example build | `timeout 1800 env ZZ_ALA_DEMO=terminal just ios-ala iPad build` | 0 | `/tmp/zzpc/ctrl-fix-ios-terminal-build.json` |
+| iOS example lint | `timeout 1800 env IPHONEOS_DEPLOYMENT_TARGET=26.0 cargo clippy -p ala-ios --target aarch64-apple-ios-sim --example terminal -- -D warnings` | 0 | `/tmp/zzpc/ctrl-fix-ios-terminal-lint.json` |
 | Selected compat rows | `timeout 1800 env PATH=/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin ZZ_COMPAT_TMUX=/Users/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_ZZ=/Users/demfabris/dev/zz-ctrl/target/debug/zz_cli /opt/homebrew/bin/bash /tmp/zzpc/ctrl-fix-harness/compat/run.sh smoke/control-notify smoke/control-eof-drain smoke/control-hard-loss smoke/control-alias-prepare smoke/control-tilde-environment smoke/source-file-control smoke/send-keys-control smoke/hooks-pane-focus smoke/hooks-pane-focus-clients smoke/format-monitor-hooks smoke/refresh-status smoke/copy-mode-refresh smoke/copy-mode-formats smoke/copy-mode-mode-keys-tail smoke/pane-border-status` | 1 | `/tmp/zzpc/ctrl-fix-compat-risk-final.json` |
 | PRE alias comparison | `timeout 1800 env PATH=/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin ZZ_COMPAT_TMUX=/Users/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_ZZ=/tmp/zzpc/ctrl-base/zz_cli /opt/homebrew/bin/bash /tmp/zzpc/ctrl-fix-harness/compat/run.sh smoke/control-alias-prepare` | 1 | `/tmp/zzpc/ctrl-fix-compat-alias-pre.json` |
 | Attached-client parity | `timeout 1800 env PATH=/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin /opt/homebrew/bin/bash /tmp/zzpc/ctrl-fix-harness/compat/attached-client.sh /Users/demfabris/dev/zz-ctrl/target/debug/zz_cli /Users/demfabris/dev/zz/compat/.cache/tmux-src/tmux` | 0 | `/tmp/zzpc/ctrl-fix-attached-client.json` |
@@ -2517,8 +2517,8 @@ Exact review/integration commands, exits and captured output stay in scratch JSO
 | Initial focused test: type correction | `timeout 1800 cargo test -p zz-daemon legacy_command_attach_reconnects_with_the_original_route -- --test-threads=1` | 101 | `/tmp/zzpc/ctrl-fix-legacy-unit.json` |
 | Initial focused test: EOF correction | `timeout 1800 cargo test -p zz-daemon legacy_command_attach_reconnects_with_the_original_route -- --test-threads=1` | 101 | `/tmp/zzpc/ctrl-fix-legacy-unit-rerun.json` |
 | Initial focused test: socket cleanup correction | `timeout 1800 cargo test -p zz-daemon legacy_command_attach_reconnects_with_the_original_route -- --test-threads=1` | 101 | `/tmp/zzpc/ctrl-fix-legacy-unit-final.json` |
-| Initial lint: explicit defaults needed | `timeout 1800 cargo clippy -p zz-daemon -p zz-gpui-ios --all-targets --all-features -- -D warnings` | 101 | `/tmp/zzpc/ctrl-fix-lint.json` |
-| Corrected premerge lint | `timeout 1800 cargo clippy -p zz-daemon -p zz-gpui-ios --all-targets --all-features -- -D warnings` | 0 | `/tmp/zzpc/ctrl-fix-lint-final.json` |
+| Initial lint: explicit defaults needed | `timeout 1800 cargo clippy -p zz-daemon -p ala-ios --all-targets --all-features -- -D warnings` | 101 | `/tmp/zzpc/ctrl-fix-lint.json` |
+| Corrected premerge lint | `timeout 1800 cargo clippy -p zz-daemon -p ala-ios --all-targets --all-features -- -D warnings` | 0 | `/tmp/zzpc/ctrl-fix-lint-final.json` |
 | Initial scratch compat setup | `timeout 1800 env PATH=/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin ZZ_COMPAT_TMUX=/Users/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_ZZ=/Users/demfabris/dev/zz-ctrl/target/debug/zz_cli /opt/homebrew/bin/bash /tmp/zzpc/ctrl-fix-compat/run.sh smoke/control-notify smoke/control-eof-drain smoke/control-hard-loss smoke/control-alias-prepare smoke/control-tilde-environment smoke/source-file-control smoke/send-keys-control smoke/hooks-pane-focus smoke/hooks-pane-focus-clients smoke/format-monitor-hooks smoke/refresh-status smoke/copy-mode-refresh smoke/copy-mode-formats smoke/copy-mode-mode-keys-tail smoke/pane-border-status` | 1 | `/tmp/zzpc/ctrl-fix-compat-risk.json` |
 | Second scratch compat setup | `timeout 1800 env PATH=/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin ZZ_COMPAT_TMUX=/Users/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_ZZ=/Users/demfabris/dev/zz-ctrl/target/debug/zz_cli /opt/homebrew/bin/bash /tmp/zzpc/ctrl-fix-harness/compat/run.sh smoke/control-notify smoke/control-eof-drain smoke/control-hard-loss smoke/control-alias-prepare smoke/control-tilde-environment smoke/source-file-control smoke/send-keys-control smoke/hooks-pane-focus smoke/hooks-pane-focus-clients smoke/format-monitor-hooks smoke/refresh-status smoke/copy-mode-refresh smoke/copy-mode-formats smoke/copy-mode-mode-keys-tail smoke/pane-border-status` | 1 | `/tmp/zzpc/ctrl-fix-compat-risk-rerun.json` |
 

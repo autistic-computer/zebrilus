@@ -1,5 +1,6 @@
 use std::{collections::BTreeSet, rc::Rc};
 
+use ala::SharedString;
 use zz_client::{
     completion::PaneKindAvailability,
     place::{
@@ -8,7 +9,6 @@ use zz_client::{
     recents::{RecentKey, RecentKind, Recents},
     verbs::{self, Filled, Slot, Verb, VerbKind, VerbMatch},
 };
-use zz_gpui::SharedString;
 
 use super::{
     PalettePill, PaletteRow, PaletteStatus,

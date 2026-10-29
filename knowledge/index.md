@@ -4,7 +4,7 @@ okf_version: "0.1"
 
 # zz Knowledge
 
-Agent- and human-readable knowledge for **zz**, a cross-platform GPUI workspace that multiplexes
+Agent- and human-readable knowledge for **zz**, a cross-platform ala workspace that multiplexes
 native terminal panes (libghostty-vt + daemon-owned PTYs), Chromium browser panes (CEF Alloy
 off-screen rendering), and an agent lens over terminal panes running Claude Code or Codex, over a
 persistent local daemon with a tmux-style model.

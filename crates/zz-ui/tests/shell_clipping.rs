@@ -1,8 +1,8 @@
-use std::{cell::Cell, rc::Rc};
-use zz_gpui::{
+use ala::{
     Bounds, Context, IntoElement, Pixels, Render, TestAppContext, Window, canvas, div, prelude::*,
     px,
 };
+use std::{cell::Cell, rc::Rc};
 use zz_ui::{
     ActiveTheme as _,
     pane::{PaneChrome, pane_surface},
@@ -62,7 +62,7 @@ impl Render for ShellFixture {
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn pane_shadows_cross_chrome_boundaries_while_pane_content_stays_clipped(cx: &mut TestAppContext) {
     cx.update(zz_ui::init);
     for (sidebar, titlebar) in [(80., 0.), (0., 40.), (80., 40.)] {
@@ -84,7 +84,7 @@ fn pane_shadows_cross_chrome_boundaries_while_pane_content_stays_clipped(cx: &mu
             window.viewport_size()
         });
         let (bounds, mask) = shadow.get().expect("shadow painted");
-        assert_eq!(mask, Bounds::new(zz_gpui::point(px(0.), px(0.)), viewport));
+        assert_eq!(mask, Bounds::new(ala::point(px(0.), px(0.)), viewport));
         if sidebar > 0. {
             assert!(mask.left() < bounds.left() - px(6.));
         }

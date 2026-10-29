@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
     Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
@@ -119,7 +119,7 @@ impl OpenSelect {
         let state = select(LANGUAGES.to_vec(), Some(0), window, cx);
         let target = state.clone();
         after_first_frame(window, move |window, cx| {
-            let handle = zz_gpui::Focusable::focus_handle(target.read(cx), cx);
+            let handle = ala::Focusable::focus_handle(target.read(cx), cx);
             handle.focus(window, cx);
             dispatch("zz_select::Confirm", window, cx);
         });

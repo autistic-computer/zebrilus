@@ -318,7 +318,7 @@ impl CellHeightAdjustment {
     }
 }
 
-/// GPUI-local cursor blink policy resolved by the daemon.
+/// ala-local cursor blink policy resolved by the daemon.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CursorBlinkPolicy {
@@ -445,7 +445,7 @@ impl<'de> Deserialize<'de> for TerminalPalette {
     }
 }
 
-/// Renderer-neutral appearance shared by terminal actors and GPUI clients.
+/// Renderer-neutral appearance shared by terminal actors and ala clients.
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub struct TerminalAppearance {
     pub color_scheme: TerminalColorScheme,

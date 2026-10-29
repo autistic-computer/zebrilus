@@ -13,9 +13,9 @@ timestamp: 2026-10-03T00:00:00Z
 crate that turns one shell child into a stream of immutable, renderer-neutral terminal frames. Each
 [`TerminalSession`](/concepts/pty-worker.md) spawns a dedicated OS worker thread that exclusively owns
 its `portable_pty` child process and every [`libghostty-vt`](/terminal/libghostty-vt.md) object (VT
-parser, grid, key/mouse encoders, render state). The GPUI application never touches a PTY or a
+parser, grid, key/mouse encoders, render state). The ala application never touches a PTY or a
 libghostty handle directly; it reads the latest [`TerminalViewport`](/concepts/terminal-frame.md)
-frame and applies compact patches. The crate holds no GPUI types, so the daemon, the
+frame and applies compact patches. The crate holds no ala types, so the daemon, the
 [protocol](/crates/zz-protocol.md) tests, and the app can all use it. It is consumed by
 [`/crates/zz-daemon.md`](/crates/zz-daemon.md), which fans frames out to clients over the
 [terminal lanes](/protocol/terminal-lanes.md).
@@ -129,6 +129,6 @@ Public surface re-exported from `terminal_core.rs`:
 - Owns and drives [`libghostty-vt`](/terminal/libghostty-vt.md) on the worker thread.
 - Publishes the [terminal frame](/concepts/terminal-frame.md) consumed by [`/crates/zz-daemon.md`](/crates/zz-daemon.md) fanout.
 - Frames and patches travel the [terminal lanes](/protocol/terminal-lanes.md) and [snapshots](/protocol/snapshots.md) of the [wire protocol](/protocol/wire-protocol.md).
-- The [rendering-parity](/terminal/rendering-parity.md) effort maps these frames onto GPUI painting in [`/crates/zz.md`](/crates/zz.md).
+- The [rendering-parity](/terminal/rendering-parity.md) effort maps these frames onto ala painting in [`/crates/zz.md`](/crates/zz.md).
 - Subsystems: [interaction](/terminal/interaction.md), [appearance](/terminal/appearance.md); actor lifecycle in [pty-worker](/concepts/pty-worker.md).
 - Session persistence across daemon restarts is described in [session-persistence](/concepts/session-persistence.md).

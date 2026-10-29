@@ -11,7 +11,7 @@ use crate::{
         pane_surface, terminal_pane_header,
     },
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, Corners, Hsla, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px,
 };
 use zz_protocol::{AgentProvider, PaneId};
@@ -76,7 +76,7 @@ impl RenderOnce for PanesPreview {
                 self.inactive_opacity.clamp(0.0, 1.0)
             }
         };
-        let pane = |index: usize, content: zz_gpui::Div, covers_frame: bool| {
+        let pane = |index: usize, content: ala::Div, covers_frame: bool| {
             let active = selected == index;
             pane_surface(
                 ("settings-preview-pane", index),
@@ -224,7 +224,7 @@ fn terminal_sample(
     opacity: f32,
     radii: Corners<Pixels>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let header = terminal_pane_header(
         active,
         title,
@@ -241,7 +241,7 @@ fn terminal_sample(
         .child(terminal_body(lines, opacity, cx))
 }
 
-fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> zz_gpui::Div {
+fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> ala::Div {
     let theme = cx.theme();
     let tone = |color: Hsla, text: &'static str| div().text_color(color).child(text);
     div()
@@ -274,13 +274,13 @@ fn terminal_body(lines: &'static [Line], opacity: f32, cx: &App) -> zz_gpui::Div
 }
 
 fn browser_sample(
-    address: &zz_gpui::Entity<InputState>,
+    address: &ala::Entity<InputState>,
     active: bool,
     opacity: f32,
     radii: Corners<Pixels>,
     window: &Window,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let button = |id, icon, tooltip, disabled| {
         browser_toolbar_button(cx, id, icon, tooltip, disabled, false)
     };
@@ -353,7 +353,7 @@ fn browser_sample(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::{Context, Modifiers, Render, TestAppContext, VisualTestContext};
+    use ala::{Context, Modifiers, Render, TestAppContext, VisualTestContext};
 
     struct PreviewTest(PanesPreview);
 
@@ -378,7 +378,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn clicking_samples_changes_selection_and_preserves_it_on_settings_updates(
         cx: &mut TestAppContext,
     ) {
@@ -410,7 +410,7 @@ mod tests {
         assert!(cx.debug_bounds("settings-preview-active-0-true").is_none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn spacing_updates_use_workspace_pixel_geometry(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|_, _| PreviewTest(preview()));

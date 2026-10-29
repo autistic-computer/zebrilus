@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{AnyElement, App, IntoElement, Keystroke, Window, px, size};
+use ala::{AnyElement, App, IntoElement, Keystroke, Window, px, size};
 use zz_ui::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView};
 
 use crate::story::{Section, Story, stateless, states};

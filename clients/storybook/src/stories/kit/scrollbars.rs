@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyView, App, AppContext as _, Context, InteractiveElement as _, IntoElement,
     ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, point, px,

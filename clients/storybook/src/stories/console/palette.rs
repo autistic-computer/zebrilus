@@ -5,7 +5,7 @@ use std::{
 };
 
 use zz_client::{completion::PaneKindAvailability, place::ActionKind};
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyDownEvent,
     Keystroke, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity,
     Window, div, prelude::*, px,

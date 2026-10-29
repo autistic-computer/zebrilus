@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
+use ala::{TestAppContext, VisualTestContext};
 use zz_client::recents::RecentKey;
-use zz_gpui::{TestAppContext, VisualTestContext};
 use zz_protocol::{ChooseTreeItem, ChooseTreeKind, PathKind, SessionId, WindowId};
 
 use super::*;
@@ -57,7 +57,7 @@ impl PaletteActionLevel for FakeLevel {
         None
     }
 
-    fn rows(&mut self, _: &mut Window, _: &mut App) -> zz_gpui::AnyElement {
+    fn rows(&mut self, _: &mut Window, _: &mut App) -> ala::AnyElement {
         div().into_any_element()
     }
 
@@ -456,7 +456,7 @@ fn chooser_search_expands_descendants_and_restores_only_its_own_branches() {
     assert!(state.items[0].expanded());
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn daemon_tree_navigation_and_search_preserve_pane_activation(cx: &mut TestAppContext) {
     cx.update(|cx| {
         crate::init(cx);
@@ -504,7 +504,7 @@ fn daemon_tree_navigation_and_search_preserve_pane_activation(cx: &mut TestAppCo
                 .into_iter()
                 .find(|quad| {
                     quad.background
-                        == zz_gpui::solid_background(
+                        == ala::solid_background(
                             cx.theme().surface(Elevation::Popover).fill.opaque(),
                         )
                         && quad.bounds.size.width.0 > 300.0 * window.scale_factor()
@@ -600,7 +600,7 @@ fn daemon_tree_navigation_and_search_preserve_pane_activation(cx: &mut TestAppCo
     assert!(sent(&messages, &ChooseTreeAction::ActivateIndex(4)));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn palette_navigation_scrolls_at_most_one_row_per_step(cx: &mut TestAppContext) {
     cx.update(crate::init);
     for unified in [true, false] {
@@ -656,7 +656,7 @@ fn palette_navigation_scrolls_at_most_one_row_per_step(cx: &mut TestAppContext) 
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn sigils_stay_in_the_field_and_backspace_drops_the_host_chip(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, _) = backend(offline_tree());
@@ -713,7 +713,7 @@ fn sigils_stay_in_the_field_and_backspace_drops_the_host_chip(cx: &mut TestAppCo
     assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn local_palette_activates_targets_through_the_backend(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -733,7 +733,7 @@ fn local_palette_activates_targets_through_the_backend(cx: &mut TestAppContext) 
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn alt_enter_copies_the_highlighted_place_as_tmux_writes_it(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -763,7 +763,7 @@ fn alt_enter_copies_the_highlighted_place_as_tmux_writes_it(cx: &mut TestAppCont
     assert!(!palette.read_with(cx, |palette, _| palette.is_finished()));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_level_can_replace_the_field(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, _) = backend(online_tree());
@@ -779,7 +779,7 @@ fn a_level_can_replace_the_field(cx: &mut TestAppContext) {
     assert_eq!(target_value(&palette, cx), "~/dev/");
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_recent_file_opens_its_level_on_the_files_folder(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let key = RecentKey::File {
@@ -832,7 +832,7 @@ fn chip_labels(palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext)
     })
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn tab_goes_into_a_place_and_shift_tab_comes_back_to_it(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -864,7 +864,7 @@ fn tab_goes_into_a_place_and_shift_tab_comes_back_to_it(cx: &mut TestAppContext)
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn words_find_a_window_and_backspace_drops_the_chips(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -890,7 +890,7 @@ fn words_find_a_window_and_backspace_drops_the_chips(cx: &mut TestAppContext) {
     assert!(calls.borrow().is_empty());
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_verb_on_a_place_runs_with_its_target(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -914,7 +914,7 @@ fn a_verb_on_a_place_runs_with_its_target(cx: &mut TestAppContext) {
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_verb_opens_a_picker_for_its_target_with_the_current_one_first(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -947,7 +947,7 @@ fn a_verb_opens_a_picker_for_its_target_with_the_current_one_first(cx: &mut Test
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_text_slot_takes_what_you_type_and_backspace_steps_back(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -988,14 +988,14 @@ fn a_text_slot_takes_what_you_type_and_backspace_steps_back(cx: &mut TestAppCont
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_pasted_written_place_becomes_chips(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, _) = backend(online_tree());
     let (palette, cx) = mount(cx, move |window, cx| {
         CommandPaletteView::new_unified(backend, None, window, cx)
     });
-    cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string("@local:%10".to_owned()));
+    cx.write_to_clipboard(ala::ClipboardItem::new_string("@local:%10".to_owned()));
     cx.dispatch_action(crate::input::Paste);
     cx.run_until_parked();
     assert_eq!(
@@ -1005,7 +1005,7 @@ fn a_pasted_written_place_becomes_chips(cx: &mut TestAppContext) {
     assert_eq!(target_value(&palette, cx), "");
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn prefix_f_lists_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -1058,7 +1058,7 @@ fn prefix_f_lists_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppCo
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn prefix_f_opens_files_on_the_panes_folder_and_inserts_into_that_pane(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls, sink) = files_backend();
@@ -1086,7 +1086,7 @@ fn prefix_f_opens_files_on_the_panes_folder_and_inserts_into_that_pane(cx: &mut 
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn files_open_folders_and_go_back_up_to_the_folder_left(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls, sink) = files_backend();
@@ -1145,7 +1145,7 @@ fn files_open_folders_and_go_back_up_to_the_folder_left(cx: &mut TestAppContext)
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_folder_pick_hands_the_folder_back_instead_of_inserting(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls, sink) = files_backend();
@@ -1174,7 +1174,7 @@ fn a_folder_pick_hands_the_folder_back_instead_of_inserting(cx: &mut TestAppCont
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn alt_enter_copies_the_plain_path_and_keeps_it_as_a_recent(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls, sink) = files_backend();
@@ -1216,7 +1216,7 @@ fn alt_enter_copies_the_plain_path_and_keeps_it_as_a_recent(cx: &mut TestAppCont
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_recent_file_goes_into_the_pane_once_its_folder_is_listed(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let path = "/home/me/one/crates/zz/src/main.rs";
@@ -1314,7 +1314,7 @@ fn files_key(
         .and_then(set_rest)
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn files_start_in_the_written_place_and_rewrite_their_text(cx: &mut TestAppContext) {
     use zz_client::place::{Level, LevelSet};
 
@@ -1362,7 +1362,7 @@ fn files_start_in_the_written_place_and_rewrite_their_text(cx: &mut TestAppConte
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn local_palette_executes_commands_on_the_attached_host(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -1383,7 +1383,7 @@ fn local_palette_executes_commands_on_the_attached_host(cx: &mut TestAppContext)
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn palette_keeps_local_edits_for_the_same_revision_and_disables_value_completions(
     cx: &mut TestAppContext,
 ) {
@@ -1466,7 +1466,7 @@ fn only_a_known_command_followed_by_whitespace_has_arguments() {
     assert!(!has_command_arguments("split-window"));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn key_reading_prompt_relays_keystrokes_to_the_active_pane(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let state = CommandPromptState {
@@ -1490,7 +1490,7 @@ fn key_reading_prompt_relays_keystrokes_to_the_active_pane(cx: &mut TestAppConte
     assert!(cx.update(|_, cx| palette.read(cx).input.read(cx).value().is_empty()));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn history_suggestions_skip_commands_the_backend_cannot_run(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let mut state = prompt_state("", CommandPromptMode::Text);
@@ -1527,7 +1527,7 @@ fn history_suggestions_skip_commands_the_backend_cannot_run(cx: &mut TestAppCont
     assert_eq!(history, ["list-panes"]);
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_key_reading_prompt_drops_the_completion_list(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let initial = prompt_state("ren", CommandPromptMode::Text);
@@ -1569,7 +1569,7 @@ fn a_key_reading_prompt_drops_the_completion_list(cx: &mut TestAppContext) {
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn tab_accepts_completion_without_leaving_the_palette(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let initial = prompt_state("new-w", CommandPromptMode::Text);
@@ -1603,22 +1603,22 @@ struct OverlayHost {
 impl Render for OverlayHost {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         let overlay = if self.cached {
-            zz_gpui::AnyView::from(self.palette.clone())
-                .cached(zz_gpui::StyleRefinement::default().absolute().inset_0())
+            ala::AnyView::from(self.palette.clone())
+                .cached(ala::StyleRefinement::default().absolute().inset_0())
                 .into_any_element()
         } else {
             self.palette.clone().into_any_element()
         };
-        zz_gpui::div()
+        ala::div()
             .relative()
             .flex()
             .size_full()
-            .child(zz_gpui::div().flex_1())
+            .child(ala::div().flex_1())
             .child(overlay)
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_cached_palette_covers_the_same_area_as_an_inline_one(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let mut covered = Vec::new();
@@ -1752,7 +1752,7 @@ fn press(cx: &mut VisualTestContext, keys: &str) {
     cx.run_until_parked();
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn vim_mode_opens_in_insert_and_escape_steps_to_normal_then_closes(cx: &mut TestAppContext) {
     let (palette, _, _, cx) = vim_palette(cx, true, None);
     assert_eq!(vim_mode(&palette, cx), Some(PaletteVimMode::Insert));
@@ -1777,7 +1777,7 @@ fn vim_mode_opens_in_insert_and_escape_steps_to_normal_then_closes(cx: &mut Test
     assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn without_vim_mode_escape_closes_at_once(cx: &mut TestAppContext) {
     let (palette, _, _, cx) = vim_palette(cx, false, None);
     assert_eq!(vim_mode(&palette, cx), None);
@@ -1785,7 +1785,7 @@ fn without_vim_mode_escape_closes_at_once(cx: &mut TestAppContext) {
     assert!(palette.read_with(cx, |palette, _| palette.is_finished()));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn q_and_ctrl_bracket_close_from_normal(cx: &mut TestAppContext) {
     for keys in ["escape q", "ctrl-[ ctrl-["] {
         let (palette, _, _, cx) = vim_palette(cx, true, None);
@@ -1797,7 +1797,7 @@ fn q_and_ctrl_bracket_close_from_normal(cx: &mut TestAppContext) {
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn each_vim_key_does_what_its_twin_does(cx: &mut TestAppContext) {
     for (setup, vim_key, twin) in [
         (":", "j", "down"),
@@ -1836,7 +1836,7 @@ fn each_vim_key_does_what_its_twin_does(cx: &mut TestAppContext) {
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn gg_and_shift_g_jump_to_the_first_and_last_row(cx: &mut TestAppContext) {
     let (palette, _, _, cx) = vim_palette(cx, true, Some(PaletteMode::Command));
     let (first, last) = palette.read_with(cx, |palette, _| {
@@ -1854,7 +1854,7 @@ fn gg_and_shift_g_jump_to_the_first_and_last_row(cx: &mut TestAppContext) {
     assert_eq!(palette.read_with(cx, |palette, _| palette.selected), first);
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn i_a_and_slash_go_back_to_insert(cx: &mut TestAppContext) {
     let (palette, _, _, cx) = vim_palette(cx, true, Some(PaletteMode::Command));
     let field = |palette: &Entity<CommandPaletteView>, cx: &mut VisualTestContext| {
@@ -1888,7 +1888,7 @@ fn i_a_and_slash_go_back_to_insert(cx: &mut TestAppContext) {
     assert!(chips >= 1, "/ keeps the chips");
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_colon_in_normal_mode_types_itself_in_insert(cx: &mut TestAppContext) {
     let (vim, vim_calls, _, cx) = vim_palette(cx, true, None);
     press(cx, "escape");
@@ -1902,7 +1902,7 @@ fn a_colon_in_normal_mode_types_itself_in_insert(cx: &mut TestAppContext) {
     assert_eq!(by_vim, seen(&plain, &plain_calls, cx));
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn turning_vim_mode_off_gives_the_field_back(cx: &mut TestAppContext) {
     let (palette, _, toggle, cx) = vim_palette(cx, true, None);
     press(cx, "escape");
@@ -1920,7 +1920,7 @@ fn turning_vim_mode_off_gives_the_field_back(cx: &mut TestAppContext) {
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_pane_lists_its_actions_and_runs_one(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());
@@ -1970,7 +1970,7 @@ fn two_windows() -> PaletteTree {
     tree
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_picked_target_stays_picked_when_a_refresh_reorders_the_rows(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let calls = Calls::default();
@@ -2024,7 +2024,7 @@ fn a_picked_target_stays_picked_when_a_refresh_reorders_the_rows(cx: &mut TestAp
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_colon_in_a_text_slot_is_text_not_a_tmux_command(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (backend, calls) = backend(online_tree());

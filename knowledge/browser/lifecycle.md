@@ -65,7 +65,7 @@ on 2026-09-24 four profiling runs whose window never reached the screen stayed
 alive after SIGTERM, with Chromium's detector parked in `ExitPosted` and an idle
 main thread. The desktop client owns these signals instead
 (`crates/zz/src/quit_signal.rs`): a one-shot handler installed at startup, and
-again once the runtime starts, asks gpui to quit through the normal
+again once the runtime starts, asks ala to quit through the normal
 `on_app_quit` path, and the process `_exit`s with 128 + signal if it is still
 alive 2 s later. A second signal gets the default action.
 
@@ -161,7 +161,7 @@ page before clicking its controls. For manual checks, serve the fixture and visi
 
 # Related
 
-- Driven by the [CEF runtime](/browser/cef-runtime.md); events consumed by the GPUI
+- Driven by the [CEF runtime](/browser/cef-runtime.md); events consumed by the ala
   client in [`crates/zz`](/crates/zz.md), which discards events from a stale
   session generation.
 - Sessions restore against the persistent [profile](/browser/profile.md); see

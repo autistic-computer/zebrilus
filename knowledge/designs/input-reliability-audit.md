@@ -27,7 +27,7 @@ The five classes, named after their type specimen:
    after a *successful* execution, so the divergence is self-sustaining.
 2. **Silent failure** (the chord-error bug): a command with no requester whose `Err`
    reaches neither a log nor the user.
-3. **Focus-path listener gaps** (the `C-a s` bug): gpui dispatches key events along the
+3. **Focus-path listener gaps** (the `C-a s` bug): ala dispatches key events along the
    focus path only; a listener mounted on a subtree misses events while a sibling
    (shell-hosted sidebar, dialog layer, second window) holds focus.
 4. **Strandable pairing state** (the `PrefixClaim` bug): hand-tracked begin/end state
@@ -122,7 +122,7 @@ The model to copy is the command-prompt path (`daemon.rs:3807`): on `Err`, publi
 
 # Classes 3+4 . listener scope and strandable pairing state
 
-gpui facts verified against the pinned source: key-ups have no keystroke and dispatch only
+ala facts verified against the pinned source: key-ups have no keystroke and dispatch only
 along the focus path; **all** mouse-up listeners . `capture_any_mouse_up` included . gate
 on hitbox hover recomputed at the up's position and truncated by `.occlude()`; and the
 **modality trap**: `Hitbox::is_hovered` returns false whenever the last input was a
@@ -202,19 +202,19 @@ workspace suite green. The chaos test lives at `crates/zz-mux/tests/chaos.rs` an
 proven against a temporarily reverted de-index (panicked at exactly the audited site).
 Deliberate residuals, each documented in code where it lives: `resolve_pane`'s both-dead
 fallback can still land in another session (MuxState holds no client attachments);
-browser mouse-moves that leave the pane hitbox entirely are undispatchable by gpui (the
+browser mouse-moves that leave the pane hitbox entirely are undispatchable by ala (the
 clamped Up covers the reported failure); `suppressed_text` deliberately survives the
 focus-sidebar reset (clearing there would type the chord's own character into the shell);
 digest findings F3 (agent-config invalidation edge), F5 (sidebar attention snapshot
 asymmetry), and F6 (cross-session UI command queues) remain open as lower-severity.
 
 One same-day correction the first field test forced: the split-drag self-heal initially
-*discarded* an uncommitted drag whose gpui drag had ended . which made a long-standing
+*discarded* an uncommitted drag whose ala drag had ended . which made a long-standing
 silent failure visible as an instant snap-back. The divider hit target `.occlude()`s and
 tracks the pointer, and browser panes occlude too, so the release routinely lands on an
 occluding surface and the hitbox-gated committing listener never fires . meaning many
 divider releases had *never* reached the daemon (the stranded preview merely looked
-saved). Since gpui clears the active drag on any mouse-up regardless of hitboxes, the
+saved). Since ala clears the active drag on any mouse-up regardless of hitboxes, the
 drag ending is itself the release signal: `reconcile_split_drag` now **commits** the
 previewed ratio as the path of last resort instead of discarding it, which fixes both
 the snap-back and the older never-saved half of the bug.

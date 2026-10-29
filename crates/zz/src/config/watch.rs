@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use zz_gpui::BackgroundExecutor;
+use ala::BackgroundExecutor;
 
 const CONFIG_POLL_INTERVAL: Duration = Duration::from_millis(500);
 

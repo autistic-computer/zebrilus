@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
+use ala::{App, IntoElement, div, prelude::*, px};
 pub use zz_client::StatusBarSettings;
-use zz_gpui::{App, IntoElement, div, prelude::*, px};
 
 use crate::{
     ActiveTheme as _, Colorize as _, IconName, StyledExt as _,
@@ -20,7 +20,7 @@ pub fn status_bar_page(
     gaps: bool,
     controls: impl IntoElement,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     div()
         .flex()
         .flex_col()
@@ -43,7 +43,7 @@ pub fn status_bar_page(
         )
 }
 
-fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_gpui::Div {
+fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> ala::Div {
     let windows = ["workspace", "logs"]
         .into_iter()
         .enumerate()
@@ -60,7 +60,7 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> zz_g
                 if index == 0 {
                     [
                         (IconName::SquareTerminal, "cargo test"),
-                        (IconName::Globe, "GPUI docs"),
+                        (IconName::Globe, "ala docs"),
                         (
                             crate::pane::agent_provider_icon(zz_protocol::AgentProvider::Codex),
                             "Rework status bar",

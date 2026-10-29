@@ -5,7 +5,7 @@ description: Platform-aware discovery, bounded parsing, agent driver options, se
 resource: crates/zz/src/config/mod.rs
 tags:
 - configuration
-- gpui
+- ala
 - window
 - appearance
 - mux
@@ -15,7 +15,7 @@ timestamp: 2026-10-28T00:00:00-03:00
 # Overview
 
 The GUI process loads the first existing `zz/config` file from the user's platform configuration
-roots. `crates/zz/src/config/mod.rs` resolves the candidates when `run_app` enters the GPUI application
+roots. `crates/zz/src/config/mod.rs` resolves the candidates when `run_app` enters the ala application
 closure, parses named client-local behavior/layout/theme/browser knobs plus
 chrome-color entries into typed
 `AppConfig`, `BrowserConfig`, and `UiFontConfig` values,
@@ -120,7 +120,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `window-background-blur` | `false` | `true` or `false` | Whether the desktop shows through the window chrome, blurred |
 | `window-background-opacity` | `0` | `0..=1` | How opaque the window chrome stays over the blur: 0 fills it at 93%, 1 makes it opaque; only while `window-background-blur` is on. Interface settings display 0–100% |
 | `animations` | `true` | `true` or `false` | Whether interface transitions, loading indicators, scrollbar fades, and animated UI images move |
-| `animation-speed` | `1` | `0.25..=2` | How fast interface motion runs, as a share of its designed speed: `0.5` takes twice as long, `2` half as long. It scales gpui `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse) through the process-wide `zz_gpui::animation_speed`. Scroll physics, cursor blink and timers stay as they are. Settings > Interface > Advanced shows it as a slider in percent |
+| `animation-speed` | `1` | `0.25..=2` | How fast interface motion runs, as a share of its designed speed: `0.5` takes twice as long, `2` half as long. It scales ala `with_animation` timings, every spring step, and the hand-timed fades (chevrons, pane arrivals, the sidebar slide, press highlights, streaming text, the agent pulse) through the process-wide `ala::animation_speed`. Scroll physics, cursor blink and timers stay as they are. Settings > Interface > Advanced shows it as a slider in percent |
 | `tray` | `true` | `true` or `false` | Shows a native tray icon while the GUI runs. Closing the window or quitting hides zz when the icon is available, `quit-daemon-on-exit` is false, and the local daemon has sessions; otherwise the usual close or quit behavior applies. Applies live from Settings → System or file edits. Quit and Stop Sessions in the tray menu stops the daemon |
 | `notifications` | `true` | `true` or `false` | Whether the desktop app posts a system notification when a pane needs input, fails or finishes while no zz window is active. Clicking it raises the window and selects the pane. macOS asks for permission on the first one. Chimes are separate (`ZZ_AGENT_SOUND=0`) |
 | `quit-daemon-on-exit` | `false` | `true` or `false` | Whether quitting the app stops the daemon even while sessions are live |
@@ -148,7 +148,7 @@ The client-local schema includes these scalar settings and chrome colors.
 | `editor-relative-line-numbers` | `true` | `true` or `false` | Number the rail by distance from the cursor line, which keeps its absolute number |
 | `editor-soft-wrap` | `true` | `true` or `false` | Wrap long lines at the pane edge instead of scrolling horizontally |
 | `editor-vim-mode` | `true` | `true` or `false` | Modal vim editing in editor panes: normal, insert, visual and visual-line modes |
-| `browser-element-selector-hotkey` | `cmd-shift-c` on macOS; `ctrl-shift-c` elsewhere | One GPUI keystroke containing Control, Alt, Command/Super, or Function; Shift is optional | Toggle the element selector while a Browser pane owns the Browser key context |
+| `browser-element-selector-hotkey` | `cmd-shift-c` on macOS; `ctrl-shift-c` elsewhere | One ala keystroke containing Control, Alt, Command/Super, or Function; Shift is optional | Toggle the element selector while a Browser pane owns the Browser key context |
 | `browser-remote-debugging-port` | `0` (off) | Bare integer: `0` or `1024..=65535` | Loopback CDP endpoint; `ZZ_BROWSER_REMOTE_DEBUGGING_PORT` overrides this value at CEF startup. Restart the client after changing an initialized runtime. The Browser page's **Agents** switch writes `9222` or removes the key; other ports are file-only |
 | `browser-search-provider` | `google` | `google`, `duckduckgo`, `brave` | Where a Browser pane's address bar sends an entry that is not an address |
 | `browser-egress` | `true` | `true` or `false` | Whether a Browser pane opened while attached to a remote ssh host routes its traffic through that host; panes already open keep the route they were created with |
@@ -212,7 +212,7 @@ sits in from the pane's top and sides, so the pane stays concentric with the con
 (about 13.6 at Default's 10, 17 once the controls are capsules, 0 for a square theme), and resolves
 it per corner.
 
-Every rounded surface is a **squircle** . iOS-style continuous corners, set once as the GPUI window
+Every rounded surface is a **squircle** . iOS-style continuous corners, set once as the ala window
 default (`zz_ui::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) rather than plumbed
 per widget. Neither a key nor a theme changes it: the retired `corner-shape` key offered a `round`
 circular arc alongside it and produced two nearly identical windows, and themes lost their
@@ -223,7 +223,7 @@ its own right, and smoothing one turns it into a lozenge. The squircle therefore
 rectangles, and the larger `widget-corner-radius` is, the more visible it gets (the corner departs
 from a circular arc by roughly a fifth of the radius, so it is sub-pixel below about 4px).
 
-`ui-font-family` lives in `UiFontConfig`. Interface settings lists font families from GPUI's
+`ui-font-family` lives in `UiFontConfig`. Interface settings lists font families from ala's
 cross-platform text system. Selecting System default writes `.SystemUIFont`, which keeps the system
 font even under a theme that names its own; Reset removes the current override. With no line, the
 select shows the active theme's font when it sets one. The 500 ms config watcher reapplies the family
@@ -232,8 +232,8 @@ backslashes. Picking or importing a theme that sets `materials.font` drops `ui-f
 the radius key it decides; other theme changes keep the chosen font. Terminal, editor, and
 code-block fonts use their existing monospace settings.
 
-`browser-element-selector-hotkey` lives in a separate `BrowserConfig` GPUI global so `AppConfig`
-can remain `Copy`. The parser canonicalizes GPUI keystroke syntax and rejects keys without a
+`browser-element-selector-hotkey` lives in a separate `BrowserConfig` ala global so `AppConfig`
+can remain `Copy`. The parser canonicalizes ala keystroke syntax and rejects keys without a
 non-Shift modifier; an invalid present line keeps the built-in value but retains `Override`
 provenance so Settings can still expose Reset. Browser key installation observes that global, so a
 watched config edit applies without restarting.
@@ -249,11 +249,11 @@ browser operation initializes the runtime. An invalid file value produces a conf
 keeps the preceding/default value; an invalid environment override prevents CEF startup. See
 [Agent access through CDP](/browser/agent-cdp.md) for attach commands and local access risks.
 
-`animations = false` sets GPUI's reduced-motion state. GPUI transitions, spinners, switches,
+`animations = false` sets ala's reduced-motion state. ala transitions, spinners, switches,
 dialogs, notifications, and animated UI images settle on a static frame; the custom scrollbar holds
 at full opacity and then disappears without a fade. iOS also honors UIKit Reduce Motion, even when
 the file enables animations. Cursor blinking and Chromium page animation are content behavior and
-keep their own controls. Desktop GPUI does not currently publish the operating system's motion
+keep their own controls. Desktop ala does not currently publish the operating system's motion
 preference, so macOS, Linux, and Windows follow this key directly.
 
 ## Interface themes
@@ -395,7 +395,7 @@ is no key that makes application chrome follow terminal colors.
 The default is 1.0; desktop and browser Settings show it as 100%. Reset removes the override.
 The native macOS client keeps the default derivation strengths and does not show this control.
 
-zz has no frame-rate overlay. The `show-fps` key was removed together with GPUI's `profiler`
+zz has no frame-rate overlay. The `show-fps` key was removed together with ala's `profiler`
 feature, which it needed; a leftover `show-fps` line, like the older `show-app-fps` and
 `show-browser-fps`, only logs the normal `unsupported key` warning and changes nothing.
 
@@ -422,18 +422,18 @@ rejects `select-pane-kind … editor` while the flag is off. To enable it again,
 gate directly; the picker row follows the `zz/config` entry, not the mux option. Panes that already
 exist keep rendering on reattach when the switch is off; flipping it never destroys pane state.
 
-`use-system-titlebar` maps to GPUI server-side decorations for the main window on
+`use-system-titlebar` maps to ala server-side decorations for the main window on
 Linux. It is applied at window creation and re-requested for every open window after a watched
 configuration change, so switching modes does not require a restart. KDE supports the request on
-both Wayland and X11 in the pinned GPUI backend. A Wayland compositor without server-decoration
-support keeps client-side decorations; GPUI reports the negotiated mode and the app-owned rounded
+both Wayland and X11 in the pinned ala backend. A Wayland compositor without server-decoration
+support keeps client-side decorations; ala reports the negotiated mode and the app-owned rounded
 frame follows that result. Returning to server decorations also clears the client frame inset.
 The in-app navigation/status strip remains available, but its Linux window controls disappear when
 the desktop owns them.
 
 `window-background-blur` requests `WindowBackgroundAppearance::Blurred` for both newly created and
-already-open windows. `window/background.rs` maps that request to a transparent GPUI surface plus
-WindowServer's background-blur radius on macOS, retains GPUI's optional KDE
+already-open windows. `window/background.rs` maps that request to a transparent ala surface plus
+WindowServer's background-blur radius on macOS, retains ala's optional KDE
 `org_kde_kwin_blur_manager` protocol on Wayland, and sets KDE's
 `_KDE_NET_WM_BLUR_BEHIND_REGION` property on X11. The X11 region follows window size, scale, and
 exposed rounded corners so resize and tiling do not leave a stale rectangular effect.
@@ -474,7 +474,7 @@ and a dark band along the bottom that differed from pane to pane; with no outlin
 line. A line the glass glint's width stands in for the glass edge where the window cannot sample
 its backdrop (WebGL, DirectX), since glass paints only its fill there. A content root that paints
 an opaque fill under a frame hides the frame's color and the inside of its edge, which is why a browser shows its opaque page fill only behind a live page.
-The iPad browser's page is a native web view laid over everything GPUI draws, so it is mounted
+The iPad browser's page is a native web view laid over everything ala draws, so it is mounted
 inside the frame by the pane edge width on its sides and bottom, with its corners eased by the same
 amount, and the pane's root paints the pane background like every other pane.
 Floating panes take the theme's full glass like every popover. Settings previews that are not
@@ -510,7 +510,7 @@ window shaping remains authoritative. `frame-content-corner-radius` and `pane-co
 are still derived, not configuration keys; leaving one in the file produces the normal
 unsupported-key diagnostic.
 
-On Wayland compositors using `ext-background-effect-v1`, GPUI sends that same exposed-corner mask as
+On Wayland compositors using `ext-background-effect-v1`, ala sends that same exposed-corner mask as
 the effect region. KWin changes pixels even where the client surface is transparent, so the region
 does not extend into the client-side shadow inset. Transparent shadow and corner pixels retain the
 compositor's unmodified background; tiled and square corners remain square.
@@ -772,7 +772,7 @@ always-live inactive-opacity factor and the selected pane's edge strength, which
 | System | **Tray** (`tray`, only where the profile has one) · **Notifications** (`notifications`) · **Daemon** (`quit-daemon-on-exit`) · **Experimental** (`experimental-editor-pane`, present only with its cargo feature). `auto-restart-stale-daemon` is a file key with no Settings row |
 | Multiplexer | **Navigation** (`picker-focus-sidebar`, `which-key-delay`), **Split panes**, **Options** (Prefix, Mode keys, Mouse, History limit, Clipboard, Escape time), **Import** (path, Choose, Import), and `zz/mux.conf` editor with Reload and Save |
 | Terminal | **Appearance** (Font family, Font size, macOS Font smoothing and Smoothing strength, Theme, Cursor style, Cursor blink, Background opacity, Padding X/Y), **Import** (path, Choose, Import), and the `zz/config` appearance editor |
-| About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest release row whose description is the update state, such as "zz 0.23.0 is out, you have 0.22.0" or "The check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_GPUI_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
+| About | Centered mark (the Dock render at 88pt), name, tagline and version badge · **Updates** (`check-for-updates`, plus a Latest release row whose description is the update state, such as "zz 0.23.0 is out, you have 0.22.0" or "The check failed: …", with Check now, or Update / What's new once a newer release is known; desktop only) · **Build** (`CARGO_PKG_VERSION`, OS · arch, the short `ZZ_ALA_SOURCE` revision, with a copy button on Version that puts all three on one line) · **Project** (repository, releases, new issue, license) |
 
 A row is its title and its control, with no provenance badge and no Reset button. A short
 description sits under the title only where it says something the title and control do not: live
@@ -812,7 +812,7 @@ as the thumb moves.
 `app-icon`, under Advanced, offers three tiles of the real artwork through `crate::app_icon::icon_preview` . macOS's
 own renders of `assets/zz.icon`, committed as `assets/zz-{light,dark}-512.png` . where Automatic
 renders the variant `cx.window_appearance()` resolves to right now. The preview is Lanczos-filtered
-once from 512px to a cached 96px raster before GPUI paints it into the 48pt tile, avoiding the
+once from 512px to a cached 96px raster before ala paints it into the 48pt tile, avoiding the
 rounded-edge aliasing caused by a large atlas downscale without mipmaps. The card is macOS-only,
 since X11 takes its icon from the window options and Wayland from the desktop file. Every tile
 picker uses the same selection treatment: a plain foreground border around the selected preview
@@ -898,7 +898,7 @@ radius. Each row's Reset removes its key and shows the theme's value again throu
 config watcher.
 
 Structured control callbacks, including Terminal, only write `zz/config`; they never mutate the
-GPUI config global directly. Multiplexer writes `zz/mux.conf` and requests a daemon reload. The
+ala config global directly. Multiplexer writes `zz/mux.conf` and requests a daemon reload. The
 existing 500 ms watcher remains the single `zz/config` apply path, updates effective values and
 provenance, and refreshes the open Settings route.
 
@@ -911,7 +911,7 @@ use-system-titlebar = true
 # Blend the terminal color over its opaque pane base.
 background-opacity = 0.85
 
-# Ask GPUI and the platform compositor to blur app chrome.
+# Ask ala and the platform compositor to blur app chrome.
 window-background-blur = true
 
 # Set every interface transition to its static state.

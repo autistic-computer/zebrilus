@@ -12,7 +12,7 @@
 
 use std::{ops::Range, rc::Rc, sync::Arc};
 
-use zz_gpui::{
+use ala::{
     Action, App, Context, Entity, EventEmitter, InteractiveElement, IntoElement, MouseButton,
     Pixels, Render, ScrollStrategy, SharedString, Subscription, Task, UniformListScrollHandle,
     Window, div, prelude::*, px, uniform_list,
@@ -1273,7 +1273,7 @@ impl TargetPicker {
         selected: bool,
         picker: Entity<Self>,
         cx: &App,
-    ) -> zz_gpui::Div {
+    ) -> ala::Div {
         let hover = picker.clone();
         let drills = item.drills();
         command_palette_entry(
@@ -1314,7 +1314,7 @@ impl TargetPicker {
         .map(|row| div().h(px(command_palette_row_height())).child(row))
     }
 
-    fn list(&self, cx: &mut Context<Self>) -> zz_gpui::AnyElement {
+    fn list(&self, cx: &mut Context<Self>) -> ala::AnyElement {
         let items = Rc::clone(&self.items);
         if items.is_empty() {
             return div()

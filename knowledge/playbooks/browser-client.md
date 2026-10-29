@@ -1,22 +1,22 @@
 ---
 type: Playbook
 title: Running the browser client
-description: Build the shared GPUI browser client and connect it to a zz daemon through the local WebSocket gateway.
+description: Build the shared ala browser client and connect it to a zz daemon through the local WebSocket gateway.
 resource: clients/web/src/lib.rs
 tags:
 - browser
 - wasm
 - client
 - websocket
-- gpui
+- ala
 timestamp: 2026-10-24T00:00:00-03:00
 ---
 
 # Overview
 
-`clients/web` compiles the shared GPUI components from `zz-ui` and the state reducer from
+`clients/web` compiles the shared ala components from `zz-ui` and the state reducer from
 `zz-client` to WebAssembly. The app shell, navigation, settings, palette, overlays, pane entities, connection reducer,
-and image caches in `clients/app/src` also compile into the native iOS GPUI app. `zz-web` serves the page and forwards the existing binary protocol
+and image caches in `clients/app/src` also compile into the native iOS ala app. `zz-web` serves the page and forwards the existing binary protocol
 between each browser WebSocket and one daemon connection. The daemon owns sessions, PTYs,
 key bindings, copy mode, and Agent processes.
 
@@ -67,7 +67,7 @@ It has no public listener, TLS termination, or account authentication.
 # Browser behavior
 
 The page uses the same `zz-ui` shell, navigation, pane borders, browser toolbar, Agent timeline,
-composer, settings groups, and overlays as the desktop client. GPUI selects WebGPU when available
+composer, settings groups, and overlays as the desktop client. ala selects WebGPU when available
 and falls back to WebGL2. The page fills the viewport and reacts to browser resizing and zoom.
 
 Terminal panes receive full frames and patches through `ClientCore`. Both clients use the
@@ -78,12 +78,12 @@ selection, scrolling, search, and paste reach the daemon through its existing in
 Reconnects attach to the remembered session and replay focus and Agent transcript state.
 Agent replay includes submitted prompts when the provider emits `user_message_chunk` updates;
 the daemon does not journal a separate copy of submitted prompt text. Browser image transfers
-are assembled in a bounded cache and retired textures are released from GPUI.
+are assembled in a bounded cache and retired textures are released from ala.
 Hovering a terminal `[Image #N]` marker fetches its preview from the daemon and shows it after
 250 ms in the desktop-style popover. The browser limits pasted-image transfers and cached encoded
 bytes to 64 MiB and 512 entries, drops them on reconnect or session attachment, and releases
-retired image assets from GPUI. Missing previews do not trigger repeated fetches while cached.
-Clipboard paste accepts PNG, JPEG, GIF, and WebP images up to 6 MiB through GPUI's browser paste
+retired image assets from ala. Missing previews do not trigger repeated fetches while cached.
+Clipboard paste accepts PNG, JPEG, GIF, and WebP images up to 6 MiB through ala's browser paste
 callback. The browser uploads their original bytes in ordered chunks; the daemon writes the image
 on its host and pastes its path into the terminal. The browser does not resize or transcode clipboard
 images. Popup terminals, command output, and search retain text paste behavior.
@@ -158,7 +158,7 @@ screenshot commands return an error because the page has no Chromium pane runtim
 
 # Checks
 
-The browser has its own Cargo workspace and lockfile. Keep both GPUI
+The browser has its own Cargo workspace and lockfile. Keep both ala
 patch revisions aligned with the root workspace.
 
 ```sh
@@ -175,7 +175,7 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 
 # Source
 
-- `clients/web/src/lib.rs`: GPUI initialization, portable fonts, and browser entrypoint.
+- `clients/web/src/lib.rs`: ala initialization, portable fonts, and browser entrypoint.
 - `clients/app/src/connection.rs`: protocol reduction, bounded receive queue, reconnect, and replay.
 - `clients/app/src/terminal.rs`: browser terminal input, selection, search, and shared-renderer adapter.
 - `clients/app/src/terminal_images.rs`: bounded Kitty and pasted-image transfer assembly and image retirement.

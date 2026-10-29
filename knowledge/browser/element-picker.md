@@ -27,7 +27,7 @@ as a second hardcoded palette inside the page.
 
 The browser toolbar's inspector button and the browser-scoped
 `browser-element-selector-hotkey` setting both toggle the picker. The shortcut defaults to
-`cmd-shift-c` on macOS and `ctrl-shift-c` elsewhere. It uses GPUI keystroke syntax and must contain
+`cmd-shift-c` on macOS and `ctrl-shift-c` elsewhere. It uses ala keystroke syntax and must contain
 a non-Shift modifier (Control, Alt, Command/Super, or Function), which prevents ordinary page
 typing from being claimed. Editing the Browser page in Settings writes the same scalar to
 `zz/config`; the normal 500 ms config poll installs the new binding without restarting the app.
@@ -82,8 +82,8 @@ The active pick is auto-cancelled on navigation (`on_before_browse`), before clo
 `cancel_element_pick()` runs `globalThis.__zzElementPicker?.cancel()`.
 
 On iOS (`clients/app/src/ios_browser.rs`, `app/browser_pane.rs`) a touch on
-the picker button claims a gpui touch drag and starts the pick on touch-down.
-The finger stays with the gpui view while it moves over the native web view,
+the picker button claims an ala touch drag and starts the pick on touch-down.
+The finger stays with the ala view while it moves over the native web view,
 so the pane forwards each position to `__zzElementPicker.point(x, y, width)`
 (points relative to the web view, scaled to CSS pixels by the visual
 viewport's width) and lifting the finger calls `release()`, which picks what

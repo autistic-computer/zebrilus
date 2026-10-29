@@ -42,12 +42,12 @@ use std::{
     process::ExitCode,
 };
 
+use ala::Styled as _;
+use ala::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
 use zz_browser::{BrowserBootstrap, BrowserError, BrowserRuntime};
 pub(crate) use zz_cli::application_arguments;
 use zz_cli::{CommandLineOrigin, Startup, StartupOptions};
 use zz_daemon_client::{DaemonError, InteractiveClient, default_socket_path};
-use zz_gpui::Styled as _;
-use zz_gpui::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
 use zz_protocol::CommandInvocation;
 use zz_terminal::TerminalColorScheme;
 use zz_ui::{Assets, Root, Theme, ThemeMode};
@@ -227,9 +227,9 @@ fn run_app(
     socket_path: PathBuf,
     profile: AppProfile,
 ) {
-    let platform = zz_gpui_platform::current_platform(false);
+    let platform = ala_platform::current_platform(false);
     let fonts = zz_ui::settings::appearance::AvailableFonts(platform.text_system());
-    let application = zz_gpui::Application::with_platform(platform);
+    let application = ala::Application::with_platform(platform);
     #[cfg(target_os = "macos")]
     application.on_reopen(|cx| {
         if let Some(window) = cx
@@ -438,7 +438,7 @@ fn run_app(
         });
 }
 
-fn toggle_from_tray(main_window: zz_gpui::AnyWindowHandle, cx: &mut App) {
+fn toggle_from_tray(main_window: ala::AnyWindowHandle, cx: &mut App) {
     let (visible, active) = main_window
         .update(cx, |_, window, _| {
             (window.is_window_visible(), window.is_window_active())
@@ -452,7 +452,7 @@ fn toggle_from_tray(main_window: zz_gpui::AnyWindowHandle, cx: &mut App) {
 
 pub fn build_root(view: impl Into<AnyView>, window: &mut Window, cx: &mut Context<Root>) -> Root {
     config::observe_window_background(window, cx);
-    let root = Root::new(view, window, cx).bg(zz_gpui::transparent_black());
+    let root = Root::new(view, window, cx).bg(ala::transparent_black());
     #[cfg(target_os = "linux")]
     {
         root.bordered(false)

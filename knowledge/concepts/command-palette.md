@@ -3,7 +3,7 @@ type: Concept
 title: Unified palette and tmux command completions
 description: The palette's words-and-verbs model (no sigils, words match places and actions, a verb asks for its slots in turn, the footer shows the tmux command, `:` for raw tmux), chips and keys, insert path and prefix F, the empty palette and recents, written @host:target places, GUI settings as verbs with a live theme preview, tmux command-alias entries as verbs, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
-tags: [gpui, command-prompt, tmux, completions, ui]
+tags: [ala, command-prompt, tmux, completions, ui]
 timestamp: 2026-10-28T00:00:00-03:00
 ---
 
@@ -182,7 +182,7 @@ pane's: quoted for its shell, `@path` for Claude Code. A path from another host 
 `host:/abs/path`.
 
 Keys in the footer and on rows are drawn as key icons, Apple's on macOS and iOS and ISO 9995's
-elsewhere (`zz_gpui_kit::kbd::KeyGlyphs`, [design system](/designs/design-system.md)), and a
+elsewhere (`penna::kbd::KeyGlyphs`, [design system](/designs/design-system.md)), and a
 command's tmux shortcut (`C-b c`) as one small cap per key.
 
 Session, window, and pane targets use stable IDs for execution; rows display names and breadcrumbs.
@@ -333,14 +333,14 @@ Ranked suggestions: exact → canonical-prefix → alias-prefix → fuzzy → de
 CommandPaletteView renders a scrollable list of 28px row slots
 ```
 
-The catalog is plain Rust data with no GPUI dependency, so it is unit-testable inside `zz-protocol`
+The catalog is plain Rust data with no ala dependency, so it is unit-testable inside `zz-protocol`
 (every canonical name unique, every alias resolves to exactly one canonical command, static enum
 values valid for their command) independent of rendering. Live target completions (sessions,
 windows, panes) are resolved client-side from the same `MuxSnapshot` [`AppView`](/crates/zz.md)
 already reconciles panes from. A target that disappears between suggestion and submission is
 rejected by the daemon's existing target validation rather than trusted client-side.
 
-# How it is rendered in GPUI
+# How it is rendered in ala
 
 `zz-ui::command::CommandPaletteSurface` owns the shared panel, usage line, and shortcut footer.
 `command/palette.rs` builds its Input, Badge pills, ListItem rows, section headers, status dots,

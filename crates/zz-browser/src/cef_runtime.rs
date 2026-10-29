@@ -417,7 +417,7 @@ impl Drop for PumpGuard<'_> {
 }
 
 /// Main-thread handle for stepping CEF without borrowing the owning runtime.
-/// CEF can re-enter the host's `AppKit` callbacks mid-iteration, so the GPUI
+/// CEF can re-enter the host's `AppKit` callbacks mid-iteration, so the ala
 /// client drops its app/entity borrow before pumping.
 #[derive(Clone)]
 pub struct BrowserMessagePump {
@@ -705,7 +705,7 @@ impl BrowserRuntime {
             background_color: self.background_color,
             ..Default::default()
         };
-        // Native CEF windows send `CefAppProtocol` selectors GPUI's `NSApp` class lacks.
+        // Native CEF windows send `CefAppProtocol` selectors ala's `NSApp` class lacks.
         #[cfg(target_os = "macos")]
         mac_app_protocol::install();
         self.message_pump.set_phase(RuntimePhase::Initializing);
@@ -2161,7 +2161,7 @@ fn bootstrap_args_with_paths(
         );
     } else if shared_texture_enabled {
         log::info!(
-            "CEF shared-texture OSR enabled (GPU import/copy-on-receive active with a GPUI device; atomic readback fallback retained)"
+            "CEF shared-texture OSR enabled (GPU import/copy-on-receive active with a ala device; atomic readback fallback retained)"
         );
     }
     if external_begin_frame_enabled {
@@ -3431,7 +3431,7 @@ enum AcceleratedFrameOutcome {
 #[derive(Debug, Error)]
 enum AcceleratedFrameError {
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    #[error("GPUI's wgpu device context is unavailable")]
+    #[error("ala's wgpu device context is unavailable")]
     DeviceUnavailable,
     #[error("invalid accelerated-paint metadata: {0}")]
     InvalidMetadata(String),

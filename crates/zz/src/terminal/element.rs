@@ -1,10 +1,10 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
-use parking_lot::RwLock;
-use zz_gpui::{
+use ala::{
     App, Bounds, Element, ElementId, ElementInputHandler, Entity, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, RenderImage, Window,
 };
+use parking_lot::RwLock;
 use zz_terminal::TerminalAppearance;
 use zz_ui::terminal::{PaintState, TerminalImageSource, TerminalRenderInput};
 

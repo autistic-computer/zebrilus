@@ -3,25 +3,25 @@ type: Configuration
 title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
-tags: [ui, gpui, zz-ui, theme, chrome, clippy]
+tags: [ui, ala, zz-ui, theme, chrome, clippy]
 timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 # Overview
 
-**`zz-gpui-kit` (`libs/kit`) is zz's base component layer**, re-exported by `zz-ui`. It is a full fork of `gpui-component`, not a
+**`penna` (`libs/penna`) is zz's base component layer**, re-exported by `zz-ui`. It is a full fork of `gpui-component`, not a
 dependency on it: commit `7811a47` vendored the widget set and removed the upstream crate from the
-workspace entirely. The fork revision and the per-module port notes live in `libs/kit/UPSTREAM.md`;
+workspace entirely. The fork revision and the per-module port notes live in `libs/penna/UPSTREAM.md`;
 read that file before widening or diverging the surface.
 
 Application chrome must use zz-ui's components and theme vocabulary rather than maintaining a
 parallel widget set or color palette. Import `zz_ui::ActiveTheme` (not `gpui_component::ActiveTheme`;
-that path does not resolve) and read colors from `cx.theme()` at the point where a GPUI element
+that path does not resolve) and read colors from `cx.theme()` at the point where an ala element
 is rendered.
 
 The house-style reference is `crates/zz-ui/src/command/palette_view.rs`. It demonstrates `cx.theme()`
 derivations alongside the `Input`/`InputState`, `ListItem`, `Kbd`, `Keycap`, `Badge` and `Check` widgets.
-The browser client in `clients/web` (`just web run`) uses the shared GPUI components outside the desktop app.
+The browser client in `clients/web` (`just web run`) uses the shared ala components outside the desktop app.
 
 # Surfaces and roles
 
@@ -61,29 +61,29 @@ materials decide what those look like, and the theme can change any role by id. 
 1. Every application-chrome color comes from a `cx.theme()` root or a `Colorize` derivation of one.
    The palette has six roots (`background`, `foreground`, `accent`, `success`, `warning`,
    `danger`), the fixed per-mode `scrim`, the `shadow_color` every drop shadow is drawn in and an
-   optional `on_accent` text color, in `libs/kit/src/foundation/theme_color.rs`; the
+   optional `on_accent` text color, in `libs/penna/src/foundation/theme_color.rs`; the
    interface theme sets them per mode. Panels, hover fills, muted text, and
    focus rings are derived at paint time by `Colorize` in
-   `libs/kit/src/foundation/color.rs`. Outside the kit, chrome names what it draws
+   `libs/penna/src/foundation/color.rs`. Outside the kit, chrome names what it draws
    instead of mixing it (see [Design system](/designs/design-system.md)): a filled, tinted or
    outlined widget draws `theme.paint(tone, emphasis)`, a plane `theme.surface(elevation)`, anything
    with a fill, edge, corners or shadow its surface role (`.surface(role)` or a widget's
    `.surface_role(role)`), a rule `.rule_on(role, edge)`, a pane `theme.pane_background(fill)`, and
    quieter text `foreground.muted()` or `.faint()`. Do not color-match an old literal.
-2. Check the zz-ui widget set before hand-rolling a control. A custom GPUI
+2. Check the zz-ui widget set before hand-rolling a control. A custom ala
    element is appropriate only when a component cannot preserve required input routing,
    rendering, or interaction behavior. When a fork-local widget must diverge from upstream, record
-   why in `libs/kit/UPSTREAM.md`.
-3. `clippy.toml` enforces the chrome-color rule by disallowing calls to `zz_gpui::rgb`, `zz_gpui::rgba`,
-   and `zz_gpui::hsla`, the design-system rule by disallowing `Hsla::opacity` and the mixing
+   why in `libs/penna/UPSTREAM.md`.
+3. `clippy.toml` enforces the chrome-color rule by disallowing calls to `ala::rgb`, `ala::rgba`,
+   and `ala::hsla`, the design-system rule by disallowing `Hsla::opacity` and the mixing
    transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`,
    `hover`, `active`, `on`, `floating`), and the shape rule by disallowing
-   `zz_gpui::Styled::border` with its sized and per-side forms, `shadow_2xs` through `shadow_2xl`,
-   the type `zz_gpui::BoxShadow`, and the kit helpers that would get around the roles
+   `ala::Styled::border` with its sized and per-side forms, `shadow_2xs` through `shadow_2xl`,
+   the type `ala::BoxShadow`, and the kit helpers that would get around the roles
    (`StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `lifted_shadow`, and
    `Theme::control_radius`, `menu_radius` and `row_radius`), so edges, corners and shadows come
    from surface roles and follow the theme. The kit builds the engine from them, so
-   `libs/kit/clippy.toml` keeps only the raw-color ban. Keep any exemption narrowly
+   `libs/penna/clippy.toml` keeps only the raw-color ban. Keep any exemption narrowly
    scoped, as an `#[allow(clippy::disallowed_methods, reason = ..)]` (or
    `clippy::disallowed_types`) on the one function, and say why the color or shape is not
    application chrome: a preview of another theme, page CSS, a pane effect with its own strength
@@ -318,7 +318,7 @@ close button sits in the toast's flex row, vertically centered beside its conten
 that window, and `AppShell` mounts both the dialog and notification layers for either route.
 `crates/zz/src/window/toast.rs` keeps the workspace `WindowHandle<Root>` in a global and defers its
 update until the current window callback finishes. Updating that handle during its own click
-callback fails because GPUI has temporarily removed the window from its registry. Views that
+callback fails because ala has temporarily removed the window from its registry. Views that
 already receive the workspace `Window` can call `window.push_notification` directly.
 
 # Spacing
@@ -348,7 +348,7 @@ restating it.
 
 Options are tiles (`CardTile`) drawn as `agent.option`: bare at rest, with danger-toned text for a
 destructive choice, a tint on hover and the accent when picked (a tint in Glass; see
-[Design system](/designs/design-system.md)). Hover only changes the fill, which GPUI repaints;
+[Design system](/designs/design-system.md)). Hover only changes the fill, which ala repaints;
 text color cannot follow a hover style. What sits on a tile paints on the tile's ground, so it
 stays legible on an accent selection: the description (`CardTile::detail`, the tile's
 `muted_at`), the keycap that picks the option (`CardTile::keycap`), and the `Check` a
@@ -358,15 +358,15 @@ centred on its cap height (see "Icons next to text" below).
 
 # UI font
 
-Interface settings offers a UI font picker over GPUI’s system font families on macOS, Linux, and
-Windows. `ui-font-family` in `zz/config` sets `Theme.font_family`; System default uses GPUI’s
+Interface settings offers a UI font picker over ala’s system font families on macOS, Linux, and
+Windows. `ui-font-family` in `zz/config` sets `Theme.font_family`; System default uses ala’s
 `.SystemUIFont` alias. On Linux the fork resolves that alias to the desktop interface font, read
 through the settings portal (GNOME `font-name`, KDE `kdeglobals` `font`), and follows changes to it;
-without a portal value it falls back to GPUI's fallback stack. Config reload and OS appearance
+without a portal value it falls back to ala's fallback stack. Config reload and OS appearance
 changes reapply the choice to open windows.
 The `UiFontConfig` global holds this string separately so `AppConfig` remains `Copy`.
-Native entrypoints register `AvailableFonts` from their GPUI platform text system. The picker queries
-that catalog directly to avoid offering GPUI fallback names that are not installed.
+Native entrypoints register `AvailableFonts` from their ala platform text system. The picker queries
+that catalog directly to avoid offering ala fallback names that are not installed.
 
 # UI zoom and scalable metrics
 
@@ -378,7 +378,7 @@ Each change updates the global `UiZoom` and applies it to every open window with
 `Window::set_zoom`; newly opened windows receive the current value too.
 
 `Window::set_zoom` folds that multiplier into the window scale factor and logical viewport, so the
-entire GPUI element tree follows UI zoom, including values expressed in pixels. Continue to use a
+entire ala element tree follows UI zoom, including values expressed in pixels. Continue to use a
 named `Size` or `zz_ui::rems_from_px` when that captures a component's semantic sizing contract, but
 do not multiply metrics by `UiZoom` again. Browser viewports already receive the effective window
 scale factor, so native-to-CEF geometry follows the same rule. Geometry that must remain physically
@@ -412,7 +412,7 @@ knob that derives chrome from terminal colors, and a Ghostty palette cannot repa
 built-in themes compiled from `crates/zz-ui/themes/*.json`, and the theme file parser, shared by
 the desktop, browser and iOS clients and the storybook. `crates/zz/src/theme.rs` applies desktop
 configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
-GPUI globals (used by settings badges and the detach action, not to color anything).
+ala globals (used by settings badges and the detach action, not to color anything).
 `apply_zz_overrides` layers these values over the zz-ui base:
 
 - the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved file from
@@ -460,7 +460,7 @@ titlebar window pill's hover close sits 10px from the pill's edge (`workspace_ro
 Sidebar titles, descriptions and session and host labels fade out over their last 28px
 (`LABEL_FADE`) instead of ending in an ellipsis.
 
-Text and icons take a hover color only from the `hover` of an element with an id. GPUI shapes text
+Text and icons take a hover color only from the `hover` of an element with an id. ala shapes text
 and resolves an icon's color at layout; an element with an id records its own hover and lays out
 with it on the next frame, while without an id `hover` and `group_hover` apply at paint only, where
 fills, borders and visibility change but text and icons keep their color. So muted ink that
@@ -475,16 +475,16 @@ always under a coarse pointer (`shown_on_hover`). The slash menu's rows are 40px
 11px.
 
 Icons next to text are centred on the text's cap height, as Apple places SF Symbols. The icon is
-centred on the line, then moved down by `zz_gpui_kit::icon::cap_center_drop(font_size, icon_size,
+centred on the line, then moved down by `penna::icon::cap_center_drop(font_size, icon_size,
 cx)`: half of the theme font's ascent less descent less cap height, 0.31px for SF Pro at 12px and
 0.33px at 13px, nothing for Inter, nudged by up to a quarter point so the icon and the baseline
 round to the same device pixel grid. Rows that wrap give the icon a first-line strut as tall as the
 first line's pixel line height. The agent timeline's activity rows, cards, alerts, task tray and composer
 footer, the workspace status pills, markdown task lists and the settings disclosure heading all
-use it. The glyph's own ink has to be centred in its 24-unit box too; the GPUI notes are in
-`.agents/skills/gpui-interface/SKILL.md`.
+use it. The glyph's own ink has to be centred in its 24-unit box too; the ala notes are in
+`.agents/skills/ala-interface/SKILL.md`.
 
-A radius is a *request*, not the final corner. GPUI caps one at half the shorter side . the point a
+A radius is a *request*, not the final corner. ala caps one at half the shorter side . the point a
 rounded rectangle stops existing . so one global setting applied to components of different sizes
 would make each change shape category at a different value of it: a 24px icon button becoming a
 circle at 11→12, a 30px input becoming a pill at 14→15. Windows therefore opt into
@@ -498,7 +498,7 @@ keep moving.
 Settings accepts widget radii from 0 through 25. Every surface whose role's shape is `round`
 takes the radius through the adaptive corners described above, so a large radius rounds a short
 control nearly into a pill without making it one; rows take their separate inset corner rule.
-Pills are a role's choice: the `pill` shape resolves to GPUI's `FULL_CORNER_RADIUS`, the same
+Pills are a role's choice: the `pill` shape resolves to ala's `FULL_CORNER_RADIUS`, the same
 value as `rounded_full()`, so the piece stays a pill or a circle at any radius (a theme makes
 its buttons and chips pills this way). The Corner radius slider applies changes
 immediately and shows the radius in pixels beside it. `Theme::control_radius`,
@@ -546,10 +546,10 @@ theme base before applying the factor. Browser pages remain opaque.
 
 # Related
 
-- `libs/kit/UPSTREAM.md` . the fork's source revision and per-module record of what was ported,
+- `libs/penna/UPSTREAM.md` . the fork's source revision and per-module record of what was ported,
   trimmed, or rewritten
-- [GPUI revision pin](/references/zz-gpui.md) . the pinned GPUI sources
-- [`app` crate](/crates/zz.md) . the GPUI client governed by these conventions
+- [ala revision pin](/references/ala.md) . the pinned ala sources
+- [`app` crate](/crates/zz.md) . the ala client governed by these conventions
 - [Terminal appearance](/terminal/appearance.md) . the independent terminal color model
 - [Design system](/designs/design-system.md) . tone, emphasis and ground: how widgets pick their colors
 - [Surface roles](/designs/surface-roles.md) . kinds, roles and materials: how every surface picks its fill, edge, corners and shadow

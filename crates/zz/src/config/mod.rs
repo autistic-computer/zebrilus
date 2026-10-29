@@ -4,13 +4,13 @@ use std::{
     sync::{Arc, Weak},
 };
 
+use ala::{
+    App, Corners, Global, Pixels, SharedString, WindowBackgroundAppearance, WindowDecorations, px,
+};
 use zz_browser::SearchProvider;
 use zz_client::StatusBarSettings;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
-use zz_gpui::{
-    App, Corners, Global, Pixels, SharedString, WindowBackgroundAppearance, WindowDecorations, px,
-};
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};
 use zz_ui::{
     interface_theme::{self, InterfaceTheme},
@@ -112,18 +112,18 @@ impl std::ops::DerefMut for UiFontConfig {
 }
 
 fn load_config(path: &Path) -> io::Result<ParsedConfig> {
-    zz_config::load_config(path, zz_gpui::Font::default().family.as_ref())
+    zz_config::load_config(path, ala::Font::default().family.as_ref())
 }
 #[cfg(test)]
 fn parse_config(source: &str) -> ParsedConfig {
-    zz_config::parse_config(source, zz_gpui::Font::default().family.as_ref())
+    zz_config::parse_config(source, ala::Font::default().family.as_ref())
 }
 pub(crate) fn set_ui_font_family(family: Option<&str>) -> io::Result<()> {
-    zz_config::set_ui_font_family(family, zz_gpui::Font::default().family.as_ref())
+    zz_config::set_ui_font_family(family, ala::Font::default().family.as_ref())
 }
 #[cfg(test)]
 fn write_ui_font_family_at(path: &Path, family: Option<&str>) -> io::Result<bool> {
-    zz_config::write_ui_font_family_at(path, family, zz_gpui::Font::default().family.as_ref())
+    zz_config::write_ui_font_family_at(path, family, ala::Font::default().family.as_ref())
 }
 #[derive(Clone, Copy)]
 struct PlatformReduceMotion(bool);
@@ -311,7 +311,7 @@ pub(crate) fn preview_interface_theme(name: &str, theme_sets_font: bool, cx: &mu
     };
     let mut parsed = zz_config::parse_config(
         &interface_theme_source(&source, name, theme_sets_font),
-        zz_gpui::Font::default().family.as_ref(),
+        ala::Font::default().family.as_ref(),
     );
     let loaded = load_themes(&path, &mut parsed, themes(cx));
     cx.set_global(AppConfig(parsed.config));
@@ -623,7 +623,7 @@ fn apply_animations(cx: &mut App) {
 /// The titlebar every zz window opens with: a transparent strip, nothing else.
 /// The macOS traffic lights keep their native size, on the title bar's center
 /// line.
-pub(crate) fn titlebar_options(cx: &App) -> zz_gpui::TitlebarOptions {
+pub(crate) fn titlebar_options(cx: &App) -> ala::TitlebarOptions {
     zz_ui::TitleBar::title_bar_options(zz_ui::Theme::global(cx).title_bar_height())
 }
 
@@ -664,8 +664,8 @@ pub(crate) fn apply_window_background_appearance(cx: &mut App) {
 }
 
 pub(crate) fn observe_window_background<T: 'static>(
-    window: &mut zz_gpui::Window,
-    cx: &mut zz_gpui::Context<T>,
+    window: &mut ala::Window,
+    cx: &mut ala::Context<T>,
 ) {
     let requested_appearance = requested_window_background_appearance(cx);
     window.set_background_appearance(crate::window::background::native_appearance(
@@ -2349,8 +2349,8 @@ mod tests {
         assert!(!write_ui_font_family_at(&path, None).expect("unchanged default"));
     }
 
-    #[zz_gpui::test]
-    fn ui_font_family_reloads_with_the_theme_and_resets(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn ui_font_family_reloads_with_the_theme_and_resets(cx: &mut ala::TestAppContext) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
@@ -2361,10 +2361,8 @@ mod tests {
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                let expected = family.map_or_else(
-                    || zz_gpui::Font::default().family,
-                    zz_gpui::SharedString::from,
-                );
+                let expected =
+                    family.map_or_else(|| ala::Font::default().family, ala::SharedString::from);
                 assert_eq!(zz_ui::Theme::global(cx).font_family, expected);
                 assert_eq!(zz_ui::Theme::global(cx).mono_font_family, mono);
                 assert_eq!(ui_font_family(cx).value.as_deref(), family);
@@ -2382,7 +2380,7 @@ mod tests {
             assert_eq!(ui_font_family(cx).provenance, ConfigProvenance::Default);
             assert_eq!(
                 zz_ui::Theme::global(cx).font_family,
-                zz_gpui::Font::default().family
+                ala::Font::default().family
             );
             let parsed = parse_config("ui-font-family = Arial\n");
             install_config(Some(&path), Some(Ok(parsed)), cx);
@@ -2391,13 +2389,13 @@ mod tests {
             assert_eq!(ui_font_family(cx), UiFontConfig::default().family);
             assert_eq!(
                 zz_ui::Theme::global(cx).font_family,
-                zz_gpui::Font::default().family
+                ala::Font::default().family
             );
         });
     }
 
-    #[zz_gpui::test]
-    fn appearance_keys_redraw_the_theme_and_reset_to_it(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn appearance_keys_redraw_the_theme_and_reset_to_it(cx: &mut ala::TestAppContext) {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
@@ -2439,9 +2437,9 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn chrome_contrast_validates_reloads_survives_mode_changes_and_resets(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         for value in ["0.99", "2.01", "NaN", "inf", "invalid"] {
             let parsed = parse_config(&format!("chrome-contrast = {value}\n"));
@@ -2484,9 +2482,9 @@ mod tests {
         cx.update(|cx| zz_ui::Theme::global_mut(cx).set_contrast(1.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn pip_background_opacity_validates_reloads_and_resets_without_changing_shadows(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         for value in ["-0.01", "1.01", "NaN", "inf", "invalid"] {
             let parsed = parse_config(&format!("pip-background-opacity = {value}\n"));
@@ -2530,8 +2528,8 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
-    fn pane_glow_strength_validates_reloads_and_resets(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn pane_glow_strength_validates_reloads_and_resets(cx: &mut ala::TestAppContext) {
         for value in ["-0.01", "2.01", "NaN", "inf", "invalid"] {
             let parsed = parse_config(&format!("pane-glow-strength = {value}\n"));
             assert_eq!(parsed.diagnostics.len(), 1, "{value}");
@@ -2682,8 +2680,8 @@ mod tests {
         assert_eq!(resolved.appearance, donor_appearance.appearance);
     }
 
-    #[zz_gpui::test]
-    fn gpui_global_exposes_configured_pane_geometry(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn ala_global_exposes_configured_pane_geometry(cx: &mut ala::TestAppContext) {
         assert_eq!(cx.update(|cx| resolved_config(cx)), AppConfig::default());
 
         let config = parse_config("pane-gaps = true\npane-margin = 9\n").config;
@@ -2694,8 +2692,8 @@ mod tests {
         assert_f32_eq(resolved.pane_margin.value, 9.0);
     }
 
-    #[zz_gpui::test]
-    fn status_bar_settings_project_from_the_live_app_config(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn status_bar_settings_project_from_the_live_app_config(cx: &mut ala::TestAppContext) {
         let config = parse_config(
             "status-badges = false\n\
              status-host = false\n\
@@ -2714,8 +2712,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn install_config_publishes_and_clears_browser_config(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn install_config_publishes_and_clears_browser_config(cx: &mut ala::TestAppContext) {
         let parsed = parse_config("browser-element-selector-hotkey = alt-shift-e\n");
         let expected = parsed.browser.clone();
 
@@ -2728,8 +2726,8 @@ mod tests {
         assert_eq!(cx.update(|cx| browser_config(cx)), BrowserConfig::default());
     }
 
-    #[zz_gpui::test]
-    fn install_config_applies_and_resets_the_animation_setting(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn install_config_applies_and_resets_the_animation_setting(cx: &mut ala::TestAppContext) {
         let parsed = parse_config("animations = false\n");
 
         cx.update(|cx| {
@@ -2741,8 +2739,8 @@ mod tests {
         assert!(!cx.update(|cx| cx.reduce_motion()));
     }
 
-    #[zz_gpui::test]
-    fn animation_setting_preserves_platform_reduced_motion(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn animation_setting_preserves_platform_reduced_motion(cx: &mut ala::TestAppContext) {
         cx.update(|cx| {
             cx.set_global(PlatformReduceMotion(true));
             install_config(None, None, cx);
@@ -2756,8 +2754,8 @@ mod tests {
         assert!(cx.update(|cx| cx.reduce_motion()));
     }
 
-    #[zz_gpui::test]
-    fn install_config_publishes_and_clears_fleet_hosts(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn install_config_publishes_and_clears_fleet_hosts(cx: &mut ala::TestAppContext) {
         let parsed = parse_config(
             "\
              host-desktop = ssh://desktop\n\
@@ -2775,8 +2773,8 @@ mod tests {
     }
 
     #[cfg(target_os = "linux")]
-    #[zz_gpui::test]
-    fn system_titlebar_selects_server_side_decorations(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn system_titlebar_selects_server_side_decorations(cx: &mut ala::TestAppContext) {
         assert_eq!(
             cx.update(|cx| window_decorations(cx)),
             WindowDecorations::Client
@@ -2791,8 +2789,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn window_background_blur_selects_the_platform_blur_request(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn window_background_blur_selects_the_platform_blur_request(cx: &mut ala::TestAppContext) {
         assert_eq!(
             cx.update(|cx| window_background_appearance(cx)),
             UNBLURRED_WINDOW_BACKGROUND
@@ -2814,8 +2812,8 @@ mod tests {
     }
 
     #[cfg(not(target_os = "linux"))]
-    #[zz_gpui::test]
-    fn translucent_terminal_content_keeps_the_window_opaque(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn translucent_terminal_content_keeps_the_window_opaque(cx: &mut ala::TestAppContext) {
         let appearance = Arc::new(TerminalAppearance {
             background_opacity: 0.8,
             ..TerminalAppearance::default()
@@ -2834,8 +2832,8 @@ mod tests {
         Corners::all(px(radius))
     }
 
-    #[zz_gpui::test]
-    fn pane_content_radius_follows_the_theme_radius(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn pane_content_radius_follows_the_theme_radius(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         let config = parse_config("pane-gaps = true\npane-margin = 6\n").config;
         cx.update(|cx| {
@@ -2851,8 +2849,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn pane_gap_effective_values_follow_the_toggle(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn pane_gap_effective_values_follow_the_toggle(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| zz_ui::Theme::global_mut(cx).radius = px(10.0));
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(0.0));
@@ -2892,9 +2890,9 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn flush_panes_inherit_the_derived_frame_curve_at_exposed_corners(
-        cx: &mut zz_gpui::TestAppContext,
+        cx: &mut ala::TestAppContext,
     ) {
         cx.update(zz_ui::init);
         let config = parse_config("pane-gaps = true\npane-margin = 0\n").config;
@@ -2906,14 +2904,14 @@ mod tests {
         assert_eq!(
             cx.update(|cx| pane_content_radii(
                 cx,
-                WindowCorners::from_tiling(zz_gpui::Tiling::default()),
+                WindowCorners::from_tiling(ala::Tiling::default()),
             )),
             corners(12.5)
         );
     }
 
-    #[zz_gpui::test]
-    fn missing_watched_file_restores_built_in_defaults(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn missing_watched_file_restores_built_in_defaults(cx: &mut ala::TestAppContext) {
         cx.update(|cx| {
             cx.set_global(AppConfig(
                 parse_config("pane-gaps = true\npane-margin = 9\n").config,

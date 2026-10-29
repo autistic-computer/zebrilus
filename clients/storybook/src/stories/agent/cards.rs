@@ -4,7 +4,7 @@ use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, bare_command_name, completion_query,
     meaningful_command_description, pane_commands, ranked_completions,
 };
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Window, div, px, uniform_list,
 };

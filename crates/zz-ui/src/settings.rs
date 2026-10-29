@@ -21,13 +21,13 @@ use crate::{
     select::SelectItem,
     separator::Separator,
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, Corners, ElementId, FocusHandle, Hsla, IntoElement, ListAlignment,
     ListSizingBehavior, ListState, ParentElement, Pixels, RenderOnce, ScrollHandle, SharedString,
     Styled as _, Window, div, list, prelude::*, px, relative,
 };
 
-type EntryClick = Rc<dyn Fn(&zz_gpui::ClickEvent, &mut Window, &mut App)>;
+type EntryClick = Rc<dyn Fn(&ala::ClickEvent, &mut Window, &mut App)>;
 
 /// A page in the settings sidebar, in sidebar order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -147,7 +147,7 @@ pub fn settings_navigation_back_button(id: impl Into<ElementId>) -> Button {
 }
 
 /// Holds the back button at the workspace tree's row height.
-pub fn settings_navigation_back_row(button: Button) -> zz_gpui::Div {
+pub fn settings_navigation_back_row(button: Button) -> ala::Div {
     div()
         .flex()
         .flex_none()
@@ -157,7 +157,7 @@ pub fn settings_navigation_back_row(button: Button) -> zz_gpui::Div {
 }
 
 /// The space between two navigation groups in the settings sidebar.
-pub fn settings_navigation_group_gap() -> zz_gpui::Div {
+pub fn settings_navigation_group_gap() -> ala::Div {
     div().flex_none().h(px(12.0))
 }
 
@@ -221,11 +221,11 @@ mod scroll_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ala::{Context, Render, TestAppContext, VisualTestContext};
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
-    use zz_gpui::{Context, Render, TestAppContext, VisualTestContext};
 
     struct VirtualSettingsTest {
         rendered: Arc<AtomicUsize>,
@@ -275,14 +275,14 @@ mod tests {
     }
 
     struct RevealTest {
-        input: zz_gpui::Entity<crate::input::InputState>,
+        input: ala::Entity<crate::input::InputState>,
         virtual_rows: bool,
     }
 
     impl Render for RevealTest {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let input = self.input.clone();
-            let focus = zz_gpui::Focusable::focus_handle(self.input.read(cx), cx);
+            let focus = ala::Focusable::focus_handle(self.input.read(cx), cx);
             let row = move |index: usize| {
                 if index == 8 {
                     div()
@@ -322,7 +322,7 @@ mod tests {
         let hidden = cx.debug_bounds("reveal-field");
         assert!(hidden.is_none_or(|field| field.top() >= px(220.0)));
         cx.update(|window, cx| {
-            let focus = zz_gpui::Focusable::focus_handle(view.read(cx).input.read(cx), cx);
+            let focus = ala::Focusable::focus_handle(view.read(cx).input.read(cx), cx);
             focus.focus(window, cx);
         });
         for _ in 0..3 {
@@ -335,13 +335,13 @@ mod tests {
             .expect("the focused field paints")
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_focused_field_scrolls_into_a_list_page(cx: &mut TestAppContext) {
         let field = reveal_field(cx, true);
         assert!(field.top() >= px(0.0) && field.bottom() <= px(220.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_focused_field_scrolls_into_a_scroll_page(cx: &mut TestAppContext) {
         let field = reveal_field(cx, false);
         assert!(field.top() >= px(0.0) && field.bottom() <= px(220.0));
@@ -489,7 +489,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn panes_preview_scrolls_with_controls(cx: &mut TestAppContext) {
         cx.update(crate::init);
         cx.update(|cx| cx.set_reduce_motion(true));
@@ -501,9 +501,9 @@ mod tests {
         });
         let preview = cx.debug_bounds("settings-preview-terminal").unwrap();
         let control = cx.debug_bounds("panes-control-0").unwrap();
-        cx.simulate_event(zz_gpui::ScrollWheelEvent {
+        cx.simulate_event(ala::ScrollWheelEvent {
             position: control.center(),
-            delta: zz_gpui::ScrollDelta::Pixels(zz_gpui::point(px(0.0), px(-120.0))),
+            delta: ala::ScrollDelta::Pixels(ala::point(px(0.0), px(-120.0))),
             ..Default::default()
         });
         cx.run_until_parked();
@@ -522,7 +522,7 @@ mod tests {
         assert_eq!(preview_offset, control_offset);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn one_long_scroll_reaches_the_last_row(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let rendered = Arc::new(AtomicUsize::new(0));
@@ -539,9 +539,9 @@ mod tests {
         assert!(cx.debug_bounds("virtual-settings-row-0").is_some());
         assert!(cx.debug_bounds("virtual-settings-row-99").is_none());
 
-        cx.simulate_event(zz_gpui::ScrollWheelEvent {
-            position: zz_gpui::point(px(100.0), px(100.0)),
-            delta: zz_gpui::ScrollDelta::Pixels(zz_gpui::point(px(0.0), px(-100_000.0))),
+        cx.simulate_event(ala::ScrollWheelEvent {
+            position: ala::point(px(100.0), px(100.0)),
+            delta: ala::ScrollDelta::Pixels(ala::point(px(0.0), px(-100_000.0))),
             ..Default::default()
         });
         cx.update(|window, cx| {
@@ -551,7 +551,7 @@ mod tests {
         assert!(cx.debug_bounds("virtual-settings-row-0").is_none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_focused_row_keeps_painting_out_of_view(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (view, cx) = cx.add_window_view(|_, cx| FocusedRowTest {
@@ -589,7 +589,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_bottom_inset_keeps_the_last_row_clear(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::init(cx);
@@ -601,9 +601,9 @@ mod tests {
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
-        cx.simulate_event(zz_gpui::ScrollWheelEvent {
-            position: zz_gpui::point(px(100.0), px(100.0)),
-            delta: zz_gpui::ScrollDelta::Pixels(zz_gpui::point(px(0.0), px(-10_000.0))),
+        cx.simulate_event(ala::ScrollWheelEvent {
+            position: ala::point(px(100.0), px(100.0)),
+            delta: ala::ScrollDelta::Pixels(ala::point(px(0.0), px(-10_000.0))),
             ..Default::default()
         });
         cx.update(|window, cx| {
@@ -613,7 +613,7 @@ mod tests {
         assert!(last.bottom() <= px(220.0 - 40.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn virtual_rows_land_where_scrolled_rows_do(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let (_, cx) = cx.add_window_view(|_, _| SettingsColumnGutterTest);
@@ -638,7 +638,7 @@ const SETTINGS_CONTENT_MAX_WIDTH: f32 = 760.0;
 const SETTINGS_PAGE_PADDING: f32 = 14.0;
 
 /// Centered, bounded content shared by every settings page.
-pub fn settings_page_content() -> zz_gpui::Div {
+pub fn settings_page_content() -> ala::Div {
     div()
         .flex()
         .flex_col()
@@ -649,7 +649,7 @@ pub fn settings_page_content() -> zz_gpui::Div {
 }
 
 /// The heading of `section`'s page.
-pub fn settings_page_title(section: SettingsSection, cx: &App) -> zz_gpui::Div {
+pub fn settings_page_title(section: SettingsSection, cx: &App) -> ala::Div {
     settings_page_heading(section.title(), cx)
 }
 
@@ -667,7 +667,7 @@ impl SettingsFold {
     }
 }
 
-fn settings_large_title(title: SharedString, cx: &App) -> zz_gpui::Div {
+fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
     crate::compact::large_title(title, cx)
         .px(px(2.0))
         .mt(px(-SETTINGS_PAGE_PADDING))
@@ -710,7 +710,7 @@ impl RenderOnce for SettingsTitleBar {
 
 /// A settings page's title. Under a coarse pointer it leaves the title to the
 /// sidebar or the bar above the page.
-pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> zz_gpui::Div {
+pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> ala::Div {
     let title = title.into();
     div()
         .flex()
@@ -729,7 +729,7 @@ pub fn settings_page_heading(title: impl Into<SharedString>, cx: &App) -> zz_gpu
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct SettingsBottomInset(pub Pixels);
 
-impl zz_gpui::Global for SettingsBottomInset {}
+impl ala::Global for SettingsBottomInset {}
 
 impl SettingsBottomInset {
     #[must_use]
@@ -767,17 +767,17 @@ impl SettingsScrollColumn {
     }
 }
 
-impl zz_gpui::ParentElement for SettingsScrollColumn {
+impl ala::ParentElement for SettingsScrollColumn {
     fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
         self.children.extend(elements);
     }
 }
 
 impl RenderOnce for SettingsScrollColumn {
-    fn render(self, window: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let handle = window
-            .use_keyed_state(zz_gpui::ElementId::Name(self.id.into()), cx, |_, _| {
-                zz_gpui::ScrollHandle::default()
+            .use_keyed_state(ala::ElementId::Name(self.id.into()), cx, |_, _| {
+                ala::ScrollHandle::default()
             })
             .read(cx)
             .clone();
@@ -973,7 +973,7 @@ const SETTINGS_GROUP_TITLE_LINE: f32 = 20.0;
 const SETTINGS_DESCRIPTION_SIZE: f32 = 12.0;
 const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
 
-fn settings_group_header(title: SharedString, cx: &App) -> zz_gpui::Div {
+fn settings_group_header(title: SharedString, cx: &App) -> ala::Div {
     crate::StyledExt::font_semibold(
         div()
             .px(px(2.0))
@@ -984,7 +984,7 @@ fn settings_group_header(title: SharedString, cx: &App) -> zz_gpui::Div {
     .child(title)
 }
 
-fn settings_description(text: SharedString, cx: &App) -> zz_gpui::Div {
+fn settings_description(text: SharedString, cx: &App) -> ala::Div {
     div()
         .text_size(crate::rems_from_px(SETTINGS_DESCRIPTION_SIZE))
         .text_color(cx.theme().foreground.muted())
@@ -1024,7 +1024,7 @@ impl SettingsDisclosure {
     #[must_use]
     pub fn on_click(
         mut self,
-        handler: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+        handler: impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_click = Some(Rc::new(handler));
         self
@@ -1122,7 +1122,7 @@ pub fn settings_disclosure_reveal(
 }
 
 /// Group heading used as a standalone row in [`settings_virtual_column`].
-pub fn settings_list_group_header(title: &'static str, cx: &App) -> zz_gpui::Div {
+pub fn settings_list_group_header(title: &'static str, cx: &App) -> ala::Div {
     div()
         .pt(px(10.0))
         .child(settings_group_header(title.into(), cx))
@@ -1187,7 +1187,7 @@ impl Default for SettingsStack {
 }
 
 impl RenderOnce for SettingsStack {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let last = self.entries.len().saturating_sub(1);
         let rows = self
             .entries
@@ -1309,7 +1309,7 @@ impl SettingEntry {
     pub fn on_click(
         mut self,
         id: impl Into<ElementId>,
-        handler: impl Fn(&zz_gpui::ClickEvent, &mut Window, &mut App) + 'static,
+        handler: impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_click = Some((id.into(), Rc::new(handler)));
         self
@@ -1362,7 +1362,7 @@ impl ParentElement for SettingEntry {
 }
 
 impl RenderOnce for SettingEntry {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         let disabled = self.disabled;
         let position = self.position;
         let coarse = crate::touch::CoarsePointer::get(cx);
@@ -1391,9 +1391,9 @@ impl RenderOnce for SettingEntry {
                                     this.child(icon.with_size(crate::Size::Medium))
                                 })
                                 .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
-                                .when_some(self.title_actions, zz_gpui::ParentElement::child),
+                                .when_some(self.title_actions, ala::ParentElement::child),
                         )
-                        .when_some(self.control, zz_gpui::ParentElement::child),
+                        .when_some(self.control, ala::ParentElement::child),
                 )
                 .children(description)
         } else {
@@ -1408,7 +1408,7 @@ impl RenderOnce for SettingEntry {
                         .when_some(self.title_icon, SettingCopy::title_icon)
                         .when_some(self.title_actions, SettingCopy::title_actions),
                 )
-                .when_some(self.control, zz_gpui::ParentElement::child)
+                .when_some(self.control, ala::ParentElement::child)
         };
 
         let theme = cx.theme();
@@ -1416,7 +1416,7 @@ impl RenderOnce for SettingEntry {
         let (inset, cast): (Vec<_>, Vec<_>) =
             card.shadow.iter().cloned().partition(|shadow| shadow.inset);
         let radius = card.radius;
-        let ends = move |this: zz_gpui::Div| {
+        let ends = move |this: ala::Div| {
             this.when(position.rounds_top(), |this| this.rounded_t(radius))
                 .when(position.rounds_bottom(), |this| this.rounded_b(radius))
         };
@@ -1461,8 +1461,8 @@ impl RenderOnce for SettingEntry {
                 ..card
             })
             .map(ends)
-            .when(!position.rounds_top(), zz_gpui::Styled::border_t_0)
-            .when(!position.rounds_bottom(), zz_gpui::Styled::border_b_0)
+            .when(!position.rounds_top(), ala::Styled::border_t_0)
+            .when(!position.rounds_bottom(), ala::Styled::border_b_0)
             .children(press)
             .when(position.rules_above(), |this| {
                 this.child(
@@ -1570,7 +1570,7 @@ impl SettingCopy {
 }
 
 impl RenderOnce for SettingCopy {
-    fn render(self, _: &mut zz_gpui::Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut ala::Window, cx: &mut App) -> impl IntoElement {
         div()
             .flex()
             .flex_col()
@@ -1587,7 +1587,7 @@ impl RenderOnce for SettingCopy {
                         this.child(icon.with_size(crate::Size::Medium))
                     })
                     .child(div().text_size(crate::rems_from_px(13.0)).child(self.title))
-                    .when_some(self.title_actions, zz_gpui::ParentElement::child),
+                    .when_some(self.title_actions, ala::ParentElement::child),
             )
             .when_some(self.description, |this, description| {
                 this.child(settings_description(description, cx))
@@ -1606,7 +1606,7 @@ pub fn settings_card_ground(cx: &App) -> Ground {
 /// [`roles::SETTINGS_PREVIEW`]'s edge, corners and shadow, clipping what it
 /// holds.
 #[must_use]
-pub fn settings_preview(fill: Hsla, cx: &App) -> zz_gpui::Div {
+pub fn settings_preview(fill: Hsla, cx: &App) -> ala::Div {
     let layer = cx.theme().layer(roles::SETTINGS_PREVIEW, PaintState::Rest);
     div().overflow_hidden().layer(&Layer {
         fill,
@@ -1666,7 +1666,7 @@ pub fn panes_page(
     focus: [SettingEntry; 2],
     frame: [SettingEntry; 1],
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     div()
         .flex()
         .flex_col()

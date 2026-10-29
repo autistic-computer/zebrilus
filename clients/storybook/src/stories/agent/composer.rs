@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use zz_client::agent_completion::{active_command_hint, pane_commands};
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, Image, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, px,
 };

@@ -7,13 +7,13 @@ mod terminal_app;
 #[cfg(target_os = "ios")]
 mod app {
     use super::terminal_app::TerminalApp;
+    use ala::{App, AppContext, Application, WindowOptions};
     use std::{borrow::Cow, rc::Rc};
-    use zz_gpui::{App, AppContext, Application, WindowOptions};
     use zz_ui::{Root, Theme, UiZoom};
 
     pub fn run() {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-        Application::with_platform(Rc::new(zz_gpui_platform::ios::IosPlatform::new()))
+        Application::with_platform(Rc::new(ala_platform::ios::IosPlatform::new()))
             .with_assets(zz_ui::Assets)
             .run(|cx: &mut App| {
                 cx.text_system()
@@ -44,7 +44,7 @@ mod app {
                     window.focus(&demo.read(cx).focus.clone(), cx);
                     cx.new(|cx| Root::new(demo, window, cx).bordered(false))
                 })
-                .expect("open GPUI iOS window");
+                .expect("open ala iOS window");
             });
     }
 }

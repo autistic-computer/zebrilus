@@ -1,6 +1,6 @@
 use std::cell::{Cell, RefCell};
 
-use zz_gpui::{Focusable as _, TestAppContext, VisualTestContext};
+use ala::{Focusable as _, TestAppContext, VisualTestContext};
 use zz_protocol::{InsertStyle, ShellKind};
 
 use super::*;
@@ -467,7 +467,7 @@ impl Render for Composer {
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let calls = Rc::new(RefCell::new(Vec::new()));

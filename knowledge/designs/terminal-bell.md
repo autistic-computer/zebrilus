@@ -47,7 +47,7 @@ A program rings BEL in a pane:
 * `window_flags()` in `crates/zz-mux/src/formats.rs` appends `!` for a window containing a
   belled pane, next to the existing `*` and `Z`. tmux semantics, tmux glyph.
 * The workspace window showing that pane calls `Window::request_attention()` . dock bounce
-  on macOS, urgency hint on Linux, taskbar flash on Windows. gpui already no-ops the call
+  on macOS, urgency hint on Linux, taskbar flash on Windows. ala already no-ops the call
   when the window is key, so a bell in the window you are typing in stays silent at the OS
   level.
 * The flag clears when the pane receives input (any PTY write from a client), becomes
@@ -134,7 +134,7 @@ Two small pieces, no client-held bell state:
 
 # Deferred
 
-* macOS dock badge. Ghostty shows one; gpui has no badge API. zz already depends on
+* macOS dock badge. Ghostty shows one; ala has no badge API. zz already depends on
   `objc2-app-kit`, so a local `NSDockTile` call is viable without touching the fork.
 * Window-title bell suffix.
 * The ding on Linux/Windows, custom audio files (`bell-audio-path` style), border flash,

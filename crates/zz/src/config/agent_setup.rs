@@ -1,4 +1,4 @@
-use zz_gpui::{App, Window};
+use ala::{App, Window};
 use zz_ui::notification::Notification;
 
 pub(crate) fn set_up_agents(window: &mut Window, cx: &mut App) {

@@ -1,10 +1,10 @@
 # zz-dom
 
-zz in the browser as plain HTML, kept in step with the gpui web client.
+zz in the browser as plain HTML, kept in step with the ala web client.
 
 ```bash
 just design client                  # the zz Dev daemon, on http://127.0.0.1:8092
-just design compare                 # both clients on a scratch daemon: HTML 8092, gpui 8093
+just design compare                 # both clients on a scratch daemon: HTML 8092, ala 8093
 just design parity                  # diff the two
 ```
 
@@ -36,9 +36,9 @@ from another module, swaps the sidebar tree for Back and the section list and dr
 the workspace (Escape or Back returns). It emits `settings` with `{ open, section }`.
 
 `web/js/preferences.js` holds the local preferences, the same object and `localStorage` key as the
-gpui web client (`zz-dev-web-preferences` in dev builds, `zz-web-preferences` in release), read,
+ala web client (`zz-dev-web-preferences` in dev builds, `zz-web-preferences` in release), read,
 migrated and clamped by zz-app's `Preferences` in Rust. Every change is also mirrored to
-`zz-dom-preferences`, which seeds the gpui key on a browser that has only that one:
+`zz-dom-preferences`, which seeds the ala key on a browser that has only that one:
 
 ```js
 import { preferences, setPreferences, subscribe } from "./preferences.js";
@@ -58,17 +58,17 @@ preferences.js applies the look itself: it writes the theme tokens and icons as 
 in place of kit.js's token files, sets `data-zz-mode` and `data-zz-theme`, UI zoom and
 `data-zz-still` when animations are off. The CSS comes from `theme/` (`zz-dom-theme`), a release
 wasm build of zz-app's `Preferences` and zz-ui's `theme_css`, so accent, tint, radius, contrast,
-font and saved or imported themes all come out of the same Rust as the gpui client. With no UI font
-picked the tokens name Inter Variable, as the gpui web client does.
+font and saved or imported themes all come out of the same Rust as the ala client. With no UI font
+picked the tokens name Inter Variable, as the ala web client does.
 
 ## Keeping in sync
 
-- Logic comes from Rust. Anything the gpui client decides outside of drawing (labels, ordering,
+- Logic comes from Rust. Anything the ala client decides outside of drawing (labels, ordering,
   completion, menus, key routing, layout math) should be a `zz-client` function both clients call.
   If it only exists in `clients/app`, move it to `zz-client` rather than rewriting it in JS.
 - `scripts/dom-parity.mjs` loads both clients on one daemon and matches every named node in the
-  gpui accessibility tree with this page. Buttons carry the gpui accessible name as `title` or
-  `aria-label`; text that gpui exposes carries `data-text`. A feature is done when its nodes match
+  ala accessibility tree with this page. Buttons carry the ala accessible name as `title` or
+  `aria-label`; text that ala exposes carries `data-text`. A feature is done when its nodes match
   within 2px.
 
 ## Not yet
@@ -87,12 +87,12 @@ Open work and known differences are listed in `HANDOFF.md`.
   inactive pane then dims under a scrim and the "Waiting for" badge stays off.
 - Inactive terminal panes dim through `opacity` on `.pane-body` (`--pane-dim`), so `terminal.js` does
   not dim its own text. While a split divider drags, workspace skips `view.layout()`, so no PTY
-  resizes until the drop lands. Floating panes carry `data-floating`; gpui draws their terminal with
-  no padding. Float frames use `state.cell`, so they line up with gpui only while `terminal.js`
-  measures cells as gpui does.
+  resizes until the drop lands. Floating panes carry `data-floating`; ala draws their terminal with
+  no padding. Float frames use `state.cell`, so they line up with ala only while `terminal.js`
+  measures cells as ala does.
 - Preferences: `preferences.js` owns the live `preferences` object, `setPreferences(patch)` and
-  `subscribe(fn)`, stored under gpui's own key (`zz-web-preferences`, `zz-dev-web-preferences` in
-  dev builds) with the field names of gpui's `Preferences`, and emits `preferences` after every
+  `subscribe(fn)`, stored under ala's own key (`zz-web-preferences`, `zz-dev-web-preferences` in
+  dev builds) with the field names of ala's `Preferences`, and emits `preferences` after every
   change. `workspace.js` re-exports `preferences` and `setPreferences`.
 - Events: `toggleSidebar` and `focusSidebar` open or close the sidebar; the sidebar emits
   `openPalette` (`{ mode: "command" }`) for its `:` key and `focusTerminal` when it lets go of focus.

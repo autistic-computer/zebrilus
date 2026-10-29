@@ -1,5 +1,5 @@
+use ala::{AnyWindowHandle, App, Entity, Global, Task, WeakEntity};
 use async_channel::Sender;
-use zz_gpui::{AnyWindowHandle, App, Entity, Global, Task, WeakEntity};
 use zz_protocol::{CommandInvocation, PaneId};
 
 use crate::{

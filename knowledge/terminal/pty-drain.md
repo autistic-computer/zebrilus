@@ -316,7 +316,7 @@ rejects a full command before this step. The actor re-checks its channels before
 
 ```mermaid
 sequenceDiagram
-    participant G as GPUI thread (CommandSender)
+    participant G as ala thread (CommandSender)
     participant C as admitted channel
     participant P as wake pipe
     participant A as actor
@@ -411,7 +411,7 @@ keeps terminal-query latency bounded.
 macOS keeps the inline actor because its 1 KiB PTY queue made the old per-batch channel hop cost
 more than the parse overlap saved. Linux's deeper queue amortizes the channel hop across much
 larger batches. The snapshot seam described in [rendering-parity](/terminal/rendering-parity.md)
-also keeps both paths independent from GPUI paint locks.
+also keeps both paths independent from ala paint locks.
 
 An exact-grid `perf` capture assigns 0.37% of sampled user cycles to `zz-pty-gather`, 44.71%
 to the terminal actor, and 54.46% to the GUI. The gather thread spends most of its time in

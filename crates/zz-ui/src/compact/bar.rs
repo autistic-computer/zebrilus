@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, Div, ElementId, FULL_CORNER_RADIUS, GlassMaterial, Hsla, IntoElement, MouseButton,
     ParentElement as _, Pixels, Rgba, SharedString, Stateful, Styled as _, div, prelude::*, px,
 };
@@ -394,7 +394,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::px;
+    use ala::px;
 
     use super::*;
 

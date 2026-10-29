@@ -22,7 +22,7 @@ use crate::{
     popup::{PopupRect, popup_placement},
 };
 
-// Five: GPUI's CAMetalLayer allows three drawables in flight plus two producer writes.
+// Five: ala's CAMetalLayer allows three drawables in flight plus two producer writes.
 const DESTINATION_POOL_SLOT_COUNT: usize = 5;
 const MAX_IN_FLIGHT_BLITS: usize = 2;
 const SOURCE_TEXTURE_CACHE_CAPACITY: usize = 10;

@@ -1,6 +1,6 @@
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 
-use zz_gpui::{Context, IntoElement, Render, Task, TextRun, Window, canvas, div, prelude::*, px};
+use ala::{Context, IntoElement, Render, Task, TextRun, Window, canvas, div, prelude::*, px};
 use zz_terminal::{
     ATTR_BOLD, ATTR_ITALIC, AppearanceLoad, CellWidth, Cursor, PackedCell, PackedStyle,
     SessionStatus, TerminalAppearance, TerminalColorScheme, TerminalViewport, UnderlineStyle,
@@ -223,7 +223,7 @@ fn resolve_appearance(
     color_scheme: TerminalColorScheme,
     path: Option<PathBuf>,
 ) -> TerminalAppearance {
-    let parsed = zz_config::parse_config(source, zz_gpui::Font::default().family.as_ref());
+    let parsed = zz_config::parse_config(source, ala::Font::default().family.as_ref());
     let mut defaults = AppearanceLoad::defaults_for(color_scheme);
     defaults.root = path;
     let load = apply_appearance_overrides(defaults, &parsed.daemon_entries);
@@ -300,8 +300,8 @@ fn sample_viewport(appearance: &TerminalAppearance) -> TerminalViewport {
 mod tests {
     use super::*;
 
-    #[zz_gpui::test]
-    fn rendered_font_metrics_follow_appearance_changes(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn rendered_font_metrics_follow_appearance_changes(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         let mut appearance = TerminalAppearance {
             cursor_blink_policy: zz_terminal::CursorBlinkPolicy::Off,

@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };

@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use zz_gpui::{
+use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyBinding, MouseButton,
     ParentElement as _, Render, Styled as _, Subscription, Window, actions, div, px,
 };

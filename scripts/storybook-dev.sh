@@ -33,10 +33,10 @@ cargo watch \
     --watch crates/zz-ui/src \
     --watch crates/zz-ui/assets \
     --watch crates/zz-client/src \
-    --watch libs/kit/src \
-    --watch libs/kit/assets \
-    --watch libs/gpui/crates/zz-gpui/src \
-    --watch libs/gpui/crates/zz-gpui-platform/src/web \
-    --watch libs/gpui/crates/zz-gpui-platform/src/wgpu \
+    --watch libs/penna/src \
+    --watch libs/penna/assets \
+    --watch libs/ala/crates/ala/src \
+    --watch libs/ala/crates/ala-platform/src/web \
+    --watch libs/ala/crates/ala-platform/src/wgpu \
     --watch scripts/build-storybook.sh \
     --shell "$ROOT/scripts/build-storybook.sh"

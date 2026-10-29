@@ -3,11 +3,11 @@
 use crate::config::settings::OpenSettings;
 use crate::mux::client::MuxClient;
 use crate::mux::prefix::display_keystroke;
-use zz_client::{ChromeAction, UI_TABLE};
-use zz_gpui::{
+use ala::{
     App, Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, MouseButton, Render, Window,
     prelude::*,
 };
+use zz_client::{ChromeAction, UI_TABLE};
 use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
 };
@@ -151,12 +151,12 @@ fn activates_new_session(keystroke: &Keystroke) -> bool {
 }
 
 pub(crate) struct NewSessionView {
-    mux: zz_gpui::Entity<MuxClient>,
+    mux: ala::Entity<MuxClient>,
     focus_handle: FocusHandle,
 }
 
 impl NewSessionView {
-    pub(crate) fn new(mux: zz_gpui::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
+    pub(crate) fn new(mux: ala::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
         Self {
             mux,
             focus_handle: cx.focus_handle(),
@@ -294,8 +294,8 @@ impl Render for NewSessionView {
 
 #[cfg(test)]
 mod tests {
+    use ala::{Modifiers, TestAppContext, VisualTestContext};
     use zz_daemon_client::DaemonError;
-    use zz_gpui::{Modifiers, TestAppContext, VisualTestContext};
 
     use super::*;
 
@@ -317,7 +317,7 @@ mod tests {
     }
 
     #[test]
-    fn every_hint_spells_a_key_gpui_can_parse() {
+    fn every_hint_spells_a_key_ala_can_parse() {
         for hint in &ACTIONS {
             assert!(
                 Keystroke::parse(hint.key).is_ok(),
@@ -428,7 +428,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_empty_state_draws_without_a_daemon(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let (_, cx) = cx.add_window_view(|_, cx| {

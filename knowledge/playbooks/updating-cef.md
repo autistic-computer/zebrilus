@@ -23,12 +23,12 @@ the build consumes (see [build/verify a CEF bundle](/playbooks/build-cef-bundle.
    `154.0.23+g062ebe4+chromium-154.0.8037.17`). The CEF build is whatever the published
    `cef-dll-sys` names after the `+`; a newer patch build of the same milestone needs a new cef-rs
    release, because the upstream build script rejects a newer archive.
-2. **Check which wgpu major the release wants.** `accelerated_osr` hands GPUI's own
+2. **Check which wgpu major the release wants.** `accelerated_osr` hands ala's own
    `wgpu::Device` to `cef::osr_texture_import`, so the `cef` crate's `wgpu` dependency must be the
-   *same* major as [GPUI's](/references/zz-gpui.md) . two majors in the graph is a type
+   *same* major as [ala's](/references/ala.md) . two majors in the graph is a type
    mismatch at that call, not a duplicate-crate annoyance. `cef` 150.2.1 moved to wgpu 30 while Zed
-   was still on 29, which is why the 151 bump also carried a gpui patch (fork commit
-   `gpui: build the wgpu renderer against wgpu 30`) and a `wgpu = "=30.0.0"` workspace bump. Check
+   was still on 29, which is why the 151 bump also carried an ala patch (fork commit
+   `ala: build the wgpu renderer against wgpu 30`) and a `wgpu = "=30.0.0"` workspace bump. Check
    the crate's changelog for a `update wgpu to vN` entry before assuming a bump is dependency-only.
 3. **Bump the workspace dependency and the adapter.** Update `cef = "=154.0.0"` in the root
    `Cargo.toml` if the Rust package's major/minor version changed. `cef-dll-sys` is patched to

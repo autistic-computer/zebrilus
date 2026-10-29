@@ -3,13 +3,13 @@ use zz_app::{app, input};
 
 #[cfg(target_os = "ios")]
 fn main() {
+    use ala::{App, Application, px};
     use std::{borrow::Cow, rc::Rc};
-    use zz_gpui::{App, Application, px};
     use zz_ui::{Theme, UiZoom};
 
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let application = Application::with_platform(Rc::new(
-        zz_gpui_platform::ios::IosPlatform::new().with_touch_gestures(true),
+        ala_platform::ios::IosPlatform::new().with_touch_gestures(true),
     ))
     .with_assets(zz_ui::Assets);
     let (url_sender, mut url_receiver) = futures::channel::mpsc::unbounded::<Vec<String>>();
@@ -47,9 +47,9 @@ fn main() {
         theme.font_family = "Inter Variable".into();
         theme.mono_font_family = "Lilex".into();
         theme.radius = px(6.);
-        theme.glass = std::env::var("ZZ_GPUI_GLASS")
+        theme.glass = std::env::var("ZZ_ALA_GLASS")
             .ok()
-            .and_then(|name| zz_gpui::GlassMaterial::preset(&name));
+            .and_then(|name| ala::GlassMaterial::preset(&name));
         cx.set_global(UiZoom(1.0));
         open_workspace(cx);
         cx.spawn(async move |cx| {
@@ -65,8 +65,8 @@ fn main() {
 }
 
 #[cfg(target_os = "ios")]
-fn open_workspace(cx: &mut zz_gpui::App) {
-    use zz_gpui::{AppContext, WindowOptions};
+fn open_workspace(cx: &mut ala::App) {
+    use ala::{AppContext, WindowOptions};
     use zz_ui::Root;
 
     cx.open_window(WindowOptions::default(), |window, cx| {

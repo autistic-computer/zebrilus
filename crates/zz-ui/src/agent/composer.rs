@@ -3,7 +3,7 @@ use crate::input::{Input, InputState, field_chrome, field_paint};
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Ground, PaintState, Surface, h_flex, roles, v_flex,
 };
-use zz_gpui::{
+use ala::{
     AnyElement, App, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
     prelude::*, px,
 };
@@ -99,7 +99,7 @@ impl RenderOnce for Composer {
                     column.child(
                         div()
                             .pb_1()
-                            .when(!leading, zz_gpui::Styled::px_2)
+                            .when(!leading, ala::Styled::px_2)
                             .text_size(crate::rems_from_px(10.0))
                             .text_color(paint.muted_at(state))
                             .child(hint),

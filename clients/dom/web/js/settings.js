@@ -1017,7 +1017,7 @@ function aboutPage() {
         "div",
         { class: "copy" },
         h("div", { class: "name", "aria-label": "zz", text: "zz" }),
-        h("div", { class: "tagline", "aria-label": "tmux, ghostty and zz_gpui walked into a mux.", text: "tmux, ghostty and zz_gpui walked into a mux." }),
+        h("div", { class: "tagline", "aria-label": "tmux, ghostty and ala walked into a mux.", text: "tmux, ghostty and ala walked into a mux." }),
         h("span", { "data-zz": "badge" }, text(`v${about.version}`)),
       ),
     ),

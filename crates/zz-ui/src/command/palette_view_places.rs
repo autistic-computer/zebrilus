@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
+use ala::{App, Context, Window};
 use zz_client::{
     completion::apply_completion,
     place::{self, ActionKind, Level, LevelSet, Place, Written, parse, read_written},
     recents::RecentKey,
     verbs::{self, Filled, Run, Slot, Verb, VerbKind},
 };
-use zz_gpui::{App, Context, Window};
 use zz_protocol::{CommandInvocation, MAX_COMMAND_PROMPT_BYTES, catalog_command_spec};
 
 use super::{CommandPaletteView, has_command_arguments};

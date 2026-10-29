@@ -60,7 +60,7 @@ Upstream now covers two earlier zz deltas on its own: the default `-Dcpu=baselin
 emitted AVX-512 in a memory-fill routine that crashed with `SIGILL` on a Ryzen 7 5700X3D)
 and the exact MSVC static archive name. Upstream also replaced zz's flat iOS target
 mapping with an xcframework build for `aarch64-apple-ios` and `aarch64-apple-ios-sim`; no zz
-iOS target links libghostty today (the GPUI iOS client renders daemon frames), so the flat
+iOS target links libghostty today (the ala iOS client renders daemon frames), so the flat
 mapping and its `x86_64-apple-ios` entry were not kept.
 
 `src/lib.rs` retains the base snapshot without patch stamps. `build.rs` uses a source

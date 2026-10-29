@@ -5,13 +5,13 @@ use std::{
     sync::Arc,
 };
 
+use ala::{Context, EventEmitter};
 use zz_client::agent_completion::AgentCommand;
 use zz_client::agent_lens::{AgentCursor, MAX_AGENT_HISTORY_BYTES, MAX_AGENT_HISTORY_ITEMS};
 use zz_client::{
     ClientCore, CoreEvent, Outbound,
     scrollback::{DeferredBackfill, HISTORY_BACKFILL_QUIET, HistoryFollowUp, HistoryPacer},
 };
-use zz_gpui::{Context, EventEmitter};
 use zz_protocol::{
     AgentProvider, CommandInvocation, CommandRequest, CommandResponse, InputMessage, PaneId,
     ProtocolMessage, ServerError, SessionId,
@@ -19,7 +19,7 @@ use zz_protocol::{
 
 #[cfg(target_os = "ios")]
 fn launch_endpoint() -> Option<String> {
-    std::env::var("ZZ_GPUI_ENDPOINT")
+    std::env::var("ZZ_ALA_ENDPOINT")
         .or_else(|_| std::env::var("ZZ_SOCKET"))
         .ok()
         .map(|endpoint| endpoint.trim().to_owned())
@@ -49,7 +49,7 @@ pub struct Connection {
     #[cfg(target_os = "ios")]
     client: Option<Arc<zz_daemon_client::InteractiveClient>>,
     #[cfg(target_os = "ios")]
-    reader: Option<zz_gpui::Task<()>>,
+    reader: Option<ala::Task<()>>,
     #[cfg(target_os = "ios")]
     auth_prompt: Option<(
         AuthenticationPrompt,
@@ -60,7 +60,7 @@ pub struct Connection {
     #[cfg(target_os = "ios")]
     pending_session: Option<String>,
     #[cfg(target_os = "ios")]
-    retry: Option<zz_gpui::Task<()>>,
+    retry: Option<ala::Task<()>>,
     pub core: ClientCore,
     history: HistoryPacer,
     #[cfg(test)]
@@ -87,9 +87,9 @@ pub struct Connection {
     #[cfg(target_family = "wasm")]
     socket: Option<browser::Socket>,
     #[cfg(target_family = "wasm")]
-    reader: Option<zz_gpui::Task<()>>,
+    reader: Option<ala::Task<()>>,
     #[cfg(target_family = "wasm")]
-    retry: Option<zz_gpui::Task<()>>,
+    retry: Option<ala::Task<()>>,
 }
 
 impl EventEmitter<CoreEvent> for Connection {}
@@ -259,12 +259,12 @@ impl Connection {
         self.terminal_images.pane(pane)
     }
 
-    pub fn take_retired_terminal_images(&mut self) -> Vec<Arc<zz_gpui::RenderImage>> {
+    pub fn take_retired_terminal_images(&mut self) -> Vec<Arc<ala::RenderImage>> {
         self.terminal_images.take_retired()
     }
 
     #[must_use]
-    pub fn pasted_image(&self, pane: PaneId, number: u32) -> Option<Arc<zz_gpui::Image>> {
+    pub fn pasted_image(&self, pane: PaneId, number: u32) -> Option<Arc<ala::Image>> {
         self.pasted_images.image(pane, number)
     }
 
@@ -287,7 +287,7 @@ impl Connection {
         cx.notify();
     }
 
-    pub fn upload_image(&mut self, pane: PaneId, image: &zz_gpui::Image, cx: &mut Context<Self>) {
+    pub fn upload_image(&mut self, pane: PaneId, image: &ala::Image, cx: &mut Context<Self>) {
         let extension = image.format.extension();
         if zz_protocol::PastedImageFormat::from_extension(extension).is_none()
             || image.bytes.is_empty()
@@ -577,7 +577,7 @@ impl Connection {
             if let Some(endpoint) = self.endpoint.clone() {
                 let target = self.pending_session.take().unwrap_or_else(|| {
                     self.remembered_session.map_or_else(
-                        || std::env::var("ZZ_GPUI_SESSION").unwrap_or_default(),
+                        || std::env::var("ZZ_ALA_SESSION").unwrap_or_default(),
                         |id| id.to_string(),
                     )
                 });
@@ -833,7 +833,7 @@ impl Connection {
                         || {
                             #[cfg(target_os = "ios")]
                             {
-                                std::env::var("ZZ_GPUI_SESSION").unwrap_or_default()
+                                std::env::var("ZZ_ALA_SESSION").unwrap_or_default()
                             }
                             #[cfg(not(target_os = "ios"))]
                             {
@@ -900,7 +900,7 @@ impl Connection {
                 }
                 CoreEvent::ClientMessage { text, .. } => self.status.clone_from(text),
                 CoreEvent::Clipboard { text, .. } => {
-                    cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(text.clone()));
+                    cx.write_to_clipboard(ala::ClipboardItem::new_string(text.clone()));
                 }
                 CoreEvent::OpenUri { uri, .. } if zz_client::terminal_view::openable_uri(uri) => {
                     cx.open_url(uri);
@@ -1698,9 +1698,9 @@ mod tests {
     }
 
     #[cfg(not(target_family = "wasm"))]
-    #[zz_gpui::test]
-    fn viewport_frames_leave_the_connection_unnotified(cx: &mut zz_gpui::TestAppContext) {
-        use zz_gpui::AppContext as _;
+    #[ala::test]
+    fn viewport_frames_leave_the_connection_unnotified(cx: &mut ala::TestAppContext) {
+        use ala::AppContext as _;
         use zz_protocol::{ClientView, Event, EventPayload, PaneId, SessionId};
 
         let connection = cx.new(super::Connection::new);
@@ -1745,9 +1745,9 @@ mod tests {
     }
 
     #[cfg(not(target_family = "wasm"))]
-    #[zz_gpui::test]
-    fn an_agent_stream_is_kept_only_while_a_lens_watches_it(cx: &mut zz_gpui::TestAppContext) {
-        use zz_gpui::AppContext as _;
+    #[ala::test]
+    fn an_agent_stream_is_kept_only_while_a_lens_watches_it(cx: &mut ala::TestAppContext) {
+        use ala::AppContext as _;
         use zz_protocol::{
             AgentProvider, Event, EventPayload, LayoutNode, MuxSnapshot, PaneId, PaneKindSnapshot,
             PaneSnapshot, PaneSummary, SessionId, SessionSnapshot, WindowId, WindowSnapshot,

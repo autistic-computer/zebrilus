@@ -250,7 +250,7 @@ The client then sends `TerminalView { Paste(text) }` to the pane.
 - Placement: a new `TerminalView::cursor_bounds()` accessor, read once at open. When it is `None`, or
   pane search is open, or IME text is composing, use the grid's bottom-left instead (second accessor).
   The position stays fixed while chunks stream. `deferred(anchored())`, flipped above by hand when the
-  maximum height (10 rows) does not fit below (as `image_hover_popover` does, because gpui's
+  maximum height (10 rows) does not fit below (as `image_hover_popover` does, because ala's
   `SwitchAnchor` keeps the same point and would cover the cursor row), `snap_to_window_with_margin(8)`.
 
 ## View (zz-ui)
@@ -396,7 +396,7 @@ Tests:
     regression (`bind -r x list-keys`, press, close the output, `active_table()` is `None`).
 - zz-client: the insert-text table (every shell kind, Claude, Codex, `-rf.txt` becomes `./-rf.txt`,
   `=foo` becomes `./=foo`, `+q` becomes `./+q`, picking the cwd gives `./` and `@"./"`), `path_rank`.
-- zz-ui: gpui tests for picker keys, and for which-key: after `C-b`, its key-up, and
+- zz-ui: ala tests for picker keys, and for which-key: after `C-b`, its key-up, and
   `KeyTableActive{Some("prefix")}`, the sheet shows past the delay; a key-down in a custom table hides it.
 - Manual: zz Dev with zsh, fish, claude and codex panes, on the local host and an ssh host.
 

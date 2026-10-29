@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use zz_gpui::{App, Entity, Global, Hsla, SharedString, Window};
+use ala::{App, Entity, Global, Hsla, SharedString, Window};
 use zz_terminal::TerminalAppearance;
 use zz_ui::{Theme, ThemeMode};
 
@@ -117,7 +117,7 @@ fn apply_zz_overrides(cx: &mut App) {
                 .flatten()
         })
         .filter(|family| cx.text_system().has_font(family))
-        .unwrap_or_else(|| zz_gpui::Font::default().family);
+        .unwrap_or_else(|| ala::Font::default().family);
     let chrome_contrast = config::chrome_contrast(cx);
     let pip_opacity = config::pip_background_opacity(cx);
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
@@ -177,8 +177,8 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
-    fn the_selected_theme_paints_the_mode_it_is_in(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn the_selected_theme_paints_the_mode_it_is_in(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             let default = zz_ui::interface_theme::default_theme();
@@ -219,8 +219,8 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
-    fn returning_to_system_restores_the_last_os_mode(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn returning_to_system_restores_the_last_os_mode(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             cx.set_global(SystemThemeMode(ThemeMode::Dark));
@@ -237,8 +237,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn terminal_opacity_never_reaches_the_chrome(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn terminal_opacity_never_reaches_the_chrome(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             set_terminal_appearance(
@@ -286,8 +286,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn gapped_panes_draw_frames_in_every_theme(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn gapped_panes_draw_frames_in_every_theme(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             let default = zz_ui::interface_theme::default_theme().clone();
@@ -318,7 +318,7 @@ mod tests {
                     if gaps && outlined {
                         theme.outline
                     } else {
-                        zz_gpui::px(0.0)
+                        ala::px(0.0)
                     },
                     "{id} with gaps {gaps}"
                 );
@@ -326,8 +326,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn pip_fills_ignore_translucent_chrome_overrides(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn pip_fills_ignore_translucent_chrome_overrides(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             Theme::global_mut(cx).colors.background =
@@ -339,8 +339,8 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
-    fn unsupported_compositor_keeps_the_chrome_opaque(cx: &mut zz_gpui::TestAppContext) {
+    #[ala::test]
+    fn unsupported_compositor_keeps_the_chrome_opaque(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             let mut config = config::AppConfig::default();

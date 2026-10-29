@@ -2,17 +2,17 @@ use crate::{
     connection::{Connection, Event, Prompt},
     input::{key_input, wire_modifiers},
 };
-use std::{collections::HashSet, ops::Range, path::PathBuf, sync::Arc, time::Duration};
-use zz_client::{
-    ChromeAction, ChromeKeymap, ChromeProfile, ClientCore, CoreEvent, Outbound, TERMINAL_TABLE,
-};
-use zz_daemon_client::{AskpassPromptKind, AskpassReply, InteractiveClient};
-use zz_gpui::{
+use ala::{
     Bounds, ClipboardItem, Context, ElementInputHandler, Entity, EntityInputHandler, FocusHandle,
     Focusable, IntoElement, KeyDownEvent, KeyUpEvent, MouseButton, Pixels, Point, Render,
     Subscription, Task, TextInputAction, TextInputConfiguration, UTF16Selection, Window, canvas,
     div, prelude::*, px,
 };
+use std::{collections::HashSet, ops::Range, path::PathBuf, sync::Arc, time::Duration};
+use zz_client::{
+    ChromeAction, ChromeKeymap, ChromeProfile, ClientCore, CoreEvent, Outbound, TERMINAL_TABLE,
+};
+use zz_daemon_client::{AskpassPromptKind, AskpassReply, InteractiveClient};
 use zz_protocol::{InputMessage, PaneId, ProtocolMessage};
 use zz_terminal::{
     ClipboardTarget, KeyAction, KeyCode, PointerCellEvent, TerminalMouseButton, TerminalMouseInput,
@@ -55,7 +55,7 @@ pub struct TerminalApp {
 
 impl TerminalApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let saved = std::env::var("ZZ_GPUI_ENDPOINT")
+        let saved = std::env::var("ZZ_ALA_ENDPOINT")
             .or_else(|_| std::env::var("ZZ_SOCKET"))
             .ok()
             .or_else(|| std::fs::read_to_string(endpoint_path()).ok())
@@ -153,7 +153,7 @@ impl TerminalApp {
         self.cache = RowRenderCache::default();
         self.connection = Some(Connection::connect(
             endpoint.trim().into(),
-            Some(std::env::var("ZZ_GPUI_SESSION").unwrap_or_default()),
+            Some(std::env::var("ZZ_ALA_SESSION").unwrap_or_default()),
             false,
         ));
         self.status = "Connecting…".into();
@@ -289,7 +289,7 @@ impl TerminalApp {
     }
 
     fn paste_clipboard(&mut self, _: &mut Context<Self>) {
-        zz_gpui_platform::ios::request_paste();
+        ala_platform::ios::request_paste();
     }
 
     fn answer_prompt(
@@ -330,10 +330,10 @@ impl TerminalApp {
         for key in std::mem::take(&mut self.forwarded) {
             if let Some(pane) = self.pane {
                 let input = key_input(
-                    &zz_gpui::Keystroke {
+                    &ala::Keystroke {
                         key,
                         key_char: None,
-                        modifiers: zz_gpui::Modifiers::default(),
+                        modifiers: ala::Modifiers::default(),
                     },
                     KeyAction::Release,
                 );
@@ -460,7 +460,7 @@ impl TerminalApp {
         &mut self,
         position: Point<Pixels>,
         phase: TerminalMousePhase,
-        modifiers: zz_gpui::Modifiers,
+        modifiers: ala::Modifiers,
         clicks: usize,
         cx: &mut Context<Self>,
     ) {
@@ -717,7 +717,7 @@ impl Render for TerminalApp {
             .child(
                 div()
                     .id("terminal")
-                    .role(zz_gpui::accesskit::Role::Terminal)
+                    .role(ala::accesskit::Role::Terminal)
                     .key_context("Terminal")
                     .flex_1()
                     .min_h_0()
@@ -727,7 +727,7 @@ impl Render for TerminalApp {
                     .on_key_up(cx.listener(Self::key_up))
                     .on_mouse_down(
                         MouseButton::Left,
-                        cx.listener(|this, event: &zz_gpui::MouseDownEvent, window, cx| {
+                        cx.listener(|this, event: &ala::MouseDownEvent, window, cx| {
                             window.focus(&this.focus, cx);
                             this.drag = Some(event.position);
                             this.scroll = 0.;
@@ -749,7 +749,7 @@ impl Render for TerminalApp {
                             }
                         }),
                     )
-                    .on_mouse_move(cx.listener(|this, event: &zz_gpui::MouseMoveEvent, _, cx| {
+                    .on_mouse_move(cx.listener(|this, event: &ala::MouseMoveEvent, _, cx| {
                         if let Some(previous) = this.drag {
                             if this.mouse_down {
                                 this.mouse(
@@ -773,7 +773,7 @@ impl Render for TerminalApp {
                     }))
                     .on_mouse_up(
                         MouseButton::Left,
-                        cx.listener(|this, event: &zz_gpui::MouseUpEvent, _, cx| {
+                        cx.listener(|this, event: &ala::MouseUpEvent, _, cx| {
                             if this.drag.take().is_some() && std::mem::take(&mut this.mouse_down) {
                                 this.mouse(
                                     event.position,
@@ -787,7 +787,7 @@ impl Render for TerminalApp {
                     )
                     .on_mouse_up_out(
                         MouseButton::Left,
-                        cx.listener(|this, event: &zz_gpui::MouseUpEvent, _, cx| {
+                        cx.listener(|this, event: &ala::MouseUpEvent, _, cx| {
                             if this.drag.take().is_some() && std::mem::take(&mut this.mouse_down) {
                                 this.mouse(
                                     event.position,
@@ -910,5 +910,5 @@ impl EntityInputHandler for TerminalApp {
 
 fn endpoint_path() -> PathBuf {
     PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
-        .join("Library/Application Support/zz-gpui/endpoint")
+        .join("Library/Application Support/ala/endpoint")
 }

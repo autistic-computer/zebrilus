@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Session persistence & daemon lifecycle
-description: Why mux state and terminals outlive GPUI windows, which GUI state is disk-backed, which browser descriptors can restore, what the agent lens rebuilds, and how attach, detach, eviction, per-client state, and local transport work when several devices share one session.
+description: Why mux state and terminals outlive ala windows, which GUI state is disk-backed, which browser descriptors can restore, what the agent lens rebuilds, and how attach, detach, eviction, per-client state, and local transport work when several devices share one session.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [daemon, persistence, attach, detach, transport, lifecycle, multi-client]
 timestamp: 2026-10-23T00:00:00-03:00
@@ -12,7 +12,7 @@ timestamp: 2026-10-23T00:00:00-03:00
 Session persistence is the property that makes zz a multiplexer rather than a terminal window: the
 [zz-daemon daemon](/crates/zz-daemon.md) is the **sole authority for mux state** and owns every terminal
 pane's [PTY worker](/concepts/pty-worker.md), so sessions, windows, binary split-pane layouts, and
-the processes running inside them survive after every GPUI window is closed. Closing the last window
+the processes running inside them survive after every ala window is closed. Closing the last window
 merely **detaches** that client; it never stops the terminals, and it never disturbs another device
 attached to the same session.
 
@@ -178,7 +178,7 @@ devices attached to that session never notice.
 | App-owned browser history list | Yes | **Yes** | Client-side, not daemon state: the app persists up to 5,000 live or imported Chrome visits in `<data dir>/zz/browser/recent-pages` (see [browser profile](/browser/profile.md)) |
 | Main-window bounds and mode | **Yes** | **Yes** | Client-side, not daemon state: bounded `<data dir>/zz/window-state.json` remembers size, position, display, and windowed/maximized/full-screen mode; restore clamps to a usable current display |
 | Chromium renderer runtime (JS heap, scroll, unsubmitted forms, media) | **No** | No | Not kept alive with no GUI attached; on reattach the GUI builds a fresh CEF instance from the descriptor |
-| Claude Code or Codex CLI + its running turn | Yes | No | An ordinary terminal process in a PTY, so a turn keeps going with every GPUI window closed |
+| Claude Code or Codex CLI + its running turn | Yes | No | An ordinary terminal process in a PTY, so a turn keeps going with every ala window closed |
 | Agent lens runtime | Yes | No | Daemon-owned per terminal pane once a client opens the lens (`zz-daemon/src/agent/lens.rs`), one thread each, until the pane closes |
 | Agent transcript | Yes | **Yes** | Written by the CLI itself (Claude's session jsonl, Codex's rollout). The lens reads it back; zz stores no copy of its own |
 | Reduced lens timeline | **No** | No | Client-side and rebuilt from the replayed stream every time a client opens the lens |
@@ -225,13 +225,13 @@ disconnect).
 
 # Examples
 
-The requirement this satisfies: closing every GPUI window must leave the PTYs running, and
+The requirement this satisfies: closing every ala window must leave the PTYs running, and
 reattaching must show everything they produced while nothing was attached.
 
 ```text
 Detach without stopping work:
   1. Split terminals, run `cargo test` in one pane.
-  2. Close every GPUI window  → InteractiveClient drops → unregister → detach
+  2. Close every ala window  → InteractiveClient drops → unregister → detach
                               → detach_view(client), PTY workers keep running.
   3. Reopen zz → InteractiveClient::connect + attach → fresh MuxSnapshot
                               → attach_view + full viewports → test output is intact.

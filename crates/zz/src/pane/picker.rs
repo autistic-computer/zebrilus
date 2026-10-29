@@ -1,10 +1,10 @@
+use ala::{
+    AnyElement, App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyBinding,
+    KeyDownEvent, Keystroke, MouseButton, NoAction, Render, Window, prelude::*,
+};
 use zz_client::new_chat::{
     AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place, folder_start,
     recent_folders, start_agent_commands,
-};
-use zz_gpui::{
-    AnyElement, App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyBinding,
-    KeyDownEvent, Keystroke, MouseButton, NoAction, Render, Window, prelude::*,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::{
@@ -168,7 +168,7 @@ fn select_command(pane: PaneId) -> CommandInvocation {
 
 pub(crate) struct PanePickerView {
     pane: PaneId,
-    mux: zz_gpui::Entity<MuxClient>,
+    mux: ala::Entity<MuxClient>,
     focus_handle: FocusHandle,
     selected: usize,
     window_corners: WindowCorners,
@@ -180,11 +180,7 @@ impl EventEmitter<AgentChosen> for PanePickerView {}
 impl EventEmitter<ChooseFolder> for PanePickerView {}
 
 impl PanePickerView {
-    pub(crate) fn new(
-        pane: PaneId,
-        mux: zz_gpui::Entity<MuxClient>,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub(crate) fn new(pane: PaneId, mux: ala::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
         Self {
             pane,
             mux,
@@ -394,7 +390,7 @@ impl Render for PanePickerView {
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::Modifiers;
+    use ala::Modifiers;
 
     use super::*;
 

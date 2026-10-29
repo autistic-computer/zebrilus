@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Div, ElementId, EntityId, FontWeight, SharedString, Stateful, Transformation,
     Window, div, ease_in_out, percentage, prelude::*, px,
 };
@@ -265,7 +265,7 @@ pub(crate) struct CardTile {
     surface: Surface,
     state: PaintState,
     ground: Ground,
-    muted: zz_gpui::Hsla,
+    muted: ala::Hsla,
 }
 
 impl CardTile {
@@ -301,7 +301,7 @@ impl CardTile {
             .py(px(CARD_TILE_PADDING_Y))
             .text_size(crate::rems_from_px(12.0))
             .line_height(px(CARD_LABEL_LINE))
-            .when(enabled, zz_gpui::Styled::cursor_pointer)
+            .when(enabled, ala::Styled::cursor_pointer)
     }
 
     pub(crate) fn detail(self, text: impl Into<SharedString>) -> Div {

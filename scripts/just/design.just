@@ -16,10 +16,10 @@ client *args:
     ZZ_DEV_BUILD=1 cargo build -q -p zz-web
     target/debug/zz-web --assets clients/dom/dist --bind 127.0.0.1:8092 {{ args }}
 
-# Serve the HTML client (8092) and the gpui web client (8093) on one daemon; a scratch daemon on /tmp/zzdom.sock by default.
+# Serve the HTML client (8092) and the ala web client (8093) on one daemon; a scratch daemon on /tmp/zzdom.sock by default.
 compare socket="/tmp/zzdom.sock":
     scripts/dom-dev.sh {{ socket }}
 
-# Diff the HTML client against the gpui web client that `just design compare` serves.
+# Diff the HTML client against the ala web client that `just design compare` serves.
 parity *args:
     node scripts/dom-parity.mjs {{ args }}

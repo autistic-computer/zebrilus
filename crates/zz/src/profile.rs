@@ -1,6 +1,6 @@
 //! Platform composition selected by each app entry point.
 
-use zz_gpui::{App, Global};
+use ala::{App, Global};
 
 pub use zz_ui::settings::SettingsSection;
 

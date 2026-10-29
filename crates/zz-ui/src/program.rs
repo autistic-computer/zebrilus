@@ -5,12 +5,12 @@
 
 use std::borrow::Cow;
 
-use zz_client::program::{Look, Program};
-use zz_gpui::{
+use ala::{
     AnyElement, App, AssetSource, Background, BoxShadow, Global, Hsla, IntoElement as _, Length,
     ParentElement, Pixels, Result, Rgba, SharedString, Styled, div, img, linear_color_stop,
     linear_gradient, point, px,
 };
+use zz_client::program::{Look, Program};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Icon, PaintState, Surface,
@@ -40,12 +40,12 @@ impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         match Programs::get(path) {
             Some(asset) => Ok(Some(asset.data)),
-            None => zz_gpui_kit::Assets.load(path),
+            None => penna::Assets.load(path),
         }
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-        let mut assets = zz_gpui_kit::Assets.list(path)?;
+        let mut assets = penna::Assets.list(path)?;
         assets.extend(
             Programs::iter()
                 .filter(|asset| asset.starts_with(path))
@@ -196,7 +196,7 @@ impl Face {
             .child(self.glyph())
     }
 
-    pub fn tile(self) -> zz_gpui::Div {
+    pub fn tile(self) -> ala::Div {
         let tile = div()
             .flex()
             .flex_none()
@@ -224,7 +224,7 @@ pub fn program_tile(
     around: Pixels,
     dimmed: f32,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     let theme = cx.theme();
     Face {
         program,

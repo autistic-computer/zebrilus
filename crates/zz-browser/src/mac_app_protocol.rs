@@ -1,4 +1,4 @@
-//! Grafts CEF's `CefAppProtocol` onto GPUI's live `NSApplication` class, whose
+//! Grafts CEF's `CefAppProtocol` onto ala's live `NSApplication` class, whose
 //! selectors Chromium sends to `NSApp` when closing the `DevTools` popup.
 
 use std::{
@@ -36,7 +36,7 @@ type SendEvent = unsafe extern "C-unwind" fn(*mut AnyObject, Sel, *mut AnyObject
 
 const SEND_EVENT_TYPES: &CStr = c"v@:@";
 
-/// Install the protocol once, after GPUI creates its application instance and
+/// Install the protocol once, after ala creates its application instance and
 /// before CEF opens a native window. A failure degrades to the unpatched class.
 pub(super) fn install() {
     static INSTALL: Once = Once::new();

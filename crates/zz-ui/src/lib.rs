@@ -1,19 +1,19 @@
-//! zz's application UI on [`zz_gpui_kit`]: panes, terminal, agent, command palette,
+//! zz's application UI on [`penna`]: panes, terminal, agent, command palette,
 //! settings, and navigation, shared by the desktop app and the thin clients.
 //! It re-exports the kit, so zz code imports UI from one place.
 
 pub mod tmux_style;
 
-pub use zz_gpui_kit::{
+pub use penna::{
     badge, button, check, color_picker, dialog, highlighter, icon, input, kbd, list, menu,
     notification, overlay, popover, pulse, scroll, segmented, select, separator, slider, spinner,
     switch, text, theme, title_bar, tooltip, touch,
 };
 
 #[cfg(feature = "editor")]
-pub use zz_gpui_kit::code_editor;
+pub use penna::code_editor;
 
-pub use zz_gpui_kit::{
+pub use penna::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
     Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill, Ground, Highlight, Icon,
     IconName, IndexPath, Ink, InteractiveElementExt, InteractivePaintExt, InteractiveSurfaceExt,
@@ -57,4 +57,4 @@ pub use program::Assets;
 
 /// How far a label too long for its box fades out at its end, instead of
 /// ending in an ellipsis.
-pub const LABEL_FADE: zz_gpui::Pixels = zz_gpui::px(28.0);
+pub const LABEL_FADE: ala::Pixels = ala::px(28.0);

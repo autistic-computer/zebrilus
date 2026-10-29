@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
     TextInputMode, Window, canvas, div, prelude::*, px,
 };
@@ -76,7 +76,7 @@ pub(super) fn shown(setting: Setting, phone: bool) -> bool {
 
 pub(crate) fn phone() -> bool {
     #[cfg(target_os = "ios")]
-    return zz_gpui_platform::ios::phone();
+    return ala_platform::ios::phone();
     #[cfg(not(target_os = "ios"))]
     false
 }
@@ -101,12 +101,12 @@ fn interface_zoom(preferences: &Preferences, system_scale: f32, phone: bool) -> 
 
 struct PlatformReduceMotion(bool);
 
-impl zz_gpui::Global for PlatformReduceMotion {}
+impl ala::Global for PlatformReduceMotion {}
 
 impl Preferences {
     pub(super) fn apply(&self, connection: &Entity<Connection>, window: &mut Window, cx: &mut App) {
         #[cfg(target_os = "ios")]
-        let system = zz_gpui_platform::ios::accessibility();
+        let system = ala_platform::ios::accessibility();
         #[cfg(target_os = "ios")]
         cx.set_global(PlatformReduceMotion(system.reduce_motion));
         if !cx.has_global::<PlatformReduceMotion>() {
@@ -128,13 +128,13 @@ impl Preferences {
         {
             cx.set_window_appearance(pinned.map(|mode| {
                 if mode.is_dark() {
-                    zz_gpui::WindowAppearance::Dark
+                    ala::WindowAppearance::Dark
                 } else {
-                    zz_gpui::WindowAppearance::Light
+                    ala::WindowAppearance::Light
                 }
             }));
             let mode = pinned.unwrap_or_else(|| match cx.window_appearance() {
-                zz_gpui::WindowAppearance::Light | zz_gpui::WindowAppearance::VibrantLight => {
+                ala::WindowAppearance::Light | ala::WindowAppearance::VibrantLight => {
                     ThemeMode::Light
                 }
                 _ => ThemeMode::Dark,
@@ -876,7 +876,7 @@ impl AppShell {
             AppearancePageItem::Accent => {
                 let title = item.title().unwrap_or_default();
                 let custom =
-                    ColorPicker::new(&self.settings_controls.accent, zz_gpui::transparent_black())
+                    ColorPicker::new(&self.settings_controls.accent, ala::transparent_black())
                         .label("Accent")
                         .swatch(px(SWATCH));
                 let view = cx.entity().downgrade();
@@ -1120,7 +1120,7 @@ impl AppShell {
 fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
     use zz_ui::settings::about;
 
-    static LOGOS: std::sync::LazyLock<[Arc<zz_gpui::Image>; 2]> = std::sync::LazyLock::new(|| {
+    static LOGOS: std::sync::LazyLock<[Arc<ala::Image>; 2]> = std::sync::LazyLock::new(|| {
         let [light, dark]: [&'static [u8]; 2] = if zz_protocol::app_identity::DEVELOPMENT {
             [
                 include_bytes!("../../../../assets/zz-dev-light-512.png"),
@@ -1133,8 +1133,8 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
             ]
         };
         [light, dark].map(|bytes| {
-            Arc::new(zz_gpui::Image::from_bytes(
-                zz_gpui::ImageFormat::Png,
+            Arc::new(ala::Image::from_bytes(
+                ala::ImageFormat::Png,
                 bytes.to_vec(),
             ))
         })
@@ -1148,7 +1148,7 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
     let logo = Arc::clone(&LOGOS[usize::from(cx.theme().mode.is_dark())]);
     settings_scroll_column("settings-about")
         .child(about::about_hero(
-            zz_gpui::img(logo).size(px(about::ABOUT_LOGO_SIZE)),
+            ala::img(logo).size(px(about::ABOUT_LOGO_SIZE)),
             cx,
         ))
         .child(about::about_build_stack(
@@ -1157,7 +1157,7 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
                 .on(settings_card_ground(cx))
                 .on_click(move |_, window, cx| {
                     use zz_ui::WindowExt as _;
-                    cx.write_to_clipboard(zz_gpui::ClipboardItem::new_string(about::build_info(
+                    cx.write_to_clipboard(ala::ClipboardItem::new_string(about::build_info(
                         &copied,
                     )));
                     window.push_notification(
@@ -1196,7 +1196,7 @@ pub(super) fn finish_field(window: &mut Window, cx: &mut App) {
 
 /// The color the custom accent picker holds: a hex accent, or none while
 /// the accent is the theme's or a named one.
-fn custom_accent(preferences: &Preferences) -> Option<zz_gpui::Hsla> {
+fn custom_accent(preferences: &Preferences) -> Option<ala::Hsla> {
     preferences
         .overrides
         .accent
@@ -1241,7 +1241,7 @@ fn font_select(
     title: &'static str,
     placeholder: &'static str,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     div().w(px(200.0)).max_w_full().flex_none().child(
         Select::new(select)
             .title(title)
@@ -1260,7 +1260,7 @@ fn choice_select(
         .on(settings_card_ground(cx))
 }
 
-fn number_control(input: &Entity<InputState>, cx: &App) -> zz_gpui::Div {
+fn number_control(input: &Entity<InputState>, cx: &App) -> ala::Div {
     let width = if zz_ui::touch::CoarsePointer::get(cx) {
         110.0
     } else {
@@ -1282,7 +1282,7 @@ struct TerminalPreview {
     appearance: zz_terminal::TerminalAppearance,
 }
 
-impl zz_gpui::RenderOnce for TerminalPreview {
+impl ala::RenderOnce for TerminalPreview {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         use zz_ui::terminal::{
             RowRenderCache, TerminalRenderInput, terminal_background, terminal_font_for_style,
@@ -1312,7 +1312,7 @@ impl zz_gpui::RenderOnce for TerminalPreview {
         let probe = window.text_system().shape_line(
             "m".into(),
             font_size,
-            &[zz_gpui::TextRun {
+            &[ala::TextRun {
                 len: 1,
                 font: font.clone(),
                 color: cx.theme().foreground,
@@ -1594,11 +1594,9 @@ mod tests {
     }
 
     #[cfg(not(target_family = "wasm"))]
-    #[zz_gpui::test]
-    fn apply_draws_a_saved_theme_in_its_colors_materials_and_roles(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
-        use zz_gpui::{AppContext as _, px};
+    #[ala::test]
+    fn apply_draws_a_saved_theme_in_its_colors_materials_and_roles(cx: &mut ala::TestAppContext) {
+        use ala::{AppContext as _, px};
         use zz_ui::{ActiveTheme as _, ThemeMode};
 
         cx.update(zz_ui::init);

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, Hsla, IntoElement,
     ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, white,
 };
@@ -97,7 +97,7 @@ pub const STORY: Story = Story {
 
 const PHONE_WIDTH: f32 = 390.0;
 
-fn phone(content: impl IntoElement, cx: &App) -> zz_gpui::Div {
+fn phone(content: impl IntoElement, cx: &App) -> ala::Div {
     div()
         .w(px(PHONE_WIDTH))
         .bg(cx.theme().background)
@@ -660,9 +660,9 @@ impl Menus {
     fn from_pill(items: Vec<Vec<PillMenuItem>>, cx: &App) -> impl IntoElement {
         let placement = placement();
         let top = px(MENU_HEIGHT) - placement.zone() + placement.pill_top();
-        let close = zz_gpui::Bounds::new(
-            zz_gpui::point(placement.inset, top),
-            zz_gpui::size(
+        let close = ala::Bounds::new(
+            ala::point(placement.inset, top),
+            ala::size(
                 px(PHONE_WIDTH) - placement.inset * 2.0,
                 px(COMPACT_PILL_HEIGHT),
             ),
@@ -691,9 +691,9 @@ impl Render for Menus {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (x, y) = PREFIX_AT;
         let row_top = MENU_HEIGHT - KEY_ROW_HEIGHT;
-        let prefix = zz_gpui::Bounds::new(
-            zz_gpui::point(px(x), px(row_top + y)),
-            zz_gpui::size(px(PREFIX_SIZE), px(PREFIX_SIZE)),
+        let prefix = ala::Bounds::new(
+            ala::point(px(x), px(row_top + y)),
+            ala::size(px(PREFIX_SIZE), px(PREFIX_SIZE)),
         );
         states()
             .columns(2)
@@ -852,7 +852,7 @@ impl KeyRows {
         let armed = tool_keys(cx);
         armed.prefix.update(cx, |key, cx| key.set_armed(true, cx));
         let end = tool_keys(cx);
-        end.scroll.set_offset(zz_gpui::point(px(-1000.0), px(0.0)));
+        end.scroll.set_offset(ala::point(px(-1000.0), px(0.0)));
         Self {
             rest,
             armed,

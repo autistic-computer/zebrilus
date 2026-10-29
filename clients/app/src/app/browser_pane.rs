@@ -3,13 +3,13 @@ use std::{collections::VecDeque, rc::Rc, sync::Arc, time::Duration};
 use crate::ios_browser::{
     BrowserEvent, BrowserMount, BrowserProfile, BrowserView, ElementPickerAppearance,
 };
-use futures::StreamExt as _;
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, ClipboardEntry, ClipboardItem, ClipboardString, Context, Corners,
     ElementId, Entity, FocusHandle, Focusable, GlassMaterial, Hsla, Image, ImageFormat, Pixels,
     Render, RenderImage, Rgba, Subscription, TextInputMode, TouchDragEvent, TouchPhase, Window,
     canvas, div, point, prelude::*, px, size,
 };
+use futures::StreamExt as _;
 use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
 use zz_ui::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, ElementExt as _, Elevation, Icon,
@@ -46,7 +46,7 @@ struct Tab {
     picking: bool,
     held: bool,
     pick_status: Option<String>,
-    _events: zz_gpui::Task<()>,
+    _events: ala::Task<()>,
 }
 
 pub(super) struct BrowserPane {
@@ -76,11 +76,11 @@ pub(super) struct BrowserPane {
     radii: Corners<Pixels>,
     header_drag_handler: Option<Rc<dyn Fn(&PaneDrag, &mut Window, &mut App)>>,
     float_rows_handler: Option<Rc<dyn Fn(&App) -> Option<u16>>>,
-    header_touch_drag_handler: Option<Rc<dyn Fn(&zz_gpui::TouchDragEvent, &mut Window, &mut App)>>,
+    header_touch_drag_handler: Option<Rc<dyn Fn(&ala::TouchDragEvent, &mut Window, &mut App)>>,
     page_scroll_handler: Option<Rc<dyn Fn(f32, bool, &mut Window, &mut App)>>,
     notice_handler: Option<Rc<dyn Fn(&'static str, PillNotice, &mut Window, &mut App)>>,
     _subscriptions: Vec<Subscription>,
-    _backdrop_tick: zz_gpui::Task<()>,
+    _backdrop_tick: ala::Task<()>,
 }
 
 const BACKDROP_TICK: Duration = Duration::from_secs(1);
@@ -207,7 +207,7 @@ impl BrowserPane {
 
     pub(super) fn set_header_touch_drag_handler(
         &mut self,
-        handler: impl Fn(&zz_gpui::TouchDragEvent, &mut Window, &mut App) + 'static,
+        handler: impl Fn(&ala::TouchDragEvent, &mut Window, &mut App) + 'static,
     ) {
         self.header_touch_drag_handler = Some(Rc::new(handler));
     }
@@ -817,7 +817,7 @@ impl Focusable for BrowserPane {
 }
 
 impl BrowserPane {
-    fn tab_row(&self, writable: bool, cx: &mut Context<Self>) -> (BrowserTabStrip, zz_gpui::Div) {
+    fn tab_row(&self, writable: bool, cx: &mut Context<Self>) -> (BrowserTabStrip, ala::Div) {
         let tabs = self
             .tabs
             .iter()

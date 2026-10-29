@@ -1,6 +1,6 @@
 use std::{rc::Rc, sync::Arc};
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, ElementId, IntoElement, MouseButton, ParentElement as _, RenderOnce,
     SharedString, Styled as _, Window, div, prelude::*, px,
 };
@@ -152,7 +152,7 @@ impl RenderOnce for WhichKeyList {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use zz_gpui::{Context, Keystroke, Modifiers, Render, TestAppContext, VisualTestContext};
+    use ala::{Context, Keystroke, Modifiers, Render, TestAppContext, VisualTestContext};
 
     use super::*;
 
@@ -192,7 +192,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn rows_stack_by_group_and_a_tap_picks_the_key(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let picked = Rc::new(RefCell::new(Vec::new()));

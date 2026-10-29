@@ -6,7 +6,7 @@ use crate::{
     input::{Input, InputState},
     roles, v_flex,
 };
-use zz_gpui::{
+use ala::{
     AnimationElement, App, Div, ElementId, Entity, FULL_CORNER_RADIUS, FontWeight, MouseButton,
     Pixels, SharedString, Stateful, div, prelude::*, px, relative,
 };
@@ -16,7 +16,7 @@ const PICKER_ROW_HEIGHT: Pixels = px(26.0);
 /// pane picker, recent pages and answer options.
 pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
 const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
-pub use zz_gpui_kit::{list_row, muted_on, row_state, row_surface};
+pub use penna::{list_row, muted_on, row_state, row_surface};
 
 /// The radius of a surface drawn as `layer` whose rows sit `inset` inside
 /// it, so the two stay concentric. Square and pill shapes keep theirs.
@@ -62,7 +62,7 @@ pub fn picker_modal_sized(
         .overflow_hidden()
         .surface(roles::PICKER, cx)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
-    zz_gpui_kit::foundation::surface_enter(surface, (id, "picker-open"), px(0.0))
+    penna::foundation::surface_enter(surface, (id, "picker-open"), px(0.0))
 }
 
 pub fn picker_header(cx: &App) -> Div {

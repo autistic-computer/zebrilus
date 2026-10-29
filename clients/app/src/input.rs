@@ -1,4 +1,4 @@
-use zz_gpui::Keystroke;
+use ala::Keystroke;
 use zz_terminal::{KeyAction, KeyCode, KeyInput, Modifiers};
 
 pub fn key_input(keystroke: &Keystroke, action: KeyAction) -> KeyInput {
@@ -44,7 +44,7 @@ pub fn key_input(keystroke: &Keystroke, action: KeyAction) -> KeyInput {
 }
 
 #[must_use]
-pub fn wire_modifiers(modifiers: zz_gpui::Modifiers) -> Modifiers {
+pub fn wire_modifiers(modifiers: ala::Modifiers) -> Modifiers {
     Modifiers::new(
         modifiers.shift,
         modifiers.control,
@@ -54,11 +54,11 @@ pub fn wire_modifiers(modifiers: zz_gpui::Modifiers) -> Modifiers {
 }
 
 #[must_use]
-pub fn raw_key_bindings() -> [zz_gpui::KeyBinding; 4] {
+pub fn raw_key_bindings() -> [ala::KeyBinding; 4] {
     [
-        zz_gpui::KeyBinding::new("tab", zz_gpui::NoAction, Some("Terminal")),
-        zz_gpui::KeyBinding::new("shift-tab", zz_gpui::NoAction, Some("Terminal")),
-        zz_gpui::KeyBinding::new("tab", zz_gpui::NoAction, Some("PanePicker")),
-        zz_gpui::KeyBinding::new("shift-tab", zz_gpui::NoAction, Some("PanePicker")),
+        ala::KeyBinding::new("tab", ala::NoAction, Some("Terminal")),
+        ala::KeyBinding::new("shift-tab", ala::NoAction, Some("Terminal")),
+        ala::KeyBinding::new("tab", ala::NoAction, Some("PanePicker")),
+        ala::KeyBinding::new("shift-tab", ala::NoAction, Some("PanePicker")),
     ]
 }

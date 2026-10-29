@@ -1071,7 +1071,7 @@ window.storybook = {
     current: () => current,
     show: (story, section) => {
         show(story, section);
-        return globalThis.zzGpui?.idle();
+        return globalThis.ala?.idle();
     },
     setKnobs: (knobs) => {
         if ("interface-theme" in knobs) {
@@ -1091,7 +1091,7 @@ window.storybook = {
         }
         applyKnobs();
         remember();
-        return globalThis.zzGpui?.idle();
+        return globalThis.ala?.idle();
     },
     knobs: () => Object.fromEntries(KNOBS.map((name) => [name, knobValue(name)])),
     step: (name) => {
@@ -1104,20 +1104,20 @@ window.storybook = {
         setRoleProp(id, prop, value);
         applyKnobs();
         remember();
-        return globalThis.zzGpui?.idle();
+        return globalThis.ala?.idle();
     },
     inspect: (id) => {
         showStep("roles", false);
         roleTree = JSON.parse(zz.roles());
         selectRole(id || null, false);
-        return globalThis.zzGpui?.idle();
+        return globalThis.ala?.idle();
     },
     theme: () => JSON.parse(zz.theme_file()),
     importTheme: (theme) => {
         importTheme(typeof theme === "string" ? theme : JSON.stringify(theme));
         applyKnobs();
         remember();
-        return globalThis.zzGpui?.idle();
+        return globalThis.ala?.idle();
     },
     themes: () => themes,
     glassPresets: () => glassPresets,

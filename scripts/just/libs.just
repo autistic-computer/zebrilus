@@ -4,20 +4,20 @@ set working-directory := "../.."
 
 org := "git@github.com:autistic-computer"
 
-# Lint and test a lib (gpui|kit) on its own, the way its repo's CI does, against the gpui in libs/.
+# Lint and test a lib (ala|penna) on its own, the way its repo's CI does, against the ala in libs/.
 check lib:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{ lib }}" in
-        gpui) args=(--workspace) ;;
-        kit) args=(--config "patch.\"https://github.com/autistic-computer/gpui\".zz-gpui.path=\"$PWD/libs/gpui/crates/zz-gpui\"") ;;
-        *) echo "unknown lib: {{ lib }} (expected: gpui|kit)" >&2; exit 2 ;;
+        ala) args=(--workspace) ;;
+        penna) args=(--config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"") ;;
+        *) echo "unknown lib: {{ lib }} (expected: ala|penna)" >&2; exit 2 ;;
     esac
     cargo clippy --manifest-path libs/{{ lib }}/Cargo.toml "${args[@]}" --all-targets --all-features -- -D warnings
-    if [[ "{{ lib }}" == gpui ]]; then
-        cargo test --manifest-path libs/gpui/Cargo.toml --workspace --all-features --exclude zz-gpui-platform
+    if [[ "{{ lib }}" == ala ]]; then
+        cargo test --manifest-path libs/ala/Cargo.toml --workspace --all-features --exclude ala-platform
     else
-        cargo test --manifest-path libs/kit/Cargo.toml "${args[@]}" --all-features
+        cargo test --manifest-path libs/penna/Cargo.toml "${args[@]}" --all-features
     fi
 
 # Push zz's commits under libs/<lib> to autistic-computer/<lib> main.

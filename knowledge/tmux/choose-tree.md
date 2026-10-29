@@ -22,7 +22,7 @@ On desktop, `choose-tree -s` and `choose-tree -w` open the
 expanded sessions with the current window selected. Sessions expand to windows, windows expand
 to panes, and rows at all three levels remain selectable. Requests with `ChooseTreeKind::Panes`
 or `ChooseTreeKind::Clients`, plus `choose-buffer` with at least one stored buffer, retain their
-dedicated GPUI overlays.
+dedicated ala overlays.
 
 The palette retains daemon source indices and custom row text. Enter activates the selected
 source index, and dismissal closes the daemon chooser, preserving command templates and zoom
@@ -133,7 +133,7 @@ a `depth`, an optional `pane_kind` (`ChooseTreePaneKind::Terminal`/`Browser`/`Ag
 | Search | `SearchStart{reverse}`, `SearchAppend`, `SearchBackspace`, `SearchAccept`, `SearchCancel`, `SearchNext{reverse}` |
 | Exit | `Close` |
 
-In the dedicated pane/client GPUI overlay these map to: arrow keys or `hjkl` navigate and
+In the dedicated pane/client ala overlay these map to: arrow keys or `hjkl` navigate and
 collapse/expand, Enter or double-click activates, `/` and `?` search, `n`/`N` repeat the search,
 and `q`/Escape closes. The Navigate palette uses its Input for search and Left/Right for tree
 navigation, while preserving the daemon activation and close actions described above.

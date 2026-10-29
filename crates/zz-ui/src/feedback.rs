@@ -7,7 +7,7 @@ use crate::{
     overlay::{dialog_description, dialog_footer, dialog_title},
     rems_from_px, roles, v_flex,
 };
-use zz_gpui::{
+use ala::{
     App, Div, Entity, ParentElement as _, SharedString, Styled as _, div,
     prelude::FluentBuilder as _, px,
 };

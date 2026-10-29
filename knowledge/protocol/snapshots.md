@@ -15,7 +15,7 @@ materializes from its initial state, tree deltas and per-client view.
 The snapshot carries *structure and metadata* (layout, titles, active/zoomed panes, pane kind). It
 deliberately does **not** carry terminal cell contents, which stream separately over the
 [packed terminal lanes](/protocol/terminal-lanes.md). A monotonically increasing `generation` counter
-lets clients detect staleness. The [GPUI app](/crates/zz.md) reconciles this tree into live pane
+lets clients detect staleness. The [ala app](/crates/zz.md) reconciles this tree into live pane
 entities, reusing them by stable [`PaneId`](/protocol/ids.md).
 
 # When it is produced and consumed
@@ -82,7 +82,7 @@ failures. Respawn clears both without changing the pane id or layout leaf. `bord
 `pane-active-border-style` colour overrides; `None` means no tmux override and `TmuxColour::Rgb` values
 above `0xFFFFFF` are rejected on decode. Since Wave C run 3 (2026-08-22) the daemon resolves the
 explicit values pane → window → global during personalized snapshot stamping (formats expanded in the
-pane's context) and publishes the style's fg colour. The raw TUI consumes both fields. The GPUI client
+pane's context) and publishes the style's fg colour. The raw TUI consumes both fields. The ala client
 ignores them because pane borders and separators belong to its local chrome theme. With the options
 unset both fields stay `None`. `BrowserDescriptor.tabs`
 is the strip in order (never empty in the type's contract; `url()` returns the active tab or
@@ -327,7 +327,7 @@ An Editor pane carries the file it reopens:
 - Carried by [the wire protocol](/protocol/wire-protocol.md) (`Attached`, `Event`/`Snapshot`, `Resync`).
 - Part of [the zz-protocol crate](/crates/zz-protocol.md); identifiers from [stable IDs](/protocol/ids.md).
 - Built by [the mux state machine](/crates/zz-mux.md), served by [zz-daemon](/crates/zz-daemon.md),
-  reconciled by [the GPUI app](/crates/zz.md).
+  reconciled by [the ala app](/crates/zz.md).
 - Layout details: [split-pane layout](/concepts/split-pane-layout.md); durability:
   [session persistence](/concepts/session-persistence.md).
 - Cell contents stream separately via [packed terminal lanes](/protocol/terminal-lanes.md).

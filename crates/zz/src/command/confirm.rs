@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     App, Context, Entity, FocusHandle, Focusable, IntoElement, KeyDownEvent, Keystroke, Render,
     Window, prelude::*,
 };
@@ -68,7 +68,7 @@ fn confirm_accepts(state: &ConfirmState, keystroke: &Keystroke) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::Modifiers;
+    use ala::Modifiers;
 
     use super::*;
 

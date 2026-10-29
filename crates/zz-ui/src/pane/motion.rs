@@ -4,12 +4,12 @@ use std::{
     rc::Rc,
 };
 
-use web_time::Instant;
-use zz_gpui::{
+use ala::{
     AnyElement, App, AvailableSpace, Bounds, Element, ElementId, GlobalElementId,
     InspectorElementId, IntoElement, LayoutId, Pixels, Point, Size, SpringConfig, SpringState,
     Style, Window, point, px, relative, size,
 };
+use web_time::Instant;
 use zz_protocol::{PaneId, WindowId};
 
 const SPRING: SpringConfig = SpringConfig::new(784.0, 56.0, 1.0);

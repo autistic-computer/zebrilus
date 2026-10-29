@@ -1,14 +1,14 @@
 use crate::connection::Connection;
+use ala::{
+    AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
+    MouseButton, Pixels, Render, Window, div, prelude::*, px,
+};
 use zz_client::{
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place,
         folder_start, recent_folders, start_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
-};
-use zz_gpui::{
-    AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
-    MouseButton, Pixels, Render, Window, div, prelude::*, px,
 };
 use zz_protocol::PaneId;
 use zz_ui::{
@@ -328,7 +328,7 @@ impl PanePicker {
     }
 }
 
-impl zz_gpui::EventEmitter<ChooseFolder> for PanePicker {}
+impl ala::EventEmitter<ChooseFolder> for PanePicker {}
 
 impl Focusable for PanePicker {
     fn focus_handle(&self, _: &App) -> FocusHandle {

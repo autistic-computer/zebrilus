@@ -12,6 +12,13 @@ use std::{
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use std::sync::Arc;
 
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use ala::{
+    App, Bounds, Context, ObjectFit, Render, RenderImage, Window, WindowBounds, WindowOptions, div,
+    external_texture, img, prelude::*, px, size,
+};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use ala_platform::application;
 use env_logger::{Builder, Env, WriteStyle};
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use image::{Frame as ImageFrame, ImageBuffer, Rgba};
@@ -27,13 +34,6 @@ use zz_browser::{
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use zz_browser::{BrowserGpuContext, OsrFrame, SessionId};
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use zz_gpui::{
-    App, Bounds, Context, ObjectFit, Render, RenderImage, Window, WindowBounds, WindowOptions, div,
-    external_texture, img, prelude::*, px, size,
-};
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use zz_gpui_platform::application;
 
 const DEFAULT_PORT: u16 = 9324;
 const DEFAULT_SPIKE_SECONDS: u64 = 10;
@@ -70,7 +70,7 @@ const INDEX_HTML: &str = r#"<!doctype html>
   </style>
 </head>
 <body>
-  <header><h1>zz Chromium + GPUI proof</h1><div id="launch">Loading persistent state…</div></header>
+  <header><h1>zz Chromium + ala proof</h1><div id="launch">Loading persistent state…</div></header>
   <main>
     <section class="proof" aria-label="BGRA color proof"><div class="red"></div><div class="green"></div><div class="blue"></div></section>
     <section class="card">
@@ -696,7 +696,7 @@ fn launch_shared_texture_spike(seconds: u64, port: u16) -> ExitCode {
     };
     println!("zz shared-texture spike: setting ZZ_BROWSER_GPU=1 and ZZ_BROWSER_SHARED_TEXTURE=1");
     println!(
-        "the fixture will paint GPU mailbox frames through GPUI and report readback fallback separately"
+        "the fixture will paint GPU mailbox frames through ala and report readback fallback separately"
     );
     match Command::new(executable)
         .arg(INTERNAL_SHARED_TEXTURE_SPIKE_FLAG)
@@ -774,7 +774,7 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
             move |window, cx| {
                 let gpu = window
                     .wgpu_device_context()
-                    .expect("the shared-texture fixture requires GPUI's wgpu renderer");
+                    .expect("the shared-texture fixture requires ala's wgpu renderer");
                 let gpu = BrowserGpuContext::new(gpu.device, gpu.queue);
                 cx.new(|_| {
                     SharedTextureSpikeView::new(runtime, gpu, url, duration, outcome_for_view)
@@ -789,7 +789,7 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
     outcome
         .lock()
         .take()
-        .unwrap_or_else(|| Err("the GPUI fixture exited before recording a result".to_owned()))
+        .unwrap_or_else(|| Err("the ala fixture exited before recording a result".to_owned()))
 }
 
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
@@ -808,7 +808,7 @@ enum FixturePaintSurface {
         device_size: (u32, u32),
         pool_generation: u64,
         sequence: u64,
-        texture: zz_gpui::wgpu::Texture,
+        texture: ala::wgpu::Texture,
     },
 }
 
@@ -1254,7 +1254,7 @@ impl Render for SharedTextureSpikeView {
         self.record_paint_submission();
         window.request_animation_frame();
 
-        let content = div().size_full().bg(zz_gpui::rgb(0x10_13_18));
+        let content = div().size_full().bg(ala::rgb(0x10_13_18));
         match self.surface.as_ref() {
             Some(FixturePaintSurface::OwnedBgra { image, .. }) => {
                 content.child(img(image.clone()).object_fit(ObjectFit::Fill).size_full())
@@ -1270,7 +1270,7 @@ impl Render for SharedTextureSpikeView {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_color(zz_gpui::rgb(0xe8_ee_f7))
+                    .text_color(ala::rgb(0xe8_ee_f7))
                     .child("Waiting for the first CEF frame…"),
             ),
         }
@@ -1329,7 +1329,7 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
     let signals = runtime.signals();
     let mut fixture_observations = FixtureObservations::default();
     println!(
-        "observing accelerated-paint callbacks for {:.3} seconds (GPUI external textures are unavailable on this platform)",
+        "observing accelerated-paint callbacks for {:.3} seconds (ala external textures are unavailable on this platform)",
         duration.as_secs_f64()
     );
     let mut site_controls_verified = false;

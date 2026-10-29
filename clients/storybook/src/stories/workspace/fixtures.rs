@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use zz_client::StatusBarPane;
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Corners, ElementId, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, Stateful, Styled as _, Window, div, px,
 };
@@ -107,7 +107,7 @@ pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
         .frame(gaps.then(|| cx.theme().pane_frame(cx.theme().background, active)))
 }
 
-pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> zz_gpui::Div {
+pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> ala::Div {
     let theme = cx.theme();
     div()
         .flex()
@@ -146,7 +146,7 @@ pub fn placeholder_body(
     title: impl Into<SharedString>,
     detail: impl Into<SharedString>,
     cx: &App,
-) -> zz_gpui::Div {
+) -> ala::Div {
     div()
         .flex()
         .flex_col()
@@ -215,7 +215,7 @@ impl TerminalPane {
         scope: impl Into<ElementId>,
         overlays: Vec<AnyElement>,
         cx: &App,
-    ) -> Stateful<zz_gpui::Div> {
+    ) -> Stateful<ala::Div> {
         let radii = radii(self.gaps, cx);
         let header = terminal_pane_header(
             self.active,
@@ -269,7 +269,7 @@ pub fn placeholder_pane(
     gaps: bool,
     overlays: Vec<AnyElement>,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     pane_surface(
         scope,
         placeholder_body(icon, title, detail, cx).rounded(radii(gaps, cx).top_left),

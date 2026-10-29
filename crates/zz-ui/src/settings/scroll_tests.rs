@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AppContext as _, Context, Div, InteractiveElement as _, IntoElement, ParentElement as _,
     Render, ScrollDelta, ScrollWheelEvent, Styled as _, TestAppContext, VisualTestContext, Window,
     div, point, px,
@@ -37,7 +37,7 @@ impl Render for WrappedTextTest {
                     .child(
                         div()
                             .text_size(crate::rems_from_px(10.))
-                            .child(zz_gpui::SharedString::from("word ".repeat(60))),
+                            .child(ala::SharedString::from("word ".repeat(60))),
                     )
                     .child(row("wrapped-text-tail", 20.)),
             ),
@@ -46,8 +46,8 @@ impl Render for WrappedTextTest {
 }
 
 struct SettingsPageReplicaTest {
-    pickers: Vec<zz_gpui::Entity<crate::color_picker::ColorPickerState>>,
-    numbers: Vec<zz_gpui::Entity<crate::input::InputState>>,
+    pickers: Vec<ala::Entity<crate::color_picker::ColorPickerState>>,
+    numbers: Vec<ala::Entity<crate::input::InputState>>,
 }
 
 impl Render for SettingsPageReplicaTest {
@@ -64,7 +64,7 @@ impl Render for SettingsPageReplicaTest {
                         super::SettingsStack::titled("Theme").children(self.pickers.iter().map(
                             |picker| {
                                 super::SettingEntry::new("Background").control(
-                                    crate::color_picker::ColorPicker::new(picker, zz_gpui::black()),
+                                    crate::color_picker::ColorPicker::new(picker, ala::black()),
                                 )
                             },
                         )),
@@ -101,7 +101,7 @@ impl Render for SettingsPageReplicaTest {
     }
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn settings_page_scroll_range_matches_content(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (_, cx) = cx.add_window_view(|window, cx| SettingsPageReplicaTest {
@@ -125,7 +125,7 @@ fn settings_page_scroll_range_matches_content(cx: &mut TestAppContext) {
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn scroll_range_measures_wrapped_text_at_layout_width(cx: &mut TestAppContext) {
     cx.update(crate::init);
     let (_, cx) = cx.add_window_view(|_, _| WrappedTextTest);
@@ -197,12 +197,12 @@ fn large_title_folds(cx: &mut TestAppContext, virtual_rows: bool) {
     );
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_scrolled_page_folds_its_large_title_into_the_bar(cx: &mut TestAppContext) {
     large_title_folds(cx, false);
 }
 
-#[zz_gpui::test]
+#[ala::test]
 fn a_scrolled_virtual_page_folds_its_large_title_into_the_bar(cx: &mut TestAppContext) {
     large_title_folds(cx, true);
 }

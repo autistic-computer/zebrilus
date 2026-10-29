@@ -1,13 +1,13 @@
 use std::{ops::Range, rc::Rc};
 
-use zz_client::{
-    AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
-    navigation::session_label, pane_rects, window_summary::summarize_window,
-};
-use zz_gpui::{
+use ala::{
     AnyElement, App, Bounds, Context, Entity, Font, Hsla, PaintScaleExt as _, ParentElement as _,
     Pixels, ScrollDelta, ScrollWheelEvent, Size, StyledText, TextRun, Window, canvas, div, font,
     linear_color_stop, linear_gradient, point, prelude::*, px, size,
+};
+use zz_client::{
+    AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
+    navigation::session_label, pane_rects, window_summary::summarize_window,
 };
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
@@ -121,7 +121,7 @@ fn zoom_fade(at: f32) -> f32 {
     ((at - ZOOM_FADE_START) / ZOOM_FADE_SPAN).clamp(0.0, 1.0)
 }
 
-pub(super) fn zoom_layers(parent: AnyElement, child: AnyElement, zoom: &Zoom) -> zz_gpui::Div {
+pub(super) fn zoom_layers(parent: AnyElement, child: AnyElement, zoom: &Zoom) -> ala::Div {
     let progress = zoom.progress.clamp(0.0, 1.0);
     let width = zoom.stage.width;
     let height = zoom.stage.height;

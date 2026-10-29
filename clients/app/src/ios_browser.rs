@@ -12,6 +12,7 @@ use std::{
     sync::Arc,
 };
 
+use ala::{Bounds, Pixels, Point, RenderImage, Window};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use objc::{
     class,
@@ -22,14 +23,13 @@ use objc::{
 };
 use raw_window_handle::RawWindowHandle;
 use zz_daemon_client::InteractiveClient;
-use zz_gpui::{Bounds, Pixels, Point, RenderImage, Window};
 
+use ala_platform::ios::{
+    CGPoint, CGRect, CGSize, id, nil, ns_array, ns_string, nsstring_to_string,
+};
 pub use zz_client::element_picker::ElementPickerAppearance;
 use zz_client::element_picker::{
     ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
-};
-use zz_gpui_platform::ios::{
-    CGPoint, CGRect, CGSize, id, nil, ns_array, ns_string, nsstring_to_string,
 };
 
 const OBSERVED: &[&str] = &["URL", "title", "loading", "canGoBack", "canGoForward"];

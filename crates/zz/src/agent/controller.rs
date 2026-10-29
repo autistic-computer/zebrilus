@@ -7,8 +7,8 @@ use std::{
 use agent_client_protocol::schema::v1::{
     PermissionOption, SessionUpdate, StopReason, ToolCallUpdate,
 };
+use ala::{App, Context, Entity, Image, ImageFormat, Task};
 use zz_daemon::{AgentPromptOutcome, AgentStreamItem, AgentStreamPayload};
-use zz_gpui::{App, Context, Entity, Image, ImageFormat, Task};
 use zz_protocol::chat::ChatView;
 use zz_protocol::{
     AgentConnectionPhase, AgentGitSummary, AgentPaneWire, AgentProvider, AgentQuestionAnswer,
@@ -1214,7 +1214,7 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
     use zz_protocol::{MAX_AGENT_PERMISSION_OPTIONS, MAX_AGENT_TOOL_CONTENT_ITEMS};
 
-    use zz_gpui::{AppContext as _, TestAppContext};
+    use ala::{AppContext as _, TestAppContext};
 
     use super::*;
 
@@ -1934,7 +1934,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn chat_events_fold_into_the_pane_chat_and_a_restart_clears_it(cx: &mut TestAppContext) {
         use zz_protocol::chat::{ChatEvent, TurnBy, TurnId};
         let (controller, _sink) = proxy_controller(cx);
@@ -1978,7 +1978,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn stream_items_reduce_exactly_as_the_runtime_events_did(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(3);
@@ -2105,7 +2105,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn restored_prompts_only_refill_their_owners_composer(cx: &mut TestAppContext) {
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(4);
@@ -2156,7 +2156,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_item_the_client_cannot_re_type_is_dropped_without_stalling_the_cursor(
         cx: &mut TestAppContext,
     ) {
@@ -2194,7 +2194,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_unknown_update_between_two_known_ones_only_skips_itself(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(40);
@@ -2226,7 +2226,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_replay_over_a_surviving_transcript_reduces_each_item_once(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(44);
@@ -2263,7 +2263,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn submitted_and_queued_user_messages_survive_session_switch_replay(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(44);
@@ -2306,7 +2306,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_unknown_update_mid_message_does_not_break_its_coalescing(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(41);
@@ -2334,7 +2334,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_batch_of_only_unknown_updates_advances_the_cursor(cx: &mut TestAppContext) {
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(42);
@@ -2377,7 +2377,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_restored_session_replays_around_updates_this_build_cannot_read(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(43);
@@ -2452,7 +2452,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn published_pane_state_drives_the_composer_and_the_wizard(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(5);
@@ -2540,7 +2540,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_turn_the_agent_starts_on_its_own_ends_when_the_daemon_is_ready(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(5);
@@ -2619,7 +2619,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_question_card_answers_through_its_own_request(cx: &mut TestAppContext) {
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(8);
@@ -2679,7 +2679,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn published_tasks_and_a_parked_card_reach_the_pane(cx: &mut TestAppContext) {
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(9);
@@ -2745,7 +2745,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn subagent_tool_rows_resolve_to_their_agents_entry(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(10);
@@ -2789,7 +2789,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn ordered_state_sync_wins_after_a_synthesized_replay(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(16);
@@ -2832,7 +2832,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn nonfatal_wire_error_survives_the_ordered_ready_state(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(21);
@@ -2864,7 +2864,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn fatal_state_fails_inflight_tools(cx: &mut TestAppContext) {
         let (controller, _sink) = proxy_controller(cx);
         let pane = PaneId(22);
@@ -2899,7 +2899,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_prompt_reaches_the_wire_with_normalized_attachments(cx: &mut TestAppContext) {
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(6);
@@ -2924,11 +2924,11 @@ mod tests {
                     }],
                 }
             )],
-            "the daemon receives bytes plus format, never a zz_gpui image"
+            "the daemon receives bytes plus format, never a ala image"
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_prompt_typed_mid_turn_is_queued_by_the_daemon(cx: &mut TestAppContext) {
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(7);
@@ -2966,7 +2966,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_zz_command_opens_no_turn_and_joins_no_queue(cx: &mut TestAppContext) {
         let (controller, sink) = proxy_controller(cx);
         let pane = PaneId(7);

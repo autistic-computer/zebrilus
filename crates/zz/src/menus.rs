@@ -1,8 +1,8 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 #[cfg(target_os = "macos")]
-use zz_gpui::SystemMenuType;
-use zz_gpui::{App, Entity, Global, Menu, MenuItem, OsAction};
+use ala::SystemMenuType;
+use ala::{App, Entity, Global, Menu, MenuItem, OsAction};
 
 #[cfg(target_os = "macos")]
 use crate::macos_app::{Hide, HideOthers, Minimize, Quit, ShowAll, Zoom};
@@ -15,7 +15,7 @@ use crate::{
     workspace::ClosePane,
 };
 
-zz_gpui::actions!(
+ala::actions!(
     zz,
     [
         NewSession,
@@ -50,24 +50,24 @@ zz_gpui::actions!(
 );
 
 #[cfg(not(target_os = "macos"))]
-zz_gpui::actions!(zz, [Quit]);
+ala::actions!(zz, [Quit]);
 
 #[allow(clippy::unsafe_derive_deserialize)]
-#[derive(Clone, Debug, zz_gpui::Action, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, ala::Action, PartialEq, Eq, serde::Deserialize)]
 #[action(namespace = zz, no_json)]
 pub(crate) struct SwitchSession {
     pub(crate) name: String,
 }
 
 #[allow(clippy::unsafe_derive_deserialize)]
-#[derive(Clone, Debug, zz_gpui::Action, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, ala::Action, PartialEq, Eq, serde::Deserialize)]
 #[action(namespace = zz, no_json)]
 pub(crate) struct SelectPane {
     pub(crate) direction: String,
 }
 
 #[allow(clippy::unsafe_derive_deserialize)]
-#[derive(Clone, Debug, zz_gpui::Action, PartialEq, Eq, serde::Deserialize)]
+#[derive(Clone, Debug, ala::Action, PartialEq, Eq, serde::Deserialize)]
 #[action(namespace = zz, no_json)]
 pub(crate) struct OpenUrl {
     pub(crate) url: String,
@@ -248,14 +248,12 @@ fn open_url(label: &str, url: &str) -> MenuItem {
 
 #[cfg(test)]
 mod tests {
-    use zz_gpui::AppContext as _;
+    use ala::AppContext as _;
 
     use super::*;
 
-    #[zz_gpui::test]
-    fn session_menu_follows_replaced_snapshots_and_empty_workspaces(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    #[ala::test]
+    fn session_menu_follows_replaced_snapshots_and_empty_workspaces(cx: &mut ala::TestAppContext) {
         let mux = cx.new(|cx| {
             MuxClient::new(
                 Err(zz_daemon_client::DaemonError::Thread(

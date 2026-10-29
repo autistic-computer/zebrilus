@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 
-use zz_gpui::{BoxShadow, GlassMaterial, Hsla};
+use ala::{BoxShadow, GlassMaterial, Hsla};
 
 use crate::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Colorize as _, Elevation, Emphasis, Ground, Kind,
@@ -290,7 +290,7 @@ fn write_root(css: &mut String, theme: &Theme) {
     };
     #[allow(
         clippy::disallowed_methods,
-        reason = "the scrollbar thumb, washed from the ink as zz-gpui-kit's scroll::thumb_color does"
+        reason = "the scrollbar thumb, washed from the ink as penna's scroll::thumb_color does"
     )]
     let thumb = theme.foreground.wash();
     let mono = theme.mono_font_family.as_ref();

@@ -1,4 +1,4 @@
-use zz_gpui::{AppContext as _, Context, Entity, Window};
+use ala::{AppContext as _, Context, Entity, Window};
 use zz_protocol::{PaneId, SessionId};
 
 use super::{AppShell, compact, floating, sidebar, watch_connection};

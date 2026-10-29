@@ -32,14 +32,14 @@ use crate::{
     },
     v_flex,
 };
-use parking_lot::RwLock;
-use presentation::{spinner, spinner_phase};
-use zz_gpui::{
+use ala::{
     AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, EntityId, FollowMode,
     FontWeight, Global, Hsla, Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior,
     ListState, ObjectFit, Pixels, RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas,
     div, img, list, prelude::*, px, relative,
 };
+use parking_lot::RwLock;
+use presentation::{spinner, spinner_phase};
 
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
@@ -893,7 +893,7 @@ pub fn agent_jump_to_bottom_button(id: impl Into<ElementId>, cx: &App) -> Button
 /// instead of teleporting to it on every streamed token.
 ///
 /// The pin belongs to the caller, not to the list, so [`FollowMode::Tail`]
-/// stays off unless reduced motion is on — zz-gpui's tail mode both snaps on every
+/// stays off unless reduced motion is on — ala's tail mode both snaps on every
 /// layout and re-engages itself from scroll *position*, which would make a
 /// deliberate scroll-up impossible to hold while the agent is still writing.
 pub struct TimelineStick {
@@ -1176,7 +1176,7 @@ impl AgentTimeline {
     }
 }
 
-impl zz_gpui::RenderOnce for AgentTimeline {
+impl ala::RenderOnce for AgentTimeline {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let rows = self.rows;
         let store = self.store;
@@ -1791,7 +1791,7 @@ fn render_notice(
 
 /// One attachment in the composer as a `side`-square tile that opens a full
 /// view when clicked. The size is definite whatever was pasted, so layout
-/// never consults the image; the bytes are hash-keyed in zz-gpui's asset
+/// never consults the image; the bytes are hash-keyed in ala's asset
 /// cache, so decoding is shared.
 pub fn agent_attachment_thumbnail(
     id: impl Into<ElementId>,
@@ -2050,7 +2050,7 @@ fn activity_row_marked(
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .when_some(mark.label_color, zz_gpui::Styled::text_color)
+                .when_some(mark.label_color, ala::Styled::text_color)
                 .child(single_line(label)),
         )
         .when_some(mark.detail, |this, detail| {
@@ -2159,7 +2159,7 @@ fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> 
                 .border_color(ground.fill)
                 .text_size(crate::rems_from_px(8.5))
                 .line_height(px(TRACE_COUNT_BADGE - 2.0 * TRACE_COUNT_RING))
-                .font_weight(zz_gpui::FontWeight::SEMIBOLD)
+                .font_weight(ala::FontWeight::SEMIBOLD)
                 .child(count.count.to_string()),
         )
         .tooltip(move |window, cx| crate::tooltip::Tooltip::new(tooltip.clone()).build(window, cx))
@@ -2183,8 +2183,7 @@ fn shown_on_hover(group: &'static str, cx: &App) -> Div {
     div()
         .flex_none()
         .when(!crate::touch::CoarsePointer::get(cx), |slot| {
-            slot.invisible()
-                .group_hover(group, zz_gpui::Styled::visible)
+            slot.invisible().group_hover(group, ala::Styled::visible)
         })
 }
 
@@ -2252,7 +2251,7 @@ fn rewind_button(id: u64, rewind: &TimelineRewind, message_id: SharedString, cx:
         .flex_none()
         .invisible()
         .when(rewind.enabled, |slot| {
-            slot.group_hover(USER_ENTRY_GROUP, zz_gpui::Styled::visible)
+            slot.group_hover(USER_ENTRY_GROUP, ala::Styled::visible)
         })
         .child(
             message_action(
@@ -2453,7 +2452,7 @@ struct AgentMarkdownView {
     truncated: bool,
 }
 
-impl zz_gpui::RenderOnce for AgentMarkdownView {
+impl ala::RenderOnce for AgentMarkdownView {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let owner = self.owner;
         let state_id = self.state.entity_id();
@@ -2519,7 +2518,7 @@ pub struct AgentHtmlLive {
 pub struct HtmlLiveBlock {
     pub block: u64,
     pub html: String,
-    pub size: zz_gpui::Size<Pixels>,
+    pub size: ala::Size<Pixels>,
     pub owner: Option<u64>,
 }
 
@@ -2753,7 +2752,7 @@ impl HtmlPreviewState {
         self.result = HtmlPreviewResult::Waiting;
         let source = html_block_page(code, head);
         let delay = cx.background_executor().timer(FIGURE_RENDER_DEBOUNCE);
-        self._task = Some(cx.spawn(async move |this: zz_gpui::WeakEntity<Self>, cx| {
+        self._task = Some(cx.spawn(async move |this: ala::WeakEntity<Self>, cx| {
             delay.await;
             let Ok(Some(render)) = this.update(cx, |_, cx| {
                 cx.try_global::<AgentHtmlPreviewer>()
@@ -2848,7 +2847,7 @@ fn agent_code_block_body(
         HtmlPreviewResult::Ready(image, scale) => {
             let size = image.size(0);
             let scale = scale.max(1.0);
-            let picture = zz_gpui::size(
+            let picture = ala::size(
                 px(size.width.0 as f32 / scale),
                 px(size.height.0 as f32 / scale),
             );
@@ -3638,7 +3637,7 @@ impl MermaidThemeColors {
 }
 
 fn mermaid_font_family(font_family: &str) -> String {
-    let mapped = zz_gpui::font_name_with_fallbacks(font_family, "system-ui");
+    let mapped = ala::font_name_with_fallbacks(font_family, "system-ui");
     let sanitized = mapped
         .chars()
         .filter(|character| !matches!(character, ';' | '{' | '}'))
@@ -3866,7 +3865,7 @@ impl FigureRenderState {
         let theme = MermaidTheme::from_app(cx);
         let svg_renderer = cx.svg_renderer();
         let delay = cx.background_executor().timer(FIGURE_RENDER_DEBOUNCE);
-        let task = cx.spawn(async move |this: zz_gpui::WeakEntity<Self>, cx| {
+        let task = cx.spawn(async move |this: ala::WeakEntity<Self>, cx| {
             delay.await;
             let result = cx
                 .background_spawn(async move {
@@ -4024,9 +4023,7 @@ mod workspace_link_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zz_gpui::{
-        Render, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point,
-    };
+    use ala::{Render, ScrollDelta, ScrollWheelEvent, TestAppContext, VisualTestContext, point};
 
     struct EmptyAgentTimelineTest {
         store: Entity<AgentTimelineStore>,
@@ -4069,7 +4066,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let timeline = AgentTimeline::new(
                 Arc::new(vec![TimelineRow::Single(self.entry.clone())]),
-                ListState::new(1, zz_gpui::ListAlignment::Top, px(600.0)),
+                ListState::new(1, ala::ListAlignment::Top, px(600.0)),
                 self.store.clone(),
             )
             .active_turn(self.active_turn);
@@ -4087,7 +4084,7 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             AgentTimeline::new(
                 Arc::new(Vec::new()),
-                ListState::new(0, zz_gpui::ListAlignment::Top, px(0.0)),
+                ListState::new(0, ala::ListAlignment::Top, px(0.0)),
                 self.store.clone(),
             )
         }
@@ -4466,13 +4463,13 @@ mod tests {
         fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             div().w(px(520.0)).h(px(600.0)).child(AgentTimeline::new(
                 self.rows.clone(),
-                ListState::new(self.rows.len(), zz_gpui::ListAlignment::Top, px(600.0)),
+                ListState::new(self.rows.len(), ala::ListAlignment::Top, px(600.0)),
                 self.store.clone(),
             ))
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_turn_shows_one_trace_line_until_opened(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let rows = fold_timeline_rows(&[
@@ -4515,7 +4512,7 @@ mod tests {
             "the answer stays out"
         );
 
-        cx.simulate_click(trace.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(trace.center(), ala::Modifiers::none());
         cx.run_until_parked();
         cx.update(|window, cx| {
             _ = window.draw(cx);
@@ -4527,7 +4524,7 @@ mod tests {
         assert!(steps.top() >= trace.bottom());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_svg_block_renders_as_a_figure(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let answer = "Here:\n\n```svg\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"80\" height=\"40\"><rect width=\"80\" height=\"40\" fill=\"red\"/></svg>\n```\n";
@@ -4555,7 +4552,7 @@ mod tests {
         assert_eq!(figure.size.height, px(40.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_html_block_opens_as_a_page_when_the_app_can_show_one(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let opened = Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
@@ -4576,7 +4573,7 @@ mod tests {
             let language = cx
                 .debug_bounds("agent-code-language")
                 .expect("the html block is painted");
-            cx.simulate_mouse_move(language.center(), None, zz_gpui::Modifiers::none());
+            cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
             cx.update(|window, cx| {
                 _ = window.draw(cx);
             });
@@ -4599,13 +4596,13 @@ mod tests {
         let open = cx
             .debug_bounds("agent-code-open")
             .expect("an html block offers Open");
-        cx.simulate_click(open.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(open.center(), ala::Modifiers::none());
         cx.run_until_parked();
 
         assert_eq!(opened.borrow().as_slice(), ["<p>hi</p>"]);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_html_block_previews_as_a_picture_when_toggled(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let asked = Rc::new(std::cell::RefCell::new(
@@ -4641,13 +4638,13 @@ mod tests {
         let language = cx
             .debug_bounds("agent-code-language")
             .expect("the html block is painted");
-        cx.simulate_mouse_move(language.center(), None, zz_gpui::Modifiers::none());
+        cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
         draw(cx);
         let toggle = cx
             .debug_bounds("agent-code-preview")
             .expect("an html block offers Preview");
         assert!(cx.debug_bounds("agent-html-preview").is_none());
-        cx.simulate_click(toggle.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(toggle.center(), ala::Modifiers::none());
         draw(cx);
         draw(cx);
         cx.executor().advance_clock(FIGURE_RENDER_DEBOUNCE);
@@ -4664,7 +4661,7 @@ mod tests {
         assert!(picture.size.width > px(0.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_preview_block_shows_as_a_themed_picture_without_a_toggle(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let asked = Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
@@ -4727,7 +4724,7 @@ mod tests {
         assert_eq!(html_block_page("<p>x</p>", None), "<p>x</p>");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_previewed_html_block_goes_live_on_click(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let live_block = Rc::new(std::cell::Cell::new(None::<u64>));
@@ -4780,12 +4777,12 @@ mod tests {
         let language = cx
             .debug_bounds("agent-code-language")
             .expect("the html block is painted");
-        cx.simulate_mouse_move(language.center(), None, zz_gpui::Modifiers::none());
+        cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
         draw(cx);
         let toggle = cx
             .debug_bounds("agent-code-preview")
             .expect("an html block offers Preview");
-        cx.simulate_click(toggle.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(toggle.center(), ala::Modifiers::none());
         draw(cx);
         draw(cx);
         cx.executor().advance_clock(FIGURE_RENDER_DEBOUNCE);
@@ -4796,7 +4793,7 @@ mod tests {
             .expect("the preview is painted");
         assert!(cx.debug_bounds("test-live-page").is_none());
 
-        cx.simulate_click(picture.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(picture.center(), ala::Modifiers::none());
         cx.run_until_parked();
         draw(cx);
 
@@ -4808,7 +4805,7 @@ mod tests {
         assert!(cx.debug_bounds("agent-html-preview").is_none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn identical_html_blocks_keep_separate_live_owners_and_occurrences(cx: &mut TestAppContext) {
         struct Panes {
             first: Entity<TimelineRowsTest>,
@@ -4895,7 +4892,7 @@ mod tests {
             let preview = cx
                 .debug_bounds("agent-html-preview")
                 .expect("another occurrence still shows its own preview");
-            cx.simulate_click(preview.center(), zz_gpui::Modifiers::none());
+            cx.simulate_click(preview.center(), ala::Modifiers::none());
             cx.run_until_parked();
             rendered_live.set(0);
             draw(cx);
@@ -4912,7 +4909,7 @@ mod tests {
         assert_eq!(disclosure_icon(true), IconName::ChevronUp);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn transcript_affordances_use_the_muted_foreground(cx: &mut TestAppContext) {
         cx.update(crate::init);
         cx.update(|cx| {
@@ -4953,7 +4950,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn assistant_and_code_block_copy_buttons_keep_raw_markdown(cx: &mut TestAppContext) {
         cx.update(crate::init);
         const RAW: &str = "Result\n\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```";
@@ -4987,7 +4984,7 @@ mod tests {
                 && cx.debug_bounds("agent-assistant-copy").is_none(),
             "the actions wait for the pointer"
         );
-        cx.simulate_mouse_move(language.center(), None, zz_gpui::Modifiers::none());
+        cx.simulate_mouse_move(language.center(), None, ala::Modifiers::none());
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
@@ -4995,7 +4992,7 @@ mod tests {
             .debug_bounds("agent-code-copy")
             .expect("pointing at the code block reveals its copy button");
         assert!(language.right() < code_copy.left());
-        cx.simulate_click(code_copy.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(code_copy.center(), ala::Modifiers::none());
         assert_eq!(
             cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text())),
             Some(CODE.to_owned())
@@ -5004,14 +5001,14 @@ mod tests {
         let message_copy = cx
             .debug_bounds("agent-assistant-copy")
             .expect("the message copy button should be painted");
-        cx.simulate_click(message_copy.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(message_copy.center(), ala::Modifiers::none());
         assert_eq!(
             cx.update(|_, cx| cx.read_from_clipboard().and_then(|item| item.text())),
             Some(RAW.to_owned())
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn assistant_copy_is_hidden_while_the_turn_is_active(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let entry = AgentEntry::Assistant {
@@ -5038,7 +5035,7 @@ mod tests {
         assert!(cx.debug_bounds("agent-assistant-copy").is_none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn inline_code_fills_paint_after_the_text_lays_out(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let entry = AgentEntry::Assistant {
@@ -5063,7 +5060,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn trace_disclosure_sits_right_after_the_counts(cx: &mut TestAppContext) {
         cx.update(crate::init);
         const PANE_WIDTH: Pixels = px(520.0);
@@ -5107,7 +5104,7 @@ mod tests {
         assert!(PANE_WIDTH - chevron.right() > px(200.0));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_wide_attachment_keeps_its_bubble_inside_the_pane(cx: &mut TestAppContext) {
         cx.update(crate::init);
         const PANE_WIDTH: Pixels = px(420.0);
@@ -5116,10 +5113,7 @@ mod tests {
         let entry = AgentEntry::User {
             id: 1,
             markdown: "hi can you read this image properly?".into(),
-            images: Arc::from([Arc::new(Image::from_bytes(
-                zz_gpui::ImageFormat::Png,
-                bytes,
-            ))]),
+            images: Arc::from([Arc::new(Image::from_bytes(ala::ImageFormat::Png, bytes))]),
             rewind_id: None,
         };
         let (_, cx) = cx.add_window_view(|window, cx| {
@@ -5165,7 +5159,7 @@ mod tests {
             !cx.update(crate::WindowExt::has_active_dialog),
             "nothing should be open before the click"
         );
-        cx.simulate_click(tile.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(tile.center(), ala::Modifiers::none());
         cx.run_until_parked();
         assert!(
             cx.update(crate::WindowExt::has_active_dialog),
@@ -5208,7 +5202,7 @@ mod tests {
         (rewinds, cx)
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_prompt_row_offers_rewind_on_hover_and_hands_over_its_id(cx: &mut TestAppContext) {
         const PANE_WIDTH: Pixels = px(420.0);
         let (rewinds, cx) = rewind_point(cx, PANE_WIDTH, false);
@@ -5221,7 +5215,7 @@ mod tests {
             .expect("the user bubble should be painted");
         assert!(bubble.origin.x >= px(0.0) && bubble.right() <= PANE_WIDTH);
 
-        cx.simulate_mouse_move(bubble.center(), None, zz_gpui::Modifiers::none());
+        cx.simulate_mouse_move(bubble.center(), None, ala::Modifiers::none());
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
@@ -5238,24 +5232,24 @@ mod tests {
             "revealing the action does not move the bubble"
         );
 
-        cx.simulate_click(rewind.center(), zz_gpui::Modifiers::none());
+        cx.simulate_click(rewind.center(), ala::Modifiers::none());
         assert_eq!(rewinds.borrow().as_slice(), ["prompt-7"]);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn rewind_stays_hidden_while_a_turn_runs(cx: &mut TestAppContext) {
         let (rewinds, cx) = rewind_point(cx, px(420.0), true);
         let bubble = cx
             .debug_bounds("agent-user-bubble")
             .expect("the user bubble should be painted");
-        cx.simulate_mouse_move(bubble.center(), None, zz_gpui::Modifiers::none());
+        cx.simulate_mouse_move(bubble.center(), None, ala::Modifiers::none());
         cx.update(|window, cx| {
             _ = window.draw(cx);
         });
         assert!(cx.debug_bounds("agent-user-rewind").is_none());
         cx.simulate_click(
             point(bubble.left() - px(14.0), bubble.center().y),
-            zz_gpui::Modifiers::none(),
+            ala::Modifiers::none(),
         );
         assert!(rewinds.borrow().is_empty());
     }
@@ -5306,7 +5300,7 @@ mod tests {
         )
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn agent_timeline_converts_without_recursing(cx: &mut TestAppContext) {
         let (_, cx) = cx.add_window_view(|_, cx| EmptyAgentTimelineTest {
             store: cx.new(|_| AgentTimelineStore::default()),
@@ -5316,7 +5310,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn nowrap_shaping_still_breaks_on_an_embedded_newline(cx: &mut TestAppContext) {
         let (_, cx) = cx.add_window_view(|_, cx| EmptyAgentTimelineTest {
             store: cx.new(|_| AgentTimelineStore::default()),
@@ -5471,7 +5465,7 @@ mod tests {
         assert_eq!(code_block_language(None), "text");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn timeline_store_retains_row_state_while_the_row_is_absent(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let store = cx.new(|_| AgentTimelineStore::default());
@@ -5512,7 +5506,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn timeline_store_sync_uses_append_and_replacement_paths(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let store = cx.new(|_| AgentTimelineStore::default());
@@ -5628,7 +5622,7 @@ mod tests {
 
     /// A hanging marker is closed for the reader while the entry streams, and
     /// the settle hands back exactly the bytes the thread holds.
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_streaming_entry_renders_mended_and_settles_raw(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let store = cx.new(|_| AgentTimelineStore::default());
@@ -5684,7 +5678,7 @@ mod tests {
         assert_eq!(state.read_with(cx, |state, _| state.source()), raw);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_large_hanging_inline_marker_is_repaired_off_the_ui_thread(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let store = cx.new(|_| AgentTimelineStore::default());
@@ -5715,7 +5709,7 @@ mod tests {
 
     /// The prefix fast path survives the mend: appends are diffed against the
     /// raw text, so an entry that never hangs a marker never reparses.
-    #[zz_gpui::test]
+    #[ala::test]
     fn streaming_appends_without_hanging_markers_stay_incremental(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let store = cx.new(|_| AgentTimelineStore::default());
@@ -5736,7 +5730,7 @@ mod tests {
         }));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_settled_entry_is_never_mended(cx: &mut TestAppContext) {
         cx.update(crate::init);
         let store = cx.new(|_| AgentTimelineStore::default());
@@ -5764,7 +5758,7 @@ mod tests {
         rows: usize,
     ) -> (ListState, &mut VisualTestContext) {
         cx.update(crate::init);
-        let state = ListState::new(0, zz_gpui::ListAlignment::Top, px(200.0));
+        let state = ListState::new(0, ala::ListAlignment::Top, px(200.0));
         state.splice(0..0, rows);
         let (_, cx) = cx.add_window_view({
             let state = state.clone();
@@ -5780,7 +5774,7 @@ mod tests {
         (state, cx)
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_pin_measures_the_end_through_the_lists_own_padding(cx: &mut TestAppContext) {
         let (state, cx) = tail_pin_window(cx, 40);
         let mut stick = TimelineStick::new(&state, false);
@@ -5804,7 +5798,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn growing_the_transcript_cannot_break_the_pin(cx: &mut TestAppContext) {
         let (state, cx) = tail_pin_window(cx, 40);
         let mut stick = TimelineStick::new(&state, false);
@@ -5828,7 +5822,7 @@ mod tests {
         assert!(stick.wants_frame(&state));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_wheel_scroll_away_breaks_the_pin_and_returning_restores_it(cx: &mut TestAppContext) {
         let (state, cx) = tail_pin_window(cx, 40);
         let mut stick = TimelineStick::new(&state, false);
@@ -5864,7 +5858,7 @@ mod tests {
         assert!(!stick.shows_jump_button());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn reduced_motion_keeps_the_lists_own_tail_follow(cx: &mut TestAppContext) {
         let (state, cx) = tail_pin_window(cx, 40);
         let mut stick = TimelineStick::new(&state, true);

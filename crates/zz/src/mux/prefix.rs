@@ -1,15 +1,15 @@
 //! Client-side claim of the configured multiplexer prefix.
 
+use ala::Keystroke;
 use zz_client::ChromeKey;
-use zz_gpui::Keystroke;
 use zz_protocol::{Binding, KeyBindingSnapshot, KeyTables, TmuxOption};
 use zz_terminal::{KeyAction, KeyCode, KeyInput, Modifiers as TerminalModifiers};
 
-/// The canonical prefix as a GPUI keystroke, so a hint can print it in the
+/// The canonical prefix as a ala keystroke, so a hint can print it in the
 /// platform's own glyphs (`⌃B`, `Ctrl+B`) rather than tmux's `C-b` spelling.
 pub(crate) fn display_keystroke(canonical: &str) -> Option<Keystroke> {
     let key = ChromeKey::parse(canonical)?;
-    Keystroke::parse(&crate::keymap::gpui_source(&key)?).ok()
+    Keystroke::parse(&crate::keymap::ala_source(&key)?).ok()
 }
 
 fn prefix_binding(bindings: &[KeyBindingSnapshot], input: &KeyInput) -> Option<Binding> {
@@ -62,7 +62,7 @@ pub(crate) fn is_sidebar_picker_input(bindings: &[KeyBindingSnapshot], input: &K
             .all(|option| matches!(option, TmuxOption::Flag("-s" | "-w" | "-Z")))
 }
 
-/// Encode a GPUI keystroke as the wire `KeyInput`.
+/// Encode a ala keystroke as the wire `KeyInput`.
 pub(crate) fn terminal_key_input(keystroke: &Keystroke, action: KeyAction) -> KeyInput {
     let key = terminal_key(&keystroke.key);
     let character = match key {

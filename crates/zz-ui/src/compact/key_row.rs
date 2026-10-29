@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use zz_gpui::{
+use ala::{
     AnyElement, App, Div, ElementId, Entity, IntoElement, Keystroke, Modifiers, MouseButton,
     ParentElement as _, RenderOnce, ScrollHandle, SharedString, Stateful, Styled, Window, canvas,
     div, linear_color_stop, linear_gradient, point, prelude::*, px,
@@ -121,7 +121,7 @@ pub(super) fn key_layer(surface: Surface, state: PaintState, theme: &Theme) -> L
     }
     let pill = theme.layer(roles::PHONE_PILL, PaintState::Rest).radius;
     Layer {
-        radius: concentric(pill, zz_gpui::px(PILL_PADDING)),
+        radius: concentric(pill, ala::px(PILL_PADDING)),
         ..layer
     }
 }
@@ -573,7 +573,7 @@ fn edges(scroll: &ScrollHandle) -> (bool, bool) {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use zz_gpui::{Context, Render, Subscription, TestAppContext, VisualTestContext};
+    use ala::{Context, Render, Subscription, TestAppContext, VisualTestContext};
 
     use super::*;
     use crate::compact::PopoverKeyEvent;
@@ -581,7 +581,7 @@ mod tests {
     struct Host {
         keys: ToolKeys,
         sent: Rc<RefCell<Vec<String>>>,
-        width: Option<zz_gpui::Pixels>,
+        width: Option<ala::Pixels>,
         _press: Subscription,
     }
 
@@ -616,14 +616,14 @@ mod tests {
         });
     }
 
-    fn host(cx: &mut TestAppContext) -> (zz_gpui::Entity<Host>, &mut VisualTestContext) {
+    fn host(cx: &mut TestAppContext) -> (ala::Entity<Host>, &mut VisualTestContext) {
         host_with_width(cx, None)
     }
 
     fn host_with_width(
         cx: &mut TestAppContext,
-        width: Option<zz_gpui::Pixels>,
-    ) -> (zz_gpui::Entity<Host>, &mut VisualTestContext) {
+        width: Option<ala::Pixels>,
+    ) -> (ala::Entity<Host>, &mut VisualTestContext) {
         cx.update(crate::init);
         let (host, cx) = cx.add_window_view(move |_, cx| {
             let keys = ToolKeys::new(cx);
@@ -651,7 +651,7 @@ mod tests {
         redraw(cx);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn keys_send_through_the_sticky_latch(cx: &mut TestAppContext) {
         let (host, cx) = host(cx);
         assert!(cx.debug_bounds("arrow-pad").is_some());
@@ -669,20 +669,20 @@ mod tests {
         assert!(cx.debug_bounds("popover-key-card").is_none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn keys_take_taps_off_the_cap(cx: &mut TestAppContext) {
         let (host, cx) = host(cx);
         let row = cx.debug_bounds("key-row").expect("row");
         let esc = cx.debug_bounds("key-row-key-3").expect("esc");
-        assert_eq!(row.size.height, zz_gpui::px(KEY_ROW_HEIGHT));
-        assert_eq!(esc.size.height, zz_gpui::px(KEY_SIZE));
+        assert_eq!(row.size.height, ala::px(KEY_ROW_HEIGHT));
+        assert_eq!(esc.size.height, ala::px(KEY_SIZE));
         for at in [
-            zz_gpui::point(esc.center().x, row.top() + zz_gpui::px(1.0)),
-            zz_gpui::point(esc.center().x, row.bottom() - zz_gpui::px(1.0)),
-            zz_gpui::point(esc.right() + zz_gpui::px(KEY_SLOP.0 - 0.5), esc.center().y),
-            zz_gpui::point(
-                esc.left() - zz_gpui::px(KEY_SLOP.0 - 0.5),
-                row.top() + zz_gpui::px(1.0),
+            ala::point(esc.center().x, row.top() + ala::px(1.0)),
+            ala::point(esc.center().x, row.bottom() - ala::px(1.0)),
+            ala::point(esc.right() + ala::px(KEY_SLOP.0 - 0.5), esc.center().y),
+            ala::point(
+                esc.left() - ala::px(KEY_SLOP.0 - 0.5),
+                row.top() + ala::px(1.0),
             ),
         ] {
             cx.simulate_click(at, Modifiers::none());
@@ -692,9 +692,9 @@ mod tests {
         assert_eq!(sent, ["escape", "escape", "escape", "escape"]);
 
         let ctrl = cx.debug_bounds("popover-key-ctrl").expect("ctrl");
-        let above = zz_gpui::point(ctrl.center().x, row.top() + zz_gpui::px(1.0));
-        for phase in [zz_gpui::TouchPhase::Started, zz_gpui::TouchPhase::Ended] {
-            cx.simulate_event(zz_gpui::TouchDragEvent {
+        let above = ala::point(ctrl.center().x, row.top() + ala::px(1.0));
+        for phase in [ala::TouchPhase::Started, ala::TouchPhase::Ended] {
+            cx.simulate_event(ala::TouchDragEvent {
                 phase,
                 start_position: above,
                 position: above,
@@ -704,7 +704,7 @@ mod tests {
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).control));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn keys_share_one_width_in_the_set_order(cx: &mut TestAppContext) {
         let (_, cx) = host(cx);
         let keys = [
@@ -720,51 +720,51 @@ mod tests {
         ]
         .map(|selector| cx.debug_bounds(selector).expect(selector));
         for key in &keys {
-            assert_eq!(key.size.width, zz_gpui::px(KEY_SIZE));
+            assert_eq!(key.size.width, ala::px(KEY_SIZE));
         }
         for pair in keys.windows(2) {
             assert!(pair[0].right() < pair[1].left());
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_sideways_drag_on_a_card_key_scrolls_the_row(cx: &mut TestAppContext) {
-        let (host, cx) = host_with_width(cx, Some(zz_gpui::px(200.0)));
+        let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
         let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
-        assert!(scroll.max_offset().x > zz_gpui::px(0.0));
+        assert!(scroll.max_offset().x > ala::px(0.0));
         let alt = cx.debug_bounds("popover-key-alt").expect("alt").center();
         let drag = |phase, x: f32, cx: &mut VisualTestContext| {
-            cx.simulate_event(zz_gpui::TouchDragEvent {
+            cx.simulate_event(ala::TouchDragEvent {
                 phase,
                 start_position: alt,
-                position: zz_gpui::point(alt.x + zz_gpui::px(x), alt.y),
+                position: ala::point(alt.x + ala::px(x), alt.y),
             });
             redraw(cx);
         };
-        drag(zz_gpui::TouchPhase::Started, 0.0, cx);
-        drag(zz_gpui::TouchPhase::Moved, -20.0, cx);
-        drag(zz_gpui::TouchPhase::Moved, -60.0, cx);
-        drag(zz_gpui::TouchPhase::Ended, -60.0, cx);
-        assert_eq!(scroll.offset().x, zz_gpui::px(-40.0));
+        drag(ala::TouchPhase::Started, 0.0, cx);
+        drag(ala::TouchPhase::Moved, -20.0, cx);
+        drag(ala::TouchPhase::Moved, -60.0, cx);
+        drag(ala::TouchPhase::Ended, -60.0, cx);
+        assert_eq!(scroll.offset().x, ala::px(-40.0));
         assert!(cx.debug_bounds("popover-key-item-alt-b").is_none());
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).is_empty()));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn the_prefix_stays_put_while_the_row_scrolls(cx: &mut TestAppContext) {
-        let (host, cx) = host_with_width(cx, Some(zz_gpui::px(200.0)));
+        let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
         let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
         let prefix = cx.debug_bounds("popover-key-prefix").expect("prefix");
-        scroll.set_offset(zz_gpui::point(-scroll.max_offset().x, zz_gpui::px(0.0)));
+        scroll.set_offset(ala::point(-scroll.max_offset().x, ala::px(0.0)));
         redraw(cx);
         assert_eq!(cx.debug_bounds("popover-key-prefix"), Some(prefix));
         let ctrl = cx.debug_bounds("popover-key-ctrl");
         assert!(ctrl.is_none_or(|ctrl| ctrl.right() <= prefix.right()));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_fade_and_chevron_mark_the_side_with_more_keys(cx: &mut TestAppContext) {
-        let (host, cx) = host_with_width(cx, Some(zz_gpui::px(200.0)));
+        let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
         redraw(cx);
         assert!(cx.debug_bounds("key-row-more-ahead").is_some());
         assert!(cx.debug_bounds("key-row-more-back").is_none());
@@ -778,7 +778,7 @@ mod tests {
         assert!(cx.debug_bounds("key-row-more-back").is_some());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_row_that_fits_has_no_fades(cx: &mut TestAppContext) {
         let (_, cx) = host(cx);
         redraw(cx);

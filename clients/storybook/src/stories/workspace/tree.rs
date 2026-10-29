@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use zz_client::program::Program;
-use zz_gpui::{
+use ala::{
     AnyElement, App, Hsla, IntoElement, Keystroke, ListSizingBehavior, ParentElement as _,
     Stateful, Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
 };
@@ -391,11 +391,11 @@ pub fn sidebar(
     navigation: impl IntoElement,
     settings_selected: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     sidebar_in_view(navigation, settings_selected, false, cx)
 }
 
-pub fn flat_view_sidebar(navigation: impl IntoElement, cx: &App) -> Stateful<zz_gpui::Div> {
+pub fn flat_view_sidebar(navigation: impl IntoElement, cx: &App) -> Stateful<ala::Div> {
     sidebar_in_view(navigation, false, true, cx)
 }
 
@@ -404,7 +404,7 @@ fn sidebar_in_view(
     settings_selected: bool,
     flat: bool,
     cx: &App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     workspace_sidebar_surface(
         "sidebar",
         WORKSPACE_SIDEBAR_DEFAULT_WIDTH,

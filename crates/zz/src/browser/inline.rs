@@ -4,12 +4,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use zz_browser::{BrowserEvent, EditCommand, PointerEvent, PointerPhase, Viewport, WheelEvent};
-use zz_gpui::{
+use ala::{
     Bounds, Context, Corners, CursorStyle, Entity, EntityInputHandler, FocusHandle, KeyDownEvent,
     KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
     RenderImage, ScrollWheelEvent, Size, Subscription, UTF16Selection, Window, div, prelude::*, px,
 };
+use zz_browser::{BrowserEvent, EditCommand, PointerEvent, PointerPhase, Viewport, WheelEvent};
 use zz_protocol::PaneId;
 use zz_terminal::KeyAction as TerminalKeyAction;
 
@@ -252,7 +252,7 @@ impl InlineBrowser {
         phase: PointerPhase,
         button: Option<MouseButton>,
         click_count: usize,
-        modifiers: zz_gpui::Modifiers,
+        modifiers: ala::Modifiers,
         pressed: Option<MouseButton>,
         cx: &mut Context<Self>,
     ) {
@@ -611,7 +611,7 @@ impl EntityInputHandler for InlineBrowser {
         let bounds = self.live.as_ref()?.bounds?;
         Some(Bounds::new(
             bounds.origin,
-            zz_gpui::size(px(1.0), px(18.0).min(bounds.size.height)),
+            ala::size(px(1.0), px(18.0).min(bounds.size.height)),
         ))
     }
 

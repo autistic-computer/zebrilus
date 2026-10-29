@@ -201,7 +201,7 @@ to a subdomain and session DOM storage are outside this command's contract.
 # Restore on reattach
 
 The daemon retains each browser pane's canonical profile name alongside its last
-URL. Closing every GPUI window detaches the client without keeping transient
+URL. Closing every ala window detaches the client without keeping transient
 Chromium renderer state alive; when a GUI reattaches, a browser pane
 [re-creates its session](/browser/lifecycle.md) with that name and URL, and the
 selected profile's persisted cookies/cache/local storage are already present. See

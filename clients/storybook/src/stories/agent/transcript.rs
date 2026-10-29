@@ -1,4 +1,4 @@
-use zz_gpui::{AnyView, App, AppContext as _, Window};
+use ala::{AnyView, App, AppContext as _, Window};
 use zz_ui::agent::{AgentToolKind as Kind, AgentToolStatus as Status};
 
 use super::{
@@ -553,7 +553,7 @@ const KINDS: [(Kind, &str); 7] = [
     (Kind::Search, "rg -n \"TimelineStick\" crates"),
     (Kind::Edit, "Edit crates/zz-ui/src/agent/composer.rs"),
     (Kind::Execute, "cargo test -p zz-ui agent"),
-    (Kind::Fetch, "Fetch https://docs.rs/gpui"),
+    (Kind::Fetch, "Fetch https://docs.rs/ala"),
     (Kind::Think, "Think about the row layout"),
     (Kind::Other, "linear.get_issue ZZ-412"),
 ];

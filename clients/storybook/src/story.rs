@@ -1,4 +1,4 @@
-use zz_gpui::{
+use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, InteractiveElement as _, IntoElement,
     ParentElement, Render, RenderOnce, SharedString, Styled, Window, div, px,
 };

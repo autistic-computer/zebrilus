@@ -10,6 +10,13 @@ use std::{
     time::Duration,
 };
 
+use ala::{
+    AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView, AnyWindowHandle, App,
+    Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle,
+    IntoElement, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent,
+    MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
+    Window, anchored, div, ease_out_quint, point, prelude::*, px,
+};
 #[cfg(test)]
 use zz_client::pane_swap_command;
 use zz_client::{
@@ -21,13 +28,6 @@ use zz_client::{
         float_title,
     },
     pane_drop_command, pane_rects, predicted_drop_layout,
-};
-use zz_gpui::{
-    AnchoredPositionMode, Animation, AnimationExt as _, AnyElement, AnyView, AnyWindowHandle, App,
-    Bounds, Context, Corners, CursorStyle, DragMoveEvent, Entity, EntityId, FocusHandle,
-    IntoElement, KeyUpEvent, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseExitEvent,
-    MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
-    Window, anchored, div, ease_out_quint, point, prelude::*, px,
 };
 use zz_mux::display_width;
 use zz_protocol::{
@@ -102,7 +102,7 @@ use crate::{
 const DROP_PREVIEW_MORPH: Duration = Duration::from_millis(180);
 const DROP_PREVIEW_FADE: Duration = Duration::from_millis(140);
 
-zz_gpui::actions!(zz, [ClosePane]);
+ala::actions!(zz, [ClosePane]);
 
 const DIAGNOSTIC_TARGET: &str = "zz::diagnostics::app_render";
 
@@ -193,8 +193,8 @@ fn prompt_stale_daemon(
     true
 }
 
-fn pane_key_context(pane: PaneId) -> zz_gpui::KeyContext {
-    let mut context = zz_gpui::KeyContext::new_with_defaults();
+fn pane_key_context(pane: PaneId) -> ala::KeyContext {
+    let mut context = ala::KeyContext::new_with_defaults();
     context.add(PANE_KEY_CONTEXT);
     context.set(PANE_KEY_CONTEXT_ID, pane.0.to_string());
     context
@@ -450,8 +450,8 @@ impl PaneDragState {
                         self.divider.into(),
                     );
                     Bounds::new(
-                        zz_gpui::point(px(rect.x), px(rect.y)),
-                        zz_gpui::size(px(rect.width), px(rect.height)),
+                        ala::point(px(rect.x), px(rect.y)),
+                        ala::size(px(rect.width), px(rect.height)),
                     )
                 });
                 DropPreview {
@@ -1209,7 +1209,7 @@ impl AppView {
 
     fn intercept_keystroke(
         &mut self,
-        event: &zz_gpui::KeystrokeEvent,
+        event: &ala::KeystrokeEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1413,7 +1413,7 @@ impl AppView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let action: Box<dyn zz_gpui::Action> = match action {
+        let action: Box<dyn ala::Action> = match action {
             ChromeAction::OpenCommandPalette => {
                 self.open_command_palette(None, window, cx);
                 return;
@@ -1810,7 +1810,7 @@ impl AppView {
             && window.context_stack().iter().any(|context| {
                 context
                     .get(PANE_KEY_CONTEXT_ID)
-                    .map(zz_gpui::SharedString::as_ref)
+                    .map(ala::SharedString::as_ref)
                     == Some(pane.0.to_string().as_str())
             })
     }
@@ -1827,7 +1827,7 @@ impl AppView {
         }) && contexts.iter().any(|context| {
             context
                 .get(PANE_KEY_CONTEXT_ID)
-                .map(zz_gpui::SharedString::as_ref)
+                .map(ala::SharedString::as_ref)
                 == Some(pane.0.to_string().as_str())
         })) || self.inline_browser_holds(pane, window, cx);
         if holds_keyboard {
@@ -2484,7 +2484,7 @@ impl AppView {
                 focus.focus(window, cx);
                 cx.defer_in(window, move |_, window, cx| {
                     focus.focus(window, cx);
-                    zz_gpui::App::notify(cx, entity);
+                    ala::App::notify(cx, entity);
                 });
             }
             self.sidebar_focus_owed = false;
@@ -2538,7 +2538,7 @@ impl AppView {
                 );
                 focus.focus(window, cx);
                 cx.defer_in(window, move |view, window, cx| {
-                    zz_gpui::App::notify(cx, entity);
+                    ala::App::notify(cx, entity);
                     view.audit_pane_focus("applied", window, cx);
                 });
             }
@@ -3209,7 +3209,7 @@ impl AppView {
 
     fn dismiss_armed_prefix(&self, pane: PaneId, cx: &App) {
         let escape = Keystroke {
-            modifiers: zz_gpui::Modifiers::default(),
+            modifiers: ala::Modifiers::default(),
             key: "escape".to_owned(),
             key_char: None,
         };
@@ -3324,7 +3324,7 @@ impl AppView {
         state: PaneDragOverlayState,
         radii: Corners<Pixels>,
         cx: &mut Context<Self>,
-    ) -> zz_gpui::Stateful<zz_gpui::Div> {
+    ) -> ala::Stateful<ala::Div> {
         let app_view = cx.entity();
         pane_drag_overlay(("pane-drag-overlay", pane.0), state, radii, cx)
             .on_click(cx.listener(move |view, _, _, cx| {
@@ -3763,11 +3763,7 @@ impl AppView {
         }
     }
 
-    fn pane_indicator(
-        &self,
-        indicator: &PaneIndicator,
-        cx: &Context<Self>,
-    ) -> Option<zz_gpui::Div> {
+    fn pane_indicator(&self, indicator: &PaneIndicator, cx: &Context<Self>) -> Option<ala::Div> {
         let state = self.mux.read(cx).display_panes()?;
         let mux = self.mux.clone();
         let pane = indicator.pane;
@@ -3916,7 +3912,7 @@ impl AppView {
                     cell.width * (cells.xoff - pad) as f32,
                     cell.height * (cells.yoff - pad) as f32,
                 ),
-                zz_gpui::size(
+                ala::size(
                     cell.width * (i32::from(cells.sx) + 2 * pad) as f32,
                     cell.height * (i32::from(cells.sy) + 2 * pad) as f32,
                 ),
@@ -4010,7 +4006,7 @@ impl AppView {
                 .fill(fill)
                 .stashed(
                     stashed.is_some(),
-                    cx.listener(move |view, _: &zz_gpui::ClickEvent, _, cx| {
+                    cx.listener(move |view, _: &ala::ClickEvent, _, cx| {
                         view.pip_stage.restore(pane);
                         view.mux.read(cx).execute(pane_select_command(pane));
                         cx.notify();
@@ -4130,10 +4126,7 @@ impl AppView {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let (edge, near) = if pip {
-            (
-                zz_gpui::size(px(PIP_GRIP), px(PIP_GRIP)),
-                px(-PIP_GRIP / 2.0),
-            )
+            (ala::size(px(PIP_GRIP), px(PIP_GRIP)), px(-PIP_GRIP / 2.0))
         } else {
             (cell, Pixels::ZERO)
         };
@@ -4153,7 +4146,7 @@ impl AppView {
                 FloatGrip::MOVE,
                 Bounds::new(
                     point(edge.width, Pixels::ZERO),
-                    zz_gpui::size(inner_width, edge.height),
+                    ala::size(inner_width, edge.height),
                 ),
                 None,
             ),
@@ -4162,7 +4155,7 @@ impl AppView {
                 edges(true, false, false, false),
                 Bounds::new(
                     point(near, top),
-                    zz_gpui::size(edge.width, (far_y - top).max(Pixels::ZERO)),
+                    ala::size(edge.width, (far_y - top).max(Pixels::ZERO)),
                 ),
                 Some(CursorStyle::ResizeLeftRight),
             ),
@@ -4171,7 +4164,7 @@ impl AppView {
                 edges(false, false, true, false),
                 Bounds::new(
                     point(far_x, top),
-                    zz_gpui::size(edge.width, (far_y - top).max(Pixels::ZERO)),
+                    ala::size(edge.width, (far_y - top).max(Pixels::ZERO)),
                 ),
                 Some(CursorStyle::ResizeLeftRight),
             ),
@@ -4180,7 +4173,7 @@ impl AppView {
                 edges(false, true, false, false),
                 Bounds::new(
                     point(near + edge.width, near),
-                    zz_gpui::size(inner_width, edge.height),
+                    ala::size(inner_width, edge.height),
                 ),
                 Some(CursorStyle::ResizeUpDown),
             ),
@@ -4189,7 +4182,7 @@ impl AppView {
                 edges(false, false, false, true),
                 Bounds::new(
                     point(near + edge.width, far_y),
-                    zz_gpui::size(inner_width, edge.height),
+                    ala::size(inner_width, edge.height),
                 ),
                 Some(CursorStyle::ResizeUpDown),
             ),
@@ -4222,7 +4215,7 @@ impl AppView {
         .filter(|(name, ..)| *name != if pip { "move" } else { "top" })
         .map(|(name, grip, bounds, cursor)| {
             div()
-                .id(zz_gpui::SharedString::from(format!(
+                .id(ala::SharedString::from(format!(
                     "floating-grip-{}-{name}",
                     float.pane.0
                 )))
@@ -4233,7 +4226,7 @@ impl AppView {
                 .top(bounds.origin.y)
                 .w(bounds.size.width)
                 .h(bounds.size.height)
-                .when_some(cursor, zz_gpui::Styled::cursor)
+                .when_some(cursor, ala::Styled::cursor)
                 .on_mouse_down(
                     MouseButton::Left,
                     cx.listener(move |view, event: &MouseDownEvent, _, cx| {
@@ -4506,7 +4499,7 @@ impl Render for AppView {
             (true, WorkspaceRoute::Settings) => px(0.),
             (false, _) => pane_margin,
         };
-        let canvas_origin = zz_gpui::point(pane_margin, canvas_top);
+        let canvas_origin = ala::point(pane_margin, canvas_top);
         let mut overlays = if route == WorkspaceRoute::Settings {
             Vec::new()
         } else {
@@ -4692,8 +4685,8 @@ fn pane_bounds(rect: NormalizedPaneRect, canvas_size: Size<Pixels>) -> Bounds<Pi
     let width = f32::from(canvas_size.width);
     let height = f32::from(canvas_size.height);
     Bounds::new(
-        zz_gpui::point(px(rect.x * width), px(rect.y * height)),
-        zz_gpui::size(px(rect.width * width), px(rect.height * height)),
+        ala::point(px(rect.x * width), px(rect.y * height)),
+        ala::size(px(rect.width * width), px(rect.height * height)),
     )
 }
 
@@ -4729,11 +4722,11 @@ mod tests {
 
     use super::*;
     use crate::terminal::view::GridSize;
+    use ala::{Modifiers, TestAppContext, point};
     use zz_client::CoreEvent;
-    use zz_gpui::{Modifiers, TestAppContext, point};
     use zz_protocol::CommandPromptKind;
 
-    zz_gpui::actions!(window_shortcut_tests, [WindowShortcutFallback]);
+    ala::actions!(window_shortcut_tests, [WindowShortcutFallback]);
 
     #[derive(Debug, PartialEq)]
     enum PaneReleaseStep {
@@ -4962,7 +4955,7 @@ mod tests {
             source,
             WindowId(5),
             &three_pane_layout(),
-            zz_gpui::size(px(1_000.0), px(800.0)),
+            ala::size(px(1_000.0), px(800.0)),
             px(8.0),
         )
         .expect("source belongs to the frozen layout")
@@ -4971,7 +4964,7 @@ mod tests {
     #[test]
     fn pane_drag_state_freezes_slots_and_rejects_foreign_layouts() {
         let layout = three_pane_layout();
-        let canvas_size = zz_gpui::size(px(1_000.0), px(800.0));
+        let canvas_size = ala::size(px(1_000.0), px(800.0));
         let frozen_slots = pane_rects(&layout)
             .into_iter()
             .map(|(pane, rect)| (pane, pane_bounds(rect, canvas_size)))
@@ -4983,14 +4976,14 @@ mod tests {
             drag.slot(PaneId(3)),
             Some(Bounds::new(
                 point(px(0.0), px(0.0)),
-                zz_gpui::size(px(400.0), px(800.0)),
+                ala::size(px(400.0), px(800.0)),
             ))
         );
         assert_eq!(
             drag.slot(PaneId(7)),
             Some(Bounds::new(
                 point(px(400.0), px(0.0)),
-                zz_gpui::size(px(600.0), px(400.0)),
+                ala::size(px(600.0), px(400.0)),
             ))
         );
         assert!(drag.matches_layout(WindowId(5), &layout));
@@ -5045,10 +5038,7 @@ mod tests {
         assert!(!drag.set_target(Some((PaneId(11), DropZone::Center)), blank));
         assert!(drag.set_target(Some((PaneId(7), DropZone::Right)), blank));
 
-        let right_half = Bounds::new(
-            point(px(712.0), px(0.0)),
-            zz_gpui::size(px(288.0), px(400.0)),
-        );
+        let right_half = Bounds::new(point(px(712.0), px(0.0)), ala::size(px(288.0), px(400.0)));
         let preview = drag.preview.expect("a target shows a preview");
         assert_eq!(preview.to.bounds, right_half);
         assert_eq!(preview.to.opacity.to_bits(), 1.0_f32.to_bits());
@@ -5058,10 +5048,7 @@ mod tests {
         assert!(!drag.set_target(Some((PaneId(7), DropZone::Right)), blank));
 
         let mid_morph = DropPreviewFrame {
-            bounds: Bounds::new(
-                point(px(640.0), px(20.0)),
-                zz_gpui::size(px(320.0), px(380.0)),
-            ),
+            bounds: Bounds::new(point(px(640.0), px(20.0)), ala::size(px(320.0), px(380.0))),
             opacity: 0.6,
         };
         assert!(drag.set_target(Some((PaneId(9), DropZone::Center)), mid_morph));
@@ -5069,10 +5056,7 @@ mod tests {
         assert_eq!(preview.from, mid_morph);
         assert_eq!(
             preview.to.bounds,
-            Bounds::new(
-                point(px(408.0), px(408.0)),
-                zz_gpui::size(px(592.0), px(392.0))
-            )
+            Bounds::new(point(px(408.0), px(408.0)), ala::size(px(592.0), px(392.0)))
         );
         assert_eq!(preview.sequence, 1);
 
@@ -5183,7 +5167,7 @@ mod tests {
     /// kind that says it does has to name an element the matrix can find on the
     /// drawn window. Cycle 11's silently destructive desktop chooser was a
     /// payload that reached a no-op arm; nothing under the campaign ran the
-    /// GPUI client, so nothing caught it.
+    /// ala client, so nothing caught it.
     fn overlay_selector(event: &CoreEvent) -> Option<&'static str> {
         match event {
             CoreEvent::CommandPromptChanged => Some("command-palette-overlay"),
@@ -5396,7 +5380,7 @@ mod tests {
     fn input_test_workspace(
         cx: &mut TestAppContext,
         client: zz_daemon_client::InteractiveClient,
-    ) -> (Entity<AppView>, &mut zz_gpui::VisualTestContext) {
+    ) -> (Entity<AppView>, &mut ala::VisualTestContext) {
         cx.update(zz_ui::init);
         let workspace_slot = Rc::new(RefCell::new(None));
         let captured_workspace = Rc::clone(&workspace_slot);
@@ -5435,7 +5419,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn panes_keep_the_gap_above_them_inside_the_workspace_under_the_titlebar(
         cx: &mut TestAppContext,
     ) {
@@ -5474,7 +5458,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn ui_chord_bound_to_the_prefix_opens_palette_without_arming(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5512,7 +5496,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn claimed_press_and_release_reach_mux_without_terminal_key_down(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5528,7 +5512,7 @@ mod tests {
         assert!(cx.update(|window, cx| terminal.read(cx).focus().is_focused(window)));
         let input = mux.update(cx, |mux, _| mux.record_input_for_test());
         let stroke = Keystroke::parse("ctrl-a").unwrap();
-        cx.simulate_event(zz_gpui::KeyDownEvent {
+        cx.simulate_event(ala::KeyDownEvent {
             keystroke: stroke.clone(),
             is_held: false,
             prefer_character_input: false,
@@ -5558,7 +5542,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn standalone_modifier_tap_leaves_the_armed_prefix_waiting(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5585,7 +5569,7 @@ mod tests {
         mux: &Entity<MuxClient>,
         table: Option<&str>,
         repeat: bool,
-        cx: &mut zz_gpui::VisualTestContext,
+        cx: &mut ala::VisualTestContext,
     ) {
         mux.update(cx, |mux, cx| {
             mux.handle_message_for_test(
@@ -5603,19 +5587,19 @@ mod tests {
     }
 
     #[cfg(unix)]
-    fn which_key_visible(workspace: &Entity<AppView>, cx: &mut zz_gpui::VisualTestContext) -> bool {
+    fn which_key_visible(workspace: &Entity<AppView>, cx: &mut ala::VisualTestContext) -> bool {
         workspace.read_with(cx, |workspace, _| workspace.which_key.is_some())
     }
 
     #[cfg(unix)]
-    fn wait_for_which_key(cx: &mut zz_gpui::VisualTestContext, milliseconds: u64) {
+    fn wait_for_which_key(cx: &mut ala::VisualTestContext, milliseconds: u64) {
         cx.executor()
             .advance_clock(Duration::from_millis(milliseconds));
         cx.run_until_parked();
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn which_key_shows_after_the_prefix_pause_and_hides_on_the_next_key(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5625,7 +5609,7 @@ mod tests {
         let mux = workspace.read_with(cx, |workspace, _| workspace.mux.clone());
         let input = mux.update(cx, |mux, _| mux.record_input_for_test());
         let stroke = Keystroke::parse("ctrl-a").unwrap();
-        cx.simulate_event(zz_gpui::KeyDownEvent {
+        cx.simulate_event(ala::KeyDownEvent {
             keystroke: stroke.clone(),
             is_held: false,
             prefer_character_input: false,
@@ -5702,7 +5686,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_held_prefix_key_keeps_the_which_key_timer(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5713,7 +5697,7 @@ mod tests {
         mux.update(cx, |mux, cx| mux.set_prefix_armed_for_test(true, cx));
         publish_key_table(&mux, Some("prefix"), false, cx);
         wait_for_which_key(cx, 200);
-        cx.simulate_event(zz_gpui::KeyDownEvent {
+        cx.simulate_event(ala::KeyDownEvent {
             keystroke: Keystroke::parse("ctrl-a").unwrap(),
             is_held: true,
             prefer_character_input: false,
@@ -5724,7 +5708,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn which_key_hides_for_a_repeat_window_and_a_cleared_table(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5762,7 +5746,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn which_key_lists_a_custom_table_flat_and_hides_on_its_keys(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5830,7 +5814,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn question_mark_opens_every_key_and_leaves_the_prefix_armed(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5859,7 +5843,7 @@ mod tests {
     }
 
     #[cfg(unix)]
-    #[zz_gpui::test]
+    #[ala::test]
     fn which_key_delay_zero_never_shows(cx: &mut TestAppContext) {
         cx.executor().allow_parking();
         let Some((client, _server)) = input_test_client() else {
@@ -5878,7 +5862,7 @@ mod tests {
         assert!(!which_key_visible(&workspace, cx));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn local_palette_survives_mux_updates_and_reopens_with_both_shortcuts(cx: &mut TestAppContext) {
         cx.update(|cx| {
             zz_ui::init(cx);
@@ -5952,7 +5936,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn window_shortcuts_intercept_before_pane_input_and_honor_unbinds(cx: &mut TestAppContext) {
         let fallback_count = Rc::new(Cell::new(0));
         let (modifier, key) = if cfg!(target_os = "macos") {
@@ -5964,7 +5948,7 @@ mod tests {
             zz_ui::init(cx);
             crate::keymap::install(&[], config::DEFAULT_BROWSER_ELEMENT_SELECTOR_HOTKEY, cx);
             cx.bind_keys((1..=9).map(|position| {
-                zz_gpui::KeyBinding::new(
+                ala::KeyBinding::new(
                     &format!("{modifier}-{position}"),
                     WindowShortcutFallback,
                     None,
@@ -6014,7 +5998,7 @@ mod tests {
         assert_eq!(fallback_count.get(), 1);
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn daemon_window_chooser_uses_palette_and_preserves_selection_actions(cx: &mut TestAppContext) {
         cx.update(|cx| {
             zz_ui::init(cx);
@@ -6042,7 +6026,7 @@ mod tests {
             mux.record_input_for_test()
         });
         let sequence = Cell::new(0);
-        let publish = |state, cx: &mut zz_gpui::VisualTestContext| {
+        let publish = |state, cx: &mut ala::VisualTestContext| {
             sequence.set(sequence.get() + 1);
             mux.update(cx, |mux, cx| {
                 mux.handle_message_for_test(
@@ -6203,7 +6187,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn every_daemon_overlay_payload_reaches_a_desktop_consumer(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -6236,7 +6220,7 @@ mod tests {
         let input = input_slot.borrow().clone().expect("captured input");
         let sequence = Cell::new(0_u64);
 
-        let publish = |payload: zz_protocol::EventPayload, cx: &mut zz_gpui::VisualTestContext| {
+        let publish = |payload: zz_protocol::EventPayload, cx: &mut ala::VisualTestContext| {
             sequence.set(sequence.get() + 1);
             mux.update(cx, |mux, cx| {
                 mux.handle_message_for_test(
@@ -6459,7 +6443,7 @@ mod tests {
     /// client core reads it, but only crates/zz-tui/src/input.rs called that,
     /// so a right-click over the desktop menu did nothing and a left-click
     /// chose a row the pin would never have chosen.
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_nomouse_menu_leaves_on_any_button_but_the_first(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -6491,7 +6475,7 @@ mod tests {
         let mux: Entity<MuxClient> = mux_slot.borrow().clone().expect("captured mux");
         let input = input_slot.borrow().clone().expect("captured input");
         let sequence = Cell::new(0_u64);
-        let raise = |mouse_keys: bool, cx: &mut zz_gpui::VisualTestContext| {
+        let raise = |mouse_keys: bool, cx: &mut ala::VisualTestContext| {
             let mut state = menu_state_for_test();
             state.mouse_keys = mouse_keys;
             sequence.set(sequence.get() + 1);
@@ -6579,7 +6563,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_bare_motion_over_a_nomouse_menu_sends_nothing(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, false, false);
         let row = cx
@@ -6608,10 +6592,7 @@ mod tests {
         cx: &mut TestAppContext,
         mouse_keys: bool,
         stay_open: bool,
-    ) -> (
-        Rc<RefCell<Vec<InputMessage>>>,
-        &mut zz_gpui::VisualTestContext,
-    ) {
+    ) -> (Rc<RefCell<Vec<InputMessage>>>, &mut ala::VisualTestContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
         let input_slot = Rc::new(RefCell::new(None));
@@ -6705,7 +6686,7 @@ mod tests {
     /// highlight and nothing else. Enter then chooses the row the highlight
     /// sits on, which is how this reads the highlight without asking the view
     /// for its private state.
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_mouse_menu_moves_its_highlight_under_a_motion(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, false);
         let row = cx
@@ -6732,7 +6713,7 @@ mod tests {
     /// the release never sets. So the release chooses the row the highlight
     /// already sits on, not the row it lands on, and a press on its own only
     /// moves the highlight there.
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_release_inside_a_mouse_menu_chooses_the_highlighted_row(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, false);
         let highlighted = cx
@@ -6766,13 +6747,13 @@ mod tests {
     /// `menu_key_cb`: outside the box, a menu that is not stay-open closes on
     /// `!move && MOUSE_RELEASE` and on nothing else, so the press that opened
     /// the way to it leaves the menu up.
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_release_outside_a_mouse_menu_closes_it_and_a_press_does_not(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, false);
         let menu = cx
             .debug_bounds("display-menu")
             .expect("the menu drew its box");
-        let outside = zz_gpui::point(menu.origin.x - px(24.0), menu.center().y);
+        let outside = ala::point(menu.origin.x - px(24.0), menu.center().y);
 
         cx.simulate_mouse_down(outside, MouseButton::Left, Modifiers::default());
         assert!(
@@ -6797,19 +6778,19 @@ mod tests {
     /// any report that is neither a release, a wheel nor a drag, so the press
     /// that leaves a plain menu up closes this one, and the wheel that closes
     /// nothing still closes nothing.
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_stay_open_menu_closes_outside_on_a_press_and_not_on_a_wheel(cx: &mut TestAppContext) {
         let (input, cx) = menu_mouse_fixture(cx, true, true);
         let menu = cx
             .debug_bounds("display-menu")
             .expect("the menu drew its box");
-        let outside = zz_gpui::point(menu.origin.x - px(24.0), menu.center().y);
+        let outside = ala::point(menu.origin.x - px(24.0), menu.center().y);
 
-        cx.simulate_event(zz_gpui::ScrollWheelEvent {
+        cx.simulate_event(ala::ScrollWheelEvent {
             position: outside,
-            delta: zz_gpui::ScrollDelta::Lines(zz_gpui::point(0.0, -1.0)),
+            delta: ala::ScrollDelta::Lines(ala::point(0.0, -1.0)),
             modifiers: Modifiers::default(),
-            touch_phase: zz_gpui::TouchPhase::Moved,
+            touch_phase: ala::TouchPhase::Moved,
         });
         assert!(
             !menu_cancelled(&input),
@@ -6825,7 +6806,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_capture_modal_float_draws_over_a_scrim_and_takes_every_key(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -6922,7 +6903,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn menu_and_confirm_surfaces_take_focus_and_bypass_the_prefix_claim(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -7118,7 +7099,7 @@ mod tests {
         }
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn window_activation_is_the_only_workspace_client_focus_source(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -7228,7 +7209,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn committed_split_drag_lives_until_same_generation_snapshot_arrives(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -7336,7 +7317,7 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
         });
         cx.run_until_parked();
-        let drawn = |cx: &mut zz_gpui::VisualTestContext| {
+        let drawn = |cx: &mut ala::VisualTestContext| {
             cx.update(|window, cx| {
                 _ = window.draw(cx);
             });
@@ -7358,7 +7339,7 @@ mod tests {
                 },
                 start: FloatCells::from(&float),
                 press: Point::default(),
-                cell: zz_gpui::size(px(8.0), px(16.0)),
+                cell: ala::size(px(8.0), px(16.0)),
                 delta: (3, 2),
                 started: true,
                 committed_snapshot_revision: Some(workspace.snapshot_revision),
@@ -7373,7 +7354,7 @@ mod tests {
         assert_ne!(drawn(cx), resting, "a committed drag previews the move");
         let revision = workspace.read_with(cx, |workspace, _| workspace.snapshot_revision);
 
-        let settle = |request_id, cx: &mut zz_gpui::VisualTestContext| {
+        let settle = |request_id, cx: &mut ala::VisualTestContext| {
             mux.update(cx, |mux, cx| {
                 mux.handle_message_for_test(
                     zz_protocol::ProtocolMessage::CommandResponse(reply(request_id)),
@@ -7401,7 +7382,7 @@ mod tests {
                 PaneBorderStatus::Off,
                 float,
                 FloatGrip::MOVE,
-                zz_gpui::size(px(8.0), px(16.0)),
+                ala::size(px(8.0), px(16.0)),
                 Point::default(),
                 cx,
             );
@@ -7414,7 +7395,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_refused_float_drag_drops_its_preview_without_a_snapshot(cx: &mut TestAppContext) {
         settled_float_drag_drops_its_preview(cx, |request_id| {
             zz_protocol::CommandResponse::Error {
@@ -7425,7 +7406,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn an_accepted_float_drag_that_changed_nothing_drops_its_preview(cx: &mut TestAppContext) {
         settled_float_drag_drops_its_preview(cx, |request_id| {
             zz_protocol::CommandResponse::Success {
@@ -7438,7 +7419,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_float_drag_measures_rows_from_the_daemon_window(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -7504,7 +7485,7 @@ mod tests {
                 PaneBorderStatus::Bottom,
                 float,
                 FloatGrip::MOVE,
-                zz_gpui::size(px(8.0), px(16.0)),
+                ala::size(px(8.0), px(16.0)),
                 Point::default(),
                 cx,
             );
@@ -7516,7 +7497,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_dragged_pip_follows_the_pointer_and_lands_in_the_third_it_was_dropped_in(
         cx: &mut TestAppContext,
     ) {
@@ -7537,7 +7518,7 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
         });
         cx.run_until_parked();
-        let drawn = |cx: &mut zz_gpui::VisualTestContext| {
+        let drawn = |cx: &mut ala::VisualTestContext| {
             cx.update(|window, cx| {
                 _ = window.draw(cx);
             });
@@ -7597,7 +7578,7 @@ mod tests {
         });
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn focusing_a_tile_slides_the_pip_past_the_edge_and_a_click_brings_it_back(
         cx: &mut TestAppContext,
     ) {
@@ -7612,7 +7593,7 @@ mod tests {
             mux.attach_snapshot_for_test(SessionId(0), snapshot.clone(), cx);
         });
         cx.run_until_parked();
-        let settle = |cx: &mut zz_gpui::VisualTestContext| {
+        let settle = |cx: &mut ala::VisualTestContext| {
             for _ in 0..120 {
                 cx.executor().advance_clock(Duration::from_millis(16));
                 cx.update(|window, cx| {
@@ -7654,7 +7635,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_pip_is_thrown_by_the_title_in_its_pane_header(cx: &mut TestAppContext) {
         let (workspace, mux, cx) = float_workspace_for_test(cx);
         let mut snapshot = tile_and_float_snapshot(1, false);
@@ -7707,7 +7688,7 @@ mod tests {
     ) -> (
         Entity<AppView>,
         Entity<MuxClient>,
-        &mut zz_gpui::VisualTestContext,
+        &mut ala::VisualTestContext,
     ) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -7759,11 +7740,11 @@ mod tests {
         snapshot
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn float_makes_a_pip_as_tall_as_the_pane_canvas(cx: &mut TestAppContext) {
         let (workspace, mux, cx) = float_workspace_for_test(cx);
-        cx.simulate_resize(zz_gpui::size(px(1065.0), px(686.0)));
-        let settle = |cx: &mut zz_gpui::VisualTestContext| {
+        cx.simulate_resize(ala::size(px(1065.0), px(686.0)));
+        let settle = |cx: &mut ala::VisualTestContext| {
             for _ in 0..60 {
                 cx.executor().advance_clock(Duration::from_millis(16));
                 cx.update(|window, cx| {
@@ -7844,7 +7825,7 @@ mod tests {
         assert!(pip.bottom() <= canvas.bottom(), "{pip:?} {canvas:?}");
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_pip_resizes_from_its_top_edge_and_top_corners(cx: &mut TestAppContext) {
         let (_workspace, mux, cx) = float_workspace_for_test(cx);
         mux.update(cx, |mux, cx| {
@@ -7874,11 +7855,11 @@ mod tests {
         assert!(cx.debug_bounds("floating-grip-1-move").is_none());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_zoomed_float_reports_its_grid_like_a_tile(cx: &mut TestAppContext) {
         let (workspace, mux, cx) = float_workspace_for_test(cx);
         let floating = PaneId(1);
-        let report = |cx: &mut zz_gpui::VisualTestContext| {
+        let report = |cx: &mut ala::VisualTestContext| {
             let terminal =
                 workspace.read_with(cx, |workspace, _| workspace.terminals[&floating].clone());
             let sent = mux.update(cx, |mux, _| mux.record_input_for_test());
@@ -7890,8 +7871,8 @@ mod tests {
                         cell_width_px: 8,
                         cell_height_px: 16,
                     },
-                    Bounds::new(point(px(0.0), px(0.0)), zz_gpui::size(px(960.0), px(384.0))),
-                    Bounds::new(point(px(0.0), px(0.0)), zz_gpui::size(px(960.0), px(384.0))),
+                    Bounds::new(point(px(0.0), px(0.0)), ala::size(px(960.0), px(384.0))),
+                    Bounds::new(point(px(0.0), px(0.0)), ala::size(px(960.0), px(384.0))),
                     px(8.0),
                     px(16.0),
                     px(0.0),
@@ -7940,7 +7921,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn display_panes_labels_a_float_in_its_own_frame(cx: &mut TestAppContext) {
         let (_workspace, mux, cx) = float_workspace_for_test(cx);
         let mut snapshot = tile_and_float_snapshot(1, false);
@@ -7998,7 +7979,7 @@ mod tests {
     /// difference of one cell rather than re-solving the window extent from it,
     /// so `#{pane_width}` keeps answering the laid-out number while the PTY has
     /// the floored one.
-    #[zz_gpui::test]
+    #[ala::test]
     fn attached_pane_measurement_floors_below_the_laid_out_box(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -8032,7 +8013,7 @@ mod tests {
         let cell_width = px(8.0);
         let line_height = px(16.0);
         let laid_out = zz_ui::terminal::terminal_grid_size(
-            zz_gpui::size(px(960.0), px(384.0)),
+            ala::size(px(960.0), px(384.0)),
             cell_width,
             line_height,
             1.0,
@@ -8040,7 +8021,7 @@ mod tests {
         assert_eq!((laid_out.columns, laid_out.rows), (120, 24));
 
         let drawn = zz_ui::terminal::terminal_grid_size(
-            zz_gpui::size(px(959.5), px(383.5)),
+            ala::size(px(959.5), px(383.5)),
             cell_width,
             line_height,
             1.0,
@@ -8053,8 +8034,8 @@ mod tests {
         terminal.update(cx, |terminal, cx| {
             terminal.update_geometry(
                 drawn,
-                Bounds::new(point(px(0.0), px(0.0)), zz_gpui::size(px(959.5), px(383.5))),
-                Bounds::new(point(px(0.0), px(0.0)), zz_gpui::size(px(959.5), px(383.5))),
+                Bounds::new(point(px(0.0), px(0.0)), ala::size(px(959.5), px(383.5))),
+                Bounds::new(point(px(0.0), px(0.0)), ala::size(px(959.5), px(383.5))),
                 cell_width,
                 line_height,
                 px(0.0),
@@ -8078,7 +8059,7 @@ mod tests {
         ));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn split_drag_defers_terminal_resize_until_override_release(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -8112,12 +8093,12 @@ mod tests {
         let terminal =
             workspace.read_with(cx, |workspace, _| workspace.terminals[&PaneId(0)].clone());
         let sent = mux.update(cx, |mux, _| mux.record_input_for_test());
-        let update_geometry = |grid_size, cx: &mut zz_gpui::VisualTestContext| {
+        let update_geometry = |grid_size, cx: &mut ala::VisualTestContext| {
             terminal.update(cx, |terminal, cx| {
                 terminal.update_geometry(
                     grid_size,
-                    Bounds::new(point(px(0.0), px(0.0)), zz_gpui::size(px(960.0), px(384.0))),
-                    Bounds::new(point(px(0.0), px(0.0)), zz_gpui::size(px(960.0), px(384.0))),
+                    Bounds::new(point(px(0.0), px(0.0)), ala::size(px(960.0), px(384.0))),
+                    Bounds::new(point(px(0.0), px(0.0)), ala::size(px(960.0), px(384.0))),
                     px(8.0),
                     px(16.0),
                     px(0.0),
@@ -8204,7 +8185,7 @@ mod tests {
         assert!(sent.borrow().is_empty());
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn dialog_prefix_cancel_barrier_handles_acknowledgements_and_connection_reset(
         cx: &mut TestAppContext,
     ) {
@@ -8363,7 +8344,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn directional_focus_crosses_pane_kinds(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -8390,13 +8371,13 @@ mod tests {
         });
         let mux: Entity<MuxClient> = mux_slot.borrow().clone().expect("captured mux");
 
-        let publish = |snapshot: MuxSnapshot, cx: &mut zz_gpui::VisualTestContext| {
+        let publish = |snapshot: MuxSnapshot, cx: &mut ala::VisualTestContext| {
             mux.update(cx, |mux, cx| {
                 mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
             });
             cx.run_until_parked();
         };
-        let activate = |pane: PaneId, cx: &mut zz_gpui::VisualTestContext| {
+        let activate = |pane: PaneId, cx: &mut ala::VisualTestContext| {
             publish(two_pane_snapshot(pane), cx);
         };
 
@@ -8415,7 +8396,7 @@ mod tests {
             cx.update(|window, cx| picker_after_split.contains_focused(window, cx)),
             "the picker raised by a split never took focus"
         );
-        let terminal_has_the_keyboard = |cx: &mut zz_gpui::VisualTestContext| {
+        let terminal_has_the_keyboard = |cx: &mut ala::VisualTestContext| {
             cx.update(|window, _| {
                 window
                     .context_stack()
@@ -8479,7 +8460,7 @@ mod tests {
         }
 
         activate(PaneId(0), cx);
-        cx.update(zz_gpui::Window::blur);
+        cx.update(ala::Window::blur);
         let mut same_pane_again = two_pane_snapshot(PaneId(0));
         same_pane_again.generation = 99;
         publish(same_pane_again, cx);
@@ -8522,7 +8503,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn a_cross_host_attach_hands_the_keyboard_to_the_machine_it_lands_on(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let mux_slot = Rc::new(RefCell::new(None));
@@ -8556,13 +8537,13 @@ mod tests {
             AppView::new(controller, agent_controller, mux, window, cx)
         });
         let mux: Entity<MuxClient> = mux_slot.borrow().clone().expect("captured mux");
-        let publish = |snapshot: MuxSnapshot, cx: &mut zz_gpui::VisualTestContext| {
+        let publish = |snapshot: MuxSnapshot, cx: &mut ala::VisualTestContext| {
             mux.update(cx, |mux, cx| {
                 mux.attach_snapshot_for_test(SessionId(0), snapshot, cx);
             });
             cx.run_until_parked();
         };
-        let terminal_has_the_keyboard = |cx: &mut zz_gpui::VisualTestContext| {
+        let terminal_has_the_keyboard = |cx: &mut ala::VisualTestContext| {
             cx.update(|window, _| {
                 window
                     .context_stack()
@@ -8597,7 +8578,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn pane_drop_dispatches_before_deferred_teardown(cx: &mut TestAppContext) {
         let steps = Rc::new(RefCell::new(Vec::new()));
         let captured_steps = steps.clone();
@@ -8642,7 +8623,7 @@ mod tests {
         );
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn pane_handle_drop_and_escape_leave_keyboard_input_alone(cx: &mut TestAppContext) {
         cx.update(zz_ui::init);
         let (workspace, cx) = cx.add_window_view(|window, cx| {
@@ -8723,7 +8704,7 @@ mod tests {
 
             workspace.on_pane_drag_start(payload, cx);
             workspace.intercept_keystroke(
-                &zz_gpui::KeystrokeEvent {
+                &ala::KeystrokeEvent {
                     keystroke: Keystroke {
                         key: "escape".to_owned(),
                         key_char: None,
@@ -8831,10 +8812,7 @@ mod tests {
 
     #[test]
     fn split_drag_ratio_tracks_each_axis_across_the_full_layout() {
-        let bounds = Bounds::new(
-            point(px(100.0), px(50.0)),
-            zz_gpui::size(px(800.0), px(400.0)),
-        );
+        let bounds = Bounds::new(point(px(100.0), px(50.0)), ala::size(px(800.0), px(400.0)));
         assert_eq!(
             split_ratio_basis(split_ratio_from_pointer(
                 Axis::Horizontal,
@@ -8875,7 +8853,7 @@ mod tests {
         Entity<MuxClient>,
         Rc<RefCell<Vec<InputMessage>>>,
         Rc<RefCell<Vec<zz_protocol::ProtocolMessage>>>,
-        &'a mut zz_gpui::VisualTestContext,
+        &'a mut ala::VisualTestContext,
     );
 
     fn path_picker_workspace(cx: &mut TestAppContext) -> PathPickerFixture<'_> {
@@ -8920,7 +8898,7 @@ mod tests {
     fn publish_to_mux(
         mux: &Entity<MuxClient>,
         message: zz_protocol::ProtocolMessage,
-        cx: &mut zz_gpui::VisualTestContext,
+        cx: &mut ala::VisualTestContext,
     ) {
         mux.update(cx, |mux, cx| mux.handle_message_for_test(message, cx));
         cx.run_until_parked();
@@ -8954,7 +8932,7 @@ mod tests {
 
     fn palette_input(
         workspace: &Entity<AppView>,
-        cx: &mut zz_gpui::VisualTestContext,
+        cx: &mut ala::VisualTestContext,
     ) -> Option<String> {
         cx.update(|window, cx| {
             let palette = workspace.read(cx).command_palette.clone()?;
@@ -8966,10 +8944,7 @@ mod tests {
         })
     }
 
-    fn terminal_is_focused(
-        workspace: &Entity<AppView>,
-        cx: &mut zz_gpui::VisualTestContext,
-    ) -> bool {
+    fn terminal_is_focused(workspace: &Entity<AppView>, cx: &mut ala::VisualTestContext) -> bool {
         cx.update(|window, cx| {
             workspace.read(cx).terminals[&PaneId(0)]
                 .read(cx)
@@ -8981,7 +8956,7 @@ mod tests {
     fn answer_listing(
         mux: &Entity<MuxClient>,
         entries: Vec<zz_protocol::PathEntry>,
-        cx: &mut zz_gpui::VisualTestContext,
+        cx: &mut ala::VisualTestContext,
     ) {
         publish_to_mux(
             mux,
@@ -9019,7 +8994,7 @@ mod tests {
         entries
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn prefix_f_opens_the_palette_on_the_panes_folder_and_pastes_the_pick(cx: &mut TestAppContext) {
         let (workspace, mux, input, lists, cx) = path_picker_workspace(cx);
         assert!(terminal_is_focused(&workspace, cx));
@@ -9058,7 +9033,7 @@ mod tests {
         assert!(terminal_is_focused(&workspace, cx));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn prefix_f_closes_on_escape_and_cancels_its_listing(cx: &mut TestAppContext) {
         let (workspace, mux, _, lists, cx) = path_picker_workspace(cx);
         publish_to_mux(&mux, open_path_picker_event(1), cx);
@@ -9073,7 +9048,7 @@ mod tests {
         )));
     }
 
-    #[zz_gpui::test]
+    #[ala::test]
     fn prefix_f_pastes_into_the_pane_it_came_from(cx: &mut TestAppContext) {
         let (workspace, mux, input, _, cx) = path_picker_workspace(cx);
         mux.update(cx, |mux, cx| {

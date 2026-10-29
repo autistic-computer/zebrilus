@@ -24,16 +24,16 @@ use std::{
     sync::Arc,
 };
 
-use zz_client::{
-    ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
-    drop_preview_bounds, drop_zone_at, pane_drop_command, pane_rects, predicted_drop_layout,
-    split_ratio_basis,
-};
-use zz_gpui::{
+use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corners, DragMoveEvent, Entity,
     FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent, MouseButton, Pixels, Point,
     Render, ScrollStrategy, Subscription, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
+};
+use zz_client::{
+    ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
+    drop_preview_bounds, drop_zone_at, pane_drop_command, pane_rects, predicted_drop_layout,
+    split_ratio_basis,
 };
 use zz_protocol::{
     ChooseBufferAction, ChooseTreeAction, ChooseTreeKind, ChooseTreePaneKind, CommandInvocation,
@@ -75,7 +75,7 @@ use agent_lens::{AgentLens, ShowTerminal};
 pub(crate) use settings::phone;
 
 #[cfg(target_os = "ios")]
-#[derive(Clone, PartialEq, zz_gpui::Action)]
+#[derive(Clone, PartialEq, ala::Action)]
 #[action(namespace = zz, no_json)]
 pub struct OpenSession {
     pub name: String,
@@ -99,9 +99,9 @@ pub struct AppShell {
     fleet: Vec<(Entity<Connection>, Subscription)>,
     connection_status: String,
     connected: bool,
-    idle_guard: Option<zz_gpui::Task<()>>,
+    idle_guard: Option<ala::Task<()>>,
     #[cfg(target_os = "ios")]
-    auth_prompt_id: Option<(zz_gpui::EntityId, u64)>,
+    auth_prompt_id: Option<(ala::EntityId, u64)>,
     #[cfg(target_os = "ios")]
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
@@ -110,7 +110,7 @@ pub struct AppShell {
     #[cfg(target_os = "ios")]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
-    folder_pick: Option<(zz_gpui::WeakEntity<picker::PanePicker>, String)>,
+    folder_pick: Option<(ala::WeakEntity<picker::PanePicker>, String)>,
     sidebar: bool,
     slideover: bool,
     settings: Option<SettingsSection>,
@@ -298,7 +298,7 @@ impl AppShell {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let connection = cx.new(Connection::new);
         let window_handle = window.window_handle();
-        let key_listener = cx.listener(move |this, event: &zz_gpui::KeystrokeEvent, window, cx| {
+        let key_listener = cx.listener(move |this, event: &ala::KeystrokeEvent, window, cx| {
             if window.window_handle() == window_handle
                 && !matches!(
                     event.keystroke.key.as_str(),
@@ -753,12 +753,12 @@ impl AppShell {
     }
 
     #[cfg(target_os = "ios")]
-    fn menus(&self) -> Vec<zz_gpui::Menu> {
+    fn menus(&self) -> Vec<ala::Menu> {
         let bindings = self.chrome.bindings();
         let chrome = |title: &'static str, action: ChromeAction| {
-            zz_gpui::MenuItem::action(
+            ala::MenuItem::action(
                 title,
-                zz_gpui_platform::ios::MenuCommand {
+                ala_platform::ios::MenuCommand {
                     id: action.name().into(),
                     shortcut: bindings
                         .iter()
@@ -768,31 +768,31 @@ impl AppShell {
             )
         };
         let tmux = |title: &'static str, command: &'static str| {
-            zz_gpui::MenuItem::action(
+            ala::MenuItem::action(
                 title,
-                zz_gpui_platform::ios::MenuCommand {
+                ala_platform::ios::MenuCommand {
                     id: format!("tmux:{command}").into(),
                     shortcut: None,
                 },
             )
         };
         vec![
-            zz_gpui::Menu::new("zz").items([chrome("Settings…", ChromeAction::OpenSettings)]),
-            zz_gpui::Menu::new("File").items([
+            ala::Menu::new("zz").items([chrome("Settings…", ChromeAction::OpenSettings)]),
+            ala::Menu::new("File").items([
                 chrome("New Session", ChromeAction::NewSession),
                 chrome("New Window", ChromeAction::NewWindow),
                 chrome("Split Right", ChromeAction::SplitRight),
                 chrome("Split Down", ChromeAction::SplitDown),
-                zz_gpui::MenuItem::separator(),
+                ala::MenuItem::separator(),
                 chrome("Close Pane", ChromeAction::ClosePane),
                 tmux("Kill Window", "kill-window"),
             ]),
-            zz_gpui::Menu::new("View").items([
+            ala::Menu::new("View").items([
                 chrome("Command Palette…", ChromeAction::OpenCommandPalette),
                 tmux("Choose Window…", "choose-tree -w"),
                 chrome("Toggle Sidebar", ChromeAction::ToggleSidebar),
                 tmux("Zoom Pane", "resize-pane -Z"),
-                zz_gpui::MenuItem::separator(),
+                ala::MenuItem::separator(),
                 chrome("Zoom In", ChromeAction::UiZoomIn),
                 chrome("Zoom Out", ChromeAction::UiZoomOut),
                 chrome("Reset Zoom", ChromeAction::UiZoomReset),
@@ -803,7 +803,7 @@ impl AppShell {
     #[cfg(target_os = "ios")]
     fn menu_command(
         &mut self,
-        command: &zz_gpui_platform::ios::MenuCommand,
+        command: &ala_platform::ios::MenuCommand,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -851,7 +851,7 @@ impl AppShell {
 
     fn open_folder_palette(
         &mut self,
-        picker: zz_gpui::WeakEntity<picker::PanePicker>,
+        picker: ala::WeakEntity<picker::PanePicker>,
         start: &str,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -1106,16 +1106,16 @@ impl AppShell {
                     touch_drag_handle(move |event, window, cx| {
                         let _ = view.update(cx, |this, cx| {
                             match event.phase {
-                                zz_gpui::TouchPhase::Started => window.prevent_default(),
-                                zz_gpui::TouchPhase::Moved => {
+                                ala::TouchPhase::Started => window.prevent_default(),
+                                ala::TouchPhase::Moved => {
                                     this.preferences.sidebar_width = f32::from(
                                         event.position.x - window.fully_visible_bounds().left(),
                                     );
                                     this.preferences.sidebar_width = this.sidebar_width(window);
                                     cx.notify();
                                 }
-                                zz_gpui::TouchPhase::Ended => this.preferences.save(),
-                                zz_gpui::TouchPhase::Cancelled => {}
+                                ala::TouchPhase::Ended => this.preferences.save(),
+                                ala::TouchPhase::Cancelled => {}
                             }
                             cx.stop_propagation();
                         });
@@ -1411,7 +1411,7 @@ impl AppShell {
         can_drag: bool,
         floats: bool,
         cx: &mut Context<Self>,
-    ) -> zz_gpui::Stateful<zz_gpui::Div> {
+    ) -> ala::Stateful<ala::Div> {
         let view = cx.entity();
         let touch_view = cx.weak_entity();
         let lens_view = cx.weak_entity();
@@ -1537,7 +1537,7 @@ impl AppShell {
     fn touch_pane_drag(
         &mut self,
         pane: PaneId,
-        event: &zz_gpui::TouchDragEvent,
+        event: &ala::TouchDragEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -1556,7 +1556,7 @@ impl AppShell {
             return;
         }
         match event.phase {
-            zz_gpui::TouchPhase::Started => {
+            ala::TouchPhase::Started => {
                 self.on_pane_drag_start(
                     PaneDrag {
                         pane,
@@ -1569,8 +1569,8 @@ impl AppShell {
                     window.prevent_default();
                 }
             }
-            zz_gpui::TouchPhase::Moved => self.update_drop_target(event.position, cx),
-            zz_gpui::TouchPhase::Ended => self.drop_pane(
+            ala::TouchPhase::Moved => self.update_drop_target(event.position, cx),
+            ala::TouchPhase::Ended => self.drop_pane(
                 &PaneDrag {
                     pane,
                     requires_prefix: false,
@@ -1578,7 +1578,7 @@ impl AppShell {
                 event.position,
                 cx,
             ),
-            zz_gpui::TouchPhase::Cancelled => self.finish_pane_drag(cx),
+            ala::TouchPhase::Cancelled => self.finish_pane_drag(cx),
         }
         cx.stop_propagation();
     }
@@ -1652,8 +1652,8 @@ impl AppShell {
                     );
                     DropPreviewFrame {
                         bounds: Bounds::new(
-                            zz_gpui::point(px(rect.x), px(rect.y)),
-                            zz_gpui::size(px(rect.width), px(rect.height)),
+                            ala::point(px(rect.x), px(rect.y)),
+                            ala::size(px(rect.width), px(rect.height)),
                         ),
                         opacity: 1.0,
                     }
@@ -1705,7 +1705,7 @@ impl AppShell {
             surface
                 .with_animation(
                     ("pane-drop-preview", preview.sequence),
-                    Animation::new(preview.duration).with_easing(zz_gpui::ease_out_quint()),
+                    Animation::new(preview.duration).with_easing(ala::ease_out_quint()),
                     move |surface, delta| {
                         let frame = preview.at(delta);
                         rendered.set(frame);
@@ -2165,7 +2165,7 @@ impl AppShell {
                     follows_pointer && active_window.active_pane != pane_id,
                     |surface| {
                         surface.on_mouse_move(cx.listener(
-                            move |this, event: &zz_gpui::MouseMoveEvent, _, cx| {
+                            move |this, event: &ala::MouseMoveEvent, _, cx| {
                                 if event.pressed_button.is_none() {
                                     this.command(
                                         "select-pane",
@@ -2261,16 +2261,14 @@ impl AppShell {
             .children(overlays)
             .children(preview)
             .child(
-                zz_gpui::canvas(
+                ala::canvas(
                     |_, _, _| (),
                     move |_, (), window, _| {
-                        window.on_mouse_event(
-                            move |event: &zz_gpui::MouseUpEvent, phase, _, cx| {
-                                if phase.capture() && event.button == MouseButton::Left {
-                                    let _ = release_view.update(cx, Self::commit_split);
-                                }
-                            },
-                        );
+                        window.on_mouse_event(move |event: &ala::MouseUpEvent, phase, _, cx| {
+                            if phase.capture() && event.button == MouseButton::Left {
+                                let _ = release_view.update(cx, Self::commit_split);
+                            }
+                        });
                     },
                 )
                 .absolute()
@@ -2352,7 +2350,7 @@ impl AppShell {
                 .child(touch_drag_handle(move |event, window, cx| {
                     let _ = view.update(cx, |this, cx| {
                         match event.phase {
-                            zz_gpui::TouchPhase::Started => {
+                            ala::TouchPhase::Started => {
                                 this.set_split_drag(Some(SplitDragState {
                                     drag,
                                     ratio,
@@ -2361,7 +2359,7 @@ impl AppShell {
                                 }));
                                 window.prevent_default();
                             }
-                            zz_gpui::TouchPhase::Moved => {
+                            ala::TouchPhase::Moved => {
                                 if this
                                     .split_drag
                                     .is_some_and(|state| state.drag.split == split)
@@ -2369,8 +2367,8 @@ impl AppShell {
                                     this.move_split(drag, event.position, touch_bounds.get(), cx);
                                 }
                             }
-                            zz_gpui::TouchPhase::Ended => this.commit_split(cx),
-                            zz_gpui::TouchPhase::Cancelled => {
+                            ala::TouchPhase::Ended => this.commit_split(cx),
+                            ala::TouchPhase::Cancelled => {
                                 this.set_split_drag(None);
                                 cx.notify();
                             }
@@ -3075,21 +3073,21 @@ impl Render for AppShell {
 }
 
 pub(super) fn touch_drag_handle(
-    handler: impl Fn(&zz_gpui::TouchDragEvent, &mut Window, &mut App) + 'static,
+    handler: impl Fn(&ala::TouchDragEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
-    zz_gpui::canvas(
+    ala::canvas(
         |bounds, window, cx| {
             (
-                window.insert_hitbox(bounds, zz_gpui::HitboxBehavior::Normal),
+                window.insert_hitbox(bounds, ala::HitboxBehavior::Normal),
                 window.use_state(cx, |_, _| false),
             )
         },
         move |_, (hitbox, claimed), window, _| {
-            window.on_mouse_event(move |event: &zz_gpui::TouchDragEvent, phase, window, cx| {
+            window.on_mouse_event(move |event: &ala::TouchDragEvent, phase, window, cx| {
                 if !phase.bubble() {
                     return;
                 }
-                if event.phase == zz_gpui::TouchPhase::Started {
+                if event.phase == ala::TouchPhase::Started {
                     if window.default_prevented()
                         || !hitbox.is_hovered_at(event.start_position, window)
                     {
@@ -3101,7 +3099,7 @@ pub(super) fn touch_drag_handle(
                     handler(event, window, cx);
                     if matches!(
                         event.phase,
-                        zz_gpui::TouchPhase::Ended | zz_gpui::TouchPhase::Cancelled
+                        ala::TouchPhase::Ended | ala::TouchPhase::Cancelled
                     ) {
                         claimed.update(cx, |claimed, _| *claimed = false);
                     }
@@ -3312,8 +3310,8 @@ fn unix_seconds() -> u64 {
 mod prefix_tests {
     #[test]
     fn pane_drop_targets_follow_canvas_offset_and_pixel_aspect_ratio() {
+        use ala::{Bounds, point, px, size};
         use zz_client::DropZone;
-        use zz_gpui::{Bounds, point, px, size};
         use zz_protocol::{Axis, LayoutNode, PaneId, SplitId, WindowId};
         let state = super::PaneDragState {
             drag: zz_ui::pane::PaneDrag {

@@ -11,10 +11,10 @@ timestamp: 2026-10-16T15:50:00Z
 
 A terminal frame is one immutable, renderer-neutral snapshot of a pane, modeled as `TerminalViewport` in
 `crates/zz-terminal/src/model.rs`. It is what the [`zz-terminal`](/crates/zz-terminal.md) worker
-thread produces from [`libghostty-vt`](/terminal/libghostty-vt.md) and publishes; it carries no GPUI types
+thread produces from [`libghostty-vt`](/terminal/libghostty-vt.md) and publishes; it carries no ala types
 and no heap allocation per visible cell. Cells are row-major and reference an interned style/grapheme
 dictionary, so cloning a frame is a handful of `Arc` bumps. Frames are consumed by
-[`/crates/zz-daemon.md`](/crates/zz-daemon.md) fanout and then by GPUI painting per
+[`/crates/zz-daemon.md`](/crates/zz-daemon.md) fanout and then by ala painting per
 [rendering-parity](/terminal/rendering-parity.md).
 
 # Schema
@@ -143,5 +143,5 @@ if let Some(patch) = patch {
 
 - Produced by [`zz-terminal`](/crates/zz-terminal.md) from [`libghostty-vt`](/terminal/libghostty-vt.md); copy/view frames come from a [mode revision](/terminal/libghostty-vt.md).
 - Serialized as [snapshots](/protocol/snapshots.md) and streamed over the [terminal lanes](/protocol/terminal-lanes.md).
-- Painted onto GPUI per [rendering-parity](/terminal/rendering-parity.md); default colors come from [appearance](/terminal/appearance.md).
+- Painted onto ala per [rendering-parity](/terminal/rendering-parity.md); default colors come from [appearance](/terminal/appearance.md).
 - Overlays and cursor reflect [interaction](/terminal/interaction.md) state; actor publication in [pty-worker](/concepts/pty-worker.md).

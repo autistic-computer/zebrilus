@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
+use ala::{AnyElement, App, Context, Entity, IntoElement, px};
 use zz_client::StatusBarModel;
-use zz_gpui::{AnyElement, App, Context, Entity, IntoElement, px};
 use zz_ui::{
     ActiveTheme as _,
     navigation::{
@@ -19,7 +19,7 @@ use crate::connection::Connection;
 
 pub(super) fn render(
     view: &AppShell,
-    window: &zz_gpui::Window,
+    window: &ala::Window,
     cx: &mut Context<AppShell>,
 ) -> AnyElement {
     let connection = view.connection.read(cx);
@@ -50,7 +50,7 @@ pub(super) fn render(
                 let connection = view.connection.clone();
                 (
                     label.into(),
-                    Rc::new(move |_: &mut zz_gpui::Window, cx: &mut App| {
+                    Rc::new(move |_: &mut ala::Window, cx: &mut App| {
                         sidebar::execute(&connection, &command, cx);
                     }) as StatusAction,
                 )

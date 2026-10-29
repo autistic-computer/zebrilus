@@ -3,10 +3,10 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleExecutable</key><string>ZZGPUI</string>
-    <key>CFBundleIdentifier</key><string>dev.zz.gpui-poc</string>
-    <key>CFBundleName</key><string>ZZ GPUI</string>
-    <key>CFBundleDisplayName</key><string>zz GPUI</string>
+    <key>CFBundleExecutable</key><string>ZZAla</string>
+    <key>CFBundleIdentifier</key><string>dev.zz.ala-poc</string>
+    <key>CFBundleName</key><string>ZZ Ala</string>
+    <key>CFBundleDisplayName</key><string>zz ala</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.1.0</string>
     <key>CFBundleVersion</key><string>1</string>
@@ -39,7 +39,7 @@
             <key>UIWindowSceneSessionRoleApplication</key>
             <array><dict>
                 <key>UISceneConfigurationName</key><string>Default Configuration</string>
-                <key>UISceneDelegateClassName</key><string>ZZGPUISceneDelegate</string>
+                <key>UISceneDelegateClassName</key><string>ZZAlaSceneDelegate</string>
             </dict></array>
         </dict>
     </dict>

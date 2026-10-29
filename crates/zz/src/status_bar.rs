@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
-use zz_client::{StatusBarModel, StatusBarWindow};
-use zz_gpui::{
+use ala::{
     AnyElement, App, Entity, IntoElement, MouseButton, Pixels, SharedString, Stateful, Window,
     prelude::*,
 };
+use zz_client::{StatusBarModel, StatusBarWindow};
 use zz_ui::{
     ActiveTheme as _, IconName,
     navigation::{
@@ -35,7 +35,7 @@ pub(crate) fn render_gui_status_bar(
     window_controls: Option<AnyElement>,
     _window: &mut Window,
     cx: &mut App,
-) -> Stateful<zz_gpui::Div> {
+) -> Stateful<ala::Div> {
     let (snapshot, attached_host, attached, connected) = {
         let mux = mux.read(cx);
         (
