@@ -10,9 +10,8 @@ use smallvec::SmallVec;
 
 use crate::UiZoom;
 use crate::{
-    ActiveTheme as _, Edge, Highlight, Icon, IconName, InteractiveElementExt as _, Kind, Layer,
-    PaintState, Shape, StylePatch, StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle,
-    h_flex,
+    ActiveTheme as _, Edge, Icon, IconName, InteractiveElementExt as _, Kind, Layer, PaintState,
+    StyledExt as _, Surface, SurfaceRole, Tone, foundation::restyle, h_flex,
 };
 
 pub const TITLE_BAR_HEIGHT: Pixels = crate::PANE_HEADER_HEIGHT;
@@ -121,13 +120,6 @@ impl ParentElement for TitleBar {
 const CONTROL_ICON_WIDTH: Pixels = TITLE_BAR_HEIGHT;
 #[cfg(target_os = "windows")]
 const CONTROL_ICON_WIDTH: Pixels = px(46.);
-
-const WINDOW_CONTROL: SurfaceRole = SurfaceRole::ICON_BUTTON.with(
-    StylePatch::EMPTY
-        .shape(Shape::Square)
-        .hover(Highlight::Tint)
-        .selected(Highlight::None),
-);
 
 #[derive(IntoElement)]
 struct WindowControl {
@@ -273,7 +265,7 @@ impl Default for WindowControls {
     fn default() -> Self {
         Self {
             on_close_window: None,
-            surface_role: WINDOW_CONTROL,
+            surface_role: crate::roles::WINDOW_CONTROLS,
         }
     }
 }

@@ -13,17 +13,22 @@ pub mod foundation;
 pub mod highlighter;
 pub mod icon;
 pub mod input;
+pub mod interface_theme;
 pub mod kbd;
 pub mod list;
 pub mod menu;
 pub mod overlay;
 pub mod popover;
 pub mod pulse;
+pub mod roles;
 pub mod scroll;
 pub mod segmented;
 pub mod select;
 pub mod separator;
+pub mod settings;
 pub mod sheet;
+pub mod shell;
+pub mod sidebar;
 pub mod slider;
 pub mod spinner;
 pub mod switch;
@@ -31,6 +36,8 @@ pub mod text;
 pub mod title_bar;
 pub mod tooltip;
 pub mod touch;
+#[cfg(feature = "tray")]
+pub mod tray;
 
 pub mod dialog {
     pub use super::overlay::{AlertDialog, Dialog, DialogButtonProps};

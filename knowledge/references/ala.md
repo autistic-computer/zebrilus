@@ -153,6 +153,13 @@ viewport comes to rest once a keyboard transition ends (default: the current vis
 open); otherwise the system takes back. They sit on `PlatformWindow::set_back_handler` and
 `set_back_enabled`, which only the Android backend implements.
 
+`Window::activate_window_with_token` raises a window with an activation token another process
+handed over, such as the `XDG_ACTIVATION_TOKEN` a launcher gives a second copy of an app. It sits
+on `PlatformWindow::activate_with_token`, which Wayland implements and every other backend answers
+with `activate`. When a host other than macOS checks a macOS target, ala-platform's build script
+writes empty Metal outputs, so `cargo check --target aarch64-apple-darwin` type-checks from Linux;
+nothing built that way can run.
+
 # zz changes to ala
 
 Fork commit `7bdd43258b` gives the native macOS Window menu first chance to handle
