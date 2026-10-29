@@ -13,8 +13,9 @@ use ala::{
 };
 use image::{Frame as ImageFrame, ImageBuffer, Rgba};
 use parking_lot::RwLock;
-use zz_browser::{ArtifactFile, ArtifactReply, ArtifactRequest, diagnostic_url, normalize_url};
+use zz_browser::{ArtifactFile, ArtifactReply, ArtifactRequest};
 pub(crate) use zz_client::scrollback::{HistoryRing, RetainedTerminalViewport};
+use zz_client::url_input::{diagnostic_url, normalize_url};
 use zz_client::{
     ClientCore, CoreEvent, Outbound,
     scrollback::{

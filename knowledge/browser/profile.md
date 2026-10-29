@@ -24,8 +24,9 @@ storage/credential material is never logged.
 
 # Path layout
 
-`resolve_profile_paths()` builds a two-level layout under the platform
-application-data directory:
+`BrowserProfilePaths::under(data_dir, "zz-default")`, called from
+`crates/zz/src/browser/mod.rs` with the platform data dir, builds a two-level
+layout under the platform application-data directory:
 
 ```text
 <platform data dir>/zz/browser/root/          <- root  (CEF root_cache_path)
@@ -179,7 +180,7 @@ discovery after the user changes permission.
   Cookie and history snapshots, decrypted values, and derived keys are discarded
   after the operation; no raw rows or values enter diagnostics.
 - Explicit cookie-file import accepts Cookie-Editor JSON and Netscape
-  `cookies.txt`, normalizes supported records in `cookies.rs`, writes them only
+  `cookies.txt`, normalizes supported records in `cookie.rs`, writes them only
   through CEF's `CookieManager`, and flushes the profile store. Invalid,
   expired, partitioned, or otherwise unrepresentable records are skipped and
   counted; automatic Chrome imports pass through the same normalization and CEF
@@ -217,8 +218,8 @@ egress host.
 
 | File | Role |
 | --- | --- |
-| `src/profile.rs` | `BrowserProfilePaths`, `resolve_profile_paths`, per-platform data dir, user-only permissions. |
-| `src/cookies.rs` | Bounded Cookie-Editor/Netscape parsing and CEF-neutral cookie normalization. |
+| `src/profile.rs` | `BrowserProfilePaths`, profile-name rules, user-only permissions. |
+| `src/cookie.rs` | Bounded Cookie-Editor/Netscape parsing and CEF-neutral cookie normalization. |
 | `src/cef_runtime.rs` | Global `root_cache_path` setting and per-profile `RequestContext` creation. |
 | `crates/zz-chrome-import/src/profiles.rs` | Background Chrome profile discovery, safe platform paths, and the bounded sanitized label cache. |
 | `crates/zz-chrome-import/src/cookie.rs` | Site-scoped and profile-wide queries, cookie-identity deduplication, bounded SQLite snapshot, platform key lookup, Chrome decryption, and chunked CEF-neutral normalization. |

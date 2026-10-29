@@ -11,8 +11,6 @@ pub mod chooser;
 mod chrome;
 pub mod completion;
 mod core;
-#[cfg(not(target_family = "wasm"))]
-pub mod element_picker;
 pub mod floating;
 pub mod fuzzy;
 pub mod gui_actions;
