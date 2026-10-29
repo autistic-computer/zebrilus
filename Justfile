@@ -1,5 +1,6 @@
 import "scripts/just/settings.just"
 
+mod android "scripts/just/android.just"
 mod compat "scripts/just/compat.just"
 mod design "scripts/just/design.just"
 mod install "scripts/just/install.just"

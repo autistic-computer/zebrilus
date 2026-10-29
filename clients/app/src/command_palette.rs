@@ -34,14 +34,14 @@ use crate::connection::Connection;
 
 const HOST: PaletteHostId = PaletteHostId(0);
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 fn host_name(connection: &Connection) -> String {
     connection
         .endpoint()
         .map_or_else(|| "host".to_owned(), crate::app::host_title)
 }
 
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 fn host_name(_: &Connection) -> String {
     "local".to_owned()
 }
@@ -181,7 +181,7 @@ impl PaletteBackend for ConnectionPalette {
 
     fn availability(&self, _: &App) -> PaneKindAvailability {
         PaneKindAvailability {
-            browser: cfg!(target_os = "ios"),
+            browser: cfg!(any(target_os = "ios", target_os = "android")),
             editor: false,
         }
     }

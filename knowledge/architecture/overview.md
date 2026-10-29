@@ -4,12 +4,12 @@ title: zz system overview
 description: zz multiplexes terminal and Chromium browser panes, with an agent lens over terminals running Claude Code or Codex, over a persistent daemon shared by desktop, web, mobile ala, and terminal clients.
 resource: crates/zz/src/lib.rs
 tags: [architecture, overview, ala, multiplexer, daemon]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-29T00:00:00-03:00
 ---
 
 # Overview
 
-`zz` is a multiplexer with ala desktop and web clients, an experimental ala iOS client, and a
+`zz` is a multiplexer with ala desktop and web clients, experimental ala iOS and Android clients, and a
 raw-terminal client over one persistent daemon. Its model contains these pane surfaces:
 
 - a **live local terminal** powered by `libghostty-vt` and a daemon-owned PTY worker
@@ -31,7 +31,7 @@ resize, navigation, and cursor state travel through browser-neutral types.
 
 Sessions, windows, and binary split-pane layouts live in a **persistent daemon**
 ([server](/crates/zz-daemon.md)) reached over owner-only local IPC. Desktop clients reach a remote
-daemon through an OpenSSH `ssh -L` Unix-socket forward. The ala iOS client uses in-process
+daemon through an OpenSSH `ssh -L` Unix-socket forward. The ala iOS and Android clients use in-process
 `russh` and carries the protocol through `zz proxy` over SSH channel stdio. Every device the user
 owns can attach to one session at the same time, each with its own viewport, scroll position, and
 focused window, while the layout tree, pane focus, and PTYs stay shared. Closing every ala window
@@ -50,7 +50,7 @@ from the CLI's own transcript.
 | Heterogeneous panes | terminal, browser, picker, and editor panes are uniform for layout/focus/targeting/lifecycle | [split-pane layout](/concepts/split-pane-layout.md) |
 | Renderer-free core | mux state machine has no UI/renderer dependency | [mux](/crates/zz-mux.md) |
 | Persistent daemon | PTYs + mux state outlive GUI detach; every device attaches to one session at once | [session persistence](/concepts/session-persistence.md) |
-| Portable transport | Unix-domain socket on Linux/macOS, named pipe on Windows, OpenSSH forwarding on desktop, and `zz proxy` over in-process SSH on iOS | [fleet attach](/designs/fleet-attach.md) |
+| Portable transport | Unix-domain socket on Linux/macOS, named pipe on Windows, OpenSSH forwarding on desktop, and `zz proxy` over in-process SSH on iOS and Android | [fleet attach](/designs/fleet-attach.md) |
 | Reimplemented, not linked | tmux behavior ported to safe Rust against a pinned upstream | [tmux upstream](/references/tmux-upstream.md) |
 
 # Crate map
@@ -65,16 +65,18 @@ from the CLI's own transcript.
 | [zz-browser](/crates/zz-browser.md) | CEF init, subprocess dispatch, request context, input translation, frame mailboxes |
 | [zz-client](/crates/zz-client.md) | sans-IO protocol reduction and client-local chrome key tables shared by client shells |
 | [zz](/crates/zz.md) | long-lived ala mux client; reconciles layouts; hosts terminal and CEF runtimes and the agent lens viewport |
-| `ala`, `ala-macros`, `ala-platform` | ala, our GPUI: the core with Zed's utility code folded in, its macros, and every platform backend (iOS's UIKit one included) as a module per target |
+| `ala`, `ala-macros`, `ala-platform` | ala, our GPUI: the core with Zed's utility code folded in, its macros, and every platform backend (iOS's UIKit and Android's NDK ones included) as a module per target |
 | `penna` | widget kit on ala: theme, primitives, widgets, icons; no zz dependencies |
 | `zz-ui` | zz's application UI on penna, shared by the desktop and thin clients |
-| `zz-app` (`clients/app`) | the thin-client app the web and iOS clients share |
+| `zz-app` (`clients/app`) | the thin-client app the web, iOS and Android clients share |
 | `zz-ios` (`clients/ios`) | iOS entry point around zz-app and ala-platform's UIKit backend |
+| `zz-android` (`clients/android`) | Android entry point around zz-app and ala-platform's NDK backend, with the Java glue and APK files |
 | [zz-chrome-import](/crates/zz-chrome-import.md) | Chrome profile discovery, cookie decryption, read-only history extraction |
 | [zz-xtask](/crates/zz-xtask.md) | builds and validates platform CEF bundles |
 
-Workspace members without a dedicated page here: the ala crates (see [ala](/references/ala.md)), `penna`, `zz-ui`, `zz-app`, `zz-ios`, and `zz-tui` (`zz attach`).
+Workspace members without a dedicated page here: the ala crates (see [ala](/references/ala.md)), `penna`, `zz-ui`, `zz-app`, `zz-ios`, `zz-android`, and `zz-tui` (`zz attach`).
 The UIKit backend is `libs/ala/crates/ala-platform/src/ios`; the iOS app and its launch resources live in `clients/ios`.
+The Android backend is `libs/ala/crates/ala-platform/src/android`; the Android app, its Java glue and manifest live in `clients/android`.
 See [crates](/crates/index.md).
 
 # Platform status
@@ -83,7 +85,9 @@ Linux/Wayland remains the most extensively runtime-validated host. On macOS, the
 and daemon PTY detach/reattach lifecycle are runtime-validated; full interactive GUI PTY/browser
 validation remains outstanding. Windows maps the protocol to a local named pipe and has CI bundle
 coverage, but full host validation remains outstanding. The experimental ala iOS terminal runs
-on iPhone and iPad simulators; physical-device validation remains outstanding.
+on iPhone and iPad simulators; physical-device validation remains outstanding. The experimental
+ala Android client runs on an API 36 emulator over a local rig and over ssh; physical-device
+validation remains outstanding.
 
 # External pins
 

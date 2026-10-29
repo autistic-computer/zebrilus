@@ -1,15 +1,15 @@
 mod agent_lens;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 mod authentication;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 mod browser_pane;
 mod compact;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 mod fleet;
 mod floating;
 mod gui;
 mod hosts;
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(crate) use hosts::host_title;
 mod picker;
 mod providers;
@@ -74,14 +74,14 @@ use crate::{
 use agent_lens::{AgentLens, ShowTerminal};
 pub(crate) use settings::phone;
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 #[derive(Clone, PartialEq, ala::Action)]
 #[action(namespace = zz, no_json)]
 pub struct OpenSession {
     pub name: String,
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 #[must_use]
 pub fn session_from_url(url: &str) -> Option<String> {
     let (_, rest) = url.split_once("://")?;
@@ -95,19 +95,19 @@ pub fn session_from_url(url: &str) -> Option<String> {
 pub struct AppShell {
     connection: Entity<Connection>,
     _connection_subscriptions: [Subscription; 2],
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     fleet: Vec<(Entity<Connection>, Subscription)>,
     connection_status: String,
     connected: bool,
     idle_guard: Option<ala::Task<()>>,
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     auth_prompt_id: Option<(ala::EntityId, u64)>,
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
     lenses: HashMap<PaneId, Entity<AgentLens>>,
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
     folder_pick: Option<(ala::WeakEntity<picker::PanePicker>, String)>,
@@ -145,6 +145,8 @@ pub struct AppShell {
     split_drag: Option<SplitDragState>,
     terminal_resize_suppressed: Rc<Cell<bool>>,
     pane_drag: Option<PaneDragState>,
+    #[cfg(target_os = "android")]
+    system_back: Option<bool>,
     pane_layout_override: Option<PaneLayoutOverride>,
     pane_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
     float_canvas_bounds: Rc<Cell<Bounds<Pixels>>>,
@@ -193,7 +195,7 @@ fn watch_connection(
                     }
                 }
                 zz_client::CoreEvent::HelloReceived | zz_client::CoreEvent::Attached { .. } => {
-                    #[cfg(target_os = "ios")]
+                    #[cfg(any(target_os = "ios", target_os = "android"))]
                     if matches!(event, zz_client::CoreEvent::HelloReceived) {
                         this.remember_host(cx);
                     }
@@ -332,25 +334,25 @@ impl AppShell {
             }
         });
         let settings_controls = settings::Controls::new(&preferences, window, cx);
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         let hosts = hosts::Hosts::new(window, cx);
-        #[cfg_attr(not(target_os = "ios"), allow(unused_mut))]
+        #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(unused_mut))]
         let mut this = Self {
             connection,
             _connection_subscriptions: connection_subscriptions,
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", target_os = "android"))]
             fleet: Vec::new(),
             connection_status: String::new(),
             connected: false,
             idle_guard: None,
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", target_os = "android"))]
             auth_prompt_id: None,
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", target_os = "android"))]
             hosts,
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
             lenses: HashMap::new(),
-            #[cfg(target_os = "ios")]
+            #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
             folder_pick: None,
@@ -392,6 +394,8 @@ impl AppShell {
             split_drag: None,
             terminal_resize_suppressed: Rc::new(Cell::new(false)),
             pane_drag: None,
+            #[cfg(target_os = "android")]
+            system_back: None,
             pane_layout_override: None,
             pane_canvas_bounds: Rc::default(),
             float_canvas_bounds: Rc::default(),
@@ -404,11 +408,18 @@ impl AppShell {
             _subscriptions: vec![key_events, appearance_observer, activation_observer],
         };
         this.connection.update(cx, Connection::start);
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         this.reconnect_saved_hosts(window, cx);
         this.preferences.apply(&this.connection, window, cx);
         #[cfg(target_os = "ios")]
         cx.set_menus(this.menus());
+        #[cfg(target_os = "android")]
+        window.on_system_back(cx, {
+            let view = cx.weak_entity();
+            move |window, cx| {
+                let _ = view.update(cx, |this, cx| this.system_back(window, cx));
+            }
+        });
         this
     }
 
@@ -428,7 +439,7 @@ impl AppShell {
 
     pub(super) fn host_connections(&self) -> Vec<Entity<Connection>> {
         let attached = std::iter::once(self.connection.clone());
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         let attached = attached.chain(self.fleet.iter().map(|(connection, _)| connection.clone()));
         attached.collect()
     }
@@ -958,21 +969,28 @@ impl AppShell {
                     .on(ground)
                     .on_click(cx.listener(|this, _, window, cx| this.toggle_sidebar(window, cx))),
             )
-            .when(cfg!(target_os = "ios"), |controls| {
-                controls.child(
-                    zz_ui::navigation::workspace_palette_button("web-palette")
-                        .on(ground)
-                        .on_click(
-                            cx.listener(|this, _, window, cx| this.open_palette(None, window, cx)),
-                        ),
-                )
-            })
+            .when(
+                cfg!(any(target_os = "ios", target_os = "android")),
+                |controls| {
+                    controls.child(
+                        zz_ui::navigation::workspace_palette_button("web-palette")
+                            .on(ground)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_palette(None, window, cx);
+                            })),
+                    )
+                },
+            )
             .into_any_element()
     }
 
     pub(super) fn controls_width(window: &Window) -> Pixels {
         zz_ui::navigation::workspace_chrome_controls_width_for(
-            if cfg!(target_os = "ios") { 2 } else { 1 },
+            if cfg!(any(target_os = "ios", target_os = "android")) {
+                2
+            } else {
+                1
+            },
             window,
         )
     }
@@ -1131,7 +1149,7 @@ impl AppShell {
 
     fn focus_pane(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
         self.focused_pane = Some(pane);
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(browser) = self.browsers.get(&pane) {
             browser.read(cx).focus_handle(cx).focus(window, cx);
         }
@@ -1189,7 +1207,7 @@ impl AppShell {
         }
         self.lenses
             .retain(|pane, _| connection.agent_lens_open(*pane));
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
         self.pickers
@@ -1289,7 +1307,7 @@ impl AppShell {
         cx.notify();
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn browser_entity(
         &mut self,
         pane: PaneId,
@@ -1736,9 +1754,9 @@ impl AppShell {
             }
             self.pane_layout_override = None;
             if !self.connection.read(cx).connected {
-                #[cfg(target_os = "ios")]
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 let sheet = self.host_sheets(window, cx);
-                #[cfg(not(target_os = "ios"))]
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 let sheet: Option<AnyElement> = None;
                 return div()
                     .flex()
@@ -1936,7 +1954,7 @@ impl AppShell {
                     });
                     terminal.clone().into_any_element()
                 }
-                #[cfg(target_os = "ios")]
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 PaneKindSnapshot::Browser(descriptor) => {
                     let browser = self.browser_entity(pane_id, descriptor, window, cx);
                     browser.update(cx, |browser, cx| {
@@ -1958,7 +1976,7 @@ impl AppShell {
                     }
                     browser.into_any_element()
                 }
-                #[cfg(not(target_os = "ios"))]
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 PaneKindSnapshot::Browser(descriptor) => unsupported_pane(
                     "Browser",
                     IconName::Globe,
@@ -2879,9 +2897,9 @@ impl Render for AppShell {
             cx.set_global(zz_ui::settings::SettingsBottomInset(page_inset));
         }
         zz_ui::touch::CoarsePointer::set(Self::narrow(window), cx);
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         self.sync_authentication(window, cx);
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         {
             let host = self.connection.read(cx).endpoint().unwrap_or_default();
             self.browsers
@@ -2904,6 +2922,8 @@ impl Render for AppShell {
         let compact = self.compact_active(window, cx);
         self.sync_compact_mode(compact, cx);
         self.sync_keyboard_motion(window);
+        #[cfg(target_os = "android")]
+        self.sync_system_back(dialog, window, cx);
         let sidebar = if !compact && self.inline_sidebar(window) {
             self.sidebar(window, cx)
         } else {
@@ -2943,7 +2963,7 @@ impl Render for AppShell {
         } else {
             self.compact_shell(terminal_overlays, overlays, window, cx)
         };
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         {
             let connection = self.connection.read(cx);
             let core = &connection.core;
@@ -2953,8 +2973,7 @@ impl Render for AppShell {
                 .is_some_and(|root| !root.read(cx).notifications(cx).is_empty())
                 || window.focused(cx).is_some_and(|focus| {
                     cx.build_action("zz_menu::Cancel", None)
-                        .ok()
-                        .is_some_and(|action| {
+                        .is_ok_and(|action| {
                             window
                                 .highest_precedence_binding_for_action_in(action.as_ref(), &focus)
                                 .is_some()
@@ -3023,15 +3042,14 @@ impl Render for AppShell {
             .on_key_up(cx.listener(Self::key_up))
             .map(|shell| {
                 #[cfg(target_os = "ios")]
-                let shell =
-                    shell
-                        .on_action(cx.listener(Self::menu_command))
-                        .on_action(cx.listener(|this, action: &OpenSession, _, cx| {
-                            this.connection.update(cx, |connection, cx| {
-                                connection.open_session(action.name.clone(), cx);
-                            });
-                            this.connect_recent_host(cx);
-                        }));
+                let shell = shell.on_action(cx.listener(Self::menu_command));
+                #[cfg(any(target_os = "ios", target_os = "android"))]
+                let shell = shell.on_action(cx.listener(|this, action: &OpenSession, _, cx| {
+                    this.connection.update(cx, |connection, cx| {
+                        connection.open_session(action.name.clone(), cx);
+                    });
+                    this.connect_recent_host(cx);
+                }));
                 shell
             })
             .on_drag_move::<SidebarResizeDrag>(cx.listener(

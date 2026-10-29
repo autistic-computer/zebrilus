@@ -8,3 +8,6 @@ ci-test = "test --workspace --all-features"
 # and the bundle sheds the VC redistributable. Linux and macOS are untouched.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.'cfg(target_os = "android")']
+rustflags = ["-A", "clippy::missing_const_for_thread_local"]

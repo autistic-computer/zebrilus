@@ -1,4 +1,4 @@
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 use ala::{AnyElement, Entity, Pixels, SharedString, Subscription, Window, px};
 use ala::{Context, IntoElement, div, prelude::*};
 use zz_ui::{
@@ -10,7 +10,7 @@ use zz_ui::{
         settings_page_heading, settings_scroll_column,
     },
 };
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 use zz_ui::{
     StyledExt as _,
     button::ButtonVariants as _,
@@ -20,10 +20,10 @@ use zz_ui::{
 };
 
 use super::{AppShell, settings::with_control};
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 use crate::connection::Connection;
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "android", test))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub(super) struct SavedHosts {
@@ -31,7 +31,7 @@ pub(super) struct SavedHosts {
     connected: Vec<String>,
 }
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "android", test))]
 impl SavedHosts {
     pub(super) fn endpoints(&self) -> &[String] {
         &self.endpoints
@@ -97,11 +97,10 @@ impl SavedHosts {
     }
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 impl SavedHosts {
     fn directory() -> std::path::PathBuf {
-        std::path::PathBuf::from(std::env::var_os("HOME").expect("iOS application home directory"))
-            .join("Library/Application Support/ala")
+        crate::preferences::support_directory()
     }
 
     pub(super) fn load() -> Self {
@@ -115,7 +114,7 @@ impl SavedHosts {
     }
 }
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "android", test))]
 pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
     let destination = input.trim();
     if destination.is_empty() {
@@ -133,7 +132,7 @@ pub(super) fn destination_endpoint(input: &str) -> Result<String, String> {
     )
 }
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "android", test))]
 pub(crate) fn host_title(endpoint: &str) -> String {
     let Some(rest) = endpoint.strip_prefix("ssh://") else {
         return std::path::Path::new(endpoint)
@@ -153,7 +152,7 @@ pub(crate) fn host_title(endpoint: &str) -> String {
     .to_owned()
 }
 
-#[cfg(any(target_os = "ios", test))]
+#[cfg(any(target_os = "ios", target_os = "android", test))]
 fn host_location(endpoint: &str) -> String {
     if let Some(rest) = endpoint.strip_prefix("ssh://") {
         return rest.trim_end_matches('/').to_owned();
@@ -168,19 +167,19 @@ fn host_location(endpoint: &str) -> String {
     }
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) const ADD_HOST_SHEET: &str = "add-host-sheet";
-#[cfg(target_os = "ios")]
-const HOST_SHEET: &str = "host-sheet";
+#[cfg(any(target_os = "ios", target_os = "android"))]
+pub(super) const HOST_SHEET: &str = "host-sheet";
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum HostSheet {
     Add,
     Host(String),
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) struct Hosts {
     pub(super) saved: SavedHosts,
     pub(super) destination: Entity<InputState>,
@@ -189,7 +188,7 @@ pub(super) struct Hosts {
     _destination_events: Subscription,
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 impl Hosts {
     pub(super) fn new(window: &mut Window, cx: &mut Context<AppShell>) -> Self {
         let destination = cx.new(|cx| InputState::new(window, cx).placeholder("user@my-mac.local"));
@@ -221,13 +220,13 @@ impl AppShell {
         cx: &mut Context<Self>,
     ) -> SettingsScrollColumn {
         let entries = self.host_entries(narrow, cx);
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         let add = Some(if narrow {
             self.add_host_row(cx)
         } else {
             self.add_host_stack(narrow, cx)
         });
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let add: Option<SettingsStack> = None;
         let hosts = if narrow {
             SettingsStack::new()
@@ -242,7 +241,7 @@ impl AppShell {
             .children(add)
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn remember_host(&mut self, cx: &mut Context<Self>) {
         if let Some(endpoint) = self.connection.read(cx).endpoint() {
             let endpoint = endpoint.to_owned();
@@ -251,7 +250,7 @@ impl AppShell {
         }
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn connect_recent_host(&mut self, cx: &mut Context<Self>) {
         let connection = self.connection.read(cx);
         if !connection.connected
@@ -264,7 +263,7 @@ impl AppShell {
         }
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn add_host(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let value = self.hosts.destination.read(cx).value().to_string();
         let endpoint = destination_endpoint(&value).and_then(|endpoint| {
@@ -292,7 +291,7 @@ impl AppShell {
         }
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
         let muted = cx.theme().foreground.muted();
         let nothing_attached = self.connection.read(cx).endpoint().is_none();
@@ -413,7 +412,7 @@ impl AppShell {
             .collect()
     }
 
-    #[cfg(not(target_os = "ios"))]
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     fn host_entries(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<SettingEntry> {
         let connection = self.connection.read(cx);
         let connected = connection.connected;
@@ -452,7 +451,7 @@ impl AppShell {
         )]
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn add_host_row(&self, cx: &mut Context<Self>) -> SettingsStack {
         let view = cx.entity().downgrade();
         SettingsStack::new().child(
@@ -469,7 +468,7 @@ impl AppShell {
         )
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn host_sheets(
         &self,
         window: &Window,
@@ -491,7 +490,7 @@ impl AppShell {
         Some(floating_sheet(sheet, window))
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn add_host_sheet(
         &self,
         bottom_inset: Pixels,
@@ -562,7 +561,7 @@ impl AppShell {
         .into_any_element()
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn host_sheet(
         &self,
         endpoint: &str,
@@ -692,7 +691,7 @@ impl AppShell {
         .into_any_element()
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     fn add_host_stack(&self, narrow: bool, cx: &mut Context<Self>) -> SettingsStack {
         let destination = SettingEntry::new("Destination")
             .description("user@host, or user@host:port")
@@ -740,10 +739,10 @@ impl AppShell {
     }
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
     use zz_ui::{WindowExt as _, notification::Notification};
-    let notification = match zz_daemon_client::ios_ssh_public_key() {
+    let notification = match zz_daemon_client::app_ssh_public_key() {
         Ok(key) => {
             cx.write_to_clipboard(ala::ClipboardItem::new_string(key));
             Notification::success("SSH key copied.")
@@ -753,7 +752,7 @@ pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
     window.push_notification(notification, cx);
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 fn row_meta(text: &'static str, cx: &ala::App) -> impl IntoElement {
     let theme = cx.theme();
     h_flex()
@@ -786,7 +785,7 @@ fn gateway_address() -> String {
         .unwrap_or_default()
 }
 
-#[cfg(not(any(target_family = "wasm", target_os = "ios")))]
+#[cfg(not(any(target_family = "wasm", target_os = "ios", target_os = "android")))]
 fn gateway_address() -> String {
     String::new()
 }

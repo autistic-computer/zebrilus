@@ -24,7 +24,7 @@ and `libs/penna`. The same day both were renamed after bird anatomy in Latin: zz
 | --- | --- |
 | `libs/ala/crates/ala` | gpui core, plus the Zed utility crates it needed, now modules: `collections`, `util` (merged with gpui's own), `shared_string`, `refineable`, `scheduler`, `sum_tree`, `http_client` |
 | `libs/ala/crates/ala-macros` | ala's proc macros and the `Refineable` derive |
-| `libs/ala/crates/ala-platform` | `current_platform` and every backend as a module built only for its target: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows` (DirectX), `web`, `ios` (UIKit), and `wgpu`, the renderer Linux, web and iOS share. One build script compiles the Metal shaders on macOS and the HLSL ones on Windows |
+| `libs/ala/crates/ala-platform` | `current_platform` and every backend as a module built only for its target: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows` (DirectX), `web`, `ios` (UIKit), `android` (JNI and the NDK), and `wgpu`, the renderer Linux, web, iOS and Android share. One build script compiles the Metal shaders on macOS and the HLSL ones on Windows |
 
 zz never depended on the utility crates directly, and each target only ever compiled one
 backend, so the split bought nothing: the utility crates sat on the build's critical path before
@@ -50,7 +50,11 @@ selects the native macOS and Windows backends automatically. The web client turn
 
 The ala crates sit outside the root workspace, so the root clippy run skips them;
 `just libs check ala` lints them with all features, but only for the host OS. The `fork-rebase` skill has the recipe for cross-checking the
-other backends from macOS. Zed's extras zz never used are gone: screen capture (the `scap` and
+other backends from macOS. The Android backend checks with the NDK's clang as the C compiler and
+linker (`just android setup` installs it): `cargo clippy --manifest-path libs/ala/Cargo.toml --target aarch64-linux-android -p ala-platform --all-features`.
+Clippy 1.99 reports `missing_const_for_thread_local` on Android for `thread_local!`s that are
+already `const`, so `ala` allows it there, the `android` module allows it, and zz's
+`.cargo/config.toml` allows it for Android targets. Zed's extras zz never used are gone: screen capture (the `scap` and
 ScreenCaptureKit backends; the `ScreenCaptureSource` API stays and reports unsupported), the
 tracy profiler, and Zed's `#[perf]` test harness (`tooling/perf`). CI's "Test libs" step runs
 every ala test except ala-platform's. The Linux leg runs that crate's whole suite on its
@@ -143,6 +147,11 @@ Two APIs for the phone keyboard (`99114cc`): `TextInputConfiguration::input_mode
 the HTML `inputmode` set; the web backend writes it as the `inputmode` attribute, the iOS backend
 maps it onto `UIKeyboardType`), and `Window::target_visual_viewport_bounds`, where the visible
 viewport comes to rest once a keyboard transition ends (default: the current visual viewport).
+
+`Window::on_system_back` routes Android's back button and gesture to a callback while
+`Window::set_system_back_enabled(true)` says the app would take it (a sheet, page or overlay is
+open); otherwise the system takes back. They sit on `PlatformWindow::set_back_handler` and
+`set_back_enabled`, which only the Android backend implements.
 
 # zz changes to ala
 

@@ -26,7 +26,7 @@ use zz_ui::{
 
 use super::{AppShell, MenuFrom, Page, kind_icon, pages};
 use crate::{connection::Connection, terminal::phone_colors};
-#[cfg(target_os = "ios")]
+#[cfg(any(target_os = "ios", target_os = "android"))]
 use zz_ui::compact::bento_add_tile;
 
 const PREVIEW_TEXT: f32 = 4.0;
@@ -274,7 +274,7 @@ impl AppShell {
     }
 
     fn show_host(&mut self, index: usize, window: &mut Window, cx: &mut Context<Self>) {
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(endpoint) = self
             .host_pages(cx)
             .get(index)
@@ -482,7 +482,7 @@ impl AppShell {
         let width = window.viewport_size().width;
         let grid = (width - px(BENTO_INSET * 2.0)).max(px(0.0));
         let connected = hosts.iter().filter(|host| host.connected(cx)).count();
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         let add = Some((
             BentoSpan::new(4, 1),
             bento_add_tile("hosts-add", "Add host", cx)
@@ -492,7 +492,7 @@ impl AppShell {
                 }))
                 .into_any_element(),
         ));
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let add: Option<(BentoSpan, AnyElement)> = None;
         let tiles: Vec<(BentoSpan, AnyElement)> = hosts
             .iter()
@@ -584,7 +584,7 @@ impl AppShell {
                             .ghost()
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();
-                                #[cfg(target_os = "ios")]
+                                #[cfg(any(target_os = "ios", target_os = "android"))]
                                 this.disconnect_host(&endpoint, window, cx);
                                 let _ = (this, &endpoint, window);
                             }))
@@ -602,7 +602,7 @@ impl AppShell {
                             .label("Connect")
                             .on_click(cx.listener(move |this, _, window, cx| {
                                 cx.stop_propagation();
-                                #[cfg(target_os = "ios")]
+                                #[cfg(any(target_os = "ios", target_os = "android"))]
                                 this.connect_host(endpoint.clone(), window, cx);
                                 let _ = (this, &endpoint, window);
                             }))
@@ -1031,11 +1031,11 @@ impl AppShell {
                     return;
                 }
                 CardTarget::Session(session) => this.open_pane(*session, page.pane, cx),
-                #[cfg(target_os = "ios")]
+                #[cfg(any(target_os = "ios", target_os = "android"))]
                 CardTarget::Host(endpoint, session) => {
                     this.switch_host(endpoint, Some(*session), Some(page.pane), window, cx);
                 }
-                #[cfg(not(target_os = "ios"))]
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
                 CardTarget::Host(..) => {}
             }
             let _ = window;
@@ -1121,7 +1121,7 @@ impl AppShell {
                         .label("Cancel")
                         .ghost()
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            #[cfg(target_os = "ios")]
+                            #[cfg(any(target_os = "ios", target_os = "android"))]
                             this.disconnect_host(&endpoint, window, cx);
                             let _ = (this, &endpoint, window, cx);
                         }))
@@ -1143,7 +1143,7 @@ impl AppShell {
                     Button::new("overview-empty-connect")
                         .label("Connect")
                         .on_click(cx.listener(move |this, _, window, cx| {
-                            #[cfg(target_os = "ios")]
+                            #[cfg(any(target_os = "ios", target_os = "android"))]
                             this.connect_host(endpoint.clone(), window, cx);
                             let _ = (this, &endpoint, window, cx);
                         }))
@@ -1168,7 +1168,7 @@ impl AppShell {
     }
 
     pub(in super::super) fn host_pages(&self, cx: &App) -> Vec<HostPage> {
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         {
             use super::super::hosts::host_title;
             let connections = self.host_connections();
@@ -1198,7 +1198,7 @@ impl AppShell {
             }));
             pages
         }
-        #[cfg(not(target_os = "ios"))]
+        #[cfg(not(any(target_os = "ios", target_os = "android")))]
         {
             let _ = cx;
             vec![HostPage {
@@ -1215,7 +1215,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        #[cfg(target_os = "ios")]
+        #[cfg(any(target_os = "ios", target_os = "android"))]
         if let Some(endpoint) = self
             .host_pages(cx)
             .get(self.compact.host_pager.index())
@@ -1236,7 +1236,7 @@ impl AppShell {
         self.close_overview(cx);
     }
 
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     pub(super) fn overview_add_host_sheet(
         &self,
         bottom_inset: Pixels,
@@ -1267,7 +1267,7 @@ impl AppShell {
 enum CardTarget {
     Here,
     Session(SessionId),
-    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
+    #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     Host(String, SessionId),
 }
 
