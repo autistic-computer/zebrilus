@@ -4,7 +4,7 @@ title: In-page element picker
 description: A token-guarded, single-use overlay that lets the user pick a DOM element in the page and returns a bounded, sanitized source-context string plus an optional screenshot of the picked area.
 resource: libs/ala-cef/src/element_picker.rs
 tags: [browser, element-picker, devtools, message-router]
-timestamp: 2026-09-13T00:00:00Z
+timestamp: 2026-10-29T21:41:05Z
 ---
 
 # Overview
@@ -13,7 +13,7 @@ The element picker lets a user select a DOM element inside a rendered page and
 hands the app a short, bounded description of that element (an inspector-style
 source-context string) and, when the page reported usable geometry, a PNG of the
 area around it. It has two halves: an injected renderer-side script
-(`assets/element-picker.js`) that draws the selection overlay and reports results,
+(`src/element_picker.js`, built from `picker/`) that draws the selection overlay and reports results,
 and a Rust protocol guard (`element_picker.rs`, `ElementPickState`) that
 authenticates and validates each result before it becomes a
 [`BrowserEvent`](/browser/lifecycle.md). Communication rides CEF's JavaScript
@@ -57,15 +57,15 @@ a 16px line height, and the shared control border and shadow.
 # How it works
 
 1. **Script injection**: `RuntimeRenderProcessHandler::on_context_created` runs
-   `element-picker.js` in the main frame (URL `zz://browser/element-picker.js`),
-   exposing `globalThis.__zzElementPicker`.
+   `element-picker.js` in the main frame (URL `<scheme>://browser/element-picker.js`, `zz://` in zz),
+   exposing `globalThis.__alaCefElementPicker`.
 2. **Start**: `BrowserSession::start_element_pick()` (only when the session is
    `Ready` and the picker registered) mints a token via `ElementPickState::begin()`
-   and executes `globalThis.__zzElementPicker?.start(<token>, <appearance>)` with
+   and executes `globalThis.__alaCefElementPicker?.start(<token>, <appearance>)` with
    both arguments JSON-serialized. The overlay lets the user hover/click a DOM
    element.
 3. **Report**: the script calls the router's JS query function
-   `__zzElementPickerQuery` (cancel function `__zzElementPickerQueryCancel`) with a
+   `__alaCefElementPickerQuery` (cancel function `__alaCefElementPickerQueryCancel`) with a
    JSON message. `ElementPickerQueryHandler::on_query_str` rejects persistent
    queries and any non-main-frame origin, then calls `ElementPickState::consume`.
 4. **Emit**: on success the handler emits
@@ -79,12 +79,12 @@ a 16px line height, and the shared control border and shadow.
 The active pick is auto-cancelled on navigation (`on_before_browse`), before close
 (`on_before_close`), and on renderer termination
 (`on_render_process_terminated`), each emitting `ElementPickCancelled`.
-`cancel_element_pick()` runs `globalThis.__zzElementPicker?.cancel()`.
+`cancel_element_pick()` runs `globalThis.__alaCefElementPicker?.cancel()`.
 
 On iOS (`clients/app/src/ios_browser.rs`, `app/browser_pane.rs`) a touch on
 the picker button claims an ala touch drag and starts the pick on touch-down.
 The finger stays with the ala view while it moves over the native web view,
-so the pane forwards each position to `__zzElementPicker.point(x, y, width)`
+so the pane forwards each position to `__alaCefElementPicker.point(x, y, width)`
 (points relative to the web view, scaled to CSS pixels by the visual
 viewport's width) and lifting the finger calls `release()`, which picks what
 is highlighted or cancels when nothing is. A tap that never reaches the page
@@ -158,13 +158,15 @@ assert_eq!(state.consume(&msg), Err(ElementPickMessageError::NoActivePick)); // 
 
 # Key files
 
+Paths are relative to `libs/ala-cef` unless marked zz.
+
 | File | Role |
 | --- | --- |
 | `src/element_picker.rs` | `ElementPickState` token guard, wire-message parsing/validation, outcomes/errors, and the typed appearance/start-call serializer. |
 | `picker/src/index.ts` | Source for the theme-aware highlighter, measured DOM preview, and result reporter. |
-| `assets/element-picker.js` | Generated injected renderer bundle (~64 KB); rebuild it from `picker/`. |
+| `src/element_picker.js` | Generated injected renderer bundle (~64 KB); rebuild it with `pnpm run build` in `picker/`, and `pnpm run check` fails when it is stale. |
 | `src/cef_runtime.rs` | Message-router setup, script injection, `ElementPickerQueryHandler`, start/cancel + auto-cancel. |
-| `../zz/src/browser/view.rs` | Resolves the active zz-ui theme into `ElementPickerAppearance` at activation time. |
+| `crates/zz/src/browser/view.rs` (zz) | Resolves the active zz-ui theme into `ElementPickerAppearance` at activation time. |
 
 # Related
 
