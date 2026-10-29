@@ -18,8 +18,9 @@ use ala_platform::android::{
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use zz_daemon_client::InteractiveClient;
 
-pub use zz_browser::element_picker::ElementPickerAppearance;
-use zz_browser::element_picker::{
+pub use ala_cef::element_picker::ElementPickerAppearance;
+use ala_cef::element_picker::{
+    ELEMENT_PICKER_API as PICKER_API, ELEMENT_PICKER_QUERY as PICKER_QUERY,
     ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT, ElementPickOutcome, ElementPickState, PickGeometry,
     element_picker_start_script,
 };
@@ -245,7 +246,7 @@ impl Shared {
         self.generation.set(self.generation.get().wrapping_add(1));
         self.picker.cancel();
         self.picked.replace(None);
-        self.evaluate("globalThis.__zzElementPicker?.cancel();");
+        self.evaluate(&format!("globalThis.{PICKER_API}?.cancel();"));
         self.send(BrowserEvent::ElementPickCancelled);
     }
 }
@@ -394,7 +395,7 @@ impl BrowserView {
         let start =
             element_picker_start_script(&token, appearance).map_err(|error| error.to_string())?;
         let script = format!(
-            "globalThis.__zzElementPickerQuery = o => {{ window.zzElementPicker.postMessage(o.request); o.onSuccess?.(''); }};\n{PICKER_SCRIPT}\n{start}"
+            "globalThis.{PICKER_QUERY} = o => {{ window.zzElementPicker.postMessage(o.request); o.onSuccess?.(''); }};\n{PICKER_SCRIPT}\n{start}"
         );
         self.shared.picking.set(true);
         self.shared.evaluate(&script);
@@ -417,7 +418,7 @@ impl BrowserView {
         };
         let local = at - bounds.origin;
         self.shared.evaluate(&format!(
-            "globalThis.__zzElementPicker?.point({},{},{});",
+            "globalThis.{PICKER_API}?.point({},{},{});",
             f32::from(local.x),
             f32::from(local.y),
             f32::from(bounds.size.width)
@@ -428,7 +429,7 @@ impl BrowserView {
     pub fn release_element_pick(&self) {
         if self.shared.picking.get() {
             self.shared
-                .evaluate("globalThis.__zzElementPicker?.release();");
+                .evaluate(&format!("globalThis.{PICKER_API}?.release();"));
         }
     }
 

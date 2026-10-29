@@ -24,12 +24,12 @@ use objc::{
 use raw_window_handle::RawWindowHandle;
 use zz_daemon_client::InteractiveClient;
 
+pub use ala_cef::element_picker::ElementPickerAppearance;
+use ala_cef::element_picker::{
+    ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
+};
 use ala_platform::ios::{
     CGPoint, CGRect, CGSize, id, nil, ns_array, ns_string, nsstring_to_string,
-};
-pub use zz_browser::element_picker::ElementPickerAppearance;
-use zz_browser::element_picker::{
-    ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
 };
 
 const OBSERVED: &[&str] = &["URL", "title", "loading", "canGoBack", "canGoForward"];
@@ -62,7 +62,10 @@ pub struct BrowserMount {
     pub holes: Vec<(Bounds<Pixels>, Pixels)>,
     pub backdrop: Option<Bounds<Pixels>>,
 }
-use zz_browser::element_picker::ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT;
+use ala_cef::element_picker::{
+    ELEMENT_PICKER_API as PICKER_API, ELEMENT_PICKER_QUERY as PICKER_QUERY,
+    ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT,
+};
 const PICKER_HANDLER: &str = "zzElementPicker";
 
 #[derive(Clone, Debug)]
@@ -413,7 +416,7 @@ impl BrowserView {
         let start =
             element_picker_start_script(&token, appearance).map_err(|error| error.to_string())?;
         let script = format!(
-            "globalThis.__zzElementPickerQuery = o => {{ window.webkit.messageHandlers.{PICKER_HANDLER}.postMessage(o.request); o.onSuccess?.(''); }};\n{PICKER_SCRIPT}\n{start}"
+            "globalThis.{PICKER_QUERY} = o => {{ window.webkit.messageHandlers.{PICKER_HANDLER}.postMessage(o.request); o.onSuccess?.(''); }};\n{PICKER_SCRIPT}\n{start}"
         );
         self._state.picking.set(true);
         let state = self._state.clone();
@@ -451,7 +454,7 @@ impl BrowserView {
         };
         let local = at - bounds.origin;
         let script = format!(
-            "globalThis.__zzElementPicker?.point({},{},{});",
+            "globalThis.{PICKER_API}?.point({},{},{});",
             f32::from(local.x),
             f32::from(local.y),
             f32::from(bounds.size.width)
@@ -468,7 +471,7 @@ impl BrowserView {
             return;
         }
         unsafe {
-            let _: () = msg_send![self.view, evaluateJavaScript: ns_string("globalThis.__zzElementPicker?.release();") completionHandler: nil];
+            let _: () = msg_send![self.view, evaluateJavaScript: ns_string(&format!("globalThis.{PICKER_API}?.release();")) completionHandler: nil];
         }
     }
 
@@ -666,7 +669,7 @@ unsafe fn cancel_picker(state: &DelegateState, view: id) {
     }
     state.generation.set(state.generation.get().wrapping_add(1));
     state.picker.cancel();
-    let _: () = msg_send![view, evaluateJavaScript: ns_string("globalThis.__zzElementPicker?.cancel();") completionHandler: nil];
+    let _: () = msg_send![view, evaluateJavaScript: ns_string(&format!("globalThis.{PICKER_API}?.cancel();")) completionHandler: nil];
     let _ = state
         .events
         .unbounded_send(BrowserEvent::ElementPickCancelled);

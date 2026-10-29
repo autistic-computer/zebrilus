@@ -9,13 +9,13 @@ use ala::{
     App, Bounds, Corners, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
     LayoutId, Pixels, Position, Style, Window,
 };
+use ala_cef::{MacFramePresenter, MacIoSurface};
 use objc2::{MainThreadMarker, MainThreadOnly as _, rc::Retained, runtime::AnyObject};
 use objc2_app_kit::{NSAutoresizingMaskOptions, NSView, NSWindowOrderingMode};
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGMutablePath;
 use objc2_quartz_core::{CALayer, CAShapeLayer, CATransaction, kCAGravityResize};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
-use zz_browser::{MacFramePresenter, MacIoSurface};
 
 const CORNER_SEGMENTS: u32 = 16;
 

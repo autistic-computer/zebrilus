@@ -45,7 +45,7 @@ timestamp: 2026-07-30T23:00:00Z
 > **Retired 2026-08-01** (later reversed, see above). The ssh-only consolidation deleted the
 > QUIC transport this feature was built on, and egress went with it: `crates/zz-daemon/src/egress.rs`,
 > `crates/zz/src/browser/egress_proxy.rs`, `BrowserProfilePaths::egress_profile_name` and the
-> composite-context/proxy-preference plumbing in `zz-browser`, the `egress-v1` capability, and
+> composite-context/proxy-preference plumbing in `ala-cef`, the `egress-v1` capability, and
 > the `browser-egress` mux option are all gone at protocol v43. The return path is
 > `ssh -D`: the ssh arm already owns the connection, so a SOCKS/dynamic forward covers the same
 > need without a bespoke stream kind. Everything below is the historical record of the shipped

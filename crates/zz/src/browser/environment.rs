@@ -1,6 +1,6 @@
 use std::{env, ffi::OsStr};
 
-use zz_browser::RuntimeConfig;
+use ala_cef::RuntimeConfig;
 
 const LOCAL_SCHEME: &str = "zz";
 const PAGE_GLOBAL: &str = "zz";

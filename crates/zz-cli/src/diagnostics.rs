@@ -23,7 +23,7 @@ pub const SOCKET_ARGUMENT: &str = "--socket";
 pub const PROCESS_SAMPLE_INTERVAL: Duration = Duration::from_secs(2);
 pub const VERBOSE_FILTER: &str = concat!(
     "zz=trace,",
-    "zz_browser=trace,",
+    "ala_cef=trace,",
     "zz_daemon=trace,",
     "zz_terminal=trace,",
     "zz_mux=trace,",
@@ -32,7 +32,7 @@ pub const VERBOSE_FILTER: &str = concat!(
     "wgpu=info"
 );
 pub const NORMAL_FILTER: &str =
-    "zz=info,zz_browser=info,zz_daemon=info,zz_mux=info,zz_terminal=info,cef=warn";
+    "zz=info,ala_cef=info,zz_daemon=info,zz_mux=info,zz_terminal=info,cef=warn";
 pub const RING_LOG_GENERATION_BYTES: u64 = 8 * 1024 * 1024;
 
 pub static VERBOSE_LOG: OnceLock<Option<PathBuf>> = OnceLock::new();

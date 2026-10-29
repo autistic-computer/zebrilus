@@ -283,6 +283,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ala-cef"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "log",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "url",
+]
+
+[[package]]
 name = "ala-macros"
 version = "0.1.0"
 dependencies = [
@@ -9349,6 +9362,7 @@ name = "zz-app"
 version = "0.22.0"
 dependencies = [
  "ala",
+ "ala-cef",
  "ala-platform",
  "async-channel",
  "base64 0.23.1",
@@ -9367,25 +9381,11 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "zz-browser",
  "zz-client",
  "zz-daemon-client",
  "zz-protocol",
  "zz-terminal",
  "zz-ui",
-]
-
-[[package]]
-name = "zz-browser"
-version = "0.22.0"
-dependencies = [
- "getrandom 0.4.3",
- "log",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "url",
 ]
 
 [[package]]

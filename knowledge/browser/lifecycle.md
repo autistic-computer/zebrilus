@@ -2,7 +2,7 @@
 type: Subsystem
 title: Browser runtime & session lifecycle
 description: Runtime/profile-context/session state machines and the browser-neutral events that CEF callbacks translate into.
-resource: crates/zz-browser/src/lifecycle.rs
+resource: libs/ala-cef/src/lifecycle.rs
 tags: [browser, lifecycle, events, state-machine]
 timestamp: 2026-09-24T00:00:00Z
 ---
@@ -166,4 +166,4 @@ page before clicking its controls. For manual checks, serve the fixture and visi
   session generation.
 - Sessions restore against the persistent [profile](/browser/profile.md); see
   [session persistence](/concepts/session-persistence.md).
-- Part of the [zz-browser crate](/crates/zz-browser.md).
+- Part of the [ala-cef crate](/crates/ala-cef.md).

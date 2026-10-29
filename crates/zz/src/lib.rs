@@ -44,7 +44,7 @@ use std::{
 
 use ala::Styled as _;
 use ala::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
-use zz_browser::{BrowserBootstrap, BrowserError, BrowserRuntime};
+use ala_cef::{BrowserBootstrap, BrowserError, BrowserRuntime};
 pub(crate) use zz_cli::application_arguments;
 use zz_cli::{CommandLineOrigin, Startup, StartupOptions};
 use zz_daemon_client::{DaemonError, InteractiveClient, default_socket_path};
@@ -94,7 +94,7 @@ pub fn run() -> ExitCode {
         }
     }
     ExitCode::from(finish_bootstrap(
-        zz_browser::bootstrap(&browser_runtime_config(), browser::profile_paths),
+        ala_cef::bootstrap(&browser_runtime_config(), browser::profile_paths),
         socket_path,
         AppProfile::desktop(),
     ))
@@ -156,7 +156,7 @@ pub extern "C" fn RunWinMain(
             Startup::Exit(exit) => return if exit == ExitCode::SUCCESS { 0 } else { 1 },
         };
     }
-    let result = zz_browser::bootstrap_windows(
+    let result = ala_cef::bootstrap_windows(
         &browser_runtime_config(),
         instance,
         sandbox_info.cast(),
@@ -548,7 +548,7 @@ fn tui_browser_provider() -> Option<Box<dyn zz_tui::browser::BrowserFrameProvide
             return None;
         }
     };
-    match zz_browser::bootstrap_with_profile_paths(&browser_runtime_config(), profile_paths) {
+    match ala_cef::bootstrap_with_profile_paths(&browser_runtime_config(), profile_paths) {
         Ok(BrowserBootstrap::Runtime(mut runtime)) => {
             runtime.set_log_file(diagnostics::cef_log_file());
             Some(Box::new(browser::tui::TuiBrowserProvider::new(runtime)))

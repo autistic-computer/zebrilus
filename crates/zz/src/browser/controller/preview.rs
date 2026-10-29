@@ -5,7 +5,7 @@ use async_channel::Sender;
 
 use super::*;
 
-const PREVIEW_PROFILE: &str = zz_browser::ARTIFACT_PROFILE;
+const PREVIEW_PROFILE: &str = ala_cef::ARTIFACT_PROFILE;
 const PREVIEW_LOAD_HEIGHT: u32 = 801;
 const PREVIEW_MIN_HEIGHT: f64 = 8.0;
 const PREVIEW_MAX_HEIGHT: f64 = 800.0;
@@ -36,7 +36,7 @@ struct PreviewJob {
 
 impl Drop for PreviewJob {
     fn drop(&mut self) {
-        zz_browser::drop_local_page(&self.url);
+        ala_cef::drop_local_page(&self.url);
     }
 }
 
@@ -163,7 +163,7 @@ impl BrowserController {
         scale: f32,
         cx: &mut Context<Self>,
     ) -> Task<PreviewResult> {
-        let url = match zz_browser::host_local_page(html, false) {
+        let url = match ala_cef::host_local_page(html, false) {
             Ok(url) => url,
             Err(error) => return Task::ready(Err(error.into())),
         };
@@ -558,19 +558,19 @@ mod tests {
                 controller.previews.creating = true;
                 let render = controller.render_html_preview("<p>queued</p>", 320, 1.0, cx);
                 let job = controller.previews.queue.front().unwrap();
-                let (token, _) = zz_browser::parse_artifact_url(&job.url).unwrap();
+                let (token, _) = ala_cef::parse_artifact_url(&job.url).unwrap();
                 (render, token)
             });
             (controller, render, token)
         });
-        assert!(zz_browser::is_local_page(&token));
+        assert!(ala_cef::is_local_page(&token));
         drop(render);
         cx.run_until_parked();
         cx.update(|cx| {
             controller.update(cx, BrowserController::drive_previews);
             assert!(controller.read(cx).previews.queue.is_empty());
         });
-        assert!(!zz_browser::is_local_page(&token));
+        assert!(!ala_cef::is_local_page(&token));
     }
 
     #[ala::test]
@@ -582,7 +582,7 @@ mod tests {
                 controller.previews.creating = true;
                 let render = controller.render_html_preview("<p>loading</p>", 320, 1.0, cx);
                 let job = controller.previews.queue.pop_front().unwrap();
-                let (token, _) = zz_browser::parse_artifact_url(&job.url).unwrap();
+                let (token, _) = ala_cef::parse_artifact_url(&job.url).unwrap();
                 controller.previews.current = Some((job, PreviewStage::Loading { started: true }));
                 controller.previews.creating = false;
                 (render, token)
@@ -595,11 +595,11 @@ mod tests {
         cx.update(|cx| {
             controller.update(cx, |controller, cx| {
                 controller.drive_previews(cx);
-                assert!(zz_browser::is_local_page(&token));
+                assert!(ala_cef::is_local_page(&token));
                 controller.previews.fail_current("Preview timed out");
             });
         });
-        assert!(!zz_browser::is_local_page(&token));
+        assert!(!ala_cef::is_local_page(&token));
     }
 
     #[test]

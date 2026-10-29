@@ -14,23 +14,23 @@ pub(crate) mod view;
 
 use std::io;
 
-use zz_browser::{BrowserKey, BrowserProfilePaths, KeyAction, KeyInput, Modifiers};
+use ala_cef::{BrowserKey, BrowserProfilePaths, KeyAction, KeyInput, Modifiers};
 use zz_terminal::{KeyAction as Action, KeyCode as Key};
 
 const DEFAULT_PROFILE_DIRECTORY: &str = "zz-default";
+const NAMED_PROFILE_PREFIX: &str = "zz-profile-";
 
-const _: () = assert!(zz_browser::MAX_ARTIFACT_PATH_BYTES == zz_protocol::MAX_ARTIFACT_PATH_BYTES);
+const _: () = assert!(ala_cef::MAX_ARTIFACT_PATH_BYTES == zz_protocol::MAX_ARTIFACT_PATH_BYTES);
+const _: () = assert!(ala_cef::MAX_ARTIFACT_REPLY_BYTES == zz_protocol::MAX_ARTIFACT_REPLY_BYTES);
 const _: () =
-    assert!(zz_browser::MAX_ARTIFACT_REPLY_BYTES == zz_protocol::MAX_ARTIFACT_REPLY_BYTES);
-const _: () = assert!(
-    zz_browser::MAX_BROWSER_PROFILE_NAME_BYTES == zz_protocol::MAX_BROWSER_PROFILE_NAME_BYTES
-);
-const _: () = assert!(zz_browser::MAX_FAVICON_BYTES == zz_protocol::MAX_FAVICON_BYTES);
+    assert!(ala_cef::MAX_BROWSER_PROFILE_NAME_BYTES == zz_protocol::MAX_BROWSER_PROFILE_NAME_BYTES);
+const _: () = assert!(ala_cef::MAX_FAVICON_BYTES == zz_protocol::MAX_FAVICON_BYTES);
 
 pub(crate) fn profile_paths() -> io::Result<BrowserProfilePaths> {
     Ok(BrowserProfilePaths::under(
         &zz_protocol::app_identity::browser_data_dir()?,
         DEFAULT_PROFILE_DIRECTORY,
+        NAMED_PROFILE_PREFIX,
     ))
 }
 
@@ -67,5 +67,26 @@ pub(crate) fn browser_key_input(input: &zz_terminal::KeyInput) -> KeyInput {
             input.modifiers.platform(),
         )
         .with_repeat(input.action == Action::Repeat),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn profiles_keep_their_directories_on_disk() {
+        let paths = BrowserProfilePaths::under(
+            Path::new("data"),
+            DEFAULT_PROFILE_DIRECTORY,
+            NAMED_PROFILE_PREFIX,
+        );
+        assert_eq!(paths.profile, Path::new("data/root/zz-default"));
+        assert_eq!(
+            paths.profile_path("Work").unwrap(),
+            Path::new("data/root/zz-profile-576f726b")
+        );
     }
 }

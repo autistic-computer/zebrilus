@@ -3,7 +3,7 @@ type: Design Plan
 title: Artifacts . agent-written HTML in browser panes and inline
 description: "Proposed plan for showing HTML an agent writes. zz html <path> registers the page with the daemon that ran the caller, browser panes load it from a zz://<token>/ scheme whose bytes the daemon sends over the client's existing connection (so it works on ssh hosts), the daemon reloads the pane when a file the page loaded changes, pages get no bridge by default, and --reply grants one call that sends text to the pane that opened the page. In the Agent pane, svg blocks render inline through the mermaid path, and html blocks show code with a Preview toggle that one hidden browser renders as cached images; a click makes that block a live page in place, and Open opens it as a pane. A block opened with html preview shows the picture first and wraps a fragment in a page with the theme colors, which is also what Codex's visualize references become. Replaces the 2026-07-28 userpanes plan."
 status: Built on desktop (2026-10-19; zz html, zz:// serving, reload, zz.reply, svg blocks, html Open, Preview and live blocks, html preview blocks and Codex visualize references; iOS and web not started; the Agent pane that hosted inline previews was removed 2026-10-23)
-resource: crates/zz-browser/src/cef_runtime.rs
+resource: libs/ala-cef/src/cef_runtime.rs
 tags:
 - browser
 - cef
@@ -165,13 +165,13 @@ fail to decode and drop the whole client connection. `reply` tells the GUI wheth
 can reject one without a round trip.
 
 **Chromium.** Before this, no custom scheme was registered; `zz://browser/element-picker.js` only
-names the picker script in DevTools. `RuntimeApp` (`crates/zz-browser/src/cef_runtime.rs`) has
+names the picker script in DevTools. `RuntimeApp` (`libs/ala-cef/src/cef_runtime.rs`) has
 `on_register_custom_schemes`, registering `zz` as standard, secure and fetch-enabled but not
 CORS-enabled; the single-binary re-exec runs it in every process. `start_profile_context_at`
 puts an `ArtifactSchemeFactory` on the `artifacts` profile's `RequestContext` only
-(`zz_browser::ARTIFACT_PROFILE`), so a site in an ordinary pane can't load or embed `zz://` at all. Its `ArtifactResourceHandler`
-defers `open`, hands the token and decoded path to `zz_browser::artifact_requests()`
-(`crates/zz-browser/src/artifact.rs`), and when the answer comes resumes CEF with a task posted to
+(`ala_cef::ARTIFACT_PROFILE`), so a site in an ordinary pane can't load or embed `zz://` at all. Its `ArtifactResourceHandler`
+defers `open`, hands the token and decoded path to `ala_cef::artifact_requests()`
+(`libs/ala-cef/src/artifact.rs`), and when the answer comes resumes CEF with a task posted to
 the IO thread, as the cef crate's own `ResourceManager` does. The workspace view drains that channel
 into `MuxClient::fetch_artifact`, which sends `FetchArtifact` on the attached connection and
 assembles the chunks. Browser panes only show for the attached host, so that is always the daemon
@@ -208,8 +208,8 @@ A page starts with:
 The only bridge is the reply, and it rides the element picker's message router rather than a
 second one. `ArtifactReplyHandler` sits on that router before the picker's handler and takes only
 queries that start with `page.reply:`. `on_context_created` runs a small script on main frames whose
-URL is `zz://` that defines `window.zz.reply(text)` over `__zzElementPickerQuery`. The scheme and
-the `zz` global come from the `RuntimeConfig` zz hands zz-browser at bootstrap
+URL is `zz://` that defines `window.zz.reply(text)` over `__alaCefElementPickerQuery`. The scheme and
+the `zz` global come from the `RuntimeConfig` zz hands ala-cef at bootstrap
 (`crates/zz/src/browser/environment.rs`). The handler
 takes the token from the frame's own URL, never from the query, and answers only the main frame,
 so an https page that calls the query function gets nothing. It rejects unless the page loaded with
@@ -269,7 +269,7 @@ owns with no pane (`crates/zz/src/browser/controller/preview.rs`, a `Previews` f
 shared textures, so its frames are plain BGRA that become a `RenderImage` with no copy back from
 the GPU. Blocks go through it one at a time:
 
-1. The block is served from the client's memory: `zz_browser::host_local_page` mints a token, and
+1. The block is served from the client's memory: `ala_cef::host_local_page` mints a token, and
    the `zz://` handler answers from that table before asking the daemon. Nothing crosses the wire.
    The browser uses the `artifacts` profile on a white canvas (`set_background_color` around its
    creation, since pane browsers default to the dark backdrop), and `zz.reply` rejects.
@@ -413,7 +413,7 @@ Built and covered:
   root and dotfiles; a file root serving only itself; token reuse per path; URLs and tokens; MIME
   types; the 16 MiB cap; the `html` argument parser and `html_reads_stdin`; `take_reply`'s flag,
   opener and one-second gap.
-* `zz_browser::artifact` tests: URL parsing and percent-decoding, escaped error pages.
+* `ala_cef::artifact` tests: URL parsing and percent-decoding, escaped error pages.
 * Agent pane tests: `an_svg_block_renders_as_a_figure`,
   `an_html_block_opens_as_a_page_when_the_app_can_show_one`.
 * The catalog, tools-text and compat-manifest tests that pin every verb, and the wire fixtures at
@@ -437,7 +437,7 @@ the page's button answered a click over CDP, and the daemon logged nothing about
 Not checked live: clicking and typing into a live block in an Agent pane, since driving the window
 was not possible next to another session's zz Dev.
 
-Replies from live blocks: `a_live_page_may_reply_until_dropped` (zz-browser),
+Replies from live blocks: `a_live_page_may_reply_until_dropped` (ala-cef),
 `a_live_page_replies_to_its_agent_pane_at_most_once_a_second` (the reply gate in `inline.rs`), and
 `a_previewed_html_block_goes_live_on_click` now checks the block's owner pane. Not checked live: a
 click in a live block drafting into a real composer.

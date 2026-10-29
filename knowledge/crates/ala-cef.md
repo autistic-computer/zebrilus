@@ -1,19 +1,22 @@
 ---
 type: Rust Crate
-title: zz-browser crate
+title: ala-cef crate
 description: Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, and frame mailboxes.
-resource: crates/zz-browser/src/lib.rs
+resource: libs/ala-cef/src/lib.rs
 tags: [browser, cef, crate, osr]
-timestamp: 2026-08-14T00:00:00Z
+timestamp: 2026-10-29T21:38:47Z
 ---
 
 # Overview
 
-`crates/zz-browser` (package name `zz-browser`) is the single crate that touches
-CEF. It wraps CEF Alloy off-screen rendering (OSR) behind a small, CEF-free public
+`libs/ala-cef` (package name `ala-cef`) is the single crate that touches
+CEF. Like [ala](/references/ala.md) and `penna` it is a lib with its own Cargo
+workspace, outside zz's, that builds alone: its CEF sys adapter sits in
+`libs/ala-cef/third_party/cef-dll-sys`, and `just libs check ala-cef` lints and
+tests it the way CI does. It wraps CEF Alloy off-screen rendering (OSR) behind a small, CEF-free public
 API so the rest of zz never sees a raw Chromium handle. It owns global CEF
 initialization, single-binary multi-process subprocess dispatch, named private
-persistent request contexts ("zz profiles"), GPUI-to-CEF input translation,
+persistent request contexts (browser profiles), GPUI-to-CEF input translation,
 runtime/session lifecycle state machines, and one **latest-frame mailbox** per
 session. The ala client in [`crates/zz`](/crates/zz.md) consumes only the
 browser-neutral types re-exported from `lib.rs`, never CEF binding types.
@@ -27,7 +30,8 @@ pipelines and how a session falls back to readback.
 
 # Architecture
 
-The crate depends on no zz crate, so it can leave the workspace as `ala-cef`.
+The crate depends on no zz crate. zz hands it a `RuntimeConfig` (scheme,
+page global, GPU and frame switches) and the profile directory names.
 It splits into three layers by Cargo feature:
 
 - **No features**: `cookie`, `element_picker`, `event`, `input`, `lifecycle`,
@@ -46,8 +50,8 @@ It splits into three layers by Cargo feature:
   `unsafe_code` solely to validate and copy CEF's callback-scoped BGRA paint
   buffer into owned memory; no borrowed CEF pointer survives that callback.
 
-`cargo test -p zz-browser --no-default-features --features host` runs the
-CEF-free tests without downloading Chromium; `cargo check -p zz-browser
+`cargo test -p ala-cef --no-default-features --features host` runs the
+CEF-free tests without downloading Chromium; `cargo check -p ala-cef
 --all-targets --features cef/dox` type-checks the runtime without it.
 The one-slot mailbox model, whatever the tier: CEF hands over a callback-scoped
 resource, `cef_runtime` copies it exactly once into something zz owns (a `Vec<u8>`

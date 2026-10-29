@@ -15,7 +15,7 @@ The GUI uses `daemon_executable` to spawn the sibling `cli`; the headless binary
 never a `cli` it finds in a `bin` directory.
 It never owns mux state itself: it holds a socket/named-pipe connection to the daemon
 (`zz_daemon_client::InteractiveClient`, wrapped by `mux::client::MuxClient`), a set of local Chromium
-sessions (`zz_browser::BrowserRuntime`, wrapped by `browser::controller::BrowserController`), and
+sessions (`ala_cef::BrowserRuntime`, wrapped by `browser::controller::BrowserController`), and
 and a viewport onto the daemon's agent lens runtimes (`agent::AgentController`), then reconciles them against
 `zz_protocol::MuxSnapshot` on every render. It also owns
 the CEF *subprocess* entrypoints: `zz` itself re-execs as a renderer/GPU/utility subprocess
@@ -44,7 +44,7 @@ daemon reads the CLI's transcript and this crate reduces the stream it publishes
 `zz::run()` (in `lib.rs`, invoked from `main.rs`) branches before ever opening a window:
 
 1. **CEF subprocess** . `is_cef_subprocess()` checks for a `--type`/`--type=` argument; if present,
-   control passes straight into `zz_browser::bootstrap()` without touching diagnostics, the mux
+   control passes straight into `ala_cef::bootstrap()` without touching diagnostics, the mux
    client, or a window (this is the path CEF's renderer/GPU/zygote processes take when they re-exec
    the same `zz` executable).
 2. **`daemon` command** . delegates to `zz-cli` to run `zz_daemon::Daemon::run_foreground()`.
@@ -73,7 +73,7 @@ daemon reads the CLI's transcript and this crate reduces the stream it publishes
 7. **GUI mode** . `app`, or no arguments when the platform starts the bundle executable directly:
    `run_app` connects (or spawns-and-connects)
    `zz_daemon_client::InteractiveClient`; its default attach lazily creates session `0` if that daemon is
-   empty. It boots CEF (`zz_browser::bootstrap`), builds `MuxClient` +
+   empty. It boots CEF (`ala_cef::bootstrap`), builds `MuxClient` +
    `BrowserController` + `AgentController`, opens the one native window (`AppShell` → `AppView`),
    restores its last usable bounds through `window/state.rs`, and wires window close / app-quit to
    both shutdown paths so CEF drains its message loop before the process exits. Agent sessions are not
@@ -363,7 +363,7 @@ Split Right, and `Cmd+Shift+D` to Split Down. `macos_app.rs` retains the applica
 bindings for quit, hide, minimize, close pane (`Cmd+W`), and close window (`Cmd+Shift+W`); Settings
 remains `Cmd+,`. The Window menu ends with a separator so AppKit can append its window list, tiling,
 and Enter Full Screen items. Prefix chords have no native menu shortcut. Browser keys that no page
-consumes stop at zz's CEF keyboard handler (`crates/zz-browser/src/cef_runtime.rs`) to keep AppKit
+consumes stop at zz's CEF keyboard handler (`libs/ala-cef/src/cef_runtime.rs`) to keep AppKit
 from matching a bare `f` to its full-screen item. Quit runs the app-quit barrier; closing the main
 window shuts down the browser and agent controllers and detaches from the persistent daemon while
 its PTYs and running agent turns continue.
@@ -548,7 +548,7 @@ contract this element implements.
 
 # Browser rendering (`browser/view.rs`, `browser/element.rs`, `browser/controller.rs`)
 
-`BrowserController` is the single entity owning one `zz_browser::BrowserRuntime` and a
+`BrowserController` is the single entity owning one `ala_cef::BrowserRuntime` and a
 `BTreeMap<PaneId, BrowserSession>` plus a `BTreeMap<PaneId, BrowserPaneFrame>` **latest-frame
 cache**: each pane only ever retains its newest OSR frame, decoded exactly once into a shared
 `Arc<RenderImage>` that views clone without copying pixels. Pane focus also drives the per-session
@@ -577,7 +577,7 @@ the toolbar URL bar, the current `Viewport` (size/scale/screen offset sent to CE
 as an `Arc<RenderImage>` built by copying `OsrFrame::bgra` into an `image::ImageBuffer` in
 `consume_frame`, component-based back/forward/reload/element-picker controls, and an error/retry
 overlay for CEF startup or renderer-crash failures. It forwards pointer/wheel/key events to
-`BrowserController` as `zz_browser` types. Browser page keys and committed text use explicit
+`BrowserController` as `ala_cef` types. Browser page keys and committed text use explicit
 Browser-surface protocol messages that bypass the daemon's root key table and reach CEF through the
 synchronized Terminal/Browser sink resolver. `AppView` persists main-frame address changes with `set-browser-url` and
 forwards document-title changes through tmux-compatible `select-pane -T`; URL state and the live
@@ -718,7 +718,7 @@ then paints whichever frame the view handed it: the Linux/Windows GPU texture th
 
 Process-wide `--verbose`/`--zz-verbose-log` wiring shared by every mode above: `env_logger` init
 with per-target filters (terse `NORMAL_FILTER` vs. exhaustive `VERBOSE_FILTER` covering
-`zz`/`zz_browser`/`zz_daemon`/`zz_terminal`/`zz_mux`/`cef`/`ala`/`wgpu`), a panic hook that logs a
+`zz`/`ala_cef`/`zz_daemon`/`zz_terminal`/`zz_mux`/`cef`/`ala`/`wgpu`), a panic hook that logs a
 captured backtrace before delegating to the previous hook, a background process/process-tree
 resource sampler (`zz_daemon_client::process_info`, every 2s), and a periodic app-state sampler that calls
 `log_diagnostic_snapshot` on both `MuxClient` and `BrowserController` (every 5s, plus on
@@ -766,7 +766,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 
 | Binary | Role |
 |--------|------|
-| `zz_helper` | The CEF **subprocess entrypoint** on every desktop bundle. One line: calls `zz_browser::run_subprocess()` and exits with its code. CEF's multi-process model needs a plain, minimal executable to re-exec as renderer/GPU/zygote/utility processes; `Cargo.toml`'s `[package.metadata.cef.bundle] helper_name = "zz_helper"` tells `zz-xtask` to ship it. macOS nests copies of it into the Helper.app roles. (On Linux `zz` itself can also serve this role via `--type=`, but the bundle uses the dedicated helper for the renderer sandbox.) |
+| `zz_helper` | The CEF **subprocess entrypoint** on every desktop bundle. One line: calls `ala_cef::run_subprocess()` and exits with its code. CEF's multi-process model needs a plain, minimal executable to re-exec as renderer/GPU/zygote/utility processes; `Cargo.toml`'s `[package.metadata.cef.bundle] helper_name = "zz_helper"` tells `zz-xtask` to ship it. macOS nests copies of it into the Helper.app roles. (On Linux `zz` itself can also serve this role via `--type=`, but the bundle uses the dedicated helper for the renderer sandbox.) |
 | `zz_browser_fixture` | A deterministic, loopback-only plain-TCP HTTP server (default port 9324, no CEF/GPUI/external network) used as a manual browser smoke-test target. Serves a fixture page with a BGRA color-channel proof, text input, title mutation, same-session navigation, a long scroll area, and persistent cookie/`localStorage` counters. |
 
 # Key files
@@ -828,7 +828,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
   (`PaneId`, `WindowId`, `SessionId`, `SplitId`) this crate keys every entity by.
 - [Shared client core](/crates/zz-client.md) . renderer-free protocol reduction and chrome actions
   consumed by this ala shell.
-- [Browser core](/crates/zz-browser.md) . `BrowserRuntime`/`BrowserSession`/`OsrFrame` consumed by
+- [Browser core](/crates/ala-cef.md) . `BrowserRuntime`/`BrowserSession`/`OsrFrame` consumed by
   `browser/controller.rs`.
 - [Terminal core](/crates/zz-terminal.md) . `TerminalViewport`/`TerminalAppearance`/`PackedCell`
   consumed by `terminal/view.rs`/`terminal/element.rs`.

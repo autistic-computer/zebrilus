@@ -45,7 +45,7 @@ The dev recipes compile the gateway with `ZZ_DEV_BUILD=1` and connect to the exi
 `--socket` selects another daemon:
 
 ```sh
-just web serve --bind 127.0.0.1:8081 --socket /tmp/zz-browser.sock
+just web serve --bind 127.0.0.1:8081 --socket /tmp/ala-cef.sock
 ```
 
 The browser and daemon must use the same protocol version. If an installed daemon reports a

@@ -543,11 +543,11 @@ cargo test --manifest-path clients/web/Cargo.toml --lib --locked
 rustup run nightly cargo check --manifest-path clients/web/Cargo.toml --target wasm32-unknown-unknown --all-targets --locked
 ```
 
-Browser-domain tests can run without downloading or linking Chromium at all (package `zz-browser`,
-crate `crates/zz-browser`):
+Browser-domain tests can run without downloading or linking Chromium at all (package `ala-cef`,
+crate `libs/ala-cef`):
 
 ```sh
-cargo test -p zz-browser --no-default-features
+cargo test -p ala-cef --no-default-features
 ```
 
 # Key files

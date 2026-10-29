@@ -5,12 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use async_channel::Receiver;
-use zz_browser::{
+use ala_cef::{
     BrowserEvent, BrowserProfilePaths, BrowserRuntime, BrowserSession, KeyInput as BrowserKeyInput,
     Modifiers as BrowserModifiers, OsrFrame, PointerButton, PointerEvent, PointerPhase,
     RuntimePhase, RuntimeSignal, SessionPhase, Viewport, WheelEvent,
 };
+use async_channel::Receiver;
 use zz_protocol::{
     BrowserCommand, BrowserDescriptor, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
     normalize_browser_profile_name,
@@ -44,7 +44,11 @@ pub(crate) fn tui_profile_paths(paths: &BrowserProfilePaths) -> BrowserProfilePa
         .unwrap_or_else(|| OsStr::new(DEFAULT_PROFILE_DIRECTORY));
     let root = paths.root.with_file_name(TUI_CACHE_ROOT);
     let profile = root.join(profile_directory);
-    BrowserProfilePaths { root, profile }
+    BrowserProfilePaths {
+        root,
+        profile,
+        named_prefix: paths.named_prefix.clone(),
+    }
 }
 
 pub(crate) struct TuiBrowserProvider {
@@ -777,7 +781,7 @@ fn browser_modifiers(
 }
 
 fn browser_named_key(name: &str) -> Option<BrowserKeyInput> {
-    zz_browser::named_key_input(name)
+    ala_cef::named_key_input(name)
 }
 
 fn deadline(now: Instant, after: Duration) -> Instant {
@@ -786,8 +790,8 @@ fn deadline(now: Instant, after: Duration) -> Instant {
 
 #[cfg(test)]
 mod tests {
+    use ala_cef::{BrowserKey, KeyAction as BrowserKeyAction};
     use std::path::PathBuf;
-    use zz_browser::{BrowserKey, KeyAction as BrowserKeyAction};
     use zz_terminal::{KeyAction as TerminalKeyAction, KeyCode as TerminalKeyCode};
 
     use super::*;
@@ -806,6 +810,7 @@ mod tests {
         let paths = tui_profile_paths(&BrowserProfilePaths {
             root: PathBuf::from("app-data/zz/browser/root"),
             profile: PathBuf::from("app-data/zz/browser/root/zz-default"),
+            named_prefix: "zz-profile-".to_owned(),
         });
         assert_eq!(paths.root, PathBuf::from("app-data/zz/browser/root-tui"));
         assert_eq!(

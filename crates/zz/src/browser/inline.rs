@@ -9,7 +9,7 @@ use ala::{
     KeyUpEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point, Render,
     RenderImage, ScrollWheelEvent, Size, Subscription, UTF16Selection, Window, div, prelude::*, px,
 };
-use zz_browser::{BrowserEvent, EditCommand, PointerEvent, PointerPhase, Viewport, WheelEvent};
+use ala_cef::{BrowserEvent, EditCommand, PointerEvent, PointerPhase, Viewport, WheelEvent};
 use zz_protocol::PaneId;
 use zz_terminal::KeyAction as TerminalKeyAction;
 
@@ -30,7 +30,7 @@ use crate::{
 };
 
 const INLINE_PANE: PaneId = PaneId(u64::MAX - 1);
-const INLINE_PROFILE: &str = zz_browser::ARTIFACT_PROFILE;
+const INLINE_PROFILE: &str = ala_cef::ARTIFACT_PROFILE;
 const INLINE_BACKGROUND: u32 = 0xffff_ffff;
 const REPLY_GAP: Duration = Duration::from_secs(1);
 
@@ -65,7 +65,7 @@ struct ReplyGate {
 impl ReplyGate {
     fn take(&mut self, token: &str, now: Instant) -> Option<PaneId> {
         let pane = self.pane?;
-        let (live, _) = zz_browser::parse_artifact_url(&self.url)?;
+        let (live, _) = ala_cef::parse_artifact_url(&self.url)?;
         if live != token
             || self
                 .replied
@@ -121,7 +121,7 @@ impl InlineBrowser {
         cx: &mut Context<Self>,
     ) {
         self.close_live(cx);
-        let url = match zz_browser::host_local_page(html, reply_to.is_some()) {
+        let url = match ala_cef::host_local_page(html, reply_to.is_some()) {
             Ok(url) => url,
             Err(error) => {
                 log::warn!("could not host a live preview: {error}");
@@ -186,7 +186,7 @@ impl InlineBrowser {
         self.controller.update(cx, |controller, _| {
             controller.close_pane(INLINE_PANE);
         });
-        zz_browser::drop_local_page(&live.url);
+        ala_cef::drop_local_page(&live.url);
         self.retired.extend(live.image);
         cx.notify();
         true
@@ -635,7 +635,7 @@ mod tests {
         let mut gate = ReplyGate {
             url: format!(
                 "{}://0123456789abcdef0123456789abcdef/",
-                zz_browser::local_scheme()
+                ala_cef::local_scheme()
             ),
             pane: Some(PaneId(4)),
             replied: None,

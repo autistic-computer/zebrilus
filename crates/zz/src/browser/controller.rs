@@ -7,17 +7,17 @@ use std::{
 };
 
 use ala::{App, Context, EventEmitter, RenderImage, Task};
-use image::{Frame as ImageFrame, ImageBuffer, Rgba};
 #[cfg(target_os = "macos")]
-use zz_browser::MacIoSurface;
+use ala_cef::MacIoSurface;
 #[cfg(target_os = "windows")]
-use zz_browser::WinGpuTexture;
-use zz_browser::{
+use ala_cef::WinGpuTexture;
+use ala_cef::{
     BrowserError, BrowserEvent, BrowserGpuContext, BrowserRuntime, BrowserSession,
     CookieImportBatch, CookieImportResult, EditCommand, ElementPickerAppearance, KeyInput,
     OsrFrame, PointerEvent, RuntimePhase, RuntimeSignal, SessionId, SessionPhase,
     SiteDataClearResult, Viewport, WheelEvent,
 };
+use image::{Frame as ImageFrame, ImageBuffer, Rgba};
 use zz_protocol::PaneId;
 
 use crate::diagnostics;
@@ -527,7 +527,7 @@ pub(crate) struct BrowserPaneFrame {
     pub(crate) pool_generation: Option<u64>,
     pub(crate) sequence: Option<u64>,
     #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-    pub(crate) readback_texture: Option<zz_browser::ReadbackTexture>,
+    pub(crate) readback_texture: Option<ala_cef::ReadbackTexture>,
     pub(crate) content: BrowserPaneFrameContent,
 }
 
@@ -540,20 +540,19 @@ impl BrowserPaneFrame {
         match frame {
             OsrFrame::OwnedBgra(frame) => {
                 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
-                let readback_texture =
-                    gpu.and_then(|gpu| {
-                        match zz_browser::ReadbackTexture::upload(
-                            gpu,
-                            &frame,
-                            previous.and_then(|previous| previous.readback_texture.as_ref()),
-                        ) {
-                            Ok(texture) => Some(texture),
-                            Err(error) => {
-                                log::error!("CEF readback texture upload failed: {error}");
-                                None
-                            }
+                let readback_texture = gpu.and_then(|gpu| {
+                    match ala_cef::ReadbackTexture::upload(
+                        gpu,
+                        &frame,
+                        previous.and_then(|previous| previous.readback_texture.as_ref()),
+                    ) {
+                        Ok(texture) => Some(texture),
+                        Err(error) => {
+                            log::error!("CEF readback texture upload failed: {error}");
+                            None
                         }
-                    });
+                    }
+                });
                 let buffer = ImageBuffer::<Rgba<u8>, Vec<u8>>::from_raw(
                     frame.width,
                     frame.height,
@@ -635,7 +634,7 @@ pub struct BrowserController {
     pane_viewports: BTreeMap<PaneId, Viewport>,
     focused_panes: BTreeSet<PaneId>,
     #[cfg(target_os = "macos")]
-    frame_presenters: BTreeMap<PaneId, zz_browser::MacFramePresenter>,
+    frame_presenters: BTreeMap<PaneId, ala_cef::MacFramePresenter>,
     wheel_decay_tasks: BTreeMap<BrowserKey, (u64, Task<()>)>,
     wheel_decay_generation: u64,
     external_begin_frame_hot_until: BTreeMap<BrowserKey, Instant>,
@@ -946,7 +945,7 @@ impl BrowserController {
         let gpu_context = self.gpu_contexts.get(&key).cloned();
 
         log::warn!(
-            target: "zz_browser::accelerated_paint",
+            target: "ala_cef::accelerated_paint",
             "shared-texture session {} is falling back to readback: {reason}",
             session_id.0,
         );
@@ -1563,7 +1562,7 @@ impl BrowserController {
     pub(crate) fn set_frame_presenter(
         &mut self,
         pane: PaneId,
-        presenter: Option<zz_browser::MacFramePresenter>,
+        presenter: Option<ala_cef::MacFramePresenter>,
     ) {
         match &presenter {
             Some(presenter) => {

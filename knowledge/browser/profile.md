@@ -2,9 +2,9 @@
 type: Concept
 title: Named zz profiles & persistent request contexts
 description: Named zz-owned CEF profiles isolate browser state on the client's disk, remote egress uses host-keyed composite contexts, and explicit Chrome import uses bounded read-only snapshots.
-resource: crates/zz-browser/src/profile.rs
+resource: libs/ala-cef/src/profile.rs
 tags: [browser, profile, cef, request-context, cookies, security]
-timestamp: 2026-08-13T02:00:00Z
+timestamp: 2026-10-29T21:45:10Z
 ---
 
 # Overview
@@ -24,8 +24,9 @@ storage/credential material is never logged.
 
 # Path layout
 
-`BrowserProfilePaths::under(data_dir, "zz-default")`, called from
-`crates/zz/src/browser/mod.rs` with the platform data dir, builds a two-level
+`BrowserProfilePaths::under(data_dir, "zz-default", "zz-profile-")`, called from
+`crates/zz/src/browser/mod.rs` with the platform data dir, names both directories
+(ala-cef has no names of its own; a zz test pins these two) and builds a two-level
 layout under the platform application-data directory:
 
 ```text
@@ -39,7 +40,7 @@ layout under the platform application-data directory:
 Every profile is an **immediate child** of `root` because CEF's Chrome browser
 context only accepts persistent profiles that are direct children of
 `root_cache_path`. The default keeps its historical `zz-default` directory;
-other UTF-8 names are hex-encoded after `zz-profile-`, so separators and `..`
+other UTF-8 names are hex-encoded after the host's `named_prefix` (`zz-profile-`), so separators and `..`
 cannot escape the root. Names are trimmed, limited to 64 bytes, and reject
 control characters; legacy `zz-default` descriptors canonicalize to `default`.
 Per-platform `platform_data_dir()`:
@@ -56,6 +57,7 @@ Per-platform `platform_data_dir()`:
 | --- | --- | --- |
 | `root` | `PathBuf` | CEF `root_cache_path`; parent of every persistent profile. |
 | `profile` | `PathBuf` | The backward-compatible `zz-default` cache path used by the `default` profile. |
+| `named_prefix` | `String` | Prefix before the hex-encoded name of every other profile directory; `zz-profile-` in zz. |
 
 `ensure()` prepares `default`; `ensure_profile(name)` canonicalizes a name,
 creates its immediate-child directory (and thus `root`), then applies
@@ -235,4 +237,4 @@ egress host.
   [input translation](/browser/input-translation.md).
 - Host-keyed composite contexts and their SSH SOCKS route are detailed in
   [remote browser egress](/designs/remote-browser-egress.md).
-- Part of the [zz-browser crate](/crates/zz-browser.md).
+- Part of the [ala-cef crate](/crates/ala-cef.md).

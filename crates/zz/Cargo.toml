@@ -46,6 +46,7 @@ dioxus-devtools = { version = "=0.7.10", default-features = false, optional = tr
 env_logger.workspace = true
 ala = { workspace = true, features = ["default"] }
 ala-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
+ala-cef = { workspace = true, features = ["cef-runtime"] }
 fff-search = { version = "=0.10.6", optional = true }
 ignore = { workspace = true, optional = true }
 image = { workspace = true, features = ["bmp", "gif", "ico", "jpeg", "png", "pnm", "tiff", "webp"] }
@@ -63,7 +64,6 @@ tempfile.workspace = true
 thiserror.workspace = true
 url.workspace = true
 wgpu.workspace = true
-zz-browser = { workspace = true, features = ["cef-runtime"] }
 zz-chrome-import.workspace = true
 zz-client.workspace = true
 zz-daemon = { workspace = true, features = ["default"] }

@@ -129,7 +129,7 @@ fn main() -> anyhow::Result<()> {
     let cef_dir_str = cef_dir.to_string_lossy().into_owned();
 
     println!("cargo::rerun-if-changed={cef_dir_str}");
-    println!("cargo::rustc-env=ZZ_CEF_DISTRIBUTION_DIR={cef_dir_str}");
+    println!("cargo::rustc-env=ALA_CEF_DISTRIBUTION_DIR={cef_dir_str}");
 
     copy_cef_runtime_files(&cef_dir, target_dir)?;
     Ok(())

@@ -23,16 +23,16 @@ use ala::{
     Render, RenderImage, ScrollWheelEvent, SharedString, StyleRefinement, Subscription,
     UTF16Selection, WeakEntity, Window, anchored, deferred, div, point, prelude::*, px,
 };
-#[cfg(target_os = "macos")]
-use core_video::pixel_buffer::CVPixelBuffer;
 #[cfg(target_os = "windows")]
-use zz_browser::WinGpuTexture;
-use zz_browser::{
+use ala_cef::WinGpuTexture;
+use ala_cef::{
     BrowserCursor, BrowserEvent, BrowserGpuContext, BrowserKey, ContextMenuRequest,
     CookieImportBatch, EditCommand, ElementPickerAppearance, ImeCharacterBounds, KeyInput,
     MAX_COOKIE_IMPORT_BYTES, Modifiers, PointerButton, PointerEvent, PointerPhase, RuntimePhase,
     SessionId, Viewport, WheelEvent, ime_range_bounds, parse_cookie_import,
 };
+#[cfg(target_os = "macos")]
+use core_video::pixel_buffer::CVPixelBuffer;
 use zz_client::{
     BROWSER_TABLE, ChromeAction,
     url_input::{diagnostic_url, normalize_url, resolve_address},
@@ -553,7 +553,7 @@ fn browser_egress_route_spec(
     }
     let (egress_host, socks_port) = mux.read(cx).attached_ssh_egress()?;
     let composite_profile =
-        match zz_browser::BrowserProfilePaths::egress_profile_name(profile, &egress_host) {
+        match ala_cef::BrowserProfilePaths::egress_profile_name(profile, &egress_host) {
             Ok(profile) => profile,
             Err(error) => {
                 log::warn!(
@@ -592,7 +592,7 @@ impl BrowserView {
             DEFAULT_URL.to_owned()
         });
         let profile = normalize_browser_profile_name(&descriptor.profile)
-            .unwrap_or_else(|_| zz_browser::DEFAULT_BROWSER_PROFILE.to_owned());
+            .unwrap_or_else(|_| ala_cef::DEFAULT_BROWSER_PROFILE.to_owned());
         let active_index = descriptor
             .active_tab
             .min(descriptor.tabs.len().saturating_sub(1));
@@ -1613,7 +1613,7 @@ impl BrowserView {
     fn handle_cookie_import_result(
         &mut self,
         controller: &Entity<BrowserController>,
-        result: zz_browser::CookieImportResult,
+        result: ala_cef::CookieImportResult,
         cx: &mut Context<Self>,
     ) {
         let ignored = result.skipped + result.rejected;
@@ -1653,7 +1653,7 @@ impl BrowserView {
     fn handle_site_data_clear_result(
         &mut self,
         controller: &Entity<BrowserController>,
-        result: zz_browser::SiteDataClearResult,
+        result: ala_cef::SiteDataClearResult,
         cx: &mut Context<Self>,
     ) {
         if result.success {
@@ -1771,7 +1771,7 @@ impl BrowserView {
                     }
                     Err(error) => {
                         log::warn!(
-                            target: "zz_browser::accelerated_paint",
+                            target: "ala_cef::accelerated_paint",
                             "could not wrap browser IOSurface for ala: {error}"
                         );
                         let pane = self.pane;
@@ -3441,7 +3441,7 @@ impl Render for BrowserChromeView {
                 .find(|profile| profile.zz_profile == menu_profile)
                 .map_or_else(
                     || {
-                        if menu_profile == zz_browser::DEFAULT_BROWSER_PROFILE {
+                        if menu_profile == ala_cef::DEFAULT_BROWSER_PROFILE {
                             "Default zz profile".to_owned()
                         } else {
                             menu_profile.clone()
@@ -3452,7 +3452,7 @@ impl Render for BrowserChromeView {
             let state = BrowserActionMenuState {
                 current_profile_label: current_profile_label.into(),
                 selected_profile: menu_profile.clone().into(),
-                default_profile: zz_browser::DEFAULT_BROWSER_PROFILE.into(),
+                default_profile: ala_cef::DEFAULT_BROWSER_PROFILE.into(),
                 profiles: menu_chrome_profiles
                     .iter()
                     .map(|profile| {
@@ -4231,7 +4231,7 @@ pub(crate) fn browser_key(key: &str) -> BrowserKey {
 }
 
 fn browser_named_key(name: &str) -> Option<KeyInput> {
-    zz_browser::named_key_input(name)
+    ala_cef::named_key_input(name)
 }
 
 pub(crate) fn allows_text_input(key: BrowserKey, modifiers: ala::Modifiers) -> bool {
@@ -4297,9 +4297,9 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     use ala::VisualTestContext;
     use ala::{AsKeystroke, KeyContext, Keymap, Keystroke, TestAppContext};
-    use zz_browser::BrowserError;
+    use ala_cef::BrowserError;
     #[cfg(not(target_os = "macos"))]
-    use zz_browser::SessionId;
+    use ala_cef::SessionId;
     use zz_daemon_client::DaemonError;
     use zz_ui::Root;
 
@@ -4357,7 +4357,7 @@ mod tests {
     fn dedupes_recent_pages_by_display_url_before_applying_the_limit() {
         let recent = |url: &str, title: &str, visited_at| {
             RecentPage::imported(
-                zz_browser::DEFAULT_BROWSER_PROFILE,
+                ala_cef::DEFAULT_BROWSER_PROFILE,
                 url.to_owned(),
                 title.to_owned(),
                 visited_at,
@@ -4921,7 +4921,7 @@ mod tests {
     #[ala::test]
     fn hidden_title_events_update_history_without_notifying_the_pane(cx: &mut TestAppContext) {
         let url = "https://example.com/";
-        let profile = zz_browser::DEFAULT_BROWSER_PROFILE;
+        let profile = ala_cef::DEFAULT_BROWSER_PROFILE;
         cx.update(|cx| {
             zz_ui::init(cx);
             cx.set_global(recent_pages::RecentPages::default());
@@ -5013,7 +5013,7 @@ mod tests {
                     PaneId(7),
                     &BrowserDescriptor::single(
                         "https://example.com/".to_owned(),
-                        zz_browser::DEFAULT_BROWSER_PROFILE.to_owned(),
+                        ala_cef::DEFAULT_BROWSER_PROFILE.to_owned(),
                     ),
                     controller,
                     mux,
@@ -5078,7 +5078,7 @@ mod tests {
                     PaneId(7),
                     &BrowserDescriptor::single(
                         "https://example.com/".to_owned(),
-                        zz_browser::DEFAULT_BROWSER_PROFILE.to_owned(),
+                        ala_cef::DEFAULT_BROWSER_PROFILE.to_owned(),
                     ),
                     controller,
                     mux,
@@ -5150,7 +5150,7 @@ mod tests {
                     pane,
                     &BrowserDescriptor::single(
                         DEFAULT_URL.to_owned(),
-                        zz_browser::DEFAULT_BROWSER_PROFILE.to_owned(),
+                        ala_cef::DEFAULT_BROWSER_PROFILE.to_owned(),
                     ),
                     controller,
                     mux,
@@ -5223,11 +5223,7 @@ mod tests {
         cx.update(|cx| {
             zz_ui::init(cx);
             cx.set_global(recent_pages::RecentPages::default());
-            recent_pages::record_visit(
-                zz_browser::DEFAULT_BROWSER_PROFILE,
-                "https://example.com",
-                cx,
-            );
+            recent_pages::record_visit(ala_cef::DEFAULT_BROWSER_PROFILE, "https://example.com", cx);
         });
         let view_slot = Rc::new(RefCell::new(None));
         let captured_view = Rc::clone(&view_slot);
@@ -5247,7 +5243,7 @@ mod tests {
                     pane,
                     &BrowserDescriptor::single(
                         DEFAULT_URL.to_owned(),
-                        zz_browser::DEFAULT_BROWSER_PROFILE.to_owned(),
+                        ala_cef::DEFAULT_BROWSER_PROFILE.to_owned(),
                     ),
                     controller,
                     mux,

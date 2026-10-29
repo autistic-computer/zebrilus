@@ -15,7 +15,7 @@ raw-terminal client over one persistent daemon. Its model contains these pane su
 - a **live local terminal** powered by `libghostty-vt` and a daemon-owned PTY worker
   (see [zz-terminal](/crates/zz-terminal.md));
 - a **Chromium browser** powered by CEF Alloy off-screen rendering (OSR), composited as an ala image
-  (see [zz-browser](/crates/zz-browser.md));
+  (see [ala-cef](/crates/ala-cef.md));
 - an **agent lens** over a terminal pane whose foreground program is Claude Code or Codex: the
   header gets a toggle that swaps the cell grid for the agent timeline of that same pane, read by the
   daemon from the transcript the CLI writes, with a composer that types into the CLI (see
@@ -62,7 +62,7 @@ from the CLI's own transcript.
 | [zz-daemon](/crates/zz-daemon.md) | persistent daemon: mux state, PTYs, agent lens runtimes, frame and agent-stream fanout, the listening socket, attachment |
 | [zz-daemon-client](/crates/zz-daemon-client.md) | the client half every client links: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, the shared transport |
 | [zz-terminal](/crates/zz-terminal.md) | per-PTY child + libghostty on a worker thread; publishes terminal frames |
-| [zz-browser](/crates/zz-browser.md) | CEF init, subprocess dispatch, request context, input translation, frame mailboxes |
+| [ala-cef](/crates/ala-cef.md) | CEF init, subprocess dispatch, request context, input translation, frame mailboxes |
 | [zz-client](/crates/zz-client.md) | sans-IO protocol reduction and client-local chrome key tables shared by client shells |
 | [zz](/crates/zz.md) | long-lived ala mux client; reconciles layouts; hosts terminal and CEF runtimes and the agent lens viewport |
 | `ala`, `ala-macros`, `ala-platform` | ala, our GPUI: the core with Zed's utility code folded in, its macros, and every platform backend (iOS's UIKit and Android's NDK ones included) as a module per target |

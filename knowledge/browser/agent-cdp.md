@@ -2,7 +2,7 @@
 type: Playbook
 title: Agent access through CDP
 description: Enable a loopback CDP endpoint for browser agents and correlate targets with zz browser panes.
-resource: crates/zz-browser/src/cef_runtime.rs
+resource: libs/ala-cef/src/cef_runtime.rs
 tags:
 - browser
 - cef

@@ -187,12 +187,12 @@ zeroize = "=1.9.0"
 
 ala = { path = "libs/ala/crates/ala", default-features = false }
 penna = { path = "libs/penna" }
+ala-cef = { path = "libs/ala-cef", default-features = false }
 ala-macros = { path = "libs/ala/crates/ala-macros" }
 ala-platform = { path = "libs/ala/crates/ala-platform", default-features = false }
 
 zz = { path = "crates/zz" }
 zz-app = { path = "clients/app" }
-zz-browser = { path = "crates/zz-browser", default-features = false }
 zz-chrome-import = { path = "crates/zz-chrome-import" }
 zz-cli = { path = "crates/zz-cli" }
 zz-client = { path = "crates/zz-client" }
@@ -206,7 +206,7 @@ zz-terminal = { path = "crates/zz-terminal", default-features = false }
 zz-tui = { path = "crates/zz-tui" }
 zz-ui = { path = "crates/zz-ui" }
 [patch.crates-io]
-cef-dll-sys = { path = "third_party/rust/cef-dll-sys" }
+cef-dll-sys = { path = "libs/ala-cef/third_party/cef-dll-sys" }
 
 [patch."https://github.com/autistic-computer/ala"]
 ala = { path = "libs/ala/crates/ala" }
