@@ -2,7 +2,7 @@
 type: Concept
 title: In-page element picker
 description: A token-guarded, single-use overlay that lets the user pick a DOM element in the page and returns a bounded, sanitized source-context string plus an optional screenshot of the picked area.
-resource: crates/zz-browser/src/element_picker.rs
+resource: libs/ala-cef/src/element_picker.rs
 tags: [browser, element-picker, devtools, message-router]
 timestamp: 2026-09-13T00:00:00Z
 ---
@@ -172,4 +172,4 @@ assert_eq!(state.consume(&msg), Err(ElementPickMessageError::NoActivePick)); // 
   by [`crates/zz`](/crates/zz.md).
 - Runs over the CEF message router set up by the
   [CEF runtime](/browser/cef-runtime.md).
-- Part of the [zz-browser crate](/crates/zz-browser.md).
+- Part of the [ala-cef crate](/crates/ala-cef.md).

@@ -319,6 +319,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "ala-cef"
+version = "0.1.0"
+dependencies = [
+ "ala",
+ "ash",
+ "async-channel",
+ "base64 0.23.1",
+ "block2 0.6.2",
+ "cef",
+ "getrandom 0.4.3",
+ "log",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-io-surface",
+ "objc2-metal 0.3.2",
+ "parking_lot",
+ "pollster 1.0.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "url",
+ "wgpu",
+]
+
+[[package]]
 name = "ala-macros"
 version = "0.1.0"
 dependencies = [
@@ -11186,6 +11211,7 @@ version = "0.22.0"
 dependencies = [
  "agent-client-protocol",
  "ala",
+ "ala-cef",
  "ala-platform",
  "async-channel",
  "base64 0.23.1",
@@ -11224,7 +11250,6 @@ dependencies = [
  "wgpu",
  "windows 0.62.2",
  "x11rb",
- "zz-browser",
  "zz-chrome-import",
  "zz-cli",
  "zz-client",
@@ -11256,6 +11281,7 @@ name = "zz-app"
 version = "0.22.0"
 dependencies = [
  "ala",
+ "ala-cef",
  "ala-platform",
  "async-channel",
  "base64 0.23.1",
@@ -11274,7 +11300,6 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "zz-browser",
  "zz-client",
  "zz-daemon-client",
  "zz-protocol",
@@ -11283,37 +11308,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "zz-browser"
-version = "0.22.0"
-dependencies = [
- "ala",
- "ash",
- "async-channel",
- "base64 0.23.1",
- "block2 0.6.2",
- "cef",
- "getrandom 0.4.3",
- "log",
- "objc2 0.6.4",
- "objc2-core-foundation",
- "objc2-io-surface",
- "objc2-metal 0.3.2",
- "parking_lot",
- "pollster 1.0.1",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 2.0.20",
- "url",
- "wgpu",
-]
-
-[[package]]
 name = "zz-chrome-import"
 version = "0.22.0"
 dependencies = [
  "aes 0.9.3",
  "aes-gcm",
+ "ala-cef",
  "base64 0.23.1",
  "cbc 0.2.1",
  "log",
@@ -11332,7 +11332,6 @@ dependencies = [
  "url",
  "windows 0.62.2",
  "zeroize",
- "zz-browser",
  "zz-protocol",
 ]
 

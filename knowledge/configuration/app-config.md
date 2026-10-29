@@ -240,8 +240,8 @@ watched config edit applies without restarting.
 
 `browser-search-provider` shares that global, and is read at submit time rather than cached per
 pane, so an edit reaches every open Browser pane on the next Enter. The engine set is
-`zz_browser::SearchProvider`, which owns the query endpoints; the address bar's decision between
-navigating and searching is `zz_browser::resolve_address` (see
+`ala_cef::SearchProvider`, which owns the query endpoints; the address bar's decision between
+navigating and searching is `ala_cef::resolve_address` (see
 [input translation](/browser/input-translation.md)).
 
 `browser-remote-debugging-port` shares `BrowserConfig`. The GUI passes it to CEF before the first

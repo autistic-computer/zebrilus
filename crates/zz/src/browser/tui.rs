@@ -5,12 +5,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use async_channel::Receiver;
-use zz_browser::{
+use ala_cef::{
     BrowserEvent, BrowserProfilePaths, BrowserRuntime, BrowserSession, KeyInput as BrowserKeyInput,
     Modifiers as BrowserModifiers, OsrFrame, PointerButton, PointerEvent, PointerPhase,
     RuntimePhase, RuntimeSignal, SessionPhase, Viewport, WheelEvent,
 };
+use async_channel::Receiver;
 use zz_protocol::{
     BrowserCommand, BrowserDescriptor, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
     normalize_browser_profile_name,
@@ -777,7 +777,7 @@ fn browser_modifiers(
 }
 
 fn browser_named_key(name: &str) -> Option<BrowserKeyInput> {
-    zz_browser::named_key_input(name)
+    ala_cef::named_key_input(name)
 }
 
 fn deadline(now: Instant, after: Duration) -> Instant {
@@ -786,8 +786,8 @@ fn deadline(now: Instant, after: Duration) -> Instant {
 
 #[cfg(test)]
 mod tests {
+    use ala_cef::{BrowserKey, KeyAction as BrowserKeyAction};
     use std::path::PathBuf;
-    use zz_browser::{BrowserKey, KeyAction as BrowserKeyAction};
     use zz_terminal::{KeyAction as TerminalKeyAction, KeyCode as TerminalKeyCode};
 
     use super::*;

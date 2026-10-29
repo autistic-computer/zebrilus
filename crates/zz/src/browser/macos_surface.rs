@@ -1,5 +1,6 @@
 use std::ptr::{null, null_mut};
 
+use ala_cef::{MacIoSurface, SessionId};
 use core_foundation::base::{TCFType, kCFAllocatorDefault};
 use core_video::{
     pixel_buffer::{
@@ -9,7 +10,6 @@ use core_video::{
     r#return::{CVReturn, kCVReturnSuccess},
 };
 use thiserror::Error;
-use zz_browser::{MacIoSurface, SessionId};
 
 use crate::browser::screenshot::Screenshot;
 

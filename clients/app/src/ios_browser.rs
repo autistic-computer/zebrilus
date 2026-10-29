@@ -24,12 +24,12 @@ use objc::{
 use raw_window_handle::RawWindowHandle;
 use zz_daemon_client::InteractiveClient;
 
+pub use ala_cef::element_picker::ElementPickerAppearance;
+use ala_cef::element_picker::{
+    ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
+};
 use ala_platform::ios::{
     CGPoint, CGRect, CGSize, id, nil, ns_array, ns_string, nsstring_to_string,
-};
-pub use zz_browser::element_picker::ElementPickerAppearance;
-use zz_browser::element_picker::{
-    ElementPickOutcome, ElementPickState, PickGeometry, element_picker_start_script,
 };
 
 const OBSERVED: &[&str] = &["URL", "title", "loading", "canGoBack", "canGoForward"];
@@ -62,7 +62,7 @@ pub struct BrowserMount {
     pub holes: Vec<(Bounds<Pixels>, Pixels)>,
     pub backdrop: Option<Bounds<Pixels>>,
 }
-use zz_browser::element_picker::ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT;
+use ala_cef::element_picker::ELEMENT_PICKER_SCRIPT as PICKER_SCRIPT;
 const PICKER_HANDLER: &str = "zzElementPicker";
 
 #[derive(Clone, Debug)]

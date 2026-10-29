@@ -184,7 +184,7 @@ route. Bind stays loopback (Chromium default). Off by default.
 
 **Where.**
 - Switch injection: `fn on_before_command_line_processing` at
-  `crates/zz-browser/src/cef_runtime.rs:3609`, existing `append_switch_with_value` calls at `:3658`.
+  `libs/ala-cef/src/cef_runtime.rs:3609`, existing `append_switch_with_value` calls at `:3658`.
 - Config key: add `browser-remote-debugging-port` next to `ConfigKey::BrowserElementSelectorHotkey`
   (`crates/zz-config/src/lib.rs:135`, `as_str` `:180`, `from_str` `:225`, validation `:886`) and a
   field on `BrowserConfig` (`:309`). The GUI installs `BrowserConfig` as a global at

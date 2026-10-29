@@ -17,6 +17,15 @@ use ala::{
     App, Bounds, Context, ObjectFit, Render, RenderImage, Window, WindowBounds, WindowOptions, div,
     external_texture, img, prelude::*, px, size,
 };
+#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+use ala_cef::FrameTier;
+use ala_cef::{
+    AcceleratedPaintDiagnostics, BrowserBootstrap, BrowserEvent, BrowserProfilePaths,
+    BrowserRuntime, BrowserSession, FrameMailboxDiagnostics, Modifiers, PointerButton,
+    PointerEvent, PointerPhase, RuntimePhase, RuntimeSignal, SessionPhase, Viewport,
+};
+#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+use ala_cef::{BrowserGpuContext, OsrFrame, SessionId};
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use ala_platform::application;
 use env_logger::{Builder, Env, WriteStyle};
@@ -24,15 +33,6 @@ use env_logger::{Builder, Env, WriteStyle};
 use image::{Frame as ImageFrame, ImageBuffer, Rgba};
 #[cfg(any(target_os = "linux", target_os = "freebsd"))]
 use parking_lot::Mutex;
-#[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
-use zz_browser::FrameTier;
-use zz_browser::{
-    AcceleratedPaintDiagnostics, BrowserBootstrap, BrowserEvent, BrowserProfilePaths,
-    BrowserRuntime, BrowserSession, FrameMailboxDiagnostics, Modifiers, PointerButton,
-    PointerEvent, PointerPhase, RuntimePhase, RuntimeSignal, SessionPhase, Viewport,
-};
-#[cfg(any(target_os = "linux", target_os = "freebsd"))]
-use zz_browser::{BrowserGpuContext, OsrFrame, SessionId};
 use zz_daemon_client::unmasked::SpawnUnmasked as _;
 
 const DEFAULT_PORT: u16 = 9324;
@@ -169,7 +169,7 @@ fn main() -> ExitCode {
     if env::args_os().skip(1).any(|argument| {
         argument == OsStr::new("--type") || argument.to_string_lossy().starts_with("--type=")
     }) {
-        let code = zz_browser::run_subprocess(&zz::browser_runtime_config()).clamp(0, 255);
+        let code = ala_cef::run_subprocess(&zz::browser_runtime_config()).clamp(0, 255);
         return ExitCode::from(u8::try_from(code).unwrap_or_default());
     }
 
@@ -326,7 +326,7 @@ fn parse_port(mut args: impl Iterator<Item = String>) -> Result<u16, String> {
 }
 
 fn run_popup_regression() -> ExitCode {
-    let _ = Builder::from_env(Env::default().default_filter_or("zz_browser=info,cef=warn"))
+    let _ = Builder::from_env(Env::default().default_filter_or("ala_cef=info,cef=warn"))
         .write_style(WriteStyle::Never)
         .try_init();
     match run_popup_regression_inner() {
@@ -355,7 +355,7 @@ fn run_popup_regression_inner() -> Result<(), String> {
         root: profile_root,
     };
     let mut runtime =
-        match zz_browser::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
+        match ala_cef::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
             .map_err(|error| error.to_string())?
         {
             BrowserBootstrap::SubprocessExit(code) => {
@@ -420,7 +420,7 @@ fn run_popup_regression_inner() -> Result<(), String> {
                         opener_passed |= title.as_ref() == "zz popup fixture passed";
                     }
                     BrowserEvent::FrameReady { .. } => {
-                        if let Some(zz_browser::OsrFrame::OwnedBgra(frame)) = opener.take_frame()
+                        if let Some(ala_cef::OsrFrame::OwnedBgra(frame)) = opener.take_frame()
                             && !started
                             && frame
                                 .bgra
@@ -453,8 +453,7 @@ fn run_popup_regression_inner() -> Result<(), String> {
                             handshake |= title.as_ref() == "zz popup handshake passed";
                         }
                         BrowserEvent::FrameReady { .. } => {
-                            if let Some(zz_browser::OsrFrame::OwnedBgra(frame)) = child.take_frame()
-                            {
+                            if let Some(ala_cef::OsrFrame::OwnedBgra(frame)) = child.take_frame() {
                                 written_painted |= written
                                     && frame
                                         .bgra
@@ -559,7 +558,7 @@ fn run_popup_regression_inner() -> Result<(), String> {
 }
 
 fn run_ime_regression() -> ExitCode {
-    let _ = Builder::from_env(Env::default().default_filter_or("zz_browser=info,cef=warn"))
+    let _ = Builder::from_env(Env::default().default_filter_or("ala_cef=info,cef=warn"))
         .write_style(WriteStyle::Never)
         .try_init();
     match run_ime_regression_inner() {
@@ -589,7 +588,7 @@ fn run_ime_regression_inner() -> Result<(), String> {
         root: profile_root,
     };
     let mut runtime =
-        match zz_browser::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
+        match ala_cef::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
             .map_err(|error| error.to_string())?
         {
             BrowserBootstrap::SubprocessExit(code) => {
@@ -731,10 +730,9 @@ fn run_shared_texture_spike(seconds: u64, port: u16) -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    let _ =
-        Builder::from_env(Env::default().default_filter_or("zz_browser=info,cef=warn,wgpu=warn"))
-            .write_style(WriteStyle::Never)
-            .try_init();
+    let _ = Builder::from_env(Env::default().default_filter_or("ala_cef=info,cef=warn,wgpu=warn"))
+        .write_style(WriteStyle::Never)
+        .try_init();
 
     match run_shared_texture_spike_inner(Duration::from_secs(seconds), port) {
         Ok(()) => ExitCode::SUCCESS,
@@ -752,7 +750,7 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
     let url = format!("http://{address}/shared-texture-spike");
     println!("zz shared-texture animated fixture: {url}");
 
-    let mut runtime = match zz_browser::bootstrap(&zz::browser_runtime_config(), app_profile_paths)
+    let mut runtime = match ala_cef::bootstrap(&zz::browser_runtime_config(), app_profile_paths)
         .map_err(|error| error.to_string())?
     {
         BrowserBootstrap::SubprocessExit(code) => {
@@ -1300,7 +1298,7 @@ fn run_shared_texture_spike_inner(duration: Duration, port: u16) -> Result<(), S
         root: profile_root,
     };
     let mut runtime =
-        match zz_browser::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
+        match ala_cef::bootstrap_with_profile_paths(&zz::browser_runtime_config(), paths)
             .map_err(|error| error.to_string())?
         {
             BrowserBootstrap::SubprocessExit(code) => {
@@ -1396,7 +1394,7 @@ fn probe_egress_pref() -> ExitCode {
 
 #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
 fn probe_egress_pref_inner() -> Result<(), String> {
-    let mut runtime = match zz_browser::bootstrap(&zz::browser_runtime_config(), app_profile_paths)
+    let mut runtime = match ala_cef::bootstrap(&zz::browser_runtime_config(), app_profile_paths)
         .map_err(|error| error.to_string())?
     {
         BrowserBootstrap::SubprocessExit(code) => {
@@ -1407,7 +1405,7 @@ fn probe_egress_pref_inner() -> Result<(), String> {
     initialize_runtime(&mut runtime)?;
     let signals = runtime.signals();
 
-    let composite = zz_browser::BrowserProfilePaths::egress_profile_name("default", "probe@remote")
+    let composite = ala_cef::BrowserProfilePaths::egress_profile_name("default", "probe@remote")
         .map_err(|error| format!("could not derive the composite profile: {error}"))?;
     let mut failed = false;
     for (label, profile, port) in [

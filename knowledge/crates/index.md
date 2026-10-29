@@ -1,7 +1,7 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
-* [zz-browser crate](zz-browser.md) - Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, and frame mailboxes.
+* [ala-cef crate](ala-cef.md) - Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, and frame mailboxes.
 * [zz-chrome-import crate](zz-chrome-import.md) - Store-agnostic Google Chrome data import - profile discovery, cookie snapshot/decryption, and read-only history extraction - isolating the app's only sqlite/crypto/keychain dependencies.
 * [zz-cli crate](zz-cli.md) - Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
 * [zz-client crate](zz-client.md) - Renderer-free client state, effects, chrome keymaps, and normalized pane geometry shared by native and terminal skins.
@@ -15,7 +15,7 @@
 <!-- okf:listing:end -->
 
 Workspace members without a crate page here: `ala` and the `ala-*` crates (our ala, see
-[ala](/references/ala.md)), `penna` (widget kit, a maintained gpui-component fork),
+[ala](/references/ala.md)), `penna` (widget kit, a maintained gpui-component fork), `ala-cef` (has a page here),
 `zz-ui` (zz's application UI), `zz-tui` (the library behind `zz attach`), `zz-app` (the thin-client app
 web, iOS and Android share, in `clients/app`), `zz-ios` (the iOS entry point, in `clients/ios`), and
 `zz-android` (the Android entry point, in `clients/android`).

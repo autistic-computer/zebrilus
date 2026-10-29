@@ -21,7 +21,7 @@ Remove the local importer when a compatible cef-rs release owns both resources
 on success and cleans up image, memory, and duplicated descriptors on failure.
 Validate that release with sustained accelerated paints and allocation/bind
 failure injection before switching back. Keep the CEF binary milestone aligned
-with the Rust bindings as described in `knowledge/playbooks/updating-cef.md`.
+with the Rust bindings as described in `third_party/cef-dll-sys/UPSTREAM.md`.
 
 ## MIT License
 

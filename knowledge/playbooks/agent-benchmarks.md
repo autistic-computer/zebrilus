@@ -53,7 +53,7 @@ The pane matches the standalone browser on every primitive except one:
 - **Downloads are refused in a zz pane.** `download` and `wait --download` time out. Raw CDP
   confirms it is the pane, not the tool: `Browser.setDownloadBehavior` is accepted, a click on the
   attachment link produces no `downloadWillBegin`, no navigation, and no file. This is zz policy,
-  not an omission: `DeniedDownloadHandler` in `crates/zz-browser/src/cef_runtime.rs` answers
+  not an omission: `DeniedDownloadHandler` in `libs/ala-cef/src/cef_runtime.rs` answers
   `can_download` with 0 for every request, beside the handler that denies media permissions.
   Parity needs a decision first (allow per pane, per agent, or behind a setting), then a download
   directory and progress surfacing; until then agents fetch the URL with `curl`, carrying the
