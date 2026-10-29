@@ -9,6 +9,7 @@ use agent_client_protocol::schema::v1::{
 };
 use zz_daemon::{AgentPromptOutcome, AgentStreamItem, AgentStreamPayload};
 use zz_gpui::{App, Context, Entity, Image, ImageFormat, Task};
+use zz_protocol::chat::ChatView;
 use zz_protocol::{
     AgentConnectionPhase, AgentGitSummary, AgentPaneWire, AgentProvider, AgentQuestionAnswer,
     AgentTaskWire, MAX_AGENT_AVAILABLE_COMMANDS, MAX_AGENT_QUEUED_PROMPTS, PaneId,
@@ -121,6 +122,7 @@ pub(crate) struct AgentPaneState {
 #[derive(Debug)]
 struct AgentThread {
     transcript: AgentTranscript<Arc<Image>>,
+    chat: ChatView,
     provider: AgentProvider,
     connection: AgentConnectionState,
     submitted: bool,
@@ -146,6 +148,7 @@ impl AgentThread {
     fn new(provider: AgentProvider, cwd: PathBuf, session_id: Option<String>) -> Self {
         Self {
             transcript: AgentTranscript::new(transcript_image),
+            chat: ChatView::default(),
             provider,
             connection: AgentConnectionState::Starting,
             submitted: false,
@@ -349,6 +352,10 @@ impl AgentController {
 
     pub(crate) fn attach_mux(&mut self, mux: Entity<MuxClient>) {
         self.mux = Some(mux);
+    }
+
+    pub(crate) fn pane_chat(&self, pane: PaneId) -> Option<&ChatView> {
+        self.panes.get(&pane).map(|thread| &thread.chat)
     }
 
     pub(crate) fn pane_state(&self, pane: PaneId) -> Option<AgentPaneState> {
@@ -674,6 +681,15 @@ impl AgentController {
                 self.apply_pane_state(pane, state, cx);
                 continue;
             }
+            if let AgentStreamPayload::Chat { event } = &item.payload {
+                if let Some(thread) = self.panes.get_mut(&pane)
+                    && let Err(skip) = thread.chat.apply(event)
+                {
+                    log::debug!(target: "zz::agent", "chat view skipped {event:?}: {skip:?}");
+                }
+                changed = true;
+                continue;
+            }
             let Some(event) = self.translate_stream_payload(pane, item.payload, cx) else {
                 continue;
             };
@@ -785,6 +801,7 @@ impl AgentController {
                 RuntimeEvent::SessionReady { pane, session_id }
             }
             AgentStreamPayload::StateSynced { .. }
+            | AgentStreamPayload::Chat { .. }
             | AgentStreamPayload::PromptAccepted { .. }
             | AgentStreamPayload::TasksChanged { .. }
             | AgentStreamPayload::Activity { .. }
@@ -1915,6 +1932,50 @@ mod tests {
                 stop_reason: json(&reason),
             },
         }
+    }
+
+    #[zz_gpui::test]
+    fn chat_events_fold_into_the_pane_chat_and_a_restart_clears_it(cx: &mut TestAppContext) {
+        use zz_protocol::chat::{ChatEvent, TurnBy, TurnId};
+        let (controller, _sink) = proxy_controller(cx);
+        let pane = PaneId(4);
+        let chat = |event| AgentStreamPayload::Chat { event };
+        cx.update(|cx| {
+            controller.update(cx, |controller, cx| {
+                ready_pane(controller, pane);
+                controller.apply_stream_items(
+                    pane,
+                    vec![
+                        item(
+                            1,
+                            chat(ChatEvent::SessionReady {
+                                session: "s1".to_owned(),
+                            }),
+                        ),
+                        item(
+                            2,
+                            chat(ChatEvent::TurnStarted {
+                                turn: TurnId(1),
+                                by: TurnBy::Agent,
+                                at: 5,
+                            }),
+                        ),
+                    ],
+                    cx,
+                );
+                let view = controller.pane_chat(pane).expect("pane chat");
+                assert_eq!(view.turns.len(), 1);
+                assert!(view.running().is_some());
+                controller.apply_stream_items(pane, vec![item(3, chat(ChatEvent::Restart))], cx);
+                assert!(
+                    controller
+                        .pane_chat(pane)
+                        .expect("pane chat")
+                        .turns
+                        .is_empty()
+                );
+            });
+        });
     }
 
     #[zz_gpui::test]

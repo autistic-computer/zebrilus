@@ -16,8 +16,11 @@ use agent_client_protocol::schema::v1::{MessageId, ToolKind};
 use async_channel::Sender;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
+
+use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers};
 use serde_json::{Map, Value, json};
 use zz_protocol::agent_stream::agent_verb;
+use zz_protocol::chat::ChatEvent;
 use zz_protocol::{
     AgentAutoApprove, AgentProvider, AgentQuestionAnswer, AgentTaskWire, MAX_AGENT_TASKS,
 };
@@ -199,6 +202,7 @@ pub(crate) async fn run_claude_runtime(
         next_request: 0,
         permissions: HashMap::new(),
         turns: TurnState::default(),
+        chat: Mutex::default(),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         tasks: Vec::new(),
@@ -439,6 +443,7 @@ struct Runtime {
     next_request: u64,
     permissions: HashMap<u64, Permission>,
     turns: TurnState,
+    chat: Mutex<Shadow>,
     last_turn: u64,
     deferred_cancels: HashSet<u64>,
     tasks: Vec<AgentTaskWire>,
@@ -449,14 +454,39 @@ struct Runtime {
 
 impl Runtime {
     async fn emit(&self, payload: AgentStreamPayload) -> Result<(), String> {
+        let chat = {
+            let mut shadow = self.chat.lock();
+            shadow.payload(&payload);
+            shadow.drain()
+        };
         if let Err(error) = validate_payload(&payload) {
             log::warn!(target: "zz::agent", "dropping an oversized Claude Code item: {error}");
-            return Ok(());
+            return self.send_chat(chat).await;
         }
         self.events
             .send(payload)
             .await
-            .map_err(|error| format!("agent stream is unavailable: {error}"))
+            .map_err(|error| format!("agent stream is unavailable: {error}"))?;
+        self.send_chat(chat).await
+    }
+
+    async fn send_chat(&self, events: Vec<ChatEvent>) -> Result<(), String> {
+        for event in events {
+            let payload = AgentStreamPayload::Chat { event };
+            if validate_payload(&payload).is_err() {
+                continue;
+            }
+            self.events
+                .send(payload)
+                .await
+                .map_err(|error| format!("agent stream is unavailable: {error}"))?;
+        }
+        Ok(())
+    }
+
+    async fn flush_chat(&self) -> Result<(), String> {
+        let events = self.chat.lock().drain();
+        self.send_chat(events).await
     }
 
     async fn update(&self, update: Value, record: bool) -> Result<(), String> {
@@ -508,13 +538,14 @@ impl Runtime {
 
     async fn apply(&mut self, fact: &Fact) -> Result<Option<Reject>, String> {
         let idle = self.turns.turn().is_none();
-        let step = TurnMachine::step(
-            &mut self.turns,
+        let now = Instant::now();
+        let step = TurnMachine::step(&mut self.turns, fact, &turn::Ctx { now });
+        self.chat.lock().turn(
             fact,
-            &turn::Ctx {
-                now: Instant::now(),
-            },
+            self.session.as_ref().map(|session| session.id.as_str()),
+            now,
         );
+        self.flush_chat().await?;
         if let Some(reject) = &step.rejected {
             log::debug!(target: "zz::agent", "Claude Code turn kept {fact:?} out: {reject:?}");
         }
@@ -838,6 +869,7 @@ impl Runtime {
                 "supportedDialogKinds": [],
                 "perTaskStopAffordance": true,
                 "agentProgressSummaries": true,
+                "forwardSubagentText": true,
             }),
             Outgoing::Initialize,
             INITIALIZE_TIMEOUT,
@@ -1569,7 +1601,7 @@ impl Runtime {
                 command,
                 end: End::Completed,
             },
-            "cancelled" => Fact::Ended {
+            "cancelled" | "discarded" | "refused" => Fact::Ended {
                 command,
                 end: End::Cancelled,
             },
@@ -1797,6 +1829,15 @@ impl Runtime {
         let Some(permission) = self.permissions.remove(&request_id) else {
             return Ok(());
         };
+        let chosen = match &permission {
+            Permission::Question { questions, .. } => chosen(questions, option_id.as_deref()),
+            _ => None,
+        };
+        let answer = match &chosen {
+            Some(answer) => chat_answers(std::slice::from_ref(answer)),
+            None => chat_answer(option_id.as_deref()),
+        };
+        self.chat.lock().answered(request_id, answer);
         self.emit(AgentStreamPayload::PermissionResolved {
             request_id,
             canceled: option_id.is_none(),
@@ -1829,28 +1870,14 @@ impl Runtime {
                 claude_id,
                 input,
                 questions,
-            } => {
-                let chosen = option_id
-                    .as_deref()
-                    .and_then(|option| option.strip_prefix("answer-"))
-                    .and_then(|index| index.parse::<usize>().ok())
-                    .zip(questions.first())
-                    .and_then(|(index, question)| {
-                        let label = question.options.get(index)?.label.clone();
-                        Some(AgentQuestionAnswer {
-                            id: question.id.clone(),
-                            answers: vec![label],
-                        })
-                    });
-                match chosen {
-                    Some(answer) => {
-                        self.respond(&claude_id, &answered(&input, &questions, &[answer]));
-                    }
-                    None => {
-                        self.respond(&claude_id, &deny("The user dismissed the question.", false));
-                    }
+            } => match chosen {
+                Some(answer) => {
+                    self.respond(&claude_id, &answered(&input, &questions, &[answer]));
                 }
-            }
+                None => {
+                    self.respond(&claude_id, &deny("The user dismissed the question.", false));
+                }
+            },
         }
         Ok(())
     }
@@ -1866,6 +1893,7 @@ impl Runtime {
         ) {
             return Ok(());
         }
+        self.chat.lock().answered(request_id, chat_answers(answers));
         let Some(Permission::Question {
             claude_id,
             input,
@@ -1919,6 +1947,15 @@ impl Runtime {
         }
         Ok(())
     }
+}
+
+fn chosen(questions: &[AgentQuestion], option: Option<&str>) -> Option<AgentQuestionAnswer> {
+    let index = option?.strip_prefix("answer-")?.parse::<usize>().ok()?;
+    let question = questions.first()?;
+    Some(AgentQuestionAnswer {
+        id: question.id.clone(),
+        answers: vec![question.options.get(index)?.label.clone()],
+    })
 }
 
 fn answered(input: &Value, questions: &[AgentQuestion], answers: &[AgentQuestionAnswer]) -> Value {
@@ -2199,10 +2236,20 @@ while read -r line; do :; done
         );
         let driver = async {
             let next = || async {
-                futures_lite::future::or(async { event_rx.recv().await.expect("event") }, async {
-                    smol::Timer::after(Duration::from_secs(20)).await;
-                    panic!("timed out waiting for the runtime");
-                })
+                futures_lite::future::or(
+                    async {
+                        loop {
+                            let event = event_rx.recv().await.expect("event");
+                            if !matches!(event, AgentStreamPayload::Chat { .. }) {
+                                break event;
+                            }
+                        }
+                    },
+                    async {
+                        smol::Timer::after(Duration::from_secs(20)).await;
+                        panic!("timed out waiting for the runtime");
+                    },
+                )
                 .await
             };
             commands
@@ -2537,6 +2584,136 @@ while read -r line; do :; done
                 )
             })
             .await;
+            until(|payload| matches!(payload, AgentStreamPayload::PromptFinished { .. })).await;
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+    }
+
+    #[cfg(unix)]
+    const FAKE_PICK_CLAUDE: &str = r#"#!/bin/sh
+read -r init
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
+read -r prompt
+printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
+printf '%s\n' '{"type":"control_request","request_id":"q-1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","tool_use_id":"t9","input":{"questions":[{"question":"Which fruit?","header":"Fruit","multiSelect":false,"options":[{"label":"apple"},{"label":"pear"}]}]}}}'
+read -r answer
+case "$answer" in *'"request_id":"q-1"'*'"answers":{"Which fruit?":"pear"}'*) ;; *) echo "bad answer: $answer" >&2; exit 4 ;; esac
+printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"idle"}'
+while read -r line; do :; done
+"#;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_single_question_picked_by_option_records_the_label() {
+        use std::os::unix::fs::PermissionsExt as _;
+        use zz_protocol::chat::{Answer, QuestionAnswer, RequestClose};
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let program = directory.path().join("claude");
+        std::fs::write(&program, FAKE_PICK_CLAUDE).expect("fake claude");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let command = ClaudeCommand::parse(&program.display().to_string()).expect("native");
+        let (commands, command_rx) = async_channel::unbounded();
+        let (controls, control_rx) = async_channel::unbounded();
+        let (events, event_rx) = async_channel::unbounded();
+        let runtime = run_claude_runtime(
+            command,
+            AgentWorkspaceEnvironment::default(),
+            AgentProvider::ClaudeCode,
+            RuntimeChannels {
+                auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
+                permission_ids: Arc::new(AtomicU64::new(1)),
+                journal: None,
+                commands: command_rx,
+                controls: control_rx,
+                events,
+            },
+        );
+        let driver = async {
+            let until = |accept: fn(&AgentStreamPayload) -> bool| {
+                let event_rx = event_rx.clone();
+                async move {
+                    loop {
+                        let payload = futures_lite::future::or(
+                            async { event_rx.recv().await.expect("event") },
+                            async {
+                                smol::Timer::after(Duration::from_secs(20)).await;
+                                panic!("timed out waiting for the runtime");
+                            },
+                        )
+                        .await;
+                        if accept(&payload) {
+                            return payload;
+                        }
+                    }
+                }
+            };
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(|payload| matches!(payload, AgentStreamPayload::SessionReady { .. })).await;
+            commands
+                .send(RuntimeCommand::Prompt {
+                    turn_id: 1,
+                    prompt: crate::agent::stream::AgentPrompt {
+                        text: "ask me".to_owned(),
+                        ..Default::default()
+                    },
+                })
+                .await
+                .expect("prompt");
+            let AgentStreamPayload::PermissionRequested {
+                request_id,
+                options,
+                ..
+            } = until(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. }))
+                .await
+            else {
+                unreachable!();
+            };
+            assert_eq!(options[1]["optionId"], "answer-1");
+            controls
+                .send(RuntimeControl::RespondPermission {
+                    request_id,
+                    option_id: Some("answer-1".to_owned()),
+                })
+                .await
+                .expect("answer");
+            let AgentStreamPayload::Chat {
+                event: ChatEvent::RequestClosed { close, .. },
+            } = until(|payload| {
+                matches!(
+                    payload,
+                    AgentStreamPayload::Chat {
+                        event: ChatEvent::RequestClosed { .. }
+                    }
+                )
+            })
+            .await
+            else {
+                unreachable!();
+            };
+            assert_eq!(
+                close,
+                RequestClose::Answered {
+                    answer: Answer::Questions {
+                        answers: vec![QuestionAnswer {
+                            question: "q0".to_owned(),
+                            answers: vec!["pear".to_owned()],
+                        }],
+                    },
+                }
+            );
             until(|payload| matches!(payload, AgentStreamPayload::PromptFinished { .. })).await;
             commands
                 .send(RuntimeCommand::Shutdown)

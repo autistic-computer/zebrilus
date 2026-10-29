@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde_json::Value;
+use zz_protocol::chat::{ChatEvent, ChatView};
 use zz_protocol::{
     AgentConnectionPhase, AgentImage, AgentPaneWire, AgentPermissionWire, AgentProvider,
     ClientInstanceId, agent_stream::AgentQuestion,
@@ -182,6 +183,7 @@ impl AgentCursor {
 
 pub struct LensTranscript<I> {
     pub model: AgentTranscript<I>,
+    pub chat: ChatView,
     decode: ImageDecoder<I>,
     session_reset: bool,
 }
@@ -190,6 +192,7 @@ impl<I> LensTranscript<I> {
     pub fn new(decode: ImageDecoder<I>) -> Self {
         Self {
             model: AgentTranscript::new(decode),
+            chat: ChatView::default(),
             decode,
             session_reset: false,
         }
@@ -230,6 +233,13 @@ impl<I> LensTranscript<I> {
                 }
                 self.session_reset = false;
                 self.model.finish_replay();
+            }
+            "chat" => {
+                if let Some(event) = item.get("event")
+                    && let Ok(event) = serde_json::from_value::<ChatEvent>(event.clone())
+                {
+                    let _ = self.chat.apply(&event);
+                }
             }
             "update" => {
                 if let Some(update) = item.get("update")
@@ -840,5 +850,34 @@ mod tests {
                 busy: false
             }
         );
+    }
+
+    #[test]
+    fn chat_items_fold_into_the_chat_view() {
+        use zz_protocol::agent_stream::{AgentStreamItem, AgentStreamPayload};
+        use zz_protocol::chat::{ChatPhase, TurnBy, TurnId};
+        let mut transcript = LensTranscript::<()>::new(|_, _| None);
+        for (seq, event) in [
+            ChatEvent::SessionReady {
+                session: "s".to_owned(),
+            },
+            ChatEvent::TurnStarted {
+                turn: TurnId(1),
+                by: TurnBy::User { prompt: 1 },
+                at: 0,
+            },
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let item = serde_json::to_value(AgentStreamItem {
+                seq: seq as u64 + 1,
+                payload: AgentStreamPayload::Chat { event },
+            })
+            .expect("encode");
+            transcript.apply(&item);
+        }
+        assert_eq!(transcript.chat.phase(), ChatPhase::Running);
+        assert_eq!(transcript.chat.skipped, 0);
     }
 }

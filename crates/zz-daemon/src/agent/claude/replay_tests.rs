@@ -32,6 +32,7 @@ fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
         next_request: 0,
         permissions: HashMap::new(),
         turns: TurnState::default(),
+        chat: Mutex::new(Shadow::recording()),
         last_turn: 0,
         deferred_cancels: HashSet::new(),
         tasks: Vec::new(),
@@ -92,7 +93,11 @@ fn end_turn(turn: u64) -> Seen {
     )
 }
 
-fn replay(recording: &str) -> Vec<(usize, Seen)> {
+fn run(recording: &str) -> (Runtime, Vec<(usize, Seen)>) {
+    run_with(recording, false)
+}
+
+fn run_with(recording: &str, foreign: bool) -> (Runtime, Vec<(usize, Seen)>) {
     let (mut runtime, receiver) = setup();
     let mut seen = Vec::new();
     let mut turn = 0;
@@ -107,8 +112,20 @@ fn replay(recording: &str) -> Vec<(usize, Seen)> {
                 turn += 1;
                 prompt(&mut runtime, turn, &command);
             }
+        } else if foreign
+            && entry["dir"] == "in"
+            && message["type"] == "control_request"
+            && message["request"]["subtype"] == "interrupt"
+        {
+            let _ = smol::block_on(runtime.apply(&Fact::Cancel));
         } else if entry["dir"] == "out" && message.is_object() {
             smol::block_on(runtime.frame(message.clone())).expect("frame");
+        } else if foreign && entry["dir"] == "in" && message["type"] == "query.open" {
+            let _ = smol::block_on(runtime.apply(&Fact::SessionReady));
+        } else if entry["dir"] == "exit" {
+            let _ = smol::block_on(runtime.apply(&Fact::Exited {
+                message: "the recording ended the process".to_owned(),
+            }));
         }
         seen.extend(
             turn_events(&receiver)
@@ -116,7 +133,11 @@ fn replay(recording: &str) -> Vec<(usize, Seen)> {
                 .map(|event| (index + 1, event)),
         );
     }
-    seen
+    (runtime, seen)
+}
+
+fn replay(recording: &str) -> Vec<(usize, Seen)> {
+    run(recording).1
 }
 
 #[test]
@@ -289,8 +310,19 @@ fn question_answers_for_a_permission_card_leave_the_card_open() {
     let request = ask_bash(&mut runtime, &receiver);
     smol::block_on(runtime.answer_questions(request, &[])).expect("answers");
     assert_eq!(resolved(&receiver), []);
+    let open = |runtime: &Runtime| {
+        chat_of(runtime)
+            .0
+            .request(zz_protocol::chat::RequestId(request))
+            .is_some_and(zz_protocol::chat::RequestView::is_open)
+    };
+    assert!(
+        open(&runtime),
+        "the chat closed a card the agent still waits on"
+    );
     smol::block_on(runtime.answer(request, Some("allow".to_owned()))).expect("allow");
     assert_eq!(resolved(&receiver), [(request, false)]);
+    assert!(!open(&runtime));
 }
 
 #[test]
@@ -299,4 +331,105 @@ fn an_exit_resolves_the_open_permission_cards() {
     let request = ask_bash(&mut runtime, &receiver);
     smol::block_on(runtime.closed()).expect("closed");
     assert_eq!(resolved(&receiver), [(request, true)]);
+}
+
+fn chat_of(runtime: &Runtime) -> (zz_protocol::chat::ChatView, Vec<String>) {
+    let shadow = runtime.chat.lock();
+    let mut view = zz_protocol::chat::ChatView::default();
+    for event in &shadow.events {
+        if let Err(skip) = view.apply(event) {
+            panic!("the view skipped {event:?}: {skip:?}");
+        }
+    }
+    let rejects = shadow
+        .rejects
+        .iter()
+        .map(|(fact, reject)| {
+            let fact = format!("{fact:?}");
+            format!("{reject:?} <- {}", &fact[..fact.len().min(160)])
+        })
+        .collect();
+    (view, rejects)
+}
+
+#[test]
+fn every_recording_drives_the_chat_machine() {
+    for (name, recording) in [
+        ("hello", include_str!("fixtures/hello.ndjson")),
+        ("steer", include_str!("fixtures/steer.ndjson")),
+        ("tools", include_str!("fixtures/tools.ndjson")),
+    ] {
+        let (runtime, _) = run(recording);
+        let (view, rejects) = chat_of(&runtime);
+        assert!(rejects.is_empty(), "{name}: {rejects:#?}");
+        assert_eq!(
+            view.running().is_some(),
+            runtime.turns.turn().is_some(),
+            "{name}: the chat and the driver disagree on a running turn"
+        );
+        if view.running().is_none() {
+            assert!(
+                view.open_items().all(|item| item.background),
+                "{name}: an item outlived its turn"
+            );
+        }
+        assert!(!view.turns.is_empty(), "{name}: no turn seen");
+    }
+}
+
+#[test]
+#[ignore = "replays every recording in $ZZ_REPLAY_DIR"]
+fn recordings_in_a_folder_drive_the_chat_machine() {
+    let Ok(dir) = std::env::var("ZZ_REPLAY_DIR") else {
+        return;
+    };
+    let mut paths = std::fs::read_dir(dir)
+        .expect("replay dir")
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .collect::<Vec<_>>();
+    paths.sort();
+    for path in paths {
+        let recording = std::fs::read_to_string(&path).expect("recording");
+        let name = path
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or_default()
+            .to_owned();
+        let outcome = std::panic::catch_unwind(|| {
+            let (runtime, _) = run_with(&recording, true);
+            if let Ok(watch) = std::env::var("ZZ_REPLAY_ITEM") {
+                for event in &runtime.chat.lock().events {
+                    let line = format!("{event:?}");
+                    if line.contains(&watch) || line.contains("Turn") {
+                        eprintln!("   event {}", &line[..line.len().min(200)]);
+                    }
+                }
+            }
+            let (view, rejects) = chat_of(&runtime);
+            let stuck = view
+                .open_items()
+                .filter(|item| view.running().is_none() && !item.background)
+                .map(|item| format!("{:?} {:?}", item.id, item.kind))
+                .collect::<Vec<_>>();
+            (
+                view.turns.len(),
+                view.phase(),
+                runtime.turns.turn().is_some(),
+                rejects,
+                stuck,
+            )
+        });
+        match outcome {
+            Ok((turns, phase, driver_running, rejects, stuck)) => {
+                eprintln!("== {name}: {turns} turns, {phase:?}, driver running {driver_running}");
+                for reject in rejects {
+                    eprintln!("   reject {reject}");
+                }
+                for item in stuck {
+                    eprintln!("   stuck {item}");
+                }
+            }
+            Err(_) => eprintln!("== {name}: PANIC"),
+        }
+    }
 }

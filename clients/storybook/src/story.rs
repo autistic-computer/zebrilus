@@ -1,6 +1,6 @@
 use zz_gpui::{
-    AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement, Render,
-    RenderOnce, SharedString, Styled, Window, div, px,
+    AnyElement, AnyView, App, AppContext as _, Context, InteractiveElement as _, IntoElement,
+    ParentElement, Render, RenderOnce, SharedString, Styled, Window, div, px,
 };
 use zz_ui::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
 
@@ -61,20 +61,25 @@ impl RenderOnce for States {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let muted = cx.theme().foreground.muted();
         let mono = cx.theme().mono_font_family.clone();
-        let cells = self.items.into_iter().map(|(label, content)| {
-            v_flex()
-                .min_w_0()
-                .gap_2()
-                .child(
-                    div()
-                        .text_size(px(11.0))
-                        .line_height(px(14.0))
-                        .font_family(mono.clone())
-                        .text_color(muted)
-                        .child(label),
-                )
-                .child(content)
-        });
+        let cells = self
+            .items
+            .into_iter()
+            .enumerate()
+            .map(|(index, (label, content))| {
+                v_flex()
+                    .id(("story-state", index))
+                    .min_w_0()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_size(px(11.0))
+                            .line_height(px(14.0))
+                            .font_family(mono.clone())
+                            .text_color(muted)
+                            .child(label),
+                    )
+                    .child(content)
+            });
         if self.columns == 1 {
             v_flex().w_full().gap_6().children(cells).into_any_element()
         } else {

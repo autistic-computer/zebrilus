@@ -99,6 +99,7 @@ pub(crate) struct Turn {
     pub(crate) owner: Option<u64>,
     commands: Vec<Command>,
     unbound: bool,
+    claimed: bool,
     began: bool,
     stop_reason: Option<String>,
     error: Option<String>,
@@ -159,8 +160,12 @@ impl Machine for TurnMachine {
                 Phase::Running(current) if current.owner.is_none() => {
                     let mut current = current.clone();
                     current.owner = Some(*turn);
+                    current.began = false;
                     if let Some(command) = command {
                         current.commands.push(Command::new(command, false));
+                    } else {
+                        current.unbound = true;
+                        current.claimed = true;
                     }
                     Decision::to(state.with_turn(current))
                 }
@@ -172,10 +177,15 @@ impl Machine for TurnMachine {
                 else {
                     return Decision::reject(Reject::Unknown(command.clone()));
                 };
-                if current.has(command) {
+                if current.has(command) && !current.unbound {
                     return Decision::stay();
                 }
                 let mut current = current.clone();
+                if current.has(command) {
+                    current.unbound = false;
+                    current.claimed = false;
+                    return Decision::to(state.with_turn(current));
+                }
                 current.bind(command, false);
                 interrupt_late(state, Decision::to(state.with_turn(current)))
             }
@@ -215,11 +225,11 @@ impl Machine for TurnMachine {
                         Decision::to(state.with_phase(Phase::Running(Turn::agent(Some(command)))))
                     }
                     Phase::Running(turn) | Phase::Cancelling { turn, .. } => {
-                        let known = turn.has(command);
+                        let already = turn.started(command);
                         let mut turn = turn.clone();
                         turn.start(command);
                         let decision = Decision::to(state.with_turn(turn));
-                        if known {
+                        if already {
                             decision
                         } else {
                             interrupt_late(state, decision)
@@ -286,10 +296,12 @@ impl Machine for TurnMachine {
                 _ => Decision::stay(),
             },
             Fact::Idle => match &state.phase {
-                Phase::Running(turn) if turn.began && !turn.open() => {
+                Phase::Running(turn) if turn.began && !turn.unbound && !turn.open() => {
                     settle(state, turn, turn.outcome(false, true))
                 }
-                Phase::Cancelling { turn, .. } => settle(state, turn, Outcome::Cancelled),
+                Phase::Cancelling { turn, .. } if turn.settled() => {
+                    settle(state, turn, Outcome::Cancelled)
+                }
                 _ => Decision::stay(),
             },
             Fact::PermissionOpened { request } => {
@@ -480,6 +492,7 @@ impl Turn {
         Self {
             owner: Some(owner),
             unbound: command.is_none(),
+            claimed: false,
             commands: command
                 .iter()
                 .map(|command| Command::new(command, false))
@@ -495,6 +508,7 @@ impl Turn {
         Self {
             owner: None,
             unbound: false,
+            claimed: false,
             commands: command
                 .into_iter()
                 .map(|command| Command::new(command, true))
@@ -512,6 +526,16 @@ impl Turn {
             .any(|command| command.started && !command.ended)
     }
 
+    fn settled(&self) -> bool {
+        !self.unbound && self.commands.iter().all(|command| command.ended)
+    }
+
+    fn started(&self, command: &str) -> bool {
+        self.commands
+            .iter()
+            .any(|known| known.id == command && known.started)
+    }
+
     fn has(&self, command: &str) -> bool {
         self.commands.iter().any(|known| known.id == command)
     }
@@ -519,6 +543,7 @@ impl Turn {
     fn bind(&mut self, command: &str, started: bool) {
         self.commands.push(Command::new(command, started));
         self.unbound = false;
+        self.claimed = false;
         self.began |= started;
     }
 
@@ -527,7 +552,9 @@ impl Turn {
             Some(known) => known.started = true,
             None => self.commands.push(Command::new(command, true)),
         }
-        self.unbound = false;
+        if !self.claimed {
+            self.unbound = false;
+        }
         self.began = true;
     }
 
@@ -793,6 +820,145 @@ mod tests {
             settled(Some(1), Outcome::Cancelled, Effect::Reclaim)
         );
         assert_eq!(step.wake_at, None);
+    }
+
+    #[test]
+    fn a_prompt_that_takes_over_an_agent_turn_waits_for_its_own_start() {
+        let mut run = Run::ready();
+        run.feed(&Fact::Busy);
+        run.feed(&prompt(1, "u"));
+        assert_eq!(run.feed(&Fact::Idle).effects, []);
+        assert!(run.running());
+        run.feed(&started("u"));
+        let step = run.feed(&ended("u", End::Completed));
+        assert_eq!(step.effects, settled(Some(1), completed(), Effect::Drain));
+    }
+
+    #[test]
+    fn a_stop_before_codex_names_its_turn_interrupts_when_it_starts() {
+        let mut run = Run::ready();
+        run.feed(&Fact::Prompt {
+            turn: 1,
+            command: None,
+        });
+        run.feed(&Fact::Cancel);
+        let accepted = run.feed(&Fact::Accepted {
+            turn: 1,
+            command: "t1".to_owned(),
+        });
+        assert_eq!(accepted.effects, [Effect::Interrupt]);
+        let step = run.feed(&started("t1"));
+        assert_eq!(step.effects, [Effect::Interrupt]);
+    }
+
+    #[test]
+    fn an_old_idle_while_stopping_waits_for_a_turn_codex_has_not_started() {
+        let mut run = Run::ready();
+        run.feed(&Fact::Prompt {
+            turn: 1,
+            command: None,
+        });
+        run.feed(&Fact::Cancel);
+        assert_eq!(run.feed(&Fact::Idle).effects, []);
+        run.feed(&Fact::Accepted {
+            turn: 1,
+            command: "t1".to_owned(),
+        });
+        assert_eq!(run.feed(&Fact::Idle).effects, []);
+        assert_eq!(run.feed(&started("t1")).effects, [Effect::Interrupt]);
+        let step = run.feed(&ended("t1", End::Cancelled));
+        assert_eq!(
+            step.effects,
+            settled(Some(1), Outcome::Cancelled, Effect::Reclaim)
+        );
+    }
+
+    #[test]
+    fn a_takeover_prompt_codex_refuses_still_ends_the_turn() {
+        let mut run = Run::ready();
+        run.feed(&Fact::Busy);
+        run.feed(&Fact::Prompt {
+            turn: 1,
+            command: None,
+        });
+        let step = run.feed(&ended("zz-turn-1", End::Failed("busy".to_owned())));
+        assert!(
+            step.effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::Settle { turn: Some(1), .. })),
+            "{:?}",
+            step.effects
+        );
+    }
+
+    #[test]
+    fn a_claimed_prompt_codex_answers_by_steering_the_running_turn_still_ends() {
+        let mut run = Run::ready();
+        run.feed(&Fact::Busy);
+        run.feed(&Fact::Prompt {
+            turn: 1,
+            command: None,
+        });
+        run.feed(&started("c"));
+        run.feed(&Fact::Accepted {
+            turn: 1,
+            command: "c".to_owned(),
+        });
+        let step = run.feed(&ended("c", End::Completed));
+        assert_eq!(step.effects, settled(Some(1), completed(), Effect::Drain));
+    }
+
+    #[test]
+    fn an_idle_cannot_end_a_claimed_prompt_before_codex_answers_it() {
+        let mut run = Run::ready();
+        run.feed(&Fact::Busy);
+        run.feed(&Fact::Prompt {
+            turn: 1,
+            command: None,
+        });
+        run.feed(&started("old"));
+        run.feed(&ended("old", End::Completed));
+        assert_eq!(run.feed(&Fact::Idle).effects, []);
+        assert!(run.running());
+    }
+
+    #[test]
+    fn a_late_start_of_the_agents_own_command_cannot_bind_a_claimed_prompt() {
+        let mut run = Run::ready();
+        run.feed(&Fact::Busy);
+        run.feed(&Fact::Prompt {
+            turn: 1,
+            command: None,
+        });
+        run.feed(&started("old"));
+        run.feed(&ended("old", End::Completed));
+        assert!(run.running());
+        let step = run.feed(&ended("zz-turn-1", End::Failed("busy".to_owned())));
+        assert!(
+            step.effects.iter().any(|effect| matches!(
+                effect,
+                Effect::Settle {
+                    turn: Some(1),
+                    outcome: Outcome::Failed { .. }
+                }
+            )),
+            "{:?}",
+            step.effects
+        );
+    }
+
+    #[test]
+    fn an_idle_while_stopping_waits_for_the_interrupted_command() {
+        let mut run = Run::ready();
+        run.feed(&prompt(1, "u"));
+        run.feed(&started("u"));
+        run.feed(&Fact::Cancel);
+        assert_eq!(run.feed(&Fact::Idle).effects, []);
+        let step = run.feed(&ended("u", End::Cancelled));
+        assert_eq!(
+            step.effects,
+            settled(Some(1), Outcome::Cancelled, Effect::Reclaim)
+        );
     }
 
     #[test]

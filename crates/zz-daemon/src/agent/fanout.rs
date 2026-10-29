@@ -20,6 +20,7 @@ use std::{
 use agent_client_protocol::schema::v1::SessionUpdate;
 use parking_lot::{Condvar, Mutex};
 use serde_json::Value;
+use zz_protocol::chat::{ChatEvent, ChatLog};
 use zz_protocol::{
     AgentPaneWire, AgentPermissionWire, AgentProvider, ClientId, ClientInstanceId,
     MAX_AGENT_PROMPT_BYTES, MAX_AGENT_QUEUED_PROMPTS, MAX_AGENT_RESULT_BYTES,
@@ -284,6 +285,7 @@ struct PaneLane {
     batch_first_seq: u64,
     deadline: Option<Instant>,
     ring: VecDeque<(u64, Vec<u8>)>,
+    chat: ChatLog,
     ring_bytes: usize,
     session_id: Option<String>,
     modes: String,
@@ -372,6 +374,7 @@ impl PaneLane {
             batch_first_seq: 0,
             deadline: None,
             ring: VecDeque::new(),
+            chat: ChatLog::default(),
             ring_bytes: 0,
             session_id,
             modes: String::new(),
@@ -699,6 +702,7 @@ impl AgentFanout {
                     }
                 }
                 AgentStreamPayload::SessionReset { .. } => lane.turn_id = None,
+                AgentStreamPayload::Chat { event } => lane.chat.push(event),
                 AgentStreamPayload::TurnStarted { turn_id } => lane.turn_id = Some(*turn_id),
                 AgentStreamPayload::PromptFinished { turn_id, .. }
                     if lane.turn_id == Some(*turn_id) =>
@@ -822,6 +826,7 @@ impl AgentFanout {
             let mut metadata = Vec::new();
             metadata.extend(lane.ready.clone());
             metadata.extend(lane.recovery_metadata());
+            metadata.extend(lane.chat_recovery());
             for payload in metadata {
                 lane.stamp_recovery(pane, payload, &mut items, true);
             }
@@ -855,7 +860,11 @@ impl AgentFanout {
             };
             lane.stamp_recovery(pane, payload, &mut synthesized, false);
         }
-        for payload in lane.recovery_metadata() {
+        for payload in lane
+            .recovery_metadata()
+            .into_iter()
+            .chain(lane.chat_recovery())
+        {
             lane.stamp_recovery(pane, payload, &mut synthesized, false);
         }
         let frames = split_frames(first_seq, synthesized);
@@ -992,6 +1001,16 @@ impl PaneLane {
                 .map(|state| AgentStreamPayload::StateSynced { state }),
         );
         payloads
+    }
+
+    fn chat_recovery(&self) -> Vec<AgentStreamPayload> {
+        if self.chat.is_empty() {
+            return Vec::new();
+        }
+        std::iter::once(ChatEvent::Restart)
+            .chain(self.chat.events().cloned())
+            .map(|event| AgentStreamPayload::Chat { event })
+            .collect()
     }
 
     fn stamp_recovery(
@@ -1749,6 +1768,75 @@ mod tests {
                 .windows(2)
                 .all(|items| items[1].seq == items[0].seq + 1)
         );
+    }
+
+    #[test]
+    fn a_replay_older_than_the_ring_still_rebuilds_the_whole_chat() {
+        use zz_protocol::chat::{ChatView, ItemBody, ItemId, ItemKind, ItemStatus, TurnBy, TurnId};
+        let fixture = Fixture::open(None, Some("s-1"));
+        let events = vec![
+            ChatEvent::SessionReady {
+                session: "s-1".to_owned(),
+            },
+            ChatEvent::TurnStarted {
+                turn: TurnId(1),
+                by: TurnBy::User { prompt: 1 },
+                at: 1,
+            },
+            ChatEvent::ItemStarted {
+                item: ItemId::new("a"),
+                turn: Some(TurnId(1)),
+                parent: None,
+                kind: ItemKind::Agent,
+                body: ItemBody::text("hel"),
+                at: 2,
+            },
+            ChatEvent::ItemAppended {
+                item: ItemId::new("a"),
+                text: "lo".to_owned(),
+            },
+            ChatEvent::ItemEnded {
+                item: ItemId::new("a"),
+                status: ItemStatus::Completed,
+                at: 3,
+            },
+        ];
+        let mut expected = ChatView::default();
+        for event in &events {
+            expected.apply(event).expect("valid");
+            fixture.accept(AgentStreamPayload::Chat {
+                event: event.clone(),
+            });
+        }
+        fixture.recorder.wait_for_items(events.len());
+        {
+            let mut lanes = fixture.fanout.lanes.lock();
+            let lane = lanes.get_mut(&fixture.pane).expect("pane lane");
+            while lane.ring.front().is_some_and(|(seq, _)| *seq <= 3) {
+                let (seq, dropped) = lane.ring.pop_front().expect("ring item");
+                lane.ring_bytes -= dropped.len();
+                lane.evicted_seq = seq;
+            }
+        }
+
+        fixture.fanout.replay(ClientId(3), fixture.pane, 1);
+
+        let mut rebuilt = ChatView::default();
+        for item in fixture
+            .recorder
+            .direct
+            .lock()
+            .iter()
+            .filter(|(client, ..)| *client == ClientId(3))
+            .flat_map(|(_, _, _, items)| items.clone())
+        {
+            let item = serde_json::from_slice::<AgentStreamItem>(&item).expect("decode");
+            if let AgentStreamPayload::Chat { event } = item.payload {
+                let _ = rebuilt.apply(&event);
+            }
+        }
+        rebuilt.skipped = 0;
+        assert_eq!(rebuilt, expected);
     }
 
     #[test]

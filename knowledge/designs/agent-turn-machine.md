@@ -95,7 +95,8 @@ Rules:
    completing completes it; anything else is cancelled. A generic failed end keeps the more specific
    error the agent reported first.
 5. Cancel sends an interrupt and waits up to 10 seconds for the vendor to end the turn, then settles
-   it as cancelled anyway. A command that starts while the turn is cancelling is interrupted too,
+   it as cancelled anyway. An `Idle` while stopping settles only once no started command is open
+   (Codex reports idle before the interrupted turn's last items, added 2026-10-29). A command that starts while the turn is cancelling is interrupted too,
    so a stop sent before Codex names its turn still reaches it.
 6. A command nobody here sent, or `Busy` while idle, opens a turn owned by the agent. A prompt that
    lands during it takes the turn over.

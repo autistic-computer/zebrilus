@@ -1,3 +1,4 @@
+pub mod chat;
 pub mod composer;
 pub mod controls;
 pub mod presentation;
@@ -1881,6 +1882,7 @@ struct ActivityMark {
     detail: Option<SharedString>,
     counts: Vec<TraceCount>,
     tag: Option<(SharedString, Tone)>,
+    spread: bool,
 }
 
 impl ActivityMark {
@@ -1893,6 +1895,7 @@ impl ActivityMark {
             detail: None,
             counts: Vec::new(),
             tag: None,
+            spread: false,
         }
     }
 
@@ -2005,6 +2008,7 @@ fn activity_row_marked(
             None => glyph,
         }
     });
+    let spread = mark.spread;
     let end_icon = match end {
         RowEnd::None => None,
         RowEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
@@ -2041,6 +2045,7 @@ fn activity_row_marked(
                 .debug_selector(|| "agent-activity-label".to_owned())
                 .min_w_0()
                 .flex_shrink_0()
+                .when(spread, |label| label.max_w(relative(0.6)))
                 .max_w_full()
                 .overflow_hidden()
                 .text_ellipsis()
@@ -2060,6 +2065,7 @@ fn activity_row_marked(
                     .child(detail),
             )
         })
+        .when(spread, |this| this.child(div().flex_1()))
         .when(!mark.counts.is_empty(), |this| {
             this.child(
                 h_flex()
