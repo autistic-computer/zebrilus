@@ -628,6 +628,13 @@ fn active_token(tokens: &[Token], input: &str, cursor: usize) -> (usize, Range<u
     (tokens.len(), cursor..cursor, String::new())
 }
 
+pub(crate) fn command_words(input: &str) -> Vec<String> {
+    tokenize(input)
+        .into_iter()
+        .map(|token| token.value)
+        .collect()
+}
+
 fn tokenize(input: &str) -> Vec<Token> {
     let mut tokens = Vec::new();
     let mut start = None;

@@ -15,7 +15,7 @@ use zz_client::{
         count, fuzzy_match, has_command_arguments, needs_arguments, target_kind,
         tmux_keystroke_source,
     },
-    place::{self, Place},
+    place::Place,
 };
 use zz_protocol::{
     ChooseTreeAction, ChooseTreePaneKind, ChooseTreeState, ChooseTreeTarget, CommandInvocation,
@@ -1365,7 +1365,7 @@ impl Client {
         let palette = &mut self.palette;
         let places = palette.is_places();
         let command_input = if places {
-            place::parse(&palette.input).command.map(|rest| {
+            palette.raw_command().map(|rest| {
                 let start = palette.input.len() - palette.input.trim_start().len() + 1;
                 (rest, palette.cursor.saturating_sub(start))
             })

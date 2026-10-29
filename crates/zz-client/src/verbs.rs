@@ -1,11 +1,12 @@
 use std::ops::Range;
 
 use zz_protocol::{
-    CommandInvocation, CommandSpec, CommandValueKind, catalog_command_spec, command_specs,
+    CommandInvocation, CommandSpec, CommandValueKind, RawText, catalog_command_spec, command_specs,
+    parse_tmux_options,
 };
 
 use crate::{
-    completion::PaneKindAvailability,
+    completion::{PaneKindAvailability, command_words},
     fuzzy::fuzzy_match,
     gui_actions::gui_action,
     palette::needs_arguments,
@@ -33,7 +34,15 @@ pub enum Slot {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Run {
-    Tmux { command: String, args: Vec<String> },
+    Tmux {
+        command: String,
+        args: Vec<String>,
+    },
+    Alias {
+        name: String,
+        body: String,
+        command: &'static str,
+    },
     Gui(&'static str),
     InsertPath,
 }
@@ -65,6 +74,7 @@ impl Verb {
                 .chain(args.iter().map(String::as_str))
                 .collect::<Vec<_>>()
                 .join(" "),
+            Run::Alias { body, .. } => body.clone(),
             Run::Gui(_) => "gui".to_owned(),
             Run::InsertPath => "zz".to_owned(),
         }
@@ -74,7 +84,7 @@ impl Verb {
     pub fn command(&self) -> Option<&str> {
         match &self.run {
             Run::Tmux { command, .. } => Some(command),
-            Run::Gui(_) | Run::InsertPath => None,
+            Run::Alias { .. } | Run::Gui(_) | Run::InsertPath => None,
         }
     }
 
@@ -274,27 +284,42 @@ pub fn alias_verbs(aliases: &str, availability: PaneKindAvailability) -> Vec<Ver
         .map(str::trim)
         .filter(|line| !TMUX_DEFAULT_ALIASES.contains(line))
         .filter_map(|line| {
-            let (name, expansion) = line.split_once('=')?;
-            let mut words = expansion.split_whitespace();
-            let command = words.next()?;
-            let spec = catalog_command_spec(command)?;
-            if !availability.allows_command(spec.name) || name.trim().is_empty() {
+            let (name, body) = line.split_once('=')?;
+            let (name, body) = (name.trim(), body.trim());
+            if name.is_empty() || name.contains(char::is_whitespace) {
                 return None;
             }
-            let args = words.map(str::to_owned).collect::<Vec<_>>();
-            let slots = target_level(spec)
-                .filter(|_| !place::has_target(expansion))
-                .map(Slot::Target)
-                .into_iter()
-                .collect();
+            let words = command_words(body);
+            let (command, args) = words.split_first()?;
+            let spec = catalog_command_spec(command)?;
+            if !availability.allows_command(spec.name) {
+                return None;
+            }
+            let one_command = !words
+                .iter()
+                .any(|word| word == ";" || word.starts_with('{'));
+            let args = args.iter().cloned().map(RawText::from).collect::<Vec<_>>();
+            let open = one_command
+                && parse_tmux_options(spec, &args)
+                    .is_ok_and(|parsed| parsed.positionals.is_empty());
+            let mut slots = Vec::new();
+            if open {
+                if let Some(level) = target_level(spec).filter(|_| !place::has_target(body)) {
+                    slots.push(Slot::Target(level));
+                }
+                if spec.positional_minimum() > 0 {
+                    slots.push(Slot::Text(positional_label(spec)));
+                }
+            }
             Some(Verb {
-                name: name.trim().to_owned(),
-                keywords: expansion.trim().to_owned(),
+                name: name.to_owned(),
+                keywords: body.to_owned(),
                 description: spec.description.to_owned(),
                 kind: VerbKind::Alias,
-                run: Run::Tmux {
-                    command: spec.name.to_owned(),
-                    args,
+                run: Run::Alias {
+                    name: name.to_owned(),
+                    body: body.to_owned(),
+                    command: spec.name,
                 },
                 slots,
                 raw: false,
@@ -406,15 +431,33 @@ fn level_target(level: Level, place: &Place) -> Option<String> {
 
 #[must_use]
 pub fn compile(verb: &Verb, filled: &[Filled], fleet: &Fleet) -> Option<Compiled> {
-    let Run::Tmux { command, args } = &verb.run else {
-        return None;
+    let (command, spec, mut line, mut display, args) = match &verb.run {
+        Run::Tmux { command, args } => {
+            let words = std::iter::once(command.clone())
+                .chain(args.iter().cloned())
+                .collect::<Vec<_>>();
+            (
+                command,
+                catalog_command_spec(command),
+                words.clone(),
+                words,
+                args.clone(),
+            )
+        }
+        Run::Alias {
+            name,
+            body,
+            command,
+        } => (
+            name,
+            catalog_command_spec(command),
+            vec![name.clone()],
+            vec![body.clone()],
+            Vec::new(),
+        ),
+        Run::Gui(_) | Run::InsertPath => return None,
     };
-    let spec = catalog_command_spec(command);
-    let mut line = std::iter::once(command.clone())
-        .chain(args.iter().cloned())
-        .collect::<Vec<_>>();
-    let mut display = line.clone();
-    let mut args = Some(args.clone());
+    let mut args = Some(args);
     let mut host = None;
     for (slot, value) in verb.slots.iter().zip(filled) {
         match (slot, value) {

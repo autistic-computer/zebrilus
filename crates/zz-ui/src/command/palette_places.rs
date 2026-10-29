@@ -422,13 +422,13 @@ impl UnifiedPalette {
             place::recent_key(&fleet, place).map_or(0, |key| recents.boost(&key, now))
         };
         let scope = self.scope();
+        if let Some(draft) = &self.draft {
+            self.rows = self.slot_rows(&fleet, draft, text.trim(), &boost);
+            return;
+        }
         let line = place::parse(text);
         if let Some(command) = &line.command {
             self.rows = command_entries(command.trim(), availability, shortcut);
-            return;
-        }
-        if let Some(draft) = &self.draft {
-            self.rows = self.slot_rows(&fleet, draft, text.trim(), &boost);
             return;
         }
         let pane = scope.level() == Some(Level::Pane);
@@ -449,8 +449,9 @@ impl UnifiedPalette {
             return;
         };
         let drilled = scope.level().is_some_and(|level| level > Level::Host);
+        let here = scope.host.is_none_or(|host| host == fleet.here);
         let verbs = verbs::match_verbs(&self.verbs, &search, |verb| {
-            !drilled || verb.target().is_some()
+            (!drilled || verb.target().is_some()) && (here || verb.kind != VerbKind::Alias)
         });
         let places = place::search(&fleet, &scope, &search, &boost);
         let verb_rows = verbs

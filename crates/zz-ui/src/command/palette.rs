@@ -96,7 +96,10 @@ fn pill(pill: PalettePill, cx: &App) -> Badge {
         PalettePill::Command(label) => tag
             .font_family(cx.theme().mono_font_family.clone())
             .child(label),
-        PalettePill::Place(label) => tag.child(label),
+        PalettePill::Place(label) => tag
+            .flex_shrink(u16::try_from(label.chars().count()).map_or(f32::MAX, f32::from))
+            .min_w(px(28.0))
+            .child(div().min_w_0().truncate().child(label)),
         PalettePill::Verb(label) => tag
             .text_color(cx.theme().paint(Tone::Primary, Emphasis::Ghost).text)
             .child(label),
@@ -137,6 +140,7 @@ pub fn unified_command_palette_input(
             input.prefix(
                 div()
                     .flex()
+                    .min_w_0()
                     .items_center()
                     .gap(px(6.0))
                     .children(pills.into_iter().map(|value| pill(value, cx))),

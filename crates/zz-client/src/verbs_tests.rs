@@ -132,6 +132,57 @@ fn a_command_alias_is_a_verb_that_keeps_its_commands_slots() {
 }
 
 #[test]
+fn an_alias_runs_by_name_so_the_daemon_expands_it_like_tmux() {
+    let fleet = fleet();
+    let list = "build=send-keys make Enter\nrn=rename-window\nrw=rename-window -t @10 'api logs'\nzoom=resize-pane -Z\n";
+    let aliases = alias_verbs(list, PaneKindAvailability::default());
+    let named = |name: &str| aliases.iter().find(|verb| verb.name == name).unwrap();
+    let build = named("build");
+    assert!(build.slots.is_empty(), "a target after keys would be typed");
+    assert_eq!(
+        compile(build, &[], &fleet).and_then(|compiled| compiled.invocation),
+        Some(CommandInvocation::new("build", [] as [&str; 0]))
+    );
+    assert!(
+        named("rw").slots.is_empty(),
+        "quoted words stay one argument"
+    );
+    let rename = named("rn");
+    assert_eq!(
+        rename.slots,
+        [
+            Slot::Target(Level::Window),
+            Slot::Text("new name".to_owned())
+        ]
+    );
+    let window = Place {
+        pane: None,
+        ..pane_place()
+    };
+    assert_eq!(
+        compile(
+            rename,
+            &[Filled::Place(window), Filled::Text("api logs".to_owned())],
+            &fleet
+        ),
+        Some(Compiled {
+            host: Some(0),
+            line: "rn -t @10 'api logs'".to_owned(),
+            display: "rename-window -t foo:1 'api logs'".to_owned(),
+            invocation: Some(CommandInvocation::new("rn", ["-t", "@10", "api logs"])),
+        })
+    );
+    assert_eq!(
+        compile(named("zoom"), &[Filled::Place(pane_place())], &fleet)
+            .map(|compiled| (compiled.line, compiled.display)),
+        Some((
+            "zoom -t %21".to_owned(),
+            "resize-pane -Z -t foo:1.2".to_owned()
+        ))
+    );
+}
+
+#[test]
 fn typing_matches_names_before_keywords() {
     let verbs = all();
     let found = match_verbs(&verbs, "rea", |_| true);
