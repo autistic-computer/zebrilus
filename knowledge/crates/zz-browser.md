@@ -27,19 +27,26 @@ pipelines and how a session falls back to readback.
 
 # Architecture
 
-The crate splits into a CEF-linked half and a CEF-free half, gated by the
-`cef-runtime` Cargo feature (on by default):
+The crate depends on no zz crate, so it can leave the workspace as `ala-cef`.
+It splits into three layers by Cargo feature:
 
-- **CEF-free modules** (`cookies`, `event`, `frame`, `input`, `lifecycle`,
-  `page_zoom`, `profile`, `url_input`, `element_picker`) contain only browser-neutral types, validation,
-  and state machines. They compile and test without downloading Chromium
-  (`cargo test -p zz-browser --no-default-features`).
-- **`cef_runtime`** is the only module that links `cef`. It hosts
+- **No features**: `cookie`, `element_picker`, `event`, `input`, `lifecycle`,
+  `page_zoom`, `profile`, `url_input`. Pure types, validation and state
+  machines on `url`, `serde` and `parking_lot`; this is what `zz-client`'s
+  thin clients, `zz-config` and `zz-chrome-import` use, and it builds for WASM,
+  iOS and Android. The root workspace dependency turns default features off.
+- **`host`**: adds `frame`, `readback_texture` and `artifact`, the wgpu,
+  Metal and Direct3D frame types and the local artifact pages.
+- **`cef-runtime`** (the crate's default, enabled by `crates/zz`): adds
+  `cef_runtime`, the only module that links `cef`. It hosts
   `BrowserRuntime`, `BrowserSession`, `bootstrap`, `run_subprocess`, and every
   CEF handler (`cef::wrap_*!`) callback. Its module attribute locally allows
   `unsafe_code` solely to validate and copy CEF's callback-scoped BGRA paint
   buffer into owned memory; no borrowed CEF pointer survives that callback.
 
+`cargo test -p zz-browser --no-default-features --features host` runs the
+CEF-free tests without downloading Chromium; `cargo check -p zz-browser
+--all-targets --features cef/dox` type-checks the runtime without it.
 The one-slot mailbox model, whatever the tier: CEF hands over a callback-scoped
 resource, `cef_runtime` copies it exactly once into something zz owns (a `Vec<u8>`
 from `on_paint`, or a zz-owned destination texture/`IOSurface` from
@@ -72,27 +79,27 @@ runtime types (only under `cef-runtime`):
 | `OsrFrame`, `FrameMailbox`, `FrameError`, `FrameMailboxDiagnostics`, `FrameTier`, `OwnedBgraFrame`, `GpuFrame`, `BrowserGpuContext` (+ `MacGpuFrame`/`MacIoSurface` on macOS) | `frame` | Latest-frame mailbox and the three frame payloads |
 | `Viewport`, `Modifiers`, `PointerEvent`, `WheelEvent`, `KeyInput`, `BrowserKey`, `KeyAction`, `EditCommand`, `PointerButton`, `PointerPhase` | `input` | Browser-neutral input + viewport types |
 | `RuntimePhase`, `SessionPhase` | `lifecycle` | Runtime + session state machines |
-| `BrowserProfilePaths`, `BrowserProfileError`, `resolve_profile_paths`, profile-name constants/normalization | `profile` + `zz-protocol` | Safe named-profile validation, path resolution, creation, and legacy aliasing |
+| `BrowserProfilePaths` (`under`, `normalize`), `BrowserProfileError`, profile-name constants/normalization | `profile` | Safe named-profile validation, path resolution, creation; the default directory's name also names the default profile |
 | `resolve_address`, `SearchProvider`, `normalize_url`, `diagnostic_url`, `UrlInputError` | `url_input` | Address-field navigate-or-search, URL normalization + redaction |
-| `parse_cookie_import`, `CookieImportBatch`, `CookieImportResult`, `SiteDataClearResult` | `cookies` | Bounded Cookie-Editor/Netscape parsing plus browser-data operation results |
-| `BrowserBootstrap`, `BrowserRuntime`, `BrowserSession`, `BrowserError`, `RuntimeSignal`, `bootstrap`, `run_subprocess` (+ `bootstrap_windows`) | `cef_runtime` | CEF init, subprocess dispatch, session control |
+| `parse_cookie_import`, `BrowserCookie`, `CookieImportBatch`, `CookieImportResult`, `SiteDataClearResult` | `cookie` | Bounded Cookie-Editor/Netscape parsing plus browser-data operation results |
+| `BrowserBootstrap`, `BrowserRuntime`, `BrowserSession`, `BrowserError`, `RuntimeSignal`, `bootstrap`, `bootstrap_with_profile_paths`, `run_subprocess` (+ `bootstrap_windows`) | `cef_runtime` | CEF init, subprocess dispatch, session control. `bootstrap` takes a closure that resolves the profile paths, called only in the browser process; zz passes `browser::profile_paths` |
 
 # Key files
 
 | File | Role |
 | --- | --- |
-| `src/lib.rs` | Crate root; module declarations and the public re-export surface. Gates `cef_runtime`/`element_picker` on the `cef-runtime` feature. |
+| `src/lib.rs` | Crate root; module declarations and the public re-export surface. Gates `frame`/`artifact` on `host` and `cef_runtime` on `cef-runtime`. |
 | `src/cef_runtime.rs` | The only CEF-linked module: `BrowserRuntime`, `BrowserSession`, `bootstrap`/`run_subprocess`, all `cef::wrap_*!` handlers, `on_paint`, input dispatch. |
 | `src/frame.rs` | The `OsrFrame` tier enum + one-slot `FrameMailbox` (latest-wins publish, wake coalescing, dimension/byte-length validation, GPU-import failure tracking). |
 | `src/event.rs` | `SessionId`, `BrowserEvent` variants, `BrowserCursor`. |
 | `src/input.rs` | Browser-neutral `Viewport`, packed `Modifiers`, pointer/wheel/key input types + `windows_key_code` mapping. |
 | `src/lifecycle.rs` | `RuntimePhase` and `SessionPhase` strict transition tables. |
 | `src/page_zoom.rs` | Chrome percentage ladder and logarithmic CEF zoom-level conversion. |
-| `src/profile.rs` | `BrowserProfilePaths` + `resolve_profile_paths`; encoded named paths, per-platform data dir, user-only permissions. |
-| `zz-protocol/src/browser_cookie.rs` | Cookie-Editor JSON/Netscape parsing, normalization, limits, and secret-free result types (re-exported here; it lives in `zz-protocol` so `zz-chrome-import` builds without CEF). |
+| `src/profile.rs` | `BrowserProfilePaths`, profile-name rules; encoded named paths, user-only permissions. zz picks the data dir in `crates/zz/src/browser/mod.rs`. |
+| `src/cookie.rs` | Cookie-Editor JSON/Netscape parsing, normalization, limits, and secret-free result types (CEF-free, so `zz-chrome-import` builds without Chromium). |
 | `src/url_input.rs` | `resolve_address` (address field: navigate or search), `normalize_url`, and `diagnostic_url` (credential/query redaction). |
 | `src/element_picker.rs` | Token-guarded in-page element-picker protocol state (`ElementPickState`). |
-| `assets/element-picker.js` | Injected renderer-side script backing the element picker (~45 KB). |
+| `src/element_picker.js` | Injected renderer-side script backing the element picker (~45 KB). |
 | `Cargo.toml` | Takes the workspace `cef` dependency (pinned in the root `Cargo.toml`, `accelerated_osr` feature) as an optional dep behind `cef-runtime`. |
 
 # Module map (concept links)

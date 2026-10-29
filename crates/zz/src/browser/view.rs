@@ -31,13 +31,13 @@ use zz_browser::{
     BrowserCursor, BrowserEvent, BrowserGpuContext, BrowserKey, ContextMenuRequest,
     CookieImportBatch, EditCommand, ElementPickerAppearance, ImeCharacterBounds, KeyInput,
     MAX_COOKIE_IMPORT_BYTES, Modifiers, PointerButton, PointerEvent, PointerPhase, RuntimePhase,
-    SessionId, Viewport, WheelEvent, diagnostic_url, ime_range_bounds,
-    normalize_browser_profile_name, normalize_url, parse_cookie_import, resolve_address,
+    SessionId, Viewport, WheelEvent, diagnostic_url, ime_range_bounds, normalize_url,
+    parse_cookie_import, resolve_address,
 };
 use zz_client::{BROWSER_TABLE, ChromeAction};
 use zz_protocol::{
     BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
-    InputMessage, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId,
+    InputMessage, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId, normalize_browser_profile_name,
 };
 use zz_terminal::{KeyAction as TerminalKeyAction, KeyInput as TerminalKeyInput};
 use zz_ui::browser::{
@@ -4180,7 +4180,7 @@ pub(crate) fn rounded_coordinate(value: Pixels) -> i32 {
 }
 
 fn browser_input_from_terminal(input: &TerminalKeyInput) -> KeyInput {
-    zz_browser::terminal_key_input(input)
+    super::browser_key_input(input)
 }
 
 pub(crate) fn browser_modifiers(

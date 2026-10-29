@@ -9367,11 +9367,25 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "zz-browser",
  "zz-client",
  "zz-daemon-client",
  "zz-protocol",
  "zz-terminal",
  "zz-ui",
+]
+
+[[package]]
+name = "zz-browser"
+version = "0.22.0"
+dependencies = [
+ "getrandom 0.4.3",
+ "log",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "url",
 ]
 
 [[package]]
@@ -9381,7 +9395,6 @@ dependencies = [
  "agent-client-protocol-schema",
  "base64 0.23.1",
  "foldhash",
- "getrandom 0.4.3",
  "neo_frizbee",
  "parking_lot",
  "serde",
@@ -9430,7 +9443,6 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.20",
  "unicode-width",
- "url",
  "zz-terminal",
 ]
 

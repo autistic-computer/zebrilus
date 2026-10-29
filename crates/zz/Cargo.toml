@@ -63,7 +63,7 @@ tempfile.workspace = true
 thiserror.workspace = true
 url.workspace = true
 wgpu.workspace = true
-zz-browser.workspace = true
+zz-browser = { workspace = true, features = ["cef-runtime"] }
 zz-chrome-import.workspace = true
 zz-client.workspace = true
 zz-daemon = { workspace = true, features = ["default"] }

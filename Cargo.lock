@@ -11274,6 +11274,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "zz-browser",
  "zz-client",
  "zz-daemon-client",
  "zz-protocol",
@@ -11305,9 +11306,6 @@ dependencies = [
  "thiserror 2.0.20",
  "url",
  "wgpu",
- "zz-client",
- "zz-protocol",
- "zz-terminal",
 ]
 
 [[package]]
@@ -11334,6 +11332,7 @@ dependencies = [
  "url",
  "windows 0.62.2",
  "zeroize",
+ "zz-browser",
  "zz-protocol",
 ]
 
@@ -11366,7 +11365,6 @@ dependencies = [
  "agent-client-protocol-schema",
  "base64 0.23.1",
  "foldhash",
- "getrandom 0.4.3",
  "markdown",
  "neo_frizbee",
  "parking_lot",
@@ -11392,6 +11390,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "ureq",
+ "zz-browser",
  "zz-client",
  "zz-daemon-client",
  "zz-mux",
@@ -11515,7 +11514,6 @@ dependencies = [
  "smallvec",
  "thiserror 2.0.20",
  "unicode-width",
- "url",
  "zz-terminal",
 ]
 

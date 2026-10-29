@@ -266,43 +266,6 @@ pub struct KeyInput {
     pub modifiers: Modifiers,
 }
 
-pub fn terminal_key_input(input: &zz_terminal::KeyInput) -> KeyInput {
-    use zz_terminal::{KeyAction as Action, KeyCode as Key};
-    KeyInput {
-        action: if input.action == Action::Release {
-            KeyAction::Release
-        } else {
-            KeyAction::Press
-        },
-        key: match input.key {
-            Key::Character(value) => BrowserKey::Character(value),
-            Key::Backspace => BrowserKey::Backspace,
-            Key::Enter => BrowserKey::Enter,
-            Key::Tab => BrowserKey::Tab,
-            Key::Escape => BrowserKey::Escape,
-            Key::Delete => BrowserKey::Delete,
-            Key::Insert => BrowserKey::Insert,
-            Key::Home => BrowserKey::Home,
-            Key::End => BrowserKey::End,
-            Key::PageUp => BrowserKey::PageUp,
-            Key::PageDown => BrowserKey::PageDown,
-            Key::ArrowUp => BrowserKey::ArrowUp,
-            Key::ArrowDown => BrowserKey::ArrowDown,
-            Key::ArrowLeft => BrowserKey::ArrowLeft,
-            Key::ArrowRight => BrowserKey::ArrowRight,
-            Key::Function(value) => BrowserKey::Function(value),
-            Key::Unidentified | Key::User(_) => BrowserKey::Unidentified,
-        },
-        modifiers: Modifiers::new(
-            input.modifiers.shift(),
-            input.modifiers.control(),
-            input.modifiers.alt(),
-            input.modifiers.platform(),
-        )
-        .with_repeat(input.action == Action::Repeat),
-    }
-}
-
 pub fn named_key_input(name: &str) -> Option<KeyInput> {
     let mut shift = false;
     let mut control = false;

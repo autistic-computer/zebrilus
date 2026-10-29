@@ -1,6 +1,5 @@
 pub mod agent_stream;
 pub mod app_identity;
-mod browser_cookie;
 mod catalog;
 pub mod chat;
 mod control;
@@ -29,11 +28,6 @@ mod pane_summary_wire_tests;
 
 pub use tree_delta::{TreeDelta, TreeDeltaError, TreeOp};
 
-pub use browser_cookie::{
-    BrowserCookie, BrowserCookiePriority, BrowserCookieSameSite, CookieImportBatch,
-    CookieImportError, CookieImportResult, MAX_COOKIE_IMPORT_BYTES, MAX_COOKIE_IMPORT_COUNT,
-    SiteDataClearResult, parse_cookie_import,
-};
 pub use catalog::{
     COMMAND_ARGS_PARSE_BEHAVES, COMMAND_ARGS_PARSE_SPECS, COMMAND_SPECS, CommandArgsParseRule,
     CommandArgsParseSpec, CommandOptionSpec, CommandResolution, CommandSpec, CommandValueKind,

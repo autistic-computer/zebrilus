@@ -5,9 +5,10 @@ use std::{
 };
 
 use async_channel::{Receiver, Sender};
-use zz_protocol::{MAX_ARTIFACT_PATH_BYTES, MAX_ARTIFACT_REPLY_BYTES};
 
 pub const ARTIFACT_SCHEME: &str = "zz";
+pub const MAX_ARTIFACT_PATH_BYTES: usize = 4096;
+pub const MAX_ARTIFACT_REPLY_BYTES: usize = 64 * 1024;
 pub const ARTIFACT_PROFILE: &str = "artifacts";
 const TOKEN_LEN: usize = 32;
 

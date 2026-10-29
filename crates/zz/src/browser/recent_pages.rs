@@ -34,7 +34,7 @@ impl RecentPages {
 }
 
 pub fn init(cx: &mut App) {
-    let path = match zz_browser::recent_pages_path() {
+    let path = match zz_protocol::app_identity::recent_pages_path() {
         Ok(path) => Some(path),
         Err(error) => {
             log::warn!(target: "zz::recent_pages", "recent pages are not persisted: {error}");

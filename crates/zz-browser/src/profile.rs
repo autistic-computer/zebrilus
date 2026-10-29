@@ -1,15 +1,41 @@
-use std::{fs, io, path::PathBuf};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 use thiserror::Error;
-use zz_protocol::{
-    BrowserProfileNameError, DEFAULT_BROWSER_PROFILE, normalize_browser_profile_name,
-};
+pub const DEFAULT_BROWSER_PROFILE: &str = "default";
+pub const MAX_BROWSER_PROFILE_NAME_BYTES: usize = 64;
 
 const NAMED_PROFILE_PREFIX: &str = "zz-profile-";
 const EGRESS_PROFILE_MARKER: &str = "@egress-";
 const EGRESS_HOST_HASH_HEX_BYTES: usize = 8;
 const FNV1A_64_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV1A_64_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum BrowserProfileNameError {
+    #[error("browser profile name cannot be empty")]
+    Empty,
+    #[error("browser profile name cannot exceed {MAX_BROWSER_PROFILE_NAME_BYTES} bytes")]
+    TooLong,
+    #[error("browser profile name cannot contain control characters")]
+    ControlCharacter,
+}
+
+pub fn normalize_browser_profile_name(value: &str) -> Result<String, BrowserProfileNameError> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(BrowserProfileNameError::Empty);
+    }
+    if value.len() > MAX_BROWSER_PROFILE_NAME_BYTES {
+        return Err(BrowserProfileNameError::TooLong);
+    }
+    if value.chars().any(char::is_control) {
+        return Err(BrowserProfileNameError::ControlCharacter);
+    }
+    Ok(value.to_owned())
+}
 
 #[derive(Debug, Error)]
 pub enum BrowserProfileError {
@@ -41,7 +67,7 @@ impl BrowserProfilePaths {
     }
 
     pub fn ensure_profile(&self, name: &str) -> Result<(String, PathBuf), BrowserProfileError> {
-        let name = normalize_browser_profile_name(name)?;
+        let name = self.normalize(name)?;
         let profile = self.profile_path_for_normalized(&name);
         fs::create_dir_all(&profile)?;
         restrict_to_current_user(&self.root)?;
@@ -50,8 +76,20 @@ impl BrowserProfilePaths {
     }
 
     pub fn profile_path(&self, name: &str) -> Result<PathBuf, BrowserProfileNameError> {
-        let name = normalize_browser_profile_name(name)?;
+        let name = self.normalize(name)?;
         Ok(self.profile_path_for_normalized(&name))
+    }
+
+    pub fn normalize(&self, name: &str) -> Result<String, BrowserProfileNameError> {
+        let name = normalize_browser_profile_name(name)?;
+        if self
+            .profile
+            .file_name()
+            .is_some_and(|default| default == name.as_str())
+        {
+            return Ok(DEFAULT_BROWSER_PROFILE.to_owned());
+        }
+        Ok(name)
     }
 
     pub(crate) fn ensure_egress_profile(&self, name: &str) -> Result<PathBuf, BrowserProfileError> {
@@ -112,12 +150,15 @@ fn hex_encode(bytes: &[u8]) -> String {
     encoded
 }
 
-pub fn resolve_profile_paths() -> io::Result<BrowserProfilePaths> {
-    let root = zz_protocol::app_identity::browser_data_dir()?.join("root");
-    Ok(BrowserProfilePaths {
-        profile: root.join("zz-default"),
-        root,
-    })
+impl BrowserProfilePaths {
+    #[must_use]
+    pub fn under(data_dir: &Path, default_profile_directory: &str) -> Self {
+        let root = data_dir.join("root");
+        Self {
+            profile: root.join(default_profile_directory),
+            root,
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -191,13 +232,13 @@ mod tests {
 
     #[test]
     fn egress_profiles_bound_long_hosts_and_accept_maximum_daemon_profiles() {
-        let profile = "p".repeat(zz_protocol::MAX_BROWSER_PROFILE_NAME_BYTES);
+        let profile = "p".repeat(MAX_BROWSER_PROFILE_NAME_BYTES);
         let short = egress_profile_name(&profile, "host").expect("short-host composite");
         let long = egress_profile_name(&profile, &"h".repeat(4096)).expect("long-host composite");
 
         assert_eq!(
             short.len(),
-            zz_protocol::MAX_BROWSER_PROFILE_NAME_BYTES
+            MAX_BROWSER_PROFILE_NAME_BYTES
                 + EGRESS_PROFILE_MARKER.len()
                 + EGRESS_HOST_HASH_HEX_BYTES
         );
