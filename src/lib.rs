@@ -1,11 +1,3 @@
-//! zz's widget kit on zz-gpui: theme, primitives, and widgets, with no zz
-//! dependencies. An app that depends on `zz-gpui-kit` gets zz-gpui through [`zz_gpui`].
-//!
-//! `UPSTREAM.md` records the pinned [gpui-component][upstream] revision each
-//! module was forked from.
-//!
-//! [upstream]: https://github.com/longbridge/gpui-component
-
 pub use zz_gpui;
 
 pub(crate) const BLINK_IDLE_TIMEOUT: web_time::Duration = web_time::Duration::from_secs(10);
@@ -40,19 +32,14 @@ pub mod title_bar;
 pub mod tooltip;
 pub mod touch;
 
-/// The dialog types, which live in [`overlay`] because `Root` owns the layer
-/// they render into.
 pub mod dialog {
     pub use super::overlay::{AlertDialog, Dialog, DialogButtonProps};
 }
 
-/// The notification type, which lives in [`overlay`] for the same reason as
-/// [`dialog`].
 pub mod notification {
     pub use super::overlay::Notification;
 }
 
-/// Theme storage and lookup, the single source of truth for theme values.
 pub mod theme {
     pub use super::foundation::{ActiveTheme, Colorize, Theme, ThemeColor, ThemeMode};
 }
@@ -76,8 +63,6 @@ pub use title_bar::{
     macos_traffic_light_clearance, window_controls_width,
 };
 
-/// Initialize the kit. Must run once, before any window opens. The foundation
-/// goes first: it installs the globals every widget reads.
 pub fn init(cx: &mut zz_gpui::App) {
     foundation::init(cx);
     #[cfg(feature = "editor")]

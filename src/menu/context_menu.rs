@@ -10,8 +10,6 @@ use zz_gpui::{
 use super::PopupMenu;
 
 pub trait ContextMenuExt: InteractiveElement + ParentElement + Styled {
-    /// Makes the element `relative` and adds an absolutely positioned
-    /// `ContextMenu` child, which leaves the parent's layout alone.
     #[track_caller]
     fn context_menu(
         mut self,
@@ -33,7 +31,6 @@ pub trait ContextMenuExt: InteractiveElement + ParentElement + Styled {
 
 impl<E: InteractiveElement + ParentElement + Styled> ContextMenuExt for E {}
 
-/// A context menu that can be shown on right-click.
 pub struct ContextMenu<E: ParentElement + Styled + Sized> {
     id: ElementId,
     element: Option<E>,

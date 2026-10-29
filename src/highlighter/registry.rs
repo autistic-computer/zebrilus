@@ -8,7 +8,6 @@ use zz_gpui::SharedString;
 
 use super::{Language, languages};
 
-/// Parser and query data for one language. A `None` grammar is never parsed.
 #[derive(Clone)]
 pub struct LanguageConfig {
     pub name: SharedString,
@@ -64,13 +63,11 @@ impl fmt::Debug for LanguageConfig {
     }
 }
 
-/// Process-wide registry for the built-in syntax grammars.
 pub struct LanguageRegistry {
     languages: Mutex<HashMap<SharedString, LanguageConfig>>,
 }
 
 impl LanguageRegistry {
-    /// The registry, pre-populated with the built-in grammars.
     pub fn singleton() -> &'static Self {
         static INSTANCE: LazyLock<LanguageRegistry> = LazyLock::new(|| LanguageRegistry {
             languages: Mutex::new(
@@ -82,12 +79,10 @@ impl LanguageRegistry {
         &INSTANCE
     }
 
-    /// Register or replace a language configuration.
     pub fn register(&self, lang: &str, config: &LanguageConfig) {
         self.entries().insert(lang.into(), config.clone());
     }
 
-    /// Look up a language by canonical name or supported short alias.
     pub fn language(&self, name: &str) -> Option<LanguageConfig> {
         let entries = self.entries();
         entries.get(name).cloned().or_else(|| {

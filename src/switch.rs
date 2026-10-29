@@ -1,5 +1,3 @@
-//! Toggle switch.
-
 use std::{rc::Rc, time::Duration};
 
 use zz_gpui::{
@@ -68,7 +66,6 @@ pub struct Switch {
 }
 
 impl Switch {
-    /// A switch with the given stable id (needed for the thumb animation state).
     #[must_use]
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
@@ -88,7 +85,6 @@ impl Switch {
         self
     }
 
-    /// Handle a toggle. The bool argument is the *new* state.
     #[must_use]
     pub fn on_click<F>(mut self, handler: F) -> Self
     where
@@ -171,8 +167,6 @@ fn thumb(
         })
 }
 
-/// The lighter of two colors: an unchecked thumb is light in both modes,
-/// like a physical switch.
 fn lighter(a: Hsla, b: Hsla) -> Hsla {
     if oklab_lightness(a) >= oklab_lightness(b) {
         a

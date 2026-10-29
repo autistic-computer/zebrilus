@@ -1,4 +1,3 @@
-;From nvim-treesitter/nvim-treesitter
 (atx_heading (inline) @title)
 (setext_heading (paragraph) @title)
 

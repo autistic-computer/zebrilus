@@ -1,10 +1,6 @@
-//! Keyboard actions for the popup menu.
-
 use serde::Deserialize;
 use zz_gpui::{Action, actions};
 
-/// Accept the highlighted item. `secondary` marks the alternate accept,
-/// cmd/ctrl-enter.
 #[derive(Clone, Action, PartialEq, Eq, Deserialize)]
 #[action(namespace = zz_menu, no_json)]
 pub struct Confirm {

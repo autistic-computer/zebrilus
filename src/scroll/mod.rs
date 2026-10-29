@@ -1,6 +1,3 @@
-//! Scrollbars, and the extension trait that puts them on a container.
-
-// Vendored from `gpui-component`; keeps upstream's style, not this crate's lints.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 mod fade;

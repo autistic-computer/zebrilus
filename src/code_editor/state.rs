@@ -1,5 +1,3 @@
-//! Rope, selection, history, focus, and IME state. Offsets are UTF-8 bytes on grapheme boundaries.
-
 use std::{cell::Cell, ops::Range, time::Duration};
 
 use ropey::Rope;
@@ -379,7 +377,6 @@ impl CodeEditorState {
         cx.notify();
     }
 
-    /// Numbers the rail by distance from the cursor, which keeps its absolute number.
     pub fn set_relative_line_numbers(&mut self, enabled: bool, cx: &mut Context<Self>) {
         if self.mode.relative_line_numbers() == enabled {
             return;

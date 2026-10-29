@@ -1,6 +1,3 @@
-//! [`ColorPicker`]: a swatch that opens a saturation and brightness field
-//! over a hue slider, and a hex field.
-
 use zz_gpui::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, Entity, EventEmitter, FocusHandle,
     Focusable, HitboxBehavior, Hsla, InteractiveElement as _, IntoElement, MouseButton,
@@ -33,11 +30,9 @@ const HANDLE: f32 = 14.0;
 const HUE_STOPS: u16 = 12;
 
 pub enum ColorPickerEvent {
-    /// The user committed a color, or cleared it back to inherited (`None`).
     Change(Option<Hsla>),
 }
 
-/// A color as its hue (0 to 1), saturation and brightness.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct Hsv {
     hue: f32,
@@ -104,7 +99,6 @@ impl Focusable for ColorPickerState {
 }
 
 impl ColorPickerState {
-    /// A picker starting on `color`, or inherited when it is `None`.
     pub fn new(color: Option<Hsla>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let hex = cx.new(|cx| {
             InputState::new(window, cx)
@@ -131,13 +125,11 @@ impl ColorPickerState {
         }
     }
 
-    /// The committed color, or `None` while inherited.
     #[must_use]
     pub fn color(&self) -> Option<Hsla> {
         self.color
     }
 
-    /// Push a color in without emitting, for echoing an external source back.
     pub fn set_color(&mut self, color: Option<Hsla>, window: &mut Window, cx: &mut Context<Self>) {
         if self.color == color {
             return;
@@ -149,8 +141,6 @@ impl ColorPickerState {
         cx.notify();
     }
 
-    /// The color on show as hue, saturation and brightness. The last one
-    /// picked keeps its hue while it is gray or black.
     fn shown(&self, inherited: Hsla) -> Hsv {
         let shown = self.color.unwrap_or(inherited);
         self.picked
@@ -213,8 +203,6 @@ impl ColorPickerState {
     }
 }
 
-/// A swatch button that opens a saturation and brightness field, a hue
-/// slider and a hex field.
 #[derive(IntoElement)]
 pub struct ColorPicker {
     state: Entity<ColorPickerState>,
@@ -242,15 +230,12 @@ impl ColorPicker {
         }
     }
 
-    /// Heading shown above the field, naming what is being colored.
     #[must_use]
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = Some(label.into());
         self
     }
 
-    /// Draws the trigger as a bare swatch `size` across, to sit in a row of
-    /// swatches.
     #[must_use]
     pub fn swatch(mut self, size: Pixels) -> Self {
         self.swatch = Some(size);
@@ -277,8 +262,6 @@ impl ColorPicker {
         });
     }
 
-    /// The saturation and brightness of the picked hue, dragged with the
-    /// handle.
     #[allow(
         clippy::disallowed_methods,
         reason = "the handle's white ring reads on every color under it"

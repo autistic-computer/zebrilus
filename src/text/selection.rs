@@ -1,5 +1,3 @@
-//! Word boundaries for double- and triple-click, and the byte range a selection
-//! covers.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::ops::Range;
@@ -30,13 +28,10 @@ pub(crate) enum CharType {
 fn is_word_char(c: char) -> bool {
     matches!(c, '_')
         || c.is_ascii_alphanumeric()
-        // Latin-1 Supplement and Latin Extended-A/B
         || matches!(c, '\u{00C0}'..='\u{00FF}')
         || matches!(c, '\u{0100}'..='\u{017F}')
         || matches!(c, '\u{0180}'..='\u{024F}')
-        // Cyrillic
         || matches!(c, '\u{0400}'..='\u{04FF}')
-        // Latin Extended Additional (Vietnamese) and Combining Diacritical Marks
         || matches!(c, '\u{1E00}'..='\u{1EFF}')
         || matches!(c, '\u{0300}'..='\u{036F}')
 }

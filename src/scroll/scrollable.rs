@@ -1,6 +1,3 @@
-//! The `.overflow_y_scrollbar()` / `.vertical_scrollbar(..)` extension trait
-//! and the wrapper element it builds.
-
 use std::{panic::Location, rc::Rc};
 
 use zz_gpui::{
@@ -13,10 +10,7 @@ use crate::StyledExt as _;
 
 use super::{Scrollbar, ScrollbarAxis, ScrollbarHandle};
 
-/// Adds scrollbars to an element. The element it is called on *is* the scroll
-/// area; it is not re-parented into a new one.
 pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Element {
-    /// Overlay a scrollbar driven by an existing handle.
     #[track_caller]
     #[must_use]
     fn scrollbar<H: ScrollbarHandle + Clone>(
@@ -31,8 +25,6 @@ pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Eleme
         })
     }
 
-    /// Fade the bottom edge toward `ground` while there is more to scroll.
-    /// Call it before the scrollbar so the thumb stays on top.
     #[must_use]
     fn bottom_fade<H: ScrollbarHandle + Clone>(
         self,
@@ -47,7 +39,6 @@ pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Eleme
         ))
     }
 
-    /// Fade the top edge toward `ground` while there is content above.
     #[must_use]
     fn top_fade<H: ScrollbarHandle + Clone>(
         self,
@@ -74,24 +65,18 @@ pub trait ScrollableElement: InteractiveElement + Styled + ParentElement + Eleme
         self.scrollbar(scroll_handle, ScrollbarAxis::Horizontal)
     }
 
-    /// Like [`StatefulInteractiveElement::overflow_scroll`], plus scrollbars on
-    /// both axes. The source element stays the scrollable container.
     #[track_caller]
     #[must_use]
     fn overflow_scrollbar(self) -> Scrollable<Self> {
         Scrollable::new(self, ScrollbarAxis::Both)
     }
 
-    /// Like [`StatefulInteractiveElement::overflow_x_scroll`], plus a
-    /// horizontal scrollbar. The source element stays the scrollable container.
     #[track_caller]
     #[must_use]
     fn overflow_x_scrollbar(self) -> Scrollable<Self> {
         Scrollable::new(self, ScrollbarAxis::Horizontal)
     }
 
-    /// Like [`StatefulInteractiveElement::overflow_y_scroll`], plus a vertical
-    /// scrollbar. The source element stays the scrollable container.
     #[track_caller]
     #[must_use]
     fn overflow_y_scrollbar(self) -> Scrollable<Self> {
@@ -107,9 +92,6 @@ where
 {
 }
 
-/// Renders the wrapped element as a scroll area with scrollbars over it. The
-/// scroll handle lives in window state keyed on the call site, so a caller that
-/// never drives the offset does not have to hold one.
 #[derive(IntoElement)]
 pub struct Scrollable<E: InteractiveElement + Styled + ParentElement + Element> {
     id: ElementId,

@@ -1,5 +1,3 @@
-//! A floating panel anchored to a trigger element.
-
 mod actions;
 
 use zz_gpui::{
@@ -27,9 +25,6 @@ pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))]);
 }
 
-/// A floating panel opened by a trigger element. It renders deferred and
-/// anchored, so it escapes the trigger's clip rect and stays inside the window.
-/// Open state is keyed by the element id, so it survives across renders.
 #[derive(IntoElement)]
 pub struct Popover {
     id: ElementId,
@@ -44,8 +39,6 @@ pub struct Popover {
 }
 
 impl Popover {
-    /// A closed popover, anchored top-left, with the default panel chrome.
-    /// Without a [`Popover::trigger`] it renders an empty element.
     #[must_use]
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
@@ -61,17 +54,12 @@ impl Popover {
         }
     }
 
-    /// Set the anchor corner of the panel, default [`Anchor::TopLeft`]. The
-    /// panel hangs off that corner of the trigger and snaps inward at the
-    /// window edge.
     #[must_use]
     pub fn anchor(mut self, anchor: impl Into<Anchor>) -> Self {
         self.anchor = anchor.into();
         self
     }
 
-    /// Set the element that opens the popover on left mouse down. It renders
-    /// selected while the panel is open.
     #[must_use]
     pub fn trigger<T>(mut self, trigger: T) -> Self
     where
@@ -84,7 +72,6 @@ impl Popover {
         self
     }
 
-    /// Accepted for call-site compatibility, and ignored.
     #[must_use]
     #[allow(
         clippy::needless_pass_by_value,
@@ -94,8 +81,6 @@ impl Popover {
         self
     }
 
-    /// Set the builder for the panel's content. It runs on every render, so
-    /// create entities once and stash them in state.
     #[must_use]
     pub fn content<F, E>(mut self, content: F) -> Self
     where
@@ -114,23 +99,18 @@ impl Popover {
         self
     }
 
-    /// Set whether the panel draws its own chrome, default `true`. With `false`
-    /// it gets no background, border, shadow or padding.
     #[must_use]
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.appearance = appearance;
         self
     }
 
-    /// Draw the panel as `role` draws, instead of as a popover.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
-    /// Set whether a click outside the panel dismisses it, default `true`. Turn
-    /// it off when the content handles outside clicks itself.
     #[must_use]
     pub fn overlay_closable(mut self, closable: bool) -> Self {
         self.overlay_closable = closable;
@@ -328,8 +308,6 @@ impl RenderOnce for Popover {
     }
 }
 
-/// The open state behind one [`Popover`], keyed by its element id. A
-/// [`Popover::content`] builder receives it, and can close the popover with it.
 pub struct PopoverState {
     focus_handle: FocusHandle,
     previous_focus_handle: Option<FocusHandle>,

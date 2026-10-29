@@ -43,7 +43,6 @@ impl NotificationType {
 type ContentBuilder =
     Rc<dyn Fn(&mut Notification, &mut Window, &mut Context<Notification>) -> AnyElement>;
 
-/// A single toast. Push one with [`crate::WindowExt::push_notification`].
 pub struct Notification {
     type_: Option<NotificationType>,
     key: Option<SharedString>,
@@ -57,8 +56,6 @@ pub struct Notification {
 }
 
 impl Notification {
-    /// An untyped toast: no icon, no accent color. Give it a
-    /// [`Self::message`], a [`Self::title`] or a [`Self::content`].
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -102,8 +99,6 @@ impl Notification {
             .with_type(NotificationType::Error)
     }
 
-    /// Tag the toast so a later
-    /// [`crate::WindowExt::dismiss_notification`] can retire exactly this one.
     #[must_use]
     pub fn key(mut self, key: impl Into<SharedString>) -> Self {
         self.key = Some(key.into());
@@ -116,29 +111,24 @@ impl Notification {
         self
     }
 
-    /// Set the bold line above the message.
     #[must_use]
     pub fn title(mut self, title: impl Into<SharedString>) -> Self {
         self.title = Some(title.into());
         self
     }
 
-    /// Keep the toast up until it is dismissed. Default is `true`: auto-hide
-    /// after five seconds.
     #[must_use]
     pub fn autohide(mut self, autohide: bool) -> Self {
         self.autohide = autohide.then_some(AUTOHIDE_DELAY);
         self
     }
 
-    /// How wide the toast is; 400px unless set.
     #[must_use]
     pub fn width(mut self, width: Pixels) -> Self {
         self.width = width;
         self
     }
 
-    /// Draw the toast as `role` draws, instead of as a toast.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = role;
@@ -151,7 +141,6 @@ impl Notification {
         self
     }
 
-    /// Render arbitrary content below the title and the message.
     #[must_use]
     pub fn content(
         mut self,
@@ -320,7 +309,6 @@ struct Entry {
     _dismissed: Subscription,
 }
 
-/// The stack of live toasts for one window.
 pub struct NotificationList {
     entries: Vec<Entry>,
 }
@@ -363,7 +351,6 @@ impl NotificationList {
         cx.notify();
     }
 
-    /// Play the dismiss animation on every toast carrying `key`.
     pub(super) fn dismiss_key(
         &mut self,
         key: &str,

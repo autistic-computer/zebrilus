@@ -1,6 +1,3 @@
-//! Vim layer: a pure grammar, motion and object core, plus a thin executor over the editor state.
-
-// The editor root blanket-allows dead code; the vim layer opts back in.
 #![warn(dead_code)]
 
 mod executor;
@@ -13,7 +10,6 @@ use parser::Pending;
 
 pub(super) use parser::Key as VimKey;
 
-/// Which mode the vim layer is in.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum VimMode {
     #[default]
@@ -24,7 +20,6 @@ pub enum VimMode {
 }
 
 impl VimMode {
-    /// Mode-line text, in vim's own vocabulary.
     pub const fn label(self) -> &'static str {
         match self {
             Self::Normal => "NORMAL",
@@ -45,7 +40,6 @@ pub(super) struct Register {
     pub linewise: bool,
 }
 
-/// Everything the vim layer remembers between keystrokes.
 #[derive(Debug, Default)]
 pub struct VimState {
     mode: VimMode,

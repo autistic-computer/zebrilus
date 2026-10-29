@@ -1,5 +1,3 @@
-// From:
-// https://github.com/zed-industries/zed/blob/56daba28d40301ee4c05546fadb691d070b7b2b6/crates/gpui/examples/window_shadow.rs
 use zz_gpui::{
     AnyElement, App, CursorStyle, Decorations, Edges, Hsla, InteractiveElement as _, IntoElement,
     MouseButton, ParentElement, Pixels, Point, RenderOnce, ResizeEdge, Size, Styled as _, Tiling,
@@ -20,7 +18,6 @@ pub fn window_border() -> WindowBorder {
     WindowBorder::new()
 }
 
-/// Renders a custom window border and shadow on Linux.
 #[derive(IntoElement)]
 pub struct WindowBorder {
     shadow_size: Pixels,
@@ -43,15 +40,11 @@ impl WindowBorder {
         Self::default()
     }
 
-    /// Set the shadow size for Linux client-side decorations. Default:
-    /// [`SHADOW_SIZE`].
     pub fn shadow_size(mut self, size: impl Into<Pixels>) -> Self {
         self.shadow_size = size.into();
         self
     }
 
-    /// Set the resize hit band half-width around the inner frame edge. Default:
-    /// [`RESIZE_HIT_SIZE`].
     pub fn resize_hit_size(mut self, size: impl Into<Pixels>) -> Self {
         self.resize_hit_size = size.into();
         self

@@ -1,5 +1,3 @@
-//! The data types a syntax palette is made of.
-
 use std::{ops::Deref, sync::Arc};
 
 use zz_gpui::{HighlightStyle, Hsla};
@@ -8,7 +6,6 @@ use crate::ThemeMode;
 
 use super::palette;
 
-/// The font style a palette entry can request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FontStyle {
     Normal,
@@ -26,7 +23,6 @@ impl From<FontStyle> for zz_gpui::FontStyle {
     }
 }
 
-/// The font weight a palette entry can request. Discriminants are CSS weights.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u16)]
 pub enum FontWeightContent {
@@ -57,7 +53,6 @@ impl From<FontWeightContent> for zz_gpui::FontWeight {
     }
 }
 
-/// How one capture is painted. An unset field leaves the surrounding style alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ThemeStyle {
     pub color: Option<Hsla>,
@@ -76,7 +71,6 @@ impl From<ThemeStyle> for HighlightStyle {
     }
 }
 
-/// One [`ThemeStyle`] per tree-sitter capture, dotted names spelled with `_`.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct SyntaxColors {
     pub attribute: Option<ThemeStyle>,
@@ -123,8 +117,6 @@ pub struct SyntaxColors {
 }
 
 impl SyntaxColors {
-    /// Looks up a capture. A dotted name with no entry falls back to its prefix,
-    /// so `keyword.modifier` paints like `keyword`.
     pub fn style(&self, name: &str) -> Option<HighlightStyle> {
         if name.is_empty() {
             return None;
@@ -186,8 +178,6 @@ impl SyntaxColors {
     }
 }
 
-/// Chrome colors around highlighted code, plus the palette. Both built-in
-/// themes leave every `editor_*` field unset, so readers fall back.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct HighlightThemeStyle {
     pub editor_background: Option<Hsla>,
@@ -196,12 +186,10 @@ pub struct HighlightThemeStyle {
     pub editor_line_number: Option<Hsla>,
     pub editor_active_line_number: Option<Hsla>,
     pub editor_invisible: Option<Hsla>,
-    /// Gutter background, falling back to [`Self::editor_background`] when unset.
     pub editor_gutter_background: Option<Hsla>,
     pub syntax: SyntaxColors,
 }
 
-/// A named syntax theme: the palette plus the mode it was written for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HighlightTheme {
     pub name: String,

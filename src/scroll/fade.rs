@@ -10,10 +10,6 @@ use super::ScrollbarHandle;
 const SOLID_FROM: f32 = 0.7;
 const REACH: f32 = 2.0;
 
-/// A fade over the bottom edge of a scroll area, toward `ground`, while there
-/// is content below. Its last 30% is solid so clipped content never shows a
-/// cut edge, and it is never taller than twice what is left to scroll, so it
-/// shrinks away as the end arrives. It takes no pointer events.
 pub fn bottom_fade<H: ScrollbarHandle>(
     handle: Rc<H>,
     ground: Hsla,
@@ -45,8 +41,6 @@ pub fn bottom_fade<H: ScrollbarHandle>(
     .inset_0()
 }
 
-/// [`bottom_fade`] for the top edge: it shows while there is content above,
-/// solid at the edge and clear toward the content.
 pub fn top_fade<H: ScrollbarHandle>(
     handle: Rc<H>,
     ground: Hsla,

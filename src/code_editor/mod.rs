@@ -1,5 +1,4 @@
 #![allow(clippy::complexity, clippy::pedantic, clippy::style)]
-// Display-map and folding seams stay unused until zz ships a folding UI.
 #![allow(dead_code)]
 
 mod blink_cursor;
@@ -29,7 +28,6 @@ pub use ropey::Rope;
 pub use state::{CodeEditorEvent, CodeEditorState};
 pub use vim::VimMode;
 
-/// Line/UTF-16-column position used by the rope conversion helpers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Position {
     pub line: u32,

@@ -22,7 +22,6 @@ const MAX_INJECTION_BYTES: usize = 512 * 1024;
 const MAX_INJECTION_LANGUAGE_BYTES: usize = 64;
 const INJECTION_PARSE_TIMEOUT: Duration = Duration::from_millis(20);
 
-/// Incremental tree-sitter highlighter for one language, with injection layers.
 pub struct SyntaxHighlighter {
     language: SharedString,
     query: Option<Query>,
@@ -337,7 +336,6 @@ impl SyntaxHighlighter {
         }
     }
 
-    /// https://github.com/tree-sitter/tree-sitter/blob/v0.26.8/crates/highlight/src/highlight.rs#L339
     fn build_for_language(lang: &str) -> Result<Self> {
         let Some(config) = LanguageRegistry::singleton().language(&lang) else {
             return Err(anyhow!(
@@ -423,10 +421,6 @@ impl SyntaxHighlighter {
         &self.text
     }
 
-    /// Reparses around `edit`, or the whole text when it is `None`.
-    ///
-    /// A `timeout` that expires returns false and keeps the old tree for stale
-    /// highlighting, but `self.text` still advances so a caller can reparse elsewhere.
     pub fn update(
         &mut self,
         edit: Option<InputEdit>,
@@ -902,21 +896,6 @@ impl SyntaxHighlighter {
         highlights
     }
 
-    /// Styles covering the byte `range`, each paired with the byte range it applies to.
-    ///
-    /// ```no_run
-    /// use zz_gpui_kit::highlighter::{HighlightTheme, SyntaxHighlighter};
-    /// use ropey::Rope;
-    ///
-    /// let code = "fn main() {\n    println!(\"Hello\");\n}";
-    /// let rope = Rope::from_str(code);
-    /// let mut highlighter = SyntaxHighlighter::new("rust");
-    /// highlighter.update(None, &rope, None);
-    ///
-    /// let theme = HighlightTheme::default_dark();
-    /// let range = 0..code.len();
-    /// let styles = highlighter.styles(&range, &theme);
-    /// ```
     pub fn styles(
         &self,
         range: &Range<usize>,
@@ -952,8 +931,6 @@ impl SyntaxHighlighter {
     }
 }
 
-/// Flattens overlapping styles: a later range wins over the ranges it covers,
-/// splitting them around it.
 pub(crate) fn unique_styles(
     total_range: &Range<usize>,
     styles: Vec<(Range<usize>, HighlightStyle)>,

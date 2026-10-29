@@ -1,5 +1,3 @@
-//! Thin divider rule.
-
 use zz_gpui::{
     App, Axis, Hsla, IntoElement, ParentElement as _, RenderOnce, StyleRefinement, Styled, Window,
     div, prelude::FluentBuilder as _,
@@ -7,8 +5,6 @@ use zz_gpui::{
 
 use crate::{Edge, Kind, StyledExt as _, SurfaceRole};
 
-/// A one-pixel divider rule. The rule is an absolutely positioned child, so the
-/// separator takes no space along its own axis; only its margins do.
 #[derive(IntoElement)]
 pub struct Separator {
     style: StyleRefinement,
@@ -18,7 +14,6 @@ pub struct Separator {
 }
 
 impl Separator {
-    /// A vertical rule, filling the height of its container.
     #[must_use]
     pub fn vertical() -> Self {
         Self {
@@ -29,7 +24,6 @@ impl Separator {
         }
     }
 
-    /// A horizontal rule, filling the width of its container.
     #[must_use]
     pub fn horizontal() -> Self {
         Self {
@@ -38,15 +32,12 @@ impl Separator {
         }
     }
 
-    /// Override the rule color. Defaults to the theme border.
     #[must_use]
     pub fn color(mut self, color: impl Into<Hsla>) -> Self {
         self.color = Some(color.into());
         self
     }
 
-    /// Draw the rule as `role` draws, instead of as a divider: nothing when
-    /// the role has no outline.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);

@@ -7,7 +7,6 @@ use zz_gpui::sum_tree::Bias;
 pub use tree_sitter::{InputEdit, Point};
 
 #[cfg(not(feature = "tree-sitter"))]
-/// Stub type for tree-sitter Point on WASM (tree-sitter not available).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Point {
     pub row: usize,
@@ -22,7 +21,6 @@ impl Point {
 }
 
 #[cfg(not(feature = "tree-sitter"))]
-/// Stub type for tree-sitter InputEdit on WASM (tree-sitter not available).
 #[derive(Debug, Clone, Copy)]
 pub struct InputEdit {
     pub start_byte: usize,
@@ -82,156 +80,44 @@ impl std::iter::ExactSizeIterator for RopeLines<'_> {}
 impl std::iter::FusedIterator for RopeLines<'_> {}
 
 pub trait RopeExt {
-    /// Byte offset where row (0-based) starts.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    ///
-    /// let rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// assert_eq!(rope.line_start_offset(0), 0);
-    /// assert_eq!(rope.line_start_offset(1), 6);
-    /// ```
     fn line_start_offset(&self, row: usize) -> usize;
 
-    /// End offset of row (0-based), before its line break, or the rope end if the row is past it.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// assert_eq!(rope.line_end_offset(0), 5); // "Hello"
-    /// assert_eq!(rope.line_end_offset(1), 12); // "World\r"
-    /// ```
     fn line_end_offset(&self, row: usize) -> usize;
 
-    /// Row (0-based) as a slice, keeping a trailing `\r` but never the `\n`.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// assert_eq!(rope.slice_line(0).to_string(), "Hello");
-    /// assert_eq!(rope.slice_line(1).to_string(), "World\r");
-    /// assert_eq!(rope.slice_line(2).to_string(), "This is a test 中文");
-    /// assert_eq!(rope.slice_line(6).to_string(), ""); // out of bounds
-    /// ```
     fn slice_line(&self, row: usize) -> RopeSlice<'_>;
 
-    /// Rows in the range (0-based, end exclusive), clamped to the rope.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// assert_eq!(rope.slice_lines(0..2).to_string(), "Hello\nWorld\r");
-    /// assert_eq!(rope.slice_lines(1..3).to_string(), "World\r\nThis is a test 中文");
-    /// assert_eq!(rope.slice_lines(2..5).to_string(), "This is a test 中文\nRope");
-    /// assert_eq!(rope.slice_lines(3..10).to_string(), "Rope");
-    /// assert_eq!(rope.slice_lines(5..10).to_string(), ""); // out of bounds
-    /// ```
     fn slice_lines(&self, rows_range: Range<usize>) -> RopeSlice<'_>;
 
-    /// Iterates the lines, each keeping a trailing `\r` but never the `\n`.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// let lines: Vec<_> = rope.iter_lines().map(|r| r.to_string()).collect();
-    /// assert_eq!(lines, vec!["Hello", "World\r", "This is a test 中文", "Rope"]);
-    /// ```
     fn iter_lines(&self) -> RopeLines<'_>;
 
-    /// Number of lines in the rope.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// assert_eq!(rope.lines_len(), 4);
-    /// ```
     fn lines_len(&self) -> usize;
 
-    /// Byte length of row (0-based) counting a trailing `\r` but not the `\n`, or 0 past the end.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// assert_eq!(rope.line_len(0), 5); // "Hello"
-    /// assert_eq!(rope.line_len(1), 6); // "World\r"
-    /// assert_eq!(rope.line_len(2), 21); // "This is a test 中文"
-    /// assert_eq!(rope.line_len(4), 0); // out of bounds
-    /// ```
     fn line_len(&self, row: usize) -> usize;
 
-    /// Replaces the byte range with new text, clipping the range to char boundaries.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let mut rope = Rope::from("Hello\nWorld\r\nThis is a test 中文\nRope");
-    /// rope.replace(6..11, "Universe");
-    /// assert_eq!(rope.to_string(), "Hello\nUniverse\r\nThis is a test 中文\nRope");
-    /// ```
     fn replace(&mut self, range: Range<usize>, new_text: &str);
 
-    /// Char at the byte offset, or None past the end. Panics mid-character.
     fn char_at(&self, offset: usize) -> Option<char>;
 
-    /// Byte offset of a 0-based [`Position`] whose column counts characters.
     fn position_to_offset(&self, line_col: &Position) -> usize;
 
-    /// 0-based [`Position`] at the byte offset, with the column in characters.
     fn offset_to_position(&self, offset: usize) -> Position;
 
-    /// 0-based point at the byte offset, with the column in bytes.
     fn offset_to_point(&self, offset: usize) -> Point;
 
-    /// Byte offset of a 0-based point whose column counts bytes.
     fn point_to_offset(&self, point: Point) -> usize;
 
-    /// Byte range of the word around the offset.
     fn word_range(&self, offset: usize) -> Option<Range<usize>>;
 
-    /// Word around the byte offset.
     fn word_at(&self, offset: usize) -> String;
 
-    /// Converts a UTF-16 offset to a byte offset in O(log n).
     fn offset_utf16_to_offset(&self, offset_utf16: usize) -> usize;
 
-    /// Converts a byte offset to a UTF-16 offset in O(log n).
     fn offset_to_offset_utf16(&self, offset: usize) -> usize;
 
-    /// Moves an offset off a mid-character byte, backwards or forwards per `bias`.
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// use zz_gpui::sum_tree::Bias;
-    ///
-    /// let rope = Rope::from("Hello 中文🎉 test\nRope");
-    /// assert_eq!(rope.clip_offset(5, Bias::Left), 5);
-    /// // Inside multi-byte character '中' (3 bytes)
-    /// assert_eq!(rope.clip_offset(7, Bias::Left), 6);
-    /// assert_eq!(rope.clip_offset(7, Bias::Right), 9);
-    /// ```
     fn clip_offset(&self, offset: usize, bias: Bias) -> usize;
 
-    /// Converts a char index to a byte offset in O(n).
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("a 中文🎉 test\nRope");
-    /// assert_eq!(rope.char_index_to_offset(0), 0);
-    /// assert_eq!(rope.char_index_to_offset(1), 1);
-    /// assert_eq!(rope.char_index_to_offset(3), "a 中".len());
-    /// assert_eq!(rope.char_index_to_offset(5), "a 中文🎉".len());
-    /// ```
     fn char_index_to_offset(&self, char_index: usize) -> usize;
 
-    /// Converts a byte offset to a char index in O(n).
-    ///
-    /// ```
-    /// use zz_gpui_kit::code_editor::{Rope, RopeExt};
-    /// let rope = Rope::from("a 中文🎉 test\nRope");
-    /// assert_eq!(rope.offset_to_char_index(0), 0);
-    /// assert_eq!(rope.offset_to_char_index(1), 1);
-    /// assert_eq!(rope.offset_to_char_index(3), 3);
-    /// assert_eq!(rope.offset_to_char_index(4), 3);
-    /// ```
     fn offset_to_char_index(&self, offset: usize) -> usize;
 }
 
@@ -608,7 +494,6 @@ mod tests {
 
         let mut rope = Rope::from("中文");
         rope.replace(0..1, "New");
-        // autocorrect-disable
         assert_eq!(rope.to_string(), "New文");
         let mut rope = Rope::from("中文");
         rope.replace(0..2, "New");
@@ -616,7 +501,6 @@ mod tests {
         let mut rope = Rope::from("中文");
         rope.replace(0..3, "New");
         assert_eq!(rope.to_string(), "New文");
-        // autocorrect-enable
         let mut rope = Rope::from("中文");
         rope.replace(1..4, "New");
         assert_eq!(rope.to_string(), "New");

@@ -1,5 +1,3 @@
-//! A dropdown that picks one value out of a list.
-
 mod actions;
 mod delegate;
 mod element;

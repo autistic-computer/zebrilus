@@ -1,5 +1,3 @@
-//! Easing curves.
-
 use std::time::Duration;
 
 use zz_gpui::{
@@ -25,9 +23,6 @@ pub fn surface_enter<E: IntoElement + Styled + 'static>(
     )
 }
 
-/// A cubic easing function from the two interior ordinates `y1` and `y2` of a
-/// Bézier curve with endpoints 0 and 1. Evaluates *y* against `t` directly,
-/// unlike CSS `cubic-bezier`, which solves for `t` from `x`.
 pub fn cubic_ease(y1: f32, y2: f32) -> impl Fn(f32) -> f32 {
     move |t: f32| {
         let one_t = 1.0 - t;

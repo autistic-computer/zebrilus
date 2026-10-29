@@ -1,5 +1,3 @@
-//! [`NumberInput`]: a text field flanked by `-` and `+` steppers.
-
 use zz_gpui::{
     App, Context, Entity, InteractiveElement as _, IntoElement, KeyBinding, ParentElement as _,
     RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, actions,
@@ -101,8 +99,6 @@ impl InputState {
     }
 }
 
-/// A bounded, steppable number field bound to an [`InputState`], which carries
-/// the step and the bounds.
 #[derive(IntoElement)]
 pub struct NumberInput {
     state: Entity<InputState>,
@@ -129,7 +125,6 @@ impl NumberInput {
         }
     }
 
-    /// Draw the group's background, radius and border.
     #[must_use]
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.appearance = appearance;
@@ -167,21 +162,18 @@ impl NumberInput {
 }
 
 impl NumberInput {
-    /// Draw the field in `tone`: danger for an invalid value.
     #[must_use]
     pub fn tone(mut self, tone: Tone) -> Self {
         self.tone = tone;
         self
     }
 
-    /// Draw the field as `role` draws, instead of as a field.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
         self
     }
 
-    /// Draw the field on `ground`, the paint it sits inside.
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
         self.on = Some(ground);

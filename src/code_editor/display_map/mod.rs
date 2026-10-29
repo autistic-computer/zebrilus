@@ -1,4 +1,3 @@
-//! Three coordinate spaces: buffer lines, wrap rows (soft wrap), display rows (folding).
 mod display_map;
 mod fold_map;
 #[cfg(feature = "tree-sitter")]
@@ -17,7 +16,6 @@ pub use folding::Tree;
 #[allow(unused_imports)]
 pub use folding::{FoldRange, extract_fold_ranges};
 
-/// Buffer position: 0-based logical line, 0-based byte column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BufferPoint {
     pub line: usize,
@@ -42,7 +40,6 @@ impl WrapPoint {
     }
 }
 
-/// Display position after soft wrap and folding: 0-based row and column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DisplayPoint {
     pub row: usize,

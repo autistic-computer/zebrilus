@@ -10,7 +10,6 @@ use super::{
     state::{CONTEXT, VIM_CONTEXT},
 };
 
-/// A full-height editor element bound to a [`CodeEditorState`].
 #[derive(IntoElement)]
 pub struct CodeEditor {
     state: Entity<CodeEditorState>,
@@ -67,7 +66,6 @@ impl CodeEditor {
         self
     }
 
-    /// Draw the frame as `role` draws, instead of as a field.
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);

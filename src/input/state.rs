@@ -1,7 +1,3 @@
-//! [`InputState`]: everything a text field remembers between frames.
-
-// Fields prefixed with `_` hold a `Subscription` or `Task` only for its `Drop`,
-// so they are assigned and never read.
 #![allow(clippy::used_underscore_binding)]
 
 use std::{borrow::Cow, ops::Range, rc::Rc, sync::Arc};
@@ -35,24 +31,12 @@ pub(super) const CURSOR_WIDTH: Pixels = px(2.);
 
 pub(super) const NEWLINE_SELECTION_WIDTH: Pixels = px(4.);
 
-/// What the app hears from a field.
 #[derive(Clone, Debug)]
 pub enum InputEvent {
-    /// The value changed. Not emitted mid-IME-composition, nor by
-    /// [`InputState::set_value`].
     Change,
-    /// Enter was pressed. `shift` distinguishes the newline chord in a
-    /// multi-line field that submits on Enter.
-    PressEnter {
-        /// Whether Shift was held.
-        shift: bool,
-    },
-    /// The field took keyboard focus.
+    PressEnter { shift: bool },
     Focus,
-    /// The field lost keyboard focus.
     Blur,
-    /// The clipboard held images and no text. The field forwards them for a view
-    /// that can carry images; one that cannot ignores the event.
     PasteImages(Vec<Arc<Image>>),
 }
 
@@ -87,8 +71,6 @@ pub(super) enum StepDirection {
 
 type ValidateFn = Rc<dyn Fn(&str, &mut Context<InputState>) -> bool>;
 
-/// The editing state behind an [`Input`](super::Input). Build one per field and
-/// keep it in your view; the element is rebuilt every frame from it.
 pub struct InputState {
     focus_handle: FocusHandle,
 
@@ -150,7 +132,6 @@ impl Focusable for InputState {
 }
 
 impl InputState {
-    /// A new single-line field.
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle().tab_stop(true);
         let blink = cx.new(|_| BlinkCursor::new());
@@ -209,8 +190,6 @@ impl InputState {
         }
     }
 
-    /// Grow with the content, between `min_rows` and `max_rows` text rows.
-    /// This is also what makes the field multi-line.
     #[must_use]
     pub fn auto_grow(mut self, min_rows: usize, max_rows: usize) -> Self {
         let min_rows = min_rows.max(1);
@@ -228,29 +207,24 @@ impl InputState {
         self
     }
 
-    /// In a multi-line field, treat plain Enter as submit and `shift-enter` as
-    /// "insert a newline". Single-line fields always submit on Enter.
     #[must_use]
     pub fn submit_on_enter(mut self, submit: bool) -> Self {
         self.submit_on_enter = submit;
         self
     }
 
-    /// Offer a copy/cut/paste/select-all menu on right click.
     #[must_use]
     pub fn context_menu(mut self, enable: bool) -> Self {
         self.enable_context_menu = enable;
         self
     }
 
-    /// Grey text shown while the value is empty.
     #[must_use]
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.placeholder = placeholder.into();
         self
     }
 
-    /// The value the field starts with. Not recorded in the undo history.
     #[must_use]
     pub fn default_value(mut self, value: impl Into<SharedString>) -> Self {
         self.text = value.into();
@@ -259,17 +233,12 @@ impl InputState {
         self
     }
 
-    /// Reject any edit that would make the value fail this predicate. An
-    /// already-invalid value stays editable, so the user can type their way out
-    /// of it.
     #[must_use]
     pub fn validate(mut self, f: impl Fn(&str, &mut Context<Self>) -> bool + 'static) -> Self {
         self.validate = Some(Rc::new(f));
         self
     }
 
-    /// Amount a [`NumberInput`](super::NumberInput) stepper moves the value.
-    /// Setting it also restricts typing to number-shaped text.
     #[must_use]
     pub fn step(mut self, step: f64) -> Self {
         self.numeric = true;
@@ -277,7 +246,6 @@ impl InputState {
         self
     }
 
-    /// Lower bound for the steppers. See [`Self::step`].
     #[must_use]
     pub fn min(mut self, min: f64) -> Self {
         self.numeric = true;
@@ -285,7 +253,6 @@ impl InputState {
         self
     }
 
-    /// Upper bound for the steppers. See [`Self::step`].
     #[must_use]
     pub fn max(mut self, max: f64) -> Self {
         self.numeric = true;
@@ -312,9 +279,6 @@ impl InputState {
         self.text.clone()
     }
 
-    /// Replace the value without touching the undo history and without emitting
-    /// [`InputEvent::Change`], for a view syncing its own field. The caret lands
-    /// at the end, the view scrolls back to the start.
     pub fn set_value(
         &mut self,
         value: impl Into<SharedString>,
@@ -338,8 +302,6 @@ impl InputState {
         cx.notify();
     }
 
-    /// vi's normal mode: a block caret, and the field takes no typed or
-    /// composed text while its actions still edit it.
     pub fn set_normal_mode(&mut self, normal: bool, cx: &mut Context<Self>) {
         if self.normal_mode == normal {
             return;
@@ -357,7 +319,6 @@ impl InputState {
         self.normal_mode
     }
 
-    /// Show or hide the trailing spinner.
     pub fn set_loading(&mut self, loading: bool, _: &mut Window, cx: &mut Context<Self>) {
         if self.loading == loading {
             return;
@@ -366,7 +327,6 @@ impl InputState {
         cx.notify();
     }
 
-    /// Byte offset of the caret.
     #[must_use]
     pub fn cursor(&self) -> usize {
         if self.selection_reversed {
@@ -376,14 +336,11 @@ impl InputState {
         }
     }
 
-    /// Byte range of the selection.
     #[must_use]
     pub fn selected_range(&self) -> Range<usize> {
         self.selection.clone()
     }
 
-    /// Move the caret / set the selection. Offsets are clamped into the value
-    /// and onto character boundaries.
     pub fn set_selected_range(&mut self, range: Range<usize>, cx: &mut Context<Self>) {
         self.selection = self.clamp_range(range);
         self.selection_reversed = false;
@@ -394,8 +351,6 @@ impl InputState {
         cx.notify();
     }
 
-    /// Insert `text` at the caret, replacing nothing. The caret ends up after
-    /// the inserted text.
     pub fn insert(
         &mut self,
         text: impl Into<SharedString>,
@@ -407,7 +362,6 @@ impl InputState {
         self.edit(cursor..cursor, &text, EditKind::Other, cx);
     }
 
-    /// Replace the selection with `text`. The caret ends up after it.
     pub fn replace(
         &mut self,
         text: impl Into<SharedString>,
@@ -1175,7 +1129,6 @@ impl InputState {
         }
     }
 
-    // `cx.listener(Self::method)` fixes the `&mut self` receiver.
     #[allow(clippy::unused_self)]
     pub(super) fn show_character_palette(
         &mut self,
@@ -1490,7 +1443,6 @@ impl InputState {
             cx.notify();
         });
 
-        // Beats zz-gpui's own focus-on-mouse-down listener to the event.
         window.prevent_default();
 
         self.menu_focus_round_trip = self.focus_handle.is_focused(window);
@@ -1529,8 +1481,6 @@ impl EntityInputHandler for InputState {
         self.paste_item(item, cx);
     }
 
-    /// Hands the OS IME the real text, masked field or not: masking it would
-    /// break composition outright.
     fn text_for_range(
         &mut self,
         range_utf16: Range<usize>,
@@ -1854,7 +1804,6 @@ mod tests {
         assert_eq!(class_of('/'), CharClass::Punctuation);
     }
 
-    /// A 1x1 PNG: the smallest thing a pasteboard can call an image.
     const PNG_PIXEL: &[u8] = &[
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
         0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f,

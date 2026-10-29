@@ -1,5 +1,3 @@
-//! Line breaking across styled runs, marks and inline images, laid out as one
-//! paragraph.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::{

@@ -1,5 +1,3 @@
-//! The select's entity: what is picked, and whether the menu is open.
-
 use zz_gpui::{
     Anchor, AnyElement, App, AppContext as _, Bounds, Context, DismissEvent, Entity, EventEmitter,
     FocusHandle, Focusable, InteractiveElement as _, IntoElement, Length, MouseButton,
@@ -38,14 +36,10 @@ pub(super) struct SelectOptions {
     pub(super) surface_role: Option<SurfaceRole>,
 }
 
-/// What a [`SelectState`] reports to its subscribers.
 pub enum SelectEvent<D: SelectDelegate> {
-    /// A row was picked from the menu; always `Some`.
     Confirm(Option<<D::Item as SelectItem>::Value>),
 }
 
-/// The state behind one [`super::Select`]: build it inside `cx.new`, hand the
-/// entity to the element every render.
 pub struct SelectState<D: SelectDelegate> {
     focus_handle: FocusHandle,
     delegate: D,
@@ -60,8 +54,6 @@ pub struct SelectState<D: SelectDelegate> {
 }
 
 impl<D: SelectDelegate> SelectState<D> {
-    /// A select over `delegate`, optionally starting on a row. Only
-    /// `selected_index.row` is read; an out-of-range row starts it empty.
     #[must_use]
     pub fn new(
         delegate: D,
@@ -91,8 +83,6 @@ impl<D: SelectDelegate> SelectState<D> {
         self.selected.as_ref().map(SelectItem::value)
     }
 
-    /// Commit the row at `selected_index`, or clear the selection with `None`.
-    /// Emits no [`SelectEvent::Confirm`], and notifies only when the pick moves.
     pub fn set_selected_index(
         &mut self,
         selected_index: Option<IndexPath>,
@@ -111,8 +101,6 @@ impl<D: SelectDelegate> SelectState<D> {
         }
     }
 
-    /// Commit the row carrying `value`, clearing the selection when the
-    /// delegate has no such row.
     pub fn set_selected_value(
         &mut self,
         value: &<D::Item as SelectItem>::Value,

@@ -1,4 +1,3 @@
-//! The document model: what a parsed Markdown block is, and how it renders.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::{
@@ -474,7 +473,6 @@ fn preserve_inline_selection(
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct LinkMark {
     pub url: SharedString,
-    /// Optional identifier for footnotes.
     pub identifier: Option<SharedString>,
     pub title: Option<SharedString>,
 }
@@ -486,7 +484,6 @@ pub struct TextMark {
     pub strikethrough: bool,
     pub underline: bool,
     pub code: bool,
-    /// Background color for `<mark>` text. `None` leaves it unhighlighted.
     pub highlight: Option<Hsla>,
     pub link: Option<LinkMark>,
 }
@@ -542,7 +539,6 @@ impl TextMark {
     }
 }
 
-/// A byte range in the source Markdown.
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct Span {
     pub start: usize,
@@ -809,8 +805,6 @@ struct CachedCodeBlockStyles {
     styles: Vec<(Range<usize>, HighlightStyle)>,
 }
 
-/// The hover group a fenced code block forms, so its actions can show only
-/// while it is pointed at.
 pub const CODE_BLOCK_GROUP: &str = "zz-code-block";
 
 #[derive(Debug, Clone)]
@@ -1375,7 +1369,6 @@ impl Paragraph {
 }
 
 impl BlockNode {
-    /// Only used to generate expected markdown in tests.
     #[allow(dead_code)]
     pub(crate) fn to_markdown(&self) -> String {
         match self {
@@ -1521,9 +1514,6 @@ impl BlockNode {
         window: &Window,
         cx: &mut App,
     ) -> Div {
-        // First-line strut: the box is sized to the font, then centred on the
-        // cap height. `items_center` on the row would centre the checkbox on
-        // the whole wrapped block; the strut keeps it on line 1.
         let line_height = window.line_height();
         let font_size = window.text_style().font_size.to_pixels(window.rem_size());
         let drop = crate::icon::cap_center_drop(font_size, font_size, cx);

@@ -1,5 +1,3 @@
-//! [`TextView`]: the element a call site writes. A throwaway handle that writes
-//! its style and flags into a [`TextViewState`] entity, then renders it.
 #![allow(clippy::pedantic, clippy::style, clippy::complexity)]
 
 use std::sync::Arc;
@@ -69,7 +67,6 @@ impl TextView {
         }
     }
 
-    /// Create a new markdown text view, owning its own state keyed by `id`.
     pub fn markdown(id: impl Into<ElementId>, markdown: impl Into<SharedString>) -> Self {
         Self {
             id: id.into(),
@@ -92,15 +89,11 @@ impl TextView {
         self
     }
 
-    /// Set the text view to be selectable, default is false.
     pub fn selectable(mut self, selectable: bool) -> Self {
         self.selectable = selectable;
         self
     }
 
-    /// Virtualize large content through [`zz_gpui::list`] with a scrollbar, which
-    /// needs a fixed-height parent. Default false: the view expands to fit all
-    /// its content.
     pub fn scrollable(mut self, scrollable: bool) -> Self {
         self.scrollable = scrollable;
         self
@@ -111,7 +104,6 @@ impl TextView {
         self
     }
 
-    /// Overlay an element on every code block, built from its [`CodeBlock`].
     pub fn code_block_actions<F, E>(mut self, f: F) -> Self
     where
         F: Fn(&CodeBlock, &mut Window, &mut App) -> E + Send + Sync + 'static,
@@ -131,13 +123,11 @@ impl TextView {
         self
     }
 
-    /// Let `links` paint, hover and open the links instead of the defaults.
     pub fn links(mut self, links: impl TextLinks) -> Self {
         self.links = Some(Arc::new(links));
         self
     }
 
-    /// Replace the Markdown extension registry.
     pub fn markdown_extensions(mut self, extensions: MarkdownExtensions) -> Self {
         self.markdown_extensions = Arc::new(extensions);
         self

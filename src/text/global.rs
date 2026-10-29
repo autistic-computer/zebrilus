@@ -1,6 +1,3 @@
-//! Paint-scoped globals for text selection: the `TextView` stack and the
-//! press-suppression flag.
-
 use zz_gpui::{App, Entity, Global};
 
 use super::{state::TextViewState, window_selection::SelectionScope};
@@ -17,14 +14,6 @@ pub(super) struct TextGlobal {
 
 impl Global for TextGlobal {}
 
-/// Suppress window text selection for the current mouse down. Call from the
-/// bubble-phase mouse-down handler of a widget that owns its own press.
-///
-/// ```ignore
-/// .on_mouse_down(MouseButton::Left, |_, _, cx| {
-///     zz_gpui_kit::text::suppress_text_selection(cx);
-/// })
-/// ```
 pub fn suppress_text_selection(cx: &mut App) {
     TextGlobal::get_mut(cx).suppressed = true;
 }

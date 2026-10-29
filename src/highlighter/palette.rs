@@ -1,5 +1,3 @@
-//! Light and dark syntax palettes, transcribed from gpui-component's `default-theme.json`.
-
 use std::sync::{Arc, LazyLock};
 
 use zz_gpui::rgb;

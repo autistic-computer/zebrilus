@@ -66,7 +66,6 @@ pub(super) enum OperatorSpan {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct LineSpan {
     pub content: Range<usize>,
-    /// `content`, or the preceding newline when the span reaches the last line.
     pub delete: Range<usize>,
 }
 

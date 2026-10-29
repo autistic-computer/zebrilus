@@ -12,7 +12,6 @@ use crate::code_editor::Point as TreeSitterPoint;
 use crate::code_editor::display_map::WrapPoint;
 use crate::code_editor::rope_ext::RopeExt as _;
 
-/// Maps buffer positions to display positions through the wrap and fold layers.
 pub struct DisplayMap {
     wrap_map: WrapMap,
     fold_map: FoldMap,
@@ -58,7 +57,6 @@ impl DisplayMap {
         self.wrap_map.wrap_row_to_buffer_line(wrap_row)
     }
 
-    /// Display rows `[start, end)` covering a buffer line, or None if it is fully folded.
     pub fn buffer_line_to_display_row_range(&self, line: usize) -> Option<Range<usize>> {
         let wrap_row_range = self.wrap_map.buffer_line_to_wrap_row_range(line);
 
@@ -86,7 +84,6 @@ impl DisplayMap {
         self.buffer_line_to_display_row_range(line).is_none()
     }
 
-    /// First display row of a buffer line, or the nearest visible row if it is folded.
     pub fn buffer_line_to_display_row(&self, line: usize) -> usize {
         match self.buffer_line_to_display_row_range(line) {
             Some(range) => range.start,
@@ -102,7 +99,6 @@ impl DisplayMap {
         self.rebuild_fold_projection();
     }
 
-    /// Folds or unfolds at `start_line`, which must be a candidate.
     pub fn set_folded(&mut self, start_line: usize, folded: bool) {
         self.fold_map.set_folded(start_line, folded);
         self.rebuild_fold_projection();
@@ -133,7 +129,6 @@ impl DisplayMap {
         self.rebuild_fold_projection();
     }
 
-    /// Shifts folds for an edit. Call with the pre-edit text, before the wrap map updates.
     pub fn adjust_folds_for_edit(&mut self, old_text: &Rope, range: &Range<usize>, new_text: &str) {
         if self.fold_map.folded_ranges().is_empty() && self.fold_map.fold_candidates().is_empty() {
             return;
@@ -150,7 +145,6 @@ impl DisplayMap {
             .adjust_folds_for_edit(edit_start_line, edit_end_line, line_delta);
     }
 
-    /// Re-extracts candidates inside the edited byte range and merges them with the rest.
     pub fn update_fold_candidates_for_edit(
         &mut self,
         tree: &super::folding::Tree,
@@ -225,7 +219,6 @@ impl DisplayMap {
         self.wrap_map.wrapper().display_point_to_point(point)
     }
 
-    /// Display row for a wrap row, or None if that row is folded away.
     #[inline]
     pub fn wrap_row_to_display_row(&self, wrap_row: usize) -> Option<usize> {
         self.fold_map.wrap_row_to_display_row(wrap_row)
@@ -262,7 +255,6 @@ impl DisplayMap {
             .visible_wrap_row_count_for_line(line, &self.fold_map)
     }
 
-    /// Row count before folding.
     #[inline]
     pub fn wrap_row_count(&self) -> usize {
         self.wrap_map.wrap_row_count()

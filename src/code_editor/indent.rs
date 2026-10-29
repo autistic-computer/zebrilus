@@ -7,9 +7,7 @@ use super::{
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TabSize {
-    /// Number of spaces represented by one indentation level.
     pub tab_size: usize,
-    /// Insert a literal tab instead of spaces.
     pub hard_tabs: bool,
 }
 
