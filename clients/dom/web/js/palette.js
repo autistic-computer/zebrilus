@@ -7,6 +7,12 @@ layer.className = "zz-layer-palette";
 $("#overlays").append(layer);
 
 const view = { node: null, input: null, rows: null, last: null, scrolled: null };
+const pointer = { x: null, y: null };
+
+addEventListener("mousemove", (event) => {
+  pointer.x = event.clientX;
+  pointer.y = event.clientY;
+});
 
 function notices() {
   for (const text of state.client.palette_notices()) toast(null, text, 2600);
@@ -36,7 +42,9 @@ function pill(value) {
     );
   }
   if (value.kind === "place" || value.kind === "verb") {
-    return element("span", { "data-zz": "badge", class: "zz-palette-pill", "data-kind": value.kind }, element("span", { "data-text": true, text: value.label }));
+    const node = element("span", { "data-zz": "badge", class: "zz-palette-pill", "data-kind": value.kind }, element("span", { "data-text": true, text: value.label }));
+    if (value.kind === "place") node.style.flexShrink = [...value.label].length;
+    return node;
   }
   return element("span", { "data-zz": "badge", class: "zz-palette-pill zz-palette-mono", "data-text": true, text: value.label });
 }
@@ -212,7 +220,8 @@ function render() {
     const selected = palette.selected === index;
     const node = row.header !== undefined ? sectionRow(row) : palette.kind === "unified" ? unifiedRow(row, index, selected) : promptRow(row, index, selected);
     if (row.header === undefined) {
-      node.addEventListener("mouseenter", () => {
+      node.addEventListener("mousemove", (event) => {
+        if (event.clientX === pointer.x && event.clientY === pointer.y) return;
         if (state.client.palette_hover(index)) after();
       });
       node.addEventListener("click", (event) => {

@@ -308,3 +308,19 @@ fn a_colon_lists_tmux_commands() {
     assert_eq!(found.first().map(String::as_str), Some("  kill-window"));
     assert!(!UnifiedPalette::new(Some(PaletteMode::Command)).is_places());
 }
+
+#[test]
+fn command_aliases_are_offered_only_on_the_host_they_came_from() {
+    let recents = Recents::default();
+    let fleet = palette_fleet(&tree());
+    let mut palette = palette(vec![auto_host()]);
+    palette.verbs = Rc::from(zz_client::verbs::verbs(
+        availability(),
+        &[],
+        true,
+        "clean=kill-window",
+    ));
+    assert!(rows(&mut palette, "clean", &[], &recents).contains(&"  clean".to_owned()));
+    palette.chips = vec![chip_for(&fleet, Place::host(1)).expect("xps chip")];
+    assert!(!rows(&mut palette, "clean", &[], &recents).contains(&"  clean".to_owned()));
+}

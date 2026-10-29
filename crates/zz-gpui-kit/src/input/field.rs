@@ -3,7 +3,7 @@
 use zz_gpui::{
     AnyElement, App, DefiniteLength, Entity, InteractiveElement, IntoElement, MouseButton,
     ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    TextAlign, Window, div, prelude::FluentBuilder as _, px,
+    TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
@@ -443,6 +443,9 @@ impl RenderOnce for Input {
             .children(prefix.map(|prefix| {
                 div()
                     .flex_none()
+                    .min_w_0()
+                    .max_w(relative(0.75))
+                    .overflow_hidden()
                     .when(disabled, |this| this.opacity(0.5))
                     .child(prefix)
             }))

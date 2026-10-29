@@ -76,12 +76,19 @@ impl CommandPaletteView {
             && self.unified.as_ref().is_some_and(UnifiedPalette::is_places)
     }
 
-    fn draft(&self) -> Option<&Draft> {
+    pub(super) fn draft(&self) -> Option<&Draft> {
         self.unified.as_ref()?.draft.as_ref()
     }
 
     fn next_slot(&self) -> Option<Slot> {
         self.draft()?.next().cloned()
+    }
+
+    pub(super) fn raw_command(&self) -> Option<String> {
+        if self.draft().is_some() {
+            return None;
+        }
+        parse(&self.last_input).command
     }
 
     fn set_command_input(&mut self, input: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -145,9 +152,6 @@ impl CommandPaletteView {
             return None;
         }
         let unified = self.unified.as_ref()?;
-        if parse(&self.last_input).command.is_some() {
-            return None;
-        }
         let (kind, focus) = match unified.draft.as_ref()?.next()? {
             Slot::Path => (ActionKind::Files, None),
             Slot::Value(id) => (ActionKind::Gui, Some(*id)),
@@ -249,10 +253,11 @@ impl CommandPaletteView {
         let Some(unified) = &mut self.unified else {
             return;
         };
-        let Some(chip) = chip_for(&unified.fleet, place) else {
+        let path = chips_to(&unified.fleet, place);
+        let Some(level) = path.last().map(|chip| chip.level) else {
             return;
         };
-        if chip.level == Level::Host
+        if level == Level::Host
             && let Some(host) = place.host
             && !unified.fleet.host(host).is_some_and(|host| host.online)
         {
@@ -261,8 +266,17 @@ impl CommandPaletteView {
         let Some(unified) = &mut self.unified else {
             return;
         };
-        unified.chips.retain(|existing| existing.level < chip.level);
-        unified.chips.push(chip);
+        unified.chips = path
+            .into_iter()
+            .map(|chip| {
+                unified
+                    .chips
+                    .iter()
+                    .find(|existing| existing.level == chip.level && existing.place == chip.place)
+                    .cloned()
+                    .unwrap_or(chip)
+            })
+            .collect();
         self.set_query(String::new(), window, cx);
     }
 
@@ -504,7 +518,7 @@ impl CommandPaletteView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if let Some(command) = parse(&self.last_input).command {
+        if let Some(command) = self.raw_command() {
             self.activate_command(command, complete, window, cx);
             return;
         }

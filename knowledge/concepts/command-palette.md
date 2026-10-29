@@ -66,6 +66,8 @@ target first (`Actions on <place>`), and starting one fills its target from the 
 place or the verb can come first. With nothing typed the rows are the empty palette while only
 the host chip is set, and the children of the last chip once you went in; a pane has none, so
 in a pane they are its actions. The footer shows the highlighted verb with that target filled in.
+Going into a place found by search adds every chip on its path. The chips take at most three
+quarters of the field, and when they don't fit the longest place names shorten first.
 
 | Key | Does |
 | --- | --- |
@@ -90,7 +92,12 @@ hints. A backend with no files level falls back to the target picker below.
 
 A tmux `command-alias` entry is a verb with the slots of the command it runs:
 `set -s command-alias[10] zoom='resize-pane -Z'` makes `zoom`, with a pane picker, since zz knows
-`resize-pane` takes a pane. An alias that names its own `-t` asks for nothing. The daemon publishes
+`resize-pane` takes a pane, and `rn=rename-window` asks for a window and then the new name. The verb
+runs the alias by name (`zoom -t %3`) and the daemon expands it the way tmux does, appending what
+the slots filled in (`Run::Alias`). Appended words land after the body's own, so an alias whose
+body already has positional words (`build=send-keys make Enter`), names its own `-t`, or holds
+more than one command asks for nothing. Aliases come from the attached host and are offered only
+while the palette is on that host. The daemon publishes
 the server's `command-alias` array to clients as the mux option `command-alias`
 (`MuxOptionKey::CommandAlias`, one `name=command` a line, wire 117), republished when the array
 changes; tmux's six default aliases stay out of the list. Each backend builds its verbs with

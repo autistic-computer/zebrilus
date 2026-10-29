@@ -64,6 +64,9 @@
 .zz-palette-pills {
   display: flex;
   flex: none;
+  min-width: 0;
+  max-width: 75%;
+  overflow: hidden;
   align-items: center;
   gap: 6px;
 }
@@ -85,6 +88,11 @@
 
 .zz-palette-pill[data-kind] {
   max-width: 160px;
+}
+
+.zz-palette-pill[data-kind="place"] {
+  flex: 0 1 auto;
+  min-width: 28px;
 }
 
 .zz-palette-pill[data-kind] > span {

@@ -33,7 +33,7 @@ type Sink = Rc<RefCell<Option<ListingSink>>>;
 struct FakeBackend {
     calls: Calls,
     snapshot: Arc<MuxSnapshot>,
-    tree: PaletteTree,
+    tree: Rc<RefCell<PaletteTree>>,
     availability: PaneKindAvailability,
     levels: Option<Rc<RefCell<Vec<String>>>>,
     host: Option<&'static MuxSnapshot>,
@@ -81,7 +81,7 @@ impl PaletteBackend for FakeBackend {
     }
 
     fn tree(&self, _: &App) -> PaletteTree {
-        self.tree.clone()
+        self.tree.borrow().clone()
     }
 
     fn settings(&self, _: &App) -> PaletteSettings {
@@ -185,7 +185,7 @@ fn fake_backend(
     let backend = FakeBackend {
         calls: Rc::clone(&calls),
         snapshot: Arc::default(),
-        tree,
+        tree: Rc::new(RefCell::new(tree)),
         availability,
         levels: None,
         host: None,
@@ -207,7 +207,7 @@ fn files_backend() -> (Rc<dyn PaletteBackend>, Calls, Sink) {
     let backend = Rc::new_cyclic(|me| FakeBackend {
         calls: Rc::clone(&calls),
         snapshot: Arc::new(snapshot.clone()),
-        tree: online_tree(),
+        tree: Rc::new(RefCell::new(online_tree())),
         availability: PaneKindAvailability::default(),
         levels: None,
         host: Some(snapshot),
@@ -275,7 +275,7 @@ fn level_backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Rc<RefCell<Vec<S
     let backend = FakeBackend {
         calls: Calls::default(),
         snapshot: Arc::default(),
-        tree,
+        tree: Rc::new(RefCell::new(tree)),
         availability: PaneKindAvailability {
             browser: true,
             editor: true,
@@ -880,7 +880,10 @@ fn words_find_a_window_and_backspace_drops_the_chips(cx: &mut TestAppContext) {
     assert_eq!(selected, "dev › 1 editor");
     cx.simulate_keystrokes("tab");
     cx.run_until_parked();
-    assert_eq!(chip_labels(&palette, cx), ["local", "1 editor"]);
+    assert_eq!(chip_labels(&palette, cx), ["local", "dev", "1 editor"]);
+    cx.simulate_keystrokes("backspace");
+    cx.run_until_parked();
+    assert_eq!(chip_labels(&palette, cx), ["local", "dev"]);
     cx.simulate_keystrokes("backspace backspace");
     cx.run_until_parked();
     assert!(chip_labels(&palette, cx).is_empty());
@@ -1683,7 +1686,7 @@ fn vim_palette(
     let backend: Rc<dyn PaletteBackend> = Rc::new(FakeBackend {
         calls: Rc::clone(&calls),
         snapshot: Arc::default(),
-        tree: online_tree(),
+        tree: Rc::new(RefCell::new(online_tree())),
         availability: PaneKindAvailability {
             browser: true,
             editor: true,
@@ -1948,6 +1951,103 @@ fn a_pane_lists_its_actions_and_runs_one(cx: &mut TestAppContext) {
         [Call::Execute(
             LOCAL,
             CommandInvocation::new("capture-pane", ["-p", "-t", "%10"])
+        )]
+    );
+}
+
+fn two_windows() -> PaletteTree {
+    let mut tree = online_tree();
+    let session = &mut tree.hosts[0].sessions[0];
+    let mut logs = session.windows[0].clone();
+    logs.id = WindowId(2);
+    logs.index = 2;
+    logs.name = "logs".to_owned();
+    logs.active = false;
+    logs.active_pane = PaneId(20);
+    logs.panes[0].id = PaneId(20);
+    logs.panes[0].label = "tail".to_owned();
+    session.windows.push(logs);
+    tree
+}
+
+#[zz_gpui::test]
+fn a_picked_target_stays_picked_when_a_refresh_reorders_the_rows(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let calls = Calls::default();
+    let tree = Rc::new(RefCell::new(two_windows()));
+    let backend: Rc<dyn PaletteBackend> = Rc::new(FakeBackend {
+        calls: Rc::clone(&calls),
+        snapshot: Arc::default(),
+        tree: Rc::clone(&tree),
+        availability: PaneKindAvailability::default(),
+        levels: None,
+        host: None,
+        active: PaneId(0),
+        sink: Sink::default(),
+        files: None,
+        vim: Rc::default(),
+    });
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.simulate_input("kill window");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter down");
+    cx.run_until_parked();
+    let picked = |cx: &mut VisualTestContext| {
+        palette.read_with(cx, |palette, _| {
+            let unified = palette.unified.as_ref().unwrap();
+            unified.rows[palette.selected.unwrap()]
+                .row
+                .label
+                .to_string()
+        })
+    };
+    assert_eq!(picked(cx), "dev › 2 logs");
+    {
+        let mut tree = tree.borrow_mut();
+        let windows = &mut tree.hosts[0].sessions[0].windows;
+        windows[0].active = false;
+        windows[1].active = true;
+    }
+    cx.update(|window, cx| palette.update(cx, |palette, cx| palette.refresh(window, cx)));
+    cx.run_until_parked();
+    assert_eq!(picked(cx), "dev › 2 logs");
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(
+        *calls.borrow(),
+        [Call::Execute(
+            LOCAL,
+            CommandInvocation::new("kill-window", ["-t", "@2"])
+        )]
+    );
+}
+
+#[zz_gpui::test]
+fn a_colon_in_a_text_slot_is_text_not_a_tmux_command(cx: &mut TestAppContext) {
+    cx.update(crate::init);
+    let (backend, calls) = backend(online_tree());
+    let (palette, cx) = mount(cx, move |window, cx| {
+        CommandPaletteView::new_unified(backend, None, window, cx)
+    });
+    cx.simulate_input("rename window");
+    cx.run_until_parked();
+    cx.simulate_keystrokes("enter enter");
+    cx.simulate_input(":kill-server");
+    cx.run_until_parked();
+    let usage = palette.read_with(cx, |palette, _| palette.draft_usage());
+    assert_eq!(
+        usage.as_deref(),
+        Some("runs  rename-window -t dev:1 :kill-server")
+    );
+    cx.simulate_keystrokes("enter");
+    cx.run_until_parked();
+    assert_eq!(
+        *calls.borrow(),
+        [Call::Execute(
+            LOCAL,
+            CommandInvocation::new("rename-window", ["-t", "@1", ":kill-server"])
         )]
     );
 }

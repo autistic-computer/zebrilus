@@ -349,6 +349,13 @@ const fn slot_noun(slot: &Slot) -> &'static str {
 }
 
 impl Palette {
+    pub(super) fn raw_command(&self) -> Option<String> {
+        if self.places.draft.is_some() {
+            return None;
+        }
+        place::parse(&self.input).command
+    }
+
     pub(super) fn is_places(&self) -> bool {
         self.unified
             && self.window_chooser.is_none()
@@ -405,7 +412,7 @@ impl Palette {
     }
 
     pub(super) fn place_usage(&self) -> Option<String> {
-        if let Some(rest) = place::parse(&self.input).command {
+        if let Some(rest) = self.raw_command() {
             return self
                 .selected_action()
                 .and_then(|action| match action {
@@ -479,7 +486,7 @@ impl Palette {
     ) {
         self.places.fleet = fleet(tree, self.connected);
         let line = place::parse(&self.input);
-        if let Some(command) = &line.command {
+        if let Some(command) = self.raw_command() {
             self.rows = self.command_entries(command.trim(), availability, shortcut);
             return;
         }
@@ -778,7 +785,7 @@ impl Client {
     }
 
     pub(super) fn activate_places(&mut self, complete: bool) {
-        if let Some(rest) = place::parse(&self.palette.input).command {
+        if let Some(rest) = self.palette.raw_command() {
             self.activate_place_command(rest, complete);
             return;
         }
@@ -936,11 +943,21 @@ impl Client {
 
     fn enter_place(&mut self, place: Place) {
         let places = &mut self.palette.places;
-        let Some(chip) = chip_for(&places.fleet, place) else {
+        let path = chips_to(&places.fleet, place);
+        if path.is_empty() {
             return;
-        };
-        places.chips.retain(|existing| existing.level < chip.level);
-        places.chips.push(chip);
+        }
+        places.chips = path
+            .into_iter()
+            .map(|chip| {
+                places
+                    .chips
+                    .iter()
+                    .find(|existing| existing.level == chip.level && existing.place == chip.place)
+                    .cloned()
+                    .unwrap_or(chip)
+            })
+            .collect();
         self.set_query(String::new());
     }
 
@@ -1008,7 +1025,7 @@ impl Client {
 
     pub(super) fn place_hints(&self) -> Vec<Value> {
         let palette = &self.palette;
-        if place::parse(&palette.input).command.is_some() {
+        if palette.raw_command().is_some() {
             return vec![
                 hint("tab", "complete"),
                 hint("enter", "run"),
@@ -1276,7 +1293,15 @@ mod tests {
         assert_eq!(view(&mut client)["hints"][0]["label"], "into");
         assert!(client.palette_key("Tab"));
         let pane = view(&mut client);
-        assert_eq!(pills(&pane), ["host:zz daemon", "place:0 watch"]);
+        assert_eq!(
+            pills(&pane),
+            [
+                "host:zz daemon",
+                "place:work",
+                "place:2 cargo",
+                "place:0 watch"
+            ]
+        );
         assert_eq!(texts(&pane, "header"), ["Actions on 0 watch"]);
         assert_eq!(texts(&pane, "text")[0], "read pane");
         assert_eq!(pane["usage"], "runs  capture-pane -p -t work:2.0");
@@ -1306,7 +1331,27 @@ mod tests {
         assert!(client.palette_key("Enter"));
         assert_eq!(
             sent(&mut client),
-            [CommandInvocation::new("resize-pane", ["-Z", "-t", "%1"])]
+            [CommandInvocation::new("rs", ["-t", "%1"])]
+        );
+    }
+
+    #[test]
+    fn a_colon_in_a_text_slot_is_text_not_a_tmux_command() {
+        let mut client = client("");
+        type_text(&mut client, "rename window");
+        assert!(client.palette_key("Enter"));
+        assert!(client.palette_key("Enter"));
+        type_text(&mut client, ":kill-server");
+        let text = view(&mut client);
+        assert_eq!(text["input"]["placeholder"], "New name");
+        assert_eq!(text["usage"], "runs  rename-window -t work:1 :kill-server");
+        assert!(client.palette_key("Enter"));
+        assert_eq!(
+            sent(&mut client),
+            [CommandInvocation::new(
+                "rename-window",
+                ["-t", "@1", ":kill-server"]
+            )]
         );
     }
 }

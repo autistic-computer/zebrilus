@@ -675,7 +675,7 @@ impl CommandPaletteView {
             .selected
             .and_then(|index| unified.rows.get(index))
             .and_then(|entry| match entry.action {
-                Some(PaletteAction::Place(place)) => Some(place),
+                Some(PaletteAction::Place(place) | PaletteAction::Fill(place)) => Some(place),
                 _ => None,
             });
         let settings = self.backend.settings(cx);
@@ -713,10 +713,15 @@ impl CommandPaletteView {
             );
         }
         let command_input = if places {
-            parse(&self.last_input).command.map(|rest| {
-                let start = self.last_input.len() - self.last_input.trim_start().len() + 1;
-                (rest, self.last_cursor.saturating_sub(start))
-            })
+            unified
+                .draft
+                .is_none()
+                .then(|| parse(&self.last_input).command)
+                .flatten()
+                .map(|rest| {
+                    let start = self.last_input.len() - self.last_input.trim_start().len() + 1;
+                    (rest, self.last_cursor.saturating_sub(start))
+                })
         } else {
             (unified.mode == Some(PaletteMode::Command) && unified.command.is_none())
                 .then(|| (self.last_input.clone(), self.last_cursor))
@@ -772,7 +777,7 @@ impl CommandPaletteView {
         }
         if let Some(place) = selected_place {
             self.selected = unified.rows.iter().position(
-                |entry| matches!(entry.action, Some(PaletteAction::Place(row)) if row == place),
+                |entry| matches!(entry.action, Some(PaletteAction::Place(row) | PaletteAction::Fill(row)) if row == place),
             );
         }
         self.selected = self
@@ -849,7 +854,7 @@ impl CommandPaletteView {
             }
             VimCommand::ClearAndInsert => {
                 let value = self.input.read(cx).value().to_string();
-                let kept = if parse(&value).command.is_some() {
+                let kept = if self.draft().is_none() && parse(&value).command.is_some() {
                     zz_client::place::COMMAND_SIGIL.to_string()
                 } else {
                     String::new()
@@ -1349,7 +1354,7 @@ impl CommandPaletteView {
             .as_mut()
             .map(|(_, level)| (level.rows(window, cx), level.hints(cx)));
         let places = self.places();
-        let command_rest = places.then(|| parse(&self.last_input).command).flatten();
+        let command_rest = places.then(|| self.raw_command()).flatten();
         let places_usage = (places && command_rest.is_none())
             .then(|| self.draft_usage().or_else(|| self.row_usage()))
             .flatten();
