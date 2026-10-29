@@ -44,7 +44,11 @@ pub(crate) fn tui_profile_paths(paths: &BrowserProfilePaths) -> BrowserProfilePa
         .unwrap_or_else(|| OsStr::new(DEFAULT_PROFILE_DIRECTORY));
     let root = paths.root.with_file_name(TUI_CACHE_ROOT);
     let profile = root.join(profile_directory);
-    BrowserProfilePaths { root, profile }
+    BrowserProfilePaths {
+        root,
+        profile,
+        named_prefix: paths.named_prefix.clone(),
+    }
 }
 
 pub(crate) struct TuiBrowserProvider {
@@ -806,6 +810,7 @@ mod tests {
         let paths = tui_profile_paths(&BrowserProfilePaths {
             root: PathBuf::from("app-data/zz/browser/root"),
             profile: PathBuf::from("app-data/zz/browser/root/zz-default"),
+            named_prefix: "zz-profile-".to_owned(),
         });
         assert_eq!(paths.root, PathBuf::from("app-data/zz/browser/root-tui"));
         assert_eq!(

@@ -7,7 +7,6 @@ use thiserror::Error;
 pub const DEFAULT_BROWSER_PROFILE: &str = "default";
 pub const MAX_BROWSER_PROFILE_NAME_BYTES: usize = 64;
 
-const NAMED_PROFILE_PREFIX: &str = "zz-profile-";
 const EGRESS_PROFILE_MARKER: &str = "@egress-";
 const EGRESS_HOST_HASH_HEX_BYTES: usize = 8;
 const FNV1A_64_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
@@ -51,6 +50,7 @@ pub enum BrowserProfileError {
 pub struct BrowserProfilePaths {
     pub root: PathBuf,
     pub profile: PathBuf,
+    pub named_prefix: String,
 }
 
 impl BrowserProfilePaths {
@@ -108,7 +108,8 @@ impl BrowserProfilePaths {
             return self.profile.clone();
         }
         self.root.join(format!(
-            "{NAMED_PROFILE_PREFIX}{}",
+            "{}{}",
+            self.named_prefix,
             hex_encode(name.as_bytes())
         ))
     }
@@ -152,11 +153,12 @@ fn hex_encode(bytes: &[u8]) -> String {
 
 impl BrowserProfilePaths {
     #[must_use]
-    pub fn under(data_dir: &Path, default_profile_directory: &str) -> Self {
+    pub fn under(data_dir: &Path, default_profile_directory: &str, named_prefix: &str) -> Self {
         let root = data_dir.join("root");
         Self {
             profile: root.join(default_profile_directory),
             root,
+            named_prefix: named_prefix.to_owned(),
         }
     }
 }
@@ -179,10 +181,11 @@ mod tests {
 
     #[test]
     fn profile_is_an_immediate_child_of_the_private_root() {
-        let root = PathBuf::from("app-data/zz/browser/root");
+        let root = PathBuf::from("app-data/browser/root");
         let paths = BrowserProfilePaths {
-            profile: root.join("zz-default"),
+            profile: root.join("app-default"),
             root: root.clone(),
+            named_prefix: "app-profile-".to_owned(),
         };
         assert_eq!(paths.profile.parent(), Some(root.as_path()));
         let named = paths
@@ -191,29 +194,31 @@ mod tests {
         assert_eq!(named.parent(), Some(root.as_path()));
         assert_eq!(
             named.file_name().and_then(|name| name.to_str()),
-            Some("zz-profile-2e2e2f576f726b2f50726f66696c65")
+            Some("app-profile-2e2e2f576f726b2f50726f66696c65")
         );
     }
 
     #[test]
     fn legacy_default_alias_reuses_the_existing_profile() {
-        let root = PathBuf::from("app-data/zz/browser/root");
+        let root = PathBuf::from("app-data/browser/root");
         let paths = BrowserProfilePaths {
-            profile: root.join("zz-default"),
+            profile: root.join("app-default"),
             root,
+            named_prefix: "app-profile-".to_owned(),
         };
         assert_eq!(
-            paths.profile_path("zz-default").expect("default alias"),
+            paths.profile_path("app-default").expect("default alias"),
             paths.profile
         );
     }
 
     #[test]
     fn egress_profiles_are_stable_flat_and_isolated_by_host() {
-        let root = PathBuf::from("app-data/zz/browser/root");
+        let root = PathBuf::from("app-data/browser/root");
         let paths = BrowserProfilePaths {
-            profile: root.join("zz-default"),
+            profile: root.join("app-default"),
             root: root.clone(),
+            named_prefix: "app-profile-".to_owned(),
         };
         let first = egress_profile_name("Work", "build.internal").expect("first composite");
         let same = egress_profile_name("Work", "build.internal").expect("stable composite");
@@ -260,10 +265,11 @@ mod tests {
             .expect("system time is after the Unix epoch")
             .as_nanos();
         let test_root =
-            std::env::temp_dir().join(format!("zz-profile-{}-{unique}", std::process::id()));
+            std::env::temp_dir().join(format!("ala-cef-profile-{}-{unique}", std::process::id()));
         let paths = BrowserProfilePaths {
-            profile: test_root.join("zz-default"),
+            profile: test_root.join("app-default"),
             root: test_root.clone(),
+            named_prefix: "app-profile-".to_owned(),
         };
         paths.ensure().expect("create test browser profile");
 
