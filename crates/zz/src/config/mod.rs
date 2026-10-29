@@ -7,8 +7,8 @@ use std::{
 use ala::{
     App, Corners, Global, Pixels, SharedString, WindowBackgroundAppearance, WindowDecorations, px,
 };
-use zz_browser::SearchProvider;
 use zz_client::StatusBarSettings;
+use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};

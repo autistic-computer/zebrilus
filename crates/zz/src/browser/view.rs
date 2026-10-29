@@ -31,10 +31,12 @@ use zz_browser::{
     BrowserCursor, BrowserEvent, BrowserGpuContext, BrowserKey, ContextMenuRequest,
     CookieImportBatch, EditCommand, ElementPickerAppearance, ImeCharacterBounds, KeyInput,
     MAX_COOKIE_IMPORT_BYTES, Modifiers, PointerButton, PointerEvent, PointerPhase, RuntimePhase,
-    SessionId, Viewport, WheelEvent, diagnostic_url, ime_range_bounds, normalize_url,
-    parse_cookie_import, resolve_address,
+    SessionId, Viewport, WheelEvent, ime_range_bounds, parse_cookie_import,
 };
-use zz_client::{BROWSER_TABLE, ChromeAction};
+use zz_client::{
+    BROWSER_TABLE, ChromeAction,
+    url_input::{diagnostic_url, normalize_url, resolve_address},
+};
 use zz_protocol::{
     BrowserCommand, BrowserDescriptor, ClientMessageKind, CommandInvocation, GuiResponse,
     InputMessage, KeyToken, MAX_BROWSER_KEY_REPEAT, PaneId, normalize_browser_profile_name,

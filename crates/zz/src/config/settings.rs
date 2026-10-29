@@ -40,7 +40,7 @@ use crate::{
     window::toast,
     workspace::add_host,
 };
-use zz_browser::SearchProvider;
+use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
 use zz_ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
