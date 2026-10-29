@@ -159,8 +159,7 @@ fn place(host: u32, session: u64, window: Option<u64>, pane: Option<u64>) -> Pla
 fn text(level: Level, query: &str) -> Part {
     Part {
         level,
-        query: Query::Text(query.to_owned()),
-        range: 0..0,
+        query: query.to_owned(),
     }
 }
 
@@ -171,136 +170,43 @@ fn labels(found: &[Candidate]) -> Vec<&str> {
         .collect()
 }
 
-fn shape(
-    text: &str,
-) -> (
-    Vec<(Level, Query)>,
-    Option<(ActionKind, String)>,
-    Option<String>,
-) {
-    let line = parse(text);
-    (
-        line.parts
-            .into_iter()
-            .map(|part| (part.level, part.query))
-            .collect(),
-        line.action.map(|action| (action.kind, action.rest)),
-        line.search,
-    )
-}
-
-fn t(text: &str) -> Query {
-    Query::Text(text.to_owned())
+#[test]
+fn only_a_leading_colon_starts_a_tmux_command() {
+    assert_eq!(
+        parse(":send-keys '$HOME' %1"),
+        Line {
+            command: Some("send-keys '$HOME' %1".to_owned()),
+            search: None,
+        }
+    );
+    assert_eq!(
+        parse("  :kill-window").command.as_deref(),
+        Some("kill-window")
+    );
+    assert!(is_sigil(':') && !is_sigil('$') && !is_sigil('&') && !is_sigil('?'));
 }
 
 #[test]
-fn places_run_to_the_next_sigil_and_actions_take_the_rest() {
-    use ActionKind::*;
-    use Level::*;
-    assert_eq!(
-        shape("^macbook$worki@2%1"),
-        (
-            vec![
-                (Host, t("macbook")),
-                (Session, t("worki")),
-                (Window, t("2")),
-                (Pane, t("1")),
-            ],
-            None,
-            None,
-        )
-    );
-    assert_eq!(
-        shape("$foo?why is ci red"),
-        (
-            vec![(Session, t("foo"))],
-            Some((Ask, "why is ci red".to_owned())),
-            None
-        )
-    );
-    assert_eq!(
-        shape("@2:send-keys '$HOME' %1"),
-        (
-            vec![(Window, t("2"))],
-            Some((Command, "send-keys '$HOME' %1".to_owned())),
-            None,
-        )
-    );
-    assert_eq!(
-        shape("^macbook$Working on foo@1%1&~/dev/foo/"),
-        (
-            vec![
-                (Host, t("macbook")),
-                (Session, t("Working on foo")),
-                (Window, t("1")),
-                (Pane, t("1")),
-            ],
-            Some((Files, "~/dev/foo/".to_owned())),
-            None,
-        )
-    );
-    assert_eq!(
-        shape(">theme dark"),
-        (vec![], Some((Gui, "theme dark".to_owned())), None)
-    );
-    assert_eq!(
-        shape(":kill-window"),
-        (vec![], Some((Command, "kill-window".to_owned())), None)
-    );
-    assert_eq!(
-        shape("$@"),
-        (vec![(Session, t("")), (Window, t(""))], None, None)
-    );
-}
-
-#[test]
-fn only_a_deeper_place_sigil_starts_a_part() {
-    use Level::*;
-    assert_eq!(shape("%fabrico@xps").0, vec![(Pane, t("fabrico@xps"))]);
-    assert_eq!(shape("@cost$5").0, vec![(Window, t("cost$5"))]);
-    assert_eq!(shape("$a^b").0, vec![(Session, t("a^b"))]);
-}
-
-#[test]
-fn plain_text_is_a_search_to_the_end() {
-    assert_eq!(
-        shape("why is ci red?"),
-        (vec![], None, Some("why is ci red?".to_owned()))
-    );
-    assert_eq!(
-        shape("cargo:kill"),
-        (vec![], None, Some("cargo:kill".to_owned()))
-    );
-    assert_eq!(shape(""), (vec![], None, None));
-    assert_eq!(shape("   "), (vec![], None, None));
-}
-
-#[test]
-fn quotes_keep_sigils_and_hashes_pin_ids() {
-    use Level::*;
-    assert_eq!(shape("@\"logs: api\"").0, vec![(Window, t("logs: api"))]);
-    assert_eq!(
-        shape("$#3@#41%#52").0,
-        vec![
-            (Session, Query::Id(3)),
-            (Window, Query::Id(41)),
-            (Pane, Query::Id(52))
-        ]
-    );
-    assert_eq!(shape("@#").0, vec![(Window, t("#"))]);
-    assert_eq!(shape("@#4a").0, vec![(Window, t("#4a"))]);
-    assert_eq!(shape("@\"#4\"").0, vec![(Window, t("#4"))]);
-}
-
-#[test]
-fn ranges_point_into_the_text() {
-    let text = "$foo@2:kill-window";
-    let line = parse(text);
-    assert_eq!(&text[line.parts[0].range.clone()], "$foo");
-    assert_eq!(&text[line.parts[1].range.clone()], "@2");
-    let action = line.action.expect("action");
-    assert_eq!(&text[action.rest_range()], "kill-window");
-    assert!(is_sigil('&') && is_sigil('^') && !is_sigil('#'));
+fn everything_else_is_a_search_with_no_sigils() {
+    for text in [
+        "$foo@2%1",
+        "foo 1",
+        "why is ci red?",
+        "cargo:kill",
+        "&~/dev/",
+        ">theme",
+    ] {
+        assert_eq!(
+            parse(text),
+            Line {
+                command: None,
+                search: Some(text.to_owned()),
+            },
+            "{text}"
+        );
+    }
+    assert_eq!(parse("   ").search, None);
+    assert_eq!(parse("").search, None);
 }
 
 #[test]
@@ -434,18 +340,6 @@ fn a_name_searches_every_session_under_the_parent() {
 }
 
 #[test]
-fn ids_match_only_the_id() {
-    let fleet = fleet();
-    let part = Part {
-        level: Level::Window,
-        query: Query::Id(41),
-        range: 0..0,
-    };
-    let found = candidates(&fleet, &Place::host(1), &part, &no_boost);
-    assert_eq!(labels(&found), vec!["3 cargo test"]);
-}
-
-#[test]
 fn a_program_finds_its_window_behind_name_matches() {
     let fleet = fleet();
     let found = candidates(
@@ -504,16 +398,15 @@ fn the_empty_level_lists_children_and_search_covers_every_level() {
 }
 
 #[test]
-fn a_line_resolves_part_by_part() {
+fn several_words_match_the_path_down_to_a_window_or_pane() {
     let fleet = fleet();
-    let line = parse("^xps$ci@3");
-    let resolved = resolve(&fleet, &Place::default(), &line.parts, &no_boost);
-    assert_eq!(resolved.place, place(1, 7, Some(41), None));
-    assert_eq!(resolved.failed, None);
-    let line = parse("$worki@9");
-    let resolved = resolve(&fleet, &Place::host(0), &line.parts, &no_boost);
-    assert_eq!(resolved.place, place(0, 3, None, None));
-    assert_eq!(resolved.failed, Some(1));
+    let found = search(&fleet, &Place::host(0), "foo 2", &no_boost);
+    assert_eq!(found[0].place, place(0, 3, Some(11), None));
+    let found = search(&fleet, &Place::host(1), "ci 3 cargo", &no_boost);
+    assert_eq!(found[0].place, place(1, 7, Some(41), None));
+    let found = search(&fleet, &Place::host(0), "foo claude zsh", &no_boost);
+    assert_eq!(found[0].place, place(0, 3, Some(10), Some(21)));
+    assert!(search(&fleet, &Place::host(0), "foo 9", &no_boost).is_empty());
 }
 
 fn target(command: &str, place: &Place) -> Option<String> {

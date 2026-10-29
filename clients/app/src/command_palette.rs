@@ -21,16 +21,14 @@ use zz_terminal::TerminalViewAction;
 use zz_ui::{
     ActiveTheme as _, IconName,
     command::{
-        AskLevel, GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
+        GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
         PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
         PaletteTreeSession, PaletteTreeWindow,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
 };
 
-pub(crate) use zz_ui::command::{
-    CommandPaletteEvent, CommandPaletteView, DriverOffer, PaletteMode,
-};
+pub(crate) use zz_ui::command::{CommandPaletteEvent, CommandPaletteView, PaletteMode};
 
 use crate::connection::Connection;
 
@@ -56,7 +54,7 @@ pub fn palette_backend(
     connection: Entity<Connection>,
     settings: PaletteSettings,
 ) -> Rc<dyn PaletteBackend> {
-    palette_backend_with(connection, settings, Vec::new(), None)
+    palette_backend_with(connection, settings, Vec::new())
 }
 
 #[must_use]
@@ -64,13 +62,11 @@ pub fn palette_backend_with(
     connection: Entity<Connection>,
     settings: PaletteSettings,
     gui: Vec<GuiOffer>,
-    driver: Option<DriverOffer>,
 ) -> Rc<dyn PaletteBackend> {
     Rc::new(ConnectionPalette {
         connection,
         settings,
         gui,
-        driver,
     })
 }
 
@@ -78,16 +74,29 @@ struct ConnectionPalette {
     connection: Entity<Connection>,
     settings: PaletteSettings,
     gui: Vec<GuiOffer>,
-    driver: Option<DriverOffer>,
 }
 
 impl PaletteBackend for ConnectionPalette {
+    fn verbs(&self, cx: &App) -> Vec<zz_client::verbs::Verb> {
+        let gui = self
+            .gui
+            .iter()
+            .map(|offer| offer.action.id)
+            .collect::<Vec<_>>();
+        let aliases = self
+            .connection
+            .read(cx)
+            .core
+            .mux_options()
+            .get(MuxOptionKey::CommandAlias)
+            .map(|option| option.value.clone())
+            .unwrap_or_default();
+        zz_client::verbs::verbs(self.availability(cx), &gui, true, &aliases)
+    }
+
     fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
         match kind {
-            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
-            ActionKind::Ask => self
-                .driver
-                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone()))),
             ActionKind::Files => Some(Box::new(FilesAction::new(palette_backend(
                 self.connection.clone(),
                 self.settings,

@@ -27,25 +27,21 @@ use zz_client::{
         task_tray_label, thought_tail, tool_tag, trace_header,
     },
     agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command},
-    driver_chat::{DriverMessageKind, driver_messages, driver_pane, driver_steps},
-    driver_log::DriverLog,
     mend::mend,
     providers::{
         provider_action, provider_description, provider_notes, provider_rows, version_current,
         version_text,
     },
-    window_summary::{pane_agent, pane_program},
+    window_summary::pane_agent,
 };
 use zz_protocol::{
     AgentConnectionPhase, AgentPaneWire, AgentProvider, AgentQuestionAnswer, CommandInvocation,
-    PaneId, PaneSnapshot, ProtocolMessage, agent_stream::AgentStreamPayload,
+    PaneId, PaneSnapshot, ProtocolMessage,
 };
 
 use crate::{Client, pane_id};
 
 const MAX_STREAMING_MEND_BYTES: usize = 64 * 1024;
-const DRIVER_REPLAY_SETTLE_MS: f64 = 3_000.0;
-const DRIVER_WAKE_GRACE_MS: f64 = 20_000.0;
 
 type Image = String;
 
@@ -61,13 +57,6 @@ fn decode_image(format: &str, data: Vec<u8>) -> Option<Image> {
 enum Tray {
     Plan,
     Tasks,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Wake {
-    Asleep,
-    Waking,
-    Stalled,
 }
 
 struct Lens {
@@ -374,64 +363,21 @@ fn provider_id(provider: AgentProvider) -> &'static str {
     }
 }
 
-struct Driver {
-    pane: Option<PaneId>,
-    program: Option<&'static str>,
-    log: DriverLog,
-    applied: u64,
-    usage: Option<(u64, u64)>,
-    times: HashMap<u64, String>,
-    following_since: f64,
-    read: usize,
-    wake: Wake,
-    wake_since: f64,
-}
-
-impl Default for Driver {
-    fn default() -> Self {
-        Self {
-            pane: None,
-            program: None,
-            log: DriverLog::default(),
-            applied: 0,
-            usage: None,
-            times: HashMap::new(),
-            following_since: 0.0,
-            read: 0,
-            wake: Wake::Asleep,
-            wake_since: 0.0,
-        }
-    }
-}
-
-impl Driver {
-    fn reset(&mut self, now: f64) {
-        self.log = DriverLog::default();
-        self.applied = 0;
-        self.usage = None;
-        self.times.clear();
-        self.read = 0;
-        self.following_since = now;
-    }
-}
-
 #[derive(Default)]
 pub struct Agents {
     connected: bool,
     lenses: BTreeSet<PaneId>,
-    follows: BTreeSet<PaneId>,
     cursors: HashMap<PaneId, AgentCursor>,
     journals: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     views: HashMap<PaneId, Lens>,
     replays: Vec<(PaneId, u64)>,
     status: Option<String>,
-    driver: Driver,
     providers_requested: bool,
 }
 
 impl Agents {
     pub fn updates(&mut self, pane: PaneId, first_seq: u64, items: Vec<Vec<u8>>) {
-        if !self.watched(pane) {
+        if !self.lenses.contains(&pane) {
             return;
         }
         let cursor = self.cursors.entry(pane).or_default();
@@ -451,13 +397,9 @@ impl Agents {
     }
 
     pub fn lagged(&mut self, pane: PaneId, _next_seq: u64) {
-        if self.watched(pane) {
+        if self.lenses.contains(&pane) {
             self.request_replay(pane);
         }
-    }
-
-    fn watched(&self, pane: PaneId) -> bool {
-        self.lenses.contains(&pane) || self.follows.contains(&pane)
     }
 
     fn request_replay(&mut self, pane: PaneId) {
@@ -492,34 +434,6 @@ impl Agents {
             bytes -= old_bytes - cursor.bytes;
         }
         trimmed
-    }
-
-    fn follow(&mut self, pane: Option<PaneId>) {
-        let followed = pane.into_iter().collect::<BTreeSet<_>>();
-        if followed == self.follows {
-            return;
-        }
-        let dropped = self
-            .follows
-            .difference(&followed)
-            .copied()
-            .collect::<Vec<_>>();
-        let added = followed
-            .difference(&self.follows)
-            .copied()
-            .collect::<Vec<_>>();
-        self.follows = followed;
-        for pane in dropped {
-            if !self.watched(pane) {
-                self.forget_stream(pane);
-            }
-        }
-        for pane in added {
-            if !self.lenses.contains(&pane) {
-                self.forget_stream(pane);
-                self.request_replay(pane);
-            }
-        }
     }
 }
 
@@ -951,93 +865,6 @@ impl Client {
             "drafts": std::mem::take(&mut lens.drafts),
         })
     }
-
-    fn driver_sync(&mut self, now: f64) {
-        let found = if self.agents.connected {
-            driver_pane(self.core.snapshot())
-                .map(|(pane, _)| (pane.id, pane_program(pane).map(|program| program.id)))
-        } else {
-            None
-        };
-        let pane = found.map(|(pane, _)| pane);
-        if pane != self.agents.driver.pane {
-            self.agents.follow(pane);
-            self.agents.driver.pane = pane;
-            self.agents.driver.program = found.and_then(|(_, program)| program);
-            if pane.is_some() {
-                self.agents.driver.wake = Wake::Asleep;
-            }
-            self.agents.driver.reset(now);
-        }
-        if self.agents.driver.wake == Wake::Waking
-            && now - self.agents.driver.wake_since > DRIVER_WAKE_GRACE_MS
-        {
-            self.agents.driver.wake = Wake::Stalled;
-        }
-        let Some(pane) = pane else {
-            return;
-        };
-        let journal = self
-            .agents
-            .journals
-            .get(&pane)
-            .map_or(&[][..], Vec::as_slice);
-        let driver = &mut self.agents.driver;
-        let newest = journal.last().map_or(0, |(sequence, _)| *sequence);
-        let skipped = journal
-            .first()
-            .is_some_and(|(first, _)| driver.applied > 0 && *first > driver.applied + 1);
-        if newest == driver.applied && !skipped {
-            return;
-        }
-        let restart = newest < driver.applied || skipped;
-        let start = if restart { 0 } else { driver.applied };
-        let items: Vec<Value> = journal
-            [journal.partition_point(|(sequence, _)| *sequence <= start)..]
-            .iter()
-            .filter_map(|(_, bytes)| serde_json::from_slice(bytes).ok())
-            .collect();
-        if restart {
-            let read = driver.read;
-            driver.reset(now);
-            driver.read = read;
-        }
-        for item in items {
-            track_usage(&mut driver.usage, &item);
-            if let Ok(payload) = serde_json::from_value::<AgentStreamPayload>(item) {
-                driver.log.apply(payload);
-            }
-        }
-        driver.applied = newest;
-    }
-
-    fn driver_running(&self) -> bool {
-        let Some(pane) = self.agents.driver.pane else {
-            return false;
-        };
-        self.agents.driver.log.live()
-            || self
-                .core
-                .agent_state(pane)
-                .is_some_and(|state| turn_running(&state.phase))
-    }
-
-    fn sender_name(&self, pane: PaneId) -> (String, Option<&'static str>) {
-        self.core
-            .snapshot()
-            .sessions
-            .iter()
-            .flat_map(|session| &session.windows)
-            .find_map(|window| {
-                window.panes.get(&pane).map(|snapshot| {
-                    (
-                        window.name.clone(),
-                        pane_program(snapshot).map(|program| program.id),
-                    )
-                })
-            })
-            .unwrap_or_else(|| (pane.to_string(), None))
-    }
 }
 
 fn question_json(
@@ -1332,12 +1159,7 @@ impl Client {
         }
         if connected {
             self.agent_prune();
-            let watched = self
-                .agents
-                .lenses
-                .union(&self.agents.follows)
-                .copied()
-                .collect::<Vec<_>>();
+            let watched = self.agents.lenses.iter().copied().collect::<Vec<_>>();
             for pane in watched {
                 self.agents.request_replay(pane);
             }
@@ -1349,13 +1171,12 @@ impl Client {
         let stale = self
             .agents
             .lenses
-            .union(&self.agents.follows)
+            .iter()
             .copied()
             .filter(|pane| self.pane_snapshot(*pane).and_then(pane_agent).is_none())
             .collect::<Vec<_>>();
         for pane in stale {
             self.agents.lenses.remove(&pane);
-            self.agents.follows.remove(&pane);
             self.agents.views.remove(&pane);
             self.agents.forget_stream(pane);
         }
@@ -1364,7 +1185,6 @@ impl Client {
     pub fn agent_forget(&mut self, pane: f64) {
         let pane = pane_id(pane);
         self.agents.lenses.remove(&pane);
-        self.agents.follows.remove(&pane);
         self.agents.views.remove(&pane);
         self.agents.forget_stream(pane);
     }
@@ -1392,15 +1212,12 @@ impl Client {
         if self.pane_snapshot(pane).and_then(pane_agent).is_none() {
             return false;
         }
-        let watched = self.agents.watched(pane);
         if !self.agents.lenses.insert(pane) {
             return true;
         }
         self.agents.views.insert(pane, Lens::new());
-        if !watched {
-            self.agents.forget_stream(pane);
-            self.agents.request_replay(pane);
-        }
+        self.agents.forget_stream(pane);
+        self.agents.request_replay(pane);
         self.pump_agents();
         true
     }
@@ -1409,9 +1226,7 @@ impl Client {
         let pane = pane_id(pane);
         if self.agents.lenses.remove(&pane) {
             self.agents.views.remove(&pane);
-            if !self.agents.watched(pane) {
-                self.agents.forget_stream(pane);
-            }
+            self.agents.forget_stream(pane);
         }
     }
 
@@ -1763,183 +1578,6 @@ impl Client {
         if self.writable() {
             self.invoke(CommandInvocation::new("providers", ["-u", provider]));
         }
-    }
-
-    pub fn driver_view(&mut self, now: f64, clock: &str, host: &str, open: bool) -> String {
-        self.driver_sync(now);
-        self.pump_agents();
-        let running = self.driver_running();
-        let driver = &self.agents.driver;
-        let replaying = now - driver.following_since < DRIVER_REPLAY_SETTLE_MS;
-        let entries = driver.log.entries().to_vec();
-        let messages = if driver.pane.is_some() {
-            driver_messages(&entries, running)
-        } else {
-            Vec::new()
-        };
-        for message in &messages {
-            self.agents
-                .driver
-                .times
-                .entry(message.id)
-                .or_insert_with(|| {
-                    if replaying {
-                        String::new()
-                    } else {
-                        clock.to_owned()
-                    }
-                });
-        }
-        let steps = running.then(|| driver_steps(&entries));
-        let rendered = messages
-            .iter()
-            .map(|message| {
-                let time = self.agents.driver.times.get(&message.id).cloned().unwrap_or_default();
-                match &message.kind {
-                    DriverMessageKind::Mine { read } => json!({
-                        "id": message.id, "kind": "mine", "read": read, "text": message.text, "time": time,
-                    }),
-                    DriverMessageKind::Driver => json!({
-                        "id": message.id, "kind": "driver", "text": message.text, "time": time,
-                        "html": markdown_html(&message.text),
-                    }),
-                    DriverMessageKind::Agent(pane) => {
-                        let (name, program) = self.sender_name(*pane);
-                        json!({
-                            "id": message.id, "kind": "agent", "text": message.text, "time": time,
-                            "html": markdown_html(&message.text),
-                            "sender": { "name": name, "program": program },
-                        })
-                    }
-                }
-            })
-            .collect::<Vec<_>>();
-        let driver = &mut self.agents.driver;
-        let unread = messages.len() > driver.read;
-        if open {
-            driver.read = messages.len();
-        }
-        let (note, label, force) = match driver.wake {
-            Wake::Stalled => (
-                "No driver started. When too few of your hosts answer, zz holds off so two drivers never run at once.",
-                "Start here",
-                true,
-            ),
-            Wake::Asleep | Wake::Waking => (
-                "The Driver Agent is asleep. Wake follows a driver another host runs, or starts one on this host.",
-                if driver.wake == Wake::Waking {
-                    "Waking"
-                } else {
-                    "Wake"
-                },
-                false,
-            ),
-        };
-        let permission = driver.log.permissions().first().map(|request| {
-            json!({
-                "requestId": request.request_id,
-                "title": request.title,
-                "options": request.options.iter().map(|option| json!({
-                    "id": option.id,
-                    "name": option.name,
-                    "danger": matches!(option.kind, zz_client::agent_transcript::AgentPermissionKind::RejectOnce | zz_client::agent_transcript::AgentPermissionKind::RejectAlways),
-                })).collect::<Vec<_>>(),
-            })
-        });
-        json!({
-            "driver": driver.pane.map(|pane| json!({ "pane": pane.0, "host": host, "program": driver.program })),
-            "asleep": driver.pane.is_none().then(|| json!({
-                "note": note,
-                "label": label,
-                "force": force,
-                "waking": driver.wake == Wake::Waking,
-            })),
-            "messages": rendered,
-            "typing": steps,
-            "permission": permission,
-            "running": running,
-            "unread": unread,
-            "usage": driver.usage.map(|(used, size)| json!({
-                "fraction": context_usage_fraction(used, size),
-                "tooltip": context_usage_tooltip(used, size),
-            })),
-        })
-        .to_string()
-    }
-
-    pub fn driver_send(&mut self, text: &str) -> bool {
-        let Some(pane) = self.agents.driver.pane else {
-            return false;
-        };
-        if text.trim().is_empty() || !self.writable() {
-            return false;
-        }
-        let message = if self.driver_running() {
-            ProtocolMessage::AgentSteer {
-                pane,
-                text: text.to_owned(),
-            }
-        } else {
-            ProtocolMessage::AgentPrompt {
-                pane,
-                text: text.to_owned(),
-                images: Vec::new(),
-            }
-        };
-        self.send(&message);
-        true
-    }
-
-    pub fn driver_stop(&mut self) -> bool {
-        let Some(pane) = self.agents.driver.pane else {
-            return false;
-        };
-        if !self.driver_running() || !self.writable() {
-            return false;
-        }
-        self.send(&ProtocolMessage::AgentCancel { pane });
-        true
-    }
-
-    pub fn driver_respond(&mut self, request_id: f64, option: Option<String>) {
-        let Some(pane) = self.agents.driver.pane else {
-            return;
-        };
-        if self.writable() {
-            self.send(&ProtocolMessage::AgentRespondPermission {
-                pane,
-                request_id: request_id as u64,
-                option_id: option,
-            });
-        }
-    }
-
-    pub fn driver_wake(&mut self, force: bool, now: f64) {
-        if self.agents.driver.pane.is_some() || self.agents.driver.wake == Wake::Waking {
-            return;
-        }
-        if !self.writable() {
-            return;
-        }
-        let line = if force {
-            "zz driver recover --force"
-        } else {
-            "zz driver recover"
-        };
-        self.invoke(CommandInvocation::new("run-shell", ["-b", line]));
-        self.agents.driver.wake = Wake::Waking;
-        self.agents.driver.wake_since = now;
-    }
-
-    pub fn driver_terminal(&self) -> Option<String> {
-        let pane = self.agents.driver.pane?;
-        let session = self
-            .core
-            .snapshot()
-            .sessions
-            .iter()
-            .find(|session| session.name == zz_client::driver_chat::DRIVER_SESSION)?;
-        Some(json!({ "session": session.id.0, "pane": pane.0 }).to_string())
     }
 }
 

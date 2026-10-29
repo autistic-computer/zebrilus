@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, prompts pasted into the TUI, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-26T00:00:00-03:00
+timestamp: 2026-10-28T00:00:00-03:00
 ---
 
 # Overview
@@ -58,8 +58,8 @@ answers `is not running Claude Code or Codex`. The lens is Unix only; elsewhere 
 false.
 
 `open_lens` is the only production caller of the agent runtime. The native Claude and Codex
-drivers, the ACP runtime and the [turn machine](/designs/agent-turn-machine.md) stay in the source
-for the driver chat, but no pane opens them now.
+drivers, the ACP runtime and the [turn machine](/designs/agent-turn-machine.md) stay in the source,
+but no pane opens them now.
 
 # Where the timeline comes from
 
@@ -101,15 +101,15 @@ lens, from typing in the terminal, or from a peer message.
   placeholder names the agent ("Message Claude Code…"), and before the agent has written a
   transcript the lens shows `presentation::lens_welcome`: the agent's mark, "Claude Code is waiting
   for its first prompt" and "What you send here is typed into the terminal."
-- **Steer.** `AgentSteer` (the Driver Agent chat's) types text into a running turn without
-  opening a lens turn, so the running one keeps its tracking: the pane host sends the runtime
-  `/steer <text>` and the lens pastes `<text>` like a prompt. Claude Code reads text typed mid-turn
+- **Steer.** `AgentSteer` types text into a running turn without opening a lens turn, so the
+  running one keeps its tracking. No client sends it now; the daemon still takes it. The pane host
+  sends the runtime `/steer <text>` and the lens pastes `<text>` like a prompt. Claude Code reads text typed mid-turn
   as a message for the running turn, and Codex's Enter steers. With no turn running, a permission
   waiting, or images, the host takes it as `AgentPrompt`. Claude Code records the message once the
   turn takes it in, at its next tool boundary, as an `attachment` line of type `queued_command`
   (`commandMode: "prompt"`, `origin.kind: "human"`); the translator turns that into the user's
   message, and other origins (peers, task notifications) stay hidden. Codex 0.164 records it as an
-  `item_completed` `UserMessage` inside the same turn. Until then the chat shows nothing for it.
+  `item_completed` `UserMessage` inside the same turn. Until then the timeline shows nothing for it.
 - **Stop.** `AgentCancel` sends Escape to the TUI.
 - **Claude permission prompts.** While the dialog is up, the record reads `"status":"waiting"` with
   `"waitingFor":"permission prompt"`, and the pending `tool_use` is the last assistant block with no
@@ -145,9 +145,9 @@ The delivery model is unchanged from the agent pane; the full contract is in the
 - **Watchers.** A client that sends `AgentReplay` for a pane watches it from then on, attached or
   not (`watched_agents` on the client entry): it gets the pane's `AgentUpdates`, `AgentState` and
   `AgentLagged` until it disconnects or the pane closes, and the pane's `AgentState` right away when
-  the watch starts. This is how the desktop's driver chat follows a Driver Agent on another host without
-  attaching to its session, which would resize its panes, and how an attached client keeps a lens
-  live while its focused window shows something else. A client that both sees and watches a pane is
+  the watch starts. A client can follow an agent this way without attaching to its session, which
+  would resize its panes, and an attached client keeps a lens live while its focused window shows
+  something else. A client that both sees and watches a pane is
   sent each frame once, and a watched pane leaving the visible set keeps its queued frames. There is
   no unwatch message.
 
@@ -180,9 +180,9 @@ the reference; the [command set](/tmux/commands.md) has the rows.
 
 The kept pieces are `AgentTimeline` and its rows, the permission and question cards,
 `AgentComposer` and the task tray (`crates/zz-ui/src/agent.rs` and `crates/zz-ui/src/agent/`).
-`AgentComposer` holds the `Composer` pill the Driver chat uses too: `+`, which starts an `@` mention
-with the Driver chat's target picker (inserted with its host), the field, the context ring and the
-round send button; the cards over it and the branch under it are the lens's own. The
+`AgentComposer` holds the `Composer` pill: `+`, which starts an `@` mention with the palette's
+target picker (`zz_ui::target::TargetPicker`, inserted with its host), the field, the context ring
+and the round send button; the cards over it and the branch under it are the lens's own. The
 timeline mechanics carried over unchanged: the `TimelineStick` / `StickSpring` follow-the-tail pin
 (`agent.rs`), the display-only Markdown repair for streaming text (`zz-client/src/mend.rs`), the
 streamed-text fade (`zz-gpui-kit/src/text/veil.rs`) and the shared leased animation clock
@@ -191,7 +191,7 @@ streamed-text fade (`zz-gpui-kit/src/text/veil.rs`) and the shared leased animat
 - **Desktop.** `crates/zz/src/agent` (controller and view) behind the `agent-pane` cargo feature,
   which stays on by default; without it a stub stands in.
 - **Web and iPad.** `clients/app/src/app/agent_lens.rs`.
-- **HTML client.** `clients/dom/src/agent.rs` builds the lens and Driver chat views from the
+- **HTML client.** `clients/dom/src/agent.rs` builds the lens view from the
   shared `zz-client` reducers as JSON; `clients/dom/web/js/agent.js` draws them with the design kit.
 - **Storybook.** An agent lens story replaces the Agent pane story.
 

@@ -843,6 +843,25 @@ impl FilesLevel {
         true
     }
 
+    #[must_use]
+    pub fn picked_folder(&self) -> Option<String> {
+        let root = self.listing.as_ref()?.root.as_ref()?;
+        let rel = self.selected_row().map_or_else(String::new, |row| {
+            let rel = row.entry.rel.trim_end_matches('/');
+            match row.entry.kind {
+                PathKind::Dir => rel.to_owned(),
+                PathKind::File => rel
+                    .rsplit_once('/')
+                    .map_or_else(String::new, |(parent, _)| parent.to_owned()),
+            }
+        });
+        Some(if rel.is_empty() {
+            root.display_root.clone()
+        } else {
+            format!("{}/{rel}", root.display_root.trim_end_matches('/'))
+        })
+    }
+
     /// Alt-Enter: the highlighted path as the clipboard takes it.
     #[must_use]
     pub fn copy_text(&self) -> Option<String> {
@@ -887,7 +906,8 @@ impl FilesLevel {
     /// The footer's keys, Enter's saying what it does.
     #[must_use]
     pub fn hints(&self, cx: &App) -> Vec<PaletteHint> {
-        vec![
+        let inserts = self.inserts(cx);
+        let mut hints = vec![
             PaletteHint {
                 key: "tab right",
                 label: "open",
@@ -898,13 +918,16 @@ impl FilesLevel {
             },
             PaletteHint {
                 key: "enter",
-                label: if self.inserts(cx) { "insert" } else { "copy" },
+                label: if inserts { "insert" } else { "copy" },
             },
-            PaletteHint {
+        ];
+        if inserts {
+            hints.push(PaletteHint {
                 key: "alt-enter",
                 label: "copy",
-            },
-        ]
+            });
+        }
+        hints
     }
 
     fn empty_message(&self) -> SharedString {
@@ -1210,6 +1233,11 @@ impl PaletteActionLevel for FilesAction {
 
     fn copy_text(&self, cx: &App) -> Option<String> {
         self.level()?.read(cx).copy_text()
+    }
+
+    fn picked_folder(&self, cx: &App) -> Option<(PaletteHostId, String)> {
+        let (level, place) = self.level.as_ref()?;
+        Some((place.host, level.read(cx).picked_folder()?))
     }
 
     fn open_recent(&mut self, key: &RecentKey, _: &mut Window, cx: &mut App) -> LevelEffect {

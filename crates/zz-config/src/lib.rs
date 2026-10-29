@@ -128,10 +128,6 @@ pub enum ConfigKey {
     InterfaceTheme,
     UiFontFamily,
     AppIcon,
-    DriverAgent,
-    DriverModel,
-    DriverEffort,
-    DriverHosts,
 }
 
 impl ConfigKey {
@@ -182,10 +178,6 @@ impl ConfigKey {
             Self::InterfaceTheme => "interface-theme",
             Self::UiFontFamily => "ui-font-family",
             Self::AppIcon => "app-icon",
-            Self::DriverAgent => "driver-agent",
-            Self::DriverModel => "driver-model",
-            Self::DriverEffort => "driver-effort",
-            Self::DriverHosts => "driver-hosts",
         }
     }
 
@@ -236,10 +228,6 @@ impl ConfigKey {
             "interface-theme" => Some(Self::InterfaceTheme),
             "ui-font-family" => Some(Self::UiFontFamily),
             "app-icon" => Some(Self::AppIcon),
-            "driver-agent" => Some(Self::DriverAgent),
-            "driver-model" => Some(Self::DriverModel),
-            "driver-effort" => Some(Self::DriverEffort),
-            "driver-hosts" => Some(Self::DriverHosts),
             _ => None,
         }
     }
@@ -294,11 +282,7 @@ impl ConfigKey {
             | Self::InterfaceTheme
             | Self::ChromeAccent
             | Self::UiFontFamily
-            | Self::AppIcon
-            | Self::DriverAgent
-            | Self::DriverModel
-            | Self::DriverEffort
-            | Self::DriverHosts => None,
+            | Self::AppIcon => None,
         }
     }
 
@@ -385,105 +369,6 @@ impl PaletteWindowLayout {
     }
 }
 
-/// What zz starts the Driver Agent with: a Claude Code model, or Codex on the
-/// model its own config names.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum DriverModel {
-    /// Claude Code on the model its own settings pick.
-    #[default]
-    Claude,
-    Opus,
-    Sonnet,
-    Fable,
-    Codex,
-}
-
-impl DriverModel {
-    pub const ALL: [Self; 5] = [
-        Self::Claude,
-        Self::Opus,
-        Self::Sonnet,
-        Self::Fable,
-        Self::Codex,
-    ];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Claude => "claude",
-            Self::Opus => "opus",
-            Self::Sonnet => "sonnet",
-            Self::Fable => "fable",
-            Self::Codex => "codex",
-        }
-    }
-
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::Claude => "Claude Code's default",
-            Self::Opus => "Claude Opus",
-            Self::Sonnet => "Claude Sonnet",
-            Self::Fable => "Claude Fable",
-            Self::Codex => "Codex's default",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|model| model.as_str() == value)
-    }
-}
-
-/// How hard the driver thinks: the CLI's own setting, or one of the levels
-/// Claude Code's `--effort` takes. Codex has no `max` and gets `xhigh`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum DriverEffort {
-    #[default]
-    Default,
-    Low,
-    Medium,
-    High,
-    Xhigh,
-    Max,
-}
-
-impl DriverEffort {
-    pub const ALL: [Self; 6] = [
-        Self::Default,
-        Self::Low,
-        Self::Medium,
-        Self::High,
-        Self::Xhigh,
-        Self::Max,
-    ];
-
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Default => "default",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Xhigh => "xhigh",
-            Self::Max => "max",
-        }
-    }
-
-    pub const fn title(self) -> &'static str {
-        match self {
-            Self::Default => "The CLI's default",
-            Self::Low => "Low",
-            Self::Medium => "Medium",
-            Self::High => "High",
-            Self::Xhigh => "Extra high",
-            Self::Max => "Max",
-        }
-    }
-
-    pub fn parse(value: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|effort| effort.as_str() == value)
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AppConfig {
     pub palette_window_layout: ConfigValue<PaletteWindowLayout>,
@@ -529,9 +414,6 @@ pub struct AppConfig {
     /// names a saved one; see [`ParsedConfig::theme`].
     pub interface_theme: ConfigValue<&'static str>,
     pub app_icon: ConfigValue<AppIconSetting>,
-    pub driver_agent: ConfigValue<bool>,
-    pub driver_model: ConfigValue<DriverModel>,
-    pub driver_effort: ConfigValue<DriverEffort>,
 }
 
 impl Default for AppConfig {
@@ -581,9 +463,6 @@ impl Default for AppConfig {
             theme_mode: ConfigValue::from_default(ThemeModeSetting::System),
             interface_theme: ConfigValue::from_default(DEFAULT_THEME),
             app_icon: ConfigValue::from_default(AppIconSetting::Automatic),
-            driver_agent: ConfigValue::from_default(false),
-            driver_model: ConfigValue::from_default(DriverModel::Claude),
-            driver_effort: ConfigValue::from_default(DriverEffort::Default),
         }
     }
 }
@@ -622,7 +501,6 @@ impl AppConfig {
             ConfigKey::EditorSoftWrap => Some(&mut self.editor_soft_wrap),
             ConfigKey::EditorVimMode => Some(&mut self.editor_vim_mode),
             ConfigKey::BrowserEgress => Some(&mut self.browser_egress),
-            ConfigKey::DriverAgent => Some(&mut self.driver_agent),
             ConfigKey::WindowCornerRadius
             | ConfigKey::WhichKeyDelay
             | ConfigKey::PaletteWindowLayout
@@ -644,10 +522,7 @@ impl AppConfig {
             | ConfigKey::ThemeMode
             | ConfigKey::InterfaceTheme
             | ConfigKey::UiFontFamily
-            | ConfigKey::AppIcon
-            | ConfigKey::DriverModel
-            | ConfigKey::DriverEffort
-            | ConfigKey::DriverHosts => None,
+            | ConfigKey::AppIcon => None,
         }
     }
 }
@@ -667,7 +542,6 @@ pub struct ParsedConfig {
     pub theme: Option<String>,
     pub hosts: Vec<HostEntry>,
     pub rejected_hosts: Vec<RejectedHost>,
-    pub driver_hosts: Vec<String>,
     pub daemon_entries: Vec<ConfigOverrideEntry>,
     pub chrome_overrides: Vec<ChromeOverride>,
     pub diagnostics: Vec<ConfigDiagnostic>,
@@ -1091,47 +965,6 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             continue;
         }
 
-        if key == ConfigKey::DriverModel {
-            let target = &mut parsed.config.driver_model;
-            target.provenance = ConfigProvenance::Override;
-            match DriverModel::parse(value) {
-                Some(model) => target.value = model,
-                None => parsed.diagnostics.push(ConfigDiagnostic {
-                    line: line_number,
-                    message: format!(
-                        "invalid `driver-model`: expected one of {}",
-                        DriverModel::ALL.map(DriverModel::as_str).join(", "),
-                    ),
-                }),
-            }
-            continue;
-        }
-
-        if key == ConfigKey::DriverHosts {
-            parsed.driver_hosts = value
-                .split(|character: char| character == ',' || character.is_whitespace())
-                .filter(|host| !host.is_empty())
-                .map(str::to_owned)
-                .collect();
-            continue;
-        }
-
-        if key == ConfigKey::DriverEffort {
-            let target = &mut parsed.config.driver_effort;
-            target.provenance = ConfigProvenance::Override;
-            match DriverEffort::parse(value) {
-                Some(effort) => target.value = effort,
-                None => parsed.diagnostics.push(ConfigDiagnostic {
-                    line: line_number,
-                    message: format!(
-                        "invalid `driver-effort`: expected one of {}",
-                        DriverEffort::ALL.map(DriverEffort::as_str).join(", "),
-                    ),
-                }),
-            }
-            continue;
-        }
-
         if key == ConfigKey::UiFontFamily {
             let target = &mut parsed.ui_font.family;
             target.provenance = ConfigProvenance::Override;
@@ -1291,11 +1124,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             | ConfigKey::InterfaceTheme
             | ConfigKey::ChromeAccent
             | ConfigKey::UiFontFamily
-            | ConfigKey::AppIcon
-            | ConfigKey::DriverAgent
-            | ConfigKey::DriverModel
-            | ConfigKey::DriverEffort
-            | ConfigKey::DriverHosts => {
+            | ConfigKey::AppIcon => {
                 unreachable!("handled above")
             }
         };
@@ -1595,7 +1424,14 @@ pub const RETIRED_PANE_KEYS: [&str; 4] = [
 ];
 
 /// Agent pane keys an older zz read. Parsing reports them and otherwise ignores them.
-pub const RETIRED_AGENT_KEYS: [&str; 2] = ["experimental-agent-pane", "agent-working-directory"];
+pub const RETIRED_AGENT_KEYS: [&str; 6] = [
+    "experimental-agent-pane",
+    "agent-working-directory",
+    "driver-agent",
+    "driver-model",
+    "driver-effort",
+    "driver-hosts",
+];
 
 /// Status bar keys an older zz read. Parsing reports them and otherwise ignores them.
 pub const RETIRED_STATUS_KEYS: [&str; 2] = ["status-show-session", "status-agents"];
@@ -2098,32 +1934,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn the_driver_is_off_until_turned_on_and_takes_a_model_and_effort() {
-        let defaults = parse_config("", "monospace").config;
-        assert!(!defaults.driver_agent.value);
-        assert_eq!(defaults.driver_model.value, DriverModel::Claude);
-        assert_eq!(defaults.driver_effort.value, DriverEffort::Default);
-
-        let parsed = parse_config(
-            "driver-agent = on\ndriver-model = codex\ndriver-effort = xhigh\n",
-            "monospace",
-        );
-        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
-        assert!(parsed.config.driver_agent.value);
-        assert_eq!(parsed.config.driver_model.value, DriverModel::Codex);
-        assert_eq!(parsed.config.driver_effort.value, DriverEffort::Xhigh);
-
-        assert!(parsed.driver_hosts.is_empty());
-        let hosts = parse_config("driver-hosts = ubuntu, xps local\n", "monospace");
-        assert_eq!(hosts.driver_hosts, ["ubuntu", "xps", "local"]);
-
-        let invalid = parse_config("driver-model = gpt\ndriver-effort = huge\n", "monospace");
-        assert_eq!(invalid.diagnostics.len(), 2);
-        assert_eq!(invalid.config.driver_model.value, DriverModel::Claude);
-        assert_eq!(invalid.config.driver_effort.value, DriverEffort::Default);
     }
 
     #[test]

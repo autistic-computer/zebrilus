@@ -2,7 +2,7 @@
 type: Design Plan
 title: Native agent drivers
 description: The daemon's native drivers speak each vendor's own protocol (they drove the Agent pane until it was removed on 2026-10-23). Claude Code runs over stream-json and its control protocol, Codex over a private `codex app-server` per pane, and ACP stays for the agents that speak it natively, all emitting the stream the shared reducer already renders.
-status: Parked (Claude Code and Codex drivers, zz commands, question cards, the task tray and subagent steps landed 2026-10-07; the minimal pane with one trace line per turn landed 2026-10-08; the Agent pane that ran them was removed 2026-10-23 and nothing opens a driver until the driver chat)
+status: Parked (Claude Code and Codex drivers, zz commands, question cards, the task tray and subagent steps landed 2026-10-07; the minimal pane with one trace line per turn landed 2026-10-08; the Agent pane that ran them was removed 2026-10-23 and nothing opens a driver now)
 resource: crates/zz-daemon/src/agent/claude/mod.rs
 tags:
 - agent
@@ -14,8 +14,8 @@ timestamp: 2026-10-23T00:00:00-03:00
 ---
 
 **Status 2026-10-23.** The Agent pane is gone ([agent lens](/designs/agent-lens.md)). The drivers,
-translators and the [turn machine](/designs/agent-turn-machine.md) stay in the source for the driver
-chat, but no pane opens a driver now: `AgentHost::open` runs the lens runner when the spec carries a
+translators and the [turn machine](/designs/agent-turn-machine.md) stay in the source, but no pane
+opens a driver now: `AgentHost::open` runs the lens runner when the spec carries a
 `LensSpec`, and `Shared::open_lens` (`crates/zz-daemon/src/daemon/lens.rs`) is the only production
 caller. Claude Code and Codex run as their own TUIs in terminal panes, and the lens reads their
 transcripts with the translators this page describes (`claude::translate`, `codex::translate`,

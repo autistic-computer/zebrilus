@@ -17,8 +17,6 @@ pub mod chooser;
 mod chrome;
 pub mod completion;
 mod core;
-pub mod driver_chat;
-pub mod driver_log;
 #[cfg(not(target_family = "wasm"))]
 pub mod element_picker;
 pub mod floating;
@@ -47,6 +45,7 @@ mod status_bar;
 pub mod terminal_color;
 pub mod terminal_view;
 pub mod tmux_style;
+pub mod verbs;
 pub mod which_key;
 pub mod window_summary;
 

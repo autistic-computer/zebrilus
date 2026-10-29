@@ -71,7 +71,6 @@ pub struct Connection {
     pub agent_events: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     agent_cursors: HashMap<PaneId, AgentCursor>,
     agent_lenses: BTreeSet<PaneId>,
-    agent_follows: BTreeSet<PaneId>,
     terminal_images: crate::terminal_images::TerminalImages,
     pasted_images: crate::terminal_images::PastedImages,
     prefix_cancel_pending: Option<u64>,
@@ -125,7 +124,6 @@ impl Connection {
             agent_events: HashMap::new(),
             agent_cursors: HashMap::new(),
             agent_lenses: BTreeSet::new(),
-            agent_follows: BTreeSet::new(),
             terminal_images: crate::terminal_images::TerminalImages::default(),
             pasted_images: crate::terminal_images::PastedImages::default(),
             prefix_cancel_pending: None,
@@ -185,37 +183,8 @@ impl Connection {
         }
     }
 
-    pub fn follow_agent(&mut self, pane: Option<PaneId>, cx: &mut Context<Self>) {
-        let followed = pane.into_iter().collect::<BTreeSet<_>>();
-        if followed == self.agent_follows {
-            return;
-        }
-        let dropped = self
-            .agent_follows
-            .difference(&followed)
-            .copied()
-            .collect::<Vec<_>>();
-        let added = followed
-            .difference(&self.agent_follows)
-            .copied()
-            .collect::<Vec<_>>();
-        self.agent_follows = followed;
-        for pane in dropped {
-            if !self.agent_watched(pane) {
-                self.forget_agent_stream(pane);
-            }
-        }
-        for pane in added {
-            if !self.agent_lenses.contains(&pane) {
-                self.forget_agent_stream(pane);
-                self.request_agent_replay(pane, cx);
-            }
-        }
-        cx.notify();
-    }
-
     fn agent_watched(&self, pane: PaneId) -> bool {
-        self.agent_lenses.contains(&pane) || self.agent_follows.contains(&pane)
+        self.agent_lenses.contains(&pane)
     }
 
     fn forget_agent_stream(&mut self, pane: PaneId) {
@@ -224,11 +193,7 @@ impl Connection {
     }
 
     fn replay_agent_lenses(&mut self, cx: &mut Context<Self>) {
-        let watched = self
-            .agent_lenses
-            .union(&self.agent_follows)
-            .copied()
-            .collect::<Vec<_>>();
+        let watched = self.agent_lenses.iter().copied().collect::<Vec<_>>();
         for pane in watched {
             self.request_agent_replay(pane, cx);
         }
@@ -237,13 +202,12 @@ impl Connection {
     fn close_stale_agent_lenses(&mut self) {
         let stale = self
             .agent_lenses
-            .union(&self.agent_follows)
+            .iter()
             .copied()
             .filter(|pane| self.terminal_agent(*pane).is_none())
             .collect::<Vec<_>>();
         for pane in stale {
             self.agent_lenses.remove(&pane);
-            self.agent_follows.remove(&pane);
             self.forget_agent_stream(pane);
         }
     }
@@ -1016,7 +980,6 @@ impl Connection {
                     self.history.forget(*pane);
                     self.pasted_images.remove_pane(*pane);
                     self.agent_lenses.remove(pane);
-                    self.agent_follows.remove(pane);
                     self.forget_agent_stream(*pane);
                 }
                 CoreEvent::Detached { .. } if self.background => {
@@ -1783,9 +1746,7 @@ mod tests {
 
     #[cfg(not(target_family = "wasm"))]
     #[zz_gpui::test]
-    fn an_agent_stream_is_kept_only_while_a_lens_or_the_driver_chat_watches_it(
-        cx: &mut zz_gpui::TestAppContext,
-    ) {
+    fn an_agent_stream_is_kept_only_while_a_lens_watches_it(cx: &mut zz_gpui::TestAppContext) {
         use zz_gpui::AppContext as _;
         use zz_protocol::{
             AgentProvider, Event, EventPayload, LayoutNode, MuxSnapshot, PaneId, PaneKindSnapshot,
@@ -1894,24 +1855,6 @@ mod tests {
             assert_eq!(replays(), 2, "a reopened lens replays from the start");
             connection.handle_message_for_test(event(5, updates(1)), cx);
             assert_eq!(connection.agent_events[&pane].len(), 1);
-
-            connection.follow_agent(Some(pane), cx);
-            assert_eq!(
-                replays(),
-                2,
-                "a followed pane shares the open lens's stream"
-            );
-            connection.close_agent_lens(pane, cx);
-            connection.handle_message_for_test(event(6, updates(2)), cx);
-            assert_eq!(
-                connection.agent_events[&pane].len(),
-                2,
-                "closing the lens keeps a followed pane's stream"
-            );
-            connection.follow_agent(None, cx);
-            assert!(!connection.agent_events.contains_key(&pane));
-            connection.follow_agent(Some(pane), cx);
-            assert_eq!(replays(), 3);
 
             connection
                 .handle_message_for_test(event(7, EventPayload::Snapshot(snapshot(2, "zsh"))), cx);

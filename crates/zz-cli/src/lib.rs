@@ -14,7 +14,6 @@ mod agent_hooks;
 mod control_mode;
 pub use agent_hooks::install_agent_hooks;
 pub mod diagnostics;
-pub mod driver;
 mod events;
 mod fleet;
 mod list_hosts;
@@ -785,7 +784,7 @@ fn run_command_mode(
         && host != ALL_HOSTS
         && matches!(
             canonical_command(&command),
-            "fleet" | "list-hosts" | "driver" | "tools" | "protocol-version" | "--version"
+            "fleet" | "list-hosts" | "tools" | "protocol-version" | "--version"
         )
     {
         return Some(run_host_cli(host, arguments));
@@ -964,17 +963,6 @@ fn run_command_mode(
         );
     }
 
-    if command == "driver" && host.is_none() {
-        return Some(driver::run(
-            socket_path,
-            &invocation
-                .args
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>(),
-        ));
-    }
-
     if command == "list-hosts" && host.is_none() {
         return Some(list_hosts::run(
             &invocation
@@ -995,11 +983,6 @@ fn run_command_mode(
             Some(host) => run_host_kill_server(host, invocation.args),
             None => run_kill_server(socket_path, invocation.args),
         });
-    }
-
-    if let Some(refusal) = driver::fence(socket_path, host, &command_chain) {
-        eprintln!("zz: {refusal}");
-        return Some(exit_code_for(CliFailure::Runtime));
     }
 
     let start_server = !no_start_server && tmux_command_starts_server(&command);

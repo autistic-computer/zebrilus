@@ -205,7 +205,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         apply_window_decorations(cx);
         crate::app_icon::apply(cx);
         cx.set_global(FleetHosts::default());
-        cx.set_global(DriverHosts::default());
         cx.set_global(DaemonConfigOverrides::default());
         crate::keymap::install(&[], DEFAULT_BROWSER_ELEMENT_SELECTOR_HOTKEY, cx);
         send_current_config_overrides(cx);
@@ -271,7 +270,6 @@ fn install_config(path: Option<&Path>, parsed: Option<io::Result<ParsedConfig>>,
         &parsed.browser.element_selector_hotkey.value,
         cx,
     );
-    cx.set_global(DriverHosts(parsed.driver_hosts));
     cx.set_global(AppConfig(parsed.config));
     cx.set_global(BrowserConfig(parsed.browser));
     cx.set_global(UiFontConfig(parsed.ui_font));
@@ -715,17 +713,6 @@ pub(crate) fn browser_config(cx: &App) -> BrowserConfig {
 
 pub(crate) fn browser_search_provider(cx: &App) -> SearchProvider {
     browser_config(cx).search_provider.value
-}
-
-#[derive(Default)]
-pub(crate) struct DriverHosts(Vec<String>);
-
-impl Global for DriverHosts {}
-
-pub(crate) fn driver_hosts(cx: &App) -> Vec<String> {
-    cx.try_global::<DriverHosts>()
-        .map(|hosts| hosts.0.clone())
-        .unwrap_or_default()
 }
 
 pub(crate) fn fleet_hosts(cx: &App) -> Vec<HostEntry> {

@@ -23,9 +23,6 @@ const PILL_INSET_MIN: f32 = 16.0;
 const PILL_INSET_MAX: f32 = 20.0;
 const INK_CONTRAST: f32 = 4.5;
 const TINT_MAX: f32 = 0.95;
-const DOT: f32 = 8.0;
-const DOT_TOP: f32 = 12.0;
-const DOT_RIGHT: f32 = 8.0;
 
 /// The radius of a corner set `gap` inside one of `radius`, so the two
 /// share a center. A full round stays full.
@@ -215,85 +212,6 @@ pub fn compact_floating_group(
         .px(px((COMPACT_PILL_HEIGHT - BUTTON) / 2.0))
         .layer(&layer)
         .children(buttons.into_iter().map(|button| button.on(ground)))
-}
-
-/// A dot in `color` over the last button of a [`compact_floating_group`],
-/// for what waits behind it: the driver chat's state.
-pub fn compact_group_dot(color: Hsla) -> Div {
-    div()
-        .debug_selector(|| "compact-bar-dot".to_owned())
-        .absolute()
-        .top(px(DOT_TOP))
-        .right(px((COMPACT_PILL_HEIGHT - BUTTON) / 2.0 + DOT_RIGHT))
-        .size(px(DOT))
-        .rounded_full()
-        .bg(color)
-}
-
-/// A field-shaped pill on the phone's bar that opens a chat to write in:
-/// `leading` at its start, `placeholder` in the muted ink, and a send button
-/// at its end, painted as the floating pill is.
-pub fn compact_composer_pill(
-    id: impl Into<ElementId>,
-    leading: impl IntoElement,
-    placeholder: impl Into<SharedString>,
-    placement: &PillPlacement,
-    cx: &App,
-) -> Stateful<Div> {
-    let pill = floating_layer(placement, cx);
-    let theme = cx.theme();
-    let pressed = theme.layer(roles::PHONE_PILL, PaintState::Active).fill;
-    let muted = theme
-        .paint_on(pill.ground, Tone::Neutral, Emphasis::Ghost)
-        .muted_at(PaintState::Rest);
-    let send = theme.layer(
-        Surface::new(roles::PHONE_PILL_ICON).on(pill.ground),
-        PaintState::Rest,
-    );
-    let radius = pill.radius;
-    div()
-        .id(id)
-        .debug_selector(|| "compact-bar-composer".to_owned())
-        .relative()
-        .flex()
-        .flex_1()
-        .min_w_0()
-        .items_center()
-        .gap(rems_from_px(10.0))
-        .pl(rems_from_px(TILE_INSET + 2.0))
-        .pr(rems_from_px(TILE_INSET))
-        .h(rems_from_px(COMPACT_PILL_HEIGHT))
-        .layer(&pill)
-        .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
-        .child(crate::touch::press_highlight(
-            "compact-bar-composer-press",
-            pressed,
-            radius,
-        ))
-        .child(div().flex().flex_none().child(leading))
-        .child(
-            div()
-                .flex_1()
-                .min_w_0()
-                .overflow_hidden()
-                .whitespace_nowrap()
-                .text_ellipsis()
-                .text_size(rems_from_px(16.0))
-                .text_color(muted)
-                .child(placeholder.into()),
-        )
-        .child(
-            div()
-                .flex()
-                .flex_none()
-                .items_center()
-                .justify_center()
-                .size(rems_from_px(COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET))
-                .rounded_full()
-                .bg(send.fill)
-                .text_color(muted)
-                .child(Icon::new(IconName::ArrowUp).size(rems_from_px(BUTTON_ICON))),
-        )
 }
 
 /// A button on the phone's bars, drawn as [`roles::PHONE_BUTTON`]: back,

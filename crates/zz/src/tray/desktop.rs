@@ -118,7 +118,6 @@ fn refresh(mux: &Entity<MuxClient>, cx: &mut App) {
         .find_map(|(host, _, _, snapshot)| (host == HostId::LOCAL).then_some(snapshot).flatten());
     let facts = facts_from(
         snapshot,
-        crate::agent::hidden_session(cx),
         |pane| mux.agent_attention_status(pane),
         mux.stale_daemon().is_some(),
     );

@@ -33,7 +33,6 @@ pub(crate) fn render_gui_status_bar(
     mux: &Entity<MuxClient>,
     titlebar_controls: Option<(AnyElement, Pixels)>,
     window_controls: Option<AnyElement>,
-    chat: Option<AnyElement>,
     _window: &mut Window,
     cx: &mut App,
 ) -> Stateful<zz_gpui::Div> {
@@ -73,8 +72,7 @@ pub(crate) fn render_gui_status_bar(
         .collect::<Vec<_>>();
     let overflow = (model.windows.len() > MAX_VISIBLE_WINDOWS)
         .then(|| render_window_overflow(&model.windows, connected, mux, cx));
-    let mut right = render_right_items(&model, cx);
-    right.extend(chat);
+    let right = render_right_items(&model, cx);
     workspace_status_bar(
         crate::config::pane_gaps(cx),
         workspace_controls_leading_inset(cx),

@@ -12,10 +12,10 @@ use zz_ui::{
         ArrowPad, BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, HostState, KEY_ROW_HEIGHT, KeyRow,
         PageDot, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement, PopoverKey,
         PopoverKeyTap, ToolKeys, WhichKeyList, bento_add_tile, bento_grid, compact_bar_button,
-        compact_composer_pill, compact_floating_bar, compact_floating_group, compact_floating_pill,
-        compact_group_dot, compact_hud, compact_pill_menu, folding_title_bar, host_tile,
-        host_tile_line, large_title, mini_pane, overview_host_empty, overview_session_heading,
-        page_dots, pill_glass_over, window_layout, window_tile,
+        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
+        compact_pill_menu, folding_title_bar, host_tile, host_tile_line, large_title, mini_pane,
+        overview_host_empty, overview_session_heading, page_dots, pill_glass_over, window_layout,
+        window_tile,
     },
     pane::agent_provider_icon,
     v_flex,
@@ -35,7 +35,7 @@ pub const STORY: Story = Story {
         Section {
             id: "bar",
             name: "Pill",
-            summary: "The one control at the bottom of a pane, with no header above the page: swipe it sideways to page panes, swipe it up to go back to the host's windows, tap it for the menu. It carries a dot while the driver works (accent) or waits on you (amber), is set in from a 55pt screen corner so it runs concentric with it, and turns amber when the page needs attention.",
+            summary: "The one control at the bottom of a pane, with no header above the page: swipe it sideways to page panes, swipe it up to go back to the host's windows, tap it for the menu. It is set in from a 55pt screen corner so it runs concentric with it, and turns amber when the page needs attention.",
             build: |_, cx| stateless(bars, cx),
         },
         Section {
@@ -47,7 +47,7 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "What tapping the pill, or the prefix key over the keyboard, opens, the way Calendar's + rises into its actions: the page dims, the pill turns into a close button and the actions stack above it. Overview and the driver chat sit nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Lens view, which reads Terminal view while the lens is open. On a host's page the pill opens what + and the chat did: a new terminal, browser or session on that host (only while it is connected), the driver chat, All hosts and Settings.",
+            summary: "What tapping the pill, or the prefix key over the keyboard, opens, the way Calendar's + rises into its actions: the page dims, the pill turns into a close button and the actions stack above it. Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Lens view, which reads Terminal view while the lens is open. On a host's page the pill opens what + and the chat did: a new terminal, browser or session on that host (only while it is connected), All hosts and Settings.",
             build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
@@ -77,7 +77,7 @@ pub const STORY: Story = Story {
         Section {
             id: "overview",
             name: "Overview",
-            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, under the driver's last word, with the message field and settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed, over the host pill alone. Swiping the pill sideways pages hosts, swiping it up zooms back out to Hosts, and tapping it opens the host's menu. Tapping a window zooms into the pane it was last on. The large title folds into a frosted bar once the page scrolls it away; a host that is not connected shows why and one thing to do.",
+            summary: "Three levels you zoom through, the way Calendar goes from year to month to day. Hosts lists every host as a tile, with settings in the bar. Tapping a host zooms into its page: each session's windows as a bento grid, every window drawn the way it splits its panes, the one it opens to ringed, over the host pill alone. Swiping the pill sideways pages hosts, swiping it up zooms back out to Hosts, and tapping it opens the host's menu. Tapping a window zooms into the pane it was last on. The large title folds into a frosted bar once the page scrolls it away; a host that is not connected shows why and one thing to do.",
             build: |_, cx| stateless(overview, cx),
         },
         Section {
@@ -132,7 +132,6 @@ fn bar(
     meta: &str,
     warning: bool,
     page: Option<Hsla>,
-    driver: Option<Hsla>,
     cx: &App,
 ) -> impl IntoElement {
     let placement = PillPlacement {
@@ -154,8 +153,7 @@ fn bar(
         page_dots(&groups(), cx),
         &placement,
         cx,
-    )
-    .when_some(driver, |pill, color| pill.child(compact_group_dot(color)));
+    );
     phone(compact_floating_bar(pill, &placement, cx), cx).when_some(page, Styled::bg)
 }
 
@@ -165,15 +163,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
         .columns(2)
         .state(
             "rest",
-            bar(
-                "bar-rest",
-                "cargo watch",
-                "zz · editor",
-                false,
-                None,
-                None,
-                cx,
-            ),
+            bar("bar-rest", "cargo watch", "zz · editor", false, None, cx),
         )
         .state(
             "attention",
@@ -182,7 +172,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "python train.py",
                 "exited with 1 · gpu-box",
                 true,
-                None,
                 None,
                 cx,
             ),
@@ -195,7 +184,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "zz · agents · 2 of 4 panes",
                 false,
                 None,
-                None,
                 cx,
             ),
         )
@@ -207,19 +195,6 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                 "www.google.com",
                 false,
                 Some(white()),
-                None,
-                cx,
-            ),
-        )
-        .state(
-            "the driver at work",
-            bar(
-                "bar-driver",
-                "cargo watch",
-                "zz · editor",
-                false,
-                None,
-                Some(cx.theme().accent),
                 cx,
             ),
         )
@@ -281,31 +256,13 @@ pub(crate) fn host_bar(
         &placement,
         cx,
     );
-    compact_floating_bar(
-        pill.child(compact_group_dot(cx.theme().warning)),
-        &placement,
-        cx,
-    )
-    .into_any_element()
+    compact_floating_bar(pill, &placement, cx).into_any_element()
 }
 
 pub(crate) fn hosts_bar(cx: &App) -> AnyElement {
     let placement = placement();
-    let leading = div()
-        .size(px(30.0))
-        .flex()
-        .items_center()
-        .justify_center()
-        .child(zz_ui::Icon::new(IconName::Chat).size(px(20.0)));
-    let composer = compact_composer_pill(
-        "hosts-composer",
-        leading,
-        "Message the driver",
-        &placement,
-        cx,
-    );
     let settings = compact_bar_button("hosts-settings", IconName::Settings);
-    compact_floating_bar(composer, &placement, cx)
+    compact_floating_bar(div().flex_1(), &placement, cx)
         .child(compact_floating_group([settings], &placement, cx))
         .into_any_element()
 }
@@ -322,7 +279,7 @@ fn subtitle(text: &str, cx: &App) -> impl IntoElement {
         .child(text.to_owned())
 }
 
-pub(crate) fn hosts_page(driver: Option<AnyElement>, cx: &App) -> impl IntoElement {
+pub(crate) fn hosts_page(cx: &App) -> impl IntoElement {
     let theme = cx.theme();
     let tiles = vec![
         (
@@ -398,7 +355,6 @@ pub(crate) fn hosts_page(driver: Option<AnyElement>, cx: &App) -> impl IntoEleme
         .pb(px(16.0))
         .child(large_title("Hosts", cx))
         .child(subtitle("4 hosts · 2 connected", cx))
-        .children(driver.map(|card| div().px(px(BENTO_INSET)).pb(px(16.0)).child(card)))
         .child(div().px(px(BENTO_INSET)).child(bento_grid(px(GRID), tiles)))
 }
 
@@ -447,7 +403,7 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
                 mini(
                     IconName::SquareTerminal,
                     "cargo test",
-                    "running 214 tests\ntest driver_chat::steps ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
+                    "running 214 tests\ntest overview::pager ... ok\ntest overview::bento ... ok\ntest result: ok. 214 passed",
                     true,
                     false,
                     cx,
@@ -515,7 +471,7 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
             mini(
                 IconName::SquareTerminal,
                 "",
-                "- [ ] fold title on iPad\n- [x] driver drawer",
+                "- [ ] fold title on iPad\n- [x] bento grid",
                 false,
                 false,
                 cx,
@@ -557,7 +513,7 @@ fn overview(_: &mut Window, cx: &mut App) -> AnyElement {
         .columns(2)
         .state(
             "hosts, where you start",
-            phone(v_flex().child(hosts_page(None, cx)).child(hosts_bar(cx)), cx),
+            phone(v_flex().child(hosts_page(cx)).child(hosts_bar(cx)), cx),
         )
         .state(
             "a connected host",
@@ -640,7 +596,6 @@ fn menu_items(lens: Option<bool>) -> Vec<Vec<PillMenuItem>> {
         PillMenuItem::new("new-window", "New window", IconName::AppWindow),
         PillMenuItem::new("new-pane", "New pane", IconName::Plus),
         PillMenuItem::new("last-pane", "Last pane", IconName::History),
-        PillMenuItem::new("driver-chat", "Driver chat", IconName::Chat),
         PillMenuItem::new("overview", "Overview", IconName::LayoutDashboard),
     ];
     if let Some(open) = lens {
@@ -670,7 +625,6 @@ fn host_menu_items() -> Vec<Vec<PillMenuItem>> {
             PillMenuItem::new("new-session", "New session", IconName::Layers),
             PillMenuItem::new("new-browser", "New browser", IconName::Globe),
             PillMenuItem::new("new-terminal", "New terminal", IconName::SquareTerminal),
-            PillMenuItem::new("driver-chat", "Driver chat", IconName::Chat),
             PillMenuItem::new("all-hosts", "All hosts", IconName::Server),
         ],
     ]

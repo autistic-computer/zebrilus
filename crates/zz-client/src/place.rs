@@ -19,27 +19,6 @@ impl Level {
     pub const ALL: [Self; 4] = [Self::Host, Self::Session, Self::Window, Self::Pane];
 
     #[must_use]
-    pub const fn sigil(self) -> char {
-        match self {
-            Self::Host => '^',
-            Self::Session => '$',
-            Self::Window => '@',
-            Self::Pane => '%',
-        }
-    }
-
-    #[must_use]
-    pub const fn from_sigil(character: char) -> Option<Self> {
-        match character {
-            '^' => Some(Self::Host),
-            '$' => Some(Self::Session),
-            '@' => Some(Self::Window),
-            '%' => Some(Self::Pane),
-            _ => None,
-        }
-    }
-
-    #[must_use]
     pub const fn deeper(self) -> Option<Self> {
         match self {
             Self::Host => Some(Self::Session),
@@ -74,160 +53,46 @@ pub enum ActionKind {
     Command,
     Gui,
     Files,
-    Ask,
 }
 
-impl ActionKind {
-    #[must_use]
-    pub const fn sigil(self) -> char {
-        match self {
-            Self::Command => ':',
-            Self::Gui => '>',
-            Self::Files => '&',
-            Self::Ask => '?',
-        }
-    }
-
-    #[must_use]
-    pub const fn from_sigil(character: char) -> Option<Self> {
-        match character {
-            ':' => Some(Self::Command),
-            '>' => Some(Self::Gui),
-            '&' => Some(Self::Files),
-            '?' => Some(Self::Ask),
-            _ => None,
-        }
-    }
-}
+pub const COMMAND_SIGIL: char = ':';
 
 #[must_use]
 pub const fn is_sigil(character: char) -> bool {
-    Level::from_sigil(character).is_some() || ActionKind::from_sigil(character).is_some()
+    character == COMMAND_SIGIL
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Query {
-    Text(String),
-    Id(u64),
-}
-
-impl Query {
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        matches!(self, Self::Text(text) if text.is_empty())
-    }
-
-    #[must_use]
-    pub fn index(&self) -> Option<u32> {
-        match self {
-            Self::Text(text)
-                if !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()) =>
-            {
-                text.parse().ok()
-            }
-            _ => None,
-        }
-    }
+fn digits(text: &str) -> Option<u32> {
+    (!text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()))
+        .then(|| text.parse().ok())
+        .flatten()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Part {
     pub level: Level,
-    pub query: Query,
-    pub range: Range<usize>,
+    pub query: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Action {
-    pub kind: ActionKind,
-    pub rest: String,
-    pub start: usize,
-}
-
-impl Action {
-    #[must_use]
-    pub const fn rest_range(&self) -> Range<usize> {
-        self.start + 1..self.start + 1 + self.rest.len()
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Line {
-    pub parts: Vec<Part>,
-    pub action: Option<Action>,
+    pub command: Option<String>,
     pub search: Option<String>,
 }
 
 #[must_use]
 pub fn parse(text: &str) -> Line {
-    let start = text.len() - text.trim_start().len();
-    let mut line = Line::default();
-    let Some(first) = text[start..].chars().next() else {
-        return line;
-    };
-    if let Some(kind) = ActionKind::from_sigil(first) {
-        line.action = Some(Action {
-            kind,
-            rest: text[start + 1..].to_owned(),
-            start,
-        });
-        return line;
+    let trimmed = text.trim_start();
+    if let Some(rest) = trimmed.strip_prefix(COMMAND_SIGIL) {
+        return Line {
+            command: Some(rest.to_owned()),
+            search: None,
+        };
     }
-    let Some(mut level) = Level::from_sigil(first) else {
-        line.search = Some(text[start..].trim_end().to_owned());
-        return line;
-    };
-    let mut part_start = start;
-    let mut query = String::new();
-    let mut quoted = false;
-    let mut literal = false;
-    for (offset, character) in text[start + 1..].char_indices() {
-        let index = start + 1 + offset;
-        if character == '"' {
-            quoted = !quoted;
-            literal = true;
-            continue;
-        }
-        if !quoted {
-            if let Some(kind) = ActionKind::from_sigil(character) {
-                line.parts
-                    .push(part(level, &query, literal, part_start..index));
-                line.action = Some(Action {
-                    kind,
-                    rest: text[index + 1..].to_owned(),
-                    start: index,
-                });
-                return line;
-            }
-            if let Some(next) = Level::from_sigil(character).filter(|next| *next > level) {
-                line.parts
-                    .push(part(level, &query, literal, part_start..index));
-                level = next;
-                part_start = index;
-                query.clear();
-                literal = false;
-                continue;
-            }
-        }
-        query.push(character);
-    }
-    line.parts
-        .push(part(level, &query, literal, part_start..text.len()));
-    line
-}
-
-fn part(level: Level, query: &str, literal: bool, range: Range<usize>) -> Part {
-    let text = query.trim();
-    let id = text
-        .strip_prefix('#')
-        .filter(|digits| {
-            !literal && !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
-        })
-        .and_then(|digits| digits.parse().ok());
-    Part {
-        level,
-        query: id.map_or_else(|| Query::Text(text.to_owned()), Query::Id),
-        range,
+    let search = trimmed.trim_end();
+    Line {
+        command: None,
+        search: (!search.is_empty()).then(|| search.to_owned()),
     }
 }
 
@@ -474,20 +339,22 @@ fn distance(current: &Place, place: &Place) -> i64 {
     }
 }
 
-fn rate(query: &Query, label: &str, metadata: &str, id: u64) -> Option<(i64, Vec<Range<usize>>)> {
-    match query {
-        Query::Id(wanted) => (*wanted == id).then(|| (0, Vec::new())),
-        Query::Text(text) => {
-            if let Some((score, matches)) = fuzzy_match(text, label) {
-                return Some((score as i64, matches));
-            }
-            if text.is_empty() || metadata.is_empty() {
-                return None;
-            }
-            fuzzy_match(text, metadata)
-                .map(|(score, _)| (score as i64 + METADATA_PENALTY, Vec::new()))
-        }
+fn rate(query: &str, label: &str, metadata: &str, path: &str) -> Option<(i64, Vec<Range<usize>>)> {
+    if let Some((score, matches)) = fuzzy_match(query, label) {
+        return Some((score as i64, matches));
     }
+    if query.is_empty() {
+        return None;
+    }
+    if query.contains(char::is_whitespace)
+        && let Some((score, _)) = fuzzy_match(query, path)
+    {
+        return Some((score as i64, Vec::new()));
+    }
+    if metadata.is_empty() {
+        return None;
+    }
+    fuzzy_match(query, metadata).map(|(score, _)| (score as i64 + METADATA_PENALTY, Vec::new()))
 }
 
 fn host_scope<'a>(fleet: &'a Fleet, scope: &Place) -> impl Iterator<Item = &'a FleetHost> {
@@ -515,7 +382,8 @@ pub fn candidates(
 ) -> Vec<Candidate> {
     let scope = scope.above(part.level);
     let current = fleet.current();
-    let index = part.query.index();
+    let query = part.query.as_str();
+    let index = digits(query);
     let mut found = Vec::new();
     let mut push = |place: Place, label: String, scored: Option<(i64, Vec<Range<usize>>)>| {
         if let Some((score, matches)) = scored {
@@ -531,11 +399,8 @@ pub fn candidates(
     match part.level {
         Level::Host => {
             for host in &fleet.hosts {
-                let scored = match &part.query {
-                    Query::Text(text) => fuzzy_match(text, &host.name)
-                        .map(|(score, matches)| (score as i64, matches)),
-                    Query::Id(_) => None,
-                };
+                let scored =
+                    fuzzy_match(query, &host.name).map(|(score, matches)| (score as i64, matches));
                 push(Place::host(host.id), host.name.clone(), scored);
             }
         }
@@ -543,7 +408,7 @@ pub fn candidates(
             let exact = index.is_some()
                 && host_scope(fleet, &scope)
                     .flat_map(|host| &host.sessions)
-                    .any(|session| Query::Text(session.name.clone()) == part.query);
+                    .any(|session| session.name == query);
             for host in host_scope(fleet, &scope) {
                 for session in &host.sessions {
                     let place = Place {
@@ -553,9 +418,9 @@ pub fn candidates(
                         pane: None,
                     };
                     let scored = if exact {
-                        (Query::Text(session.name.clone()) == part.query).then(|| (0, Vec::new()))
+                        (session.name == query).then(|| (0, Vec::new()))
                     } else {
-                        rate(&part.query, &session.label, &session.name, session.id.0)
+                        rate(query, &session.label, &session.name, "")
                     };
                     push(place, session.label.clone(), scored);
                 }
@@ -588,7 +453,8 @@ pub fn candidates(
                         .filter_map(|pane| pane.program.as_deref())
                         .collect::<Vec<_>>()
                         .join(" ");
-                    rate(&part.query, &label, &programs, window.id.0)
+                    let path = format!("{} {label}", spot.session.label);
+                    rate(query, &label, &programs, &path)
                 };
                 let place = Place {
                     host: Some(spot.host.id),
@@ -631,14 +497,19 @@ pub fn candidates(
                 }
                 for pane in &spot.window.panes {
                     let label = format!("{} {}", pane.index, pane.name());
-                    let scored = match index {
-                        Some(index) => (pane.index == index).then(|| (0, Vec::new())),
-                        None => rate(
-                            &part.query,
+                    let scored = if let Some(index) = index {
+                        (pane.index == index).then(|| (0, Vec::new()))
+                    } else {
+                        let path = format!(
+                            "{} {} {} {label}",
+                            spot.session.label, spot.window.index, spot.window.name
+                        );
+                        rate(
+                            query,
                             &label,
                             pane.program.as_deref().unwrap_or_default(),
-                            pane.id.0,
-                        ),
+                            &path,
+                        )
                     };
                     let place = Place {
                         host: Some(spot.host.id),
@@ -663,8 +534,7 @@ pub fn children(fleet: &Fleet, scope: &Place, boost: &dyn Fn(&Place) -> i64) -> 
     };
     let part = Part {
         level,
-        query: Query::Text(String::new()),
-        range: 0..0,
+        query: String::new(),
     };
     candidates(fleet, scope, &part, boost)
 }
@@ -683,45 +553,13 @@ pub fn search(
         .flat_map(|level| {
             let part = Part {
                 level,
-                query: Query::Text(text.to_owned()),
-                range: 0..0,
+                query: text.to_owned(),
             };
             candidates(fleet, scope, &part, boost)
         })
         .collect::<Vec<_>>();
     found.sort_by_key(|candidate| candidate.score);
     found
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Resolution {
-    pub place: Place,
-    pub failed: Option<usize>,
-}
-
-#[must_use]
-pub fn resolve(
-    fleet: &Fleet,
-    scope: &Place,
-    parts: &[Part],
-    boost: &dyn Fn(&Place) -> i64,
-) -> Resolution {
-    let mut place = *scope;
-    for (index, part) in parts.iter().enumerate() {
-        match candidates(fleet, &place, part, boost).into_iter().next() {
-            Some(best) => place = best.place,
-            None => {
-                return Resolution {
-                    place,
-                    failed: Some(index),
-                };
-            }
-        }
-    }
-    Resolution {
-        place,
-        failed: None,
-    }
 }
 
 #[must_use]

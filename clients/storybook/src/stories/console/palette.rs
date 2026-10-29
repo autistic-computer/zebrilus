@@ -19,11 +19,11 @@ use zz_protocol::{
 use zz_ui::{
     ActiveTheme as _, IconName, StyledExt as _,
     command::{
-        CommandPaletteSurface, CommandPaletteView, DriverOffer, PaletteActionLevel, PaletteBackend,
-        PaletteHint, PaletteHostId, PaletteMode, PalettePill, PaletteRow, PaletteSettings,
-        PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
-        PaletteTreeSession, PaletteTreeWindow, command_kind_badge, command_palette_empty,
-        command_palette_entry, command_palette_input, command_palette_row, command_palette_section,
+        CommandPaletteSurface, CommandPaletteView, PaletteActionLevel, PaletteBackend, PaletteHint,
+        PaletteHostId, PaletteMode, PalettePill, PaletteRow, PaletteSettings, PaletteStatus,
+        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
+        PaletteTreeWindow, command_kind_badge, command_palette_empty, command_palette_entry,
+        command_palette_input, command_palette_row, command_palette_section,
         command_palette_tree_entry, palette_shortcut_hint, unified_command_palette_input,
     },
     files::{FilesAction, ListingSink, ListingUpdate},
@@ -39,7 +39,7 @@ pub const STORY: Story = Story {
     id: "command-palette",
     name: "Command palette",
     group: "Commands",
-    summary: "One palette for going places and acting on them. A line is a place, typed with tmux's sigils (^ host, $ session, @ window, % pane) and matched fuzzily, then an action: : a command with -t set to the place, & files, > a setting, ? the driver. Places you enter become chips; daemon prompts reuse the same surface.",
+    summary: "One palette for going places and acting on them, with nothing to learn. Words match places and actions together. An action asks for what it needs in turn (a pane, a name, a file, a value) and the footer shows the tmux command it runs. : still takes raw tmux.",
     sections: &[
         Section {
             id: "rows",
@@ -62,8 +62,83 @@ pub const STORY: Story = Story {
         Section {
             id: "workspace",
             name: "Empty palette",
-            summary: "The palette as it opens: the host chip, then the windows whose agents wait on you, recent places and commands, and every host.",
+            summary: "The palette as it opens: the host chip, then the windows whose agents wait on you, recent places, actions, settings and files, this host's sessions and the other hosts.",
             build: |window, cx| unified(window, cx, online_tree(), true, None, &[]),
+        },
+        Section {
+            id: "search",
+            name: "Words find places",
+            summary: "No sigils: words match sessions, windows and panes, and several words match the path, so zz 2 finds window 2 of zz. Enter goes there and the footer shows the tmux command that amounts to.",
+            build: |window, cx| {
+                unified(
+                    window,
+                    cx,
+                    online_tree(),
+                    true,
+                    None,
+                    &["z", "z", "space", "2"],
+                )
+            },
+        },
+        Section {
+            id: "verbs",
+            name: "Words find actions",
+            summary: "Actions are verbs: tmux commands spelled with spaces, zz's own like read pane and split right, the GUI settings and inserting a path. The section that matches best comes first, and the footer shows what the highlighted one runs.",
+            build: |window, cx| unified(window, cx, online_tree(), true, None, &["r", "e", "a"]),
+        },
+        Section {
+            id: "verb-target",
+            name: "A verb asks for its pane",
+            summary: "Enter on read pane opens its one slot: a pane picker on this host with the current pane first. Typing filters it, Enter reads the highlighted pane, and Backspace on the empty field drops the verb.",
+            build: |window, cx| {
+                unified(
+                    window,
+                    cx,
+                    online_tree(),
+                    true,
+                    None,
+                    &["r", "e", "a", "d", "enter"],
+                )
+            },
+        },
+        Section {
+            id: "verb-text",
+            name: "A verb asks for a name",
+            summary: "rename window takes a window, then the new name. The field asks for it, and the footer shows the command with what you typed.",
+            build: |window, cx| {
+                unified(
+                    window,
+                    cx,
+                    online_tree(),
+                    true,
+                    None,
+                    &[
+                        "r", "e", "n", "a", "m", "e", "space", "w", "i", "n", "enter", "enter",
+                        "a", "p", "i",
+                    ],
+                )
+            },
+        },
+        Section {
+            id: "drill",
+            name: "Into a place",
+            summary: "Tab, Right or l goes into the highlighted place, and the path builds up as chips. Typing there lists the actions that take the place first, which fills their target, so the place or the verb can come first. Backspace or Shift-Tab goes back up.",
+            build: |window, cx| {
+                unified(
+                    window,
+                    cx,
+                    online_tree(),
+                    true,
+                    None,
+                    &["tab", "k", "i", "l"],
+                )
+            },
+        },
+        Section {
+            id: "alias",
+            name: "Your own verbs",
+            summary: "A tmux command-alias in your config is a verb too, with the slots of the command it runs: set -s command-alias[10] zoom='resize-pane -Z' gives zoom a pane picker.",
+            build: |window, cx| unified(window, cx, online_tree(), true, None, &["z", "o", "o"]),
         },
         Section {
             id: "no-host-chip",
@@ -81,57 +156,9 @@ pub const STORY: Story = Story {
             },
         },
         Section {
-            id: "search",
-            name: "Search everything",
-            summary: "Plain text searches the places under the chips, then commands, each kind under its own header.",
-            build: |window, cx| unified(window, cx, online_tree(), true, None, &["e", "d"]),
-        },
-        Section {
-            id: "sessions",
-            name: "A sigil lists its level",
-            summary: "$ lists the sessions on the chip's host, the current one first. Digits match what the rows show, and #N pins an id.",
-            build: |window, cx| unified(window, cx, online_tree(), true, None, &["$"]),
-        },
-        Section {
-            id: "sigil-commits",
-            name: "A sigil commits",
-            summary: "$z then @ takes the best session as a chip and lists its windows. Backspace on the empty field right after gives $z back; Tab and Shift-Tab go into and out of a row.",
-            build: |window, cx| unified(window, cx, online_tree(), true, None, &["$", "z", "@"]),
-        },
-        Section {
-            id: "another-host",
-            name: "Another host",
-            summary: "^ at the start of the field replaces the host chip: ^gpu then $ lists gpu-box's sessions.",
-            build: |window, cx| {
-                unified(
-                    window,
-                    cx,
-                    online_tree(),
-                    true,
-                    None,
-                    &["^", "g", "p", "u", "$"],
-                )
-            },
-        },
-        Section {
-            id: "choose-window",
-            name: "Choose window",
-            summary: "View › Choose Window opens on @: every window on this host, the current one first.",
-            build: |window, cx| {
-                unified(
-                    window,
-                    cx,
-                    online_tree(),
-                    true,
-                    Some(PaletteMode::Target),
-                    &[],
-                )
-            },
-        },
-        Section {
             id: "files",
-            name: "Files",
-            summary: "prefix F opens on & and the pane's folder.",
+            name: "Insert path",
+            summary: "The insert path verb browses files on the host, and prefix F opens straight into it on the pane's folder.",
             build: |window, cx| target(window, cx, "~/"),
         },
         Section {
@@ -142,8 +169,8 @@ pub const STORY: Story = Story {
         },
         Section {
             id: "command-mode",
-            name: "Command mode",
-            summary: ": lists every command with its description, its key when it has one, and the usage of the selected command. After a place, the command runs with -t set to it.",
+            name: "Raw tmux",
+            summary: ": still takes plain tmux: every command with its description, its key when it has one, and the usage of the selected command. On a place, the command runs with -t set to it.",
             build: |window, cx| {
                 unified(
                     window,
@@ -169,54 +196,15 @@ pub const STORY: Story = Story {
         },
         Section {
             id: "gui-mode",
-            name: "GUI actions",
-            summary: "> lists settings and app actions, each with its value now on the right. Enter flips an on-off one, Tab or Enter opens the values of the rest.",
-            build: |window, cx| gui(window, cx, Some(DriverOffer::Ready), &[">"]),
-        },
-        Section {
-            id: "gui-search",
-            name: "GUI search",
-            summary: "Typing matches actions and their values, so >theme mac lands on the theme itself.",
-            build: |window, cx| {
-                gui(
-                    window,
-                    cx,
-                    Some(DriverOffer::Ready),
-                    &[">", "t", "h", "e", "m", "e", "m", "a", "c"],
-                )
-            },
+            name: "Settings as verbs",
+            summary: "The GUI settings are verbs tagged gui, each with its value now on the right. Enter on an on-off one flips it.",
+            build: |window, cx| gui(window, cx, &["t", "h", "e", "m"]),
         },
         Section {
             id: "gui-values",
             name: "Theme values",
-            summary: "Enter on Theme lists the themes, starting on the one in use. A highlighted theme shows at once and goes back however the palette closes; Enter keeps it.",
-            build: |window, cx| {
-                gui(
-                    window,
-                    cx,
-                    Some(DriverOffer::Ready),
-                    &[">", "t", "h", "e", "m", "e", "enter"],
-                )
-            },
-        },
-        Section {
-            id: "ask",
-            name: "Ask the driver",
-            summary: "Text ending in ? keeps searching with the Ask row first; Enter opens the Driver chat with the text in its composer. ? alone, or after a place, opens the chat at once with the place as a mention.",
-            build: |window, cx| {
-                gui(
-                    window,
-                    cx,
-                    Some(DriverOffer::Ready),
-                    &["w", "h", "y", "space", "r", "e", "d", "?"],
-                )
-            },
-        },
-        Section {
-            id: "ask-asleep",
-            name: "Driver asleep",
-            summary: "With no driver running, ? offers to wake it; with driver-agent off, the row says so and Enter opens Settings › Agents.",
-            build: |window, cx| gui(window, cx, Some(DriverOffer::Asleep), &["?"]),
+            summary: "Enter on select theme lists the themes, starting on the one in use. A highlighted theme shows at once and goes back however the palette closes; Enter keeps it.",
+            build: |window, cx| gui(window, cx, &["t", "h", "e", "m", "e", "enter"]),
         },
         Section {
             id: "vim-insert",
@@ -227,7 +215,7 @@ pub const STORY: Story = Story {
         Section {
             id: "vim-normal",
             name: "Vim mode, normal",
-            summary: "After Esc: a block caret, the NORMAL badge, and the footer lists the normal keys. j k move, l goes in, h goes up, x is Backspace, yy copies the row, i a / or a sigil go back to insert, Esc or q close.",
+            summary: "After Esc: a block caret, the NORMAL badge, and the footer lists the normal keys. j k move, l goes in, h goes up, x is Backspace, yy copies the row, i a / or : go back to insert, Esc or q close.",
             build: |window, cx| vim(window, cx, &["d", "e", "escape", "j"]),
         },
     ],
@@ -340,21 +328,26 @@ struct StoryBackend {
     requests: Cell<u64>,
     me: Weak<StoryBackend>,
     gui: Vec<zz_client::gui_actions::GuiOffer>,
-    driver: Option<DriverOffer>,
 }
 
 impl PaletteBackend for StoryBackend {
+    fn verbs(&self, cx: &App) -> Vec<zz_client::verbs::Verb> {
+        let gui = self
+            .gui
+            .iter()
+            .map(|offer| offer.action.id)
+            .collect::<Vec<_>>();
+        zz_client::verbs::verbs(self.availability(cx), &gui, true, "zoom=resize-pane -Z")
+    }
+
     fn action_level(&self, kind: ActionKind, _: &mut App) -> Option<Box<dyn PaletteActionLevel>> {
-        use zz_ui::command::{AskLevel, GuiLevel};
+        use zz_ui::command::GuiLevel;
         match kind {
             ActionKind::Files => {
                 let backend: Rc<dyn PaletteBackend> = self.me.upgrade()?;
                 Some(Box::new(FilesAction::new(backend)))
             }
-            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone(), self.driver))),
-            ActionKind::Ask => self
-                .driver
-                .map(|driver| Box::new(AskLevel::new(driver)) as Box<dyn PaletteActionLevel>),
+            ActionKind::Gui => Some(Box::new(GuiLevel::new(self.gui.clone()))),
             ActionKind::Command => None,
         }
     }
@@ -499,7 +492,6 @@ fn story_backend(
         requests: Cell::new(0),
         me,
         gui: Vec::new(),
-        driver: None,
     }
 }
 
@@ -1012,15 +1004,19 @@ pub(super) fn mount(
     if !keys.is_empty() {
         let focus = palette.read(cx).focus(cx);
         focus.focus(window, cx);
-        window.on_next_frame(move |window, cx| {
-            for key in keys {
-                if let Ok(keystroke) = Keystroke::parse(key) {
-                    window.dispatch_keystroke(keystroke, cx);
-                }
-            }
-        });
+        window.on_next_frame(move |window, cx| press(keys, window, cx));
     }
     cx.new(|_| Frame { palette, height }).into()
+}
+
+fn press(keys: &'static [&'static str], window: &mut Window, cx: &mut App) {
+    let Some((key, rest)) = keys.split_first() else {
+        return;
+    };
+    if let Ok(keystroke) = Keystroke::parse(key) {
+        window.dispatch_keystroke(keystroke, cx);
+    }
+    window.defer(cx, move |window, cx| press(rest, window, cx));
 }
 
 fn unified(
@@ -1036,7 +1032,7 @@ fn unified(
     mount(window, cx, palette, 560.0, keys)
 }
 
-/// The palette in `@` mode with `body` typed, a file picked going into
+/// The palette on the insert path verb with `body` typed, a file picked going into
 /// `pane`.
 fn target_palette(
     window: &mut Window,
@@ -1050,7 +1046,7 @@ fn target_palette(
     cx.new(|cx| CommandPaletteView::new_target(backend, &body, pane, window, cx))
 }
 
-/// The palette in `&` mode in `start`, a file picked going into `pane`:
+/// The palette on the insert path verb in `start`, a file picked going into `pane`:
 /// what `prefix F` opens on a pane's folder.
 pub(super) fn files_palette(
     window: &mut Window,
@@ -1081,12 +1077,7 @@ fn target(window: &mut Window, cx: &mut App, body: &str) -> AnyView {
     mount(window, cx, palette, 560.0, &[])
 }
 
-fn gui(
-    window: &mut Window,
-    cx: &mut App,
-    driver: Option<DriverOffer>,
-    keys: &'static [&'static str],
-) -> AnyView {
+fn gui(window: &mut Window, cx: &mut App, keys: &'static [&'static str]) -> AnyView {
     use zz_client::gui_actions::{
         GuiOffer, GuiOption, PANE_GAPS, SIDEBAR_LAYOUT, THEME, TITLEBAR_MODE, WINDOW_BLUR,
     };
@@ -1108,14 +1099,9 @@ fn gui(
     .collect();
     let backend = Rc::new_cyclic(|me| StoryBackend {
         gui,
-        driver,
         ..story_backend(me.clone(), online_tree(), true, Files::Listed)
     });
-    let palette = cx.new(|cx| {
-        let mut palette = CommandPaletteView::new_unified(backend, None, window, cx);
-        palette.offer_driver(driver, cx);
-        palette
-    });
+    let palette = cx.new(|cx| CommandPaletteView::new_unified(backend, None, window, cx));
     mount(window, cx, palette, 560.0, keys)
 }
 
@@ -1554,6 +1540,38 @@ impl Render for Surfaces {
                         v_flex().children(targets.iter().enumerate().map(|(index, row)| {
                             div().h(px(28.0)).child(command_palette_entry(
                                 ("surface-target", index),
+                                row,
+                                index == 0,
+                                cx,
+                            ))
+                        })),
+                    )
+                    .hints(TARGET_HINTS),
+                ),
+            )
+            .state(
+                "a verb waiting on its pane",
+                div().id("surface-verb").child(
+                    CommandPaletteSurface::new(
+                        unified_command_palette_input(
+                            &self.unified,
+                            [
+                                PalettePill::Host {
+                                    label: "gpu-box".into(),
+                                    status: PaletteStatus::Online,
+                                },
+                                PalettePill::Place("train".into()),
+                                PalettePill::Verb("read pane".into()),
+                            ],
+                            cx,
+                        ),
+                        4,
+                    )
+                    .usage("runs  capture-pane -p -t train:1.0")
+                    .rows(
+                        v_flex().children(targets.iter().enumerate().map(|(index, row)| {
+                            div().h(px(28.0)).child(command_palette_entry(
+                                ("surface-verb-target", index),
                                 row,
                                 index == 0,
                                 cx,

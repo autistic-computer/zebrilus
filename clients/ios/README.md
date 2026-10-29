@@ -16,11 +16,10 @@ to match. Landing on a pane zooms it (`resize-pane -Z`), so the daemon sizes
 the window to that pane; terminal previews keep the neighbouring pane live while it
 slides in, and a browser pane slides in with its page showing. The pill is the only control at
 the bottom. It shows the pane's icon, its name, and under it the window and page dots grouped by
-window; an agent waiting on a permission turns the icon and that line yellow, and a dot in its
-corner shows the driver working or waiting on you. Over a web page the pill keeps its text color,
+window; an agent waiting on a permission turns the icon and that line yellow. Over a web page the pill keeps its text color,
 as Safari's bar does, and deepens its glass instead when the page under it is light. Tapping the
 pill opens the pane menu the way Calendar's + opens its actions: the page dims (a web page holds
-as a still while the menu is up), the pill turns into a close button, and Overview, Driver chat,
+as a still while the menu is up), the pill turns into a close button, and Overview,
 Last pane, New pane, New window and Rename pane stack above it, with Kill pane and All bindings
 furthest from the thumb. A pane running Claude Code or Codex adds Lens view, or Terminal view
 while its lens is open. The overview is three levels you zoom through, the way Calendar goes from
@@ -32,10 +31,9 @@ small and centered as the page scrolls, then every session with its windows as a
 window drawn the way it splits its panes with a live preview of each, the pane it opens to ringed
 in the accent. Tap a window and it zooms into that pane. Its bar is the host pill alone: swipe it
 sideways to page hosts, and tap it for the host's menu, which stacks New terminal, New browser
-and New session (while the host is connected), Driver chat and All hosts above it, with Settings
+and New session (while the host is connected) and All hosts above it, with Settings
 furthest. All hosts, or dragging the pill up, zooms out to Hosts: every host as a tile with what its agents are doing, or Connect or Cancel,
-under the driver's last word, with a Message the driver field and Settings in its bar; tap a host
-to zoom into it. Entering a host, or paging to it with the pill, puts it on screen, since the
+with Settings in its bar; tap a host to zoom into it. Entering a host, or paging to it with the pill, puts it on screen, since the
 daemon streams previews only to the client attached to it. The phone has no session tree: the sidebar toggle and `focus-sidebar` open the
 overview instead. The keyboard opens only from that button or a tap on the terminal.
 While it is up, a key row replaces the pill: the prefix key in a pill of its own, then ctrl,

@@ -12,9 +12,9 @@ use zz_gpui::{
 
 use super::{
     ActionContext, ActionKey, CommandPaletteEvent, CommandPaletteView, GuiEvent, LevelEffect,
-    PaletteActionLevel, PaletteHint, PaletteRow, ask_level, command_palette_empty,
-    command_palette_entry, command_palette_list_height, command_palette_row_height,
-    command_palette_section, palette_model::DriverOffer, record_recent,
+    PaletteActionLevel, PaletteHint, PaletteRow, command_palette_empty, command_palette_entry,
+    command_palette_list_height, command_palette_row_height, command_palette_section,
+    record_recent,
 };
 use crate::{
     IconName,
@@ -39,7 +39,6 @@ pub fn theme_offer(picks: &ThemePicks) -> Option<GuiOffer> {
 enum Pick {
     Action(&'static GuiAction),
     Value(&'static GuiAction, String),
-    Ask,
 }
 
 struct Row {
@@ -85,27 +84,27 @@ fn value_row(
 
 pub struct GuiLevel {
     offers: Vec<GuiOffer>,
-    driver: Option<DriverOffer>,
     action: Option<&'static GuiAction>,
     rest: String,
     rows: Vec<Row>,
     selected: Rc<Cell<usize>>,
     previewing: Option<String>,
+    focused: bool,
     palette: Option<WeakEntity<CommandPaletteView>>,
     scroll: ScrollHandle,
 }
 
 impl GuiLevel {
     #[must_use]
-    pub fn new(offers: Vec<GuiOffer>, driver: Option<DriverOffer>) -> Self {
+    pub fn new(offers: Vec<GuiOffer>) -> Self {
         Self {
             offers,
-            driver,
             action: None,
             rest: String::new(),
             rows: Vec::new(),
             selected: Rc::default(),
             previewing: None,
+            focused: false,
             palette: None,
             scroll: ScrollHandle::new(),
         }
@@ -149,13 +148,6 @@ impl GuiLevel {
                 rows.extend(offer.options.iter().filter_map(|option| {
                     let label = format!("{} › {}", action.title, option.title);
                     matching(value_row(action, option, offer, label), query, "")
-                }));
-            }
-            if rows.is_empty() && !query.is_empty() {
-                rows.extend(ask_level::ask_row(self.driver, query).map(|row| Row {
-                    row,
-                    pick: Pick::Ask,
-                    score: 0,
                 }));
             }
         }
@@ -254,10 +246,7 @@ impl GuiLevel {
                 }
             }
             Pick::Value(action, value) if !complete => self.apply(action, value, cx),
-            Pick::Ask if !complete => LevelEffect::Emit(CommandPaletteEvent::Driver {
-                text: self.rest.trim().to_owned(),
-            }),
-            Pick::Value(..) | Pick::Ask => LevelEffect::Stay,
+            Pick::Value(..) => LevelEffect::Stay,
         }
     }
 
@@ -278,8 +267,19 @@ impl PaletteActionLevel for GuiLevel {
         self.palette = Some(palette);
     }
 
-    fn update(&mut self, context: &ActionContext, _: &mut Window, _: &mut App) -> LevelEffect {
+    fn update(&mut self, context: &ActionContext, _: &mut Window, cx: &mut App) -> LevelEffect {
         self.rest.clone_from(&context.rest);
+        if let Some(id) = context.focus
+            && self.action.is_none_or(|action| action.id != id)
+            && let Some(offer) = self.offers.iter().find(|offer| offer.action.id == id)
+        {
+            let action = offer.action;
+            if let Some(value) = offer.flipped().map(str::to_owned) {
+                return self.apply(action, value, cx);
+            }
+            self.action = Some(action);
+            self.focused = true;
+        }
         self.rebuild();
         self.preview()
     }
@@ -292,6 +292,13 @@ impl PaletteActionLevel for GuiLevel {
             ActionKey::Last => self.step(|_, count| count - 1),
             ActionKey::Enter => self.activate(false, cx),
             ActionKey::Tab => self.activate(true, cx),
+            ActionKey::ShiftTab | ActionKey::Backspace if self.focused && self.rest.is_empty() => {
+                LevelEffect::Leave(
+                    self.previewing
+                        .take()
+                        .map(|_| CommandPaletteEvent::Gui(GuiEvent::Revert)),
+                )
+            }
             ActionKey::ShiftTab if self.action.is_some() => self.leave_values(),
             ActionKey::Backspace if self.action.is_some() && self.rest.is_empty() => {
                 self.leave_values()
@@ -353,7 +360,6 @@ impl PaletteActionLevel for GuiLevel {
     fn hints(&self, _: &App) -> Vec<PaletteHint> {
         let enter = match self.selected().map(|row| &row.pick) {
             Some(Pick::Value(..)) => "apply",
-            Some(Pick::Ask) => "ask",
             Some(Pick::Action(action))
                 if self
                     .offer(action)
