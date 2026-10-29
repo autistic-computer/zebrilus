@@ -18,6 +18,22 @@ carry license obligations into zz's own builds.
 | [libghostty-rs](https://github.com/uzaaft/libghostty-rs) (Uzaaft) | Source snapshots of `libghostty-vt` and `libghostty-vt-sys` 0.2.1 from the `demfabris/libghostty-rs` fork, adapted to build the Zig 0.16 VT library. | MIT OR Apache-2.0 | [`third_party/rust/libghostty-vt/`](third_party/rust/libghostty-vt/UPSTREAM.md), [`third_party/rust/libghostty-vt-sys/`](third_party/rust/libghostty-vt-sys/UPSTREAM.md) |
 | [Ghostty](https://github.com/ghostty-org/ghostty) (Mitchell Hashimoto and Ghostty contributors) | The VT state machine itself, compiled from the trimmed Ghostty source in `third_party/ghostty` through the snapshots above. Separately, `crates/zz-terminal/src/x11-rgb.txt` is copied from Ghostty's `src/terminal/res/rgb.txt` at `cf60af28`, which sources it from the X.Org `rgb` project. | MIT | [`third_party/ghostty/LICENSE`](third_party/ghostty/LICENSE), [`third_party/ghostty-reference/`](third_party/ghostty-reference/UPSTREAM.md) |
 
+zz's own source carries no comments. The two notices that used to sit beside the code they
+describe are kept here verbatim:
+
+`crates/zz/src/window/frame.rs`
+
+```
+Adapted from gpui-component's Apache-2.0 Linux client-side window border:
+https://github.com/longbridge/gpui-component/blob/b004e595cf5de98a73b6b561394a559a94ae1e2a/crates/zz-ui/src/window_border.rs
+```
+
+`crates/zz-terminal/src/appearance.rs` (`x11_colors`, which reads `x11-rgb.txt`)
+
+```
+Sourced from Ghostty's MIT/X11-licensed terminal/res/rgb.txt.
+```
+
 zz builds against the Apache-2.0 `gpui` and `gpui_platform` crates (now `ala` and `ala-platform`) and the Zed utility crates they need only. No GPL-licensed Zed
 code is linked into any zz binary.
 

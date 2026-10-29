@@ -85,7 +85,7 @@ class RosterTallyTests(unittest.TestCase):
         reasons = dict(re.findall(r"^([A-Z_]+)='(.*)'$", body, re.M))
         cases = re.findall(r"case_run (\S+) (?:record|cli) \"\$([A-Z_]+)\"", body)
         self.assertTrue(cases)
-        helpers = body[body.index("declare -A RECORD_OWNERS"):body.index("# NAME MODE REASON")]
+        helpers = body[body.index("declare -A RECORD_OWNERS"):body.index("case_run() {")]
         script = ["set -euo pipefail", "RECORDS=0", helpers]
         for name, variable in cases:
             quoted = reasons[variable].replace("'", "'\\''")

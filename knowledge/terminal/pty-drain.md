@@ -41,7 +41,9 @@ The Linux ASCII result uses 15 runs with a 232.888 ms median. Its individual run
 
 A macOS pty hands the consumer **exactly 1024 bytes per read** during a flood, no matter the
 buffer size offered, and the producer blocks after filling that queue. Baud, termios flags,
-and buffer sizes do not change this (probed exhaustively . see the constants' doc comments).
+and buffer sizes do not change this (probed exhaustively). The bridge spin was probed on
+Mac16,5/macOS 27: 64, 256 and 512 retries gave 281, 332 and 348 MB/s, which is why
+`PTY_BRIDGE_SPIN_MAX` is 512 off Linux.
 So 150 MiB = 153,600 mandatory exchanges, and throughput is purely:
 
 ```
