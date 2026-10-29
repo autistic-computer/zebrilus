@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const ELEMENT_PICKER_SCRIPT: &str = include_str!("element_picker.js");
+pub const ELEMENT_PICKER_API: &str = "__alaCefElementPicker";
+pub const ELEMENT_PICKER_QUERY: &str = "__alaCefElementPickerQuery";
 pub const MAX_ELEMENT_CONTEXT_BYTES: usize = 32 * 1024;
 const MAX_PICKER_MESSAGE_BYTES: usize = MAX_ELEMENT_CONTEXT_BYTES + 1024;
 const MAX_PICK_TOKEN_BYTES: usize = 64;
@@ -32,7 +34,7 @@ pub fn element_picker_start_script(
     let token = serde_json::to_string(token)?;
     let appearance = serde_json::to_string(appearance)?;
     Ok(format!(
-        "globalThis.__zzElementPicker?.start({token},{appearance});"
+        "globalThis.{ELEMENT_PICKER_API}?.start({token},{appearance});"
     ))
 }
 
@@ -227,7 +229,7 @@ mod tests {
         let script = element_picker_start_script("token-\"quoted\"", &appearance)
             .expect("appearance serializes");
         let arguments = script
-            .strip_prefix("globalThis.__zzElementPicker?.start(")
+            .strip_prefix(&format!("globalThis.{ELEMENT_PICKER_API}?.start("))
             .and_then(|script| script.strip_suffix(");"))
             .expect("start call wraps JSON arguments");
         let arguments: serde_json::Value =

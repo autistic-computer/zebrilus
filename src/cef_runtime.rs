@@ -76,11 +76,10 @@ type CursorHandle = *mut u8;
 
 const DEFAULT_BROWSER_FRAME_RATE: i32 = 60;
 const MAX_BROWSER_FRAME_RATE: i32 = 240;
-const ELEMENT_PICKER_QUERY_FUNCTION: &str = "__zzElementPickerQuery";
-const ELEMENT_PICKER_CANCEL_FUNCTION: &str = "__zzElementPickerQueryCancel";
+const ELEMENT_PICKER_CANCEL_FUNCTION: &str = "__alaCefElementPickerQueryCancel";
 const ARTIFACT_REPLY_PREFIX: &str = "page.reply:";
 const ARTIFACT_REPLY_SCRIPT: &str = r#"(() => {
-  const query = globalThis.__zzElementPickerQuery;
+  const query = globalThis.__alaCefElementPickerQuery;
   if (typeof query !== "function" || "PAGE_GLOBAL" in globalThis) return;
   const reply = (text) => new Promise((resolve, reject) => query({
     request: "page.reply:" + String(text),
@@ -90,7 +89,7 @@ const ARTIFACT_REPLY_SCRIPT: &str = r#"(() => {
   }));
   Object.defineProperty(globalThis, "PAGE_GLOBAL", { value: Object.freeze({ reply }) });
 })();"#;
-use crate::element_picker::ELEMENT_PICKER_SCRIPT;
+use crate::element_picker::{ELEMENT_PICKER_API, ELEMENT_PICKER_QUERY, ELEMENT_PICKER_SCRIPT};
 const WINDOWS_EPOCH_UNIX_OFFSET_MICROS: i64 = 11_644_473_600_000_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -126,7 +125,7 @@ fn script_url(name: &str) -> String {
 
 fn element_picker_router_config() -> MessageRouterConfig {
     MessageRouterConfig {
-        js_query_function: ELEMENT_PICKER_QUERY_FUNCTION.to_owned(),
+        js_query_function: ELEMENT_PICKER_QUERY.to_owned(),
         js_cancel_function: ELEMENT_PICKER_CANCEL_FUNCTION.to_owned(),
         ..MessageRouterConfig::default()
     }
@@ -1841,7 +1840,9 @@ impl BrowserSession {
         }
         if let Some(frame) = self.browser.main_frame() {
             frame.execute_java_script(
-                Some(&CefString::from("globalThis.__zzElementPicker?.cancel();")),
+                Some(&CefString::from(
+                    format!("globalThis.{ELEMENT_PICKER_API}?.cancel();").as_str(),
+                )),
                 Some(&CefString::from(script_url("element-picker.js").as_str())),
                 1,
             );
