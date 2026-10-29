@@ -26,8 +26,9 @@ The browser client in `clients/web` (`just web run`) uses the shared ala compone
 # Surfaces and roles
 
 Every painted piece of chrome names a surface role (see [surface roles](/designs/surface-roles.md)):
-a kit kind or group such as `button`, `menu-item`, `floating` or `popover`, or a zz role in one from `zz_ui::roles`
-(`crates/zz-ui/src/roles.rs`) such as `chrome.button`, `sidebar.row` or `pane.chip`. The role
+a kit kind or group such as `button`, `menu-item`, `floating` or `popover`, a window chrome role from
+`penna::roles` (`libs/penna/src/roles.rs`) such as `chrome.button` or `sidebar.row`, or a zz role from
+`zz_ui::roles` (`crates/zz-ui/src/roles.rs`) such as `pane.chip`. The role
 decides the fill, outline, shadow, shape and the hover and selected highlights; the theme's
 materials decide what those look like, and the theme can change any role by id. To paint one:
 
@@ -50,8 +51,9 @@ materials decide what those look like, and the theme can change any role by id. 
   role. Add a `SurfaceRole` to `crates/zz-ui/src/roles.rs`: an id spelled the way a theme file
   writes it (`region.piece`, lowercase with dots and dashes), the kind it is, a label and a
   plain-words description for the theme creator, and a `StylePatch` holding only what differs from
-  the kind, so the Default theme draws it as designed. List it in its region in `REGIONS`: that list
-  is what theme files are checked against and what the theme creator shows. A piece that looks and
+  the kind, so the Default theme draws it as designed. List it in `ZZ`, next to its region's other
+  roles: that list (which also places penna's chrome roles) is what theme files are checked against
+  and the order the theme creator shows. A piece that looks and
   behaves like an existing role reuses that role instead.
 - Do not hand-draw a border, a box shadow or a corner radius. Clippy rejects them outside the kit
   (rule 3).
@@ -408,9 +410,11 @@ sets over it, never from the terminal.** The mode follows the OS appearance
 unless `theme-mode` pins one, and only picks which of the theme's color sets applies. There is no
 knob that derives chrome from terminal colors, and a Ghostty palette cannot repaint the window.
 
-`crates/zz-ui/src/interface_theme.rs` owns `InterfaceTheme`, `Materials` and `ThemeColors`, the
-built-in themes compiled from `crates/zz-ui/themes/*.json`, and the theme file parser, shared by
-the desktop, browser and iOS clients and the storybook. `crates/zz/src/theme.rs` applies desktop
+`libs/penna/src/interface_theme.rs` owns `InterfaceTheme`, `Materials` and `ThemeColors` and the
+theme file parser; `crates/zz-ui/src/interface_theme.rs` re-exports them with zz's built-in themes
+from `crates/zz-ui/themes/*.json`, which `zz_ui::register` hands to penna (replacing penna's own
+Default) along with zz's roles and retired role ids. Every zz-ui theme and role lookup registers
+first, so the desktop, browser and iOS clients and the storybook all see the same set. `crates/zz/src/theme.rs` applies desktop
 configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
 ala globals (used by settings badges and the detach action, not to color anything).
 `apply_zz_overrides` layers these values over the zz-ui base:

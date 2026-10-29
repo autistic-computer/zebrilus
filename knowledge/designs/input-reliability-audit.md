@@ -147,7 +147,7 @@ window drag cannot leak a drag into the panes its lagging positions sweep over.
   `resizing` highlight latched forever with no daemon resize sent.
 - **`pane_drag` missed-up path skips `dismiss_armed_prefix`** (`view.rs:1406-1412`): the
   prefix stays armed and the next keystroke is eaten as a binding.
-- **Window drag handle** (`window/drag.rs:17-80`): stranded `armed` makes a buttonless
+- **Window drag handle** (`window/drag.rs:17-80`, now `window_drag_handle` in `libs/penna/src/shell.rs`): stranded `armed` makes a buttonless
   titlebar hover start a window move.
 - **Terminal `swallowed_overlay_key`** (`terminal/view.rs:376`): the same press/release
   pairing bug one level down; focus leaving the terminal between press and release makes

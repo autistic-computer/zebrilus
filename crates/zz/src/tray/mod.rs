@@ -1,12 +1,3 @@
-#[cfg(target_os = "linux")]
-mod linux;
-#[cfg(target_os = "macos")]
-mod macos;
-#[cfg(target_os = "windows")]
-mod windows;
-
-use async_channel::Sender;
-
 pub(crate) use desktop::{
     DesktopTray, focus_pane, hide, hide_or_quit, init_desktop, quit_requested, set_active, show,
 };
@@ -24,34 +15,51 @@ pub(crate) enum TrayEvent {
     RestartDaemon,
 }
 
-pub(crate) struct Tray {
-    #[cfg(target_os = "linux")]
-    _backend: linux::Service,
-    #[cfg(target_os = "macos")]
-    _backend: macos::StatusItem,
-    #[cfg(target_os = "windows")]
-    _backend: windows::NotifyIcon,
-}
-
-fn spawn(sender: Sender<TrayEvent>, source: facts::Source) -> Option<Tray> {
-    #[cfg(target_os = "macos")]
-    let backend = macos::spawn(sender, source)?;
-    #[cfg(target_os = "linux")]
-    let backend = linux::spawn(sender, source)?;
-    #[cfg(target_os = "windows")]
-    let backend = windows::spawn(sender, source)?;
-    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-    return None;
-    #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
-    {
-        Some(Tray { _backend: backend })
+impl TrayEvent {
+    fn action(&self) -> Option<String> {
+        Some(match self {
+            Self::Toggle => "toggle".to_owned(),
+            Self::Quit => "quit".to_owned(),
+            Self::NewSession => "new-session".to_owned(),
+            Self::SwitchSession(name) => format!("session {name}"),
+            Self::FocusPane(host, pane) if *host == crate::mux::hosts::HostId::LOCAL => {
+                format!("pane {pane}")
+            }
+            Self::OpenSettings => "settings".to_owned(),
+            Self::OpenLogs => "logs".to_owned(),
+            Self::RestartDaemon => "restart-daemon".to_owned(),
+            Self::Available(_) | Self::FocusPane(..) => return None,
+        })
     }
-}
 
-impl Tray {
-    fn set_attention(&self, count: usize) {
-        #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
-        self._backend.set_attention(count);
+    fn from_tray(event: penna::tray::TrayEvent) -> Option<Self> {
+        use penna::tray::TrayEvent as Tray;
+        match event {
+            Tray::Activate => Some(Self::Toggle),
+            Tray::Available(available) => Some(Self::Available(available)),
+            Tray::Action(action) => Self::from_action(&action),
+        }
+    }
+
+    fn from_action(action: &str) -> Option<Self> {
+        if let Some(name) = action.strip_prefix("session ") {
+            return Some(Self::SwitchSession(name.to_owned()));
+        }
+        if let Some(pane) = action.strip_prefix("pane ") {
+            return pane
+                .parse()
+                .ok()
+                .map(|pane| Self::FocusPane(crate::mux::hosts::HostId::LOCAL, pane));
+        }
+        Some(match action {
+            "toggle" => Self::Toggle,
+            "quit" => Self::Quit,
+            "new-session" => Self::NewSession,
+            "settings" => Self::OpenSettings,
+            "logs" => Self::OpenLogs,
+            "restart-daemon" => Self::RestartDaemon,
+            _ => return None,
+        })
     }
 }
 
@@ -93,7 +101,32 @@ pub(crate) const fn quit_action(
 
 #[cfg(test)]
 mod tests {
-    use super::{QuitAction, ToggleAction, quit_action, toggle_action};
+    use super::{QuitAction, ToggleAction, TrayEvent, quit_action, toggle_action};
+    use crate::mux::hosts::HostId;
+    use zz_protocol::PaneId;
+
+    #[test]
+    fn every_menu_action_reads_back_as_the_event_it_names() {
+        for event in [
+            TrayEvent::Toggle,
+            TrayEvent::Quit,
+            TrayEvent::NewSession,
+            TrayEvent::SwitchSession("work: two".into()),
+            TrayEvent::FocusPane(HostId::LOCAL, PaneId(9)),
+            TrayEvent::OpenSettings,
+            TrayEvent::OpenLogs,
+            TrayEvent::RestartDaemon,
+        ] {
+            let action = event.action().expect("a menu action");
+            assert_eq!(TrayEvent::from_action(&action), Some(event));
+        }
+        assert_eq!(TrayEvent::Available(true).action(), None);
+        assert_eq!(TrayEvent::from_action("sparkle"), None);
+        assert_eq!(
+            TrayEvent::from_tray(penna::tray::TrayEvent::Activate),
+            Some(TrayEvent::Toggle)
+        );
+    }
 
     #[test]
     fn quit_hides_only_with_an_available_tray_and_preserved_sessions() {
@@ -120,5 +153,7 @@ mod tests {
         assert_eq!(toggle_action(false, true), ToggleAction::Show);
     }
 }
+
 mod desktop;
 mod facts;
+mod look;

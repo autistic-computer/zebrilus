@@ -12,22 +12,25 @@ use crate::{
     workspace::{AppView, sidebar::WorkspaceSidebar},
 };
 
+use penna::tray::{Menu, Tray};
+
 use super::{
-    QuitAction, Tray, TrayEvent,
-    facts::{Source, TrayFacts, facts_from, menu},
-    quit_action,
+    QuitAction, TrayEvent,
+    facts::{TrayFacts, facts_from, menu},
+    look, quit_action,
 };
 
 #[derive(Default)]
 pub(crate) struct DesktopTray {
     tray: Option<Tray>,
-    source: Source,
+    menu: Menu,
+    shown_attention: usize,
     facts: Option<TrayFacts>,
     active: bool,
     available: bool,
     pub(crate) window: Option<AnyWindowHandle>,
     mux: Option<WeakEntity<MuxClient>>,
-    events: Option<Sender<TrayEvent>>,
+    events: Option<Sender<penna::tray::TrayEvent>>,
     pub(crate) sidebar: Option<WeakEntity<WorkspaceSidebar>>,
     pub(crate) stopping_daemon: bool,
     _task: Option<Task<()>>,
@@ -40,10 +43,21 @@ impl DesktopTray {
         self.available
     }
 
-    fn publish(&self) {
-        self.source.set(menu(self.facts.as_ref(), self.active));
-        if let Some(backend) = &self.tray {
-            backend.set_attention(self.facts.as_ref().map_or(0, |facts| facts.attention.len()));
+    fn publish(&mut self) {
+        let changed = self.menu.set(menu(self.facts.as_ref(), self.active));
+        let attention = self.facts.as_ref().map_or(0, |facts| facts.attention.len());
+        let Some(tray) = &self.tray else {
+            return;
+        };
+        if changed {
+            tray.menu_changed();
+        }
+        if attention != self.shown_attention
+            && let Some(icon) = look::icon(attention)
+        {
+            tray.set_look(&look::tooltip(attention), &icon);
+            tray.set_badge(&look::badge(attention));
+            self.shown_attention = attention;
         }
     }
 }
@@ -53,6 +67,9 @@ pub(crate) fn init_desktop(mux: &Entity<MuxClient>, window: AnyWindowHandle, cx:
     let event_mux = mux.clone();
     let task = cx.spawn(async move |cx| {
         while let Ok(event) = receiver.recv().await {
+            let Some(event) = TrayEvent::from_tray(event) else {
+                continue;
+            };
             cx.update(|cx| match event {
                 TrayEvent::Toggle => crate::toggle_from_tray(window, cx),
                 TrayEvent::Quit => quit_and_stop_sessions(&event_mux, cx),
@@ -99,7 +116,8 @@ fn sync_enabled(cx: &mut App) {
     }
     if enabled {
         if let Some(sender) = &tray.events {
-            tray.tray = super::spawn(sender.clone(), tray.source.clone());
+            tray.tray = look::spawn(tray.menu.clone(), sender.clone());
+            tray.shown_attention = 0;
             tray.publish();
         }
     } else {

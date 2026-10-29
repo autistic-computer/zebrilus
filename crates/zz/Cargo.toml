@@ -53,6 +53,7 @@ log.workspace = true
 mimalloc.workspace = true
 naga.workspace = true
 parking_lot.workspace = true
+penna = { workspace = true, features = ["tray"] }
 semver = "1"
 serde.workspace = true
 serde_json.workspace = true
@@ -82,7 +83,7 @@ core-foundation.workspace = true
 core-video.workspace = true
 libc.workspace = true
 objc2.workspace = true
-objc2-app-kit = { workspace = true, features = ["NSButton", "NSControl", "NSEvent", "NSGraphics", "NSGraphicsContext", "NSImage", "NSMenu", "NSMenuItem", "NSScreen", "NSStatusBar", "NSStatusBarButton", "NSStatusItem", "objc2-core-foundation", "objc2-quartz-core"] }
+objc2-app-kit = { workspace = true, features = ["NSGraphics", "NSGraphicsContext", "NSImage", "NSScreen", "objc2-core-foundation", "objc2-quartz-core"] }
 objc2-core-foundation = { workspace = true, features = ["CFCGTypes"] }
 objc2-core-graphics = { workspace = true, features = ["CGAffineTransform", "CGPath"] }
 objc2-foundation = { workspace = true, features = ["NSBundle", "NSData", "NSPathUtilities", "NSString"] }
@@ -90,7 +91,6 @@ objc2-quartz-core = { workspace = true, features = ["CALayer", "CAShapeLayer", "
 raw-window-handle.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ksni = { version = "=0.3.6", default-features = false, features = ["async-io", "blocking"] }
 libc.workspace = true
 mimalloc = { workspace = true, features = ["no_thp"] }
 notify = "=9.0.0-rc.5"

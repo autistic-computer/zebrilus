@@ -6259,8 +6259,13 @@ dependencies = [
  "anyhow",
  "async-channel",
  "image",
+ "ksni",
  "log",
  "markdown",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
+ "parking_lot",
  "ropey",
  "rust-embed",
  "serde",
@@ -6276,6 +6281,7 @@ dependencies = [
  "unicode-segmentation",
  "url",
  "web-time",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -11192,7 +11198,6 @@ dependencies = [
  "fff-search",
  "ignore",
  "image",
- "ksni",
  "libc",
  "log",
  "mimalloc",
@@ -11205,6 +11210,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "objc2-quartz-core 0.3.2",
  "parking_lot",
+ "penna",
  "raw-window-handle",
  "semver",
  "serde",

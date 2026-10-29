@@ -14,6 +14,11 @@ impl Service {
         let _ = self.handle.update(|_| {});
     }
 
+    pub(super) fn set_badge(&self, badge: &str) {
+        let badge = badge.to_owned();
+        let _ = self.handle.update(move |tray| tray.badge = badge);
+    }
+
     pub(super) fn set_look(&self, tooltip: &str, icon: &TrayIcon) {
         let tooltip = tooltip.to_owned();
         let pixmap = pixmap(icon);
@@ -38,7 +43,9 @@ pub(super) fn spawn(
     let tray = SniTray {
         id: options.id,
         tooltip: options.tooltip,
+        badge: String::new(),
         icon: pixmap(&options.icon),
+        icon_name: options.icon_name.unwrap_or_default(),
         menu_on_click: options.menu_on_click,
         menu,
         events,
@@ -55,7 +62,9 @@ pub(super) fn spawn(
 struct SniTray {
     id: String,
     tooltip: String,
+    badge: String,
     icon: Vec<ksni::Icon>,
+    icon_name: String,
     menu_on_click: bool,
     menu: Menu,
     events: Sender<TrayEvent>,
@@ -86,6 +95,18 @@ impl ksni::Tray for SniTray {
             title: self.tooltip.clone(),
             ..Default::default()
         }
+    }
+
+    fn status(&self) -> ksni::Status {
+        if self.badge.is_empty() {
+            ksni::Status::Active
+        } else {
+            ksni::Status::NeedsAttention
+        }
+    }
+
+    fn icon_name(&self) -> String {
+        self.icon_name.clone()
     }
 
     fn icon_pixmap(&self) -> Vec<ksni::Icon> {

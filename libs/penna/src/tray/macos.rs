@@ -21,6 +21,14 @@ pub(super) struct StatusItem {
 }
 
 impl StatusItem {
+    pub(super) fn set_badge(&self, badge: &str) {
+        if let Some(mtm) = MainThreadMarker::new()
+            && let Some(button) = self.item.button(mtm)
+        {
+            button.setTitle(&NSString::from_str(badge));
+        }
+    }
+
     pub(super) fn set_look(&self, tooltip: &str, icon: &TrayIcon) {
         let Some(mtm) = MainThreadMarker::new() else {
             return;

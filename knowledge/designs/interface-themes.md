@@ -3,7 +3,7 @@ type: Design Plan
 title: "Interface themes: materials, roles and colors in one file"
 description: "A theme is one JSON file holding its materials, how each piece of UI uses them (its roles), and the colors it is drawn in for light and for dark, so it can imitate a whole app; the mode only picks the color set. Default, macOS and Yaru ship built in. Settings draws the theme with an accent and a background tint over it, and saves the result as a theme; the 34 old palette presets, the color and material presets, Flat/Modern/Full, the chrome color overrides, the nine-key look and the per-material keys are gone."
 status: Built
-resource: crates/zz-ui/src/interface_theme.rs
+resource: libs/penna/src/interface_theme.rs
 tags:
 - ui
 - theme
@@ -82,8 +82,9 @@ Picking a theme clears the radius (`ThemeOverrides::pick_theme`, `ConfigKey::THE
 
 | Piece | Code |
 |---|---|
-| Theme, materials, roles and colors; built-ins; parser | `crates/zz-ui/src/interface_theme.rs` |
-| Role ids a theme may name | `zz_ui::roles` (`crates/zz-ui/src/roles.rs`) |
+| Theme, materials, roles and colors; parser; built-in registry | `libs/penna/src/interface_theme.rs` |
+| zz's built-ins (Default, macOS, Yaru) | `crates/zz-ui/src/interface_theme.rs` (`BUILTIN_SOURCES`), `crates/zz-ui/themes/*.json` |
+| Role ids a theme may name | `penna::roles` and `zz_ui::roles` (`libs/penna/src/roles.rs`, `crates/zz-ui/src/roles.rs`) |
 | Built-in ids, named accents and the radius limit for config validation | `zz_client::appearance::BUILTIN_THEMES`, `ACCENTS`, `AccentSetting`, `DEFAULT_TINT_HUE`, `MAX_CORNER_RADIUS` |
 | `interface-theme`, `chrome-accent` and the tint keys, `themes/` folder, writer, retired keys | `crates/zz-config/src/lib.rs` (`ConfigKey::THEME_PICKS`, `RETIRED_MATERIAL_KEYS`), `crates/zz-config/src/themes.rs` |
 | Overrides over the theme | `zz_ui::interface_theme::ThemeOverrides` (`apply_to`, `pick_theme`), `accent_color`, `ACCENT_COLORS`; desktop `config::theme_overrides` and `config::shown_theme` in `crates/zz/src/config/mod.rs` |

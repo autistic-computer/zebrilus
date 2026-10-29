@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use parking_lot::Mutex;
+use penna::tray::MenuEntry;
 use zz_client::AgentAttentionStatus;
 use zz_protocol::{MuxSnapshot, PaneId, PaneKindSnapshot};
 
@@ -29,39 +27,6 @@ pub(super) struct TrayFacts {
     pub sessions: Vec<Session>,
     pub attention: Vec<Attention>,
     pub update_available: bool,
-}
-
-#[derive(Clone, Default)]
-pub(super) struct Source(Arc<Mutex<Vec<MenuEntry>>>);
-
-#[derive(Clone)]
-pub(super) enum MenuEntry {
-    Separator,
-    Item {
-        title: String,
-        hint: String,
-        action: Option<TrayEvent>,
-    },
-}
-
-impl MenuEntry {
-    pub fn label(&self) -> String {
-        match self {
-            Self::Separator => String::new(),
-            Self::Item { title, hint, .. } if !hint.is_empty() => format!("{title} · {hint}"),
-            Self::Item { title, .. } => title.clone(),
-        }
-    }
-}
-
-impl Source {
-    pub fn menu(&self) -> Vec<MenuEntry> {
-        self.0.lock().clone()
-    }
-
-    pub fn set(&self, entries: Vec<MenuEntry>) {
-        *self.0.lock() = entries;
-    }
 }
 
 pub(super) fn facts_from(
@@ -101,10 +66,16 @@ pub(super) fn facts_from(
 }
 
 fn item(title: impl Into<String>, hint: impl Into<String>, action: Option<TrayEvent>) -> MenuEntry {
+    let title = title.into();
+    let hint = hint.into();
     MenuEntry::Item {
-        title: title.into(),
-        hint: hint.into(),
-        action,
+        label: if hint.is_empty() {
+            title
+        } else {
+            format!("{title} · {hint}")
+        },
+        action: action.and_then(|event| event.action()),
+        checked: None,
     }
 }
 
@@ -279,13 +250,11 @@ mod tests {
     #[test]
     fn unavailable_facts_keep_static_actions() {
         let rows = menu(None, false);
-        assert!(rows.iter().any(|row| matches!(
-            row,
-            MenuEntry::Item {
-                action: Some(TrayEvent::NewSession),
-                ..
-            }
-        )));
-        assert!(!rows.iter().any(|row| matches!(row, MenuEntry::Item { title, .. } if title == "Sessions" || title == "Needs attention")));
+        let new_session = TrayEvent::NewSession.action();
+        assert!(
+            rows.iter()
+                .any(|row| matches!(row, MenuEntry::Item { action, .. } if *action == new_session))
+        );
+        assert!(!rows.iter().any(|row| matches!(row, MenuEntry::Item { label, .. } if label == "Sessions" || label == "Needs attention")));
     }
 }
