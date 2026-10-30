@@ -431,16 +431,16 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
-| `phone.bar` | bar | 44px nav bars (settings, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
-| `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, the Hosts page's Settings button, the pill the keys sit in | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
-| `phone.button` | icon-button | back, close, gear | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
+| `phone.bar` | bar | 44px nav bars (settings, sheet header) | `kit/compact/bar.rs:205` (`compact_nav_bar`), `kit/compact/header.rs:61` (`folding_title_bar`) | three hand-made 44px headers; fixed, one `compact_nav_bar` |
+| `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, the Hosts page's Settings button, the pill the keys sit in | `kit/compact/bar.rs:91` | took floating glass while in the layout; fixed, a solid fill without an edge |
+| `phone.button` | icon-button | back, close, gear | `kit/compact/bar.rs:192`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
 | `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `kit/touch/key_row.rs:104` | |
-| `phone.card` | tile | the overview's bento tiles: hosts on the Hosts page, windows on a host's page | `ui/compact/bento.rs` (`bento_tile`) | was one card per pane in a row per window until the 2026-10-26 drill-in |
+| `phone.card` | tile | the overview's bento tiles: hosts on the Hosts page, windows on a host's page | `kit/compact/bento.rs` (`bento_tile`) | was one card per pane in a row per window until the 2026-10-26 drill-in |
 | `phone.mini` | tile | the panes inside a window's tile, where the window splits them, on the terminal's background; ringed in the accent on the pane the window opens to | `ui/compact/bento.rs` (`mini_pane`) | new 2026-10-26 with the drill-in overview |
-| `phone.add` | tile | the Add host tile at the end of the Hosts page (until 2026-10-26 the New pane tile that ended each overview row) | `ui/compact/bento.rs` (`bento_add_tile`) | shared `phone.card` with the live cards and was narrower than them; split out |
+| `phone.add` | tile | the Add host tile at the end of the Hosts page (until 2026-10-26 the New pane tile that ended each overview row) | `kit/compact/bento.rs` (`bento_add_tile`) | shared `phone.card` with the live cards and was narrower than them; split out |
 | `phone.row` | menu-item | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `kit/touch/which_key_list.rs:60`, `ui/settings.rs:222` | four corner rules; fixed, one role |
 | `drawer.hosts`, `drawer.new`, `drawer.add-host`, `drawer.new-pane`, `drawer.tabs`, `drawer.bindings` | drawer | each phone drawer, so a theme can set one's corner smoothing apart from the rest | `app/app/compact/overview.rs`, `app/app/picker.rs`, `app/app/browser_pane.rs`, `app/app/compact.rs` | no way to tune one drawer apart from the rest; macOS sets `drawer` smoothing 2 |
-| `grabber` | badge | sheet grabbers | `ui/compact/bar.rs:46`, `kit/sheet.rs:376` | two sizes and colors |
+| `grabber` | badge | sheet grabbers | `kit/sheet.rs:505` | two sizes and colors |
 
 ### Overlays
 
@@ -461,7 +461,7 @@ What the inventory found on the kinds themselves:
 | `menu-item` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `kit/picker.rs:134` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
 | `dialog` | alerts and prompts (ssh, add host, restart daemon, import) | `kit/overlay/dialog.rs:499` | |
 | `sheet` | which-key, phone bottom sheets | `kit/which_key.rs:419`, `kit/sheet.rs:355` | |
-| `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:188`, `app/app.rs:2036`, `ui/compact/hud.rs:5` | banner and HUD used the popover look; fixed, both draw as toasts |
+| `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:188`, `app/app.rs:2036`, `kit/compact/hud.rs:18` | banner and HUD used the popover look; fixed, both draw as toasts |
 | `tooltip` | floating | `kit/tooltip/mod.rs:53` | |
 | `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus and tooltips still show bindings as text) |
 

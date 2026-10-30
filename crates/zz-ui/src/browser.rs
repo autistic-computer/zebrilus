@@ -671,6 +671,34 @@ pub fn browser_toolbar_button(
         .tooltip(tooltip)
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the box is a glyph in the button's text color, not a surface edge"
+)]
+pub fn compact_tabs_button(id: impl Into<ala::ElementId>, count: usize, cx: &App) -> Button {
+    let color = cx.theme().foreground.faint();
+    Button::new(id)
+        .ghost()
+        .compact()
+        .surface_role(crate::roles::BROWSER_BUTTON)
+        .size(crate::PANE_HEADER_CONTROL_HEIGHT)
+        .text_color(color)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(crate::rems_from_px(15.0))
+                .rounded(crate::rems_from_px(4.0))
+                .border(crate::rems_from_px(1.5))
+                .border_color(color)
+                .text_size(crate::rems_from_px(9.0))
+                .line_height(crate::rems_from_px(10.0))
+                .font_semibold()
+                .child(SharedString::from(count.min(99).to_string())),
+        )
+}
+
 pub fn browser_start_surface(content: impl IntoElement) -> ala::Div {
     div()
         .absolute()

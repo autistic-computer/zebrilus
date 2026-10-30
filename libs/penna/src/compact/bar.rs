@@ -281,7 +281,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
     };
     let tile = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET;
     let tile_radius = if theme.style(roles::PHONE_PILL_ICON).shape == Shape::Round {
-        penna::touch::concentric(pill.radius, px(TILE_INSET))
+        crate::touch::concentric(pill.radius, px(TILE_INSET))
     } else {
         backing.radius
     };

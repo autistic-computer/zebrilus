@@ -7,6 +7,13 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     button::{Button, ButtonVariants as _},
+    compact::{
+        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, PillLabel, PillMenuAlign, PillMenuItem,
+        PillMenuLook, PillPlacement, bento_add_tile, bento_grid, compact_bar_button,
+        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
+        compact_pill_menu, folding_title_bar, pill_glass_over,
+    },
+    settings::large_title,
     touch::{
         ArrowPad, KEY_ROW_HEIGHT, KeyRow, PageDot, PopoverKey, PopoverKeyTap, ToolKeys,
         WhichKeyList, page_dots,
@@ -17,11 +24,8 @@ use penna::{
 use zz_protocol::AgentProvider;
 use zz_ui::{
     compact::{
-        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, HostState, PillLabel, PillMenuAlign,
-        PillMenuItem, PillMenuLook, PillPlacement, bento_add_tile, bento_grid, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
-        compact_pill_menu, folding_title_bar, host_tile, host_tile_line, large_title, mini_pane,
-        overview_host_empty, overview_session_heading, pill_glass_over, window_layout, window_tile,
+        HostState, host_tile, host_tile_line, mini_pane, overview_host_empty,
+        overview_session_heading, window_layout, window_span, window_tile,
     },
     pane::agent_provider_icon,
 };
@@ -490,15 +494,15 @@ pub(crate) fn host_page(cx: &App) -> impl IntoElement {
         .child(div().px(px(BENTO_INSET)).child(bento_grid(
             px(GRID),
             vec![
-                (BentoSpan::for_window(3), daemon.into_any_element()),
-                (BentoSpan::for_window(1), site.into_any_element()),
-                (BentoSpan::for_window(2), agents.into_any_element()),
+                (window_span(3), daemon.into_any_element()),
+                (window_span(1), site.into_any_element()),
+                (window_span(2), agents.into_any_element()),
             ],
         )))
         .child(overview_session_heading("scratch", cx))
         .child(div().px(px(BENTO_INSET)).child(bento_grid(
             px(GRID),
-            vec![(BentoSpan::for_window(1), notes.into_any_element())],
+            vec![(window_span(1), notes.into_any_element())],
         )))
 }
 

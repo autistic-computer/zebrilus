@@ -1,17 +1,11 @@
 use ala::{
-    App, Div, ElementId, GlassMaterial, ParentElement as _, Pixels, ScrollHandle, SharedString,
-    Styled as _, div, prelude::*, px, transparent_black,
+    App, Div, GlassMaterial, ParentElement as _, Pixels, ScrollHandle, SharedString, Styled as _,
+    div, prelude::*, px, transparent_black,
 };
 
-use crate::{
-    ActiveTheme as _, Colorize as _, Edge, PANE_HEADER_CONTROL_HEIGHT, StyledExt as _,
-    button::{Button, ButtonVariants as _},
-    rems_from_px, roles,
-};
+use crate::{ActiveTheme as _, Edge, StyledExt as _, roles};
 
-pub use penna::settings::{LARGE_TITLE_HEIGHT, large_title};
-
-pub const TITLE_BAR_HEIGHT: f32 = 44.0;
+pub const COMPACT_TITLE_BAR_HEIGHT: f32 = 44.0;
 
 const FOLD_START: f32 = 4.0;
 const FROST_SPAN: f32 = 24.0;
@@ -48,7 +42,7 @@ pub fn folding_title_bar(
         .top_0()
         .left_0()
         .right_0()
-        .h(top_inset + px(TITLE_BAR_HEIGHT))
+        .h(top_inset + px(COMPACT_TITLE_BAR_HEIGHT))
         .when(frost > 0.0, |bar| {
             bar.child(
                 div()
@@ -74,7 +68,7 @@ pub fn folding_title_bar(
                     .left(px(56.0))
                     .right(px(56.0))
                     .bottom_0()
-                    .h(px(TITLE_BAR_HEIGHT))
+                    .h(px(COMPACT_TITLE_BAR_HEIGHT))
                     .flex()
                     .items_center()
                     .justify_center()
@@ -92,32 +86,4 @@ pub fn folding_title_bar(
                     ),
             )
         })
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the box is a glyph in the button's text color, not a surface edge"
-)]
-pub fn compact_tabs_button(id: impl Into<ElementId>, count: usize, cx: &App) -> Button {
-    let color = cx.theme().foreground.faint();
-    Button::new(id)
-        .ghost()
-        .compact()
-        .surface_role(roles::BROWSER_BUTTON)
-        .size(PANE_HEADER_CONTROL_HEIGHT)
-        .text_color(color)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(rems_from_px(15.0))
-                .rounded(rems_from_px(4.0))
-                .border(rems_from_px(1.5))
-                .border_color(color)
-                .text_size(rems_from_px(9.0))
-                .line_height(rems_from_px(10.0))
-                .font_semibold()
-                .child(SharedString::from(count.min(99).to_string())),
-        )
 }

@@ -123,6 +123,39 @@ pub const PHONE_ROW: SurfaceRole = SurfaceRole::under(
     "Rows in phone drawers and touch lists",
 )
 .with(P.selected(Highlight::None));
+pub const PHONE_BAR: SurfaceRole = SurfaceRole::new(
+    "phone.bar",
+    Kind::Bar,
+    "Phone bars",
+    "The phone's 44pt top bars over pages and sheets",
+);
+pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::BADGE,
+    "phone.pill.icon",
+    "Pill icon",
+    "The icon tile at the start of the phone pill",
+)
+.with(P.outline(false));
+pub const PHONE_BUTTON: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::ICON_BUTTON,
+    "phone.button",
+    "Phone buttons",
+    "Icon buttons on phone bars and pills, such as back and close",
+);
+pub const PHONE_CARD: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::TILE,
+    "phone.card",
+    "Phone tiles",
+    "Tiles in a phone grid",
+)
+.with(P.fill(Fill::Tint));
+pub const PHONE_ADD: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::TILE,
+    "phone.add",
+    "Add tile",
+    "The add tile at the end of a phone grid",
+)
+.with(P.fill(Fill::Tint));
 pub const PICKER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DIALOG,
     "picker",
@@ -130,21 +163,26 @@ pub const PICKER: SurfaceRole = SurfaceRole::under(
     "Dialogs that search a list and pick from it, such as a file picker",
 );
 
-pub const CHROME: [SurfaceRole; 18] = [
+pub const CHROME: [SurfaceRole; 23] = [
     WINDOW,
     SIDEBAR,
     TITLEBAR,
+    PHONE_BAR,
     SETTINGS_CARD,
     SETTINGS_PREVIEW,
     CHROME_BUTTON,
     WINDOW_CONTROLS,
+    PHONE_BUTTON,
     SIDEBAR_ROW,
     SETTINGS_TILE,
+    PHONE_CARD,
+    PHONE_ADD,
     BAR_RULE,
     SIDEBAR_RULE,
     LIST_RULE,
     INLINE_PANEL,
     PHONE_PILL,
+    PHONE_PILL_ICON,
     PHONE_KEY,
     ARROW_PAD,
     PHONE_ROW,

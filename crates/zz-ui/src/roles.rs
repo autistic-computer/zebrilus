@@ -1,7 +1,8 @@
 pub use penna::roles::{
-    ARROW_PAD, BAR_RULE, CHROME_BUTTON, INLINE_PANEL, LIST_RULE, PHONE_KEY, PHONE_PILL, PHONE_ROW,
-    PICKER, SETTINGS_CARD, SETTINGS_PREVIEW, SETTINGS_TILE, SIDEBAR, SIDEBAR_ROW, SIDEBAR_RULE,
-    TITLEBAR, WINDOW, WINDOW_CONTROLS,
+    ARROW_PAD, BAR_RULE, CHROME_BUTTON, INLINE_PANEL, LIST_RULE, PHONE_ADD, PHONE_BAR,
+    PHONE_BUTTON, PHONE_CARD, PHONE_KEY, PHONE_PILL, PHONE_PILL_ICON, PHONE_ROW, PICKER,
+    SETTINGS_CARD, SETTINGS_PREVIEW, SETTINGS_TILE, SIDEBAR, SIDEBAR_ROW, SIDEBAR_RULE, TITLEBAR,
+    WINDOW, WINDOW_CONTROLS,
 };
 use penna::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
 
@@ -277,32 +278,6 @@ pub const BROWSER_EMPTY_ICON: SurfaceRole = SurfaceRole::under(
 )
 .with(P.shape(Shape::Pill).outline(false));
 
-pub const PHONE_BAR: SurfaceRole = SurfaceRole::new(
-    "phone.bar",
-    Kind::Bar,
-    "Phone bars",
-    "The phone's 44pt top bars: Settings and sheet headers",
-);
-pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::BADGE,
-    "phone.pill.icon",
-    "Pill icon",
-    "The icon tile at the start of the phone pill",
-)
-.with(P.outline(false));
-pub const PHONE_BUTTON: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::ICON_BUTTON,
-    "phone.button",
-    "Phone buttons",
-    "Back in the phone's Settings, and the Settings button on Hosts",
-);
-pub const PHONE_CARD: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::TILE,
-    "phone.card",
-    "Pane cards",
-    "Host and window tiles in the phone overview",
-)
-.with(P.fill(Fill::Tint));
 pub const PHONE_MINI: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
     "phone.mini",
@@ -310,13 +285,6 @@ pub const PHONE_MINI: SurfaceRole = SurfaceRole::under(
     "The panes drawn where they split inside a window's tile in the phone overview, ringed on the one the window opens to",
 )
 .with(P.fill(Fill::None).selected(Highlight::Ring));
-pub const PHONE_ADD: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::TILE,
-    "phone.add",
-    "Add tile",
-    "The Add host tile at the end of the phone's Hosts page",
-)
-.with(P.fill(Fill::Tint));
 pub const GRABBER: SurfaceRole = SurfaceRole::GRABBER;
 
 pub const PALETTE: SurfaceRole = SurfaceRole::under(

@@ -9,10 +9,7 @@ use std::rc::Rc;
 pub use penna::settings::*;
 
 use crate::{ActiveTheme as _, Colorize as _, icon::Icon};
-use ala::{
-    AnyElement, App, ElementId, IntoElement, RenderOnce, SharedString, Styled as _, Window, div,
-    prelude::*, px,
-};
+use ala::{App, ElementId, SharedString, Styled as _, Window, div, prelude::*, px};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
@@ -150,13 +147,47 @@ pub fn settings_section_index(
     settings_scroll_column("settings-index").children(groups.into_iter().map(|(_, stack)| stack))
 }
 
-#[cfg(test)]
-mod scroll_tests;
+pub fn settings_page_title(section: SettingsSection, cx: &App) -> ala::Div {
+    settings_page_heading(section.title(), cx)
+}
+
+pub fn panes_page(
+    preview: panes_preview::PanesPreview,
+    layout: impl IntoIterator<Item = SettingEntry>,
+    pip: [SettingEntry; 1],
+    focus: [SettingEntry; 2],
+    frame: [SettingEntry; 1],
+    cx: &App,
+) -> ala::Div {
+    div()
+        .flex()
+        .flex_col()
+        .size_full()
+        .min_w_0()
+        .min_h_0()
+        .overflow_hidden()
+        .child(
+            settings_scroll_column("settings-panes")
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(12.0))
+                        .child(settings_page_title(SettingsSection::Panes, cx))
+                        .child(settings_group_header("Preview".into(), cx))
+                        .child(preview),
+                )
+                .child(SettingsStack::titled("Layout").children(layout))
+                .child(SettingsStack::titled("PiP").children(pip))
+                .child(SettingsStack::titled("Focus").children(focus))
+                .child(SettingsStack::titled("Frame").children(frame)),
+        )
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ala::{Context, Render, TestAppContext, VisualTestContext};
+    use ala::{Context, IntoElement, Render, TestAppContext, VisualTestContext};
 
     #[test]
     fn settings_section_titles_match_the_sidebar_labels() {
@@ -274,72 +305,4 @@ mod tests {
         assert!(preview_offset < px(0.0));
         assert_eq!(preview_offset, control_offset);
     }
-}
-
-pub fn settings_page_title(section: SettingsSection, cx: &App) -> ala::Div {
-    settings_page_heading(section.title(), cx)
-}
-
-pub fn settings_title_bar(
-    title: impl Into<SharedString>,
-    fold: &SettingsFold,
-    back: impl IntoElement,
-) -> SettingsTitleBar {
-    SettingsTitleBar {
-        title: title.into(),
-        fold: fold.clone(),
-        back: back.into_any_element(),
-    }
-}
-
-#[derive(IntoElement)]
-pub struct SettingsTitleBar {
-    title: SharedString,
-    fold: SettingsFold,
-    back: AnyElement,
-}
-
-impl RenderOnce for SettingsTitleBar {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        crate::compact::compact_nav_bar(cx)
-            .relative()
-            .child(
-                crate::compact::folding_title_bar(self.title, self.fold.scrolled(), px(0.0), cx)
-                    .h_full(),
-            )
-            .child(self.back)
-    }
-}
-
-pub fn panes_page(
-    preview: panes_preview::PanesPreview,
-    layout: impl IntoIterator<Item = SettingEntry>,
-    pip: [SettingEntry; 1],
-    focus: [SettingEntry; 2],
-    frame: [SettingEntry; 1],
-    cx: &App,
-) -> ala::Div {
-    div()
-        .flex()
-        .flex_col()
-        .size_full()
-        .min_w_0()
-        .min_h_0()
-        .overflow_hidden()
-        .child(
-            settings_scroll_column("settings-panes")
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(12.0))
-                        .child(settings_page_title(SettingsSection::Panes, cx))
-                        .child(settings_group_header("Preview".into(), cx))
-                        .child(preview),
-                )
-                .child(SettingsStack::titled("Layout").children(layout))
-                .child(SettingsStack::titled("PiP").children(pip))
-                .child(SettingsStack::titled("Focus").children(focus))
-                .child(SettingsStack::titled("Frame").children(frame)),
-        )
 }

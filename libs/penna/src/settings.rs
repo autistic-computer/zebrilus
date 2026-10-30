@@ -128,6 +128,37 @@ pub fn large_title(title: impl Into<SharedString>, cx: &App) -> ala::Div {
         )
 }
 
+pub fn settings_title_bar(
+    title: impl Into<SharedString>,
+    fold: &SettingsFold,
+    back: impl IntoElement,
+) -> SettingsTitleBar {
+    SettingsTitleBar {
+        title: title.into(),
+        fold: fold.clone(),
+        back: back.into_any_element(),
+    }
+}
+
+#[derive(IntoElement)]
+pub struct SettingsTitleBar {
+    title: SharedString,
+    fold: SettingsFold,
+    back: AnyElement,
+}
+
+impl RenderOnce for SettingsTitleBar {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        crate::compact::compact_nav_bar(cx)
+            .relative()
+            .child(
+                crate::compact::folding_title_bar(self.title, self.fold.scrolled(), px(0.0), cx)
+                    .h_full(),
+            )
+            .child(self.back)
+    }
+}
+
 fn settings_large_title(title: SharedString, cx: &App) -> ala::Div {
     large_title(title, cx)
         .px(px(2.0))

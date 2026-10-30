@@ -8,6 +8,12 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, IconName,
     button::{Button, ButtonVariants as _},
+    compact::{
+        BENTO_INSET, BentoSpan, PillLabel, PillPlacement, bento_grid, compact_bar_button,
+        compact_floating_bar, compact_floating_group, compact_floating_pill, folding_title_bar,
+        scrolled,
+    },
+    settings::large_title,
     touch::{PageDot, PagerEvent, page_dots},
 };
 use web_time::Instant;
@@ -19,10 +25,8 @@ use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
 use zz_ui::{
     compact::{
-        BENTO_INSET, BentoSpan, HostState, PillLabel, PillPlacement, bento_grid,
-        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
-        folding_title_bar, host_tile, host_tile_line, large_title, mini_pane, overview_count,
-        overview_host_empty, overview_session_heading, scrolled, window_layout, window_tile,
+        HostState, host_tile, host_tile_line, mini_pane, overview_count, overview_host_empty,
+        overview_session_heading, window_layout, window_span, window_tile,
     },
     terminal::terminal_background,
 };
@@ -30,7 +34,7 @@ use zz_ui::{
 use super::{AppShell, MenuFrom, Page, kind_icon, pages};
 use crate::{connection::Connection, terminal::phone_colors};
 #[cfg(any(target_os = "ios", target_os = "android"))]
-use zz_ui::compact::bento_add_tile;
+use penna::compact::bento_add_tile;
 
 const PREVIEW_TEXT: f32 = 4.0;
 const PREVIEW_LINE: f32 = 4.8;
@@ -910,7 +914,7 @@ impl AppShell {
                 .map(|window| {
                     let shape = shapes.iter().find(|shape| shape.id == window.id);
                     (
-                        BentoSpan::for_window(window.panes.len()),
+                        window_span(window.panes.len()),
                         self.window_bento_tile(
                             window,
                             shape,

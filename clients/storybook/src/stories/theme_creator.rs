@@ -9,6 +9,9 @@ use penna::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
+    compact::{
+        PillLabel, compact_bar_button, compact_floating_bar, compact_floating_pill, compact_hud,
+    },
     h_flex,
     input::{Input, InputState, NumberInput},
     kbd::Kbd,
@@ -36,10 +39,7 @@ use zz_ui::{
         command_palette_entry, command_palette_row_height, command_palette_section,
         unified_command_palette_input,
     },
-    compact::{
-        PillLabel, compact_bar_button, compact_floating_bar, compact_floating_pill, compact_hud,
-        overview_count,
-    },
+    compact::overview_count,
     interface_theme::{ThemeModeSetting, pinned_theme_mode},
     pane::{
         FloatingSurface, PaneOverlayCorner, PaneSplitAxis, pane_drag_chip, pane_drop_preview,

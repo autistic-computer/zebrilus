@@ -65,9 +65,6 @@
       "fill": "solid",
       "selected": "tint"
     },
-    "phone.add": {
-      "fill": "solid"
-    },
     "sidebar.entry": {
       "smoothing": 2.5,
       "hover": "tint",

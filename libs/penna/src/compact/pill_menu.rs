@@ -322,7 +322,7 @@ mod tests {
                 point(px(16.0), height - px(90.0)),
                 size(px(358.0), px(56.0)),
             );
-            let panes = (0..8)
+            let items = (0..8)
                 .map(|index| {
                     PillMenuItem::new(
                         format!("item-{index}"),
@@ -334,10 +334,10 @@ mod tests {
             div().size_full().child(compact_pill_menu(
                 vec![
                     vec![
-                        PillMenuItem::new("kill-pane", "Kill pane", IconName::Xmark)
+                        PillMenuItem::new("delete", "Delete", IconName::Xmark)
                             .look(PillMenuLook::Danger),
                     ],
-                    panes,
+                    items,
                 ],
                 close,
                 px(TOP),
@@ -376,7 +376,7 @@ mod tests {
     fn chips_stay_under_the_top_and_above_the_button(cx: &mut TestAppContext) {
         let (_, cx) = host(cx, 520.0);
         let close = cx.debug_bounds("pill-menu-close").expect("close");
-        let first = cx.debug_bounds("pill-menu-item-kill-pane").expect("first");
+        let first = cx.debug_bounds("pill-menu-item-delete").expect("first");
         let last = cx.debug_bounds("pill-menu-item-item-7").expect("last");
         assert!(first.top() >= px(TOP));
         assert!(last.bottom() < close.top());

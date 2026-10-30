@@ -68,11 +68,12 @@ Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers), each its own wi
 spinner redraws only its region. The Lens region has the plan-approval card with Show terminal and
 the welcome before a first prompt. The bar links (on windows wider than 1240px) jump between them, and
 `theme-creator/<region>` in the address opens at one.
-The Phone region is phone-width pages from zz-ui's `compact` builders: a terminal page with the
+The Phone region is phone-width pages from penna's `compact` builders (the floating pill, the HUD,
+the bento grid and `bento_add_tile`, which the Hosts page titles Add host) and zz-ui's `compact`
+tiles (`host_tile`, `window_tile`, `overview_session_heading`, which the thin client draws with
+too): a terminal page with the
 HUD, the key row with the prefix menu open (`PopoverKey::open`) and the arrow pad's bubble
-(`arrow_pad_bubble`), the bindings list, the overview's pane cards and New pane tiles
-(`overview_card`, `overview_add_tile`, `overview_section_heading`, which the thin client draws
-with too) and the sessions sheet.
+(`arrow_pad_bubble`), the bindings list, the sessions sheet, a host's windows and the Hosts page.
 Its knob panel is four steps and an App tab:
 Colors (the mode with Contrast, Tint hue and Tint, palettes, font), Materials
 (shape, glass, both shadows),

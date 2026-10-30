@@ -8,6 +8,7 @@ pub mod check;
 #[cfg(feature = "editor")]
 pub mod code_editor;
 pub mod color_picker;
+pub mod compact;
 pub mod dismissal;
 pub mod feedback;
 pub mod foundation;

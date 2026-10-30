@@ -206,7 +206,7 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
         cx,
     )
     .large_title("Settings", &fold);
-    let back = zz_ui::compact::compact_bar_button("settings-phone-back", IconName::ArrowLeft);
+    let back = penna::compact::compact_bar_button("settings-phone-back", IconName::ArrowLeft);
     states()
         .columns(2)
         .state(

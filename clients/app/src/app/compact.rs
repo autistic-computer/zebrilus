@@ -14,6 +14,12 @@ use ala::{
 };
 use penna::{
     ActiveTheme as _, Colorize as _, IconName, PaintState,
+    compact::{
+        BENTO_INSET, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
+        PillSpring, compact_floating_bar, compact_floating_pill, compact_hud,
+        compact_pill_collapse, compact_pill_label, compact_pill_menu, compact_pill_morph,
+        mini_pill_width, pill_bounds, pill_corner, pill_glass_over,
+    },
     kbd::Kbd,
     sheet::{bottom_sheet, close_sheet},
     touch::{
@@ -26,16 +32,7 @@ use web_time::Instant;
 use zz_client::StatusBarModel;
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
-use zz_ui::{
-    command::tmux_keystroke,
-    compact::{
-        BENTO_INSET, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
-        PillSpring, compact_floating_bar, compact_floating_pill, compact_hud,
-        compact_pill_collapse, compact_pill_label, compact_pill_menu, compact_pill_morph,
-        mini_pill_width, pill_bounds, pill_corner, pill_glass_over,
-    },
-    roles,
-};
+use zz_ui::{command::tmux_keystroke, roles};
 
 use super::AppShell;
 use crate::terminal::{TerminalDisplayPreferences, TerminalText};

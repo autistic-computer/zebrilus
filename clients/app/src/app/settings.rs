@@ -561,7 +561,7 @@ impl AppShell {
             .into_any_element()
         };
         let title = if picked { section.title() } else { "Settings" };
-        let back = zz_ui::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
+        let back = penna::compact::compact_bar_button("settings-back", IconName::ArrowLeft)
             .on_click(cx.listener(|this, _, _, cx| {
                 this.settings_leaving = true;
                 cx.notify();

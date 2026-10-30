@@ -22,9 +22,8 @@ use zz_ui::{
     browser::{
         BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserTabInfo, BrowserTabStrip,
         BrowserToolbar, CompactBrowserBar, browser_address, browser_start_surface,
-        browser_toolbar_button,
+        browser_toolbar_button, compact_tabs_button,
     },
-    compact::compact_tabs_button,
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     roles,
 };

@@ -133,6 +133,9 @@
     "pane": {
       "shadow": "contact"
     },
+    "phone.add": {
+      "fill": "solid"
+    },
     "phone.pill": {
       "fill": "glass"
     },
