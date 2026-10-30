@@ -248,7 +248,14 @@ fn finishing_an_exit_wait_removes_its_timeout_deadline() {
         &CommandInvocation::new("wait-pane", ["--exit", "--timeout", "30"]),
     );
     assert!(matches!(task.run(true), wait_queue::Progress::Waiting));
-    assert!(shared.terminal_requests.turn(&shared).is_some());
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while shared.terminal_requests.turn(&shared).is_none() {
+        assert!(
+            Instant::now() < deadline,
+            "the exit wait never armed its timeout"
+        );
+        thread::sleep(Duration::from_millis(1));
+    }
     Shared::wake_pane_exit_wait(&mut shared.inner.lock(), context.pane.unwrap(), 0);
     assert!(task.ready());
     assert!(shared.terminal_requests.turn(&shared).is_none());
