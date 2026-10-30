@@ -2,7 +2,7 @@
 # Concepts
 
 * [ala web windows for agents](ala-web-agents.md) - How ala's web platform hosts several windows in one page (WindowOptions::mount), mirrors each window's AccessKit tree into ARIA elements, and exposes globalThis.ala so agents can find, click, wait for and capture ala content.
-* [ala](ala.md) - ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
+* [ala](ala.md) - ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream fix, and what zz changed. gpui-component is not a dependency.
 * [CEF artifact lock](cef-artifacts.md) - Where the CEF/Chromium pin and its per-platform archive SHA-1 mirror live, and how the archive is actually verified before extraction.
 * [Ghostty X11 color reference](ghostty-color-reference.md) - Provenance of crates/zz-terminal/src/x11-rgb.txt, copied verbatim from Ghostty's rgb.txt for X11 named-color lookups.
 * [proc-macro-error2 patch (retired)](proc-macro-error2-patch.md) - Retired on 2026-09-12 after the dependency graph stopped using proc-macro-error2.
