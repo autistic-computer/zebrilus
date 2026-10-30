@@ -36,7 +36,7 @@ src/
   code_editor/  rope-backed native editor
   <widget>/     one directory per widget
   sheet.rs, dismissal.rs, touch/, pulse.rs, motion.rs   penna-original touch and motion primitives
-  picker.rs, feedback.rs, which_key.rs   penna-original picker dialogs, inline alerts, which-key popup
+  picker.rs, feedback.rs, which_key.rs   penna-original picker dialogs, inline alerts and prompt dialogs, which-key popup
 ```
 
 Everything is reached through `penna::<widget>`, mirroring upstream's namespace.
@@ -45,23 +45,23 @@ Everything is reached through `penna::<widget>`, mirroring upstream's namespace.
 
 | Module | Style | Notable local delta |
 | --- | --- | --- |
-| `foundation` | mixed | dropped upstream's JSON theme registry + schema (~1.4k lines, and the `schemars` dep); penna's themes are `interface_theme` files instead. Palette values ported verbatim. Metrics are down to two: `radius` (upstream's `radius_lg` is gone, and no widget derives halves or doubles off it any more) and a `CHROME_GAP` const. `rems_from_px` keeps named typography and control metrics on the 16px design baseline so changing GPUI's root rem scales them together; custom `Size::Size(px)` remains the fixed-pixel escape hatch. Added `oklab_lightness`, which exposes the L of the already-vendored Oklab conversion so the app crate can assert perceptual distance between two theme roots rather than eyeballing HSL. |
-| `separator`, `spinner` | trimmed | reduced to the variants the app uses |
+| `foundation` | mixed | dropped upstream's JSON theme registry + schema (~1.4k lines, and the `schemars` dep); penna's themes are `interface_theme` files instead. Palette values ported verbatim. Metrics are down to two: `radius` (upstream's `radius_lg` is gone, and no widget derives halves or doubles off it any more) and a `CHROME_GAP` const. `rems_from_px` keeps named typography and control metrics on the 16px design baseline so changing GPUI's root rem scales them together; custom `Size::Size(px)` remains the fixed-pixel escape hatch. Added `oklab_lightness`, which exposes the L of the already-vendored Oklab conversion so an app can assert perceptual distance between two theme roots rather than eyeballing HSL. |
+| `separator`, `spinner` | trimmed | reduced to the variants penna's widgets use |
 | `tag` | trimmed | Three variants: Primary, Secondary, and Success; theme-driven radius |
 | `kbd` | trimmed | `Kbd` formats a keystroke and draws it as our `Keycap` (neutral, soft by default, with `.emphasis()` and `.on(ground)`); upstream's `appearance(false)` plain-text mode becomes `Kbd::text`, which menus and tooltips show in the row's ink. Added `lowercase()` for hints that read as prose (`t`, `b`, `a`) rather than as a keycap legend. |
 | `switch` | trimmed | dropped inline label/`Side`/custom color; kept the animated thumb. The thumb uses `foreground` for visibility against the track. The checked track is the `accent` root, the only chromatic fill a neutral control gets |
-| `menu` | close-to-source | Owns its actions (`penna_menu`), key context (`PennaPopupMenu`) and `init()`; upstream's native `AppMenuBar` not carried over. Local rows use 12px text, 26px height (20px Small), 4px surface gutters, inset half-pixel separators, and the inset menu radius. Open submenu parents highlight in neutral gray; selected shortcut labels and icons brighten to full foreground. `PopupMenuItem::stepper` supports live values, pointer adjustments and Left/Right/Enter without dismissing; the browser menu uses it for page zoom. |
+| `menu` | close-to-source | Owns its actions (`penna_menu`), key context (`PennaPopupMenu`) and `init()`; upstream's native `AppMenuBar` not carried over. Local rows use 12px text, 26px height (20px Small), 4px surface gutters, inset half-pixel separators, and the inset menu radius. Open submenu parents highlight in neutral gray; selected shortcut labels and icons brighten to full foreground. `PopupMenuItem::stepper` supports live values, pointer adjustments and Left/Right/Enter without dismissing, for a value such as a zoom level that the menu changes in place. |
 | `icon` | trimmed | `IconName` is a **hand-written** enum instead of upstream's build-time proc-macro codegen; our own `Assets` replaces `gpui-component-assets`, drawing penna's own set (`glyphs`, `solar.json`) for the theme radius and corner smoothing and embedding the brand marks from `assets/icons` |
 | `tooltip` | trimmed | hangs off gpui's `.tooltip()` rather than upstream's `Root`-owned overlay; dropped `ComponentTooltip` after nothing adopted it |
 | `popover` | trimmed | owns its `Cancel` action and `PennaPopover` context; `on_dismiss` runs once for every close path, including trigger toggles; the panel stays inside `fully_visible_bounds` (safe areas and a soft keyboard), using the size it measured the frame before |
 | `slider` | **penna-original** | `DiscreteSlider` displays compact pills filled through the selected step, per-pill tooltips, a trailing selected value, keyboard navigation, and a slider accessibility value |
 | `list` | trimmed | `ListItem` only; upstream's virtualized delegate `List` is unused. Rows use the inset menu radius and solid accent highlight retaining the normal foreground text and icons instead of a foreground outline. |
 | `scroll` | close-to-source | custom-painted scrollbar kept faithful. penna fixes upstream's track-hover ordering bug: it compares the previous axis before storing the new one, so entering a hover-only track requests its repaint. |
-| `button` | close-to-source | reimplements upstream's `pub(crate)` `ButtonIcon` on our `Spinner`; `ButtonRounded` keeps `Medium` (the theme control radius) and `Size(px)` for explicit overrides; `Button::compact_icon` fixes shared chrome controls at a 24px surface, Small 14px glyph, and 0.5px optical drop. Upstream's variant enum and color matrix are replaced by `ButtonVariant::Paint(Tone, Emphasis)` plus `Link` and `Text`: every fill, border and text color comes from the theme's `Paint` (see the design-system plan), and the shorthands `primary`, `secondary`, `ghost`, `danger`, `warning` and `success` name tone and emphasis pairs. The neutral soft button rests on the control surface (half-pixel edge and soft shadow) with its fill composited opaque so the shadow does not show through; the neutral ghost button shows that edge only on hover. `Button::flat()` keeps nested actions free of extra borders and shadows while retaining their wash and keyboard focus indicator. `Button::on(ground)` paints the button on the surface it sits on, such as a settings card. Themes that opt into glass inactive flattening also dim unselected neutral glass buttons and neutral buttons on glass when their native window loses focus; browser previews keep their active appearance. Upstream's `Info`, `Accent` and `Custom` variants have no counterpart: the look's `primary` setting decides whether the primary tone is the foreground or the accent. |
-| `title_bar` | mixed | every `cfg!(target_os)` branch carried verbatim (macOS traffic lights, Linux/Windows client-side controls, WASM). `WindowControls` is public, unlike upstream's: the main window has no bar (its sidebar strip owns the drag region so the panes reach the top edge) and mounts the cluster on its own through `shell::app_titlebar_strip`, the matching strip above the content column that only the platforms drawing their own buttons reserve. Nothing renders `TitleBar` since Settings moved into the main window; `TitleBar::title_bar_options(height)` still supplies the window's titlebar options, with the traffic lights on the centre line of a bar `height` tall. |
-| `select` | trimmed | Retains value state and confirmation subscriptions, but renders the shared Button and PopupMenu used by pane-split settings. Uses left checkmarks with an 8px label gap, compact menu rows, bounded scrolling, and the same trigger treatment. Dropdown button labels use 13px text, one pixel larger than their menu entries. Settings triggers fit the selected label; menus fit their widest option within the popup width limit and stay at least as wide as the trigger. No separate Select row renderer. The trigger is a field drawn from the look's field paint; `Select::on(ground)` puts it on a card's ground. |
-| `overlay` | close-to-source | `Root` + dialog + notification + `WindowExt`; dropped the sheet layer, upstream's `FocusTrapManager` (Tab is trapped by walking the top dialog's own focus handle) and the macOS accessibility hit-test forwarder. Toasts default to the top center of the window, with a vertically centered close button in the content row. Their width clamps to the visible window with 16px side insets on narrow screens. Dialog shadows use the `overlay` theme token rather than upstream's hardcoded `hsla` (see `clippy.toml`). The default dialog is deliberately compact: 400px wide, 12px gutters, 13px/12px title and body, and Small actions. A dialog keeps a 16px margin inside the window: a narrow window caps its width, a tall body scrolls under a max height, and a dialog too tall for the room below its tenth-of-the-viewport offset rises toward the top margin. `ROOT_KEY_CONTEXT` (`PennaRoot`) is public so the host app can bind root-rem UI scaling below pane-specific browser and terminal zoom. Local addition: `Notification::key` plus `Root::dismiss_notification`/`WindowExt::dismiss_notification`, so a toast raised for a daemon-timed status message can be retired by identity when the daemon clears it (upstream can only clear the whole stack). |
-| `input` | **written fresh** | not a port. Upstream's is ~12k lines because it doubles as a code editor (rope, LSP, tree-sitter, masking, OTP, in-input search); ours is a text field. Plain `String` storage, grapheme-safe indexing via `unicode-segmentation`, gpui's `EntityInputHandler` for IME. Owns `penna_input` actions and the `PennaInput` context. `text_align` is applied by the layout's index↔position math, not just at paint, so a centered field hit-tests correctly . upstream's does not. Small fields use an explicit 13px value size so compact form text matches Settings' primary row labels. A focused field asks its scrolling page to reveal it with a 20px margin when it takes focus or the visual viewport changes size (a soft keyboard), the way Flutter's `TextField` does with `scrollPadding`; settings scroll columns honor the request, and the virtual column takes it from the row before gpui's `list` sees it. `InputState::set_normal_mode` gives a view vi's normal mode in a plain field: `accepts_text_input` turns false (so a CJK input method stops claiming letters first on macOS, and Wayland's text-input turns off), typed and composed text is dropped, the field's actions still edit, and the caret becomes a block one grapheme wide with that grapheme repainted in `on()` ink. The command palette's vim mode uses it. |
+| `button` | close-to-source | reimplements upstream's `pub(crate)` `ButtonIcon` on our `Spinner`; `ButtonRounded` keeps `Medium` (the theme control radius) and `Size(px)` for explicit overrides; `Button::compact_icon` fixes shared chrome controls at a 24px surface, Small 14px glyph, and 0.5px optical drop. Upstream's variant enum and color matrix are replaced by `ButtonVariant::Paint(Tone, Emphasis)` plus `Link` and `Text`: every fill, border and text color comes from the theme's `Paint`, and the shorthands `primary`, `secondary`, `ghost`, `danger`, `warning` and `success` name tone and emphasis pairs. The neutral soft button rests on the control surface (half-pixel edge and soft shadow) with its fill composited opaque so the shadow does not show through; the neutral ghost button shows that edge only on hover. `Button::flat()` keeps nested actions free of extra borders and shadows while retaining their wash and keyboard focus indicator. `Button::on(ground)` paints the button on the surface it sits on, such as a settings card. Themes that opt into glass inactive flattening also dim unselected neutral glass buttons and neutral buttons on glass when their native window loses focus; a web build keeps their active appearance. Upstream's `Info`, `Accent` and `Custom` variants have no counterpart: the look's `primary` setting decides whether the primary tone is the foreground or the accent. |
+| `title_bar` | mixed | every `cfg!(target_os)` branch carried verbatim (macOS traffic lights, Linux/Windows client-side controls, WASM). `WindowControls` is public, unlike upstream's, so a window can go without a bar (a sidebar strip owns the drag region and the content reaches the top edge) and mount the cluster on its own through `shell::app_titlebar_strip`, the matching strip above the content column that only the platforms drawing their own buttons reserve. `TitleBar::title_bar_options(height)` supplies the window's titlebar options, with the traffic lights on the centre line of a bar `height` tall, whether or not the window renders a `TitleBar`. |
+| `select` | trimmed | Retains value state and confirmation subscriptions, but renders the shared Button and PopupMenu. Uses left checkmarks with an 8px label gap, compact menu rows, bounded scrolling, and the same trigger treatment. Dropdown button labels use 13px text, one pixel larger than their menu entries. Settings triggers fit the selected label; menus fit their widest option within the popup width limit and stay at least as wide as the trigger. No separate Select row renderer. The trigger is a field drawn from the look's field paint; `Select::on(ground)` puts it on a card's ground. |
+| `overlay` | close-to-source | `Root` + dialog + notification + `WindowExt`; dropped the sheet layer, upstream's `FocusTrapManager` (Tab is trapped by walking the top dialog's own focus handle) and the macOS accessibility hit-test forwarder. Toasts default to the top center of the window, with a vertically centered close button in the content row. Their width clamps to the visible window with 16px side insets on narrow screens. Dialog shadows use the `overlay` theme token rather than upstream's hardcoded `hsla` (see `clippy.toml`). The default dialog is deliberately compact: 400px wide, 12px gutters, 13px/12px title and body, and Small actions. A dialog keeps a 16px margin inside the window: a narrow window caps its width, a tall body scrolls under a max height, and a dialog too tall for the room below its tenth-of-the-viewport offset rises toward the top margin. `ROOT_KEY_CONTEXT` (`PennaRoot`) is public so an app can bind window-wide keys, such as root-rem UI scaling, below the key contexts of its own views. Local addition: `Notification::key` plus `Root::dismiss_notification`/`WindowExt::dismiss_notification`, so a toast raised for a status message that something else times can be retired by identity when that status clears (upstream can only clear the whole stack). |
+| `input` | **written fresh** | not a port. Upstream's is ~12k lines because it doubles as a code editor (rope, LSP, tree-sitter, masking, OTP, in-input search); ours is a text field. Plain `String` storage, grapheme-safe indexing via `unicode-segmentation`, gpui's `EntityInputHandler` for IME. Owns `penna_input` actions and the `PennaInput` context. `text_align` is applied by the layout's index↔position math, not just at paint, so a centered field hit-tests correctly . upstream's does not. Small fields use an explicit 13px value size so compact form text matches Settings' primary row labels. A focused field asks its scrolling page to reveal it with a 20px margin when it takes focus or the visual viewport changes size (a soft keyboard), the way Flutter's `TextField` does with `scrollPadding`; settings scroll columns honor the request, and the virtual column takes it from the row before gpui's `list` sees it. `InputState::set_normal_mode` gives a view vi's normal mode in a plain field: `accepts_text_input` turns false (so a CJK input method stops claiming letters first on macOS, and Wayland's text-input turns off), typed and composed text is dropped, the field's actions still edit, and the caret becomes a block one grapheme wide with that grapheme repainted in `on()` ink, for a field that takes vi keys. |
 | `code_editor/{state,input,element,mode}` | trimmed | ported from upstream `input/` at the revision above as a sibling of penna's small text field. Local `CodeEditor::background_opacity` controls text and gutter base fills without fading text or changing embedded Settings editors. Renamed the public surface to `CodeEditorState`/`CodeEditor`; keeps a rope buffer, line numbers, soft wrap, IME, single-cursor editing and upstream's tab default. Removed the `Root` downcast and mapped all chrome to penna's semantic theme. element.rs lays out differently from upstream: upstream shaped only the visible lines each prepaint, from the display map's wrap rows; penna shapes the whole buffer with gpui's `shape_text` and keeps it in a frame-to-frame `ShapedCache`, re-shaping only when content, wrap width, typography, or theme change, keyed by a `layout_generation` counter every content mutation bumps. |
 | `code_editor/{cursor,blink_cursor,change,history,rope_ext}` | close-to-source | upstream cursor blink, edit grouping, undo/redo and rope helpers. `history` is upstream's `History` from before it split into a navigation trail and an undo history. It pops only the contiguous version block at the top of a stack, so a buried matching version cannot pull unrelated edits into the group, and a new edit clears the redo stack. `HistoryItem::merge` folds a typed insertion into the change before it in the same group, so a typing run undoes as one edit. |
 | `code_editor/{movement,selection,indent}` | trimmed | upstream's actions over penna's own mechanics. Up/Down move by buffer line and byte column where upstream moved by wrap row and preferred x; word selection runs over `&str` and stays grapheme-safe; indent and outdent keep tab size and block/inline modes without upstream's indent guides. Multi-cursor behavior is deliberately omitted. |
@@ -82,7 +82,7 @@ tables; no second theme registry exists.
 underneath every widget. Vendoring them early would not have failed to
 compile. It would have left two theme globals, with the app writing one and the
 still-upstream widgets reading the other, so half the UI would have silently
-stopped following the terminal palette. The same coupling ran the other way through
+stopped following the theme. The same coupling ran the other way through
 `Root`: upstream's `input` and `text` downcast the window root to *upstream's*
 `Root` by concrete type, so swapping ours in early would have panicked every
 focused text field. Both are why `input`, `text`, `overlay` and `foundation`
@@ -90,73 +90,52 @@ landed in a single commit.
 
 The shared Interface settings page includes a font picker using the shared Button and scrollable PopupMenu.
 Native entrypoints register `AvailableFonts` with their platform text system so the list excludes
-ala's hardcoded fallback names. The browser client uses ala's font list. The picker includes
+ala's hardcoded fallback names. A web build uses ala's font list. The picker includes
 System default and filters internal dot-prefixed font aliases.
 
 ## Conventions
 
-`Theme::control_radius()` returns the configured radius through 24px and ala's full-rounding
-value above 24px. Buttons, single-line inputs, number fields, select triggers, navigation
-chips and tree highlights, and browser controls use it so Full mode can produce
-pills and circles under adaptive rounding. Effort-slider pills follow the same rule. Popup menus,
-select and list rows, pane and file/history pickers, URL suggestions, and agent suggestions use `Theme::menu_radius()`: a
-highlight radius equal to the container radius minus 4px, without a fixed cap or Full-mode sentinel. Container surfaces and multiline inputs
-keep `radius`.
+Corner radii come from each role's shape (`Theme::shape_radius`). Round control roles (buttons,
+single-line inputs, number fields, select triggers) take the theme's control radius, and
+`Theme::control_radius()` returns ala's full-rounding value above 24px, so Full mode can produce
+pills and circles under adaptive rounding; slider pills and color swatches follow the same rule.
+Row roles (popup menu, select, list and picker rows) take `Theme::menu_radius()`: a highlight
+radius equal to the container radius minus 4px, without a fixed cap or Full-mode sentinel, and
+square corners when the theme does not inset rows. Container surfaces and multiline inputs keep
+`radius`.
 
-`StyledExt::popover_style` shares an opaque raised surface, half-pixel edge, and scaled soft outer
-shadow across menus and picker containers. The shared command palette uses a 560px surface, a 40px bare Input, 12px search text,
-12px inline Badge pills and medium labels, 10px details and footer hints, and 8px list gutters.
-Rows use 16px line heights and occupy 26px with 2px gaps, matching dropdown typography. `command/palette.rs` supplies sections, fuzzy text highlights,
-breadcrumbs, shortcut tags, host status dots, and session/window running-agent summary dots for
-the unified desktop palette. Agent pane rows use shared vendor icons and text status.
-`PaletteRow::icon` and `PaletteRow::expanded` add navigation icons and disclosure state to the
-same rows. `command_palette_tree_entry` exposes a separate disclosure toggle handler so clicking
-the chevron expands a session or window while clicking its row activates it. The desktop uses
-these components for Workspace and Navigate trees and daemon session/window/pane rows; each
-adapter owns expansion, search, and activation state. The tree retains the palette's compact
-typography and Chroma treatment.
-Daemon prompt rows share that renderer. `InputState::set_placeholder` updates the field hint
-when the palette changes mode without replacing its editing state. Menu and picker
-rows use `selection_highlight`: the neutral ghost paint's selected fill and matching edge, its
-selected text, and no shadow. Inputs and number fields reserve a 1px border for clearer circular edges and use the accent when focused.
-Button keyboard focus rings also use the accent.
+Rows are drawn through `row_corners`, `row_surface` and `list_row`: ala's per-element fixed radius
+mode, smoothing 2.5, and a radius capped at 40% of the row height. `row_state` picks the selected
+or disabled layer, and custom menu content receives the highlight state so descriptions brighten
+to the normal foreground. Fill and border use native ala painting; no highlight painter or row
+masks are involved. The menu surface keeps the window's adaptive squircle rounding.
 
-PopupMenu, model picker, and directory/session picker rows use `StyledExt::menu_item_corners`
-with ala's per-element fixed radius mode and smoothing 2.5. Their radius is capped at 40%
-of the row height. Custom menu content receives the highlight state so descriptions brighten
-to the normal foreground. Directory and session rows share 26px heights and 12px labels.
-The menu surface retains the window's adaptive squircle rounding. Fill and border use native
-ala painting; no highlight painter or row masks are involved.
+Fields (inputs, number fields, select triggers) are painted by `input::field_chrome` from the
+look's field paint (`input::field_paint`). They always reserve a 1px border, so focus changes only
+the border color and never the layout. In an outlined look without glass, a focused field whose
+role highlights with an edge takes the paint's focus color on that edge. Neutral focus colors,
+button keyboard focus rings included, are the accent when the look's primary is the accent and the
+ink otherwise. Clear buttons and steppers are ghost buttons that stay inside the outer control. `InputState::set_placeholder` updates a field's hint
+without replacing its editing state.
 
-Picker, chooser, command palette, popup menu, and dialog surfaces share a 160ms entrance:
-they fade in while settling upward by 6px, using ala's reduced-motion behavior.
-Dialog movement starts near its final position instead of sliding from the window edge.
-Each opened dialog has its own animation identity so replacement dialogs animate again.
+Popup menus, pickers and dialogs share a 160ms entrance (`surface_enter`): they fade in while
+settling upward by 6px, following ala's reduced-motion setting. Dialog movement starts near its
+final position instead of sliding from the window edge. Each opened dialog has its own animation
+identity, so a replacement dialog animates again.
 
 - **Close-to-source ports** keep upstream's structure so a future re-sync is a
   small diff. They carry a module-level
   `#![allow(clippy::pedantic, clippy::style, clippy::complexity)]` because they
   follow upstream's style, not this workspace's pedantic lints. Correctness,
   perf and suspicious lints stay active.
-- **Trimmed rewrites** port only the API the app calls and document the
+- **Trimmed rewrites** port only the API penna's widgets and apps call and document the
   omissions, so a deliberate omission is never mistaken for a missing feature.
 - **Chrome colors come from `cx.theme()`**, never a literal; `clippy.toml`
   enforces it, and the ports were corrected where upstream hardcoded a color.
-- Inputs, number fields, select triggers, and dropdown surfaces use
-  `StyledExt::control_surface`: a half-pixel foreground edge and the shared soft shadow.
-  Input and select focus changes only the border color, preserving their layout. Clear buttons,
-  steppers, browser tab close actions, and tree-row actions stay flat inside the outer control.
-  Tree actions end at the row highlight edge; browser tab close actions have no extra right padding.
-  Both use the Text button variant for foreground-only hover feedback.
-  Browser URL fields are neutral ghost fields: the ghost hover fill, and a focus-colored border while focused.
-  Active browser tabs take the neutral soft fill and control highlight; both reserve border width across state changes.
-  The browser header uses 28px tabs, URL fields, and browser buttons, with 8px outer padding and row spacing.
-  Pane split and close buttons keep their 24px size.
-  A 24px sliders button inside the URL field opens connection, sound, and site-data controls.
 
 Re-syncing a module against a newer upstream revision means updating the
-revision above, re-applying that module's delta, and re-running the workspace
-build, the tests, and the browser client (`just web build`).
+revision above, re-applying that module's delta, and re-running the build
+and the tests, for the host and for `wasm32-unknown-unknown`.
 
 ## Cherry-picked since the fork revision
 
@@ -175,7 +154,7 @@ added the rows from `a4ba683e` down.
 
 | Upstream | What it fixes here |
 | --- | --- |
-| [`3de68cd1`][u1] | `Language::Plain` carried the **JSON** grammar, and `SyntaxHighlighter::new` falls back to `"text"` for anything unregistered . so every ` ```bash ` / ` ```python ` fence in an agent transcript built a JSON parser and parsed the whole block to produce no styles. `LanguageConfig::language` is now `Option`, plain text is grammarless, and `SyntaxHighlighter::build_inert` never parses. |
+| [`3de68cd1`][u1] | `Language::Plain` carried the **JSON** grammar, and `SyntaxHighlighter::new` falls back to `"text"` for anything unregistered . so every ` ```bash ` / ` ```python ` fence in a Markdown document built a JSON parser and parsed the whole block to produce no styles. `LanguageConfig::language` is now `Option`, plain text is grammarless, and `SyntaxHighlighter::build_inert` never parses. |
 | [`66cadafb`][u2] + [`98af8912`][u3] | `ContextMenuExt::context_menu` derived its fallback element ID from a **stack address**, so a redraw from the event-dispatch path silently dropped the open menu without a `DismissEvent` and stranded focus on it. Now `#[track_caller]` + `ElementId::CodeLocation`, plus `PopupMenu::previous_focus_handle` so dismiss restores focus without moving action dispatch. |
 | [`1a667218`][u4] | `render_list_item` matched only `Paragraph` and `List` and dropped everything else on the floor . a fenced code block, table, blockquote or heading nested in a list item rendered as **nothing**, which is most of what an LLM puts in a numbered list. |
 | [`be3c8413`][u5] | `CodeBlock` captured the `HighlightTheme` at *parse* time and memoized styles against it, so markdown code blocks kept the palette that was active when they were parsed across a light/dark switch. The theme is now read at render and travels with the memo. |
@@ -213,7 +192,7 @@ Checked against this fork and deliberately **not** taken:
 - `c48fb6f0` (IME selection range) . both `input` and `code_editor` already compute the selection with `utf8_offset` from the replacement start; the port never had the bug.
 - `4ac87b15` (IME composition underline) and `3c270ed2` (unset gutter background) . neither the fresh `input` nor `code_editor` paints an IME underline or a gutter fill, so there is nothing to correct.
 - `f03f3713` (stub styles lose the text color) . `Inline::request_layout` already emits a trailing run in the base text style when the highlight list is empty, so the non-`tree-sitter` stub can keep returning nothing. `highlighter::syntax`'s inertness test stays the contract.
-- `bc174a7e` (nested submenu paint priority) . it wraps *every* menu in `deferred().with_priority(..)`, changing paint order app-wide to fix a bug that needs two nested submenu levels; only `browser.rs` opens a submenu, and only one deep.
+- `bc174a7e` (nested submenu paint priority) . it wraps *every* menu in `deferred().with_priority(..)`, changing paint order for every menu to fix a bug that needs two nested submenu levels, which nothing built on penna opens yet.
 - From the 2026-10-19 sweep: the rest of each partly ported commit above (named in its row), and syntect-based highlighting, which penna does not take.
 - `630b664f` (Linux client-side decorations) . Linux-only shadow/border cosmetics that cannot be verified from this workstation, landing in a file whose local delta (`resize_hit_size`, the restore/inset double-counting fix) must stay intact. ala solves the rounded-corner problem upstream works around here with its own `Window::set_window_corner_mask`.
 
