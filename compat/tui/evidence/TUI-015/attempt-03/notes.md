@@ -1,6 +1,6 @@
 # Empty exact window components before panes
 
-The follow-up starts from capture-12 c550a396 and rebases onto main f9c52359.
+The follow-up starts from capture-12 c550a396 and rebases onto main d1508a16.
 The rebase required regenerating knowledge/tmux/gaps.md. Git dropped the native
 command expectation commit because main already contains it.
 
@@ -60,7 +60,7 @@ those commands and the mandatory smoke set. The full-branch selection for these 
 capture-pane.txt row, for 156 rows. That additional row runs separately. The
 orchestrator's re-review accepted the earlier, broader 193-row selection for
 all commands touched by the carried branch; this follow-up does not claim to
-repeat all 193. A fresh clean-main f9c52359 binary also passes the previously failing
+repeat all 193. A fresh clean-main d1508a16 binary also passes the previously failing
 alias-group-forgery row, so that old failure is not carried forward here.
 
 The command delta completes with 155 rows, 151 passing after retries, exit 1.
@@ -100,7 +100,7 @@ clean-main reproduction; the final corpus exit is still 1, not a green run.
 
 The source change is cf8e0b8b, two files only. The remaining commit records this
 evidence and the TUI-015 ledger. No code comments or attribution trailers were
-added. origin/main remained f9c52359 at the final fetch and merge-tree reports a
+added. origin/main remained d1508a16 at the final fetch and merge-tree reports a
 clean merge. Wire 104 remains inherited and unreleased; no payload or version
 change is introduced by this follow-up.
 

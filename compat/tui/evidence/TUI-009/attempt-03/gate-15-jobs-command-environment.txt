@@ -1,16 +1,16 @@
 # smoke/jobs-command-environment: the corpus red this gate found, and what it was
-# revision under test: 6bae21ff (gate tip before the fix), fixed in 5c28f025
+# revision under test: 6da5095a (gate tip before the fix), fixed in 4b2075ac
 # captured: cycle 6 caps gate, alienware
 
 WHAT WAS RED
 compat/run.sh --strict-geometry smoke/jobs-command-environment
-    at 6bae21ff: exit 1, five runs out of five
+    at 6da5095a: exit 1, five runs out of five
     3 step(s), 0 TOPO, 0 GEO, 0 FMT, 1 OUT, 2 WARN divergence(s)
     the zz side prints `jobs-command-environment-zz: positive-live` and never
     sets JOBS_COMMAND_ENVIRONMENT, so step 3's show-environment diverges too.
 
 IS IT MINE
-origin/main 33ecbd86, built in the same target dir at the same path
+origin/main ce010be5, built in the same target dir at the same path
 (sha256 94ec4d607e1e6cbdb81e87ca37750460bb6faee2bb8f24f2da32a86264574b91,
 the same binary hash the cycle-6 copy gate recorded):
     exit 0, twice.
@@ -50,14 +50,14 @@ gap is about 11 ms a call, which is load time from the code this lane adds --
 the per-call breakdown is flat on both sides (a 260 ms first call, then 110-130
 ms each) with no call standing out.
 
-THE FIX, 5c28f025
+THE FIX, 4b2075ac
 The live job's delay goes from `-d 1.0` to `-d 4.0`, which is what the
 destroyed job (line 343) and the missing job (line 377) in the same file
 already use. The assertion does not move: the job still has to read the option
 the launch set rather than the one standing when it was scheduled, and the
 instrumented dump at 4.0 reads jobs-delay-live-terminal on both sides.
 
-    compat/run.sh --strict-geometry smoke/jobs-command-environment at 5c28f025
+    compat/run.sh --strict-geometry smoke/jobs-command-environment at 4b2075ac
         run 1: exit 0, 3 step(s), 0/0/0/0/0
         run 2: exit 0, 3 step(s), 0/0/0/0/0
         run 3: exit 0, 3 step(s), 0/0/0/0/0

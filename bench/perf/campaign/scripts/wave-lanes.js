@@ -18,7 +18,7 @@ const HOST = 'CHANGE_ME'
 const WAVE = 1
 const STAGE = 'wave1'
 const BASE_JSON = `bench/perf/results/w1-5-fold-${HOST}-CHANGE_ME.json`
-const QUICK_BASE_JSON = `bench/perf/results/baseline-quick-${HOST}-17e17115.json`
+const QUICK_BASE_JSON = `bench/perf/results/baseline-quick-${HOST}-e8caa445.json`
 const SCRATCH = '/tmp/zz-perf-campaign'
 const BASH_ENV = ''
 const CLONE = 'cp -R --reflink=always'

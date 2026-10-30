@@ -1,7 +1,7 @@
 # Capture fix pass, cycle 12
 
 This pass starts from 82746ea3 and rebases its fourteen commits onto origin/main
-be5709df (zz 0.10.0). The rebase combines the capture flag count with main's twenty
+22e3c4db (zz 0.10.0). The rebase combines the capture flag count with main's twenty
 usage overrides and regenerates both conflicted reports. The branch is
 campaign/tui-capture-12. The gate owns verification; this is worker evidence.
 
@@ -46,7 +46,7 @@ Main's command-parse exit policy returns 2 where the pin returns 1 in eight
 pre-existing assertions: refresh-missing-argument, lock-server-arity,
 lock-server-unknown-flag, lock-session-arity, lock-client-arity,
 lock-client-missing-argument, client-tree-unknown-flag, client-tree-usage.
-The policy and its tests are unchanged from origin/main (d66501cc,
+The policy and its tests are unchanged from origin/main (5eed83af,
 crates/zz-protocol/src/message.rs ServerError::exit_code and
 crates/zz/src/lib.rs cli_exit_contract_preserves_explicit_status_and_classifies_errors).
 These assertions remain assertions. No record or decision hides these failures.
@@ -164,7 +164,7 @@ flip is lock-client: its attached channels now assert too. Self-check passes
 
 ## Clean main comparison
 
-An isolated git archive of origin/main be5709df was built through the capped
+An isolated git archive of origin/main 22e3c4db was built through the capped
 Cargo wrapper into a separate target directory. Source equality and the binary
 hash are recorded in main-environment.txt. The main comparison passes
 chooser-tree-vocabulary and display-menu-mouse. alias-group-forgery fails on main
@@ -251,12 +251,12 @@ Both obligations remain at review pending the gate and unresolved failure triage
 
 ## Moving shared main ref
 
-The first rebase and every candidate measurement use be5709df. Other sessions
-advanced the shared origin/main ref during this run, first to 47c05300 and then
-to e40a13e1. The latter includes new daemon and target work. Those later changes
+The first rebase and every candidate measurement use 22e3c4db. Other sessions
+advanced the shared origin/main ref during this run, first to c8d8cb48 and then
+to 13174450. The latter includes new daemon and target work. Those later changes
 were not rebased into this measured candidate; the gate must account for them.
 A pre-push check caught that a two-dot staged footprint had accidentally included
 main-only files. The final footprint uses the actual three-dot merge base and
 contains only this branch's complete file list. The newer all-payload wire guard
-from e40a13e1 also passes against this tree (48, exit 0); it explicitly excludes
+from 13174450 also passes against this tree (48, exit 0); it explicitly excludes
 CLI metadata in catalog.rs.

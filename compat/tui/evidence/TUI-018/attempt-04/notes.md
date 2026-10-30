@@ -3,7 +3,7 @@
 This attempt supersedes attempt-03's wire blocker. The orchestrator corrected the stale
 103-unreleased instruction and explicitly requested 104 for this branch. Fetch and
 `git ls-remote origin refs/heads/main` returned
-`be5709dfcd9936d44519683e5da8dc6ab7748d96`, the v0.10.0 release. The branch already
+`22e3c4db146b2298bdd94cb959572b9069b981ef`, the v0.10.0 release. The branch already
 contained that base; `git rebase origin/main` reported it up to date. The remote guard
 still watches only message.rs at this fetch. No lane edit changes the guard.
 
@@ -27,7 +27,7 @@ The build began before the source commit, after the version edit; the only Rust 
 while it ran renamed the hunt_claims test, which the binary does not compile.
 Runtime fixtures start at the committed source revision. Their results follow below.
 
-Attempt-03 retains the complete 222-row, 2,639-step delta run on the same be5709df base
+Attempt-03 retains the complete 222-row, 2,639-step delta run on the same 22e3c4db base
 and the full four-package tests. This correction changes the wire version and pins,
 not the alias implementation or fixture cases. Do not read the earlier corpus and GUI
 test measurements as reruns against the 104 executable.

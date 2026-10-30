@@ -1,7 +1,7 @@
 # TUI-018 worker handoff
 
 Review code revision 3d6f16a50e3857929752f31e1e00228b41ca7d84 on the
-origin/main d1694e65 base. This file records worker evidence, not an independent
+origin/main 86215c66 base. This file records worker evidence, not an independent
 review or approval. Keep TUI-018 at review.
 
 All three final stream runs pass 66 asserted comparisons, zero recorded cases,

@@ -30,7 +30,7 @@ Verdict: **approve**. Two nits, no must-fix, no blocker.
 ### Reviewer checks_run, verbatim
 
 ```
-GIT_TERMINAL_PROMPT=0 git -C /home/demfabris/dev/zz fetch origin +refs/heads/main:refs/remotes/origin/main '+refs/heads/campaign/*:refs/remotes/origin/campaign/*'  -> origin/main bfd05821, origin/campaign/tui-client-lifecycle 67e57c41 (matches the report's FINAL TIP)
+GIT_TERMINAL_PROMPT=0 git -C /home/demfabris/dev/zz fetch origin +refs/heads/main:refs/remotes/origin/main '+refs/heads/campaign/*:refs/remotes/origin/campaign/*'  -> origin/main 2b040c82, origin/campaign/tui-client-lifecycle 67e57c41 (matches the report's FINAL TIP)
 git worktree add /home/demfabris/dev/zz-tui-flow-review 67e57c41 ; git status --short  -> clean at the tip
 git diff --stat origin/main...HEAD  -> 28 files, all inside the lane's declared zones (compat/tui/, compat/attached-client.sh, two new compat/ fixture files, crates/zz-tui/src/{writer,render,app}.rs, compat/tmux-gaps.json, plus the two generated knowledge/tmux/*.md)
 git diff --stat origin/main...HEAD -- crates/zz-protocol crates/zz-daemon crates/zz-mux crates/zz-client crates/zz/tests  -> EMPTY (wire rule clean, PROTOCOL_VERSION not touched)

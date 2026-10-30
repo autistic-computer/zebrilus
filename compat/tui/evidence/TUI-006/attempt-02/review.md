@@ -54,7 +54,7 @@ Verdict: **approve-with-fixes**. One must-fix, five nits, no blocker.
 ### Reviewer checks_run, verbatim
 
 ```
-setup: fetched origin main + campaign refs; origin/main e63c5333 is an ancestor of the tip, so three-dot and two-dot diffs agree; checked out --detach 0382bca4 in /home/demfabris/dev/zz-tui-choosers-review (clean before and after)
+setup: fetched origin main + campaign refs; origin/main e2bf6765 is an ancestor of the tip, so three-dot and two-dot diffs agree; checked out --detach 0382bca4 in /home/demfabris/dev/zz-tui-choosers-review (clean before and after)
 build at tip: touched crates/**/*.rs and Cargo.*, CARGO_TARGET_DIR=/home/demfabris/dev/zz-tui-choosers/target, cargo build -p zz through the two-slot lock at MemoryMax=5G -> exit 0
 compat/tui-choosers.sh at tip -> exit 0, 'all 53 asserted comparisons identical, 4 recorded not asserted (0 for a sibling lane)', 2m57s
 compat/tui-choosers.sh --self-check at tip -> exit 0, 6 sabotages caught (tag, preview, row, cursor, zoom, buffer filter prompt) and both equivalences quiet; byte-identical to all four banked self-check files (md5 fbedeb4b2688f73d29683d5a89c8740e), which is what makes four identical banked runs credible rather than suspicious
@@ -108,10 +108,10 @@ and this run continued it rather than starting over: `git log --oneline origin/m
 `git status --short` and `git diff origin/main...HEAD --stat` all matched what the
 killed run left, and every claim below was re-measured at the tip that was pushed.
 
-While the gate was down, fabrico pushed `bf44823d`, the GPUI and CEF dependency refresh
+While the gate was down, fabrico pushed `7ddfc1ea`, the GPUI and CEF dependency refresh
 (2259 lines of Cargo.lock, 48 of Cargo.toml). The lane touches neither file, so
 `git merge-tree --write-tree origin/main f45fd10c` predicted no conflict and the rebase
-of all fourteen commits onto `bf44823d` took none. The dependency refresh means nothing
+of all fourteen commits onto `7ddfc1ea` took none. The dependency refresh means nothing
 was inherited on trust: the whole corpus was re-run rather than the ten chunks the
 killed run had not reached.
 

@@ -211,7 +211,7 @@ and standalone daemon test invocations used the scrubbed home.
 
 ## Final base selection
 
-Fetched both refs before delivery. `origin/campaign/tui-modes-12` remains `b2c00bd26091523a167343b1d39f36c036662d07`; `origin/main` is `d1694e65da7552e8ebd53da2ce596ee8ffa748e9` and does not contain that modes head. This lane is already rebased onto the current modes head, so no further rebase is required. The complete own contribution and inherited main comparison are recorded separately in footprint.json and footprint-from-main.txt.
+Fetched both refs before delivery. `origin/campaign/tui-modes-12` remains `b2c00bd26091523a167343b1d39f36c036662d07`; `origin/main` is `86215c6625c857ee9eb59092955c20c57cc895d5` and does not contain that modes head. This lane is already rebased onto the current modes head, so no further rebase is required. The complete own contribution and inherited main comparison are recorded separately in footprint.json and footprint-from-main.txt.
 
 ## Completed delta measurement
 

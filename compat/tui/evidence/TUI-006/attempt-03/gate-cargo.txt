@@ -1,4 +1,4 @@
-# cargo at a82bd0f51359809a818d64e87a2a162f3892c4ce, every command through the shared two-slot lock
+# cargo at 54e7d31bdb0eeee8b59a1f737b9ae959e753d005, every command through the shared two-slot lock
 # systemd-run --user --scope -p MemoryMax=10G -p MemorySwapMax=4G flock ... cargo <args> --jobs 4
 #
 cargo test -p zz-protocol -p zz-mux -p zz-terminal -p zz-client -p zz-tui -- --test-threads=4
@@ -10,7 +10,7 @@ HOME=/tmp/zz-emptyhome XDG_CONFIG_HOME=/tmp/zz-emptyhome/config cargo test -p zz
   on this box: loopback_forwards_http_and_tcp_in_both_families_with_original_port,
   loopback_shutdown_closes_connections_and_reconnect_rebinds_same_port and
   ssh_inventory_prepares_page_and_api_ports_then_refreshes_without_dropping_streams, all
-  with ConnectionReset by peer. Reproduced 4/4 at this tip and 2/2 at origin/main 45481a72
+  with ConnectionReset by peer. Reproduced 4/4 at this tip and 2/2 at origin/main a6221e9c
   in this same worktree, with 246G free after the disk event and no sibling cargo running.
   crates/zz-daemon/src/russh_socks.rs and russh_socks_tests.rs are byte-identical to
   origin/main on this branch and Cargo.lock is untouched, so nothing this lane carries

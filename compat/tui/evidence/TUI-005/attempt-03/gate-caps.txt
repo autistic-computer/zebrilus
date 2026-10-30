@@ -1,4 +1,4 @@
-revision: bcf9d12328ed2ef15b56d9d4aa12c229273901c6
+revision: a4a812063c52300285d0e838f51a6468f40faf02
 command: PATH=/opt/homebrew/bin:$PATH ZZ_BIN=/home/demfabris/dev/zz-gate-target/debug/zz TMUX_BIN=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_TMUX=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_CORPUS=/home/demfabris/dev/zz/compat/.cache/plugins compat/tui-caps.sh
 started: 2026-09-11T21:48:25-03:00 (ran 12 s, finished 2026-09-11T21:48:37-03:00)
 exit: 0

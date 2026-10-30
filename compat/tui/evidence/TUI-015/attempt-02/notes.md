@@ -1,6 +1,6 @@
 # Session-target fix pass, cycle 12
 
-This pass rebases 82746ea3 onto origin/main be5709df (zz 0.10.0).
+This pass rebases 82746ea3 onto origin/main 22e3c4db (zz 0.10.0).
 The gate owns verification. TUI-015 remains at review with three pane-base-index
 records for the sibling lane.
 

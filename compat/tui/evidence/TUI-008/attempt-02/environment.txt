@@ -8,10 +8,10 @@ PRETTY_NAME="CachyOS"
 
 repo: /home/demfabris/dev/zz-tui-keys-8 (worktree of /home/demfabris/dev/zz)
 branch: campaign/tui-keys
-tip: f1013040fbec19dad7e3a1123c73116ede139883, the parent of the one commit that updates this file after the
-     rebase onto origin/main 289c8a7c; every run below is byte-identical at both,
+tip: 3ec2554cd0b1a906eadc7112c84c859572de48ae, the parent of the one commit that updates this file after the
+     rebase onto origin/main 1147d7cb; every run below is byte-identical at both,
      and compat/tui-mouse.sh was re-run after the rebase to say so
-base: origin/main 289c8a7c02adc0328174c1d89dfb4fc7da95bcf4 (rebased from b17232ac, which origin/main moved past
+base: origin/main 1147d7cb1fd81a661f004e7ac2c12185996b763b (rebased from 1566c1cf, which origin/main moved past
       mid-cycle with compat/tui/lint-runner.py and no crate code)
 worktree: clean
 
@@ -31,7 +31,7 @@ locale: LANG=en_US.UTF-8 LC_TIME=pt_BR.UTF-8
 
 date: 2026-09-14
 gate worktree: /home/demfabris/dev/zz-gate-tui7 (worktree of /home/demfabris/dev/zz)
-gate branch: gate-keys, rebased onto origin/main 289c8a7c (already its descendant; nothing replayed)
-gate tip before records: the three must-fix commits on top of 7f593a59
+gate branch: gate-keys, rebased onto origin/main 1147d7cb (already its descendant; nothing replayed)
+gate tip before records: the three must-fix commits on top of 16937306
 zz under test: /home/demfabris/dev/zz-gate-target/debug/zz, built in this worktree
 pin: /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux, next-3.8 d77c9dc6

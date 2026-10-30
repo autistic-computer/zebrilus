@@ -1,6 +1,6 @@
 {
   "time": "2026-09-16T16:31:59.990261+00:00",
-  "base": "be5709dfcd9936d44519683e5da8dc6ab7748d96",
+  "base": "22e3c4db146b2298bdd94cb959572b9069b981ef",
   "source_revision": "d7fdf52b11513866960098d18e677aab0cd95bc6",
   "branch": "campaign/tui-capture-12",
   "os": "Linux alienware 7.2.3-1-cachyos-deckify #1 SMP PREEMPT_DYNAMIC Sun, 06 Sep 2026 23:17:42 +0000 x86_64 GNU/Linux",

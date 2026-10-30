@@ -11,7 +11,7 @@ timestamp: 2026-10-30T00:00:00Z
 
 ala is zz's UI framework: Zed's GPUI, split out on 2026-10-05 and owned since. It spent
 four days as its own repository, [`demfabris/gpui`](https://github.com/demfabris/gpui), moved
-into this repo on 2026-10-09 with its history (`git subtree add` of `99114ccc`), and the same day
+into this repo on 2026-10-09 with its history (`git subtree add` of `29adbcfa`), and the same day
 went from 22 crates to three. On 2026-10-29 it moved out again, to
 [`autistic-computer/ala`](https://github.com/autistic-computer/ala) (the old `demfabris/gpui`,
 transferred), and zz carries it back as a git subtree in `libs/ala`: edited in place, committed with
@@ -108,7 +108,7 @@ and DirectX color/path pipelines and WGPU path composition. The Metal GPU test
 layers, and an opaque foreground. This prevents translucent layers from adding up to
 opaque window alpha.
 
-Wide blurred inset shadows take a cheaper path in Metal, WGPU, and DirectX (`1b395e5`). A
+Wide blurred inset shadows take a cheaper path in Metal, WGPU, and DirectX (`c57bb78`). A
 pixel more than three blur radii (plus the largest corner) inside the hole is discarded, and
 when every corner radius is at most a quarter of the blur the shadow is blurred as a sharp
 rectangle with two erf pairs instead of the four-sample corner loop. zz's pane focus glow was
@@ -117,7 +117,7 @@ such a shadow: zz's GPU fragment time on a 2672x1482pt window fell from 237 to 1
 2026-10-12 (the active pane lights its glass frame instead); `bench_glass_rendering` keeps its
 cost as the "four panes as bordered fills, one glowing" case.
 
-Five fixes from building the iPhone client (`67e9cbc` to `01d7c9a`):
+Five fixes from building the iPhone client (`c3e845c` to `93f288f`):
 
 - `Window::transact` rolls back accessibility nodes, focus, and active descendant along with the
   rest of prepaint. A list honoring an autoscroll prepaints its rows twice, and iOS always builds
@@ -143,7 +143,7 @@ Five fixes from building the iPhone client (`67e9cbc` to `01d7c9a`):
   `coast_guard` calls it for sheets and the swipe back, so the display link can pause instead of
   ticking through a 2 to 3 s fling.
 
-Two APIs for the phone keyboard (`99114cc`): `TextInputConfiguration::input_mode` (`TextInputMode`,
+Two APIs for the phone keyboard (`29adbcf`): `TextInputConfiguration::input_mode` (`TextInputMode`,
 the HTML `inputmode` set; the web backend writes it as the `inputmode` attribute, the iOS backend
 maps it onto `UIKeyboardType`), and `Window::target_visual_viewport_bounds`, where the visible
 viewport comes to rest once a keyboard transition ends (default: the current visual viewport).

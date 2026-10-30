@@ -1,7 +1,7 @@
 # Cycle 11 modes proof pass, 2026-09-16
 
 The lane started at unproven `4d578fcf`, fetched origin, and rebased its seventeen
-commits onto `be5709df`. The rebased production tip is `8b95fa47`. Catalog assertion
+commits onto `22e3c4db`. The rebased production tip is `8b95fa47`. Catalog assertion
 counts needed the union of main's usage overrides and this lane's commands. The
 lane regenerated the gap report at each conflicting replay. No production change
 was necessary to resolve the rebase conflicts. Runtime proofs later exposed two

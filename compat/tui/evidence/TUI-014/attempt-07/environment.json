@@ -1,5 +1,5 @@
 {
-  "base": "be5709dfcd9936d44519683e5da8dc6ab7748d96",
+  "base": "22e3c4db146b2298bdd94cb959572b9069b981ef",
   "prior_tip": "2e2dc5842e71a25d5872d3757c0e19f48758ad6a",
   "platform": "Linux-7.2.3-1-cachyos-deckify-x86_64-with-glibc2.44",
   "tmux_version": "tmux next-3.8",

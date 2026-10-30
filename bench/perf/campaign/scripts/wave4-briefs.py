@@ -12,7 +12,7 @@ def header(title, wt, branch, budget):
 
 Worktree: {wt} (branch {branch}, from {lb.INT_BRANCH} = origin/main 06ea9cf1 plus a brief-generator commit; wave 3 is closed and on main). Its target/ is warm (APFS clone of the integration tree's) and compat/.cache holds the pinned tmux. Work only there; prefix every command with `cd {wt} &&`. Scratch files go in {lb.SCRATCH}/<slug>/ (create it). Budget: {budget} minutes from your start.
 
-Wave 4 is the last wave. Its gate is `--stage final`. These rows fail that stage on the wave-3 exit build (rescored from bench/perf/results/wave3-<host>-e9bc174c.json, zz median, zz max, tmux median, ratio):
+Wave 4 is the last wave. Its gate is `--stage final`. These rows fail that stage on the wave-3 exit build (rescored from bench/perf/results/wave3-<host>-72593a30.json, zz median, zz max, tmux median, ratio):
 
 {FINAL}
 Other lanes run at the same time in their own worktrees: W4-DELIVER (shard frame delivery, ~/dev/zz-deliver: publish_terminal_for_pane, OutboundState terminal slots, subscription handlers, control output taps, zz-pty-gather threads), W4-BINARY (~/dev/zz-binary: a daemon-only executable and packaging), W4-ROWS (~/dev/zz-rows: libghostty row extraction), KNOBS (~/dev/zz-knobs: deletes every ZZ_PERF_* rollback knob from waves 1 and 2 and the fallback paths behind them), SPAWN (~/dev/zz-spawn, built on alienware: pane spawn CPU), DL6 (~/dev/zz-gather, built on alienware: one Linux PTY gather thread per shard), CONTROL (~/dev/zz-control: zz_cli -C latency) and TUI-ECHO (~/dev/zz-tuiecho: the attach client's cost per key). Stay inside your own write zone; when the work you need sits in another lane's zone, report it under open instead of editing it.

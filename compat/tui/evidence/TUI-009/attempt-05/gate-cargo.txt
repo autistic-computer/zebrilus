@@ -1,4 +1,4 @@
-GATE, cycle 6 caps lane, cargo at the rebased tip 63459a0985b51bb1f5585ab0192d4243dd1fdf50
+GATE, cycle 6 caps lane, cargo at the rebased tip a8a97722d2c3dc831bec6a0d86d0503520ee59ce
 
 Every command went through the box's two-slot lock with MemoryMax=7G and
 MemorySwapMax=2G, --jobs 5 and --test-threads=4, one at a time, never beside a

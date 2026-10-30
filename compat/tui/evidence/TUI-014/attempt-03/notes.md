@@ -130,7 +130,7 @@ copies are the 5585cd6a runs.
 - `clippy-zz-protocol-zz-mux.txt` — exit 0.
 - `clippy-zz-daemon.txt` — exit 101 on seven pre-existing errors, every one in
   `crates/zz-daemon/src/russh_prompt.rs`, a file this diff does not touch. They are
-  main's at base 287e3815 and are repaired on origin/campaign/box-reds.
+  main's at base 5d31bee6 and are repaired on origin/campaign/box-reds.
 - `check.txt` — RUN_ENV compat/check.sh from this worktree.
 - `verify-claims.txt` — RUN_ENV compat/tui/verify-claims.py --run TUI-014.
 - `pin-clock-mode.txt`, `pin-customize-mode.txt`, `pin-switch-mode.txt`,

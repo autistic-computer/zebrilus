@@ -9,9 +9,9 @@ date: Tue Sep 15 06:22:22 PM -03 2026
 worktree: /home/demfabris/dev/zz-tui-context-10
 branch: gate-context (campaign/tui-mouse-context, review applied)
 base: origin/campaign/tui-mouse-menus-3 0babde8c0ebfdc79c2b6f62ca0e485ba9c5e0225
-  (the menus lane rebased onto origin/main 627e717a with its plugin-runtime
+  (the menus lane rebased onto origin/main 501d7398 with its plugin-runtime
   regression fixed; this lane's twelve commits replay on top of it)
-head at the time of writing: 996a31ae4c0ec136001c78b456f4c36fcb6f1523
+head at the time of writing: 6bce64543cd0abbdc9d36ca00891771a4f970570
 pin: /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux d77c9dc6 (next-3.8)
 tmux next-3.8
 zz build: target/debug/zz tmux 3.8-zz

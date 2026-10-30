@@ -1,5 +1,5 @@
 # the seven new cells on the reflowed tip binary target/alias7-bins/zz_cli-final
-# built from 52100308 (cargo fmt reflow of 1bba089c), sha256 44382b63da3503c656860ec592d05fa1c0128335accb4c9da629059615721496
+# built from 52100308 (cargo fmt reflow of d7e718dd), sha256 44382b63da3503c656860ec592d05fa1c0128335accb4c9da629059615721496
 
 ok    stream-split-print-partial
 ok    stream-split-print-term

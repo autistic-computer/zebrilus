@@ -3,7 +3,7 @@
 Everything here was produced on 2026-09-20 on the macbook (macOS 27.0 build
 26A428, Apple M4 Max, 16 cores), the platform that recorded the expiry, from
 the shared checkout `/Users/demfabris/dev/zz` at
-`04a39258974fed54a067df5ed27425b9faf128b4` (equal to `origin/main`), clean apart
+`3e7f21e8ddce1f403330654b3cf91cf38ca29b7a` (equal to `origin/main`), clean apart
 from this directory, against pinned tmux
 `d77c9dc6aa021e4bc61f0da128c591af695e6466`. Every file is a real run.
 
@@ -46,7 +46,7 @@ What that bounds the record to, and no further:
 2. The one mechanism ever proposed for the expiry, a stale binary still carrying
    the pre-fix `flush_output` stall, is refuted by
    `tui.client-input-backpressure`'s own resolution: the fixture exited 0 at
-   pre-fix `012b4dcc`, and its inner clients run inside an outer pinned tmux that
+   pre-fix `32443267`, and its inner clients run inside an outer pinned tmux that
    drains them continuously, so that stall cannot build in this fixture on any
    platform. That stall is also measurably absent on this box at this revision:
    the backpressure scenario is clean on every channel.

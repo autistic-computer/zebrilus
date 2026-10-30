@@ -15,7 +15,7 @@ timestamp: 2026-09-23T03:14:56Z
 
 # Investigation record
 
-Started 2026-09-23 UTC from `513922a9b8e26f511c9820db0634bef93d9b75a2` on
+Started 2026-09-23 UTC from `95734cea82c445a9eaf04755b62b8dce4f6a36f1` on
 `main`, with a clean working tree. Host: Apple M4 Max (`Mac16,5`), 16 CPU
 cores, 48 GiB memory, macOS 27.0 (`26A428`), Rust 1.97.0. Results below distinguish isolated mechanism experiments from measurements
 of the final application bundles.
@@ -694,7 +694,7 @@ Evidence: `baseline-kitty-split-1/`, `render/kitty-lifecycle-baseline.log`, and
 `render/kitty-lifecycle-fixed.log`. The earlier new-window workload did not
 prove visibility and must not be used as GPU evidence.
 
-**At phase-1 commit `0f0d05aa`, cleanup remained parked because a separate GPU ordering test failed.**
+**At phase-1 commit `11c46538`, cleanup remained parked because a separate GPU ordering test failed.**
 In the actual Metal atlas, a command buffer waits on a test event before reading
 an existing small tile. The CPU removes that image and uploads a replacement
 into the same texture coordinates, then releases the event. The earlier GPU
@@ -713,7 +713,7 @@ arbitrary delay or a fixed number of frames. Evidence:
 
 ## Follow-up: safe atlas cleanup
 
-After committing phase 1 as `0f0d05aa`, the user requested validation of the
+After committing phase 1 as `11c46538`, the user requested validation of the
 parked candidates one at a time. The first candidate combines desktop Kitty
 image cleanup with completion-based Metal atlas retirement. The matched
 application experiment now establishes a memory gain: ten image-pane closes
@@ -808,7 +808,7 @@ manifest. Scratch originals live in
 review output, harness controls, lockfile validation, and archived app builds;
 the latter contains the fork patch, Metal tests, renderer measurements, and
 cross-platform source audit. Rejected live preflights remain excluded. Both
-matched 0.13.0 bundles are built from release `136b9d84`, with the candidate
+matched 0.13.0 bundles are built from release `68657361`, with the candidate
 patch applied on one side. Compiler binaries, native Ghostty, profile settings,
 CEF unsigned contents, and bundle versions match. The archived manifests and
 `matched-build-comparison.json` record the comparison.

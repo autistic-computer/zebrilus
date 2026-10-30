@@ -1,4 +1,4 @@
-# revision 4a41770936b567a2da761e757c9c34ab206c7868
+# revision b481bff9b26b538558798bf50592e9fa24c9c402
 # row: smoke/status-background-jobs, the one corpus row this gate had to settle
 
 IN THE CHUNK (b14, 20 rows, the other agent working beside me):

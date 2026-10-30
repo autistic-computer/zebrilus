@@ -1175,7 +1175,7 @@ palette turns the entries into verbs ([command palette](/concepts/command-palett
   reading `256` for `-2`, at most 16 tokens of at most 200 bytes each, which the daemon folds into
   the client's feature bits for `#{client_termfeatures}`, stopping at the first name it does not
   know. Both are pure appends and both consumer halves shipped with them, but 101 went out in zz
-  0.8.0 (`fd3c64e4`) before either landed: a 0.8.0 client would pass the handshake and misdecode a
+  0.8.0 (`60f12b66`) before either landed: a 0.8.0 client would pass the handshake and misdecode a
   frame's style dictionary, so the version moves rather than the entry growing.
 - v102 also carries the raw TUI's display-panes colours and two dismissals. `DisplayPanesState`
   appends `colour` and `active_colour` after `indicators`, the client's resolved

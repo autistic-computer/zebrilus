@@ -1,5 +1,5 @@
 Chooser red diagnosis, Ubuntu, 2026-09-15
-Base: 2e5094d8e74c3de2917a15ce249c723f2211b3e1
+Base: 65e6edcd4b38b99770549fa35aae6404fa1f4531
 Pin: d77c9dc6aa021e4bc61f0da128c591af695e6466
 
 The first three complete chooser runs returned 0, 0, 1. The failed run named
@@ -38,7 +38,7 @@ reduction; crates/zz-tui/src/app.rs CoreEvent::ChooseTreeChanged handling.
 
 The command below returns 0, excluding a source regression introduced between
 the two reported gate revisions:
-  git diff --quiet 627e717a 2e5094d8 -- crates compat/tui-choosers.sh
+  git diff --quiet 501d7398 65e6edcd -- crates compat/tui-choosers.sh
 
 The echoed ZOOM-SCENE needle and asynchronous preview viewport capture were
 initial hypotheses. Their signatures do not explain the measured whole-screen

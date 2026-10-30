@@ -2,7 +2,7 @@
 
 This is the worker assessment, not an independent approval. Status remains review.
 Source revision: 753c8497781e54dd6b4717e0e0e1243d2857737f, on origin/main
-be5709dfcd9936d44519683e5da8dc6ab7748d96 (v0.10.0).
+22e3c4db146b2298bdd94cb959572b9069b981ef (v0.10.0).
 
 The orchestrator corrected the stale wire instruction. Protocol 104 and its decimal
 and byte pins now pass the full protocol suite. The lane adds no serialized payload

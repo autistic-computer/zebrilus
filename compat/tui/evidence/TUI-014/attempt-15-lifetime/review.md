@@ -1,6 +1,6 @@
 TUI-014 remains at review. This file requests gate review; it is not an independent approval of this tip.
 
-Review bd0adfb79fe19110b43e787401071ce0f9a26110 after the rebase checkpoint bd0f76d7. The branch contains the accepted mode stack and customization work, ported onto origin/main eef2df941183af8ab7b16bf648dfadcc4486d22e and the headless zz-cli split. Read the complete three-dot footprint, including inherited protocol, client, TUI, desktop and evidence changes.
+Review bd0adfb79fe19110b43e787401071ce0f9a26110 after the rebase checkpoint bd0f76d7. The branch contains the accepted mode stack and customization work, ported onto origin/main 91effe6481dcd0e8c118603eaa9890270f8165e4 and the headless zz-cli split. Read the complete three-dot footprint, including inherited protocol, client, TUI, desktop and evidence changes.
 
 The new behavior accepts switch-mode -k and -Z. Killing follows the switch entry through a clock above it, and targets the pane displaying the mode. Zoom restoration follows the entry's original zoom state, including one-pane entry and a split introduced later. Reopening the top entry does nothing; promoting a suspended entry updates its kill flag while retaining its original zoom lifetime. A mode-triggered death does not synthesize an after-kill-pane command hook.
 

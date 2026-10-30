@@ -285,4 +285,4 @@ These are known gaps, not silent omissions:
   The wall interval ends at its control reply. The daemon footprint and CPU
   samples bracket that command; RSS records the same interval.
 - Done (2026-09-29): the gate runs on Linux; the Linux W0 is
-  `results/baseline-alienware-17e17115.json` and its quick twin.
+  `results/baseline-alienware-e8caa445.json` and its quick twin.

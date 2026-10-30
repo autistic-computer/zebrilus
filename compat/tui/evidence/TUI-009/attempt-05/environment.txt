@@ -10,7 +10,7 @@ cargo: cargo 1.97.0 (c980f4866 2026-06-30)
 python3: Python 3.14.6
 
 repo: /home/demfabris/dev/zz-tui-caps-8 (worktree of /home/demfabris/dev/zz)
-branch base: origin/main b17232ace3704980919dc4bb787c84d9051f7db7
+branch base: origin/main 1566c1cf9d91b8f713f6a6ed8bb3d4a4c10376bc
 tip at these runs: 7eb3eb85086b6b41e0463a098719a9a6386341d9
 worktree: 1 uncommitted path(s) at the runs (evidence only)
 

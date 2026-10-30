@@ -24,7 +24,7 @@
   "arch": "arm64",
   "ncpu": 16,
   "python": "3.9.6",
-  "git_sha": "17e17115adf0f3ce1a087a300854c346e9e23f4e",
+  "git_sha": "e8caa44583e0a7e1c9de10a0172e9b86b57f60bf",
   "git_dirty": false,
   "zz_bin": "/Users/demfabris/dev/zz-perf-gate/target/release/zz_cli",
   "zz_version": "tmux 3.8-zz",

@@ -127,6 +127,6 @@ command: ["python3", "compat/tui/evidence/TUI-017/attempt-04/usage-baseline.py"]
     }
   }
 }
-All eight shared-fixture failures reproduce on clean e40a13e1: exact stdout/stderr, main and candidate exit 2 versus pin exit 1
+All eight shared-fixture failures reproduce on clean 13174450: exact stdout/stderr, main and candidate exit 2 versus pin exit 1
 
 exit_status: 0

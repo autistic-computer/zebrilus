@@ -1,6 +1,6 @@
 # TUI-014 fix-pass handoff, 2026-09-17
 
-Branch: `campaign/tui-customize-3`. Rebase base: `38c50df4c4d51401752c49b72bb689b09e33427d`.
+Branch: `campaign/tui-customize-3`. Rebase base: `af18f4437ec3544baf4a5eb8be200a33fad426e7`.
 The runtime was built at `0b72e3b242381028396272e3bea2915d39b1768c`;
 fixture revision `76662d8d` adds bounded redraw sampling. The frozen binary and
 its SHA-256 are recorded in `binary.txt`. The lane leaves TUI-014 at `review`.

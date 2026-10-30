@@ -1,4 +1,4 @@
-cargo at the gate tip e5c85cac, CARGO_TARGET_DIR=/home/demfabris/dev/zz-gate-target, each through systemd-run --user --scope -q -p MemoryMax=7G -p MemorySwapMax=2G flock -w 540 /tmp/zz-cargo-slot-N.lock
+cargo at the gate tip abb53cdd, CARGO_TARGET_DIR=/home/demfabris/dev/zz-gate-target, each through systemd-run --user --scope -q -p MemoryMax=7G -p MemorySwapMax=2G flock -w 540 /tmp/zz-cargo-slot-N.lock
 
 $ cargo test -p zz-protocol -p zz-tui --jobs 6 -- --test-threads=4 -> exit 0
     Finished `test` profile [unoptimized + debuginfo] target(s) in 9.36s

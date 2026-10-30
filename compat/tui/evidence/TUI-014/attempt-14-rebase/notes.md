@@ -1,4 +1,4 @@
-Rebased campaign/tui-customize (11831758) onto origin/main eef2df94 on 2026-09-16.
+Rebased campaign/tui-customize (11831758) onto origin/main 91effe64 on 2026-09-16.
 The replay keeps main's native/tmux exit-code split and moves the pane-mode CLI regression
 into crates/zz-cli/tests/cli_binary.rs. The wire document has one unreleased v104 entry,
 including the Native* errors, PaneSnapshot.mode, Customize and ClientSuspendState.

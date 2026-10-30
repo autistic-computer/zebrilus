@@ -112,7 +112,7 @@ touches the paste path, so whatever fixed it was already in bad0261f.
   the generated reports; crates/zz-mux/src/lib.rs gains one pub-use line; crates/zz is untouched
   (no GUI hunk at all); no attribution trailers; no non-doc comment under crates/.
 
-For TUI-012's flip: its proof block is untouched and its revision e9199e38 is far behind; whichever
+For TUI-012's flip: its proof block is untouched and its revision 48d4bd2d is far behind; whichever
 gate flips it owes a fresh three-run compat/tui-superset.sh plus --self-check at its own tip.
 Carried forward: the backward emacs word selection (pin copies beta, zz copies bet) is parked in
 TUI-008's next_action with the pin's measurement.

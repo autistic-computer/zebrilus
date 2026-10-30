@@ -1,7 +1,7 @@
 ---
 type: Research Report
 title: Codebase Audit for Code Smells, Rust Antipatterns, and Performance Issues
-description: Revalidation at 758dac0 found nine confirmed issues, four qualified or latent findings, one intentional ABI contract, and one overstated impact claim.
+description: Revalidation at a5d2f0b found nine confirmed issues, four qualified or latent findings, one intentional ABI contract, and one overstated impact claim.
 tags:
   - research
   - audit
@@ -10,17 +10,17 @@ tags:
   - performance
   - ffi
 timestamp: 2026-08-17T14:45:00-03:00
-git_commit: 758dac01cd491b7927d56a79685de3e3f05d802f
+git_commit: a5d2f0bab31cc10ddda849a925a83f610e0f9c64
 ---
 
 # Overview
 
 The first audit listed 34 findings. Source checks at
-`9ba4d0f0074e9081dad46dfccebda2ffe8843265` removed 19 claims whose callers,
+`aaee41ccdac5593e9e5b1521039b663e2a286cf3` removed 19 claims whose callers,
 timeouts, platform guards, or existing containment changed the verdict.
 
 A second source check after the large merge, at
-`758dac01cd491b7927d56a79685de3e3f05d802f`, found the remaining implementation
+`a5d2f0bab31cc10ddda849a925a83f610e0f9c64`, found the remaining implementation
 shapes intact. Nine findings describe confirmed issues. Four need qualified or
 latent wording, one records an intentional ABI contract, and one overstated its
 runtime impact.

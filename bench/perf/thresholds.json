@@ -1,7 +1,7 @@
 {
  "schema": 2,
  "stages": ["baseline", "wave1", "wave2", "wave3", "final"],
- "reference": {"host": "macbook", "w0": "results/baseline-macbook-17e17115.json", "scale": {"cpu": "ratio", "wall": "ratio", "mem": "plus"}},
+ "reference": {"host": "macbook", "w0": "results/baseline-macbook-e8caa445.json", "scale": {"cpu": "ratio", "wall": "ratio", "mem": "plus"}},
  "tolerance": {
   "instr": {"factor": 1.05, "floor": 0.05, "hard": true},
   "bytes": {"factor": 1.05, "floor": 256, "hard": true},

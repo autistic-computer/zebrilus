@@ -1,6 +1,6 @@
 # TUI-014 fix pass for the verifying review, 2026-09-17 (lane modes-opus)
 
-Branch `campaign/tui-customize-4`, rebased onto `origin/main` `066b862a` (release zz 0.11.0).
+Branch `campaign/tui-customize-4`, rebased onto `origin/main` `2fa763d0` (release zz 0.11.0).
 The runtime under test is `target/debug/zz_cli` at `926b01b0`, copied and hashed before any run;
 `environment.txt` carries both binaries' hashes and the fixture environment.
 

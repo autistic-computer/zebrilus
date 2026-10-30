@@ -1,8 +1,8 @@
 # Repair the parked split observation and prove the exit-code dependency
 
-This follow-up starts at 4c4c142b on e40a13e1. The first fetch left main at
-e40a13e1. A later fetch brought in the exit-code lane and its follow-ups through
-d1694e65. The rebase completed without conflicts; 0bab4e9c contains the fixture
+This follow-up starts at 4c4c142b on 13174450. The first fetch left main at
+13174450. A later fetch brought in the exit-code lane and its follow-ups through
+86215c66. The rebase completed without conflicts; 0bab4e9c contains the fixture
 repair on that base. environment.json records both stages and binary hashes.
 TUI-015 and TUI-017 remain at review. The gate decides verification.
 
@@ -66,7 +66,7 @@ bound with 0.1-second sleeps. The output contract and post-exit pane check stay
 the same. No added code comments accompany the change.
 
 The fixed scenario passes three pairs on the pre-rebase candidate and clean
-e40a13e1: one ordinary pair and two CPUQuota=25% pairs, six successful scenario
+13174450: one ordinary pair and two CPUQuota=25% pairs, six successful scenario
 executions. Each still compares against the pin. Artifact 11 catches both
 one-sided sabotages: removing -W prints `parked returned=[0] panes=2`; directing
 the split to another session prints `parked returned=[] panes=1`. Both corrupted
@@ -86,7 +86,7 @@ lock-client-missing-argument, client-tree-unknown-flag and client-tree-usage.
 The summary is 186 asserted comparisons identical, 32 recorded, unattributed=0,
 with exit 0. exitcode-dependency.json records every exact passing line.
 No assertion was weakened. Main subsequently landed that implementation as
-81c971f1; the final rebase incorporates it rather than carrying a duplicate.
+60e7340c; the final rebase incorporates it rather than carrying a duplicate.
 
 Protocol 104 now comes from main's exit-code change. This follow-up adds no
 serialized field or variant and performs no further version bump.
@@ -109,7 +109,7 @@ its three pane-base-index records. The ordinary 100-column erased-background
 probe differences and styled frozen-mode capture proof limit also remain.
 
 The previous full 163-row corpus, attached-client retry, package tests and
-failure classifications remain in attempt-04 at e40a13e1. Fresh final-base
+failure classifications remain in attempt-04 at 13174450. Fresh final-base
 results below distinguish themselves from those historical measurements.
 
 The current-main baseline uses a separate git archive and build directory.
@@ -170,7 +170,7 @@ targets passes all 20 steps, and split-window-wait passes both steps. This is
 a focused rerun, not a fresh run of all 193 selected rows. The historical full
 163-row run is retained in attempt-04.
 
-The clean d1694e65 archive runs nine relevant rows in artifact 44. The four
+The clean 86215c66 archive runs nine relevant rows in artifact 44. The four
 stable failures reproduce with exact diff lines: show-options-hooks,
 cli-chain-parse-abort, plugin-runtime-resurrect-restore and
 source-replay-diagnostics. Its jobs-command-environment and status-background-jobs
@@ -196,7 +196,7 @@ The usage limit stopped this continuation before the status-job repeat series
 and corpus collector finished; the box subsequently rebooted. Only the first
 status repeat transcript on each side was retained. No three-repeat result or
 successful final corpus collection is claimed. The completed fixture, test and
-compatibility checks above remain evidence at 0bab4e9c/d1694e65. Attempt-06
+compatibility checks above remain evidence at 0bab4e9c/86215c66. Attempt-06
 supersedes the delivery measurement after the reboot and next rebase, and adds
 the requested child-start latency distributions. The handshake evidence alone
 does not rule out a candidate startup-latency regression.

@@ -225,6 +225,6 @@ humans" non-goal, so it needs its own design and a security review. Rough size 1
 **Desktop menu input capture (`desktop.overlay-consumers`), fabrico 2026-10-09: later.** All nine
 overlay payload kinds have a desktop consumer (`view.rs:5412`). What is left: mouse motion and wheel
 still reach the pane under an open menu. The registry says gpui has no capture-phase hook, but
-`Window::on_mouse_event` (gpui `window.rs:5866`, rev 99114cc) receives move and wheel events in the
+`Window::on_mouse_event` (gpui `window.rs:5866`, rev 29adbcf) receives move and wheel events in the
 capture phase, and a full-window `occlude()` layer would also work. The choice is to swallow them like
 the pin or record scroll-under-menu as native and close the item.

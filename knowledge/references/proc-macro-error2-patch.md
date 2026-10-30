@@ -19,7 +19,7 @@ The September 2026 dependency cleanup removed the unused Cargo override and
 [current ala revision](/references/ala.md).
 
 The old dependency chain was `ala → stacksafe → stacksafe-macro → proc-macro-error2`.
-In zz commit `bed7d693`, `stacksafe-macro` 1.0.3 replaced its dependency on
+In zz commit `91af976a`, `stacksafe-macro` 1.0.3 replaced its dependency on
 `proc-macro-error2` with `proc-macro2`; the later ala rebase removed `stacksafe`.
 
 # Historical provenance

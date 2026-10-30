@@ -1,5 +1,5 @@
 Client-command flake diagnosis, Ubuntu, 2026-09-15
-Base: 2e5094d8e74c3de2917a15ce249c723f2211b3e1
+Base: 65e6edcd4b38b99770549fa35aae6404fa1f4531
 Pin: d77c9dc6aa021e4bc61f0da128c591af695e6466
 
 Three unchanged fixture runs returned 0, 0, 1. Run 3 named messages-jobs-live.

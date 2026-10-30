@@ -17,7 +17,7 @@ measurement put a recorded case inside clause 2.
     {
       "obligation": "TUI-018",
       "severity": "must-fix",
-      "description": "compat/tui-command-streams.sh carries no `export ZZ_TRAY=0`. Main added that header to compat/run.sh and every compat/tui-*.sh in the ten desktop commits past the base (compat/tui-client-commands.sh:122 at origin/main); the branch is based on 3ecd4702, which predates it, so `git grep -l ZZ_TRAY HEAD -- compat/` returns nothing. The rebase restores the header in the files main already had, but tui-command-streams.sh is a new file and no conflict will surface it, so it will land as the only compat fixture that starts a zz daemon by hand (`zz_command -f /dev/null daemon`, line 690) with no tray suppression.",
+      "description": "compat/tui-command-streams.sh carries no `export ZZ_TRAY=0`. Main added that header to compat/run.sh and every compat/tui-*.sh in the ten desktop commits past the base (compat/tui-client-commands.sh:122 at origin/main); the branch is based on e07a388c, which predates it, so `git grep -l ZZ_TRAY HEAD -- compat/` returns nothing. The rebase restores the header in the files main already had, but tui-command-streams.sh is a new file and no conflict will surface it, so it will land as the only compat fixture that starts a zz daemon by hand (`zz_command -f /dev/null daemon`, line 690) with no tray suppression.",
       "suggested_fix": "Add `export ZZ_TRAY=0` beside `set -eEuo pipefail` in compat/tui-command-streams.sh, matching origin/main:compat/tui-client-commands.sh line 122."
     },
     {
@@ -41,8 +41,8 @@ measurement put a recorded case inside clause 2.
     {
       "obligation": "TUI-018",
       "severity": "nit",
-      "description": "compat/tui/evidence/TUI-018/attempt-01/environment.txt contradicts itself twice. It records 'based on origin/main: 45481a72b9ef300365eec484a0c293552dd8acfe', but the branch's merge-base with origin/main is 3ecd4702f06afe6586d845acae34be7c02f10ec5 (45481a72 is an older ancestor). It also lists a RUN_ENV block naming ZZ_COMPAT_TMUX=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux and then says the fixtures actually used the lane worktree's own copy of the pin (binary-cksum 4253032590, 7455240 bytes) - a different build from the shared pin, which is 7455232 bytes. Same tmux commit, so the results stand (I reran everything against the shared pin and got the identical summary lines), but the record says two different things.",
-      "suggested_fix": "Correct the base revision to 3ecd4702 and state plainly which pin binary the recorded runs used."
+      "description": "compat/tui/evidence/TUI-018/attempt-01/environment.txt contradicts itself twice. It records 'based on origin/main: a6221e9c6a2ca3c06607fca25de1351d6f905845', but the branch's merge-base with origin/main is e07a388c6291a2e6c4d8f5aff2027d95b8c056e3 (a6221e9c is an older ancestor). It also lists a RUN_ENV block naming ZZ_COMPAT_TMUX=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux and then says the fixtures actually used the lane worktree's own copy of the pin (binary-cksum 4253032590, 7455240 bytes) - a different build from the shared pin, which is 7455232 bytes. Same tmux commit, so the results stand (I reran everything against the shared pin and got the identical summary lines), but the record says two different things.",
+      "suggested_fix": "Correct the base revision to e07a388c and state plainly which pin binary the recorded runs used."
     },
     {
       "obligation": "TUI-018",
@@ -52,7 +52,7 @@ measurement put a recorded case inside clause 2.
     }
   ],
   "checks_run": [
-    "git fetch origin main + campaign/*; worktree confirmed clean and detached at aa65960f, merge-base 3ecd4702",
+    "git fetch origin main + campaign/*; worktree confirmed clean and detached at aa65960f, merge-base e07a388c",
     "cargo build -p zz --bin zz at the tip: green in 4m39s (GUI builds; gpui fork resolves)",
     "RUN_ENV compat/tui-command-streams.sh x3: green, every run 'all 33 asserted comparisons identical, 0 recorded not asserted, 4 decided (0 for a sibling lane)' (128-131s each)",
     "RUN_ENV compat/tui-command-streams.sh --self-check: green, four sabotages each caught in its own channel plus both equivalences",
@@ -129,8 +129,8 @@ own `window_pane_input_callback` lines.
 diff of `crates/` against the merge-base now adds zero plain `//` lines. The design document already
 carries the `tty_update_mode`/`tty_cursor` rule.
 
-**NIT 3, environment.txt.** Corrected the base revision from `45481a72` to the real merge-base
-`3ecd4702`, and replaced the self-contradicting pin note with a plain statement that the recorded
+**NIT 3, environment.txt.** Corrected the base revision from `a6221e9c` to the real merge-base
+`e07a388c`, and replaced the self-contradicting pin note with a plain statement that the recorded
 runs used the lane worktree's own build of the pinned commit (cksum 4253032590, 7455240 bytes) and
 not the shared copy named in the RUN_ENV block (cksum 2524377659, 7455232 bytes). Same tmux commit
 `d77c9dc6`. The gate reran both fixtures against the shared pin and got identical summary lines.
@@ -156,7 +156,7 @@ case, whose reason names `protocol.binary-streams` and TUI-018.
 
 **(iii) cargo fmt.** Reproduced red at the tip and on `origin/main`'s own copy of
 `crates/zz-protocol/src/catalog.rs`, so it was never this lane's. The gate committed the formatting;
-main's own `51c858e2` landed the identical fix first, so the gate's commit dropped as a duplicate in
+main's own `91c6dd81` landed the identical fix first, so the gate's commit dropped as a duplicate in
 the rebase and `cargo fmt --all -- --check` is green at the pushed tip.
 
 **(iv) The delta selection.** The reviewer ran 24 rows; the gate ran the whole 226-row selection end
@@ -165,7 +165,7 @@ to end in sequential chunks, skipping none. See `gate-delta-corpus.txt`.
 ## The two reds the reviewer handed over
 
 `cargo fmt` is green, as above. `compat/attached-client.sh` is GREEN at the pushed tip: the box-reds
-lane's one-line daemon fix (`ea6db587`, the engine knobs a command output view was missing) reached
+lane's one-line daemon fix (`9aa6075a`, the engine knobs a command output view was missing) reached
 this branch through the rebase, so the search-again probe now finds `ATTACHED_NAV_65`. The reviewer's
 reading that nothing in this branch touched the copy-mode or search path is confirmed by the fix
 landing elsewhere.

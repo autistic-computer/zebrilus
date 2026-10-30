@@ -67,7 +67,7 @@ true` left zz's own GPU time alone but doubled WindowServer's (87 to 172 ms/s).
 | Change | Where | Result (median of 3) |
 | --- | --- | --- |
 | Terminal pane header as a cached view (`TerminalHeaderView`) | zz `760ca933e` | 9 panes: main thread 16.3 to 11.7%, layout 1.59 to 0.78 ms, nodes 297 to 117 |
-| Closed-form blur for wide inset shadows, interior discard | `demfabris/gpui` `1b395e5` | zz fragment time in the large window 237 to 144 ms/s; offscreen glow 0.69 to 0.28 ms per frame |
+| Closed-form blur for wide inset shadows, interior discard | `demfabris/gpui` `c57bb78` | zz fragment time in the large window 237 to 144 ms/s; offscreen glow 0.69 to 0.28 ms per frame |
 
 Rejected: the whole pane frame (surface, header, content) as one cached view. GPUI re-renders
 every cached view nested inside a cached view that re-renders (`window.refreshing` is set for the

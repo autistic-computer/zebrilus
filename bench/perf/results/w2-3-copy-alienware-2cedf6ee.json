@@ -24,7 +24,7 @@
   "arch": "x86_64",
   "ncpu": 16,
   "python": "3.14.7",
-  "git_sha": "2cedf6eeaedbe1904d9149155f32105685d66a71",
+  "git_sha": "40d2dfc249b5a7f7ca5e604b65e22a96b8ceda66",
   "git_dirty": false,
   "zz_bin": "/home/demfabris/dev/zz-perf-int/target/release/zz_cli",
   "zz_version": "tmux 3.8-zz",
@@ -44,8 +44,8 @@
    "libgcc_s.so.1",
    "/lib64/ld-linux-x86-64.so.2"
   ],
-  "baseline": "/home/demfabris/dev/zz-perf-int/bench/perf/results/w2-2-term-alienware-d7e3fc95.json",
-  "w0": "/home/demfabris/dev/zz-perf-int/bench/perf/results/baseline-alienware-17e17115.json",
+  "baseline": "/home/demfabris/dev/zz-perf-int/bench/perf/results/w2-2-term-alienware-95c27a0b.json",
+  "w0": "/home/demfabris/dev/zz-perf-int/bench/perf/results/baseline-alienware-e8caa445.json",
   "history_limit": 10000,
   "cpu_source": "clock_getcpuclockid",
   "instructions": true,
@@ -127,7 +127,7 @@
    }
   },
   "noisy": false,
-  "reference": "/home/demfabris/dev/zz-perf-int/bench/perf/results/baseline-macbook-17e17115.json"
+  "reference": "/home/demfabris/dev/zz-perf-int/bench/perf/results/baseline-macbook-e8caa445.json"
  },
  "metrics": [
   {

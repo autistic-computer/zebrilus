@@ -1,4 +1,4 @@
-# revision 4a41770936b567a2da761e757c9c34ab206c7868
+# revision b481bff9b26b538558798bf50592e9fa24c9c402
 # command: compat/tui-pane-geometry.sh
 # started 2026-09-12T20:09:25-03:00
 pane geometry differential (pin tmux)

@@ -6,8 +6,8 @@ PRETTY_NAME="CachyOS"
 
 revision: 0ecfd4542405e60fa8f76cdd97b73283cf4d0317
 worktree: 0 modified tracked paths
-base: origin/main 879b68fcbba93d04a56926c4719108e553fdf910
-merge-base: 879b68fcbba93d04a56926c4719108e553fdf910
+base: origin/main bb2098e34193446d02e073c29b237ee64685417b
+merge-base: bb2098e34193446d02e073c29b237ee64685417b
 
 zz:   /home/demfabris/dev/zz-tui-choosers-9/target/debug/zz
 -rwxr-xr-x 2 demfabris demfabris 791508528 set 14 07:47 target/debug/zz

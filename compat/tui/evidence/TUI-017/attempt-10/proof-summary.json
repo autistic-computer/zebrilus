@@ -1,7 +1,7 @@
 {
   "source_revision": "7d9ec14aa47bfa1203d52895884949ec67ccb9c8",
   "fixture_revision": "98ad1dfe6ebd1a018214d1d55c91096edc406edf",
-  "base": "7f8d2cc4440088eacbe42dbd266d232a748378ff",
+  "base": "340541d4add672c6c8ea5f0f5e6db1ca775501eb",
   "status": "review",
   "decision": "fabrico 2026-09-18: capture returns the spaces a tab left on screen",
   "cases": {
@@ -82,7 +82,7 @@
     "The edits workload keeps about 1% more instructions than main, which the asserted ICH case requires.",
     "cargo test -p zz-daemon is not green: the agent soak failure is inherited, not fixed here.",
     "Styled frozen-mode capture, narrow-screen reflow and compressed-history round trips stay unproven.",
-    "The corpus control binary is main 38c50df4, a day older than the base.",
+    "The corpus control binary is main af18f443, a day older than the base.",
     "Attempt-07's environment listings are redacted at this tip but remain in this branch's history.",
     "bench/run.sh did not run: fixtures and the release desktop bundle are absent.",
     "Both obligations remain at review; the gate decides verification."

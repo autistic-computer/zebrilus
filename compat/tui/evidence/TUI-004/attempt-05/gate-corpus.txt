@@ -1,4 +1,4 @@
-# revision 4a41770936b567a2da761e757c9c34ab206c7868
+# revision b481bff9b26b538558798bf50592e9fa24c9c402
 # command: ZZ_COMPAT_ZZ=/home/demfabris/dev/zz-gate-target/debug/zz compat/run.sh --strict-geometry --delta origin/main..HEAD --commands set-option,display-message
 #          plus the three keys-or-status scenarios the delta selection missed, added by hand:
 #          copy-mode-stock-action-keys, send-keys-repeat, send-keys-reset

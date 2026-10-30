@@ -1,7 +1,7 @@
 {
   "lane": "capture-residuals",
   "branch": "campaign/tui-capture-residuals",
-  "base": "f9c52359e3da88cbde735076b38e22cdf3e003c6",
+  "base": "d1508a16d20abd64beaccf04b2a54d45f81b8eb7",
   "capture_12_remote": "c550a39632ca97dc0e7c6793791b44263d3d81eb",
   "proof_revision": "bb693da5c5654dbf97129857b36e6e63e0b18cbc",
   "runtime_revision": "ddbd4bed52f597afed92afba4d05de9e8c854ae7",

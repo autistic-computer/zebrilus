@@ -5,7 +5,7 @@ Repository: /home/demfabris/dev/zz-tui-capture-10
 Final branch: campaign/tui-capture-11
 Final tip selector: refs/heads/campaign/tui-capture-11 (the commit containing this file)
 The final JSON report binds this selector to its full SHA; post-commit proofs record that SHA.
-Base: 7e7cb1ee25122a10e7f1d8815241422eb00c4199 (origin/main at rebase)
+Base: 89e480444b9e0bc33bc3ec3df34d1d353d7d9be6 (origin/main at rebase)
 Pre-fix rebased baseline: 0f7ea318dfb3f8cce25182fcb801b155833d6520
 Rust implementation commits: 31a03de7, edfc07fb, fb6a5c48
 Binary: /home/demfabris/dev/zz-tui-capture-10/target/debug/zz

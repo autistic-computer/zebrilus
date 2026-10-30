@@ -1,7 +1,7 @@
 TUI-012 attempt-01 environment
 
 Re-stamped at the cycle 6 superset gate. The first revision of this file attested
-53d206dc, which is origin/main and carries no compat/tui-superset.sh at all, so it could
+94d0da5d, which is origin/main and carries no compat/tui-superset.sh at all, so it could
 not attest the runs recorded beside it. Every FIXTURE run in this directory is now the gate's
 own, taken at the revision below. The three cargo files the lane recorded at its own tip are
 kept as the lane's; the gate's own workspace checks are in gate-cargo.txt, its corpus sweep in
@@ -14,15 +14,15 @@ os: NAME="CachyOS Linux" PRETTY_NAME="CachyOS"
 cpus: 16, memory: 15Gi plus 15Gi zram
 bash: 5.3.15(1)-release
 worktree: /home/demfabris/dev/zz-gate-tui7 (gate worktree)
-base: origin/main 46a02abed06fff13755e32ec14fb4c88b14c08a7 (cycle 6 input and roster already in)
-head: d002ba966176777b97f7722256f7957f926303ab
+base: origin/main 686b7be6351a1504c9a1df296c7514a2948969d3 (cycle 6 input and roster already in)
+head: cf4a74bee1adc6e8fcc533ea3c1f4ae194f66cd4
   campaign/tui-superset rebased onto that base; every run recorded here was taken at this
   revision with `git status --short` empty.
 worktree state at every run: clean, 0 lines from `git status --short`.
 
 ATTESTATION. A cargo debug build of zz is not bit-reproducible on this box, so the sha256
 below identifies the artifact and cannot attest it. The attestation is the revision above
-plus a clean worktree. The two commits this gate adds on top of d002ba96 touch only files
+plus a clean worktree. The two commits this gate adds on top of cf4a74be touch only files
 under compat/tui/evidence/, compat/tui/campaign.json and the two generated reports - no
 crate source, no fixture - so every run recorded here stands at the gate's final tip.
 

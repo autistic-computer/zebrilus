@@ -4,8 +4,8 @@ PRETTY_NAME="CachyOS"
 
 date: 2026-09-13T10:22:14-03:00
 repo: /home/demfabris/dev/zz-gate-tui7 (gate worktree of /home/demfabris/dev/zz)
-tip: 49c0b036b326bd9c3af27fc50013f0241f0284d1 Leave a MENU_NOMOUSE menu's arming to the mouse option
-base: origin/main 53d206dc5167ab009f41b6bbd1a15af6ecea6c18
+tip: 3679c107bba84456279b053f435978a7520c353b Leave a MENU_NOMOUSE menu's arming to the mouse option
+base: origin/main 94d0da5d8a40dd6a49e5b76116419b61e4415be7
 pin: /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux
 tmux next-3.8
 zz: /home/demfabris/dev/zz-gate-target/debug/zz

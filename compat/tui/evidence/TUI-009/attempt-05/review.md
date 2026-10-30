@@ -39,7 +39,7 @@
     }
   ],
   "checks_run": [
-    "fetched origin/main (b17232ac) and campaign/tui-caps-3 (tip 1d7f6d0e, five commits, matches the worker report)",
+    "fetched origin/main (1566c1cf) and campaign/tui-caps-3 (tip 1d7f6d0e, five commits, matches the worker report)",
     "detached checkout in /home/demfabris/dev/zz-tui-caps-8-review, worktree clean at start and at finish",
     "touched crates/**/*.rs and Cargo.* then rebuilt: CARGO_TARGET_DIR=/home/demfabris/dev/zz-tui-caps-8/target, cargo build -p zz through the two-slot 5G wrapper, exit 0 (this also proves the GUI crate still builds)",
     "compat/tui-caps.sh at tip, run 1: exit 0, 366 asserted rows, 0 recorded, md5 cb21624a8b09057727430af0edb69cb3 -- byte-identical to all three of the worker's evidence runs",
@@ -77,7 +77,7 @@ The verdict is **approve** with five nits and no must-fix, so nothing bound this
 change. One nit was cheap, provable and about a document contradicting its own code, so it was
 fixed in its own commit; the other four are recorded here and carried into next_action.
 
-### Nit 1, fixed: 63459a09 "Say the message drops a name it does not know"
+### Nit 1, fixed: a8a97722 "Say the message drops a name it does not know"
 
 The doc on `ProtocolMessage::ClientTerminalFeatures` said the daemon folds the names "stopping at
 the first name it does not know". `knowledge/protocol/wire-protocol.md`'s v102 entry said unknown
@@ -131,7 +131,7 @@ recorded not asserted (0 for a sibling lane)", and `compat/tui-caps.sh` records 
 ## What the gate re-measured for itself
 
 Every fixture in the gate's stage-3 list, the whole 144-row delta corpus, and every cargo command,
-on the caps lane rebased onto the accumulated main (origin/main c8086f06, which already carries the
+on the caps lane rebased onto the accumulated main (origin/main 4f3251a1, which already carries the
 cycle 6 keys lane). Not one number here was copied from the lane or from the reviewer:
 `gate-tui-caps.txt` and `gate-tui-caps-self-check.txt` are this gate's own runs, and they came back
 byte-identical to the lane's evidence at md5 cb21624a8b09057727430af0edb69cb3 and
@@ -139,7 +139,7 @@ b65555c16e1ea4abe8c81c5a891c2f22.
 
 ## One thing the gate could not re-measure mechanically
 
-`compat/tui/verify-claims.py` landed on main in c8086f06, one commit before this gate, to re-read a
+`compat/tui/verify-claims.py` landed on main in 4f3251a1, one commit before this gate, to re-read a
 verified obligation's fixture tally instead of trusting the claim. Its `TALLY` regex matches two
 spellings, "`N` recorded not asserted" and "`N` assert none and are recorded in full".
 `compat/tui-caps.sh` prints neither: its summary is "`N` asserted rows, `M` recorded rows". So

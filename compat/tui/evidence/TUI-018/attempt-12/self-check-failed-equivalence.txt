@@ -1,4 +1,4 @@
-# RETAINED FAILED RUN: --self-check before dfe71ab7, when the pane-death sabotage
+# RETAINED FAILED RUN: --self-check before 771fc5df, when the pane-death sabotage
 # left @zzcs-after set on the zz side and the closing equivalence reported state=1.
 # Every sabotage was caught; only the closing equivalence failed.
 

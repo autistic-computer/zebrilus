@@ -1,6 +1,6 @@
 # Reconcile capture fixes with current main
 
-This correction rebases campaign/tui-capture-12 from 98c5f77d onto e40a13e1.
+This correction rebases campaign/tui-capture-12 from 98c5f77d onto 13174450.
 The resolver conflict is reconciled through one session-only dispatch: bare
 pane/window IDs and compound targets reuse resolve_window/resolve_pane; the
 name-only helper does not retain main's duplicate ID lookup blocks. Compound
@@ -40,7 +40,7 @@ Clippy passes for all four touched crates with all targets, all features and
 Every Cargo invocation uses /tmp/zz-cargo.sh. Long command durations include
 time queued behind other lanes' shared slots.
 
-The clean main comparison uses an independently compiled git archive of e40a13e1
+The clean main comparison uses an independently compiled git archive of 13174450
 inside this worktree, with a separate target directory. main-environment.json
 records its binary hash and source equality checks. Child measurement environments
 omit credential variables before execution, so environment-dump cases can be
@@ -55,7 +55,7 @@ both exit 2 and the pin exits 1. Artifact 26 records every command and all three
 channels for all three binaries. The sibling exit-code fix is still needed;
 none of these assertions is weakened or converted to a record.
 
-Twelve of the previous thirteen corpus failures reproduce on clean e40a13e1
+Twelve of the previous thirteen corpus failures reproduce on clean 13174450
 with the same difference lines as attempt-03. prior-failure-attribution.json
 retains their log hashes and exact differences. The full corrected corpus and
 any extra failures receive their own final classification below.
@@ -201,7 +201,7 @@ full daemon-library failures are retained beside their passing reruns.
 
 The production sources and shared fixture are unchanged from measured source
 204c7975. The delivery commit updates only records, reports and fresh evidence.
-The rebase onto e40a13e1 is complete, including main's later daemon changes and
+The rebase onto 13174450 is complete, including main's later daemon changes and
 its pane/window-ID session target pins. The generated gaps report was written
 with the tracker, not hand-edited. No code comments or commit attribution
 trailers were added.
@@ -211,4 +211,4 @@ OKF validation passes with its existing warning for five older research pages.
 Artifact 41 checks the original environment's two credential-like values locally
 and finds no matches in the fresh evidence; it also rechecks binary, fixture
 and pin hashes and byte equality of main's target test and scenario.
-The complete three-dot file list is footprint.txt, based on e40a13e1.
+The complete three-dot file list is footprint.txt, based on 13174450.

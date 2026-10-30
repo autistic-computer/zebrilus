@@ -6,7 +6,7 @@ patched Ghostty tree by the patch that made it. TUI-015 is untouched: its
 resolver and its three configured `pane-base-index` cases are the ones the
 previous review accepted, and they still pass in every run below.
 
-The lane rebased onto `origin/main` `7f8d2cc4` (`v0.11.0`). `compat/wire-version.py`
+The lane rebased onto `origin/main` `340541d4` (`v0.11.0`). `compat/wire-version.py`
 reports 104 matching the release with the wire unchanged, so nothing here
 touches a payload.
 
@@ -144,14 +144,14 @@ unrun rows. Ten rows failed, none of them caused here; `delta-summary.json` has
 the partition.
 
 Seven fail on the immutable main control as well
-(`target/capture-residuals-main-control/zz_cli`, main `38c50df4`), with the same
+(`target/capture-residuals-main-control/zz_cli`, main `af18f443`), with the same
 step count and the same divergence counts on both sides: `lane2-store`,
 `micro-flags`, `show-options-hooks`, `smoke/cli-chain-parse-abort`,
 `smoke/default-client-command`, `smoke/plugin-runtime-resurrect-restore` and
 `smoke/status-background-jobs`. The options rows differ in this pin build's
 `vlock` default against zz's `lock -np`; `micro-flags` differs in the month the
 pin spells with the host locale; the restore fixture reports its own pin-side
-assertion failure. The control is a day older than the `7f8d2cc4` base, and the
+assertion failure. The control is a day older than the `340541d4` base, and the
 commits between them touch the desktop client, the release version and evidence
 redaction, not CLI options, formats or pane spawning.
 

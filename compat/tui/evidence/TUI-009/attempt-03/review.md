@@ -2,7 +2,7 @@
 
 lane tip reviewed: 7d61628e6fd228a46f7e548d4c6c384fb999e2d4 on campaign/tui-caps-2
 gate worktree: /home/demfabris/dev/zz-gate-tui6, local branch gate-caps
-rebased onto: origin/main 33ecbd8694ac90c0d6c35c0e1fb700cde1f09f71 (cycle-6 copy gate)
+rebased onto: origin/main ce010be5c0ebc2b731f54d3797443cf0b3f77604 (cycle-6 copy gate)
 gate tip before this records commit: see gate-01..gate-16 headers
 pin: d77c9dc6aa021e4bc61f0da128c591af695e6466 (tmux next-3.8)
 box: alienware, CachyOS, 16 cores, 15 GB + 15 GB zram
@@ -100,7 +100,7 @@ An earlier run of this gate was killed by a reboot after the rebase and the fix
 pass. It left the three fix commits in place and this run started from them,
 checked each against the review, and re-ran every probe the review cites.
 
-**Defect 1, must-fix, the sub-16-colour aixterm path.** Applied in dfeff8cf,
+**Defect 1, must-fix, the sub-16-colour aixterm path.** Applied in 96205d66,
 exactly the guard the review names:
 
     if colours >= 256 || (index < 16 && colours >= 16) { return index; }
@@ -112,7 +112,7 @@ probe at the gate tip: **279 asserted rows, 23 recorded, all 279 identical**
 (gate-01), which is the review's own post-fix number, and --self-check still
 catches 21 sabotages with 3 controls quiet (gate-02).
 
-**Defect 2, must-fix, the unrecorded wire appends.** Applied in 0394293c: the
+**Defect 2, must-fix, the unrecorded wire appends.** Applied in 13e186b0: the
 two appends are named in wire-protocol.md, and terminal-lanes.md's two payload
 diagrams gain the `style_classes` array while the PackedStyle row explains that
 the 16-byte record is unchanged because `foreground_raw` masks the palette index
@@ -120,19 +120,19 @@ away and `attributes` masks the class codes away.
 
 The gate went further than the review asked, and the reason is in gate-16: the
 review judged the appends against PROTOCOL_VERSION 101 and found them clean as
-pure appends, which they are, but 101 **shipped** in zz 0.8.0 at fd3c64e4
+pure appends, which they are, but 101 **shipped** in zz 0.8.0 at 60f12b66
 before this lane landed. A released 0.8.0 client passes the envelope check and
 then misdecodes every frame's style dictionary. So this gate moved the wire to
 **102** in its own commit, closed the v101 entry with the tag it shipped in and
-opened a v102 entry for the two appends. `git log fd3c64e4..origin/main --
+opened a v102 entry for the two appends. `git log 60f12b66..origin/main --
 crates/zz-protocol` is empty, so v102 is this lane's alone.
 
-**Nit 3, the eight plain comments in terminal_event.rs.** Applied in 82d83713:
+**Nit 3, the eight plain comments in terminal_event.rs.** Applied in 90b105dc:
 the three blocks became `///` documentation on the functions that own them,
 which is how the file already carries its XTVERSION citation. The pin citations
 survive; only the comment style moved.
 
-**Nit 4, the attribute bits.** Applied in 82d83713: a const assertion beside the
+**Nit 4, the attribute bits.** Applied in 90b105dc: a const assertion beside the
 ATTR_ block, so a future `ATTR_X: u16 = 1 << 12` fails the build instead of
 being masked away in silence.
 
@@ -164,4 +164,4 @@ One corpus row, `smoke/jobs-command-environment`, is red at the lane tip and
 green at origin/main on this box, five runs to two. It is not a behaviour
 change - the job path is not in the diff at all - it is the fixture's own
 one-second margin, which this lane's ~11 ms a call of extra load time pushes
-over. Diagnosed and fixed in 5c28f025, whole story in gate-15.
+over. Diagnosed and fixed in 4b2075ac, whole story in gate-15.

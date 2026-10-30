@@ -10,10 +10,10 @@ records commit from the scripts the gate had already drafted (`tracker-edit.py`,
 
 | Fact | Value |
 | --- | --- |
-| `origin/main` | records `2430e74b` over the harness retry commit `2e042210` and fabrico's `d13e2a06`, with this close-out commit on top; the lane merges are `602105e5` (client) and `980e7439` (mux), the fixture rewrite `04d28cb1` |
+| `origin/main` | records `8a94deb5` over the harness retry commit `66b2b570` and fabrico's `6a0acc04`, with this close-out commit on top; the lane merges are `86e0f6ac` (client) and `21bce9ae` (mux), the fixture rewrite `075a0084` |
 | Agreed-scope meter | 100.0% (304/304), 65/65 groups; post-freeze scope 3 items / 3 open groups |
 | Live registry | 46 active groups / 446 items; 3 open, 0 blocked, 43 accepted; 199 closed records |
-| Corpus | 254 scenarios / 3,086 steps; stamp `04d28cb19e73` (ubuntu, cycle 18, the fifth attempt); `--check-summary` prints "summary current" with a crates/ drift warning for fabrico's web-client commits above it |
+| Corpus | 254 scenarios / 3,086 steps; stamp `075a00849629` (ubuntu, cycle 18, the fifth attempt); `--check-summary` prints "summary current" with a crates/ drift warning for fabrico's web-client commits above it |
 | `PROTOCOL_VERSION` | 99 (0x63); the cycle's allowed bump was not spent |
 | Board | `F-TUI-CLIENT-CLOSE` and `F-MUX-BUFFER-IFSHELL` INTEGRATED and released; MAIN released after the records; TRIAGE free; `F-GUI-MENU-MOUSE-MODALITY` READY as the design front |
 | Runner | `compat/orchestration/opus-compat-run-18.js` is the template; its gate step 7 now describes the harness retry (below) |
@@ -28,7 +28,7 @@ below 109 columns, HOME pinned in 122 `cli_binary` tests, the clipboard mirror r
 Mux lane (`campaign/batch-mux-buffer-ifshell`, two commits, reviewed approve-with-fixes): the pin's
 per-verb wording for a missing buffer, and background `if -b`/`run-shell -b` insertions applied in
 queue order on one drainer instead of racing on job threads. The gate rewrote the if-shell assertion
-to order classes (`04d28cb1`) after the stamped run showed the pin itself does not hold one permutation.
+to order classes (`075a0084`) after the stamped run showed the pin itself does not hold one permutation.
 
 The stamped run took five attempts, all for reasons other than the merged code: an `env -i` launch
 that starved a scenario of `nvim`, the if-shell assertion, a vim-tmux-navigator load flake, a
@@ -92,10 +92,10 @@ modality, is a design question and sits on the board as `F-GUI-MENU-MOUSE-MODALI
 
 | Fact | Value |
 | --- | --- |
-| `origin/main` | this records commit over fabrico's `5c1cec7e` (cycle 17's gate commits below it, all unsigned) |
+| `origin/main` | this records commit over fabrico's `5cac0f20` (cycle 17's gate commits below it, all unsigned) |
 | Agreed-scope meter | 100.0% (304/304), 65/65 groups; post-freeze scope 6 items / 5 open groups |
 | Live registry | 47 active groups / 448 items; 5 open, 0 blocked, 42 accepted; 196 closed records |
-| Corpus | 251 scenarios / 3,080 steps; stamp `6edc5c7ec425` (ubuntu, cycle 16); cycle 17 changed `crates/` after it, so `--check-summary` prints "summary current" with a drift warning until cycle 18's gate re-stamps on the ubuntu box |
+| Corpus | 251 scenarios / 3,080 steps; stamp `d5a7153f04c5` (ubuntu, cycle 16); cycle 17 changed `crates/` after it, so `--check-summary` prints "summary current" with a drift warning until cycle 18's gate re-stamps on the ubuntu box |
 | `PROTOCOL_VERSION` | 99 (0x63); cycle 18's client lane may take it to 100 for one group |
 | Board | `F-TUI-CLIENT-CLOSE` (lock, client lane), `F-MUX-BUFFER-IFSHELL` (lock, mux lane), `F-GUI-MENU-MOUSE-MODALITY` (p4 design front) READY; MAIN and TRIAGE free |
 | Runner | `compat/orchestration/opus-compat-run-18.js` (ubuntu defaults; every box fact is an `args` override) |
@@ -173,20 +173,20 @@ first, mux second), the stamped full run, records, board.
 
 Cycle 17 was frozen on the ubuntu box at 23:44Z and resumed on the macbook two hours later with
 `opus-compat-run-17b.js` (workflow run `wf_8b3416e0-5d5`, 6.8 hours, four agents: the wire lane's
-resume pass, the wire and panes reviews, one gate). All four lanes merged, in order: wire `eee64c47`
+resume pass, the wire and panes reviews, one gate). All four lanes merged, in order: wire `616d691f`
 (protocol 98 to 99 in three pure appends: `stdout_claim` on `CommandResponse::Success`, `producer` on
-`EventPayload::Clipboard`, the `EnvironmentRequest`/`EnvironmentResponse` pair), panes `50e785de`,
-client `8ad2e633`, proof `6fa9ef58`, then the records commit `aaf77cdc`. Every review came back
+`EventPayload::Clipboard`, the `EnvironmentRequest`/`EnvironmentResponse` pair), panes `0e9394b5`,
+client `39d290d5`, proof `35781cb6`, then the records commit `192dd01f`. Every review came back
 approve-with-fixes and every must-fix landed at the gate with its probe re-run. `CAMPAIGN-LOG.md`
 carries the full cycle-17 entry: what the reviews caught, the dead-pane guard the reviewer put in the
 wrong place, and the macOS-only `if -b` ordering divergence the gate found on its own.
 
 | Fact | Value |
 | --- | --- |
-| `origin/main` | `aaf77cdc` (21 gate commits over `3bd920e3`, all unsigned; see "as it actually went") |
+| `origin/main` | `192dd01f` (21 gate commits over `1fede66b`, all unsigned; see "as it actually went") |
 | Agreed-scope meter | 100.0% (304/304 items), 65/65 groups; post-freeze scope 5 items / 5 groups (15 / 9 at launch) |
 | Live registry | 47 active groups / 446 items; 5 open, 0 blocked, 42 accepted; 196 closed records |
-| Corpus | 251 scenarios / 3,080 steps; attached-client fixture PASS at `6fa9ef581e06`; the stamp stays `6edc5c7ec425` (ubuntu) because eleven rows are red on the macbook at baseline too |
+| Corpus | 251 scenarios / 3,080 steps; attached-client fixture PASS at `35781cb6e92d`; the stamp stays `d5a7153f04c5` (ubuntu) because eleven rows are red on the macbook at baseline too |
 | `PROTOCOL_VERSION` | 99 (0x63) |
 | Board | the four lane locks INTEGRATED and released; MAIN and TRIAGE free; two residuals on TRIAGE (5566260127 the open items, 5566262686 the unprovable clause and the macbook rows) |
 | Ledger settlement | 238/243 (97.9%) |
@@ -220,7 +220,7 @@ reached the `cli_binary` tests that do not pin HOME (the wire review's diagnosis
 pin HOME as well); `ClipboardProducer` is not surfaced through the C ABI, so an FFI client cannot tell
 the pin's two OSC 52 producers apart (no C client emits OSC 52 today); the underline colour (`us=`)
 still resolves through zz's palette in the raw TUI (a client-side residue the review left as a
-non-defect); `b0d69603` gates the desktop clipboard mirror on `request_id != 0` where the v99
+non-defect); `5d415466` gates the desktop clipboard mirror on `request_id != 0` where the v99
 `producer` field now carries that distinction directly (a follow-up, not a hazard).
 
 ## Next cycle, if there is one
@@ -239,7 +239,7 @@ red rows there, and only a row green at baseline is a lane's.
 ## Resuming after a freeze, as it actually went
 
 The frozen-cycle recipe below worked as written: the macbook already had the checkout and both
-caches, gh was logged in, the hook was in place, four `claim --lease 14h --branch --base e0987ace`,
+caches, gh was logged in, the hook was in place, four `claim --lease 14h --branch --base 8e72a1b9`,
 then one `Workflow` call with every `M` argument. Three cold builds (lane, review and gate targets)
 took the first hour. What the recipe did not say and the next freeze should:
 
@@ -269,9 +269,9 @@ Fabrico had to shut the ubuntu box down two and a half hours into cycle 17. Noth
 nothing is merged: all four lane branches are on origin, three lanes' reports and two reviews are
 cached in `compat/orchestration/cycle-17-reports.json`, and
 `compat/orchestration/opus-compat-run-17b.js` resumes the cycle from exactly that state. The gate
-never started, so `origin/main` (`a7ca9482`) still carries the pre-cycle registry: 15 post-freeze
-items across 9 open groups, meter 304/304. Fabrico pushed `b0d69603` (set-clipboard off on every
-platform) and `a7ca9482` (session picker) during the cycle; no lane is rebased on them.
+never started, so `origin/main` (`2fc74cc7`) still carries the pre-cycle registry: 15 post-freeze
+items across 9 open groups, meter 304/304. Fabrico pushed `5d415466` (set-clipboard off on every
+platform) and `2fc74cc7` (session picker) during the cycle; no lane is rebased on them.
 
 | Lane | Branch on origin | Tip | Worker report | Review |
 | --- | --- | --- | --- | --- |
@@ -283,7 +283,7 @@ platform) and `a7ca9482` (session picker) during the cycle; no lane is rebased o
 What the reports claim, unverified by any gate: the proof lane closes its three groups (its own
 meter reading 12 items / 6 groups after it alone); the client lane closes `tui.sidebar-auto-hide`
 (the missing row was a per-pane header the raw TUI reserved unconditionally, not the status block,
-and the status-left clause did not reproduce at `e0987ace`, so it is retired as unreproducible and
+and the status-left clause did not reproduce at `8e72a1b9`, so it is retired as unreproducible and
 the band asserted) and `desktop.overlay-consumers`, and registers `tui.status-row` with one item
 left of the classes it measured (9 of 9 rows differing at the base, 2 of 11 comparisons at its tip);
 the panes lane closes `pane.runtime-facts` with one value-semantics change on an existing wire
@@ -293,7 +293,7 @@ the three control residues if its proofs hold. Read `cycle-17-reports.json` for 
 
 Board: the four locks `F-WIRE-CONTROL-CLAIMS`, `F-PANE-RUNTIME-FACTS`, `F-TUI-STATUS-MENU` and
 `F-CENSUS-CLOSE` are RELEASED with the freeze state in their reasons; MAIN and TRIAGE are free.
-Records commit `e0987ace` (the `pane.runtime-facts` split and `opus-compat-run-17.js`) is
+Records commit `8e72a1b9` (the `pane.runtime-facts` split and `opus-compat-run-17.js`) is
 ledgered under MAIN. The agents' leftover servers on this box were reaped by pid; the user's own
 zz daemon and tmux were never touched.
 
@@ -305,7 +305,7 @@ zz daemon and tmux were never touched.
    tips with warm targets, `~/dev/zz-review-*` are the reviewers' scratch, `~/dev/zz-orch-17` is
    the orchestrator's read-only checkout, and `~/dev/zz-gate-target` is warm at main's code.
 2. Claim the four locks again under the machine's holder identity, 14h leases, `--branch` the
-   branch names above and `--base e0987ace`.
+   branch names above and `--base 8e72a1b9`.
 3. Run `Workflow({ scriptPath: '<checkout>/compat/orchestration/opus-compat-run-17b.js', args: {...} })`.
    The script inlines the cached reports and reviews: the panes, client and proof workers are
    skipped, the proof and client reviews are skipped, the wire lane gets a RESUME worker pass
@@ -331,9 +331,9 @@ are historical context; their operational recipes still apply.
 
 # Earlier handoff: cycle 16 integrated
 
-Cycle 15 landed config `fc4f5ded`, then status `d59236fc`, through one Codex gpt-6-astra gate
+Cycle 15 landed config `298e849d`, then status `17bc9ee3`, through one Codex gpt-6-astra gate
 running alone on Ubuntu. The lanes used medium reasoning on the default tier. The full run at
-`d59236fc92d2` passed: 238 scenarios, 2,795 steps, attached-client PASS with a valid stamp.
+`17bc9ee34a20` passed: 238 scenarios, 2,795 steps, attached-client PASS with a valid stamp.
 The live registry has 4 open groups, 0 blocked, 42 accepted and 185 closed records; 13 post-freeze
 items remain, with frozen delivery still 304/304. Read TMUX_COMPAT_TRACKER.md and the live board
 for the current checkpoint; CAMPAIGN-LOG.md records the reviews, fixes, gates and remaining work.
@@ -349,17 +349,17 @@ HOME/XDG configuration or `-f /dev/null`, because startup now discovers tmux con
 Updated 2026-09-05 after the Ubuntu cycle-14 gate. Start here; the older instrument-pass and
 machine-move sections below describe the cycle-13 pause and no longer define current state.
 
-Instrument landed at `f6348f19`, keys at `533d253c`, then buffers at `c2827417`. One Codex
+Instrument landed at `22f1a937`, keys at `6da3635d`, then buffers at `f34b4bd1`. One Codex
 gpt-6-astra gate ran alone at medium reasoning on the default tier (the workers started at high
 reasoning on the fast tier; fabrico switched the cycle to medium/default at 14:45, mid-cycle). This order put the repaired attached fixture on
 main before the stamped run and the keys focus-test correction on main before the buffers suite.
 All reviewer must-fixes were applied and their probes re-run. Protocol remains v98.
 
 The full run passed all 231 scenarios / 2,742 steps, with four registered known rows and the
-attached-client fixture PASS recorded at `c282741787c9`. The harness printed `summary current`.
+attached-client fixture PASS recorded at `f34b4bd13611`. The harness printed `summary current`.
 The SHA-256 of `compat/results/summary.md` is
 `eb015c8382850aac3a8d2355fab28296667088c7c67592e8cd6e2c36639a8c2b`.
-Owner commits `e9d23ec9`, `5dad18fe`, `b75bc348`, `4cee170c`, and `75d9ca24` landed during the full run. The records rebased conflict-free onto `75d9ca24`; the attached fixture is unchanged. The owner's `75d9ca24` makes post-stamp crate changes a warning, so the full run remains recorded at `c282741787c9`, with three owner crate commits afterward.
+Owner commits `7d8ad617`, `edadc089`, `a3b23755`, `7dcce97d`, and `4ac1d6b3` landed during the full run. The records rebased conflict-free onto `4ac1d6b3`; the attached fixture is unchanged. The owner's `4ac1d6b3` makes post-stamp crate changes a warning, so the full run remains recorded at `f34b4bd13611`, with three owner crate commits afterward.
 
 All three former environment-red rows now pass. The fixture's native-search proof does not close
 the separately measured stock-search output-loss defect.
@@ -422,10 +422,10 @@ read. The desktop GPUI app keeps its own look entirely.
 
 | Fact | Value |
 | --- | --- |
-| `origin/main` | `75d9ca24` (owner commits after `c2827417`) plus the rebased cycle-14 records commit |
+| `origin/main` | `4ac1d6b3` (owner commits after `f34b4bd1`) plus the rebased cycle-14 records commit |
 | Agreed-scope meter | 100.0% (304/304 items), 65/65 groups done; six live post-freeze items across four groups |
 | Live registry | 46 active groups / 434 items; 4 open, 0 blocked, 42 accepted; 180 closed records |
-| Corpus | 231 scenarios / 2,742 steps / four known rows; attached-client PASS recorded at `c282741787c9` |
+| Corpus | 231 scenarios / 2,742 steps / four known rows; attached-client PASS recorded at `f34b4bd13611` |
 | `PROTOCOL_VERSION` | 98 (0x62); no cycle-14 wire change |
 | Unmerged cycle-14 work | None |
 | Board | All three cycle-14 locks integrated and released; MAIN and TRIAGE released after the records/residual pass; F-SPLIT-MUX-*-V5 unchanged |
@@ -434,7 +434,7 @@ read. The desktop GPUI app keeps its own look entirely.
 ## The client lane landed (2026-09-03)
 
 `opus-compat-run-10b.js` ran its `stage: "gate"` on the ubuntu box and the lane is merged at
-`9ddeae0`. All six reviewer must-fixes went in first, each with the reviewer's measurement
+`6417c7a`. All six reviewer must-fixes went in first, each with the reviewer's measurement
 reproduced by reverting the fix: `menu_add_item` drops a row whose format expands empty instead of
 turning it into a separator; a popup-owned `MenuSession` leaves with the popup; `popup_pointer`
 records the previous report on every report the way `tty_keys_mouse` refreshes `tty->mouse_last_*`;
@@ -449,8 +449,8 @@ on the pin side only. Treat them as this box's terminfo and signal-name environm
 
 ## Historical cycle-13 retrospective: fifteen things outside the frozen registry
 
-Cycle 12 (`595616b`, `12b4776`) closed `clients.path-encoding` in full and the chooser vocabulary,
-and measured the geometry residue rather than closing it; cycle 13 (`fd2e790`, `37e8df0`) closed
+Cycle 12 (`2733b59`, `e9b3063`) closed `clients.path-encoding` in full and the chooser vocabulary,
+and measured the geometry residue rather than closing it; cycle 13 (`e0400d1`, `a46fded`) closed
 that residue in the direction the measurement pointed and the three byte consumers cycle 12's
 reviewer found. `CAMPAIGN-LOG.md` has both entries. Every frozen-scope item is closed.
 
@@ -579,8 +579,8 @@ The box's real `~/.tmux.conf` (the user's dotfiles) means decision 1 has a footg
 probe and gate server started outside the harness: keep HOME scrubbed or pass `-f /dev/null`,
 as the harness does for both sides.
 
-Outcome: both lanes merged (config `fc4f5ded`, status `d59236fc`), stamp at `d59236fc92d2`,
-ledger `43ccc5e4`. Seven groups closed; four stay open with 13 post-freeze items, every one of
+Outcome: both lanes merged (config `298e849d`, status `17bc9ee3`), stamp at `17bc9ee34a20`,
+ledger `41acae19`. Seven groups closed; four stay open with 13 post-freeze items, every one of
 them needing ownership outside the lanes' zones: `clients.cli-output-sourced-mixed-queue`
 (daemon aggregation loses stream boundaries before the CLI writer), `clients.command-output-pane-prompt`
 (MuxEffect::CommandPrompt dismissing the client-local output is a daemon lifecycle decision),
@@ -605,13 +605,13 @@ recorded as reversible, that a Linux drag selection also goes to CLIPBOARD unles
 is off, and that the raw TUI hides its sidebar below 109 columns so an 80x24 terminal gets the
 pin's 80-column pane.
 
-Outcome: daemon `b547b29e` (all four cycle-15 leftovers: the search prompt keeps the command
+Outcome: daemon `ff3c0fa1` (all four cycle-15 leftovers: the search prompt keeps the command
 output, status jobs keyed by loop tag, sourced stdout ownership, five of ten control residues,
-window-add and window-close relocated under sessions.linked-groups), desktop `b6732f05` (drag
+window-add and window-close relocated under sessions.linked-groups), desktop `fefb437e` (drag
 selection to CLIPBOARD, the gpui overlay consumer matrix, the sidebar at 80 columns), proof
-`6edc5c7e` (seven plugin runtime paths, `compat/census.py` with the option and hook census
-closed, six of seven harness holes, prose slugs and pin citations), records `62aa597c`. Stamped
-full run PASS at `6edc5c7ec425`: 249 scenarios, 3,073 steps, no retries. Meter 304/304; fourteen
+`d5a7153f` (seven plugin runtime paths, `compat/census.py` with the option and hook census
+closed, six of seven harness holes, prose slugs and pin citations), records `e81e7337`. Stamped
+full run PASS at `d5a7153f04c5`: 249 scenarios, 3,073 steps, no retries. Meter 304/304; fourteen
 post-freeze items across eight open groups, listed in the cycle 17 section.
 
 What the reviews caught, all fixed at the gate: the sourced-stdout close asserted a once-only claim
@@ -754,7 +754,7 @@ fronts under TRIAGE, commit the orchestration records under MAIN (a records-only
   build dir with a reflinked ghostty source at `zz-gate-target/ghostty-src` for
   `GHOSTTY_SOURCE_DIR`; the queue and copy gate worktrees were removed. The three compat rows that were red
   here through cycle 13 (`smoke/remain-on-exit-format`, `smoke/format-modifier-interrogate`,
-  `smoke/pane-engine-knobs-input`) pass since the instrument lane landed at `f6348f19`. The allow rule and the hook (pointing at the checkout's
+  `smoke/pane-engine-knobs-input`) pass since the instrument lane landed at `22f1a937`. The allow rule and the hook (pointing at the checkout's
   `guard-rm-home.py`) are in place. No user tmux server or zz daemon was running during cycle 10.
 - **macbook** (16 cores, 48 GB, macOS 27): ran cycles 6 (second half) to 9. `origin` is HTTPS
   through gh's credential helper (SSH security keys unavailable since cycle 7). `/bin/bash` is 3.2
@@ -833,7 +833,7 @@ copy-mode reconcile tests, `daemon_native_split_resize_commits_exactly_and_rejec
 `display_menu_resize_lifecycle::a_resize_moves_the_menu_and_keeps_everything_else`,
 zz-terminal `pty_output_drains_while_the_input_writer_is_backpressured`,
 `wait_exit_holds_the_control_process_until_a_second_blank_line` (hangs under load; timeout-guard
-cli_binary runs), `concurrent_default_interactive_attaches_atomically_share_session_zero` (renamed in 96ab56b, so an older prompt's copy of the short name finds nothing; headless "not a
+cli_binary runs), `concurrent_default_interactive_attaches_atomically_share_session_zero` (renamed in 19c540f, so an older prompt's copy of the short name finds nothing; headless "not a
 terminal", may be misattributed), `smoke/source-replay-diagnostics` (pin-side crash under
 concurrent scenario load; run it solo after sharded gates), `smoke/pane-engine-knobs-input`
 (pin-side under shard load), `behavior-options` (one TOPO row under shard load), and
@@ -841,14 +841,14 @@ concurrent scenario load; run it solo after sharded gates), `smoke/pane-engine-k
 
 Registry grammar: closing = removing the slug from the group's items (an emptied group moves to
 `closed[]`); native decisions = relocate the slug into an accepted-native group with the measured
-stance (precedent `1f24a1f1`); a promoted flag cannot keep a `flag:` item anywhere (the manifest
+stance (precedent `06e00ca7`); a promoted flag cannot keep a `flag:` item anywhere (the manifest
 test `command_and_flag_gaps_match_the_pinned_oracle` refuses it), so an accepted group whose only
-item is a promoted flag closes with the decision trail in its resolution (precedent `7f26fc6`);
+item is a promoted flag closes with the decision trail in its resolution (precedent `9c0b82b`);
 park = relocate into a `park`/`blocked` group with the recipe; flag promotions move `catalog.rs`
 counters and `compat_manifest_tests.rs` partition counts together (precedent `c6ce82c4`); a wrong
-close is reverted and the reason records the refuting measurement (precedents `0fec342` +
-`9cab1fa`), or, when the revert would take working code with it, the group is reopened with the
-measurement and the fix shape (precedent `cd03bb8`). `cargo test -p zz-mux` is mandatory after any
+close is reverted and the reason records the refuting measurement (precedents `00bbb0a` +
+`79b09d5`), or, when the revert would take working code with it, the group is reopened with the
+measurement and the fix shape (precedent `43bef8e`). `cargo test -p zz-mux` is mandatory after any
 registry edit, and `cargo test -p zz-daemon --lib` whenever mux target resolution, effect shapes,
 or layout change.
 

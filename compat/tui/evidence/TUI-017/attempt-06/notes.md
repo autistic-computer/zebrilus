@@ -3,7 +3,7 @@
 This attempt follows the usage-limit interruption and reboot. Attempt-05 keeps
 its completed measurements and interrupted collectors; it is not rewritten as
 proof at this base. The 23 carried commits rebased without conflicts onto
-origin/main eef2df941183af8ab7b16bf648dfadcc4486d22e. The source revision for this
+origin/main 91effe6481dcd0e8c118603eaa9890270f8165e4. The source revision for this
 attempt is 3209ffb704182b170471c3eac8707f6474d96de9. Both obligations stay at review.
 
 ## Source path behind the parked split
@@ -152,7 +152,7 @@ and switch_client_key_table_and_formats_are_client_local. Each passes its own
 filtered rerun with the scrubbed home. This is not a full daemon-suite green
 claim; the original failed run is retained.
 
-Clean eef2df94 reproduces both mux failures: the new native new-agent-session
+Clean 91effe64 reproduces both mux failures: the new native new-agent-session
 command lacks its registry declaration, and the list-commands test expects the
 old agent-send usage. Updating that expectation exposes the same test's old
 tools usage, which omits main's new section argument. Commit 7c807b92 adds the

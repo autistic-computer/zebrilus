@@ -1,4 +1,4 @@
-# revision 4a41770936b567a2da761e757c9c34ab206c7868
+# revision b481bff9b26b538558798bf50592e9fa24c9c402
 # command: LC_ALL=C LC_TIME=C compat/status-row.sh <zz> <pin>
 # started 2026-09-12T20:11:17-03:00
 status-left band below the sidebar auto-hide threshold (pin tmux)

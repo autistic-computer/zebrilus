@@ -1,4 +1,4 @@
-# revision a82bd0f51359809a818d64e87a2a162f3892c4ce
+# revision 54e7d31bdb0eeee8b59a1f737b9ae959e753d005
 # pin tmux next-3.8 d77c9dc6aa021e4bc61f0da128c591af695e6466
 # command compat/tui-overlays.sh --self-check
 # started 2026-09-14T20:30:07-03:00, finished 2026-09-14T20:30:28-03:00, 21s

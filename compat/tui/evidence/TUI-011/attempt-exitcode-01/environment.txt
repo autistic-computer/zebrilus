@@ -1,5 +1,5 @@
 $ git rev-parse HEAD
-be5709dfcd9936d44519683e5da8dc6ab7748d96
+22e3c4db146b2298bdd94cb959572b9069b981ef
 $ git status --short
 ?? compat/tui/evidence/TUI-011/attempt-exitcode-01/
 $ uname -a
@@ -34,10 +34,10 @@ final proof sha256 df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63
 $ rustc --version
 rustc 1.97.0 (2d8144b78 2026-07-07)
 $ git rev-parse origin/main origin/campaign/tui-stream-alias-2 origin/campaign/tui-modes-12
-e40a13e1c981aa9b707a5a6a54f5e0267c751de9
+131744503cb2bc8bc8fdb2a73cc0dca48989b674
 5ae3cef7d625893d53245a94a2bc8eff3dd017f1
 b2c00bd26091523a167343b1d39f36c036662d07
 final proof sha256 b1b2a7748f09ec4a03593df67797f8df6c7c0c2d87a907d4863bad8676a56da3 target/exitcode-baseline-target/debug/zz
 final proof sha256 df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63ee5 compat/.cache/tmux-src/tmux
 Final source commit: 888be5af6edb71511961e6516049d7d59c585615
-Final fetched origin/main: e40a13e1c981aa9b707a5a6a54f5e0267c751de9
+Final fetched origin/main: 131744503cb2bc8bc8fdb2a73cc0dca48989b674

@@ -39,7 +39,7 @@ under crates` and `Record the introspection review fixes in TUI-016 and TUI-017`
 
 ## This gate's verification, ubuntu box, 2026-09-15
 
-Rebased onto origin/main 287e3815, verified at 51c858e2. The menus half of cycle 9 was gated at the
+Rebased onto origin/main 5d31bee6, verified at 91c6dd81. The menus half of cycle 9 was gated at the
 same time and was NOT merged, so nothing here rides on it.
 
 1. THE BLOCKER, verified. `ShellCacheScope` is gone from crates/zz-daemon/src/status.rs and the shell
@@ -84,7 +84,7 @@ lane's (the fixture prints `0 for a sibling lane` itself).
 
 ## Verdict
 
-Both clauses assert at 51c858e2 and every one of the review's four findings is verified above. The
+Both clauses assert at 91c6dd81 and every one of the review's four findings is verified above. The
 obligation is NOT flipped to `verified`, and the reason is the campaign's re-measurement guard rather
 than the obligation. compat/tui/verify-claims.py refuses `verified` while the obligation's mapped
 fixture reports any recorded case at all. That rule is exact where a fixture serves one obligation -

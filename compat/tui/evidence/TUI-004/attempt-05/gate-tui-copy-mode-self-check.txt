@@ -1,4 +1,4 @@
-# revision 4a41770936b567a2da761e757c9c34ab206c7868
+# revision b481bff9b26b538558798bf50592e9fa24c9c402
 # command: compat/tui-copy-mode.sh --self-check
 # started 2026-09-12T20:16:00-03:00
 self-check: one deliberate one-sided difference per asserted channel, plus two the fixture must not report

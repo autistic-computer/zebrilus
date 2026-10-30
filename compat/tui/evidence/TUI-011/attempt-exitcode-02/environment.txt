@@ -1,7 +1,7 @@
 2026-09-16T19:43:55.427917+00:00
 ["git", "rev-parse", "HEAD", "origin/main", "origin/campaign/tui-exitcode"]
-963dca55a2f4363996d2479cb005e5d572d08c7f
-e40a13e1c981aa9b707a5a6a54f5e0267c751de9
+0906291e5e7c38126cd6c7c3a706aaf6969f9679
+131744503cb2bc8bc8fdb2a73cc0dca48989b674
 177922fd02e34edc3201f738ee5aeb3aeb4960bf
 ["git", "status", "--short"]
  M .agents/skills/zz-workspace/SKILL.md
@@ -70,4 +70,4 @@ with tempfile.TemporaryDirectory(prefix='zz-exit-cargo-') as directory:
 41474e9d35d6d9be36312687e7c99f5946d9ec5f5fed4ea0cb4b6186e314c158  target/debug/zz-exitcode-followup
 df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63ee5  compat/.cache/tmux-src/tmux
 59d13fc20f1a7211b562fa046ee3db36e0a65150d8c391c514a16e8bc8818190  .agents/skills/zz-workspace/SKILL.md
-bb8cc64d3680fbdd7a501aead044199910b7147aa92a66ab8438b1d6fcff83a8  target/exitcode-baseline-target/debug/zz (plain origin/main e40a13e1)
+bb8cc64d3680fbdd7a501aead044199910b7147aa92a66ab8438b1d6fcff83a8  target/exitcode-baseline-target/debug/zz (plain origin/main 13174450)

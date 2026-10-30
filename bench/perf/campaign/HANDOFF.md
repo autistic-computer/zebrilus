@@ -3,8 +3,8 @@
 Entry point for a fresh session continuing the zz daemon performance rebuild. Written 2026-09-29 on
 the macbook, continued the same day on the Linux host alienware (see "Linux leg"). State on
 2026-10-02: waves 0 to 3 are on `main` and pushed. Wave 3 (W3-SHARDS, W3-TUI, W3-LOOP and nine
-Opus fix lanes) closed at `e9bc174c`; its exit gates are `wave3-macbook-e9bc174c.json` and
-`wave3-alienware-e9bc174c.json`. The Ghostty fork pin is `e482b036` (render state clip `0ab7941c`
+Opus fix lanes) closed at `72593a30`; its exit gates are `wave3-macbook-72593a30.json` and
+`wave3-alienware-72593a30.json`. The Ghostty fork pin is `e482b036` (render state clip `0ab7941c`
 and trimmed row copies, branch `zz-2026-10-04`, on `189df4a1`: row cell copy on `zz-2026-10-02`,
 then `67351380` with trim fix `c3941417`, copy snapshots `7823f65d`, used-size active page
 copies); the libghostty-rs pin is `0db98a20` (`zz-2026-10-04`, on `f5f82601`). No lane in flight, no lane worktree left on any host (Mac, alienware, win-desktop `D:\dev\zz-ci` is a reusable lane checkout).
@@ -12,9 +12,9 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
 
 ## Next session: after wave 4
 
-1. Wave 4 exited 2026-10-04 on `3057f095` (`perf/wave4`, on main since `ce668da4`). Exit gates:
-   `bench/perf/results/wave4-alienware-3057f095-{1,2,3}.json` and
-   `wave4-macbook-3057f095-r2-{1,2,3}.json` (the first Mac set, `wave4-macbook-3057f095-{1,2,3}`,
+1. Wave 4 exited 2026-10-04 on `77455728` (`perf/wave4`, on main since `ce668da4`). Exit gates:
+   `bench/perf/results/wave4-alienware-77455728-{1,2,3}.json` and
+   `wave4-macbook-77455728-r2-{1,2,3}.json` (the first Mac set, `wave4-macbook-77455728-{1,2,3}`,
    started right after the release build and missed `spawn.cpu.split_empty_P` and
    `attach.ttfc.p4` by a hair; lane MACQOS showed those rows follow the clock and cache warmth,
    18-run medians 0.979x and 0.996x). Rule (decided 2026-10-03): three strict full
@@ -109,7 +109,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
 - Start, 2026-10-02 20:15. `perf/wave4` from main `06ea9cf1` in `~/dev/zz-perf-int` on both hosts
   (alienware gets it through `perf/wave4-mac`, then `--ff-only`: pushing a branch that a worktree
   has checked out is refused). `lane-briefs.py` points at wave 4 (`--stage final`, base
-  `wave3-<host>-e9bc174c.json`, wave-3 reds listed, plain rollback switches instead of
+  `wave3-<host>-72593a30.json`, wave-3 reds listed, plain rollback switches instead of
   `ZZ_PERF_*`). Final-stage rescore of the wave-3 exit gates (`run.py --rescore <json> --stage
   final`): Mac 8 fails (`spawn.cpu.split_empty_P` 2.1x, `chatty.cpu_pct.visible`, five echo rows,
   `control.latency` 1.41x), Linux 20 (spawn CPU x3, chatty flip/visible, `mem.threads.*` x4 at
@@ -746,7 +746,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   client's window holds its source pane; modes opened after it take keys and hide it;
   send-prefix inside it goes to it; releases forwarded. Second review: not ready. Blocker: it
   checks the window, not the active pane, so `C-b w`, `C-b o`, `xy` killed the window (the chooser
-  kept the keys); fixing to pane scope. Major, on main since `824f7c03`: choose-tree session and
+  kept the keys); fixing to pane scope. Major, on main since `88965298`: choose-tree session and
   window rows render the pane line (`tree_variable` is read after the built-ins and the built-in
   `pane_format` is 1 on every row); that is where `tui-choosers.sh`'s 25 differing rows come
   from. Trap: `compat/tui-choosers.sh` with no argument runs `target/debug/zz`, a stale GUI build
@@ -789,7 +789,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   types into the other pane); tree, switch, `-F` and `-K` rows expand with the format type of
   their target (`MuxEngine::expand_target_format`, as tmux's `format_defaults`), which fixes the
   session and window rows that rendered the pane line since `14b6e796` (the daemon half of
-  `824f7c03`): `compat/tui-choosers.sh` 25 of 78 differing -> 0 of 78 (rechecked by hand on a
+  `88965298`): `compat/tui-choosers.sh` 25 of 78 differing -> 0 of 78 (rechecked by hand on a
   fresh zz_cli). Every compat script that defaulted to the stale `target/debug/zz` now defaults
   to `target/debug/zz_cli`. Scenario `smoke/chooser-prefix-keys` 24 checks, clean against the
   pin (15 fail on the base). Open: switching session and back drops the chooser (base too);
@@ -851,18 +851,18 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   chatty CPU -11% to -28%; echo p50 -30 to -130 us depending on the run's mode; Unicode throughput
   +1.8% over 8 alternating pairs (the ceiling swung 74-117 MB/s under load, so within 2% is all
   this host can say); backpressure 9/9. `knowledge/terminal/pty-drain.md` now describes the home,
-  lend and hand-back cycle (`8080adf5`, `d9d59154`; it also named a function that no longer exists).
+  lend and hand-back cycle (`8080adf5`, `8a894ef8`; it also named a function that no longer exists).
 - Correction: the ssh master does not expire at a fixed time. `ControlPersist 14400` is an idle
   timeout, so the 18:30 master lives while connections keep using it; only a new master needs the
   security key.
 - batch8 (`~/.cache/zz-perf/batch8`, 22:08) on `36a82ea1`: three A/B pairs against
   batch6-86e721ad with control added, the strict final gate, then the batch6 checks plus
-  tui-choosers. Mac checks of `d9d59154` run in ~/dev/zz-check (/tmp/zzpc/w4/mac-d9d59154).
+  tui-choosers. Mac checks of `8a894ef8` run in ~/dev/zz-check (/tmp/zzpc/w4/mac-8a894ef8).
 - batch8 A/B, three pairs at load 0.4-1.2, medians of the three run medians (zz / tmux ratio,
   86e721ad -> 36a82ea1): `echo.p50.idle` 1.48 -> 1.39x, `echo.p50.busy30` 1.54 -> 1.42x,
   `echo.p99.idle` 1.41 -> 1.32x, `attach.cpu.p4` 1.30 -> 1.25x, `spawn.cpu.kill_pane` 1.21 ->
   0.93x, `control.latency` 0.99 -> 1.07x, `chatty.cpu_pct.steady` 4.36 -> 2.91% (tmux 3.2-3.5),
-  chatty instructions -10 to -12%. Mac checks of `d9d59154`: fmt, clippy, Linux-target clippy
+  chatty instructions -10 to -12%. Mac checks of `8a894ef8`: fmt, clippy, Linux-target clippy
   pass; zz-terminal + zz-daemon 2026 passed, 19 load failures, all 19 pass alone.
 - Final gate on `36a82ea1` (`~/.cache/zz-perf/batch8/final-36a82ea1.json`, one run without `--strict`, lane
   compiles paused): 100 pass, 5 fail: `spawn.cpu.kill_pane` 0.782 vs 0.663 (tmux sample fast),
@@ -903,8 +903,8 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   binary reads 0.66, 0.88 and 1.25 ms across the three runs (tmux 3.6-4.1): noise around a row
   far inside its rule. JSONs: `~/.cache/zz-perf/batch9/final-36a82ea1-{1,2,3}.json` (copies in
   /tmp/zzpc/w4/batch9 on the Mac).
-- Mac exit-style gates on `d9d59154` (/tmp/zzpc/w4/macgate, 23:54-00:16, three `--stage final
-  --strict` runs against wave3-macbook-e9bc174c.json; the lanes' Mac compiles paused, but load 5-7
+- Mac exit-style gates on `8a894ef8` (/tmp/zzpc/w4/macgate, 23:54-00:16, three `--stage final
+  --strict` runs against wave3-macbook-72593a30.json; the lanes' Mac compiles paused, but load 5-7
   from desktop apps: dasd, Codex, Discord): 102/3, 103/2, 102/3. By the median rule one row fails:
   `echo.p50.busy30` 1.57, 1.70, 1.55x (zz 0.20-0.80 ms, tmux 0.12-0.47; rule 1.5x). Not new: the
   Mac A/B at merge batch 4 read 1.61-1.97x on both sides. One-run fails: `spawn.cpu.split_empty_P`
@@ -943,15 +943,15 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   ms (150 attaches: 8.608 vs 8.494; three timing modes at 3.5, 8 and 11.5 ms for zz and tmux alike).
   Left: the loop thread (status render 12.6%, detach key through the general executor 28%,
   per-turn overhead 15% of loop user cycles).
-- Mac checks of `fc1ccbc6` (both merges): fmt, clippy, Linux-target clippy pass; zz-daemon,
+- Mac checks of `c33fb1a4` (both merges): fmt, clippy, Linux-target clippy pass; zz-daemon,
   zz-terminal, zz-cli, zz-tui, zz-client 2744 passed, 19 load failures, all pass alone.
 - Closed gap `clients.command-round-trip-latency` (`compat/tmux-gaps.json`, registered 09-18 at
   2.2 s for `split-window -P` on an empty pane and ~100 ms per command): `wait_for_terminal_identity`
   runs only in tests now, and on the Mac both commands finish in under 10 ms per invocation with
-  d9d59154. Trap: `just compat-check` fails `verify_claims_test` with "unattributed: unbound
+  8a894ef8. Trap: `just compat-check` fails `verify_claims_test` with "unattributed: unbound
   variable" when `bash` resolves to macOS /bin/bash 3.2; it passes with /opt/homebrew/bin first
-  in PATH (red on fc1ccbc6 too under 3.2, so not from any change).
-- batch10 (`~/.cache/zz-perf/batch10`, from 01:31) on `fc1ccbc6`: A/B pairs against 36a82ea1
+  in PATH (red on c33fb1a4 too under 3.2, so not from any change).
+- batch10 (`~/.cache/zz-perf/batch10`, from 01:31) on `c33fb1a4`: A/B pairs against 36a82ea1
   (zz / tmux ratio, base -> merged): `attach.cpu.p4` -> 1.19x, `attach.instr.p4` 5.13 -> 3.84 M,
   `control.latency` 0.82 -> 0.95x on a fast tmux sample (zz 0.0131 -> 0.0122 ms), echo rows
   1.37-1.43x unchanged, `kill_pane` 1.00 -> 1.02x, chatty hidden instructions -19%. Three strict
@@ -963,13 +963,13 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
 - KILLPANE launched 02:20 as `w4-side-lanes` run `wf_1cb365b4-c1f` (brief /tmp/zzpc/w4/killpane.md,
   ~/dev/zz-killpane on both hosts from `0ded1faa`): Linux kill-pane kernel time, target tmux plus
   0.05 ms.
-- batch10 checks on `fc1ccbc6` (ALLDONE 02:58): fmt, clippy pass; workspace tests 5162 passed,
+- batch10 checks on `c33fb1a4` (ALLDONE 02:58): fmt, clippy pass; workspace tests 5162 passed,
   1 failed, passes alone; compat-check, debug build pass; backpressure 9/9; flood 4 panes 109.1,
   12 panes 80.1 MB/s, every pane progressed; attached-client pass, 0 rejections; corpus 249 clean,
   10 red (batch6's set with `smoke/format-modifier-client-loop`, the tmux-side client-order
   check, in place of `smoke/plugin-runtime-continuum`, the load flake); tui-choosers 78/78. Gate
   JSONs copied to /tmp/zzpc/w4/batch10 on the Mac.
-- MACECHO merged as `b1601895` (lane `7b6b3556` + review fix `c715c0a5`; done false). No wait to
+- MACECHO merged as `33029933` (lane `7b6b3556` + review fix `c715c0a5`; done false). No wait to
   fix on the Mac busy30 echo: no pacing delay (the echo publishes about 2 us after the PTY read),
   one 5-byte tty write, no queueing behind a partial write. A quiet busy30 key is 157 us: bench to
   client 22.9, client in 10.5, loop 27.8, pane hop 24.2, shard 23.8, client out 17.1, tty to
@@ -987,7 +987,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
 - Decision: lane TTYIN, the input half of a tmux-style tty handoff (the raw TUI passes its tty
   input fd to the daemon like `zz_cli -C` passes stdio; plain keys go straight to the pane, the
   rest goes back to the client raw and in order), to take one serial wake out of the Mac echo.
-  Output stays on the client. Brief /tmp/zzpc/w4/ttyin.md, ~/dev/zz-ttyin from `b1601895`.
+  Output stays on the client. Brief /tmp/zzpc/w4/ttyin.md, ~/dev/zz-ttyin from `33029933`.
 - MACECHO's Linux leg: `cargo test -j6 -p zz-terminal --all-features` on `77648bb6` (alienware):
   418 passed, 0 failed. TTYIN launched 03:10 as `w4-side-lanes` run `wf_f461a19c-3f7`.
 - KILLPANE merged as `e8e0a2f7` (lane `1e9efde4` + test fix `0b55f109`; done false, the brief's
@@ -1050,16 +1050,16 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   client withdraws its direct pane before it writes a probe, and the daemon check is gone.
 - Exit gates on `0a67eaab` (three strict full runs per host). Linux (batch11): 104/1, 103/2,
   104/1; by the median rule `attach.cpu.p4` fails (1.224, 1.656, 1.278x; rule 1.25x) and
-  `attach.ttfc.p4` fails (1.115, 1.242, 1.099x; rule 1.1x), both passing on fc1ccbc6 (0.945x and
+  `attach.ttfc.p4` fails (1.115, 1.242, 1.099x; rule 1.1x), both passing on c33fb1a4 (0.945x and
   1.002x); attach instructions are unchanged (p4 ratio 0.317), so the new cost is kernel time and
   wakes. Everything else passes, `spawn.cpu.kill_pane` included; echo busy30 1.26-1.33x, idle
   1.17-1.24x, `echo.p99.idle` 1.15-1.21x, `control.latency` 0.77-0.95x. Mac: 102/5, 104/3, 105/2;
-  `attach.instr.p1` 4.06 -> 13.1 M against d9d59154 (+49% on the wave-3 baseline), and
+  `attach.instr.p1` 4.06 -> 13.1 M against 8a894ef8 (+49% on the wave-3 baseline), and
   `spawn.cpu.split_empty_P` 1.33, 1.33, 0.86x (the known bimodal row: zz 0.37 or 0.54-0.56 ms).
 - Mac attach regression found and fixed (`8d2b0e31`): TTYIN's daemon found the handed tty's path
   with `ttyname_r`, which on macOS scans /dev (0.59 ms per call in a Python probe); `F_GETPATH`
   (`rustix::fs::getpath`) returns the same path in 0.5 us. Bisect with the bench at the head:
-  d9d59154 4.06 M, b1601895 3.00, e8e0a2f7 3.01, d6da097d 3.01, 0a67eaab 12.4-13.1, the fix 3.32 M
+  8a894ef8 4.06 M, 33029933 3.00, e8e0a2f7 3.01, d6da097d 3.01, 0a67eaab 12.4-13.1, the fix 3.32 M
   per p1 attach. Linux keeps `ttyname_r` (a /proc readlink). Trap: the bench drops every
   environment variable outside `isolate.py` KEEP, so `ZZ_TUI_RELAY=1` in the caller's environment
   never reaches the client (my first relay check measured the handoff twice).
@@ -1091,7 +1091,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   back as the load flake); tui-choosers 78/78.
 - Final exit run on `49dfd9a5` (adds the macOS getpath fix and gireply): three strict gates per
   host, the touched crates' tests and the raw-TUI fixtures.
-- Final exit run on `3057f095` (`bench/perf/results/wave4-<host>-3057f095-{1,2,3}.json`). Linux
+- Final exit run on `77455728` (`bench/perf/results/wave4-<host>-77455728-{1,2,3}.json`). Linux
   (batch12): 103/2, 105/0, 102/3; every row passes by the median rule (`kill_pane` zz 0.7915 vs
   tmux 0.7916, `attach.cpu.p4` 1.17x, `attach.ttfc.p4` 1.03x, `attach.ttfc.p1` 1.08x); clippy;
   zz-tui, zz-daemon, zz-cli, zz-client, zz-protocol tests 2674 passed, 1 failed, passes alone;
@@ -1144,7 +1144,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   after a build (/tmp/zzpc/w4/macgate2). If its medians pass, the Mac exit passes by the same rule;
   if not, accepting the rows is the owner's call.
 - **Wave 4 exited 2026-10-04 12:47.** Second Mac set on the exit binary (sha256 bc06a103,
-  `bench/perf/results/wave4-macbook-3057f095-r2-{1,2,3}.json`, gates started 3 h after the build):
+  `bench/perf/results/wave4-macbook-77455728-r2-{1,2,3}.json`, gates started 3 h after the build):
   105/2, 103/2, 104/2; by the median rule every ratio row passes: `spawn.cpu.split_empty_P` 0.976,
   1.195, 0.977x; `attach.ttfc.p4` 1.008, 1.047, 0.933x; `spawn.cpu.kill_pane` zz minus tmux 0.054,
   0.104, 0.042 ms (plus 0.1); echo busy30 1.44-1.48x, idle 1.20-1.45x; `echo.p99.busy30` median
@@ -1215,7 +1215,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     `fdf67a9d`, alienware `perf/loop-e01` `397d7da8`. The e01 Mac leg is green (1411 lib tests).
   - e02 Mac leg (`fdf67a9d`): 1419 lib tests, compat clean, no instruction row moved 3%;
     `control.burst_cmds_per_s` ranges overlap (pre 83-134k, post 72-107k cmds/s).
-  - e03a (`9f31b80d`, Linux): aliases and foreground inserted callbacks run as owned parent/child
+  - e03a (`1d41aa40`, Linux): aliases and foreground inserted callbacks run as owned parent/child
     queue frames; a 3-level alias suspension keeps output order while another queue runs. CLI
     within 1.006x, control instructions +0.44% (noise, accepted). `smoke/control-alias-prepare`
     has 2 OUT divergences on alienware on every binary back to the wave-3 start (`base-cli`): not
@@ -1229,7 +1229,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     also fails on the Mac with the wave-3 start binary: zz answers frozen/sequential as the
     2026-09-06 closure recorded, the fetched tmux oracle now answers broken. Oracle drift, not
     LOOP; handed to a separate task.
-  - e03b (`b626aa02`, Linux): sourced config replay, after-command, event and shutdown hooks run
+  - e03b (`f2bbf6b5`, Linux): sourced config replay, after-command, event and shutdown hooks run
     as owned queue frames; 23/23 perf rows at most 1.004x, compat clean.
   - `plain_input_and_unchanged_selection_need_no_worker` fails on Linux from c01 on (warm runs
     20/20, the first run after a build passes): pane startup raises hook events, c01 runs
@@ -1257,7 +1257,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     follows. e20 conflicts with e06 in daemon.rs; resolved once on the Linux branch, then the Mac
     branch takes the Linux tree through a merge (no force-push of `perf/loop`).
   - Branches converged 2026-10-02: the e20 cherry-pick onto e06 was resolved on Linux (`036dc942`),
-    and the Mac `perf/loop` merged it taking the Linux tree (`e122e38d`; trees identical, no
+    and the Mac `perf/loop` merged it taking the Linux tree (`913915ca`; trees identical, no
     force-push). Mac leg of e06 and the resolution: 1442 lib tests, compat clean. `perf/loop` is
     backed up on origin (not merged to main).
   - Mid-lane strict Mac gate (`gate-mac-65defe00.json` in /tmp/zzpc/w3, against B): 74 pass,
@@ -1282,7 +1282,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     resume through loop request tokens (`daemon/terminal_requests.rs`); a respawn rejects stale
     replies; 1450 daemon and 369 terminal tests. `spawn.instr.new_window` 0.718 -> 0.737 Minstr
     (1.026x, token registration per spawn); split_shell 1.000x, kill_pane 0.998x: accepted.
-  - e14 (`6c163955`, Mac): foreground/background run-shell and if-shell jobs on the registry, 14/16
+  - e14 (`b9c050f5`, Mac): foreground/background run-shell and if-shell jobs on the registry, 14/16
     explicit park sites; 20 jobs add 0 workers, admission capped at 256; 1445 daemon tests. p20
     medians show_options/has_session/send_keys 1.020-1.024x, inside the base's spread.
   - `if-shell-background-order` fails with every binary back to before wave 3 (`base-cli-mac`): zz
@@ -1295,7 +1295,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   - Second sync: Mac slices c01copy, e13, e14 go onto Linux; e13 conflicts with e04/e05 in
     hook_queue.rs/wait_queue.rs, resolved by a pick lane. Design-doc conflicts are unions of both
     as-built notes.
-  - e07 (`705ca175`, Mac): display-panes, command-prompt and confirm-before park as queue
+  - e07 (`7afaa011`, Mac): display-panes, command-prompt and confirm-before park as queue
     continuations; 20 parked overlays per type add 0 workers; 1492 daemon tests.
   - e08 (`ab94c8d4`, Mac): display-menu parks as a continuation; 20 blocking menus add 0 workers;
     19/19 CLI rows under 1.02x.
@@ -1327,7 +1327,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     continuations (`daemon/source_queue.rs`); 20 outstanding operations add 0 workers; wrong-owner
     and duplicate replies rejected; 1479 daemon tests. `config.instr.source_1000` 41.4 -> 44.2
     Minstr (+6.8%, outside the base's range): fix lane `e11fix` profiles it on alienware.
-  - e17 (`8501b400`, Mac): display-popup waits are continuations completed from loop-owned popup
+  - e17 (`c2e44b74`, Mac): display-popup waits are continuations completed from loop-owned popup
     events; popup PTY children stay with their shard; 20 popup waits add 0 workers; 1483 daemon
     tests. `show_options.p1` 1.027x is one of the bimodal Mac p1 rows.
   - Order change: e21 (startup replay, registration, shutdown) touches the source replay e11's fix
@@ -1335,16 +1335,16 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
   - e11fix (`64e475f5`, Linux): per-line hook eligibility searches, repeated command-name
     resolution and finish-state copies in source replay; the replay now runs a line first and keeps
     a frame only for waits or children. `config.instr.source_1000` 1.020x the base (was 1.068x).
-  - Fourth sync onto Linux: e18 picked (`f797df18`); the Windows-build fix does not apply there
+  - Fourth sync onto Linux: e18 picked (`fd6acf89`); the Windows-build fix does not apply there
     (e11 removed `wait_needs_worker` on that branch), so the Windows check reruns on the Mac after
     convergence; e10 and e17 go through a pick lane (conflicts with e09/e11).
   - e22 (`9e4b0160`, Mac): uncached list-keys and full-history capture yield between bounded
     steps (64 binding rows, 512 history rows); new paired echo-fairness probes pass 12/12 against
     tmux's increase (also with K=1); capture instructions 0.68x, list-keys 1.012x.
-  - Fifth sync: e10/e17 picked onto Linux by a lane (`bf401683`), e22 picked onto that in a scratch
-    worktree (`ba4d2afa`, classifier union again), Mac `perf/loop` merged that tree (`362c83bc`).
+  - Fifth sync: e10/e17 picked onto Linux by a lane (`86eeb0ae`), e22 picked onto that in a scratch
+    worktree (`ba4d2afa`, classifier union again), Mac `perf/loop` merged that tree (`1986386a`).
     The Mac's Windows-build fix is subsumed: e11 removed `wait_needs_worker` on the Linux side.
-  - Mac leg of the fifth sync (`362c83bc`): clippy, Windows check, zz-mux 655, zz-terminal 371,
+  - Mac leg of the fifth sync (`1986386a`): clippy, Windows check, zz-mux 655, zz-terminal 371,
     zz-daemon 1493 lib tests (one serial-suite failure of
     `twenty_registered_jobs_add_no_monitor_threads_and_reap_once`, 3/3 alone), 16 compat scenarios
     clean except `prompt-history`, which now fails on the Mac for every binary back to the wave-3
@@ -1364,7 +1364,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     in production Unix builds (Windows keeps accepts, writers, deferred exec, timers and helper
     dispatch on them); 1497 daemon tests, startup diagnostics 8/8. Short commands +3.5-4.1% user
     instructions (12/19 CLI rows over): fix lane `e21fix` profiles the per-connection lifecycle.
-  - Ultra review of the c/e series (`362c83bc`): codex's cyber filter stopped it after 21 min;
+  - Ultra review of the c/e series (`1986386a`): codex's cyber filter stopped it after 21 min;
     before that it confirmed one P1 (helper replies awaited synchronously on the loop:
     ensure_prompt_history, warm_terminfo, history save, peer sync, HelperPool::read/import_source;
     two slow source-file reads stall every client) and one candidate (macOS copy-pipe EPIPE
@@ -1373,7 +1373,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     an Opus subagent per brief rule 7.
   - e21fix (`ff4e3335`, Linux): an empty retirement allocation, an extra loop wake and empty
     lifecycle locking per command (1.8k instructions); 19/19 CLI rows at most 1.016x. Linux leg of
-    e22 on top (`c8beb4f9`): 1499 daemon, 374 terminal, 656 mux tests, backpressure passes.
+    e22 on top (`6027b696`): 1499 daemon, 374 terminal, 656 mux tests, backpressure passes.
   - Opus review of the rest (`bench/perf/campaign/w3-loop-review-findings.txt`): P1 a waiting
     event hook after a queued task panics the daemon (`set-hook -g window-layout-changed 'run-shell
     true'` + split-window); P2 on Linux a fully accepted 256 KiB write batch leaves the rest of a
@@ -1516,7 +1516,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     `smoke/format-modifier-client-loop` is red only with the Linux debug build (clean release).
     `census-hooks`, `smoke/plugin-runtime-vim-tmux-navigator` and `smoke/source-file-byte-name`
     are red on the Mac with loop-00 too (pre-existing, not wave 3).
-  - Wave-3 exit run 2 on `e9bc174c` (focusfix merged; `/tmp/zzpc/wave3-exit2`,
+  - Wave-3 exit run 2 on `72593a30` (focusfix merged; `/tmp/zzpc/wave3-exit2`,
     `~/.cache/zz-perf/wave3-exit2`), the wave-3 close. fmt, clippy, compat-check, debug and
     release builds pass on both hosts; workspace tests 7 (Mac) and 8 (Linux) load failures, all
     pass alone. Corpus: only the expected reds. Linux: `lane2-store`, `show-options-hooks`,
@@ -1529,7 +1529,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     attached-client failed on the tmux side in both exit runs under load (the copy-mode position
     indicator captured half drawn, a lone `[` at column 196 of 200) and passed alone on a quiet
     Mac with this build and with loop-00.
-  - Gates committed as `bench/perf/results/wave3-<host>-e9bc174c.json`. Linux: 75 pass, 13 fail,
+  - Gates committed as `bench/perf/results/wave3-<host>-72593a30.json`. Linux: 75 pass, 13 fail,
     1 regressed (`control.burst_cmds_per_s`, the wave-2 outlier). The fails are wave-2 tmux reds
     that improved (spawn CPU x2, chatty visible, attach CPU x2, `control.latency`), the six echo
     rows (1.5x rule, W4-DELIVER) and `cli.wall.capture_history.p20` at 1.127x tmux, a new row:
@@ -1556,7 +1556,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
     the previous slice's binary, not the median ratio alone. Later briefs compare against the
     previous slice's binary at 1.02x instead of B at 1.03x.
 - W3-LOOP in progress on `perf/loop` (worktree `~/dev/zz-loop` on the Mac; not merged): e0, a1-a4,
-  b1-b6 with fixes, then main merged in (slice 00, `1518f03d`). Step (b) plan:
+  b1-b6 with fixes, then main merged in (slice 00, `2b21ebf6`). Step (b) plan:
   `bench/perf/campaign/w3-loop-b-plan.txt`; steps (c)/(d)/(e), 30 slices in order:
   `bench/perf/campaign/w3-loop-cde-plan.txt`. Baseline B for those slices:
   `loop-B-macbook.json` (74 pass, 7 fail) and `loop-B-alienware.json` (65 pass, 16 fail), kept in
@@ -1604,27 +1604,27 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
 
 ## Wave 2 merge log (2026-09-30 to 10-01)
 
-1. Done 2026-09-30 (from the Mac over ssh): the trim fix holds on Linux. At `d317e171`,
+1. Done 2026-09-30 (from the Mac over ssh): the trim fix holds on Linux. At `a1f6acb3`,
    `a_cleared_screen_survives_idle_compression` passes; with `GHOSTTY_SOURCE_DIR` at a `713374af`
    checkout it fails with the pane captured as seven blank lines, the bug seen for real. Three
    alternating quick pairs (`~/.cache/zz-perf/fixcheck/`): `throughput.detached.ascii` 128-130 MB/s
    old vs 128-131 new (tmux 56.7), `mem.footprint.p1` 2.78 vs 2.78-2.80 MiB, `p20` 16.9-17.5 vs
    16.9-17.7 MiB.
-2. Done 2026-09-30: `w2-2-term-alienware-d7e3fc95.json` is now the quiet rerun (load 0.02 -> 1.2,
-   built at `d317e171`, so with Ghostty `c3941417`; the name keeps the TERM merge). 56 pass, 16
+2. Done 2026-09-30: `w2-2-term-alienware-95c27a0b.json` is now the quiet rerun (load 0.02 -> 1.2,
+   built at `a1f6acb3`, so with Ghostty `c3941417`; the name keeps the TERM merge). 56 pass, 16
    fail, 11 regressed against w2-1. The laptop was in its slow power state: tmux itself moved
    `spawn.cpu.split_shell` 0.80 -> 2.12 ms and `config.wall.source_1000` 7.7 -> 25.9 ms. Every
    regressed row is cpu or wall; instructions and bytes match the noisy record or w2-1
    (`attach.instr.p1` 10.08 vs 10.09 Minstr in the noisy record, `config.instr.source_1000` 41.6 vs
    41.7, `chatty.instr_per_s.visible` 384 vs 392), so `attach.cpu.*` 3.3 -> 4.7 ms at flat tmux is
    kernel and clock time, not TERM. Judge the next Linux merge on instructions and bytes.
-3. W2-COPY merged on Linux 2026-09-30 as merge 3 (`2cedf6ee`, gate `w2-3-copy-alienware-2cedf6ee.json`:
+3. W2-COPY merged on Linux 2026-09-30 as merge 3 (`40d2dfc2`, gate `w2-3-copy-alienware-40d2dfc2.json`:
    59 pass, 16 fail, the same 16 as the base but one, `cli.wall.list_panes_a.s20`, which three
    alternating A/B pairs show is timing: 1.2541 Minstr on both binaries). Linux copy entry 52.70 ->
    0.55 MiB, 104.8 -> 1.02 ms. The full `compat/run.sh` hit its 1800 s timeout after 243 rows; the
    rest ran per scenario (256/256 files covered). Raise that timeout for the wave-exit run.
    The Mac follow-up (Ghostty `67351380`) also lowers the Linux entry: 0.36 MiB, 4.33 Minstr.
-   W2-FMT merged 2026-09-30 as merge 4 (`8fa427dd`), before CTRL, with the lane brief rules'
+   W2-FMT merged 2026-09-30 as merge 4 (`39cd081b`), before CTRL, with the lane brief rules'
    merge checks on both hosts (`/tmp/zzpc/merge-fmt`, `~/.cache/zz-perf/merge-fmt`): Mac workspace
    4644 pass, 0 fail; Linux daemon 1291 pass with only the two known host/load failures; 37-38 of
    38 format/status/chooser compat rows clean (the others are the known `smoke/status-background-jobs`
@@ -1636,14 +1636,14 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
    rewrites that path next. No strict gate JSON for this merge (wave-exit rule).
    W2-CTRL merged 2026-09-30 as merge 5 (`87eb47c1`) after a 25 min parity review (one major:
    `ZZ_PERF_LEGACY_COMMAND=1` attach hung on a second `Hello`; one minor: the iOS example cached
-   grid without layout generation) and a 15 min fix (`870b2b1e`). Merge checks on both hosts:
+   grid without layout generation) and a 15 min fix (`49453c96`). Merge checks on both hosts:
    workspace 4765-4771 pass with only known or solo-passing failures, attached-client, TUI screen
    diff (needs a UTF-8 locale), web and iPad builds, iOS simulator check (tree, split, live output,
    key-table patch), 33-35 of 35 control/attach/resize compat rows. A/B against the FMT binary,
    both hosts: attach connections 2 -> 1, server bytes 29.4 KB -> 2.3-2.9 KB, wire frames 6/9 -> 3,
    attach instructions -6..-11%, control instructions per command -26..-54%, latency -57..-62%,
    burst +200..470%. Linux `smoke/control-notify` then caught `%layout-change` losing the activity
-   flag (`-` for `#-`, 7 of 8 runs; the Mac never showed it): `f6a25887` notes activity on the
+   flag (`-` for `#-`, 7 of 8 runs; the Mac never showed it): `6918d82e` notes activity on the
    control output tap before raw output is published, publishes compact trees before layout
    hooks, and carries the missing silence flag (`WindowSnapshot.silence`, a wire change inside
    107). Its loop is 0 of 8 twice; `ctrl_flags_tests.rs` fails 5 tests with the fix disabled; the
@@ -1651,14 +1651,14 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
    flat tmux and flat instructions: judge at the wave-exit gate). Known misses carried to W4:
    `control.latency` about 1.4-1.7x tmux (a stdio handoff design in CTRL's as-built notes),
    `attach.cpu`/`attach.ttfc` on Linux.
-   Wave-2 exit (2026-10-01, `3d0fc1b0` binaries, i.e. `f6a25887`). Mac
-   `wave2-macbook-3d0fc1b0.json`: 70 pass, 5 fail (`spawn.cpu.split_empty_P` and `kill_pane` for
+   Wave-2 exit (2026-10-01, `61729102` binaries, i.e. `6918d82e`). Mac
+   `wave2-macbook-61729102.json`: 70 pass, 5 fail (`spawn.cpu.split_empty_P` and `kill_pane` for
    W3-LOOP, `chatty.client_cpu_pct.visible` 1.08% vs the 1.0% rule, down from 1.67%,
    `attach.ttfc.p1`, `control.latency` 1.5x), 15 regressed: `cli.wall.*` with tmux slower in the
    same run, `attach.wire_c2s` +30% (the Hello now carries the environment), and
    `throughput.detached.ascii` 345 -> 284 MB/s, which an alternating A/B of the COPY, FMT and CTRL
    binaries puts at 295-317 MB/s for all three (host state). Linux
-   `wave2-alienware-3d0fc1b0.json`: 64 pass, 12 fail (spawn x3 and `mem.threads.p20` for wave 3,
+   `wave2-alienware-61729102.json`: 64 pass, 12 fail (spawn x3 and `mem.threads.p20` for wave 3,
    chatty visible for W4, `attach.cpu`/`ttfc` higher than in the COPY gate run at lower
    instructions, a host-state difference: the same-session chain is FMT flat, CTRL -24%).
    `mem.copy_instr.scroll180` +5.5% fails the 5% tolerance: A/B COPY 4.327, FMT 4.587, CTRL 4.563
@@ -1667,7 +1667,7 @@ Wave 4 started 2026-10-02 (see "Wave 4 merge log"); read "Lane brief rules" befo
    The full corpus then found ten rows clean on COPY and red after CTRL (own-conf bindings never
    applied, source-file diagnostics lost, `args-parse-*` control-typed arguments, config-grammar,
    oh-my-tmux), on both hosts, plus four Mac plugin-init rows (continuum, fpp, resurrect, tpm).
-   `9e634cd8` fixes three causes: control stdin started before the initial config replay
+   `61ccdbd4` fixes three causes: control stdin started before the initial config replay
    finished (early EOF cut it at shell waits), typed preparation errors lost `parse error:`, and
    ordinary control flags were preflighted before preceding effects and `command-error` hooks.
    After it: all 14 rows and the control rows clean on the Mac; the Linux full corpus (256 rows) is
@@ -1701,11 +1701,11 @@ Mac; paths under `/home/demfabris/...` and `~/.cache/zz-perf/...` are on alienwa
 
 ## Mac leg (macbook, 2026-09-29 to 09-30): the wave-1 macOS gate
 
-Worktree `~/dev/zz-macgate` at `2166bd31`, release build, M4 Max, tmux 3.7c. The host was not
+Worktree `~/dev/zz-macgate` at `02c78e9f`, release build, M4 Max, tmux 3.7c. The host was not
 quiet at the start (another project's `cargo test`, OrbStack, Spotlight indexing the new trees:
 load 18-30); the gate started once the 1-minute load fell to 4.2 and nothing compiled.
 
-### Gate `wave1-macbook-2166bd31.json` (strict, full, `--baseline w1-5-exec-macbook-a26b6368.json`)
+### Gate `wave1-macbook-02c78e9f.json` (strict, full, `--baseline w1-5-exec-macbook-418161c7.json`)
 
 62 pass, 5 fail, 20 regressed, 2 drifted, 373 s, load 4.2 -> 4.5 (5-minute load 8.2 -> 5.1).
 Every W1-ATTACH rule passes unscaled on the reference host: `attach.tty_total.p1` 504 B (tmux 975),
@@ -1718,11 +1718,11 @@ The five failures, none a wave-1 regression:
 
 | Row | zz / tmux (this run) | Rule | Why |
 |---|---|---|---|
-| `attach.ttfc.p1` | 16.9 / 20.7 ms | abs 14 ms | host state: tmux itself read 11.2 ms at w1-5. Same-host A/B (below): 2166bd31 17-22 ms, a26b6368 25-29 ms, tmux 19-23. zz is ahead of tmux; W2-CTRL owns the 1.1x-tmux wave2 rule |
-| `attach.ttfc.p4` | 14.7 / 15.8 ms | abs 14 ms | same; A/B 21-22 ms vs a26b6368 40-46 ms, tmux 21-22 |
-| `spawn.cpu.split_shell` | 1.72 / 1.79 ms | abs 1.5 ms | host state: instructions held (3.29 vs 3.41 Minstr); A/B a26b6368 1.7-2.1 ms vs 1.8-1.9. W3 |
+| `attach.ttfc.p1` | 16.9 / 20.7 ms | abs 14 ms | host state: tmux itself read 11.2 ms at w1-5. Same-host A/B (below): 02c78e9f 17-22 ms, 418161c7 25-29 ms, tmux 19-23. zz is ahead of tmux; W2-CTRL owns the 1.1x-tmux wave2 rule |
+| `attach.ttfc.p4` | 14.7 / 15.8 ms | abs 14 ms | same; A/B 21-22 ms vs 418161c7 40-46 ms, tmux 21-22 |
+| `spawn.cpu.split_shell` | 1.72 / 1.79 ms | abs 1.5 ms | host state: instructions held (3.29 vs 3.41 Minstr); A/B 418161c7 1.7-2.1 ms vs 1.8-1.9. W3 |
 | `spawn.cpu.split_empty_P` | 0.89 / 0.44 ms | ratio 1.6 | bimodal, see next row |
-| `spawn.instr.split_empty_P` | 2.11 / 1.17 Minstr (hard) | +5% vs baseline | bimodal on both binaries: samples sit near 0.9 or 2.1 Minstr (this run min 0.89, median 2.11); A/B a26b6368 1.74 / 2.11 / 2.13, 2166bd31 2.12 / 2.15 / 2.14. w1-5 caught the low mode (1.15). Not the macOS pty spin bridge (it arms only after a read of 1 KiB or more). The extra ~1.2 Minstr is unexplained: W3-LOOP, which owns spawn CPU, should find it |
+| `spawn.instr.split_empty_P` | 2.11 / 1.17 Minstr (hard) | +5% vs baseline | bimodal on both binaries: samples sit near 0.9 or 2.1 Minstr (this run min 0.89, median 2.11); A/B 418161c7 1.74 / 2.11 / 2.13, 02c78e9f 2.12 / 2.15 / 2.14. w1-5 caught the low mode (1.15). Not the macOS pty spin bridge (it arms only after a read of 1 KiB or more). The extra ~1.2 Minstr is unexplained: W3-LOOP, which owns spawn CPU, should find it |
 
 The 20 regressed rows are cpu/wall kinds (spawn, cold, config, chatty steady/visible, control
 burst) and the four echo rows, with tmux slower by the same or more in the same run
@@ -1731,8 +1731,8 @@ drifted rows are `echo.p50.idle` / `.p99.idle` against W0 (tmux moved 5.6x on th
 echo rules are wave 3 since the Linux leg. Instructions, bytes, counts, footprint and threads did
 not regress, except `spawn.instr.split_empty_P` above.
 
-A/B: `bench/perf/run.py --only spawn,attach --w0 none`, three alternating pairs of the a26b6368
-and 2166bd31 binaries at load 3.6-4.6 (scratch results, not committed).
+A/B: `bench/perf/run.py --only spawn,attach --w0 none`, three alternating pairs of the 418161c7
+and 02c78e9f binaries at load 3.6-4.6 (scratch results, not committed).
 
 ### Darwin path of the PageList fix (`713374af`)
 
@@ -1755,7 +1755,7 @@ and 2166bd31 binaries at load 3.6-4.6 (scratch results, not committed).
   discard the whole range (as `MADV_DONTNEED` does) instead of only the dirty prefix. Full
   `zig build test-lib-vt -Demit-lib-vt=true` on the Mac: 6488 pass, 52 skipped, 0 fail.
 
-### Gate `w2-2-term-macbook-adbc5407.json` (strict, full, `--stage wave2`, baseline the wave-1 Mac JSON)
+### Gate `w2-2-term-macbook-e5e18f0b.json` (strict, full, `--stage wave2`, baseline the wave-1 Mac JSON)
 
 `main` after the repin: W2-HOOKS, W2-TERM and Ghostty `c3941417`. 62 pass, 10 fail, 6 regressed,
 2 drifted, 367 s, load 2.8 -> 2.2. The Mac view of the two wave-2 merges, on rows that do not
@@ -1799,26 +1799,26 @@ tmux).
 
 | Branch | Head | Contents | State |
 |---|---|---|---|
-| `main` (origin) | fast-forwarded to `perf/wave2` after each merge | W0, wave 1 (merged `1e0bfc6a`), the Ghostty pin, W2-HOOKS, W2-TERM, the Mac leg (gate JSONs, Ghostty repin `f822301d`) | pushed |
+| `main` (origin) | fast-forwarded to `perf/wave2` after each merge | W0, wave 1 (merged `2d0c2df2`), the Ghostty pin, W2-HOOKS, W2-TERM, the Mac leg (gate JSONs, Ghostty repin `f822301d`) | pushed |
 | `perf/wave2` | behind `main` by the Mac leg's commits | integration branch in `~/dev/zz-perf-int` | fast-forward it to `main` before the next lane |
 | `perf/wave1` | deleted after merging into `main` | W0 gate + plan and all of wave 1 | history kept in `main` |
-| `perf/attach` | `9a72b53b` (was `00831246` at handoff) | W1-ATTACH | fix pass finished on Linux, merged into `perf/wave1` as `ce1b34cd` (w1-6); branch and worktree removed |
+| `perf/attach` | `9a72b53b` (was `00831246` at handoff) | W1-ATTACH | fix pass finished on Linux, merged into `perf/wave1` as `7ab41a27` (w1-6); branch and worktree removed |
 
 Wave 1 merge log on `perf/wave1` (gate JSON per merge in `bench/perf/results/`):
 
 | # | Lane | Merge | Gate JSON |
 |---|---|---|---|
-| W0 | gate + plan | `157ac6a3` (local main) | `baseline-macbook-17e17115.json`, `baseline-quick-macbook-17e17115.json` |
-| 1 | FOOTPRINT | `613630ce` | `w1-1-footprint-macbook-613630ce.json` |
-| 2 | FORMAT (before PUBLISH, see below) | `a5c5cab7` | `w1-2-format-macbook-a5c5cab7.json` |
-| 3 | PUBLISH | `d5542787` | `w1-3-publish-macbook-d5542787.json` |
-| 4 | PANE | `ad9c0c9b` | `w1-4-pane-macbook-ad9c0c9b.json` |
-| 5 | EXEC | `a26b6368` | `w1-5-exec-macbook-a26b6368.json` (last full gate, load 4-5 on 16 CPUs, not noisy, not `--strict`) |
+| W0 | gate + plan | `0e5474db` (local main) | `baseline-macbook-e8caa445.json`, `baseline-quick-macbook-e8caa445.json` |
+| 1 | FOOTPRINT | `05bd078a` | `w1-1-footprint-macbook-05bd078a.json` |
+| 2 | FORMAT (before PUBLISH, see below) | `e386dc53` | `w1-2-format-macbook-e386dc53.json` |
+| 3 | PUBLISH | `ba4f4bd8` | `w1-3-publish-macbook-ba4f4bd8.json` |
+| 4 | PANE | `fbc4a7ab` | `w1-4-pane-macbook-fbc4a7ab.json` |
+| 5 | EXEC | `418161c7` | `w1-5-exec-macbook-418161c7.json` (last full gate, load 4-5 on 16 CPUs, not noisy, not `--strict`) |
 | fold | `perf/peers-process-info` | `d617fec9` | none; Claude peer helpers folded into `process_info` |
 | fold | `fix/pty-bridge-adaptive-spin` | `c7c93042` | quick throughput only: 261.0 MB/s vs tmux 47.4 (5.51x), W0 quick 233.9; not committed (`results/local/`) |
 | fold | `perf/footprint` (title fix) | `cd1ce6eb` | none; `select-pane -T` titles survive shell-integration prompt retitles |
 | extra | registry | `9eb5888b` | closes `terminal.shell-integration-prompt-title` in `compat/tmux-gaps.json`; owner may drop it |
-| 6 | ATTACH | `ce1b34cd` | `w1-6-attach-alienware-ce1b34cd.json` (Linux, `--strict`, full, quiet: 59 pass, 11 fail, 0 regressed, 0 drifted) |
+| 6 | ATTACH | `7ab41a27` | `w1-6-attach-alienware-7ab41a27.json` (Linux, `--strict`, full, quiet: 59 pass, 11 fail, 0 regressed, 0 drifted) |
 
 FORMAT merged before PUBLISH, against the plan's order: a usage-limit cut left PUBLISH's fix pass
 unfinished while FORMAT was ready, and the resume run (`scripts/wave1-resume.js`) merged it first.
@@ -1830,12 +1830,12 @@ Fold checks on the Mac: fmt and clippy `-D warnings` clean; zz-terminal 309, zz-
 load flakes that pass alone); `just compat-check` green with Homebrew bash first.
 
 Wave 2 merge log on `perf/wave2` (Linux, alienware; gate JSON per merge in `bench/perf/results/`,
-each `--baseline` is the row above, the first one's is `wave1-alienware-aaaa8195.json`):
+each `--baseline` is the row above, the first one's is `wave1-alienware-60e1db94.json`):
 
 | # | Lane | Merge | Follow-ups | Gate JSON |
 |---|---|---|---|---|
-| 1 | HOOKS | `0acd7f2a` | `74f35b65` (foldhash in `clients/web/Cargo.lock`, or `just web-build` stops at `--locked`) | `w2-1-hooks-alienware-0acd7f2a.json` (`--strict`, full, quiet, load 0.8-1.7: 55 pass, 17 fail, 7 regressed, 1 drifted) |
-| 2 | TERM | `d7e3fc95` | `8f18e4d7` (two TERM tests that only failed under `cargo test --workspace`) | `w2-2-term-alienware-d7e3fc95.json` (`--strict`, full, NOT quiet: a Steam game used two cores, load 3.3-7.1: 52 pass, 20 fail, 52 regressed, 5 drifted; read its CPU, wall and throughput rows as noise) |
+| 1 | HOOKS | `ef071b69` | `727a7b95` (foldhash in `clients/web/Cargo.lock`, or `just web-build` stops at `--locked`) | `w2-1-hooks-alienware-ef071b69.json` (`--strict`, full, quiet, load 0.8-1.7: 55 pass, 17 fail, 7 regressed, 1 drifted) |
+| 2 | TERM | `95c27a0b` | `25068a3f` (two TERM tests that only failed under `cargo test --workspace`) | `w2-2-term-alienware-95c27a0b.json` (`--strict`, full, NOT quiet: a Steam game used two cores, load 3.3-7.1: 52 pass, 20 fail, 52 regressed, 5 drifted; read its CPU, wall and throughput rows as noise) |
 
 Merge 1 (HOOKS): every instruction row dropped or held (`config.instr.source_1000` 139.4 -> 41.7
 Minstr, tmux 82.4; `cli.instr.display.p20` 0.248 -> 0.136, tmux 0.262; `cli.instr.chain5.p20`
@@ -1847,7 +1847,7 @@ in alternating A/B runs (`~/.cache/zz-perf/hooks/merge/ab*.json`); A/B medians p
 `cli.cpu.display.p20` 16-33% under the pre-merge binary and `control.burst_cmds_per_s` at 16.8k
 against 15.2k. Stage wave2 rules for unmerged lanes fail as expected (attach, echo wire, control
 latency and burst, `chatty.*.visible`), plus the W3 rows (spawn CPU, `mem.threads.p20`). Both
-throughput rows pass now because of the Ghostty pin (`2166bd31`), not HOOKS.
+throughput rows pass now because of the Ghostty pin (`02c78e9f`), not HOOKS.
 
 Merge 2 (TERM): the wire rows moved as planned and are exact on any host: `echo.wire_bytes.idle`
 1,133 -> 33 B (rule 64, pass), `echo.wire_bytes.busy30` 3,399 -> 137 B, `attach.wire_s2c.p1` /
@@ -1939,8 +1939,8 @@ Done so far on `perf/wave1`:
 | Commit | What |
 |---|---|
 | `658e640d` | Linux instruction counts in `probe.py` (`perf_event_open`, user space, `inherit` + `inherit_thread`: later threads fold in, forked panes stay out) |
-| `166b8f95` | `compat/run.sh` lists rows that failed twice |
-| `f50c434e` | Linux W0 (`baseline-alienware-17e17115.json`, quick twin) and the strict fold gate `w1-5-fold-alienware-166b8f95.json` (45 pass, 25 fail, 1 drifted) |
+| `307e8509` | `compat/run.sh` lists rows that failed twice |
+| `f50c434e` | Linux W0 (`baseline-alienware-e8caa445.json`, quick twin) and the strict fold gate `w1-5-fold-alienware-307e8509.json` (45 pass, 25 fail, 1 drifted) |
 | `5d41ad4b` | the gate passes `ZZ_PERF_*` knobs to the servers (before this, knob-off gate runs silently measured the default path) |
 | `ad4ee99c` | merge of `perf/linux-thp`: `zz_cli` turns THP off for itself (constructor ahead of mimalloc's), panes get it back; knob `ZZ_PERF_THP=1` |
 
@@ -1966,20 +1966,20 @@ Lanes in flight:
 
 | Lane | Where | State |
 |---|---|---|
-| W1-ATTACH | was `~/dev/zz-attach`, `perf/attach` | merged 2026-09-29 as `ce1b34cd` (w1-6), worktree and branch removed; reports in `~/.cache/zz-perf/attach/` (`report.md`, `merge-report.md`), statuses in `attach-review.json` |
-| W1-LINUX-PAGES | fork `demfabris/ghostty`, now branch `zz-2026-09-30` at `c3941417` (`zz-2026-09-29` keeps `713374af`) | landed: zz side `0e590636` (memchr escape scan), fork pin `2166bd31` (detached ASCII 85 -> 120-134 MB/s, unicode 45 -> 91, actor 98% -> 30% CPU); the Mac leg found and fixed its trim bug, repin `f822301d` |
-| W1-ATTACH-PAINT | was `~/dev/zz-attach-paint`, `perf/attach-paint` | merged `aaaa8195`: `Renderer::note_frame` merged, instead of replacing, a pane's unpainted damage when a drain took a second frame; regression test in zz-tui app.rs |
-| W2-HOOKS | was `~/dev/zz-hooks`, `perf/hooks` | merged into `perf/wave2` as `0acd7f2a` (w2-1), worktree and branch removed; reports in `~/.cache/zz-perf/hooks/` (`fix-report.md`, `merge-report.md`) |
-| W2-TERM | was `~/dev/zz-term`, `perf/term` | merged into `perf/wave2` as `d7e3fc95` (w2-2) plus `8f18e4d7`, worktree and branch removed; reports in `~/.cache/zz-perf/term/` (`impl-report.md`, `fix-report.md`, `merge-report.md`). After pulling it, `kill-server` every zz daemon built before it: the wire changed inside 107 |
+| W1-ATTACH | was `~/dev/zz-attach`, `perf/attach` | merged 2026-09-29 as `7ab41a27` (w1-6), worktree and branch removed; reports in `~/.cache/zz-perf/attach/` (`report.md`, `merge-report.md`), statuses in `attach-review.json` |
+| W1-LINUX-PAGES | fork `demfabris/ghostty`, now branch `zz-2026-09-30` at `c3941417` (`zz-2026-09-29` keeps `713374af`) | landed: zz side `d8f3e46a` (memchr escape scan), fork pin `02c78e9f` (detached ASCII 85 -> 120-134 MB/s, unicode 45 -> 91, actor 98% -> 30% CPU); the Mac leg found and fixed its trim bug, repin `f822301d` |
+| W1-ATTACH-PAINT | was `~/dev/zz-attach-paint`, `perf/attach-paint` | merged `60e1db94`: `Renderer::note_frame` merged, instead of replacing, a pane's unpainted damage when a drain took a second frame; regression test in zz-tui app.rs |
+| W2-HOOKS | was `~/dev/zz-hooks`, `perf/hooks` | merged into `perf/wave2` as `ef071b69` (w2-1), worktree and branch removed; reports in `~/.cache/zz-perf/hooks/` (`fix-report.md`, `merge-report.md`) |
+| W2-TERM | was `~/dev/zz-term`, `perf/term` | merged into `perf/wave2` as `95c27a0b` (w2-2) plus `25068a3f`, worktree and branch removed; reports in `~/.cache/zz-perf/term/` (`impl-report.md`, `fix-report.md`, `merge-report.md`). After pulling it, `kill-server` every zz daemon built before it: the wire changed inside 107 |
 | W2-CTRL | not started | can start now from `perf/wave2`: its `Batch` carries TERM's PaneFrames; the encoder entry points are `encode_terminal_viewport_event_into` and `encode_terminal_patch_event_into` (zz-protocol `terminal_codec.rs`, the patch one takes a `TerminalPatchRef` and a `PatchTail`) |
 
 ## Decisions taken on the Mac leg (owner away; revisit if you disagree)
 
-- **Gate of record at `2166bd31`, as asked, with no rerun.** Its five failures are explained by
-  a same-host A/B against the w1-5 binary (`a26b6368`); none is a wave-1 regression.
+- **Gate of record at `02c78e9f`, as asked, with no rerun.** Its five failures are explained by
+  a same-host A/B against the w1-5 binary (`418161c7`); none is a wave-1 regression.
 - **`spawn.instr.split_empty_P` (a hard instruction row) accepted as bimodal.** The old binary
   reads the same on this host; owner W3-LOOP (next Mac session, item 4).
-- **CoreFoundation check and bundle at `main`, not `2166bd31`.** W1-FOOTPRINT's link change is in
+- **CoreFoundation check and bundle at `main`, not `02c78e9f`.** W1-FOOTPRINT's link change is in
   both; checking `main` also covers wave 2 and, after the repin, the new pin (`f822301d`).
 - **The Ghostty fix is pushed and pinned.** This revisits the Linux leg's "Ghostty fork: nothing
   is pushed": the pin on `main` could blank a Linux pane after `clear`, and the native-fork process
@@ -1992,7 +1992,7 @@ Lanes in flight:
   `a_cleared_screen_survives_idle_compression` passes on macOS on either pin (the discard keeps the
   contents there); proven against both pins with a Linux-like discard patched into a local checkout.
 - **The first wave-2 run at `ae63c577` was stopped and discarded**: a zig build of mine overlapped
-  its cli and spawn groups. The record is `w2-2-term-macbook-adbc5407.json`, after the repin, with
+  its cli and spawn groups. The record is `w2-2-term-macbook-e5e18f0b.json`, after the repin, with
   the Mac wave-1 JSON as its baseline.
 - **No echo A/B.** Echo rules are wave 3 since the Linux leg, and tmux moved as much in both runs.
 
@@ -2031,7 +2031,7 @@ Lanes in flight:
 
 - **Merges of record on Linux: yes.** Lane merges run the strict gate here against the Linux W0;
   each wave exit still gets one strict Mac run (`<stage>-macbook-<sha8>.json`).
-- **Merges 1-5 without `--strict`: no reruns.** The strict Linux fold gate (`w1-5-fold-alienware-166b8f95.json`)
+- **Merges 1-5 without `--strict`: no reruns.** The strict Linux fold gate (`w1-5-fold-alienware-307e8509.json`)
   covers all five merged lanes at once and is the baseline for merge 6.
 - **`9eb5888b` (gap registry close): kept.** The behaviour it records is real and tested.
 - **Ghostty fork: nothing is pushed.** Fork fixes are developed on a local clone and wait for the
@@ -2108,17 +2108,17 @@ rule has something to hold (CPU time moved up to 61% between runs of one binary 
 
 ### 4. Linux baselines (done, `f50c434e`)
 
-W0 is the gate run against a binary built at `17e17115` (the gate did not exist there), from a tree
-whose HEAD is `17e17115`, so `meta.git_sha` names the W0 commit:
+W0 is the gate run against a binary built at `e8caa445` (the gate did not exist there), from a tree
+whose HEAD is `e8caa445`, so `meta.git_sha` names the W0 commit:
 
 ```sh
 H=$(python3 -c 'import socket; print(socket.gethostname().split(".")[0])')
-git -C ~/dev/zz worktree add --detach ~/dev/zz-w0 17e17115
+git -C ~/dev/zz worktree add --detach ~/dev/zz-w0 e8caa445
 cp -R ~/dev/zz-perf-int/bench/perf ~/dev/zz-w0/bench/
 cd ~/dev/zz-w0 && cargo build --release -p zz-cli
-python3 bench/perf/run.py --zz target/release/zz_cli --stage baseline --w0 none --json /tmp/baseline-$H-17e17115.json
-python3 bench/perf/run.py --zz target/release/zz_cli --stage baseline --w0 none --quick --json /tmp/baseline-quick-$H-17e17115.json
-cp /tmp/baseline-*$H-17e17115.json ~/dev/zz-perf-int/bench/perf/results/
+python3 bench/perf/run.py --zz target/release/zz_cli --stage baseline --w0 none --json /tmp/baseline-$H-e8caa445.json
+python3 bench/perf/run.py --zz target/release/zz_cli --stage baseline --w0 none --quick --json /tmp/baseline-quick-$H-e8caa445.json
+cp /tmp/baseline-*$H-e8caa445.json ~/dev/zz-perf-int/bench/perf/results/
 cd ~/dev/zz-perf-int && just perf-gate wave1 --strict --json bench/perf/results/w1-5-fold-$H-$(git rev-parse --short=8 HEAD).json
 ```
 
@@ -2161,17 +2161,17 @@ against the full w1-4 JSON, which warns that sample counts differ).
 Then: lane tests (`cargo test -p zz-daemon attach_tests`, `-p zz-tui -p zz-client -p zz-cli`),
 `python3 compat/tui/tracker.py check`, every `compat/tui-*.sh` fixture, `compat/attached-client.sh`,
 the scenarios the parity reviewer listed, and `just perf-gate wave1 --quick --only
-attach,echo,throughput,chatty --baseline bench/perf/results/baseline-quick-<host>-17e17115.json`
+attach,echo,throughput,chatty --baseline bench/perf/results/baseline-quick-<host>-e8caa445.json`
 (quick against quick; a quick run against the full w1-5-fold JSON warns that sample counts differ).
 `tui-output-backpressure.sh` reads `/proc` and runs only on Linux. These failed on the base build
 on the Mac too, so compare each against the pre-merge binary before blaming the lane: fixtures
-`status-row`, `tui-choosers` (stops at the same checkpoint on `157ac6a3`), `tui-client-commands`,
+`status-row`, `tui-choosers` (stops at the same checkpoint on `0e5474db`), `tui-client-commands`,
 `tui-stock-keys`, `tui-output-backpressure`, `tui-command-streams`; corpus `census-hooks`,
 `plugin-runtime-continuum`, `plugin-runtime-vim-tmux-navigator`, `source-file-byte-name`,
 `resurrect-save`, `status-background-jobs`.
 `scripts/wave-lanes.js` is preset for exactly this (fix from the reports, then merge).
 
-### 6. Merge attach as w1-6 (done, `ce1b34cd`)
+### 6. Merge attach as w1-6 (done, `7ab41a27`)
 
 Merge `perf/wave1` into `perf/attach` again if it moved since step 5, then merge `perf/attach`
 `--no-ff` into `perf/wave1`, full checks (fmt, clippy, workspace tests under `timeout`,
@@ -2179,7 +2179,7 @@ Merge `perf/wave1` into `perf/attach` again if it moved since step 5, then merge
 `just perf-gate wave1 --strict --baseline <w1-5-fold JSON> --json
 bench/perf/results/w1-6-attach-<host>-<sha8>.json` on a quiet host. Remove `~/dev/zz-attach` and the branch right after.
 
-Done 2026-09-29 on alienware. The merge was clean (`perf/attach` already held `a41b1fbf`) and its
+Done 2026-09-29 on alienware. The merge was clean (`perf/attach` already held `13870a0b`) and its
 tree equals the lane's. fmt, clippy, `just compat-check`, `just web-build` and
 `compat/attached-client.sh` pass. Workspace tests: only the known base failures plus load victims
 that pass alone (`process_info` exec-name tests, a `russh_socks` port test,
@@ -2189,11 +2189,11 @@ bugs). Full `compat/run.sh`: three rows red twice, all identical on the pre-merg
 tmux built here has `vlock`; `smoke/plugin-runtime-resurrect-restore` fails for tmux too, bash
 prompt retitles).
 
-Gate `w1-6-attach-alienware-ce1b34cd.json` against `w1-5-fold`: every attach rule passes
+Gate `w1-6-attach-alienware-7ab41a27.json` against `w1-5-fold`: every attach rule passes
 (`tty_total` 175762 -> 504 B at p1, 344894 -> 1435 B at p4; `instr` 15.8 -> 10.7 and 16.3 -> 11.1
 Minstr; `ttfc` 8.3 / 9.2 ms vs tmux 7.9 / 9.6; `conns` 4 -> 2), `chatty.tty_kibps.hidden` 1.00 ->
 0.54 KiB/s. Rows that moved for reasons outside the lane: every `mem.footprint.*` row passes now
-because of the THP fix (`ad4ee99c`, after the fold JSON): the pre-merge `a41b1fbf` binary reads
+because of the THP fix (`ad4ee99c`, after the fold JSON): the pre-merge `13870a0b` binary reads
 3.18 / 17.9 MiB against the merge's 3.14 / 18.1. The `spawn`, `cold`, `config` and `cli` CPU and
 wall rows dropped 2-3x with tmux dropping the same (tmux `spawn.cpu.split_shell` 2.18 -> 0.79 ms,
 `config.wall.source_1000` 25.6 -> 14.5 ms) and their instruction counts unchanged: the host ran in
@@ -2204,7 +2204,7 @@ W3), `chatty.cpu_pct.visible` (W2-TERM, W4), `mem.threads.p20` 66 (W3-SHARDS), t
 (no wave-1 owner, same on the pre-merge binary in an A/B), `throughput.detached.ascii` (Linux
 ceiling, W1-LINUX-PAGES) and `throughput.attached.ascii_ms` 0.53x (rule 0.25x).
 
-### 7. Wave-1 exit (done on Linux 2026-09-29, `wave1-alienware-aaaa8195.json`)
+### 7. Wave-1 exit (done on Linux 2026-09-29, `wave1-alienware-60e1db94.json`)
 
 Strict, full, quiet (load 1.4-1.5): 59 pass, 7 fail, 0 drifted; the 10 regressed rows are cpu/wall
 kinds whose tmux moved the same way (this laptop flips between a fast and a slow power state, and
@@ -2224,7 +2224,7 @@ bench/perf/results/wave1-<host>-<sha8>.json`, plus `compat/tui-screen-diff.sh` a
 could blank a pane). Settle the echo decision first. The owner runs the same strict gate once on
 the Mac for `wave1-macbook-<sha8>.json`.
 
-### 8. Merge `perf/wave1` into `main` (done 2026-09-29, `1e0bfc6a`, local only)
+### 8. Merge `perf/wave1` into `main` (done 2026-09-29, `2d0c2df2`, local only)
 
 `git merge --no-ff perf/wave1` in a main worktree nobody else is using. Then remove
 `~/dev/zz-perf-int`. Do not push unless the owner says so; do not tag (freeze).
@@ -2391,7 +2391,7 @@ orchestrator's Agent tool, one per worktree, building on the Mac and reaching Li
 - `compat/tui-screen-diff.sh` and the attached checks need a UTF-8 locale: without `LANG`/`LC_ALL`
   the pinned tmux draws ACS borders and the run reports diffs and an unsettled wide-glyph screen.
 - `compat/attached-client.sh` can fail on the tmux side ("tmux command-output view did not show
-  one ordered replay transcript") on a loaded Mac; it passed 1 of 2 reruns at `f6a25887`.
+  one ordered replay transcript") on a loaded Mac; it passed 1 of 2 reruns at `6918d82e`.
 - The Mac lane worktrees left an orphaned `run-tui-fixtures.py` from a killed codex run alive for
   6 h 40 min; after killing a lane, sweep `ps` for its `/tmp/zzpc` runners too.
 
@@ -2405,7 +2405,7 @@ orchestrator's Agent tool, one per worktree, building on the Mac and reaching Li
   (1-6 on a debug build; the pre-ATTACH release build matched all 147 every time), while the lane
   had reported it green. `ZZ_PERF_TUI_COALESCE=0` clears it, so it sits in zz-tui's coalesced
   paint path. Merge checks now run screen-diff three times on the release build (`gen.py`).
-  Fixed by W1-ATTACH-PAINT (`aaaa8195`). Under a concurrent cargo build a few `unzoom`
+  Fixed by W1-ATTACH-PAINT (`60e1db94`). Under a concurrent cargo build a few `unzoom`
   checkpoints can still differ on both the pre- and post-ATTACH builds: the daemon holds a stale
   pane geometry after unzoom (likely a client size report landing after the layout change,
   `InputMessage::ResizeTerminal` -> `set_pane_geometry` with no layout generation). Open bug below.
@@ -2428,10 +2428,10 @@ orchestrator's Agent tool, one per worktree, building on the Mac and reaching Li
 - **Stale daemons.** The daemon outlives clients; after a wire-changing merge, `kill-server` every dev daemon. Test sockets go directly under `/tmp` (`sun_path` limit).
 - **Wall and CPU noise.** Parallel lanes make wall and CPU time noisy; judge on instructions, bytes, counts, footprint and threads, and run merge-of-record gates with `--strict` on a quiet host.
 - **Compat rows red on the Mac only**: `smoke/resurrect-save` (macOS `/bin/sh` runs as bash, tmux fails it too), `smoke/plugin-runtime-continuum` (gnubin `sleep` is `gsleep`), `smoke/status-background-jobs` (BSD `date` lacks `%N`), `verify_claims_test.py` under `/bin/bash` 3.2. Expect them to pass here; if not, compare with the pre-merge binary before blaming a lane.
-- **The web client has its own lockfile.** A lane that adds a dependency to a crate `clients/web` builds (zz-protocol, zz-client, zz-mux, zz-ui) must refresh `clients/web/Cargo.lock` too (`cargo metadata --offline --manifest-path clients/web/Cargo.toml`), or `just web-build` fails at `cargo metadata --locked` with a Python JSON traceback. W2-HOOKS missed it (`74f35b65`).
+- **The web client has its own lockfile.** A lane that adds a dependency to a crate `clients/web` builds (zz-protocol, zz-client, zz-mux, zz-ui) must refresh `clients/web/Cargo.lock` too (`cargo metadata --offline --manifest-path clients/web/Cargo.toml`), or `just web-build` fails at `cargo metadata --locked` with a Python JSON traceback. W2-HOOKS missed it (`727a7b95`).
 - **`-p` and `--workspace` build different features.** smallvec's `union` feature is on in the
   workspace and off for `cargo test -p zz-terminal`, so a `size_of` contract over a `SmallVec`
-  holds in one and fails in the other (W2-TERM's `TerminalPatchRowData`, fixed in `8f18e4d7`).
+  holds in one and fails in the other (W2-TERM's `TerminalPatchRowData`, fixed in `25068a3f`).
   Lanes that add layout asserts should run the crate's tests both ways.
 - **A hidden view keeps its last snapshot.** `TerminalSession::latest_viewport_for` still returns
   the frame the actor built before the daemon turned the view's stream off, until the actor's next
@@ -2447,5 +2447,5 @@ orchestrator's Agent tool, one per worktree, building on the Mac and reaching Li
 | Stale pane geometry after unzoom under load: a client's size report can land after the layout change. At the W2-TERM merge, with a game loading the host, `tui-screen-diff.sh` on the release build showed 1-4 differing `unzoom` / `resized` / `restored` checkpoints in about a third of the runs on the pre-merge, lane and merge binaries alike (merge 6 of 18, pre-merge 4 of 14, lane 2 of 5) (`~/.cache/zz-perf/term/merge/sdab*.log`) | daemon `InputMessage::ResizeTerminal` -> `set_pane_geometry` | tag size reports with a layout generation and drop stale ones (protocol change; W2-CTRL or its own lane) |
 | Title race: the pane watcher can see a program's new title before `program_title_writes` moves, so a `select-pane -T` title then hides it until the next viewport publish | zz-terminal `run_terminal` publishes facts at the top of each pass, after the viewport; daemon `watch_terminal` | set facts right before `publish_active_views` |
 | `verify_claims_test.py` "unattributed: unbound variable" under bash 3.2 | `compat/tui/` | Mac-only; empty array under `set -u` |
-| `mode_keys_scope_visible_command_output_separately_from_underlying_copy_mode` takes 30.05 s alone and fails under load: the Escape never closes the output view, it closes when the window's `sleep 30` exits, just inside the test's 30 s wait (with `sleep 50` it fails at 30 s). Same on `a41b1fbf` | daemon.rs test and the command-output Escape path | find why the emacs-table Escape does not cancel the output view; then the test stops depending on the sleep |
+| `mode_keys_scope_visible_command_output_separately_from_underlying_copy_mode` takes 30.05 s alone and fails under load: the Escape never closes the output view, it closes when the window's `sleep 30` exits, just inside the test's 30 s wait (with `sleep 50` it fails at 30 s). Same on `13870a0b` | daemon.rs test and the command-output Escape path | find why the emacs-table Escape does not cancel the output view; then the test stops depending on the sleep |
 | `lock-command` defaults to `lock -np` on every platform; tmux's configure picks `vlock` on Linux when `vlock` is installed at build time (it is on alienware), so `lane2-store` and `show-options-hooks` are red in `compat/run.sh` here | zz-mux `tmux_options.rs`, `command.rs` | decide whether zz follows tmux's build-time probe; the pinned oracle's answer depends on the build host |

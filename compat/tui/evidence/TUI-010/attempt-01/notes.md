@@ -16,7 +16,7 @@ command, at 80x24, with a 45 s undrained window:
 | side | drained key | key after 45 s undrained | RSS baseline | RSS peak | growth |
 | --- | --- | --- | --- | --- | --- |
 | pinned tmux d77c9dc6 | 0.024 s | 0.033 s | 4892 kB | 4892 kB | 0 kB |
-| zz BEFORE (origin/main bfd05821) | 0.023 s | never, 12 s timeout | 105956 kB | 112100 kB | 6144 kB |
+| zz BEFORE (origin/main 2b040c82) | 0.023 s | never, 12 s timeout | 105956 kB | 112100 kB | 6144 kB |
 | zz AFTER | 0.024 s | 0.025 s | 105244 kB | 111816 kB | 6572 kB |
 
 Memory was bounded on both sides before and after: the 4 MiB queue was never the

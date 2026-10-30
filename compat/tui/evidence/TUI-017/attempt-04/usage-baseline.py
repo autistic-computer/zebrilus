@@ -38,4 +38,4 @@ for name in cases:
     assert results['main'][name]['exit'] == 2
     for channel in ['stdout', 'stderr']:
         assert results['main'][name][channel] == results['pin'][name][channel]
-print('All eight shared-fixture failures reproduce on clean e40a13e1: exact stdout/stderr, main and candidate exit 2 versus pin exit 1')
+print('All eight shared-fixture failures reproduce on clean 13174450: exact stdout/stderr, main and candidate exit 2 versus pin exit 1')

@@ -1,6 +1,6 @@
 Wed Sep 16 13:21:18 UTC 2026
 abcaa5a67de6338112cad4790c000f9a81f12f21
-be5709dfcd9936d44519683e5da8dc6ab7748d96
+22e3c4db146b2298bdd94cb959572b9069b981ef
  M compat/tui-command-streams.sh
  M crates/zz-daemon/src/daemon.rs
  M crates/zz/src/lib.rs

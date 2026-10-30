@@ -1,4 +1,4 @@
-GATE, cycle 6 caps lane, delta corpus at the rebased tip 63459a0985b51bb1f5585ab0192d4243dd1fdf50
+GATE, cycle 6 caps lane, delta corpus at the rebased tip a8a97722d2c3dc831bec6a0d86d0503520ee59ce
 
 compat/run.sh --strict-geometry --delta origin/main..HEAD --list selected 144 rows.
 touched_commands is empty, so nothing was command-matched; every selected row is a

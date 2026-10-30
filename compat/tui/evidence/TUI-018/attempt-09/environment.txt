@@ -1,6 +1,6 @@
 lane=alias-fix
 branch=campaign/tui-stream-alias-4
-main=f9c52359e3da88cbde735076b38e22cdf3e003c6
+main=d1508a16d20abd64beaccf04b2a54d45f81b8eb7
 rebased_parent=1b725c50
 working_directory=/home/demfabris/dev/zz-c11-alias-fix
 cargo_wrapper=/tmp/zz-cargo.sh

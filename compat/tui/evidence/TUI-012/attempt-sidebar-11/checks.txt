@@ -3597,7 +3597,7 @@ Completed /tmp/zz-cargo.sh ['test', '-p', 'zz-daemon', '--lib', 'status::tests::
 git diff origin/main...HEAD --check: exit 0
 Added code comments: 0
 Campaign acceptance clauses: unchanged
-Wire protocol: unchanged by lane; inherited version 104 from origin/main (81c971f1), contrary to original batch text
+Wire protocol: unchanged by lane; inherited version 104 from origin/main (60e7340c), contrary to original batch text
 Production Rust behavior: unchanged; Rust hunks are in tests
 Code footprint before evidence commit:
 compat/scenarios/smoke/fixtures/default-client-command.sh
@@ -3610,6 +3610,6 @@ crates/zz/src/workspace/sidebar.rs
 knowledge/tmux/gaps.md
 
 ===== resume/wire-baseline.txt =====
-81c971f18 (Fabricio Dematte 2026-09-16 16:20:39 -0300 21) pub const PROTOCOL_VERSION: u16 = 104;
+60e7340cc (Fabricio Dematte 2026-09-16 16:20:39 -0300 21) pub const PROTOCOL_VERSION: u16 = 104;
 
 Completed gate command: PATH="$PWD/compat/tui/evidence/TUI-012/attempt-sidebar-11/resume/cargo-entry-balanced:$PATH" HOME=/tmp/zz-emptyhome XDG_CONFIG_HOME=/tmp/zz-emptyhome/config CARGO_HOME=/home/demfabris/.cargo RUSTUP_HOME=/home/demfabris/.rustup compat/check.sh

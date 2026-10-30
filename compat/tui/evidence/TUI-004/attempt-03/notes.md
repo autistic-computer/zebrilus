@@ -137,7 +137,7 @@ New in the rework:
   on the inactive pane, the same typing. Every row is compared whole except the
   divider row, which is compared by glyph. In this driver a plain split's
   default border colours differ with or without a view, at origin/main
-  3319ceba and at 2911d88c alike (the modes review's probe6 and probe7): the
+  6c7284a2 and at 2911d88c alike (the modes review's probe6 and probe7): the
   pin draws `\e[38;2;179;179;179m` then `\e[38;2;154;205;50m` on the default
   ground, zz draws `\e[38;2;216;222;233m\e[48;2;16;19;24m` then
   `\e[38;2;77;163;235m`. Even `pane-border-style fg=colour2` set on both sides

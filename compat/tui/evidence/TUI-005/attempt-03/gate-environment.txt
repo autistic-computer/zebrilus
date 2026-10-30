@@ -1,4 +1,4 @@
-revision: bcf9d12328ed2ef15b56d9d4aa12c229273901c6 (gate tip before the records commit)
+revision: a4a812063c52300285d0e838f51a6468f40faf02 (gate tip before the records commit)
 captured: 2026-09-11T21:56:38-03:00
 command: uname -a; head -2 /etc/os-release; nproc; bash --version; tmux -V; sha256sum of both binaries
 

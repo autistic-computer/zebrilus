@@ -10,7 +10,7 @@ for name, row in rows.items():
     row['matching_clean_main_observations'] = matches
     if matches:
         row['classification'] = 'inherited'
-        row['reason'] = 'An unmodified clean e40a13e1 corpus run has exactly these difference lines; the raw output is retained in corpus-observations.jsonl under the matching hash.'
+        row['reason'] = 'An unmodified clean 13174450 corpus run has exactly these difference lines; the raw output is retained in corpus-observations.jsonl under the matching hash.'
     else:
         assert name == 'smoke/split-window-wait.txt', name
         row['classification'] = 'caused-here'

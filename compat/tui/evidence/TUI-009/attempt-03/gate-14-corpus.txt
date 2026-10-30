@@ -1,5 +1,5 @@
 # the 182-row corpus selection at the gate tip
-# revision: 6bae21ff for every row, plus smoke/jobs-command-environment re-run at 5c28f025
+# revision: 6da5095a for every row, plus smoke/jobs-command-environment re-run at 4b2075ac
 # selection: compat/run.sh --strict-geometry --delta origin/main..HEAD --commands attach-session,display-message,list-clients
 #            = 181 rows, which already hold every keys and status smoke scenario and smoke/tui-client-input-backpressure;
 #            status-options.txt is the only keys-or-status scenario the delta missed and was added by hand, so 182.
@@ -34,7 +34,7 @@ smoke/status-background-jobs
 
 smoke/jobs-command-environment
     the one real red. Red five times at the tip, green twice at origin/main.
-    Diagnosed and fixed in 5c28f025; see gate-15.
+    Diagnosed and fixed in 4b2075ac; see gate-15.
 
 == the full 182-row result set
 alerts: 62 step(s), 0 TOPO divergence(s), 0 GEO divergence(s), 0 FMT divergence(s), 0 OUT divergence(s), 0 WARN divergence(s)

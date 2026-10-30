@@ -262,7 +262,7 @@ Nothing else in render.rs moved, and no code was reflowed or reordered.
 ## Fix pass: campaign/tui-modes-12
 
 Started 2026-09-15 23:17 UTC with a 150-minute wall-clock budget. Rebased onto
-1077951108aabe956104ac8de62da319aa06db4b before building and measuring. Main's
+799689fc52b655f078db54129874287959a99218 before building and measuring. Main's
 stream cases, live-job case, client-info mask and wire additions remain present.
 
 ### Lifecycle and arguments
@@ -375,7 +375,7 @@ without a callback if no client resolves. This follows window_pane_key's c !=
 NULL test. Mouse motion without a held button is consumed without dismissing
 the clock, matching its early KEYC_TYPE_MOUSEMOVE branch.
 
-Main advanced to 0b0d2953139340c2cc69c071c44452de5362f42a with documentation only
+Main advanced to 381d92a1e336f68258fa8a23c80bfd36b95bc711 with documentation only
 during the preliminary runs; the closing candidate rebases onto that revision.
 
 ### Added fix-pass artifacts

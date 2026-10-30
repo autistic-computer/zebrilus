@@ -10,7 +10,7 @@ import time
 
 root = Path.cwd()
 p = root / 'compat/tui/evidence/TUI-017/attempt-04'
-base = 'e40a13e1c981aa9b707a5a6a54f5e0267c751de9'
+base = '131744503cb2bc8bc8fdb2a73cc0dca48989b674'
 main = root / 'target/capture-12-reconciled-main-src'
 main_binary = root / 'target/capture-12-reconciled-main-build/debug/zz'
 commands = 'capture-pane,lock-session,lock-client,lock-server,has-session,list-windows'

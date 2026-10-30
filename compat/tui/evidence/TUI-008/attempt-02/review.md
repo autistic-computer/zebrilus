@@ -35,7 +35,7 @@ here stays readable):
 
 ## The reviewer's checks_run, verbatim
 
-1. setup: fetched origin; origin/main 289c8a7c, origin/campaign/tui-keys 7f593a59 (matches the worker's reported tip); checkout --detach 7f593a59 in /home/demfabris/dev/zz-tui-keys-8-review, git status --porcelain empty before and after every step; merge-base with origin/main is 289c8a7c so origin/main...HEAD is the whole lane
+1. setup: fetched origin; origin/main 1147d7cb, origin/campaign/tui-keys 16937306 (matches the worker's reported tip); checkout --detach 16937306 in /home/demfabris/dev/zz-tui-keys-8-review, git status --porcelain empty before and after every step; merge-base with origin/main is 1147d7cb so origin/main...HEAD is the whole lane
 2. build: touched crates/**/*.rs and Cargo.* in the review worktree, CARGO_TARGET_DIR=/home/demfabris/dev/zz-tui-keys-8/target, systemd-run --scope MemoryMax=5G + flock slot + cargo build -p zz --jobs 3 -- exit 0, objects compiled from the review worktree's own paths
 3. compat/tui-mouse.sh at tip -- exit 0, 24 asserted / 10 recorded, md5 2236b14173a19b1bab9a066c35eeec4e, byte-identical to all three recorded evidence runs
 4. compat/tui-mouse.sh --self-check -- exit 0, twelve sabotages each caught in its own channel and three controls quiet; I mapped every DIFF line to the sabotage that produced it
@@ -58,11 +58,11 @@ here stays readable):
 21. python3 compat/tui/tracker.py check -- exit 0, knowledge/tmux/tui-parity.md current; python3 compat/tmux-tracker.py check -- exit 0, knowledge/tmux/gaps.md current
 22. ledger ownership: structural diff of compat/tui/campaign.json against origin/main -- exactly one item changed, TUI-008, and only evidence_note, next_action and sources; status stays active, proof block stays null, no other id, no milestone, no baseline and no pin touched
 23. gaps ownership: compat/tmux-gaps.json touches only keys.root-native-mouse, keys.copy-mode-native-mouse (unchanged), mouse.bound-context and formats.mouse-context -- the four gaps the batch names; nine items removed, each named in a dated 2026-09-13 closure paragraph, every unclosed item keeps its decision
-24. wire rule: PROTOCOL_VERSION still 102; MouseKey is the LAST variant of InputMessage and `border: Option<Axis>` the LAST field of it (message.rs read by line); knowledge/protocol/wire-protocol.md names the append in both v102 places; consumer half (zz-tui input.rs writes, zz-daemon daemon.rs reads) lands in the same commit baa777d8
+24. wire rule: PROTOCOL_VERSION still 102; MouseKey is the LAST variant of InputMessage and `border: Option<Axis>` the LAST field of it (message.rs read by line); knowledge/protocol/wire-protocol.md names the append in both v102 places; consumer half (zz-tui input.rs writes, zz-daemon daemon.rs reads) lands in the same commit 0dfe8d4c
 25. zones: crates/zz-tui/src/{render,tty,terminal_event}.rs have ZERO hunks; no chooser surface and no catalog unimplemented-command roster touched (only resize-pane's -M flag and usage string). Excursions status.rs, compat_manifest_tests.rs and tests/hunt_claims.rs are all declared in notes.md
 26. GUI: crates/zz and clients/ have zero hunks; grep -rn MouseKey crates/ names only zz-daemon/daemon.rs, zz-tui/input.rs and zz-protocol/message.rs, so the GUI sends no mouse key and its presentation is unchanged
 27. test honesty: no added non-doc `//` comments (grep of the + side of the crate diff is empty), no attribution trailers in any of the nine commits, git check-ignore -v on compat/tui/evidence/TUI-008/attempt-02/* exits 1 with nothing ignored, no .log files anywhere under compat/tui/evidence, notes.md names every evidence file
-28. machine hygiene: no binary copied under /tmp; both probes ran under mktemp scratch HOMEs with trap cleanup; pgrep -fa 'zz-cli-|zz-user|zzprobe|zzprv' names no surviving process of mine; no scratch dir left; no server on a default socket touched; the review worktree is clean at 7f593a59
+28. machine hygiene: no binary copied under /tmp; both probes ran under mktemp scratch HOMEs with trap cleanup; pgrep -fa 'zz-cli-|zz-user|zzprobe|zzprv' names no surviving process of mine; no scratch dir left; no server on a default socket touched; the review worktree is clean at 16937306
 
 ## The reviewer's notes, verbatim
 
@@ -88,7 +88,7 @@ BUDGET: about 65 minutes after the build. No blockers: no false clause, no fixtu
 The verdict binds: every must-fix is applied in its own commit, with the
 reviewer's own probe re-run as proof.
 
-### must-fix 1, the missing status-wheel sabotage -- APPLIED, commit 849e9283
+### must-fix 1, the missing status-wheel sabotage -- APPLIED, commit 155e9c8a
 
 `sc_one_sided_status_wheel` added beside the border-drag sabotage exactly as the
 reviewer wrote it, and registered in `run_self_check`. PROBE at the gate tip:
@@ -98,7 +98,7 @@ lines and no others, `status-clicks/window-after-wheel-down` (tmux:1 zz:0) and
 WheelDownStatus/WheelUpStatus landing exists to flip now carry a demonstrated
 failure path. Log: gate-tui-mouse-self-check.txt.
 
-### must-fix 2, MouseDown1Border measured and MouseDown1Control8 told straight -- APPLIED, commit eaeb362f
+### must-fix 2, MouseDown1Border measured and MouseDown1Control8 told straight -- APPLIED, commit cf5d242c
 
 `case_border_click` added, the channel the fixture's own header block already
 advertised: two panes, pane 1 marked with `select-pane -m`, pane 0 active, then a
@@ -133,7 +133,7 @@ pane-border-format publishes, options-table.c:1534-1548, which needs
 `pane-border-status` on, and no fixture here draws a pane border status line or
 aims a pointer at one), and names what a measurement waits on.
 
-### must-fix 3, the doc comment on the wrong function -- APPLIED, commit 605bc692
+### must-fix 3, the doc comment on the wrong function -- APPLIED, commit 9cfab74c
 
 The three `tty_window_offset1` lines moved from above `fn mouse_format_variables`
 to immediately above `fn client_viewport_facts`, the function they describe. The

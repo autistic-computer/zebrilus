@@ -208,6 +208,6 @@ zz daemon stderr:
     [2026-09-15T00:30:31Z INFO  zz_daemon::diagnostics::input] key_decision client=c29 key=/ table=copy-mode-vi decision=Commands([CommandInvocation { name: "copy-mode-search-prompt", args: [], source: None, command_blocks: [], expanded_alias_group: false, stdin: None }])
     [2026-09-15T00:30:31Z INFO  zz_daemon::diagnostics::input] key_decision client=c29 key=n table=copy-mode-vi decision=Commands([CommandInvocation { name: "send-keys", args: ["-X", "search-again"], source: None, command_blocks: [], expanded_alias_group: false, stdin: None }])
 
-== the same step with the cycle-9 chooser gate's own binary (/home/demfabris/dev/zz-gate-tui9/target/debug/zz, 3ecd4702, none of this branch) ==
+== the same step with the cycle-9 chooser gate's own binary (/home/demfabris/dev/zz-gate-tui9/target/debug/zz, e07a388c, none of this branch) ==
 14:error: zz current screen did not show ATTACHED_NAV_65 ATTACHED_NAV_MATCH within 10 seconds
 exit 1
