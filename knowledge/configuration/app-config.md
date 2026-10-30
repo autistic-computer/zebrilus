@@ -454,8 +454,9 @@ design.
 
 Panes → PiP → Background opacity controls `pip-background-opacity`, stored as 0–1 and displayed
 as 0–100%. Valid edits apply live, and Reset restores 80%. The value reaches paints through
-`Theme::pip_opacity`. Panes themselves paint no fill: the window shows through them, and a
-browser page, blank, loading and error backgrounds stay opaque.
+the `zz_ui::pip::PipOpacity` global, which `pip_material` reads. Panes themselves paint no
+fill: the window shows through them, and a browser page, blank, loading and error backgrounds
+stay opaque.
 
 With gaps the pane frame owns the single fill (`Theme::pane_frames`, set from `pane-gaps`).
 `Theme::pane_background` returns zero alpha, so content roots paint nothing under the frame, and

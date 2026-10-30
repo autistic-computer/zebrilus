@@ -119,6 +119,7 @@ fn apply_zz_overrides(cx: &mut App) {
     let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
     let pane_frames = config::pane_gaps(cx);
     let pane_margin = config::pane_margin(cx);
+    cx.set_global(zz_ui::pip::PipOpacity(pip_opacity));
     let theme = Theme::global_mut(cx);
 
     theme.colors = active.colors(theme.mode);
@@ -130,7 +131,6 @@ fn apply_zz_overrides(cx: &mut App) {
     }
 
     theme.set_contrast(chrome_contrast);
-    theme.pip_opacity = pip_opacity;
     theme.pane_glow_strength = pane_glow_strength;
     theme.pane_frames = pane_frames;
     theme.pane_margin = pane_margin;

@@ -59,13 +59,13 @@ fn gallery(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-const SAMPLES: [IconName; 6] = [
-    IconName::SquareTerminal,
-    IconName::GitBranch,
-    IconName::Settings,
-    IconName::Bell,
-    IconName::Search,
-    IconName::Zz,
+const SAMPLES: [&str; 6] = [
+    IconName::SquareTerminal.path(),
+    IconName::GitBranch.path(),
+    IconName::Settings.path(),
+    IconName::Bell.path(),
+    IconName::Search.path(),
+    zz_ui::ZZ_LOGO,
 ];
 
 fn sizes(_: &mut Window, _: &mut App) -> AnyElement {
@@ -81,7 +81,7 @@ fn sizes(_: &mut Window, _: &mut App) -> AnyElement {
             row().children(
                 SAMPLES
                     .iter()
-                    .map(|icon| Icon::new(icon.clone()).with_size(size)),
+                    .map(|path| Icon::empty().path(*path).with_size(size)),
             ),
         )
     })

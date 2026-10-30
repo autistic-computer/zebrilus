@@ -439,7 +439,6 @@ impl Knobs {
         if !font_loads {
             theme.font_family = UI_FONT.into();
         }
-        theme.pip_opacity = self.pane.pip;
         theme.pane_glow_strength = self.pane.glow;
         theme.pane_frames = self.pane.gaps;
         theme.pane_margin = px(if self.pane.gaps {
@@ -449,6 +448,7 @@ impl Knobs {
         });
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
+        cx.set_global(zz_ui::pip::PipOpacity(self.pane.pip));
         let knobs = self.clone();
         for window in cx.windows() {
             window

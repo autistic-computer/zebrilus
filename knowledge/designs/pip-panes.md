@@ -40,9 +40,10 @@ timestamp: 2026-10-26T00:00:00-03:00
 # Look
 
 `PipSurface` (`crates/zz-ui/src/pip.rs`) is the card: the pane's colour (`Theme::pane_color`, a
-terminal's background over the window) laid at `pip-background-opacity` (`Theme::pip_opacity`,
-80%) over a frost of what is under it (`pip_material`: the theme's glass in a glass theme, a 24 px
-blur otherwise; a renderer that cannot read the backdrop paints the colour solid), corners of
+terminal's background over the window) laid at `pip-background-opacity` (the
+`zz_ui::pip::PipOpacity` global, 80% when unset) over a frost of what is under it
+(`pip_material`: the theme's glass in a glass theme, a 24 px blur otherwise; a renderer that
+cannot read the backdrop paints the colour solid), corners of
 `Theme::pane_radius`, and the `pane.pip`
 role under `pane.float`, which casts the theme's float shadow (Materials in the theme creator; Roles
 → PiPs can set none, contact or float). Focus does not change it. The dark palettes draw shadows in
@@ -166,7 +167,7 @@ still work.
   floating pane to it). The landing ends when the snapshot shows the float at its place, or a
   second later.
 - **Storybook**: Workspace → Panes → PiP shows a terminal PiP, a borderless one, a stashed PiP and
-  a pile of two. The `pip-opacity` knob sets `Theme::pip_opacity`. The theme creator's PiP section
+  a pile of two. The `pip-opacity` knob sets `zz_ui::pip::PipOpacity`. The theme creator's PiP section
   puts a terminal PiP over tiled panes, so `pane.pip` can be tuned and inspected. As of 2026-10-23
   both stories still also draw the removed agent pane and subagent feed as PiPs; the storybook is
   due a lens story in their place ([agent lens](/designs/agent-lens.md)).

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use ala::{
-    AnyElement, App, Bounds, ClickEvent, ElementId, GlassMaterial, Hsla, IntoElement,
+    AnyElement, App, Bounds, ClickEvent, ElementId, GlassMaterial, Global, Hsla, IntoElement,
     ParentElement as _, Pixels, Point, Size, Styled as _, Window, div, point, prelude::*, px,
 };
 use web_time::{Duration, Instant};
@@ -18,6 +18,11 @@ const PEEK: f32 = 60.0;
 const VELOCITY_WINDOW: Duration = Duration::from_millis(100);
 const FRAME: Duration = Duration::from_millis(16);
 const DECELERATION: f32 = 0.998;
+const DEFAULT_OPACITY: f32 = 0.8;
+
+pub struct PipOpacity(pub f32);
+
+impl Global for PipOpacity {}
 
 #[derive(Clone, Debug, Default)]
 pub struct PipThrow {
@@ -455,7 +460,9 @@ impl PipSurface {
 pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
     let theme = cx.theme();
     let fill = fill.opaque();
-    let opacity = theme.pip_opacity;
+    let opacity = cx
+        .try_global::<PipOpacity>()
+        .map_or(DEFAULT_OPACITY, |opacity| opacity.0);
     theme
         .layer(roles::PIP, PaintState::Rest)
         .glass

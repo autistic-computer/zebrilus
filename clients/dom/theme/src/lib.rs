@@ -39,7 +39,6 @@ fn color(color: Hsla) -> String {
 fn kit(preferences: &Preferences, mode: ThemeMode) -> Theme {
     let mut kit = theme_css::kit_theme(&preferences.shown_theme(), mode);
     kit.set_contrast(preferences.contrast);
-    kit.pip_opacity = preferences.pip_background_opacity;
     kit.pane_glow_strength = preferences.pane_glow_strength;
     kit.pane_frames = preferences.gaps;
     kit.pane_margin = preferences.margin();

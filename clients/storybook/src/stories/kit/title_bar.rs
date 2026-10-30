@@ -39,7 +39,7 @@ fn bars(_: &mut Window, cx: &mut App) -> AnyElement {
                             h_flex()
                                 .gap_2()
                                 .text_sm()
-                                .child(Icon::new(IconName::Zz).medium())
+                                .child(Icon::empty().path(zz_ui::ZZ_LOGO).medium())
                                 .child("work")
                                 .child(div().text_color(muted).child("~/dev/zz")),
                         )

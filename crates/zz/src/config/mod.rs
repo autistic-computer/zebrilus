@@ -2487,7 +2487,7 @@ mod tests {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
                 assert_f32_eq(pip_background_opacity(cx), expected);
-                assert_f32_eq(penna::Theme::global(cx).pip_opacity, expected);
+                assert_f32_eq(cx.global::<zz_ui::pip::PipOpacity>().0, expected);
                 assert_eq!(
                     resolved_config(cx).pip_background_opacity.provenance,
                     provenance

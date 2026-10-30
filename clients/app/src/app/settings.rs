@@ -156,7 +156,7 @@ impl Preferences {
         shown.apply_roles(theme);
         window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
         Theme::global_mut(cx).set_contrast(contrast);
-        Theme::global_mut(cx).pip_opacity = self.pip_background_opacity;
+        cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));
         Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
         Theme::global_mut(cx).pane_frames = self.gaps;
         Theme::global_mut(cx).pane_margin = self.margin();
@@ -296,7 +296,9 @@ impl Controls {
                         });
                     }
                     this.preferences.save();
-                    Theme::global_mut(cx).pip_opacity = this.preferences.pip_background_opacity;
+                    cx.set_global(zz_ui::pip::PipOpacity(
+                        this.preferences.pip_background_opacity,
+                    ));
                     Theme::global_mut(cx).pane_glow_strength = this.preferences.pane_glow_strength;
                     Theme::global_mut(cx).pane_margin = this.preferences.margin();
                     cx.refresh_windows();

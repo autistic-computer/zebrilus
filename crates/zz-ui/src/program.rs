@@ -29,16 +29,19 @@ pub fn program_colors(cx: &App) -> bool {
         .is_none_or(|colors| colors.0)
 }
 
+pub const ZZ_LOGO: &str = "icons/zz.svg";
+
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets"]
 #[include = "programs/*.svgz"]
-struct Programs;
+#[include = "icons/*.svg"]
+struct Bundled;
 
 pub struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        match Programs::get(path) {
+        match Bundled::get(path) {
             Some(asset) => Ok(Some(asset.data)),
             None => penna::Assets.load(path),
         }
@@ -47,7 +50,7 @@ impl AssetSource for Assets {
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
         let mut assets = penna::Assets.list(path)?;
         assets.extend(
-            Programs::iter()
+            Bundled::iter()
                 .filter(|asset| asset.starts_with(path))
                 .map(Into::into),
         );
