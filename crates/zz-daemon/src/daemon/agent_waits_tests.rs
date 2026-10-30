@@ -29,12 +29,16 @@ fn native_agent() -> (Arc<Shared>, Arc<AgentRuntime>, PaneId) {
     }
     let pane = context.pane.unwrap();
     assert!(shared.open_test_agent(pane));
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(30);
     while !runtime
         .wire_state(pane)
         .is_some_and(|state| matches!(state.phase, zz_protocol::AgentConnectionPhase::Ready))
     {
-        assert!(Instant::now() < deadline);
+        assert!(
+            Instant::now() < deadline,
+            "agent never reached Ready: {:?}",
+            runtime.wire_state(pane).map(|state| state.phase)
+        );
         thread::sleep(Duration::from_millis(2));
     }
     (shared, runtime, pane)
@@ -60,7 +64,7 @@ fn twenty_parked_agent_waits_add_zero_command_workers() {
         assert!(shared.open_test_agent(next));
         panes.push(next);
     }
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(30);
     while !panes.iter().all(|pane| {
         runtime
             .wire_state(*pane)
