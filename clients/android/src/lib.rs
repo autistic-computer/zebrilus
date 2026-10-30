@@ -12,7 +12,7 @@ pub extern "system" fn JNI_OnLoad(
     _reserved: *mut std::ffi::c_void,
 ) -> i32 {
     logcat::init();
-    ala_platform::android::on_load(vm, main)
+    ala_platform::android::on_load(vm, "dev/zz/android/ZzNative", main)
 }
 
 #[cfg(target_os = "android")]

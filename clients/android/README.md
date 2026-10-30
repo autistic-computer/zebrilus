@@ -64,8 +64,8 @@ Build products land in `target/android/<abi>/zz.apk`.
 
 ## How it fits together
 
-`ZzActivity` loads `libzz_android.so`, whose `JNI_OnLoad` registers the natives. The activity
-hosts `ZzView`, a `SurfaceView` that forwards its surface, touches, mouse and keys, and answers
+`ZzActivity` loads `libzz_android.so`, whose `JNI_OnLoad` hands ala `ZzNative` as the class that
+declares its natives, and ala registers them there. The activity hosts `ZzView`, a `SurfaceView` that forwards its surface, touches, mouse and keys, and answers
 the input method through `ZzInputConnection`. ala's main thread is the activity's UI thread, as
 it is UIKit's main thread on iOS: main-thread work runs from an eventfd on the UI thread's
 `ALooper`, frames are paced by the `Choreographer` (stopped three idle frames after the last

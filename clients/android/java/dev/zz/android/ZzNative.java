@@ -1,12 +1,14 @@
 package dev.zz.android;
 
+import android.app.Activity;
 import android.view.Surface;
+import android.view.View;
 
 final class ZzNative {
     private ZzNative() {}
 
     static native void onCreate(
-            ZzActivity activity, ZzView view, String filesDir, String cacheDir, String url, String[] environment);
+            Activity activity, View view, String filesDir, String cacheDir, String url, String[] environment);
 
     static native void onDestroy();
 

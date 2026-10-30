@@ -102,6 +102,35 @@ per burst of drawn frames, and `ALA_BENCH=swipe|scroll|drag|fling|sheet[:count]`
 gesture bench from the display link (zz also opens its bindings sheet for `sheet`); both log
 under an `[ala-ios]` prefix.
 
+On Android, the app's `JNI_OnLoad` calls `ala_platform::android::on_load(vm, natives_class, main)`
+with the JNI name of its own class that declares ala's static native methods (zz passes
+`"dev/zz/android/ZzNative"`). That class declares all 28 natives `natives()` in
+`android/bridge.rs` registers, with those signatures, or registration fails; `ZzNative.java` is
+the reference. The activity calls `onCreate(Activity, View, String filesDir, String cacheDir,
+String url, String[] environment)` once its view exists, where `View` is the `SurfaceView` that
+forwards surface, touch, pointer, key and input method events through the other natives, and
+`environment` holds key, value pairs set as environment variables before the app starts. ala calls
+back into the activity by method name, so it has to define these 13:
+
+| Method | Signature |
+| --- | --- |
+| `setLightSystemBars` | `(Z)V` |
+| `setKeyboardVisible` | `(Z)V` |
+| `restartInput` | `()V` |
+| `setKeyRow` | `(Z)V` |
+| `clearKeyRowLatch` | `()V` |
+| `updateSelection` | `(IIII)V` |
+| `setKeepScreenOn` | `(Z)V` |
+| `setBackEnabled` | `(Z)V` |
+| `openUrl` | `(Ljava/lang/String;)V` |
+| `showTextMenu` | `(FF)V` |
+| `setClipboard` | `(Ljava/lang/String;[BLjava/lang/String;)V` |
+| `clipboardText` | `()Ljava/lang/String;` |
+| `clipboardImage` | `()[Ljava/lang/Object;` |
+
+zz's `ZzActivity`, `ZzView` and `ZzInputConnection` in `clients/android/java` implement them;
+`clients/android/README.md` has the rest of the Java side.
+
 # Pane renderer changes
 
 Fork commit `37d0b352ed` carries the pane renderer changes. Metal, WGPU, and DirectX blurred inset shadows
