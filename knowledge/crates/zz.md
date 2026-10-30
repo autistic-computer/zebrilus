@@ -280,30 +280,34 @@ selected id and the saved themes; `install_config` loads them with the configura
 `theme.rs` keeps the latest immutable `TerminalAppearance` and `AppearanceProvenance` as ala
 globals for chrome crossovers and Terminal Settings badges, and owns the two entry points that
 install a theme: `refresh_current_theme` (the terminal appearance or `zz/config` changed) and
-`sync_system_appearance` (the OS appearance changed). Both restore the zz-ui base first, then call
-`apply_zz_overrides`, so the overrides survive a mode switch that would otherwise reset the palette.
-A pinned `theme-mode` wins over the installed mode in both paths, which is how flipping the pin takes
-effect without a restart.
+`sync_system_appearance` (the OS appearance changed). Both apply the theme on screen with
+`InterfaceTheme::activate`, then call `apply_zz_overrides`, so the overrides survive a mode switch
+that would otherwise reset the palette. A pinned `theme-mode` wins over the installed mode in both
+paths, which is how flipping the pin takes effect without a restart.
 
-`apply_zz_overrides` writes, in this order:
+The theme on screen is `config::shown_theme`: the active theme with the style, radius, accent and
+tint keys `zz/config` sets composed over it (`config::theme_overrides` returns them as a
+`ThemeOverrides`, and `ThemeOverrides::apply_to` composes them). `activate` switches the kit
+`Theme` to the mode, writes that theme's colors for it (`InterfaceTheme::colors`: the six roots,
+the shadow color and the text on the accent), its materials (`Materials::apply`) and its role
+patches (`InterfaceTheme::apply_roles`) in one step, so a light/dark switch never keeps the last
+theme's materials or roles over the new colors. Only the roots are written; every elevation, hover
+state, muted text, and focus ring derives from them at paint time, and every surface resolves its
+role against the materials when it paints, so a theme and its overrides reach the whole UI with no
+per-component plumbing.
 
-- the theme on screen, `config::shown_theme`: the active theme with the style, radius, accent
-  and tint keys `zz/config` sets composed over it (`config::theme_overrides`
-  returns them as a `ThemeOverrides`, and `ThemeOverrides::apply_to` composes them). Its colors
-  for the mode (`InterfaceTheme::colors`: the six roots, the shadow color and the text on the
-  accent), then its materials (`Materials::apply`), then its role patches
-  (`InterfaceTheme::apply_roles`). Only the roots are written; every elevation, hover state, muted
-  text, and focus ring derives from them at paint time, and every surface resolves its role
-  against the materials when it paints, so a theme and its overrides reach the whole UI with no
-  per-component plumbing;
+`apply_zz_overrides` then writes what zz adds over the theme:
+
 - `font_family` from `ui-font-family`, else the theme's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown, tool previews,
   and code blocks match the terminal typeface;
-- `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes.
+- `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes;
+- `pane_glow_strength`, `pane_frames` and `pane_margin` from `pane-glow-strength`, `pane-gaps` and
+  `pane-margin`, and the `zz_ui::pip::PipOpacity` global from `pip-background-opacity`.
 
-`refresh_current_theme` also sets every window's default corner smoothing to
-`zz_ui::CORNER_SMOOTHING` (4), and `sync_system_appearance` sets it on the window it syncs; no key
-or theme changes it.
+`penna::Root::new` sets a window's default corner smoothing to `penna::CORNER_SMOOTHING` (4) and
+its adaptive corner fraction when the window opens; `refresh_current_theme` sets both again on
+every window, and `sync_system_appearance` on the window it syncs. No key or theme changes them.
 
 The font is the sole terminal→chrome crossover: a typeface, never chroma. Terminal alpha is resolved
 at the terminal pane's own paint boundary.
@@ -332,6 +336,11 @@ and makes its background transparent only on Linux so the rounded frame is the s
 surface. macOS and Windows keep their native window shaping. The Settings window still uses
 `zz_ui::TitleBar` for its content column, with zz-ui's default bottom border disabled so the header
 flows directly into the content.
+
+`build_root` in `lib.rs` also sets `own_layers(false)` on the main window's `Root`, on every
+platform. Without it Root would draw the dialog and notification layers itself, inset on Linux only
+by the client frame's shadow; `AppShell` draws them inside the shell instead, so toasts stay within
+the frame's 1 px border, and each layer is drawn once.
 
 The main window's inner bounds, display UUID, and windowed/maximized/full-screen mode are client-owned
 state rather than configuration. `window/state.rs` loads the bounded, versioned

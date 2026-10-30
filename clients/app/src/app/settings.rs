@@ -127,7 +127,7 @@ impl Preferences {
         let zoom = interface_zoom(self, text_scale, phone());
         let pinned = interface_theme::pinned_theme_mode(self.theme_mode());
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        {
+        let mode = {
             cx.set_window_appearance(pinned.map(|mode| {
                 if mode.is_dark() {
                     ala::WindowAppearance::Dark
@@ -135,25 +135,11 @@ impl Preferences {
                     ala::WindowAppearance::Light
                 }
             }));
-            let mode = pinned.unwrap_or_else(|| match cx.window_appearance() {
-                ala::WindowAppearance::Light | ala::WindowAppearance::VibrantLight => {
-                    ThemeMode::Light
-                }
-                _ => ThemeMode::Dark,
-            });
-            Theme::change(mode, Some(window), cx);
-        }
+            Some(pinned.unwrap_or_else(|| ThemeMode::from(cx.window_appearance())))
+        };
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        if let Some(mode) = pinned {
-            Theme::change(mode, Some(window), cx);
-        } else {
-            Theme::sync_system_appearance(Some(window), cx);
-        }
-        let shown = self.shown_theme();
-        let theme = Theme::global_mut(cx);
-        theme.colors = shown.colors(theme.mode);
-        shown.materials.apply(theme);
-        shown.apply_roles(theme);
+        let mode = pinned;
+        self.shown_theme().activate(mode, Some(window), cx);
         window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
         Theme::global_mut(cx).set_contrast(contrast);
         cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));

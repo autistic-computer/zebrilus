@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ala::{App, Entity, Global, Hsla, SharedString, Window};
-use penna::{Theme, ThemeMode};
+use penna::{Theme, ThemeMode, interface_theme::InterfaceTheme};
 use zz_terminal::TerminalAppearance;
 
 use crate::{config, mux::client::MuxClient};
@@ -61,8 +61,9 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
             cx.try_global::<SystemThemeMode>()
                 .map_or_else(|| Theme::global(cx).mode, |mode| mode.0)
         });
-    Theme::change(mode, None, cx);
-    apply_zz_overrides(cx);
+    let active = config::shown_theme(cx);
+    active.activate(Some(mode), None, cx);
+    apply_zz_overrides(&active, cx);
     let corner_smoothing = penna::CORNER_SMOOTHING;
     for window in cx.windows() {
         window
@@ -86,15 +87,17 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
         window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
         window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
     }
-    Theme::sync_system_appearance(window, cx);
+    let active = config::shown_theme(cx);
+    active.activate(
+        zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)),
+        window,
+        cx,
+    );
     crate::app_icon::apply(cx);
-    if let Some(mode) = zz_ui::interface_theme::pinned_theme_mode(config::theme_mode(cx)) {
-        Theme::change(mode, None, cx);
-    }
-    apply_zz_overrides(cx);
+    apply_zz_overrides(&active, cx);
 }
 
-fn apply_zz_overrides(cx: &mut App) {
+fn apply_zz_overrides(active: &InterfaceTheme, cx: &mut App) {
     let appearance = cx
         .try_global::<LatestTerminalAppearance>()
         .map(|appearance| Arc::clone(&appearance.0));
@@ -102,7 +105,6 @@ fn apply_zz_overrides(cx: &mut App) {
         .as_deref()
         .map(crate::terminal::view::terminal_font)
         .map(|font| font.family);
-    let active = config::shown_theme(cx);
     let ui_font = config::ui_font_family(cx);
     let ui_font_family = ui_font
         .value
@@ -122,9 +124,6 @@ fn apply_zz_overrides(cx: &mut App) {
     cx.set_global(zz_ui::pip::PipOpacity(pip_opacity));
     let theme = Theme::global_mut(cx);
 
-    theme.colors = active.colors(theme.mode);
-    active.materials.apply(theme);
-    active.apply_roles(theme);
     theme.font_family = ui_font_family;
     if let Some(font_family) = terminal_mono_font_family {
         theme.mono_font_family = font_family;

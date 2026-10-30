@@ -454,7 +454,9 @@ fn toggle_from_tray(main_window: ala::AnyWindowHandle, cx: &mut App) {
 
 pub fn build_root(view: impl Into<AnyView>, window: &mut Window, cx: &mut Context<Root>) -> Root {
     config::observe_window_background(window, cx);
-    let root = Root::new(view, window, cx).bg(ala::transparent_black());
+    let root = Root::new(view, window, cx)
+        .bg(ala::transparent_black())
+        .own_layers(false);
     #[cfg(target_os = "linux")]
     {
         root.bordered(false)

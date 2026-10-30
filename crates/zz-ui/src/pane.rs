@@ -1699,7 +1699,7 @@ mod tests {
 
     #[ala::test]
     fn a_floating_surface_gives_its_content_every_cell_of_the_float(cx: &mut ala::TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::init_without_theme);
         let cell = size(px(9.0), px(19.0));
         for bordered in [true, false] {
             let (_, cx) = cx.add_window_view(|_, _| FloatHost {

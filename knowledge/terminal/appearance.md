@@ -4,7 +4,7 @@ title: Terminal appearance and color model
 description: The renderer-neutral appearance model, the native zz/config override resolver, per-key provenance, the client-side Ghostty import loader, and embedded Ghostty/X11 colors.
 resource: crates/zz-terminal/src/appearance.rs
 tags: [appearance, color, ghostty, palette, x11-rgb, config]
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Overview
@@ -163,7 +163,7 @@ The client installs the initial value from `ServerHello`, then replaces it on ev
 `AppearanceChanged` event, published by override changes, explicit daemon config reload, and
 `SetColorScheme` round-trips. Each host connection caches the latest raw appearance and provenance,
 so switching hosts cannot resurrect stale handshake typography. OS appearance syncs re-apply the
-font crossover after zz-ui refreshes its light/dark base; every window must route those syncs through
+font crossover after the theme is activated for the new mode; every window must route those syncs through
 `theme::sync_system_appearance`.
 
 # Color parsing and the X11 table

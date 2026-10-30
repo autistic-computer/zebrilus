@@ -409,7 +409,7 @@ mod tests {
 
     #[ala::test]
     fn spacing_updates_use_workspace_pixel_geometry(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::init_without_theme);
         let (view, cx) = cx.add_window_view(|_, _| PreviewTest(preview()));
         for (gaps, margin) in [(true, 8.0), (true, 32.0), (false, 32.0)] {
             view.update(cx, |view, cx| {

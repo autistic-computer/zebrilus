@@ -297,8 +297,6 @@ fn main() {
                 },
                 |window, cx| {
                     window.set_window_title("macOS • zz-ui comparison");
-                    window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
-                    window.set_adaptive_corner_fraction(Some(0.45));
                     let view = cx.new(|_| Comparison {
                         sources,
                         backdrop,

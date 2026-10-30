@@ -55,7 +55,6 @@ fn main() {
             .expect("load interface fonts");
         zz_ui::init(cx);
         cx.bind_keys(input::raw_key_bindings());
-        Theme::sync_system_appearance(None, cx);
         let theme = Theme::global_mut(cx);
         theme.font_family = "Inter Variable".into();
         theme.mono_font_family = "Lilex".into();
@@ -84,11 +83,9 @@ fn open_workspace(cx: &mut ala::App) {
     use penna::Root;
 
     cx.open_window(WindowOptions::default(), |window, cx| {
-        window.set_default_corner_smoothing(4.0);
-        window.set_adaptive_corner_fraction(Some(0.45));
         let app = cx.new(|cx| app::AppShell::new(window, cx));
         window.focus(&app.read(cx).focus.clone(), cx);
-        cx.new(|cx| Root::new(app, window, cx).bordered(false))
+        cx.new(|cx| Root::new(app, window, cx).bordered(false).own_layers(false))
     })
     .expect("open the zz window");
 }

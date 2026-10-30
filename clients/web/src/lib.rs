@@ -18,7 +18,6 @@ fn launch(cx: &mut App) {
         ])
         .expect("failed to load the interface fonts");
     zz_ui::init(cx);
-    Theme::sync_system_appearance(None, cx);
     let theme = Theme::global_mut(cx);
     theme.font_family = "Inter Variable".into();
     theme.mono_font_family = "Lilex".into();
@@ -35,12 +34,14 @@ fn launch(cx: &mut App) {
         },
         |window, cx| {
             window.set_window_title(zz_protocol::app_identity::DISPLAY_NAME);
-            window.set_default_corner_smoothing(4.0);
-            window.set_adaptive_corner_fraction(Some(0.45));
             let client = cx.new(|cx| app::AppShell::new(window, cx));
             #[cfg(target_family = "wasm")]
             window.on_next_frame(|_, _| READY.with(|ready| ready.set(true)));
-            cx.new(|cx| Root::new(client, window, cx).bordered(false))
+            cx.new(|cx| {
+                Root::new(client, window, cx)
+                    .bordered(false)
+                    .own_layers(false)
+            })
         },
     )
     .expect("failed to open zz");

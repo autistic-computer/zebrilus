@@ -136,7 +136,7 @@ kind or a group it always writes, since its patch beats the built-in look of eve
 showcase (Show all clears the pick), and flashes a magenta ring just inside the edge of each of
 its surfaces for about a second; picking a kind or group does the same for every role in it.
 Hovering the list does nothing. Each section host adds the role ids and kind names each of its
-frames resolves to that section's set (`penna::note_drawn_roles` and `penna::drawn_roles`, read back
+frames resolves to that section's set (`penna::foundation::note_drawn_roles` and `drawn_roles`, read back
 through the page's `drawn_roles` export), skipping frames drawn at zero size while the section is hidden, and the page
 filters on those sets, so nothing lists a region's roles by hand. A kind or group only counts, and
 only rings, where its patch still reaches the role (`Theme::group_reaches`): a role that sets all
@@ -149,11 +149,12 @@ start theme, so they survive a reload when the address drops them for length.
 The creator edits every role in `penna::roles::all()`: the kit's, penna's chrome roles and the ones
 the app registered. To tune an app's own roles with it:
 
-1. Register the roles in the catalog's `register` function, the one the app calls at startup:
-   `penna::roles::register(ROLES)`, and `penna::roles::retire(RETIRED)` for ids that are gone. A
-   role made with `SurfaceRole::under(&PARENT, ..)` shows in the Roles step under that parent,
-   whether the parent is a kit role or one of the app's; `SurfaceRole::new(id, kind, ..)` hangs
-   under its kind. zz's is `zz_ui::register`.
+1. Register the roles in the catalog's `register` function, the one the app calls at startup,
+   before `penna::init`: `penna::register(ROLES, RETIRED, LAYERS)` takes the roles, the ids that
+   are gone and the app's theme layers (`&[]` for none). A role made with
+   `SurfaceRole::under(&PARENT, ..)` shows in the Roles step under that parent, whether the parent
+   is a kit role or one of the app's; `SurfaceRole::new(id, kind, ..)` hangs under its kind. zz's
+   is `zz_ui::register`.
 2. Add a plate for them: a `Section` whose `build` paints the app's real UI with those roles, listed
    in the catalog's `plates`. List penna's plates beside it (`penna_storybook::creator::WINDOW` and
    the rest, or all of `creator::PLATES`) to keep the kit's surfaces in view. The section host notes

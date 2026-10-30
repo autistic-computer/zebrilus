@@ -34,7 +34,6 @@ mod app {
                     .expect("load terminal font");
                 zz_ui::init(cx);
                 cx.bind_keys(crate::input::raw_key_bindings());
-                Theme::sync_system_appearance(None, cx);
                 let theme = Theme::global_mut(cx);
                 theme.font_family = "Lilex".into();
                 theme.mono_font_family = "Lilex".into();

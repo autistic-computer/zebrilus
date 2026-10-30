@@ -200,22 +200,23 @@ the next minute boundary, then requests one redraw per minute while the bar and 
 `interface-theme`, `widget-corner-radius`, `chrome-accent`, `chrome-tint`,
 `chrome-tint-hue`, `chrome-contrast`, `pip-background-opacity`, and `theme-mode`
 land on the **zz-ui theme** rather than being read per-frame by a renderer:
-`zz::theme::apply_zz_overrides` draws `config::shown_theme`, the active theme with the keys the
-file sets composed over it (`config::theme_overrides` returns them as a
-`zz_ui::interface_theme::ThemeOverrides`; see Interface themes for the order), pushes its colors,
-materials and roles onto the `Theme` global, and every surface already resolves its role from
-there, so no component is plumbed individually. Because the theme and the overrides are reapplied
-on every theme rebuild, they survive a light/dark switch, the same treatment `mono_font_family`
-gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
+`zz::theme` activates `config::shown_theme`, the active theme with the keys the file sets composed
+over it (`config::theme_overrides` returns them as a `zz_ui::interface_theme::ThemeOverrides`; see
+Interface themes for the order), which puts its colors, materials and roles on the `Theme` global,
+and `apply_zz_overrides` then sets the contrast and the PiP opacity. Every surface already resolves
+its role from there, so no component is plumbed individually. Because the theme and the overrides
+are reapplied on every theme rebuild, they survive a light/dark switch, the same treatment
+`mono_font_family` gets. A gapped pane's corner follows the same radius: `config::pane_content_radii` starts from
 `Theme::pane_radius()`, the radius a 22px header control rounds to plus the 6px (`CHROME_GAP`) it
 sits in from the pane's top and sides, so the pane stays concentric with the controls in its header
 (about 13.6 at Default's 10, 17 once the controls are capsules, 0 for a square theme), and resolves
 it per corner.
 
-Every rounded surface is a **squircle** . iOS-style continuous corners, set once as the ala window
-default (`zz_ui::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) rather than plumbed
-per widget. Neither a key nor a theme changes it: the retired `corner-shape` key offered a `round`
-circular arc alongside it and produced two nearly identical windows, and themes lost their
+Every rounded surface is a **squircle** . iOS-style continuous corners, set as the ala window
+default (`penna::CORNER_SMOOTHING`, 4, from the kit's `foundation/theme.rs`) by `penna::Root::new`
+on each window and again by zz's theme refresh, rather than plumbed per widget. Neither a key nor
+a theme changes it: the retired `corner-shape` key offered a `round` circular arc alongside it and
+produced two nearly identical windows, and themes lost their
 `corner-smoothing` key on 2026-10-13.
 Shapes whose radius reaches half their shorter side . switch tracks and thumbs,
 status dots, avatars, scrollbar thumbs . stay circular regardless: a pill or a circle is a shape in

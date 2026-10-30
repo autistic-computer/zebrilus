@@ -4,7 +4,7 @@ title: Off-screen rendering & the frame mailbox
 description: How CEF frames cross the one-slot mailbox through the universal readback tier, Linux wgpu tier, macOS Metal-IOSurface tier, or Windows D3D11 tier, how popup widgets are composited into them, and how zz paces visible sessions.
 resource: libs/ala-cef/src/frame.rs
 tags: [browser, osr, frame, gpu, iosurface, hidpi, wayland, pacing]
-timestamp: 2026-10-19T00:00:00Z
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Overview
@@ -153,7 +153,7 @@ stop going through ala:
   glint and fresnel, and `GlassMaterial::rim()` draws them over the page
   instead, which reads nothing and keeps the hole. The layer carries a
   `CAShapeLayer` mask on the same superellipse as the hole
-  (`zz_ui::CORNER_SMOOTHING`), so its corners never show square through a
+  (`penna::CORNER_SMOOTHING`), so its corners never show square through a
   translucent frame;
 - `UnderlayFlush`, painted last by `AppShell`, hides layers that were not
   placed this frame and calls `Window::set_underlay_active`, which makes ala's

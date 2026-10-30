@@ -4,7 +4,7 @@ title: ala
 description: ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream fix, and what zz changed. gpui-component is not a dependency.
 resource: libs/ala/crates/ala/Cargo.toml
 tags: [ala, gpui, reference, vendored]
-timestamp: 2026-10-30T00:00:00Z
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Overview
@@ -194,9 +194,9 @@ Each is upstream-able as a small PR; if upstream merges an equivalent, drop it. 
 17. Optional traffic light scale in `TitlebarOptions`.
 18. CSS-correct drop shadows: spread dilates the shadow's corner radii along with its bounds.
 19. Superellipse corner smoothing for quads: `PaintQuad::corner_smoothing` plus a window-wide
-    default (`Window::set_default_corner_smoothing`; 2 = circular, 4 = squircle), which zz pins
-    to 4 in `theme::CORNER_SMOOTHING`. Later carried patches apply the window's curve to
-    sprite, surface, and window masks, and styled radii to external textures.
+    default (`Window::set_default_corner_smoothing`; 2 = circular, 4 = squircle), which penna's
+    `Root::new` sets to 4 (`penna::CORNER_SMOOTHING`). Later carried patches apply the window's
+    curve to sprite, surface, and window masks, and styled radii to external textures.
 20. Two corrections to that smoothing: a quad whose radius reaches half its shorter side is a
     circle or a pill, so it keeps true arcs (this is also what `rounded_full` clamps to);
     and `Shadow` carries the smoothing of the element it traces, honored on the unblurred

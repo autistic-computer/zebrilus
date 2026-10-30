@@ -38,14 +38,18 @@ pub mod terminal_images;
 pub use program::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO};
 
 pub fn register() {
-    penna::roles::register(roles::ZZ);
-    penna::roles::retire(&roles::RETIRED);
-    penna::interface_theme::register(&interface_theme::LAYERS);
+    penna::register(roles::ZZ, &roles::RETIRED, &interface_theme::LAYERS);
 }
 
 pub fn init(cx: &mut ala::App) {
     register();
     penna::init(cx);
+}
+
+#[cfg(test)]
+pub(crate) fn init_without_theme(cx: &mut ala::App) {
+    init(cx);
+    interface_theme::InterfaceTheme::default().activate(Some(ThemeMode::Light), None, cx);
 }
 
 pub const LABEL_FADE: ala::Pixels = ala::px(28.0);

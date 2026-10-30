@@ -344,7 +344,7 @@ pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
     "The lines that join a tree's children",
 );
 
-pub(crate) const ZZ: &[SurfaceRole] = &[
+pub(crate) static ZZ: &[SurfaceRole] = &[
     WINDOW,
     SIDEBAR,
     TITLEBAR,
@@ -416,7 +416,7 @@ pub(crate) const ZZ: &[SurfaceRole] = &[
 
 pub const TONED: [SurfaceRole; 1] = [AGENT_SEND];
 
-pub const RETIRED: [&str; 7] = [
+pub static RETIRED: [&str; 7] = [
     "agent.status",
     "agent.picker",
     "chat.bubble",

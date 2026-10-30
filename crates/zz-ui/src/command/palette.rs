@@ -447,11 +447,10 @@ mod tests {
             cx.update(|cx| {
                 crate::init(cx);
                 cx.set_reduce_motion(true);
-                Theme::change(mode, None, cx);
+                crate::interface_theme::InterfaceTheme::default().activate(Some(mode), None, cx);
                 Theme::global_mut(cx).radius = px(radius);
             });
             let (_, cx) = cx.add_window_view(|window, cx| {
-                window.set_adaptive_corner_fraction(Some(0.45));
                 let preview = cx.new(|cx| Preview {
                     input: cx.new(|cx| InputState::new(window, cx).placeholder("Target pane")),
                     width,

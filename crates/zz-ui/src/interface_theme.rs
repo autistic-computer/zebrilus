@@ -7,7 +7,7 @@ pub use penna::interface_theme::{
 pub use penna::motion::{DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED};
 pub use zz_client::appearance::{AccentSetting, ThemeModeSetting};
 
-pub(crate) const LAYERS: [(&str, &str); BUILTIN_THEMES.len()] = [
+pub(crate) static LAYERS: [(&str, &str); BUILTIN_THEMES.len()] = [
     ("default", include_str!("../themes/default.json")),
     ("macos", include_str!("../themes/macos.json")),
     ("yaru", include_str!("../themes/yaru.json")),

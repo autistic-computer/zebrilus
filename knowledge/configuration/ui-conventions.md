@@ -418,27 +418,28 @@ along with zz's roles and retired role ids. Every zz-ui theme and role lookup re
 first, so the desktop, browser and iOS clients and the storybook all see the same set. `crates/zz/src/theme.rs` applies desktop
 configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
 ala globals (used by settings badges and the detach action, not to color anything).
-`apply_zz_overrides` layers these values over the zz-ui base:
+It applies the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved
+file from the `themes` folder, with the `widget-corner-radius`, `chrome-accent` and tint keys
+`zz/config` sets composed over it by `ThemeOverrides::apply_to`) with `InterfaceTheme::activate`,
+which switches to the effective mode and writes, in one step, its colors for that mode
+(`InterfaceTheme::colors`), its materials (`Materials::apply`: radius, outline width, both
+shadows, row inset, primary, the interface font and the glass) and its role patches
+(`InterfaceTheme::apply_roles` into `Theme.styles`). One radius therefore reaches every role that
+rounds, and gapped pane corners (`Theme::pane_radius()`), and survives a light/dark switch.
+Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), which
+`penna::Root::new` sets. `apply_zz_overrides` then layers zz's own values over it:
 
-- the theme on screen (`config::shown_theme`: the active theme, a built-in or a saved file from
-  the `themes` folder, with the `widget-corner-radius`, `chrome-accent` and
-  tint keys `zz/config` sets composed over it by
-  `ThemeOverrides::apply_to`): its colors for the effective mode (`InterfaceTheme::colors`), then
-  its materials, applied with `Materials::apply`: radius, outline width, both shadows, row inset,
-  primary, the interface font and the glass; then its role patches
-  (`InterfaceTheme::apply_roles` into `Theme.styles`). One radius therefore reaches every role
-  that rounds, and gapped pane corners (`Theme::pane_radius()`), and survives a light/dark switch.
-  Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4);
 - `font_family` from `ui-font-family` when present (a System default line keeps the system UI
   font even under a theme with its own), else the theme's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
-- `theme.contrast` from `chrome-contrast`, preserved across the same refreshes.
+- `theme.contrast` from `chrome-contrast`, preserved across the same refreshes;
+- the pane glow, gaps and margin from `pane-glow-strength`, `pane-gaps` and `pane-margin`.
 
 The thin clients keep the selected theme id, their own saved themes and their overrides in their
-preferences, and `Preferences::apply` draws `Preferences::shown_theme()` (the theme with the
-device's `ThemeOverrides` composed the same way): its colors, materials and roles, with the UI
-font taken from the preference, else the theme's font, else the bundled Inter.
+preferences, and `Preferences::apply` activates `Preferences::shown_theme()` (the theme with the
+device's `ThemeOverrides` composed as on desktop), then sets the UI font from the preference, else
+the theme's font, else the bundled Inter.
 
 `chrome-contrast` defaults to 1.0 and accepts 1.0–2.0; other values are reported like any numeric
 key. The Interface page shows it as a slider from 100% to 200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and
@@ -515,11 +516,11 @@ button follows the address bar's role: a circle while the address bar is a pill,
 radius less its inset otherwise.
 
 `MuxClient` refreshes those globals from the initial `ServerHello` and every `AppearanceChanged`
-event. `refresh_current_theme` restores the correct zz-ui base before reapplying the theme and
-overrides, while `sync_system_appearance` records the actual OS mode separately before doing the
-same after every light/dark refresh. Every application window must route appearance syncs through
-that wrapper. The separate OS-mode global is load-bearing: the installed `Theme::mode` may be a
-Light/Dark pin and cannot be reused as the System preference.
+event. `refresh_current_theme` activates the theme on screen (`InterfaceTheme::activate`) in the
+effective mode and then reapplies zz's overrides, while `sync_system_appearance` records the actual
+OS mode separately before doing the same after every light/dark refresh. Every application window
+must route appearance syncs through that wrapper. The separate OS-mode global is required: the
+installed `Theme::mode` may be a Light/Dark pin and cannot be reused as the System preference.
 
 `theme-mode` is a `zz/config` key, and Settings' Appearance page opens with a Theme group whose first
 card is the System / Light / Dark picker, three drawn window previews
