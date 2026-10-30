@@ -2,7 +2,7 @@
 
 Everything here was produced on 2026-09-09 on the alienware box (CachyOS, 16
 cores) from the worktree `/home/demfabris/dev/zz-tui-lane` at
-`11e4912d02493d32827cb2c7d4508eaf4edb2734`, against pinned tmux
+`e174040dea4f5bee3036571c9fe18c743ee4b3f7`, against pinned tmux
 `d77c9dc6aa021e4bc61f0da128c591af695e6466`. Every file is a real run.
 
 ## What each file is
@@ -44,7 +44,7 @@ either, and clause 2 is not satisfied here.** An earlier draft of this file
 claimed it was, on a stale-pre-fix-binary story that the campaign's own registry
 refutes. What follows is what was measured, including that refutation.
 
-1. **The fixture and the runtime at `11e4912d` are sound here.** A zz built in
+1. **The fixture and the runtime at `e174040d` are sound here.** A zz built in
    this worktree passes `compat/tui-pane-geometry.sh` six times out of six
    across two shapes of the fixture, in 4 to 5 seconds a run against a 10 second
    bound. The wait that fired in the record is the one at `measure()`, and it is
@@ -57,7 +57,7 @@ refutes. What follows is what was measured, including that refutation.
 
 3. **The stale-pre-fix-binary hypothesis is refuted, by the very gap that was
    cited for it.** `tui.client-input-backpressure` (closed 2026-09-07 at
-   `ba810897`) does list `file:compat/tui-pane-geometry.sh` among its evidence,
+   `52c12da8`) does list `file:compat/tui-pane-geometry.sh` among its evidence,
    and its recorded cause is exact — `crates/zz-tui/src/render.rs`
    `flush_output` did a blocking `write_all` plus `flush` on the main event
    loop. But that same resolution rules the stall out as the cause of a macOS
@@ -74,8 +74,8 @@ refutes. What follows is what was measured, including that refutation.
    Two refutations, either one sufficient.
 
    **Empirical.** `32443267` is 2026-09-07T10:45:51-03:00, after the fixture
-   reached its current shape at `c2397f44` (00:15:42) and before the fix at
-   `ba810897` (13:31:08) — exactly the window a stale binary would have to come
+   reached its current shape at `7e546d87` (00:15:42) and before the fix at
+   `52c12da8` (13:31:08) — exactly the window a stale binary would have to come
    from — and the registry records this fixture exiting 0 there. A pre-fix
    binary running this fixture is measured as passing, so a pre-fix stale binary
    does not produce this timeout.

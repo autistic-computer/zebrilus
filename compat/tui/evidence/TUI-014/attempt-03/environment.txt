@@ -10,7 +10,7 @@ bash            5.3.9(1)-release
 worktree        /home/demfabris/dev/zz-tui-modes-10
 branch          campaign/tui-modes
 revision        5585cd6a97a933c212a68f78f0233c382da096d4
-base            5d31bee6789d3f82c93a4bd200edcb8219b16f6a (origin/main)
+base            2c9235d03e8d3f27236c0ee03ea474c6b2c22b6f (origin/main)
 worktree clean  yes apart from this evidence directory (git status --porcelain shows only compat/tui/evidence/TUI-014/attempt-03 while it is being written)
 pin             /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux
 pin version     tmux next-3.8

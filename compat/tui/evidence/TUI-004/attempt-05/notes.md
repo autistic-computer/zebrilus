@@ -1,7 +1,7 @@
 # TUI-004 attempt-05: window sizing under status rows, and the styled trim
 
 Cycle 6, the mux lane, punch list items 1 to 3, plus one divergence found on
-the way. Base `origin/main` ce010be5. Every `*-tip.txt` run here is at code
+the way. Base `origin/main` 455ef370. Every `*-tip.txt` run here is at code
 revision 451cf194 with a clean tree, against the binary whose sha256 is in
 `environment.txt`. The commit that records this directory changes nothing but
 evidence and the ledger.
@@ -215,14 +215,14 @@ field, and `crates/zz-tui` has no change.
 
 ## The gate, cycle 6 mux lane
 
-The lane tip 55487e10 rebased onto `origin/main` ddce1ee7 (which by then carried
+The lane tip 55487e10 rebased onto `origin/main` f2788fe7 (which by then carried
 the modes, copy, caps and overlays landings) as local branch `gate-mux` in
 `/home/demfabris/dev/zz-gate-tui6`. One conflict, the generated
 `knowledge/tmux/tui-parity.md`, regenerated. The rebased diff against
 `origin/main` adds and removes exactly the lines the lane's own diff against
 BASE does, file for file; only context moved.
 
-Everything below ran at `b481bff9b26b538558798bf50592e9fa24c9c402`, the gate tip
+Everything below ran at `5ab812d1c2ed5ad8080b693f6a74d5931534598e`, the gate tip
 before this records commit, against a zz built there
 (sha256 `17368cbf8ce768f6a769dab9046e205d77b362eb63882473e05c8e0585017d62`) and
 the pin d77c9dc6. Each capture carries its revision, its command, a start

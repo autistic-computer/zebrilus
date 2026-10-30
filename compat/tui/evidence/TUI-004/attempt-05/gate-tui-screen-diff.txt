@@ -1,4 +1,4 @@
-# revision b481bff9b26b538558798bf50592e9fa24c9c402
+# revision 5ab812d1c2ed5ad8080b693f6a74d5931534598e
 # command: compat/tui-screen-diff.sh
 # started 2026-09-12T20:04:45-03:00
 whole-screen differential (pin tmux)

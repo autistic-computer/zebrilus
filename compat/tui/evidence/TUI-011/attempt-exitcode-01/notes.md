@@ -1,7 +1,7 @@
 # Exit-code contract split, cycle 11
 
 Lane: `exitcode`. Branch: `campaign/tui-exitcode`.
-Base: `22e3c4db146b2298bdd94cb959572b9069b981ef` (zz 0.10.0).
+Base: `b2be2e1066296cc65f63040226f976dc9182bda5` (zz 0.10.0).
 Pin: tmux next-3.8, `d77c9dc6aa021e4bc61f0da128c591af695e6466`.
 
 The three red client-command assertions are green. Tmux-compatible usage errors now exit 1;

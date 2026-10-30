@@ -95,9 +95,9 @@ screen still carries them; the longer-paste sabotage still bites.
 
 ## Cycle-11 measurements (2026-09-19, this pass)
 
-Base `origin/main ec10cad8` (`Verify TUI-015 and TUI-017 at the residuals
-gate`); `origin/main` has since moved to `0632f655`, which this pass does
-not chase: every run below is measured on the `ec10cad8` tree and the
+Base `origin/main 86098d5c` (`Verify TUI-015 and TUI-017 at the residuals
+gate`); `origin/main` has since moved to `94e171ba`, which this pass does
+not chase: every run below is measured on the `86098d5c` tree and the
 run binary `target/debug/zz_cli` (SHA-256
 `db2811c43eced9b7...0093c`, built after the last source edit; only the
 ledger JSON and its generated report are newer, and they are not code).

@@ -4,8 +4,8 @@ PRETTY_NAME="CachyOS"
 
 date: 2026-09-13T04:55:04-03:00
 repo: /home/demfabris/dev/zz-tui-input (worktree of /home/demfabris/dev/zz)
-tip: a79dd208878a4deb7b58ca8ac67db9bd2c9d91f4 Give a divider cell the pane whose border it is
-base: origin/main 94d0da5d8a40dd6a49e5b76116419b61e4415be7
+tip: c9afd2c160f2d078da62eaf09826d51be2a5062c Give a divider cell the pane whose border it is
+base: origin/main ff07513861a608379b6b51b9f63dd2f902cec67b
 pin: /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux
 tmux next-3.8
 zz: target/debug/zz

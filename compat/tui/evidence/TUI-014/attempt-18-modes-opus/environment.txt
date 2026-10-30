@@ -1,7 +1,7 @@
 zz binary: target/debug/zz_cli built at 926b01b0b81a78f58a23784a73dcd55c3a8a9406, copied before any run
 zz sha256: b784e87eb110d2ed59b242c3cb57c11df6a4639f979bba75accb1c321bd9ce22
 zz revision: 926b01b0b81a78f58a23784a73dcd55c3a8a9406 (worktree clean except evidence)
-base: origin/main 2fa763d0b98b6c707d850ca8f10fa65921124bc4 (release: zz 0.11.0)
+base: origin/main efb1cbd8aee5480372881101f62b6fb3c010e918 (release: zz 0.11.0)
 pin: tmux next-3.8 d77c9dc6aa021e4bc61f0da128c591af695e6466
 pin sha256: df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63ee5
 os: Linux 7.2.3-1-cachyos-deckify x86_64 GNU/Linux

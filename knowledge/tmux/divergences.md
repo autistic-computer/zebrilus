@@ -16,7 +16,7 @@ holding 446 items: 3 open, 0 blocked, and 43 accepted, plus 199 closed records.
 The frozen meter remains 304/304 items across 65/65 groups; 3 post-freeze items remain
 open across 3 groups. Ledger settlement is 242/245 known groups (98.8%). The full run covers
 254 scenarios / 3,086 steps / 4 registered known rows; the attached-client fixture passed and the
-canonical summary was re-stamped on the ubuntu box at `075a00849629`, the first re-stamp since cycle 16.
+canonical summary was re-stamped on the ubuntu box at `9d89939fbb34`, the first re-stamp since cycle 16.
 Summary SHA-256: `fe76abeafaa9a14fb4190dbd199e7c780ea82df14b9cad94888c0c74d9e758e6`.
 The open groups are `desktop.overlay-consumers`, `tui.client-output-queue-budget`, `tui.status-row`.
 
@@ -39,7 +39,7 @@ keep this page for the detailed reasoning that a compact tracker row cannot carr
 
 **State anchor:** the "implemented surface" section reflects
 [PR #4](https://github.com/autistic-computer/zebrilus/pull/4) (`fix/tmux-compat-hunt-v2`, merged 2026-08-16
-as `137adc2`) plus the phase 3d layout-string and phase 4a–4f-2 source dated 2026-08-17. PR #4 corrected the
+as `3183591`) plus the phase 3d layout-string and phase 4a–4f-2 source dated 2026-08-17. PR #4 corrected the
 hunt-claim regressions, including two implemented backwards
 (`new-window -t` bare-target order, positional targets on the kill commands) plus the
 `kill-session -C`, `new-session -A`, `resize-pane` attached-adjustment, `send-keys -H`/`-l`,
@@ -88,15 +88,15 @@ The old "config must never execute programs" doctrine died with phase 5's verifi
 facts: `#()` and creation-command positionals already spawned `/bin/sh` ungated, so
 gating only the exec commands was theater. The user's tmux files and `mux.conf` are trusted like
 `.bashrc`; cycle 15 (2026-09-05) reads tmux files in place and removes the foreign-config copy flow. `run-shell` /
-`run` and `if-shell` / `if` now execute for real (wave 5a-2, `c2e1995`) with
+`run` and `if-shell` / `if` now execute for real (wave 5a-2, `f2909d6`) with
 pin-parity semantics — see the drop-in plan's phase-5 section for the accepted
 divergences (overlay output routing, inherited job environment, job cap backstop).
-`wait-for` / `wait` and `pipe-pane` / `pipep` shipped in wave 5b (`d7c640d`)
+`wait-for` / `wait` and `pipe-pane` / `pipep` shipped in wave 5b (`cc78a6e`)
 with pin-parity semantics (sticky signals, lock leak-on-disconnect, pre-parse
 output tap, pipe survives respawn); Interactive clients cannot park on blocking
 waits — they get the pin's clientless errors (scripts are faithful).
 
-`set-hook` / `show-hooks` shipped in wave 5c (`d81d1d9`): full 68-name storage
+`set-hook` / `show-hooks` shipped in wave 5c (`a39de6b`): full 68-name storage
 with pin scope, after-* + command-error + event hooks fire (events clientless
 like the pin), `@`-user hooks share the option slot. `-B` format monitors landed
 on 2026-09-03 with the pin's grammar, one-second polling, and nine-name fire. The 2026-08-27 client hook slice added the six report-driven
@@ -121,7 +121,7 @@ before `session-window-changed` here and after it on the pin.
 `window-layout-changed` single-fires where the pin double-fires on
 resize/select-layout.
 
-The lock trio shipped in wave 5d-2 (`98b7e51`) as storage + error parity:
+The lock trio shipped in wave 5d-2 (`407b321`) as storage + error parity:
 `lock-command` (default `lock -np`) and `lock-after-time` (default 0) store
 and read back, all three commands and aliases parse with pin-exact clientless
 error shapes, and `after-lock-server` fires through the hook bus — but zz
@@ -1750,7 +1750,7 @@ fail where the pin succeeds, because zz routes those through the client and
 protocol bump and neither was taken quietly.
 
 Two of those raw sinks lose bytes for reasons that have nothing to do with the client's encoding.
-Measured at the cycle-13 gate against the pin, on this tip and on main `e0400d1` alike, so they are
+Measured at the cycle-13 gate against the pin, on this tip and on main `5b287a3` alike, so they are
 neither new nor this group's: with buffer `x<U+6F22>y<0xff>z` under
 `env -u TMUX -u LANG -u LC_CTYPE LC_ALL=C`, the pin's `show-buffer` answers `78 e6 bc a2 79 ff 7a`
 and zz answers `78 e6 bc a2 79 ef bf bd 7a 0a`, losing the byte to U+FFFD in the buffer store and

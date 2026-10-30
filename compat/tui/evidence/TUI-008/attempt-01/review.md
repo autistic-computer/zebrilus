@@ -1,11 +1,11 @@
 # Cycle 7 input-lane gate: review, the must-fix, and what still holds
 
-lane tip reviewed: e00d1e0de4aa5e131df685698dc6795a39dfb573 on campaign/tui-input
+lane tip reviewed: 628c265c5bd1d96c739f58b696edf8b8e0c422e4 on campaign/tui-input
 gate worktree: /home/demfabris/dev/zz-gate-tui7, local branch gate-input
-rebased onto: origin/main 94d0da5d8a40dd6a49e5b76116419b61e4415be7 (no-op; the
+rebased onto: origin/main ff07513861a608379b6b51b9f63dd2f902cec67b (no-op; the
 lane tip was already a direct descendant, and `git merge-tree --write-tree`
 predicted no conflict)
-gate tip before this records commit: 3679c107bba84456279b053f435978a7520c353b
+gate tip before this records commit: eafcaa0cecb0d62c1f30c2c97fb1550c217f7076
 pin: d77c9dc6aa021e4bc61f0da128c591af695e6466 (tmux next-3.8)
 box: alienware, CachyOS, 16 cores, 15 GB + 15 GB zram. See `gate-environment.txt`.
 
@@ -29,7 +29,7 @@ box: alienware, CachyOS, 16 cores, 15 GB + 15 GB zram. See `gate-environment.txt
 
 ## The reviewer's checks, as reported
 
-- fetch origin, checkout --detach e00d1e0d in /home/demfabris/dev/zz-tui-input-review; merge-base with origin/main is 94d0da5d, so three-dot equals two-dot
+- fetch origin, checkout --detach 628c265c in /home/demfabris/dev/zz-tui-input-review; merge-base with origin/main is ff075138, so three-dot equals two-dot
 - cargo build -p zz at tip through the slot-and-cap wrapper (CAP 5G, --jobs 4), exit 0
 - read the whole diff hunk by hunk: zz-protocol/src/message.rs, zz-daemon/src/daemon.rs, zz-tui/src/{app,input,state,tty}.rs, zz/tests/cli_binary.rs, compat/tui-caps.sh, compat/tui-mouse.sh (1294 lines end to end), compat/tui/campaign.json, compat/tmux-gaps.json, knowledge/
 - wire rule: PROTOCOL_VERSION is 102 unchanged; InputMessage::MouseKey is a pure end-append after DismissClientMessage; the consumer half is in the same commit 19598012; the v102 entry of knowledge/protocol/wire-protocol.md names the append
@@ -47,7 +47,7 @@ box: alienware, CachyOS, 16 cores, 15 GB + 15 GB zram. See `gate-environment.txt
 
 ## What this gate did about the must-fix
 
-ONE must-fix, applied in its own commit (3679c107, "Leave a MENU_NOMOUSE menu's
+ONE must-fix, applied in its own commit (eafcaa0c, "Leave a MENU_NOMOUSE menu's
 arming to the mouse option"):
 
 1. `crates/zz-tui/src/app.rs` `desired_mouse_arming` now reads

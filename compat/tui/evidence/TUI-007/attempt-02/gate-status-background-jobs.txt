@@ -1,6 +1,6 @@
 # smoke/status-background-jobs: measured at origin/main, not this lane's
-# revision under test: c1191e8a1a2bf0d7e3c1bf53deb82481c112c649
-# revision compared against: origin/main e2bf6765511d9789f3e0166f34aadf688c127f48
+# revision under test: a1129e05068c3f0a88aff31c7e5b51ea59813c87
+# revision compared against: origin/main 9485b11abc6a9c004ee375fbba7daa9d3b7e7650
 # captured: cycle 6 overlays gate, alienware, 2026-09-12
 
 The row went red twice in its chunk (the harness's own retry-alone included), which

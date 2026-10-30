@@ -10,10 +10,10 @@ python: Python 3.14.4
 rustc: rustc 1.97.0 (2d8144b78 2026-07-07)
 
 gate worktree: /home/demfabris/dev/zz-gate-tui9
-revision: 54e7d31bdb0eeee8b59a1f737b9ae959e753d005
-branch: gate-choosers, campaign/tui-choosers-3 rebased onto origin/main a6221e9c
+revision: 1cc3de593370525b01f04af7c8aa32b5ccb25469
+branch: gate-choosers, campaign/tui-choosers-3 rebased onto origin/main 05d0702e
 worktree state: 0 modified path(s) at capture time
-merge-base with origin/main before the rebase: bb2098e34193446d02e073c29b237ee64685417b
+merge-base with origin/main before the rebase: c6782e36da16292e004a220ef5206f2dbab43580
 
 zz binary: /home/demfabris/dev/zz-gate-tui9/target/debug/zz
   built in this worktree with its own target (no CARGO_TARGET_DIR), cargo build -p zz --jobs 4

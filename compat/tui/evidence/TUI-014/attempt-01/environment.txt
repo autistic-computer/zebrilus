@@ -3,7 +3,7 @@
 SUPERSEDED CAPTURE, CORRECTED AT THE CYCLE 6 COMMANDS GATE, 2026-09-14.
 The block below was written by the lane and attests something that cannot be checked:
 its `revision: 6cc5e0b8...` is not an ancestor of the lane tip (git merge-base --is-ancestor
-exits 1), its `base: origin/main 1566c1cf...` is not the merge-base (that was 1147d7cb), and
+exits 1), its `base: origin/main a2c76437...` is not the merge-base (that was 8e330e77), and
 it attests runs taken from a worktree with 1 modified path. A debug zz build is not
 bit-reproducible on this box, so the revision plus a clean worktree is the only attestation
 a sha256 has, and that one pointed off the branch. It is kept, not deleted, because it still
@@ -19,7 +19,7 @@ PRETTY_NAME="CachyOS"
 
 revision: 6cc5e0b82c2a9ee39512bed2337ec409d7dbfe7b
 worktree: 1 modified paths
-base: origin/main 1566c1cf9d91b8f713f6a6ed8bb3d4a4c10376bc
+base: origin/main a2c76437d0d5939db229bff30ce89779552f67c3
 
 zz:   /home/demfabris/dev/zz-tui-commands/target/debug/zz
 -rwxr-xr-x 2 demfabris demfabris 791252176 set 13 17:47 target/debug/zz
@@ -36,17 +36,17 @@ date: 2026-09-13T18:42:48-03:00
 
 GATE RE-CAPTURE. Everything in review.md and in the gate-*.txt logs beside it was measured
 here, from a clean worktree at a revision on this branch. The lane's own tip a3fc1651 rebased
-onto origin/main 869c9504 as 3a37bc84; the four commits after it carry no Rust, so the binary
-below - built at 3a37bc84 - is the code at every revision from 3a37bc84 to the one named here.
+onto origin/main 20102eba as 78c0d5a8; the four commits after it carry no Rust, so the binary
+below - built at 78c0d5a8 - is the code at every revision from 78c0d5a8 to the one named here.
 
 Linux alienware 7.2.3-1-cachyos-deckify #1 SMP PREEMPT_DYNAMIC Sun, 06 Sep 2026 23:17:42 +0000 x86_64 GNU/Linux
 NAME="CachyOS Linux"
 PRETTY_NAME="CachyOS"
 
-revision: 6959c21f2a173b33c2c6da9363459f78f4a28a22
+revision: c384926a63596ebb59d96235744385d0488da5cc
 worktree: 0 modified paths
-base: origin/main 869c9504039f42e34722ad8afce41853d2b87040
-merge-base: 869c9504039f42e34722ad8afce41853d2b87040
+base: origin/main 20102ebaa484569c31c8e3e6e8a7c8bdd5487df5
+merge-base: 20102ebaa484569c31c8e3e6e8a7c8bdd5487df5
 
 zz:   /home/demfabris/dev/zz-gate-target/debug/zz
 -rwxr-xr-x 2 demfabris demfabris 791457152 set 14 03:51 zz-gate-target/debug/zz

@@ -1,4 +1,4 @@
-# revision b481bff9b26b538558798bf50592e9fa24c9c402 (the gate tip before the records commit)
+# revision 5ab812d1c2ed5ad8080b693f6a74d5931534598e (the gate tip before the records commit)
 # gate: cycle 6, mux lane, /home/demfabris/dev/zz-gate-tui6, CARGO_TARGET_DIR=/home/demfabris/dev/zz-gate-target
 # every command below ran through S=$((RANDOM % 2)); systemd-run --user --scope -q -p MemoryMax=7G -p MemorySwapMax=2G flock -w 540 /tmp/zz-cargo-slot-$S.lock <cargo ...>
 # HOME and XDG_CONFIG_HOME scrubbed to /tmp/zzgate6-home; CARGO_HOME left at the real one
@@ -48,7 +48,7 @@
 
 == cargo build -p zz --jobs 6 -> exit 0
    /home/demfabris/dev/zz-gate-target/debug/zz sha256 17368cbf8ce768f6a769dab9046e205d77b362eb63882473e05c8e0585017d62
-   built at b481bff9b26b538558798bf50592e9fa24c9c402 on a clean tree; a cargo debug build is not bit-reproducible here, so the hash identifies the artifact and the revision attests it
+   built at 5ab812d1c2ed5ad8080b693f6a74d5931534598e on a clean tree; a cargo debug build is not bit-reproducible here, so the hash identifies the artifact and the revision attests it
 
 == named results
    test daemon::tests::a_client_no_taller_than_its_status_block_keeps_every_row ... ok

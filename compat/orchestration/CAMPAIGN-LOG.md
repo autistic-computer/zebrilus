@@ -6,27 +6,27 @@ state; this file is the history and the gotchas each cycle produced.
 ## 2026-08-31 night: cycle 1, the batching fix works
 
 Two Opus workers in parallel worktrees plus one serial gate agent (about 978k subagent tokens,
-2h19m) landed 14 commits: daemon basket merge `f7900423` (run-shell background environment
+2h19m) landed 14 commits: daemon basket merge `54bdb8d1` (run-shell background environment
 ordering, copy-pipe job environment, pane-set-clipboard hook, both source-hook cwd contracts) and
-copy-mode merge `f3de228c` (95-action inventory in `crates/zz-mux/src/copy_actions.rs`, vocabulary
+copy-mode merge `19753f2c` (95-action inventory in `crates/zz-mux/src/copy_actions.rs`, vocabulary
 66 to 81 mapped, selection lifecycle, scroll-exit, cursor-view, recentre, previous-bracket). Meter
 1.6% to 4.6%. Batching quirk: the board refuses two claims in one zone even for the same holder,
 so claim one front per zone cluster as the lock and ledger the rest at integration. Follow-ups done
-by hand: the v88 protocol bump `2ec5d6d9` (the worker shipped 15 wire-reachable CopyModeAction tail
+by hand: the v88 protocol bump `69f80ad2` (the worker shipped 15 wire-reachable CopyModeAction tail
 tags without a bump, citing bogus precedent; the gate flagged it; three pinned fixtures including a
-hex hello frame the greps missed) and a tracker refresh `a085a1c0`.
+hex hello frame the greps missed) and a tracker refresh `68865ee0`.
 
 ## 2026-09-01: cycle 2, three lanes, 18 fronts, meter 4.6% to 44.4%
 
 Three Opus workers (mux formats and geometry, daemon display and buffers, park dispositions
 records-only) plus a serial gate; about 1.6M subagent tokens. The machine slept mid-gate and the
 gate agent died; `Workflow({scriptPath, resumeFromRunId})` replayed the workers from cache and
-re-ran only the gate (35 min). Merges: mux `a8d29785` (config-byte engine adapters, `w` and `O`
-modifiers, option-loop context producers, both geometry residues), daemon `dc83dc51` (v89 bump done
+re-ran only the gate (35 min). Merges: mux `b6548520` (config-byte engine adapters, `w` and `O`
+modifiers, option-loop context producers, both geometry residues), daemon `1aa53488` (v89 bump done
 correctly by the worker: ClientFileRequest/Response for client-side load and save-buffer IO; menu
-shortcut grammar; menu and popup resize lifecycle; popup job environment), park `3aec9e21` (14 of
+shortcut grammar; menu and popup resize lifecycle; popup job environment), park `b0b268f5` (14 of
 15 park groups settled: 12 native, 2 never; `display-panes.command-template` deliberately left
-blocked because it is closable work with a wiring recipe), ledger `4900b1df`. Lessons: put the
+blocked because it is closable work with a wiring recipe), ledger `4a2626f4`. Lessons: put the
 protocol-bump recipe in the worker prompt; the old checkout's rerere cache holds a wrong
 resolution for `knowledge/tmux/gaps.md`, always regenerate with `write-report`; the gate can shard
 the delta corpus eight ways over disjoint scenario sets (3h to 30 min); withdrawn-as-merged
@@ -35,11 +35,11 @@ dependencies read as deps-broken, so remint dependants as V(n+1).
 ## 2026-09-01 evening: cycle 3, Fable reviewers earn their keep, meter 46.1%
 
 Same lanes plus one Fable reviewer per lane and a Fable gate; about 1.9M tokens, 2h06m. Merges:
-formats `1a79a095` (L/V loop modifiers, client and environment context producers, `current_file`,
-`next_@*`/`prev_@*`), daemon `3435f859` (config non-UTF-8 file bytes group closed via byte
+formats `57afb5a0` (L/V loop modifiers, client and environment context producers, `current_file`,
+`next_@*`/`prev_@*`), daemon `dc73a193` (config non-UTF-8 file bytes group closed via byte
 loaders; menu cell layout with the v90 bump, `MenuItem.annotation` inserted mid-struct while the
-changelog said appended), hygiene `e1435ae8` (four new divergence gaps registered, check-summary
-repaired), ledger `270ba2b1`. The review catch that justified the stage: the menu width rule
+changelog said appended), hygiene `90d324cd` (four new divergence gaps registered, check-summary
+repaired), ledger `0f98e472`. The review catch that justified the stage: the menu width rule
 ignored the title seed (the pin's `menu_create` seeds `menu->width` from the title); the gate
 applied the fix with a regression test. The daemon worker honestly skipped four groups: tilde-home
 (blocked by an accepted non-UTF-8 limit), key-reset (`-R` is RIS-to-pane, larger than promoted),
@@ -50,15 +50,15 @@ is load-fragile on the pin side.
 
 ## 2026-09-01 night: cycle 4 landed, campaign paused for a machine move, meter 54.9%
 
-Merges: formats `f2eac794` (expansion output clamp moved daemon-side; the pin's FORMAT_TIME_LIMIT
+Merges: formats `ce0c0fb6` (expansion output clamp moved daemon-side; the pin's FORMAT_TIME_LIMIT
 deliberately refused as accepted-native after it broke option and argument expansion under load;
 window cell metrics closed, `window_bigger` and the offsets stay open on the no-client-row
-context), copy-mode `531d274f` (five stock action keys, emacs `M-1`..`M-9` and `g`, goto-line
+context), copy-mode `ecce882d` (five stock action keys, emacs `M-1`..`M-9` and `g`, goto-line
 rebuilt as the pin's scrollback offset with the strtonum grammar; ten slugs relocated into
 accepted-native groups; 14 of 16 binding-fidelity items are blocked by the accepted
-`command-prompt -P` decision), daemon `62e4c813` (load and set-buffer `-w` OSC 52, typed Control
+`command-prompt -P` decision), daemon `ba521923` (load and set-buffer `-w` OSC 52, typed Control
 config diagnostics, detach-client `-E`/`-P`, attach `-x`, new-session `-X` exit actions; v91 bump:
-`ControlConfigError` tag 51 and `Detached.action`), ledger `6210fb0f`. Reviewer catches: the daemon
+`ControlConfigError` tag 51 and `Detached.action`), ledger `55ace2c1`. Reviewer catches: the daemon
 tip had four tests orphaned by its last commit (the worker's proofs predated it; "proofs at tip"
 is now a prompt rule), Control victims of detach-exec must stay attached like the pin, a
 misattributed pin-derivation doc comment, a wrong count in a group reason. Restart lore: a Claude
@@ -71,15 +71,15 @@ already existed; only the sharded delta corpus, push, ledger, and board were lef
 
 First cycle after the machine move. The handoff recipe held: script paths, 8-core etiquette (workers
 `--jobs 4`, gate `--jobs 8`, four shards), SSH origin, holder `ubuntu/orchestrator`; 3h55m wall,
-2.04M subagent tokens, seven agents. Merges: terminal `a0f53fc` (options.terminal-behavior settled
+2.04M subagent tokens, seven agents. Merges: terminal `f45166e` (options.terminal-behavior settled
 as 7 native, 8 parked engine knobs, 2 parked client options, `editor` onto the floating stance;
 `send-keys -R` closed as a scrollback-preserving reset composed from VT bytes; options.pane-chrome
-settled as 4 native scrollbars plus 7 parked border-chrome items), panes `73a0d00` (server-global
+settled as 4 native scrollbars plus 7 parked border-chrome items), panes `2deac14` (server-global
 marked pane with its four formats, select-pane input and style controls, special pane target aliases,
 exact-match slot classification, split-window `-k`/`-m`, break-pane placement flags onto the native
-floating stance; catalog 452/51), daemon `79b09d5` (Control tildes parsed against the daemon
+floating stance; catalog 452/51), daemon `8aaface` (Control tildes parsed against the daemon
 environment through a batched HomeDirectory round trip, ClientHello cwd as bytes, v92; the pane
-focus hooks close reverted at the gate), ledger `c6d374a`. Every review was approve-with-fixes and
+focus hooks close reverted at the gate), ledger `92a5449`. Every review was approve-with-fixes and
 every fix was pin-side: DECSTR is a no-op in the pinned libghostty (the reset now clears each mode
 explicitly), the mark must die on a cross-session `move-window`, and the pin gates pane-focus hooks
 behind `focus-events` and queues them ahead of the change notifications. Gate lore: a mux-only lane
@@ -106,18 +106,18 @@ continuation script, not copying the session.
 The continuation script ran as written on the new machine: 16-core etiquette (workers `--jobs 8`,
 gate `--jobs 16`, eight shards), SSH origin, holder `macbook/orchestrator`, four agents (daemon
 review, client worker, client review, gate), 2h00m wall, 1.07M subagent tokens, every build cold
-because the warm worktrees stayed on the Ubuntu box. Merges: keys `23fa5da4` (`send-keys -c` with
+because the warm worktrees stayed on the Ubuntu box. Merges: keys `6421ce0d` (`send-keys -c` with
 the target client on the three send-keys effects, `-H` high hex through `KeyToken::Raw` on protocol
 93, copy-mode command errors; gate fix: bound-key chains preflight the selected client's read-only
-bit, not the invoker's), daemon `154ca17b` (unforgeable alias-group provenance, status-keys derived
+bit, not the invoker's), daemon `8b844bf1` (unforgeable alias-group provenance, status-keys derived
 from the editor, `command-prompt -l`, chains, labels and pass order; the clients.event-resize-context
 close was reverted at the gate because the pin resolves hook items through `cmd_find_best_client` by
 activity time, not the notified client, so the group is re-scoped to a two-client differential; the
 status-keys probe now takes one socket per probe after four orphaned daemons per run), client
-`93044f6d` (chooser `-F`/`-h`/`-k` and inert choose-buffer `-y` with the row text on the wire,
+`b4eb01d1` (chooser `-F`/`-h`/`-k` and inert choose-buffer `-y` with the row text on the wire,
 pane-colours palette, menu action context and queue ordering, menu and popup style refresh; gate
 fixes: the menu cursor survives a restyle, `-k` kills before the template runs, the pane-colours
-default slot is a recorded residue), ledger `fef4fcb4`. Board: three lanes ledgered, seven mooted
+default slot is a recorded residue), ledger `f1a9f328`. Board: three lanes ledgered, seven mooted
 fronts withdrawn, four residuals posted (F-KEY-CONTROL-V3, F-DISPLAY-MESSAGE-PANE-TARGETS-V3,
 F-PANE-BORDER-LINES-TILED, and the front-less display-menu waiter-wake race). New lore: `/bin/bash`
 3.2 has no `mapfile`, so a shard runner under it ran the full corpus eight times at once; APFS
@@ -139,20 +139,20 @@ and F-CLIENT-CHROME-OVERLAYS are minted and READY; the script is not launched.
 
 ## 2026-09-02: cycle 7 on the macbook, meter 71.7% to 77.6%
 
-Seven agents, 3h53m wall, 2.64M subagent tokens, all three lanes merged. Merges: daemon `ce5e38ea`
+Seven agents, 3h53m wall, 2.64M subagent tokens, all three lanes merged. Merges: daemon `95dee94c`
 (command-prompt `-t` as the routing itself with the issuing command client parked on a waiter until
 the prompt closes, `-F`, display-panes templates and waits, the display-message client aliases with
 the pin's diagnostic and status, the APFS fixture guard; gate fix: a hook-raised prompt parked the
 connection reader and left a phantom client, so the waits are gated on a real client, and a second
-display-panes on a busy client answers at once), copy `f4f130f3` (the copy-mode format family
+display-panes on a busy client answers at once), copy `5a49a54f` (the copy-mode format family
 answered from the daemon's copy sessions, which made the `-N` count items observable and closed
 them, `copy-mode -k`, the refresh re-sync and the `r` keys, the copy-line family, `pane_in_mode` and
-`pane_mode`; gate fix: a failed `-k` left its kill armed for the next entry), client `7e4bb4c7`
+`pane_mode`; gate fix: a failed `-k` left its kill armed for the next entry), client `b7b53f8c`
 (`default-client-command` through the launcher, `focus-follows-mouse`, menu mouse policy and paste
 ordering re-measured and re-scoped, the renderer residue written out; gate: the popup kitty close was
 reopened because its proof was a headless renderer test, and the focus-follows-mouse close records
 that zz fires `after-select-pane` where the pin fires only `window-pane-changed`), ledger
-`c13d1d02`. Protocol 93 to 94 from two lanes, reconciled at the gate. Board: three lanes ledgered,
+`78c65118`. Protocol 93 to 94 from two lanes, reconciled at the gate. Board: three lanes ledgered,
 `F-DISPLAY-MESSAGE-PANE-TARGETS-V3` withdrawn, keep-notes on the three fronts whose slugs stayed
 open. Lore: the SSH security keys became unavailable mid-gate ("device not found"), so `origin` was
 switched to HTTPS through gh's credential helper and the gate finished over it;
@@ -169,16 +169,16 @@ three popup pointer items wait on a menu over a popup.
 ## 2026-09-02: cycle 8 overnight on the macbook, meter 77.6% to 84.2%
 
 Seven agents, 4h14m wall, 2.78M subagent tokens, two of three lanes merged. Merges: daemon
-`9b0319e8` (the pane focus hooks at the pin's own call sites with a PANE_FOCUSED set and the
+`6e66ac28` (the pane focus hooks at the pin's own call sites with a PANE_FOCUSED set and the
 transitions spliced by anchor, the item three lanes had skipped; status-keys with the prompt's vi
 table, the three key spellings, the message-covers-prompt shape; gate fix: a false `-d 0`
-measurement rewritten to the proved pair), formats `91ebc78e` (the per-command format client by
+measurement rewritten to the proved pair), formats `9aed95fd` (the per-command format client by
 activity time with null list rows, closing the resize context and all three `window_*` runtime
 formats; the null-aware `display-message -a` listing against the measured name sets; `pane_pipe`,
 `pane_pipe_pid` and `pane_unseen_changes` with the unseen-changes premise corrected to the pin's
 mode-gated flag; the bare `=` mouse target; four settlements: tilde home into the byte-streams
 stance, per-client active pane, remote alias preflight, shutdown unlink order as never; reviewed
-approve with zero defects), ledger `67d396c1`. The terminal lane (all eight engine knobs, `copy-mode
+approve with zero defects), ledger `41249a13`. The terminal lane (all eight engine knobs, `copy-mode
 -s`, `clear-history -H`, `resize-pane -T`, `remain-on-exit-format`; reviewed approve-with-fixes
 and all five fixes applied) was SKIPPED at the gate: drawing the pin's default dead-pane notice
 scrolls the child's last line into history, and zz's retained-pane capture has no scrollback, so two
@@ -197,25 +197,25 @@ pristine main (the 128 MiB revision limit under the huge-client resize), so it i
 ## 2026-09-02: cycle 9 on the macbook, meter 84.2% to 90.5%, then PAUSED
 
 Seven agents, 3h52m wall, 2.58M subagent tokens, all three lanes merged. Merges: daemon
-`bd864630` (`send-keys -K` handed to the target client's key handler; the I modifier answered from
+`2a7a33e0` (`send-keys -K` handed to the target client's key handler; the I modifier answered from
 the client's own terminfo through a ported `infocmp -x` reader with `tty_term_codes`,
 `tty_features`, `terminal-overrides` via `tty_term_apply` and the ignorefkeys cancels; the
 environment-bytes loss and the `set-hook -B` monitor subsystem written down as records; gate fix:
 `attached_client_extents_clamp` was never a load flake but a fixture race, the output-view pane
 exited and the watcher killed its window on the first resize, so the test now retains that pane),
-terminal `bf72efcf` (the cycle-8 re-land with the retained-pane history readable on a dead pane,
+terminal `259ea260` (the cycle-8 re-land with the retained-pane history readable on a dead pane,
 which cleared both regressed corpus scenarios; the eight engine knobs, `copy-mode -s`,
 `clear-history -H`, `resize-pane -T`, `remain-on-exit-format`; the ConEmu OSC 9;4 progress bar for
 `pane_pb_progress`; the copy cursor per-line limit and the mode-keys branches that read it, with
 the blocker for the rest recorded; gate fix from the reviewer's probe: an OSC now commits on CAN and
-SUB and drops the control bytes inside it), client `6d9d6efe` (the pin's pane border chrome, closing
+SUB and drops the control bytes inside it), client `d6f10165` (the pin's pane border chrome, closing
 `options.pane-border-chrome`; a popup's Kitty images handed to the drawing client; the raw TUI's
 mouse routed through the bottom-status content box and `join-pane -b` z-order, both reviewer
 must-fixes; the chooser vocabulary and popup pointer needs written down; protocol 94 to 95 with six
 appended fields; the popup kitty close was REOPENED at review because placements arrive only after a
 client resize, and the reason now carries the per-view viewport recipe; gate fix: a cross-lane test
 collision, the terminal lane promoted `remain-on-exit-format` into the option-consumer roster while
-the client lane's test used it as the unconsumed example), ledger `ef099eb8` (199 scenarios / 2,527
+the client lane's test used it as the unconsumed example), ledger `4f205025` (199 scenarios / 2,527
 steps / PASS, settlement 95.3%). Newly closed groups: `terminal.key-control`,
 `formats.modifier-fidelity`, `options.pane-engine-knobs`, `options.remain-on-exit-format`,
 `formats.pane-process`, `history.hyperlink-reset`, `copy-mode.command-fidelity`,
@@ -254,7 +254,7 @@ Seven agents in the main run, 5h54m wall, 2.43M subagent tokens; the reviewer of
 ended its turn waiting on a background monitor instead of reporting, which the pipeline counts as a
 failed stage, so the main gate integrated two lanes and the third went through
 `opus-compat-run-10b.js` (its worker report embedded, a review-only stage first so it ran beside
-the queue worker, then the gate resumed from the same run). Merges: queue `50c5578` (Control
+the queue worker, then the gate resumed from the same run). Merges: queue `b1fbc55` (Control
 clients get the per-connection command worker that three cycles bounced; hard loss frees the
 not-yet-started queue while the in-flight item finishes, graceful EOF runs every queued line
 through the first yielding one and drops the rest, replacing the client-side truncation;
@@ -262,7 +262,7 @@ through the first yielding one and drops the rest, replacing the client-side tru
 status; the display-panes template residue stays recorded; protocol 95 to 96 appends
 `ProtocolMessage::CommandQueueParked`; gate fixes from the review: an instant-exit `-W` answered 0
 one run in ten because the pane-removal arm raced the waiter's removal, and a non-zero `-W` status
-skipped the after-hook), copy `43bef8e` (copy-mode text search moved from a client surface into
+skipped the after-hook), copy `9c167fb` (copy-mode text search moved from a client surface into
 the engine as `CopyModeAction::Search`, with the search formats; the mode-keys tail; `send-keys -F`
 as the pin's search-string expansion, not a general key expansion; the sixteen stock binding
 strings under the `-P` decision, with `prompt.pane-rendered` closed rather than kept accepted
@@ -271,7 +271,7 @@ expansion, a divergence with no slug; gate fixes: the reviewer measured three mo
 the eleven-place enumeration missed, so `copy-mode.action-fidelity` is open again with the fix
 shape instead of a revert that would have taken the search engine with it, and the new prompt
 bindings dropped the armed count prefix, now kept for the answer the way `window-copy.c` does),
-ledger `63f260c` (207 scenarios / 2,586 steps / PASS). Skips worth reading: the environment bytes
+ledger `cc00fbf` (207 scenarios / 2,586 steps / PASS). Skips worth reading: the environment bytes
 are priced at four channels and 99 read sites behind 65 signatures in the mux alone, the monitors
 and the `-v` trace ran out of budget, the chooser vocabulary found that the pin's kill and `:`
 prompts belong to the mode overlay (an overlay-owned nested overlay, the shape the popup context
@@ -287,7 +287,7 @@ must run everything in the foreground and finish with the structured report (the
 rule in 10b), and `board.py renew` on a front the holder does not hold posts a harmless RENEW.
 
 Pause, 2026-09-03 ~00:30Z: fabrico needed the box for a machine move while the client gate was
-twenty minutes in (rebased onto `63f260c`, no fixes applied, no tests run), so the gate was
+twenty minutes in (rebased onto `cc00fbf`, no fixes applied, no tests run), so the gate was
 stopped. Its rebased tip is `campaign/batch-client-choosers-popups-opus-gated` (`affcfc9`), the
 review (approve-with-fixes, six must-fixes: an extra menu separator with no paste buffer, a
 popup-owned menu outliving its popup, drag re-entry arming a move the pin refuses, Fill Space
@@ -297,13 +297,13 @@ tip on any machine. The client lock was released with that note; MAIN was used f
 push and released. `HANDOFF.md` has the census and the first task.
 
 Cycle 10b, 2026-09-03 on the ubuntu box (74 minutes, 0.26M subagent tokens, one Opus 5 gate at
-xhigh): the paused client lane landed. `origin/main` `a9ab98d`, meter 96.1% to 97.4% (296/304),
+xhigh): the paused client lane landed. `origin/main` `ece96e4`, meter 96.1% to 97.4% (296/304),
 `display-popup.behavior-fidelity` closed, 207 scenarios / 2,586 steps / PASS. The gate rebased
 `affcfc9` over the 22 non-campaign commits main took during the pause (the iOS and iPad client, the
 C ABI paste/reply/output-cancel verbs, `import-tmux-config`) and hit exactly one conflict, twice,
 both in the generated `knowledge/tmux/gaps.md`; a `git merge-tree --write-tree` probe run before
 launch had predicted exactly that, and it is worth running before any gate whose branch has sat.
-All six review must-fixes landed as `6417c7a` before the gate, each proved by reverting it. Two
+All six review must-fixes landed as `821fbef` before the gate, each proved by reverting it. Two
 things to carry: a review's probes must live in the repo or on a branch, because this one's lived
 in a session scratchpad under `/tmp` and the machine move erased them, costing the gate its first
 hour; and the lane worker's reported item count was wrong (it claimed 457 to 453 where the registry
@@ -322,12 +322,12 @@ and half-landing has been refused twice, so it gets a lane to itself in cycle 12
 
 Cycle 11, 2026-09-03/04 on the ubuntu box (two Opus 5 lanes at xhigh, workers about 1h50m, the
 whole cycle spread across a network outage): meter 97.4% to 99.0% (301/304), 62/65 groups, three
-items left. Formats lane `20bf32b` closed `formats.context-producer-fidelity` (the `set-hook -B`
+items left. Formats lane `bde767f` closed `formats.context-producer-fidelity` (the `set-hook -B`
 monitor subsystem: the name:what:format grammar, the one-second tick, baseline-then-fire, and the
 nine `notify_monitor_cb` names produced on the existing `hook_format_variables` path rather than as
 table entries) and `display-message.verbose-trace` (the pin's expansion trace, which required moving
 modifier-argument expansion into parsing, an observable behaviour change the pin's own
-`#{=#{@three}:pane_title}` literal answer pins). Choosers lane `be5c59a` closed
+`#{=#{@three}:pane_title}` literal answer pins). Choosers lane `2d1a03f` closed
 `copy-mode.action-fidelity` (the per-action search-mark clear class, the incremental-origin re-latch,
 the emacs selection trim, `previous_word`'s `stop_at_eol`) and `flag:choose-tree:-y`, bumped the
 protocol to 97, and landed `t`, `T`, `C-t`, `x` and `X` on the overlay-owned prompt that cycle 10
@@ -355,10 +355,10 @@ which is workspace-excluded, so `cargo test --workspace` cannot see it; the choo
 right and it was confirmed with a `cargo check` in that crate.
 
 Cycle 12, 2026-09-04 on the ubuntu box (two Opus 5 lanes at xhigh, about 4h end to end): meter
-99.0% to 99.3% (302/304), protocol 97 to 98. Bytes lane `2733b59` closed `clients.path-encoding`
+99.0% to 99.3% (302/304), protocol 97 to 98. Bytes lane `1cf99fc` closed `clients.path-encoding`
 in full, the item priced across four channels and refused twice for half-landing: the ClientHello
 entry, `CommandInvocation.args` as `RawText`, the byte-clean environment store, and
-`CommandResponse::Success` output as bytes. Tail lane `e9b3063` closed the chooser vocabulary and
+`CommandResponse::Success` output as bytes. Tail lane `10d37ce` closed the chooser vocabulary and
 MEASURED `rendering.geometry-residue` instead of closing it: the two pane numbers diverge by
 exactly one cell, both halves committed as tests. That measurement refuted the orchestrator's own
 narrowing from the day before, which had argued the format should follow the PTY; `pane_width` is
@@ -373,10 +373,10 @@ pattern the reviewer caught on `protocol.binary-streams`, whose premise the bran
 
 Cycle 13, 2026-09-04 on the ubuntu box (two Opus 5 lanes at xhigh, about 4h30m): meter 99.3% to
 100.0% (304/304), 65/65 groups, ZERO open, 174 closed records, 220 scenarios / 2,648 steps. The
-registry is empty; the campaign's implementation phase is done. Geometry lane `e0400d1` closed the
+registry is empty; the campaign's implementation phase is done. Geometry lane `5b287a3` closed the
 last frozen-scope item the way cycle 12's probe said to (an attached pane's PTY now follows the cell
 the layout settled on, with the one-cell guard kept for split windows because `implied_window_extent`
-amplifies drift). Consumers lane `a46fded` closed all three byte consumers: format expansion, the
+amplifies drift). Consumers lane `4ea8a2b` closed all three byte consumers: format expansion, the
 client-encoding sanitizer zz never had (gated on the pin's `CLIENT_UTF8` inputs, and only on the
 output the pin routes through `server_client_print`), and byte-only path arguments. Reviews: two
 and one defects, applied at the gate. The first geometry reviewer was interrupted mid-run and the
@@ -429,11 +429,11 @@ the state below is exact). Three instruments from the retrospective, two landed,
   default row carries a ` Ctrl-\ detach` hint the pin never draws. Recorded, not fixed.
 
 The attached-client fixture is still red here and the reasons are now measured rather than
-guessed. Eight runs at `d05483c`+, each ending on a different probe: (1) `probe_command_output_navigation`
+guessed. Eight runs at `d4950d8`+, each ending on a different probe: (1) `probe_command_output_navigation`
 waited for a bare `/` prompt on zz where the TUI now draws the pin's `(search down)`; FIXED, the
 one fixture change kept, both sides match the same string. (2) The command-output view is a
 CLIENT-LOCAL view: `#{pane_in_mode}` stays 0 and `#{client_key_table}` answers `copy-mode-vi`
-while it is open, and a probe shows Escape under vi keeps it open, which is what `d1f152b` says;
+while it is open, and a probe shows Escape under vi keeps it open, which is what `8138c2b` says;
 yet one run saw the table drop to `root` after Escape. Unresolved; do not replace the
 `client_key_table` observable in that probe with `pane_in_mode`, it measures nothing there.
 (3) `probe_command_prompt` on the TMUX side answered `mainprompted`: the four BSpace keys raced
@@ -469,11 +469,11 @@ environment rows fail a full run outright, so no stamp was possible on this box.
 lane made the probes wait for observable readiness, fixed the rows, and registered two zz defects
 it uncovered (stock vi search discards command output when the prompt opens; the dead-pane notice
 spells the signal `term` where the Linux pin prints 15). It was gated first so the stamped sweep
-ran on the repaired fixture: 231 scenarios, 2,742 steps, PASS at `f34b4bd13611`, the first stamp
+ran on the repaired fixture: 231 scenarios, 2,742 steps, PASS at `a3a9d903d6af`, the first stamp
 this box has produced.
 
 The stamp rule was relaxed at fabrico's instruction while the sweep ran ("we don't need to RERUN
-just because I committed some UI changes"): `4ac1d6b3` keeps the stamp, the ancestor and dirty
+just because I committed some UI changes"): `c44432e9` keeps the stamp, the ancestor and dirty
 checks and the fixture-changed refusal, and turns the crates/-changed refusal into a drift
 warning. The gate re-records after every code merge; ordinary pushes to main never force a sweep.
 
@@ -489,7 +489,7 @@ from the JSON files.
 ### 2026-09-05 cycle-14 integration
 
 One Codex gpt-6-astra gate ran alone on Ubuntu at high reasoning. Instrument landed first at
-`22f1a937`, keys second at `6da3635d`, buffers third at `f34b4bd1`. The instrument-only lane
+`f3e9bec6`, keys second at `75d71f0a`, buffers third at `a3a9d903`. The instrument-only lane
 skipped workspace tests and clippy. Both code lanes ran the full workspace gate and clippy;
 keys had no failures, buffers had one loaded history-request failure that passed exact-solo.
 Delta gates covered 184, 216, and 169 scenarios. Instrument chooser-tree/client-format and buffers
@@ -498,10 +498,10 @@ own-conf failures passed solo; source-replay diagnostics passed solo in each gat
 Every reviewer fix landed before its gate. Instrument's stock-array correction records smxx and
 strikethrough at 1/1 on both binaries without the fixture override. Keys' new prefix-i proof passes
 stock and rejects a no-op binding on both binaries. Buffers inherits original `93f90bea` as
-`743c33c9`; the corrected focus assertion passes solo and in the full daemon suite. The combined
+`15b3df84`; the corrected focus assertion passes solo and in the full daemon suite. The combined
 registry needed sorting, and the generated gap report was regenerated. Protocol stays v98.
 
-The full corpus plus attached-client run passed on clean `f34b4bd13611`: 231 scenarios, 2,742
+The full corpus plus attached-client run passed on clean `a3a9d903d6af`: 231 scenarios, 2,742
 steps, four registered known rows. The harness wrote the PASS and commit stamp itself and printed
 `summary current`. Summary SHA-256:
 `eb015c8382850aac3a8d2355fab28296667088c7c67592e8cd6e2c36639a8c2b`.
@@ -515,7 +515,7 @@ Interactive refresh and the 24-name terminal-runtime placeholder contract remain
 open. All lane locks were ledgered and released; the final records commit owns MAIN settlement,
 and TRIAGE records the residuals without changing the F-SPLIT-MUX-*-V5 chain.
 
-Owner commits `7d8ad617`, `edadc089`, `a3b23755`, `7dcce97d`, and `4ac1d6b3` landed during the full run. The records rebased conflict-free onto `4ac1d6b3`; the attached fixture is unchanged. The owner's `4ac1d6b3` makes post-stamp crate changes a warning, so the full run remains recorded at `f34b4bd13611`, with three owner crate commits afterward.
+Owner commits `3c0d6766`, `c64fc256`, `5b7f3106`, `f35c1893`, and `c44432e9` landed during the full run. The records rebased conflict-free onto `c44432e9`; the attached fixture is unchanged. The owner's `c44432e9` makes post-stamp crate changes a warning, so the full run remains recorded at `a3a9d903d6af`, with three owner crate commits afterward.
 The first records push was refused non-fast-forward. A premature local-SHA MAIN ledger entry
 was corrected by an append-only note; the pushed rebased SHA is the final records entry.
 The bounded rebase check passed zz package tests and a fresh build, then six strict
@@ -543,8 +543,8 @@ orchestrator `codex-compat-run-15.py`, run dir `~/dev/zz-run-15`.
   and measured the premise wrong: the pin strftime-expands `%s` inside `#()` before the shell runs,
   so that job's key changes every second. Re-review 01:11 to 01:35: approve-with-fixes (unnamed
   Linux signals still spelled by description, stale registry references).
-- 01:36 to 04:34 gate, alone: config `298e849d` at 02:20 (fast-forward), status `17bc9ee3` at
-  03:03 (rebased), stamped full run without retries, ledger `41acae19` at 04:32. The gate's own
+- 01:36 to 04:34 gate, alone: config `ad4c6947` at 02:20 (fast-forward), status `5a6b7f99` at
+  03:03 (rebased), stamped full run without retries, ledger `36e92116` at 04:32. The gate's own
   follow-ups were the two must-fixes.
 
 Four rejects or must-fixes, all real; two were regressions no lane test covered (reload, EOF drain)
@@ -575,7 +575,7 @@ Tooling lessons, in addition to cycle 14's:
 ### 2026-09-05 cycle-15 integration
 
 Codex gpt-6-astra lanes ran at medium reasoning on the default tier on Ubuntu. One integration
-gate ran alone: config landed at `298e849d`, then status at `17bc9ee3`, each after its own full
+gate ran alone: config landed at `ad4c6947`, then status at `5a6b7f99`, each after its own full
 workspace, clippy, delta and records gate. The gate kept protocol 98 and regenerated gaps.md at
 each rebase conflict; the disjoint source hunks merged without conflicts. Original campaign
 branches remain at their reviewed tips on origin; no force push occurred.
@@ -594,7 +594,7 @@ load failures; status's 236-scenario delta had popup-menu-policy, copy-mode-prom
 background-status-job load failures. Each passed unchanged alone. Source replay passed alone in
 both gates, and the full status attached-client fixture passed before its push.
 
-The final full run passed without retries at clean `17bc9ee34a20`: 238 scenarios, 2,795 steps,
+The final full run passed without retries at clean `5a6b7f99a3e2`: 238 scenarios, 2,795 steps,
 four registered known rows, and attached-client PASS. The harness wrote the stamp and printed
 summary current. Summary SHA-256: `f0ac2b7bda5c2bb3c2835aee89e7666ac367429be9cfd0c69c112b3a048f2b56`.
 
@@ -609,8 +609,8 @@ MAIN owns the records settlement, and TRIAGE preserves the F-SPLIT-MUX-*-V5 chai
 ### 2026-09-07 cycle-18 integration
 
 Two Claude Code Opus 5 lanes at xhigh, one adversarial review each, one integration gate alone, the whole
-cycle on the ubuntu box. The raw TUI client work landed at `86e0f6ac` and the buffer wording plus
-background if-shell order at `21bce9ae`, each after its own gate, client first. The protocol was not
+cycle on the ubuntu box. The raw TUI client work landed at `71521d24` and the buffer wording plus
+background if-shell order at `fc432aa7`, each after its own gate, client first. The protocol was not
 bumped: `PROTOCOL_VERSION` stays 99, the client lane's last group could not reach the options it would
 have had to publish, and the mux lane's new wording rides `ServerError::InvalidCommand`, which
 `tmux_message` already renders. Four post-freeze items closed, three remain.
@@ -643,7 +643,7 @@ line turns both scenarios red.
 
 The stamped full run finally moved on its fifth attempt, and the corpus is re-stamped on the ubuntu box
 for the first time since cycle 16: 254 scenarios, 3,086 steps, the four registered known rows and every
-other channel clean, attached-client `PASS`, recorded at `075a00849629`. The SHA-256 of
+other channel clean, attached-client `PASS`, recorded at `9d89939fbb34`. The SHA-256 of
 `compat/results/summary.md` is `fe76abeafaa9a14fb4190dbd199e7c780ea82df14b9cad94888c0c74d9e758e6`. The four earlier attempts are worth
 writing down because three of them were the gate's own doing. The first was launched under `env -i` with
 `PATH=/usr/local/bin:/usr/bin:/bin`, which is not this box: `nvim` lives in `~/.local/bin`, so
@@ -667,7 +667,7 @@ six CPU spinners fixed zz drops to 0 of 8 and the pin to 2 of 8, so neither coll
 a saturated box.
 
 One red belonged to nobody in the cycle. `cargo clippy -p zz` was hard red on Linux at the owner's
-`466829a6`, `needless_pass_by_value` on the tray host's event receiver in the new daemon-side tray, which
+`15c9cbf4`, `needless_pass_by_value` on the tray host's event receiver in the new daemon-side tray, which
 is `#[cfg(not(target_os = "macos"))]` and so invisible from a mac. It was proved red in a worktree at that
 commit and fixed by taking the receiver by reference, because the mux lane's own clippy stage would
 otherwise have failed on somebody else's code. The owner pushed twice more during the cycle, v0.5.0 and
@@ -681,9 +681,9 @@ design front rather than a lane, the raw TUI's per-client theme colours, and the
 ### 2026-09-07 cycle-17 integration
 
 Claude Code Opus 5 lanes ran at xhigh on Ubuntu and were frozen mid-flight before the gate; one
-integration gate resumed them alone on the macbook. Wire control claims landed at `616d691f`, pane
-runtime facts at `0e9394b5`, the TUI status and menu work at `39d290d5`, then the census close at
-`35781cb6`, each after its own gate. The wire lane bumped the protocol 98 to 99 with three pure
+integration gate resumed them alone on the macbook. Wire control claims landed at `d3d5307b`, pane
+runtime facts at `b939c7ab`, the TUI status and menu work at `1f207b26`, then the census close at
+`f779b091`, each after its own gate. The wire lane bumped the protocol 98 to 99 with three pure
 appends - `stdout_claim` on `CommandResponse::Success`, `producer` on `EventPayload::Clipboard`, and
 the `EnvironmentRequest`/`EnvironmentResponse` pair - and no other lane touched the wire, so the
 three later rebases landed on a changed tree without a single compile break. `knowledge/tmux/gaps.md`
@@ -723,12 +723,12 @@ cycles of corpus runs never saw it. Registered as `config.background-if-shell-or
 fixture now stages whichever single tool its platform lets match.
 
 The stamped full run is the one thing this cycle did not deliver. It covers 251 scenarios and 3,080
-steps, and the attached-client fixture PASSED at the merged tip `35781cb6e92d`, but eleven corpus
+steps, and the attached-client fixture PASSED at the merged tip `f779b091af2a`, but eleven corpus
 rows diverge on the macbook - the keys fixtures that press keys on an attached client, `census-hooks`,
 `smoke/pane-tmux-path`, `smoke/source-file-byte-name` on an APFS volume that refuses non-UTF-8 names,
 and three plugin runtimes - and every one of them diverges identically in a baseline worktree built
 at the pre-merge `origin/main`. `check_summary` therefore refused the write and the canonical summary
-keeps the Ubuntu stamp `d5a7153f04c5`. No PASS was hand-edited. The first attempt also died at
+keeps the Ubuntu stamp `4be2c8bf7a63`. No PASS was hand-edited. The first attempt also died at
 scenario 79 when the machine ran out of disk with 1.0 GiB free; reclaiming the shared target's
 12 GiB incremental cache and restarting from zero was enough.
 
@@ -744,8 +744,8 @@ row the client lane claimed to fix.
 ### 2026-09-06 cycle-16 integration
 
 Claude Code Opus 5 lanes ran at xhigh on Ubuntu. One integration gate ran alone: daemon open
-groups landed at `ff3c0fa1`, the desktop tmux client at `fefb437e`, then proof debt at
-`d5a7153f`, each after its own gate. Protocol stays 98 and no lane touched the wire. Only
+groups landed at `2a3a2ad0`, the desktop tmux client at `365f737c`, then proof debt at
+`4be2c8bf`, each after its own gate. Protocol stays 98 and no lane touched the wire. Only
 `knowledge/tmux/gaps.md` conflicted on the rebases, regenerated with `tmux-tracker.py
 write-report` each time; the registry records merged by id without a manual merge. Original
 campaign branches remain at their reviewed tips on origin, and no force push occurred.
@@ -789,7 +789,7 @@ tuple. `smoke/source-replay-diagnostics` ran solo in each gate, and `smoke/pane-
 twice under four-way shard load and passed solo in 34 seconds. `compat/status-row.sh` still
 reports 9 of 9 rows differing, with verdicts identical to the pre-merge main binary.
 
-The final full run passed without retries at clean `d5a7153f04c5`: 249 scenarios, 3,073 steps,
+The final full run passed without retries at clean `4be2c8bf7a63`: 249 scenarios, 3,073 steps,
 four registered known rows, and attached-client PASS. The harness wrote the stamp and printed
 summary current. Summary SHA-256:
 `d1af67b9adcb23a29fcbad655b6282ea68102cae696fa17c8258baaf57f2baa0`.
@@ -806,7 +806,7 @@ released; MAIN owns the records settlement, and TRIAGE preserves the F-SPLIT-MUX
 ## 2026-09-06: cycle 16 on the ubuntu box, back on Opus 5 through the Workflow tool (08:42 to 17:41)
 
 Fabrico set two things before launch: the desktop keeps its native status bar (recorded on
-`presentation.native-status` as `presentation:gui-status-row-native`, commit `75aebe21`), and the
+`presentation.native-status` as `presentation:gui-status-row-native`, commit `12eb72e8`), and the
 cycle runs on Opus 5 at xhigh rather than Codex. The runner went back to the workflow-script shape of
 cycles 5 to 13, `opus-compat-run-16.js`, with one addition: a fix stage by a fresh agent between a
 rejected review and a re-review, inside the pipeline. It never fired; all three reviews were
@@ -818,8 +818,8 @@ them); daemon worker to 12:02, review at 12:40 (the once-only stdout claim). Gat
 daemon integrated by 13:40 with two fixes of its own, desktop at 14:08 after the menu fix and three
 red `cli_binary` status tests, proof at 14:53, then the stamped full run. The first full run died at
 scenario 137 on the gate's own 48-minute inner timeout and was restarted with two hours; the second
-passed first time (249 scenarios, 3,073 steps, PASS at `d5a7153f04c5`), records `e81e7337` pushed.
-Fabrico pushed `fb5415dd` to main mid-cycle; the daemon rebase took it cleanly.
+passed first time (249 scenarios, 3,073 steps, PASS at `4be2c8bf7a63`), records `d4190bd3` pushed.
+Fabrico pushed `7db7421c` to main mid-cycle; the daemon rebase took it cleanly.
 
 Lessons for the runner. Workers and reviewers never ran `cargo test -p zz`, so the integration
 tests under crates/zz/tests were the gate's to discover red twice; that command joins the worker
@@ -838,7 +838,7 @@ Four lanes this time, all Opus 5 at xhigh through `opus-compat-run-17.js`: wire 
 protocol bump, 98 to 99, carrying the sourced stdout claim kind, the OSC 52 producer and control
 environment expansion, plus the percent-word parse error and the hook-before-rename order), panes
 (the new `pane.runtime-facts` group the orchestrator split out of `plugins.runtime-paths` before
-launch in records commit `8e72a1b9`, plus the zz-tui clippy dead code), client (the raw TUI rows and
+launch in records commit `fa7ce605`, plus the zz-tui clippy dead code), client (the raw TUI rows and
 status-left, a new `tui.status-row` group from the status-row tool's classes, the desktop menu
 mouse arm) and proof (oh-my-tmux prefix y, the census close by citation, the theme stance). The
 panes lane got a fresh worktree with a btrfs reflink copy of the gate's 70 GB target directory,
@@ -857,7 +857,7 @@ locks with the state in their reasons, exported the journal's cached reports and
 `cycle-17-reports.json`, and generated `opus-compat-run-17b.js` from the cycle script with those
 reports inlined, a resume pass for the wire lane, and a shared review target for a machine with no
 warm builds. HANDOFF.md's top section is the resume recipe. Nothing merged; `origin/main` stayed at
-fabrico's `2fc74cc7`.
+fabrico's `bf683c87`.
 
 Lessons. A freeze costs one insurance push per unreported lane and a journal export; the Workflow
 journal is the only place a finished worker's report lives, so export it before the machine goes.

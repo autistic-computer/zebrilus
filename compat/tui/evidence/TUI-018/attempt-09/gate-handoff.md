@@ -1,6 +1,6 @@
 # TUI-018 fourth-pass handoff
 
-Review production revision c3104379 on origin/main d1508a16. The first matrix declaration is 87ceca1b and the execution-sabotage correction is 14e48ede. This is worker evidence, not independent approval. TUI-018 remains at review; the lane reports partial.
+Review production revision c3104379 on origin/main 04fe4a7d. The first matrix declaration is 87ceca1b and the execution-sabotage correction is 14e48ede. This is worker evidence, not independent approval. TUI-018 remains at review; the lane reports partial.
 
 The matrix has 54 cells: 50 asserted, three recorded under TUI-018, and one registration of the existing consumed-input cap decision. The first 51 cells preceded the production fixes. Three diagnostic-newline neighbours were then declared and measured red before their correction. Each asserted cell has a one-sided execution sabotage. All three closing stream runs pass 116 assertions, three records and five existing decisions. Each of the three self-checks catches 88 sabotages and passes two equivalences, including all 50 matrix sabotages. matrix-coverage.json names every cell; stream-proof.json identifies the six completed runs and their actual zero statuses.
 

@@ -3,7 +3,7 @@
 Everything here was produced on 2026-09-20 on the macbook (macOS 27.0 build
 26A428, Apple M4 Max, 16 cores), the platform that recorded the expiry, from
 the shared checkout `/Users/demfabris/dev/zz` at
-`3e7f21e8ddce1f403330654b3cf91cf38ca29b7a` (equal to `origin/main`), clean apart
+`f1e18ebaed66b707b67c846df29147467c4d67c0` (equal to `origin/main`), clean apart
 from this directory, against pinned tmux
 `d77c9dc6aa021e4bc61f0da128c591af695e6466`. Every file is a real run.
 

@@ -160,7 +160,7 @@ holding 446 items: 3 open, 0 blocked, and 43 accepted, plus 199 closed records.
 The frozen meter remains 304/304 items across 65/65 groups; 3 post-freeze items remain
 open across 3 groups. Ledger settlement is 242/245 known groups (98.8%). The full run covers
 254 scenarios / 3,086 steps / 4 registered known rows; the attached-client fixture passed and the
-canonical summary was re-stamped on the ubuntu box at `075a00849629`, the first re-stamp since cycle 16.
+canonical summary was re-stamped on the ubuntu box at `9d89939fbb34`, the first re-stamp since cycle 16.
 Summary SHA-256: `fe76abeafaa9a14fb4190dbd199e7c780ea82df14b9cad94888c0c74d9e758e6`.
 The open groups are `desktop.overlay-consumers`, `tui.client-output-queue-budget`, `tui.status-row`.
 
@@ -355,7 +355,7 @@ and `formats.modifier-fidelity` closed on 2026-09-02. Native typed producers rem
 `formats.native-typed-context-producers` (`native`, accepted). Slice 10v changes no protocol,
 snapshot, differential scenario, or accepted artifact. The resumed rerank corrected the stale
 parser-abort ledger item because first-diagnostic whole-file abort was already implemented and
-tested. Commit `0c31ef71` contains slices 10w through 10ag. At that checkpoint, the tracker had 87
+tested. Commit `f660ce1c` contains slices 10w through 10ag. At that checkpoint, the tracker had 87
 active groups with 594 items and 116 closed records: 45 open, 20 blocked, and 22 accepted, for 138
 of 203 groups resolved (68.0%). The persisted accepted slice 10ag artifact covers 103
 scenarios and 1,630 steps with attached-client `PASS`, exactly two approved GEO rows, every other
@@ -489,7 +489,7 @@ Use the registry vocabulary consistently:
 
 `compat/results/summary.md` is the persisted acceptance artifact. It records 282 scenarios and 3,966
 steps against the tmux 3.8 tag (`7f2a35ad`), from the full strict run with `--attached-client` at
-`f03800f69` on 2026-10-11. Every ordinary row is clean; the ten registered `known/` rows carry their
+`72b2cd2af` on 2026-10-11. Every ordinary row is clean; the ten registered `known/` rows carry their
 approved differences (seven display-popup and jobs rows, scrollbar columns, mixed spread and terminal
 runtime). The attached-client footer is a real `PASS` from that run, stamped with its commit.
 
@@ -826,7 +826,7 @@ compat/run.sh --check-summary
 machine; before 2026-10-29 a run under a `en_US` locale reshuffled rows such as `format-window-*` and
 `formats-values`. Any change to `compat/attached-client.sh`, comments included, invalidates the stamp:
 the 2026-10-29 comment strip did, and main's Linux CI failed at this check until the summary was
-re-stamped on the ubuntu box at `940a6b3a360e` (282 scenarios, 3,966 steps, nothing retried; summary
+re-stamped on the ubuntu box at `6d4198c4fbf3` (282 scenarios, 3,966 steps, nothing retried; summary
 SHA-256 `37b878dd10cdbb5b0405556cafd7a8bd5c81ee6fdf2fbb7b33e1af2b6247c7d2`).
 
 ## Startup diagnostic differential

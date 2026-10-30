@@ -4,7 +4,7 @@ PRETTY_NAME="Ubuntu 26.04.1 LTS"
 NAME="Ubuntu"
 cpu: 8 cores  mem: 30G
 repo: /home/demfabris/dev/zz-tui-introspection (worktree of /home/demfabris/dev/zz)
-base merge-base: bb2098e34193446d02e073c29b237ee64685417b
+base merge-base: c6782e36da16292e004a220ef5206f2dbab43580
 branch tip before the evidence commit: 260f343050e1744e53e321249d9fc70b2c4d7f53
 review tip this pass builds on: 8d6944cf
 pin: /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux d77c9dc6

@@ -13,8 +13,8 @@ compat/fetch-tmux.sh: cache verified, no rebuild
 
 [source revision]
 worktree: /Users/demfabris/dev/zz
-git rev-parse HEAD: 3e7f21e8ddce1f403330654b3cf91cf38ca29b7a
-origin/main: 3e7f21e8ddce1f403330654b3cf91cf38ca29b7a
+git rev-parse HEAD: f1e18ebaed66b707b67c846df29147467c4d67c0
+origin/main: f1e18ebaed66b707b67c846df29147467c4d67c0
 git status --short:
 ?? compat/tui/evidence/TUI-013/
 (end git status)

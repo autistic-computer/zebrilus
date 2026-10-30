@@ -153,7 +153,7 @@ The GUI is unchanged: it never sends the new message, it reads
 
 ## GATE ADDENDUM, 2026-09-14, cycle 6 caps
 
-The lane tip `1d7f6d0e` was rebased onto `origin/main` `4f3251a1` (which already
+The lane tip `1d7f6d0e` was rebased onto `origin/main` `ba59cec1` (which already
 carries the cycle 6 keys lane and the orchestrator's `verify-claims.py` landing)
 and pushed. Two conflicts, both resolved by union and neither inside a file this
 lane owns alone: `knowledge/protocol/wire-protocol.md`, where the keys lane's
@@ -164,7 +164,7 @@ regenerated from the merged `compat/tmux-gaps.json` with
 `python3 compat/tmux-tracker.py write-report`. `PROTOCOL_VERSION` is still 102.
 
 One commit was added on top of the lane's five before the records commit:
-`a8a97722`, the reviewer's nit 1, a doc sentence in
+`a2982b7f`, the reviewer's nit 1, a doc sentence in
 `crates/zz-protocol/src/message.rs` that contradicted both `wire-protocol.md` and
 the code. Everything the gate ran is in `review.md` and in these files:
 

@@ -16,7 +16,7 @@
     {
       "obligation": "TUI-011",
       "severity": "must-fix",
-      "description": "compat/tui/evidence/TUI-011/attempt-01/environment.txt attests the wrong revision. It records `revision 94d0da5d8a40dd6a49e5b76116419b61e4415be7` (that is origin/main, the BASE) and `worktree 3 modified paths at the time of writing`, while every run it heads was taken at 67d9e3e7 or 15ef0463. On this box a cargo debug build of zz is not bit-reproducible, so the revision plus a clean worktree is the only thing that attests which binary produced the .txt files; a BASE sha and a dirty tree attest nothing. FAILURE: a later reader wanting to reproduce run-1.txt checks out 94d0da5d as environment.txt tells them to, builds, runs the fixture, and gets nine DIFFs and exit 1 instead of the recorded `all 57 asserted comparisons identical`, because 94d0da5d is the revision without the landing.",
+      "description": "compat/tui/evidence/TUI-011/attempt-01/environment.txt attests the wrong revision. It records `revision ff07513861a608379b6b51b9f63dd2f902cec67b` (that is origin/main, the BASE) and `worktree 3 modified paths at the time of writing`, while every run it heads was taken at 67d9e3e7 or 15ef0463. On this box a cargo debug build of zz is not bit-reproducible, so the revision plus a clean worktree is the only thing that attests which binary produced the .txt files; a BASE sha and a dirty tree attest nothing. FAILURE: a later reader wanting to reproduce run-1.txt checks out ff075138 as environment.txt tells them to, builds, runs the fixture, and gets nine DIFFs and exit 1 instead of the recorded `all 57 asserted comparisons identical`, because ff075138 is the revision without the landing.",
       "suggested_fix": "Rewrite environment.txt with the tip sha (15ef04639a8d9bc486918efa63184344f36b233f) and a `git status --short` line showing a clean worktree, or add a second block recording the revision each run was taken at."
     },
     {
@@ -51,7 +51,7 @@
     }
   ],
   "checks_run": [
-    "fetched origin, checked out 15ef04639a8d9bc486918efa63184344f36b233f --detach in /home/demfabris/dev/zz-tui-roster-review; merge-base with origin/main is exactly 94d0da5d, so three-dot and two-dot diffs coincide",
+    "fetched origin, checked out 15ef04639a8d9bc486918efa63184344f36b233f --detach in /home/demfabris/dev/zz-tui-roster-review; merge-base with origin/main is exactly ff075138, so three-dot and two-dot diffs coincide",
     "touched crates/**/*.rs and Cargo.* then built: cargo build -p zz through the two-slot lock at MemoryMax=5G, exit 0 (the GUI crate compiles at the tip)",
     "compat/tui-client-commands.sh at the tip, run 1: exit 0, 'all 57 asserted comparisons identical, 37 recorded not asserted (0 for a sibling lane)', 2m04s",
     "compat/tui-client-commands.sh at the tip, run 2 (after rebuilding the tip binary): exit 0, same summary line",
@@ -87,7 +87,7 @@
 
 Verdict was approve-with-fixes with three must-fixes, all three applied.
 
-### Must-fix 1 and 2 and 3, commit c9bb60fa "Retake TUI-011's evidence at the gate tip"
+### Must-fix 1 and 2 and 3, commit 3d508d26 "Retake TUI-011's evidence at the gate tip"
 
 before-the-landing.txt was the wrong file under the right name: an earlier
 revision of the fixture (it printed DIFF for two cases that are `record` at the
@@ -116,7 +116,7 @@ The count is corrected from eight to nine in TUI-011's evidence_note and in
 notes.md, both naming lock-client-current, so a later lane on the lock family
 knows its current-client resolution was in the set the landing moved.
 
-environment.txt attested 94d0da5d (BASE) with a dirty tree while heading runs
+environment.txt attested ff075138 (BASE) with a dirty tree while heading runs
 taken with the landing in. Rewritten with the revision the runs were taken at,
 a clean worktree, and an explicit note of the single file that differs for
 before-the-landing.
@@ -126,7 +126,7 @@ keeping every target line and every result line: the lib target's 893 tests are
 now readable, alongside ten integration binaries, zz's 638 plus cli_binary's
 125, workspace clippy and the build.
 
-### Nit 4, taken not left, commit 662f7e8a
+### Nit 4, taken not left, commit caacb838
 
 Of the four nits the reviewer left, one is a hole in the deliverable rather than
 a matter of taste: the roster header marks `show-hooks [-Bgpw] [-t]` PROVED and

@@ -2,7 +2,7 @@
 
 Lane `campaign/tui-superset`, cycle 6, gated third and last in the order input, roster,
 superset. Gate worktree `/home/demfabris/dev/zz-gate-tui7`, gate branch `gate-superset`,
-rebased onto `origin/main` 686b7be6 (input at 34e954d8 and roster at 686b7be6 already in).
+rebased onto `origin/main` 3645b454 (input at 14bd29e6 and roster at 3645b454 already in).
 
 ## The reviewer's verdict, verbatim
 
@@ -14,7 +14,7 @@ rebased onto `origin/main` 686b7be6 (input at 34e954d8 and roster at 686b7be6 al
     {
       "obligation": "TUI-012",
       "severity": "must-fix",
-      "description": "compat/tui/evidence/TUI-012/attempt-01/environment.txt records `head: 94d0da5d8a40dd6a49e5b76116419b61e4415be7`, which is origin/main, not any commit on campaign/tui-superset. `git log --follow` shows environment.txt was written once, in 58931ca3, and never re-stamped; the three run files and the self-check were then REPLACED in e9f56a5d ('Drive every declared verb through a user binding too', +236 lines of fixture, run counts 143 -> 189). So the environment file attests a revision at which compat/tui-superset.sh does not exist, while the runs beside it were produced by a later fixture from a dirty worktree. The file's own attestation model says it plainly ('a debug build is not bit-reproducible here, so the revision plus a clean worktree attests it'), and the revision it names cannot attest anything here. The runs themselves are real: my run of the fixture at d8de8190 is byte-identical to the recorded tui-superset.run-1.txt.",
+      "description": "compat/tui/evidence/TUI-012/attempt-01/environment.txt records `head: ff07513861a608379b6b51b9f63dd2f902cec67b`, which is origin/main, not any commit on campaign/tui-superset. `git log --follow` shows environment.txt was written once, in 58931ca3, and never re-stamped; the three run files and the self-check were then REPLACED in e9f56a5d ('Drive every declared verb through a user binding too', +236 lines of fixture, run counts 143 -> 189). So the environment file attests a revision at which compat/tui-superset.sh does not exist, while the runs beside it were produced by a later fixture from a dirty worktree. The file's own attestation model says it plainly ('a debug build is not bit-reproducible here, so the revision plus a clean worktree attests it'), and the revision it names cannot attest anything here. The runs themselves are real: my run of the fixture at d8de8190 is byte-identical to the recorded tui-superset.run-1.txt.",
       "suggested_fix": "Re-stamp environment.txt with the branch tip sha (and the worktree state at the moment of the recorded runs), then re-run the trackers and commit. No re-run of the fixture is needed - the recorded output reproduces exactly at the tip."
     },
     {
@@ -38,17 +38,17 @@ The reviewer's `checks_run` and `notes` are reproduced in full at the end of thi
 
 ## What the gate did
 
-### Must-fix 1, environment.txt. FIXED, in its own commit 48d4bd2d.
+### Must-fix 1, environment.txt. FIXED, in its own commit be2a31e3.
 
 PROBE, RE-RUN AS PROOF rather than taken on trust. At the rebased tip:
 `git log --follow origin/main..HEAD -- .../environment.txt` returns exactly one commit
-(c41aeca5, the rebased f-mapping of the reviewer's 58931ca3), while the run files return two
-(c41aeca5 and 6cdb5acc, the rebased e9f56a5d) - so the environment file really was written once
-and the runs really were replaced under it. `git cat-file -e 94d0da5d:compat/tui-superset.sh`
-fails with "exists on disk, but not in 94d0da5d": the revision the file attested carries no
+(463e4551, the rebased f-mapping of the reviewer's 58931ca3), while the run files return two
+(463e4551 and 8e22ad8d, the rebased e9f56a5d) - so the environment file really was written once
+and the runs really were replaced under it. `git cat-file -e ff075138:compat/tui-superset.sh`
+fails with "exists on disk, but not in ff075138": the revision the file attested carries no
 fixture at all. Defect confirmed exactly as described.
 
-The file now names the gate tip cf4a74be, states `git status --short` empty at every run,
+The file now names the gate tip c024b00c, states `git status --short` empty at every run,
 says plainly which files are the lane's (its three cargo captures, taken at its own tip) and
 which are the gate's (every fixture run), and records that the two commits the gate adds touch
 only evidence, the ledger and the generated reports, so the runs stand at the final tip.
@@ -153,7 +153,7 @@ they stand and did not turn any into a change, for these reasons:
 
 ## The reviewer's checks_run, verbatim
 
-- SETUP: fetched origin (main 94d0da5d, campaign/tui-superset d8de8190); merge-base = 94d0da5d, so main has not moved under the lane; REVIEWDIR /home/demfabris/dev/zz-tui-superset-review checked out --detach at d8de8190, git status clean
+- SETUP: fetched origin (main ff075138, campaign/tui-superset d8de8190); merge-base = ff075138, so main has not moved under the lane; REVIEWDIR /home/demfabris/dev/zz-tui-superset-review checked out --detach at d8de8190, git status clean
 - BUILD: touched crates/**/*.rs and Cargo.* in the review worktree, CARGO_TARGET_DIR=/home/demfabris/dev/zz-tui-superset/target, cargo build -p zz --jobs 4 through the two-slot flock with MemoryMax=5G -> exit 0 in 51.7s
 - ZONES: git diff origin/main...HEAD touches only compat/tui-superset.sh (new, 1545 lines), compat/tmux-gaps.json, compat/tui/campaign.json, compat/tui/evidence/TUI-012/attempt-01/*, knowledge/tmux/gaps.md, knowledge/tmux/tui-parity.md. `git diff origin/main...HEAD -- crates/` is EMPTY: no source file changed anywhere, so input.rs, app.rs, tty.rs and terminal_event.rs are untouched and there are no render.rs hunks to name
 - WIRE: no crate change at all, so PROTOCOL_VERSION stays 102, no message/field/variant appended, nothing to add to the v102 history line. Rule satisfied vacuously

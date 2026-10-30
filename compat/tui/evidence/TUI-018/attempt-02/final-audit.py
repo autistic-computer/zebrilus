@@ -1,6 +1,6 @@
 import json, subprocess
 from pathlib import Path
-base='89e480444b9e0bc33bc3ec3df34d1d353d7d9be6'
+base='5a250fabbd9b1360b2aa37bf1f1a5efd5bcc9d2a'
 p='compat/tui/campaign.json'
 a=json.loads(Path(p).read_text()); b=json.loads(subprocess.check_output(['git','show',base+':'+p]))
 def record(x):

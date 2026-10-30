@@ -24,7 +24,7 @@
   "arch": "x86_64",
   "ncpu": 16,
   "python": "3.14.7",
-  "git_sha": "307e85097a1a787e5c2c15244307ccf17796fa02",
+  "git_sha": "8cb0e02378576df709d9f9f6755a7a4556739abd",
   "git_dirty": false,
   "zz_bin": "/home/demfabris/dev/zz-perf-int/target/release/zz_cli",
   "zz_version": "tmux 3.8-zz",
@@ -45,7 +45,7 @@
    "/lib64/ld-linux-x86-64.so.2"
   ],
   "baseline": null,
-  "w0": "/home/demfabris/dev/zz-perf-int/bench/perf/results/baseline-alienware-e8caa445.json",
+  "w0": "/home/demfabris/dev/zz-perf-int/bench/perf/results/baseline-alienware-6c04efeb.json",
   "history_limit": 10000,
   "cpu_source": "clock_getcpuclockid",
   "instructions": true,

@@ -8,7 +8,7 @@ TERM: xterm-ghostty
 locale LANG=en_US.UTF-8 LC_TIME=pt_BR.UTF-8 LC_ALL=unset
 worktree: /home/demfabris/dev/zz-tui-canvas
 tip: 5e96347476b954ee3cee783ca594797fd2a4355f
-base: origin/main 2b040c82b5dcdc8ea97e61bdc39fc409e2d76771
+base: origin/main 8f9daab60d3ffc5c77cf8e9eaf40d0810a48f675
 worktree state at this recording (only this attempt files are untracked):
  M compat/tui/evidence/TUI-004/attempt-01/environment.txt
  M compat/tui/evidence/TUI-004/attempt-01/zz-integration-tests.txt

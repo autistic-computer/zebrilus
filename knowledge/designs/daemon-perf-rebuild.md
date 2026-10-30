@@ -35,16 +35,16 @@ and 1.47 -> 0.68x, `spawn.cpu.split_shell` 1.54 -> 0.99x and 1.02 -> 0.75x, `mem
 -> 9 and 5 -> 5; throughput unchanged at 2.2x (Linux) and 6.6x (Mac) tmux. W3-LOOP step (d), the
 Mutex removal, stays deferred.
 
-2026-10-02: waves 0 to 3 are on main. Wave 1 exited 2026-09-29 (`2d0c2df2`), wave 2 on 2026-10-01
+2026-10-02: waves 0 to 3 are on main. Wave 1 exited 2026-09-29 (`2a59c0cf`), wave 2 on 2026-10-01
 (gates `wave2-<host>-61729102.json`), wave 3 (W3-SHARDS, W3-TUI, W3-LOOP and nine fix lanes) on
-2026-10-02 (gates `wave3-macbook-72593a30.json`, `wave3-alienware-72593a30.json`). Wave 4
+2026-10-02 (gates `wave3-macbook-fbd0fbbc.json`, `wave3-alienware-fbd0fbbc.json`). Wave 4
 (W4-DELIVER, W4-ROWS and the KNOBS, SPAWN, CONTROL and TUI-ECHO lanes, gate `--stage final`) is
 in progress, W4-BINARY closed unmerged; W3-LOOP step (d), the Mutex
 removal, is deferred until after W4-DELIVER. `bench/perf/campaign/HANDOFF.md` has the state, the
 numbers against tmux at each exit, the merge logs, the next steps in order, the macOS-only checks
 and the traps; `bench/perf/campaign/scripts/` has the lane brief generator and the merge checks.
 
-2026-09-30: W2-COPY merged as `40d2dfc2` and W2-FMT as `39cd081b` on `perf/wave2`.
+2026-09-30: W2-COPY merged as `940acb2e` and W2-FMT as `cfc8c8c5` on `perf/wave2`.
 Their as-built sections below record gate, parity and profile evidence. CTRL review fixes
 are committed on `perf/ctrl`; integration validation now includes both lanes. COPY extends
 the daemon write zone for retained watcher events and popup ownership. The release freeze
@@ -67,10 +67,10 @@ The starting profiles put 80-95% of daemon CPU on each hot path in work nobody r
 
 # Baseline
 
-W0: `bench/perf/results/baseline-macbook-e8caa445.json`, a full `--stage baseline` run of the gate
-at e8caa445 on macOS (M4 Max, 16 CPUs) against Homebrew tmux 3.7c (release build,
+W0: `bench/perf/results/baseline-macbook-6c04efeb.json`, a full `--stage baseline` run of the gate
+at 6c04efeb on macOS (M4 Max, 16 CPUs) against Homebrew tmux 3.7c (release build,
 `/opt/homebrew/bin/tmux`), isolated servers, both with history-limit 10000, 1-minute load
-5.68 at the start and 4.48 at the end. `baseline-quick-macbook-e8caa445.json` is the same at
+5.68 at the start and 4.48 at the end. `baseline-quick-macbook-6c04efeb.json` is the same at
 `--quick`, the reference for lane loops. Values are medians; CPU is server CPU.
 
 | Metric id | What | tmux | zz | zz/tmux |
@@ -426,7 +426,7 @@ per-caller reuse).
 
 | Wave | Lanes, in merge order | Merge gate |
 |---|---|---|
-| 0 | W0-GATE, this document | `--stage baseline` full and `--quick` JSON committed as `bench/perf/results/baseline-<host>-e8caa445.json` and `baseline-quick-<host>-e8caa445.json` (W0) |
+| 0 | W0-GATE, this document | `--stage baseline` full and `--quick` JSON committed as `bench/perf/results/baseline-<host>-6c04efeb.json` and `baseline-quick-<host>-6c04efeb.json` (W0) |
 | 1 | W1-FOOTPRINT, W1-PUBLISH, W1-FORMAT, W1-PANE, W1-EXEC, W1-ATTACH | each lane: full run with `--strict`, `--baseline` = previous merge's JSON, W0 picked up automatically; wave exit: `--stage wave1` |
 | 2 | W2-TERM, W2-CTRL (or one lane), W2-HOOKS, W2-FMT, W2-COPY | same chain; wave exit: `--stage wave2` |
 | 3 | W3-SHARDS, W3-LOOP | same chain; wave exit: `--stage wave3` |
@@ -514,9 +514,9 @@ Not built yet (TODO, also listed in `bench/perf/README.md`):
 - TODO: injected RTT in `sockproxy.py` and the report-only `remote` group; the report-only `agent`
   group (fixture ACP provider).
 - Done on 2026-09-29: the gate runs on Linux. Its W0 is
-  `bench/perf/results/baseline-alienware-e8caa445.json` and its quick twin.
+  `bench/perf/results/baseline-alienware-6c04efeb.json` and its quick twin.
 
-Gate (met at e8caa445 on macOS, see Baseline): `--stage baseline` passes; `--stage wave1` and
+Gate (met at 6c04efeb on macOS, see Baseline): `--stage baseline` passes; `--stage wave1` and
 `--stage final` fail on today's binary; full run <= 12 min (about 7), `--quick` <= 3 min (about 2.5); the
 committed W0 JSONs are the Baseline table below; `test_gate.py` covers threshold evaluation, the
 noise policy, the regression rules, the tmux choice and that every gated metric has a final rule.
@@ -816,7 +816,7 @@ As built (branch `perf/publish`), where it departs from the scope above:
   (`a_copy_mode_command_is_visible_to_the_next_command`).
 
 Measured at `--quick` on a loaded host (load 7-22 on 16 CPUs). Before is the W0 quick JSON
-(`baseline-quick-macbook-e8caa445.json`), which a fresh 0e5474db build reproduces: fixed service
+(`baseline-quick-macbook-6c04efeb.json`), which a fresh d777e31e build reproduces: fixed service
 threads 9 -> 6 (main, async-io, signals, accept, timers, status); `mem.threads.p1` 13 -> 10;
 `cli.instr.display.p1` 10.8 -> 7.4 Minstr, `.p20` 29.1 -> 25.8; `chain5.p1` 20.4 -> 9.3, `.p20`
 43.8 -> 32.8; `config.instr.source_1000` 3640 -> 749 Minstr (48 ms CPU, was 228);
@@ -932,7 +932,7 @@ As built (branch `perf/format`):
   `crates/zz-daemon/src/daemon/format_universe_tests.rs` (loop compositions inside `S`/`W`,
   status requests with partial needs, and a status job whose output needs a part the templates
   do not).
-- Measured with `--quick` on the lane base (0e5474db) and on the lane head (instructions are
+- Measured with `--quick` on the lane base (d777e31e) and on the lane head (instructions are
   stable to 1% across hosts and loads; wall and CPU are not): `list-keys` 249 -> 25.1 Minstr at
   p1 and 1128 -> 28.6 at p20; `list-panes -a`, `list-windows -a`, `list-sessions` at s20
   ~123 -> ~14 Minstr each (tmux 4.5, 2.9, 30.6); `display-message` 10.8 -> 7.4 (p1) and
@@ -1042,7 +1042,7 @@ Expected: snapshot builds 71% of detached-pane CPU; RenderState 0.72 MB per 180x
 `ttyname_r` 0.86 ms per spawn; 2.6 ms command-thread block per split; 2 s identity poll; threads 4
 -> 2 per pane; pages 288 MB -> 13-24 MB for 20x12k lines.
 
-Built on `perf/pane` (2026-09-28, on 0e5474db, before the W1-FOOTPRINT merge). Where the build
+Built on `perf/pane` (2026-09-28, on d777e31e, before the W1-FOOTPRINT merge). Where the build
 departs from the scope above:
 
 - Item 1: `publish_views` (behind `publish_active_views`) builds cells only for views whose
@@ -1173,7 +1173,7 @@ departs from the scope above:
   positive pid there, which panicked the watchers of exited panes in debug builds.
 
 Measured with the quick wave1 gate (`--only spawn,chatty,mem,echo,throughput,attach`, load 7-25)
-and a full `--only chatty,mem` run, against `/tmp` before-JSON of 0e5474db (quick) and W0:
+and a full `--only chatty,mem` run, against `/tmp` before-JSON of d777e31e (quick) and W0:
 `spawn.cpu.split_shell` 4.71 -> 2.57 ms (36.8 -> 20.2 Minstr), `spawn.wall.split_empty_P` 2023 ->
 6.3 ms (1.9 ms CPU, 45.4 -> 17.0 Minstr), `spawn.cpu.new_window` 4.94 -> 2.67 ms (in an A/B on one
 isolated daemon each, daemon Minstr per command: split 37.6 -> 21.2, empty split with `-P` 47.1
@@ -1249,10 +1249,10 @@ Missed or handed on:
   path); a tiny dedicated launcher binary would halve that but needs a build step and a file to
   ship.
 - Silent panes keep the command name of their first runtime sync: `zsh -c 'exec sleep 30'`
-  reports `zsh` until the pane prints, on 0e5474db too (tmux reads it live at format time). The
+  reports `zsh` until the pane prints, on d777e31e too (tmux reads it live at format time). The
   runtime sync is W1-PUBLISH's and W1-FOOTPRINT's.
 - `daemon::tests::mode_keys_scope_visible_command_output_separately_from_underlying_copy_mode`
-  takes 30 s on 0e5474db as well: Escape on the copy pane parks the command output, so the test
+  takes 30 s on d777e31e as well: Escape on the copy pane parks the command output, so the test
   only passes when its `sleep 30` pane exits just before the 30 s deadline, and it fails under a
   loaded full-crate run.
 
@@ -1261,10 +1261,10 @@ Checks on macOS: the zz-terminal and zz-daemon suites pass (the daemon suite onc
 zz-terminal on `x86_64-unknown-linux-gnu`. `compat/run.sh` over the whole corpus,
 `attached-client.sh` in all three modes, `tui-copy-mode.sh` (147 cases) and
 `tui-pane-geometry.sh` agree with the pin except for scenarios that diverge the same way on
-0e5474db on this host (`census-hooks` reads the missing `/etc/hostname`, `prompt-history`,
+d777e31e on this host (`census-hooks` reads the missing `/etc/hostname`, `prompt-history`,
 `if-shell-background-order` under load, and smoke `plugin-runtime-vim-tmux-navigator`,
 `resurrect-save`, `source-file-byte-name`, `status-background-jobs`). `tui-choosers.sh` and
-`tui-screen-diff.sh` stop at the same checkpoint on 0e5474db (the pin's session tree never
+`tui-screen-diff.sh` stop at the same checkpoint on d777e31e (the pin's session tree never
 settles; the zz wide-glyph line never settles), and `tui-output-backpressure.sh` reads
 `/proc` and runs only on Linux.
 
@@ -1286,7 +1286,7 @@ watchers are the bulk (`format_option_snapshot`, `publish_snapshot_state` and th
 behind `synchronize_pane_runtime`, W1-PUBLISH and W1-FORMAT, and `terminal_current_command`,
 W1-FOOTPRINT).
 
-Merged onto FOOTPRINT, FORMAT and PUBLISH (`perf/wave1`, merge `fbc4a7ab`, follow-up `1ee89a18`):
+Merged onto FOOTPRINT, FORMAT and PUBLISH (`perf/wave1`, merge `aaab51e7`, follow-up `eee98f02`):
 - The rebase kept PUBLISH's `terminals_mut()` copy-on-write map and its `Command::Settle` arm
   (now in the control-slot loop). PUBLISH's copy-mode `settle()` runs after `inner` is released,
   so it lifts the round-trip guard with `allow_actor_round_trips`.
@@ -1314,7 +1314,7 @@ Merged onto FOOTPRINT, FORMAT and PUBLISH (`perf/wave1`, merge `fbc4a7ab`, follo
   comes from the watcher after `SetViewStream` instead of being ready when the snapshot goes out;
   the TUI repainting everything on each snapshot and placeholder is W1-ATTACH's.
 
-Merge gate (`w1-4-pane-macbook-fbc4a7ab.json`, full, load 4-8 from other sessions, so wall and
+Merge gate (`w1-4-pane-macbook-aaab51e7.json`, full, load 4-8 from other sessions, so wall and
 CPU rows are notes): scroll180 44.2 MiB (tmux 61.4), scroll80 37.9 MiB (tmux 35.4), p20 31.2 MiB,
 tui20 34.4 MiB, 46 threads at p20; chatty steady 2.89% (tmux 2.95%), flip 1.97% (1.97%), hidden
 2.14% (2.37%), instructions below tmux in all three; split_shell 6.9 Minstr and 5.3 ms,
@@ -1342,13 +1342,13 @@ printing 41%, the memset of the reused page 22% (the kernel's page zeroing did t
 VT parsing and dispatch about 15%, `cursorScrollAbove` 7%.
 
 Mac check and trim fix (2026-09-30, macbook): the fork landed as `713374af` (`zz-2026-09-29`,
-pinned in `02c78e9f`). Its trim picked the released cells as those past `size.rows * cols`, but
+pinned in `ee3476ea`). Its trim picked the released cells as those past `size.rows * cols`, but
 `eraseRows` swaps row headers without moving cells, so after a partial history erase (a shell
 `clear` sends ED 3) the live rows point at the blocks the trim released: blank on Linux one idle
 second later, out of the footprint on macOS. `c3941417` (`zz-2026-09-30`) starts the trim after
 the highest block a live row references; zz-terminal's `a_cleared_screen_survives_idle_compression`
 fails on the old pin when the discard zeroes the range (as on Linux) and passes on the fix. Gate
-`wave1-macbook-02c78e9f.json`: detached ASCII 243 -> 310 MB/s, unicode 104 -> 122 MB/s, scroll180
+`wave1-macbook-ee3476ea.json`: detached ASCII 243 -> 310 MB/s, unicode 104 -> 122 MB/s, scroll180
 38.7 -> 35.3 MiB, scroll80 32.8 -> 28.5 MiB (the scroll rows never erase history, so the old trim
 was right there).
 
@@ -1442,7 +1442,7 @@ provenance, daemon-upgrade mismatch tests, the concurrency tests in item 4, repe
 Expected: removes the hello build (47-51%), unregister wakeups (8%), thread churn (5-10%), 2 of 3
 round trips, 14.6 ms of retry slack and 3.8 ms of fsync on cold start.
 
-Built on `perf/exec` (2026-09-28), rebased onto `perf/wave1` ba4f4bd8 (FORMAT and PUBLISH
+Built on `perf/exec` (2026-09-28), rebased onto `perf/wave1` 98c7507c (FORMAT and PUBLISH
 merged) after review. Where the build departs from the scope above:
 
 - Wire (appended to `ProtocolMessage`, new module `zz-protocol/src/exec.rs`): `Exec(ExecRequest)`
@@ -1561,7 +1561,7 @@ merged) after review. Where the build departs from the scope above:
   measured 0.2 ms (clonefile 80 us, directory and script 110 us).
 
 Measured with the quick gate (`--only cli,cold,spawn,control,config`, stage wave1) on this
-macbook at load 10-37 with other lanes building, before (`05bd078a`) -> after (`756498e1`), tmux
+macbook at load 10-37 with other lanes building, before (`7e269ec2`) -> after (`756498e1`), tmux
 in the same run. Instructions: `cli.instr.display.p1` 10.3 -> 2.78 Minstr (tmux 0.49),
 `.show_options.p1` 10.4 -> 2.80, `.has_session.p1` 9.7 -> 2.17, `.send_keys.p1` 9.77 -> 2.23,
 `.select_pane.p1` 9.72 -> 2.19, `.display.p20` 28.6 -> 6.0, `.has_session.p20` 25.6 -> 3.06,
@@ -1611,15 +1611,15 @@ pre-campaign `main` binary on this host (`census-hooks` needs `/etc/hostname`, `
 11 and 5 cases as `main` on this host; `compat/startup-diagnostics.sh` passes 8/8. Not run:
 `compat/packaged-cli.sh` (needs a bundle).
 
-After review (rebased onto ba4f4bd8, the fixes above, `LAST` and the shared stream), quick gate
-against `w1-2-format-macbook-e386dc53.json` at load 4-5, W1-2 -> this branch, tmux in the same
+After review (rebased onto 98c7507c, the fixes above, `LAST` and the shared stream), quick gate
+against `w1-2-format-macbook-ed3e30b5.json` at load 4-5, W1-2 -> this branch, tmux in the same
 run: `cli.instr.display.p1` 6.94 -> 0.217 Minstr (tmux 0.485), `.chain5.p1` 0.509 (tmux 0.929),
 `.display.p20` 10.4 -> 1.08 (tmux 0.87); `cli.cpu.display.p1` 0.74 -> 0.109-0.117 ms (floor 0.25,
 passes); `cli.wall.display.p1` 0.63x tmux; `cold.wall.new_session` 10.5-10.9 ms (tmux 12.5);
 `spawn.cpu.kill_pane` 0.42-0.44 ms and 0.92 Minstr (was 7.66); `config.cpu.source_1000` 8.4 ms.
 `control.output_mbps` read 85.5 once and 103.8-105.3 in three reruns (noise; EXEC does not touch
 that path). `throughput.detached.ascii` interleaved against a build of the wave1 tip itself:
-160-246 MB/s (median 222) for this branch, 203-249 (median 225) for ba4f4bd8, so the drop from
+160-246 MB/s (median 222) for this branch, 203-249 (median 225) for 98c7507c, so the drop from
 W1-2's 271 is not this lane's. Wire per `display-message -p x` through `bench/perf/sockproxy.py`:
 one connection, 4.2 KB up (a full shell environment), 35 B in 2 frames down. The daemon ends at
 11 threads after the gate's commands (`mem.threads.p1`).
@@ -1652,9 +1652,9 @@ real `zz wait-for` kept running. Killing the CLI process itself drops the waiter
 `CommandResponse` frames, not `ExecOutput`; `ExecResumeKind` has no in-place attach upgrade yet),
 and the pinned wrapper path is `TmuxShimGuard.executable`.
 
-Merged onto FOOTPRINT, FORMAT, PUBLISH and PANE (`perf/wave1`, merge `418161c7`). The rebase
+Merged onto FOOTPRINT, FORMAT, PUBLISH and PANE (`perf/wave1`, merge `5dbb3523`). The rebase
 dropped the lane's `TerminalSession::barrier` for PUBLISH's `settle`, which is the same request
-(`e54987ea`). Merge gate (`w1-5-exec-macbook-418161c7.json`, full, load 4-5), W1-4 -> merge, tmux
+(`687bf448`). Merge gate (`w1-5-exec-macbook-5dbb3523.json`, full, load 4-5), W1-4 -> merge, tmux
 in the same run: `cli.cpu.display.p1` 0.61 -> 0.111 ms (tmux 0.100), `cli.cpu.display.p20` 0.85
 -> 0.117 ms (tmux 0.143, floor 0.40 now passes), `cli.cpu.list_panes_a.s20` 1.11 -> 0.217 ms and
 `list_windows_a.s20` 1.07 -> 0.175 ms (both below tmux), so PANE's `known_views` removed the
@@ -1725,8 +1725,8 @@ the duplicates); zz-tui tests; `python3 compat/tui/tracker.py check` and every c
 Expected per attach: 69 KB duplicate Full, a 2.2 KB Snapshot and 9 blank repaints (4 panes), one
 72 KB wrong-size Full (new-session), two extra connections; 29 write syscalls -> ~2.
 
-As built (branch `perf/attach`, on perf/wave1 at 0f33e06d, merged with W1-PANE at fbc4a7ab,
-W1-EXEC at 418161c7 and the Linux handoff head 13870a0b; fix pass verified on Linux on 2026-09-29),
+As built (branch `perf/attach`, on perf/wave1 at 04c54d87, merged with W1-PANE at aaab51e7,
+W1-EXEC at 5dbb3523 and the Linux handoff head b6577d73; fix pass verified on Linux on 2026-09-29),
 where the build departs from the scope above:
 
 - Item 1: `send_attached` calls `send_resync_as(.., ResyncScope::Attach)`: no Snapshot, and an
@@ -1870,8 +1870,8 @@ where the build departs from the scope above:
   - Comments the lane had added to Rust sources were removed (house rule).
 - Measured on Linux (alienware, i7-11800H, tmux 3.7c, load 4-6 on 16 CPUs while another lane
   compiled; `--quick --only attach,echo,throughput,chatty`, user-space instructions). Base is a
-  perf/wave1 build at 13870a0b in the same session (it has the THP fix; the committed fold JSON
-  `w1-5-fold-alienware-307e8509.json` does not, and its `attach.cpu` carries THP page faults:
+  perf/wave1 build at b6577d73 in the same session (it has the THP fix; the committed fold JSON
+  `w1-5-fold-alienware-8cb0e023.json` does not, and its `attach.cpu` carries THP page faults:
   10.54 ms at p4). Base -> lane (tmux in the same runs):
   `attach.tty_total` 175762 -> 504 B at p1 (tmux 977) and 344894 -> 1449 B at p4 (tmux 3655);
   `attach.instr` 15.9 -> 10.7 Minstr at p1 (tmux 9.09) and 16.3 -> 11.1 at p4 (tmux 12.1);
@@ -1928,8 +1928,8 @@ Handed on:
   batches (the reason for the daemon's `SO_SNDBUF`), `just ios-ala iPad build` for the two hello
   capability constants.
 
-Merged onto the five lanes above and the Linux THP fix (`perf/wave1`, merge `7ab41a27`, a clean
-merge). Merge gate (`w1-6-attach-alienware-7ab41a27.json`, full, `--strict`, load under 1 on 16
+Merged onto the five lanes above and the Linux THP fix (`perf/wave1`, merge `20d87319`, a clean
+merge). Merge gate (`w1-6-attach-alienware-20d87319.json`, full, `--strict`, load under 1 on 16
 CPUs), fold -> merge, tmux in the same run: `attach.tty_total` 175762 -> 504 B at p1 (tmux 977)
 and 344894 -> 1435 B at p4 (tmux 3655); `attach.instr` 15.8 -> 10.7 and 16.3 -> 11.1 Minstr (tmux
 9.09, 12.1); `attach.cpu` 6.20 -> 3.46 and 10.5 -> 4.99 ms (tmux 2.03, 4.07); `attach.ttfc` 11.6
@@ -1985,7 +1985,7 @@ dictionary growth), zz-client, zz-tui, GUI mux client tests, `tui-screen-diff.sh
 
 Expected (re-encoded captures): patches 15x smaller, Full 10x, blank screens ~140x, echo ~30-40 B.
 
-As built (branch `perf/term`, on perf/wave2 `2871c2d1`, Linux only), where it departs from the scope
+As built (branch `perf/term`, on perf/wave2 `d5ed9a39`, Linux only), where it departs from the scope
 above:
 
 - Item 1: the codec is its own module, `zz-protocol/src/pane_frame.rs`; `terminal_codec.rs` only
@@ -2092,7 +2092,7 @@ above:
   terminal-lane byte-layout tests went with the layout.
 
 Measured on Linux (alienware, tmux 3.7c; `--quick --only attach,echo,throughput,chatty` against the
-quick Linux W0; before is the wave-2 base `2871c2d1`, after is this branch; load 1.6-3.9 on 16 CPUs
+quick Linux W0; before is the wave-2 base `d5ed9a39`, after is this branch; load 1.6-3.9 on 16 CPUs
 with another lane idle or compiling, so wall and CPU rows are notes and the host changed power state
 between the two runs, tmux included):
 
@@ -2146,7 +2146,7 @@ decodes through zz-client core and did not change), and `bench/run.sh` (it drive
 app in a window, not the daemon; the gate's throughput rows and the headless client cover the
 wire).
 
-Fix pass (after both reviews, on perf/wave2 `edcdf775`, so both builds link Ghostty `713374af`):
+Fix pass (after both reviews, on perf/wave2 `4ca877d1`, so both builds link Ghostty `713374af`):
 the per-client work above, the review minors, and the reviewers' tests. Daemon user instructions
 under visible chatty (four 90x25 panes printing, N attached TUIs, three 5 s windows a run, two
 interleaved rounds; before is the first cut merged with the same perf/wave2):
@@ -2215,14 +2215,14 @@ Handed on:
 - W4-ROWS: the profile above is the "does row extraction show" evidence: it does, at about 60% of
   the actor's samples in visible chatty.
 
-Merged into `perf/wave2` as `95c27a0b` (w2-2, Linux) after merging perf/wave2 into the lane
-(`d971053c`: the knob log lines of both lanes kept, the rollback and test tables joined), plus
-`25068a3f`, which fixes two tests that only failed under `cargo test --workspace`: the layout
+Merged into `perf/wave2` as `9b5ca7e7` (w2-2, Linux) after merging perf/wave2 into the lane
+(`ea2174c1`: the knob log lines of both lanes kept, the rollback and test tables joined), plus
+`23d56f39`, which fixes two tests that only failed under `cargo test --workspace`: the layout
 contract assumed smallvec without its `union` feature, which the workspace turns on
 (`TerminalPatchRowData` is 56 bytes there, 64 alone), and the two-client daemon test compared
 panes a client no longer streamed (zoom hides a pane while its actor is mid-publish; the actor
 keeps that view's last snapshot, which the daemon rightly never sends, until its next publish).
-The strict gate `w2-2-term-alienware-95c27a0b.json` against w2-1 ran on a loaded host (a game
+The strict gate `w2-2-term-alienware-9b5ca7e7.json` against w2-1 ran on a loaded host (a game
 used two cores, load 3.3 to 7.1), so its CPU, wall and throughput rows moved for both muxes; the
 owned byte and instruction rows are exact: `echo.wire_bytes.idle` 1,133 -> 33 B (rule 64),
 `echo.wire_bytes.busy30` 3,399 -> 137 B, `attach.wire_s2c.p1` / `.p4` 100,064 / 100,237 ->
@@ -2459,8 +2459,8 @@ Review corrections, 2026-09-30:
   Exec resume still upgrades its existing connection.
 - The standalone iOS terminal example now caches `(GridSize, layout_generation)` and
   reports unchanged geometry again after the generation changes, matching shared clients.
-- Fixes are checkpoint `49453c96`; `061f446e` names explicit defaults in their test.
-  Integration brings `perf/wave2` at `39cd081b` into `perf/ctrl`, including COPY and FMT.
+- Fixes are checkpoint `cd423726`; `39d76a7a` names explicit defaults in their test.
+  Integration brings `perf/wave2` at `cfc8c8c5` into `perf/ctrl`, including COPY and FMT.
   Conflict resolution retains CTRL's literal display-message fact skip and compact
   subscription/tree/view state, FMT's clientless borrowed row seeds and presentation
   caches, and both classifiers and test sets for display-message/list-keys/source-file.
@@ -2522,7 +2522,7 @@ Exact review/integration commands, exits and captured output stay in scratch JSO
 | Initial scratch compat setup | `timeout 1800 env PATH=/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin ZZ_COMPAT_TMUX=/Users/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_ZZ=/Users/demfabris/dev/zz-ctrl/target/debug/zz_cli /opt/homebrew/bin/bash /tmp/zzpc/ctrl-fix-compat/run.sh smoke/control-notify smoke/control-eof-drain smoke/control-hard-loss smoke/control-alias-prepare smoke/control-tilde-environment smoke/source-file-control smoke/send-keys-control smoke/hooks-pane-focus smoke/hooks-pane-focus-clients smoke/format-monitor-hooks smoke/refresh-status smoke/copy-mode-refresh smoke/copy-mode-formats smoke/copy-mode-mode-keys-tail smoke/pane-border-status` | 1 | `/tmp/zzpc/ctrl-fix-compat-risk.json` |
 | Second scratch compat setup | `timeout 1800 env PATH=/opt/homebrew/opt/coreutils/libexec/gnubin:/opt/homebrew/opt/gnu-sed/libexec/gnubin:/opt/homebrew/opt/grep/libexec/gnubin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin ZZ_COMPAT_TMUX=/Users/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_ZZ=/Users/demfabris/dev/zz-ctrl/target/debug/zz_cli /opt/homebrew/bin/bash /tmp/zzpc/ctrl-fix-harness/compat/run.sh smoke/control-notify smoke/control-eof-drain smoke/control-hard-loss smoke/control-alias-prepare smoke/control-tilde-environment smoke/source-file-control smoke/send-keys-control smoke/hooks-pane-focus smoke/hooks-pane-focus-clients smoke/format-monitor-hooks smoke/refresh-status smoke/copy-mode-refresh smoke/copy-mode-formats smoke/copy-mode-mode-keys-tail smoke/pane-border-status` | 1 | `/tmp/zzpc/ctrl-fix-compat-risk-rerun.json` |
 
-Mac measurements on frozen source `a6520418ff68818baa8cb390d87f7e04c2dfd6ee`:
+Mac measurements on frozen source `190615973d0136a15a54428933d6d77ec206e15f`:
 
 | Row | Pre-lane quick | Previous TERM full | CTRL full | CTRL / same-run tmux |
 | --- | ---: | ---: | ---: | ---: |
@@ -2555,7 +2555,7 @@ information row rises from 554.8 to 4,535.6 ms. Host load moves from 7.1 to 36.1
 in PRE and 29.28 to 28.70 in final; these conditions do not establish a cause.
 Throughput stability and the headless change remain unresolved, rather than
 being waived by the earlier passing result. Both full raw outcomes are retained
-under `bench/perf/results/w2-3-ctrl-*-macbook-a6520418.json` and the pre-lane
+under `bench/perf/results/w2-3-ctrl-*-macbook-19061597.json` and the pre-lane
 results identify their preserved binary separately from the harness git revision.
 
 Final five-second daemon, control frontend and visible TUI samples retain identities
@@ -2583,7 +2583,7 @@ its full library passes 58, and its lint exits 0. The linked C rollback integrat
 passed with the tree-delta knob; one Rust test launches both C clients. Web and
 iPad build recipes exit 0. Those builds establish compilation rather than physical
 iPad or packaged desktop behavior. Detailed commands and exits are retained in
-`bench/perf/results/w2-3-ctrl-validation-macbook-a6520418.md` and its raw JSON.
+`bench/perf/results/w2-3-ctrl-validation-macbook-19061597.md` and its raw JSON.
 
 The serial floor remains open. A local Unix stdin/stdout descriptor handoff could
 retain the existing worker/FIFO and remove the command-data relay, but changes the
@@ -2595,12 +2595,12 @@ No such ownership change is implemented here. Linux readiness, PTY gathering,
 THP and output-backpressure remain coordinator checks on a Linux host.
 
 
-Follow-ups after the merge (2026-09-30 to 10-01). `6918d82e`: on Linux the control client's
+Follow-ups after the merge (2026-09-30 to 10-01). `c8407654`: on Linux the control client's
 `%layout-change` lost the monitor-activity flag (`-` for `#-`, 7 of 8 runs of
 `smoke/control-notify`) because the raw output tap published output before the viewport worker
 raised activity; activity is now noted on the tap first, layout hooks publish compact trees under
 `snapshot_order` before the hook event, and `WindowSnapshot` carries the missing `silence` flag
-(tests in `daemon/ctrl_flags_tests.rs`). `61ccdbd4`: the wave-2 exit corpus found ten config and
+(tests in `daemon/ctrl_flags_tests.rs`). `86298371`: the wave-2 exit corpus found ten config and
 argument rows red (own-conf, config-grammar, source-file and source-replay diagnostics,
 `args-parse-*`, oh-my-tmux) plus four Mac plugin-init rows: control stdin now starts only after
 the initial command replay completes, typed preparation errors keep `parse error:`, and the
@@ -2645,10 +2645,10 @@ after-list-keys and other read-only after-hooks, debug assert "generation moved 
 entry" over the whole daemon suite, control-mode `%begin`/`%end` ordering fixtures,
 `compat/run.sh` hooks and source-file scenarios.
 
-As built (branch `perf/hooks`, 2026-09-29, from `perf/wave1` `d8f3e46a`, Linux only). Where it
+As built (branch `perf/hooks`, 2026-09-29, from `perf/wave1` `5d112b35`, Linux only). Where it
 departs from the scope above:
 
-- Item 1 (commit `b3e466c5`, mergeable alone): `CommandSpec::mutates(args)` in catalog.rs is
+- Item 1 (commit `7cd2883c`, mergeable alone): `CommandSpec::mutates(args)` in catalog.rs is
   false for list-*, show-*, has-session, list-commands, start-server, `display-message` without
   `-I`/`-d` and `capture-pane -p`; a spelling the option parser rejects counts as mutating.
   Only engine commands reach the captures (`capture-pane`, the buffer commands and
@@ -2796,8 +2796,8 @@ Handed on:
 - A key table change published between a client's `register` (its hello) and its `subscribe`
   never reaches it, for every hello-carried state; the base had the same gap.
 
-Merged into `perf/wave2` as `ef071b69` (w2-1, Linux), plus `727a7b95` for the web client
-lockfile. Strict gate `w2-1-hooks-alienware-ef071b69.json` against the wave-1 exit:
+Merged into `perf/wave2` as `e8757bb2` (w2-1, Linux), plus `b2e6a454` for the web client
+lockfile. Strict gate `w2-1-hooks-alienware-e8757bb2.json` against the wave-1 exit:
 `config.wall.source_1000` 0.74x tmux (rule 1.1x), `config.cpu.source_1000` 0.70x,
 `config.instr.source_1000` 41.7 Minstr (tmux 82.4); `cli.cpu.display.p20` 16-33% under the
 pre-merge binary in alternating A/B runs (target 5-15%); `spawn.cpu.kill_pane` passes the
@@ -2823,14 +2823,14 @@ Write zone: `session/mode_revision.rs`, `session/copy_grid.rs`; session.rs `Froz
 `HistorySearchSnapshot` and `copy_mode_snapshot`; the native page snapshot and safe row APIs.
 The retained copy completion path also needs `Shared::watch_terminal`; see the as-built notes.
 
-Gate against lane base `4e02858e`: first copy-mode entry on a 10k x 180 pane is included in `mem`,
+Gate against lane base `c385c6ea`: first copy-mode entry on a 10k x 180 pane is included in `mem`,
 with bounds of 1 MiB incremental footprint and 5 ms daemon CPU and control reply wall time.
 Throughput must remain unchanged. Tests: tmux differentials for copy mode under continuous
 output past history-limit and resize in copy mode; `compat/tui-copy-mode.sh`, `compat/run.sh`
 copy-mode rows, `tracker.py check`, terminal copy/search tests and daemon copy-session tests.
 
-As built (branch `perf/copy`, 2026-09-30, lane base `4e02858e`, Linux only; review-fix
-checkpoints `d51fcefc` and `bd9339d7`):
+As built (branch `perf/copy`, 2026-09-30, lane base `c385c6ea`, Linux only; review-fix
+checkpoints `7dcfbd0d` and `f2bf48c4`):
 
 `ModeRevision::capture` freezes the native active screen instead of flattening its whole
 history. Copy-on-write cloning skips the eager clone preheat-count pass, confirmed as
@@ -2900,13 +2900,13 @@ The gate is in `mem`: each fresh server gets exactly 10000 dense history rows in
 pane, five seconds to idle, and one entry through a persistent control client. It gates
 incremental footprint at 1 MiB and daemon CPU/control wall time at 5 ms, with Linux
 instruction counts and a tmux twin. RSS remains informational. `before.json` was measured at
-gate-only `577513c1`, with production code unchanged from `4e02858e`. The first release
+gate-only `9cf1a159`, with production code unchanged from `c385c6ea`. The first release
 attempt exposed an undefined Zig builtin allocator-context read, fixed by comparing vtables
 before any defined custom context; the dense default-allocator regression failed before the
 fix and passed afterward. Failed attempts are preserved as diagnostics and contribute no COPY
 measurements.
 
-Pre-review release at `48cd03fb`, SHA-256
+Pre-review release at `9e34cef3`, SHA-256
 `304746910e6a78d4818ae748cb8539cd60102cc69a82445939434f9201944c75`:
 
 | Metric | Base zz | Final zz | Final tmux | Rollback zz |
@@ -2957,7 +2957,7 @@ caller costs; independent cell/grapheme reads and live cancel extraction go to W
 `entry-final.perf-report.txt` and the supplemental flat report under the lane cache. Cleanup
 reports daemon exit zero and no strays.
 
-Final linked parity at `48cd03fb`: 27 scenarios and 300 steps pass with zero divergences or
+Final linked parity at `9e34cef3`: 27 scenarios and 300 steps pass with zero divergences or
 retries. Copy TUI passes 141/147 with its full transcript byte-identical to the baseline; tracker
 and binary hash guards pass, and cleanup finds no fixture processes or sockets. An intermediate
 run exposed a refresh-fixture race: live output and an earlier cursor change could precede the
@@ -3052,7 +3052,7 @@ functions are `command_prompt_key`, `prompt_translate_key` and `command_prompt_e
 outside the COPY write zone. The cause remains unproven. macOS launch, clonefile, kqueue, PTY
 bridge, ri_instructions, GUI profiling and iOS builds cannot be checked on this Linux host.
 
-Merged 2026-09-30 (`40d2dfc2`, Linux gate `w2-3-copy-alienware-40d2dfc2.json`): both fork
+Merged 2026-09-30 (`940acb2e`, Linux gate `w2-3-copy-alienware-940acb2e.json`): both fork
 commits are published and pinned, entry 52.70 to 0.55 MiB and 104.8 to 1.02 ms on Linux. The
 Mac entry read 1.41 MiB against the 1.0 MiB rule because a copy-on-write snapshot of a small
 active area allocated standard pages and read their unused tails. Ghostty `67351380` copies
@@ -3066,7 +3066,7 @@ input before PTY output and dispatches input and echo windows first. Shared read
 turns yield only for peer input or an echo window; output readiness keeps full
 256 KiB / 1 ms turns. Bridge retries check input and echo work every 32 attempts,
 without peer fd polling. The existing shared-shard test streams 32 echoes with two floods.
-Five alternating quick pairs against `68f1dfb0`'s merged binary measured checkpoint
+Five alternating quick pairs against `09d91ae4`'s merged binary measured checkpoint
 `1bf5a79a`: median per-run zz/tmux busy p50 ratios 2.331 -> 2.653 (1.138x),
 busy p99 1.877 -> 2.886 (1.538x), above both 0.93x limits. Idle p50/p99 factors
 were 0.897x/0.670x. Chatty flip/hidden medians were 63.080 -> 63.169 and
@@ -3138,7 +3138,7 @@ The known daemon endpoint test stayed red; four load failures passed alone. Mac 
 
 ## W3-LOOP: single-owner mux loop (effort XL)
 
-**Review fixes, 2026-10-02, against base `34118d9f8`:**
+**Review fixes, 2026-10-02, against base `f2d0c9452`:**
 
 - Gate Unix-only tests on Windows. Finish peer probes after a panic, remove clients and their file waiters under one lock, and accept EPIPE as closed job input while preserving child status. Keep the hook response/exit checks and drive queued lifecycle work and hooks in the two timing-sensitive tests.
 - Mac daemon and mux suites, clippy, and the five compat scenarios pass. Both timing-sensitive tests pass 20/20 runs. Windows no-run links 11 executables and check passes with cached SDK headers, LLVM/Rust tools, and a local cached Wuffs build setting that forwards the SDK libc file to translate-c; tracked dependencies stay unchanged.
@@ -3154,7 +3154,7 @@ The serial daemon suite passes 1,500 library tests with only the named Mac bundl
 exception; 35 integration tests, clippy, Windows check, four compat scenarios and all nine
 TUI backpressure assertions pass. Windows emits existing warnings.
 
-The preliminary Linux quick run against saved `6027b696` gives 130.7 versus 129.4 MB/s
+The preliminary Linux quick run against saved `dc59b2a2` gives 130.7 versus 129.4 MB/s
 detached throughput and CLI instruction ratios at most 1.004. Hidden chatty instructions
 are 45.24 versus 36.88 Minstr/s in these single runs; repeat the alternating series on the
 final commit before claiming the 1.02 instruction bound. The W0 gate has 45 passing and
@@ -3163,7 +3163,7 @@ the orchestrator. Scratch measurements stay under `/tmp/zzpc`.
 
 As built (e21fix): `EventLoop::remove` retires and wakes only for real cleanup;
 `Inbox::take_pending` skips empty lifecycle locks while parked hooks and shutdown keep advancing.
-The 5,000-display instruction profiles were 361.67 M at 86eeb0ae, 373.96 M in e21, and 364.85 M
+The 5,000-display instruction profiles were 361.67 M at 1669fd3a, 373.96 M in e21, and 364.85 M
 with the fix. The pre-final quick gate put all 19 CLI instruction rows within 1.02x of the three
 base medians: display p1/p20 0.0735/0.0781 vs 0.0726/0.0775 Minstr; kill-pane 0.1896 vs 0.1923.
 Idle counters stay zero and threads stay 3/25. Unit tests: 1,498 pass and only the known Mac
@@ -3175,13 +3175,13 @@ The command keeps its output; the loop hook queue owns the hook's parked frames.
 tests check split/layout and worker rename hooks, response and exit delivery, and hook resumption.
 The full daemon suite passes (1500 unit and 35 integration tests, one ignored), as do the existing
 hook tests, clippy, Windows check, and six compat scenarios (103 steps). Windows reports 16 warnings.
-One preliminary quick pair against `ceb9e696c` gives CLI instruction ratios 0.9908 to 1.0209x;
+One preliminary quick pair against `a8b613585` gives CLI instruction ratios 0.9908 to 1.0209x;
 display CPU p1 is 0.0492 vs 0.0526 ms and p20 is 0.0496 vs 0.0456 ms. Both have 0 idle wakeups/s;
 p20 footprint is 11.0942 vs 11.1723 MiB. The quick W0 gate has 35 passes and no failures.
 Final-commit acceptance uses three alternating runs per binary, with scratch JSONs under
 `/tmp/zzpc/hookpanic-{base,new}-{1,2,3}.json`. The orchestrator owns the Linux-only checks.
 
-As built, e19fix (2026-10-02, base `0d6f395f7`): empty peer updates skip format-fact
+As built, e19fix (2026-10-02, base `1e7567761`): empty peer updates skip format-fact
 snapshots, and drained peer-probe workers exit immediately. Other helpers reuse workers for
 250 ms. Path acknowledgements and discovery output wait for events; the loop owns job
 deadlines and shares path cancellation flags. A full helper queue refuses loop submissions.
@@ -3193,7 +3193,7 @@ p1/p20. Final three-pair comparisons belong in `/tmp/zzpc/e19fix-{pre,post}-{1,2
 Linux process readers, PTY gathering, epoll, THP, and TUI backpressure remain with the
 orchestrator; this Mac did not run them.
 
-**b3fix as built (2026-10-01, on b3 `5b115115`).** Exec prepares each chain once. Proven queries, plain input without attached clients or hooks, and unchanged unzoomed pane selection run on the mux loop. Parking commands, relative pane selectors, and cleanup that can run hooks keep workers. Output pressure yields the remaining commands with response admission and reply IDs intact. Repeated chains retain registration data; LAST/ExecExit, Resume, and client-file replies keep their existing order.
+**b3fix as built (2026-10-01, on b3 `bf0d987a`).** Exec prepares each chain once. Proven queries, plain input without attached clients or hooks, and unchanged unzoomed pane selection run on the mux loop. Parking commands, relative pane selectors, and cleanup that can run hooks keep workers. Output pressure yields the remaining commands with response admission and reply IDs intact. Repeated chains retain registration data; LAST/ExecExit, Resume, and client-file replies keep their existing order.
 
 Three alternating quick `cli,control,mem` pairs against b2fix give 19/19 CLI instruction medians at 0.895-0.988x; display p1/p20 is 0.901/0.920x, control instructions 0.984x, and threads 7/45 versus 8/45. Serial daemon tests pass: 1360 unit and 35 integration, including 20 Exec and 34 event-loop tests; one existing test is ignored. Fmt, Clippy, and all eight selected compat scenarios pass. The quick W0 gate has 35 passes and one failure on control latency. Control latency and burst throughput also fail on b2fix, so those rows are left outside this fix.
 
@@ -3211,7 +3211,7 @@ Linux `/proc`, zz-pty-gather, epoll, THP, and `tui-output-backpressure.sh` were 
   Direct quiet writes require the loop owner. Loop-owned replies skip self-wakes and writer
   condition-variable notifications. Raw output readers
   start when bytes arrive, retaining the existing streaming path.
-- Three alternating quick `control,cli` runs against b1 `2215a914`: control instructions median
+- Three alternating quick `control,cli` runs against b1 `5ba9536c`: control instructions median
   0.0724 -> 0.0684 Minstr (0.9448x); all 19 CLI instruction medians <=1.0108x (limits 1.05x/1.10x).
   Raw output median 138.5609 -> 141.2872 MB/s. `control.latency` and
   `control.burst_cmds_per_s` thresholds against tmux were red on both binaries; no errors.
@@ -3300,7 +3300,7 @@ Checks passed: formatting, daemon clippy, 1,327 unit tests and 35 integration te
 Format readers borrow the client fields, and diagnostics collect the same mode snapshots from them. This slice adds no threads, dependencies or wire changes.
 Checks passed: formatting, daemon clippy, 1,327 unit tests and 35 integration tests (one existing soak ignored), and all 12 required compat rows with zero divergences. The terminal-peer test failed in the first suite, passed alone, and passed in the repeated full suite.
 
-**a3 as built (2026-10-01, `9c0fe221`):** `Client` owns delivery and control state, and `ServerState::clients` stores `Box<Client>` records.
+**a3 as built (2026-10-01, `6d5215c3`):** `Client` owns delivery and control state, and `ServerState::clients` stores `Box<Client>` records.
 The lane's a3 measurement put CLI instructions within 1.4% of a1.
 
 **a4 as built (2026-10-01):** `ServerState::client`, `client_mut` and `client_entry` shorten client lookups; `Shared::read_client` reads client fields under the existing lock.
@@ -3309,7 +3309,7 @@ Checks passed: daemon clippy, 1,327 unit tests and 35 integration tests (one exi
 
 **b1 as built (2026-10-01):** `crates/zz-daemon/src/daemon/event_loop.rs` `EventLoop::run` accepts Unix sockets on the foreground mio loop; connection workers and their mutex access remain.
 Startup replay runs on a temporary worker. Its channel and Waker return completion to the foreground thread, which joins the worker and invokes readiness; shutdown wakes the same loop.
-The two macOS memory runs measured settled threads against `d22ae5cc`: p1 fell from 9 to 8 and p20 from 46 to 45. Native thread inspection found no `zz-daemon-accept` or startup worker.
+The two macOS memory runs measured settled threads against `dd49cff8`: p1 fell from 9 to 8 and p20 from 46 to 45. Native thread inspection found no `zz-daemon-accept` or startup worker.
 Checks passed: formatting, daemon clippy, 1,330 unit tests and 35 integration tests (one existing soak ignored), and all seven required compat scenarios with 175 steps and zero divergences.
 Windows named pipes retain the blocking transport. The Windows target check was unavailable here; Linux-only checks remain for the orchestrator.
 
@@ -3319,7 +3319,7 @@ In `crates/zz-daemon/src/daemon/event_loop.rs`, `disconnect` retains client writ
 through partial-output drain. `remove` drops the matching registration before signaling writer
 completion; disconnect workers release session state. Response admission still precedes writer
 shutdown, with the same deadlines.
-At `162e63d9`, the original kill-server test passed 0/1 and two deterministic regressions passed
+At `95e5bc8e`, the original kill-server test passed 0/1 and two deterministic regressions passed
 0/2. With this fix, they pass 20/20 and 2/2. Formatting and daemon clippy pass; all four selected
 control/client-exit compat scenarios report zero divergences. The daemon suite passes 1362/1364:
 the known macOS CLI fallback test stays red alone, and the process-info large-argv test passes
@@ -3340,26 +3340,26 @@ drain phases; the orchestrator runs Linux-only checks on its Linux host.
 
 **c02 as built (2026-10-01):** `TerminalEvents::install_notification_sink` posts coalesced readiness to `daemon/watchers.rs` `LoopWatchers`, which owns pane, command-output and popup receivers; their relay threads are gone.
 Each surface has one readiness entry, bounded event drains and weak terminal ownership; the four reliable slots and one viewport slot remain. The last producer closes and notifies the stream even without a final event.
-Three alternating quick pairs against `2b21ebf6` measured threads 3 -> 2 at p1 and 25 -> 5 at p20; all 22 instruction medians stay within 1.0256x B, hidden chatty is 0.9328x B, and idle instructions and wakeups are zero.
+Three alternating quick pairs against `9ec6b145` measured threads 3 -> 2 at p1 and 25 -> 5 at p20; all 22 instruction medians stay within 1.0256x B, hidden chatty is 0.9328x B, and idle instructions and wakeups are zero.
 Checks passed: 360 terminal tests, 1,389 daemon unit tests, 35 integration tests, Clippy and all seven compat fixtures (102 steps, zero divergences); one existing test per crate remains ignored. Linux-only checks were not run on this Mac.
 
 **e02 as built (2026-10-02, Linux):** Hello, Control and Exec root items retain their command queues; converted queries run on the mux loop, and each legacy command leaf returns its remaining cursor after one worker turn.
 Socket writes resume output continuations without `LoopExec::wait_for_output` or an output-only worker fallback; LAST, RESUME, first errors, ExecExit and file/GUI reply bypass retain their order. Twenty idle Exec connections followed by a 200-query chain use zero execution workers.
 Registration, startup/terminfo, legacy attach/resync, expansion resolution, nonconverted command leaves, other client messages and hook-capable cleanup still use workers; this slice keeps the helper pool and wire version 107.
 Checks: 48 loop tests, 68 control tests, the 640-command chain, 35 integration tests (one soak ignored), formatting, daemon Clippy, six compat groups (186 steps, zero divergences) and nine TUI backpressure assertions pass. The serial daemon suite passes 1,415 tests with two known host failures; status-job EINTR passes alone, and the macOS CLI fallback stays red on Linux.
-Three alternating quick `cli,control,chatty,mem` pairs against the supplied `loop-836db145-cli` give all 19 CLI instruction medians <=1.00365x; display p1/p20 and chain5 p20 are 1.00140x/0.99080x/0.99301x. Control instructions are 0.0457/0.0462 Minstr (0.98918x), and thread medians remain 3/25. Control latency is red on both binaries; burst throughput is also red in one baseline run, with no new or outside-lane reds.
+Three alternating quick `cli,control,chatty,mem` pairs against the supplied `loop-23b4c93b-cli` give all 19 CLI instruction medians <=1.00365x; display p1/p20 and chain5 p20 are 1.00140x/0.99080x/0.99301x. Control instructions are 0.0457/0.0462 Minstr (0.98918x), and thread medians remain 3/25. Control latency is red on both binaries; burst throughput is also red in one baseline run, with no new or outside-lane reds.
 macOS posix_spawn, kqueue, PTY spin bridge, ri_instructions and iOS checks were not run on this Linux host; the orchestrator owns them.
 
 **e03b as built (2026-10-02, Linux):** `crates/zz-daemon/src/daemon.rs` keeps source replay in owned queue frames through `replay_config_file_in_queue_in_item`, preserving source depth, `current_file`, source-relative cwd, frozen aliases and warning order.
 `run_hook_commands_with_policy` uses owned frames for after-command, event and shutdown hooks; continuation tokens resume parents after their child work and retain output and error ordering.
 Event frames keep formats captured at mutation and repair targets at execution; source and hook child boundaries release input change windows before suspension.
-Three alternating quick pairs against `loop-1d41aa40-cli` pass all 23 required rows: the largest instruction ratio is 1.004324x, chain5 p20 is 0.997947x, and thread medians remain 3/25. Control latency is red on both binaries with no harness errors.
+Three alternating quick pairs against `loop-2b2d7a89-cli` pass all 23 required rows: the largest instruction ratio is 1.004324x, chain5 p20 is 0.997947x, and thread medians remain 3/25. Control latency is red on both binaries with no harness errors.
 Formatting, daemon Clippy, 3 new frame tests, 35 integration tests and 8 selected compat scenarios pass with zero divergences; the serial daemon suite passes 1,422 tests with three known failures, including the status-job test that passes alone. macOS and Windows checks were not run on this Linux host.
 
 **e06 as built (2026-10-02, Linux):** Both `wait-for` receiver parks now register cmdq continuation IDs; signal wakes all waiters, lock grants transfer FIFO, and cancellation after a grant transfers the lock to the next waiter.
 Owned root and inserted queue frames preserve nested aliases, callbacks, hooks, reply order and sticky signals. Twenty signal, lock and inserted waiters add zero workers and complete each continuation once.
 Seven continuation tests, named wait-for/shutdown tests, formatting, daemon Clippy and five compat groups (62 steps, zero divergences) pass. The serial suite passes 1,427/1,432; four failures pass alone, and the known macOS-bundle fallback failure persists on Linux. All 35 integration tests pass, with one existing soak ignored.
-Three alternating quick `cli,control,mem` pairs against `loop-f2bbf6b5-cli` put all 19 CLI instruction medians at 0.99814–1.01563x; `chain5.p20` is 0.2425 -> 0.2454 Minstr (1.01196x), and thread medians remain 3/25.
+Three alternating quick `cli,control,mem` pairs against `loop-39f7b6a5-cli` put all 19 CLI instruction medians at 0.99814–1.01563x; `chain5.p20` is 0.2425 -> 0.2454 Minstr (1.01196x), and thread medians remain 3/25.
 Control latency is red in all six runs; burst throughput is red only in new-2. The runs have zero harness errors; these tmux threshold rows are outside this slice's instruction/thread comparison.
 Shell jobs and other unconverted leaves, registration/startup and hook-capable cleanup still use workers. The Windows/test synchronous adapter remains; macOS, Windows, iOS, full-workspace, TUI and full-bench checks were not run for this slice.
 
@@ -3374,7 +3374,7 @@ macOS, Windows, iOS, full-workspace and full-bench checks were not run; the fina
 before collecting copy facts and expanding mode formats. Control clients with status subscriptions
 off no longer prepare a presentation they cannot receive. Temporary counters measured about
 0.945 Minstr in that cold expansion; moving watcher work onto the loop made it run before the reply.
-The preliminary quick Mac check measured first entry at 5.006 Minstr versus 5.566 on 913915ca,
+The preliminary quick Mac check measured first entry at 5.006 Minstr versus 5.566 on fabe7c0c,
 with 2/5 threads at p1/p20. The quick W0 gate passed 36 rows with zero failures or regressions
 (`/tmp/zzpc/loop-c01copy.json`). Terminal and serial daemon tests, clippy, and the requested copy,
 alert, and Control scenarios passed. Final-commit comparison files use
@@ -3390,12 +3390,12 @@ Foreground items resume at their saved boundaries. The loop applies ready backgr
 Unix has no shell process worker, foreground result receiver or per-job exit poller. Twenty concurrent jobs add zero job or command workers; admission rejects a command after 256 slots fill.
 The serial daemon suite, focused tests, fmt and daemon Clippy pass. Five compat groups are clean; `if-shell-background-order` has the same pre-lane red where tmux does not reach file order on this Mac.
 
-**e13/e14 pick integration (2026-10-02, Linux, base `99d32aeb`):** Terminal acknowledgement and read continuations from e04/e05 share wait records with shell completions; hooks keep their terminal waits and pane-exit worker handoff. The Linux shell wakeup test now launches through the job registry.
+**e13/e14 pick integration (2026-10-02, Linux, base `3c85b235`):** Terminal acknowledgement and read continuations from e04/e05 share wait records with shell completions; hooks keep their terminal waits and pane-exit worker handoff. The Linux shell wakeup test now launches through the job registry.
 Checks: 1,460 daemon unit tests and 35 integration tests pass; the allowed macOS-bundle fixture fails both in the suite and alone, and one soak stays ignored. All 372 terminal tests pass with one ignored. The focused delay, shell and terminal continuation tests, fmt and Clippy pass; seven compat groups pass 100 steps with zero divergences. No performance runs in this pick step; macOS and Windows checks remain with the orchestrator.
 **e07 as built (2026-10-02, macOS):** `Shared::register_overlay_wait` registers display-panes, command-prompt and confirm-before continuations before publishing their overlays; Unix workers return while the client records own the waits.
 Selection, acceptance, replacement, expiry, cancellation, detach and disconnect complete each wait once. Accepted confirms insert child queue frames; prompt answers retain their wait until the callback finishes, preserving history, freezing and alias timing.
 Six new tests cover twenty parked overlays of each type with zero added workers, child frames and lifecycle completion. The serial daemon suite passes 1,492 tests with one ignored; fmt, daemon Clippy and six compat scenarios pass, with zero divergences across 43 steps.
-Three alternating quick pairs against `loop-b9c050f5-cli` pass all 19 CLI instruction rows under the 1.02x-or-baseline-range rule. `chain5.p20` is 0.2910 -> 0.2923 Minstr (1.00447x); idle CPU, instructions and wakeups are zero, and p1/p20 threads stay at 2/5. Linux-only checks were not run on this Mac.
+Three alternating quick pairs against `loop-655d3bd0-cli` pass all 19 CLI instruction rows under the 1.02x-or-baseline-range rule. `chain5.p20` is 0.2910 -> 0.2923 Minstr (1.00447x); idle CPU, instructions and wakeups are zero, and p1/p20 threads stay at 2/5. Linux-only checks were not run on this Mac.
 
 **e09 as built (2026-10-02, Linux):** `daemon/pane_exit.rs` binds `split-window -W` and `wait-pane --exit` continuations to each terminal incarnation, converting two park sites (8/16 in the e09 estimate).
 Pane exit completes registrations before retention or removal; client loss and timeouts cancel individual registrations, preserving split output, after hooks, attached-client return values and signal exit codes.
@@ -3403,9 +3403,9 @@ Twenty exit waits add zero command workers and zero polling deadlines. Focused e
 **e08 as built (2026-10-02, macOS):** `Shared::display_menu` reuses `OverlayWait` for one more explicit wait site; `daemon/wait_queue.rs` admits menus on the loop instead of parking a worker.
 The loop queues selected actions after closing the menu, against its saved target, while the invoking queue's tail resumes independently. Parse and runtime errors still reach the menu client; Control validation, disabled stay-open rows and resize state retain their existing behavior.
 Four new `daemon/menu_queue_e08_tests.rs` tests prove twenty open blocking menus add zero workers and lifecycle completion happens once. The serial daemon suite passes 1,490 tests with one ignored; fmt, check, daemon Clippy and six compat scenarios pass, with zero divergences across 38 steps.
-Three alternating quick pairs against `loop-7afaa011-cli` pass all 19 CLI instruction rows below 1.02x base. `chain5.p20` is 0.2925 -> 0.2934 Minstr (1.00308x); idle CPU, instructions and wakeups are zero, and p1/p20 threads stay at 2/5. Linux-only checks were not run on this Mac.
+Three alternating quick pairs against `loop-594b9e86-cli` pass all 19 CLI instruction rows below 1.02x base. `chain5.p20` is 0.2925 -> 0.2934 Minstr (1.00308x); idle CPU, instructions and wakeups are zero, and p1/p20 threads stay at 2/5. Linux-only checks were not run on this Mac.
 
-e11fix as-built (2026-10-02): Instruction profiles against c1a7e3707 measured 41.34 -> 44.00 Minstr for 1,000 config lines. Per-line hook eligibility checks added lookups, searches and string comparisons; the split finish path repeated command resolution and moved finish state. Replay now executes through the continuation-aware path first and retains a frame for a wait or child, then resumes the completed step. Finish reuses its resolved command name. A 100-probe profile measured 41.99 Minstr, 1.57% above c1a7e3707. Hook-parking tests cover hooks installed within the source file and side effects that must run once. Mac checks stay with the orchestrator.
+e11fix as-built (2026-10-02): Instruction profiles against 5bbaeaab7 measured 41.34 -> 44.00 Minstr for 1,000 config lines. Per-line hook eligibility checks added lookups, searches and string comparisons; the split finish path repeated command resolution and moved finish state. Replay now executes through the continuation-aware path first and retains a frame for a wait or child, then resumes the completed step. Finish reuses its resolved command name. A 100-probe profile measured 41.99 Minstr, 1.57% above 5bbaeaab7. Hook-parking tests cover hooks installed within the source file and side effects that must run once. Mac checks stay with the orchestrator.
 **e18 as built (2026-10-02, macOS):** Six wait families now use typed continuations: terminal agent state, native turns, peer replies, permissions, new sessions and GUI requests.
 `daemon/terminal_requests.rs` carries producer replies and timeout deadlines on the loop; terminal subscriptions register before delivery and retain short working-to-idle edges. New sessions retain their publication barrier, and GUI replies check their owner before removing a request.
 The named functions contain no blocking receive or sleep. Twenty parked native waits add zero command workers; timeout leaves the native turn running. Agent runtime threads remain.
@@ -3421,7 +3421,7 @@ The Mac serial daemon suite passes 1,478 unit and 35 integration tests, with one
 
 ### e10/e17 Linux integration (2026-10-02)
 
-The picks on `fd6acf89` keep e09 pane-exit completions beside e10 output notifications, and retain e11 file resumes in popup and source-queue waits. The e18 agent waits still pass.
+The picks on `c8fa0fdf` keep e09 pane-exit completions beside e10 output notifications, and retain e11 file resumes in popup and source-queue waits. The e18 agent waits still pass.
 The popup thread test compares 20 command popups with 20 interactive popups, including Linux's existing PTY gather threads. It uses a fresh process and waits for Running viewports before counting threads.
 Fmt, daemon Clippy, the focused e10/e17/e09/e11/e18 checks, the CLI build, 35 integration tests, and eight compat groups pass. Compat reports 80 steps with zero divergences; one existing streaming soak remains ignored.
 The final serial daemon suite passes 1,495 unit tests and fails only the allowed `remote_scripts_fall_back_to_the_mac_app_bundle_cli` test. An earlier SOCKS loopback shutdown timeout passes alone and in the final suite; no test runs over 60 seconds.
@@ -3431,7 +3431,7 @@ This brief runs no perf measurements. The orchestrator owns Mac posix_spawn, kqu
 **e22 as built (2026-10-02, macOS):** Uncached `list-keys` renders at most 64 binding rows per loop turn, retaining sorted and filtered bindings, padding, aggregate facts, client formats and user options across yields.
 Full-history capture retains a shared-page screen or copy-mode revision and processes at most 512 rows per shard turn, preserving escapes and wrapped rows. Neither path adds a helper thread; p1/p20 thread counts remain 2/5.
 The three named tests, 760 mux tests, 371 terminal tests and 1,484 daemon unit plus 35 integration tests pass; terminal and daemon each retain one ignored test. Fmt, Clippy with warnings denied, Windows check and four compat scenarios pass, with 113 steps and zero divergences; Windows reports 15 existing warnings.
-Three alternating quick pairs against `loop-c2e44b74-cli` give median list-keys p20 instructions 0.6841 -> 0.6922 Minstr (1.01184x) and full-history capture 188.4714 -> 128.0279 (0.67930x); every other CLI instruction median stays below 1.02x base.
+Three alternating quick pairs against `loop-bedd6cbd-cli` give median list-keys p20 instructions 0.6841 -> 0.6922 Minstr (1.01184x) and full-history capture 188.4714 -> 128.0279 (0.67930x); every other CLI instruction median stays below 1.02x base.
 All twelve paired fairness comparisons pass. Median echo p99 increases for zz/tmux are default list-keys 0.4056/1.6627 ms and capture 0.0406/11.6942 ms; K=1 list-keys 0.4050/1.6797 ms and capture 1.2067/11.6040 ms.
 Evidence is `/tmp/zzpc/e22-{base,new}-{1,2,3}.json`, with zero probe errors. Absolute echo reds remain outside these comparisons; Linux-only runtime checks remain with the orchestrator.
 
@@ -3498,7 +3498,7 @@ options generation; the per-command `FormatHookFacts` snapshot makes every `set 
 that scope's user option map.
 
 Original as-built on `perf/fmt`, 2026-09-30, measured source
-`62608b2b8ba7d200bdfd8c73f48484292bc109d9`. Source checks and the three profile floors pass;
+`ac3593f59ac22ab32670d97c17db50fb84ee335c`. Source checks and the three profile floors pass;
 five owned listing CPU rows beat same-run tmux, and visible daemon CPU fell in the observed
 scoped runs. Compatibility preserves all 44 pre-lane final scenario tuples. The full-chatty
 command still exits 1 on client CPU. Current full strict exits 1 with 11 failed rows; paired
@@ -3606,13 +3606,13 @@ Current source verification, all completed exits 0:
 | 4c5b nine-crate serial suite | 3,359 distinct passed, 2 ignored, 0 failed | `/tmp/zzpc/fmt-tests-final-unused-final.log` |
 | 4c5b normal/all-four format sweeps | 299 each (149 daemon, 150 mux) | `/tmp/zzpc/fmt-final-unused-{format,rollback}-tests.log` |
 | 4c5b each independent rollback switch | 127 each | `/tmp/zzpc/fmt-final-unused-<switch>-tests.log` |
-| 4c5b profiling CLI build and identity | 4m49s; validated | `/tmp/zzpc/fmt-profile-build-62608b2b.log` |
-| 4c5b debug / release CLI / release headless client | 37.23s / 3m32s / 1m16s | `/tmp/zzpc/fmt-{debug,release,headless}-build-62608b2b.log` |
+| 4c5b profiling CLI build and identity | 4m49s; validated | `/tmp/zzpc/fmt-profile-build-ac3593f5.log` |
+| 4c5b debug / release CLI / release headless client | 37.23s / 3m32s / 1m16s | `/tmp/zzpc/fmt-{debug,release,headless}-build-ac3593f5.log` |
 
 The current full-suite count excludes seven nested subprocess summaries: 47 test targets,
 9 doc targets and 3,361 identities. No individual >60s warning occurred; the whole daemon
 target took 121.84s. Exact commands/exits and earlier check history are in
-`/tmp/zzpc/fmt-final-check-ledger.md`; counts are `/tmp/zzpc/fmt-tests-62608b2b-final-counts.json`.
+`/tmp/zzpc/fmt-final-check-ledger.md`; counts are `/tmp/zzpc/fmt-tests-ac3593f5-final-counts.json`.
 The current arm64 profiling binary UUID is `1F3EB5ED-A962-3973-A587-AFE3EA0C1C7E`, SHA256
 `dbbb213ea1a737888efe9e707f338977f1107cfe7c27bc96ba3d594d774fc43d`, 21,043,832 bytes.
 Identity validation exited 0; actual capture authorization retains the 60/180/60-second plan.
@@ -3639,31 +3639,31 @@ captures 20 seconds, 0b/4d captures 60 seconds, and later captures 60/180/60 sec
 
 | Source | Keys matched/Running ms (%) | Status ms (%) | Config ms (%) | Result |
 |---|---:|---:|---:|---|
-| `6e3d2e4b` | 483/700 (69.000000) | 432/496 (87.096774) | 53/1873 (2.829685) | Keys/status failed |
-| `05b18a20` | 3/145 (2.068966) | 30/93 (32.258065) | 12/1714 (0.700117) | Status failed |
-| `551fc8ed` | 1/136 (0.735294) | 14/68 (20.588235) | 19/1780 (1.067416) | Status failed |
-| `fad9f925` | 3/180 (1.666667) | 8/92 (8.695652) | 14/1785 (0.784314) | Status failed |
+| `4a14ba97` | 483/700 (69.000000) | 432/496 (87.096774) | 53/1873 (2.829685) | Keys/status failed |
+| `2d83399b` | 3/145 (2.068966) | 30/93 (32.258065) | 12/1714 (0.700117) | Status failed |
+| `134096bf` | 1/136 (0.735294) | 14/68 (20.588235) | 19/1780 (1.067416) | Status failed |
+| `5efb3873` | 3/180 (1.666667) | 8/92 (8.695652) | 14/1785 (0.784314) | Status failed |
 | `25121456` | 13/610 (2.131148) | 27/299 (9.030100) | 66/6890 (0.957910) | Status failed |
-| `265e4011` | 12/543 (2.209945) | 12/265 (4.528302) | 83/7026 (1.181327) | Status failed |
-| `0c9e9d92` | 10/546 (1.831502) | 12/258 (4.651163) | 69/7122 (0.968829) | Status failed |
-| `b21c3c3c` | 20/1456 (1.373626) | 24/669 (3.587444) | 168/21137 (0.794815) | Status failed |
-| `e0236abe` | 9/1459 (0.616861) | 28/731 (3.830369) | 35/20584 (0.170035) | Status failed |
-| `b70b342d` | 17/1612 (1.054591) | 108/2815 (3.836590) | 47/19605 (0.239735) | Status failed |
-| `6e659605` | 16/1433 (1.116539) | 51/2148 (2.374302) | 33/20254 (0.162931) | Floors passed; further avoidable work found |
+| `5c64a713` | 12/543 (2.209945) | 12/265 (4.528302) | 83/7026 (1.181327) | Status failed |
+| `ca889eed` | 10/546 (1.831502) | 12/258 (4.651163) | 69/7122 (0.968829) | Status failed |
+| `342fe729` | 20/1456 (1.373626) | 24/669 (3.587444) | 168/21137 (0.794815) | Status failed |
+| `d7456fd9` | 9/1459 (0.616861) | 28/731 (3.830369) | 35/20584 (0.170035) | Status failed |
+| `ef9842ef` | 17/1612 (1.054591) | 108/2815 (3.836590) | 47/19605 (0.239735) | Status failed |
+| `b32289db` | 16/1433 (1.116539) | 51/2148 (2.374302) | 33/20254 (0.162931) | Floors passed; further avoidable work found |
 | `42234398` | 15/1496 (1.002674) | 70/2408 (2.906977) | 613/21738 (2.819947) | Floors passed; duplicate classification fixed in 5d |
-| `c38fdbaf` | 17/1452 (1.170799) | 58/2198 (2.638763) | 340/21568 (1.576410) | Floors passed; two residual queries fixed in 4c5b |
-| `62608b2b` | 14/1479 (0.946586) | 58/2295 (2.527233) | 354/20393 (1.735890) | Profile floors/audit accepted; full strict assessment pending |
+| `64f60792` | 17/1452 (1.170799) | 58/2198 (2.638763) | 340/21568 (1.576410) | Floors passed; two residual queries fixed in 4c5b |
+| `ac3593f5` | 14/1479 (0.946586) | 58/2295 (2.527233) | 354/20393 (1.735890) | Profile floors/audit accepted; full strict assessment pending |
 
 Portable evidence:
-`bench/perf/results/w2-4-fmt-profiles-macbook-62608b2b.json`, generated and validated with
+`bench/perf/results/w2-4-fmt-profiles-macbook-ac3593f5.json`, generated and validated with
 exit 0, SHA256 `b4363a018676c31a8a4e502b9fc2ba70ee133ff283356a629b8d8447842d27d0`.
 It preserves all 42 valid phases, three unresolved baseline phases as N/A and the original
 020 infrastructure failure. Current reports/projections are
-`/tmp/zzpc/fmt-after-62608b2b-{profile-report,stack-projections}.json`; all export/symbol/
+`/tmp/zzpc/fmt-after-ac3593f5-{profile-report,stack-projections}.json`; all export/symbol/
 analysis stages, full-stack exports and end-identity checks exited 0. Independent audit
 inspected all 79 disjoint chains and found no remaining concrete duplicate; unassigned PCs
 stay counted, without a claim of per-instruction irreducibility. Audit:
-`/tmp/zzpc/fmt-after-62608b2b-independent-avoidable-audit.json`. Both discarded-query chains
+`/tmp/zzpc/fmt-after-ac3593f5-independent-avoidable-audit.json`. Both discarded-query chains
 are absent; config classification is outer 317 + replay 8 ms, with no inner/raw duplicate.
 Host load was elevated: status ended at 36.11, config ran from 28.05 to 28.46. These were
 not globally quiet captures. Additive matcher revisions retain all owners; hook-predicate
@@ -3671,9 +3671,9 @@ reanalysis added zero weight across 33 prior phases. Increased inline visibility
 not CPU-regression evidence; its 579 ms classification group included necessary work.
 
 Baseline quick/chatty artifacts remain under
-`bench/perf/results/w2-4-fmt-before-{quick,chatty}-macbook-a1f6acb3.json`. Original runs were
-noisy. Supplemental `-quiet-` replays preserve harness HEAD `0c9e9d92` but identify the actual saved
-pre-lane `a1f6acb3` executable through `meta.saved_binary_provenance`; quick was not noisy, chatty
+`bench/perf/results/w2-4-fmt-before-{quick,chatty}-macbook-01e21e49.json`. Original runs were
+noisy. Supplemental `-quiet-` replays preserve harness HEAD `ca889eed` but identify the actual saved
+pre-lane `01e21e49` executable through `meta.saved_binary_provenance`; quick was not noisy, chatty
 was noisy despite the filename. Their binary SHA is
 `3ab0861c73db60d18e08298f44929a380c3257a20ba12dff406d822db22a00e5`.
 Stripped baseline profile shares are N/A, not 0%. Original lane CPU values are keys p1/p20
@@ -3697,17 +3697,17 @@ The observed daemon CPU improvement is not a causal estimate. Instructions/KiB w
 unchanged (993,856 before, 991,332 after); throughput increased. Both scoped runs were noisy:
 quick load 25.66 to 20.72, chatty 13.02 to 7.8. Supplemental baselines stay separate.
 Portable current inputs:
-`bench/perf/results/w2-4-fmt-{quick,chatty}-macbook-62608b2b.json`; comparator exit 0:
-`/tmp/zzpc/fmt-62608b2b-metric-comparison.{json,md}`.
+`bench/perf/results/w2-4-fmt-{quick,chatty}-macbook-ac3593f5.json`; comparator exit 0:
+`/tmp/zzpc/fmt-ac3593f5-metric-comparison.{json,md}`.
 
 The required all-12-group full strict saved-old baseline exited 0: 149 metrics, 3 pass and
 146 info, no failures/errors/warnings/regressions/drift, 374.2s, `meta.noisy=false`, load 5.19
 to 6.16. Its portable file is
-`bench/perf/results/w2-4-fmt-before-full-strict-macbook-a1f6acb3.json`. Captured harness HEAD
+`bench/perf/results/w2-4-fmt-before-full-strict-macbook-01e21e49.json`. Captured harness HEAD
 remains 4c5b; only `meta.saved_binary_provenance` identifies the saved d317 executable.
 The intentional old-binary-mtime warning remains in metadata. Provenance receipt:
-`/tmp/zzpc/fmt-62608b2b-full-pair-provenance.json`. Current full strict exited 1: 63 pass, 11 fail, 75 info, 0 errors, 2 regressed, 0 drifted,
-369.6s. Raw input: `/tmp/zzpc/fmt-62608b2b-full-strict.json`. Final paired ownership/quiet
+`/tmp/zzpc/fmt-ac3593f5-full-pair-provenance.json`. Current full strict exited 1: 63 pass, 11 fail, 75 info, 0 errors, 2 regressed, 0 drifted,
+369.6s. Raw input: `/tmp/zzpc/fmt-ac3593f5-full-strict.json`. Final paired ownership/quiet
 metadata assessment is PENDING. Attach instructions rose from 10.4492 to 14.2440 million
 at p1 (+36.3%) and 12.3259 to 16.0091 million at p4 (+29.9%). Their mechanism/ownership is
 resolved by the attach follow-up below: connection threads repeated syntax compilation.
@@ -3725,8 +3725,8 @@ Meaningful limitations and handoff:
 - The first 020 status capture exited 1 while saving after its 180-second recording limit and
   225-second harness deadline. Its hash-verified archive stays N/A. A 360-second completion
   allowance kept recording at 180 seconds; the valid retry is the failed-floor row above.
-  Evidence: `/tmp/zzpc/fmt-after-b70b342d-status-infrastructure-failure.json`.
-- The 0b full/solo agent-capture checks failed. Fixture commit `d0d15085` waits for SessionReady
+  Evidence: `/tmp/zzpc/fmt-after-ef9842ef-status-infrastructure-failure.json`.
+- The 0b full/solo agent-capture checks failed. Fixture commit `8d01dae5` waits for SessionReady
   without a fixed sleep and preserves all capture assertions. Startup-queued prompt echo loss
   remains unresolved in local/source evidence outside FMT; production incidence was not
   measured. The fixture change does not establish a production fix. Handoff:
@@ -3737,30 +3737,30 @@ Meaningful limitations and handoff:
   Device-not-configured errors; archived first-pass logs remain, and automatic retry plus
   explicit current/pre-lane solos were clean (0/0). Status-jobs solos remain 1/1 with the
   same assertion signature. Coverage generator/validator exited 0:
-  `/tmp/zzpc/fmt-compat-62608b2b-final-coverage.json`. This accepts unchanged coverage, not
+  `/tmp/zzpc/fmt-compat-ac3593f5-final-coverage.json`. This accepts unchanged coverage, not
   an all-green batch. The external attached-client fixture is NOT RUN.
 - Linux /proc, zz-pty-gather, epoll, THP and tui-output-backpressure.sh are NOT RUN here;
   the Linux orchestrator owns them. iOS/WASM are NOT RUN; this lane changes no wire.
   Protocol remains unreleased 107. The committed 4c5b audit records 23 Rust files/545 hunks, all 53
   protected CTRL bodies unchanged, zero comments/forbidden edits/append exceptions. Audit:
-  `/tmp/zzpc/fmt-source-scope-audit-62608b2b.json` and
-  `/tmp/zzpc/fmt-62608b2b-final-source-audit-report.json`; bounds:
+  `/tmp/zzpc/fmt-source-scope-audit-ac3593f5.json` and
+  `/tmp/zzpc/fmt-ac3593f5-final-source-audit-report.json`; bounds:
   `/tmp/zzpc/fmt-field-bound-audit.json`, key `committed_4c5b0b39_followup`.
   CTRL owns registration/publication/transport changes and can use cached option snapshots,
   borrowed fact providers and live status-context construction. The worktree stays in place.
 
 ### Attach follow-up, 2026-09-30
 
-Measured source `b6001f8e` includes `8d6b23e8`. Bisect repeats put the attach regression
-in the compiled-template path: `88965298` 15.0/17.3, `173164a6` 13.0/15.2 and
-`5e573150` 12.0/14.2 Minstr at p1/p4. The 824f measurement needed a temporary trait-signature
+Measured source `9fd74b44` includes `e282ae2b`. Bisect repeats put the attach regression
+in the compiled-template path: `88965298` 15.0/17.3, `d25d7781` 13.0/15.2 and
+`c432a9c3` 12.0/14.2 Minstr at p1/p4. The 824f measurement needed a temporary trait-signature
 correction, removed after that run. Connection threads repeated syntax compilation.
 `formats/compiled.rs` `get` now shares the bounded syntax FIFO between threads, parses misses
 outside its mutex and rechecks insertion. Bounds and cache-off interpretation stay unchanged.
 `formats.rs` `FormatUniverseRef::detach` now reuses the owned loop records when borrowed
 formats are disabled. The new tests prove cross-thread syntax reuse and frozen rollback loops.
 
-Three alternating saved `a1f6acb3` / final-binary quick attach pairs:
+Three alternating saved `01e21e49` / final-binary quick attach pairs:
 
 | Pair | Base p1 | Final p1 | Change | Base p4 | Final p4 | Change |
 |---|---:|---:|---:|---:|---:|---:|
@@ -3786,7 +3786,7 @@ config CPU is 2.4873/2.5105ms, and chatty flip's same-run tmux ratio is 0.886/0.
 Inputs: `/tmp/zzpc/fmt-focus-final-{reference,owned}.json`. The required combined quick gate
 against quick W0 exits 1: 36 pass, 5 fail, 1 wall warning, no regression/drift/error, input
 `/tmp/zzpc/fmt-focus-final-verified.json`. Four connection/byte failures and the intermittent
-p4 CPU failure also occur on the base. The full wave-2 e5e18f0b file remains a separate view.
+p4 CPU failure also occur on the base. The full wave-2 5fc40431 file remains a separate view.
 
 Final checks: fmt and mux all-target/all-feature clippy exit 0; the full mux suite passes
 651 unit tests plus integrations, the all-four format sweep passes 152 plus 4, and the normal
@@ -3795,7 +3795,7 @@ checkpoint, 36 at-risk compat scenarios have FMT0, 35 clean and the known Mac st
 OUT1/WARN1 (exit 1), also
 reproduced on the saved base. The client-loop first-pass tty-order failure passes its solo
 retry. Four all-four rollback format/option-loop compat scenarios exit 0. Four all-four daemon
-preparation metadata assertions fail identically at starting `2f6724bc` and remain handed on.
+preparation metadata assertions fail identically at starting `fdfb1575` and remain handed on.
 Linux /proc, zz-pty-gather, epoll, THP and tui-output-backpressure.sh are NOT RUN on this Mac;
 iOS/WASM and the external attached-client fixture are NOT RUN. Protocol stays at 107.
 
@@ -3814,7 +3814,7 @@ workspace `Cargo.toml`. If it does not show, record the profile in this doc and 
 Gate: attached throughput and visible chatty CPU improve on the W4-DELIVER merge; both fork
 commits recorded with a rebase note in `third_party/rust/libghostty-vt-sys/UPSTREAM.md`.
 
-As built (branch `perf/rows`, 2026-10-02, profiled on the wave-4 base `8dc89cbd` instead of the
+As built (branch `perf/rows`, 2026-10-02, profiled on the wave-4 base `39e5e5f2` instead of the
 DELIVER merge, which changes routing and not how a frame reads cells):
 
 - Correction: `scripts/forks.conf` lists only the zed fork, and `just forks` compares a pushed
@@ -3958,7 +3958,7 @@ freed 64 KiB block came back as a pane's PTY read buffer, so each live pane kept
 resident (`mem.footprint.p20` 6.3-6.8 -> 11.1 MiB on alienware); the stack is now its own
 mapping.
 
-Measured on alienware against perf/wave4 `f93d73b3c`, five alternating quick runs each
+Measured on alienware against perf/wave4 `df585021c`, five alternating quick runs each
 (`--only spawn,mem`, load 2-8). DL6 is in the base, so it no longer starts a reader thread per
 pane. `spawn.cpu.split_shell` 1.47-2.11 -> 1.15-1.44 ms (median -29%, tmux 0.83-1.17),
 `spawn.cpu.new_window` 1.33-1.95 -> 0.87-1.47 ms (-29%, tmux 0.64-1.04), `split_empty_P` -9%,
@@ -4021,7 +4021,7 @@ Waves 1 and 2 put each behaviour change behind a `ZZ_PERF_*` environment knob, r
   `compat/fetch-tmux.sh` there for compat scripts (the gate uses the release tmux).
 - A failing zz-daemon test under the full workspace is re-run alone before diagnosis.
 - Merge JSON goes to `bench/perf/results/w<wave>-<n>-<lane>-<host>-<sha8>.json`; the next lane's
-  `--baseline` points at it. W0 stays `results/baseline-<host>-e8caa445.json` for the whole
+  `--baseline` points at it. W0 stays `results/baseline-<host>-6c04efeb.json` for the whole
   campaign.
 
 # Risks
@@ -4138,7 +4138,7 @@ base, lane and tmux in one window gave a 2.20 / 2.16 / 1.84 ms p99 over 2000 key
 key took the direct path; only the detach chord was forwarded. Per key (`w4-echomap.py`, busy30)
 the client goes from 2.10 to 0.92 context switches, 5.6 to 2.7 syscalls and 139 to 109 kinstr;
 the daemon keeps its 2.1 switches and drops from 190 to 183 kinstr. On alienware, three pairs
-against batch10 `c33fb1a4`: busy30 1.48x -> 1.25x, idle 1.35x -> 1.22x, p99 idle 1.31x -> 1.12x,
+against batch10 `63044265`: busy30 1.48x -> 1.25x, idle 1.35x -> 1.22x, p99 idle 1.31x -> 1.12x,
 p99 busy30 1.42x -> 1.27x.
 
 The review round keyed UTF-8 text and cursor keys in the daemon too and numbered the handoffs. With
@@ -4181,9 +4181,9 @@ followed the required series. Mac runtime checks, iOS and Windows builds were no
 
 Remove two write-only `ExecutionContext` snapshots in `Shared::execute_command_request_with_streams_in_item` and `Shared::execute_with_mux_source_routed_for_terminal_in_queue_in_item`, plus their item field. Keep context in `LoopExec` or the command worker. Keep item and queue ids, continuation tokens, scope isolation, cached results and duplicate completion guards. Move the owner's context when adding future parked continuations instead of copying it on each command.
 
-The instruction profiles put context cloning at 0.91% before and 0.60% after, and `memcpy` at 10.17% before and 9.47% after. Three alternating quick runs against the 2b21ebf6 loop-00 binary pass 18/19 CLI instruction medians: chain5 p1/p20 ratios are 1.0131/1.0164; select-pane p20 is 1.02046, above the 1.02 limit. Chatty hidden is 51.0584 Minstr/s against B's maximum 52.8874; flip is 32.9205 against 32.9090 and misses by 0.035%. The sixth run also flags send-keys p20 wall time, outside this step's instruction criterion. The instruction gate remains open; hand on the select-pane and flip misses with the six scratch results under `/tmp/zzpc/e01fix-{B,C}-{1,2,3}.json`.
+The instruction profiles put context cloning at 0.91% before and 0.60% after, and `memcpy` at 10.17% before and 9.47% after. Three alternating quick runs against the 9ec6b145 loop-00 binary pass 18/19 CLI instruction medians: chain5 p1/p20 ratios are 1.0131/1.0164; select-pane p20 is 1.02046, above the 1.02 limit. Chatty hidden is 51.0584 Minstr/s against B's maximum 52.8874; flip is 32.9205 against 32.9090 and misses by 0.035%. The sixth run also flags send-keys p20 wall time, outside this step's instruction criterion. The instruction gate remains open; hand on the select-pane and flip misses with the six scratch results under `/tmp/zzpc/e01fix-{B,C}-{1,2,3}.json`.
 
-Validation: formatting and daemon clippy with all targets/features and warnings denied pass. The serial daemon unit suite passes 1393/1395; `status_job_output_reaches_clients_without_a_periodic_deadline` passes alone, and `remote_scripts_fall_back_to_the_mac_app_bundle_cli` also fails on a39be833. The plain-input worker test passes. The remaining integration targets pass 35 tests with one ignored soak; doc tests contain no cases. All six selected compat scenarios pass 219 steps with zero divergences. Mac, iOS, Windows, full-workspace and full-compat checks remain for orchestration.
+Validation: formatting and daemon clippy with all targets/features and warnings denied pass. The serial daemon unit suite passes 1393/1395; `status_job_output_reaches_clients_without_a_periodic_deadline` passes alone, and `remote_scripts_fall_back_to_the_mac_app_bundle_cli` also fails on 82337db8. The plain-input worker test passes. The remaining integration targets pass 35 tests with one ignored soak; doc tests contain no cases. All six selected compat scenarios pass 219 steps with zero divergences. Mac, iOS, Windows, full-workspace and full-compat checks remain for orchestration.
 
 ## W3-LOOP e16 Linux fix, as built (2026-10-02)
 
@@ -4209,7 +4209,7 @@ Control burst gate was already red on the base; latency also varied. Mac checks 
 - Remaining synchronous replies are off-loop: guarded startup/config reads and ClientHello terminfo warming; peer scans take an async branch on the loop; path acknowledgements and discovery-job replies wait inside helpers. The test-only Hold task also waits inside a helper. Audit: `/tmp/zzpc/helperwait-recv-audit.json`.
 - Checks: 1,533 daemon tests pass, one ignored; eight helper tests pass; focused history ordering, Clippy, Windows compilation and five compatibility scenarios pass. Moved test drivers now record the running loop thread. The jobs test permits retiring threads while still rejecting any increase.
 - Quick checkpoint (`83142ff8a`): 37 passing gates, 41 informational rows, zero failures. Config source: 39.8747 Minstr (1.056x wave2); all idle counters zero; threads p1/p20 = 2/5. These are whole-W3 numbers, not the isolated helper-wait delta. W0 receipt: `/tmp/zzpc/loop-helperwait.json`.
-- Handoff: compare three alternating runs of `/tmp/zzpc/w3/loop-1986386a-cli` and the final release CLI in `/tmp/zzpc/helperwait-{base,final}-{1,2,3}.json`; CLI/config instruction medians must stay within 2% or the base range. Linux-only checks remain for Linux; prompt-history compatibility stays excluded per the lane brief.
+- Handoff: compare three alternating runs of `/tmp/zzpc/w3/loop-605c097f-cli` and the final release CLI in `/tmp/zzpc/helperwait-{base,final}-{1,2,3}.json`; CLI/config instruction medians must stay within 2% or the base range. Linux-only checks remain for Linux; prompt-history compatibility stays excluded per the lane brief.
 
-- e21 pick (`d1fa88d64`, Linux): kept loop-owned startup, shutdown and client cleanup, plus the idle-lifecycle and write-drain fixes. Only `reload-config` and `import-tmux-config` hooks keep the execution-worker fallback; other hook commands use loop continuations.
+- e21 pick (`d04da2330`, Linux): kept loop-owned startup, shutdown and client cleanup, plus the idle-lifecycle and write-drain fixes. Only `reload-config` and `import-tmux-config` hooks keep the execution-worker fallback; other hook commands use loop continuations.
 - Pick checks: eight helper tests, four prompt-history tests, the four named lifecycle/write-drain regressions, Clippy and Windows compilation pass. The serial daemon run passes 1,504 unit tests and 35 integration tests, with one soak test ignored and the allowed Mac-bundle test excluded; two earlier suite failures pass alone. Six compatibility scenarios have zero divergences across 61 steps; startup diagnostics pass 8/8. No new perf measurements: the figures above belong to the source branch. Mac-only checks stay with the orchestrator.

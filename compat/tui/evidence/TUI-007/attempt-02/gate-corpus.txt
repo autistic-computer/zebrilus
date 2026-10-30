@@ -1,5 +1,5 @@
 # compat/run.sh at the cycle 6 overlays gate
-# revision: c1191e8a1a2bf0d7e3c1bf53deb82481c112c649 (the rebase tip; the two commits
+# revision: a1129e05068c3f0a88aff31c7e5b51ea59813c87 (the rebase tip; the two commits
 #   after it change crates/zz-tui/src/render.rs, compat/tui-overlays.sh and
 #   knowledge/protocol/wire-protocol.md, none of which a corpus row reads)
 # selection: --strict-geometry --delta origin/main..HEAD --commands

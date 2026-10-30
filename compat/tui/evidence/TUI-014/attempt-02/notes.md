@@ -79,14 +79,14 @@ commands.native-client-tools closed here.
 - copy-mode.txt, screen-diff.txt, attached-client.txt, corpus.txt, cargo-crates.txt,
   cargo-zz.txt, clippy.txt - the shared proof set, listed in TUI-006/attempt-03/notes.md.
 
-## Gate addendum, 2026-09-14 (cycle 9 choosers gate, revision 54e7d31bdb0eeee8b59a1f737b9ae959e753d005)
+## Gate addendum, 2026-09-14 (cycle 9 choosers gate, revision 1cc3de593370525b01f04af7c8aa32b5ccb25469)
 
 TUI-014 stays **active**: clause 1 asserts whole, clauses 2 and 3 are untouched.
 What changed here is the evidence under clause 1, not its scope.
 
 The four pre-mask chooser files this directory carried (choosers-run-1/2/3/4.txt,
 all one md5, captured before 65d98e0a edited compat/tui-choosers.sh) are replaced
-by the gate's own runs at 54e7d31bdb0eeee8b59a1f737b9ae959e753d005:
+by the gate's own runs at 1cc3de593370525b01f04af7c8aa32b5ccb25469:
 
 - **choosers-run-1.txt, -2.txt, -3.txt** - three runs, each
   `all 78 asserted comparisons identical, 0 recorded not asserted (0 for a sibling lane)`

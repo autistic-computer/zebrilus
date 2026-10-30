@@ -5,7 +5,7 @@ Linux alienware 7.2.3-1-cachyos-deckify #1 SMP PREEMPT_DYNAMIC Sun, 06 Sep 2026 
 $ git rev-parse HEAD
 8b95fa478d5dc527634cd2d3fc9a0fd5aeb05584
 $ git rev-parse origin/main
-22e3c4db146b2298bdd94cb959572b9069b981ef
+b2be2e1066296cc65f63040226f976dc9182bda5
 $ git status --short
  M compat/tui-client-commands.sh
 ?? compat/tui/evidence/TUI-014/attempt-06/

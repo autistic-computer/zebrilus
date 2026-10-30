@@ -9,7 +9,7 @@ PRETTY_NAME="CachyOS"
 repo: /home/demfabris/dev/zz-tui-mouse (worktree of /home/demfabris/dev/zz)
 branch: campaign/tui-mouse
 tip: c2a39a9b5e2f1c25382d796ca98eea94aeab32e0
-base: origin/main f5c52febe6191526e71ead86e6e9a9b88924221e
+base: origin/main 2752fe0b896218a429f4679c7db5eff421004148
 worktree: 2 modified paths at the time of this file
 
 zz: /home/demfabris/dev/zz-tui-mouse/target/debug/zz
@@ -26,15 +26,15 @@ locale: LANG=en_US.UTF-8 LC_TIME=pt_BR.UTF-8
 
 # rebase addendum
 
-origin/main moved to bb2098e3 mid-cycle, after every run above was taken at
-f5c52feb with the same four commits. The branch was rebased onto it; main's
+origin/main moved to c6782e36 mid-cycle, after every run above was taken at
+2752fe0b with the same four commits. The branch was rebased onto it; main's
 commit touches compat/tui/campaign.json (TUI-015 and TUI-018, neither this
 lane's), compat/tmux-gaps.json (desktop.overlay-consumers, not this lane's),
 compat/tui/lint-runner.py, compat/tui/run-9.js and knowledge/designs/tui-parity.md,
 and no crate at all, so nothing here was rebuilt by it. There were no conflicts.
 
 tip after the rebase: e6ae5bf73dee7d6d0fb6a0cf2489ea9fb1bf3571
-base after the rebase: origin/main bb2098e34193446d02e073c29b237ee64685417b
+base after the rebase: origin/main c6782e36da16292e004a220ef5206f2dbab43580
 zz sha256 after the rebase: d1132d84e47251ea76ba36dae9e277f8c441cbcacdee935ad9bc4d21f723c988
   (a cargo debug build of zz is not bit-reproducible on this box; the revision
    and a clean worktree attest the artifact, not the hash)
@@ -59,7 +59,7 @@ repo: /home/demfabris/dev/zz-tui-mouse (worktree of /home/demfabris/dev/zz)
 branch: campaign/tui-mouse
 review tip taken over: 142139fd
 tip at every run below: 8bef1252c4cfc8c96e021aed010b52af247e5ef2
-base: origin/main a6221e9c6a2ca3c06607fca25de1351d6f905845
+base: origin/main 05d0702e0b7d691ee4e4edc45027820eef565d00
 worktree: 17 modified paths at the time of this file
 
 zz: /home/demfabris/dev/zz-tui-mouse/target/debug/zz

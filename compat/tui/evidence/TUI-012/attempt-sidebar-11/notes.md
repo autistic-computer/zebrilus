@@ -1,13 +1,13 @@
 # TUI-012: wait for sidebar refocus before withdrawing it
 
-The lane started at `86215c6625c857ee9eb59092955c20c57cc895d5` on alienware on
+The lane started at `61897ec3b225a387fee9ded2df7fb629edc69b54` on alienware on
 2026-09-16. The branch is `campaign/tui-sidebar`. No production Rust code, desktop or web
 behavior, wire field, acceptance clause, or obligation status changes in this lane.
 
 ## The before/after control disproves the proposed culprit
 
-I built current main and `c10b4f834a29f16eeab8b3941d4404a4593bacb5`, the parent of
-`d003da1e6728db6b39852024b1ccfe68698c1657`, through `/tmp/zz-cargo.sh`. I checked out the parent
+I built current main and `a073e72433db77052115ba59570672da655089dd`, the parent of
+`eac3cae55f463f7d986d718dbcce8bba1c8480a8`, through `/tmp/zz-cargo.sh`. I checked out the parent
 in this worktree and returned to the lane branch after measuring it. The preserved binaries
 live under `target/sidebar-bisect/{main,parent}/zz`; `environment.txt` records their SHA-256 hashes.
 
@@ -20,7 +20,7 @@ Only four documentation commits separate the parent from the last verified revis
 `10779511`. `verified-to-parent-stat.txt` records that comparison, and
 `verified-to-parent-relevant.diff` is empty. There is no measured product regression introduced
 by the palette commit. The defective synchronization entered the fixture in
-`7d765d625` (`Prove the superset commands beside the tmux surfaces`), at the existing
+`e0ae47da5` (`Prove the superset commands beside the tmux surfaces`), at the existing
 `run_sidebar_verbs` refocus wait. Prior passing runs did not make that wait a focus barrier.
 
 ## The exact path
@@ -107,7 +107,7 @@ macOS run, main push, PR, or board operation belongs to this lane.
 
 ## Resume after the reboot
 
-The lane rebased from `86215c66` onto `91effe64` without conflicts. The CLI now lives
+The lane rebased from `61897ec3` onto `3f30b5b2` without conflicts. The CLI now lives
 in `zz-cli`, whose headless binary target is `zz_cli`. The resumed build uses
 `/tmp/zz-cargo.sh build -p zz-cli --bin zz_cli`; it does not reuse a pre-split main binary.
 The earlier palette-parent binary remains available for controls. Interrupted files from
@@ -206,7 +206,7 @@ remain open; the lane changes no implementation in any of those paths.
 
 ### Rebase bookkeeping and the bare-client corpus probe
 
-The first resumed `compat/check.sh` stopped at two mux tests. Commit `4df72509` had added
+The first resumed `compat/check.sh` stopped at two mux tests. Commit `1cf49c2f` had added
 `new-agent-session` and extended `agent-send` and `tools`, but left the native-name registry
 and the exact `list-commands` test strings stale. The lane adds that existing name under
 `commands.native-superset` (owner `protocol`), updates both expected usage strings and
@@ -215,7 +215,7 @@ clause or command implementation changes. These add `zz-mux`, the registry and i
 report to the footprint and validation scope.
 
 The default-client corpus probe also still passed `--bootstrap-launcher-client`, which
-`32c09992` removed when introducing the headless CLI's launcher entry point. A direct probe
+`3d824f17` removed when introducing the headless CLI's launcher entry point. A direct probe
 of the new CLI with that flag prints usage and exits 1. Removing only that obsolete flag
 preserves all nine assertions and is required by the production entry-point change on main;
 it is not a weakened output comparison. Before removal six checks fail; afterwards only
@@ -257,7 +257,7 @@ test residuals described above still prevent an all-green lane report.
 ### Inherited wire version and final gate queue
 
 The original batch says wire 103 is unreleased. The rebased source instead already has
-`PROTOCOL_VERSION = 104`, introduced on main by `60e7340c` (`Split tmux and native usage exit
+`PROTOCOL_VERSION = 104`, introduced on main by `de7206d3` (`Split tmux and native usage exit
 codes`). `compat/wire-version.py` reports 104 unreleased after v0.10.0 shipped 103. The lane
 changes no protocol file or version; `resume/wire-baseline.txt` records the blame and empty diff.
 The report therefore states the inherited 104 rather than repeating the stale batch number.

@@ -1,7 +1,7 @@
 # TUI-013 attempt-01 review
 
 Independent adversarial review, run on the macbook on 2026-09-20 from the shared
-checkout at `3e7f21e8`, against the same `target/debug/zz_cli` the attempt names
+checkout at `f1e18eba`, against the same `target/debug/zz_cli` the attempt names
 and the same pin. Every number below is one I measured here.
 
 ## Verdict
@@ -40,9 +40,9 @@ one proposed mechanism, carried with its refutation from the registry.
   `compat/tui/verify-claims.py`. No crate source is modified, so attestation is
   intact.
 - `git rev-parse HEAD` and `git rev-parse origin/main`: both
-  `3e7f21e8ddce1f403330654b3cf91cf38ca29b7a`, equal to `proof.revision` and to the
+  `f1e18ebaed66b707b67c846df29147467c4d67c0`, equal to `proof.revision` and to the
   revision in `environment.txt`.
-- `git reflog`: HEAD reached `3e7f21e8` at 14:09:39. `stat` puts
+- `git reflog`: HEAD reached `f1e18eba` at 14:09:39. `stat` puts
   `target/debug/zz_cli` at 14:16:20 and the first evidence file at 14:16:55, so the
   binary was built from this tree and before every run.
 - `shasum -a 256 target/debug/zz_cli`: exit 0,

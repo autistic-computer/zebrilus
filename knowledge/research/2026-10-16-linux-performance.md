@@ -18,7 +18,7 @@ timestamp: 2026-10-16T19:15:35Z
 
 # Measurement contract
 
-This investigation starts from `1a1fea1a929c5392d84bebe485322f895e909319`.
+This investigation starts from `3f006d5b5f44381bd82d63f5bca70772bf334add`.
 The host is Linux 7.3.0-9-generic on an AMD Ryzen 7 7800X3D with eight online
 cores, GNOME Wayland, and an AMD Vulkan GPU. The initial investigation used
 a Dell P2725QE at 3840 × 2160, 100 Hz, scale 1.5. The display configuration
@@ -78,8 +78,8 @@ Cross-platform runtime validation is tracked in
 [physical iOS #14](https://github.com/autistic-computer/zebrilus/issues/14),
 [Intel/NVIDIA Linux #15](https://github.com/autistic-computer/zebrilus/issues/15), and
 [experimental FreeBSD #16](https://github.com/autistic-computer/zebrilus/issues/16).
-Each issue pins baseline `1a1fea1a929c5392d84bebe485322f895e909319` and
-candidate `40c6ba9028f5089bf6b054167f31689e087f6b0c`, lists the applicable
+Each issue pins baseline `3f006d5b5f44381bd82d63f5bca70772bf334add` and
+candidate `2edcf82e3715ef3df8adcb4452fa05be50147740`, lists the applicable
 changes and breakage checks, and requires matched runtime evidence.
 
 # Native terminal results
@@ -486,7 +486,7 @@ historical GUI workload.
 ## Fresh GUI memory comparison
 
 Three alternating pairs compare the original baseline with shipped candidate
-`40c6ba902`, before either RAM follow-up patch. The rebuilt GUI hashes are
+`2edcf82e3`, before either RAM follow-up patch. The rebuilt GUI hashes are
 `3fa9c2749a031d3a5b0ff00ac6fd98d6abac111d62887aa33bc141ca81b0b91e`
 and `89e306211daae31b9971899d7c576e7c53898eefe5935ccc76e1c6c725d884c5`.
 Both use the same full-debug profiling build and matching preserved CLI.

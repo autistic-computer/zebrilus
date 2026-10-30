@@ -1,5 +1,5 @@
 # TUI-011, the cycle 7 roster gate's own delta corpus
-# revision 662f7e8aa644833db894b9837cb079ede5274dd6 (crates identical to the lane tip)
+# revision caacb838a5cfcda42605e14263422953ba3e831d (crates identical to the lane tip)
 #
 # compat/run.sh --strict-geometry --delta origin/main..HEAD --commands refresh-client,lock-client
 # selects 145 of the corpus's scenarios - daemon.rs pulls in nearly everything -

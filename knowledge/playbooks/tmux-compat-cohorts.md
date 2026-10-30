@@ -14,9 +14,9 @@ Close the practical `alias tmux=zz` gate through bounded slices. Each slice star
 acceptance contract, ends with one reviewed commit, and leaves later discoveries in the
 [live tracker](/tmux/gaps.md).
 
-The Alert cohort completed in commit `d4052eb56f05de2bcc259eea2300a5037b389879`. The dedicated
+The Alert cohort completed in commit `00d7b3cee931011db228a61f6bba431e7ac71772`. The dedicated
 campaign branch then closed session cwd in
-`0cd36ff2f937423e46710239e4c7dba9f703ea5a`, requested client flags in the next milestone, and
+`79c6da1dd57534dd4fb18a763b8e6b8bbfa7b576`, requested client flags in the next milestone, and
 retained-client sizing in the third milestone. The fourth milestone closed client-environment
 seeding and refresh with protocol v82. The fifth closed retained client formats with protocol v83,
 the sixth closed the six client lifecycle hook producers, and the seventh proved silent Control
@@ -590,19 +590,19 @@ closure is that exception.
 | 10u | Warm local whole-vector argument preflight | Closed under `mux.command-group-argument-parse-abort` on 2026-08-28 | Complete | Six warm probes and one clean three-step scenario prove ordinary unaliased tmux grammar before effects; only vector-index-0 exact unaliased attach keeps the private positional parser |
 | 10v | Format vocabulary source registration | Closed under `tracker.format-vocabulary-registration` on 2026-08-28 | Complete | Schema 5 classifies all literal and derived context producers plus all modifier tokens without changing runtime behavior |
 | Registry correction | Config parser abort | Closed under `config.parser-abort` on 2026-08-29 | Complete | Existing first-diagnostic whole-file abort and assignment retention were already implemented and tested |
-| 10w | Repeat format modifier | Closed under `formats.repeat-modifier` on 2026-08-29 | Committed in `0c31ef71` | Exact `R` semantics, a deterministic 40,960,000-byte intermediate guard, default `P:` and `S:` row proof, and a clean 16-step differential |
-| 10x | New-session cwd edges | Closed under `sessions.new-session-attach-cwd` on 2026-08-29 | Committed in `0c31ef71` | Existing-attach one-pass cwd update, explicit-empty retained state, refusal ordering, and a clean ten-step differential |
-| 10y | Config and source replay alias snapshot | Closed under `aliases.config-parse-unit` on 2026-08-29 | Committed in `0c31ef71` | One alias snapshot per parsed file, batch-before-replay construction, nested refresh, deferred error metadata, frozen Control classification, and a clean two-step differential |
-| 10z | Config and source replay construction | Closed under `mux.chain-parse-abort` on 2026-08-29 | Committed in `0c31ef71` | File-unit construction before effects, parse-only validation, sibling and nested isolation, Control warning order, verbose traces, and a clean two-step differential |
-| Registry correction | Explicit-only queue hook | Closed under `hooks.queue` on 2026-08-29 | Committed in `0c31ef71` | Ordinary queues never produce `after-queue`; explicit `set-hook -R` runs it once, leaving three pane-event producer gaps |
-| 10aa | Session-active client context | Closed under `formats.session-runtime/format:session_active` on 2026-08-29 | Committed in `0c31ef71` | Three-state client backing, raw-invoker versus selected-target routing, selected-client facts audit, deferred output, and a clean 28-step `formats-values` row |
-| 10ab | Window activity timestamp | Closed under `formats.window-activity-time/format:window_activity` on 2026-08-29 | Committed in `0c31ef71` | Distinct Unix-second state covers creation, parsed nonempty pane output, pinned current-window transitions, direct `switch-client` clock refresh, and a clean 45-step `formats-values` row |
-| 10ac | Command and status job environment | Closed under `jobs.command-status-environment/semantic:shell-job-clean-environment` on 2026-08-29 | Committed in `0c31ef71` | Clean command and status children, modeled overlays and PATH, startup-aware TERM identity, a three-step differential, and attached global-only status proof; delayed callbacks, copy-pipe, popup jobs, and status cwd stay separate |
-| 10ad | Option-consumer source registration | Closed under `tracker.semantic-coverage/semantic:tracker-option-consumer-registration` on 2026-08-29 | Committed in `0c31ef71` | The unchanged 105-name roster belongs to `command::TMUX_OPTION_CONSUMERS`; `BEHAVES` remains its public alias, and an exact guard proves the 180 = 105 consumers + 75 live gaps partition and tracker closure |
-| 10ae | Option-name format coverage | Closed under `options.option-name-format-coverage/semantic:option-name-format-coverage` on 2026-08-29 | Committed in `0c31ef71` | Generic precedence, four scopes, inheritance, array values, selected and missing targets, loops, direct daemon producers, detached status sharing, a clean 60-step differential, and attached status proof |
-| 10af | Positive-delay run-shell environment timing | Closed under `jobs.run-shell-positive-delay-environment/semantic:run-shell-positive-delay-environment-timing` on 2026-08-29 | Committed in `0c31ef71` | Scheduling retains command, target, expanded arguments, and cwd; child launch reads global, original-session, terminal, startup, and cwd-fallback state; focused foreground daemon, twelve-check background differential, full corpus, and attached-client proof pass |
-| 10ag | Startup initial-client cwd | Closed under `source-file.startup-client-cwd/semantic:source-file-startup-initial-client-cwd` on 2026-08-29 | Committed in `0c31ef71` | Private cold-launch cwd provenance, startup-only lifetime, nested and literal-path selection, later runtime expiry, and an exact isolated differential |
-| 10ah | Control kill-server response order | Closed under `control-mode.kill-server-response-order/semantic:control-mode-kill-server-response-order` on 2026-08-30 | Committed in `6da1c887` | The invoking response is admitted before shutdown closes the Control mailbox |
+| 10w | Repeat format modifier | Closed under `formats.repeat-modifier` on 2026-08-29 | Committed in `f660ce1c` | Exact `R` semantics, a deterministic 40,960,000-byte intermediate guard, default `P:` and `S:` row proof, and a clean 16-step differential |
+| 10x | New-session cwd edges | Closed under `sessions.new-session-attach-cwd` on 2026-08-29 | Committed in `f660ce1c` | Existing-attach one-pass cwd update, explicit-empty retained state, refusal ordering, and a clean ten-step differential |
+| 10y | Config and source replay alias snapshot | Closed under `aliases.config-parse-unit` on 2026-08-29 | Committed in `f660ce1c` | One alias snapshot per parsed file, batch-before-replay construction, nested refresh, deferred error metadata, frozen Control classification, and a clean two-step differential |
+| 10z | Config and source replay construction | Closed under `mux.chain-parse-abort` on 2026-08-29 | Committed in `f660ce1c` | File-unit construction before effects, parse-only validation, sibling and nested isolation, Control warning order, verbose traces, and a clean two-step differential |
+| Registry correction | Explicit-only queue hook | Closed under `hooks.queue` on 2026-08-29 | Committed in `f660ce1c` | Ordinary queues never produce `after-queue`; explicit `set-hook -R` runs it once, leaving three pane-event producer gaps |
+| 10aa | Session-active client context | Closed under `formats.session-runtime/format:session_active` on 2026-08-29 | Committed in `f660ce1c` | Three-state client backing, raw-invoker versus selected-target routing, selected-client facts audit, deferred output, and a clean 28-step `formats-values` row |
+| 10ab | Window activity timestamp | Closed under `formats.window-activity-time/format:window_activity` on 2026-08-29 | Committed in `f660ce1c` | Distinct Unix-second state covers creation, parsed nonempty pane output, pinned current-window transitions, direct `switch-client` clock refresh, and a clean 45-step `formats-values` row |
+| 10ac | Command and status job environment | Closed under `jobs.command-status-environment/semantic:shell-job-clean-environment` on 2026-08-29 | Committed in `f660ce1c` | Clean command and status children, modeled overlays and PATH, startup-aware TERM identity, a three-step differential, and attached global-only status proof; delayed callbacks, copy-pipe, popup jobs, and status cwd stay separate |
+| 10ad | Option-consumer source registration | Closed under `tracker.semantic-coverage/semantic:tracker-option-consumer-registration` on 2026-08-29 | Committed in `f660ce1c` | The unchanged 105-name roster belongs to `command::TMUX_OPTION_CONSUMERS`; `BEHAVES` remains its public alias, and an exact guard proves the 180 = 105 consumers + 75 live gaps partition and tracker closure |
+| 10ae | Option-name format coverage | Closed under `options.option-name-format-coverage/semantic:option-name-format-coverage` on 2026-08-29 | Committed in `f660ce1c` | Generic precedence, four scopes, inheritance, array values, selected and missing targets, loops, direct daemon producers, detached status sharing, a clean 60-step differential, and attached status proof |
+| 10af | Positive-delay run-shell environment timing | Closed under `jobs.run-shell-positive-delay-environment/semantic:run-shell-positive-delay-environment-timing` on 2026-08-29 | Committed in `f660ce1c` | Scheduling retains command, target, expanded arguments, and cwd; child launch reads global, original-session, terminal, startup, and cwd-fallback state; focused foreground daemon, twelve-check background differential, full corpus, and attached-client proof pass |
+| 10ag | Startup initial-client cwd | Closed under `source-file.startup-client-cwd/semantic:source-file-startup-initial-client-cwd` on 2026-08-29 | Committed in `f660ce1c` | Private cold-launch cwd provenance, startup-only lifetime, nested and literal-path selection, later runtime expiry, and an exact isolated differential |
+| 10ah | Control kill-server response order | Closed under `control-mode.kill-server-response-order/semantic:control-mode-kill-server-response-order` on 2026-08-30 | Committed in `03226fbf` | The invoking response is admitted before shutdown closes the Control mailbox |
 | 10ai | Control exit pane-output discard | Closed under `control-mode.exit-pane-output/semantic:control-mode-exit-pane-output-discard` on 2026-08-30 | Complete | EOF or blank Return discards pending and later pane bytes while draining non-pane Control records and one final exit |
 | Pending rerank | Immediate background run-shell ordering | `jobs.run-shell-immediate-background-environment` | Unranked | Match absent-delay and `-d 0` queue ordering without timing races |
 | Wave 2 chunk | Shell-job cwd | Closed under `jobs.shell-job-cwd` on 2026-08-30 | Complete | The three-step differential completes eight checks per engine, and the attached fixture covers 24 client, command, and target-mode cases |
@@ -611,8 +611,8 @@ closure is that exception.
 | Historical Wave 3 review | Context producer runtime fidelity | `formats.context-producer-fidelity` (`adopt`, open) | Superseded brief | Producer value fidelity remains separate from source registration |
 | Historical Wave 3 review | Remaining modifier runtime fidelity | `formats.modifier-fidelity` (`adopt`, open) | Superseded brief | `I`, `L`, `O`, and `V` need their context models; `w` also needs style parsing, live width overrides, the 162-entry cache, host policy, and Unicode proof |
 | Accepted partition | Native typed context producers | `formats.native-typed-context-producers` (`native`, accepted) | Complete | The 54 native literal pairs are registered without pretending they are tmux runtime gaps |
-| Completed slice | Startup initial-client cwd | Closed under `source-file.startup-client-cwd` in slice 10ag | Committed in `0c31ef71` | Cold launch provenance expires after startup without a public protocol change |
-| Completed dependency | Config and source replay alias snapshot | Closed under `aliases.config-parse-unit` in slice 10y | Committed in `0c31ef71` | One snapshot per parsed file is ready for eager validation |
+| Completed slice | Startup initial-client cwd | Closed under `source-file.startup-client-cwd` in slice 10ag | Committed in `f660ce1c` | Cold launch provenance expires after startup without a public protocol change |
+| Completed dependency | Config and source replay alias snapshot | Closed under `aliases.config-parse-unit` in slice 10y | Committed in `f660ce1c` | One snapshot per parsed file is ready for eager validation |
 | Historical Wave 3 editor | Copy action vocabulary inventory | `semantic:copy-mode-action-vocabulary` in `copy-mode.action-fidelity` | Superseded brief | Record and classify all 95 pinned actions before behavior changes |
 | Pending rerank | Copy action behavior | The other six `copy-mode.action-fidelity` semantics, one category per slice | Unranked | Cursor, logical-line, goto, selection, jump/prompt, and copy effects stay independently provable |
 | Pending rerank | Unsupported stock action bindings | `keys.copy-mode-unsupported-default-actions` | Unranked | Seven keys become honest only after their five actions exist |
@@ -623,7 +623,7 @@ closure is that exception.
 
 Slices 9a through 9f and 10a through 10ai are closed, along with the Wave 2 shell-job cwd and
 literal DEL chunks.
-Commit `0c31ef71` contains cumulative slices 10w through 10ag; `6da1c887` closes 10ah. The current
+Commit `f660ce1c` contains cumulative slices 10w through 10ag; `03226fbf` closes 10ah. The current
 ledger has 84 active groups with 586 items and 123 closed records: 42 open, 20 blocked, and 22
 accepted, resolving 145 of 207 groups (70.0%). Wave 2 is 3 of 3 complete, with no active group
 marked `next`. Under
@@ -712,7 +712,7 @@ closes kill-server response order, and slice 10ai then closes Control exit pane-
 
 # Multi-front Codex pipeline
 
-The 2026-08-29 trial starts from `0c31ef71`. At that base, 36 of the 45 open groups declare no
+The 2026-08-29 trial starts from `f660ce1c`. At that base, 36 of the 45 open groups declare no
 prerequisite. Use one coordinator and three front agents when their production and proof paths do
 not overlap. Fall back to one active slice with oracle, implementation, and review roles when a
 change crosses shared command, daemon, protocol, or tracker paths.
@@ -803,17 +803,17 @@ gate ledgers every front it moots at integration time.
 
 | Cycle | Lanes | Merges | Agreed-scope meter |
 | --- | --- | --- | --- |
-| 1, 2026-08-31 | daemon basket, copy-mode action inventory | `f7900423`, `f3de228c` | 1.6% to 4.6% |
-| 2, 2026-09-01 | mux formats and geometry, daemon display and buffers (protocol v89), park dispositions | `a8d29785`, `dc83dc51`, `3aec9e21` | 4.6% to 44.4% |
-| 3, 2026-09-01 | format loops, daemon byte loaders and menu layout (protocol v90), registry hygiene | `1a79a095`, `3435f859`, `e1435ae8` | 44.4% to 46.1% |
-| 4, 2026-09-01 | format budgets and cell metrics, copy-mode key vocabulary, client exit actions (protocol v91) | `f2eac794`, `531d274f`, `62e4c813` | 46.1% to 54.9% |
-| 10, 2026-09-02 | Control command worker and `split-window -W`, copy-mode search and prompt bindings, the popup pointer route (protocol v96) | `50c5578a`, `43bef8e5`, `9ddeae0f` | 90.5% to 97.4% |
-| 11, 2026-09-04 | the `set-hook -B` monitor subsystem and `display-message -v`, the copy-mode mode-keys tail and the first five chooser keys (protocol v97) | `20bf32b`, `be5c59a` | 97.4% to 99.0% |
-| 12, 2026-09-04 | the rest of `mode_tree_key`'s chooser vocabulary, the client's environment and command bytes on `RawText` (protocol v98) | `e9b3063`, `2733b59` | 99.0% to 99.3% |
-| 16, 2026-09-06 | daemon open groups, the desktop tmux client, proof debt; protocol remains v98 | `ff3c0fa1`, `fefb437e`, `d5a7153f` | 100.0% frozen; 14 post-freeze items across eight open groups |
-| 15, 2026-09-05 | config then status; protocol remains v98 | `298e849d`, `17bc9ee3` | 100.0% frozen; 13 post-freeze items across four open groups |
-| 14, 2026-09-05 | instrument, keys, buffers; protocol remains v98 | `22f1a937`, `6da3635d`, `f34b4bd1` | 100.0% frozen; four post-freeze groups open |
-| 13, 2026-09-04 | an attached pane's pty following the layout cell it reports, the three byte-clean consumers with the first `CLIENT_UTF8` output sanitizer (no bump, protocol stays v98) | `e0400d1`, `a46fded` | 99.3% to 100.0% |
+| 1, 2026-08-31 | daemon basket, copy-mode action inventory | `54bdb8d1`, `19753f2c` | 1.6% to 4.6% |
+| 2, 2026-09-01 | mux formats and geometry, daemon display and buffers (protocol v89), park dispositions | `b6548520`, `1aa53488`, `b0b268f5` | 4.6% to 44.4% |
+| 3, 2026-09-01 | format loops, daemon byte loaders and menu layout (protocol v90), registry hygiene | `57afb5a0`, `dc73a193`, `90d324cd` | 44.4% to 46.1% |
+| 4, 2026-09-01 | format budgets and cell metrics, copy-mode key vocabulary, client exit actions (protocol v91) | `ce0c0fb6`, `ecce882d`, `ba521923` | 46.1% to 54.9% |
+| 10, 2026-09-02 | Control command worker and `split-window -W`, copy-mode search and prompt bindings, the popup pointer route (protocol v96) | `b1fbc551`, `9c167fb9`, `9ddeae0f` | 90.5% to 97.4% |
+| 11, 2026-09-04 | the `set-hook -B` monitor subsystem and `display-message -v`, the copy-mode mode-keys tail and the first five chooser keys (protocol v97) | `bde767f`, `2d1a03f` | 97.4% to 99.0% |
+| 12, 2026-09-04 | the rest of `mode_tree_key`'s chooser vocabulary, the client's environment and command bytes on `RawText` (protocol v98) | `10d37ce`, `1cf99fc` | 99.0% to 99.3% |
+| 16, 2026-09-06 | daemon open groups, the desktop tmux client, proof debt; protocol remains v98 | `2a3a2ad0`, `365f737c`, `4be2c8bf` | 100.0% frozen; 14 post-freeze items across eight open groups |
+| 15, 2026-09-05 | config then status; protocol remains v98 | `ad4c6947`, `5a6b7f99` | 100.0% frozen; 13 post-freeze items across four open groups |
+| 14, 2026-09-05 | instrument, keys, buffers; protocol remains v98 | `f3e9bec6`, `75d71f0a`, `a3a9d903` | 100.0% frozen; four post-freeze groups open |
+| 13, 2026-09-04 | an attached pane's pty following the layout cell it reports, the three byte-clean consumers with the first `CLIENT_UTF8` output sanitizer (no bump, protocol stays v98) | `5b287a3`, `4ea8a2b` | 99.3% to 100.0% |
 
 Cycles 5 through 9 are omitted here rather than reconstructed; their merges and meter moves live in
 `compat/orchestration/CAMPAIGN-LOG.md`. The lane count dropped from three to two on 2026-09-03 when
@@ -837,7 +837,7 @@ holding 446 items: 3 open, 0 blocked, and 43 accepted, plus 199 closed records.
 The frozen meter remains 304/304 items across 65/65 groups; 3 post-freeze items remain
 open across 3 groups. Ledger settlement is 242/245 known groups (98.8%). The full run covers
 254 scenarios / 3,086 steps / 4 registered known rows; the attached-client fixture passed and the
-canonical summary was re-stamped on the ubuntu box at `075a00849629`, the first re-stamp since cycle 16.
+canonical summary was re-stamped on the ubuntu box at `9d89939fbb34`, the first re-stamp since cycle 16.
 Summary SHA-256: `fe76abeafaa9a14fb4190dbd199e7c780ea82df14b9cad94888c0c74d9e758e6`.
 The open groups are `desktop.overlay-consumers`, `tui.client-output-queue-budget`, `tui.status-row`.
 

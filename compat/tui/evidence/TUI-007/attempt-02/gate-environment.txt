@@ -9,12 +9,12 @@ locale        LANG=en_US.UTF-8 with LC_TIME=pt_BR.UTF-8. compat/status-row.sh wa
               under LC_ALL=C LC_TIME=C, the control this box needs because %b differs
               under the box locale.
 worktree      /home/demfabris/dev/zz-gate-tui6, local branch gate-overlays, clean
-gate tip      d096037976907dc66b8485ec0490e9a2caa4376c
-              (campaign/tui-overlays-2 tip 5d335240 rebased onto origin/main e2bf6765,
-              plus the two gate commits c708b0ae and d0960379)
+gate tip      e47ef7208e3204de46d7b1af85c0f24fed284acc
+              (campaign/tui-overlays-2 tip 5d335240 rebased onto origin/main 9485b11a,
+              plus the two gate commits 6274e403 and e47ef720)
 zz            /home/demfabris/dev/zz-gate-target/debug/zz
               sha256 922cfc3a56733ce88093e446f4663d3f60aac5d843816712551608b29617fac4
-              built at d0960379 and relinked by `cargo test -p zz` at the same tip;
+              built at e47ef720 and relinked by `cargo test -p zz` at the same tip;
               its mtime 17:00:59 -0300 precedes every fixture run below (17:03 to 17:33)
 pin           /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux
               d77c9dc6aa021e4bc61f0da128c591af695e6466

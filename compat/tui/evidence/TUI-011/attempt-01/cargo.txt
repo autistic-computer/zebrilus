@@ -1,7 +1,7 @@
 TUI-011 attempt-01, the cargo record, retaken at the gate.
 
 Every command below ran in /home/demfabris/dev/zz-gate-tui7 at gate-roster
-662f7e8aa644833db894b9837cb079ede5274dd6, through the box's two-slot lock at
+caacb838a5cfcda42605e14263422953ba3e831d, through the box's two-slot lock at
 MemoryMax=7G, one at a time. The exit code on each heading is the shell's.
 The body keeps every 'Running'/'Doc-tests' target line and every 'test result:'
 line of that command's output, so each target's count is visible; the per-test

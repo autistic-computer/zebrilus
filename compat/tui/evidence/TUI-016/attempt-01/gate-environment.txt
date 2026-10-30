@@ -8,9 +8,9 @@ bash: 5.3.9(1)-release
 locale: LANG=en_US.UTF-8
 python: Python 3.14.4
 worktree: /home/demfabris/dev/zz-gate-9
-revision: 91c6dd8197c2b87d4108238e354e5916cec81539
+revision: 94f1763fb1dc106d7851d4aefd9068c9e5666a41
 tree: 1 modified paths
-base: origin/main 5d31bee6789d3f82c93a4bd200edcb8219b16f6a
+base: origin/main 2c9235d03e8d3f27236c0ee03ea474c6b2c22b6f
 zz: 442da26a4a4991ce14400a73042c63294690eaf159ce0b5f23d06983a322f06b  target/debug/zz
 zz_cli: b71fc0fbe45f72ac46747683bc34b05ab27ec1766f4b0808c4d6970503711da4  target/debug/zz_cli
 pin: fe82462af83f515034c25bb8576eef8a11a0ad3a5c1029af70b0973b028aed5d  /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux

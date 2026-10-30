@@ -1,5 +1,5 @@
 # THE TRAILING-SPACE DEFECT THE GATE FOUND, AND ITS FIX
-# revision at the find: c1191e8a1a2bf0d7e3c1bf53deb82481c112c649 (the rebase tip)
+# revision at the find: a1129e05068c3f0a88aff31c7e5b51ea59813c87 (the rebase tip)
 # revision at the fix:  1a45ce91f13d86a61cdf44540e94a883e770d13e
 # pin: d77c9dc6aa021e4bc61f0da128c591af695e6466, tmux next-3.8
 # captured: cycle 6 overlays gate, alienware, 2026-09-12
@@ -14,7 +14,7 @@ WHAT WENT RED. compat/tui-copy-mode.sh at the rebase tip, exit 1:
 That fixture is green at origin/main (the copy gate and the caps gate both record
 147 of 147, 0 recorded), so the red is this lane's. It could not have been seen
 before now: the four cases were among the thirteen the copy lane carried as
-SIBLING:modes, and the copy gate flipped them onto the rows channel at ce010be5,
+SIBLING:modes, and the copy gate flipped them onto the rows channel at 455ef370,
 after this lane was measured.
 
 THE BYTES. compat/tui-copy-mode.sh, case emacs-ordinary-pane-search-prompt,
@@ -48,7 +48,7 @@ WHY BOTH FIXTURES ARE RIGHT. The two measure the same prompt in different ground
   it resets both grounds (^[[39m^[[49m) where the confirm row resets only the
   foreground.
 
-THE FIX (c708b0ae). status_overlay trims only when a status block sits under the
+THE FIX (6274e403). status_overlay trims only when a status block sits under the
 overlay: `let filled = model.status_block_rows() > 0;`. That is the same predicate
 paint_status_block_in already uses to choose between painting over the status rows
 and painting the single virtual row over the pane.

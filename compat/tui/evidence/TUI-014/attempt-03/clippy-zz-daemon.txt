@@ -1,4 +1,4 @@
-# revision 831d4e949b33e19b765b43ca1bdf4ea2720626ca -- cargo clippy -p zz-daemon --all-targets --all-features -- -D warnings, exit 101: seven pre-existing errors in crates/zz-daemon/src/russh_prompt.rs at base 5d31bee6, repaired on origin/campaign/box-reds and landing with the cycle 9 gate; this lane touches no file named here
+# revision 831d4e949b33e19b765b43ca1bdf4ea2720626ca -- cargo clippy -p zz-daemon --all-targets --all-features -- -D warnings, exit 101: seven pre-existing errors in crates/zz-daemon/src/russh_prompt.rs at base 2c9235d0, repaired on origin/campaign/box-reds and landing with the cycle 9 gate; this lane touches no file named here
    Compiling libc v0.2.189
    Compiling proc-macro2 v1.0.107
    Compiling unicode-ident v1.0.24

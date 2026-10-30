@@ -361,7 +361,7 @@ holding 446 items: 3 open, 0 blocked, and 43 accepted, plus 199 closed records.
 The frozen meter remains 304/304 items across 65/65 groups; 3 post-freeze items remain
 open across 3 groups. Ledger settlement is 242/245 known groups (98.8%). The full run covers
 254 scenarios / 3,086 steps / 4 registered known rows; the attached-client fixture passed and the
-canonical summary was re-stamped on the ubuntu box at `075a00849629`, the first re-stamp since cycle 16.
+canonical summary was re-stamped on the ubuntu box at `9d89939fbb34`, the first re-stamp since cycle 16.
 Summary SHA-256: `fe76abeafaa9a14fb4190dbd199e7c780ea82df14b9cad94888c0c74d9e758e6`.
 The open groups are `desktop.overlay-consumers`, `tui.client-output-queue-budget`, `tui.status-row`.
 
@@ -497,7 +497,7 @@ command paths. Differential scenarios,
 attached-client fixtures, unit tests, and manual GUI checks supply behavioral evidence.
 
 The [2026-08-22 CLI compatibility audit](/research/2026-08-22-tmux-cli-compatibility-audit.md)
-preserves the measured baseline at commit `1dc1943`. Its counts describe that audit date. The
+preserves the measured baseline at commit `6da3fc0`. Its counts describe that audit date. The
 [divergence matrix](/tmux/divergences.md) keeps the source rationale and probe evidence behind
 accepted differences. Neither document tracks live completion.
 

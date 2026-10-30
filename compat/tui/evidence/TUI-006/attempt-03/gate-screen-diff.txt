@@ -1,4 +1,4 @@
-# revision 54e7d31bdb0eeee8b59a1f737b9ae959e753d005
+# revision 1cc3de593370525b01f04af7c8aa32b5ccb25469
 # pin tmux next-3.8 d77c9dc6aa021e4bc61f0da128c591af695e6466
 # command compat/tui-screen-diff.sh
 # started 2026-09-14T20:33:20-03:00, finished 2026-09-14T20:35:48-03:00, 148s

@@ -1,4 +1,4 @@
-revision: 516b64152867d953e7783db16800d8f14d1c1a79 (the lane's records commit rebased; crates/, Cargo.toml and Cargo.lock are byte for byte the tree of the gate tip a4a81206, which adds only compat/tui-copy-mode.sh and knowledge/tmux/gaps.md)
+revision: fe9b823ba64372d47fb00b155e27221a55f6090f (the lane's records commit rebased; crates/, Cargo.toml and Cargo.lock are byte for byte the tree of the gate tip 9b2767d8, which adds only compat/tui-copy-mode.sh and knowledge/tmux/gaps.md)
 environment: CARGO_TARGET_DIR=/home/demfabris/dev/zz-gate-target, CARGO_HOME=/home/demfabris/.cargo, HOME=/tmp/zzgate6-home, XDG_CONFIG_HOME=/tmp/zzgate6-home/.config, XDG_RUNTIME_DIR=/run/user/1000
 wrapper: S=$((RANDOM % 2)); systemd-run --user --scope -q -p MemoryMax=7G -p MemorySwapMax=2G flock -w 120 /tmp/zz-cargo-slot-$S.lock cargo <args>
 started: 2026-09-11T20:00-03:00 through 2026-09-11T20:17-03:00

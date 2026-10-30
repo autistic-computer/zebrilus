@@ -1,4 +1,4 @@
-origin/main: 22e3c4db146b2298bdd94cb959572b9069b981ef
+origin/main: b2be2e1066296cc65f63040226f976dc9182bda5
 Frozen v103 history matches origin/main exactly.
 PaneSnapshot.mode follows border_status_text with serde(default) and is the last field.
 Protocol constant and decimal pins: 104. Both hello byte pins: 0x68.

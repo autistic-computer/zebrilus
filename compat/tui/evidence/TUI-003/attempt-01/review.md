@@ -55,7 +55,7 @@ Verdict: **approve-with-fixes**. Three must-fix, three nits, no blocker.
 
 ```
 GIT_TERMINAL_PROMPT=0 git -C /home/demfabris/dev/zz fetch origin +refs/heads/main:refs/remotes/origin/main '+refs/heads/campaign/*:refs/remotes/origin/campaign/*'
-git -C /home/demfabris/dev/zz rev-parse origin/main origin/campaign/tui-stock-keys  (2b040c82 / 76664eb4, tip matches the worker report)
+git -C /home/demfabris/dev/zz rev-parse origin/main origin/campaign/tui-stock-keys  (8f9daab6 / 76664eb4, tip matches the worker report)
 git -C /home/demfabris/dev/zz worktree add /home/demfabris/dev/zz-tui-keys-review 76664eb4
 git -C /home/demfabris/dev/zz-tui-keys find crates -name '*.rs' -exec touch {} +  (worker tree clean at 76664eb4 before I reused its target)
 cd /home/demfabris/dev/zz-tui-keys-review && find crates -name '*.rs' -exec touch {} + && touch Cargo.toml Cargo.lock crates/*/Cargo.toml

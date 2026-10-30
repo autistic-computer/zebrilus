@@ -102,7 +102,7 @@ the final batches rather than counted as final-source proof.
 
 Initial final-source revision: `c8887b3bcd582f02badf57a7787886ab587256f0`.
 The lane then rebased onto origin/main
-`d1508a16d20abd64beaccf04b2a54d45f81b8eb7`, retaining capture-12's carried commits.
+`04fe4a7da33e415bf993b8619dce1951d16f1815`, retaining capture-12's carried commits.
 The generated gap-report conflict was resolved by regeneration. The inherited
 native-command expectation update was already upstream and Git dropped it.
 The rebased source revision and immutable binary hashes are separate artifacts.
@@ -234,7 +234,7 @@ The normal target/debug/zz_cli build was restored after the diagnostic builds.
 Its SHA-256 is identical to the immutable rebased proof binary (see
 restored-binary-hashes.txt), so no diagnostic behavior remains in that output.
 Final tracker checks, wire guard and OKF validation pass; OKF reports only the
-existing stale-research warning. The final fetch still has origin/main d1508a16
+existing stale-research warning. The final fetch still has origin/main 04fe4a7d
 and origin/campaign/tui-capture-12 c550a396. No newer capture-12 review changes
 were available to incorporate.
 
