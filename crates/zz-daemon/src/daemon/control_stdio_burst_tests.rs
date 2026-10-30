@@ -273,7 +273,14 @@ fn a_comment_mid_burst_hands_the_rest_to_the_client_after_the_daemon_replies() {
 
 #[test]
 fn a_backpressured_burst_keeps_every_block_whole_and_in_order() {
-    let mut burst = Burst::open(rustix::net::SocketType::STREAM);
+    let stdin = rustix::net::socketpair(
+        rustix::net::AddressFamily::UNIX,
+        rustix::net::SocketType::STREAM,
+        rustix::net::SocketFlags::empty(),
+        None,
+    )
+    .unwrap();
+    let mut burst = Burst::open_with(rustix::net::SocketType::STREAM, stdin);
     rustix::net::sockopt::set_socket_send_buffer_size(&burst.stdio().stdout, 1024).unwrap();
     rustix::net::sockopt::set_socket_recv_buffer_size(&burst.stdout, 1024).unwrap();
     burst.send(&lines(400));
