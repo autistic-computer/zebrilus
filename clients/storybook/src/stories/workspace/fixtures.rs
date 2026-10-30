@@ -14,7 +14,7 @@ use zz_ui::{
 
 pub const PANE_CHOICES: [(&str, IconName, &str); 3] = [
     ("Terminal", IconName::SquareTerminal, "t"),
-    ("Browser", IconName::BrandChrome, "b"),
+    ("Browser", zz_ui::CHROME_ICON, "b"),
     ("Editor", IconName::File, "e"),
 ];
 

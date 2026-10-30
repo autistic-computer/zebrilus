@@ -35,7 +35,7 @@ pub mod target;
 pub mod terminal;
 pub mod terminal_images;
 
-pub use program::{Assets, ZZ_LOGO};
+pub use program::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO};
 
 pub fn register() {
     penna::roles::register(roles::ZZ);

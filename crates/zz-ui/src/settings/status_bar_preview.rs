@@ -66,7 +66,7 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> ala:
                             crate::pane::agent_provider_icon(zz_protocol::AgentProvider::Codex),
                             "Rework status bar",
                         ),
-                        (IconName::Claude, "Review pane titles"),
+                        (crate::CLAUDE_ICON, "Review pane titles"),
                         (IconName::File, "status_bar.rs"),
                         (IconName::SquareTerminal, "dev server"),
                     ]

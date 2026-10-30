@@ -75,7 +75,7 @@ impl PaneChoice {
     const fn icon(self) -> IconName {
         match self {
             Self::Terminal => IconName::SquareTerminal,
-            Self::Browser => IconName::BrandChrome,
+            Self::Browser => zz_ui::CHROME_ICON,
             Self::Editor => IconName::File,
         }
     }
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn pane_choices_use_pane_specific_icons() {
-        assert_eq!(PaneChoice::Browser.icon(), IconName::BrandChrome);
+        assert_eq!(PaneChoice::Browser.icon(), zz_ui::CHROME_ICON);
         assert_eq!(PaneChoice::Editor.icon(), IconName::File);
     }
 

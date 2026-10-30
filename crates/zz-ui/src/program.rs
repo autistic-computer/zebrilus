@@ -13,7 +13,7 @@ use ala::{
 use zz_client::program::{Look, Program};
 
 use crate::{
-    ActiveTheme as _, Colorize as _, Icon, PaintState, Surface,
+    ActiveTheme as _, Colorize as _, Icon, IconName, PaintState, Surface,
     navigation::pane_stack::stack_radius, roles, to_oklch,
 };
 
@@ -30,6 +30,9 @@ pub fn program_colors(cx: &App) -> bool {
 }
 
 pub const ZZ_LOGO: &str = "icons/zz.svg";
+pub const CLAUDE_ICON: IconName = IconName::Asset("icons/claude.svg");
+pub const OPENAI_ICON: IconName = IconName::Asset("icons/openai.svg");
+pub const CHROME_ICON: IconName = IconName::Asset("icons/brand-chrome.svg");
 
 #[derive(rust_embed::RustEmbed)]
 #[folder = "assets"]
@@ -278,5 +281,27 @@ pub fn program_mark(
             )
         }
         Look::Art { .. } => brand_on.map(|_| img(path).flex_none().size(size).into_any_element()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ala::AssetSource as _;
+
+    use super::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO};
+
+    #[test]
+    fn app_icons_load_from_the_app_assets() {
+        for path in [
+            ZZ_LOGO,
+            CLAUDE_ICON.path(),
+            OPENAI_ICON.path(),
+            CHROME_ICON.path(),
+        ] {
+            let loaded = Assets
+                .load(path)
+                .unwrap_or_else(|error| panic!("{path} failed to load: {error}"));
+            assert!(loaded.is_some(), "{path} is not in crates/zz-ui/assets");
+        }
     }
 }

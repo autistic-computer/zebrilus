@@ -9,10 +9,12 @@ timestamp: 2026-10-24T00:00:00Z
 
 # Overview
 
-zz's icon set has 95 glyphs: every `IconName` in penna except its three brand marks (`claude`,
-`openai`, `brand-chrome`), which keep their own artwork as files in `libs/penna/assets/icons`. The
-zz logo is not in the kit: its artwork is `crates/zz-ui/assets/icons/zz.svg`, which `zz_ui::Assets`
-serves at the path `zz_ui::ZZ_LOGO` (`icons/zz.svg`) before falling back to penna's assets. The
+zz's icon set has 95 glyphs: every `IconName` in penna's `IconName::ALL`. zz's brand marks are not
+in the kit: the zz logo, the agent marks (`claude`, `openai`) and the Chrome mark (`brand-chrome`)
+keep their own artwork as files in `crates/zz-ui/assets/icons`, which `zz_ui::Assets` serves before
+falling back to penna's assets. The logo is the path `zz_ui::ZZ_LOGO` (`icons/zz.svg`); the other
+three are `zz_ui::CLAUDE_ICON`, `OPENAI_ICON` and `CHROME_ICON`, each an `IconName::Asset` that names
+its file, so they go anywhere the kit takes an `IconName`. The
 set lives as skeletons in `libs/penna/src/icon/solar.json`, not as SVG files, and is drawn at
 paint time for the current theme, so radius 0 gives flat icons and higher radii round them the way zz
 rounds panes. The desktop app, the web and iOS clients and the storybook all draw it.
@@ -58,9 +60,9 @@ windows, so every icon redraws. A plain
 `icons/<name>.svg` load, outside any theme, draws at radius 6 and smoothing 4. Nothing has to be wired
 per client: every app that uses the kit's `Assets` and `Icon` gets the set.
 
-The bijection tests in `libs/penna/src/icon/mod.rs` hold `IconName` to the set plus the brand
-files: every variant loads, every file in `assets/icons` has a variant, and every icon in `solar.json`
-names its variant and has no file shadowing it.
+The bijection tests in `libs/penna/src/icon/mod.rs` hold `IconName::ALL` to the set: every variant
+loads from the kit's `Assets`, and every icon in `solar.json` names its variant. A test in
+`crates/zz-ui/src/program.rs` checks that zz's own marks load from `zz_ui::Assets`.
 
 ## Part kinds
 
@@ -127,7 +129,8 @@ strokes `dot` parts, and anything else stays a `d` path. Record the source name 
 # Adding or changing an icon
 
 1. If zz needs a new `IconName`, add the variant and its `icons/<name>.svg` path in
-   `libs/penna/src/icon/mod.rs`. Only brand marks get a file in `assets/icons`.
+   `libs/penna/src/icon/mod.rs`. A brand mark is not a kit icon: its file goes in
+   `crates/zz-ui/assets/icons`, named by an `IconName::Asset` constant in `crates/zz-ui/src/program.rs`.
 2. Add one line to `solar.json` with `name` equal to the path's stem, its `variant`, a `group`, its
    `solar` source if it has one, and its `parts`. Draw it with the rules above.
 3. Preview it with `just storybook run`: Foundation › Icon set opens on a catalog of every icon by

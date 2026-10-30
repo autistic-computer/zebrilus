@@ -33,8 +33,8 @@ pub fn pane_header_icon_button(
 
 pub const fn agent_provider_icon(provider: zz_protocol::AgentProvider) -> IconName {
     match provider {
-        zz_protocol::AgentProvider::Codex => IconName::Openai,
-        zz_protocol::AgentProvider::ClaudeCode => IconName::Claude,
+        zz_protocol::AgentProvider::Codex => crate::OPENAI_ICON,
+        zz_protocol::AgentProvider::ClaudeCode => crate::CLAUDE_ICON,
     }
 }
 

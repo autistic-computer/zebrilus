@@ -145,7 +145,7 @@ pub fn workspace_tree() -> Vec<Node> {
         Node::new("nvim", Kind::Pane, IconName::SquareTerminal, "nvim")
             .active_path()
             .running("neovim"),
-        Node::new("review", Kind::Pane, IconName::Claude, "Review sidebar")
+        Node::new("review", Kind::Pane, zz_ui::CLAUDE_ICON, "Review sidebar")
             .badge(Badge::NeedsInput)
             .running("claude"),
         Node::new("docs", Kind::Pane, IconName::Globe, "zed.dev"),
@@ -153,20 +153,30 @@ pub fn workspace_tree() -> Vec<Node> {
         Node::new("agents", Kind::Window, IconName::AppWindow, "agents")
             .badge(Badge::Failed)
             .running("codex"),
-        Node::new("rework", Kind::Pane, IconName::Openai, "Rework status bar")
-            .badge(Badge::Working)
-            .running("codex"),
+        Node::new(
+            "rework",
+            Kind::Pane,
+            zz_ui::OPENAI_ICON,
+            "Rework status bar",
+        )
+        .badge(Badge::Working)
+        .running("codex"),
         Node::new(
             "flaky",
             Kind::Pane,
-            IconName::Claude,
+            zz_ui::CLAUDE_ICON,
             "Fix flaky daemon test",
         )
         .badge(Badge::Failed)
         .running("claude"),
-        Node::new("notes", Kind::Pane, IconName::Claude, "Write release notes")
-            .badge(Badge::Finished)
-            .running("claude"),
+        Node::new(
+            "notes",
+            Kind::Pane,
+            zz_ui::CLAUDE_ICON,
+            "Write release notes",
+        )
+        .badge(Badge::Finished)
+        .running("claude"),
         Node::new("build", Kind::Window, IconName::AppWindow, "build")
             .collapsed()
             .running("rust"),

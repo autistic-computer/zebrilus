@@ -358,8 +358,8 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                     ("session", IconName::Layers),
                     ("window", IconName::AppWindow),
                     ("terminal", IconName::SquareTerminal),
-                    ("claude", IconName::Claude),
-                    ("codex", IconName::Openai),
+                    ("claude", zz_ui::CLAUDE_ICON),
+                    ("codex", zz_ui::OPENAI_ICON),
                     ("browser", IconName::Globe),
                     ("editor", IconName::File),
                     ("picker", IconName::Plus),
@@ -408,7 +408,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(labeled(
                     "needs input",
                     tree_node_marker(
-                        node_icon(IconName::Claude, cx),
+                        node_icon(zz_ui::CLAUDE_ICON, cx),
                         false,
                         badge(Badge::NeedsInput),
                         cx,
@@ -418,7 +418,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(labeled(
                     "failed",
                     tree_node_marker(
-                        node_icon(IconName::Claude, cx),
+                        node_icon(zz_ui::CLAUDE_ICON, cx),
                         false,
                         badge(Badge::Failed),
                         cx,
@@ -428,7 +428,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(labeled(
                     "working",
                     tree_node_marker(
-                        node_icon(IconName::Openai, cx),
+                        node_icon(zz_ui::OPENAI_ICON, cx),
                         false,
                         badge(Badge::Working),
                         cx,
@@ -438,7 +438,7 @@ fn markers(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(labeled(
                     "finished, unseen",
                     tree_node_marker(
-                        node_icon(IconName::Claude, cx),
+                        node_icon(zz_ui::CLAUDE_ICON, cx),
                         false,
                         badge(Badge::Finished),
                         cx,
@@ -591,10 +591,10 @@ const GUIDE_DEPTHS: [(u8, IconName, &str); 11] = [
     (1, IconName::Layers, "main"),
     (2, IconName::AppWindow, "editor"),
     (3, IconName::SquareTerminal, "nvim"),
-    (3, IconName::Claude, "Review sidebar"),
+    (3, zz_ui::CLAUDE_ICON, "Review sidebar"),
     (3, IconName::Globe, "zed.dev"),
     (2, IconName::AppWindow, "agents"),
-    (3, IconName::Openai, "Rework status bar"),
+    (3, zz_ui::OPENAI_ICON, "Rework status bar"),
     (1, IconName::Layers, "scratch"),
     (2, IconName::AppWindow, "shell"),
     (3, IconName::SquareTerminal, "zsh"),
