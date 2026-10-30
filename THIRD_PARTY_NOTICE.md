@@ -13,7 +13,7 @@ carry license obligations into zz's own builds.
 
 | Project | What zz carries | License | Record |
 | --- | --- | --- | --- |
-| [gpui](https://github.com/zed-industries/zed) (Zed Industries) | The UI framework, split out of Zed and renamed ala, in `libs/ala` (subtree of [autistic-computer/ala](https://github.com/autistic-computer/ala)) with zz's changes on top. | Apache-2.0 | [`libs/ala/crates/ala/LICENSE-APACHE`](libs/ala/crates/ala/LICENSE-APACHE), [ala](knowledge/references/ala.md) |
+| [gpui](https://github.com/zed-industries/zed) (Zed Industries) | The UI framework, split out of upstream and renamed ala, in `libs/ala` (subtree of [autistic-computer/ala](https://github.com/autistic-computer/ala)) with zz's changes on top. | Apache-2.0 | [`libs/ala/crates/ala/LICENSE-APACHE`](libs/ala/crates/ala/LICENSE-APACHE), [ala](knowledge/references/ala.md) |
 | [gpui-component / gpui-kit](https://github.com/longbridge/gpui-kit) (Longbridge) | `libs/penna` (subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna)), a full fork of the widget layer taken at `b004e595`. Upstream is no longer a dependency. `crates/zz/src/window/frame.rs` is adapted from its Linux client-side window border. | Apache-2.0, © 2024–2025 Longbridge | [`libs/penna/LICENSE-APACHE`](libs/penna/LICENSE-APACHE), per-module port notes in [`libs/penna/UPSTREAM.md`](libs/penna/UPSTREAM.md) |
 | [libghostty-rs](https://github.com/uzaaft/libghostty-rs) (Uzaaft) | Source snapshots of `libghostty-vt` and `libghostty-vt-sys` 0.2.1 from the `demfabris/libghostty-rs` fork, adapted to build the Zig 0.16 VT library. | MIT OR Apache-2.0 | [`third_party/rust/libghostty-vt/`](third_party/rust/libghostty-vt/UPSTREAM.md), [`third_party/rust/libghostty-vt-sys/`](third_party/rust/libghostty-vt-sys/UPSTREAM.md) |
 | [Ghostty](https://github.com/ghostty-org/ghostty) (Mitchell Hashimoto and Ghostty contributors) | The VT state machine itself, compiled from the trimmed Ghostty source in `third_party/ghostty` through the snapshots above. Separately, `crates/zz-terminal/src/x11-rgb.txt` is copied from Ghostty's `src/terminal/res/rgb.txt` at `cf60af28`, which sources it from the X.Org `rgb` project. | MIT | [`third_party/ghostty/LICENSE`](third_party/ghostty/LICENSE), [`third_party/ghostty-reference/`](third_party/ghostty-reference/UPSTREAM.md) |
@@ -34,7 +34,7 @@ https://github.com/longbridge/gpui-component/blob/b004e595cf5de98a73b6b561394a55
 Sourced from Ghostty's MIT/X11-licensed terminal/res/rgb.txt.
 ```
 
-zz builds against the Apache-2.0 `gpui` and `gpui_platform` crates (now `ala` and `ala-platform`) and the Zed utility crates they need only. No GPL-licensed Zed
+zz builds against the Apache-2.0 `gpui` and `gpui_platform` crates (now `ala` and `ala-platform`) and the upstream utility crates they need only. No GPL-licensed Zed
 code is linked into any zz binary.
 
 ## Bundled binaries

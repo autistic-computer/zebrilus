@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: ala
-description: ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
+description: ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream fix, and what zz changed. gpui-component is not a dependency.
 resource: libs/ala/crates/ala/Cargo.toml
 tags: [ala, gpui, reference, vendored]
 timestamp: 2026-10-30T00:00:00Z
@@ -9,7 +9,7 @@ timestamp: 2026-10-30T00:00:00Z
 
 # Overview
 
-ala is zz's UI framework: Zed's GPUI, split out on 2026-10-05 and owned since. It spent
+ala is zz's UI framework: GPUI, split out of upstream on 2026-10-05 and owned since. It spent
 four days as its own repository, [`demfabris/gpui`](https://github.com/demfabris/gpui), moved
 into this repo on 2026-10-09 with its history (`git subtree add` of `29adbcfa`), and the same day
 went from 22 crates to three. On 2026-10-29 it moved out again, to
@@ -22,7 +22,7 @@ and `libs/penna`. The same day both were renamed after bird anatomy in Latin: zz
 
 | Crate | What it holds |
 | --- | --- |
-| `libs/ala/crates/ala` | gpui core, plus the Zed utility crates it needed, now modules: `collections`, `util` (merged with gpui's own), `shared_string`, `refineable`, `scheduler`, `sum_tree`, `http_client` |
+| `libs/ala/crates/ala` | gpui core, plus the upstream utility crates it needed, now modules: `collections`, `util` (merged with gpui's own), `shared_string`, `refineable`, `scheduler`, `sum_tree`, `http_client` |
 | `libs/ala/crates/ala-macros` | ala's proc macros and the `Refineable` derive |
 | `libs/ala/crates/ala-platform` | `current_platform` and every backend as a module built only for its target: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows` (DirectX), `web`, `ios` (UIKit), `android` (JNI and the NDK), and `wgpu`, the renderer Linux, web, iOS and Android share. One build script compiles the Metal shaders on macOS and the HLSL ones on Windows |
 
@@ -30,18 +30,18 @@ zz never depended on the utility crates directly, and each target only ever comp
 backend, so the split bought nothing: the utility crates sat on the build's critical path before
 ala could start, and editing a backend still rebuilds only the platform crate. `ios`'s
 `keyboard`, `momentum` and `pinch` modules are plain logic and build everywhere, which is how
-`zz-app` tests them on every OS. Zed's `zlog`, `ztracing` (a no-op without tracy) and
-`util_macros` were deleted rather than folded, along with Zed's `hello_web` demo and the wgpu
+`zz-app` tests them on every OS. Upstream's `zlog`, `ztracing` (a no-op without tracy) and
+`util_macros` were deleted rather than folded, along with upstream's `hello_web` demo and the wgpu
 layout bench. Runtime names did not change: `ALA_*` and `ZZ_ALA_*` environment variables, iOS
-bundle ids, and the `ala` data directory. `libs/ala/UPSTREAM.md` maps Zed's paths to ours.
+bundle ids, and the `ala` data directory. `libs/ala/UPSTREAM.md` maps upstream's paths to ours.
 
 `git log -- 'libs/ala/crates/ala*' 'crates/ala*' 'crates/zpui*' zpui ala` reaches back to the split. The first
-commit there is upstream `zed-industries/zed` at `933d8d9381`, limited to those crates; the next
-89 are the commits that lived on the old `demfabris/zed` `zz-patches` branch (tip `5a00ac89a4`),
-replayed under new commit IDs. Upstream fixes come in by hand, when we want them; Zed patches
-name `ala`, so they need the paths and identifiers mapped to ala's.
+commit there is upstream at `933d8d9381`, limited to those crates; the next
+89 are the commits that lived on the old patch fork's `zz-patches` branch (tip `5a00ac89a4`),
+replayed under new commit IDs. Upstream fixes come in by hand, when we want them; upstream patches
+name `gpui`, so they need the paths and identifiers mapped to ala's.
 
-Commit IDs cited below come from the old `demfabris/zed` fork, which stays up as an archive. The
+Commit IDs cited below come from the old patch fork, which stays up as an archive. The
 same commits exist here with the same subjects.
 
 On Linux, `ala-platform` is built with `font-kit`, Wayland, and X11 enabled; the same crate
@@ -54,9 +54,9 @@ other backends from macOS. The Android backend checks with the NDK's clang as th
 linker (`just android setup` installs it): `cargo clippy --manifest-path libs/ala/Cargo.toml --target aarch64-linux-android -p ala-platform --all-features`.
 Clippy 1.99 reports `missing_const_for_thread_local` on Android for `thread_local!`s that are
 already `const`, so `ala` allows it there, the `android` module allows it, and zz's
-`.cargo/config.toml` allows it for Android targets. Zed's extras zz never used are gone: screen capture (the `scap` and
+`.cargo/config.toml` allows it for Android targets. Upstream's extras zz never used are gone: screen capture (the `scap` and
 ScreenCaptureKit backends; the `ScreenCaptureSource` API stays and reports unsupported), the
-tracy profiler, and Zed's `#[perf]` test harness (`tooling/perf`). CI's "Test libs" step runs
+tracy profiler, and upstream's `#[perf]` test harness (`tooling/perf`). CI's "Test libs" step runs
 every ala test except ala-platform's. The Linux leg runs that crate's whole suite on its
 own step with Mesa lavapipe, a software Vulkan driver (`mesa-vulkan-drivers`, selected with
 `VK_ICD_FILENAMES`), so the wgpu headless renderer's pixel tests run without a GPU. That step
@@ -75,7 +75,7 @@ zz crates:
 
 | What | Where | Why |
 | --- | --- | --- |
-| Zed's relaxed `[lints]` table | each Zed-derived crate's `Cargo.toml` | cargo allows one shared lint set per workspace, and the workspace one is zz's pedantic set |
+| Upstream's relaxed `[lints]` table | each upstream-derived crate's `Cargo.toml` | cargo allows one shared lint set per workspace, and the workspace one is zz's pedantic set |
 | `opt-level = 2` (3 for `ala`) | `[profile.dev.package]` in the root `Cargo.toml` | an unoptimized renderer makes debug builds too slow to use |
 
 `libs/ala/crates/ala/clippy.toml` empties `disallowed-methods`, since the root list bans `ala::rgb` and
@@ -130,7 +130,7 @@ Five fixes from building the iPhone client (`c3e845c` to `93f288f`):
   one. The ignored `bench_swipe_frames` (a 1179x2556 page swipe, about 650 KB of instances, Metal
   on an M4 Max) went from 102-112 to 37-40 us of CPU per frame.
 - `PlatformWindow::keeps_presenting_after_input` (default true) lets a platform skip re-presenting
-  the last frame for a second after fast input, which Zed does to keep ProMotion Macs from
+  the last frame for a second after fast input, which upstream does to keep ProMotion Macs from
   lowering their refresh rate. The iOS window returns false: its display link asks for its rate
   itself, and each present encoded the whole scene again. The Wayland and X11 windows return false
   too: the compositor owns the refresh rate, Mutter allows VRR on an output only while a
@@ -169,7 +169,7 @@ Unmatched keys continue through ala's existing input path. The menu call precede
 the window-state lock and ala event callback because menu validation can call back
 into ala.
 
-Each is upstream-able as a small Zed PR; if Zed merges an equivalent, drop it. In branch order:
+Each is upstream-able as a small PR; if upstream merges an equivalent, drop it. In branch order:
 
 1. `RenderImage::into_frames` for OSR frame reclamation.
 2. Linux `WgpuDeviceContext` access.
@@ -216,8 +216,8 @@ Each is upstream-able as a small Zed PR; if Zed merges an equivalent, drop it. I
 22. Building the wgpu renderer against wgpu 30: `Queue::present()` replaces
     `SurfaceTexture::present()`, and `SurfaceConfiguration` gains `color_space:
     SurfaceColorSpace::Auto` (wgpu 29's behaviour). Carried because the `cef` crate moved its
-    `accelerated_osr` texture importer to wgpu 30 while Zed was still on 29, and that importer takes
-    GPUI's own device . see [updating CEF](/playbooks/updating-cef.md). Drop it as soon as Zed bumps
+    `accelerated_osr` texture importer to wgpu 30 while upstream was still on 29, and that importer takes
+    GPUI's own device . see [updating CEF](/playbooks/updating-cef.md). Drop it as soon as upstream bumps
     wgpu upstream.
 23. Per-window content zoom at the platform-metrics seam (`Window::set_zoom`).
 24. Retaining WSL's `dzn` adapter when `/dev/dxg` proves the non-conformant Vulkan report belongs to
@@ -268,7 +268,7 @@ Each is upstream-able as a small Zed PR; if Zed merges an equivalent, drop it. I
 35. The ala lab series (27 commits from `337a10612d` to `cc9e4d1804`): per-frame speedups ported
     from longbridge/gpui-fast (scene bounds grid, cached element path hashes, glyph tile cache,
     recent native line shapes and others), text fixes from gpui-fast, renderer fixes from gpui-ce
-    and upstream zed, gpui-ce's accessibility automation APIs, and the `ALA_FRAME_STATS` frame
+    and upstream, gpui-ce's accessibility automation APIs, and the `ALA_FRAME_STATS` frame
     recorder. Each commit body names its source repo and hash. Measured on Linux and on Metal in
     the [ala fork lab](/research/2026-09-30-gpui-fork-lab.md).
 36. One CoreText font per size (`ff805a96b0`, from gpui-fast `9b2f43d`). `layout_line` reuses a
@@ -474,7 +474,7 @@ Run `just libs check ala` (the workspace gates skip `libs/`), `cargo test --mani
 libs/ala/Cargo.toml -p ala-platform --all-features` if you touched a backend, a cross-check for the backends the host does not build,
 and `just web build`.
 
-Pulling a fix from upstream Zed: map the patch's paths and identifiers with the table in
+Pulling a fix from upstream: map the patch's paths and identifiers with the table in
 `libs/ala/UPSTREAM.md`, which also has the `format-patch | sed | git am -3` recipe.
 
 The two rebase sections below are history from the patch-branch era. Their layout sizes and
