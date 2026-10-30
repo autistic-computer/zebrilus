@@ -9,7 +9,7 @@ tags:
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-28T00:00:00Z
+timestamp: 2026-10-30T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -39,7 +39,7 @@ then to a built-in value.
 | Window chrome roles, `register`, `retire` and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
 | zz's roles, retired ids, and the zz-ui lookups that register them first | `crates/zz-ui/src/roles.rs`, `zz_ui::register` in `crates/zz-ui/src/lib.rs` |
 | Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, zz's patches for its own roles over them in `crates/zz-ui/themes/*.json` |
-| The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `libs/penna/storybook/src/knobs.rs` |
+| The theme creator | `penna_storybook::creator` in `libs/penna/storybook/src/creator/`, `libs/penna/storybook/src/knobs.rs`; zz's plates in `clients/storybook/src/stories/theme_creator.rs` |
 
 ## The model
 
@@ -488,8 +488,9 @@ they fill with `theme.scrim`.
 
 ## Theme creator
 
-The storybook's theme creator (`clients/storybook`) is four steps over the same live preview,
-then an App tab for the pane settings and the preview around the showcase, which are not theme:
+The theme creator (`penna_storybook::creator`, on penna's storybook page and on every app's page
+built on its harness) is four steps over the same live preview, then an App tab for the app's
+knobs (zz's pane settings) and the preview around the showcase, which are not theme:
 
 1. **Colors**: the mode with contrast and the tint, light and dark palettes, accent, font.
 2. **Materials**: presets, shape (radius, smoothing, global or picked smoothing, outline,
@@ -507,6 +508,17 @@ then an App tab for the pane settings and the preview around the showcase, which
 Every built-in starts the creator with its materials and roles. The knobs panel resizes from its
 left edge (double-click resets it); the browser remembers the width. Clicking the preview to open
 a role is not built.
+
+The preview is the catalog's plates: regions that paint real UI. penna's page shows penna's five
+(an app window with the sidebar and the appearance rows, controls, floating surfaces, content and
+the phone chrome); zz lists its eleven instead. An app makes its own roles editable by registering
+them (`penna::roles::register`, and `penna::roles::retire` for ids that are gone) in its catalog's
+`register` function and adding a plate that draws them to the catalog's `plates`, next to penna's
+if it wants the kit's surfaces in view. Its roles show in the Roles step under their parents from
+`penna::roles::all()`, picking one shows the plates that drew it (each section host records the
+roles it paints, so no plate lists them), Export writes their patches, and Import drops retired
+ids and refuses unknown ones with the same "unknown role" error as any theme file. The recipe is
+in [storybook](/playbooks/storybook.md).
 
 ## Settings
 

@@ -1,7 +1,7 @@
 ---
 type: Playbook
 title: Working with the zz storybook
-description: Run the zz storybook and penna's own, add a story, change a look and check it in every theme, and drive or screenshot it from an agent.
+description: Run the zz storybook and penna's own, add a story, add an app's roles and plates to the theme creator, change a look and check it in every theme, and drive or screenshot it from an agent.
 resource: libs/penna/storybook/src/lib.rs
 tags:
 - storybook
@@ -17,17 +17,17 @@ timestamp: 2026-10-30T00:00:00Z
 There are two pages on one harness. `clients/storybook` (crate `zz-storybook`) shows zz's own UI,
 not a generic widget catalog: every piece of `zz-ui` and `penna` in its states, built from fixture
 data with the same functions the app calls. `libs/penna/storybook` (crate `penna-storybook`) is
-penna's own page, its Foundation and Kit stories with penna's roles and assets only, and the
-harness both pages run on. The page is plain HTML (navigation, prose, knobs). Each section of the
+penna's own page, its theme creator, Foundation and Kit stories with penna's roles and assets
+only, and the harness both pages run on. The page is plain HTML (navigation, prose, knobs). Each section of the
 open story is its own ala window, mounted into the section's element with `WindowOptions::mount`
 and sized to its content, so a section looks exactly like that piece does in the app.
 
 `penna-storybook` holds the story types (`story.rs`: `Story`, `Section`, `stateless`, `states`,
 `row`, `Framed`), the section host, the backdrop under floating sections, the theme knobs, the JSON
 the page reads, the wasm exports, the page's `web/` files, the Inter and Lilex fonts the page
-draws with (`fonts/`, OFL, noted in penna's `NOTICE`), the icon review sheet (`icons/`) and the
-Foundation and Kit stories (`src/foundation`, `src/kit`). An app's storybook is that harness plus a
-`penna_storybook::Catalog`:
+draws with (`fonts/`, OFL, noted in penna's `NOTICE`), the icon review sheet (`icons/`), the
+theme creator (`src/creator`) and the Foundation and Kit stories (`src/foundation`, `src/kit`). An
+app's storybook is that harness plus a `penna_storybook::Catalog`:
 
 | Field | What it gives the page |
 |---|---|
@@ -35,19 +35,21 @@ Foundation and Kit stories (`src/foundation`, `src/kit`). An app's storybook is 
 | `storage` | the `localStorage` prefix: `<storage>-role-edits`, `<storage>-knobs-width` |
 | `register`, `init` | what runs before built-in themes or roles are read (`zz_ui::register`), and the app's init (`zz_ui::init`) |
 | `logo` | the icon path the Title bar and Icons stories show as the app's mark |
-| `stories` | story lists in page order; penna's are `penna_storybook::FOUNDATION` and `KIT` |
+| `plates` | the theme creator's regions, in order; the creator opens the page (`#/theme-creator`) when the list is not empty. penna's are `penna_storybook::creator::PLATES` |
+| `stories` | story lists in page order after the creator; penna's are `penna_storybook::FOUNDATION` and `KIT` |
 | `knobs`, `apply` | app knobs on the App step (a `Knob` names its URL key, label, section heading and a `Control::Check` or `Control::Range`) and the function that applies them after the theme knobs; stories read them with `knobs().value(name)` or `flag(name)` |
 | `floating` | `story` or `story/section` entries that draw the backdrop knob under them; penna's are `backdrop::KIT_FLOATING` |
 
-zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: the theme creator, then
-penna's Foundation, zz's agent, workspace and console stories, then penna's Kit; the pane knobs
+zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: the creator's plates
+(`PLATES` in `clients/storybook/src/stories/theme_creator.rs`), penna's Foundation, zz's agent,
+workspace and console stories, then penna's Kit; the pane knobs
 (`pane-gaps`, `pane-margin`, `pip-opacity`, `pane-inactive-opacity`, `pane-glow`, read through
 `crate::pane()`) and `program-colors`; zz's floating sections; `zz_ui::Assets` and `zz_ui::ZZ_LOGO`.
 Each page's cdylib defines its own `#[wasm_bindgen] run` that calls
 `penna_storybook::start(&CATALOG, assets)`; every other export comes from `penna-storybook`, and
 penna's own `run` is behind its `page` feature, so a linked app never exports two. Both pages load
-`wasm/storybook.js`. `Catalog::problems` lists bad or duplicate ids and floating entries that name
-no section; each crate's tests assert it is empty for its catalog.
+`wasm/storybook.js`. `Catalog::problems` lists bad or duplicate ids (plates included) and floating
+entries that name no section; each crate's tests assert it is empty for its catalog.
 
 Each is its own wasm Cargo workspace, like `clients/web`. `zz-storybook` keeps a lockfile;
 `penna-storybook`'s is ignored like penna's, and in zebrilus every build of it patches its git
@@ -100,22 +102,31 @@ the Theme picker (Default, macOS, Yaru and a saved theme) with its more menu, th
 rounding with the corner radius) and the tint sliders (which follow the tint knobs), then
 the Advanced heading and its Corner radius and Contrast sliders.
 
-The Theme creator story is every surface of zz in eleven regions (Workspace, Flat sidebar, Lens,
-Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers), each its own window, so a hover or a
-spinner redraws only its region. The Lens region has the plan-approval card with Show terminal and
-the welcome before a first prompt. The bar links (on windows wider than 1240px) jump between them, and
-`theme-creator/<region>` in the address opens at one.
-The Phone region is phone-width pages from penna's `compact` builders (the floating pill, the HUD,
+The Theme creator lives in `penna-storybook` (`penna_storybook::creator`), so every page built on
+the harness has it: the knob panel, the role tree, export and import come from there, and the
+catalog's `plates` are its regions, each its own window, so a hover or a spinner redraws only its
+region. penna's own page has five plates built from penna alone (`creator::WINDOW`, `CONTROLS`,
+`FLOATING`, `CONTENT`, `PHONE`): an app window with the sidebar, title bar and the appearance
+rows, a form with switches, buttons and the settings card, menus with a picker, toasts, a dialog
+and which-key, markdown and an inline alert, and the phone chrome from `penna::compact` and
+`penna::touch`. zz's creator is every surface of zz in eleven plates (Workspace, Flat sidebar,
+Lens, Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers); its Controls, Floating and
+Phone plates reuse the creator's parts (`tiles`, `card`, `heading`, `labeled`, `over_backdrop`,
+`phone_frame`, `Preferences`, `Toasts`, `buttons`, `dialog`). The Lens region has
+the plan-approval card with Show terminal and the welcome before a first prompt. The bar links (on
+windows wider than 1240px) jump between regions, and `theme-creator/<region>` in the address opens
+at one.
+zz's Phone region is phone-width pages from penna's `compact` builders (the floating pill, the HUD,
 the bento grid and `bento_add_tile`, which the Hosts page titles Add host) and zz-ui's `compact`
 tiles (`host_tile`, `window_tile`, `overview_session_heading`, which the thin client draws with
 too): a terminal page with the
 HUD, the key row with the prefix menu open (`PopoverKey::open`) and the arrow pad's bubble
 (`arrow_pad_bubble`), the bindings list, the sessions sheet, a host's windows and the Hosts page.
-Its knob panel is four steps and an App tab:
+The creator's knob panel is four steps and an App tab:
 Colors (the mode with Contrast, Tint hue and Tint, palettes, font), Materials
 (shape, glass, both shadows),
-Roles and Export (the theme file with Copy and Import), then App (the pane settings and the
-preview backdrop and animations, none of which are in the theme). The Roles step lists every kind with its groups and
+Roles and Export (the theme file with Copy and Import), then App (the catalog's knobs, in zz the
+pane settings, and the preview backdrop and animations, none of which are in the theme). The Roles step lists every kind with its groups and
 roles indented under it (`penna::roles::members`, which lists the roles the app registered too), with the props each role's knobs allow
 (`SurfaceRole::knobs`) as segmented controls. A prop left on inherit shows the value it inherits
 and from which kind or group, built in or from this theme. Setting a prop on a role
@@ -133,11 +144,39 @@ six props itself, or whose groups in between do, is left out. `window` is the on
 through yet, so picking it keeps every region. Roles also go to `localStorage`, keyed by the
 start theme, so they survive a reload when the address drops them for length.
 
+# Add an app's roles and plates to the creator
+
+The creator edits every role in `penna::roles::all()`: the kit's, penna's chrome roles and the ones
+the app registered. To tune an app's own roles with it:
+
+1. Register the roles in the catalog's `register` function, the one the app calls at startup:
+   `penna::roles::register(ROLES)`, and `penna::roles::retire(RETIRED)` for ids that are gone. A
+   role made with `SurfaceRole::under(&PARENT, ..)` shows in the Roles step under that parent,
+   whether the parent is a kit role or one of the app's; `SurfaceRole::new(id, kind, ..)` hangs
+   under its kind. zz's is `zz_ui::register`.
+2. Add a plate for them: a `Section` whose `build` paints the app's real UI with those roles, listed
+   in the catalog's `plates`. List penna's plates beside it (`penna_storybook::creator::WINDOW` and
+   the rest, or all of `creator::PLATES`) to keep the kit's surfaces in view. The section host notes
+   the roles each plate draws as it paints, and picking a role in the creator shows only the plates
+   that drew it, so nothing lists a plate's roles by hand. A role no plate draws reads "not in the
+   showcase".
+3. Export (Copy JSON) writes the theme's `roles` patch for every registered role, and Import takes
+   a theme that names them: a retired id is dropped and an unknown id is refused with "unknown role
+   `id`", and "did you mean" when one is close, the same as every theme file.
+
+`libs/penna/storybook/tests/creator.rs` plays such an app: it registers `board`, `board.screen`
+(under `board`) and `board.chip` (under `badge`), a retired `board.shelf` and a Board plate beside
+penna's Controls, then checks the creator comes first with those plates, the roles JSON lists the
+new roles under their parents, an edit to `board.screen` sent the way the page sends it lands in
+the exported theme and parses back with `penna::interface_theme`, import drops the retired id and
+names the unknown one, and the Board plate, drawn on ala's test platform, reports the three roles.
+
 # Add a story
 
 penna's stories live in `libs/penna/storybook/src/foundation/` and `src/kit/` and use penna only;
-zz's live in `clients/storybook/src/stories/<area>/` (agent, workspace, console, plus the theme
-creator), each area exporting `STORIES`, listed in `CATALOG`. `clients/storybook/README.md` has the
+zz's live in `clients/storybook/src/stories/<area>/` (agent, workspace, console), each area
+exporting `STORIES`, listed in `CATALOG`, and zz's creator plates in
+`clients/storybook/src/stories/theme_creator.rs`. `clients/storybook/README.md` has the
 authoring rules; the short version:
 
 - One section per component piece, its states laid out with `states()`.

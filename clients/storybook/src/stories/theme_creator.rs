@@ -1,30 +1,24 @@
 use std::sync::Arc;
 
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, ElementId, Entity, Focusable as _,
-    IntoElement, Keystroke, ParentElement as _, Render, SharedString, Styled as _, Window, div,
-    prelude::*, px, relative, size,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, Focusable as _, IntoElement,
+    Keystroke, ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, relative,
+    size,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
-    badge::Badge,
+    ActiveTheme as _, Colorize as _, Elevation, IconName, IndexPath,
     button::{Button, ButtonVariants as _},
     compact::{
         PillLabel, compact_bar_button, compact_floating_bar, compact_floating_pill, compact_hud,
     },
     h_flex,
     input::{Input, InputState, NumberInput},
-    kbd::Kbd,
     menu::PopupMenu,
-    notification::Notification,
-    overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
     select::{Select, SelectState},
     settings::appearance::{picker_tile, theme_preview},
     sheet::{BottomSheet, bottom_sheet, sheet_close, sheet_row},
-    slider::DiscreteSlider,
     switch::Switch,
     text::{TextView, TextViewStyle},
-    tooltip::Tooltip,
     touch::{ArrowDirection, ToolKeys, WhichKeyList, arrow_pad_bubble, page_dots},
     v_flex,
     which_key::WhichKeyView,
@@ -82,113 +76,103 @@ use super::{
     },
 };
 use crate::story::Framed as _;
-use crate::story::{Section, Story, stateless};
+use crate::story::{Section, stateless};
 use penna::StyledExt as _;
-use penna_storybook::kit::menus::{SplitRight, bind_keys, pane_menu, view_menu};
-
-pub const ID: &str = "theme-creator";
-
-pub const STORY: Story = Story {
-    id: ID,
-    name: "Theme creator",
-    group: "Foundation",
-    summary: "Everything a theme touches, region by region. Tune the knobs, then copy the theme as JSON.",
-    sections: &[
-        Section {
-            id: "workspace",
-            name: "Workspace",
-            summary: "The window with the tree sidebar, and the title bar as it reads with the sidebar hidden.",
-            build: Workspace::view,
-        },
-        Section {
-            id: "flat",
-            name: "Flat sidebar",
-            summary: "The flat sidebar beside Claude Code with its lens open and two terminals. The keyboard cursor sits on a window, and a host that is not connected offers Connect.",
-            build: Flat::view,
-        },
-        Section {
-            id: "lens",
-            name: "Lens",
-            summary: "The agent lens over two terminals, each toggle lit while its lens is open: Claude Code at a plan approval, whose card offers Show terminal, and Codex before its first prompt.",
-            build: Lens::view,
-        },
-        Section {
-            id: "panes",
-            name: "Panes",
-            summary: "The find bar, badges, the drop preview, the drag chip and a popup over panes.",
-            build: |window, cx| {
-                stateful(
-                    window,
-                    cx,
-                    |window, cx| cx.new(|cx| InputState::new(window, cx).default_value("error")),
-                    panes,
-                )
-            },
-        },
-        Section {
-            id: "pip",
-            name: "PiP",
-            summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and Claude Code with its lens open.",
-            build: Pip::view,
-        },
-        Section {
-            id: "start",
-            name: "Start",
-            summary: "The workspace before its first session, the first run with no host, a new split asking what it should become, and a new chat asking which agent to start and where.",
-            build: |_, cx| stateless(start, cx),
-        },
-        Section {
-            id: "controls",
-            name: "Controls",
-            summary: "A form, switches, buttons and a settings card.",
-            build: Controls::view,
-        },
-        Section {
-            id: "floating",
-            name: "Floating",
-            summary: "Menus, the palette, a dialog, toasts and which-key over the backdrop.",
-            build: Floating::view,
-        },
-        Section {
-            id: "content",
-            name: "Content",
-            summary: "An agent card, markdown and a new browser tab with its address focused.",
-            build: |window, cx| stateful(window, cx, new_tab_address, content),
-        },
-        Section {
-            id: "phone",
-            name: "Phone",
-            summary: "The phone: a terminal page with a HUD, the key row's prefix menu and arrow pad, the bindings list, the sessions sheet, a host's windows and the Hosts page with its Add host tile.",
-            build: Phone::view,
-        },
-        Section {
-            id: "drawers",
-            name: "Drawers",
-            summary: "Every drawer on the phone, each its own role under Drawers, resting on the phone's bottom safe area.",
-            build: |window, cx| {
-                stateful(
-                    window,
-                    cx,
-                    |window, cx| cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
-                    drawers,
-                )
-            },
-        },
-    ],
+use penna_storybook::creator::{
+    GAP, PHONE_WIDTH, PLATE_PADDING, Preferences, READING, SAFE_BOTTOM, SCREEN_RADIUS, Toasts,
+    buttons, card, dialog, heading, labeled, over_backdrop, phone_frame, tiles,
 };
+use penna_storybook::kit::menus::{bind_keys, pane_menu, view_menu};
+
+pub const PLATES: &[Section] = &[
+    Section {
+        id: "workspace",
+        name: "Workspace",
+        summary: "The window with the tree sidebar, and the title bar as it reads with the sidebar hidden.",
+        build: Workspace::view,
+    },
+    Section {
+        id: "flat",
+        name: "Flat sidebar",
+        summary: "The flat sidebar beside Claude Code with its lens open and two terminals. The keyboard cursor sits on a window, and a host that is not connected offers Connect.",
+        build: Flat::view,
+    },
+    Section {
+        id: "lens",
+        name: "Lens",
+        summary: "The agent lens over two terminals, each toggle lit while its lens is open: Claude Code at a plan approval, whose card offers Show terminal, and Codex before its first prompt.",
+        build: Lens::view,
+    },
+    Section {
+        id: "panes",
+        name: "Panes",
+        summary: "The find bar, badges, the drop preview, the drag chip and a popup over panes.",
+        build: |window, cx| {
+            stateful(
+                window,
+                cx,
+                |window, cx| cx.new(|cx| InputState::new(window, cx).default_value("error")),
+                panes,
+            )
+        },
+    },
+    Section {
+        id: "pip",
+        name: "PiP",
+        summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and Claude Code with its lens open.",
+        build: Pip::view,
+    },
+    Section {
+        id: "start",
+        name: "Start",
+        summary: "The workspace before its first session, the first run with no host, a new split asking what it should become, and a new chat asking which agent to start and where.",
+        build: |_, cx| stateless(start, cx),
+    },
+    Section {
+        id: "controls",
+        name: "Controls",
+        summary: "A form, switches, buttons and a settings card.",
+        build: Controls::view,
+    },
+    Section {
+        id: "floating",
+        name: "Floating",
+        summary: "Menus, the palette, a dialog, toasts and which-key over the backdrop.",
+        build: Floating::view,
+    },
+    Section {
+        id: "content",
+        name: "Content",
+        summary: "An agent card, markdown and a new browser tab with its address focused.",
+        build: |window, cx| stateful(window, cx, new_tab_address, content),
+    },
+    Section {
+        id: "phone",
+        name: "Phone",
+        summary: "The phone: a terminal page with a HUD, the key row's prefix menu and arrow pad, the bindings list, the sessions sheet, a host's windows and the Hosts page with its Add host tile.",
+        build: Phone::view,
+    },
+    Section {
+        id: "drawers",
+        name: "Drawers",
+        summary: "Every drawer on the phone, each its own role under Drawers, resting on the phone's bottom safe area.",
+        build: |window, cx| {
+            stateful(
+                window,
+                cx,
+                |window, cx| cx.new(|cx| InputState::new(window, cx).placeholder("user@host")),
+                drawers,
+            )
+        },
+    },
+];
 
 const SHELLS: [&str; 4] = ["zsh", "fish", "bash", "nu"];
-const SCROLLBACK: [&str; 5] = ["1k", "10k", "50k", "100k", "∞"];
 const LAYOUTS: [&str; 2] = ["Tree", "Flat"];
-const WIDE: f32 = 1040.0;
-const MEDIUM: f32 = 680.0;
-const GAP: f32 = 16.0;
-const PLATE_PADDING: f32 = 20.0;
 const WHICH_KEY_HEIGHT: f32 = 300.0;
 const PANES_HEIGHT: f32 = 250.0;
 const PIP_HEIGHT: f32 = 420.0;
 const LENS_HEIGHT: f32 = 420.0;
-const PHONE_WIDTH: f32 = 390.0;
 const START_HEIGHT: f32 = 300.0;
 const START_PAGE_HEIGHT: f32 = 220.0;
 const PREFIX: &str = "ctrl-b";
@@ -205,21 +189,11 @@ const PHONE_LINES: [&str; 3] = [
     "~/dev/zz main* > ",
 ];
 const PHONE_SHEET_HEIGHT: f32 = 460.0;
-const SCREEN_RADIUS: f32 = 55.0;
-const SAFE_BOTTOM: f32 = 34.0;
 const DRAWER_SCREEN_HEIGHT: f32 = 480.0;
 const PHONE_PAGE_HEIGHT: f32 = 190.0;
 const KEYS_PAGE_HEIGHT: f32 = 470.0;
 const SESSIONS: [(&str, usize, bool); 3] =
     [("work", 3, true), ("scratch", 1, false), ("logs", 2, false)];
-const READING: &str = "Pinned tabs keep a `28px` floor, and the rest share what is left:\n\n\
-| Tabs | Pinned | Unpinned |\n\
-| ---: | ---: | ---: |\n\
-| 10 | 28px | 96px |\n\
-| 30 | 28px | 31px |\n\n\
-```rust\n\
-let floor = px(28.0) * pinned;\n\
-```";
 const RECENT: [&str; 3] = [
     "zed.dev/docs/key-bindings",
     "github.com/autistic-computer/zebrilus/pull/412",
@@ -491,10 +465,7 @@ struct Controls {
     user: Entity<InputState>,
     port: Entity<InputState>,
     login: Entity<SelectState<Vec<&'static str>>>,
-    restore: bool,
-    animations: bool,
-    sound: bool,
-    scrollback: usize,
+    preferences: Entity<Preferences>,
 }
 
 impl Controls {
@@ -515,16 +486,14 @@ impl Controls {
         });
         let login =
             cx.new(|cx| SelectState::new(SHELLS.to_vec(), Some(IndexPath::new(0)), window, cx));
+        let preferences = Preferences::view(cx);
         cx.new(|_| Self {
             layout,
             host,
             user,
             port,
             login,
-            restore: true,
-            animations: true,
-            sound: false,
-            scrollback: 2,
+            preferences,
         })
         .into()
     }
@@ -560,61 +529,6 @@ impl Controls {
                             .label("Connect"),
                     ),
             )
-            .into_any_element()
-    }
-
-    fn preferences(&self, cx: &mut Context<Self>) -> AnyElement {
-        let this = cx.entity();
-        card("showcase-preferences", cx)
-            .child(heading("Behavior", "How sessions and panes behave.", cx))
-            .child(toggle(
-                "showcase-restore",
-                "Restore sessions",
-                "Bring windows and panes back after a restart",
-                self.restore,
-                cx.listener(|this, checked: &bool, _, cx| {
-                    this.restore = *checked;
-                    cx.notify();
-                }),
-                cx,
-            ))
-            .child(toggle(
-                "showcase-animations",
-                "Animations",
-                "Menus and dialogs ease in",
-                self.animations,
-                cx.listener(|this, checked: &bool, _, cx| {
-                    this.animations = *checked;
-                    cx.notify();
-                }),
-                cx,
-            ))
-            .child(toggle(
-                "showcase-sound",
-                "Bell sound",
-                "Play a sound when a pane rings",
-                self.sound,
-                cx.listener(|this, checked: &bool, _, cx| {
-                    this.sound = *checked;
-                    cx.notify();
-                }),
-                cx,
-            ))
-            .child(DiscreteSlider::new(
-                "showcase-scrollback",
-                "Scrollback",
-                SCROLLBACK
-                    .iter()
-                    .map(|label| SharedString::from(*label))
-                    .collect(),
-                self.scrollback,
-                move |index, _, cx| {
-                    this.update(cx, |this, cx| {
-                        this.scrollback = index;
-                        cx.notify();
-                    });
-                },
-            ))
             .into_any_element()
     }
 
@@ -662,7 +576,7 @@ impl Render for Controls {
             window,
             vec![
                 vec![self.connect(cx)],
-                vec![self.preferences(cx), panes_preview()],
+                vec![self.preferences.clone().into_any_element(), panes_preview()],
                 vec![buttons(cx), self.settings(cx)],
             ],
         )
@@ -673,8 +587,7 @@ struct Floating {
     pane_menu: Entity<PopupMenu>,
     view_menu: Entity<PopupMenu>,
     search: Entity<InputState>,
-    toasts: [Entity<Notification>; 2],
-    tooltip: Entity<Tooltip>,
+    toasts: Toasts,
 }
 
 impl Floating {
@@ -683,26 +596,12 @@ impl Floating {
         let pane_menu = PopupMenu::build(window, cx, pane_menu);
         let view_menu = PopupMenu::build(window, cx, view_menu);
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Jump to a window"));
-        let toast = |notification: Notification, cx: &mut App| {
-            cx.new(|_| notification.autohide(false).width(px(320.0)))
-        };
-        let toasts = [
-            toast(
-                Notification::success("3 windows and 7 panes came back.").title("Session restored"),
-                cx,
-            ),
-            toast(
-                Notification::error("ssh devbox exited with status 255.").title("Connection lost"),
-                cx,
-            ),
-        ];
-        let tooltip = cx.new(|_| Tooltip::new("Split right").action(&SplitRight, None));
+        let toasts = Toasts::new(cx);
         cx.new(|_| Self {
             pane_menu,
             view_menu,
             search,
             toasts,
-            tooltip,
         })
         .into()
     }
@@ -775,25 +674,17 @@ impl Floating {
 impl Render for Floating {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let width = window.viewport_size().width.as_f32();
-        let menus = plate("showcase-menus", self.pane_menu.clone(), cx);
-        let view = plate("showcase-view-menu", self.view_menu.clone(), cx);
-        let palette = plate("showcase-palette", self.palette(cx), cx);
-        let dialog = plate("showcase-dialog", dialog(cx), cx);
-        let toasts = plate(
-            "showcase-toasts",
-            v_flex()
-                .gap_3()
-                .items_center()
-                .children(self.toasts.iter().cloned())
-                .child(self.tooltip.clone()),
-            cx,
-        );
-        let chooser = plate(
+        let menus = over_backdrop("showcase-menus", self.pane_menu.clone(), cx);
+        let view = over_backdrop("showcase-view-menu", self.view_menu.clone(), cx);
+        let palette = over_backdrop("showcase-palette", self.palette(cx), cx);
+        let dialog = over_backdrop("showcase-dialog", dialog(cx), cx);
+        let toasts = over_backdrop("showcase-toasts", self.toasts.stack(), cx);
+        let chooser = over_backdrop(
             "showcase-chooser",
             confirm_prompt("showcase-chooser-modal", cx),
             cx,
         );
-        let which_key = plate(
+        let which_key = over_backdrop(
             "showcase-which-key",
             WhichKeyView::new(prefix_header(), prefix_rows()).fit(size(
                 px((width - 2.0 * PLATE_PADDING - 2.0).max(0.0)),
@@ -1238,44 +1129,6 @@ const TABS: [(&str, &str); 3] = [
     ("Issues", "github.com"),
 ];
 
-fn phone_frame(id: &'static str, cx: &App) -> ala::Stateful<ala::Div> {
-    let theme = cx.theme();
-    v_flex()
-        .id(id)
-        .w_full()
-        .max_w(px(PHONE_WIDTH))
-        .overflow_hidden()
-        .rounded(theme.radius)
-        .framed(cx)
-        .bg(theme.background)
-}
-
-fn tiles(window: &Window, columns: Vec<Vec<AnyElement>>) -> impl IntoElement {
-    let width = window.viewport_size().width.as_f32();
-    let count = if width >= WIDE {
-        3
-    } else if width >= MEDIUM {
-        2
-    } else {
-        1
-    }
-    .min(columns.len());
-    let mut stacks: Vec<Vec<AnyElement>> = (0..count).map(|_| Vec::new()).collect();
-    let mut next = 0;
-    for (group, column) in columns.into_iter().enumerate() {
-        for tile in column {
-            let index = if count == 3 { group } else { next % count };
-            next += 1;
-            stacks[index].push(tile);
-        }
-    }
-    h_flex().w_full().items_start().gap(px(GAP)).children(
-        stacks
-            .into_iter()
-            .map(|stack| v_flex().flex_1().min_w_0().gap(px(GAP)).children(stack)),
-    )
-}
-
 fn status_bar(cx: &App) -> AnyElement {
     div()
         .id("showcase-status-bar")
@@ -1632,87 +1485,6 @@ fn panes_preview() -> AnyElement {
         .into_any_element()
 }
 
-fn buttons(cx: &App) -> AnyElement {
-    let keys = ["cmd-k", "cmd-shift-d", "ctrl-a"];
-    card("showcase-buttons", cx)
-        .child(heading("Actions", "Buttons, tags and key hints.", cx))
-        .child(
-            h_flex()
-                .flex_wrap()
-                .gap_2()
-                .child(
-                    Button::new("showcase-primary")
-                        .primary()
-                        .label("New session"),
-                )
-                .child(Button::new("showcase-default").label("Detach"))
-                .child(Button::new("showcase-ghost").ghost().label("Rename"))
-                .child(Button::new("showcase-danger").danger().label("Kill")),
-        )
-        .child(
-            h_flex()
-                .gap_2()
-                .child(Button::new("showcase-split-right").icon(IconName::PanelRight))
-                .child(Button::new("showcase-split-down").icon(IconName::PanelBottom))
-                .child(
-                    Button::new("showcase-search")
-                        .ghost()
-                        .icon(IconName::Search),
-                )
-                .child(
-                    Button::new("showcase-settings")
-                        .ghost()
-                        .icon(IconName::Settings),
-                )
-                .child(div().flex_1())
-                .child(Button::new("showcase-small").label("Small")),
-        )
-        .child(
-            h_flex()
-                .flex_wrap()
-                .items_center()
-                .gap_2()
-                .child(Badge::new("connected").tone(Tone::Success))
-                .child(
-                    Badge::new("main")
-                        .tone(Tone::Primary)
-                        .emphasis(Emphasis::Solid),
-                )
-                .child(Badge::new("3 panes"))
-                .children(
-                    keys.into_iter()
-                        .map(|key| Kbd::new(Keystroke::parse(key).unwrap_or_default())),
-                ),
-        )
-        .into_any_element()
-}
-
-fn dialog(cx: &App) -> AnyElement {
-    dialog_surface(cx)
-        .w_full()
-        .max_w(px(360.0))
-        .child(dialog_gutter().child(dialog_title().child("Kill session \"work\"?")))
-        .child(
-            dialog_gutter().child(
-                dialog_description(cx).child(
-                    "Its 3 windows and 7 panes stop, and their scrollback is gone for good.",
-                ),
-            ),
-        )
-        .child(
-            dialog_gutter().child(
-                dialog_footer(cx)
-                    .child(Button::new("showcase-dialog-cancel").label("Cancel"))
-                    .child(
-                        Button::new("showcase-dialog-kill")
-                            .danger()
-                            .label("Kill session"),
-                    ),
-            ),
-        )
-        .into_any_element()
-}
-
 fn agent(cx: &App) -> AnyElement {
     card("showcase-agent", cx)
         .child(heading("Agent", "A tool call waiting for approval.", cx))
@@ -1737,95 +1509,4 @@ fn agent(cx: &App) -> AnyElement {
                 ),
         )
         .into_any_element()
-}
-
-fn card(id: &'static str, cx: &App) -> ala::Stateful<ala::Div> {
-    v_flex()
-        .id(id)
-        .w_full()
-        .p(px(16.0))
-        .gap_3()
-        .rounded(cx.theme().radius)
-        .framed(cx)
-        .bg(cx.theme().background)
-}
-
-fn plate(id: &'static str, content: impl IntoElement, cx: &App) -> AnyElement {
-    let backdrop = crate::backdrop::backdrop(crate::knobs().backdrop, cx);
-    div()
-        .id(id)
-        .relative()
-        .w_full()
-        .overflow_hidden()
-        .rounded(cx.theme().radius)
-        .framed(cx)
-        .bg(cx.theme().surface(Elevation::Panel).fill)
-        .children(backdrop)
-        .child(
-            h_flex()
-                .relative()
-                .w_full()
-                .p(px(PLATE_PADDING))
-                .justify_center()
-                .child(content),
-        )
-        .into_any_element()
-}
-
-fn heading(title: &'static str, description: &'static str, cx: &App) -> impl IntoElement {
-    v_flex()
-        .gap_0p5()
-        .child(
-            div()
-                .text_sm()
-                .font_weight(ala::FontWeight::SEMIBOLD)
-                .child(title),
-        )
-        .child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().foreground.muted())
-                .child(description),
-        )
-}
-
-fn labeled(label: &'static str, control: impl IntoElement, cx: &App) -> impl IntoElement {
-    v_flex()
-        .gap_1p5()
-        .child(
-            div()
-                .text_xs()
-                .text_color(cx.theme().foreground.muted())
-                .child(label),
-        )
-        .child(control)
-}
-
-fn toggle(
-    id: &'static str,
-    title: &'static str,
-    description: &'static str,
-    checked: bool,
-    on_click: impl Fn(&bool, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> impl IntoElement {
-    h_flex()
-        .gap_3()
-        .justify_between()
-        .child(
-            v_flex()
-                .min_w_0()
-                .child(div().text_sm().child(title))
-                .child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().foreground.muted())
-                        .child(description),
-                ),
-        )
-        .child(
-            Switch::new(ElementId::from(id))
-                .checked(checked)
-                .on_click(on_click),
-        )
 }

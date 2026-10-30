@@ -5,14 +5,15 @@ navigation, prose and knobs. Each section of the story on screen is its own ala 
 into the section's element and sized to its content.
 
 The page, the story types, the theme knobs and penna's Foundation and Kit stories come from
-`penna-storybook` in `libs/penna/storybook`. This crate adds zz's catalog in `src/lib.rs`
-(`CATALOG`: the theme creator, the agent, workspace and console stories, the pane and program
-color knobs, zz's floating sections, `zz_ui::init` and `zz_ui::Assets`) and its `run` entry.
+`penna-storybook` in `libs/penna/storybook`, the theme creator included. This crate adds zz's
+catalog in `src/lib.rs` (`CATALOG`: the creator's plates from `src/stories/theme_creator.rs`, the
+agent, workspace and console stories, the pane and program color knobs, zz's floating sections,
+`zz_ui::init` and `zz_ui::Assets`) and its `run` entry.
 
 ```bash
 just storybook run      # build, serve on http://127.0.0.1:8097, rebuild on save
 just storybook build    # build into clients/storybook/dist (add --release for an optimized build)
-just storybook penna    # penna's own page, Foundation and Kit only, on http://127.0.0.1:8098
+just storybook penna    # penna's own page: the creator with penna's plates, Foundation and Kit, on http://127.0.0.1:8098
 ```
 
 URLs carry the story, the section and the knobs: `#/agent/composer?theme=dark&radius=12`.
@@ -58,6 +59,11 @@ fn variants(_: &mut Window, _: &mut App) -> AnyElement {
   duplicate ids and floating entries that name no section.
 - A section that floats over the content (a menu, a dialog, a palette) goes in the catalog's
   `floating` list, so the backdrop knob draws under it.
+- A theme creator plate is a `Section` in `PLATES` (`src/stories/theme_creator.rs`), which the
+  catalog's `plates` lists. It paints real zz UI; the roles it draws are recorded as it paints, so
+  picking a role in the creator finds its plates without a list kept by hand. Shared plate parts
+  (`tiles`, `card`, `heading`, `over_backdrop`, `phone_frame`, `Preferences`, `Toasts`, `buttons`,
+  `dialog`) come from `penna_storybook::creator`.
 - Element ids inside one section must be unique: the same id twice shares keyed state.
 - Use `web_time::Instant`, never `std::time::Instant`, which panics on wasm.
 - One focused element exists per window. A state that needs focus or an open menu goes in its

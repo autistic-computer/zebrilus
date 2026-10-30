@@ -12,9 +12,8 @@ pub static CATALOG: Catalog = Catalog {
     register: zz_ui::register,
     init: zz_ui::init,
     logo: zz_ui::ZZ_LOGO,
-    plates: &[],
+    plates: stories::theme_creator::PLATES,
     stories: &[
-        &[stories::theme_creator::STORY],
         penna_storybook::FOUNDATION,
         stories::agent::STORIES,
         stories::workspace::STORIES,
@@ -164,7 +163,7 @@ mod tests {
     fn the_theme_creator_comes_first_and_the_kit_keeps_its_order() {
         penna_storybook::install(&CATALOG);
         let ids = CATALOG.stories().map(|story| story.id).collect::<Vec<_>>();
-        assert_eq!(ids[0], stories::theme_creator::ID);
+        assert_eq!(ids[0], penna_storybook::creator::ID);
         let kit = penna_storybook::KIT
             .iter()
             .map(|story| story.id)

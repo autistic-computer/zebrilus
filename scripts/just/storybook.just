@@ -19,7 +19,7 @@ lint:
 serve:
     @scripts/storybook-serve.py clients/storybook/dist 8097
 
-[doc("Build penna's own storybook (foundation and kit, penna roles only) against libs/ala into libs/penna/storybook/dist; pass --release for an optimized build.")]
+[doc("Build penna's own storybook (the theme creator with penna's five plates, then foundation and kit, penna roles only) against libs/ala into libs/penna/storybook/dist; pass --release for an optimized build.")]
 penna-build *args:
     #!/usr/bin/env bash
     set -euo pipefail

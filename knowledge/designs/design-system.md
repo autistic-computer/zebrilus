@@ -10,7 +10,7 @@ tags:
 - design-system
 - penna
 - design-plan
-timestamp: 2026-10-15T00:00:00Z
+timestamp: 2026-10-30T00:00:00Z
 ---
 
 # Why
@@ -176,7 +176,7 @@ Kit widgets on the model:
 
 - Name a tone and an emphasis. Do not pick a fill with `washed()`, `raised()` or `opacity()` at a call site outside the kit. Clippy enforces it: the root `clippy.toml` disallows `Hsla::opacity` and the mixing transforms of `Colorize` (`raised`, `washed`, `wash`, `fill`, `outline`, `subtle`, `glow`, `hover`, `active`, `on`, `floating`). The kit's own `clippy.toml` leaves them out, since the kit is where the recipes are mixed. `muted()`, `faint()` and `opaque()` stay open.
 - Paint surfaces through a surface role: `.surface(role)`, `.rule_on(role, edge)`, or a widget's `.surface_role(role)`. The root `clippy.toml` disallows, outside the kit, `ala::Styled::border` and its sized and per-side forms (`border_1` to `border_4`, and `border_t`, `border_b`, `border_l`, `border_r`, `border_x` and `border_y` with their sizes), `shadow_2xs` through `shadow_2xl`, the type `ala::BoxShadow`, and the kit helpers that would get around the roles: `StyledExt::surface_edge`, `surface_outline` and `chosen_ring`, `lifted_shadow`, and `Theme::control_radius`, `menu_radius` and `row_radius`. The old recipes (`card_style`, `popover_style`, `control_surface`, `control_highlight`, `surface_fill`, `menu_item_corners`, `selection_highlight`, the `rule_*` family, `contact_shadow`, `control_shadow`, `floating_shadow`) are deleted. The kit's `clippy.toml` keeps only the raw-color ban, since the engine is built there.
-- A piece of UI that is new and distinct gets its own role in `crates/zz-ui/src/roles.rs` instead of a local style (see [UI conventions](/configuration/ui-conventions.md)).
+- A piece of UI that is new and distinct gets its own role in `crates/zz-ui/src/roles.rs` instead of a local style (see [UI conventions](/configuration/ui-conventions.md)). Another app on penna registers its roles with `penna::roles::register` the same way, and draws them on a theme creator plate in its storybook catalog's `plates`, so a theme can be tuned for them ([storybook](/playbooks/storybook.md)).
 - A color, edge or shadow that is deliberately not a role takes `#[allow(clippy::disallowed_methods, reason = ..)]` on its one function, or `clippy::disallowed_types` where it names `BoxShadow`. In chrome, today that is:
   - the theme previews in Appearance, and the focus halo around its tiles;
   - the element picker overlay (page CSS) and the blurred chrome background;
@@ -243,6 +243,7 @@ Kit widgets on the model:
   - the same paints on the window, a raised panel and a popover.
 
   The knob panel's Primary material switches the primary tone live.
+- `penna_storybook::creator` (`libs/penna/storybook/src/creator/`): the theme creator, its plates for penna's own surfaces, and the parts app plates share.
 
 # Migration
 
