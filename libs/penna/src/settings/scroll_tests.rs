@@ -58,7 +58,7 @@ impl Render for SettingsPageReplicaTest {
                     .child(
                         div()
                             .text_size(crate::rems_from_px(11.))
-                            .child("Changes are written to zz/config."),
+                            .child("Changes are written to the config file."),
                     )
                     .child(
                         super::SettingsStack::titled("Theme").children(self.pickers.iter().map(

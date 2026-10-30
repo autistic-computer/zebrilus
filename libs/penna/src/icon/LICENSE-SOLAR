@@ -7,8 +7,8 @@ International License (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/
 
 Changes: the Linear style was redrawn as skeletons whose corners follow the
 theme radius (flat at radius 0), at Solar's own 1.5 stroke. Some
-icons were recomposed for zz (window and pane glyphs share one frame, arrow
+icons were recomposed for penna (window and pane glyphs share one frame, arrow
 shafts stop short of the tip), and icons the set lacks (the keyboard keys,
-the terminal prompt, New window, New session, Add host, case sensitivity,
-the asterisk) were drawn by zz in its style. Icons without a "solar" field
-are zz's own.
+the terminal prompt, the new window, new layer and add server marks, case
+sensitivity, the asterisk) were drawn for penna in its style. Icons without a "solar"
+field are penna's own.

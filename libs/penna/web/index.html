@@ -54,7 +54,7 @@
   <section>
     <h2>Fields</h2>
     <div class="stack" style="width: 320px">
-      <label data-penna="field" style="width: 100%"><i data-icon="search" class="penna-muted"></i><input placeholder="Search sessions"></label>
+      <label data-penna="field" style="width: 100%"><i data-icon="search" class="penna-muted"></i><input placeholder="Search files"></label>
       <label data-penna="field" data-state="focused" style="width: 100%"><input value="focused"></label>
       <label data-penna="field" data-size="small" style="width: 100%"><input placeholder="Small"></label>
       <label data-penna="field.multiline" style="width: 100%"><textarea rows="2" placeholder="Multiline"></textarea></label>
@@ -65,15 +65,15 @@
     <h2>Menu, tooltip, badge, keycap</h2>
     <div class="apart">
       <div data-penna="popover" class="penna-menu" style="width: 240px">
-        <div class="penna-menu-label">Pane</div>
-        <div data-penna="menu-item"><i data-icon="panel-right"></i>Split right<span class="penna-shortcut">⌘D</span></div>
-        <div data-penna="menu-item" data-state="selected"><i data-icon="panel-bottom"></i>Split down<span class="penna-shortcut">⇧⌘D</span></div>
-        <div data-penna="menu-item"><i data-icon="window-maximize"></i>Zoom</div>
+        <div class="penna-menu-label">File</div>
+        <div data-penna="menu-item"><i data-icon="plus"></i>New file<span class="penna-shortcut">⌘N</span></div>
+        <div data-penna="menu-item" data-state="selected"><i data-icon="folder"></i>Open folder<span class="penna-shortcut">⇧⌘O</span></div>
+        <div data-penna="menu-item"><i data-icon="copy"></i>Duplicate</div>
         <div class="penna-separator"></div>
-        <div data-penna="menu-item" data-state="disabled"><i data-icon="xmark"></i>Close pane<span class="penna-shortcut">⌘W</span></div>
+        <div data-penna="menu-item" data-state="disabled"><i data-icon="xmark"></i>Close file<span class="penna-shortcut">⌘W</span></div>
       </div>
       <div class="stack">
-        <span data-penna="tooltip">Split right <span class="penna-muted">⌘D</span></span>
+        <span data-penna="tooltip">New file <span class="penna-muted">⌘N</span></span>
         <div class="line">
           <span data-penna="badge">default</span>
           <span data-penna="badge" data-tone="primary">primary</span>
@@ -91,13 +91,13 @@
     <h2>Glass over a backdrop</h2>
     <div class="backdrop apart">
       <div data-penna="popover" class="penna-menu" style="width: 220px">
-        <div data-penna="menu-item"><i data-icon="terminal"></i>Terminal</div>
-        <div data-penna="menu-item" data-state="selected"><i data-icon="globe"></i>Browser</div>
-        <div data-penna="menu-item"><i data-icon="sparkle"></i>Agent</div>
+        <div data-penna="menu-item"><i data-icon="file"></i>Document</div>
+        <div data-penna="menu-item" data-state="selected"><i data-icon="folder"></i>Folder</div>
+        <div data-penna="menu-item"><i data-icon="calendar"></i>Event</div>
       </div>
       <div data-penna="dialog">
         <div class="penna-title">Close this window?</div>
-        <div class="penna-description">2 panes are still running. Their processes stop when the window closes.</div>
+        <div class="penna-description">2 files have unsaved changes. They are lost when the window closes.</div>
         <div class="penna-footer">
           <button data-penna="button">Cancel</button>
           <button data-penna="button" data-prominent data-tone="danger">Close</button>
@@ -105,7 +105,7 @@
       </div>
       <div data-penna="phone.pill">
         <button data-penna="phone.key"><i data-icon="panel-left"></i></button>
-        <button data-penna="phone.key"><i data-icon="terminal"></i></button>
+        <button data-penna="phone.key"><i data-icon="search"></i></button>
         <button data-penna="phone.key"><i data-icon="plus"></i></button>
       </div>
     </div>
@@ -113,7 +113,7 @@
 
   <section>
     <h2>Toast</h2>
-    <div data-penna="toast"><i data-icon="circle-check" style="color: var(--penna-success); margin-top: 2px"></i><div><div class="penna-title" style="line-height: 18px">Copied</div>3 lines from the pane</div></div>
+    <div data-penna="toast"><i data-icon="circle-check" style="color: var(--penna-success); margin-top: 2px"></i><div><div class="penna-title" style="line-height: 18px">Copied</div>3 lines to the clipboard</div></div>
   </section>
 
   <section>
@@ -155,10 +155,10 @@ $ <span style="color: var(--penna-accent)">▋</span></pre>
     <div class="penna-settings" style="padding: 0">
       <h1>Interface</h1>
       <div>
-        <h2>Panes</h2>
+        <h2>Layout</h2>
         <div data-penna="settings.card" data-ground>
-          <div class="penna-setting"><div class="penna-copy">Gaps between panes<small>Float panes apart with rounded corners.</small></div><span class="penna-switch"></span></div>
-          <div class="penna-setting"><div class="penna-copy">Pane headers<small>Show a title strip on every pane.</small></div><span class="penna-switch" data-on></span></div>
+          <div class="penna-setting"><div class="penna-copy">Compact rows<small>Fit more rows in lists and menus.</small></div><span class="penna-switch"></span></div>
+          <div class="penna-setting"><div class="penna-copy">Show the sidebar<small>Keep the sidebar open in every window.</small></div><span class="penna-switch" data-on></span></div>
           <div class="penna-setting"><div class="penna-copy">Theme file<small>Load a theme JSON from disk.</small></div><button data-penna="button">Choose…</button></div>
         </div>
       </div>

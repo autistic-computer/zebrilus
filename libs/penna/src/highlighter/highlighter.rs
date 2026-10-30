@@ -1099,9 +1099,9 @@ mod tests {
 
         let theme = HighlightTheme::default_dark();
         for (target, replacement) in [
-            ("fn first", "zz first"),
+            ("fn first", "my first"),
             ("# Title", "# Longer title"),
-            ("zz first", "fn renamed_first"),
+            ("my first", "fn renamed_first"),
             ("*emphasis*", "*more emphasis*"),
             ("text.", "text with `span`."),
             ("{\"x\": 1}", "{\"y\": 2}\n{\"x\": 1}"),

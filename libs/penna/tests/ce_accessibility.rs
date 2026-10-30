@@ -66,7 +66,7 @@ impl Render for DisabledFixture {
 }
 
 #[ala::test]
-fn disabled_zz_controls_expose_and_clear_accessibility_state(cx: &mut TestAppContext) {
+fn disabled_controls_expose_and_clear_accessibility_state(cx: &mut TestAppContext) {
     cx.update(penna::init);
     let clicks = Rc::new(Cell::new(0));
     let (fixture, cx) = cx.add_window_view({
@@ -138,9 +138,7 @@ fn disabled_zz_controls_expose_and_clear_accessibility_state(cx: &mut TestAppCon
 }
 
 #[ala::test]
-fn forced_accessibility_inspects_existing_zz_widgets_without_a_screen_reader(
-    cx: &mut TestAppContext,
-) {
+fn forced_accessibility_inspects_existing_widgets_without_a_screen_reader(cx: &mut TestAppContext) {
     cx.update(penna::init);
     let (_, cx) = cx.add_window_view(|_, _| EffortFixture { selected: 0 });
     draw(cx);

@@ -214,7 +214,6 @@ pub enum IconName {
     WindowPlus,
     WindowRestore,
     ZoomIn,
-    Zz,
 }
 
 impl IconName {
@@ -317,7 +316,6 @@ impl IconName {
         Self::WindowPlus,
         Self::WindowRestore,
         Self::ZoomIn,
-        Self::Zz,
     ];
 
     #[must_use]
@@ -421,7 +419,6 @@ impl IconName {
             Self::WindowPlus => "icons/window-plus.svg",
             Self::WindowRestore => "icons/window-restore.svg",
             Self::ZoomIn => "icons/zoom-in.svg",
-            Self::Zz => "icons/zz.svg",
         }
     }
 }

@@ -321,21 +321,21 @@ impl Kind {
     const fn about(self) -> &'static str {
         match self {
             Self::Bar => {
-                "Strips across a window, pane or sheet: the title bar, pane headers, the phone bar"
+                "Strips across a window or sheet: the title bar, sheet headers, the phone bar"
             }
             Self::Panel => "Columns set into the window, like the sidebar",
-            Self::Pane => "Terminal, browser, agent and editor panes",
+            Self::Pane => "Content panes and split views",
             Self::Card => {
                 "Boxes in the flow: message bubbles, setting groups, code blocks, previews"
             }
             Self::Floating => {
-                "Everything over the content: menus, palettes, dialogs, sheets, toasts, tooltips, floating panes and pane chips"
+                "Everything over the content: menus, palettes, dialogs, sheets, toasts and tooltips"
             }
             Self::Button => {
                 "Everything you press to do something: buttons, icon buttons, and the rows of menus, palettes and pickers"
             }
             Self::Item => {
-                "What you pick that stays picked or open: sidebar rows, tabs, agent steps, picker tiles"
+                "What you pick that stays picked or open: sidebar rows, tabs, list steps, picker tiles"
             }
             Self::Field => {
                 "Text fields, selects and anything you type into. Selected is the one you are typing in"

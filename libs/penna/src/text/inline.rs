@@ -890,7 +890,7 @@ mod tests {
 
     #[test]
     fn a_wrapped_code_fill_stops_at_the_fragment_not_the_paragraph_edge() {
-        let text = "before cargo run -p zz-xtask after";
+        let text = "before cargo run -p my-xtask after";
         let fills = code_fill_bounds(
             text,
             7..28,
@@ -946,7 +946,7 @@ mod tests {
     fn shaped_code_wrap_leaves_the_unused_line_width_unpainted(cx: &mut ala::TestAppContext) {
         let cx = cx.add_empty_window();
         cx.update(|window, _| {
-            let text = ala::SharedString::from("cargo run -p zz-xtask");
+            let text = ala::SharedString::from("cargo run -p my-xtask");
             let run = ala::TextStyle::default().to_run(text.len());
             let wrapped = window
                 .text_system()

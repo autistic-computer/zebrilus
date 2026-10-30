@@ -68,21 +68,21 @@ fn code(lang: &str, ix: usize) -> String {
         "rust" => (0..CODE_LINES)
             .map(|line| {
                 format!(
-                    "    let value_{line} = pane.split({line}, Axis::Horizontal).map(|p| p.id() + {ix});\n"
+                    "    let value_{line} = node.split({line}, Axis::Horizontal).map(|n| n.id() + {ix});\n"
                 )
             })
             .collect::<String>(),
         "json" => (0..CODE_LINES)
-            .map(|line| format!("  \"key_{line}\": {{ \"pane\": {line}, \"ok\": true }},\n"))
+            .map(|line| format!("  \"key_{line}\": {{ \"node\": {line}, \"ok\": true }},\n"))
             .collect(),
         "toml" => (0..CODE_LINES)
             .map(|line| format!("option_{line} = {{ value = {line}, enabled = true }}\n"))
             .collect(),
         "bash" => (0..CODE_LINES)
-            .map(|line| format!("zz split-window -h -t session:{line} && echo done {line}\n"))
+            .map(|line| format!("cargo test -p crate_{line} --quiet && echo done {line}\n"))
             .collect(),
         _ => (0..CODE_LINES)
-            .map(|line| format!("    result_{line} = compute(pane={line}, depth={ix})\n"))
+            .map(|line| format!("    result_{line} = compute(node={line}, depth={ix})\n"))
             .collect(),
     };
     format!("```{lang}\n{body}```\n\n")
@@ -93,7 +93,7 @@ fn table(ix: usize) -> String {
         String::from("| Command | Flag | Effect | Notes |\n| --- | :---: | --- | ---: |\n");
     for row in 0..8 {
         table.push_str(&format!(
-            "| `split-window {row}` | `-h` | splits pane {row} of table {ix} | [docs](https://zz.example/t{ix}/{row}) |\n"
+            "| `build-target {row}` | `-r` | builds target {row} of table {ix} | [docs](https://example.com/t{ix}/{row}) |\n"
         ));
     }
     table.push('\n');
@@ -105,20 +105,20 @@ fn transcript() -> String {
     let mut source = String::new();
     for section in 0..12 {
         source.push_str(&format!(
-            "## Step {section}: wiring the `pane_{section}` handler\n\n"
+            "## Step {section}: wiring the `route_{section}` handler\n\n"
         ));
         for part in 0..3 {
             source.push_str(&format!(
-                "The daemon keeps **session {section}.{part}** alive while the client reconnects. \
-                 See [the protocol notes](https://zz.example/protocol/{section}) and the \
+                "The server keeps **stream {section}.{part}** open while the client reconnects. \
+                 See [the protocol notes](https://example.com/protocol/{section}) and the \
                  `Reducer::apply` path before touching `snapshot_{section}`. Nothing here blocks \
-                 the *render* loop, and the [key table](https://zz.example/keys/{section}) stays \
+                 the *render* loop, and the [key table](https://example.com/keys/{section}) stays \
                  the source of truth.\n\n"
             ));
         }
         source.push_str(&format!(
             "- Parse the reply for step {section}\n  - check `status` first\n    - then the \
-             [payload](https://zz.example/p/{section})\n  - fall back to `defaults`\n- Render \
+             [payload](https://example.com/p/{section})\n  - fall back to `defaults`\n- Render \
              the result\n  1. layout\n  2. paint with `theme.foreground`\n\n"
         ));
         if section % 4 == 1 {
@@ -128,7 +128,7 @@ fn transcript() -> String {
             source.push_str(&code(langs[section / 2], section));
         }
         source.push_str(&format!(
-            "> Note {section}: a blockquote with `inline code` and a [link](https://zz.example/n/{section}).\n\n"
+            "> Note {section}: a blockquote with `inline code` and a [link](https://example.com/n/{section}).\n\n"
         ));
     }
     source
@@ -240,7 +240,7 @@ fn perf_link_hover_sweep(cx: &mut TestAppContext) {
     let mut ix = 0;
     while rendered < 2_000 {
         let word = if ix % 6 == 5 {
-            paragraph.push_str(&format!("[link {ix}](https://zz.example/{ix}) "));
+            paragraph.push_str(&format!("[link {ix}](https://example.com/{ix}) "));
             format!("link {ix} ")
         } else {
             let word = format!("word{ix} ");
