@@ -12,6 +12,7 @@ pub static CATALOG: Catalog = Catalog {
     register: zz_ui::register,
     init: zz_ui::init,
     logo: zz_ui::ZZ_LOGO,
+    plates: &[],
     stories: &[
         &[stories::theme_creator::STORY],
         penna_storybook::FOUNDATION,

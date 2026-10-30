@@ -8,6 +8,7 @@ use penna::{
     v_flex,
 };
 
+use crate::creator::{SAFE_BOTTOM, SCREEN_RADIUS};
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
 
@@ -25,9 +26,6 @@ pub const STORY: Story = Story {
 };
 
 const LANGUAGES: [&str; 5] = ["English", "Deutsch", "Español", "Português", "Français"];
-
-const SCREEN_RADIUS: f32 = 55.0;
-const SAFE_BOTTOM: f32 = 34.0;
 
 fn phone(content: impl IntoElement, sheet: BottomSheet, cx: &App) -> impl IntoElement {
     let theme = cx.theme();

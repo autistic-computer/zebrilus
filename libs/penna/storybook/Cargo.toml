@@ -24,6 +24,9 @@ web-time = "1"
 ala = { git = "https://github.com/autistic-computer/ala", branch = "main" }
 penna = { path = "..", features = ["editor"] }
 
+[dev-dependencies]
+ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["test-support"] }
+
 [target.'cfg(target_family = "wasm")'.dependencies]
 ala-platform = { git = "https://github.com/autistic-computer/ala", branch = "main", default-features = false }
 wasm-bindgen = "=0.2.128"

@@ -4,6 +4,7 @@ use ala::{
 };
 use penna::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
 
+#[derive(Clone, Copy)]
 pub struct Story {
     pub id: &'static str,
     pub name: &'static str,

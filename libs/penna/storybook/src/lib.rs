@@ -2,6 +2,7 @@ mod catalog;
 mod host;
 
 pub mod backdrop;
+pub mod creator;
 pub mod foundation;
 pub mod kit;
 pub mod knobs;
@@ -47,7 +48,7 @@ pub fn knobs() -> Knobs {
     KNOBS.with(|knobs| knobs.borrow().clone())
 }
 
-pub fn find(id: &str) -> Option<&'static Story> {
+pub fn find(id: &str) -> Option<Story> {
     catalog().stories().find(|story| story.id == id)
 }
 
@@ -99,7 +100,7 @@ pub fn stories_json() -> String {
                     "id": section.id,
                     "name": section.name,
                     "summary": section.summary,
-                    "mount": mount_id(story, section),
+                    "mount": mount_id(&story, section),
                 })).collect::<Vec<_>>(),
             }))
             .collect::<Vec<_>>()
@@ -266,7 +267,7 @@ pub fn mount_id(story: &Story, section: &Section) -> String {
     format!("section-{}-{}", story.id, section.id)
 }
 
-pub fn show_story(story: &'static Story, cx: &mut App) -> Result<(), String> {
+pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
     DRAWN.with_borrow_mut(BTreeMap::clear);
     for handle in OPEN.with(|open| std::mem::take(&mut *open.borrow_mut())) {
         handle
@@ -275,7 +276,7 @@ pub fn show_story(story: &'static Story, cx: &mut App) -> Result<(), String> {
     }
     let knobs = knobs();
     for section in story.sections {
-        let mount = format!("#{}", mount_id(story, section));
+        let mount = format!("#{}", mount_id(&story, section));
         let handle = cx
             .open_window(
                 WindowOptions {

@@ -4,7 +4,7 @@ use ala::{
 };
 use penna::{ActiveTheme as _, Root};
 
-const PADDING: f32 = 24.0;
+pub(crate) const PADDING: f32 = 24.0;
 
 pub struct SectionHost {
     section: &'static str,

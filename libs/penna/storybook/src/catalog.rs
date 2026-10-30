@@ -3,7 +3,7 @@ use std::sync::OnceLock;
 use ala::App;
 use penna::IconName;
 
-use crate::{Knobs, Story};
+use crate::{Knobs, Section, Story};
 
 pub struct Catalog {
     pub title: &'static str,
@@ -12,6 +12,7 @@ pub struct Catalog {
     pub register: fn(),
     pub init: fn(&mut App),
     pub logo: &'static str,
+    pub plates: &'static [Section],
     pub stories: &'static [&'static [Story]],
     pub knobs: &'static [Knob],
     pub apply: fn(&Knobs, &mut App),
@@ -52,6 +53,7 @@ pub static PENNA: Catalog = Catalog {
     register: || {},
     init: penna::init,
     logo: IconName::Pencil.path(),
+    plates: crate::creator::PLATES,
     stories: &[crate::FOUNDATION, crate::KIT],
     knobs: &[],
     apply: |_, _| {},
@@ -77,8 +79,13 @@ pub fn catalog() -> &'static Catalog {
 }
 
 impl Catalog {
-    pub fn stories(&self) -> impl Iterator<Item = &'static Story> {
-        self.stories.iter().flat_map(|stories| stories.iter())
+    pub fn stories(&self) -> impl Iterator<Item = Story> {
+        let creator = (!self.plates.is_empty()).then(|| crate::creator::story(self.plates));
+        creator.into_iter().chain(
+            self.stories
+                .iter()
+                .flat_map(|stories| stories.iter().copied()),
+        )
     }
 
     pub fn floats(&self, story: &str, section: &str) -> bool {
@@ -158,6 +165,31 @@ mod tests {
                 .all(|group| *group == "Foundation")
         );
         assert!(groups[first_kit..].iter().all(|group| *group == "Kit"));
+    }
+
+    #[test]
+    fn the_creator_opens_the_page_with_the_catalogs_plates() {
+        let creator = PENNA.stories().next().unwrap();
+        assert_eq!(creator.id, crate::creator::ID);
+        assert_eq!(creator.group, "Foundation");
+        let plates = creator
+            .sections
+            .iter()
+            .map(|plate| plate.id)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            plates,
+            ["window", "controls", "floating", "content", "phone"]
+        );
+        let without = Catalog {
+            plates: &[],
+            ..PENNA
+        };
+        assert!(
+            without
+                .stories()
+                .all(|story| story.id != crate::creator::ID)
+        );
     }
 
     #[test]
