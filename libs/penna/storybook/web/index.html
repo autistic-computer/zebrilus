@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en" data-ala-a11y>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Storybook</title>
+        <link rel="stylesheet" href="style.css" />
+        <script type="module" src="main.js"></script>
+    </head>
+    <body>
+        <header id="bar" aria-label="Theme creator">
+            <a class="back" href="#/colors" title="Back to the storybook">
+                <svg viewBox="0 0 24 24"><path d="M15 6l-6 6l6 6" /></svg>
+                <span>Storybook</span>
+            </a>
+            <strong>Theme creator</strong>
+            <div id="regions" role="navigation" aria-label="Regions"></div>
+            <div class="spacer"></div>
+            <div class="tools">
+                <button type="button" data-action="undo" title="Undo">
+                    <svg viewBox="0 0 24 24"><path d="M9 14l-4 -4l4 -4" /><path d="M5 10h11a4 4 0 1 1 0 8h-1" /></svg>
+                </button>
+                <button type="button" data-action="redo" title="Redo">
+                    <svg viewBox="0 0 24 24"><path d="M15 14l4 -4l-4 -4" /><path d="M19 10h-11a4 4 0 1 0 0 8h1" /></svg>
+                </button>
+                <button type="button" data-action="reset" title="Reset to the style">
+                    <svg viewBox="0 0 24 24"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" /><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" /></svg>
+                </button>
+                <button type="button" data-action="shuffle" title="Shuffle the look">
+                    <svg viewBox="0 0 24 24"><path d="M18 4l3 3l-3 3" /><path d="M18 20l3 -3l-3 -3" /><path d="M3 7h3a5 5 0 0 1 5 5a5 5 0 0 0 5 5h5" /><path d="M21 7h-5a4.978 4.978 0 0 0 -3 1m-4 8a4.984 4.984 0 0 1 -3 1h-3" /></svg>
+                </button>
+                <button type="button" data-action="mode" title="Light or dark">
+                    <svg class="moon" viewBox="0 0 24 24"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454l0 .008" /></svg>
+                    <svg class="sun" viewBox="0 0 24 24"><path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0" /><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7" /></svg>
+                </button>
+            </div>
+            <button type="button" data-action="import" class="pill">Import</button>
+            <button type="button" data-action="copy" class="pill primary">
+                <svg viewBox="0 0 24 24"><path d="M7 9.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667l0 -8.666" /><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1" /></svg>
+                <span>Copy JSON</span>
+            </button>
+        </header>
+        <nav id="nav" aria-label="Stories"></nav>
+        <main id="story" aria-live="polite">
+            <p class="loading">Starting…</p>
+        </main>
+        <aside id="knobs" aria-label="Knobs">
+            <form id="knob-form">
+                <section class="start">
+                    <h3>Start from</h3>
+                    <div class="segmented" role="radiogroup" aria-label="Start from" id="theme-choices"></div>
+                </section>
+
+                <div class="steps" role="tablist" aria-label="Steps">
+                    <button type="button" role="tab" id="tab-colors" data-step="colors" aria-controls="step-colors">Colors</button>
+                    <button type="button" role="tab" id="tab-materials" data-step="materials" aria-controls="step-materials">Materials</button>
+                    <button type="button" role="tab" id="tab-roles" data-step="roles" aria-controls="step-roles">Roles</button>
+                    <button type="button" role="tab" id="tab-export" data-step="export" aria-controls="step-export">Export</button>
+                    <button type="button" role="tab" id="tab-app" data-step="app" aria-controls="step-app">App</button>
+                </div>
+
+                <div class="step" id="step-colors" role="tabpanel" aria-labelledby="tab-colors" data-step="colors">
+                    <section>
+                        <h3>Mode</h3>
+                        <div class="segmented" role="radiogroup" aria-label="Mode">
+                            <label><input type="radio" name="theme" value="system" checked /><span>System</span></label>
+                            <label><input type="radio" name="theme" value="light" /><span>Light</span></label>
+                            <label><input type="radio" name="theme" value="dark" /><span>Dark</span></label>
+                        </div>
+                        <label class="row slider">
+                            <span>Contrast</span><output name="contrast-value"></output>
+                            <input type="range" name="contrast" min="1" max="2" step="0.05" value="1" />
+                        </label>
+                        <label class="row slider hue">
+                            <span>Tint hue</span><output name="tint-hue-value"></output>
+                            <input type="range" name="tint-hue" min="0" max="360" step="1" value="260" />
+                        </label>
+                        <label class="row slider">
+                            <span>Tint</span><output name="tint-value"></output>
+                            <input type="range" name="tint" min="0" max="1" step="0.01" value="0" />
+                        </label>
+                    </section>
+
+                    <section>
+                        <h3>Colors</h3>
+                        <p class="knob-note">The mode on screen picks which palette you edit.</p>
+                        <fieldset id="colors-light" class="colors"></fieldset>
+                        <fieldset id="colors-dark" class="colors" hidden></fieldset>
+                    </section>
+
+                    <section>
+                        <h3>Typography</h3>
+                        <label class="row">
+                            <span>Font</span>
+                            <select name="font">
+                                <option value="" title="The app uses the system UI font; the browser shows Inter in its place">System font</option>
+                                <option value="Lilex">Lilex</option>
+                            </select>
+                        </label>
+                        <label class="row file">
+                            <span>Load a font file</span>
+                            <input type="file" id="font-file" accept=".ttf,.otf,font/ttf,font/otf" />
+                            <output id="font-status"></output>
+                        </label>
+                        <label class="row slider">
+                            <span>Zoom</span><output name="zoom-value"></output>
+                            <input type="range" name="zoom" min="0.75" max="1.5" step="0.05" value="1" />
+                        </label>
+                    </section>
+
+                    <button type="button" class="next" data-goto="materials">Next: Materials</button>
+                </div>
+
+                <div class="step" id="step-materials" role="tabpanel" aria-labelledby="tab-materials" data-step="materials" hidden>
+                    <section>
+                        <h3>Shape</h3>
+                        <label class="row slider">
+                            <span>Radius</span><output name="radius-value"></output>
+                            <input type="range" name="radius" min="0" max="25" step="1" value="10" />
+                        </label>
+                        <label class="row slider">
+                            <span>Control radius</span><output name="control-radius-value"></output>
+                            <input type="range" name="control-radius" min="0" max="25" step="1" value="10" />
+                        </label>
+                        <label class="row slider">
+                            <span>Smoothing</span><output name="smoothing-value"></output>
+                            <input type="range" name="smoothing" min="2" max="5" step="0.5" value="4" />
+                        </label>
+                        <div class="segmented" role="radiogroup" aria-label="Smoothing">
+                            <label><input type="radio" name="smoothed" value="global" checked /><span>Global smoothing</span></label>
+                            <label><input type="radio" name="smoothed" value="picked" /><span>Picked smoothing</span></label>
+                        </div>
+                        <p class="knob-note" id="smoothed-note" hidden>
+                            Only the roles you set a smoothing on in Roles curve that way; the rest draw plain round corners.
+                        </p>
+                        <label class="row slider">
+                            <span>Outline width</span><output name="outline-value"></output>
+                            <input type="range" name="outline" min="0" max="2" step="0.25" value="0.5" />
+                        </label>
+                        <p class="knob-note" id="outline-note" hidden>
+                            Surfaces filled with glass draw the glass rim instead.
+                        </p>
+                        <div class="segmented" role="radiogroup" aria-label="Outlines">
+                            <label><input type="radio" name="outlines" value="built-in" checked /><span>Built-in outlines</span></label>
+                            <label><input type="radio" name="outlines" value="picked" /><span>Picked outlines</span></label>
+                        </div>
+                        <p class="knob-note" id="outlines-note" hidden>
+                            Only the roles you set to outline in Roles draw it.
+                        </p>
+                        <label class="row slider">
+                            <span>Row inset</span><output name="row-inset-value"></output>
+                            <input type="range" name="row-inset" min="0" max="12" step="1" value="4" />
+                        </label>
+                        <div class="segmented" role="radiogroup" aria-label="Primary">
+                            <label><input type="radio" name="primary" value="foreground" checked /><span>Ink primary</span></label>
+                            <label><input type="radio" name="primary" value="accent" /><span>Accent primary</span></label>
+                        </div>
+                        <div class="segmented" role="radiogroup" aria-label="Highlights">
+                            <label><input type="radio" name="highlights" value="lift" checked /><span>Lifted highlights</span></label>
+                            <label><input type="radio" name="highlights" value="flat" /><span>Flat highlights</span></label>
+                        </div>
+                        <div class="segmented" role="radiogroup" aria-label="Light surfaces">
+                            <label><input type="radio" name="surfaces" value="darker" checked /><span>Darker surfaces</span></label>
+                            <label><input type="radio" name="surfaces" value="brighter" /><span>Brighter surfaces</span></label>
+                        </div>
+                        <p class="knob-note">How cards, panes and menus rise from the window in light mode. Dark mode rises lighter either way.</p>
+                        <label class="row slider">
+                            <span>Highlight strength</span><output name="highlight-strength-value"></output>
+                            <input type="range" name="highlight-strength" min="0" max="3" step="0.1" value="1" />
+                        </label>
+                    </section>
+
+                    <section>
+                        <h3>Glass</h3>
+                        <label class="row">
+                            <span>Material</span>
+                            <select name="glass">
+                                <option value="theme">The theme's</option>
+                                <option value="off">Off</option>
+                                <option value="regular">Regular</option>
+                                <option value="clear">Clear</option>
+                                <option value="frosted">Frosted</option>
+                                <option value="smoked">Smoked</option>
+                                <option value="bubble">Bubble</option>
+                            </select>
+                        </label>
+                        <fieldset id="glass-knobs" hidden>
+                            <label class="row slider">
+                                <span>Blur</span><output name="glass-blur-value"></output>
+                                <input type="range" name="glass-blur" min="0" max="40" step="0.05" />
+                            </label>
+                            <label class="row slider">
+                                <span>Surface tint</span><output name="glass-tint-value"></output>
+                                <input type="range" name="glass-tint" min="0" max="1" step="0.01" />
+                            </label>
+                            <label class="row slider">
+                                <span>Refraction</span><output name="glass-refraction-value"></output>
+                                <input type="range" name="glass-refraction" min="-60" max="150" step="1" />
+                            </label>
+                            <label class="row slider">
+                                <span>Bezel</span><output name="glass-bezel-value"></output>
+                                <input type="range" name="glass-bezel" min="0" max="60" step="1" />
+                            </label>
+                            <label class="row slider">
+                                <span>Dispersion</span><output name="glass-dispersion-value"></output>
+                                <input type="range" name="glass-dispersion" min="0" max="0.6" step="0.01" />
+                            </label>
+                            <label class="row slider">
+                                <span>Saturation</span><output name="glass-saturation-value"></output>
+                                <input type="range" name="glass-saturation" min="0.5" max="2.5" step="0.05" />
+                            </label>
+                            <label class="row slider">
+                                <span>Brightness</span><output name="glass-brightness-value"></output>
+                                <input type="range" name="glass-brightness" min="-0.3" max="0.3" step="0.01" />
+                            </label>
+                            <label class="row slider">
+                                <span>Contrast</span><output name="glass-contrast-value"></output>
+                                <input type="range" name="glass-contrast" min="0.5" max="2" step="0.05" />
+                            </label>
+                            <label class="row slider">
+                                <span>Glint</span><output name="glass-specular-value"></output>
+                                <input type="range" name="glass-specular" min="0" max="1.5" step="0.05" />
+                            </label>
+                            <label class="row slider">
+                                <span>Glint width</span><output name="glass-glint-width-value"></output>
+                                <input type="range" name="glass-glint-width" min="0" max="6" step="0.1" />
+                            </label>
+                            <label class="row slider">
+                                <span>Light angle</span><output name="glass-light-value"></output>
+                                <input type="range" name="glass-light" min="-180" max="180" step="5" />
+                            </label>
+                            <label class="row slider">
+                                <span>Directional light</span><output name="glass-light-directionality-value"></output>
+                                <input type="range" name="glass-light-directionality" min="0" max="1" step="0.01" />
+                            </label>
+                            <label class="row slider">
+                                <span>Rim glow</span><output name="glass-fresnel-value"></output>
+                                <input type="range" name="glass-fresnel" min="0" max="0.5" step="0.01" />
+                            </label>
+                            <label class="row slider">
+                                <span>Edge shadow</span><output name="glass-edge-value"></output>
+                                <input type="range" name="glass-edge" min="0" max="1" step="0.05" />
+                            </label>
+                            <label class="row slider">
+                                <span>Edge shadow width</span><output name="glass-edge-width-value"></output>
+                                <input type="range" name="glass-edge-width" min="0" max="4" step="0.05" />
+                            </label>
+                            <label class="row slider">
+                                <span>Edge shadow spread</span><output name="glass-edge-spread-value"></output>
+                                <input type="range" name="glass-edge-spread" min="0" max="1" step="0.05" />
+                            </label>
+                            <label class="row slider">
+                                <span>Grain</span><output name="glass-noise-value"></output>
+                                <input type="range" name="glass-noise" min="0" max="0.1" step="0.005" />
+                            </label>
+                            <label class="row slider">
+                                <span>Inactive flattening</span><output name="glass-inactive-flattening-value"></output>
+                                <input type="range" name="glass-inactive-flattening" min="0" max="1" step="0.01" />
+                            </label>
+                            <p class="knob-note">
+                                Flattens glass when a native app window is inactive. This browser preview stays active.
+                            </p>
+                        </fieldset>
+                    </section>
+
+                    <section>
+                        <h3>Shadows</h3>
+                        <div class="segmented" role="radiogroup" aria-label="Shadows">
+                            <label><input type="radio" name="shadows" value="built-in" checked /><span>Built-in shadows</span></label>
+                            <label><input type="radio" name="shadows" value="picked" /><span>Picked shadows</span></label>
+                        </div>
+                        <p class="knob-note" id="shadows-note" hidden>
+                            Only the roles you give a shadow in Roles cast one.
+                        </p>
+                    </section>
+
+                    <section>
+                        <h3>Contact shadow</h3>
+                        <p class="knob-note">The tight shadow under what rests on the window.</p>
+                        <label class="row slider">
+                            <span>Offset</span><output name="contact-y-value"></output>
+                            <input type="range" name="contact-y" min="-4" max="12" step="0.5" value="1" />
+                        </label>
+                        <label class="row slider">
+                            <span>Blur</span><output name="contact-blur-value"></output>
+                            <input type="range" name="contact-blur" min="0" max="24" step="0.5" value="2" />
+                        </label>
+                        <label class="row slider">
+                            <span>Strength</span><output name="contact-strength-value"></output>
+                            <input type="range" name="contact-strength" min="0" max="3" step="0.05" value="1" />
+                        </label>
+                        <input type="hidden" name="contact-spread" value="0" />
+                    </section>
+
+                    <section>
+                        <h3>Float shadow</h3>
+                        <p class="knob-note">The deep shadow under what floats: menus, dialogs, floating panes.</p>
+                        <label class="row slider">
+                            <span>Offset</span><output name="float-y-value"></output>
+                            <input type="range" name="float-y" min="0" max="64" step="1" value="12" />
+                        </label>
+                        <label class="row slider">
+                            <span>Blur</span><output name="float-blur-value"></output>
+                            <input type="range" name="float-blur" min="0" max="128" step="1" value="32" />
+                        </label>
+                        <label class="row slider">
+                            <span>Spread</span><output name="float-spread-value"></output>
+                            <input type="range" name="float-spread" min="-48" max="24" step="1" value="-4" />
+                        </label>
+                        <label class="row slider">
+                            <span>Strength</span><output name="float-strength-value"></output>
+                            <input type="range" name="float-strength" min="0" max="3" step="0.05" value="1" />
+                        </label>
+                    </section>
+
+                    <button type="button" class="next" data-goto="roles">Next: Roles</button>
+                </div>
+
+                <div class="step" id="step-roles" role="tabpanel" aria-labelledby="tab-roles" data-step="roles" hidden>
+                    <p class="knob-note">
+                        Every piece of <span data-catalog-name></span> is a role made from the materials, under its kind and group. Pick one
+                        to ring it in magenta and change its six props; what you leave on inherit follows the
+                        group it sits in. A kind or group changes everything under it.
+                    </p>
+                    <input type="search" id="role-filter" class="filter" placeholder="Find a role" aria-label="Find a role" data-local />
+                    <div id="role-tree"></div>
+                    <button type="button" class="next" data-goto="export">Next: Export</button>
+                </div>
+
+                <div class="step" id="step-export" role="tabpanel" aria-labelledby="tab-export" data-step="export" hidden>
+                    <section>
+                        <h3>Theme file</h3>
+                        <label class="row text">
+                            <span>Name</span>
+                            <input type="text" name="name" spellcheck="false" autocomplete="off" />
+                        </label>
+                        <pre id="theme-json" tabindex="0" aria-label="Theme JSON"></pre>
+                    </section>
+                    <section class="export">
+                        <button type="button" data-action="copy">Copy theme as JSON</button>
+                        <button type="button" data-action="import">Import a theme</button>
+                        <button type="reset">Reset</button>
+                    </section>
+                </div>
+                <div class="step" id="step-app" role="tabpanel" aria-labelledby="tab-app" data-step="app" hidden>
+                    <p class="knob-note">
+                        The app's own settings and the preview around the showcase. None of them are part of
+                        the theme: they stay in the address, not the JSON.
+                    </p>
+                    <section id="preview-knobs">
+                        <h3>Preview</h3>
+                        <div class="segmented" role="radiogroup" aria-label="Backdrop under floating surfaces">
+                            <label><input type="radio" name="backdrop" value="plain" checked /><span>Plain</span></label>
+                            <label><input type="radio" name="backdrop" value="code" /><span>Terminal</span></label>
+                            <label><input type="radio" name="backdrop" value="color" /><span>Color</span></label>
+                        </div>
+                        <label class="row check">
+                            <span>Animations</span>
+                            <input type="checkbox" name="motion" checked />
+                        </label>
+                        <label class="row slider">
+                            <span>Animation speed</span><output name="speed-value"></output>
+                            <input type="range" name="speed" min="0.25" max="2" step="0.05" value="1" />
+                        </label>
+                    </section>
+
+                </div>
+            </form>
+            <p class="hint">
+                Agents: <code>storybook.show(id)</code>, <code>storybook.setKnobs({ theme: "dark" })</code>,
+                <code>storybook.step("roles")</code>, <code>storybook.setRole(id, prop, value)</code>,
+                <code>storybook.inspect(id)</code>, and <code>ala.find</code> / <code>ala.click</code> / <code>ala.capture</code> for the live UI.
+            </p>
+        </aside>
+        <div id="knobs-resize" role="separator" aria-orientation="vertical" aria-label="Knobs width" tabindex="0" title="Drag to resize, double-click to reset"></div>
+        <dialog id="import-dialog">
+            <form method="dialog">
+                <h2>Import a theme</h2>
+                <p>Paste a theme's JSON. Keys it leaves out keep the default theme's value.</p>
+                <textarea id="import-json" rows="14" spellcheck="false" aria-label="Theme JSON"></textarea>
+                <output id="import-error"></output>
+                <menu>
+                    <button value="cancel">Cancel</button>
+                    <button value="apply" class="primary">Apply</button>
+                </menu>
+            </form>
+        </dialog>
+        <div id="toast" role="status" hidden></div>
+    </body>
+</html>

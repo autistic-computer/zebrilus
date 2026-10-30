@@ -21,6 +21,8 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -40,10 +42,22 @@ jobs:
 
       - name: Check formatting
         if: runner.os == 'Linux'
-        run: cargo fmt --all -- --check
+        run: |
+          cargo fmt --all -- --check
+          cargo fmt --manifest-path storybook/Cargo.toml -- --check
 
       - name: Lint
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: |
+          cargo clippy --all-targets --all-features -- -D warnings
+          cargo clippy --manifest-path storybook/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Lint the storybook for wasm
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo clippy --manifest-path storybook/Cargo.toml --target wasm32-unknown-unknown --lib --features page -- -D warnings
 
       - name: Test
-        run: cargo test --all-features
+        run: |
+          cargo test --all-features
+          cargo test --manifest-path storybook/Cargo.toml --all-features

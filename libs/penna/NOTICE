@@ -30,3 +30,17 @@ themes/macos.json, themes/yaru.json
   with Apple or the Ubuntu project. Their colors are the macOS system colors
   as NSColor reports them, Yaru's palette and penna's own picks; no artwork or
   code comes from either.
+
+
+storybook/fonts/inter
+
+  Inter, https://github.com/rsms/inter
+  Copyright (c) 2016 The Inter Project Authors. SIL Open Font License 1.1,
+  see storybook/fonts/inter/LICENSE.txt.
+
+
+storybook/fonts/lilex
+
+  Lilex, https://github.com/mishamyrt/Lilex
+  Copyright 2019 The Lilex Project Authors. SIL Open Font License 1.1,
+  see storybook/fonts/lilex/LICENSE.txt.
