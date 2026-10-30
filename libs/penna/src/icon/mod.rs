@@ -13,6 +13,7 @@ use crate::{Sizable, Size, Theme};
 #[derive(Clone, Default, IntoElement)]
 pub struct Icon {
     path: SharedString,
+    asset: bool,
     style: StyleRefinement,
     text_color: Option<Hsla>,
     size: Option<Size>,
@@ -33,7 +34,19 @@ impl Icon {
     #[must_use]
     pub fn path(mut self, path: impl Into<SharedString>) -> Self {
         self.path = path.into();
+        self.asset = false;
         self
+    }
+
+    fn drawn_path(&self, cx: &App) -> SharedString {
+        if self.asset {
+            return self.path.clone();
+        }
+        cx.try_global::<Theme>()
+            .and_then(|theme| {
+                glyphs::path(&self.path, theme.radius.into(), crate::CORNER_SMOOTHING)
+            })
+            .unwrap_or_else(|| self.path.clone())
     }
 
     #[must_use]
@@ -70,12 +83,7 @@ impl Sizable for Icon {
 
 impl RenderOnce for Icon {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
-        let path = cx
-            .try_global::<Theme>()
-            .and_then(|theme| {
-                glyphs::path(&self.path, theme.radius.into(), crate::CORNER_SMOOTHING)
-            })
-            .unwrap_or(self.path);
+        let path = self.drawn_path(cx);
         let color = self.text_color.unwrap_or_else(|| window.text_style().color);
         let ambient = window.text_style().font_size.to_pixels(window.rem_size());
         let styled_size = self.style.size.width.is_some() || self.style.size.height.is_some();
@@ -214,6 +222,7 @@ pub enum IconName {
     WindowPlus,
     WindowRestore,
     ZoomIn,
+    Asset(&'static str),
 }
 
 impl IconName {
@@ -419,13 +428,17 @@ impl IconName {
             Self::WindowPlus => "icons/window-plus.svg",
             Self::WindowRestore => "icons/window-restore.svg",
             Self::ZoomIn => "icons/zoom-in.svg",
+            Self::Asset(path) => path,
         }
     }
 }
 
 impl From<IconName> for Icon {
     fn from(name: IconName) -> Self {
-        Self::default().path(name.path())
+        Self {
+            asset: matches!(name, IconName::Asset(_)),
+            ..Self::default().path(name.path())
+        }
     }
 }
 
@@ -445,9 +458,10 @@ impl RenderOnce for IconName {
 mod tests {
     use std::{collections::HashSet, path::PathBuf};
 
-    use ala::AssetSource as _;
+    use ala::{AssetSource as _, TestAppContext};
 
-    use super::{Assets, IconName};
+    use super::{Assets, Icon, IconName};
+    use crate::{Theme, ThemeMode};
 
     fn icons_dir() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/icons")
@@ -502,5 +516,17 @@ mod tests {
                 "assets/icons/{name}.svg shadows the drawn {name}"
             );
         }
+    }
+
+    #[ala::test]
+    fn an_asset_draws_the_apps_file_even_with_a_glyphs_name(cx: &mut TestAppContext) {
+        cx.update(|cx| {
+            Theme::change(ThemeMode::Dark, None, cx);
+            let glyph = Icon::from(IconName::Settings).drawn_path(cx);
+            assert_ne!(glyph.as_ref(), IconName::Settings.path());
+            assert!(glyph.ends_with("/settings.svg"), "{glyph}");
+            let asset = Icon::from(IconName::Asset("icons/settings.svg"));
+            assert_eq!(asset.drawn_path(cx).as_ref(), "icons/settings.svg");
+        });
     }
 }
