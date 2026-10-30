@@ -81,7 +81,9 @@ jobs:
 
       - name: Check formatting
         if: runner.os == 'Linux'
-        run: cargo fmt --all -- --check
+        run: |
+          cargo fmt --all -- --check
+          cargo fmt --manifest-path libs/penna/storybook/Cargo.toml -- --check
 
       - name: Lint
         if: runner.os == 'Linux'
@@ -98,6 +100,9 @@ jobs:
         run: |
           cargo clippy --manifest-path libs/ala/Cargo.toml --workspace --all-targets --all-features -- -D warnings
           cargo clippy --manifest-path libs/penna/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
+          cargo clippy --manifest-path libs/penna/storybook/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\"" -- -D warnings
+          rustup target add wasm32-unknown-unknown
+          cargo clippy --manifest-path libs/penna/storybook/Cargo.toml --target wasm32-unknown-unknown --lib --features page --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\"" -- -D warnings
           cargo clippy --manifest-path libs/ala-cef/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
 
       - name: Check browser client
@@ -122,6 +127,7 @@ jobs:
         run: |
           cargo test --manifest-path libs/ala/Cargo.toml --workspace --all-features --exclude ala-platform
           cargo test --manifest-path libs/penna/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
+          cargo test --manifest-path libs/penna/storybook/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\""
           cargo test --manifest-path libs/ala-cef/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
 
       - name: Test the iOS input logic

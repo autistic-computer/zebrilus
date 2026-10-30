@@ -4475,6 +4475,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "penna-storybook"
+version = "0.1.0"
+dependencies = [
+ "ala",
+ "ala-platform",
+ "penna",
+ "serde_json",
+ "wasm-bindgen",
+ "web-time",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8115,9 +8127,8 @@ dependencies = [
  "ala",
  "ala-platform",
  "penna",
- "serde_json",
+ "penna-storybook",
  "wasm-bindgen",
- "web-time",
  "zz-client",
  "zz-protocol",
  "zz-terminal",

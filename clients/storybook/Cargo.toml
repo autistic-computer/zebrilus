@@ -17,17 +17,15 @@ crate-type = ["cdylib", "rlib"]
 syntax-highlighting = ["zz-ui/tree-sitter"]
 
 [dependencies]
-serde_json = "1"
-web-time = "1"
 ala = { path = "../../libs/ala/crates/ala" }
-ala-platform = { path = "../../libs/ala/crates/ala-platform", default-features = false }
 penna = { path = "../../libs/penna" }
+penna-storybook = { path = "../../libs/penna/storybook" }
 zz-client = { path = "../../crates/zz-client" }
 zz-protocol = { path = "../../crates/zz-protocol" }
 zz-terminal = { path = "../../crates/zz-terminal", default-features = false }
 zz-ui = { path = "../../crates/zz-ui", features = ["agent", "editor"] }
 
-[target.'cfg(not(target_family = "wasm"))'.dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 ala-platform = { path = "../../libs/ala/crates/ala-platform", default-features = false, features = ["font-kit", "wayland", "x11"] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
@@ -62,6 +60,7 @@ taffy = { opt-level = 3 }
 zz-client = { opt-level = 0 }
 ala = { opt-level = 3 }
 penna = { opt-level = 0 }
+penna-storybook = { opt-level = 0 }
 ala-macros = { opt-level = 2 }
 ala-platform = { opt-level = 2 }
 zz-protocol = { opt-level = 0 }
@@ -75,3 +74,4 @@ codegen-units = 1
 
 [patch."https://github.com/autistic-computer/ala"]
 ala = { path = "../../libs/ala/crates/ala" }
+ala-platform = { path = "../../libs/ala/crates/ala-platform" }

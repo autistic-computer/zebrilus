@@ -70,7 +70,6 @@ use super::{
         },
         which_key::{prefix_header, prefix_rows},
     },
-    kit::menus::{SplitRight, bind_keys, pane_menu, view_menu},
     workspace::{
         browser::header as browser_header,
         fixtures::{
@@ -85,6 +84,7 @@ use super::{
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless};
 use penna::StyledExt as _;
+use penna_storybook::kit::menus::{SplitRight, bind_keys, pane_menu, view_menu};
 
 pub const ID: &str = "theme-creator";
 

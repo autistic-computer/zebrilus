@@ -45,7 +45,7 @@ JSON, 1.5, Solar's own weight; 1 read too thin and 2 too heavy). Corners are the
 
 Two renderers implement the same math and must stay in step when a part kind changes:
 `libs/penna/src/icon/glyphs.rs` (Rust, what the app draws) and
-`clients/storybook/icons/glyph.js` (the review page).
+`libs/penna/storybook/icons/glyph.js` (the review page).
 
 # How it ships
 
@@ -138,7 +138,7 @@ strokes `dot` parts, and anything else stays a `d` path. Record the source name 
 4. `cargo test -p penna --lib icon` draws every icon at radius 0, 6 and 25 and checks the
    bijection.
 5. Re-export the site copies (see [How it ships](#how-it-ships)).
-6. For review, `node clients/storybook/icons/build-sheet.mjs` writes `target/icon-sheet/zz-icons.html`:
-   every icon with radius and smoothing sliders, the 24 grid, its Solar source and how many Rust files
-   use it. The review artifact is `https://claude.ai/artifact/A4dypJQa9Nqs8puPXPiBjS`; republish to
+6. For review, `node libs/penna/storybook/icons/build-sheet.mjs target/icon-sheet/zz-icons.html crates clients`
+   writes every icon with radius and smoothing sliders, the 24 grid, its Solar source and how many
+   Rust files under the folders named after the output use it (without them, penna's own `src`). The review artifact is `https://claude.ai/artifact/A4dypJQa9Nqs8puPXPiBjS`; republish to
    that URL so comments stay with it.

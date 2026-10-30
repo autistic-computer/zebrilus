@@ -39,7 +39,7 @@ then to a built-in value.
 | Window chrome roles, `register`, `retire` and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
 | zz's roles, retired ids, and the zz-ui lookups that register them first | `crates/zz-ui/src/roles.rs`, `zz_ui::register` in `crates/zz-ui/src/lib.rs` |
 | Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, zz's patches for its own roles over them in `crates/zz-ui/themes/*.json` |
-| The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `clients/storybook/src/knobs.rs` |
+| The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `libs/penna/storybook/src/knobs.rs` |
 
 ## The model
 

@@ -410,7 +410,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             SettingsStack::titled("Sidebar").child(
                 SettingEntry::new(ZzRow::ProgramColors.title())
                     .description("Fill sidebar tiles with the running program's colors")
-                    .control(Switch::new("program-colors").checked(knobs.program_colors)),
+                    .control(Switch::new("program-colors").checked(knobs.flag("program-colors"))),
             ),
         )
         .state(

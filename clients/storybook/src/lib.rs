@@ -1,433 +1,224 @@
-mod backdrop;
-mod host;
-mod knobs;
 mod stories;
-mod story;
 
-use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
-use std::time::Duration;
+use ala::{App, px};
+use penna_storybook::{Catalog, Control, Knob, Knobs};
 
-use ala::{AnyWindowHandle, App, AppContext as _, Task, WindowOptions};
-use penna::{ActiveTheme as _, Colorize as _, Root, to_hex};
-use serde_json::json;
+pub(crate) use penna_storybook::{backdrop, knobs, story};
 
-pub use knobs::Knobs;
-pub use stories::STORIES;
-pub use story::{Section, Story};
+pub static CATALOG: Catalog = Catalog {
+    title: "zz storybook",
+    name: "zz",
+    storage: "zz-storybook",
+    register: zz_ui::register,
+    init: zz_ui::init,
+    logo: zz_ui::ZZ_LOGO,
+    stories: &[
+        &[stories::theme_creator::STORY],
+        penna_storybook::FOUNDATION,
+        stories::agent::STORIES,
+        stories::workspace::STORIES,
+        stories::console::STORIES,
+        penna_storybook::KIT,
+    ],
+    knobs: KNOBS,
+    apply,
+    floating: &[backdrop::KIT_FLOATING, FLOATING],
+};
 
-use host::SectionHost;
+const KNOBS: &[Knob] = &[
+    Knob {
+        name: "pane-gaps",
+        label: "Gaps",
+        section: "Panes",
+        control: Control::Check(false),
+    },
+    Knob {
+        name: "pane-margin",
+        label: "Margin",
+        section: "Panes",
+        control: Control::Range {
+            min: 0.0,
+            max: 32.0,
+            step: 0.5,
+            value: 6.0,
+        },
+    },
+    Knob {
+        name: "pip-opacity",
+        label: "PiP opacity",
+        section: "Panes",
+        control: Control::Range {
+            min: 0.0,
+            max: 1.0,
+            step: 0.05,
+            value: 0.8,
+        },
+    },
+    Knob {
+        name: "pane-inactive-opacity",
+        label: "Inactive opacity",
+        section: "Panes",
+        control: Control::Range {
+            min: 0.0,
+            max: 1.0,
+            step: 0.05,
+            value: 0.7,
+        },
+    },
+    Knob {
+        name: "pane-glow",
+        label: "Selected edge",
+        section: "Panes",
+        control: Control::Range {
+            min: 0.0,
+            max: 2.0,
+            step: 0.1,
+            value: 1.0,
+        },
+    },
+    Knob {
+        name: "program-colors",
+        label: "Program colors",
+        section: "Preview",
+        control: Control::Check(true),
+    },
+];
 
-thread_local! {
-    static KNOBS: RefCell<Knobs> = RefCell::new(Knobs::default());
-    static OPEN: RefCell<Vec<AnyWindowHandle>> = const { RefCell::new(Vec::new()) };
-    static DRAWN: RefCell<BTreeMap<&'static str, BTreeSet<&'static str>>> = const { RefCell::new(BTreeMap::new()) };
-    static FLASH: RefCell<Option<Task<()>>> = const { RefCell::new(None) };
+const FLOATING: &[&str] = &[
+    "floating-menus",
+    "feedback-dialogs",
+    "which-key",
+    "command-palette/surface",
+    "command-palette/workspace",
+    "command-palette/search",
+    "command-palette/offline",
+    "command-palette/command-mode",
+    "command-palette/command-query",
+    "command-palette/no-matches",
+    "daemon-prompts",
+    "chooser",
+    "path-picker",
+    "phone/hud",
+    "phone/keys",
+    "panes/floating",
+    "panes/display-panes",
+    "browser/omnibox",
+    "browser/action-menu",
+    "browser/site-menu",
+];
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PaneKnobs {
+    pub gaps: bool,
+    pub margin: f32,
+    pub pip: f32,
+    pub inactive: f32,
+    pub glow: f32,
 }
 
-const FLASH_FRAME: Duration = Duration::from_millis(16);
-const FLASH_HOLD: Duration = Duration::from_millis(700);
-const FLASH_FADE: Duration = Duration::from_millis(500);
-
-pub(crate) fn note_drawn(section: &'static str, roles: BTreeSet<&'static str>) {
-    DRAWN.with_borrow_mut(|drawn| drawn.entry(section).or_default().extend(roles));
-}
-
-pub fn drawn_roles_json() -> String {
-    DRAWN.with_borrow(|drawn| json!(drawn).to_string())
-}
-
-pub(crate) fn knobs() -> Knobs {
-    KNOBS.with(|knobs| knobs.borrow().clone())
-}
-
-pub(crate) fn pane() -> knobs::PaneKnobs {
-    KNOBS.with(|knobs| knobs.borrow().pane)
-}
-
-pub fn find(id: &str) -> Option<&'static Story> {
-    STORIES.iter().find(|story| story.id == id).copied()
-}
-
-pub fn stories_json() -> String {
-    json!(
-        STORIES
-            .iter()
-            .map(|story| json!({
-                "id": story.id,
-                "name": story.name,
-                "group": story.group,
-                "summary": story.summary,
-                "sections": story.sections.iter().map(|section| json!({
-                    "id": section.id,
-                    "name": section.name,
-                    "summary": section.summary,
-                    "mount": mount_id(story, section),
-                })).collect::<Vec<_>>(),
-            }))
-            .collect::<Vec<_>>()
-    )
-    .to_string()
-}
-
-pub fn glass_presets_json() -> String {
-    json!(
-        ala::GlassMaterial::PRESETS
-            .iter()
-            .map(|(id, material)| {
-                let material = material();
-                let values = knobs::GLASS_KNOBS
-                    .iter()
-                    .map(|(name, get, _)| ((*name).to_owned(), json!(get(&material))))
-                    .collect::<serde_json::Map<_, _>>();
-                ((*id).to_owned(), serde_json::Value::Object(values))
-            })
-            .collect::<serde_json::Map<_, _>>()
-    )
-    .to_string()
-}
-
-pub fn interface_themes_json() -> String {
-    json!(
-        zz_ui::interface_theme::builtin_themes()
-            .iter()
-            .map(|(id, theme)| {
-                let mut values = knobs::theme_knobs(theme);
-                values.insert("name".to_owned(), json!(theme.name));
-                let glass = |material: Option<ala::GlassMaterial>| {
-                    json!(material.map(|material| {
-                        knobs::GLASS_KNOBS
-                            .iter()
-                            .map(|(name, get, _)| ((*name).to_owned(), json!(get(&material))))
-                            .collect::<serde_json::Map<_, _>>()
-                    }))
-                };
-                values.insert("glass".to_owned(), glass(theme.materials.glass));
-                values.insert("light-glass".to_owned(), glass(theme.materials.light_glass));
-                ((*id).to_owned(), serde_json::Value::Object(values))
-            })
-            .collect::<serde_json::Map<_, _>>()
-    )
-    .to_string()
-}
-
-pub fn theme_file_json() -> String {
-    knobs().interface_theme().to_json()
-}
-
-pub fn roles_json() -> String {
-    fn walk(group: penna::SurfaceRole, depth: usize, out: &mut Vec<(usize, penna::SurfaceRole)>) {
-        out.push((depth, group));
-        for member in zz_ui::roles::members(group) {
-            walk(member, depth + 1, out);
+impl PaneKnobs {
+    fn of(knobs: &Knobs) -> Self {
+        Self {
+            gaps: knobs.flag("pane-gaps"),
+            margin: knobs.value("pane-margin"),
+            pip: knobs.value("pip-opacity"),
+            inactive: knobs.value("pane-inactive-opacity"),
+            glow: knobs.value("pane-glow"),
         }
     }
-    let knobs = knobs();
-    let roles = knobs.roles;
-    let materials = knobs.materials;
-    json!(
-        penna::Kind::ALL
-            .iter()
-            .map(|kind| {
-                let mut members = Vec::new();
-                walk(kind.role(), 0, &mut members);
-                json!({
-                    "title": kind.role().label,
-                    "roles": members.into_iter().map(|(depth, role)| {
-                        let (inherited, origins) = knobs::inherited(role, &roles, &materials);
-                        let patch = roles.get(role.id).copied().unwrap_or_default();
-                        let mut style = inherited;
-                        patch.apply(&mut style);
-                        let values = knobs::style_json(inherited);
-                        json!({
-                            "id": role.id,
-                            "label": role.label,
-                            "about": role.about,
-                            "kind": role.kind.name(),
-                            "depth": depth,
-                            "group": role.group().map(|group| group.label),
-                            "members": zz_ui::roles::members(role).count(),
-                            "knobs": knobs::knobs_json(role.knobs()),
-                            "patch": patch,
-                            "inherited": knobs::PROPS
-                                .iter()
-                                .zip(origins)
-                                .map(|(prop, origin)| ((*prop).to_owned(), json!({
-                                    "value": values[prop],
-                                    "from": origin.role.map_or_else(|| knobs::material_origin(prop, role, &materials), |role| role.label.to_owned()),
-                                    "themed": origin.themed,
-                                })))
-                                .collect::<serde_json::Map<_, _>>(),
-                            "style": knobs::style_json(style),
-                        })
-                    }).collect::<Vec<_>>(),
-                })
-            })
-            .collect::<Vec<_>>()
-    )
-    .to_string()
 }
 
-pub fn inspect(id: &str, cx: &mut App) {
-    let inspect = (!id.is_empty()).then(|| ala::SharedString::from(id.to_owned()));
-    let flash = inspect.is_some().then(|| {
-        cx.spawn(async move |cx| {
-            let start = web_time::Instant::now();
-            loop {
-                cx.background_executor().timer(FLASH_FRAME).await;
-                let faded = start.elapsed().saturating_sub(FLASH_HOLD);
-                let strength = 1.0 - faded.as_secs_f32() / FLASH_FADE.as_secs_f32();
-                cx.update(|cx| ring(strength.max(0.0), cx));
-                if strength <= 0.0 {
-                    break;
-                }
-            }
-        })
-    });
-    penna::Theme::global_mut(cx).inspect = inspect;
-    ring(1.0, cx);
-    FLASH.with_borrow_mut(|current| *current = flash);
+pub(crate) fn pane() -> PaneKnobs {
+    PaneKnobs::of(&knobs())
 }
 
-fn ring(strength: f32, cx: &mut App) {
+fn apply(knobs: &Knobs, cx: &mut App) {
+    let pane = PaneKnobs::of(knobs);
+    cx.set_global(zz_ui::program::ProgramColors(knobs.flag("program-colors")));
+    cx.set_global(zz_ui::pip::PipOpacity(pane.pip));
     let theme = penna::Theme::global_mut(cx);
-    theme.inspect_strength = strength;
-    if strength <= 0.0 {
-        theme.inspect = None;
-    }
-    for window in cx.windows() {
-        window.update(cx, |_, window, _| window.refresh()).ok();
-    }
-}
-
-pub fn import_theme(json: &str) -> Result<String, String> {
-    let theme = zz_ui::interface_theme::parse_theme(json)?;
-    Ok(serde_json::Value::Object(knobs::theme_knobs(&theme)).to_string())
-}
-
-pub fn add_font(bytes: Vec<u8>, cx: &mut App) -> Result<Vec<String>, String> {
-    let before = cx.text_system().all_font_names();
-    cx.text_system()
-        .add_fonts(vec![Cow::Owned(bytes)])
-        .map_err(|error| format!("{error:#}"))?;
-    Ok(cx
-        .text_system()
-        .all_font_names()
-        .into_iter()
-        .filter(|name| !before.contains(name))
-        .collect())
-}
-
-pub fn fonts_json(cx: &App) -> String {
-    let mut names = cx.text_system().all_font_names();
-    names.sort();
-    names.dedup();
-    json!(names).to_string()
-}
-
-pub fn mount_id(story: &Story, section: &Section) -> String {
-    format!("section-{}-{}", story.id, section.id)
-}
-
-pub fn show_story(story: &'static Story, cx: &mut App) -> Result<(), String> {
-    DRAWN.with_borrow_mut(BTreeMap::clear);
-    for handle in OPEN.with(|open| std::mem::take(&mut *open.borrow_mut())) {
-        handle
-            .update(cx, |_, window, _| window.remove_window())
-            .ok();
-    }
-    let knobs = knobs();
-    for section in story.sections {
-        let mount = format!("#{}", mount_id(story, section));
-        let handle = cx
-            .open_window(
-                WindowOptions {
-                    mount: Some(mount.into()),
-                    focus: false,
-                    ..Default::default()
-                },
-                |window, cx| {
-                    window.set_window_title(section.name);
-                    window.set_zoom(knobs.zoom);
-                    window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
-                    window.set_adaptive_corner_fraction(Some(0.45));
-                    let content = (section.build)(window, cx);
-                    let floats = backdrop::floats(story.id, section.id);
-                    let host = cx.new(|_| SectionHost::new(section.id, content, floats));
-                    cx.new(|cx| Root::new(host, window, cx).bordered(false))
-                },
-            )
-            .map_err(|error| format!("{}: {error:#}", section.id))?;
-        OPEN.with(|open| open.borrow_mut().push(handle.into()));
-    }
-    Ok(())
-}
-
-pub fn set_knobs(query: &str, cx: &mut App) -> Result<(), String> {
-    let knobs = Knobs::parse(query)?;
-    knobs.apply(cx);
-    KNOBS.with(|current| *current.borrow_mut() = knobs);
-    Ok(())
-}
-
-#[allow(
-    clippy::disallowed_methods,
-    reason = "the HTML knob panel paints itself from the kit's surface steps through CSS variables"
-)]
-pub fn theme_json(cx: &App) -> String {
-    let theme = cx.theme();
-    json!({
-        "mode": theme.mode.name(),
-        "background": to_hex(theme.background),
-        "raised": to_hex(theme.background.raised(1)),
-        "raised2": to_hex(theme.background.raised(2)),
-        "raised3": to_hex(theme.background.raised(3)),
-        "foreground": to_hex(theme.foreground),
-        "muted": to_hex(theme.foreground.muted()),
-        "border": to_hex(theme.border()),
-        "accent": to_hex(theme.accent),
-        "radius": f32::from(theme.radius),
-    })
-    .to_string()
+    theme.pane_glow_strength = pane.glow;
+    theme.pane_frames = pane.gaps;
+    theme.pane_margin = px(if pane.gaps { pane.margin } else { 0.0 });
 }
 
 #[cfg(target_family = "wasm")]
-mod web {
-    use std::cell::{Cell, RefCell};
+#[wasm_bindgen::prelude::wasm_bindgen]
+pub fn run() -> Result<(), wasm_bindgen::JsValue> {
+    penna_storybook::start(&CATALOG, zz_ui::Assets)
+}
 
-    use wasm_bindgen::prelude::*;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use penna::interface_theme::InterfaceTheme;
 
-    fn launch(cx: &mut ala::App) {
-        cx.text_system()
-            .add_fonts(vec![
-                super::Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/inter/InterVariable.ttf"
-                )),
-                super::Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/inter/InterVariable-Italic.ttf"
-                )),
-                super::Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-Regular.ttf"
-                )),
-                super::Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-Bold.ttf"
-                )),
-                super::Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-Italic.ttf"
-                )),
-                super::Cow::Borrowed(include_bytes!(
-                    "../../web/assets/fonts/lilex/Lilex-BoldItalic.ttf"
-                )),
-            ])
-            .expect("failed to load the interface fonts");
-        zz_ui::init(cx);
-        let theme = penna::Theme::global_mut(cx);
-        theme.font_family = super::knobs::UI_FONT.into();
-        theme.mono_font_family = "Lilex".into();
-        super::KNOBS.with(|knobs| knobs.borrow().apply(cx));
+    #[test]
+    fn the_catalog_has_no_problems() {
+        penna_storybook::install(&CATALOG);
+        assert_eq!(CATALOG.problems(), Vec::<String>::new());
     }
 
-    thread_local! {
-        static APPLICATION: RefCell<Option<ala::ApplicationHandle>> = const { RefCell::new(None) };
-        static READY: Cell<bool> = const { Cell::new(false) };
+    #[test]
+    fn the_theme_creator_comes_first_and_the_kit_keeps_its_order() {
+        penna_storybook::install(&CATALOG);
+        let ids = CATALOG.stories().map(|story| story.id).collect::<Vec<_>>();
+        assert_eq!(ids[0], stories::theme_creator::ID);
+        let kit = penna_storybook::KIT
+            .iter()
+            .map(|story| story.id)
+            .collect::<Vec<_>>();
+        assert!(ids.ends_with(&kit));
+        let foundation = penna_storybook::FOUNDATION
+            .iter()
+            .map(|story| story.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids[1..=foundation.len()], foundation[..]);
     }
 
-    fn with_app<R>(f: impl FnOnce(&mut ala::App) -> R) -> Result<R, JsValue> {
-        APPLICATION.with(|application| {
-            application
-                .borrow()
-                .as_ref()
-                .map(|handle| handle.update(f))
-                .ok_or_else(|| JsValue::from_str("the storybook is not running"))
-        })
+    #[test]
+    fn pane_and_program_knobs_parse_and_ignore_the_rest() {
+        penna_storybook::install(&CATALOG);
+        let defaults = PaneKnobs::of(&Knobs::parse("pane-glass=on").unwrap());
+        assert_eq!(
+            defaults,
+            PaneKnobs {
+                gaps: false,
+                margin: 6.0,
+                pip: 0.8,
+                inactive: 0.7,
+                glow: 1.0,
+            }
+        );
+        let knobs =
+            Knobs::parse("pane-gaps=1&pane-margin=20&pane-inactive-opacity=0.4&program-colors=0")
+                .unwrap();
+        let pane = PaneKnobs::of(&knobs);
+        assert!(pane.gaps);
+        assert_eq!(pane.margin, 20.0);
+        assert_eq!(pane.inactive, 0.4);
+        assert!(!knobs.flag("program-colors"));
+        assert!(Knobs::parse("pane-margin=wide").is_err());
     }
 
-    #[wasm_bindgen]
-    pub fn run() -> Result<(), JsValue> {
-        if APPLICATION.with(|application| application.borrow().is_some()) {
-            return Err(JsValue::from_str("the storybook is already running"));
+    #[test]
+    fn every_zz_role_inherits_what_the_theme_resolves() {
+        penna_storybook::install(&CATALOG);
+        let themes = zz_ui::interface_theme::builtin_themes()
+            .iter()
+            .map(|(id, theme)| ((*id).to_owned(), theme.clone()))
+            .collect::<Vec<(String, InterfaceTheme)>>();
+        for (id, theme) in themes {
+            let mut kit = penna::Theme::default();
+            theme.apply_roles(&mut kit);
+            theme.materials.apply(&mut kit);
+            for role in zz_ui::roles::all() {
+                let (mut style, _) = knobs::inherited(role, &theme.roles, &theme.materials);
+                if let Some(patch) = theme.roles.get(role.id) {
+                    patch.apply(&mut style);
+                }
+                assert_eq!(style, kit.style(role), "{id} {}", role.id);
+            }
         }
-        ala_platform::web_init();
-        let application = ala_platform::single_threaded_web().with_assets(zz_ui::Assets);
-        let handle = application.run_embedded(|cx| {
-            launch(cx);
-            READY.with(|ready| ready.set(true));
-        });
-        APPLICATION.with(|application| application.replace(Some(handle)));
-        Ok(())
-    }
-
-    #[wasm_bindgen]
-    pub fn is_ready() -> bool {
-        READY.with(Cell::get)
-    }
-
-    #[wasm_bindgen]
-    pub fn stories() -> String {
-        super::stories_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn glass_presets() -> String {
-        super::glass_presets_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn interface_themes() -> String {
-        super::interface_themes_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn theme_file() -> String {
-        super::theme_file_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn roles() -> String {
-        super::roles_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn drawn_roles() -> String {
-        super::drawn_roles_json()
-    }
-
-    #[wasm_bindgen]
-    pub fn inspect(id: &str) -> Result<(), JsValue> {
-        with_app(|cx| super::inspect(id, cx))
-    }
-
-    #[wasm_bindgen]
-    pub fn show(story: &str) -> Result<(), JsValue> {
-        let story = super::find(story).ok_or_else(|| JsValue::from_str("no such story"))?;
-        with_app(|cx| super::show_story(story, cx))?.map_err(|error| JsValue::from_str(&error))
-    }
-
-    #[wasm_bindgen]
-    pub fn set_knobs(query: &str) -> Result<(), JsValue> {
-        with_app(|cx| super::set_knobs(query, cx))?.map_err(|error| JsValue::from_str(&error))
-    }
-
-    #[wasm_bindgen]
-    pub fn import_theme(json: &str) -> Result<String, JsValue> {
-        super::import_theme(json).map_err(|error| JsValue::from_str(&error))
-    }
-
-    #[wasm_bindgen]
-    pub fn add_font(bytes: Vec<u8>) -> Result<String, JsValue> {
-        with_app(|cx| super::add_font(bytes, cx))?
-            .map(|names| serde_json::json!(names).to_string())
-            .map_err(|error| JsValue::from_str(&error))
-    }
-
-    #[wasm_bindgen]
-    pub fn fonts() -> Result<String, JsValue> {
-        with_app(|cx| super::fonts_json(cx))
-    }
-
-    #[wasm_bindgen]
-    pub fn theme() -> Result<String, JsValue> {
-        with_app(|cx| super::theme_json(cx))
     }
 }

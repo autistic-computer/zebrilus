@@ -29,7 +29,9 @@ cargo watch \
     --delay 0.3 \
     --watch clients/storybook/Cargo.toml \
     --watch clients/storybook/src \
-    --watch clients/storybook/web \
+    --watch libs/penna/storybook/Cargo.toml \
+    --watch libs/penna/storybook/src \
+    --watch libs/penna/storybook/web \
     --watch crates/zz-ui/src \
     --watch crates/zz-ui/assets \
     --watch crates/zz-client/src \

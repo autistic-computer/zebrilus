@@ -57,9 +57,9 @@ rustup run "$TOOLCHAIN" cargo build --locked --lib "${BUILD_ARGS[@]}" ${SYNTAX_A
 mkdir -p "$DIST/wasm"
 wasm-bindgen "$TARGET/wasm32-unknown-unknown/$PROFILE/zz_storybook.wasm" \
     --out-dir "$DIST/wasm" \
-    --out-name zz_storybook \
+    --out-name storybook \
     --target web \
     --no-typescript
-cp "$ROOT/clients/storybook/web/index.html" "$ROOT/clients/storybook/web/main.js" \
-    "$ROOT/clients/storybook/web/style.css" "$DIST/"
+cp "$ROOT/libs/penna/storybook/web/index.html" "$ROOT/libs/penna/storybook/web/main.js" \
+    "$ROOT/libs/penna/storybook/web/style.css" "$DIST/"
 echo "built $DIST"
