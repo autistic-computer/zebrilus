@@ -87213,6 +87213,14 @@ set-option -g @alias-mixed-next yes
             .permissions();
         permissions.set_mode(0o700);
         fs::set_permissions(&executable, permissions).expect("make fake zz executable runnable");
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while let Err(error) = std::process::Command::new(&executable).output() {
+            assert!(
+                error.kind() == std::io::ErrorKind::ExecutableFileBusy && Instant::now() < deadline,
+                "run fake zz executable: {error}"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
 
         let shared = Arc::new(Shared::new(1));
         shared
@@ -89297,6 +89305,27 @@ set-option -g @alias-mixed-next yes
     }
 
     #[cfg(all(feature = "agent", unix))]
+    fn wait_for_runtime_pid(shared: &Shared, pane: PaneId, pid: u32) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let runtime = shared
+                .inner
+                .lock()
+                .engine
+                .pane_runtime_facts(pane)
+                .and_then(|runtime| runtime.pid);
+            if runtime == Some(pid) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "daemon never recorded shell pid {pid} for {pane}: {runtime:?}"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[cfg(all(feature = "agent", unix))]
     fn with_claude_peer_status(
         test: &str,
         check: impl FnOnce(&Arc<Shared>, PaneId, &Path, serde_json::Value),
@@ -89346,6 +89375,7 @@ set-option -g @alias-mixed-next yes
         let terminal = shared.inner.lock().terminals[&pane].clone();
         wait_for_terminal_identity(&terminal);
         let pid = terminal.process_id().expect("shell pid");
+        wait_for_runtime_pid(&shared, pane, pid);
         let start = std::process::Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "lstart="])
             .env("TZ", "UTC")
@@ -89740,6 +89770,7 @@ set-option -g @alias-mixed-next yes
         let terminal = shared.inner.lock().terminals[&pane].clone();
         wait_for_terminal_identity(&terminal);
         let pid = terminal.process_id().expect("shell pid");
+        wait_for_runtime_pid(&shared, pane, pid);
         let start = std::process::Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "lstart="])
             .env("TZ", "UTC")
@@ -95800,6 +95831,7 @@ bind - split-window -v -c "#{pane_current_path}"
 
         copy_command(&mut context, &["cancel"]);
         wait_for_answer("#{pane_in_mode}", "0");
+        wait_for_root_key_table(&shared, client, "cancel left the copy session open");
         assert_eq!(answer("[#{pane_search_string}]"), "[needle]");
 
         enter_observed_copy_mode(&shared, client, &mut context, pane, &terminal);
@@ -99352,6 +99384,18 @@ bind - split-window -v -c "#{pane_current_path}"
             "second attached terminal view never became available",
             |viewport| viewport_text(viewport).contains("zz-terminal-ready"),
         );
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .is_none_or(|pane| pane.title != "shared fixture")
+        {
+            assert!(Instant::now() < deadline, "the fixture title did not sync");
+            thread::sleep(Duration::from_millis(5));
+        }
         shared.send_resync(first_client, &first_mailbox);
         shared.send_resync(second_client, &second_mailbox);
 
@@ -114300,6 +114344,14 @@ bind - split-window -v -c "#{pane_current_path}"
                 client,
                 ClientKind::Command,
                 &mut context,
+                &CommandInvocation::new("set-option", ["-g", "automatic-rename", "off"]),
+            )
+            .expect("hold window names");
+        shared
+            .execute(
+                client,
+                ClientKind::Command,
+                &mut context,
                 &CommandInvocation::new(
                     "set-hook",
                     [
@@ -122476,6 +122528,27 @@ bind - split-window -v -c "#{pane_current_path}"
             panic!("timed out waiting for {what}: {seen:#?}");
         }
 
+        fn wait_for_ready_broadcast(mailbox: &OutboundMailbox, agent: PaneId) {
+            let deadline = Instant::now() + DEADLINE;
+            while Instant::now() < deadline {
+                let ready = take_reliable_messages(mailbox).iter().any(|message| {
+                    matches!(
+                        message,
+                        ProtocolMessage::Event(Event {
+                            payload: EventPayload::AgentState { pane, state },
+                            ..
+                        }) if *pane == agent
+                            && matches!(state.phase, zz_protocol::AgentConnectionPhase::Ready)
+                    )
+                });
+                if ready {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            panic!("timed out waiting for agent pane {agent:?} to broadcast Ready");
+        }
+
         fn agent_states_for(mailbox: &OutboundMailbox, agent: PaneId) -> usize {
             take_reliable_messages(mailbox)
                 .iter()
@@ -122545,6 +122618,7 @@ bind - split-window -v -c "#{pane_current_path}"
                 .expect("workspace command");
             let agent = context.pane.expect("agent terminal");
             assert!(shared.open_test_agent(agent));
+            wait_for_ready_broadcast(&mailbox, agent);
             shared.send_resync(client, &mailbox);
             take_reliable_messages(&mailbox);
             Workspace {

@@ -87,18 +87,20 @@ impl server::Handler for TestServer {
         } else {
             host
         };
-        let port = if host == "localhost" {
+        let port = u16::try_from(port).unwrap();
+        let service = if host == "localhost" {
             self.inventory
                 .lock()
                 .mappings
-                .get(&u16::try_from(port).unwrap())
+                .get(&port)
                 .copied()
                 .or(self.loopback_port)
-                .unwrap_or(u16::try_from(port).unwrap())
         } else {
-            u16::try_from(port).unwrap()
+            None
         };
-        let connected = if destination == "localhost" {
+        let connected = if let Some(service) = service {
+            TcpStream::connect((Ipv6Addr::LOCALHOST, service)).await
+        } else if destination == "localhost" {
             match TcpStream::connect((Ipv4Addr::LOCALHOST, port)).await {
                 Ok(remote) => Ok(remote),
                 Err(_) => TcpStream::connect((Ipv6Addr::LOCALHOST, port)).await,
@@ -720,8 +722,9 @@ async fn discovered_port_conflicts_are_isolated_with_room_for_forty_services() {
         return;
     }
     let fixture = Fixture::start().await;
-    let occupied = std::net::TcpListener::bind((Ipv6Addr::LOCALHOST, 0)).unwrap();
+    let (released, occupied) = loopback_listeners(4);
     let conflict = occupied.local_addr().unwrap().port();
+    drop(released);
     let mut forward = LoopbackForward::new(Arc::clone(&fixture.session));
     let mut ports = BTreeSet::from([conflict]);
     while ports.len() < 41 {
