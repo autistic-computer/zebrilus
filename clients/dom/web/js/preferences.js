@@ -129,23 +129,23 @@ function apply() {
   const begun = performance.now();
   const json = JSON.stringify(preferences);
   const isDark = dark();
-  write("zz-live-tokens", "zz-tokens", engine.stylesheet(json, isDark));
+  write("zz-live-tokens", "penna-tokens", engine.stylesheet(json, isDark));
   const key = JSON.stringify([preferences.theme, preferences.themes, preferences.radius]);
   if (key !== iconsKey) {
     iconsKey = key;
     icons = engine.icons(json);
   }
-  write("zz-live-icons", "zz-icons", icons);
+  write("zz-live-icons", "penna-icons", icons);
   const theme = preferences.theme || "default";
   const mode = isDark ? "dark" : "light";
-  if (globalThis.zzDesign) Object.assign(globalThis.zzDesign.choice, { theme, mode });
-  if (root.dataset.zzTheme !== theme) root.dataset.zzTheme = theme;
-  if (root.dataset.zzMode !== mode) root.dataset.zzMode = mode;
+  if (globalThis.pennaKit) Object.assign(globalThis.pennaKit.choice, { theme, mode });
+  if (root.dataset.pennaTheme !== theme) root.dataset.pennaTheme = theme;
+  if (root.dataset.pennaMode !== mode) root.dataset.pennaMode = mode;
   root.style.zoom = preferences.zoom === 1 ? "" : String(preferences.zoom);
   root.toggleAttribute("data-zz-still", !preferences.animations);
   root.style.setProperty("--zz-animation-speed", String(preferences.animation_speed));
   timing.render = Math.round((performance.now() - begun) * 10) / 10;
-  requestAnimationFrame(() => globalThis.zzDesign?.roundAll());
+  requestAnimationFrame(() => globalThis.pennaKit?.roundAll());
 }
 
 function schedule() {

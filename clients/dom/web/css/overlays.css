@@ -3,10 +3,10 @@
   inset: 0;
   z-index: 50;
   pointer-events: none;
-  --zz-overlay-mono: "Lilex", var(--zz-mono);
+  --zz-overlay-mono: "Lilex", var(--penna-mono);
 }
 
-#overlays .zz-mono {
+#overlays .penna-mono {
   font-family: var(--zz-overlay-mono);
 }
 
@@ -40,10 +40,10 @@
   flex: none;
   align-items: center;
   height: 21px;
-  padding: 4px calc(var(--zz-row-inset) + 8px) 0;
+  padding: 4px calc(var(--penna-row-inset) + 8px) 0;
   overflow: hidden;
   font-size: 11px;
-  color: var(--zz-muted);
+  color: var(--penna-muted);
 }
 
 .zz-menu-title > .start,
@@ -60,14 +60,14 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 4px var(--zz-row-inset);
+  padding: 4px var(--penna-row-inset);
 }
 
 [data-titled] > .zz-menu-rows {
   padding-top: 2px;
 }
 
-.zz-menu-rows > [data-zz="menu-item"] {
+.zz-menu-rows > [data-penna="menu-item"] {
   flex: none;
   justify-content: space-between;
   gap: 12px;
@@ -76,11 +76,11 @@
   color: inherit;
 }
 
-.zz-menu-rows > [data-zz="menu-item"][aria-selected="true"] {
-  color: var(--zz-ink);
+.zz-menu-rows > [data-penna="menu-item"][aria-selected="true"] {
+  color: var(--penna-ink);
 }
 
-.zz-menu-rows > [data-zz="menu-item"]:not([data-enabled]) {
+.zz-menu-rows > [data-penna="menu-item"]:not([data-enabled]) {
   color: color-mix(in oklab, currentColor 60%, transparent);
 }
 
@@ -103,8 +103,8 @@
 .zz-menu-rule {
   flex: none;
   height: 1px;
-  margin: 2px var(--zz-row-inset);
-  background: var(--zz-divider);
+  margin: 2px var(--penna-row-inset);
+  background: var(--penna-divider);
 }
 
 .zz-confirm {
@@ -128,7 +128,7 @@
   align-items: flex-start;
   justify-content: center;
   padding: 22px 24px;
-  background: var(--zz-scrim);
+  background: var(--penna-scrim);
 }
 
 .zz-chooser {
@@ -157,7 +157,7 @@
 .zz-chooser-title {
   font-size: 13px;
   font-weight: 500;
-  color: var(--zz-fg);
+  color: var(--penna-fg);
 }
 
 .zz-chooser-subtitle {
@@ -165,14 +165,14 @@
   font-size: 11px;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--zz-muted);
+  color: var(--penna-muted);
 }
 
 .zz-chooser-notice {
   flex: none;
   padding: 9px 12px;
   font-size: 11px;
-  border-width: 0 0 var(--zz-bw);
+  border-width: 0 0 var(--penna-bw);
   border-radius: 0;
 }
 
@@ -181,7 +181,7 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  padding: 8px var(--zz-row-inset);
+  padding: 8px var(--penna-row-inset);
   overflow-y: auto;
 }
 
@@ -217,7 +217,7 @@
   flex: none;
   width: 16px;
   opacity: 0.8;
-  --zz-icon-size: 12px;
+  --penna-icon-size: 12px;
 }
 
 .zz-chooser-icon {
@@ -265,7 +265,7 @@
   flex: none;
   justify-content: flex-end;
   width: 22px;
-  --zz-icon-size: 12px;
+  --penna-icon-size: 12px;
 }
 
 .zz-chooser-name {
@@ -312,7 +312,7 @@
   gap: 12px;
   height: 34px;
   padding: 0 12px;
-  box-shadow: inset 0 var(--zz-outline) var(--zz-border);
+  box-shadow: inset 0 var(--penna-outline) var(--penna-border);
 }
 
 .zz-chooser-search {
@@ -322,7 +322,7 @@
   gap: 7px;
   min-width: 0;
   font-size: 11px;
-  color: var(--zz-fg);
+  color: var(--penna-fg);
 }
 
 .zz-chooser-search > .value {
@@ -340,7 +340,7 @@
   overflow: hidden;
   font-size: 9px;
   white-space: nowrap;
-  color: var(--zz-muted);
+  color: var(--penna-muted);
 }
 
 .zz-hint {
@@ -349,17 +349,17 @@
   gap: 4px;
 }
 
-.zz-chooser-hints [data-zz="keycap"] {
+.zz-chooser-hints [data-penna="keycap"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 1px;
   font-size: 11px;
   line-height: 16px;
-  --zz-icon-size: 13px;
+  --penna-icon-size: 13px;
 }
 
-[data-zz="pane"]:has(> .zz-indicator-holder) {
+[data-penna="pane"]:has(> .zz-indicator-holder) {
   position: relative;
 }
 
@@ -404,7 +404,7 @@
   font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
-  color: var(--zz-muted);
+  color: var(--penna-muted);
 }
 
 .zz-layer-toasts {
@@ -439,19 +439,19 @@
   flex: none;
   align-items: center;
   height: 18px;
-  --zz-icon-size: 14px;
+  --penna-icon-size: 14px;
 }
 
 [data-kind="success"] .zz-toast-icon {
-  color: var(--zz-success);
+  color: var(--penna-success);
 }
 
 [data-kind="warning"] .zz-toast-icon {
-  color: var(--zz-warning);
+  color: var(--penna-warning);
 }
 
 [data-kind="error"] .zz-toast-icon {
-  color: var(--zz-danger);
+  color: var(--penna-danger);
 }
 
 .zz-toast-message {

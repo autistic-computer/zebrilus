@@ -5,7 +5,7 @@
   gap: 4px;
   height: 28px;
   padding: 0 6px;
-  box-shadow: inset 0 -1px var(--zz-divider);
+  box-shadow: inset 0 -1px var(--penna-divider);
 }
 
 .browser-cluster {
@@ -15,13 +15,13 @@
   gap: 4px;
 }
 
-.browser-toolbar [data-zz="browser.button"] {
+.browser-toolbar [data-penna="browser.button"] {
   display: inline-grid;
   place-items: center;
   width: 28px;
   height: 28px;
   padding: 0;
-  --zz-icon-size: 14px;
+  --penna-icon-size: 14px;
 }
 
 .browser-url {
@@ -40,8 +40,8 @@
   justify-content: center;
   gap: 12px;
   padding: 24px;
-  background: var(--zz-bg);
-  --zz-icon-size: 26px;
+  background: var(--penna-bg);
+  --penna-icon-size: 26px;
 }
 
 .browser-title {

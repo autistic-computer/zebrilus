@@ -84,7 +84,7 @@ function render() {
   for (const handler of phases.after) handler();
 }
 
-export const dark = () => document.documentElement.dataset.zzMode !== "light";
+export const dark = () => document.documentElement.dataset.pennaMode !== "light";
 
 export function session() {
   const tree = state.tree;
@@ -158,7 +158,7 @@ export async function start() {
     state.client.color_scheme(dark());
     flush();
     emit("theme");
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-zz-mode", "data-zz-theme"] });
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-penna-mode", "data-penna-theme"] });
   globalThis.zzDom = { state, emit, on, command };
   connect();
 }

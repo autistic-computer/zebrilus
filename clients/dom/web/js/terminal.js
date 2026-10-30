@@ -117,7 +117,7 @@ function pasteError(text) {
 
 function chip(icon, label, detail) {
   const element = document.createElement("div");
-  element.dataset.zz = "pane.chip";
+  element.dataset.penna = "pane.chip";
   element.className = "badge";
   element.innerHTML = `<i data-icon="${icon}"></i><span class="badge-label"></span>`;
   const holder = element.querySelector(".badge-label");
@@ -139,7 +139,7 @@ function chip(icon, label, detail) {
 
 function line(text, quiet) {
   const element = document.createElement("div");
-  element.dataset.zz = "pane.chip";
+  element.dataset.penna = "pane.chip";
   element.className = "chip-line";
   element.toggleAttribute("data-quiet", quiet);
   element.innerHTML = `<span data-text></span>`;
@@ -416,7 +416,7 @@ function terminal(pane) {
       if (status?.synchronized) top.append(chip("layers", "Sync"));
       if (status?.zoomed) {
         const button = document.createElement("button");
-        button.dataset.zz = "pane.chip";
+        button.dataset.penna = "pane.chip";
         button.className = "unzoom";
         button.title = "Unzoom";
         button.innerHTML = `<i data-icon="window-restore"></i><span data-text>Unzoom</span>`;
@@ -432,18 +432,18 @@ function terminal(pane) {
     },
     buildFind() {
       const find = document.createElement("div");
-      find.dataset.zz = "pane.find-bar";
+      find.dataset.penna = "pane.find-bar";
       find.dataset.ground = "";
       find.className = "find";
       find.innerHTML = `
-        <label data-zz="field" class="find-field"><i data-icon="search"></i><input placeholder="Find in this pane…" spellcheck="false" autocomplete="off"></label>
+        <label data-penna="field" class="find-field"><i data-icon="search"></i><input placeholder="Find in this pane…" spellcheck="false" autocomplete="off"></label>
         <div class="find-tail">
           <span class="find-result" data-text></span>
-          <button data-zz="icon-button.flat" data-size="small" data-action="regex" title="Regular expression"><i data-icon="asterisk"></i></button>
-          <button data-zz="icon-button.flat" data-size="small" data-action="case" title="Smart case"><i data-icon="case-sensitive"></i></button>
-          <button data-zz="icon-button.flat" data-size="small" data-action="previous" title="Previous match"><i data-icon="chevron-up"></i></button>
-          <button data-zz="icon-button.flat" data-size="small" data-action="next" title="Next match"><i data-icon="chevron-down"></i></button>
-          <button data-zz="icon-button.flat" data-size="small" data-action="close" title="Close search"><i data-icon="xmark"></i></button>
+          <button data-penna="icon-button.flat" data-size="small" data-action="regex" title="Regular expression"><i data-icon="asterisk"></i></button>
+          <button data-penna="icon-button.flat" data-size="small" data-action="case" title="Smart case"><i data-icon="case-sensitive"></i></button>
+          <button data-penna="icon-button.flat" data-size="small" data-action="previous" title="Previous match"><i data-icon="chevron-up"></i></button>
+          <button data-penna="icon-button.flat" data-size="small" data-action="next" title="Next match"><i data-icon="chevron-down"></i></button>
+          <button data-penna="icon-button.flat" data-size="small" data-action="close" title="Close search"><i data-icon="xmark"></i></button>
         </div>`;
       const input = find.querySelector("input");
       for (const type of ["mousedown", "mouseup", "wheel", "contextmenu"]) {
@@ -568,7 +568,7 @@ function terminal(pane) {
       }
       if (!preview) {
         preview = document.createElement("div");
-        preview.dataset.zz = "popover";
+        preview.dataset.penna = "popover";
         preview.className = "image-preview";
         preview.innerHTML = "<img alt=''>";
         document.body.append(preview);

@@ -29,7 +29,7 @@ const app = $(".app");
 const workspace = $("#workspace");
 const titlebar = document.createElement("div");
 titlebar.id = "titlebar";
-titlebar.dataset.zz = "titlebar";
+titlebar.dataset.penna = "titlebar";
 const canvas = document.createElement("div");
 canvas.id = "canvas";
 const content = document.createElement("div");
@@ -38,24 +38,24 @@ const floatLayer = document.createElement("div");
 floatLayer.className = "float-layer";
 const preview = document.createElement("div");
 preview.className = "drop-preview";
-preview.dataset.zz = "pane.drop-zone";
+preview.dataset.penna = "pane.drop-zone";
 preview.dataset.state = "selected";
 const toast = document.createElement("div");
 toast.className = "canvas-toast";
-toast.dataset.zz = "toast";
+toast.dataset.penna = "toast";
 toast.hidden = true;
 const empty = document.createElement("div");
 empty.className = "empty-workspace";
 empty.hidden = true;
-empty.innerHTML = `<i data-icon="square-terminal"></i><div class="empty-title" data-text>Your workspace</div><div class="empty-status zz-muted" data-text></div><button data-zz="button"></button>`;
+empty.innerHTML = `<i data-icon="square-terminal"></i><div class="empty-title" data-text>Your workspace</div><div class="empty-status penna-muted" data-text></div><button data-penna="button"></button>`;
 canvas.append(content, preview, toast, empty);
 workspace.append(titlebar, canvas);
 
 const chip = document.createElement("div");
 chip.className = "drag-chip";
-chip.dataset.zz = "pane.drag-chip";
+chip.dataset.penna = "pane.drag-chip";
 chip.hidden = true;
-chip.innerHTML = `<b class="zz-mono"></b><span class="zz-muted"></span>`;
+chip.innerHTML = `<b class="penna-mono"></b><span class="penna-muted"></span>`;
 document.body.append(chip);
 
 let prefixArmed = false;
@@ -86,7 +86,7 @@ function el(tag, attrs = {}, html = "") {
 }
 
 function iconButton(role, action, icon, label) {
-  const button = el("button", { "data-zz": role, "data-action": action, title: label });
+  const button = el("button", { "data-penna": role, "data-action": action, title: label });
   button.innerHTML = `<i data-icon="${icon}"></i>`;
   return button;
 }
@@ -105,9 +105,9 @@ function headerActions(floats) {
 }
 
 function header(pane) {
-  const element = el("div", { "data-zz": "pane.header" });
+  const element = el("div", { "data-penna": "pane.header" });
   const slot = el("div", { class: "title-slot" });
-  const title = el("div", { "data-zz": "pane.header.title", class: "pane-title" });
+  const title = el("div", { "data-penna": "pane.header.title", class: "pane-title" });
   title.innerHTML = `<span class="title-icon"><i data-icon="square-terminal" class="kind"></i><i data-icon="arrows-move" class="move"></i></span><span class="title" data-text></span>`;
   const close = iconButton("pane.header.button", "close", "xmark", "Close pane");
   close.classList.add("title-close");
@@ -150,7 +150,7 @@ export function focusPane(id) {
 function paneElement(id) {
   let pane = panes.get(id);
   if (pane) return pane;
-  const element = el("section", { "data-zz": "pane", "data-pane": id });
+  const element = el("section", { "data-penna": "pane", "data-pane": id });
   const frame = el("div", { class: "pane-header-frame" });
   const body = el("div", { class: "pane-body" });
   const scrim = el("div", { class: "pane-scrim" });
@@ -200,7 +200,7 @@ function mount(pane, info) {
 }
 
 function badge(icon, label) {
-  return `<div data-zz="pane.chip" class="pane-badge"><i data-icon="${icon}"></i><span data-text>${escape(label)}</span></div>`;
+  return `<div data-penna="pane.chip" class="pane-badge"><i data-icon="${icon}"></i><span data-text>${escape(label)}</span></div>`;
 }
 
 function escape(text) {
@@ -237,7 +237,7 @@ function chrome(pane, info, window, floating) {
   if (info.deadLabel) tags.push(badge("circle-x", info.deadLabel));
   if (info.synchronized) tags.push(badge("layers", "Sync"));
   if (window.zoomedPane === pane.id) {
-    tags.push(`<button data-zz="pane.chip" class="unzoom" data-action="unzoom" aria-label="Unzoom"><i data-icon="window-restore"></i><span data-text>Unzoom</span></button>`);
+    tags.push(`<button data-penna="pane.chip" class="unzoom" data-action="unzoom" aria-label="Unzoom"><i data-icon="window-restore"></i><span data-text>Unzoom</span></button>`);
   }
   const html = tags.join("");
   if (pane.badges.dataset.html !== html) {
@@ -493,10 +493,10 @@ function veils(window) {
     veil.hidden = false;
     veil.dataset.drag = !paneDrag ? "armed" : paneDrag.pane === pane.id ? "source" : "target";
     if (veil.dataset.drag === "armed") {
-      veil.dataset.zz = "pane.drop-zone";
+      veil.dataset.penna = "pane.drop-zone";
       veil.dataset.state = "hover";
     } else {
-      delete veil.dataset.zz;
+      delete veil.dataset.penna;
       delete veil.dataset.state;
     }
   }
@@ -524,7 +524,7 @@ function floatSurface(pane, float, info, window) {
     surface.addEventListener("pointerdown", (event) => event.stopPropagation());
     pane.surface = surface;
   }
-  surface.dataset.zz = float.modal ? "pane.float" : "pane.pip";
+  surface.dataset.penna = float.modal ? "pane.float" : "pane.pip";
   surface.toggleAttribute("data-bordered", float.bordered);
   surface.toggleAttribute("data-modal", float.modal);
   surface.dataset.state = float.modal && active ? "current" : "";
@@ -539,7 +539,7 @@ function floatSurface(pane, float, info, window) {
   if (float.modal) {
     let label = surface.querySelector(":scope > .float-title");
     if (!label) {
-      label = el("div", { class: "float-title zz-mono" }, `<span data-text></span>`);
+      label = el("div", { class: "float-title penna-mono" }, `<span data-text></span>`);
       surface.append(label);
     }
     label.hidden = !float.bordered || !float.title;
@@ -637,11 +637,11 @@ function beginPip(pane, event) {
 }
 
 function windowTab(entry) {
-  const tab = el("div", { class: "window-tab", "data-zz": "titlebar.window-tab", "data-window": entry.id, title: entry.label });
+  const tab = el("div", { class: "window-tab", "data-penna": "titlebar.window-tab", "data-window": entry.id, title: entry.label });
   if (entry.active) tab.dataset.state = "current";
   const deck = el("div", { class: "tab-deck" });
   entry.panes.slice(0, 3).forEach((pane, index) => {
-    const tile = el("span", { class: "deck-tile", "data-zz": "pane-stack" }, `<i data-icon="${paneIcon(pane.tag)}"></i>`);
+    const tile = el("span", { class: "deck-tile", "data-penna": "pane-stack" }, `<i data-icon="${paneIcon(pane.tag)}"></i>`);
     if (index === 0) tile.dataset.state = "current";
     tile.style.left = `${index * 5}px`;
     tile.style.zIndex = 3 - index;
@@ -653,7 +653,7 @@ function windowTab(entry) {
   const dots = el("span", { class: "tab-dots" }, `<i class="dot bell"></i><i class="dot activity"></i>`);
   dots.querySelector(".bell").style.opacity = entry.bell ? 1 : 0;
   dots.querySelector(".activity").style.opacity = entry.activity ? 1 : 0;
-  const close = el("button", { "data-zz": "sidebar.row-action", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
+  const close = el("button", { "data-penna": "sidebar.row-action", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
   close.disabled = !writable();
   close.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -679,10 +679,10 @@ function windowTab(entry) {
 
 export function contextMenu(x, y, items) {
   document.querySelector(".zz-context-menu")?.remove();
-  const menu = el("div", { class: "zz-menu zz-context-menu", "data-zz": "popover" });
+  const menu = el("div", { class: "penna-menu zz-context-menu", "data-penna": "popover" });
   menu.setAttribute("role", "menu");
   for (const [label, run, icon] of items) {
-    const item = el("div", { "data-zz": "menu-item" });
+    const item = el("div", { "data-penna": "menu-item" });
     item.setAttribute("role", "menuitem");
     item.innerHTML = `${icon ? `<i data-icon="${icon}"></i>` : ""}<span data-text></span>`;
     item.querySelector("span").textContent = label;
@@ -725,7 +725,7 @@ function renderTitlebar() {
   const strip = el("div", { class: "window-strip" });
   strip.append(...model.windows.map(windowTab));
   if (model.overflow) {
-    const more = el("button", { "data-zz": "chrome.button", class: "overflow", title: "All windows" }, `<i data-icon="ellipsis"></i>`);
+    const more = el("button", { "data-penna": "chrome.button", class: "overflow", title: "All windows" }, `<i data-icon="ellipsis"></i>`);
     more.disabled = !state.connected;
     more.addEventListener("click", (event) => {
       const rect = more.getBoundingClientRect();
@@ -738,7 +738,7 @@ function renderTitlebar() {
     });
     strip.append(more);
   }
-  const toggle = el("button", { "data-zz": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-left"></i>`);
+  const toggle = el("button", { "data-penna": "chrome.button", class: "titlebar-toggle", title: "Toggle sidebar" }, `<i data-icon="panel-left"></i>`);
   toggle.addEventListener("click", () => emit("toggleSidebar"));
   const controls = el("div", { class: "titlebar-controls" });
   controls.append(toggle);
@@ -751,13 +751,13 @@ function applyMetrics() {
   const { margin, header, titlebar: height, gaps } = metrics();
   const root = app.style;
   root.setProperty("--zz-pane-header-height", `${header}px`);
-  root.setProperty("--zz-titlebar-height", `${height}px`);
+  root.setProperty("--penna-titlebar-height", `${height}px`);
   root.setProperty("--pane-margin", `${margin}px`);
   const glow = preferences.pane_glow_strength;
   root.setProperty("--pane-wash-scale", glow);
   root.setProperty("--pip-opacity", preferences.pip_background_opacity);
   root.setProperty("--pane-rim", Math.max(0, 1 - 0.3 * glow));
-  app.classList.toggle("zz-gaps", gaps);
+  app.classList.toggle("penna-gaps", gaps);
   app.toggleAttribute("data-gaps", gaps);
   app.toggleAttribute("data-animations", preferences.animations);
 }
@@ -906,12 +906,12 @@ const AGENT_ICONS = { claude: "asterisk", codex: "braces" };
 
 function chatRows(pane, list, chat, view) {
   const row = (target, index, icon, title, note, shortcut, selected) => {
-    const element = el("div", { class: "picker-row", "data-zz": "pane.picker" });
+    const element = el("div", { class: "picker-row", "data-penna": "pane.picker" });
     if (selected) element.dataset.state = "current";
-    element.innerHTML = `<i data-icon="${icon}"></i><span class="picker-title"></span>${note ? `<span class="picker-note zz-muted"></span>` : ""}${shortcut ? `<span data-zz="keycap"><span data-text></span></span>` : ""}`;
+    element.innerHTML = `<i data-icon="${icon}"></i><span class="picker-title"></span>${note ? `<span class="picker-note penna-muted"></span>` : ""}${shortcut ? `<span data-penna="keycap"><span data-text></span></span>` : ""}`;
     element.querySelector(".picker-title").textContent = title;
     if (note) element.querySelector(".picker-note").textContent = note;
-    if (shortcut) element.querySelector("[data-zz='keycap'] > span").textContent = shortcut;
+    if (shortcut) element.querySelector("[data-penna='keycap'] > span").textContent = shortcut;
     element.addEventListener("mousemove", () => {
       if (target !== "folder-line" && !selected) {
         state.client.chat_picker_click(pane.id, "hover", index);
@@ -927,7 +927,7 @@ function chatRows(pane, list, chat, view) {
     });
     return element;
   };
-  const label = (text) => el("div", { class: "picker-label zz-muted" }, text);
+  const label = (text) => el("div", { class: "picker-label penna-muted" }, text);
   const rows = [label("Folder")];
   if (chat.stage === "agents") {
     rows.push(row("folder-line", 0, "folder", chat.folder, null, "tab", false), label("Agent"));
@@ -956,13 +956,13 @@ function picker(pane) {
       }
       list.replaceChildren(
         ...choices.map((choice, index) => {
-          const row = el("div", { class: "picker-row", "data-zz": "pane.picker" });
+          const row = el("div", { class: "picker-row", "data-penna": "pane.picker" });
           if (index === view.selected) row.dataset.state = "current";
           if (!writable()) row.dataset.state = `${row.dataset.state || ""} disabled`.trim();
-          row.innerHTML = `<i data-icon="${paneIcon(choice.kind)}"></i><span class="picker-title"></span><span data-zz="keycap"><span data-text></span></span>`;
+          row.innerHTML = `<i data-icon="${paneIcon(choice.kind)}"></i><span class="picker-title"></span><span data-penna="keycap"><span data-text></span></span>`;
           row.querySelector(".picker-title").textContent = choice.title;
           row.querySelector(".picker-title").setAttribute("aria-label", choice.title);
-          row.querySelector("[data-zz='keycap'] > span").textContent = choice.shortcut;
+          row.querySelector("[data-penna='keycap'] > span").textContent = choice.shortcut;
           row.addEventListener("mousemove", () => {
             if (view.selected !== index) {
               view.selected = index;
@@ -1020,7 +1020,7 @@ onKey((event) => {
 
 function unsupported(title, icon, reason) {
   return (pane) => {
-    pane.body.innerHTML = `<div class="unsupported-pane"><i data-icon="${icon}"></i><div data-text>${title}</div><div class="zz-muted reason" data-text>${reason}</div></div>`;
+    pane.body.innerHTML = `<div class="unsupported-pane"><i data-icon="${icon}"></i><div data-text>${title}</div><div class="penna-muted reason" data-text>${reason}</div></div>`;
     return { update() {}, layout() {}, destroy() {} };
   };
 }

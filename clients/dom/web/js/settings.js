@@ -73,10 +73,10 @@ function entry({ title, description, glyph, actions, control, children, disabled
 function card(entries) {
   const rows = [];
   entries.filter(Boolean).forEach((row, index) => {
-    if (index) rows.push(h("div", { class: "setting-rule", "data-zz": "rule.list" }));
+    if (index) rows.push(h("div", { class: "setting-rule", "data-penna": "rule.list" }));
     rows.push(row);
   });
-  return h("div", { class: "settings-card", "data-zz": "settings.card", "data-ground": true }, rows);
+  return h("div", { class: "settings-card", "data-penna": "settings.card", "data-ground": true }, rows);
 }
 
 function stack(title, entries) {
@@ -84,16 +84,16 @@ function stack(title, entries) {
 }
 
 function button(label, props = {}, ...children) {
-  return h("button", { "data-zz": "button", "aria-label": label, ...props }, ...children);
+  return h("button", { "data-penna": "button", "aria-label": label, ...props }, ...children);
 }
 
 function quiet(label, tooltip, onclick) {
-  return h("button", { "data-zz": "button.quiet", "data-size": "small", "aria-label": label, title: tooltip, onclick }, text(label));
+  return h("button", { "data-penna": "button.quiet", "data-size": "small", "aria-label": label, title: tooltip, onclick }, text(label));
 }
 
 function toggle(checked, label, onchange) {
   return h("button", {
-    class: "zz-switch",
+    class: "penna-switch",
     role: "switch",
     "aria-checked": String(checked),
     "data-on": checked,
@@ -122,18 +122,18 @@ function snap(value, min, max, step) {
 
 function slider({ label, value, min, max, step, onchange, track, commitOnRelease }) {
   const fraction = (value) => (max > min ? (value - min) / (max - min) : 0);
-  const rail = h("div", { class: "zz-rail" });
-  const fill = h("div", { class: "zz-fill" });
-  const knob = h("div", { class: "zz-knob" });
+  const rail = h("div", { class: "penna-rail" });
+  const fill = h("div", { class: "penna-fill" });
+  const knob = h("div", { class: "penna-knob" });
   if (track) {
     rail.style.background = `linear-gradient(90deg, ${track.join(", ")})`;
     rail.append(knob);
   } else rail.append(fill, knob);
-  const element = h("div", { class: "zz-slider", role: "slider", tabindex: 0, "aria-label": label, "aria-valuemin": min, "aria-valuemax": max }, rail);
+  const element = h("div", { class: "penna-slider", role: "slider", tabindex: 0, "aria-label": label, "aria-valuemin": min, "aria-valuemax": max }, rail);
   let current = value;
   const show = (next) => {
     current = next;
-    element.style.setProperty("--zz-value", `${fraction(next) * 100}%`);
+    element.style.setProperty("--penna-value", `${fraction(next) * 100}%`);
     element.setAttribute("aria-valuenow", next);
     element.dispatchEvent(new CustomEvent("shown", { detail: next }));
   };
@@ -210,7 +210,7 @@ function choose({ value, items, placeholder, className = "", onpick }) {
   const current = items.find((item) => item.value === value);
   const trigger = h(
     "button",
-    { "data-zz": "field", class: `settings-select ${className}`, "aria-haspopup": "listbox" },
+    { "data-penna": "field", class: `settings-select ${className}`, "aria-haspopup": "listbox" },
     text(current?.title ?? placeholder, { style: current?.font ? { "font-family": `"${current.font}"` } : null }),
     icon("chevron-down"),
   );
@@ -221,12 +221,12 @@ function choose({ value, items, placeholder, className = "", onpick }) {
     const bounds = trigger.getBoundingClientRect();
     const menu = h(
       "div",
-      { "data-zz": "popover", class: "zz-menu settings-menu", role: "listbox" },
+      { "data-penna": "popover", class: "penna-menu settings-menu", role: "listbox" },
       items.map((item) =>
         h(
           "div",
           {
-            "data-zz": "menu-item",
+            "data-penna": "menu-item",
             role: "option",
             "aria-selected": String(item.value === value),
             "data-state": item.value === value ? "selected" : null,
@@ -280,10 +280,10 @@ function numberField({ value, min, max, step, onchange }) {
   };
   return h(
     "div",
-    { "data-zz": "field", class: "settings-number", role: "spinbutton" },
-    h("button", { "data-zz": "button.quiet", tabindex: -1, onclick: () => stepBy(-1) }, icon("minus")),
+    { "data-penna": "field", class: "settings-number", role: "spinbutton" },
+    h("button", { "data-penna": "button.quiet", tabindex: -1, onclick: () => stepBy(-1) }, icon("minus")),
     input,
-    h("button", { "data-zz": "button.quiet", tabindex: -1, onclick: () => stepBy(1) }, icon("plus")),
+    h("button", { "data-penna": "button.quiet", tabindex: -1, onclick: () => stepBy(1) }, icon("plus")),
   );
 }
 
@@ -301,7 +301,7 @@ function tile({ label, preview, selected, onclick }) {
   return h(
     "div",
     { class: "settings-tile", role: "option", tabindex: selected ? 0 : -1, "aria-selected": String(selected), onclick },
-    h("div", { class: "halo" }, h("div", { "data-zz": "settings.tile", "data-state": selected ? "selected" : null }, preview)),
+    h("div", { class: "halo" }, h("div", { "data-penna": "settings.tile", "data-state": selected ? "selected" : null }, preview)),
     h("div", { class: "label", "aria-label": label, text: label }),
   );
 }
@@ -432,7 +432,7 @@ function themeSaved(outcome) {
 }
 
 function toast(message, tone) {
-  const element = h("div", { "data-zz": "toast", class: "settings-toast", role: "status", "data-tone": tone }, h("span", { text: message }));
+  const element = h("div", { "data-penna": "toast", class: "settings-toast", role: "status", "data-tone": tone }, h("span", { text: message }));
   page.append(element);
   setTimeout(() => element.remove(), 4000);
 }
@@ -603,21 +603,21 @@ function statusBarPage() {
   const tab = (name, glyph, active, badges, stacked) =>
     h(
       "div",
-      { "data-zz": "titlebar.window-tab", "aria-selected": String(active) },
-      h("span", { class: `tile${stacked ? " stacked" : ""}`, "data-zz": "icon-tile" }, icon(glyph)),
+      { "data-penna": "titlebar.window-tab", "aria-selected": String(active) },
+      h("span", { class: `tile${stacked ? " stacked" : ""}`, "data-penna": "icon-tile" }, icon(glyph)),
       h("span", { class: "name", "aria-label": name, text: name }),
-      h("span", { class: "badges" }, badges && [h("i", { style: { background: "var(--zz-warning)" } }), h("i", { style: { background: "var(--zz-success)" } })]),
-      h("button", { "data-zz": "sidebar.row-action", title: "Close window" }, icon("xmark")),
+      h("span", { class: "badges" }, badges && [h("i", { style: { background: "var(--penna-warning)" } }), h("i", { style: { background: "var(--penna-success)" } })]),
+      h("button", { "data-penna": "sidebar.row-action", title: "Close window" }, icon("xmark")),
     );
   const preview = h(
     "div",
-    { class: "settings-well", "data-zz": "settings.preview", style: { "--zz-fill": "var(--zz-bg)" } },
+    { class: "settings-well", "data-penna": "settings.preview", style: { "--penna-fill": "var(--penna-bg)" } },
     h(
       "div",
-      { class: "settings-statusbar", "data-zz": "titlebar" },
+      { class: "settings-statusbar", "data-penna": "titlebar" },
       tab("workspace", "globe", true, false, true),
       tab("logs", "square-terminal", false, p.status_badges, false),
-      !p.gaps && h("div", { class: "rule", "data-zz": "rule.bar" }),
+      !p.gaps && h("div", { class: "rule", "data-penna": "rule.bar" }),
     ),
   );
   return [
@@ -650,7 +650,7 @@ const CLAUDE = [
 ];
 
 function lines(sample) {
-  const color = { muted: "var(--zz-muted)", success: "var(--zz-success)" };
+  const color = { muted: "var(--penna-muted)", success: "var(--penna-success)" };
   return h(
     "div",
     { class: "lines" },
@@ -663,7 +663,7 @@ function lines(sample) {
 }
 
 function headerTitle(glyph, title) {
-  return h("div", { "data-zz": "pane.header.title" }, icon(glyph), text(title), h("button", { "data-zz": "pane.header.button", "data-action": "close", title: "Close pane" }, icon("xmark")));
+  return h("div", { "data-penna": "pane.header.title" }, icon(glyph), text(title), h("button", { "data-penna": "pane.header.button", "data-action": "close", title: "Close pane" }, icon("xmark")));
 }
 
 function previewPane(index, body) {
@@ -671,7 +671,7 @@ function previewPane(index, body) {
   const pane = h(
     "section",
     {
-      "data-zz": "pane",
+      "data-penna": "pane",
       class: "preview-pane",
       "data-state": active ? "current" : null,
       "data-active": active,
@@ -692,13 +692,13 @@ function terminalSample(title, sample, lens) {
   return [
     h(
       "div",
-      { "data-zz": "pane.header", class: "dim" },
+      { "data-penna": "pane.header", class: "dim" },
       headerTitle("square-terminal", title),
       h("span", { class: "grow" }),
-      lens && h("span", { class: "lens" }, h("button", { "data-zz": "pane.header.button", class: "action", title: "Show agent view" }, icon("bot"))),
-      h("button", { "data-zz": "pane.header.button", class: "action", title: "Split bottom" }, icon("panel-bottom")),
-      h("button", { "data-zz": "pane.header.button", class: "action", title: "Split right" }, icon("panel-right")),
-      h("button", { "data-zz": "pane.header.button", class: "action", title: "Float" }, icon("picture-in-picture")),
+      lens && h("span", { class: "lens" }, h("button", { "data-penna": "pane.header.button", class: "action", title: "Show agent view" }, icon("bot"))),
+      h("button", { "data-penna": "pane.header.button", class: "action", title: "Split bottom" }, icon("panel-bottom")),
+      h("button", { "data-penna": "pane.header.button", class: "action", title: "Split right" }, icon("panel-right")),
+      h("button", { "data-penna": "pane.header.button", class: "action", title: "Float" }, icon("picture-in-picture")),
     ),
     h("div", { class: "dim body" }, lines(sample)),
   ];
@@ -708,25 +708,25 @@ function browserSample() {
   return [
     h(
       "div",
-      { "data-zz": "pane.header", class: "dim browser-header" },
+      { "data-penna": "pane.header", class: "dim browser-header" },
       h(
         "div",
         { class: "tab-row" },
         headerTitle("globe", "Browser"),
-        h("div", { "data-zz": "browser.tab", "aria-selected": "true" }, h("span", { class: "favicon" }, icon("globe")), h("span", { class: "label", "aria-label": "zed.dev", text: "zed.dev" })),
-        h("button", { "data-zz": "browser.button", title: "New tab" }, icon("plus")),
+        h("div", { "data-penna": "browser.tab", "aria-selected": "true" }, h("span", { class: "favicon" }, icon("globe")), h("span", { class: "label", "aria-label": "zed.dev", text: "zed.dev" })),
+        h("button", { "data-penna": "browser.button", title: "New tab" }, icon("plus")),
       ),
       h(
         "div",
         { class: "toolbar" },
-        h("button", { "data-zz": "browser.button", title: "Back" }, icon("arrow-left")),
-        h("button", { "data-zz": "browser.button", title: "Forward", disabled: true }, icon("arrow-right")),
-        h("button", { "data-zz": "browser.button", title: "Reload" }, icon("redo-2")),
-        h("div", { class: "address", "data-zz": "browser.address" }, h("button", { "data-zz": "browser.button", class: "site", title: "Site controls" }, icon("site-controls")), h("span", { text: "zed.dev/docs" })),
-        h("button", { "data-zz": "browser.button", title: "Pick an element" }, icon("inspector")),
-        h("button", { "data-zz": "browser.button", title: "More browser actions" }, icon("ellipsis-vertical")),
+        h("button", { "data-penna": "browser.button", title: "Back" }, icon("arrow-left")),
+        h("button", { "data-penna": "browser.button", title: "Forward", disabled: true }, icon("arrow-right")),
+        h("button", { "data-penna": "browser.button", title: "Reload" }, icon("redo-2")),
+        h("div", { class: "address", "data-penna": "browser.address" }, h("button", { "data-penna": "browser.button", class: "site", title: "Site controls" }, icon("site-controls")), h("span", { text: "zed.dev/docs" })),
+        h("button", { "data-penna": "browser.button", title: "Pick an element" }, icon("inspector")),
+        h("button", { "data-penna": "browser.button", title: "More browser actions" }, icon("ellipsis-vertical")),
       ),
-      h("div", { class: "rule", "data-zz": "rule.bar" }),
+      h("div", { class: "rule", "data-penna": "rule.bar" }),
     ),
     h(
       "div",
@@ -749,8 +749,8 @@ function panesPreview() {
     "div",
     {
       class: `settings-well settings-panes${p.gaps ? " gaps" : ""}`,
-      "data-zz": "settings.preview",
-      style: { "--zz-fill": "var(--zz-bg)", height: `max(${margin * 3 + 112}px, clamp(300px, 40vh, 380px))`, padding: `${margin}px` },
+      "data-penna": "settings.preview",
+      style: { "--penna-fill": "var(--penna-bg)", height: `max(${margin * 3 + 112}px, clamp(300px, 40vh, 380px))`, padding: `${margin}px` },
     },
     h("div", { class: "split h" }, left, rule(view.pane === 0 || view.pane === 1), right),
   );
@@ -814,7 +814,7 @@ function terminalPreview() {
   const p = prefs();
   const appearance = terminalAppearance() || {};
   const palette = appearance.palette || [];
-  const foreground = appearance.foreground || "var(--zz-fg)";
+  const foreground = appearance.foreground || "var(--penna-fg)";
   const fonts = [p.terminal_font_family, ...(appearance.fonts || []), "Lilex"].filter(Boolean).map((font) => `"${font}"`);
   const family = [...fonts, "ui-monospace", "monospace"].join(", ");
   const size = (appearance.size || 13) * p.terminal_font_scale;
@@ -857,7 +857,7 @@ function terminalPreview() {
   const height = Math.max(190, cell * 8 + top + bottom + 2);
   return h(
     "div",
-    { class: "settings-well", "data-zz": "settings.preview", style: { "--zz-fill": appearance.background || "var(--zz-bg)", height: `${height}px` } },
+    { class: "settings-well", "data-penna": "settings.preview", style: { "--penna-fill": appearance.background || "var(--penna-bg)", height: `${height}px` } },
     h(
       "pre",
       {
@@ -926,7 +926,7 @@ function hostsPage() {
       entry({
         title: "This computer",
         description: endpoint,
-        glyph: h("i", { "data-icon": "hard-drive", style: { color: connected ? "var(--zz-success)" : "var(--zz-warning)" } }),
+        glyph: h("i", { "data-icon": "hard-drive", style: { color: connected ? "var(--penna-success)" : "var(--penna-warning)" } }),
         status: h("div", { class: "setting-status" }, block(connected ? "Connected" : "Connecting…")),
         control: button("Reconnect", { onclick: () => state.socket?.close() }, text("Reconnect")),
       }),
@@ -948,11 +948,11 @@ function providerEntry(row) {
     control: h(
       "div",
       { class: "setting-actions provider" },
-      h("div", { class: "setting-value provider-version" }, row.check && h("i", { "data-icon": "check", style: { color: "var(--zz-success)" } }), row.version && text(row.version)),
+      h("div", { class: "setting-value provider-version" }, row.check && h("i", { "data-icon": "check", style: { color: "var(--penna-success)" } }), row.version && text(row.version)),
       action &&
         button(label, { "data-tone": action.primary ? "primary" : null, "data-prominent": action.primary, disabled: action.disabled, onclick: run }, action.icon && icon(action.icon), text(label)),
     ),
-    children: row.lines.map((line) => h("div", { class: "setting-value provider-line", "aria-label": line.text, text: line.text, style: line.tone === "warning" ? { color: "var(--zz-warning)" } : line.tone === "plain" ? { color: "var(--zz-fg)" } : null })),
+    children: row.lines.map((line) => h("div", { class: "setting-value provider-line", "aria-label": line.text, text: line.text, style: line.tone === "warning" ? { color: "var(--penna-warning)" } : line.tone === "plain" ? { color: "var(--penna-fg)" } : null })),
   });
 }
 
@@ -993,7 +993,7 @@ function aboutPage() {
   const copy = h(
     "button",
     {
-      "data-zz": "button.quiet",
+      "data-penna": "button.quiet",
       class: "settings-copy",
       "data-size": "small",
       title: "Copy build information",
@@ -1018,7 +1018,7 @@ function aboutPage() {
         { class: "copy" },
         h("div", { class: "name", "aria-label": "zz", text: "zz" }),
         h("div", { class: "tagline", "aria-label": "tmux, ghostty and ala walked into a mux.", text: "tmux, ghostty and ala walked into a mux." }),
-        h("span", { "data-zz": "badge" }, text(`v${about.version}`)),
+        h("span", { "data-penna": "badge" }, text(`v${about.version}`)),
       ),
     ),
     stack("Build", [
@@ -1047,7 +1047,7 @@ const PAGES = {
 
 function renderNav() {
   const row = (title, glyph, selected, onclick) =>
-    h("button", { "data-zz": "sidebar.row", title, "data-state": selected ? "selected" : null, onclick }, icon(glyph), text(title), h("span", { class: "grow" }));
+    h("button", { "data-penna": "sidebar.row", title, "data-state": selected ? "selected" : null, onclick }, icon(glyph), text(title), h("span", { class: "grow" }));
   const rows = [h("div", { class: "back" }, row("Back", "arrow-left", false, close))];
   let previous = null;
   for (const section of preferences.sections()) {

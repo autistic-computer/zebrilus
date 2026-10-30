@@ -28,7 +28,7 @@ function pill(value) {
   if (value.kind === "mode") {
     return element(
       "span",
-      { "data-zz": "badge", class: "zz-palette-pill" },
+      { "data-penna": "badge", class: "zz-palette-pill" },
       element("span", { class: "zz-palette-pill-prefix", "data-text": true, text: value.prefix }),
       element("span", { "data-text": true, text: value.label }),
     );
@@ -36,17 +36,17 @@ function pill(value) {
   if (value.kind === "host") {
     return element(
       "span",
-      { "data-zz": "badge", class: "zz-palette-pill" },
+      { "data-penna": "badge", class: "zz-palette-pill" },
       element("span", { class: "zz-status-dot", "data-status": value.status }),
       element("span", { "data-text": true, text: value.label }),
     );
   }
   if (value.kind === "place" || value.kind === "verb") {
-    const node = element("span", { "data-zz": "badge", class: "zz-palette-pill", "data-kind": value.kind }, element("span", { "data-text": true, text: value.label }));
+    const node = element("span", { "data-penna": "badge", class: "zz-palette-pill", "data-kind": value.kind }, element("span", { "data-text": true, text: value.label }));
     if (value.kind === "place") node.style.flexShrink = [...value.label].length;
     return node;
   }
-  return element("span", { "data-zz": "badge", class: "zz-palette-pill zz-palette-mono", "data-text": true, text: value.label });
+  return element("span", { "data-penna": "badge", class: "zz-palette-pill zz-palette-mono", "data-text": true, text: value.label });
 }
 
 function hints(list) {
@@ -66,7 +66,7 @@ function sectionRow(row) {
 
 function unifiedRow(row, index, selected) {
   const item = element("div", {
-    "data-zz": "menu-item",
+    "data-penna": "menu-item",
     class: "zz-palette-row",
     "aria-selected": selected ? "true" : null,
   });
@@ -97,25 +97,25 @@ function unifiedRow(row, index, selected) {
       element(
         "span",
         { class: "zz-palette-shortcut" },
-        row.shortcut.map((parts) => element("span", { "data-zz": "keycap", "data-size": "small" }, glyphs(parts))),
+        row.shortcut.map((parts) => element("span", { "data-penna": "keycap", "data-size": "small" }, glyphs(parts))),
       ),
     );
   }
-  if (row.badge) item.append(element("span", { "data-zz": "badge", "data-size": "small", class: "zz-palette-badge zz-palette-mono", "data-text": true, text: row.badge }));
+  if (row.badge) item.append(element("span", { "data-penna": "badge", "data-size": "small", class: "zz-palette-badge zz-palette-mono", "data-text": true, text: row.badge }));
   if (row.running) item.append(element("span", { class: "zz-status-dot", "data-status": "muted" }));
   return item;
 }
 
 function promptRow(row, index, selected) {
   const item = element("div", {
-    "data-zz": "menu-item",
+    "data-penna": "menu-item",
     class: "zz-palette-row",
     "aria-selected": selected ? "true" : null,
   });
   item.style.paddingLeft = "12px";
   item.append(element("span", { class: "zz-palette-label", "data-text": true, "data-detail": Boolean(row.detail), text: row.label[0].text }));
   if (row.detail) item.append(element("span", { class: "zz-palette-detail", "aria-label": row.detail, text: row.detail }));
-  if (row.badge) item.append(element("span", { "data-zz": "badge", "data-size": "small", class: "zz-palette-badge zz-palette-mono", "data-text": true, text: row.badge }));
+  if (row.badge) item.append(element("span", { "data-penna": "badge", "data-size": "small", class: "zz-palette-badge zz-palette-mono", "data-text": true, text: row.badge }));
   return item;
 }
 
@@ -144,8 +144,8 @@ function build(palette) {
   const usage = element("div", { class: "zz-palette-usage zz-palette-mono" }, element("span"));
   const rows = element("div", { class: "zz-palette-rows" });
   rows.addEventListener("mousedown", (event) => event.preventDefault());
-  const footer = element("div", { "data-zz": "rule.bar", class: "zz-palette-footer" });
-  const surface = element("div", { "data-zz": "palette", class: "zz-palette", "data-kind": palette.kind }, field, usage, rows, footer);
+  const footer = element("div", { "data-penna": "rule.bar", class: "zz-palette-footer" });
+  const surface = element("div", { "data-penna": "palette", class: "zz-palette", "data-kind": palette.kind }, field, usage, rows, footer);
   surface.addEventListener("mousedown", (event) => {
     event.stopPropagation();
     if (event.target !== input) event.preventDefault();

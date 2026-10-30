@@ -169,7 +169,7 @@ const ALA_READY = `(async () => {
 
 const DOM_READY = `(async () => {
     for (let i = 0; i < 200; i++) {
-        if (globalThis.zzDom?.state?.tree && document.querySelector('[data-zz="sidebar.row"]')) return true;
+        if (globalThis.zzDom?.state?.tree && document.querySelector('[data-penna="sidebar.row"]')) return true;
         await new Promise((r) => setTimeout(r, 50));
     }
     return false;
@@ -187,7 +187,7 @@ const ALA_NODES = `(async () => {
 const DOM_NODES = `(() => {
     const nodes = [];
     for (const element of document.querySelectorAll("button[title], [aria-label]:not(.ime), [data-text]")) {
-        if (element.closest("[data-zz-switcher]")) continue;
+        if (element.closest("[data-penna-switcher]")) continue;
         let rect = element.getBoundingClientRect();
         if (!rect.width || !rect.height) continue;
         if (element.matches("[data-text]")) {

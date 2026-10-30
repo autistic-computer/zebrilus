@@ -446,6 +446,8 @@ pub(crate) const ZZ: &[SurfaceRole] = &[
     TREE_RULE,
 ];
 
+pub const TONED: [SurfaceRole; 1] = [AGENT_SEND];
+
 pub const RETIRED: [&str; 7] = [
     "agent.status",
     "agent.picker",
@@ -521,5 +523,20 @@ mod tests {
             assert!(ZZ.contains(&role), "{}", role.id);
         }
         assert_eq!(all().count(), SurfaceRole::KIT.len() + ZZ.len());
+    }
+
+    #[test]
+    fn every_role_gets_a_css_rule_in_every_builtin_theme() {
+        for (id, theme) in crate::interface_theme::builtin_themes() {
+            for mode in [crate::ThemeMode::Light, crate::ThemeMode::Dark] {
+                let kit = penna::theme_css::kit_theme(theme, mode);
+                let css = penna::theme_css::stylesheet(id, &kit, &TONED);
+                for role in all() {
+                    let selector = format!("[data-penna=\"{}\"]", role.id);
+                    assert!(css.contains(&selector), "{id} {mode:?} {}", role.id);
+                }
+                assert!(!css.contains("NaN"), "{id} {mode:?}");
+            }
+        }
     }
 }

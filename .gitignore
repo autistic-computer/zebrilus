@@ -48,7 +48,7 @@ bench/agents/lead/out*/
 bench/agents/browser/.playwright-mcp/
 bench/agents/skill/out/
 
-/design/kit/tokens/
+/design/tokens/
 /clients/dom/dist/
 /clients/dom/target/
 /clients/dom/theme/target/

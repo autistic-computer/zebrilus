@@ -6,12 +6,11 @@ pub(crate) use penna::{
 };
 
 pub(crate) use penna::{
-    ADAPTIVE_CORNER_FRACTION, ActiveTheme, CHROME_GAP, CORNER_SMOOTHING, Colorize, Disableable,
-    Edge, ElementExt, Elevation, Emphasis, Fill, Ground, Highlight, Icon, IconName,
-    InteractiveSurfaceExt, Kind, Layer, PANE_HEADER_CONTROL_HEIGHT, Paint, PaintExt, PaintState,
-    RULE_WIDTH, Selectable, Shape, Sizable, StatefulSurfaceExt, StyledExt, Surface, SurfaceRole,
-    Theme, ThemeMode, Tone, WindowExt, h_flex, list_row, muted_on, oklab_lightness, oklch,
-    rems_from_px, row_corners, row_state, row_surface, to_hex, to_oklch, v_flex,
+    ActiveTheme, CHROME_GAP, Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, Fill,
+    Ground, Highlight, Icon, IconName, InteractiveSurfaceExt, Layer, PANE_HEADER_CONTROL_HEIGHT,
+    Paint, PaintExt, PaintState, RULE_WIDTH, Selectable, Shape, Sizable, StatefulSurfaceExt,
+    StyledExt, Surface, SurfaceRole, ThemeMode, Tone, WindowExt, h_flex, list_row, muted_on,
+    oklab_lightness, oklch, rems_from_px, row_corners, row_state, row_surface, to_oklch, v_flex,
 };
 
 #[cfg(feature = "agent")]
@@ -34,7 +33,6 @@ pub mod shell;
 pub mod target;
 pub mod terminal;
 pub mod terminal_images;
-pub mod theme_css;
 
 pub use program::Assets;
 

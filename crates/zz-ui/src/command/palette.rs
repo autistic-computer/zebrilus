@@ -356,11 +356,11 @@ pub fn command_palette_empty(cx: &App) -> Div {
 mod tests {
     use super::*;
     use crate::{
-        Elevation, Theme, ThemeMode,
+        Elevation, ThemeMode,
         command::{CommandPaletteSurface, PaletteHint},
     };
     use ala::{Context, Focusable as _, Render, TestAppContext, Window};
-    use penna::Root;
+    use penna::{Root, Theme};
 
     struct Preview {
         input: Entity<InputState>,

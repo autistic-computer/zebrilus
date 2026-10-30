@@ -4864,7 +4864,7 @@ mod tests {
     ) {
         cx.update(crate::init);
         for mode in [crate::ThemeMode::Dark, crate::ThemeMode::Light] {
-            cx.update(|cx| crate::Theme::change(mode, None, cx));
+            cx.update(|cx| penna::Theme::change(mode, None, cx));
             let colors = cx.update(|cx| theme_terminal_colors(cx));
             let theme = cx.update(|cx| cx.theme().colors);
             assert_eq!(colors[0], terminal_color(theme.foreground.opaque()));

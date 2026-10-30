@@ -13,7 +13,7 @@ if [[ "${1:-}" == "--release" ]]; then
 fi
 
 cd "$ROOT"
-cargo run -q -p zz-ui --example theme_css design/kit/tokens >/dev/null
+cargo run -q -p zz-ui --example theme_css design/tokens >/dev/null
 cargo build ${ARGS[@]+"${ARGS[@]}"} \
     --manifest-path clients/dom/Cargo.toml \
     --target wasm32-unknown-unknown \
@@ -29,7 +29,7 @@ wasm-bindgen "target/dom/wasm32-unknown-unknown/$PROFILE/zz_dom.wasm" \
 wasm-bindgen target/dom-theme/wasm32-unknown-unknown/release/zz_dom_theme.wasm \
     --target web --no-typescript --out-dir "$OUT/theme"
 cp -R clients/dom/web/. "$OUT/"
-cp design/kit/zz.css design/kit/kit.js "$OUT/kit/"
-cp -R design/kit/tokens "$OUT/kit/tokens"
+cp libs/penna/web/penna.css libs/penna/web/kit.js design/zz.css "$OUT/kit/"
+cp -R design/tokens "$OUT/kit/tokens"
 cp clients/web/assets/fonts/lilex/*.ttf clients/web/assets/fonts/inter/*.ttf "$OUT/fonts/"
 cp assets/zz-light-512.png assets/zz-dark-512.png assets/zz-dev-light-512.png assets/zz-dev-dark-512.png "$OUT/img/"

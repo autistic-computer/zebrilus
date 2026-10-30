@@ -2,7 +2,7 @@ import { $, emit, flush, markTree, on, onKey, phase, state } from "./core.js";
 import { contextMenu, narrow, paneIcon, preferences, setPreferences, sidebarInline } from "./workspace.js";
 
 const app = $(".app");
-const nav = $("nav[data-zz='sidebar']");
+const nav = $("nav[data-penna='sidebar']");
 const list = $("#tree");
 const toggleButton = $("#toggle-sidebar");
 const viewButton = $("#flat-list");
@@ -37,7 +37,7 @@ function width() {
 
 function applyLayout() {
   const inline = sidebarInline();
-  app.style.setProperty("--zz-sidebar-width", inline ? `${width()}px` : "0px");
+  app.style.setProperty("--penna-sidebar-width", inline ? `${width()}px` : "0px");
   nav.style.width = `${width()}px`;
   nav.toggleAttribute("data-slideover", !inline && slideover);
   nav.hidden = !inline && !slideover;
@@ -98,7 +98,7 @@ function marker(icon, row) {
 
 function action(icon, title, run) {
   const button = document.createElement("button");
-  button.dataset.zz = "sidebar.row-action";
+  button.dataset.penna = "sidebar.row-action";
   button.className = "tree-action";
   button.title = title;
   button.disabled = !writable();
@@ -114,7 +114,7 @@ function action(icon, title, run) {
 
 function treeRow(row, rows) {
   const element = document.createElement("div");
-  element.dataset.zz = "sidebar.row";
+  element.dataset.penna = "sidebar.row";
   element.dataset.key = row.key;
   element.dataset.node = row.node;
   element.style.setProperty("--depth", row.depth);
@@ -141,7 +141,7 @@ function treeRow(row, rows) {
     element.append(slot);
   }
   const label = document.createElement("span");
-  label.className = "zz-label";
+  label.className = "penna-label";
   label.innerHTML = `<span class="tree-name" data-text></span>`;
   label.firstChild.textContent = row.label;
   if (row.index) {
@@ -236,7 +236,7 @@ function rollup(counts, live) {
 
 function addButton(icon, title, run) {
   const button = document.createElement("button");
-  button.dataset.zz = "sidebar.row-action";
+  button.dataset.penna = "sidebar.row-action";
   button.className = "flat-add";
   button.title = title;
   button.innerHTML = `<i data-icon="${icon}"></i>`;
@@ -253,7 +253,7 @@ function tileStack(window) {
   stack.className = "flat-stack";
   window.tiles.slice(0, 3).forEach((tile, index) => {
     const element = document.createElement("span");
-    element.dataset.zz = "pane-stack";
+    element.dataset.penna = "pane-stack";
     element.className = "flat-tile";
     if (index === 0) element.dataset.state = "current";
     element.style.left = `${index * 7}px`;
@@ -297,7 +297,7 @@ function renderFlat() {
       row.className = "flat-window";
       const fill = document.createElement("span");
       fill.className = "flat-fill";
-      fill.dataset.zz = "sidebar.entry";
+      fill.dataset.penna = "sidebar.entry";
       row.append(fill);
       row.addEventListener("mouseenter", () => fill.setAttribute("data-state", `${fill.dataset.state || ""} hover`.trim()));
       row.addEventListener("mouseleave", () => {

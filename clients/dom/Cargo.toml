@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.99"
-description = "zz in the browser as HTML: zz-client's protocol core behind a small wasm API, drawn by design/kit"
+description = "zz in the browser as HTML: zz-client's protocol core behind a small wasm API, drawn by penna's HTML kit"
 publish = false
 
 [lib]

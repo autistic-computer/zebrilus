@@ -7,7 +7,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 ## Project map
 
 - `libs/ala` - ala, our GPUI, a git subtree of [autistic-computer/ala](https://github.com/autistic-computer/ala) with its own Cargo workspace: `crates/ala` (the gpui core split out of upstream, with the upstream utility code it needs as modules: `ala::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`), `crates/ala-platform` (the backends, one module per target, each compiled only there: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit), `android` (JNI and the NDK), and the `wgpu` renderer Linux, web, iOS and Android share), `crates/ala-macros` (proc macros, including the `Refineable` derive), and `third_party/cosmic-text`
-- `libs/penna` - `penna`, the widget kit on ala (theme, the built-in Default, macOS and Yaru themes an app lays its own roles' patches over, primitives, widgets, settings pages with the appearance page, icons), a git subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna): a maintained fork of gpui-component with no zz dependencies, usable by other apps
+- `libs/penna` - `penna`, the widget kit on ala (theme, the built-in Default, macOS and Yaru themes an app lays its own roles' patches over, primitives, widgets, settings pages with the appearance page, icons, `theme_css` that writes every role's look as CSS tokens, and the HTML kit in `web/` that paints with them), a git subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna): a maintained fork of gpui-component with no zz dependencies, usable by other apps
 - `libs/ala-cef` - `ala-cef`, Chromium off-screen rendering for wgpu apps (CEF frames as GPU textures, input, profiles, cookies, the element picker and its TypeScript source in `picker/`), with its CEF sys adapter in `third_party/cef-dll-sys`; without features it is the pure half the thin clients' browser panes and `zz-chrome-import` use, and `zz-cli` must not link it. It is set up like the other libs, but its repo, autistic-computer/ala-cef, does not exist yet
 - `crates/zz` - desktop client: ala shell, terminal/browser/agent panes, settings, daemon client
 - `crates/zz-daemon` — the daemon: session state, PTY workers, client connections
@@ -26,7 +26,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-hotreload` - Subsecond hot-reload launcher for `just hot linux`
 - `clients/app` - `zz-app`: the thin-client app web, iOS and Android share (shell, sidebar, status bar, settings, palette, overlays, panes, connection reducer, image cache, the native transport and the iOS and Android browser panes)
 - `clients/web` - `zz-web-client`: the WASM entry point around zz-app, with its own Cargo workspace
-- `clients/dom` - `zz-dom`: an HTML thin client, `zz-client` in wasm drawn with `design/kit`, served by `just design client`
+- `clients/dom` - `zz-dom`: an HTML thin client, `zz-client` in wasm drawn with penna's HTML kit and `design/zz.css`, served by `just design client`
 - `clients/ios` - `zz-ios`: the iOS entry point around zz-app and ala-platform's iOS backend, the bundle files, and a terminal example (`ZZ_ALA_DEMO=terminal`); `just ios`
 - `clients/android` - `zz-android`: the Android entry point around zz-app and ala-platform's Android backend, the Java glue (activity, surface view, input connection, web view), the manifest and resources; `just android`
 - `crates/zz-xtask` — build tooling: CEF bundling, packaging (`cargo xtask`)
@@ -36,7 +36,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `knowledge/` — OKF knowledge bundle for the whole system (start at `index.md`)
 - `scripts/` — build, packaging, and profiling scripts
 - `bench/` — terminal throughput benchmark harness
-- `design/` - HTML mockups painted with the real theme: `crates/zz-ui/src/theme_css.rs` writes every role's look as CSS (`just design tokens`), `just design serve` shows them; see `design/README.md`
+- `design/` - HTML mockups painted with the real theme through penna's HTML kit (`libs/penna/web`): `penna::theme_css` writes every role's look as CSS (`just design tokens`), `zz.css` lays out zz's own roles, `just design serve` shows them; see `design/README.md`
 - `site/` — zzmux.sh, which serves only `install.sh`; the landing page and docs were wiped 2026-10-30 for a rework
 - `third_party/` — vendored code (`ghostty/`, a trimmed Ghostty synced with `just vendor ghostty <rev>`; the libghostty-vt crates under `rust/`) and pinned reference material
 - `packaging/` — Arch package, AUR/cask templates

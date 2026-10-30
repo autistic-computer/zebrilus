@@ -25,9 +25,10 @@ just design parity                  # diff the two
   (`line-height: normal`) with the appearance's `cell_height_adjustment` applied and snapped
   (`Client::terminal_metrics`). The default appearance gives 8x17 css px. Text is pinned to that
   grid with `letter-spacing`, and wide cells get a two-cell box. `state.cell` holds the base size.
-- Everything is painted with `design/kit`: elements name their role (`data-zz="menu-item"`) and
-  never hard-code colors, so every theme, mode and role change reaches the page through
-  `just design tokens`.
+- Everything is painted with penna's HTML kit (`libs/penna/web`) and zz's `design/zz.css`: elements
+  name their role (`data-penna="menu-item"`) and never hard-code colors, so every theme, mode and
+  role change reaches the page through `just design tokens`. Kit names are `data-penna`,
+  `--penna-*` and `.penna-*`; this client's own classes and properties keep `zz-`.
 
 ## Settings and preferences
 
@@ -55,9 +56,9 @@ Fields other lanes read: `sidebar`, `flat_sidebar`, `sidebar_width`, `status_bad
 `palette_show_keys`, `animations`, `animation_speed`. `dark()` is the resolved mode.
 
 preferences.js applies the look itself: it writes the theme tokens and icons as `<style>` elements
-in place of kit.js's token files, sets `data-zz-mode` and `data-zz-theme`, UI zoom and
+in place of kit.js's token files, sets `data-penna-mode` and `data-penna-theme`, UI zoom and
 `data-zz-still` when animations are off. The CSS comes from `theme/` (`zz-dom-theme`), a release
-wasm build of zz-app's `Preferences` and zz-ui's `theme_css`, so accent, tint, radius, contrast,
+wasm build of zz-app's `Preferences` and penna's `theme_css`, so accent, tint, radius, contrast,
 font and saved or imported themes all come out of the same Rust as the ala client. With no UI font
 picked the tokens name Inter Variable, as the ala web client does.
 

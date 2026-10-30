@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zz kit</title>
+<link rel="stylesheet" href="/penna/penna.css">
+<link rel="stylesheet" href="zz.css">
+<script src="/penna/kit.js" data-tokens="tokens/" data-themes="macos default yaru" data-theme="macos"></script>
+<style>
+  main { display: grid; gap: 36px; padding: 32px; max-width: 1180px; }
+  section { display: grid; gap: 12px; }
+  section > h2 { margin: 0; font-size: 12px; font-weight: 600; color: var(--penna-muted); }
+  .backdrop { padding: 28px; border-radius: 16px; background: linear-gradient(135deg, #ff6b6b, #5b6cff 45%, #ffd166 70%, #2bd9a1); }
+  .apart { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .demo-window { height: 420px; }
+  .demo-window main { display: contents; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; min-height: 0; background: var(--penna-divider); }
+  .penna-gaps .split { gap: 6px; padding: 0 6px 6px; background: transparent; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <h2>Window: flush panes</h2>
+    <div class="penna-window demo-window" data-penna="window">
+      <div class="penna-lights"><i></i><i></i><i></i></div>
+      <nav data-penna="sidebar">
+        <div class="penna-strip">
+          <button data-penna="chrome.button" title="New session"><i data-icon="plus"></i></button>
+          <button data-penna="chrome.button" title="Settings"><i data-icon="settings"></i></button>
+        </div>
+        <div data-penna="sidebar.row" style="--depth: 0"><span class="penna-marker"><i data-icon="laptop"></i></span><span class="penna-label">macbook</span></div>
+        <div data-penna="sidebar.row" style="--depth: 1"><span class="penna-marker"><i data-icon="chevron-down" class="penna-muted"></i></span><span class="penna-label">zz</span></div>
+        <div data-penna="sidebar.row" style="--depth: 2" aria-current="true"><span class="penna-marker"><i data-icon="terminal"></i></span><span class="penna-label">editor</span></div>
+        <div data-penna="sidebar.row" style="--depth: 2"><span class="penna-marker"><i data-icon="globe"></i></span><span class="penna-label">docs</span></div>
+        <div data-penna="sidebar.row" style="--depth: 0" data-state="hover"><span class="penna-marker"><i data-icon="server"></i></span><span class="penna-label">desktop</span></div>
+      </nav>
+      <header data-penna="titlebar">
+        <div data-penna="titlebar.window-tab" aria-selected="true"><i data-icon="terminal"></i>editor</div>
+        <div data-penna="titlebar.window-tab"><i data-icon="globe"></i>docs</div>
+        <span style="flex: 1"></span>
+        <div data-penna="titlebar.status-chip"><i data-icon="sparkle"></i>2 agents</div>
+      </header>
+      <div class="split">
+        <section data-penna="pane">
+          <div data-penna="pane.header"><div data-penna="pane.header.title"><i data-icon="terminal"></i>cargo</div><span style="flex: 1"></span><button data-penna="pane.header.button"><i data-icon="xmark"></i></button></div>
+          <pre class="zz-terminal">$ cargo build -p zz-ui
+   Compiling zz-ui v0.22.0
+    Finished `dev` profile in 4.12s
+$ <span style="color: var(--penna-accent)">▋</span></pre>
+        </section>
+        <section data-penna="pane">
+          <div data-penna="pane.header"><div data-penna="pane.header.title"><i data-icon="sparkle"></i>claude</div></div>
+          <div style="flex: 1"></div>
+          <div style="padding: 12px"><div data-penna="agent.composer"><div class="zz-input penna-muted">Ask about this pane</div><button data-penna="agent.send" data-prominent><i data-icon="arrow-up"></i></button></div></div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Phone pill over a backdrop</h2>
+    <div class="backdrop apart">
+      <div data-penna="phone.pill">
+        <button data-penna="phone.button"><i data-icon="panel-left"></i></button>
+        <button data-penna="phone.button"><i data-icon="terminal"></i></button>
+        <button data-penna="phone.button"><i data-icon="plus"></i></button>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

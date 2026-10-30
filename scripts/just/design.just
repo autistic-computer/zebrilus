@@ -2,13 +2,17 @@ import "settings.just"
 
 set working-directory := "../.."
 
-[doc("Write the CSS tokens of every built-in theme into design/kit/tokens.")]
+[doc("Write the CSS tokens of every built-in theme, with zz's roles, into design/tokens.")]
 tokens:
-    cargo run -q -p zz-ui --example theme_css design/kit/tokens
+    cargo run -q -p zz-ui --example theme_css design/tokens
 
-[doc("Serve design/ on 127.0.0.1:8090 without caching.")]
-serve: tokens
-    @scripts/storybook-serve.py design 8090
+[doc("Write penna's own CSS tokens, the kit's roles only, into libs/penna/web/tokens.")]
+penna-tokens:
+    cargo run -q --manifest-path libs/penna/Cargo.toml --config 'patch."https://github.com/autistic-computer/ala".ala.path="'"$PWD"'/libs/ala/crates/ala"' --example theme_css
+
+[doc("Serve design/ on 127.0.0.1:8090 without caching, with penna's kit page at /penna/.")]
+serve: tokens penna-tokens
+    @scripts/storybook-serve.py design 8090 penna=libs/penna/web
 
 [doc("Build the HTML thin client and serve it through the gateway on 127.0.0.1:8092; --socket picks the daemon.")]
 client *args:

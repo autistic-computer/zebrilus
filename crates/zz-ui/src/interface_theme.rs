@@ -56,9 +56,9 @@ pub const fn theme_mode_setting(mode: Option<ThemeMode>) -> ThemeModeSetting {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Colorize as _, Elevation, Theme};
+    use crate::{Colorize as _, Elevation};
     use ala::Hsla;
-    use penna::ThemeColor;
+    use penna::{Theme, ThemeColor};
 
     fn luminance(color: Hsla) -> f32 {
         let rgba: ala::Rgba = color.into();

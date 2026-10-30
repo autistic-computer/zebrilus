@@ -39,7 +39,7 @@ const icon = (name, extra = {}) => h("i", { "data-icon": name, ...extra });
 const text = (value, props = {}) => h("span", { "data-text": true, ...props, text: value });
 
 function button(zz, title, iconName, onclick, props = {}) {
-  return h("button", { "data-zz": zz, title, onclick, ...props }, iconName ? icon(iconName) : null);
+  return h("button", { "data-penna": zz, title, onclick, ...props }, iconName ? icon(iconName) : null);
 }
 
 function copy(value) {
@@ -59,7 +59,7 @@ function markdown(html) {
     const source = code?.textContent ?? pre.textContent;
     const block = h(
       "div",
-      { class: "agent-code", "data-zz": "code" },
+      { class: "agent-code", "data-penna": "code" },
       h(
         "div",
         { class: "agent-code-chrome" },
@@ -98,7 +98,7 @@ function markdown(html) {
       item.replaceChildren(prefix, body);
     });
   }
-  for (const code of root.querySelectorAll(":not(pre) > code")) code.dataset.zz = "code";
+  for (const code of root.querySelectorAll(":not(pre) > code")) code.dataset.penna = "code";
   for (const link of root.querySelectorAll("a")) {
     link.target = "_blank";
     link.rel = "noreferrer";
@@ -121,13 +121,13 @@ function activity({ glyph, tint, label, labelTone, detail, counts = [], tag, end
             "span",
             { class: "agent-count", title: count.describe, "data-failed": count.failed || null },
             icon(COUNT_ICONS[count.slot]),
-            h("span", { class: "agent-count-badge", "data-zz": "badge", "data-tone": count.failed ? "danger" : null, "data-prominent": count.failed || null }, text(String(count.count))),
+            h("span", { class: "agent-count-badge", "data-penna": "badge", "data-tone": count.failed ? "danger" : null, "data-prominent": count.failed || null }, text(String(count.count))),
           ),
         ),
       ),
     );
   }
-  if (tag) row.append(h("span", { class: "agent-tag", "data-zz": "badge", "data-tone": tag.danger ? "danger" : null }, text(tag.text)));
+  if (tag) row.append(h("span", { class: "agent-tag", "data-penna": "badge", "data-tone": tag.danger ? "danger" : null }, text(tag.text)));
   if (end) row.append(icon(end, { class: "agent-chevron" }));
   return row;
 }
@@ -163,7 +163,7 @@ function trace(lens, turn) {
   );
   if (trace.thought) box.append(h("div", { class: "agent-thought" }, h("div", { class: "agent-thought-text", "aria-label": trace.thought }, trace.thought)));
   if (trace.expanded) {
-    const steps = h("div", { class: "agent-steps", "data-zz": "rule.tree" });
+    const steps = h("div", { class: "agent-steps", "data-penna": "rule.tree" });
     for (const step of trace.steps) {
       if (!step) continue;
       if (step.kind === "tool") steps.append(toolRow(lens, step));
@@ -196,8 +196,8 @@ function trace(lens, turn) {
 function userBubble(lens, user) {
   const bubble = h(
     "div",
-    { class: "agent-bubble", "data-zz": "agent.bubble" },
-    user.images.length ? h("div", { class: "agent-attachments" }, user.images.map((src) => h("img", { class: "agent-attachment", "data-zz": "agent.attachment", src, alt: "" }))) : null,
+    { class: "agent-bubble", "data-penna": "agent.bubble" },
+    user.images.length ? h("div", { class: "agent-attachments" }, user.images.map((src) => h("img", { class: "agent-attachment", "data-penna": "agent.attachment", src, alt: "" }))) : null,
     user.html ? markdown(user.html) : null,
   );
   const entry = h("div", { class: "agent-user" });
@@ -238,7 +238,7 @@ function renderRow(lens, row) {
       row.replies.map((reply) =>
         h(
           "div",
-          { class: "agent-reply-popover", "data-zz": "inline-panel" },
+          { class: "agent-reply-popover", "data-penna": "inline-panel" },
           reply.side ? h("div", { class: "agent-reply-side" }, "Side answer · not in the conversation") : null,
           markdown(reply.html),
         ),
@@ -312,7 +312,7 @@ function empty(view) {
 }
 
 function permissionCard(card, actions) {
-  const surface = h("div", { class: "agent-card", "data-zz": "inline-panel" });
+  const surface = h("div", { class: "agent-card", "data-penna": "inline-panel" });
   const header = h("div", { class: "agent-card-header" }, h("span", { class: "agent-card-glyph" }, icon("triangle-alert")), h("div", { class: "agent-card-title", "aria-label": card.title }, card.title));
   surface.append(header);
   if (card.kind === "wait") {
@@ -322,7 +322,7 @@ function permissionCard(card, actions) {
         { class: "agent-card-tiles" },
         h(
           "div",
-          { class: "agent-option", "data-zz": "agent.option", role: "button", onclick: actions.show },
+          { class: "agent-option", "data-penna": "agent.option", role: "button", onclick: actions.show },
           h("div", { class: "agent-option-label", "aria-label": "Show terminal" }, "Show terminal"),
           h("span", { class: "agent-option-trailing" }, icon("square-terminal")),
         ),
@@ -330,7 +330,7 @@ function permissionCard(card, actions) {
     );
     return surface;
   }
-  if (card.counter) header.append(h("span", { class: "agent-card-chip", "data-zz": "badge" }, text(card.counter)));
+  if (card.counter) header.append(h("span", { class: "agent-card-chip", "data-penna": "badge" }, text(card.counter)));
   header.append(
     h(
       "span",
@@ -347,7 +347,7 @@ function permissionCard(card, actions) {
           "div",
           {
             class: "agent-option",
-            "data-zz": "agent.option",
+            "data-penna": "agent.option",
             role: "button",
             "data-tone": option.danger ? "danger" : null,
             "data-state": !card.writable ? "disabled" : option.selected ? "selected" : null,
@@ -360,8 +360,8 @@ function permissionCard(card, actions) {
           h(
             "span",
             { class: "agent-option-trailing" },
-            option.selected && card.writable ? h("span", { "data-zz": "keycap", "data-tone": option.danger ? "danger" : null }, text("↵")) : null,
-            index < 9 ? h("span", { "data-zz": "keycap", "data-tone": option.danger ? "danger" : null }, text(String(index + 1))) : null,
+            option.selected && card.writable ? h("span", { "data-penna": "keycap", "data-tone": option.danger ? "danger" : null }, text("↵")) : null,
+            index < 9 ? h("span", { "data-penna": "keycap", "data-tone": option.danger ? "danger" : null }, text(String(index + 1))) : null,
           ),
         ),
       ),
@@ -372,18 +372,18 @@ function permissionCard(card, actions) {
 
 function questionCard(lens, card) {
   const send = (action) => act(lens, () => state.client.agent_question(lens.pane, JSON.stringify(action)));
-  const surface = h("div", { class: "agent-card", "data-zz": "inline-panel" });
+  const surface = h("div", { class: "agent-card", "data-penna": "inline-panel" });
   const header = h("div", { class: "agent-card-header" }, h("span", { class: "agent-card-glyph" }, icon("triangle-alert")), h("div", { class: "agent-card-title" }, card.title));
-  if (card.counter) header.append(h("span", { class: "agent-card-chip", "data-zz": "badge" }, text(card.counter)));
+  if (card.counter) header.append(h("span", { class: "agent-card-chip", "data-penna": "badge" }, text(card.counter)));
   header.append(h("span", { class: "agent-card-close" }, button("button", "Dismiss", "xmark", () => send({ dismiss: true }), { disabled: !card.writable || null })));
   surface.append(header);
   card.questions.forEach((question, q) => {
-    if (q > 0) surface.append(h("div", { class: "agent-card-divider", "data-zz": "rule.list" }));
+    if (q > 0) surface.append(h("div", { class: "agent-card-divider", "data-penna": "rule.list" }));
     surface.append(
       h(
         "div",
         { class: "agent-question" },
-        question.header ? h("span", { "data-zz": "badge" }, question.header) : null,
+        question.header ? h("span", { "data-penna": "badge" }, question.header) : null,
         h("div", { class: "agent-question-text" }, question.question),
       ),
     );
@@ -394,7 +394,7 @@ function questionCard(lens, card) {
           "div",
           {
             class: "agent-option",
-            "data-zz": "agent.option",
+            "data-penna": "agent.option",
             role: "button",
             "data-state": option.picked ? "selected" : null,
             onclick: () => send({ pick: [q, o] }),
@@ -407,12 +407,12 @@ function questionCard(lens, card) {
     if (question.allowOther) {
       const other = h(
         "div",
-        { class: "agent-option", "data-zz": "agent.option", role: "button", "data-state": question.other ? "selected" : null, onclick: () => send({ other: q }) },
+        { class: "agent-option", "data-penna": "agent.option", role: "button", "data-state": question.other ? "selected" : null, onclick: () => send({ other: q }) },
         h("div", { class: "agent-option-label" }, "Other"),
       );
       tiles.append(other);
       if (question.other) {
-        const field = h("input", { class: "agent-other", "data-zz": "field", placeholder: "Type your answer" });
+        const field = h("input", { class: "agent-other", "data-penna": "field", placeholder: "Type your answer" });
         field.addEventListener("input", () => state.client.agent_question(lens.pane, JSON.stringify({ otherText: [q, field.value] })));
         field.addEventListener("keydown", (event) => {
           if (event.key === "Enter") {
@@ -430,7 +430,7 @@ function questionCard(lens, card) {
       "div",
       { class: "agent-card-footer" },
       card.problem ? h("span", { class: "agent-card-problem" }, card.problem) : null,
-      h("button", { "data-zz": "button", "data-prominent": true, disabled: !card.complete || !card.writable || null, onclick: () => send({ submit: true }) }, "Submit"),
+      h("button", { "data-penna": "button", "data-prominent": true, disabled: !card.complete || !card.writable || null, onclick: () => send({ submit: true }) }, "Submit"),
     ),
   );
   return surface;
@@ -442,7 +442,7 @@ function tray(lens, tray, writable) {
     box.append(
       h(
         "div",
-        { class: "agent-tray-panel", "data-zz": "inline-panel" },
+        { class: "agent-tray-panel", "data-penna": "inline-panel" },
         h(
           "div",
           { class: "agent-plan" },
@@ -461,13 +461,13 @@ function tray(lens, tray, writable) {
     box.append(
       h(
         "div",
-        { class: "agent-tray-panel", "data-zz": "inline-panel" },
+        { class: "agent-tray-panel", "data-penna": "inline-panel" },
         tray.tasks.rows.map((task) =>
           h(
             "div",
             {
               class: "agent-task",
-              "data-zz": task.toolCall ? "menu-item" : null,
+              "data-penna": task.toolCall ? "menu-item" : null,
               onclick: task.toolCall ? () => reveal(lens, task.toolCall) : null,
             },
             icon(TASK_ICONS[task.kind] || "cpu"),
@@ -487,7 +487,7 @@ function tray(lens, tray, writable) {
     chip.append(
       h(
         "div",
-        { class: "agent-plan-chip", "data-zz": "agent.tray", "data-state": tray.plan.open ? "current" : null, role: "button", onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "plan")) },
+        { class: "agent-plan-chip", "data-penna": "agent.tray", "data-state": tray.plan.open ? "current" : null, role: "button", onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "plan")) },
         icon("circle-check"),
         text(tray.plan.label),
         tray.plan.current ? text(tray.plan.current, { class: "agent-plan-current" }) : null,
@@ -502,7 +502,7 @@ function tray(lens, tray, writable) {
         "button",
         {
           class: "agent-tasks-chip",
-          "data-zz": "agent.tray",
+          "data-penna": "agent.tray",
           "aria-label": tray.tasks.label,
           title: tray.tasks.open ? "Hide background tasks" : "Show background tasks",
           onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "tasks")),
@@ -519,20 +519,20 @@ function tray(lens, tray, writable) {
 function errorCard(error) {
   return h(
     "div",
-    { class: "agent-alert", "data-zz": "inline-panel" },
+    { class: "agent-alert", "data-penna": "inline-panel" },
     h("span", { class: "agent-alert-icon" }, icon("triangle-alert")),
     h("div", { class: "agent-alert-copy" }, error.stopped ? h("div", { class: "agent-alert-title" }, "The agent stopped") : null, h("div", { class: "agent-alert-text", "data-titled": error.stopped || null }, error.text)),
   );
 }
 
 function completions(lens, view) {
-  const list = h("div", { class: "agent-completions", "data-zz": "inline-panel" });
+  const list = h("div", { class: "agent-completions", "data-penna": "inline-panel" });
   view.completions.forEach((completion, index) => {
     const row = h(
       "div",
       {
         class: "agent-completion",
-        "data-zz": "menu-item",
+        "data-penna": "menu-item",
         "data-state": index === view.completionSelected ? "selected" : null,
         onmouseenter: () => {
           if (index !== lens.view?.completionSelected) act(lens, () => state.client.agent_completion_select(lens.pane, index));
@@ -635,12 +635,12 @@ function createLens(pane) {
   });
   const hint = h("div", { class: "agent-hint" });
   const usage = h("div", { class: "agent-usage-slot" });
-  const action = h("button", { "data-zz": "agent.send", "data-prominent": true, "data-tone": "primary", class: "agent-action" }, icon("arrow-up"));
+  const action = h("button", { "data-penna": "agent.send", "data-prominent": true, "data-tone": "primary", class: "agent-action" }, icon("arrow-up"));
   action.addEventListener("click", () => {
     if (lens.view?.action === "stop") act(lens, () => state.client.agent_cancel(lens.pane));
     else submit(lens);
   });
-  const pill = h("div", { class: "agent-pill", "data-zz": "agent.composer" }, mention, h("div", { class: "agent-field" }, input, hint), usage, action);
+  const pill = h("div", { class: "agent-pill", "data-penna": "agent.composer" }, mention, h("div", { class: "agent-field" }, input, hint), usage, action);
   const upper = h("div", { class: "agent-upper" }, h("div", { class: "agent-column agent-stack" }, prefix, h("div", { class: "agent-pill-back" }, pill)));
   const git = h("div", { class: "agent-column agent-git" });
   const composer = h("div", { class: "agent-composer" }, upper, h("div", { class: "agent-footer" }, git));
@@ -727,7 +727,7 @@ function updateComposer(lens, view) {
         h(
           "button",
           {
-            "data-zz": "button.quiet",
+            "data-penna": "button.quiet",
             "data-size": "small",
             class: "agent-queue-chip",
             "aria-label": `${view.queued} queued`,
@@ -878,7 +878,7 @@ paneHeaderButton((pane) => {
 
 function syncHeaders() {
   for (const [id, pane] of panes) {
-    const lensButton = pane.element.querySelector("[data-zz='pane.header.lens']");
+    const lensButton = pane.element.querySelector("[data-penna='pane.header.lens']");
     if (!lensButton) continue;
     lensButton.hidden = !state.client?.agent_provider(id);
     const shown = lenses.has(id);

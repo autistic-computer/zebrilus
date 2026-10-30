@@ -9,16 +9,16 @@ for (const name of ["floating", "modal", "toasts"]) {
 }
 
 const THEME_COLOURS = {
-  0: "var(--zz-bg)",
-  1: "var(--zz-fg)",
-  2: "var(--zz-border)",
-  3: "var(--zz-panel)",
-  4: "var(--zz-success)",
-  5: "var(--zz-warning)",
-  6: "var(--zz-danger)",
-  7: "var(--zz-fg)",
-  8: "var(--zz-fg)",
-  9: "var(--zz-fg)",
+  0: "var(--penna-bg)",
+  1: "var(--penna-fg)",
+  2: "var(--penna-border)",
+  3: "var(--penna-panel)",
+  4: "var(--penna-success)",
+  5: "var(--penna-warning)",
+  6: "var(--penna-danger)",
+  7: "var(--penna-fg)",
+  8: "var(--penna-fg)",
+  9: "var(--penna-fg)",
 };
 
 export function colour(value) {
@@ -49,7 +49,7 @@ export function segments(list, base = {}) {
     const span = element("span", { text: segment.text });
     let fg = colour(segment.fg);
     let bg = colour(segment.bg);
-    if (segment.reverse) [fg, bg] = [bg || base.bg || "var(--zz-fill)", fg || base.fg || "currentColor"];
+    if (segment.reverse) [fg, bg] = [bg || base.bg || "var(--penna-fill)", fg || base.fg || "currentColor"];
     if (fg) span.style.color = fg;
     if (bg) span.style.background = bg;
     if (segment.bold !== null) span.style.fontWeight = segment.bold ? "700" : "400";
@@ -118,19 +118,19 @@ function menuPointer(kind, buttons, event) {
 
 function renderMenu(menu, area) {
   const surface = element("div", {
-    "data-zz": "popover",
+    "data-penna": "popover",
     class: "zz-display-menu",
     role: "menu",
     "data-titled": menu.titled,
     "data-outlined": menu.outlined,
   });
-  if (menu.fill) surface.style.setProperty("--zz-fill", menu.fill);
+  if (menu.fill) surface.style.setProperty("--penna-fill", menu.fill);
   if (menu.text) surface.style.color = menu.text;
   if (menu.outline && menu.outlined) {
-    surface.style.setProperty("--zz-edge", menu.outline);
-    surface.style.setProperty("--zz-bw", "max(var(--zz-outline), 1px)");
+    surface.style.setProperty("--penna-edge", menu.outline);
+    surface.style.setProperty("--penna-bw", "max(var(--penna-outline), 1px)");
   }
-  if (!menu.outlined) surface.style.setProperty("--zz-bw", "0px");
+  if (!menu.outlined) surface.style.setProperty("--penna-bw", "0px");
   const names = [];
   if (menu.titled) {
     const title = element(
@@ -157,7 +157,7 @@ function renderMenu(menu, area) {
     const row = element(
       "div",
       {
-        "data-zz": "menu-item",
+        "data-penna": "menu-item",
         role: "menuitem",
         "aria-label": label,
         "aria-selected": item.selected ? "true" : null,
@@ -166,7 +166,7 @@ function renderMenu(menu, area) {
       element("span", { class: "zz-menu-name", "data-text": true }, segments(item.name)),
       item.annotation && element("span", { class: "zz-menu-key", "data-text": true, text: item.annotation }),
     );
-    if (item.selected && menu.selectedFill) row.style.setProperty("--zz-fill", menu.selectedFill);
+    if (item.selected && menu.selectedFill) row.style.setProperty("--penna-fill", menu.selectedFill);
     if (item.selected && menu.selectedText) row.style.color = menu.selectedText;
     rows.append(row);
   });
@@ -194,7 +194,7 @@ function renderMenu(menu, area) {
 function renderConfirm(confirm, area) {
   const node = element(
     "div",
-    { "data-zz": "pane.float", class: "zz-confirm" },
+    { "data-penna": "pane.float", class: "zz-confirm" },
     element("div", { class: "zz-confirm-prompt" }, element("span", { "data-text": true, text: confirm.prompt })),
   );
   node.style.width = `${confirm.width}px`;
@@ -225,12 +225,12 @@ function renderFloating() {
 
 function chooserRow(chooser, row, index) {
   const node = element("div", {
-    "data-zz": "menu-item",
+    "data-penna": "menu-item",
     class: `zz-chooser-row ${chooser.kind}`,
     "aria-selected": row.selected ? "true" : null,
   });
   const parts = [];
-  if (chooser.keys) parts.push(cell("zz-chooser-key zz-mono", row.key));
+  if (chooser.keys) parts.push(cell("zz-chooser-key penna-mono", row.key));
   if (chooser.kind === "tree") {
     const depth = element("span", { class: "zz-chooser-depth" });
     depth.style.width = `${row.depth * 16}px`;
@@ -240,17 +240,17 @@ function chooserRow(chooser, row, index) {
       element("span", { class: "zz-chooser-icon", "data-active": row.active }, icon(row.icon)),
       element("span", { class: "zz-chooser-label", "aria-label": row.label || null, "data-active": row.active, text: row.label }),
       element("span", { class: "zz-chooser-detail", "data-text": row.detail ? true : null, text: row.detail }),
-      element("span", { class: "zz-chooser-target zz-mono", "data-text": true, text: row.target }),
-      row.tagged && element("span", { "data-zz": "badge", "data-size": "small", class: "zz-chooser-tag", "data-text": true, text: "Tagged" }),
+      element("span", { class: "zz-chooser-target penna-mono", "data-text": true, text: row.target }),
+      row.tagged && element("span", { "data-penna": "badge", "data-size": "small", class: "zz-chooser-tag", "data-text": true, text: "Tagged" }),
       element("span", { class: "zz-chooser-check" }, row.active ? icon("check") : null),
     );
   } else {
     parts.push(
-      cell("zz-chooser-name zz-mono", row.name),
+      cell("zz-chooser-name penna-mono", row.name),
       cell("zz-chooser-preview", row.preview),
-      cell("zz-chooser-size zz-mono", row.size),
-      cell("zz-chooser-age zz-mono", row.age),
-      row.tagged && element("span", { "data-zz": "badge", "data-size": "small", "data-tone": "primary", "data-prominent": true, class: "zz-chooser-tag zz-mono", "data-text": true, text: "TAGGED" }),
+      cell("zz-chooser-size penna-mono", row.size),
+      cell("zz-chooser-age penna-mono", row.age),
+      row.tagged && element("span", { "data-penna": "badge", "data-size": "small", "data-tone": "primary", "data-prominent": true, class: "zz-chooser-tag penna-mono", "data-text": true, text: "TAGGED" }),
     );
   }
   node.append(...parts.filter(Boolean));
@@ -280,8 +280,8 @@ function renderModal() {
   const rows = Math.min(chooser.rows.length, 10);
   const notices = (chooser.help ? 1 : 0) + (chooser.prompt ? 1 : 0);
   const scroller = element("div", { class: "zz-chooser-rows" }, chooser.rows.map((row, index) => chooserRow(chooser, row, index)));
-  const notice = (text) => element("div", { "data-zz": "bar", class: "zz-chooser-notice zz-mono", "data-text": true, text });
-  const close = element("button", { "data-zz": "icon-button.flat", "data-size": "small", title: "Close" }, icon("xmark"));
+  const notice = (text) => element("div", { "data-penna": "bar", class: "zz-chooser-notice penna-mono", "data-text": true, text });
+  const close = element("button", { "data-penna": "icon-button.flat", "data-size": "small", title: "Close" }, icon("xmark"));
   close.addEventListener("mousedown", (event) => event.stopPropagation());
   close.addEventListener("click", () => {
     state.client.chooser_action("close", 0);
@@ -293,7 +293,7 @@ function renderModal() {
     chooser.search &&
       element(
         "div",
-        { class: "zz-chooser-search zz-mono" },
+        { class: "zz-chooser-search penna-mono" },
         element("span", { "data-text": true, text: chooser.search.prefix }),
         element("span", { class: "value", "data-text": chooser.search.value ? true : null, text: chooser.search.value }),
       ),
@@ -305,7 +305,7 @@ function renderModal() {
         element(
           "span",
           { class: "zz-hint" },
-          hint.keys.map((parts) => element("span", { "data-zz": "keycap" }, glyphs(parts))),
+          hint.keys.map((parts) => element("span", { "data-penna": "keycap" }, glyphs(parts))),
           element("span", { "data-text": true, text: hint.label }),
         ),
       ),
@@ -313,7 +313,7 @@ function renderModal() {
   );
   const modal = element(
     "div",
-    { "data-zz": "picker", class: "zz-chooser", role: "dialog" },
+    { "data-penna": "picker", class: "zz-chooser", role: "dialog" },
     element(
       "div",
       { class: "zz-chooser-header" },
@@ -354,12 +354,12 @@ function renderPanes() {
   const json = state.client?.display_panes();
   if (!json) return;
   for (const indicator of JSON.parse(json).indicators) {
-    const pane = document.querySelector(`[data-zz="pane"][data-pane="${indicator.pane}"]`);
+    const pane = document.querySelector(`[data-penna="pane"][data-pane="${indicator.pane}"]`);
     if (!pane) continue;
     const option = colour(indicator.colour);
-    const ring = indicator.active ? option || "var(--zz-accent)" : null;
+    const ring = indicator.active ? option || "var(--penna-accent)" : null;
     const glyph = element("span", { class: "zz-indicator-glyph", "data-text": true, text: indicator.glyph });
-    glyph.style.color = ring || option || (indicator.keyed ? "var(--zz-ink)" : "var(--zz-muted)");
+    glyph.style.color = ring || option || (indicator.keyed ? "var(--penna-ink)" : "var(--penna-muted)");
     const caption = [];
     if (indicator.index !== null) caption.push(element("span", { "data-text": true, text: indicator.index }));
     for (const bucket of indicator.label) {
@@ -368,7 +368,7 @@ function renderPanes() {
     const chip = element(
       "div",
       {
-        "data-zz": "pane.display-panes",
+        "data-penna": "pane.display-panes",
         class: "zz-indicator",
         "data-state": indicator.active ? "current" : null,
         "data-captioned": caption.length > 0,
@@ -406,11 +406,11 @@ export function toast(kind, text, durationMs = 5000, key = null) {
     toasts.get(id).node.remove();
     toasts.delete(id);
   }
-  const close = element("button", { "data-zz": "icon-button.flat", "data-size": "small", class: "zz-toast-close" }, icon("xmark"));
+  const close = element("button", { "data-penna": "icon-button.flat", "data-size": "small", class: "zz-toast-close" }, icon("xmark"));
   close.addEventListener("click", () => dismissToast(id));
   const node = element(
     "div",
-    { "data-zz": "toast", class: "zz-toast", "data-kind": kind },
+    { "data-penna": "toast", class: "zz-toast", "data-kind": kind },
     element(
       "div",
       { class: "zz-toast-body" },

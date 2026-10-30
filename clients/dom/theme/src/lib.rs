@@ -1,7 +1,7 @@
 use ala::Hsla;
 use penna::{
     Colorize as _, Emphasis, Fill, Highlight, PrimaryStyle, SurfaceRole, Theme, ThemeColor,
-    ThemeMode, Tone, oklch, to_hex,
+    ThemeMode, Tone, oklch, theme_css, to_hex,
 };
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
@@ -9,8 +9,8 @@ use zz_app::preferences::Preferences;
 use zz_protocol::{ProviderStatus, ProviderTask, ProvidersReport};
 use zz_ui::{
     interface_theme::{self, ACCENTS, DEFAULT_TINT_HUE, InterfaceTheme},
+    roles,
     settings::{SettingsSection, about, providers::PROVIDERS},
-    theme_css,
 };
 
 const HUE_STOPS: u16 = 12;
@@ -94,7 +94,11 @@ pub fn theme_action(json: &str, action: &str, argument: &str) -> Result<String, 
 pub fn stylesheet(json: &str, dark: bool) -> Result<String, JsError> {
     let preferences = decode(json)?;
     let kit = kit(&preferences, mode(dark));
-    Ok(theme_css::stylesheet(&preferences.shown_theme().name, &kit))
+    Ok(theme_css::stylesheet(
+        &preferences.shown_theme().name,
+        &kit,
+        &roles::TONED,
+    ))
 }
 
 #[wasm_bindgen]
