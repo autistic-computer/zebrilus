@@ -25,19 +25,18 @@ import probe
 import timing
 from ptyclient import PtyClient
 
-GROUPS = ["cli", "spawn", "cold", "config", "chatty", "idle", "mem", "copy", "attach", "echo", "throughput", "control", "statusjob", "rex"]
+GROUPS = ["cli", "spawn", "cold", "config", "chatty", "idle", "mem", "copy", "attach", "echo", "throughput", "control", "statusjob"]
 PANE = os.path.join(HERE, "pane")
 
 
 class Ctx:
-    def __init__(self, args, env, zz, tmux, rex=None):
+    def __init__(self, args, env, zz, tmux):
         self.args = args
         self.quick = args.quick
         self.env = env
         self.zz = zz
         self.tmux = tmux
         self.muxes = [zz, tmux]
-        self.rex = rex
         self.metrics = []
         self.group = None
         self.python = sys.executable
@@ -50,7 +49,7 @@ class Ctx:
     def pick(self, full, quick):
         return quick if self.quick else full
 
-    def add(self, metric_id, unit, kind, zz, tmux=None, notes=None, better=None, rex=None):
+    def add(self, metric_id, unit, kind, zz, tmux=None, notes=None, better=None):
         entry = {
             "id": metric_id,
             "group": self.group,
@@ -59,8 +58,6 @@ class Ctx:
             "zz": timing.stats(zz),
             "tmux": timing.stats(tmux),
         }
-        if rex is not None:
-            entry["rex"] = timing.stats(rex)
         if better:
             entry["better"] = better
         if notes:
@@ -213,8 +210,7 @@ def rule_text(rule):
 
 
 def print_table(metrics):
-    rex = any("rex" in m for m in metrics)
-    header = f"{'metric':44s} {'unit':6s} {'zz':>9s} {'zz p90':>9s} {'tmux':>9s} {'ratio':>7s}{' ' + format('rex', '>9s') if rex else ''}  verdict  threshold"
+    header = f"{'metric':44s} {'unit':6s} {'zz':>9s} {'zz p90':>9s} {'tmux':>9s} {'ratio':>7s}  verdict  threshold"
     print(header)
     print("-" * len(header))
     for m in metrics:
@@ -222,7 +218,7 @@ def print_table(metrics):
         tm = m.get("tmux") or {}
         line = (
             f"{m['id']:44s} {m['unit']:6s} {fmt(zz.get('median')):>9s} {fmt(zz.get('p90')):>9s} "
-            f"{fmt(tm.get('median')):>9s} {fmt(m.get('ratio')):>7s}{' ' + format(fmt((m.get('rex') or {}).get('median')), '>9s') if rex else ''}  {m['verdict']:7s}  {rule_text(m.get('threshold'))}"
+            f"{fmt(tm.get('median')):>9s} {fmt(m.get('ratio')):>7s}  {m['verdict']:7s}  {rule_text(m.get('threshold'))}"
         )
         notes = m.get("notes", []) + m.get("gate_notes", [])
         if notes:
@@ -334,7 +330,6 @@ def main():
     parser.add_argument("--zz", default=os.path.join(REPO, "target", "release", "zz_cli"))
     parser.add_argument("--headless", default=os.path.join(REPO, "target", "release", "examples", "perf_client"))
     parser.add_argument("--tmux")
-    parser.add_argument("--rex")
     parser.add_argument("--stage", default="baseline", choices=gate.STAGES)
     parser.add_argument("--json")
     parser.add_argument("--baseline")
@@ -368,13 +363,6 @@ def main():
     groups = only or GROUPS
     if "mem" in groups:
         groups = [name for name in groups if name != "copy"]
-    rex_bin = os.path.abspath(args.rex) if args.rex else None
-    if rex_bin and not os.access(rex_bin, os.X_OK):
-        sys.exit(f"rex binary not found: {rex_bin}")
-    if not rex_bin:
-        if "rex" in only:
-            sys.exit("the rex group needs --rex PATH")
-        groups = [name for name in groups if name != "rex"]
 
     sha, dirty = git_sha()
     host = socket.gethostname().split(".")[0]
@@ -434,8 +422,7 @@ def main():
     meta["root"] = env.root
     zz = isolate.Zz(zz_bin, env)
     tmux = isolate.Tmux(tmux_bin, env)
-    rex = isolate.Rex(rex_bin, env) if rex_bin else None
-    ctx = Ctx(args, env, zz, tmux, rex)
+    ctx = Ctx(args, env, zz, tmux)
     errors = []
     timings = {}
 
@@ -455,8 +442,6 @@ def main():
             print(f"[{name}] ...", flush=True)
             try:
                 ctx.reset()
-                if rex:
-                    rex.kill()
                 importlib.import_module(f"groups.{name}").run(ctx)
             except KeyboardInterrupt:
                 raise
@@ -465,8 +450,6 @@ def main():
                 print(f"[{name}] error: {exc}", flush=True)
             finally:
                 ctx.reset()
-                if rex:
-                    rex.kill()
             timings[name] = round(time.monotonic() - t0, 1)
             print(f"[{name}] {timings[name]} s", flush=True)
     except KeyboardInterrupt as exc:

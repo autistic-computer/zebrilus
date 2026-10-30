@@ -530,7 +530,7 @@ mod tests {
         let settings = claude.join("settings.json");
         fs::write(
             &settings,
-            r#"{"model":"opus","permissions":{"allow":["Bash(git:*)"]},"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"rex hook"}]}],"Stop":[]}}"#,
+            r#"{"model":"opus","permissions":{"allow":["Bash(git:*)"]},"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"other hook"}]}],"Stop":[]}}"#,
         )
         .expect("settings");
         let [claude_agent, codex_agent] = agents_in(home.path());
@@ -538,7 +538,7 @@ mod tests {
         assert!(lines.iter().all(Result::is_ok), "{lines:?}");
         assert_eq!(
             session_start_commands(&settings),
-            ["rex hook", HOOK_COMMAND]
+            ["other hook", HOOK_COMMAND]
         );
         let root = read(&settings);
         assert_eq!(root["model"], "opus");
@@ -618,14 +618,14 @@ mod tests {
         let settings = claude.join("settings.json");
         fs::write(
             &settings,
-            r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"rex hook"}]}]}}"#,
+            r#"{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"other hook"}]}]}}"#,
         )
         .expect("settings");
         let [claude_agent, codex_agent] = agents_in(home.path());
         assert!(claude_agent.install().iter().all(Result::is_ok));
         let lines = claude_agent.remove();
         assert!(lines.iter().all(Result::is_ok), "{lines:?}");
-        assert_eq!(session_start_commands(&settings), ["rex hook"]);
+        assert_eq!(session_start_commands(&settings), ["other hook"]);
         assert!(!claude.join("skills/zz-workspace").exists());
         assert!(
             claude_agent.remove()[0]

@@ -5,21 +5,19 @@ BACKEND=${BACKEND:-zz}
 S=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$S/../../.." && pwd)
 ZZ_REAL=${ZZ_BINARY:-$REPO/target/release/zz_cli}
-REX_REAL=${REX_BINARY:-"/Applications/Rex Beta.app/Contents/Helpers/Rex Server.app/Contents/MacOS/rex"}
 SKILL=$REPO/.agents/skills/zz-workspace/SKILL.md
 id=$(printf '%s' "$BACKEND-$MODEL-$ARM-$TASK" | tr -c 'a-zA-Z0-9.-' '_')
 RUN=/tmp/mxb-runs/$id
 rm -rf "$RUN"; mkdir -p "$RUN/ws" "$RUN/bin" "$S/out"
 WS=$RUN/ws
 SOCK=/tmp/mxb-$$-$RANDOM.sock
-unset TMUX TMUX_PANE ZZ_PANE ZZ_SESSION ZZ_SOCKET REX_SERVER REX_SESSION REX_BLOCK
+unset TMUX TMUX_PANE ZZ_PANE ZZ_SESSION ZZ_SOCKET
 export ZZ_TRAY=0 ZZ_UPDATE_CHECK=0
 
 case $BACKEND/$ARM in
-  zz/none|zz/skill|zz/inline|zz/hook|zz/stub|zz/stubhook|rex/none|rex/skill|rex/inline|rex/hook) ;;
+  zz/none|zz/skill|zz/inline|zz/hook|zz/stub|zz/stubhook) ;;
   *) echo "unknown backend/arm $BACKEND/$ARM" >&2; exit 2 ;;
 esac
-[ "$BACKEND/$TASK" = rex/t8 ] && { echo "t8 needs a zz agent pane" >&2; exit 2; }
 
 wrap() {
   local name=$1 target=$2
@@ -32,10 +30,6 @@ printf 'rc=%s\n' "\$rc" >> "$RUN/calls.log"
 exit \$rc
 WRAP
   chmod +x "$RUN/bin/$name"
-}
-absent() {
-  printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" "%s" "$*" >> "%s"\necho "%s: command not found" >&2\nprintf "rc=127\\n" >> "%s"\nexit 127\n' "$1" "$RUN/calls.log" "$1" "$RUN/calls.log" > "$RUN/bin/$1"
-  chmod +x "$RUN/bin/$1"
 }
 
 TOKEN=$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
@@ -58,50 +52,25 @@ exec sleep 100000
 EOF
 chmod +x "$WS/test-log.sh" "$WS/ask.sh"
 
-if [ "$BACKEND" = zz ]; then
-  export ZZ_SOCKET=$SOCK
-  Z() { "$ZZ_REAL" "$@"; }
-  wrap zz "\"$ZZ_REAL\""; ln -s "$RUN/bin/zz" "$RUN/bin/tmux"; absent rex
-  P0=$(Z new-session -d -P -F '#{pane_id}' -s work -n main -x 160 -y 48 -c "$WS") || { echo "daemon start failed" >&2; exit 2; }
-  P1=$(Z split-window -d -P -F '#{pane_id}' -t "$P0" -c "$WS")
-  P2=$(Z new-window -d -P -F '#{pane_id}' -t work -n jobs -c "$WS")
-  P3=$(Z new-window -d -P -F '#{pane_id}' -t work -n deploy -c "$WS" "$WS/ask.sh")
-  Z select-pane -t "$P1"
-  SESSION=work
-  sleep 2
-  Z send-keys -t "$P1" 'echo 4711' Enter
-  Z send-keys -t "$P2" "sleep 12; echo DONE-$TOKEN" Enter
-  AGENT_ENV=(ZZ_PANE="$P0" ZZ_SESSION=work ZZ_SOCKET="$SOCK" TMUX_TMPDIR="$RUN")
-  PRE="You are working inside a zz terminal multiplexer workspace. zz is tmux-compatible; the \`zz\` CLI is on PATH and already targets the right server. Your own pane is $P0 in session \"work\". Complete the task with shell commands, then reply exactly as asked."
-  SKILL_NAME=zz-workspace
-  SHIPPED=$(cat "$SKILL")
-  GUIDE=$(awk 'BEGIN{c=0} /^---$/{c++; next} c>=2' "$SKILL")
-  HOOK=$(env -u ZZ_AGENT_CONTEXT ZZ_PANE="$P0" ZZ_SESSION=work "$ZZ_REAL" tools --context)
-  STUB=$(T=$(mktemp -d /tmp/mxb-home-XXXX); mkdir -p "$T/.claude"; env -u CLAUDE_CONFIG_DIR -u CODEX_HOME HOME="$T" "$ZZ_REAL" tools --install-hooks >/dev/null && cat "$T/.claude/skills/zz-workspace/SKILL.md"; rm -rf "$T")
-else
-  RX() { "$REX_REAL" -S "$SOCK" --autostart=false "$@"; }
-  : > "$RUN/empty.lua"
-  "$REX_REAL" server run --listen "$SOCK" --state-dir "$RUN/rexstate" --config "$RUN/empty.lua" > "$RUN/rex-server.log" 2>&1 &
-  REXPID=$!
-  for _ in $(seq 100); do RX ls >/dev/null 2>&1 && break; sleep 0.05; done
-  wrap rex "\"$REX_REAL\" -S \"$SOCK\" --autostart=false"; absent zz; absent tmux
-  created=$(RX new work --window main --json -c "$WS") || { echo "rex server start failed" >&2; kill $REXPID; exit 2; }
-  SESSION=$(jq -r '.session_id' <<<"$created")
-  P0=$(jq -r '.initial_windows[0].block_ids[0]' <<<"$created")
-  P1=$(RX split -b "$P0" --focus=false --json -c "$WS" | jq -r '.block_ids[0]')
-  P2=$(RX window new -s work jobs --focus=false --json -c "$WS" | jq -r '.block_ids[0]')
-  P3=$(RX window new -s work deploy --focus=false --json -c "$WS" -- "$WS/ask.sh" | jq -r '.block_ids[0]')
-  RX focus -s work "$P1"
-  sleep 2
-  RX send -b "$P1" $'echo 4711\n'
-  RX send -b "$P2" "sleep 12; echo DONE-$TOKEN"$'\n'
-  AGENT_ENV=(REX_SERVER="$SOCK" REX_SESSION="$SESSION" REX_BLOCK="$P0" ZZ_SOCKET="$RUN/no-zz.sock" TMUX_TMPDIR="$RUN")
-  PRE="You are working inside a Rex terminal multiplexer workspace. The \`rex\` CLI is on PATH and already targets the right server. Your own pane is $P0 in session \"work\". Complete the task with shell commands, then reply exactly as asked."
-  SKILL_NAME=rex
-  SHIPPED=$(T=$(mktemp -d /tmp/mxb-stub-XXXX); cd "$T" && git init -q && "$REX_REAL" skill setup --project --agent claude >/dev/null && cat .claude/skills/rex/SKILL.md; rm -rf "$T")
-  GUIDE=$("$REX_REAL" __internal skill)
-  HOOK=$(REX_SERVER="$SOCK" REX_SESSION="$SESSION" REX_BLOCK="$P0" "$REX_REAL" __internal session-start --agent claude)
-fi
+export ZZ_SOCKET=$SOCK
+Z() { "$ZZ_REAL" "$@"; }
+wrap zz "\"$ZZ_REAL\""; ln -s "$RUN/bin/zz" "$RUN/bin/tmux"
+P0=$(Z new-session -d -P -F '#{pane_id}' -s work -n main -x 160 -y 48 -c "$WS") || { echo "daemon start failed" >&2; exit 2; }
+P1=$(Z split-window -d -P -F '#{pane_id}' -t "$P0" -c "$WS")
+P2=$(Z new-window -d -P -F '#{pane_id}' -t work -n jobs -c "$WS")
+P3=$(Z new-window -d -P -F '#{pane_id}' -t work -n deploy -c "$WS" "$WS/ask.sh")
+Z select-pane -t "$P1"
+SESSION=work
+sleep 2
+Z send-keys -t "$P1" 'echo 4711' Enter
+Z send-keys -t "$P2" "sleep 12; echo DONE-$TOKEN" Enter
+AGENT_ENV=(ZZ_PANE="$P0" ZZ_SESSION=work ZZ_SOCKET="$SOCK" TMUX_TMPDIR="$RUN")
+PRE="You are working inside a zz terminal multiplexer workspace. zz is tmux-compatible; the \`zz\` CLI is on PATH and already targets the right server. Your own pane is $P0 in session \"work\". Complete the task with shell commands, then reply exactly as asked."
+SKILL_NAME=zz-workspace
+SHIPPED=$(cat "$SKILL")
+GUIDE=$(awk 'BEGIN{c=0} /^---$/{c++; next} c>=2' "$SKILL")
+HOOK=$(env -u ZZ_AGENT_CONTEXT ZZ_PANE="$P0" ZZ_SESSION=work "$ZZ_REAL" tools --context)
+STUB=$(T=$(mktemp -d /tmp/mxb-home-XXXX); mkdir -p "$T/.claude"; env -u CLAUDE_CONFIG_DIR -u CODEX_HOME HOME="$T" "$ZZ_REAL" tools --install-hooks >/dev/null && cat "$T/.claude/skills/zz-workspace/SKILL.md"; rm -rf "$T")
 
 install_skill() {
   for dir in "$WS/.agents/skills/$SKILL_NAME" "$WS/.claude/skills/$SKILL_NAME"; do
@@ -187,39 +156,18 @@ fails=$(rg -c '^rc=[1-9]' "$RUN/calls.log" 2>/dev/null || echo 0)
 bytes=$(wc -c < "$RUN/stdout.log" | tr -d ' ')
 
 pass=0
-if [ "$BACKEND" = zz ]; then
-  case $TASK in
-    t1) [ -f "$RUN/t1.ok" ] && rg -q 'touch .*t1\.ok' <<<"$(Z capture-pane -pJ -t "$P1")" && pass=1 ;;
-    t3) rg -q '^build sleep' <<<"$(Z list-windows -t work -F '#{window_name} #{pane_current_command}')" && pass=1 ;;
-    t5) [ "$(Z list-panes -t "$P1" | wc -l | tr -d ' ')" = 3 ] && pass=1 ;;
-    t6) rg -q '(^|\|)reviewer(\||$)' <<<"$(Z display-message -p -t "$P1" '#{pane_title}|#{@name}')" && pass=1 ;;
-    t7) ! rg -qx 'jobs' <<<"$(Z list-windows -t work -F '#{window_name}')" && pass=1 ;;
-    t8) rg -qx agent <<<"$(Z list-panes -a -F '#{pane_kind}')" && sed -E 's/(exactly )?the word pong//Ig' <<<"$resp" | rg -qi 'pong' && pass=1 ;;
-    t10) rg -q 'test-log\.sh' <<<"$(Z capture-pane -pJ -t "$P1" -S -)" && rg -q "$FAILED_TEST" <<<"$resp" && pass=1 ;;
-    t11) [ -f "$RUN/t11.ok" ] && rg -q 'Deploying' <<<"$(Z capture-pane -pJ -t "$P3")" && pass=1 ;;
-    t12) [ -f "$RUN/t12.ok" ] && rg -q 't12\.ok' <<<"$(Z capture-pane -pJ -t "$P1")" && pass=1 ;;
-  esac
-  Z kill-server 2>/dev/null; rm -f "$SOCK"
-else
-  blocks=$(RX block ls -s "$SESSION" --json 2>/dev/null)
-  windows=$(RX window ls -s "$SESSION" --json 2>/dev/null)
-  case $TASK in
-    t1) [ -f "$RUN/t1.ok" ] && rg -q 'touch .*t1\.ok' <<<"$(RX capture -b "$P1" --unwrap)" && pass=1 ;;
-    t3) w=$(jq -r '.windows[] | select(.label == "build") | .window_id' <<<"$windows" | head -1)
-        for b in $(jq -r --arg w "$w" '.blocks[] | select(.window_id == $w) | .block_id' <<<"$blocks"); do
-          RX block call -b "$b" process | jq -e '[.foreground.name, .child.name] | index("sleep")' >/dev/null && pass=1
-        done ;;
-    t5) w=$(jq -r --arg b "$P1" '.blocks[] | select(.block_id == $b) | .window_id' <<<"$blocks")
-        [ "$(jq --arg w "$w" '[.blocks[] | select(.window_id == $w and .placement == "placed")] | length' <<<"$blocks")" = 3 ] && pass=1 ;;
-    t6) jq -e --arg b "$P1" '.blocks[] | select(.block_id == $b) | .label == "reviewer"' <<<"$blocks" >/dev/null && pass=1 ;;
-    t7) ! rg -qx jobs <<<"$(jq -r '.windows[].label' <<<"$windows")" && pass=1 ;;
-    t10) rg -q 'test-log\.sh' <<<"$(RX capture -b "$P1" --unwrap)" && rg -q "$FAILED_TEST" <<<"$resp" && pass=1 ;;
-    t11) [ -f "$RUN/t11.ok" ] && rg -q 'Deploying' <<<"$(RX capture -b "$P3" --unwrap)" && pass=1 ;;
-    t12) [ -f "$RUN/t12.ok" ] && rg -q 't12\.ok' <<<"$(RX capture -b "$P1" --unwrap)" && pass=1 ;;
-  esac
-  RX server stop >/dev/null 2>&1; wait $REXPID 2>/dev/null; rm -f "$SOCK"
-  [ -S "$RUN/no-zz.sock" ] && ZZ_SOCKET="$RUN/no-zz.sock" "$ZZ_REAL" kill-server 2>/dev/null
-fi
+case $TASK in
+  t1) [ -f "$RUN/t1.ok" ] && rg -q 'touch .*t1\.ok' <<<"$(Z capture-pane -pJ -t "$P1")" && pass=1 ;;
+  t3) rg -q '^build sleep' <<<"$(Z list-windows -t work -F '#{window_name} #{pane_current_command}')" && pass=1 ;;
+  t5) [ "$(Z list-panes -t "$P1" | wc -l | tr -d ' ')" = 3 ] && pass=1 ;;
+  t6) rg -q '(^|\|)reviewer(\||$)' <<<"$(Z display-message -p -t "$P1" '#{pane_title}|#{@name}')" && pass=1 ;;
+  t7) ! rg -qx 'jobs' <<<"$(Z list-windows -t work -F '#{window_name}')" && pass=1 ;;
+  t8) rg -qx agent <<<"$(Z list-panes -a -F '#{pane_kind}')" && sed -E 's/(exactly )?the word pong//Ig' <<<"$resp" | rg -qi 'pong' && pass=1 ;;
+  t10) rg -q 'test-log\.sh' <<<"$(Z capture-pane -pJ -t "$P1" -S -)" && rg -q "$FAILED_TEST" <<<"$resp" && pass=1 ;;
+  t11) [ -f "$RUN/t11.ok" ] && rg -q 'Deploying' <<<"$(Z capture-pane -pJ -t "$P3")" && pass=1 ;;
+  t12) [ -f "$RUN/t12.ok" ] && rg -q 't12\.ok' <<<"$(Z capture-pane -pJ -t "$P1")" && pass=1 ;;
+esac
+Z kill-server 2>/dev/null; rm -f "$SOCK"
 case $TASK in
   t2) rg -q '4711' <<<"$resp" && pass=1 ;;
   t4) rg -q "DONE-$TOKEN" <<<"$resp" && pass=1 ;;

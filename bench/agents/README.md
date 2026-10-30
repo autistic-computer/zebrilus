@@ -36,37 +36,33 @@ bench/agents/browser/matrix.sh own && bench/agents/browser/matrix.sh zz && bench
 bench/agents/browser/tasks-all.sh
 ```
 
-## skill/ - does the guide reach the agent, and zz against Rex
+## skill/ - does the guide reach the agent
 
-`BACKEND=zz|rex run-one.sh MODEL ARM TASK` starts a throwaway zz daemon or Rex server
-(`rex server run` on a private socket) with the same fixture: the agent's own pane, a pane that
-printed a number and holds the focus, a `jobs` window whose pane prints a `DONE-<token>` line
-after 12 s, and a `deploy` window waiting on a yes/no prompt. It puts logging wrappers first on
-PATH (`zz` and `tmux` for zz, `rex` pinned to the private socket for Rex, and stubs that fail for
-the other product's CLI so nothing reaches the user's real servers), runs the agent from a
-directory under `/tmp/mxb-runs/` with the product's pane and session variables set, and checks
-server state or the reply. A model named `claude-*` runs `claude -p --setting-sources project
---strict-mcp-config` (no user skills, hooks or CLAUDE.md); `gpt-<digit>*` (such as `gpt-6-luna`)
-runs `codex exec` with a throwaway HOME and CODEX_HOME that hold only a link to the user's
-`auth.json`, hooks disabled, and profile files that put the wrappers back in front of PATH
-after the login shell's path_helper; any other model runs `agy -p`. The agent's `ZZ_SOCKET`
-(Rex backend) and `TMUX_TMPDIR` point into the run directory, so a stray real `zz` or `tmux`
-never reaches the user's servers.
+`run-one.sh MODEL ARM TASK` starts a throwaway zz daemon with a fixed fixture: the agent's own
+pane, a pane that printed a number and holds the focus, a `jobs` window whose pane prints a
+`DONE-<token>` line after 12 s, and a `deploy` window waiting on a yes/no prompt. It puts
+logging wrappers first on PATH (`zz` and `tmux`, pinned to the private socket so nothing reaches
+the user's real servers), runs the agent from a directory under `/tmp/mxb-runs/` with zz's pane
+and session variables set, and checks server state or the reply. A model named `claude-*` runs
+`claude -p --setting-sources project --strict-mcp-config` (no user skills, hooks or CLAUDE.md);
+`gpt-<digit>*` (such as `gpt-6-luna`) runs `codex exec` with a throwaway HOME and CODEX_HOME
+that hold only a link to the user's `auth.json`, hooks disabled, and profile files that put the
+wrappers back in front of PATH after the login shell's path_helper; any other model runs `agy
+-p`. The agent's `TMUX_TMPDIR` points into the run directory, so a stray real `tmux` never
+reaches the user's servers.
 
-Arms: `none`; `skill` (what the product ships: zz's SKILL.md, or the stub that
-`rex skill setup --project` writes, which tells the agent to run `rex __internal skill`);
-`inline` (the full guide in the prompt); `hook` (the shipped skill plus a SessionStart-style
-context prepended to the prompt: Rex's real `rex __internal session-start` output, or
-`zz tools --context`). zz only: `stub` (the stub skill `zz tools --install-hooks` writes, which
-points at `zz tools --skill`) and `stubhook`. Tasks t1-t12 cover running a command in another pane,
-reading a number, a named window running a command, waiting for a line, a split that stays
-open, naming a pane, closing a window, a zz agent pane (t8, zz only), an error line, finding
-one failing test in 3000 lines of log (t10), answering the pane that waits for input (t11), and
-acting on the focused pane rather than the agent's own (t12).
+Arms: `none`; `skill` (zz's shipped SKILL.md); `inline` (the full guide in the prompt); `hook`
+(the shipped skill plus the `zz tools --context` SessionStart context prepended to the prompt);
+`stub` (the stub skill `zz tools --install-hooks` writes, which points at `zz tools --skill`)
+and `stubhook`. Tasks t1-t12 cover running a command in another pane, reading a number, a named
+window running a command, waiting for a line, a split that stays open, naming a pane, closing a
+window, a zz agent pane (t8), an error line, finding one failing test in 3000 lines of log
+(t10), answering the pane that waits for input (t11), and acting on the focused pane rather than
+the agent's own (t12).
 
-Each row of `out/results.tsv`: backend, model, arm, task, pass, wall s, turns, CLI calls,
-failed calls, bytes the CLI printed, input tokens, output tokens, cost. `run-all.sh` fans out
-(`BACKENDS`, `MODELS`, `TASKS`, `ZZ_ARMS`, `REX_ARMS`, `PAR`); `summary.sh` pivots.
+Each row of `out/results.tsv`: backend (always `zz`), model, arm, task, pass, wall s, turns, CLI
+calls, failed calls, bytes the CLI printed, input tokens, output tokens, cost. `run-all.sh` fans
+out (`MODELS`, `ARMS`, `TASKS`, `PAR`); `summary.sh` pivots.
 
 ## fresh/ - what a new user's agents get
 
