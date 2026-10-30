@@ -9,7 +9,7 @@ bash: 5.3.9(1)-release  python: Python 3.14.4
 
 ## revision
 97d8ed96 Open the pin's switch mode on the target pane
-base: 3c014e169f1a3806d0005076bb3dfdd630085581 3c014e16 Count TUI-016 as verified in the campaign state line
+base: 9360024d1fd62c58c13fa85c44c90df4ad783548 9360024d Count TUI-016 as verified in the campaign state line
 worktree: 1 uncommitted paths
 
 ## binaries

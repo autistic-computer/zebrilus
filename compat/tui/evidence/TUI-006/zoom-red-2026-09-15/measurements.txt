@@ -1,5 +1,5 @@
 === environment.txt ===
-3c014e169f1a3806d0005076bb3dfdd630085581
+9360024d1fd62c58c13fa85c44c90df4ad783548
 4a314f15980b1be639115ec67288142577ca212bef3ae1cc7a79f2a277d3e10f  target/debug/zz
 fe82462af83f515034c25bb8576eef8a11a0ad3a5c1029af70b0973b028aed5d  /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux
 d77c9dc6aa021e4bc61f0da128c591af695e6466

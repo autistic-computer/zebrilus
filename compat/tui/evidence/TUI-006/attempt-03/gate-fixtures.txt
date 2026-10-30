@@ -1,4 +1,4 @@
-# every fixture in the tree, run at 1cc3de593370525b01f04af7c8aa32b5ccb25469 against the pin
+# every fixture in the tree, run at e15d4f36e096256f2bba0465aad030fa1f22b6e0 against the pin
 # each line: exit code, then the fixture's own last line
 #
 exit 0  compat/tui-caps.sh
@@ -71,4 +71,4 @@ exit 1  compat/attached-client.sh AT origin/main  <-- RED the same way
 The two reds are identical at origin/main on this box and are recorded as
 this box's baseline, not as this lane's. See gate-attached-client-origin-main.txt
 and gate-overlays-self-check-origin-main.txt, both captured from a build of
-origin/main 05d0702e in this same worktree.
+origin/main 143c811b in this same worktree.

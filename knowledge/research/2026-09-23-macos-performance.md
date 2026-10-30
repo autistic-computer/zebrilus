@@ -15,7 +15,7 @@ timestamp: 2026-09-23T03:14:56Z
 
 # Investigation record
 
-Started 2026-09-23 UTC from `268ace5e479c93d8ff002b7e3d79c5bc30a192ea` on
+Started 2026-09-23 UTC from `015bf77728485fcf42c66b6fdcd7794c0560be95` on
 `main`, with a clean working tree. Host: Apple M4 Max (`Mac16,5`), 16 CPU
 cores, 48 GiB memory, macOS 27.0 (`26A428`), Rust 1.97.0. Results below distinguish isolated mechanism experiments from measurements
 of the final application bundles.
@@ -694,7 +694,7 @@ Evidence: `baseline-kitty-split-1/`, `render/kitty-lifecycle-baseline.log`, and
 `render/kitty-lifecycle-fixed.log`. The earlier new-window workload did not
 prove visibility and must not be used as GPU evidence.
 
-**At phase-1 commit `66779d60`, cleanup remained parked because a separate GPU ordering test failed.**
+**At phase-1 commit `8342b81e`, cleanup remained parked because a separate GPU ordering test failed.**
 In the actual Metal atlas, a command buffer waits on a test event before reading
 an existing small tile. The CPU removes that image and uploads a replacement
 into the same texture coordinates, then releases the event. The earlier GPU
@@ -713,7 +713,7 @@ arbitrary delay or a fixed number of frames. Evidence:
 
 ## Follow-up: safe atlas cleanup
 
-After committing phase 1 as `66779d60`, the user requested validation of the
+After committing phase 1 as `8342b81e`, the user requested validation of the
 parked candidates one at a time. The first candidate combines desktop Kitty
 image cleanup with completion-based Metal atlas retirement. The matched
 application experiment now establishes a memory gain: ten image-pane closes

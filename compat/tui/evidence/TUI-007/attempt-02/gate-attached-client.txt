@@ -1,5 +1,5 @@
 # compat/attached-client.sh from the tree's own copy at the gate tip
-# revision: e47ef7208e3204de46d7b1af85c0f24fed284acc
+# revision: 0f2f0873e25b03f615a83d88e84cbdba13a708e9
 # zz sha256: 922cfc3a56733ce88093e446f4663d3f60aac5d843816712551608b29617fac4
 # pin: d77c9dc6aa021e4bc61f0da128c591af695e6466 sha256 df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63ee5 (tmux next-3.8)
 # command: TMUX_BIN=<pin> ZZ_BIN=<build> compat/attached-client.sh

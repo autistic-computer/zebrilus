@@ -153,8 +153,8 @@ now carries only the current measurement.
 
 ## Cycle-6 copy gate, 2026-09-11
 
-Revision 9b2767d8ed6f075c50714c7234a232e85de716d9, the copy lane rebased onto
-origin/main d4053166 plus two gate commits. Command lines, exit codes and start
+Revision b7dbcbf61949769489d12236bad53e51b780d288, the copy lane rebased onto
+origin/main e1d34e21 plus two gate commits. Command lines, exit codes and start
 times are in the `gate-*.txt` files beside this one; the reviewer's verdict and
 what the gate did with it are in `review.md`.
 
@@ -177,11 +177,11 @@ runs and a green `--self-check` at this revision, after which the fixture has
 no recorded case at all: 147 of 147 assert every channel they drive.
 
 ONE GATE COMMIT THE LANE DID NOT OWE. `knowledge/tmux/gaps.md` was stale AT
-origin/main: main's own dbe199f5 edited `compat/tmux-gaps.json`
+origin/main: main's own 15b9435c edited `compat/tmux-gaps.json`
 (config.discovery, presentation.native-status) without regenerating the report,
 and `compat/run.sh` and `compat/check.sh` both refuse while the two disagree.
 Checking out origin/main's two files alone into the gate worktree reproduces
-`knowledge/tmux/gaps.md is stale`. Commit 3b9de1ff regenerates it.
+`knowledge/tmux/gaps.md is stale`. Commit e0283898 regenerates it.
 
 WHAT THE GATE DID NOT DO. `compat/tui-overlays.sh` and `compat/tui-choosers.sh`
 are not on main at this tip; they belong to later lanes in the cycle-6 order.

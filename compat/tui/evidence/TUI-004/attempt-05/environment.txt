@@ -8,7 +8,7 @@ bash: 5.3.15(1)-release
 TERM: xterm-ghostty  LANG: en_US.UTF-8  LC_TIME: pt_BR.UTF-8
 cores: 16
 worktree: /home/demfabris/dev/zz-tui-mux
-branch base: origin/main 455ef370
+branch base: origin/main 8bfac781
 revision: 451cf194d5631e7eae4b50d1ec405a9b683100c6
 tree: 1 modified paths
 zz build: cargo build -p zz --jobs 4 through systemd-run MemoryMax=5G and a two-slot flock

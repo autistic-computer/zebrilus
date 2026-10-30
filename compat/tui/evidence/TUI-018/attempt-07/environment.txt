@@ -1,7 +1,7 @@
 2026-09-16T18:02:02-03:00
 Linux alienware 7.2.3-1-cachyos-deckify #1 SMP PREEMPT_DYNAMIC Sun, 06 Sep 2026 23:17:42 +0000 x86_64 GNU/Linux
 e64ed0d1bc17f7148b6fd84af9e7ca535e602107
-61897ec3b225a387fee9ded2df7fb629edc69b54
+1f9e5325080b11b1b77bb363560610de0a84aafa
  M compat/tui-command-streams.sh
  M crates/zz-daemon/src/client.rs
  M crates/zz-daemon/src/daemon.rs

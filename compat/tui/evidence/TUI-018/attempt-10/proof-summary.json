@@ -2,8 +2,8 @@
   "lane": "alias-fix",
   "obligation": "TUI-018",
   "status": "review",
-  "base": "c23b4f3bb699fae08cd8aa273c658a7346d705e1",
-  "production_revision": "a26d46336406d3ebb8771dfe8aea46c4e51e6f4d",
+  "base": "fbdd41af5f22e6b086b9553ffe829b748ad3b455",
+  "production_revision": "05aa5637635eda184f946b4b305cd7359353dbaf",
   "binary_sha256": "f2fc9d2cf19697cbd3b040cf7243865fbcb492065957c691e82400db032f2d7a",
   "matrix": {
     "cells": 91,
@@ -90,7 +90,7 @@
     "No independent approval or verified claim is made."
   ],
   "footprint": {
-    "base": "c23b4f3bb699fae08cd8aa273c658a7346d705e1",
+    "base": "fbdd41af5f22e6b086b9553ffe829b748ad3b455",
     "complete_three_dot_file_list": "compat/tui/evidence/TUI-018/attempt-10/footprint.txt",
     "files": 1387,
     "sha256": "2b85f18fb9b182380737b2882028cdadfecbe9346d2913d94066a959b9c2931b",

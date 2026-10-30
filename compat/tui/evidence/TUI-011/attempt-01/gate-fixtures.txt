@@ -1,4 +1,4 @@
-# revision caacb838a5cfcda42605e14263422953ba3e831d
+# revision 069a01511fec8e878bbd7935a16925407108ff57
 # every TUI fixture at the cycle 7 roster gate tip, run one at a time in the
 # foreground against the pin at d77c9dc6, ZZ_BIN=/home/demfabris/dev/zz-gate-target/debug/zz
 

@@ -1,7 +1,7 @@
 {
-  "base": "28174432a32f6251b64c13dde279b971cb4680a4",
+  "base": "1141cabae5e7665087e007e95a6b846a7156f6f2",
   "tip_before": "4c4c142bbc37dbae46adeecf50ba3a0caf0eedcb",
-  "exitcode_branch": "922a76e343661f5583907d0abcc2db4d0792d653",
+  "exitcode_branch": "efc6a2b49d6b1b97c4fe99747cd49a4b83da9c33",
   "exitcode_applied_commit": "888be5af",
   "binaries": {
     "candidate": {
@@ -21,13 +21,13 @@
       "sha256": "df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63ee5"
     }
   },
-  "final_base": "61897ec3b225a387fee9ded2df7fb629edc69b54",
+  "final_base": "1f9e5325080b11b1b77bb363560610de0a84aafa",
   "final_source": "0bab4e9c74644962c2914feb56fae415a7e1bdab",
   "final_binary": {
     "path": "/home/demfabris/dev/zz-c11-capture-fix/target/capture-12-final-proof/zz",
     "sha256": "4de76d0e07897c47e9cd3fc498559211765f449cee200a42973a2848df4c2525",
     "libcef_path": "/home/demfabris/dev/zz-c11-capture-fix/target/debug/libcef.so"
   },
-  "wire": "104 inherited from main de7206d3; no lane payload change",
-  "rebase": "4c4c142b plus fixture commit 384d9830 rebased without conflicts onto 61897ec3; resulting source 0bab4e9c"
+  "wire": "104 inherited from main a71a5d6a; no lane payload change",
+  "rebase": "4c4c142b plus fixture commit 384d9830 rebased without conflicts onto 1f9e5325; resulting source 0bab4e9c"
 }

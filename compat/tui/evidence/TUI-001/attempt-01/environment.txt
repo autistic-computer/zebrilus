@@ -12,7 +12,7 @@ pin commit (checked out): d77c9dc6aa021e4bc61f0da128c591af695e6466
 
 [source revision]
 worktree: /home/demfabris/dev/zz-tui-lane
-git rev-parse HEAD: e174040dea4f5bee3036571c9fe18c743ee4b3f7
+git rev-parse HEAD: d96e5cd64e277adfd13fb3c7c5ee369dc2a7b937
 git status --short:
 ?? compat/tui/evidence/
 (end git status)

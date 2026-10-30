@@ -1,4 +1,4 @@
-# revision 1cc3de593370525b01f04af7c8aa32b5ccb25469
+# revision e15d4f36e096256f2bba0465aad030fa1f22b6e0
 # the reviewer's two mask probes, re-run against the fixed masks
 # the mask bodies are extracted verbatim from compat/tui-choosers.sh
 #

@@ -1,6 +1,6 @@
 {
   "range": "origin/main...campaign/tui-capture-residuals",
-  "base": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+  "base": "12390407a56daa5028249bc9d0359df68052e86f",
   "proof_revision": "bb693da5c5654dbf97129857b36e6e63e0b18cbc",
   "pre_lane_rebased_baseline": "327eb1af",
   "scope": "Complete delivered three-dot footprint, including carried capture-12 source and evidence, this lane source, reports, and proof artifacts. The artifact commit adds no runtime source beyond proof_revision.",

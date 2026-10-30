@@ -1,4 +1,4 @@
-# revision 1cc3de593370525b01f04af7c8aa32b5ccb25469
+# revision e15d4f36e096256f2bba0465aad030fa1f22b6e0
 # pin tmux next-3.8 d77c9dc6aa021e4bc61f0da128c591af695e6466
 # command env TMUX_BIN=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_BIN=/home/demfabris/dev/zz-gate-tui9/target/debug/zz compat/attached-client.sh
 # started 2026-09-14T20:42:41-03:00, finished 2026-09-14T20:46:47-03:00, 246s

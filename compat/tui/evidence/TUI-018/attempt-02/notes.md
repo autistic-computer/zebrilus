@@ -1,7 +1,7 @@
 # TUI-018 attempt 02
 
 Started 2026-09-15 20:18:37 UTC; hard deadline 22:18:37 UTC.
-Base: 5a250fabbd9b1360b2aa37bf1f1a5efd5bcc9d2a.
+Base: 580dab29df4130daa740bcdab5b013b0054d0457.
 
 ## Measurement
 
@@ -110,7 +110,7 @@ those files are local artifacts so recording them cannot invalidate their tip.
 
 Both commits are pushed on `campaign/tui-stream-alias`. The final tip is
 `ff58de8a6f8fc194db0480deb6893ba85e6121e0`, based on
-`5a250fabbd9b1360b2aa37bf1f1a5efd5bcc9d2a`. Every required closing proof was run
+`580dab29df4130daa740bcdab5b013b0054d0457`. Every required closing proof was run
 after the final commit. No subsequent code or ledger change was made.
 
 All final commands used ZZ_COMPAT_TMUX and TMUX_BIN pointing to the pinned
@@ -185,10 +185,10 @@ evidence. The following files hold the final-tip run:
 
 The first final audit compared the complete ledger directly to the moving
 origin/main ref and failed its equality assertion: another worktree had advanced
-that shared ref to `8152eca983d152e6d5d215d04764df5285ac8248`, landing other
+that shared ref to `5f2aa5e17e8c1363e2853de3b61f0e3cb26bc071`, landing other
 obligations. No local ledger edit caused that failure. The corrected audit uses
 the fixed starting base and verifies that the three-dot merge base is still
-`5a250fabbd9b1360b2aa37bf1f1a5efd5bcc9d2a`; only the four permitted TUI-018 fields
+`580dab29df4130daa740bcdab5b013b0054d0457`; only the four permitted TUI-018 fields
 differ. This does not change the completed delta selection or final-tip proofs.
 
 ## Adversarial review on 2026-09-15

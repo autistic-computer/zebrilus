@@ -92,7 +92,7 @@ The cell is left asserted rather than recorded, because it agrees on most runs a
 recorded case would understate the parity that is there. compat/tui-choosers.sh's own
 header carries the same measurement so a red run explains itself.
 
-## Gate addendum, 2026-09-14 (cycle 9 choosers gate, revision 1cc3de593370525b01f04af7c8aa32b5ccb25469)
+## Gate addendum, 2026-09-14 (cycle 9 choosers gate, revision e15d4f36e096256f2bba0465aad030fa1f22b6e0)
 
 The chooser evidence in this directory is now the gate's own, taken on the
 rebased branch after the five must-fixes the reviewer returned. The four
@@ -103,7 +103,7 @@ in them distinguished one run from another or named a revision.
 New and replaced files:
 
 - **choosers-run-1.txt, -2.txt, -3.txt** - three runs of compat/tui-choosers.sh
-  at 1cc3de593370525b01f04af7c8aa32b5ccb25469, each ending
+  at e15d4f36e096256f2bba0465aad030fa1f22b6e0, each ending
   `all 78 asserted comparisons identical, 0 recorded not asserted (0 for a sibling lane)`
   at exit 0. Every one is stamped in its own header with the revision, the pin's
   commit, the exact command, the start and end wall clock, the elapsed seconds
@@ -115,7 +115,7 @@ New and replaced files:
   and three were kept green; this is the discarded one, and the three that
   follow it and the --self-check all pass with the box under three sibling
   lanes' load.
-- **choosers-self-check.txt** - compat/tui-choosers.sh --self-check at 1cc3de593370525b01f04af7c8aa32b5ccb25469,
+- **choosers-self-check.txt** - compat/tui-choosers.sh --self-check at e15d4f36e096256f2bba0465aad030fa1f22b6e0,
   exit 0, "every sabotage was caught and both equivalences passed", thirteen ok
   lines: the twelve that were here plus `title cut, the sort label inside the
   span a box cuts`, which this gate added for the client_row_mask must-fix.
@@ -136,7 +136,7 @@ New and replaced files:
 - **gate-attached-client.txt** and **gate-attached-client-origin-main.txt**,
   **gate-overlays-self-check.txt** and
   **gate-overlays-self-check-origin-main.txt** - the two reds this gate found
-  and their controls, each captured from a build of origin/main 05d0702e in this
+  and their controls, each captured from a build of origin/main 143c811b in this
   same worktree. Both fail identically there, so both are this box's baseline.
   The attached-client one is the more interesting: it is
   `probe_command_output_navigation`, which rebinds `/` to zz's native

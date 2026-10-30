@@ -10,10 +10,10 @@ TERM at capture: xterm-ghostty
 TERM inside every case: named per case by the fixture (xterm, xterm-256color); LANG=C LC_ALL=C on both sides
 outer pinned tmux size under test: 80x24, status off, extended-keys on (decoder only)
 worktree: /home/demfabris/dev/zz-tui-caps
-base revision: b83af75942e61141e825e0d2badf270e7ea68e00, the origin/main tip the
-  worktree was cut from. origin/main advanced to 5bdfd917 (release: zz 0.7.0)
+base revision: a141f09963faf92ce713823a5640bc0217fdf9c3, the origin/main tip the
+  worktree was cut from. origin/main advanced to 30888ec0 (release: zz 0.7.0)
   during this cycle; this branch is NOT rebased onto it, because every
-  measurement here was taken against the b83af759 build and a version bump
+  measurement here was taken against the a141f099 build and a version bump
   would invalidate the recorded binary without changing anything measured.
 branch: campaign/tui-caps
 worktree at capture: no tracked file is modified; the branch adds

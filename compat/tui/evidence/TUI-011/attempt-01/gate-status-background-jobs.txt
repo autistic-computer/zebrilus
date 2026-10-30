@@ -1,4 +1,4 @@
-# revision caacb838a5cfcda42605e14263422953ba3e831d
+# revision 069a01511fec8e878bbd7935a16925407108ff57
 # row: smoke/status-background-jobs, the one corpus row this gate had to settle
 
 WHAT IT LOOKS LIKE. The scenario stages a python fixture that watches a status

@@ -6,7 +6,7 @@ PRETTY_NAME="CachyOS"
 date: 2026-09-14T10:57:30Z
 repo: /home/demfabris/dev/zz-tui-introspection (worktree of /home/demfabris/dev/zz)
 branch: campaign/tui-introspection
-base: origin/main c6782e36 (rebased onto it 2026-09-14 after a gate pushed c6782e36)
+base: origin/main 39e59612 (rebased onto it 2026-09-14 after a gate pushed 39e59612)
 code tip at measurement: f0d34be75fd305827bbfaece93a2a5313912baf1 (the ledger and evidence commit that follows it changes no code)
 worktree: clean at measurement apart from the evidence files being written
 

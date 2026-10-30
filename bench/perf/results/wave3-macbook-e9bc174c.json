@@ -24,7 +24,7 @@
   "arch": "arm64",
   "ncpu": 16,
   "python": "3.14.8",
-  "git_sha": "fbd0fbbcefcfc4585b8e1382227d3a426c97c907",
+  "git_sha": "0d0d986aa145eae0d5ed40631f581190e7b24b6d",
   "git_dirty": false,
   "zz_bin": "/tmp/zzpc/w3/wave3-exit2-cli",
   "zz_version": "tmux 3.8-zz",
@@ -42,7 +42,7 @@
    "/opt/homebrew/opt/jemalloc/lib/libjemalloc.2.dylib"
   ],
   "baseline": "/Users/demfabris/dev/zz-perf-int/bench/perf/results/wave2-macbook-61729102.json",
-  "w0": "/Users/demfabris/dev/zz-perf-int/bench/perf/results/baseline-macbook-6c04efeb.json",
+  "w0": "/Users/demfabris/dev/zz-perf-int/bench/perf/results/baseline-macbook-e9a5ad99.json",
   "history_limit": 10000,
   "cpu_source": "proc_pid_rusage",
   "instructions": true,

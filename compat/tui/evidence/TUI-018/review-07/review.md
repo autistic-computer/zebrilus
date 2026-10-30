@@ -1,10 +1,10 @@
 # Seventh-review verdict: ACCEPT (review-07, 2026-09-19)
 
-Branch `campaign/tui-stream-alias-7` at `16e1171a`, reviewed against the pin
+Branch `campaign/tui-stream-alias-7` at `0276f672`, reviewed against the pin
 `d77c9dc6` with binaries built by this review, not the lane's:
 
 - tip `target/debug/zz_cli`: `56fcf707376c58bfcb9b08d5d193ea0272f69534e0f385046f524b655a5612a0`
-- pre-fix (5 code files at `347d7710`): `d548c98e0e1d2e495c7c316e83adb274355de50012dd73b64e8722e524d7812f`
+- pre-fix (5 code files at `6e526098`): `d548c98e0e1d2e495c7c316e83adb274355de50012dd73b64e8722e524d7812f`
 - pin `compat/.cache/tmux-src/tmux`: `df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63ee5`
 
 ## What was re-measured
@@ -53,7 +53,7 @@ Branch `campaign/tui-stream-alias-7` at `16e1171a`, reviewed against the pin
   `ChooserPresentation`, one v105 entry, nothing reordered, `105 unreleased`
   per the guard. Events are unicast to Command-kind clients only; ClientCore
   and control mode ignore them; attached-client PASS.
-- Merge `347d7710` recomputed byte-identical: a pure merge. Gate preview
+- Merge `6e526098` recomputed byte-identical: a pure merge. Gate preview
   (`merge-tree origin/main HEAD`): 2 conflicts, both mechanical —
   `campaign.json` (record-merge: main verified TUI-015/017, branch proves
   TUI-018) and generated `tui-parity.md` (regenerate). No code conflicts.

@@ -4,7 +4,7 @@
   "architecture": "x86_64",
   "date": "2026-09-17",
   "lane": "capture-residuals",
-  "base": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+  "base": "12390407a56daa5028249bc9d0359df68052e86f",
   "initial_source": "c8887b3bcd582f02badf57a7787886ab587256f0",
   "rebased_source": "ddbd4bed52f597afed92afba4d05de9e8c854ae7",
   "tmux_commit": "d77c9dc6aa021e4bc61f0da128c591af695e6466",

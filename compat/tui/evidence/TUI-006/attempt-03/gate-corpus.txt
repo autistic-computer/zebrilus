@@ -1,4 +1,4 @@
-# corpus delta for origin/main..HEAD --commands command-prompt, at 1cc3de593370525b01f04af7c8aa32b5ccb25469
+# corpus delta for origin/main..HEAD --commands command-prompt, at e15d4f36e096256f2bba0465aad030fa1f22b6e0
 # compat/run.sh --strict-geometry, run in 13 sequential chunks of explicit scenario names
 # 145 unique scenarios selected (every smoke row, plus the rows this branch changed,
 # plus every row naming command-prompt). None skipped; coverage verified by set difference.

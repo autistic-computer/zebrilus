@@ -1,4 +1,4 @@
-# revision 1cc3de593370525b01f04af7c8aa32b5ccb25469
+# revision e15d4f36e096256f2bba0465aad030fa1f22b6e0
 # pin tmux next-3.8 d77c9dc6aa021e4bc61f0da128c591af695e6466
 # command compat/tui-copy-mode.sh
 # started 2026-09-14T20:11:58-03:00, finished 2026-09-14T20:14:08-03:00, 130s

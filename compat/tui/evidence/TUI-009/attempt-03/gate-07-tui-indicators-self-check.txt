@@ -1,5 +1,5 @@
 # compat/tui-indicators.sh --self-check at the gate tip
-# revision: 266554e6d8efabd9e543df613a5aedc9a19468af (code identical to a23181e7; 266554e6 touches only a corpus scenario)
+# revision: 6dec50cd5a9be8f3fb1669a53e53735ce9faba0d (code identical to 2c777753; 6dec50cd touches only a corpus scenario)
 # zz sha256: b093fe204f13a5c43073000ea4e5c9a64b943d5917092f3a47af56ec177a47ce
 # pin: d77c9dc6aa021e4bc61f0da128c591af695e6466 sha256 df2cafcb212e8b69677dd57c2bd0c3bb59592eaf385d974ec0124526d6b63ee5
 # command: compat/tui-indicators.sh --self-check <build> <pin>

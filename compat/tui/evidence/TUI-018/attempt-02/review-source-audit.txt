@@ -15,8 +15,8 @@ Author: Fabricio Dematte <demfabris@gmail.com>
 Commit: Fabricio Dematte <demfabris@gmail.com>
 
     Preserve and spend caller streams across command alias groups
-COMMAND ['git', 'diff', '--check', '5a250fab...HEAD', '--', '.', ':!compat/tui/evidence'] EXIT 0
-COMMAND ['git', 'log', '5a250fab..HEAD', '--format=full'] EXIT 0
-COMMAND ['git', 'diff', '5a250fab...HEAD', '--', 'crates/zz-protocol/tests/hunt_claims.rs'] EXIT 0
+COMMAND ['git', 'diff', '--check', '580dab29...HEAD', '--', '.', ':!compat/tui/evidence'] EXIT 0
+COMMAND ['git', 'log', '580dab29..HEAD', '--format=full'] EXIT 0
+COMMAND ['git', 'diff', '580dab29...HEAD', '--', 'crates/zz-protocol/tests/hunt_claims.rs'] EXIT 0
 TUI-018 ['sources', 'evidence_note', 'next_action']
 Added code comments: []

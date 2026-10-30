@@ -1,6 +1,6 @@
 # Rebased TUI-014 fix-pass measurements
 
-Base: origin/main `c23b4f3bb699fae08cd8aa273c658a7346d705e1`, rebased on
+Base: origin/main `fbdd41af5f22e6b086b9553ffe829b748ad3b455`, rebased on
 2026-09-17. Runtime revision: `0b72e3b242381028396272e3bea2915d39b1768c`.
 Fixture revision: `76662d8d`; verifier timeout support: `7adc5e26`.
 All attached and corpus measurements use the frozen `zz-customize-rebased`

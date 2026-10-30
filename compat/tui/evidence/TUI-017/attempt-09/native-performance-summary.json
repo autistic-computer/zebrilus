@@ -1,6 +1,6 @@
 {
   "method": "Unchanged reviewer C driver; five alternating fixed/main runs per workload; CPU 6 for both; 100 warm-up pairs before final batch. CLOCK_PROCESS_CPUTIME_ID excludes buffer/terminal creation and destruction. Shared host, no claim of exclusive CPUs.",
-  "baseline": "c23b4f3bb699fae08cd8aa273c658a7346d705e1",
+  "baseline": "fbdd41af5f22e6b086b9553ffe829b748ad3b455",
   "baseline_audit": "main-source-audit.json",
   "source_sha256": {
     "native-perf.c": "585017c050d93b0a99f775761a2e6e9bd8afda50a36df245006fee3c98679fef",

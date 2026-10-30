@@ -1,7 +1,7 @@
 # Exit-code follow-up, cycle 11
 
 Lane `exitcode`, branch `campaign/tui-exitcode`. Rebased cleanly onto fetched
-`origin/main` at `28174432a32f6251b64c13dde279b971cb4680a4` on 2026-09-16.
+`origin/main` at `1141cabae5e7665087e007e95a6b846a7156f6f2` on 2026-09-16.
 This attempt supplements attempt-exitcode-01; it does not erase any earlier failed run.
 
 The user resolved the earlier help-output scope question explicitly. The exit-code table
@@ -49,7 +49,7 @@ and doc tests pass (zero cases). Exit status is 0. Both previously reported main
 skill synchronization test also passes again in the full run. No baseline daemon test
 rerun was needed because the candidate package has no failures to compare.
 
-The final code commit is `a56cdd94a911fb62b344e62b07767afd0fa68fde`. Formatting,
+The final code commit is `1dd24f4fabbf48ac1ff40c0eac1ad030f2b05432`. Formatting,
 compat/check.sh, the widened wire-version guard, the TUI tracker, and clippy for zz,
 zz-protocol, zz-mux, and zz-daemon (all targets/features, warnings denied) pass.
 compat/check.sh includes all 534 mux unit tests and the three daemon manifest checks.

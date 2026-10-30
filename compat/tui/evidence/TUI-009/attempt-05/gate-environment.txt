@@ -7,9 +7,9 @@ terminal      TERM=xterm-ghostty, LANG=en_US.UTF-8, LC_TIME=pt_BR.UTF-8
               compat/status-row.sh ran under LC_ALL=C LC_TIME=C, the control this
               box needs because the box locale changes %b
 worktree      /home/demfabris/dev/zz-gate-tui7, branch gate-caps, clean
-revision      a2982b7f1d6217915ebb4811e014bbb32992b329, the caps lane
+revision      ee6529d710378464cac1a3752c6bbd4452f788c6, the caps lane
               (campaign/tui-caps-3 tip 1d7f6d0e) rebased onto origin/main
-              ba59cec11084862a417513848f3c609a664c4bf9 plus one gate commit
+              454e02ad33db567380bd30e9d3e57f3bcaf7858b plus one gate commit
 target dir    CARGO_TARGET_DIR=/home/demfabris/dev/zz-gate-target
 zz            /home/demfabris/dev/zz-gate-target/debug/zz
               sha256 bd32adc87a2fcec5560d678da4e86f75bb1e117628c8722994ed4294dd8b72fe

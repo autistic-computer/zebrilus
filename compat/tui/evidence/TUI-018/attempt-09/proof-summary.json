@@ -3,7 +3,7 @@
   "branch": "campaign/tui-stream-alias-4",
   "status": "partial",
   "what_changed": [
-    "Rebased onto 04fe4a7d and ported carried CLI changes into zz-cli.",
+    "Rebased onto 12390407 and ported carried CLI changes into zz-cli.",
     "Declared 51 matrix cells before fixes and three diagnostic-delimiter neighbours before their correction; final 54 cells have 50 assertions with execution sabotages, three owned records and one existing cap decision.",
     "Restore SIGTERM dispositions; retain direct spent-reader continuation; validate pane destinations before input acquisition; retain attached-control failure status; match control file-replay guards and raw diagnostics.",
     "Preserve the raw writer guard and earlier source-path/startup-refusal proofs."

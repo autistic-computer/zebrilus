@@ -9,8 +9,8 @@ locale LANG=en_US.UTF-8 LC_TIME=pt_BR.UTF-8 LC_ALL=unset
 outer size under test: 80x24 (the fixture sets it; the recording terminal is not the outer terminal)
 worktree: /home/demfabris/dev/zz-tui-copy
 branch: campaign/tui-copy-mode
-base: b83af75942e61141e825e0d2badf270e7ea68e00, which was origin/main when this attempt started
-origin/main moved to 5bdfd9175b4ec47e1a8492d0dff58757b1794821 (release: zz 0.7.0) mid-attempt; the base is an ancestor of it, so the branch still merges forward
+base: a141f09963faf92ce713823a5640bc0217fdf9c3, which was origin/main when this attempt started
+origin/main moved to 30888ec04ccb8e79bcfc439e25307492935f1c5c (release: zz 0.7.0) mid-attempt; the base is an ancestor of it, so the branch still merges forward
 zz binary: /home/demfabris/dev/zz-tui-copy/target/debug/zz
 zz sha256: 5c5d3e2c8ab3839b8803e17853e287d0f7df2db57bf95072f0013f9ffb0474e2 (the review pass rebuilt the same source in the same worktree; a debug build of zz is not bit-reproducible on this box, so this differs from the attempt's first recording d0d54797aeb57c936d9606762b083d982dd4a3a14660f73426404ba994992f7d and attests nothing on its own)
 pin binary: /home/demfabris/dev/zz/compat/.cache/tmux-src/tmux

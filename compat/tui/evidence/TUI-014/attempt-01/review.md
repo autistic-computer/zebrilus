@@ -32,8 +32,8 @@ worktree /home/demfabris/dev/zz-gate-tui7, branch gate-commands.
     {
       "obligation": "TUI-014 evidence (compat/tui/evidence/TUI-014/attempt-01/environment.txt)",
       "severity": "must-fix",
-      "description": "environment.txt attests 'revision: 6cc5e0b82c2a9ee39512bed2337ec409d7dbfe7b', 'worktree: 1 modified paths' and 'base: origin/main a2c76437…'. 6cc5e0b8 is not an ancestor of the tip a3fc1651 (pre-rebase commit, confirmed with git merge-base --is-ancestor), the real merge-base is 8e330e77, and the runs are attested from a dirty worktree. On this box a debug zz build is not bit-reproducible, so the revision plus a clean worktree is the only attestation the sha256 has; as written it points at a commit that is not on the branch.",
-      "suggested_fix": "Re-capture environment.txt from the clean tip (revision a3fc1651, base 8e330e77, worktree clean) with the sha256 of the binary the re-run used."
+      "description": "environment.txt attests 'revision: 6cc5e0b82c2a9ee39512bed2337ec409d7dbfe7b', 'worktree: 1 modified paths' and 'base: origin/main 781ba9ff…'. 6cc5e0b8 is not an ancestor of the tip a3fc1651 (pre-rebase commit, confirmed with git merge-base --is-ancestor), the real merge-base is ea193ab4, and the runs are attested from a dirty worktree. On this box a debug zz build is not bit-reproducible, so the revision plus a clean worktree is the only attestation the sha256 has; as written it points at a commit that is not on the branch.",
+      "suggested_fix": "Re-capture environment.txt from the clean tip (revision a3fc1651, base ea193ab4, worktree clean) with the sha256 of the binary the re-run used."
     },
     {
       "obligation": "TUI-014 evidence notes",
@@ -55,7 +55,7 @@ worktree /home/demfabris/dev/zz-gate-tui7, branch gate-commands.
     }
   ],
   "checks_run": [
-    "git fetch origin main + campaign/*; detached REVIEWDIR /home/demfabris/dev/zz-tui-commands-review at a3fc1651 (branch tip, merge-base with origin/main = 8e330e77, 5 commits)",
+    "git fetch origin main + campaign/*; detached REVIEWDIR /home/demfabris/dev/zz-tui-commands-review at a3fc1651 (branch tip, merge-base with origin/main = ea193ab4, 5 commits)",
     "touch crates/**/*.rs + Cargo.* then cargo build -p zz through the slot/cap wrapper (CAP 5G) into the worker target: exit 0",
     "compat/tui-choosers.sh at the tip: exit 0, 'all 73 asserted comparisons identical, 3 recorded not asserted (0 for a sibling lane)' (3m00s)",
     "compat/tui-choosers.sh --self-check: exit 0, 'self-check complete: every sabotage was caught and both equivalences passed', including the new self-check-client-info case",
@@ -164,7 +164,7 @@ puts off this branch, a base that was not the merge-base, and a dirty worktree.
 The lane's block is kept and labelled superseded, because it still records the
 box and the pin its runs used, and the gate's own capture is appended: clean
 worktree, a revision on the branch, and the sha256 of the binary every gate run
-used. The four record commits after 78c0d5a8 carry no Rust, so that one binary
+used. The four record commits after 4a4af47b carry no Rust, so that one binary
 is the code at each of them.
 
 ### nit 5, notes.md missing two filenames - APPLIED, with the gate's files too

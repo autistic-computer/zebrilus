@@ -1,5 +1,5 @@
 # cargo suites and workspace clippy at the gate tip
-# revision: 266554e6d8efabd9e543df613a5aedc9a19468af
+# revision: 6dec50cd5a9be8f3fb1669a53e53735ce9faba0d
 # every command through: S=$((RANDOM % 2)); systemd-run --user --scope -q -p MemoryMax=7G -p MemorySwapMax=2G flock -w 200 /tmp/zz-cargo-slot-$S.lock env HOME=/tmp/zzgate6c-home XDG_CONFIG_HOME=... CARGO_TARGET_DIR=/home/demfabris/dev/zz-gate-target <cargo>
 # captured: cycle 6 caps gate, alienware, 2026-09-12T13:41:17-03:00
 

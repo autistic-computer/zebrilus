@@ -18,7 +18,7 @@ if result.returncode:
     raise SystemExit(result.returncode)
 sha = lambda path: hashlib.file_digest(Path(path).open('rb'), 'sha256').hexdigest()
 (p / 'environment.json').write_text(json.dumps({
-    'base': '28174432a32f6251b64c13dde279b971cb4680a4',
+    'base': '1141cabae5e7665087e007e95a6b846a7156f6f2',
     'candidate': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
     'binary': str(root / 'target/debug/zz'),
     'binary_sha256': sha(root / 'target/debug/zz'),

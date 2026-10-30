@@ -1,6 +1,6 @@
 TUI-012 attempt-01 - every TUI fixture at the cycle 6 superset gate tip
 
-Gate tip c024b00c0ad7a689311ce43bd9711132ced72485 against the pin
+Gate tip 15c10fe407185c875751a68b609a3bb9a4c6fe79 against the pin
 d77c9dc6aa021e4bc61f0da128c591af695e6466. Each fixture run one at a time, nothing else of the
 gate's running beside it. EVERY ONE PASSED ON ITS FIRST RUN - no fixture needed a solo rerun and
 no known flake fired.

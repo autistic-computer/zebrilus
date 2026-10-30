@@ -15,7 +15,7 @@ fail also alone. Four-crate clippy, cargo fmt, tracker checks and OKF validation
 pass. compat/check.sh stops at the released-103 guard. No verified claim, independent
 approval, board change or broad alias-parity claim is made.
 Started on 2026-09-16. The lane fetched origin and rebased the four commits from
-f65631c5 onto b2be2e10 without conflicts. The rebased starting tip is abcaa5a6.
+f65631c5 onto 24ae1111 without conflicts. The rebased starting tip is abcaa5a6.
 
 ## Changes
 

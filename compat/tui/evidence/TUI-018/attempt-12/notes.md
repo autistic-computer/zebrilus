@@ -1,7 +1,7 @@
 # TUI-018 seventh pass
 
-Base: `campaign/tui-stream-alias-6` at `11ad931b`, merged with `origin/main` `3b700b09` (zz 0.11.1).
-The merge is a merge commit rather than a rebase: the branch already carries `d3e0c928`, the
+Base: `campaign/tui-stream-alias-6` at `5acfbab8`, merged with `origin/main` `c93f7fd4` (zz 0.11.1).
+The merge is a merge commit rather than a rebase: the branch already carries `d9d5bcda`, the
 0.11.0 merge, and thirty-eight commits whose review provenance is what the sixth review checked by
 reverting them. Nothing on main since that merge touches this obligation's files.
 
@@ -73,7 +73,7 @@ schedule.
 ## Proof
 
 All counted runs use `target/alias7-bins/zz_cli-cand2`, sha256
-`66d541d556202e4b1da430b9e9a95b9f9e1912b892bdcc54cc2b8b6ffdd8e544`, built from `2808d710`. `52100308`
+`66d541d556202e4b1da430b9e9a95b9f9e1912b892bdcc54cc2b8b6ffdd8e544`, built from `bb6b0ec0`. `52100308`
 then reflowed three of those hunks with `cargo fmt --all` and nothing else;
 `target/alias7-bins/zz_cli-final`, sha256
 `44382b63da3503c656860ec592d05fa1c0128335accb4c9da629059615721496`, is that tip, and it takes the
@@ -81,7 +81,7 @@ seven new cells clean (new-cases-final-binary.txt) and a fourth whole run of the
 (streams-final.txt). The pre-fix comparison binary is
 `target/alias7-bins/zz_cli-tip7`, sha256
 `cb6bc171142f9619be1ae48ea2ce80f43b5de8f9ec645b7b1ea79dd180340d2b`, built from the merge of
-`11ad931b` with `origin/main`. Every fixture, probe and corpus command runs with the orchestrator's
+`5acfbab8` with `origin/main`. Every fixture, probe and corpus command runs with the orchestrator's
 credential variables unset; every Cargo command enters `/tmp/zz-cargo.sh`. No environment dump was
 taken.
 
@@ -90,7 +90,7 @@ taken.
   `stream-split-print-partial`, `stream-split-print-term`, `stream-display-kill-close`,
   `stream-display-kill-write`, `stream-split-kill-close`, `stream-split-kill-write`, plus the
   `pane-death-restored` scene check. streams-pre-restore-1/2/3.txt are three equally clean runs
-  taken before `223cdfa7`, which only adds the scene restore the `--self-check` path needs.
+  taken before `2fb59b80`, which only adds the scene restore the `--self-check` path needs.
 - `--self-check` (self-check.txt): every sabotage caught in its own channel, both equivalences
   passed, exit 0, with six new expectations. The four pane-death cells are sabotaged by not killing
   the pane on the zz side, which has to show up on exit, stdout and state at once; the two `-P`

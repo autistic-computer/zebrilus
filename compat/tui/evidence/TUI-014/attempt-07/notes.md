@@ -1,7 +1,7 @@
 # Wire and comparator correction, 2026-09-16
 
 This supplements attempt-06; it does not replace or erase those runs. The branch
-was already rebased onto b2be2e1066296cc65f63040226f976dc9182bda5. A fresh fetch
+was already rebased onto 24ae1111a94c8ef6c0cbe3e960477c570e47b2d8. A fresh fetch
 confirmed that origin/main still points there.
 
 The initial contract incorrectly treated protocol 103 as unreleased. It shipped
@@ -63,4 +63,4 @@ the ledger and generated report were then regenerated and checked.
 
 The final compatibility gate after the ledger update also passed, exit zero.
 OKF validation passed with zero errors and one pre-existing stale-research warning.
-The footprint includes every changed path against the b2be2e10 merge base.
+The footprint includes every changed path against the 24ae1111 merge base.

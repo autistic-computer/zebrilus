@@ -10,7 +10,7 @@ pin commit: d77c9dc6aa021e4bc61f0da128c591af695e6466
 
 [source revision]
 worktree: /home/demfabris/dev/zz-tui-lane
-git rev-parse HEAD: f6563d2a020e73535ee7c36f6266f3a904c5fee1
+git rev-parse HEAD: 262ec4374ae7a648d09ca8b7c01a661a402e2607
 git status --short:
 ?? compat/tui-screen-diff.sh
 ?? compat/tui/evidence/TUI-002/

@@ -195,8 +195,8 @@
     "knowledge/tmux/tui-parity.md"
   ],
   "count": 191,
-  "from_main_range": "61897ec3b225a387fee9ded2df7fb629edc69b54...campaign/tui-customize",
-  "from_main_merge_base": "b2be2e1066296cc65f63040226f976dc9182bda5",
+  "from_main_range": "1f9e5325080b11b1b77bb363560610de0a84aafa...campaign/tui-customize",
+  "from_main_merge_base": "24ae1111a94c8ef6c0cbe3e960477c570e47b2d8",
   "from_main_file_list": "footprint-from-main.txt",
   "from_main_count": 652
 }

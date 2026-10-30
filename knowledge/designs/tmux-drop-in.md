@@ -646,7 +646,7 @@ Hardware-pending items that need fabrico rather than code: the wave-B status-bar
 smoke, a live `allow-passthrough` image smoke, the DCS-filter bench A/B, and an iTerm2
 `-CC` run.
 
-# Final compatibility campaign (planned at `d5bcf58`)
+# Final compatibility campaign (planned at `e265dc6`)
 
 **CLOSED 2026-08-22.** The approved order `A3 → B with C3 title production → C except C5 →
 E → D2 → D4 → D3 → D1` shipped in eleven slices, each implemented from a settled brief,
@@ -683,7 +683,7 @@ Environment refresh and `no-detach-on-destroy` fallback have since shipped. Deta
 parent-HUP exit remain open, while `active-pane` keeps its separate tracker owner.
 
 This campaign closes items 3 through 6 from the live queue, then works through the
-remaining flag ledger. File-and-line anchors in this section refer to commit `d5bcf58`.
+remaining flag ledger. File-and-line anchors in this section refer to commit `e265dc6`.
 Before each wave starts, revalidate its anchors and assumptions against the current tree.
 
 The unattended implementation boundary allows CI fixes and client consumption of behavior
@@ -694,7 +694,7 @@ re-check this boundary.
 
 ## Reviewed execution split (2026-08-20)
 
-Three read-only source reviews checked this section at `d5bcf58`. The unattended work is a
+Three read-only source reviews checked this section at `e265dc6`. The unattended work is a
 no-wire safe prelude:
 
 1. Restore CI on Linux, Windows, and macOS. The macOS failure is the isolated
@@ -723,7 +723,7 @@ behavior is settled.
 1. Use one append-only protocol bump, v71, at the start of the approved core campaign. The
    safe prelude makes no wire change.
 2. Move the complete style and tmux-color parser unit from `zz-mux` to `zz-protocol`.
-   `style.rs` is not pure at `d5bcf58`: it imports `TmuxColour` and `parse_tmux_colour`
+   `style.rs` is not pure at `e265dc6`: it imports `TmuxColour` and `parse_tmux_colour`
    from `zz-mux::formats`, whose named-color path calls `zz_terminal::parse_x11_color`.
    Move that unit together and re-export it from `zz-mux` so existing consumers remain
    stable.
@@ -1888,7 +1888,7 @@ the target client's presentation and command context.
 
 All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
 
-- **Wave 5a-1** (`526d9e4`) — spawn argv parity: argc>=2 execs the argv directly
+- **Wave 5a-1** (`adeb63e`) — spawn argv parity: argc>=2 execs the argv directly
   (PATH search, no shell), argc==1 runs `default-shell -c`, argc==0 keeps zz's
   integrated login-shell path. `default-shell` is runtime-resolved at boot
   ($SHELL → passwd → /bin/sh), checkshell-validated at set time (`not a suitable
@@ -1898,7 +1898,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   quoting rows identical); respawn reuses creation-time argv AND shell; direct
   spawn failure dies status 1; dead panes serve their frozen frame to
   capture-pane.
-- **Wave 5a-2** (`f2909d6`) — `run-shell`/`run` and `if-shell`/`if` execute for
+- **Wave 5a-2** (`b411105`) — `run-shell`/`run` and `if-shell`/`if` execute for
   real: daemon job machinery (always `/bin/sh -c`, stdin = the output pipe, no
   timeout, own process group), foreground blocks the CLI with exit-code
   propagation (protocol v61: append-only `exit_code` on CommandResponse::Success),
@@ -1913,7 +1913,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   config-phase execution blocks boot with output dropped. The stray `-s` flag is
   accepted-and-ignored like the pin.
 
-- **Wave 5b** (`b238f41`..`cc78a6e`, CONFIRMED-CLOSED 2026-08-18) — `wait-for`/
+- **Wave 5b** (`c1b09f2`..`01ff2cd`, CONFIRMED-CLOSED 2026-08-18) — `wait-for`/
   `wait` and `pipe-pane`/`pipep` execute for real. wait-for: channel registry
   with the pin's exact sticky-signal parity (a second `-S` destroys the channel
   — reproduced), FIFO lock handoff, locks deliberately leak across holder
@@ -1932,7 +1932,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   final root cause was measured (VT parse was pacing the old serial path:
   55.9s of a 55.9s 2MB run), not guessed.
 
-- **Wave 5c** (`cdfa5c3` + `a39de6b`, CONFIRMED-CLOSED 2026-08-18) — the hooks
+- **Wave 5c** (`9e6aa46` + `3bc56bf`, CONFIRMED-CLOSED 2026-08-18) — the hooks
   bus, both halves. 5c-1: all 68 hook names stored as array command options
   with pin scope (57 session / 11 window; `show-hooks -g`/`-gw` listings
   byte-identical incl. table order), set-time parsing, `-a` free-index
@@ -1959,7 +1959,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   divergence: window-layout-changed fires once on resize-pane/select-layout
   where the pin double-fires (under-fire, stable 3/3).
 
-- **Wave 5d-1** (`22954bb` + `4568b73`, CONFIRMED-CLOSED 2026-08-18) —
+- **Wave 5d-1** (`234eda1` + `d809b7f`, CONFIRMED-CLOSED 2026-08-18) —
   `display-popup`/`popup` as a daemon-owned popup TerminalSession rendered by
   the ala client as a floating zz-design-language pane (maintainer decision:
   native visuals, one ledger row; zz-ui FloatingSurface hosts the terminal
@@ -1986,7 +1986,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   `clients.tui-display-popup-overlay`; the six broader behavior classes remain under
   `display-popup.behavior-fidelity`.
 
-- **Wave 5d-2** (`407b321` + `e43cad7`, CONFIRMED-CLOSED 2026-08-18; closes
+- **Wave 5d-2** (`a818ef8` + `8c5f807`, CONFIRMED-CLOSED 2026-08-18; closes
   phase 5) — `display-menu`/`menu`, `confirm-before`/`confirm`, and the lock
   trio. Menus and confirm prompts render NATIVE on the 5d-1 FloatingSurface
   (behavior pin-exact, visuals native — same ledger row). Menu: exec order
@@ -2035,7 +2035,7 @@ All waves shipped, each reviewed to CONFIRMED-CLOSED against the pin:
   ownership closed under `clients.tui-display-menu-overlay`. The remaining nine menu behavior
   classes stay under `display-menu.behavior-fidelity`.
 
-Phase 7a (binary surface) shipped in parallel (`ecd738b` + `902a02e`,
+Phase 7a (binary surface) shipped in parallel (`df921f5` + `bc443b4`,
 autostart CONFIRMED-CLOSED): tmux argv (-V `tmux 3.8-zz`, -L/-S/-f, -c, -N,
 -l; tmux-shaped usage + `unknown option`/`option requires an argument`
 lines), daemon autostart gated to the pin's five CMD_STARTSERVER commands
@@ -2043,8 +2043,8 @@ lines), daemon autostart gated to the pin's five CMD_STARTSERVER commands
 <path> (<errno>)`; distinct stale-socket `no server running on <path>`),
 no intermediate -L label dirs, and $TMUX=<socket>,<pid>,<session> +
 TMUX_PANE=%N in panes plus $TMUX (no TMUX_PANE) in exec-family jobs —
-closing the tpm-breaker ledger row. FULLY CLOSED 2026-08-18 with `39711f8` +
-`89f0822` + `9dd3cc9` (reviewer rounds 9-11): the native `zz attach` grammar
+closing the tpm-breaker ledger row. FULLY CLOSED 2026-08-18 with `e7c657d` +
+`3a5a6ba` + `b188912` (reviewer rounds 9-11): the native `zz attach` grammar
 is a tmux superset (`attach`/`attach-session -t <session>` both spellings,
 `-d` wired, engine-identical rejections), and attach orders like the pin —
 daemon connect WITH autostart first (attach is CMD_STARTSERVER; `-f` config
@@ -2114,7 +2114,7 @@ tap (the wire ships rendered grids today; `%output` carries raw bytes), notifica
 (from phase 5's hook bus), and `refresh-client -C`/`-B`/`-A` (client size, subscriptions,
 pane visibility). The harness (phase 2) does not wait for this.
 
-- **Wave 6a** (`e122e52` + `1b97dfc`, CONFIRMED-CLOSED 2026-08-18) — the
+- **Wave 6a** (`238a448` + `782f80f`, CONFIRMED-CLOSED 2026-08-18) — the
   skeleton + framing. Protocol v65: `ClientKind::Control` appended (attach
   rights + event subscription + Command-style output routing, no frames, no
   input, no color scheme; never-wedge on interactive-only commands).
@@ -2145,7 +2145,7 @@ pane visibility). The harness (phase 2) does not wait for this.
   block. For `after-rename-window`, the pin emits the hook block before
   `%window-renamed`, while zz emits it after; the registry keeps that order open.
 
-- **Wave 6b** (`26738cb`, stamped `7c0781e`, CONFIRMED-CLOSED 2026-08-18) —
+- **Wave 6b** (`6350295`, stamped `18844ff`, CONFIRMED-CLOSED 2026-08-18) —
   notifications + layout strings + basic %output. Protocol v66:
   `EventPayload::HookEvent {name, variables}` (tag 40) exposes the 5c hook
   bus to Control subscribers only, `PaneOutput {pane, bytes}` (tag 41), a
@@ -2175,7 +2175,7 @@ pane visibility). The harness (phase 2) does not wait for this.
   publish ordering changes); client-name spellings in %client-* lines
   unverified vs the pin's c->name.
 
-- **Waves 6c + 6d** (`a6fa174` + `ba42287` + `aec3a80`, combined
+- **Waves 6c + 6d** (`6703fe0` + `5014b53` + `b40ca48`, combined
   CONFIRMED-CLOSED 2026-08-18 — closes phase 6) — flow control, sizing,
   subscriptions. 6c: protocol v67 (PaneOutputState/PaneOutputAged/
   ControlFlags); per-(Control client, pane) output state with off/paused
@@ -2228,7 +2228,7 @@ pane visibility). The harness (phase 2) does not wait for this.
 ## Phase 7 — the binary surface — **PHASE COMPLETE 2026-08-18**
 
 Closed by 7a (argv surface, `$TMUX` shape, `-V`), 7b (error-output shapes), and 7d
-(the alias smoke suite, `4a23527`). The only phase-7 residue is the optional 7c
+(the alias smoke suite, `af58c6c`). The only phase-7 residue is the optional 7c
 appendix: value diagnostics and the `MissingTarget` inner texts. Command arity closed across the
 shared runtime on 2026-08-27, followed by flag rejection and usage diagnostics on 2026-08-28.
 
@@ -2241,7 +2241,7 @@ shared runtime on 2026-08-27, followed by flag rejection and usage diagnostics o
   next-3.8)`), not 3.5. TPM's version check digit-strips either to `38`; handle other
   version-gating fallout case by case.
 - Exit codes and error-output shapes matched where scripts grep them. **SHIPPED
-  2026-08-18** (wave 7b, `fb34a18`): the CLI renders the pin's bare stderr — the
+  2026-08-18** (wave 7b, `53529be`): the CLI renders the pin's bare stderr — the
   `ServerError` render is lifted from control mode with an `InvalidCommand`-only strip
   (`UnsupportedCommand` keeps its `unsupported command:` noun on every surface, a
   reviewer-caught over-strip). All twelve `regress/options-values.sh` strings plus
@@ -2460,7 +2460,7 @@ this list is the campaign-level index of it plus the items that never got a matr
   shape is phase 7.
 - Exec family, hooks bus, popups/menus (phase 5) — see that section's tiering.
 
-- ~~Spawn argv semantics~~ CLOSED by wave 5a-1 (`526d9e4`): argc>=2 direct exec,
+- ~~Spawn argv semantics~~ CLOSED by wave 5a-1 (`adeb63e`): argc>=2 direct exec,
   argc==1 default-shell `-c`, both pin-verified. Residual accepted divergences:
   argv0 for argc==1 is the full shell path, not the basename (portable-pty cannot
   override argv0); argc==0 DOES get the pin's `-basename` login argv0 via

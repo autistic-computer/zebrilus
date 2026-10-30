@@ -8,8 +8,8 @@ NAME="CachyOS Linux"
 PRETTY_NAME="CachyOS"
 
 repository /home/demfabris/dev/zz-gate-tui7
-branch     gate-roster (the lane rebased onto origin/main 14bd29e6)
-revision   caacb838a5cfcda42605e14263422953ba3e831d
+branch     gate-roster (the lane rebased onto origin/main 7d7f1a73)
+revision   069a01511fec8e878bbd7935a16925407108ff57
 worktree   git status --short: clean (no output)
 
 Every .txt beside this file was produced by the fixture as it stands at
