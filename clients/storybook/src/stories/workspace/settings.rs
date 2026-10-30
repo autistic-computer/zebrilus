@@ -12,24 +12,23 @@ use penna::{
     input::{InputState, NumberInput},
     menu::PopupMenuItem,
     select::{Select, SelectState},
+    settings::appearance::{
+        SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
+        corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
+        theme_picker, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
+        zoom_slider,
+    },
     switch::Switch,
 };
 use zz_client::StatusBarSettings;
 use zz_ui::{
-    interface_theme::{
-        InterfaceTheme, Materials, ThemeModeSetting, ThemeOverrides, builtin_themes,
-    },
+    interface_theme::{InterfaceTheme, Materials, ThemeOverrides, builtin_themes},
     settings::{
         SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
         about::{
             ABOUT_LOGO_SIZE, about_build_stack, about_copy_button, about_hero, about_project_stack,
         },
-        appearance::{
-            AppearancePageItem, SWATCH, ThemePicks, accent_swatches, contrast_slider,
-            corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
-            theme_picker, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
-            zoom_slider,
-        },
+        appearance::{AppearancePageItem, ZzRow},
         panes_page,
         panes_preview::PanesPreview,
         providers::{ProvidersHost, providers_stack},
@@ -368,7 +367,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
             "theme rows",
             SettingsStack::titled("Interface")
                 .child(SettingEntry::new("Mode").control(theme_mode_control(
-                    ThemeModeSetting::System,
+                    None,
                     |_, _, _| {},
                     cx,
                 )))
@@ -409,7 +408,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "sidebar rows",
             SettingsStack::titled("Sidebar").child(
-                entry(AppearancePageItem::ProgramColors)
+                SettingEntry::new(ZzRow::ProgramColors.title())
                     .description("Fill sidebar tiles with the running program's colors")
                     .control(Switch::new("program-colors").checked(knobs.program_colors)),
             ),
@@ -449,13 +448,13 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                         cx,
                     )),
                 )
-                .child(entry(AppearancePageItem::AnimationSpeed).control(
-                    zz_ui::settings::appearance::animation_speed_slider(
+                .child(
+                    entry(AppearancePageItem::AnimationSpeed).control(animation_speed_slider(
                         knobs.speed,
                         |_, _, _| {},
                         cx,
-                    ),
-                ))
+                    )),
+                )
                 .child(entry(AppearancePageItem::UiZoom).control(zoom_slider(
                     1.0,
                     &controls.zoom,

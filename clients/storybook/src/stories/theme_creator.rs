@@ -16,6 +16,7 @@ use penna::{
     notification::Notification,
     overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
     select::{Select, SelectState},
+    settings::appearance::{picker_tile, theme_preview},
     sheet::{BottomSheet, bottom_sheet, sheet_close, sheet_row},
     slider::DiscreteSlider,
     switch::Switch,
@@ -47,12 +48,7 @@ use zz_ui::{
         pane_waiting_state, terminal_mode_indicator,
     },
     pip::PipSurface,
-    settings::{
-        SettingEntry, SettingsStack,
-        appearance::{picker_tile, theme_preview},
-        panes_preview::PanesPreview,
-        settings_card_ground,
-    },
+    settings::{SettingEntry, SettingsStack, panes_preview::PanesPreview, settings_card_ground},
     shell::{
         app_shell_surface, app_workspace_surface, empty_workspace, empty_workspace_action,
         empty_workspace_caption, empty_workspace_connect, empty_workspace_hint,

@@ -38,7 +38,7 @@ then to a built-in value.
 | `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `libs/penna/src/foundation/theme.rs` |
 | Window chrome roles, `register`, `retire` and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
 | zz's roles, retired ids, and the zz-ui lookups that register them first | `crates/zz-ui/src/roles.rs`, `zz_ui::register` in `crates/zz-ui/src/lib.rs` |
-| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; zz's built-ins in `crates/zz-ui/src/interface_theme.rs`, `crates/zz-ui/themes/*.json` |
+| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, zz's patches for its own roles over them in `crates/zz-ui/themes/*.json` |
 | The theme creator | `clients/storybook/src/stories/theme_creator.rs`, `clients/storybook/src/knobs.rs` |
 
 ## The model
@@ -422,7 +422,7 @@ phone drawer, went with the Driver Agent on 2026-10-28. Its roles `chat.bubble`,
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `settings.card` | card | grouped setting cards | `ui/settings.rs:1343` | stitched per row with hand-clipped shadows; still rounded only at a run's ends with the shadow clipped per row, now from the role's layer |
-| `settings.tile` | tile | theme, mode and app icon tiles with the chosen ring | `ui/settings/appearance.rs:267` | 1px hand ring, 2px `chosen_ring` elsewhere; fixed, the role's 2px selected ring |
+| `settings.tile` | tile | theme, mode and app icon tiles with the chosen ring | `kit/settings/appearance.rs:672` | 1px hand ring, 2px `chosen_ring` elsewhere; fixed, the role's 2px selected ring |
 | `settings.preview` | card | preview wells: panes, status bar, terminal, config editor | `ui/settings/panes_preview.rs:186`, `ui/settings/status_bar_preview.rs:157`, `zz/config/settings.rs:1761` | four recipes; fixed, one `settings_preview` well |
 
 Text fields, number fields, selects, switches and buttons on setting rows are plain kinds, and the rows themselves draw nothing of their own: every control on a card sits on `settings_card_ground`. `settings.row` (a whole row as a button, pressed on touch) was dropped on 2026-10-15 because no app made a row clickable.

@@ -1,0 +1,175 @@
+{
+  "name": "macOS",
+  "materials": {
+    "radius": 24.0,
+    "smoothing": 4.0,
+    "outline": 0.5,
+    "picked-outlines": true,
+    "row-inset": 5.0,
+    "primary": "accent",
+    "flat-highlights": true,
+    "bright-surfaces": true,
+    "highlight-strength": 0.7,
+    "font": null,
+    "glass": {
+      "blur": 20.0,
+      "bezel": 3.0,
+      "refraction": 4.0,
+      "dispersion": 0.015,
+      "tint": "#ffffff8c",
+      "saturation": 1.2,
+      "brightness": 0.07,
+      "contrast": 1.12,
+      "specular": 0.26,
+      "glint_width": 0.85,
+      "light_angle": -1.5707964,
+      "light_directionality": 0.85,
+      "inactive_flattening": 0.85,
+      "light_color": "#ffffffff",
+      "fresnel": 0.045,
+      "edge_shadow": 0.4,
+      "edge_width": 0.65,
+      "edge_color": "#000000ff",
+      "edge_spread": 0.0,
+      "noise": 0.0,
+      "glow": 0.0,
+      "glow_radius": 90.0,
+      "glow_center": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "merge": 20.0,
+      "opacity": 1.0,
+      "fallback": null
+    },
+    "light-glass": {
+      "blur": 20.0,
+      "bezel": 3.0,
+      "refraction": 4.0,
+      "dispersion": 0.015,
+      "tint": "#ffffff99",
+      "saturation": 1.0,
+      "brightness": 0.0,
+      "contrast": 1.0,
+      "specular": 0.32,
+      "glint_width": 0.65,
+      "light_angle": -1.5707964,
+      "light_directionality": 0.85,
+      "inactive_flattening": 0.85,
+      "light_color": "#ffffffff",
+      "fresnel": 0.025,
+      "edge_shadow": 0.14,
+      "edge_width": 0.5,
+      "edge_color": "#000000ff",
+      "edge_spread": 0.3,
+      "noise": 0.0,
+      "glow": 0.0,
+      "glow_radius": 90.0,
+      "glow_center": {
+        "x": 0.5,
+        "y": 0.5
+      },
+      "merge": 20.0,
+      "opacity": 1.0,
+      "fallback": null
+    },
+    "picked-shadows": true,
+    "contact": {
+      "y": 2.0,
+      "blur": 12.0,
+      "spread": -1.0,
+      "strength": 0.4
+    },
+    "float": {
+      "y": 8.0,
+      "blur": 24.0,
+      "spread": -4.0,
+      "strength": 0.4
+    }
+  },
+  "roles": {
+    "badge": {
+      "fill": "none"
+    },
+    "button": {
+      "fill": "solid",
+      "outline": false,
+      "shadow": "contact",
+      "shape": "pill"
+    },
+    "button.quiet": {
+      "fill": "none",
+      "shadow": "none"
+    },
+    "chrome.button": {
+      "hover": "tint",
+      "selected": "none"
+    },
+    "dialog": {
+      "fill": "glass"
+    },
+    "drawer": {
+      "smoothing": 2.0
+    },
+    "field": {
+      "shape": "round"
+    },
+    "field.multiline": {
+      "shape": "round"
+    },
+    "floating": {
+      "fill": "glass",
+      "outline": false,
+      "shadow": "float"
+    },
+    "icon-button": {
+      "fill": "none",
+      "shadow": "none"
+    },
+    "menu-item": {
+      "fill": "none",
+      "shape": "round"
+    },
+    "pane": {
+      "shadow": "contact"
+    },
+    "phone.pill": {
+      "fill": "glass"
+    },
+    "popover": {
+      "fill": "glass"
+    },
+    "row": {
+      "selected": "tint"
+    },
+    "settings.card": {
+      "shadow": "none",
+      "smoothing": 2.5
+    },
+    "sidebar.row": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "tooltip": {
+      "fill": "solid",
+      "outline": true,
+      "shadow": "float"
+    }
+  },
+  "light": {
+    "background": "#f7f7f7ff",
+    "foreground": "#1d1d1fff",
+    "accent": "#006fe8ff",
+    "success": "#008832ff",
+    "warning": "#b85f00ff",
+    "danger": "#e5222bff"
+  },
+  "dark": {
+    "background": "#242424ff",
+    "foreground": "#f5f5f7ff",
+    "accent": "#0a84ffff",
+    "success": "#30d158ff",
+    "warning": "#ff9230ff",
+    "danger": "#ff4245ff"
+  }
+}

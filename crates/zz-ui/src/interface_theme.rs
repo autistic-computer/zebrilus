@@ -1,15 +1,13 @@
 use crate::ThemeMode;
 
 pub use penna::interface_theme::{
-    ACCENTS, DEFAULT_THEME, DEFAULT_TINT_HUE, InterfaceTheme, MAX_CORNER_RADIUS, Materials,
-    ThemeColors, ThemeOverrides, accent_color,
+    ACCENTS, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE, InterfaceTheme, MAX_CORNER_RADIUS,
+    Materials, ThemeColors, ThemeOverrides, accent_color,
 };
-pub use zz_client::appearance::{
-    AccentSetting, BUILTIN_THEMES, DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED,
-    MIN_ANIMATION_SPEED, ThemeModeSetting, is_builtin_theme,
-};
+pub use penna::motion::{DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED};
+pub use zz_client::appearance::{AccentSetting, ThemeModeSetting};
 
-pub(crate) const BUILTIN_SOURCES: [(&str, &str); BUILTIN_THEMES.len()] = [
+pub(crate) const LAYERS: [(&str, &str); BUILTIN_THEMES.len()] = [
     ("default", include_str!("../themes/default.json")),
     ("macos", include_str!("../themes/macos.json")),
     ("yaru", include_str!("../themes/yaru.json")),
@@ -35,6 +33,10 @@ pub fn default_theme() -> &'static InterfaceTheme {
     penna::interface_theme::default_theme()
 }
 
+pub fn is_builtin_theme(id: &str) -> bool {
+    builtin_theme(id).is_some()
+}
+
 pub const fn pinned_theme_mode(setting: ThemeModeSetting) -> Option<ThemeMode> {
     match setting.pinned() {
         Some(true) => Some(ThemeMode::Dark),
@@ -43,11 +45,20 @@ pub const fn pinned_theme_mode(setting: ThemeModeSetting) -> Option<ThemeMode> {
     }
 }
 
+pub const fn theme_mode_setting(mode: Option<ThemeMode>) -> ThemeModeSetting {
+    match mode {
+        Some(ThemeMode::Dark) => ThemeModeSetting::Dark,
+        Some(ThemeMode::Light) => ThemeModeSetting::Light,
+        None => ThemeModeSetting::System,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Colorize as _, Elevation, Theme, ThemeColor};
+    use crate::{Colorize as _, Elevation, Theme};
     use ala::Hsla;
+    use penna::ThemeColor;
 
     fn luminance(color: Hsla) -> f32 {
         let rgba: ala::Rgba = color.into();
@@ -191,13 +202,62 @@ mod tests {
 
     #[test]
     fn zz_names_the_accents_and_limits_the_kit_draws() {
+        use penna::{interface_theme as kit, motion};
         use zz_client::appearance as config;
-        assert_eq!(ACCENTS, config::ACCENTS);
-        assert_eq!(DEFAULT_THEME, config::DEFAULT_THEME);
-        assert_eq!(DEFAULT_TINT_HUE, config::DEFAULT_TINT_HUE);
-        assert_eq!(MAX_CORNER_RADIUS, config::MAX_CORNER_RADIUS);
-        for id in BUILTIN_THEMES {
-            assert!(penna::interface_theme::is_builtin_theme(id), "{id}");
+        assert_eq!(kit::ACCENTS, config::ACCENTS);
+        assert_eq!(kit::DEFAULT_THEME, config::DEFAULT_THEME);
+        assert_eq!(kit::DEFAULT_TINT_HUE, config::DEFAULT_TINT_HUE);
+        assert_eq!(kit::MAX_CORNER_RADIUS, config::MAX_CORNER_RADIUS);
+        assert_eq!(kit::BUILTIN_THEMES, config::BUILTIN_THEMES);
+        let ids = builtin_themes()
+            .iter()
+            .map(|(id, _)| *id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids, config::BUILTIN_THEMES);
+        assert_eq!(
+            (
+                motion::DEFAULT_ANIMATION_SPEED,
+                motion::MIN_ANIMATION_SPEED,
+                motion::MAX_ANIMATION_SPEED
+            ),
+            (
+                config::DEFAULT_ANIMATION_SPEED,
+                config::MIN_ANIMATION_SPEED,
+                config::MAX_ANIMATION_SPEED
+            )
+        );
+        assert_eq!(
+            ThemeModeSetting::ALL.map(|setting| (pinned_theme_mode(setting), setting.title())),
+            penna::settings::appearance::THEME_MODES
+        );
+        for setting in ThemeModeSetting::ALL {
+            assert_eq!(theme_mode_setting(pinned_theme_mode(setting)), setting);
+        }
+    }
+
+    #[test]
+    fn zz_layers_patch_only_zz_roles_of_the_kit_themes() {
+        use penna::SurfaceRole;
+        for (id, source) in LAYERS {
+            assert!(BUILTIN_THEMES.contains(&id), "{id}");
+            let layer = parse_theme(source).unwrap();
+            assert_eq!(
+                layer,
+                InterfaceTheme {
+                    roles: layer.roles.clone(),
+                    ..InterfaceTheme::default()
+                },
+                "{id}"
+            );
+            for role in layer.roles.keys() {
+                assert!(
+                    !SurfaceRole::KIT
+                        .iter()
+                        .chain(&penna::roles::CHROME)
+                        .any(|kit| kit.id == role.as_str()),
+                    "{id} patches the kit role {role}; it belongs in penna's theme"
+                );
+            }
         }
     }
 

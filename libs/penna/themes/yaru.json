@@ -1,0 +1,105 @@
+{
+  "name": "Yaru",
+  "materials": {
+    "radius": 16.0,
+    "smoothing": 2.0,
+    "outline": 1.0,
+    "picked-outlines": true,
+    "row-inset": 6.0,
+    "primary": "accent",
+    "flat-highlights": true,
+    "bright-surfaces": true,
+    "highlight-strength": 0.8,
+    "font": null,
+    "glass": null,
+    "picked-shadows": true,
+    "contact": {
+      "y": 1.0,
+      "blur": 3.0,
+      "spread": 1.0,
+      "strength": 0.2
+    },
+    "float": {
+      "y": 2.0,
+      "blur": 14.0,
+      "spread": -30.0,
+      "strength": 0.6
+    }
+  },
+  "roles": {
+    "button": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none",
+      "shape": "round"
+    },
+    "button.quiet": {
+      "fill": "none",
+      "shadow": "none"
+    },
+    "chrome.button": {
+      "fill": "none",
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "field": {
+      "fill": "tint",
+      "outline": false
+    },
+    "field.multiline": {
+      "fill": "tint",
+      "outline": false
+    },
+    "floating": {
+      "fill": "solid",
+      "outline": true,
+      "shadow": "float"
+    },
+    "icon-button": {
+      "fill": "none",
+      "shadow": "none"
+    },
+    "menu-item": {
+      "fill": "none",
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "pane": {
+      "outline": true,
+      "shadow": "contact"
+    },
+    "row": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "settings.card": {
+      "outline": true,
+      "shadow": "contact"
+    },
+    "sidebar.row": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "tooltip": {
+      "fill": "solid",
+      "outline": false,
+      "shadow": "float"
+    }
+  },
+  "light": {
+    "background": "#fafafaff",
+    "foreground": "#3d3d3dff",
+    "accent": "#d6421dff",
+    "success": "#0e8420ff",
+    "warning": "#b45b00ff",
+    "danger": "#c7162bff"
+  },
+  "dark": {
+    "background": "#2c2c2cff",
+    "foreground": "#f7f7f7ff",
+    "accent": "#e95420ff",
+    "success": "#3fa745ff",
+    "warning": "#f99b11ff",
+    "danger": "#ff585aff"
+  }
+}

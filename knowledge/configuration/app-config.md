@@ -301,8 +301,9 @@ import show the same message. `look`, the nine-key format from earlier on 2026-1
 the same way, so a theme file written for it loads only once it is rewritten as `materials` and
 `roles`.
 
-Three themes ship from `crates/zz-ui/themes/`: Default (`default.json`), macOS
-(`macos.json`) and Yaru (`yaru.json`). Liquid Glass was removed on 2026-10-22; a config that still names
+Three themes ship built in: Default (`default.json`), macOS (`macos.json`) and Yaru
+(`yaru.json`), each penna's file in `libs/penna/themes/` with zz's patches for its own roles laid
+over it from the file of the same name in `crates/zz-ui/themes/`. Liquid Glass was removed on 2026-10-22; a config that still names
 `liquid-glass` loads Default, like any theme that is not found. macOS uses the existing material settings
 for macOS-style glass: chrome buttons, selected tabs and sidebar entries, popovers, dialogs and
 other floating surfaces, with directional glass lighting, contact and float shadows, and light and
@@ -314,9 +315,9 @@ fields with no outline, outlined menus and cards with soft shadows, circular cor
 orange. The JSON
 files hold each theme's current colors, material values, and role overrides.
 
-Run `just storybook macos` on macOS 27 with its SDK to compare the macOS theme in zz-ui against native
+Run `just storybook macos` on macOS 27 with its SDK to compare the macOS theme (penna's, with zz's role patches) against native
 AppKit glass buttons and tabs on the same backdrop. The zz-ui preview's Reload theme button
-reads `macos.json` again; both previews have a light/dark switch and show their window activity.
+reads both `macos.json` files again (or the one theme file passed as the example's first argument); both previews have a light/dark switch and show their window activity.
 In the native reference, Cmd+Shift+A deactivates the app and Cmd+Shift+R activates it.
 Click a circular toolbar button in the zz-ui preview to activate that window.
 
@@ -883,8 +884,10 @@ read those files on its own. Accepting imports the found donors; Cancel imports 
 accepts other paths. Existing installs receive this offer once more after the ownership change.
 
 The desktop and the thin clients build the Interface page from the same item list
-(`zz_ui::settings::appearance::appearance_page_items`), the same row titles and descriptions
-(`AppearancePageItem::text`) and the same strips, swatches and sliders (`themes_strip` and `accent_swatches` over a `ThemePicks`, `tint_hue_slider`, `tint_slider`,
+(`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group and
+App Icon row added), laid out by `penna::settings::appearance::appearance_page`, with the same row
+titles (`AppearancePageItem::title`) and the same picker, swatches and sliders (`theme_picker` and
+`accent_swatches` over a `ThemePicks`, `tint_hue_slider`, `tint_slider`,
 `corner_radius_slider`, `contrast_slider`); the thin clients keep the values in their own preferences instead of `zz/config`
 (see [interface themes](/designs/interface-themes.md)). The Materials group that ended Advanced
 until 2026-10-15 is gone: a theme sets outlines, shadows, row inset, primary and glass together,

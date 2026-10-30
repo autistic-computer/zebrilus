@@ -23,7 +23,7 @@ serve:
 shot route out *args:
     @scripts/storybook-shot.mjs "{{ route }}" "{{ out }}" {{ args }}
 
-[doc("Compare the macOS theme in zz-ui with native AppKit glass on the same backdrop (macOS 27 SDK).")]
+[doc("Compare the macOS theme (penna's, with zz's role patches) with native AppKit glass on the same backdrop (macOS 27 SDK).")]
 macos:
     #!/usr/bin/env bash
     set -euo pipefail

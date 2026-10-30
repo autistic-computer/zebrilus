@@ -11,14 +11,10 @@ use penna::{
     h_flex,
     switch::Switch,
 };
-use zz_ui::{
-    Assets,
-    interface_theme::{InterfaceTheme, parse_theme},
-    roles,
-};
+use zz_ui::{Assets, interface_theme::InterfaceTheme, roles};
 
 struct Comparison {
-    source: PathBuf,
+    sources: Vec<PathBuf>,
     backdrop: PathBuf,
     definition: InterfaceTheme,
     selected: usize,
@@ -216,17 +212,12 @@ impl Render for Comparison {
             )
             .child(
                 at(28.0, 650.0).child(Button::new("reload").label("Reload theme").on_click(
-                    cx.listener(|this, _, _, cx| {
-                        match std::fs::read_to_string(&this.source)
-                            .map_err(|error| error.to_string())
-                            .and_then(|source| parse_theme(&source))
-                        {
-                            Ok(definition) => {
-                                this.definition = definition;
-                                this.apply(cx);
-                            }
-                            Err(error) => eprintln!("{error}"),
+                    cx.listener(|this, _, _, cx| match load(&this.sources) {
+                        Ok(definition) => {
+                            this.definition = definition;
+                            this.apply(cx);
                         }
+                        Err(error) => eprintln!("{error}"),
                     }),
                 )),
             )
@@ -262,17 +253,33 @@ impl Render for Comparison {
     }
 }
 
+fn load(sources: &[PathBuf]) -> Result<InterfaceTheme, String> {
+    let texts = sources
+        .iter()
+        .map(|path| {
+            std::fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    penna::interface_theme::parse_layers(&texts.iter().map(String::as_str).collect::<Vec<_>>())
+}
+
 fn main() {
-    let source = std::env::args().nth(1).map_or_else(
-        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../crates/zz-ui/themes/macos.json"),
-        PathBuf::from,
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let sources = std::env::args().nth(1).map_or_else(
+        || {
+            vec![
+                root.join("libs/penna/themes/macos.json"),
+                root.join("crates/zz-ui/themes/macos.json"),
+            ]
+        },
+        |path| vec![PathBuf::from(path)],
     );
     let backdrop = std::env::args().nth(2).map_or_else(
         || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/macos-backdrop.png"),
         PathBuf::from,
     );
-    let definition =
-        parse_theme(&std::fs::read_to_string(&source).expect("read theme")).expect("parse theme");
+    zz_ui::register();
+    let definition = load(&sources).expect("parse theme");
     ala_platform::application()
         .with_assets(Assets)
         .run(move |cx| {
@@ -293,7 +300,7 @@ fn main() {
                     window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
                     window.set_adaptive_corner_fraction(Some(0.45));
                     let view = cx.new(|_| Comparison {
-                        source,
+                        sources,
                         backdrop,
                         definition,
                         selected: 0,

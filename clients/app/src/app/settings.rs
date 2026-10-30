@@ -10,6 +10,11 @@ use penna::{
     input::{InputEvent, InputState, NumberInput},
     menu::PopupMenuItem,
     select::{Select, SelectEvent, SelectState},
+    settings::appearance::{
+        ADVANCED_DISCLOSURE, SWATCH, ThemePicks, accent_swatches, animation_speed_slider,
+        appearance_page, contrast_slider, corner_radius_slider, percent_slider, theme_mode_control,
+        theme_picker, tint_hue_slider, tint_slider, ui_font_select, zoom_slider,
+    },
     switch::Switch,
 };
 use zz_ui::{
@@ -17,12 +22,7 @@ use zz_ui::{
     settings::{
         SettingEntry, SettingsFold, SettingsScrollColumn, SettingsSection, SettingsSelectItem,
         SettingsStack, StackPosition,
-        appearance::{
-            AppearancePageItem, SWATCH, ThemePicks, accent_swatches, appearance_page,
-            appearance_page_items, contrast_slider, corner_radius_slider, percent_slider,
-            theme_mode_control, theme_picker, tint_hue_slider, tint_slider, ui_font_select,
-            zoom_slider,
-        },
+        appearance::{AppearancePageItem, ZzRow, appearance_page_items},
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
         settings_preview, settings_scroll_column, settings_title_bar,
     },
@@ -612,7 +612,7 @@ impl AppShell {
                                 | AppearancePageItem::TintHue
                                 | AppearancePageItem::Tint
                                 | AppearancePageItem::Themes
-                                | AppearancePageItem::ProgramColors
+                                | AppearancePageItem::App(ZzRow::ProgramColors)
                                 | AppearancePageItem::CornerRadius
                                 | AppearancePageItem::ChromeContrast
                                 | AppearancePageItem::UiFontFamily
@@ -629,7 +629,7 @@ impl AppShell {
                     .map(|item| matches!(item, AppearancePageItem::UiZoom).then(|| zoom.clone()))
                     .collect::<Vec<_>>();
                 let view = cx.entity();
-                return appearance_page(items, move |item, position, _, cx| {
+                return appearance_page(section.title(), items, move |item, position, _, cx| {
                     view.update(cx, |this, cx| {
                         this.appearance_item(item, position, narrow, cx)
                     })
@@ -790,8 +790,9 @@ impl AppShell {
             AppearancePageItem::ThemeMode => {
                 let view = cx.entity().downgrade();
                 SettingEntry::new("Mode").control(theme_mode_control(
-                    self.preferences.theme_mode(),
+                    interface_theme::pinned_theme_mode(self.preferences.theme_mode()),
                     move |mode, window, cx| {
+                        let mode = interface_theme::theme_mode_setting(mode);
                         let _ = view.update(cx, |this, cx| {
                             this.preferences.mode = Some(mode.as_str().into());
                             this.preferences.save();
@@ -843,7 +844,7 @@ impl AppShell {
             AppearancePageItem::AnimationSpeed => {
                 let title = item.title().unwrap_or_default();
                 let view = cx.entity().downgrade();
-                let slider = zz_ui::settings::appearance::animation_speed_slider(
+                let slider = animation_speed_slider(
                     self.preferences.animation_speed,
                     move |speed, window, cx| {
                         let _ = view.update(cx, |this, cx| {
@@ -856,8 +857,8 @@ impl AppShell {
                 );
                 with_control(SettingEntry::new(title), slider, narrow)
             }
-            AppearancePageItem::ProgramColors => {
-                let title = item.title().unwrap_or_default();
+            AppearancePageItem::App(ZzRow::ProgramColors) => {
+                let title = ZzRow::ProgramColors.title();
                 SettingEntry::new(title)
                     .description("Fill sidebar tiles with the running program's colors")
                     .control(
@@ -986,16 +987,12 @@ impl AppShell {
                 ))
             }
             AppearancePageItem::Advanced { expanded } => {
-                return settings_list_disclosure_header(
-                    zz_ui::settings::appearance::ADVANCED_DISCLOSURE,
-                    "Advanced",
-                    expanded,
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.settings_controls.advanced = !this.settings_controls.advanced;
-                    cx.notify();
-                }))
-                .into_any_element();
+                return settings_list_disclosure_header(ADVANCED_DISCLOSURE, "Advanced", expanded)
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.settings_controls.advanced = !this.settings_controls.advanced;
+                        cx.notify();
+                    }))
+                    .into_any_element();
             }
             AppearancePageItem::CornerRadius => {
                 let title = item.title().unwrap_or_default();

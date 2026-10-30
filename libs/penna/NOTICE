@@ -22,3 +22,11 @@ assets/icons/brand-chrome.svg
 
   From Tabler Icons, https://tabler.io/icons
   Copyright (c) 2020-2026 Paweł Kuna. MIT, see assets/icons/LICENSE-TABLER.
+
+
+themes/macos.json, themes/yaru.json
+
+  Named for the platforms whose feel they imitate. penna is not affiliated
+  with Apple or the Ubuntu project. Their colors are the macOS system colors
+  as NSColor reports them, Yaru's palette and penna's own picks; no artwork or
+  code comes from either.

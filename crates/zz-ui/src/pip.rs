@@ -571,7 +571,7 @@ mod tests {
 
     #[test]
     fn a_pip_casts_the_float_shadow() {
-        let theme = crate::Theme::from(&*crate::ThemeColor::dark());
+        let theme = crate::Theme::from(&*penna::ThemeColor::dark());
         let pip = theme.layer(roles::PIP, PaintState::Rest);
         assert_eq!(pip.shadow, theme.float_shadows());
         assert!(!pip.shadow.is_empty());

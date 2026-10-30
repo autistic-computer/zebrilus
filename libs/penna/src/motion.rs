@@ -11,6 +11,10 @@ use ala::{
 
 use crate::{Icon, IconName};
 
+pub const DEFAULT_ANIMATION_SPEED: f32 = 1.0;
+pub const MIN_ANIMATION_SPEED: f32 = 0.25;
+pub const MAX_ANIMATION_SPEED: f32 = 2.0;
+
 const TURN: Duration = Duration::from_millis(220);
 const ENTER: Duration = Duration::from_millis(200);
 const ENTER_DROP: f32 = 8.0;

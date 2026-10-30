@@ -56,4 +56,4 @@ theme, through `crates/zz-ui/src/theme_css.rs`. Mockups name roles, not colors, 
 Put each question in its own folder under `mockups/`, one page with the variants next to each other;
 `mockups/sidebar-buttons` is an example. Mockups change layout and structure. To try a different look
 for a role (a tint instead of an accent, another radius), edit its theme file in
-`crates/zz-ui/themes/` and rerun `just design tokens`.
+`libs/penna/themes/` (zz's own roles: `crates/zz-ui/themes/`) and rerun `just design tokens`.

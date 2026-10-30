@@ -7,7 +7,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 ## Project map
 
 - `libs/ala` - ala, our GPUI, a git subtree of [autistic-computer/ala](https://github.com/autistic-computer/ala) with its own Cargo workspace: `crates/ala` (the gpui core split out of upstream, with the upstream utility code it needs as modules: `ala::collections`, `sum_tree`, `scheduler`, `util`, `http_client`, `refineable`), `crates/ala-platform` (the backends, one module per target, each compiled only there: `macos` with the Metal renderer in `apple`, `linux` (Wayland, X11), `windows`, `web`, `ios` (UIKit), `android` (JNI and the NDK), and the `wgpu` renderer Linux, web, iOS and Android share), `crates/ala-macros` (proc macros, including the `Refineable` derive), and `third_party/cosmic-text`
-- `libs/penna` - `penna`, the widget kit on ala (theme, primitives, widgets, icons), a git subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna): a maintained fork of gpui-component with no zz dependencies, usable by other apps
+- `libs/penna` - `penna`, the widget kit on ala (theme, the built-in Default, macOS and Yaru themes an app lays its own roles' patches over, primitives, widgets, settings pages with the appearance page, icons), a git subtree of [autistic-computer/penna](https://github.com/autistic-computer/penna): a maintained fork of gpui-component with no zz dependencies, usable by other apps
 - `libs/ala-cef` - `ala-cef`, Chromium off-screen rendering for wgpu apps (CEF frames as GPU textures, input, profiles, cookies, the element picker and its TypeScript source in `picker/`), with its CEF sys adapter in `third_party/cef-dll-sys`; without features it is the pure half the thin clients' browser panes and `zz-chrome-import` use, and `zz-cli` must not link it. It is set up like the other libs, but its repo, autistic-computer/ala-cef, does not exist yet
 - `crates/zz` - desktop client: ala shell, terminal/browser/agent panes, settings, daemon client
 - `crates/zz-daemon` — the daemon: session state, PTY workers, client connections
@@ -20,7 +20,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
 - `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
 - `crates/zz-chrome-import` — Chrome profile, cookie, and history import
-- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, settings, navigation, phone shell); kit names come from `penna` directly, not through it
+- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, zz's settings pages and appearance rows, navigation, phone shell, zz's roles and their patches for penna's built-in themes in `themes/`); kit names come from `penna` directly, not through it
 - `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)
 - `crates/zz-web` - local HTTP/WebSocket gateway for browser clients
 - `crates/zz-hotreload` - Subsecond hot-reload launcher for `just hot linux`

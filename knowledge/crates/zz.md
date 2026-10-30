@@ -271,7 +271,8 @@ verbatim from tmux after confirming that a dirty buffer may be discarded.
 # Application chrome (`theme.rs`)
 
 **App chrome does not derive from terminal colors.** Colors come from the interface theme
-(`interface-theme`: a built-in from `crates/zz-ui/themes/` or a saved `themes/<name>.json`), whose
+(`interface-theme`: a built-in from `libs/penna/themes/` with zz's role patches from
+`crates/zz-ui/themes/`, or a saved `themes/<name>.json`), whose
 light or dark color set applies by the OS appearance unless `theme-mode` pins System, Light, or
 Dark. A Ghostty palette cannot repaint the window. `config::Themes` holds the active theme, the
 selected id and the saved themes; `install_config` loads them with the configuration.

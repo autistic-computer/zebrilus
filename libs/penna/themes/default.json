@@ -1,26 +1,47 @@
 {
   "name": "Default",
   "materials": {
-    "radius": 10,
-    "outline": 0.5,
-    "row-inset": 4,
+    "radius": 24.0,
+    "smoothing": 4.0,
+    "outline": 0.75,
+    "row-inset": 5.0,
     "primary": "foreground",
-    "glass": null
+    "flat-highlights": true,
+    "highlight-strength": 0.5,
+    "font": null,
+    "glass": null,
+    "contact": {
+      "y": 1.0,
+      "blur": 2.0,
+      "spread": 0.0,
+      "strength": 1.0
+    },
+    "float": {
+      "y": 12.0,
+      "blur": 32.0,
+      "spread": -4.0,
+      "strength": 1.0
+    }
+  },
+  "roles": {
+    "menu-item": {
+      "selected": "tint"
+    }
   },
   "light": {
-    "background": "#fcfcfc",
-    "foreground": "#1d1d1f",
-    "accent": "#3d6df2",
-    "success": "#1f8a4c",
-    "warning": "#b25e09",
-    "danger": "#d22f3c"
+    "background": "#fcfcfcff",
+    "foreground": "#1d1d1fff",
+    "accent": "#3d6df2ff",
+    "success": "#1f8a4cff",
+    "warning": "#b25e09ff",
+    "danger": "#d22f3cff"
   },
   "dark": {
-    "background": "#18181a",
-    "foreground": "#e4e4e7",
-    "accent": "#6b8cff",
-    "success": "#3fbf74",
-    "warning": "#f0a14a",
-    "danger": "#f2555f"
+    "background": "#18181aff",
+    "foreground": "#e4e4e7ff",
+    "accent": "#6b8cffff",
+    "success": "#3fbf74ff",
+    "warning": "#f0a14aff",
+    "danger": "#f2555fff"
   }
 }

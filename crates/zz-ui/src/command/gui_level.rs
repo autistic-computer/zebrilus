@@ -16,10 +16,8 @@ use super::{
     command_palette_list_height, command_palette_row_height, command_palette_section,
     record_recent,
 };
-use crate::{
-    IconName,
-    settings::appearance::{ThemePicks, theme_labels},
-};
+use crate::IconName;
+use penna::settings::appearance::{ThemePicks, theme_labels};
 
 #[must_use]
 pub fn theme_offer(picks: &ThemePicks) -> Option<GuiOffer> {

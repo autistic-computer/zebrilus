@@ -307,7 +307,7 @@ fn the_theme_offer_names_themes_as_the_theme_picker_does() {
     use crate::interface_theme::{ThemeOverrides, default_theme};
     let copy = default_theme().clone();
     let overrides = ThemeOverrides::default();
-    let picks = crate::settings::appearance::ThemePicks {
+    let picks = penna::settings::appearance::ThemePicks {
         themes: vec![("default".into(), default_theme()), ("mine".into(), &copy)],
         selected: 1,
         overrides: &overrides,

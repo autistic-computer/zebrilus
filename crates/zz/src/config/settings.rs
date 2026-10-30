@@ -42,15 +42,15 @@ use crate::{
 };
 use penna::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use penna::feedback::import_configuration_file_alert;
-use zz_client::url_input::SearchProvider;
-use zz_protocol::ConfigOverrideEntry;
-use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
-use zz_ui::interface_theme::{self, InterfaceTheme};
-use zz_ui::settings::appearance::{
+use penna::settings::appearance::{
     SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
     corner_radius_slider, picker_tile, theme_mode_control, theme_picker, tint_hue_slider,
     tint_slider, ui_font_select, window_opacity_slider,
 };
+use zz_client::url_input::SearchProvider;
+use zz_protocol::ConfigOverrideEntry;
+use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
+use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
     StackPosition, settings_card_ground, settings_list_disclosure_header,
@@ -92,7 +92,7 @@ struct HostsSectionState {
     error: Option<SharedString>,
 }
 
-use zz_ui::settings::appearance::AppearancePageItem;
+use zz_ui::settings::appearance::{AppearancePageItem, ZzRow};
 
 fn appearance_page_items(has_window_blur: bool, advanced: bool) -> Vec<AppearancePageItem> {
     zz_ui::settings::appearance::appearance_page_items(
@@ -759,11 +759,15 @@ impl SettingsView {
         );
         let view = cx.entity();
         let resolved = *resolved;
-        zz_ui::settings::appearance::appearance_page(items, move |item, position, _, cx| {
-            view.update(cx, |this, cx| {
-                this.appearance_item(item, &resolved, position, cx)
-            })
-        })
+        penna::settings::appearance::appearance_page(
+            SettingsSection::Appearance.title(),
+            items,
+            move |item, position, _, cx| {
+                view.update(cx, |this, cx| {
+                    this.appearance_item(item, &resolved, position, cx)
+                })
+            },
+        )
         .into_any_element()
     }
 
@@ -783,7 +787,7 @@ impl SettingsView {
             }
             AppearancePageItem::Advanced { expanded } => {
                 return settings_list_disclosure_header(
-                    zz_ui::settings::appearance::ADVANCED_DISCLOSURE,
+                    penna::settings::appearance::ADVANCED_DISCLOSURE,
                     "Advanced",
                     expanded,
                 )
@@ -820,7 +824,7 @@ impl SettingsView {
             ),
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
             AppearancePageItem::UiZoom => self.ui_zoom_setting(cx),
-            AppearancePageItem::AppIcon => Self::app_icon_setting(resolved, cx),
+            AppearancePageItem::App(ZzRow::AppIcon) => Self::app_icon_setting(resolved, cx),
             AppearancePageItem::ChromeContrast => Self::slider_setting(
                 item,
                 contrast_slider(
@@ -832,8 +836,8 @@ impl SettingsView {
                     cx,
                 ),
             ),
-            AppearancePageItem::ProgramColors => {
-                let title = item.title().unwrap_or_default();
+            AppearancePageItem::App(ZzRow::ProgramColors) => {
+                let title = ZzRow::ProgramColors.title();
                 Self::boolean_setting(ConfigKey::ProgramColors, title, resolved.program_colors)
                     .description("Fill sidebar tiles with the running program's colors")
             }
@@ -895,8 +899,9 @@ impl SettingsView {
 
     fn theme_mode_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
         SettingEntry::new("Mode").control(theme_mode_control(
-            resolved.theme_mode.value,
+            interface_theme::pinned_theme_mode(resolved.theme_mode.value),
             |mode, _, cx| {
+                let mode = interface_theme::theme_mode_setting(mode);
                 if let Err(error) = set_config_key(ConfigKey::ThemeMode, mode.as_str()) {
                     report_write_error("set", ConfigKey::ThemeMode.as_str(), &error, cx);
                 }

@@ -7,6 +7,8 @@ use crate::{PrimaryStyle, ShadowMaterial, Smoothing, StylePatch, Theme, ThemeCol
 
 pub const DEFAULT_THEME: &str = "default";
 
+pub const BUILTIN_THEMES: [&str; 3] = [DEFAULT_THEME, "macos", "yaru"];
+
 pub const MAX_CORNER_RADIUS: f32 = 25.0;
 
 pub const ACCENTS: [&str; 8] = [
@@ -350,13 +352,38 @@ impl InterfaceTheme {
 }
 
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
-    let mut value =
-        serde_json::from_str::<serde_json::Value>(source).map_err(|error| error.to_string())?;
-    if !value.is_object() {
-        return Err("a theme is a JSON object".to_owned());
+    parse_layers(&[source])
+}
+
+pub fn parse_layers(sources: &[&str]) -> Result<InterfaceTheme, String> {
+    let mut value = serde_json::Value::Object(serde_json::Map::new());
+    for source in sources {
+        let layer =
+            serde_json::from_str::<serde_json::Value>(source).map_err(|error| error.to_string())?;
+        if !layer.is_object() {
+            return Err("a theme is a JSON object".to_owned());
+        }
+        lay(&mut value, layer);
     }
     light_glass_over_glass(&mut value);
     serde_json::from_value(value).map_err(|error| with_spelling_hint(error.to_string()))
+}
+
+fn lay(base: &mut serde_json::Value, layer: serde_json::Value) {
+    use serde_json::Value;
+    match (base, layer) {
+        (Value::Object(base), Value::Object(layer)) => {
+            for (key, value) in layer {
+                match base.get_mut(&key) {
+                    Some(slot) => lay(slot, value),
+                    None => {
+                        base.insert(key, value);
+                    }
+                }
+            }
+        }
+        (base, layer) => *base = layer,
+    }
 }
 
 fn light_glass_over_glass(theme: &mut serde_json::Value) {
@@ -398,13 +425,17 @@ fn with_spelling_hint(message: String) -> String {
         )
 }
 
-const DEFAULT_SOURCE: (&str, &str) = ("default", include_str!("../themes/default.json"));
+const BUILTIN_SOURCES: [&str; BUILTIN_THEMES.len()] = [
+    include_str!("../themes/default.json"),
+    include_str!("../themes/macos.json"),
+    include_str!("../themes/yaru.json"),
+];
 
-static SOURCES: OnceLock<&'static [(&'static str, &'static str)]> = OnceLock::new();
+static LAYERS: OnceLock<&'static [(&'static str, &'static str)]> = OnceLock::new();
 static BUILTINS: OnceLock<Vec<(&'static str, InterfaceTheme)>> = OnceLock::new();
 
 pub fn register(themes: &'static [(&'static str, &'static str)]) {
-    let fresh = SOURCES.set(themes).is_ok();
+    let fresh = LAYERS.set(themes).is_ok();
     assert!(
         !fresh || BUILTINS.get().is_none(),
         "built-in themes were read before the app registered its own"
@@ -412,17 +443,21 @@ pub fn register(themes: &'static [(&'static str, &'static str)]) {
 }
 
 fn builtins_from(themes: &[(&'static str, &'static str)]) -> Vec<(&'static str, InterfaceTheme)> {
-    let mut sources = vec![DEFAULT_SOURCE];
+    let mut stacks = BUILTIN_THEMES
+        .into_iter()
+        .zip(BUILTIN_SOURCES)
+        .map(|(id, source)| (id, vec![source]))
+        .collect::<Vec<_>>();
     for &(id, source) in themes {
-        match sources.iter_mut().find(|(known, _)| *known == id) {
-            Some(slot) => *slot = (id, source),
-            None => sources.push((id, source)),
+        match stacks.iter_mut().find(|(known, _)| *known == id) {
+            Some((_, stack)) => stack.push(source),
+            None => stacks.push((id, vec![source])),
         }
     }
-    sources
+    stacks
         .into_iter()
-        .map(|(id, source)| {
-            let theme = parse_theme(source)
+        .map(|(id, stack)| {
+            let theme = parse_layers(&stack)
                 .unwrap_or_else(|error| panic!("built-in theme {id} does not parse: {error}"));
             (id, theme)
         })
@@ -430,7 +465,7 @@ fn builtins_from(themes: &[(&'static str, &'static str)]) -> Vec<(&'static str, 
 }
 
 pub fn builtin_themes() -> &'static [(&'static str, InterfaceTheme)] {
-    BUILTINS.get_or_init(|| builtins_from(SOURCES.get().copied().unwrap_or_default()))
+    BUILTINS.get_or_init(|| builtins_from(LAYERS.get().copied().unwrap_or_default()))
 }
 
 pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
@@ -477,7 +512,7 @@ mod tests {
             .iter()
             .map(|(id, _)| *id)
             .collect::<Vec<_>>();
-        assert_eq!(ids, [DEFAULT_THEME]);
+        assert_eq!(ids, BUILTIN_THEMES);
         for (id, theme) in builtin_themes() {
             assert!(!theme.name.is_empty(), "{id} has no name");
             sets_every_root(id, &theme.light, &theme.dark);
@@ -767,17 +802,91 @@ mod tests {
     }
 
     #[test]
-    fn app_themes_join_the_builtins_and_can_replace_the_default() {
+    fn app_layers_lay_over_the_builtins_and_new_ids_add_themes() {
+        use crate::{Fill, Shape};
+        let layer = r#"{"materials":{"radius":3,"float":{"y":2}},"roles":{"button":{"fill":"tint"},"chrome.button":{"shape":"pill"}}}"#;
+        let again = r#"{"roles":{"button":{"shape":"square"}}}"#;
         let plain = r#"{"name":"Plain","materials":{"radius":3}}"#;
         let ids = |themes: &[(&'static str, InterfaceTheme)]| {
             themes.iter().map(|(id, _)| *id).collect::<Vec<_>>()
         };
-        let added = builtins_from(&[("plain", plain)]);
-        assert_eq!(ids(&added), ["default", "plain"]);
-        assert_eq!(added[0].1, builtins_from(&[])[0].1);
-        let replaced = builtins_from(&[("plain", plain), ("default", plain)]);
-        assert_eq!(ids(&replaced), ["default", "plain"]);
-        assert_eq!(replaced[0].1.materials.radius, 3.0);
+        let alone = builtins_from(&[]);
+        let layered = builtins_from(&[("macos", layer), ("plain", plain), ("macos", again)]);
+        assert_eq!(ids(&layered), ["default", "macos", "yaru", "plain"]);
+        assert_eq!(layered[0], alone[0]);
+        assert_eq!(layered[2], alone[2]);
+
+        let (macos, before) = (&layered[1].1, &alone[1].1);
+        assert_eq!(macos.name, before.name);
+        assert_eq!(
+            macos.materials,
+            Materials {
+                radius: 3.0,
+                float: ShadowMaterial {
+                    y: 2.0,
+                    ..before.materials.float
+                },
+                ..before.materials.clone()
+            }
+        );
+        assert_eq!((&macos.light, &macos.dark), (&before.light, &before.dark));
+        assert_eq!(
+            macos.roles["button"],
+            before.roles["button"].fill(Fill::Tint).shape(Shape::Square)
+        );
+        assert_eq!(
+            macos.roles["chrome.button"],
+            before.roles["chrome.button"].shape(Shape::Pill)
+        );
+        let untouched = |roles: &BTreeMap<String, StylePatch>| {
+            roles
+                .iter()
+                .filter(|(id, _)| !matches!(id.as_str(), "button" | "chrome.button"))
+                .map(|(id, patch)| (id.clone(), *patch))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(untouched(&macos.roles), untouched(&before.roles));
+
+        let plain = &layered[3].1;
+        assert_eq!(plain.name, "Plain");
+        assert_eq!(
+            plain.materials,
+            Materials {
+                radius: 3.0,
+                ..Materials::default()
+            }
+        );
+        assert!(plain.roles.is_empty());
+        assert_eq!(plain.light, ThemeColors::default());
+    }
+
+    #[test]
+    fn layers_merge_objects_and_replace_everything_else() {
+        let theme = parse_layers(&[
+            r#"{"name":"Base","materials":{"glass":{"preset":"clear","blur":3},"outline":1}}"#,
+            r#"{"materials":{"glass":{"edge_shadow":0.7},"font":"Inter"}}"#,
+        ])
+        .unwrap();
+        assert_eq!(theme.name, "Base");
+        assert_eq!(theme.materials.outline, 1.0);
+        assert_eq!(theme.materials.font.as_deref(), Some("Inter"));
+        assert_eq!(
+            theme.materials.glass,
+            Some(GlassMaterial {
+                blur: px(3.0),
+                edge_shadow: 0.7,
+                ..GlassMaterial::preset("clear").unwrap()
+            })
+        );
+        let named = parse_layers(&[
+            r#"{"materials":{"glass":{"preset":"clear","blur":3}}}"#,
+            r#"{"materials":{"glass":"frosted"}}"#,
+        ])
+        .unwrap();
+        assert_eq!(named.materials.glass, GlassMaterial::preset("frosted"));
+        assert!(parse_layers(&[r#"{"name":"Base"}"#, "[]"]).is_err());
+        assert!(parse_layers(&[r#"{"name":"Base"}"#, r#"{"roles":{"sparkle":{}}}"#]).is_err());
+        assert_eq!(parse_layers(&[]).unwrap(), parse_theme("{}").unwrap());
     }
 
     #[test]

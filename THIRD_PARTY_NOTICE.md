@@ -97,9 +97,10 @@ The desktop clients ship no fonts; they render with the system text stack.
 
 ## Interface themes
 
-The `macos` and `linear` interface themes in `crates/zz-ui/themes` are named for the apps whose
-feel they imitate. zz is not affiliated with Apple or Linear. Their colors are the macOS system
-colors as `NSColor` reports them and zz's own picks; no artwork or code comes from either app.
+The `macos` and `yaru` interface themes in `libs/penna/themes`, with zz's role patches in
+`crates/zz-ui/themes`, are named for the platforms whose feel they imitate. zz is not affiliated
+with Apple or the Ubuntu project. Their colors are the macOS system colors as `NSColor` reports
+them, Yaru's palette and zz's own picks; no artwork or code comes from either.
 
 ## Protocols and formats
 

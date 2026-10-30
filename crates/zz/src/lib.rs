@@ -230,7 +230,7 @@ fn run_app(
     profile: AppProfile,
 ) {
     let platform = ala_platform::current_platform(false);
-    let fonts = zz_ui::settings::appearance::AvailableFonts(platform.text_system());
+    let fonts = penna::settings::appearance::AvailableFonts(platform.text_system());
     let application = ala::Application::with_platform(platform);
     #[cfg(target_os = "macos")]
     application.on_reopen(|cx| {

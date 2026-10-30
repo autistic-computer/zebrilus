@@ -6,22 +6,13 @@ pub mod status_bar_preview;
 
 use std::rc::Rc;
 
-use web_time::Duration;
-
 pub use penna::settings::*;
 
-use crate::{
-    ActiveTheme as _, Colorize as _, PaintState,
-    icon::{Icon, cap_center_drop},
-    motion::{Disclosure, eased, turned},
-    roles,
-};
+use crate::{ActiveTheme as _, Colorize as _, icon::Icon};
 use ala::{
     AnyElement, App, ElementId, IntoElement, RenderOnce, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
-
-type EntryClick = Rc<dyn Fn(&ala::ClickEvent, &mut Window, &mut App)>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SettingsSection {
@@ -318,132 +309,6 @@ impl RenderOnce for SettingsTitleBar {
             )
             .child(self.back)
     }
-}
-
-const REVEAL: Duration = Duration::from_millis(280);
-const REVEAL_STAGGER: Duration = Duration::from_millis(30);
-const REVEAL_DROP: f32 = 10.0;
-const DISCLOSURE_PRESS_INSET: f32 = 6.0;
-const SETTINGS_DISCLOSURE_WIDTH: f32 = 14.0;
-
-pub fn settings_list_disclosure_header(
-    id: &'static str,
-    title: &'static str,
-    expanded: bool,
-) -> SettingsDisclosure {
-    SettingsDisclosure {
-        id,
-        title,
-        expanded,
-        on_click: None,
-    }
-}
-
-#[derive(IntoElement)]
-pub struct SettingsDisclosure {
-    id: &'static str,
-    title: &'static str,
-    expanded: bool,
-    on_click: Option<EntryClick>,
-}
-
-impl SettingsDisclosure {
-    #[must_use]
-    pub fn on_click(
-        mut self,
-        handler: impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'static,
-    ) -> Self {
-        self.on_click = Some(Rc::new(handler));
-        self
-    }
-}
-
-impl RenderOnce for SettingsDisclosure {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let muted = cx.theme().foreground.muted();
-        let coarse = crate::touch::CoarsePointer::get(cx);
-        let radius = cx
-            .theme()
-            .layer(roles::SETTINGS_CARD, PaintState::Rest)
-            .radius;
-        let inset = px(DISCLOSURE_PRESS_INSET);
-        div()
-            .id(self.id)
-            .relative()
-            .mt(px(10.0) - inset)
-            .mb(-inset)
-            .mx(-inset)
-            .p(inset)
-            .flex()
-            .items_start()
-            .gap(px(2.0))
-            .cursor_pointer()
-            .when(coarse, |this| {
-                this.child(
-                    crate::touch::press_highlight(
-                        ElementId::from((ElementId::from(self.id), "press")),
-                        None,
-                        crate::touch::PressCorners::Adaptive(radius),
-                    )
-                    .inset_0(),
-                )
-            })
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .justify_center()
-                    .w(px(SETTINGS_DISCLOSURE_WIDTH))
-                    .h(px(SETTINGS_GROUP_TITLE_LINE))
-                    .child(
-                        div()
-                            .relative()
-                            .top(cap_center_drop(
-                                px(SETTINGS_GROUP_TITLE_SIZE),
-                                px(SETTINGS_GROUP_TITLE_SIZE),
-                                cx,
-                            ))
-                            .child(
-                                Disclosure::new(
-                                    self.id,
-                                    self.expanded,
-                                    px(SETTINGS_GROUP_TITLE_SIZE),
-                                )
-                                .color(muted),
-                            ),
-                    ),
-            )
-            .child(settings_group_header(self.title.into(), cx))
-            .when_some(self.on_click, |this, on_click| {
-                this.on_click(move |event, window, cx| on_click(event, window, cx))
-            })
-    }
-}
-
-pub fn settings_disclosure_reveal(
-    id: &'static str,
-    expanded: bool,
-    order: usize,
-    row: AnyElement,
-    window: &mut Window,
-    cx: &mut App,
-) -> AnyElement {
-    let turned = turned(id, expanded, cx);
-    if !expanded || turned.is_none() {
-        return row;
-    }
-    let delay = REVEAL_STAGGER * u32::try_from(order).unwrap_or(u32::MAX).min(12);
-    let shown = eased(turned, delay, REVEAL, window, cx);
-    if shown >= 1.0 {
-        return row;
-    }
-    div()
-        .relative()
-        .top(px(-REVEAL_DROP * (1.0 - shown)))
-        .opacity(shown)
-        .child(row)
-        .into_any_element()
 }
 
 pub fn panes_page(

@@ -367,7 +367,7 @@ through the settings portal (GNOME `font-name`, KDE `kdeglobals` `font`), and fo
 without a portal value it falls back to ala's fallback stack. Config reload and OS appearance
 changes reapply the choice to open windows.
 The `UiFontConfig` global holds this string separately so `AppConfig` remains `Copy`.
-Native entrypoints register `AvailableFonts` from their ala platform text system. The picker queries
+Native entrypoints register `penna::settings::appearance::AvailableFonts` from their ala platform text system. The picker queries
 that catalog directly to avoid offering ala fallback names that are not installed.
 
 # UI zoom and scalable metrics
@@ -411,9 +411,10 @@ unless `theme-mode` pins one, and only picks which of the theme's color sets app
 knob that derives chrome from terminal colors, and a Ghostty palette cannot repaint the window.
 
 `libs/penna/src/interface_theme.rs` owns `InterfaceTheme`, `Materials` and `ThemeColors` and the
-theme file parser; `crates/zz-ui/src/interface_theme.rs` re-exports them with zz's built-in themes
-from `crates/zz-ui/themes/*.json`, which `zz_ui::register` hands to penna (replacing penna's own
-Default) along with zz's roles and retired role ids. Every zz-ui theme and role lookup registers
+theme file parser and the built-in themes (`libs/penna/themes/*.json`);
+`crates/zz-ui/src/interface_theme.rs` re-exports them, and `zz_ui::register` lays zz's patches for
+its own roles over the built-ins from `crates/zz-ui/themes/*.json` (`penna::interface_theme::register`)
+along with zz's roles and retired role ids. Every zz-ui theme and role lookup registers
 first, so the desktop, browser and iOS clients and the storybook all see the same set. `crates/zz/src/theme.rs` applies desktop
 configuration. It holds the latest immutable `TerminalAppearance` and `AppearanceProvenance` as
 ala globals (used by settings badges and the detach action, not to color anything).

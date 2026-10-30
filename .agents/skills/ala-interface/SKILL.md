@@ -97,7 +97,7 @@ icon sized to that line's font and centred in it, then the same
 and an `items_start` row then parks a 14px chevron near the top of a 19px line,
 almost 3pt above the caps. Worked examples: `render_list_item_row` in
 `libs/penna/src/text/node.rs`, `settings_list_disclosure_header` in
-`crates/zz-ui/src/settings.rs`.
+`libs/penna/src/settings.rs`.
 
 What is left is pixel snapping: `cap_center_drop` already nudges the icon by up
 to a quarter point so it and the baseline round to the same device pixels. The

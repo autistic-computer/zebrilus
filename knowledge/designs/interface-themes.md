@@ -38,7 +38,7 @@ A file can leave keys out: materials fall back to `Materials::default()` (Defaul
 
 # Built-ins
 
-`crates/zz-ui/themes/*.json`, compiled in and parsed by the same code as a user's file:
+penna ships them in `libs/penna/themes/*.json`: each theme's materials, its colors and the patches for penna's own roles. An app lays the patches for its own roles over a built-in by theme id, and can add whole themes under new ids, with `penna::interface_theme::register`; zz's patches are `crates/zz-ui/themes/*.json`. All of it is compiled in and parsed by the same code as a user's file, an app's file laid over penna's key by key (`parse_layers`: objects merge, any other value replaces):
 
 | Theme | Materials and roles | Colors |
 |---|---|---|
@@ -83,7 +83,7 @@ Picking a theme clears the radius (`ThemeOverrides::pick_theme`, `ConfigKey::THE
 | Piece | Code |
 |---|---|
 | Theme, materials, roles and colors; parser; built-in registry | `libs/penna/src/interface_theme.rs` |
-| zz's built-ins (Default, macOS, Yaru) | `crates/zz-ui/src/interface_theme.rs` (`BUILTIN_SOURCES`), `crates/zz-ui/themes/*.json` |
+| The built-ins (Default, macOS, Yaru) and the app layers over them | `libs/penna/themes/*.json` (`BUILTIN_THEMES`, `register`, `parse_layers` in `libs/penna/src/interface_theme.rs`); zz's patches for its own roles in `crates/zz-ui/themes/*.json` (`LAYERS` in `crates/zz-ui/src/interface_theme.rs`) |
 | Role ids a theme may name | `penna::roles` and `zz_ui::roles` (`libs/penna/src/roles.rs`, `crates/zz-ui/src/roles.rs`) |
 | Built-in ids, named accents and the radius limit for config validation | `zz_client::appearance::BUILTIN_THEMES`, `ACCENTS`, `AccentSetting`, `DEFAULT_TINT_HUE`, `MAX_CORNER_RADIUS` |
 | `interface-theme`, `chrome-accent` and the tint keys, `themes/` folder, writer, retired keys | `crates/zz-config/src/lib.rs` (`ConfigKey::THEME_PICKS`, `RETIRED_MATERIAL_KEYS`), `crates/zz-config/src/themes.rs` |
@@ -91,8 +91,8 @@ Picking a theme clears the radius (`ThemeOverrides::pick_theme`, `ConfigKey::THE
 | The tint | `ThemeColor::tinted` and the `oklch` helper in `libs/penna/src/foundation/` |
 | Desktop: load, apply, Settings rows and Import | `crates/zz/src/config/mod.rs`, `crates/zz/src/theme.rs`, `crates/zz/src/config/settings.rs` |
 | Thin clients: the selected id, saved themes and overrides in preferences; the same rows, Import and Delete | `clients/app/src/preferences.rs`, `clients/app/src/app/settings.rs` |
-| The Interface page's rows | `zz_ui::settings::appearance`: `AppearancePageItem`, `appearance_page_items`, `ThemePicks`, `theme_mode_control`, `theme_picker`, `theme_labels`, `accent_swatches`, `tint_hue_slider`, `tint_slider`, `corner_radius_slider`, `contrast_slider` |
-| Tile preview | `zz_ui::settings::appearance::interface_theme_preview` |
+| The Interface page and its rows | `penna::settings::appearance`: `appearance_page`, `AppearancePageItem`, `appearance_page_items`, `ThemePicks`, `theme_mode_control`, `theme_picker`, `theme_labels`, `accent_swatches`, `tint_hue_slider`, `tint_slider`, `corner_radius_slider`, `contrast_slider`; zz's own rows (Program colors, App Icon) are `zz_ui::settings::appearance::ZzRow`, added by `zz_ui::settings::appearance::appearance_page_items` |
+| Tile preview | `penna::settings::appearance::interface_theme_preview` |
 | The sliders | the kit's continuous `Slider` in `libs/penna/src/slider.rs` |
 | The custom accent | the kit's `ColorPicker` (`libs/penna/src/color_picker/mod.rs`) drawn as a bare swatch with `.swatch(size)`; swatches round with `Theme::swatch_radius()` |
 | Kit values the theme sets | `ThemeColor::shadow_color`, `ThemeColor::on_accent`; `Theme::radius`, `outline`, `row_inset`, `primary`, `glass` (`light-glass` in light mode), `contact_shadow`, `float_shadow` and `styles`; `Theme::pane_radius()` and `pane_edge_width()` follow the radius and the outline |
