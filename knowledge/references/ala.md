@@ -245,7 +245,7 @@ Each is upstream-able as a small PR; if upstream merges an equivalent, drop it. 
     shadow to the scene mask so raw rails and blurred corner tips cannot appear.
 31. Vulkan before OpenGL on Linux (`e166028f70`). The wgpu renderer first creates a Vulkan-only
     instance and keeps it when the adapter is a discrete or integrated GPU; software, virtual, or
-    failed Vulkan falls back to the combined Vulkan+GL instance, as does a valid `ZED_DEVICE_ID`.
+    failed Vulkan falls back to the combined Vulkan+GL instance, as does a valid `ALA_DEVICE_ID`.
     A hardware GPU therefore never loads the EGL/GL driver stack. Window-sized path intermediate
     and MSAA textures are created by the first frame that rasterizes a path.
 32. Memoized font resolution (`c8081ba076`). `TextSystem::resolve_font` walks the fallback stack
@@ -441,7 +441,7 @@ it sits near its noise floor:
 | Frosted sidebar 640x2800 | 0.16 → 0.15 | 0.11 → 0.11 | 2.38 → 1.95 |
 
 Small glass (one or ten buttons, a toolbar) is all rim and costs the same as before. On the
-Raphael iGPU (`ZED_DEVICE_ID=0x164e`) a full-window pass is bound by fill rate, and four panes of
+Raphael iGPU (`ALA_DEVICE_ID=0x164e`) a full-window pass is bound by fill rate, and four panes of
 edge glass now cost less than the bordered quads they would replace.
 
 zz's gapped panes have drawn that glass as their frame since 2026-10-12, in place of a border and
