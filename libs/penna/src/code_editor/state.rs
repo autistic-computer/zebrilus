@@ -511,12 +511,7 @@ impl CodeEditorState {
 
     fn rebuild_highlighter(&mut self) {
         let mut highlighter = SyntaxHighlighter::new(self.mode.language());
-        #[cfg(feature = "tree-sitter")]
-        {
-            highlighter.update(None, &self.text, None);
-        }
-        #[cfg(not(feature = "tree-sitter"))]
-        highlighter.update(self.render_text.as_ref());
+        highlighter.update(None, &self.text, None);
         self.highlighter = Some(highlighter);
     }
 
@@ -524,15 +519,7 @@ impl CodeEditorState {
         let Some(highlighter) = self.highlighter.as_mut() else {
             return;
         };
-        #[cfg(feature = "tree-sitter")]
-        {
-            highlighter.update(Some(edit), &self.text, None);
-        }
-        #[cfg(not(feature = "tree-sitter"))]
-        {
-            let _ = edit;
-            highlighter.update(self.render_text.as_ref());
-        }
+        highlighter.update(Some(edit), &self.text, None);
     }
 
     pub(super) fn replace_range(

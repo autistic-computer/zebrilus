@@ -5,13 +5,16 @@ use std::{
 };
 
 use ala::SharedString;
+use tree_sitter_language::LanguageFn;
 
-use super::{Language, languages};
+#[cfg(feature = "tree-sitter")]
+use super::Language;
 
 #[derive(Clone)]
+#[non_exhaustive]
 pub struct LanguageConfig {
     pub name: SharedString,
-    pub language: Option<tree_sitter_language::LanguageFn>,
+    pub language: Option<LanguageFn>,
     pub injection_languages: Vec<SharedString>,
     pub highlights: SharedString,
     pub injections: SharedString,
@@ -21,7 +24,7 @@ pub struct LanguageConfig {
 impl LanguageConfig {
     pub fn new(
         name: impl Into<SharedString>,
-        language: tree_sitter_language::LanguageFn,
+        language: LanguageFn,
         injection_languages: Vec<SharedString>,
         highlights: &str,
         injections: &str,
@@ -37,6 +40,7 @@ impl LanguageConfig {
         }
     }
 
+    #[cfg(feature = "tree-sitter")]
     pub fn grammar(&self) -> Option<tree_sitter::Language> {
         self.language.map(tree_sitter::Language::new)
     }
@@ -70,11 +74,7 @@ pub struct LanguageRegistry {
 impl LanguageRegistry {
     pub fn singleton() -> &'static Self {
         static INSTANCE: LazyLock<LanguageRegistry> = LazyLock::new(|| LanguageRegistry {
-            languages: Mutex::new(
-                languages::Language::all()
-                    .map(|language| (language.name().into(), language.config()))
-                    .collect(),
-            ),
+            languages: Mutex::new(bundled_languages()),
         });
         &INSTANCE
     }
@@ -85,9 +85,10 @@ impl LanguageRegistry {
 
     pub fn language(&self, name: &str) -> Option<LanguageConfig> {
         let entries = self.entries();
-        entries.get(name).cloned().or_else(|| {
-            Language::from_name(name).and_then(|language| entries.get(language.name()).cloned())
-        })
+        entries
+            .get(name)
+            .cloned()
+            .or_else(|| bundled_name(name).and_then(|bundled| entries.get(bundled).cloned()))
     }
 
     fn entries(&self) -> MutexGuard<'_, HashMap<SharedString, LanguageConfig>> {
@@ -97,10 +98,51 @@ impl LanguageRegistry {
     }
 }
 
+#[cfg(feature = "tree-sitter")]
+fn bundled_languages() -> HashMap<SharedString, LanguageConfig> {
+    Language::all()
+        .map(|language| (language.name().into(), language.config()))
+        .collect()
+}
+
+#[cfg(not(feature = "tree-sitter"))]
+fn bundled_languages() -> HashMap<SharedString, LanguageConfig> {
+    HashMap::new()
+}
+
+#[cfg(feature = "tree-sitter")]
+fn bundled_name(name: &str) -> Option<&'static str> {
+    Language::from_name(name).map(Language::name)
+}
+
+#[cfg(not(feature = "tree-sitter"))]
+fn bundled_name(_name: &str) -> Option<&'static str> {
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn registry_round_trips_a_registration() {
+        let registry = LanguageRegistry::singleton();
+        assert!(registry.language("registry-round-trip").is_none());
+
+        registry.register(
+            "registry-round-trip",
+            &LanguageConfig::plain("Registry round trip"),
+        );
+
+        let config = registry
+            .language("registry-round-trip")
+            .expect("the registration should be found");
+        assert_eq!(config.name.as_ref(), "Registry round trip");
+        assert!(config.language.is_none());
+        assert!(registry.language("zig").is_none());
+    }
+
+    #[cfg(feature = "tree-sitter")]
     #[test]
     fn registry_contains_the_supported_grammar_set() {
         let registry = LanguageRegistry::singleton();
@@ -110,6 +152,7 @@ mod tests {
         assert!(registry.language("javascript").is_none());
     }
 
+    #[cfg(feature = "tree-sitter")]
     #[test]
     fn aliases_resolve_to_canonical_languages() {
         let registry = LanguageRegistry::singleton();

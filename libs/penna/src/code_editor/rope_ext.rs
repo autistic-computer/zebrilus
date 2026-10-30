@@ -3,33 +3,7 @@ use std::ops::Range;
 use ala::sum_tree::Bias;
 use ropey::{LineType, Rope, RopeSlice};
 
-#[cfg(feature = "tree-sitter")]
-pub use tree_sitter::{InputEdit, Point};
-
-#[cfg(not(feature = "tree-sitter"))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Point {
-    pub row: usize,
-    pub column: usize,
-}
-
-#[cfg(not(feature = "tree-sitter"))]
-impl Point {
-    pub fn new(row: usize, column: usize) -> Self {
-        Self { row, column }
-    }
-}
-
-#[cfg(not(feature = "tree-sitter"))]
-#[derive(Debug, Clone, Copy)]
-pub struct InputEdit {
-    pub start_byte: usize,
-    pub old_end_byte: usize,
-    pub new_end_byte: usize,
-    pub start_position: Point,
-    pub old_end_position: Point,
-    pub new_end_position: Point,
-}
+pub use crate::highlighter::{InputEdit, Point};
 
 use crate::code_editor::Position;
 

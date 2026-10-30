@@ -901,13 +901,7 @@ impl CodeBlock {
                 *highlighter = SyntaxHighlighter::new(lang);
             }
 
-            #[cfg(feature = "tree-sitter")]
-            {
-                let rope = ropey::Rope::from(code.as_str());
-                highlighter.update(None, &rope, None);
-            }
-            #[cfg(not(feature = "tree-sitter"))]
-            highlighter.update(code.as_str());
+            highlighter.update(None, &ropey::Rope::from(code.as_str()), None);
             highlighter.styles(&(0..code.len()), highlight_theme)
         });
         *styles = Some(CachedCodeBlockStyles {
