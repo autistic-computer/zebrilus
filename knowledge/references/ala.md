@@ -4,7 +4,7 @@ title: ala
 description: ala, our GPUI fork (libs/ala/crates/ala, ala-macros, ala-platform) - where its code lives, how to change it or pull an upstream Zed fix, and what zz changed. gpui-component is not a dependency.
 resource: libs/ala/crates/ala/Cargo.toml
 tags: [ala, gpui, reference, vendored]
-timestamp: 2026-10-29T00:00:00Z
+timestamp: 2026-10-30T00:00:00Z
 ---
 
 # Overview
@@ -33,7 +33,7 @@ ala could start, and editing a backend still rebuilds only the platform crate. `
 `zz-app` tests them on every OS. Zed's `zlog`, `ztracing` (a no-op without tracy) and
 `util_macros` were deleted rather than folded, along with Zed's `hello_web` demo and the wgpu
 layout bench. Runtime names did not change: `ALA_*` and `ZZ_ALA_*` environment variables, iOS
-bundle ids, and the `ala` data directory. The `fork-rebase` skill maps Zed's paths to ours.
+bundle ids, and the `ala` data directory. `libs/ala/UPSTREAM.md` maps Zed's paths to ours.
 
 `git log -- 'libs/ala/crates/ala*' 'crates/ala*' 'crates/zpui*' zpui ala` reaches back to the split. The first
 commit there is upstream `zed-industries/zed` at `933d8d9381`, limited to those crates; the next
@@ -49,7 +49,7 @@ selects the native macOS and Windows backends automatically. The web client turn
 `multithreaded` feature.
 
 The ala crates sit outside the root workspace, so the root clippy run skips them;
-`just libs check ala` lints them with all features, but only for the host OS. The `fork-rebase` skill has the recipe for cross-checking the
+`just libs check ala` lints them with all features, but only for the host OS. `libs/ala/UPSTREAM.md` has the recipe for cross-checking the
 other backends from macOS. The Android backend checks with the NDK's clang as the C compiler and
 linker (`just android setup` installs it): `cargo clippy --manifest-path libs/ala/Cargo.toml --target aarch64-linux-android -p ala-platform --all-features`.
 Clippy 1.99 reports `missing_const_for_thread_local` on Android for `thread_local!`s that are
@@ -470,12 +470,12 @@ ala-platform = { workspace = true, features = ["font-kit", "wayland", "x11"] }
 ```
 
 Landing an ala change: edit the ala crates in the same commit as the zz code that needs it.
-Run the workspace gates (they cover ala on the host OS), `cargo test -p ala-platform
---all-features` if you touched a backend, a cross-check for the backends the host does not build,
+Run `just libs check ala` (the workspace gates skip `libs/`), `cargo test --manifest-path
+libs/ala/Cargo.toml -p ala-platform --all-features` if you touched a backend, a cross-check for the backends the host does not build,
 and `just web build`.
 
-Pulling a fix from upstream Zed: map the patch's paths and identifiers with the table in the
-`fork-rebase` skill, which also has the `format-patch | sed | git am -3` recipe.
+Pulling a fix from upstream Zed: map the patch's paths and identifiers with the table in
+`libs/ala/UPSTREAM.md`, which also has the `format-patch | sed | git am -3` recipe.
 
 The two rebase sections below are history from the patch-branch era. Their layout sizes and
 test counts still hold.

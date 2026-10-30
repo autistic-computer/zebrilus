@@ -119,8 +119,8 @@ can select an installed library with `ghostty_terminal_clone_screen`.
 Cargo reruns the native build when the source's `build.zig`, `build.zig.zon`, `include`,
 `pkg` or `src` change, for the vendored tree and overrides alike.
 
-This is a native dependency. Maintain it using the native Ghostty section in
-`.agents/skills/fork-rebase/SKILL.md`; `just vendor ghostty <rev>` syncs upstream. Drop the
+This is a native dependency. Maintain it with the `ghostty-sync` skill
+(`.agents/skills/ghostty-sync/SKILL.md`); `just vendor ghostty <rev>` syncs upstream. Drop the
 signal-stack change when upstream provides the same allocation behavior in ReleaseSafe, or
 when zz stops building ReleaseSafe, then rerun the terminal suite plus the real macOS bundle
 build. No binding or safe-wrapper change is needed for this option.
@@ -289,3 +289,21 @@ It does not restore the removed capture-provenance patches or safe-wrapper vendo
 Tabs carry no provenance. The pin prints a literal tab for every cell a tab
 produced, and fabrico decided on 2026-09-18 that zz captures the spaces on
 screen instead (see `knowledge/designs/tui-parity.md`).
+
+## Pre-vendoring branches
+
+Before 2026-10-09 zz fetched Ghostty and the wrapper from these fork branches, and knowledge
+pages still cite their commit IDs. Nothing builds from them now; keep them for history.
+
+| Fork | Branch | Pin |
+|---|---|---|
+| `demfabris/ghostty` | `zz-2026-10-04` | `e482b03688ccc9eebd6304176aa85bd5d81f0bfa`, render state clip `0ab7941cb98263423377627b8b17d8d090c504bd` and trimmed row copies |
+| `demfabris/libghostty-rs` | `zz-2026-10-04` | `0db98a206681fd60c2b1a1719daf14049eda8c30`, clip and trimmed copy API |
+| `demfabris/ghostty` | `zz-2026-10-02` | `189df4a1f6403f5bdc349fe44d1d2809741a4c1d`, row cell copy |
+| `demfabris/libghostty-rs` | `zz-2026-10-02` | `f5f826018e290e776c8bc4e5969c562efe530846`, row copies and iteration lifetimes |
+| `demfabris/ghostty` | `zz-2026-09-30` | `67351380b6dc30124938d809809ac0aa42813283`; copy snapshots `7823f65dd55fc9ff420d5eb5cae761cbd1995994` and trim fix `c39414175ca2aad564b74b3f52196355f2671774` remain in its history |
+| `demfabris/ghostty` | `zz-2026-09-29` | `713374afee3d4890f14733877fb51d831ffc82ee`, spare-page reuse |
+| `demfabris/ghostty` | `zz-2026-09-25` | `6fce227c`, C ABI signal-stack option |
+| `demfabris/ghostty` | `codex/cabi-signal-stack` | `fa7986a9`, previous pin |
+| `demfabris/libghostty-rs` | `zz-2026-09-30` | `8e40135fb20e9ed91c37c374fe1d14570c386d06`, owned copy API |
+| `demfabris/libghostty-rs` | `zz-2026-09-25` | `359ef751c189540eafb9110b2de89ad95ce48fc3`, parent wrapper |

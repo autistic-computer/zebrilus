@@ -2,7 +2,7 @@
 name: ala-interface
 description: >-
   ala layout, hover, and optical alignment rules for zz chrome. Use when
-  building or tweaking ala UI — buttons, rows, labels, icons, chevrons,
+  building or tweaking ala UI: buttons, rows, labels, icons, chevrons,
   hover/fg highlight, padding, composer chrome, agent timeline rows, or
   anything that "looks a few pixels off". Reach for it before putting
   `.hover()` on a nested div or trusting `items_center` to line up an icon
@@ -14,11 +14,11 @@ description: >-
 Theme tokens, clippy's ban on raw `rgb`/`hsla`, and widget conventions live in
 `knowledge/configuration/ui-conventions.md`. This skill is the ala mechanics
 that file does not cover. Source of the worked example:
-`crates/zz-ui/src/agent.rs` (`activity_row`, `activity_row_glyph`).
+`crates/zz-ui/src/agent.rs` (`activity_row_marked`, `activity_row_glyph`).
 
 ## Hover lives on the id'd row
 
-ala only tracks hover on a **stateful** element — one with `.id()`. A nested
+ala only tracks hover on a **stateful** element, one with `.id()`. A nested
 `div()` with `.hover()` or `group_hover` never sees the pointer.
 
 Put color and hover on the same element that already has the id (usually the
@@ -51,11 +51,9 @@ ala centres a glyph on its **ascent/descent box**, and `items_center` centres
 the icon's box on the same line. Neither is where the letters are. The rule is
 Apple's for SF Symbols: an icon next to text is **centred on the cap height**.
 
-The middle of the capitals sits `(ascent - descent - cap height) / 2` below the
-middle of the line box, whatever the line height. For SF Pro that is 0.28px at
-11px, 0.31px at 12px and 0.33px at 13px; for Inter it is 0.
-`penna::icon::cap_center_drop(font_size, icon_size, cx)` reads it from
-the theme font's metrics, so the same code is right on every font.
+`penna::icon::cap_center_drop(font_size, icon_size, cx)` reads the drop from
+the theme font's metrics (the numbers are in `ui-conventions.md`), so the same
+code is right on every font.
 
 Do this:
 
@@ -101,20 +99,11 @@ almost 3pt above the caps. Worked examples: `render_list_item_row` in
 `libs/penna/src/text/node.rs`, `settings_list_disclosure_header` in
 `crates/zz-ui/src/settings.rs`.
 
-What is left is pixel snapping. ala rounds the text baseline and the icon's
-box to device pixels separately, so an icon left at the exact cap centre jumps
-a pixel against the letters depending on where the row lands (a scrolled
-transcript). `cap_center_drop` moves the icon by up to a quarter point so its
-top sits a whole number of half points above the baseline; then both round
-together and the error is fixed, at most 0.25pt by the metrics. CoreText also
-inks caps about 0.1pt above the cap height. Measured on the macOS text system
-(2026-10-12): 13px rows land 0.13 to 0.19pt low, 12px rows 0.32 to 0.36pt low
-(SF Pro's 12px cap half-height sits between two pixel steps), where the old
-0.5px rule left triangles 0.66 to 0.88pt low and the settings chevron 3.1pt
-high. The storybook draws Inter through
-skrifa's autohinter, which grows 13px capitals by a device pixel, so there
-13px icons read about 0.45pt low while the desktop is right; measure alignment
-in the desktop app, not only in the storybook.
+What is left is pixel snapping: `cap_center_drop` already nudges the icon by up
+to a quarter point so it and the baseline round to the same device pixels. The
+storybook draws Inter through skrifa's autohinter, which grows 13px capitals by
+a device pixel, so 13px icons read about 0.45pt low there while the desktop is
+right. Measure alignment in the desktop app, not only in the storybook.
 
 ## One row, three callers
 
@@ -122,5 +111,6 @@ If group headers, tool rows, and reasoning rows must look identical, they
 share one function. Copy-pasting the same `h_flex` three times is how font
 size, chevron placement, and hover diverge.
 
-Worked example: `activity_row` in `crates/zz-ui/src/agent.rs`. Chevron sits
-**after the label** (same flex children), not `justify_between`.
+Worked example: `activity_row_marked` in `crates/zz-ui/src/agent.rs`, which
+draws the agent timeline's group headers, tool rows and reasoning rows. The
+chevron sits **after the label** (same flex children), not `justify_between`.
