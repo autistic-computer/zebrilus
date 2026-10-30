@@ -127,5 +127,6 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 - If a page contradicts the source it cites, fix the page — source is ground truth.
 </important>
 
-- No commit attribution
+- No AI attribution in commits, PR descriptions or branch names: no co-author trailer with an email (never `@anthropic.com` or `@openai.com`), no model or product name as author or co-author, no "Generated with ..." line, no `claude/` or `codex/` branch prefix. A co-author trailer is a funny name with no email. `.claude/settings.json` turns Claude Code's own attribution off.
+- No research about other products in the repo, commit messages, PR descriptions or code: no surveys, teardowns, comparisons or benchmarks against competitors, and no "like X does" to justify a choice. Say what zz does with its own numbers. Upstreams, dependencies, standards and protocols zz implements can be named.
 - No comments in code, doc comments and Python docstrings included. What stays is what a tool reads: shebangs, `# shellcheck` and `# noqa` directives, `@ts-check`, the help headers `bench/run.sh`, `bench/inner.sh`, `bench/gen-fixtures.sh` and `compat/run.sh` print with `sed`, and module docstrings that argparse shows through `__doc__`. Just recipe docs are `[doc("...")]` attributes
