@@ -5,12 +5,13 @@ use ala::{
 use penna::{
     WindowExt as _,
     button::{Button, ButtonVariants as _},
-    feedback::{
-        add_host_prompt_dialog, alert_actions, browser_clear_site_data_alert,
-        import_configuration_file_alert, inline_alert, ssh_confirm_prompt_dialog,
-        ssh_offer_prompt_dialog, ssh_secret_prompt_dialog, ssh_text_prompt_dialog,
-    },
+    feedback::{alert_actions, inline_alert},
     input::InputState,
+};
+use zz_ui::dialogs::{
+    add_host_prompt_dialog, browser_clear_site_data_alert, import_configuration_file_alert,
+    ssh_confirm_prompt_dialog, ssh_offer_prompt_dialog, ssh_secret_prompt_dialog,
+    ssh_text_prompt_dialog,
 };
 
 use crate::story::{Section, Story, stateless, states};

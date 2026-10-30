@@ -37,7 +37,7 @@ impl AppShell {
             let cancel = connection.clone();
             let dialog = if let Some(input) = &input {
                 let answer = input.clone();
-                penna::feedback::ssh_text_prompt_dialog(
+                zz_ui::dialogs::ssh_text_prompt_dialog(
                     dialog,
                     sign_in.clone(),
                     &prompt.text,
@@ -53,7 +53,7 @@ impl AppShell {
                     true
                 })
             } else if prompt.kind == zz_daemon_client::AskpassPromptKind::SaveKey {
-                penna::feedback::ssh_offer_prompt_dialog(
+                zz_ui::dialogs::ssh_offer_prompt_dialog(
                     dialog,
                     "Sign in without a password?",
                     &prompt.text,
@@ -72,7 +72,7 @@ impl AppShell {
                 } else {
                     "Allow authentication?"
                 };
-                penna::feedback::ssh_confirm_prompt_dialog(dialog, title, &prompt.text, cx).on_ok(
+                zz_ui::dialogs::ssh_confirm_prompt_dialog(dialog, title, &prompt.text, cx).on_ok(
                     move |_, _, cx| {
                         confirm.update(cx, |connection, cx| {
                             connection.answer_auth_prompt(prompt.id, Some("yes".into()), cx);

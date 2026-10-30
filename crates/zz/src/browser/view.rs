@@ -33,7 +33,6 @@ use ala_cef::{
 };
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
-use penna::feedback::browser_clear_site_data_alert;
 use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
@@ -57,6 +56,7 @@ use zz_ui::browser::{
     browser_omnibox_panel, browser_omnibox_row, browser_recent_row, browser_site_controls_button,
     browser_site_menu, browser_start_surface, browser_toolbar_button,
 };
+use zz_ui::dialogs::browser_clear_site_data_alert;
 use zz_ui::pane::{PaneDrag, PaneDragSource, pane_header_icon_button};
 
 #[cfg(target_os = "macos")]

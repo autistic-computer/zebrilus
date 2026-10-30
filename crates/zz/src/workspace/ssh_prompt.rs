@@ -1,13 +1,9 @@
 use std::{cell::Cell, rc::Rc, thread, time::Duration};
 
 use ala::{App, AppContext as _, Entity, Focusable as _, Window};
-use penna::{
-    WindowExt as _,
-    feedback::{ssh_confirm_prompt_dialog, ssh_secret_prompt_dialog},
-    input::InputState,
-    notification::Notification,
-};
+use penna::{WindowExt as _, input::InputState, notification::Notification};
 use zz_daemon_client::{AskpassPromptKind, AskpassReply};
+use zz_ui::dialogs::{ssh_confirm_prompt_dialog, ssh_secret_prompt_dialog};
 
 use crate::mux::{
     client::{MuxClient, SshPromptRequest},

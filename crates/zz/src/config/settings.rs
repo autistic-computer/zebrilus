@@ -41,7 +41,6 @@ use crate::{
     workspace::add_host,
 };
 use penna::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
-use penna::feedback::import_configuration_file_alert;
 use penna::settings::appearance::{
     SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
     corner_radius_slider, picker_tile, theme_mode_control, theme_picker, tint_hue_slider,
@@ -50,6 +49,7 @@ use penna::settings::appearance::{
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
+use zz_ui::dialogs::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,

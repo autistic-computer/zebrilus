@@ -20,6 +20,7 @@ pub mod browser;
 pub mod chooser;
 pub mod command;
 pub mod compact;
+pub mod dialogs;
 pub mod files;
 pub mod interface_theme;
 pub mod mend;

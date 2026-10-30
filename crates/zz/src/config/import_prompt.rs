@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use ala::{App, Window};
 use penna::WindowExt as _;
-use penna::feedback::import_configuration_file_alert;
+use zz_ui::dialogs::import_configuration_file_alert;
 
 use crate::{config, user_data::platform_data_dir};
 
