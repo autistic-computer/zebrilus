@@ -4,7 +4,7 @@ use ala::{
     AnyElement, IntoElement, ParentElement as _, Pixels, SharedString, Size, Styled as _, div, px,
     size,
 };
-use zz_ui::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView};
+use penna::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView};
 
 use crate::mux::{client::MuxClient, prefix::display_keystroke};
 

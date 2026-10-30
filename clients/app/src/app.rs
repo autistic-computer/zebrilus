@@ -17,19 +17,24 @@ mod settings;
 mod sidebar;
 mod status_bar;
 
+use penna::sidebar::{sidebar_footer, sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
 use std::{
     cell::{Cell, RefCell},
     collections::{BTreeSet, HashMap},
     rc::Rc,
     sync::Arc,
 };
-use zz_ui::sidebar::{sidebar_footer, sidebar_panel, sidebar_resize_handle, sidebar_titlebar};
 
 use ala::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corners, DragMoveEvent, Entity,
     FocusHandle, Focusable, IntoElement, KeyDownEvent, KeyUpEvent, MouseButton, Pixels, Point,
     Render, ScrollStrategy, Subscription, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
+};
+use penna::{
+    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Root, StyledExt as _,
+    SurfaceRole,
+    button::{Button, ButtonVariants as _},
 };
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
@@ -42,9 +47,6 @@ use zz_protocol::{
     WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, ElementExt as _, Ground, Icon, IconName, Root, StyledExt as _,
-    SurfaceRole,
-    button::{Button, ButtonVariants as _},
     chooser::{
         ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind, ChooserSearch,
         buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
@@ -235,7 +237,7 @@ fn watch_connection(
                     message_id,
                     ..
                 } => {
-                    use zz_ui::{WindowExt as _, notification::Notification};
+                    use penna::{WindowExt as _, notification::Notification};
                     let notification = match kind {
                         zz_protocol::ClientMessageKind::Info => Notification::info(text.clone()),
                         zz_protocol::ClientMessageKind::Success => {
@@ -260,7 +262,7 @@ fn watch_connection(
                     window.push_notification(notification, cx);
                 }
                 zz_client::CoreEvent::ClientMessageCleared { message_id } => {
-                    use zz_ui::WindowExt as _;
+                    use penna::WindowExt as _;
                     window.dismiss_notification(&format!("web-message-{message_id}"), cx);
                 }
                 zz_client::CoreEvent::CommandResponse(zz_protocol::CommandResponse::Error {
@@ -1007,7 +1009,7 @@ impl AppShell {
     pub(super) fn sidebar_width(&self, window: &Window) -> f32 {
         let width = f32::from(window.fully_visible_bounds().size.width);
         if Self::narrow(window) {
-            zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH.min(width - 40.0)
+            penna::sidebar::SIDEBAR_DEFAULT_WIDTH.min(width - 40.0)
         } else {
             self.preferences.sidebar_width(width)
         }
@@ -2817,7 +2819,7 @@ impl AppShell {
         let close_input = close.clone();
         let close_button = Button::compact_icon("web-overlay-close", IconName::Xmark)
             .ghost()
-            .surface_role(zz_ui::SurfaceRole::FLAT_ICON_BUTTON)
+            .surface_role(penna::SurfaceRole::FLAT_ICON_BUTTON)
             .on(cx.theme().ground_of(zz_ui::roles::PICKER))
             .tooltip("Close")
             .on_click(move |_, _, cx| {
@@ -2899,7 +2901,7 @@ impl Render for AppShell {
         if zz_ui::settings::SettingsBottomInset::get(cx) != page_inset {
             cx.set_global(zz_ui::settings::SettingsBottomInset(page_inset));
         }
-        zz_ui::touch::CoarsePointer::set(Self::narrow(window), cx);
+        penna::touch::CoarsePointer::set(Self::narrow(window), cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.sync_authentication(window, cx);
         #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -3088,7 +3090,7 @@ impl Render for AppShell {
             .pb((window.viewport_size().height - bottom).max(px(0.0)))
             .pl(visible.left())
             .pr(window.viewport_size().width - visible.right())
-            .child(zz_ui::compact::coast_guard())
+            .child(penna::dismissal::coast_guard())
             .child(shell)
     }
 }

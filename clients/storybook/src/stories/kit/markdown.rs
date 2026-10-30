@@ -4,7 +4,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
     Render, StyleRefinement, Styled as _, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, IconName, Sizable as _,
     button::{Button, ButtonVariants as _},
     text::{TextView, TextViewState, TextViewStyle},

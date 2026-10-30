@@ -5,11 +5,9 @@ use ala::{
 };
 use web_time::Instant;
 
-use super::{
-    bar::{COMPACT_PILL_HEIGHT, PillPlacement, floating_layer},
-    key_row::{KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow},
-};
+use super::bar::{COMPACT_PILL_HEIGHT, PillPlacement, floating_layer};
 use crate::{ActiveTheme as _, Layer, PaintState, StyledExt as _, rems_from_px, roles};
+use penna::touch::{KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow};
 
 pub const COMPACT_MINI_PILL_HEIGHT: f32 = 32.0;
 

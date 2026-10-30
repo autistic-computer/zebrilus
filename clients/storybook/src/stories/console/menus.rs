@@ -4,9 +4,9 @@ use ala::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window,
     div, px, size,
 };
+use penna::ActiveTheme as _;
 use zz_protocol::{MenuItem, MenuState, PopupBorderLines};
 use zz_ui::{
-    ActiveTheme as _,
     command::floating::{confirm_prompt, display_menu},
     pane::FloatingSurface,
 };

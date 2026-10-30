@@ -1,5 +1,5 @@
 use ala::{App, Global, WindowHandle};
-use zz_ui::{Root, notification::Notification};
+use penna::{Root, notification::Notification};
 
 struct ToastHost(WindowHandle<Root>);
 
@@ -23,7 +23,7 @@ pub(crate) fn push(notification: Notification, cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use ala::{AppContext as _, Context, Render, TestAppContext, Window, div};
-    use zz_ui::WindowExt as _;
+    use penna::WindowExt as _;
 
     use super::*;
 

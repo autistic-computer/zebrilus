@@ -1,12 +1,7 @@
-use ala::{
-    AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, Window, div, px,
-};
+use ala::{AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, Window, div, px};
+use penna::{ActiveTheme as _, Colorize as _, Elevation, h_flex, v_flex};
 use zz_protocol::parse_styled_segments;
-use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, h_flex,
-    tmux_style::{split_tmux_alignment, tmux_style_colour, tmux_styled_segments_text},
-    v_flex,
-};
+use zz_ui::tmux_style::{split_tmux_alignment, tmux_style_colour, tmux_styled_segments_text};
 
 use crate::story::{Section, Story, stateless, states};
 

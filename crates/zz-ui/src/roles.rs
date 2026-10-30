@@ -1,6 +1,7 @@
 pub use penna::roles::{
-    BAR_RULE, CHROME_BUTTON, LIST_RULE, SETTINGS_CARD, SETTINGS_PREVIEW, SETTINGS_TILE, SIDEBAR,
-    SIDEBAR_ROW, SIDEBAR_RULE, TITLEBAR, WINDOW, WINDOW_CONTROLS,
+    ARROW_PAD, BAR_RULE, CHROME_BUTTON, INLINE_PANEL, LIST_RULE, PHONE_KEY, PHONE_PILL, PHONE_ROW,
+    PICKER, SETTINGS_CARD, SETTINGS_PREVIEW, SETTINGS_TILE, SIDEBAR, SIDEBAR_ROW, SIDEBAR_RULE,
+    TITLEBAR, WINDOW, WINDOW_CONTROLS,
 };
 use penna::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
 
@@ -226,13 +227,6 @@ pub const AGENT_JUMP: SurfaceRole = SurfaceRole::under(
         .shadow(Shadow::Contact)
         .hover(Highlight::Tint),
 );
-pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
-    "inline-panel",
-    Kind::Floating,
-    "Inline panels",
-    "Panels raised inside a pane: question and approval cards, the plan and tasks tray, the slash menu, side answers, failure alerts",
-)
-.with_knobs(SurfaceRole::DIALOG.knobs());
 
 pub const CODE: SurfaceRole = SurfaceRole::new(
     "code",
@@ -289,12 +283,6 @@ pub const PHONE_BAR: SurfaceRole = SurfaceRole::new(
     "Phone bars",
     "The phone's 44pt top bars: Settings and sheet headers",
 );
-pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
-    "phone.pill",
-    Kind::Button,
-    "Phone pill",
-    "The pills floating at the bottom of the phone: the pane pill and the actions its menu stacks above it, the host pill, the Hosts page's Settings button, and the pills the keys sit in over the keyboard",
-);
 pub const PHONE_PILL_ICON: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::BADGE,
     "phone.pill.icon",
@@ -307,19 +295,6 @@ pub const PHONE_BUTTON: SurfaceRole = SurfaceRole::under(
     "phone.button",
     "Phone buttons",
     "Back in the phone's Settings, and the Settings button on Hosts",
-);
-pub const PHONE_KEY: SurfaceRole = SurfaceRole::new(
-    "phone.key",
-    Kind::Button,
-    "Keys",
-    "Keys in the pill over the phone's keyboard",
-)
-.with(P.fill(Fill::None).outline(false).shadow(Shadow::None));
-pub const ARROW_PAD: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::MENU_ITEM,
-    "phone.arrow-pad",
-    "Arrow pad",
-    "The directions in the phone's arrow pad, lit while held",
 );
 pub const PHONE_CARD: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TILE,
@@ -342,13 +317,6 @@ pub const PHONE_ADD: SurfaceRole = SurfaceRole::under(
     "The Add host tile at the end of the phone's Hosts page",
 )
 .with(P.fill(Fill::Tint));
-pub const PHONE_ROW: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::MENU_ITEM,
-    "phone.row",
-    "Touch rows",
-    "Rows in phone drawers and the bindings list",
-)
-.with(P.selected(Highlight::None));
 pub const GRABBER: SurfaceRole = SurfaceRole::GRABBER;
 
 pub const PALETTE: SurfaceRole = SurfaceRole::under(
@@ -356,12 +324,6 @@ pub const PALETTE: SurfaceRole = SurfaceRole::under(
     "palette",
     "Command palette",
     "The command palette and the path picker",
-);
-pub const PICKER: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::DIALOG,
-    "picker",
-    "Pickers",
-    "The file picker, choose-tree and choose-buffer",
 );
 pub const HOSTS_DRAWER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::DRAWER,

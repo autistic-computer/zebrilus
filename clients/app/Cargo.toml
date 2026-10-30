@@ -15,9 +15,11 @@ image.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+web-time.workspace = true
 ala = { workspace = true, features = ["default"] }
 ala-cef.workspace = true
 zz-client.workspace = true
+penna.workspace = true
 zz-protocol.workspace = true
 zz-terminal.workspace = true
 zz-ui = { workspace = true, features = ["agent"] }

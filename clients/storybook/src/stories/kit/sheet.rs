@@ -1,13 +1,12 @@
 use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div, px,
 };
-use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _,
-    compact::{
-        BottomSheet, bottom_sheet, sheet_action, sheet_close, sheet_detail_row, sheet_option,
-    },
-    h_flex, roles, v_flex,
+use penna::{
+    ActiveTheme as _, Colorize as _, Elevation, Icon, IconName, StyledExt as _, h_flex,
+    sheet::{BottomSheet, bottom_sheet, sheet_action, sheet_close, sheet_detail_row, sheet_option},
+    v_flex,
 };
+use zz_ui::roles;
 
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};

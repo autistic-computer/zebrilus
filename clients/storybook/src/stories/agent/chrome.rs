@@ -5,16 +5,14 @@ use ala::{
     ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
     px,
 };
+use penna::scroll::Scrollbar;
 use zz_protocol::AgentProvider;
-use zz_ui::{
-    agent::{
-        AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
-        agent_jump_to_bottom_button,
-        composer::COMPOSER_OUTER_PADDING,
-        fold_timeline_rows,
-        presentation::{empty_state, error_card, lens_welcome},
-    },
-    scroll::Scrollbar,
+use zz_ui::agent::{
+    AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
+    agent_jump_to_bottom_button,
+    composer::COMPOSER_OUTER_PADDING,
+    fold_timeline_rows,
+    presentation::{empty_state, error_card, lens_welcome},
 };
 
 use super::{

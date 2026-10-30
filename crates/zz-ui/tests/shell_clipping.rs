@@ -2,9 +2,9 @@ use ala::{
     Bounds, Context, IntoElement, Pixels, Render, TestAppContext, Window, canvas, div, prelude::*,
     px,
 };
+use penna::ActiveTheme as _;
 use std::{cell::Cell, rc::Rc};
 use zz_ui::{
-    ActiveTheme as _,
     pane::{PaneChrome, pane_surface},
     shell::{app_shell_surface, app_workspace_surface},
 };

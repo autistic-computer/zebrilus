@@ -5,6 +5,11 @@ use ala::{
     ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
+use penna::sidebar::SIDEBAR_CONTENT_INSET;
+use penna::{
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, menu::PopupMenuItem, motion::Instant,
+    rems_from_px, scroll::ScrollableElement as _,
+};
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
     ChromeAction,
@@ -17,12 +22,8 @@ use zz_client::{
     window_summary::{DaemonClock, PaneTag, age_label, summarize_chats},
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId};
-use zz_ui::sidebar::SIDEBAR_CONTENT_INSET;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
     command::PaletteHostId,
-    menu::PopupMenuItem,
-    motion::Instant,
     navigation::{
         WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
         WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
@@ -39,8 +40,6 @@ use zz_ui::{
         workspace_tree_row,
     },
     program::program_mark,
-    rems_from_px,
-    scroll::ScrollableElement as _,
 };
 
 pub(super) use zz_client::sidebar::SidebarTarget as Target;
@@ -299,7 +298,7 @@ pub(super) fn session_tree(
         },
     )
     .size_full()
-    .pr(zz_ui::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(penna::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides);
@@ -646,7 +645,7 @@ fn render_row(
         activate(&connection, target, cx);
         cx.stop_propagation();
     });
-    let row = zz_ui::motion::enter_since(row, opened, window, cx);
+    let row = penna::motion::enter_since(row, opened, window, cx);
     if !disabled
         && let Some((label, command)) =
             rename_command(runtime.connection.read(cx).core.snapshot(), target)

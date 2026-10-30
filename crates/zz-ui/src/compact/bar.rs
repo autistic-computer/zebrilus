@@ -24,14 +24,6 @@ const PILL_INSET_MAX: f32 = 20.0;
 const INK_CONTRAST: f32 = 4.5;
 const TINT_MAX: f32 = 0.95;
 
-pub(super) fn concentric(radius: Pixels, gap: Pixels) -> Pixels {
-    if radius >= FULL_CORNER_RADIUS {
-        FULL_CORNER_RADIUS
-    } else {
-        (radius - gap).max(px(0.0))
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PillPlacement {
     pub inset: Pixels,
@@ -289,7 +281,7 @@ fn pill_row(label: PillLabel, dots: impl IntoElement, pill: &Layer, cx: &App) ->
     };
     let tile = COMPACT_PILL_HEIGHT - 2.0 * TILE_INSET;
     let tile_radius = if theme.style(roles::PHONE_PILL_ICON).shape == Shape::Round {
-        concentric(pill.radius, px(TILE_INSET))
+        penna::touch::concentric(pill.radius, px(TILE_INSET))
     } else {
         backing.radius
     };
@@ -389,12 +381,5 @@ mod tests {
             square.zone(),
             px(PILL_GAP + COMPACT_PILL_HEIGHT + 20.0 + PILL_INSET)
         );
-    }
-
-    #[test]
-    fn inner_corners_share_the_outer_center() {
-        assert_eq!(concentric(px(28.0), px(8.0)), px(20.0));
-        assert_eq!(concentric(px(4.0), px(8.0)), px(0.0));
-        assert_eq!(concentric(FULL_CORNER_RADIUS, px(8.0)), FULL_CORNER_RADIUS);
     }
 }

@@ -1,22 +1,19 @@
+use penna::sidebar::{controls_leading_inset, status_dot};
 use std::rc::Rc;
-use zz_ui::sidebar::{controls_leading_inset, status_dot};
 
 use ala::{
     AnyElement, App, Entity, IntoElement, MouseButton, Pixels, SharedString, Stateful, Window,
     prelude::*,
 };
+use penna::{ActiveTheme as _, IconName, tooltip::Tooltip};
 use zz_client::{StatusBarModel, StatusBarWindow};
-use zz_ui::{
-    ActiveTheme as _, IconName,
-    navigation::{
-        WorkspaceStatusWindowState,
-        status::{
-            MAX_VISIBLE_WINDOWS, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
-            status_window, status_window_overflow, visible_window_range,
-        },
-        workspace_status_item,
+use zz_ui::navigation::{
+    WorkspaceStatusWindowState,
+    status::{
+        MAX_VISIBLE_WINDOWS, StatusPaneEntry, StatusWindowActions, StatusWindowEntry,
+        status_window, status_window_overflow, visible_window_range,
     },
-    tooltip::Tooltip,
+    workspace_status_item,
 };
 
 use crate::mux::{

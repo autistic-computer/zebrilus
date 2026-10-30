@@ -2,7 +2,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
     Render, SharedString, Styled as _, Subscription, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     Disableable as _, IndexPath, Sizable as _, h_flex,
     segmented::SegmentedControl,
     select::{Select, SelectState},

@@ -2,7 +2,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, MouseButton,
     ParentElement as _, Render, Styled as _, Subscription, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName, Selectable as _,
     Sizable as _, Tone,
     button::{Button, ButtonRounded, ButtonVariant, ButtonVariants as _},

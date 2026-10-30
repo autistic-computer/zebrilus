@@ -9373,6 +9373,7 @@ dependencies = [
  "js-sys",
  "log",
  "objc",
+ "penna",
  "percent-encoding",
  "raw-window-handle",
  "serde",
@@ -9381,6 +9382,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "web-time",
  "zz-client",
  "zz-daemon-client",
  "zz-protocol",
@@ -9484,6 +9486,7 @@ version = "0.1.0"
 dependencies = [
  "ala",
  "ala-platform",
+ "penna",
  "wasm-bindgen",
  "zz-app",
  "zz-protocol",

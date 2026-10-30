@@ -14,7 +14,7 @@ use ala::{
     AnyElement, App, ClipboardItem, Context, Entity, FocusHandle, Focusable, IntoElement, Render,
     SharedString, Subscription, Window, WindowControlArea, div, img, prelude::*, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, IndexPath, WindowExt as _,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState},
@@ -40,11 +40,11 @@ use crate::{
     window::toast,
     workspace::add_host,
 };
+use penna::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
+use penna::feedback::import_configuration_file_alert;
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
-use zz_ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
-use zz_ui::feedback::import_configuration_file_alert;
 use zz_ui::interface_theme::{self, InterfaceTheme};
 use zz_ui::settings::appearance::{
     SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
@@ -241,7 +241,7 @@ impl SettingsView {
                 let ColorPickerEvent::Change(color) = event;
                 let key = ConfigKey::ChromeAccent;
                 let result = match color {
-                    Some(color) => set_config_key(key, &zz_ui::to_hex(color.opaque())),
+                    Some(color) => set_config_key(key, &penna::to_hex(color.opaque())),
                     None => remove_config_key(key),
                 };
                 written(key, result, cx);
@@ -725,7 +725,7 @@ impl SettingsView {
             .child(
                 div()
                     .flex_none()
-                    .text_size(zz_ui::rems_from_px(11.0))
+                    .text_size(penna::rems_from_px(11.0))
                     .text_color(cx.theme().warning)
                     .child(
                         "Any local process that reaches the port can drive the logged-in browser.",
@@ -1207,7 +1207,7 @@ impl SettingsView {
             destination = destination.child(
                 div()
                     .flex_none()
-                    .text_size(zz_ui::rems_from_px(11.0))
+                    .text_size(penna::rems_from_px(11.0))
                     .text_color(cx.theme().warning)
                     .child(error),
             );
@@ -1431,7 +1431,7 @@ impl SettingsView {
                         )
                         .child(
                             Button::new("settings-update-notes")
-                                .icon(zz_ui::IconName::ExternalLink)
+                                .icon(penna::IconName::ExternalLink)
                                 .label("What's new")
                                 .on(settings_card_ground(cx))
                                 .on_click(move |_, _, cx| cx.open_url(&notes_url)),
@@ -1551,7 +1551,7 @@ impl SettingsView {
                                 div()
                                     .flex_1()
                                     .min_w_0()
-                                    .text_size(zz_ui::rems_from_px(11.0))
+                                    .text_size(penna::rems_from_px(11.0))
                                     .text_color(cx.theme().foreground.muted())
                                     .text_ellipsis()
                                     .child(path),
@@ -1588,7 +1588,7 @@ impl SettingsView {
                         page.child(
                             div()
                                 .flex_none()
-                                .text_size(zz_ui::rems_from_px(11.0))
+                                .text_size(penna::rems_from_px(11.0))
                                 .text_color(cx.theme().warning)
                                 .child(error),
                         )
@@ -1851,7 +1851,7 @@ impl Render for SettingsView {
             .overflow_hidden()
             .text_color(cx.theme().foreground)
             .when(
-                !zz_ui::draws_window_controls(window)
+                !penna::draws_window_controls(window)
                     && !window.is_fullscreen()
                     && !crate::profile::profile(cx).fixed_window,
                 |this| {

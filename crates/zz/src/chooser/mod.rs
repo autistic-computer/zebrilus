@@ -6,13 +6,13 @@ use ala::{
     KeyDownEvent, LayoutId, MouseButton, Pixels, Point, Render, ScrollStrategy, Style,
     UTF16Selection, UniformListScrollHandle, Window, div, prelude::*, uniform_list,
 };
+use penna::{
+    ActiveTheme as _, IconName,
+    button::{Button, ButtonVariants as _},
+};
 pub(crate) use zz_ui::chooser::ChooserHint;
 use zz_ui::chooser::{
     ChooserDimensions, ChooserModal, ChooserSearch as ChooserSearchView, chooser_has_key_gutter,
-};
-use zz_ui::{
-    ActiveTheme as _, IconName,
-    button::{Button, ButtonVariants as _},
 };
 
 use zz_terminal::{KeyAction, KeyInput};
@@ -315,7 +315,7 @@ impl<S: ChooserSpec> Render for Chooser<S> {
         let close_mux = self.mux.clone();
         let close = Button::compact_icon(S::CLOSE_ID, IconName::Xmark)
             .ghost()
-            .surface_role(zz_ui::SurfaceRole::FLAT_ICON_BUTTON)
+            .surface_role(penna::SurfaceRole::FLAT_ICON_BUTTON)
             .on(cx.theme().ground_of(zz_ui::roles::PICKER))
             .tooltip("Close")
             .on_click(move |_, _, cx| {

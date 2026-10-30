@@ -2,7 +2,7 @@ use ala::{
     AnyView, Context, IntoElement, ParentElement as _, Render, Styled as _, Window, canvas, div,
     px, size,
 };
-use zz_ui::{ActiveTheme as _, Root};
+use penna::{ActiveTheme as _, Root};
 
 const PADDING: f32 = 24.0;
 
@@ -24,7 +24,7 @@ impl SectionHost {
 
 impl Render for SectionHost {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        zz_ui::note_drawn_roles();
+        penna::note_drawn_roles();
         let section = self.section;
         let dialog_layer = Root::render_dialog_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
@@ -57,7 +57,7 @@ impl Render for SectionHost {
                                 }
                             },
                             move |bounds, (), window, _| {
-                                let drawn = zz_ui::drawn_roles();
+                                let drawn = penna::drawn_roles();
                                 let size = window.viewport_size();
                                 if bounds.size.width > px(0.0)
                                     && size.width > px(0.0)

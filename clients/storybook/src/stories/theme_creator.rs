@@ -5,31 +5,41 @@ use ala::{
     IntoElement, Keystroke, ParentElement as _, Render, SharedString, Styled as _, Window, div,
     prelude::*, px, relative, size,
 };
+use penna::{
+    ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
+    badge::Badge,
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    input::{Input, InputState, NumberInput},
+    kbd::Kbd,
+    menu::PopupMenu,
+    notification::Notification,
+    overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
+    select::{Select, SelectState},
+    sheet::{BottomSheet, bottom_sheet, sheet_close, sheet_row},
+    slider::DiscreteSlider,
+    switch::Switch,
+    text::{TextView, TextViewStyle},
+    tooltip::Tooltip,
+    touch::{ArrowDirection, ToolKeys, WhichKeyList, arrow_pad_bubble, page_dots},
+    v_flex,
+    which_key::WhichKeyView,
+};
 use zz_protocol::{DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_terminal::{SearchQuery, SearchStatus};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, Emphasis, IconName, IndexPath, Tone,
     agent::agent_jump_to_bottom_button,
-    badge::Badge,
     browser::{BrowserHeader, browser_recent_row, browser_start_surface},
-    button::{Button, ButtonVariants as _},
     command::{
         CommandPaletteSurface, PaletteHint, PalettePill, PaletteRow, PaletteStatus,
         command_palette_entry, command_palette_row_height, command_palette_section,
         unified_command_palette_input,
     },
     compact::{
-        ArrowDirection, BottomSheet, PillLabel, ToolKeys, WhichKeyList, arrow_pad_bubble,
-        bottom_sheet, compact_bar_button, compact_floating_bar, compact_floating_pill, compact_hud,
-        overview_count, page_dots, sheet_close, sheet_row,
+        PillLabel, compact_bar_button, compact_floating_bar, compact_floating_pill, compact_hud,
+        overview_count,
     },
-    h_flex,
-    input::{Input, InputState, NumberInput},
     interface_theme::{ThemeModeSetting, pinned_theme_mode},
-    kbd::Kbd,
-    menu::PopupMenu,
-    notification::Notification,
-    overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
     pane::{
         FloatingSurface, PaneOverlayCorner, PaneSplitAxis, pane_drag_chip, pane_drop_preview,
         pane_indicator, pane_indicator_overlay, pane_overlay_stack, pane_picker_row,
@@ -37,7 +47,6 @@ use zz_ui::{
         pane_waiting_state, terminal_mode_indicator,
     },
     pip::PipSurface,
-    select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsStack,
         appearance::{picker_tile, theme_preview},
@@ -49,13 +58,7 @@ use zz_ui::{
         empty_workspace_caption, empty_workspace_connect, empty_workspace_hint,
         empty_workspace_keys,
     },
-    slider::DiscreteSlider,
-    switch::Switch,
     terminal::terminal_find_bar,
-    text::{TextView, TextViewStyle},
-    tooltip::Tooltip,
-    v_flex,
-    which_key::WhichKeyView,
 };
 
 use super::{
@@ -85,7 +88,7 @@ use super::{
 };
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless};
-use zz_ui::StyledExt as _;
+use penna::StyledExt as _;
 
 pub const ID: &str = "theme-creator";
 
@@ -621,8 +624,8 @@ impl Controls {
 
     fn settings(&self, cx: &App) -> AnyElement {
         let active = crate::knobs().interface_theme();
-        let light = active.colors(zz_ui::ThemeMode::Light);
-        let dark = active.colors(zz_ui::ThemeMode::Dark);
+        let light = active.colors(penna::ThemeMode::Light);
+        let dark = active.colors(penna::ThemeMode::Dark);
         let tiles = h_flex()
             .flex_wrap()
             .gap(px(8.0))
@@ -941,7 +944,7 @@ impl Phone {
                 sheet_row(
                     ("showcase-session-option", ix),
                     zz_ui::roles::PHONE_ROW,
-                    Some(zz_ui::Icon::new(IconName::Layers)),
+                    Some(penna::Icon::new(IconName::Layers)),
                     *name,
                     cx,
                 )
@@ -954,7 +957,7 @@ impl Phone {
                 )
                 .when(*attached, |row| {
                     row.child(
-                        zz_ui::Icon::new(IconName::Check)
+                        penna::Icon::new(IconName::Check)
                             .size(px(18.0))
                             .text_color(theme.accent),
                     )
@@ -970,13 +973,13 @@ impl Phone {
                 .children(rows)
                 .child(div().mx(px(12.0)).my(px(4.0)).rule_on(
                     zz_ui::roles::LIST_RULE,
-                    zz_ui::Edge::Top,
+                    penna::Edge::Top,
                     cx,
                 ))
                 .child(sheet_row(
                     "showcase-new-session",
                     zz_ui::roles::PHONE_ROW,
-                    Some(zz_ui::Icon::new(IconName::Plus)),
+                    Some(penna::Icon::new(IconName::Plus)),
                     "New session",
                     cx,
                 )),
@@ -1041,7 +1044,7 @@ fn drawer_screen(id: &'static str, sheet: BottomSheet, cx: &App) -> AnyElement {
 fn drawer(
     id: &'static str,
     title: &'static str,
-    role: zz_ui::SurfaceRole,
+    role: penna::SurfaceRole,
     content: impl IntoElement,
 ) -> BottomSheet {
     bottom_sheet(
@@ -1065,13 +1068,13 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
         div()
             .mx(px(12.0))
             .my(px(4.0))
-            .rule_on(roles::LIST_RULE, zz_ui::Edge::Top, cx)
+            .rule_on(roles::LIST_RULE, penna::Edge::Top, cx)
     };
     let plus = |id: &'static str, label: &'static str| {
         sheet_row(
             id,
             roles::PHONE_ROW,
-            Some(zz_ui::Icon::new(IconName::Plus)),
+            Some(penna::Icon::new(IconName::Plus)),
             label,
             cx,
         )
@@ -1093,7 +1096,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
         .child(sheet_row(
             "drawer-host-connect",
             roles::PHONE_ROW,
-            Some(zz_ui::Icon::new(IconName::Server)),
+            Some(penna::Icon::new(IconName::Server)),
             "Connect",
             cx,
         ))
@@ -1101,7 +1104,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
             sheet_row(
                 "drawer-host-remove",
                 roles::PHONE_ROW,
-                Some(zz_ui::Icon::new(IconName::Xmark)),
+                Some(penna::Icon::new(IconName::Xmark)),
                 "Remove host",
                 cx,
             )
@@ -1129,7 +1132,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
         .child(
             div()
                 .my(px(6.0))
-                .rule_on(roles::LIST_RULE, zz_ui::Edge::Top, cx),
+                .rule_on(roles::LIST_RULE, penna::Edge::Top, cx),
         )
         .child(note(
             "Add this phone's key to authorized_keys on the host to sign in without a password.",
@@ -1144,7 +1147,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
         sheet_row(
             id,
             roles::PHONE_ROW,
-            Some(zz_ui::Icon::new(icon)),
+            Some(penna::Icon::new(icon)),
             title,
             cx,
         )
@@ -1154,7 +1157,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
             sheet_row(
                 ("drawer-tab", ix),
                 roles::PHONE_ROW,
-                (ix == 0).then(|| zz_ui::Icon::new(IconName::Check)),
+                (ix == 0).then(|| penna::Icon::new(IconName::Check)),
                 *title,
                 cx,
             )

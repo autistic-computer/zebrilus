@@ -5,8 +5,8 @@ use std::{
 
 use ala::{App, RenderImage, WindowAppearance};
 use image::{Frame, RgbaImage, imageops::FilterType};
+use penna::ThemeMode;
 use smallvec::smallvec;
-use zz_ui::ThemeMode;
 
 #[cfg(any(target_os = "linux", test))]
 const APP_ICON_PNG: &[u8] = if zz_protocol::app_identity::DEVELOPMENT {

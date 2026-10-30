@@ -1,8 +1,8 @@
 #![allow(clippy::unused_self)]
 
 use ala::{App, Context, Window, div, prelude::*};
+use penna::{ActiveTheme as _, Colorize as _};
 use zz_protocol::{EditorDescriptor, PaneId};
-use zz_ui::{ActiveTheme as _, Colorize as _};
 
 use crate::mux::client::MuxClient;
 

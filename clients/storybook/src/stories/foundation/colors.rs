@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     px,
 };
-use zz_ui::{ActiveTheme as _, Colorize as _, h_flex, to_hex, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, h_flex, to_hex, v_flex};
 
 use crate::story::Framed as _;
 use crate::story::{Section, Story, stateless, states};
@@ -44,7 +44,7 @@ fn roots(_: &mut Window, cx: &mut App) -> AnyElement {
         .child(swatch(
             "text on accent",
             theme
-                .paint(zz_ui::Tone::Primary, zz_ui::Emphasis::Solid)
+                .paint(penna::Tone::Primary, penna::Emphasis::Solid)
                 .text,
             cx,
         ))

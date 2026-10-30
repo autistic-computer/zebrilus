@@ -1,13 +1,9 @@
 use ala::{Context, prelude::*};
-use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
-    button::Button,
-    h_flex,
-    settings::{
-        SettingEntry, SettingsScrollColumn, SettingsStack,
-        providers::{ProvidersHost, providers_stack},
-        settings_page_heading, settings_scroll_column,
-    },
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, button::Button, h_flex};
+use zz_ui::settings::{
+    SettingEntry, SettingsScrollColumn, SettingsStack,
+    providers::{ProvidersHost, providers_stack},
+    settings_page_heading, settings_scroll_column,
 };
 
 use super::AppShell;

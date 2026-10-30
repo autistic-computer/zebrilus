@@ -5,13 +5,46 @@ use ala::{
 
 use crate::{Size, rems_from_px};
 
+mod arrow_pad;
+mod dots;
+mod key_press;
+mod key_row;
+mod lift;
+mod pager;
+mod popover_key;
 mod press;
+mod sticky;
+mod swipe_back;
+mod which_key_list;
 
+pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, resolve_direction};
+pub use dots::{PageDot, page_dots, page_dots_in};
+pub use key_row::{
+    KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey,
+    ToolKeys,
+};
+pub use lift::{Lift, LiftEvent, LiftResponse};
+pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
+pub use popover_key::{
+    PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords,
+};
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
 };
+pub use sticky::{StickyModifier, StickyModifiers};
+pub use swipe_back::{SwipeBack, claim_back_swipe, swipe_back, yield_back_swipe};
+pub use which_key_list::WhichKeyList;
 
 pub const TOUCH_TARGET: f32 = 44.0;
+
+#[must_use]
+pub fn concentric(radius: Pixels, gap: Pixels) -> Pixels {
+    if radius >= ala::FULL_CORNER_RADIUS {
+        ala::FULL_CORNER_RADIUS
+    } else {
+        (radius - gap).max(ala::px(0.0))
+    }
+}
 
 pub const TOUCH_TYPE_SCALE: f32 = 15.0 / 13.0;
 
@@ -229,5 +262,15 @@ mod tests {
         assert_eq!(clicks.get(), [4, 1, 1]);
         tap(cx, point(first.center().x, first.top() - px(12.0)));
         assert_eq!(clicks.get(), [4, 1, 2]);
+    }
+
+    #[test]
+    fn inner_corners_share_the_outer_center() {
+        assert_eq!(concentric(ala::px(28.0), ala::px(8.0)), ala::px(20.0));
+        assert_eq!(concentric(ala::px(4.0), ala::px(8.0)), ala::px(0.0));
+        assert_eq!(
+            concentric(ala::FULL_CORNER_RADIUS, ala::px(8.0)),
+            ala::FULL_CORNER_RADIUS
+        );
     }
 }

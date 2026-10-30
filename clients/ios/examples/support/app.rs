@@ -8,6 +8,11 @@ use ala::{
     Subscription, Task, TextInputAction, TextInputConfiguration, UTF16Selection, Window, canvas,
     div, prelude::*, px,
 };
+use penna::{
+    ActiveTheme, Colorize,
+    button::Button,
+    input::{Input, InputContentType, InputEvent, InputState},
+};
 use std::{collections::HashSet, ops::Range, path::PathBuf, sync::Arc, time::Duration};
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, ClientCore, CoreEvent, Outbound, TERMINAL_TABLE,
@@ -18,11 +23,8 @@ use zz_terminal::{
     ClipboardTarget, KeyAction, KeyCode, PointerCellEvent, TerminalMouseButton, TerminalMouseInput,
     TerminalMousePhase, TerminalViewAction,
 };
-use zz_ui::{
-    ActiveTheme, Colorize,
-    button::Button,
-    input::{Input, InputContentType, InputEvent, InputState},
-    terminal::{GridSize, PaintState, RowRenderCache, TerminalGeometry, TerminalRenderInput},
+use zz_ui::terminal::{
+    GridSize, PaintState, RowRenderCache, TerminalGeometry, TerminalRenderInput,
 };
 
 pub struct TerminalApp {

@@ -8,7 +8,7 @@ use ala::{
 
 use super::{
     arrow_pad::ArrowPad,
-    bar::concentric,
+    concentric,
     popover_key::{PopoverKey, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords},
     sticky::{StickyModifier, StickyModifiers},
 };
@@ -18,9 +18,9 @@ use crate::{
 };
 
 pub const KEY_ROW_HEIGHT: f32 = KEY_PILL_HEIGHT + 2.0 * KEY_ROW_MARGIN_Y;
-pub(super) const KEY_PILL_HEIGHT: f32 = KEY_SIZE + 2.0 * PILL_PADDING;
-pub(super) const KEY_ROW_MARGIN_X: f32 = 8.0;
-pub(super) const KEY_ROW_MARGIN_Y: f32 = 4.0;
+pub const KEY_PILL_HEIGHT: f32 = KEY_SIZE + 2.0 * PILL_PADDING;
+pub const KEY_ROW_MARGIN_X: f32 = 8.0;
+pub const KEY_ROW_MARGIN_Y: f32 = 4.0;
 pub(super) const KEY_SIZE: f32 = 40.0;
 pub(super) const KEY_ICON: f32 = 18.0;
 const KEY_MARK: f32 = 14.0;
@@ -564,7 +564,7 @@ mod tests {
     use ala::{Context, Render, Subscription, TestAppContext, VisualTestContext};
 
     use super::*;
-    use crate::compact::PopoverKeyEvent;
+    use crate::touch::PopoverKeyEvent;
 
     struct Host {
         keys: ToolKeys,

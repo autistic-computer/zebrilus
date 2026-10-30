@@ -1,9 +1,8 @@
 use ala::{App, Div, ElementId, IntoElement, Pixels, SharedString, Stateful, div, prelude::*, px};
 
 use crate::{
-    ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex,
-    picker::{muted_on, row_state, row_surface},
-    roles, v_flex,
+    ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex, muted_on, roles, row_state, row_surface,
+    v_flex,
 };
 
 const ROW_HEIGHT: f32 = 40.0;

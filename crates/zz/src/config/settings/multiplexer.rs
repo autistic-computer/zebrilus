@@ -190,7 +190,7 @@ impl SettingsView {
                             .flex_none()
                             .child(
                                 div()
-                                    .text_size(zz_ui::rems_from_px(11.0))
+                                    .text_size(penna::rems_from_px(11.0))
                                     .text_color(cx.theme().foreground.muted())
                                     .child("Prefix +"),
                             )

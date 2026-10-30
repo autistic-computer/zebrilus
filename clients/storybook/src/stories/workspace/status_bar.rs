@@ -2,9 +2,9 @@ use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
+use penna::{ActiveTheme as _, Colorize as _, IconName, h_flex};
 use zz_protocol::PaneKindSnapshot;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, h_flex,
     navigation::{
         WORKSPACE_STATUS_PILL_HEIGHT, WorkspaceStatusWindowState,
         status::{

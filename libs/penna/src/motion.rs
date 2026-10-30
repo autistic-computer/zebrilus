@@ -21,7 +21,7 @@ struct Turns(HashMap<ElementId, (bool, Option<Instant>)>);
 
 impl ala::Global for Turns {}
 
-pub(crate) fn turned(id: impl Into<ElementId>, on: bool, cx: &mut App) -> Option<Instant> {
+pub fn turned(id: impl Into<ElementId>, on: bool, cx: &mut App) -> Option<Instant> {
     let now = cx.background_executor().now();
     let entry = cx
         .default_global::<Turns>()
@@ -34,7 +34,7 @@ pub(crate) fn turned(id: impl Into<ElementId>, on: bool, cx: &mut App) -> Option
     entry.1
 }
 
-pub(crate) fn eased(
+pub fn eased(
     since: Option<Instant>,
     delay: Duration,
     span: Duration,

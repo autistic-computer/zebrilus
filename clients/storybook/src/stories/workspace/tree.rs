@@ -1,19 +1,29 @@
-use zz_ui::sidebar::{SIDEBAR_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
+use penna::sidebar::{
+    SIDEBAR_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar,
+};
 use std::rc::Rc;
 
-use zz_client::program::Program;
 use ala::{
     AnyElement, App, Hsla, IntoElement, Keystroke, ListSizingBehavior, ParentElement as _,
     Stateful, Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
 };
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, scroll::ScrollableElement as _};
+use zz_client::program::Program;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
-    navigation::{WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH, WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE, sidebar::{
+    navigation::{
+        WORKSPACE_SIDEBAR_FADE_HEIGHT, WORKSPACE_TREE_INDENT_WIDTH,
+        WORKSPACE_TREE_MARKER_SLOT_WIDTH, WORKSPACE_TREE_NODE_ICON_SIZE,
+        sidebar::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
             tree_node_marker, tree_row_menu,
-        }, tree::{IndentGuideColors, WorkspaceIndentGuides}, workspace_add_host_button, workspace_layout_button, workspace_settings_button, workspace_sidebar_footer_controls, workspace_sidebar_surface, workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_row, workspace_tree_shortcut},
+        },
+        tree::{IndentGuideColors, WorkspaceIndentGuides},
+        workspace_add_host_button, workspace_layout_button, workspace_settings_button,
+        workspace_sidebar_footer_controls, workspace_sidebar_surface,
+        workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
+        workspace_tree_row, workspace_tree_shortcut,
+    },
     program::program_mark,
-    scroll::ScrollableElement as _,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -359,7 +369,7 @@ pub fn tree_list(
             .collect::<Vec<_>>()
     })
     .size_full()
-    .pr(zz_ui::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(penna::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll)
     .with_decoration(guides(depths, active_row, cx));
@@ -374,7 +384,7 @@ pub fn tree_list(
         .into_any_element()
 }
 
-pub fn chrome_controls() -> zz_ui::button::Button {
+pub fn chrome_controls() -> penna::button::Button {
     workspace_layout_button("layout")
 }
 

@@ -2,15 +2,14 @@ use ala::{
     AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, IconName,
     button::{Button, ButtonVariants as _},
-    chooser::{
-        CHOOSER_ROW_HEIGHT, ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind,
-        ChooserSearch, buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle,
-        tree_chooser_row,
-    },
     v_flex,
+};
+use zz_ui::chooser::{
+    CHOOSER_ROW_HEIGHT, ChooserDimensions, ChooserHint, ChooserModal, ChooserPaneKind,
+    ChooserSearch, buffer_chooser_row, chooser_has_key_gutter, chooser_subtitle, tree_chooser_row,
 };
 
 use crate::story::{Section, Story, stateless, states};
@@ -226,7 +225,7 @@ const PANES: &[TreeRow] = &[
 fn close(id: &'static str, cx: &App) -> Button {
     Button::compact_icon(id, IconName::Xmark)
         .ghost()
-        .surface_role(zz_ui::SurfaceRole::FLAT_ICON_BUTTON)
+        .surface_role(penna::SurfaceRole::FLAT_ICON_BUTTON)
         .on(cx.theme().ground_of(zz_ui::roles::PICKER))
         .tooltip("Close")
 }

@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, Hsla, IntoElement, ParentElement as _, Styled as _, div, linear_color_stop,
     linear_gradient, pattern_slash, px,
 };
-use zz_ui::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
 
 use crate::knobs::Backdrop;
 
@@ -25,17 +25,11 @@ const CODE: &[&[(Ink, &str)]] = &[
     ],
     &[
         (Ink::Success, "   Compiling "),
-        (
-            Ink::Text,
-            "ala v0.1.0 (/Users/fabrico/dev/zz/crates/ala)",
-        ),
+        (Ink::Text, "ala v0.1.0 (/Users/fabrico/dev/zz/crates/ala)"),
     ],
     &[
         (Ink::Success, "   Compiling "),
-        (
-            Ink::Text,
-            "ala-platform v0.1.0 (crates/ala-platform)",
-        ),
+        (Ink::Text, "ala-platform v0.1.0 (crates/ala-platform)"),
     ],
     &[
         (Ink::Warning, "warning"),

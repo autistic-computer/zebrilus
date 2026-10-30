@@ -10,8 +10,7 @@ use crate::{
     badge::Badge,
     input::{Input, InputState},
     list::ListItem,
-    picker::muted_on,
-    row_corners,
+    muted_on, row_corners,
 };
 
 use super::{command_palette_row_height, palette_vim::PaletteVimMode};
@@ -357,10 +356,11 @@ pub fn command_palette_empty(cx: &App) -> Div {
 mod tests {
     use super::*;
     use crate::{
-        Elevation, Root, Theme, ThemeMode,
+        Elevation, Theme, ThemeMode,
         command::{CommandPaletteSurface, PaletteHint},
     };
     use ala::{Context, Focusable as _, Render, TestAppContext, Window};
+    use penna::Root;
 
     struct Preview {
         input: Entity<InputState>,

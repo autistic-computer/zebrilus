@@ -1450,14 +1450,14 @@ fn picker_item(
     enabled: bool,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    let state = crate::picker::row_state(selected, enabled);
+    let state = crate::row_state(selected, enabled);
     let ground = cx.theme().layer(roles::PANE_PICKER, state).ground;
     let ink = cx
         .theme()
         .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
         .muted_at(PaintState::Rest);
     let height = crate::picker::LIST_ROW_HEIGHT;
-    crate::picker::row_surface(
+    crate::row_surface(
         crate::h_flex().id(id).flex_none().h(height),
         roles::PANE_PICKER,
         state,

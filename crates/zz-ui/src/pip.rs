@@ -595,7 +595,7 @@ mod tests {
             height: px(384.0),
         },
         lines: PaneBorderLines::Single,
-        header: crate::PANE_HEADER_HEIGHT,
+        header: penna::PANE_HEADER_HEIGHT,
     };
 
     #[test]
@@ -611,7 +611,7 @@ mod tests {
         let size = LAYOUT.size(float);
         assert_eq!(
             size,
-            ala::size(px(176.0), px(96.0 + 16.0) + crate::PANE_HEADER_HEIGHT)
+            ala::size(px(176.0), px(96.0 + 16.0) + penna::PANE_HEADER_HEIGHT)
         );
         assert_eq!(
             frame(FloatPlace::TopLeft).origin,

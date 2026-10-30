@@ -7,8 +7,8 @@ use ala::{
 };
 use web_time::Instant;
 
-use crate::{ActiveTheme as _, Colorize as _, roles};
-use penna::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
+use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
+use crate::{ActiveTheme as _, Colorize as _, Kind};
 
 const EDGE: f32 = 20.0;
 const FLING_WIDTHS: f32 = 1.0;
@@ -335,7 +335,7 @@ impl RenderOnce for SwipeBack {
                     .when(moving, |page| {
                         page.shadow(
                             theme
-                                .shadows_of(theme.style(roles::PANE).shadow)
+                                .shadows_of(theme.style(Kind::Pane.role()).shadow)
                                 .into_iter()
                                 .map(|mut shadow| {
                                     shadow.color =

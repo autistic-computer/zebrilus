@@ -1,5 +1,5 @@
 use ala::{App, Window};
-use zz_ui::notification::Notification;
+use penna::notification::Notification;
 
 pub(crate) fn set_up_agents(window: &mut Window, cx: &mut App) {
     let task = cx

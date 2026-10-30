@@ -14,13 +14,13 @@ use ala::{Context, SharedString, Task};
 use fff_search::FilePickerOptions;
 use fff_search::{FilePicker, FuzzySearchOptions, PaginationArgs, QueryParser};
 use ignore::WalkBuilder;
-use zz_ui::command::palette_shortcut_hint;
-use zz_ui::{
+use penna::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, IconName, StyledExt as _, h_flex,
     input::{InputEvent, InputState, MoveDown, MoveUp},
     scroll::ScrollableElement as _,
     v_flex,
 };
+use zz_ui::command::palette_shortcut_hint;
 
 const MAX_PICKER_ROWS: usize = 500;
 const WORKSPACE_PRIOR: u32 = 1 << 10;
@@ -568,7 +568,7 @@ impl FilePickerView {
                     let pointer_view = view.clone();
                     let click_view = view.clone();
                     Some(
-                        zz_ui::picker::path_row(
+                        penna::picker::path_row(
                             ("file-picker-row", index),
                             icon.clone(),
                             label,
@@ -607,7 +607,7 @@ impl FilePickerView {
             .flex_none()
             .gap(px(CHROME_GAP))
             .px_2p5()
-            .text_size(zz_ui::rems_from_px(10.0))
+            .text_size(penna::rems_from_px(10.0))
             .text_color(cx.theme().foreground.muted())
             .when(listed && self.scanning, |this| this.child("Scanning…"))
             .when(self.limited, |this| {
@@ -644,7 +644,7 @@ impl Render for FilePickerView {
         let backdrop_view = cx.entity();
         let empty = self.rows.is_empty();
         let empty_message = self.empty_message(cx);
-        zz_ui::picker::picker_overlay("file-picker-overlay", cx)
+        penna::picker::picker_overlay("file-picker-overlay", cx)
             .track_focus(&focus)
             .capture_action(cx.listener(Self::move_up))
             .capture_action(cx.listener(Self::move_down))
@@ -654,10 +654,10 @@ impl Render for FilePickerView {
                 cx.stop_propagation();
             })
             .child(
-                zz_ui::picker::picker_modal("file-picker-modal", cx)
+                penna::picker::picker_modal("file-picker-modal", cx)
                     .child(
-                        zz_ui::picker::picker_header(cx)
-                            .child(zz_ui::picker::picker_search(&self.input, cx)),
+                        penna::picker::picker_header(cx)
+                            .child(penna::picker::picker_search(&self.input, cx)),
                     )
                     .child(
                         v_flex()
@@ -677,14 +677,14 @@ impl Render for FilePickerView {
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .text_size(zz_ui::rems_from_px(11.0))
+                                        .text_size(penna::rems_from_px(11.0))
                                         .text_color(cx.theme().foreground.muted())
                                         .child(empty_message),
                                 )
                             }),
                     )
                     .child(
-                        zz_ui::picker::picker_footer(cx)
+                        penna::picker::picker_footer(cx)
                             .child(palette_shortcut_hint(["up", "down"], "select"))
                             .child(palette_shortcut_hint(["enter"], "open"))
                             .child(palette_shortcut_hint(["escape"], "close"))
@@ -1014,7 +1014,7 @@ mod tests {
                 picker
             });
             captured.replace(Some(picker.clone()));
-            zz_ui::Root::new(picker, window, cx)
+            penna::Root::new(picker, window, cx)
         });
         let picker = slot.borrow().clone().unwrap();
         cx.update(|_, cx| {

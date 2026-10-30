@@ -2,13 +2,13 @@ use ala::{
     Context, Entity, IntoElement, Modifiers, Render, Role, TestAppContext, VisualTestContext,
     Window, div, prelude::*, px,
 };
-use std::{cell::Cell, rc::Rc};
-use zz_ui::{
+use penna::{
     Disableable,
     button::Button,
     input::{Input, InputState, NumberInput},
     slider::DiscreteSlider,
 };
+use std::{cell::Cell, rc::Rc};
 
 struct EffortFixture {
     selected: usize,
@@ -67,7 +67,7 @@ impl Render for DisabledFixture {
 
 #[ala::test]
 fn disabled_zz_controls_expose_and_clear_accessibility_state(cx: &mut TestAppContext) {
-    cx.update(zz_ui::init);
+    cx.update(penna::init);
     let clicks = Rc::new(Cell::new(0));
     let (fixture, cx) = cx.add_window_view({
         let clicks = clicks.clone();
@@ -141,7 +141,7 @@ fn disabled_zz_controls_expose_and_clear_accessibility_state(cx: &mut TestAppCon
 fn forced_accessibility_inspects_existing_zz_widgets_without_a_screen_reader(
     cx: &mut TestAppContext,
 ) {
-    cx.update(zz_ui::init);
+    cx.update(penna::init);
     let (_, cx) = cx.add_window_view(|_, _| EffortFixture { selected: 0 });
     draw(cx);
     cx.update(|window, _| {
@@ -169,7 +169,7 @@ fn forced_accessibility_inspects_existing_zz_widgets_without_a_screen_reader(
 fn accessibility_snapshot_drives_reasoning_effort_and_tracks_fresh_geometry(
     cx: &mut TestAppContext,
 ) {
-    cx.update(zz_ui::init);
+    cx.update(penna::init);
     let (_, cx) = cx.add_window_view(|window, _| {
         window.set_a11y_forced(true);
         EffortFixture { selected: 0 }

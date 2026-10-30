@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use zz_app::app;
 
 use ala::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, point, px, size};
-use zz_ui::{Root, Theme, UiZoom};
+use penna::{Root, Theme, UiZoom};
 
 fn launch(cx: &mut App) {
     cx.text_system()

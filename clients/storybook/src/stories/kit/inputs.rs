@@ -2,7 +2,7 @@ use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, Keystroke, ParentElement as _,
     Render, Styled as _, Window, div,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, Size,
     input::{Input, InputContentType, InputState, NumberInput, TextAlign},
     kbd::Kbd,
@@ -10,7 +10,7 @@ use zz_ui::{
 
 use super::support::after_first_frame;
 use crate::story::{Section, Story, states};
-use zz_ui::StyledExt as _;
+use penna::StyledExt as _;
 
 pub const STORY: Story = Story {
     id: "inputs",
@@ -131,7 +131,7 @@ impl Render for FieldStates {
                 "appearance(false)",
                 div()
                     .px_2()
-                    .rule_on(zz_ui::Kind::Rule.role(), zz_ui::Edge::Bottom, cx)
+                    .rule_on(penna::Kind::Rule.role(), penna::Edge::Bottom, cx)
                     .child(Input::new(&self.bare).appearance(false)),
             )
             .state(

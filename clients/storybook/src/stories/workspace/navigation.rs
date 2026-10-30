@@ -1,14 +1,22 @@
-use zz_ui::sidebar::{SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
+use penna::sidebar::{SIDEBAR_DEFAULT_WIDTH, sidebar_footer, sidebar_titlebar};
 use std::rc::Rc;
 
-use zz_client::program::Program;
 use ala::{
     AnyElement, App, IntoElement, ListSizingBehavior, ParentElement as _, SharedString,
     Styled as _, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, h_flex};
+use zz_client::program::Program;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Selectable as _, h_flex,
-    navigation::{WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState, sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker}, workspace_add_host_button, workspace_layout_button, workspace_palette_button, workspace_settings_button, workspace_sidebar_footer_controls, workspace_sidebar_view_button, workspace_status_item, workspace_status_window, workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_marker, workspace_tree_row},
+    navigation::{
+        WORKSPACE_TREE_NODE_ICON_SIZE, WorkspaceStatusWindowState,
+        sidebar::{tree_action_strip, tree_host_indicator, tree_host_marker, tree_node_marker},
+        workspace_add_host_button, workspace_layout_button, workspace_palette_button,
+        workspace_settings_button, workspace_sidebar_footer_controls,
+        workspace_sidebar_view_button, workspace_status_item, workspace_status_window,
+        workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_marker,
+        workspace_tree_row,
+    },
     program::program_mark,
 };
 
@@ -697,11 +705,7 @@ fn chrome(_: &mut Window, cx: &mut App) -> AnyElement {
                 .w(px(SIDEBAR_DEFAULT_WIDTH))
                 .framed(cx)
                 .rounded(cx.theme().radius)
-                .child(sidebar_titlebar(
-                    "sidebar-titlebar",
-                    chrome_controls(),
-                    cx,
-                )),
+                .child(sidebar_titlebar("sidebar-titlebar", chrome_controls(), cx)),
         )
         .state(
             "sidebar footer",

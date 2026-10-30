@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use ala::{App, Entity, Global, Hsla, SharedString, Window};
+use penna::{Theme, ThemeMode};
 use zz_terminal::TerminalAppearance;
-use zz_ui::{Theme, ThemeMode};
 
 use crate::{config, mux::client::MuxClient};
 
@@ -63,12 +63,12 @@ pub(crate) fn refresh_current_theme(cx: &mut App) {
         });
     Theme::change(mode, None, cx);
     apply_zz_overrides(cx);
-    let corner_smoothing = zz_ui::CORNER_SMOOTHING;
+    let corner_smoothing = penna::CORNER_SMOOTHING;
     for window in cx.windows() {
         window
             .update(cx, |_, window, cx| {
                 window.set_default_corner_smoothing(corner_smoothing);
-                window.set_adaptive_corner_fraction(Some(zz_ui::ADAPTIVE_CORNER_FRACTION));
+                window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
                 crate::ui_scale::place_traffic_lights(window, cx);
             })
             .ok();
@@ -83,8 +83,8 @@ pub fn sync_system_appearance(mut window: Option<&mut Window>, cx: &mut App) {
         .into();
     cx.set_global(SystemThemeMode(system_mode));
     if let Some(window) = window.as_deref_mut() {
-        window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
-        window.set_adaptive_corner_fraction(Some(zz_ui::ADAPTIVE_CORNER_FRACTION));
+        window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
+        window.set_adaptive_corner_fraction(Some(penna::ADAPTIVE_CORNER_FRACTION));
     }
     Theme::sync_system_appearance(window, cx);
     crate::app_icon::apply(cx);
@@ -156,16 +156,16 @@ mod tests {
                 };
                 let colors = theme.colors(mode);
                 let hairline = colors.border();
-                let delta = (zz_ui::oklab_lightness(hairline)
-                    - zz_ui::oklab_lightness(colors.background))
+                let delta = (penna::oklab_lightness(hairline)
+                    - penna::oklab_lightness(colors.background))
                 .abs();
 
                 assert!(
                     (floor..=SEPARATOR_DELTA_CEILING).contains(&delta),
                     "{id} {mode:?}: border {} is {:.1}% from background {}, outside {:.1}%..={:.1}%",
-                    zz_ui::to_hex(hairline),
+                    penna::to_hex(hairline),
                     delta * 100.0,
-                    zz_ui::to_hex(colors.background),
+                    penna::to_hex(colors.background),
                     floor * 100.0,
                     SEPARATOR_DELTA_CEILING * 100.0,
                 );
@@ -327,7 +327,7 @@ mod tests {
         cx.update(zz_ui::init);
         cx.update(|cx| {
             Theme::global_mut(cx).colors.background =
-                zz_ui::parse_hex("#10203066").expect("test background parses");
+                penna::parse_hex("#10203066").expect("test background parses");
 
             let theme = Theme::global(cx);
             assert_alpha(theme.background, 0.4);

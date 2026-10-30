@@ -5,9 +5,9 @@ use ala::{
 use web_time::Duration;
 
 use super::{
+    key_press::{Grip, Press, press_listeners},
     key_row::{KEY_SIZE, KeyLook, key_surface},
     popover_key::popover_above,
-    press::{Grip, Press, press_listeners},
 };
 use crate::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, PaintState, StyledExt as _,

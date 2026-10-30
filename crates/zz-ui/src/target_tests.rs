@@ -4,7 +4,8 @@ use ala::{Focusable as _, TestAppContext, VisualTestContext};
 use zz_protocol::{InsertStyle, ShellKind};
 
 use super::*;
-use crate::{Root, input::Input};
+use crate::input::Input;
+use penna::Root;
 
 fn token(text: &str, cursor: usize) -> Option<(Range<usize>, String)> {
     target_at(text, cursor).map(|token| (token.range, token.body))

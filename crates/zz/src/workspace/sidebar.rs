@@ -1,5 +1,9 @@
 mod flat;
 
+use penna::sidebar::{
+    SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer,
+    sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
+};
 use std::{
     collections::{BTreeMap, BTreeSet},
     rc::Rc,
@@ -7,10 +11,6 @@ use std::{
     time::{Duration, Instant},
 };
 use zz_ui::shell::window_drag_handle;
-use zz_ui::sidebar::{
-    SIDEBAR_CONTENT_INSET as TREE_CONTENT_INSET, SIDEBAR_DEFAULT_WIDTH, sidebar_footer,
-    sidebar_panel, sidebar_resize_handle, sidebar_titlebar,
-};
 
 use ala::{
     AnyElement, App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Hsla,
@@ -18,6 +18,10 @@ use ala::{
     ParentElement as _, Render, ScrollStrategy, SharedString, StatefulInteractiveElement as _,
     Styled as _, SystemNotification, UniformListScrollHandle, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px, uniform_list,
+};
+use penna::{
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, rems_from_px,
+    scroll::ScrollableElement as _,
 };
 use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, PaneStatusState, SessionId, WindowId};
@@ -36,10 +40,7 @@ use zz_ui::navigation::{
     workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _,
     program::program_mark,
-    rems_from_px,
-    scroll::ScrollableElement as _,
     settings::{
         settings_navigation_back_button, settings_navigation_button, settings_navigation_group_gap,
         settings_navigation_row,
@@ -1322,7 +1323,7 @@ fn render_expanded_navigation(
         },
     )
     .size_full()
-    .pr(zz_ui::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
+    .pr(penna::sidebar::SIDEBAR_SCROLLBAR_GUTTER)
     .with_sizing_behavior(ListSizingBehavior::Auto)
     .track_scroll(scroll_handle)
     .with_decoration(decoration);
@@ -1522,7 +1523,7 @@ fn render_tree_row(
     });
 
     render_tree_row_context_menu(
-        zz_ui::motion::enter_since(row, opened, window, cx),
+        penna::motion::enter_since(row, opened, window, cx),
         entry,
         runtime,
     )

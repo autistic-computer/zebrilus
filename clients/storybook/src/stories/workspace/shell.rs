@@ -2,10 +2,9 @@ use ala::{
     AnyElement, App, AppContext as _, Entity, IntoElement, ParentElement as _, Styled as _,
     UniformListScrollHandle, Window, div, prelude::*, px,
 };
+use penna::{ActiveTheme as _, input::InputState};
 use zz_protocol::AgentProvider;
 use zz_ui::{
-    ActiveTheme as _,
-    input::InputState,
     pane::{PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, pane_split_surface},
     shell::{
         app_connection_state, app_shell_surface, app_titlebar_strip, app_workspace_surface,

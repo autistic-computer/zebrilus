@@ -2,7 +2,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _,
     Render, Styled as _, Subscription, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, h_flex,
     kbd::Kbd, list::ListItem, separator::Separator, spinner::Spinner, v_flex,
 };

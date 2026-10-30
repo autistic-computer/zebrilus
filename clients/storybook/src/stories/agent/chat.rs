@@ -5,6 +5,8 @@ use ala::{
     IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
     Styled as _, Window, div, px,
 };
+use penna::button::Button;
+use penna::v_flex;
 use zz_protocol::agent_stream::{AgentQuestion, AgentQuestionOption};
 use zz_protocol::chat::RequestView;
 use zz_protocol::chat::{
@@ -14,8 +16,6 @@ use zz_protocol::chat::{
 };
 use zz_ui::agent::chat::{ChatClicks, ChatHooks, ChatOpen, ChatPane, chat_thread};
 use zz_ui::agent::presentation::{permission_card, permission_option};
-use zz_ui::button::Button;
-use zz_ui::v_flex;
 
 use crate::story::{stateless, states};
 

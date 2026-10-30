@@ -4,22 +4,26 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, Hsla, IntoElement,
     ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, white,
 };
-use zz_protocol::AgentProvider;
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Elevation, IconName,
     button::{Button, ButtonVariants as _},
-    compact::{
-        ArrowPad, BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, HostState, KEY_ROW_HEIGHT, KeyRow,
-        PageDot, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement, PopoverKey,
-        PopoverKeyTap, ToolKeys, WhichKeyList, bento_add_tile, bento_grid, compact_bar_button,
-        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
-        compact_pill_menu, folding_title_bar, host_tile, host_tile_line, large_title, mini_pane,
-        overview_host_empty, overview_session_heading, page_dots, pill_glass_over, window_layout,
-        window_tile,
+    touch::{
+        ArrowPad, KEY_ROW_HEIGHT, KeyRow, PageDot, PopoverKey, PopoverKeyTap, ToolKeys,
+        WhichKeyList, page_dots,
     },
-    pane::agent_provider_icon,
     v_flex,
     which_key::WhichKeyRow,
+};
+use zz_protocol::AgentProvider;
+use zz_ui::{
+    compact::{
+        BENTO_INSET, BentoSpan, COMPACT_PILL_HEIGHT, HostState, PillLabel, PillMenuAlign,
+        PillMenuItem, PillMenuLook, PillPlacement, bento_add_tile, bento_grid, compact_bar_button,
+        compact_floating_bar, compact_floating_group, compact_floating_pill, compact_hud,
+        compact_pill_menu, folding_title_bar, host_tile, host_tile_line, large_title, mini_pane,
+        overview_host_empty, overview_session_heading, pill_glass_over, window_layout, window_tile,
+    },
+    pane::agent_provider_icon,
 };
 
 use crate::stories::agent::lens;

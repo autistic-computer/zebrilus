@@ -3,7 +3,7 @@ use ala::{
     ParentElement as _, Render, ScrollHandle, StatefulInteractiveElement as _, Styled as _,
     Subscription, Window, div, point, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, ScrollbarShow,
     scroll::{Scrollbar, ScrollbarAxis},
     v_flex,

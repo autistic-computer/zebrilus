@@ -1,15 +1,16 @@
+use ala::Hsla;
+use penna::{
+    Colorize as _, Emphasis, Fill, Highlight, PrimaryStyle, SurfaceRole, Theme, ThemeColor,
+    ThemeMode, Tone, oklch, to_hex,
+};
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
 use zz_app::preferences::Preferences;
-use ala::Hsla;
 use zz_protocol::{ProviderStatus, ProviderTask, ProvidersReport};
 use zz_ui::{
-    Colorize as _, Emphasis, Fill, Highlight, PrimaryStyle, SurfaceRole, Theme, ThemeColor,
-    ThemeMode, Tone,
     interface_theme::{self, ACCENTS, DEFAULT_TINT_HUE, InterfaceTheme},
-    oklch,
     settings::{SettingsSection, about, providers::PROVIDERS},
-    theme_css, to_hex,
+    theme_css,
 };
 
 const HUE_STOPS: u16 = 12;
@@ -349,7 +350,7 @@ fn provider_row(status: &ProviderStatus, checking: bool) -> Value {
     }
     let icon = zz_ui::pane::agent_provider_icon(status.provider).path();
     let icon = icon.trim_start_matches("icons/").trim_end_matches(".svg");
-    let icon = if zz_ui::icon::glyphs::names().any(|name| name == icon) {
+    let icon = if penna::icon::glyphs::names().any(|name| name == icon) {
         icon
     } else {
         "bot"

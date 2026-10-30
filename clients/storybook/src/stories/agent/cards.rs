@@ -1,25 +1,21 @@
 use std::sync::Arc;
 
-use zz_client::agent_completion::{
-    AgentCommand, CommandCompletion, bare_command_name, completion_query,
-    meaningful_command_description, pane_commands, ranked_completions,
-};
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Window, div, px, uniform_list,
 };
+use penna::{Disableable as _, button::Button, input::InputEvent};
+use zz_client::agent_completion::{
+    AgentCommand, CommandCompletion, bare_command_name, completion_query,
+    meaningful_command_description, pane_commands, ranked_completions,
+};
 use zz_protocol::{AgentTaskWire, MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
-use zz_ui::{
-    Disableable as _,
-    agent::{
-        composer::COMPOSER_MAX_WIDTH,
-        presentation::{permission_card, permission_option, spinner_phase, terminal_wait_card},
-        question::QuestionCardState,
-        slash::{suggestion_list, suggestion_list_height, suggestion_row},
-        tasks::{TaskTrayAction, TrayPanel, task_tray},
-    },
-    button::Button,
-    input::InputEvent,
+use zz_ui::agent::{
+    composer::COMPOSER_MAX_WIDTH,
+    presentation::{permission_card, permission_option, spinner_phase, terminal_wait_card},
+    question::QuestionCardState,
+    slash::{suggestion_list, suggestion_list_height, suggestion_row},
+    tasks::{TaskTrayAction, TrayPanel, task_tray},
 };
 
 use super::fixtures::{PLAN, PLAN_DONE, branch_question, checks_question, question, tasks};

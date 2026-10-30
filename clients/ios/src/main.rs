@@ -4,8 +4,8 @@ use zz_app::{app, input};
 #[cfg(target_os = "ios")]
 fn main() {
     use ala::{App, Application, px};
+    use penna::{Theme, UiZoom};
     use std::{borrow::Cow, rc::Rc};
-    use zz_ui::{Theme, UiZoom};
 
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let application = Application::with_platform(Rc::new(
@@ -67,7 +67,7 @@ fn main() {
 #[cfg(target_os = "ios")]
 fn open_workspace(cx: &mut ala::App) {
     use ala::{AppContext, WindowOptions};
-    use zz_ui::Root;
+    use penna::Root;
 
     cx.open_window(WindowOptions::default(), |window, cx| {
         window.set_default_corner_smoothing(4.0);

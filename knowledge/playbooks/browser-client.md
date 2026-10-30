@@ -201,7 +201,7 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `crates/zz-ui/src/agent/slash.rs`: shared Agent command suggestion rows and list.
 - `clients/app/src/app/picker.rs`: pane-picker interaction over shared desktop rows.
 - `crates/zz-ui/src/chrome_palette.rs`: shared presets and palette resolution.
-- `crates/zz-ui/src/picker.rs`: shared history and path picker layout and rows.
+- `libs/penna/src/picker.rs`: shared history and path picker layout and rows.
 - `crates/zz-ui/src/agent/controls.rs`: shared composer actions, option menus, Git counts, and context usage.
 - `crates/zz-ui/src/agent/presentation.rs`: shared permission, error, and empty-state cards.
 - `clients/app/src/attachments.rs`: browser image selection and protocol limits.

@@ -21,6 +21,7 @@ serde_json = "1"
 web-time = "1"
 ala = { path = "../../libs/ala/crates/ala" }
 ala-platform = { path = "../../libs/ala/crates/ala-platform", default-features = false }
+penna = { path = "../../libs/penna" }
 zz-client = { path = "../../crates/zz-client" }
 zz-protocol = { path = "../../crates/zz-protocol" }
 zz-terminal = { path = "../../crates/zz-terminal", default-features = false }

@@ -19,6 +19,7 @@ syntax-highlighting = ["zz-ui/tree-sitter"]
 [dependencies]
 ala = { path = "../../libs/ala/crates/ala" }
 ala-platform = { path = "../../libs/ala/crates/ala-platform", default-features = false }
+penna = { path = "../../libs/penna" }
 zz-app = { path = "../app" }
 zz-protocol = { path = "../../crates/zz-protocol" }
 zz-ui = { path = "../../crates/zz-ui", features = ["agent"] }

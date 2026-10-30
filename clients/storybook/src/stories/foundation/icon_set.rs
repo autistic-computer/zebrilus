@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Elevation, Emphasis, Icon, PaintState, Sizable as _, Size,
     Tone,
     button::{Button, ButtonVariants as _},
@@ -95,7 +95,7 @@ fn follows_the_theme(_: &mut Window, cx: &mut App) -> AnyElement {
 }
 
 fn radius_ramp(_: &mut Window, _: &mut App) -> AnyElement {
-    let smoothing = zz_ui::CORNER_SMOOTHING;
+    let smoothing = penna::CORNER_SMOOTHING;
     [0.0, 2.0, 4.0, 6.0, 8.0, 12.0, 16.0, 25.0]
         .into_iter()
         .fold(states(), |states, radius| {

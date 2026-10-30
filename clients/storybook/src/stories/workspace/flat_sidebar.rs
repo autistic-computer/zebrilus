@@ -1,6 +1,11 @@
-use zz_ui::sidebar::{SIDEBAR_DEFAULT_WIDTH};
+use penna::sidebar::SIDEBAR_DEFAULT_WIDTH;
 use std::rc::Rc;
 
+use ala::{
+    AnyElement, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _, Render,
+    ScrollHandle, Styled as _, Window, div, prelude::*, px,
+};
+use penna::{ActiveTheme as _, Colorize as _, menu::PopupMenuItem, scroll::ScrollableElement as _};
 use zz_client::{
     program::{Program, resolve},
     window_summary::{
@@ -9,25 +14,21 @@ use zz_client::{
         PaneTile, WindowSummary, age_label, summarize_chats, summarize_host,
     },
 };
-use ala::{
-    AnyElement, App, AppContext as _, Context, IntoElement, Keystroke, ParentElement as _, Render,
-    ScrollHandle, Styled as _, Window, div, prelude::*, px,
-};
 use zz_protocol::{
     Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId,
     PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneStatusKind, PaneStatusState, PaneSummary,
     SessionId, SessionSnapshot, ShellCommand, SplitId, WindowId, WindowSnapshot,
 };
 use zz_ui::{
-    ActiveTheme as _, Colorize as _,
     command::PaletteHostId,
-    menu::PopupMenuItem,
-    navigation::{WORKSPACE_SIDEBAR_FADE_HEIGHT, flat::{
+    navigation::{
+        WORKSPACE_SIDEBAR_FADE_HEIGHT,
+        flat::{
             FlatEvent, FlatHandler, FlatHost, FlatMenu, FlatRowState, FlatState, FlatTarget,
             FlatWindow, HostConnection, flat_row_ground, flat_sidebar, flat_tile_stack,
             flat_window_row,
-        }},
-    scroll::ScrollableElement as _,
+        },
+    },
 };
 
 use super::{

@@ -7,15 +7,13 @@ use std::{
 use ala::{
     App, Corners, Global, Pixels, SharedString, WindowBackgroundAppearance, WindowDecorations, px,
 };
+use penna::notification::Notification;
 use zz_client::StatusBarSettings;
 use zz_client::url_input::SearchProvider;
 use zz_daemon_client::{Endpoint, InteractiveClient};
 pub(crate) use zz_daemon_client::{HostEntry, validate_fleet_host};
 use zz_protocol::{CommandInvocation, ConfigOverrideEntry, PROTOCOL_VERSION};
-use zz_ui::{
-    interface_theme::{self, InterfaceTheme},
-    notification::Notification,
-};
+use zz_ui::interface_theme::{self, InterfaceTheme};
 
 use crate::{
     app_icon::AppIconSetting,
@@ -556,7 +554,7 @@ const fn effective_pane_geometry(gaps_enabled: bool, value: f32) -> f32 {
 pub(crate) fn pane_content_radii(cx: &App, corners: WindowCorners) -> Corners<Pixels> {
     let config = resolved_config(cx);
     let base = if config.pane_gaps.value {
-        zz_ui::Theme::global(cx).pane_radius()
+        penna::Theme::global(cx).pane_radius()
     } else {
         px(0.0)
     };
@@ -597,7 +595,7 @@ fn apply_animations(cx: &mut App) {
 }
 
 pub(crate) fn titlebar_options(cx: &App) -> ala::TitlebarOptions {
-    zz_ui::TitleBar::title_bar_options(zz_ui::Theme::global(cx).title_bar_height())
+    penna::TitleBar::title_bar_options(penna::Theme::global(cx).title_bar_height())
 }
 
 fn apply_window_decorations(cx: &mut App) {
@@ -2325,7 +2323,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temporary directory");
         let path = directory.path().join(CONFIG_FILE_NAME);
         cx.update(zz_ui::init);
-        let mono = cx.update(|cx| zz_ui::Theme::global(cx).mono_font_family.clone());
+        let mono = cx.update(|cx| penna::Theme::global(cx).mono_font_family.clone());
 
         for family in [Some("Noto Sans"), Some("Arial"), None] {
             write_ui_font_family_at(&path, family).expect("write UI font");
@@ -2334,11 +2332,11 @@ mod tests {
                 crate::theme::refresh_current_theme(cx);
                 let expected =
                     family.map_or_else(|| ala::Font::default().family, ala::SharedString::from);
-                assert_eq!(zz_ui::Theme::global(cx).font_family, expected);
-                assert_eq!(zz_ui::Theme::global(cx).mono_font_family, mono);
+                assert_eq!(penna::Theme::global(cx).font_family, expected);
+                assert_eq!(penna::Theme::global(cx).mono_font_family, mono);
                 assert_eq!(ui_font_family(cx).value.as_deref(), family);
                 crate::theme::sync_system_appearance(None, cx);
-                assert_eq!(zz_ui::Theme::global(cx).font_family, expected);
+                assert_eq!(penna::Theme::global(cx).font_family, expected);
             });
         }
 
@@ -2350,7 +2348,7 @@ mod tests {
             crate::theme::refresh_current_theme(cx);
             assert_eq!(ui_font_family(cx).provenance, ConfigProvenance::Default);
             assert_eq!(
-                zz_ui::Theme::global(cx).font_family,
+                penna::Theme::global(cx).font_family,
                 ala::Font::default().family
             );
             let parsed = parse_config("ui-font-family = Arial\n");
@@ -2359,7 +2357,7 @@ mod tests {
             crate::theme::refresh_current_theme(cx);
             assert_eq!(ui_font_family(cx), UiFontConfig::default().family);
             assert_eq!(
-                zz_ui::Theme::global(cx).font_family,
+                penna::Theme::global(cx).font_family,
                 ala::Font::default().family
             );
         });
@@ -2396,7 +2394,7 @@ mod tests {
                     ..interface_theme::ThemeOverrides::default()
                 }
                 .apply_to(&mut expected);
-                let theme = zz_ui::Theme::global(cx);
+                let theme = penna::Theme::global(cx);
                 assert_eq!(theme.colors, expected.colors(theme.mode));
                 assert_eq!(theme.outline, px(expected.materials.outline));
                 assert_eq!(theme.radius, px(expected.materials.radius));
@@ -2427,9 +2425,9 @@ mod tests {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
                 assert_f32_eq(chrome_contrast(cx), expected);
-                assert_f32_eq(zz_ui::Theme::global(cx).contrast, expected);
+                assert_f32_eq(penna::Theme::global(cx).contrast, expected);
                 assert_f32_eq(
-                    zz_ui::Colorize::wash(&zz_ui::Theme::global(cx).foreground).a,
+                    penna::Colorize::wash(&penna::Theme::global(cx).foreground).a,
                     0.28 * expected,
                 );
                 assert_eq!(
@@ -2440,17 +2438,17 @@ mod tests {
                         ConfigProvenance::Default
                     }
                 );
-                for mode in [zz_ui::ThemeMode::Dark, zz_ui::ThemeMode::Light] {
-                    zz_ui::Theme::change(mode, None, cx);
-                    assert_f32_eq(zz_ui::Theme::global(cx).contrast, expected);
+                for mode in [penna::ThemeMode::Dark, penna::ThemeMode::Light] {
+                    penna::Theme::change(mode, None, cx);
+                    assert_f32_eq(penna::Theme::global(cx).contrast, expected);
                     assert_f32_eq(
-                        zz_ui::Colorize::wash(&zz_ui::Theme::global(cx).foreground).a,
+                        penna::Colorize::wash(&penna::Theme::global(cx).foreground).a,
                         0.28 * expected,
                     );
                 }
             });
         }
-        cx.update(|cx| zz_ui::Theme::global_mut(cx).set_contrast(1.0));
+        cx.update(|cx| penna::Theme::global_mut(cx).set_contrast(1.0));
     }
 
     #[ala::test]
@@ -2475,7 +2473,7 @@ mod tests {
         let shadows = cx.update(|cx| {
             install_config(Some(&path), Some(load_config(&path)), cx);
             crate::theme::refresh_current_theme(cx);
-            zz_ui::Theme::global(cx).contact_shadows()
+            penna::Theme::global(cx).contact_shadows()
         });
         for (value, expected, provenance) in [
             (Some("0"), 0.0, ConfigProvenance::Override),
@@ -2489,12 +2487,12 @@ mod tests {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
                 assert_f32_eq(pip_background_opacity(cx), expected);
-                assert_f32_eq(zz_ui::Theme::global(cx).pip_opacity, expected);
+                assert_f32_eq(penna::Theme::global(cx).pip_opacity, expected);
                 assert_eq!(
                     resolved_config(cx).pip_background_opacity.provenance,
                     provenance
                 );
-                assert_eq!(zz_ui::Theme::global(cx).contact_shadows(), shadows);
+                assert_eq!(penna::Theme::global(cx).contact_shadows(), shadows);
             });
         }
     }
@@ -2520,14 +2518,14 @@ mod tests {
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                assert_f32_eq(zz_ui::Theme::global(cx).pane_glow_strength, expected);
+                assert_f32_eq(penna::Theme::global(cx).pane_glow_strength, expected);
                 assert_eq!(
                     resolved_config(cx).pane_glow_strength.provenance,
                     provenance
                 );
-                for mode in [zz_ui::ThemeMode::Dark, zz_ui::ThemeMode::Light] {
-                    zz_ui::Theme::change(mode, None, cx);
-                    assert_f32_eq(zz_ui::Theme::global(cx).pane_glow_strength, expected);
+                for mode in [penna::ThemeMode::Dark, penna::ThemeMode::Light] {
+                    penna::Theme::change(mode, None, cx);
+                    assert_f32_eq(penna::Theme::global(cx).pane_glow_strength, expected);
                 }
             });
         }
@@ -2809,10 +2807,10 @@ mod tests {
         let config = parse_config("pane-gaps = true\npane-margin = 6\n").config;
         cx.update(|cx| {
             cx.set_global(AppConfig::from(config));
-            zz_ui::Theme::global_mut(cx).radius = px(5.5);
+            penna::Theme::global_mut(cx).radius = px(5.5);
         });
 
-        let radius = cx.update(|cx| zz_ui::Theme::global(cx).pane_radius());
+        let radius = cx.update(|cx| penna::Theme::global(cx).pane_radius());
         assert!(radius > px(5.5));
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
@@ -2823,7 +2821,7 @@ mod tests {
     #[ala::test]
     fn pane_gap_effective_values_follow_the_toggle(cx: &mut ala::TestAppContext) {
         cx.update(zz_ui::init);
-        cx.update(|cx| zz_ui::Theme::global_mut(cx).radius = px(10.0));
+        cx.update(|cx| penna::Theme::global_mut(cx).radius = px(10.0));
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(0.0));
 
         let config = parse_config("pane-gaps = true\n").config;
@@ -2835,13 +2833,13 @@ mod tests {
         );
         assert_eq!(
             cx.update(|cx| pane_content_radii(cx, WindowCorners::NONE)),
-            Corners::all(cx.update(|cx| zz_ui::Theme::global(cx).pane_radius()))
+            Corners::all(cx.update(|cx| penna::Theme::global(cx).pane_radius()))
         );
 
         let config = parse_config("pane-gaps = true\npane-margin = 3\n").config;
         cx.update(|cx| {
             cx.set_global(AppConfig::from(config));
-            zz_ui::Theme::global_mut(cx).radius = px(0.0);
+            penna::Theme::global_mut(cx).radius = px(0.0);
         });
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(3.0));
         assert_eq!(
@@ -2852,7 +2850,7 @@ mod tests {
         let config = parse_config("pane-gaps = false\npane-margin = 2\n").config;
         cx.update(|cx| {
             cx.set_global(AppConfig::from(config));
-            zz_ui::Theme::global_mut(cx).radius = px(10.0);
+            penna::Theme::global_mut(cx).radius = px(10.0);
         });
         assert_eq!(cx.update(|cx| pane_margin(cx)), px(0.0));
         assert_eq!(
@@ -2869,7 +2867,7 @@ mod tests {
         let config = parse_config("pane-gaps = true\npane-margin = 0\n").config;
         cx.update(|cx| {
             cx.set_global(AppConfig::from(config));
-            zz_ui::Theme::global_mut(cx).radius = px(5.5);
+            penna::Theme::global_mut(cx).radius = px(5.5);
         });
 
         assert_eq!(

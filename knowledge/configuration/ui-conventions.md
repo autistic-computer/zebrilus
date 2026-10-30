@@ -45,7 +45,7 @@ materials decide what those look like, and the theme can change any role by id. 
   `.layer(&layer)` paints it, and `theme.ground_of(surface)` is the resting ground.
 - A divider is `.rule_on(roles::BAR_RULE, Edge::Bottom, cx)` or another `rule.*` role; it draws
   only while the theme keeps that role's outline on.
-- A list row is `zz_ui::picker::row_surface(element, role, state, height, cx)`, rounded with
+- A list row is `penna::row_surface(element, role, state, height, cx)`, rounded with
   `row_corners`.
 - A new piece of UI that a theme would want to style apart from every existing role gets its own
   role. Add a `SurfaceRole` to `crates/zz-ui/src/roles.rs`: an id spelled the way a theme file
@@ -99,7 +99,7 @@ materials decide what those look like, and the theme can change any role by id. 
    the theme radius minus 4px while rows are inset, and square at a 0 row inset. `row_corners`
    holds that radius to 40% of the row's height with fixed smoothing 2.5, and leaves a `pill` row a
    pill; `ListItem`, popup menu, select and model picker rows and the directory, session, file and
-   history picker rows all use it. `zz_ui::picker::row_surface` draws a row of a given height
+   history picker rows all use it. `penna::row_surface` draws a row of a given height
    through a role with its hover and press, and `list_row` builds one as the `row` kind.
    Directory and session rows share
    26px heights and 12px labels. Custom menu content receives the highlight state so
@@ -288,7 +288,7 @@ theme's own popover and row roles; only literal colours from the options or `-s`
 `display-panes` indicator is one `pane.display-panes` chip per pane with the key to press, the pane's
 `display-panes-format` line as a muted caption, and a 2px accent ring on the active pane (or
 `display-panes-active-colour` when it differs from zz's default). A pane that fails in place (a browser page that will not load, an
-editor file that will not open or save, an agent that stopped) shows `zz_ui::feedback::inline_alert`:
+editor file that will not open or save, an agent that stopped) shows `penna::feedback::inline_alert`:
 the alert dialog's layout on the `inline-panel` role, a 14px danger icon, a 13px title when there is one,
 the message, and `alert_actions` below with label-only Medium buttons and the main action last on
 the right.

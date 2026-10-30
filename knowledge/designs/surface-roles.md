@@ -390,7 +390,7 @@ file that still names one loads with the entry dropped. The agent history picker
 | `agent.option` | menu-item | answer tiles in question and permission cards, Show terminal on the card for an approval the lens cannot answer | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
 | `agent.jump` | icon-button | jump-to-bottom button over the transcript | `ui/agent.rs:1025` | |
 | `agent.action` | icon-button | copy on answers, code blocks and diagrams, rewind on prompts | `ui/agent.rs:2464` | washed and lifted under the pointer, and the copy buttons always showed; since 10-15 no fill in any state, shown only while their message, block or figure is pointed at |
-| `inline-panel` | floating | panels raised inside a pane: question and approval cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `ui/feedback.rs:22` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
+| `inline-panel` | floating | panels raised inside a pane: question and approval cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `kit/feedback.rs:34` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
 
 The agent's step rows (the trace line, thoughts and tool calls) had `agent.trace`, a `row`, until 2026-10-15. They draw no fill now: their ink is muted and a row you can open brightens it under the pointer, so the role had nothing left to style.
 
@@ -434,11 +434,11 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 | `phone.bar` | bar | 44px nav bars (settings, sheet header) | `app/app/compact.rs:1039`, `:1144`, `app/app/settings.rs:709` | three hand-made 44px headers; fixed, one `compact_nav_bar` |
 | `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, the Hosts page's Settings button, the pill the keys sit in | `ui/compact/bar.rs:87` | took floating glass while in the layout; fixed, a solid fill without an edge |
 | `phone.button` | icon-button | back, close, gear | `ui/compact/bar.rs:78`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
-| `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `ui/compact/key_row.rs:50` | |
+| `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `kit/touch/key_row.rs:104` | |
 | `phone.card` | tile | the overview's bento tiles: hosts on the Hosts page, windows on a host's page | `ui/compact/bento.rs` (`bento_tile`) | was one card per pane in a row per window until the 2026-10-26 drill-in |
 | `phone.mini` | tile | the panes inside a window's tile, where the window splits them, on the terminal's background; ringed in the accent on the pane the window opens to | `ui/compact/bento.rs` (`mini_pane`) | new 2026-10-26 with the drill-in overview |
 | `phone.add` | tile | the Add host tile at the end of the Hosts page (until 2026-10-26 the New pane tile that ended each overview row) | `ui/compact/bento.rs` (`bento_add_tile`) | shared `phone.card` with the live cards and was narrower than them; split out |
-| `phone.row` | menu-item | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `ui/compact/which_key_list.rs:54`, `ui/settings.rs:222` | four corner rules; fixed, one role |
+| `phone.row` | menu-item | sheet options, all-bindings list, settings index, New window | `kit/sheet.rs:126`, `kit/touch/which_key_list.rs:60`, `ui/settings.rs:222` | four corner rules; fixed, one role |
 | `drawer.hosts`, `drawer.new`, `drawer.add-host`, `drawer.new-pane`, `drawer.tabs`, `drawer.bindings` | drawer | each phone drawer, so a theme can set one's corner smoothing apart from the rest | `app/app/compact/overview.rs`, `app/app/picker.rs`, `app/app/browser_pane.rs`, `app/app/compact.rs` | no way to tune one drawer apart from the rest; macOS sets `drawer` smoothing 2 |
 | `grabber` | badge | sheet grabbers | `ui/compact/bar.rs:46`, `kit/sheet.rs:376` | two sizes and colors |
 
@@ -450,7 +450,7 @@ overlays name these roles over them:
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `palette` | popover | command palette, path picker | `ui/command.rs:152` | no scrim, unlike choosers |
-| `picker` | dialog | file picker, choose-tree and choose-buffer | `ui/picker.rs:34`, `ui/chooser.rs:118` | |
+| `picker` | dialog | file picker, choose-tree and choose-buffer | `kit/picker.rs:58`, `ui/chooser.rs:118` | |
 | `picker.notice` | bar | the chooser's prompt and key help strips | `ui/chooser.rs` (`ChooserModal`) | the strips drew as the bare `bar` kind until 10-27; the role became a bar then, so the Default look kept |
 
 What the inventory found on the kinds themselves:
@@ -458,9 +458,9 @@ What the inventory found on the kinds themselves:
 | Kind | Covers | Where | Drift found |
 |---|---|---|---|
 | `popover` | context and dropdown menus, tmux display-menu, select dropdowns, omnibox, model picker, pane-stack plate, key popovers, image preview | `kit/menu/popup_menu.rs:1184` | |
-| `menu-item` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `ui/picker.rs:111` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
+| `menu-item` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `kit/picker.rs:134` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
 | `dialog` | alerts and prompts (ssh, add host, restart daemon, import) | `kit/overlay/dialog.rs:499` | |
-| `sheet` | which-key, phone bottom sheets | `ui/which_key.rs:405`, `kit/sheet.rs:355` | |
+| `sheet` | which-key, phone bottom sheets | `kit/which_key.rs:419`, `kit/sheet.rs:355` | |
 | `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:188`, `app/app.rs:2036`, `ui/compact/hud.rs:5` | banner and HUD used the popover look; fixed, both draw as toasts |
 | `tooltip` | floating | `kit/tooltip/mod.rs:53` | |
 | `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus and tooltips still show bindings as text) |

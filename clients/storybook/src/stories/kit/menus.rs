@@ -5,7 +5,7 @@ use ala::{
     IntoElement, KeyBinding, MouseButton, ParentElement as _, Render, Styled as _, Subscription,
     Window, actions, div, prelude::FluentBuilder as _, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName,
     button::Button,
     h_flex,

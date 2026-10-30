@@ -2,7 +2,7 @@ use ala::{
     AnyView, App, AppContext as _, Context, Entity, EntityInputHandler as _, IntoElement,
     ParentElement as _, Render, Styled as _, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _,
     code_editor::{CodeEditor, CodeEditorState, TabSize},
 };

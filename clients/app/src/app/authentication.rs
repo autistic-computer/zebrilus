@@ -1,5 +1,5 @@
 use ala::{AppContext as _, Context, Focusable as _, Window};
-use zz_ui::{Root, WindowExt as _, input::InputState};
+use penna::{Root, WindowExt as _, input::InputState};
 
 use super::AppShell;
 
@@ -37,7 +37,7 @@ impl AppShell {
             let cancel = connection.clone();
             let dialog = if let Some(input) = &input {
                 let answer = input.clone();
-                zz_ui::feedback::ssh_text_prompt_dialog(
+                penna::feedback::ssh_text_prompt_dialog(
                     dialog,
                     sign_in.clone(),
                     &prompt.text,
@@ -53,7 +53,7 @@ impl AppShell {
                     true
                 })
             } else if prompt.kind == zz_daemon_client::AskpassPromptKind::SaveKey {
-                zz_ui::feedback::ssh_offer_prompt_dialog(
+                penna::feedback::ssh_offer_prompt_dialog(
                     dialog,
                     "Sign in without a password?",
                     &prompt.text,
@@ -72,7 +72,7 @@ impl AppShell {
                 } else {
                     "Allow authentication?"
                 };
-                zz_ui::feedback::ssh_confirm_prompt_dialog(dialog, title, &prompt.text, cx).on_ok(
+                penna::feedback::ssh_confirm_prompt_dialog(dialog, title, &prompt.text, cx).on_ok(
                     move |_, _, cx| {
                         confirm.update(cx, |connection, cx| {
                             connection.answer_auth_prompt(prompt.id, Some("yes".into()), cx);

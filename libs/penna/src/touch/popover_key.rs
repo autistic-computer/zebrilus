@@ -12,8 +12,8 @@ use ala::{
 use web_time::Duration;
 
 use super::{
+    key_press::{Grip, Press, key_slop, press_listeners},
     key_row::{KEY_SIZE, KeyLook, key_glyph, key_look, key_surface, keystroke_glyph},
-    press::{Grip, Press, key_slop, press_listeners},
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{

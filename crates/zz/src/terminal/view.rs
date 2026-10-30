@@ -16,6 +16,10 @@ use ala::{
     ScrollWheelEvent, Subscription, Task, UTF16Selection, Window, div, point, prelude::*, px,
 };
 use parking_lot::RwLock;
+use penna::{
+    ActiveTheme as _, IconName,
+    input::{InputEvent, InputState},
+};
 use zz_client::{
     ChromeAction, TERMINAL_TABLE,
     local_scroll::{
@@ -32,8 +36,6 @@ use zz_terminal::{
     TerminalMousePhase, TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
-    ActiveTheme as _, IconName,
-    input::{InputEvent, InputState},
     pane::{
         PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
         pane_unzoom_control, terminal_link_popup, terminal_mode_indicator as terminal_mode_tag,
@@ -721,7 +723,7 @@ impl TerminalView {
             },
             cx,
         )
-        .on_action(cx.listener(|view, _: &zz_ui::input::Escape, window, cx| {
+        .on_action(cx.listener(|view, _: &penna::input::Escape, window, cx| {
             view.close_search(window, cx);
             cx.stop_propagation();
         }))
@@ -2881,7 +2883,7 @@ mod tests {
         )));
         let keymap = ala::Keymap::new(bindings);
         let contexts = [
-            ala::KeyContext::parse(zz_ui::ROOT_KEY_CONTEXT).expect("valid zz root context"),
+            ala::KeyContext::parse(penna::ROOT_KEY_CONTEXT).expect("valid zz root context"),
             ala::KeyContext::parse(TERMINAL_KEY_CONTEXT).expect("valid terminal context"),
         ];
 

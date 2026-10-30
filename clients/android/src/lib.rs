@@ -18,8 +18,8 @@ pub extern "system" fn JNI_OnLoad(
 #[cfg(target_os = "android")]
 fn main() {
     use ala::{App, Application, px};
+    use penna::{Theme, UiZoom};
     use std::{borrow::Cow, rc::Rc};
-    use zz_ui::{Theme, UiZoom};
 
     let application = Application::with_platform(Rc::new(
         ala_platform::android::AndroidPlatform::new().with_touch_gestures(true),
@@ -81,7 +81,7 @@ fn main() {
 #[cfg(target_os = "android")]
 fn open_workspace(cx: &mut ala::App) {
     use ala::{AppContext, WindowOptions};
-    use zz_ui::Root;
+    use penna::Root;
 
     cx.open_window(WindowOptions::default(), |window, cx| {
         window.set_default_corner_smoothing(4.0);

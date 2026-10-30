@@ -5,11 +5,8 @@ use zz_protocol::AgentTaskWire;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    StatefulSurfaceExt as _, StyledExt as _, SurfaceRole, Tone,
-    button::Button,
-    h_flex,
-    picker::{muted_on, row_surface},
-    roles, v_flex,
+    StatefulSurfaceExt as _, StyledExt as _, SurfaceRole, Tone, button::Button, h_flex, muted_on,
+    roles, row_surface, v_flex,
 };
 
 use super::controls::agent_chrome_button;

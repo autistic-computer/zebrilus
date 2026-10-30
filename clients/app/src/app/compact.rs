@@ -12,23 +12,29 @@ use ala::{
     ScrollHandle, ScrollWheelEvent, SharedString, Stateful, Styled as _, Subscription, TouchPhase,
     Window, canvas, div, linear_color_stop, linear_gradient, point, prelude::*, px,
 };
+use penna::{
+    ActiveTheme as _, Colorize as _, IconName, PaintState,
+    kbd::Kbd,
+    sheet::{bottom_sheet, close_sheet},
+    touch::{
+        ArrowPadEvent, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent,
+        PopoverKey, PopoverKeyEvent, ToolKeys, WhichKeyList, page_dots_in,
+    },
+    which_key::{WhichKeyCap, WhichKeyRow},
+};
+use web_time::Instant;
 use zz_client::StatusBarModel;
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName, PaintState,
     command::tmux_keystroke,
     compact::{
-        ArrowPadEvent, BENTO_INSET, Instant, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot,
-        Pager, PagerEvent, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
-        PillSpring, PopoverKey, PopoverKeyEvent, ToolKeys, WhichKeyList, bottom_sheet, close_sheet,
-        compact_floating_bar, compact_floating_pill, compact_hud, compact_pill_collapse,
-        compact_pill_label, compact_pill_menu, compact_pill_morph, mini_pill_width, page_dots_in,
-        pill_bounds, pill_corner, pill_glass_over,
+        BENTO_INSET, PillLabel, PillMenuAlign, PillMenuItem, PillMenuLook, PillPlacement,
+        PillSpring, compact_floating_bar, compact_floating_pill, compact_hud,
+        compact_pill_collapse, compact_pill_label, compact_pill_menu, compact_pill_morph,
+        mini_pill_width, pill_bounds, pill_corner, pill_glass_over,
     },
-    kbd::Kbd,
     roles,
-    which_key::{WhichKeyCap, WhichKeyRow},
 };
 
 use super::AppShell;
@@ -278,7 +284,7 @@ fn send_chord(
     if let PopoverKeyEvent::Pick(id) = event
         && let Ok(keystroke) = Keystroke::parse(id)
     {
-        let keystroke = zz_ui::compact::StickyModifiers::apply(&keystroke, cx);
+        let keystroke = penna::touch::StickyModifiers::apply(&keystroke, cx);
         dispatch_key(keystroke, window, cx);
     }
 }
@@ -376,7 +382,7 @@ impl AppShell {
         if !compact {
             #[cfg(any(target_os = "ios", target_os = "android"))]
             ala_platform::mobile::set_status_bar_on_dark(None);
-            zz_ui::compact::StickyModifiers::take(cx);
+            penna::touch::StickyModifiers::take(cx);
             if self.compact.pinch.take().is_some() {
                 self.terminal_resize_suppressed.set(false);
                 self.preferences.save();
@@ -467,7 +473,7 @@ impl AppShell {
                 |_, _, event: &ArrowPadEvent, window, cx| {
                     let ArrowPadEvent::Arrow(direction) = event;
                     if let Ok(keystroke) = Keystroke::parse(direction.key()) {
-                        let keystroke = zz_ui::compact::StickyModifiers::apply(&keystroke, cx);
+                        let keystroke = penna::touch::StickyModifiers::apply(&keystroke, cx);
                         dispatch_key(keystroke, window, cx);
                     }
                 },
@@ -1583,7 +1589,7 @@ impl AppShell {
             .child(content)
             .children(menu)
             .children(sheets)
-            .child(zz_ui::touch::touch_scale(
+            .child(penna::touch::touch_scale(
                 div()
                     .absolute()
                     .top(top_inset)
@@ -1796,7 +1802,7 @@ impl AppShell {
 
     pub(super) fn system_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let dialog = window
-            .root::<zz_ui::Root>()
+            .root::<penna::Root>()
             .flatten()
             .is_some_and(|root| root.read(cx).has_active_dialog());
         match self.back_target(dialog, window, cx) {

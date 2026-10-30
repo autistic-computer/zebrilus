@@ -1,14 +1,14 @@
 use std::{cell::RefCell, path::PathBuf, rc::Rc, sync::Arc, time::Duration};
 
 use ala::{Context, IntoElement, Render, Task, TextRun, Window, canvas, div, prelude::*, px};
+use penna::ActiveTheme as _;
 use zz_terminal::{
     ATTR_BOLD, ATTR_ITALIC, AppearanceLoad, CellWidth, Cursor, PackedCell, PackedStyle,
     SessionStatus, TerminalAppearance, TerminalColorScheme, TerminalViewport, UnderlineStyle,
     apply_appearance_overrides,
 };
-use zz_ui::{
-    ActiveTheme as _,
-    terminal::{RowRenderCache, TerminalRenderInput, cursor_should_blink, terminal_background},
+use zz_ui::terminal::{
+    RowRenderCache, TerminalRenderInput, cursor_should_blink, terminal_background,
 };
 
 use crate::terminal::view::{terminal_font, terminal_font_size, terminal_line_height};

@@ -1,24 +1,24 @@
 use std::sync::Arc;
 
-use zz_client::agent_completion::{active_command_hint, pane_commands};
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, Image, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, IconName, Sizable as _,
-    agent::{
-        COMPOSER_ATTACHMENT, agent_attachment_thumbnail,
-        composer::{AgentComposer, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING, Composer},
-        controls::{
-            ComposerAction, composer_action, composer_action_button, composer_add_button,
-            context_usage_meter, git_summary_footer,
-        },
-        presentation::error_card,
-    },
     button::{Button, ButtonVariants as _},
     h_flex,
     input::InputState,
+};
+use zz_client::agent_completion::{active_command_hint, pane_commands};
+use zz_ui::agent::{
+    COMPOSER_ATTACHMENT, agent_attachment_thumbnail,
+    composer::{AgentComposer, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING, Composer},
+    controls::{
+        ComposerAction, composer_action, composer_action_button, composer_add_button,
+        context_usage_meter, git_summary_footer,
+    },
+    presentation::error_card,
 };
 
 use super::{

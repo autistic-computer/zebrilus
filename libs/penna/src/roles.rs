@@ -90,7 +90,47 @@ pub const LIST_RULE: SurfaceRole = SurfaceRole::new(
     "Lines between menu groups, setting rows and stacked cards",
 );
 
-pub const CHROME: [SurfaceRole; 12] = [
+pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
+    "inline-panel",
+    Kind::Floating,
+    "Inline panels",
+    "Panels raised inside a view, such as question cards, menus and failure alerts",
+)
+.with_knobs(SurfaceRole::DIALOG.knobs());
+pub const PHONE_PILL: SurfaceRole = SurfaceRole::new(
+    "phone.pill",
+    Kind::Button,
+    "Phone pill",
+    "Pills floating at the bottom of a phone screen, such as the ones the keys sit in over the keyboard",
+);
+pub const PHONE_KEY: SurfaceRole = SurfaceRole::new(
+    "phone.key",
+    Kind::Button,
+    "Keys",
+    "Keys in the pill over the phone's keyboard",
+)
+.with(P.fill(Fill::None).outline(false).shadow(Shadow::None));
+pub const ARROW_PAD: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::MENU_ITEM,
+    "phone.arrow-pad",
+    "Arrow pad",
+    "The directions in the phone's arrow pad, lit while held",
+);
+pub const PHONE_ROW: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::MENU_ITEM,
+    "phone.row",
+    "Touch rows",
+    "Rows in phone drawers and touch lists",
+)
+.with(P.selected(Highlight::None));
+pub const PICKER: SurfaceRole = SurfaceRole::under(
+    &SurfaceRole::DIALOG,
+    "picker",
+    "Pickers",
+    "Dialogs that search a list and pick from it, such as a file picker",
+);
+
+pub const CHROME: [SurfaceRole; 18] = [
     WINDOW,
     SIDEBAR,
     TITLEBAR,
@@ -103,6 +143,12 @@ pub const CHROME: [SurfaceRole; 12] = [
     BAR_RULE,
     SIDEBAR_RULE,
     LIST_RULE,
+    INLINE_PANEL,
+    PHONE_PILL,
+    PHONE_KEY,
+    ARROW_PAD,
+    PHONE_ROW,
+    PICKER,
 ];
 
 static APP: OnceLock<&'static [SurfaceRole]> = OnceLock::new();

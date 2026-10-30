@@ -5,6 +5,7 @@ use ala::{
     ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
     prelude::*, px,
 };
+use penna::{input::InputState, scroll::Scrollbar};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
     agent::{
@@ -15,10 +16,8 @@ use zz_ui::{
         presentation::{lens_welcome, spinner_phase, terminal_wait_card},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
-    input::InputState,
     pane::{PaneDragSource, PaneLens, TerminalPaneAction, terminal_pane_header},
     pip::PipSurface,
-    scroll::Scrollbar,
 };
 
 use super::{

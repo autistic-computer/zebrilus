@@ -68,7 +68,7 @@ impl Layer {
             size.width,
             size.height,
             radii,
-            f64::from(zz_ui::CORNER_SMOOTHING),
+            f64::from(penna::CORNER_SMOOTHING),
         )));
         unsafe { self.0.setMask(Some(&mask)) };
     }

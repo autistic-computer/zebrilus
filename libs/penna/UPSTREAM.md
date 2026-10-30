@@ -35,11 +35,11 @@ src/
   highlighter/  syntax-highlight theme data + optional tree-sitter engine
   code_editor/  rope-backed native editor
   <widget>/     one directory per widget
-  sheet.rs, dismissal.rs, touch/, pulse.rs   zz-original touch and motion primitives
+  sheet.rs, dismissal.rs, touch/, pulse.rs, motion.rs   zz-original touch and motion primitives
+  picker.rs, feedback.rs, which_key.rs   zz-original picker dialogs, inline alerts, which-key popup
 ```
 
 Everything is reached through `penna::<widget>`, mirroring upstream's namespace.
-`zz-ui` re-exports the kit, so zz code also reaches it as `zz_ui::<widget>`.
 
 ## Ported modules and local deltas
 

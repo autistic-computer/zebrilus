@@ -45,12 +45,13 @@ use std::{
 use ala::Styled as _;
 use ala::{AnyView, App, AppContext, Context, Entity, Window, WindowOptions, px, size};
 use ala_cef::{BrowserBootstrap, BrowserError, BrowserRuntime};
+use penna::{Root, Theme, ThemeMode};
 pub(crate) use zz_cli::application_arguments;
 use zz_cli::{CommandLineOrigin, Startup, StartupOptions};
 use zz_daemon_client::{DaemonError, InteractiveClient, default_socket_path};
 use zz_protocol::CommandInvocation;
 use zz_terminal::TerminalColorScheme;
-use zz_ui::{Assets, Root, Theme, ThemeMode};
+use zz_ui::Assets;
 
 use agent::AgentController;
 use app_shell::AppShell;
@@ -576,8 +577,8 @@ fn tui_browser_provider() -> Option<Box<dyn zz_tui::browser::BrowserFrameProvide
 
 #[cfg(test)]
 mod tests {
+    use penna::ThemeMode;
     use zz_terminal::TerminalColorScheme;
-    use zz_ui::ThemeMode;
 
     use super::terminal_color_scheme;
 

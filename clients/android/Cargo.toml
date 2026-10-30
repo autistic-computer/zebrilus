@@ -18,6 +18,7 @@ libc.workspace = true
 log.workspace = true
 ala = { workspace = true, features = ["default"] }
 ala-platform.workspace = true
+penna.workspace = true
 zz-app.workspace = true
 zz-ui = { workspace = true, features = ["agent", "tree-sitter"] }
 

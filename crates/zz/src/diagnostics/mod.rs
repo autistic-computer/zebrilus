@@ -8,8 +8,8 @@ use std::{
 };
 
 use ala::{App, Entity, KeyBinding};
+use penna::ROOT_KEY_CONTEXT;
 use zz_protocol::{ClientMessageKind, CommandInvocation};
-use zz_ui::ROOT_KEY_CONTEXT;
 
 use crate::{browser::controller::BrowserController, mux::client::MuxClient};
 

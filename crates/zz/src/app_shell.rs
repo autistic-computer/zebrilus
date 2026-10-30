@@ -5,9 +5,11 @@ use ala::{
     AnyElement, AnyView, App, Context, DragMoveEvent, Entity, IntoElement, KeyUpEvent,
     ModifiersChangedEvent, Render, StyleRefinement, Window, div, prelude::*, px,
 };
+use penna::{
+    ActiveTheme as _, Root, StyledExt as _, Surface, WindowControls, draws_window_controls,
+};
 use zz_ui::shell::{app_shell_surface, app_titlebar_strip, titlebar_over_panes};
 use zz_ui::{
-    ActiveTheme as _, Root, StyledExt as _, Surface, WindowControls, draws_window_controls,
     navigation::{workspace_chrome_controls_width_for, workspace_sidebar_slideover},
     roles,
 };
@@ -603,9 +605,9 @@ mod tests {
 
     use ala::{TestAppContext, VisualTestContext, div};
     use ala_cef::BrowserError;
+    use penna::{WindowExt as _, notification::Notification};
     use zz_daemon_client::DaemonError;
     use zz_protocol::ClientMessageKind;
-    use zz_ui::{WindowExt as _, notification::Notification};
 
     use super::*;
     use crate::mux::client::MuxClient;

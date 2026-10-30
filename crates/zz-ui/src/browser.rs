@@ -556,7 +556,7 @@ fn browser_tab_pill(
         .items_center()
         .surface_interactive(crate::roles::BROWSER_TAB, state, cx)
         .when(!active, |tab| {
-            tab.text_color(crate::picker::muted_on(
+            tab.text_color(crate::muted_on(
                 &cx.theme().layer(crate::roles::BROWSER_TAB, state),
                 cx,
             ))
@@ -756,7 +756,7 @@ pub fn browser_recent_row(
 ) -> ala::Stateful<ala::Div> {
     let url = url.into();
     let height = crate::picker::LIST_ROW_HEIGHT;
-    crate::picker::row_surface(
+    crate::row_surface(
         div().id(id).flex().w_full().h(height).flex_none(),
         crate::roles::BROWSER_SUGGESTION,
         PaintState::Rest,
@@ -809,7 +809,7 @@ pub fn browser_omnibox_row(
 ) -> ala::Stateful<ala::Div> {
     let title = title.into();
     let url = url.into();
-    let muted = crate::picker::muted_on(
+    let muted = crate::muted_on(
         &cx.theme().layer(
             SurfaceRole::MENU_ITEM,
             if selected {
@@ -820,7 +820,7 @@ pub fn browser_omnibox_row(
         ),
         cx,
     );
-    crate::picker::list_row(
+    crate::list_row(
         ("browser-omnibox-suggestion", index),
         px(32.0),
         selected,

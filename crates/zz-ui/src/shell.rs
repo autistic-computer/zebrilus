@@ -166,9 +166,9 @@ pub fn empty_workspace_action(
     selected: bool,
     cx: &App,
 ) -> Stateful<ala::Div> {
-    let state = crate::picker::row_state(selected, true);
+    let state = crate::row_state(selected, true);
     let ground = cx.theme().layer(SurfaceRole::MENU_ITEM, state).ground;
-    crate::picker::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, true, cx)
+    crate::list_row(id, crate::picker::LIST_ROW_HEIGHT, selected, true, cx)
         .px(px(12.0))
         .cursor_pointer()
         .child(key_hint(keys, label, strong, ground, cx).flex_1().min_w_0())

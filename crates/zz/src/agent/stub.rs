@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use ala::{App, Context, Task, Window, div, prelude::*};
+use penna::{ActiveTheme as _, Colorize as _};
 use zz_protocol::{AgentProvider, PaneId};
-use zz_ui::{ActiveTheme as _, Colorize as _};
 
 use crate::mux::client::MuxClient;
 

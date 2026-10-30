@@ -37,6 +37,12 @@ use zz_ui::{
 };
 
 use crate::command::palette::palette_backend;
+use penna::{
+    button::Button,
+    h_flex,
+    input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
+    scroll::Scrollbar,
+};
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
 use zz_ui::agent::{
@@ -45,12 +51,6 @@ use zz_ui::agent::{
     AgentToolText, FoldedTimelineRows, MarkdownSlot, TimelineRow, TimelineStick,
     agent_jump_to_bottom_button, append_timeline_row, composer_attachment, fold_timeline_rows,
     plan_progress, timeline_group_kind, timeline_parent, tool_output_text,
-};
-use zz_ui::{
-    button::Button,
-    h_flex,
-    input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    scroll::Scrollbar,
 };
 
 use crate::{
@@ -2120,9 +2120,9 @@ mod completion_tests {
     #[cfg(not(target_os = "macos"))]
     use ala::{TestAppContext, VisualTestContext};
     #[cfg(not(target_os = "macos"))]
-    use zz_daemon_client::DaemonError;
+    use penna::Root;
     #[cfg(not(target_os = "macos"))]
-    use zz_ui::Root;
+    use zz_daemon_client::DaemonError;
 
     use super::*;
 

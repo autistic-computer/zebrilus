@@ -6,13 +6,14 @@ use zz_protocol::{ChooseTreeItem, ChooseTreeKind, PathKind, SessionId, WindowId}
 
 use super::*;
 use crate::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName, Root,
+    ActiveTheme as _, Colorize as _, Elevation, IconName,
     command::{
         ActionContext, PaletteStatus, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
         PaletteTreeWindow, record_recent,
     },
     files::{ListingSink, ListingUpdate},
 };
+use penna::Root;
 
 const LOCAL: PaletteHostId = PaletteHostId(0);
 

@@ -1,8 +1,6 @@
+use penna::ThemeMode;
 use serde::{Deserialize, Deserializer, Serialize, de::value::MapDeserializer};
-use zz_ui::{
-    ThemeMode,
-    interface_theme::{self, InterfaceTheme, ThemeModeSetting, ThemeOverrides},
-};
+use zz_ui::interface_theme::{self, InterfaceTheme, ThemeModeSetting, ThemeOverrides};
 
 pub const MAX_SAVED_THEMES: usize = 32;
 const MAX_THEME_BYTES: usize = 64 * 1024;
@@ -49,7 +47,7 @@ impl Default for Preferences {
             sidebar: true,
             flat_sidebar: false,
             program_colors: true,
-            sidebar_width: zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH,
+            sidebar_width: penna::sidebar::SIDEBAR_DEFAULT_WIDTH,
             status_badges: true,
             animations: true,
             animation_speed: interface_theme::DEFAULT_ANIMATION_SPEED,
@@ -90,7 +88,7 @@ impl Preferences {
             self.sidebar_width,
             160.0,
             640.0,
-            zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH,
+            penna::sidebar::SIDEBAR_DEFAULT_WIDTH,
         );
         let mut ids = std::collections::HashSet::new();
         self.themes.retain(|(id, _)| {
@@ -478,7 +476,7 @@ mod tests {
         assert_eq!(defaults.overrides, ThemeOverrides::default());
         assert_eq!(
             defaults.sidebar_width,
-            zz_ui::sidebar::SIDEBAR_DEFAULT_WIDTH
+            penna::sidebar::SIDEBAR_DEFAULT_WIDTH
         );
         let status = defaults.status_bar_settings();
         assert!(status.badges);

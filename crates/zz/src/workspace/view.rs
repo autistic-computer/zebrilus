@@ -16,6 +16,11 @@ use ala::{
     MouseMoveEvent, MouseUpEvent, Pixels, Point, Render, Size, StyleRefinement, Task, WeakEntity,
     Window, anchored, div, ease_out_quint, point, prelude::*, px,
 };
+use penna::dialog::DialogButtonProps;
+use penna::{
+    ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _, button::ButtonVariant,
+    draws_window_controls, notification::Notification,
+};
 #[cfg(test)]
 use zz_client::pane_swap_command;
 use zz_client::{
@@ -37,12 +42,7 @@ use zz_protocol::{
 };
 use zz_terminal::KeyAction as TerminalKeyAction;
 use zz_ui::attachment::open_attachment_preview;
-use zz_ui::dialog::DialogButtonProps;
 use zz_ui::pip::{PipCard, PipDrag, PipLayout, PipPlaced, PipStage, PipSurface, PipThrow};
-use zz_ui::{
-    ActiveTheme as _, ElementExt as _, Emphasis, Tone, WindowExt as _, button::ButtonVariant,
-    draws_window_controls, notification::Notification,
-};
 use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneArrivals, PaneChrome, PaneDrag,
@@ -1446,7 +1446,7 @@ impl AppView {
             || self.pane_drag.is_some()
             || cx.has_active_drag()
             || window
-                .root::<zz_ui::Root>()
+                .root::<penna::Root>()
                 .flatten()
                 .is_some_and(|root| root.read(cx).has_active_dialog())
     }
@@ -1501,7 +1501,7 @@ impl AppView {
 
     fn reconcile_dialog_prefix(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
         let active = window
-            .root::<zz_ui::Root>()
+            .root::<penna::Root>()
             .flatten()
             .is_some_and(|root| root.read(cx).has_active_dialog());
         let acknowledged = self.mux.read(cx).prefix_cancelled_request();
@@ -3491,7 +3491,7 @@ impl AppView {
                 if terminal_overlay.is_none() {
                     if let Some(label) = dead_label {
                         status_tags.push(
-                            zz_ui::pane::pane_status_badge(zz_ui::IconName::CircleX, label, cx)
+                            zz_ui::pane::pane_status_badge(penna::IconName::CircleX, label, cx)
                                 .into_any_element(),
                         );
                     }
@@ -4059,7 +4059,7 @@ impl AppView {
                 .into_any_element();
         }
         let mux = self.mux.clone();
-        let icon = snapshot.map_or(zz_ui::IconName::SquareTerminal, |pane| {
+        let icon = snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
             zz_ui::pane::pane_kind_icon(&pane.kind)
         });
         div()
@@ -8131,7 +8131,7 @@ mod tests {
             captured_workspace.replace(Some(workspace.clone()));
             captured_mux.replace(Some(mux));
             captured_input.replace(Some(input));
-            zz_ui::Root::new(workspace, window, cx)
+            penna::Root::new(workspace, window, cx)
         });
         let workspace = workspace_slot.borrow().clone().expect("captured workspace");
         let mux = mux_slot.borrow().clone().expect("captured mux");
@@ -8149,7 +8149,7 @@ mod tests {
             Some(1)
         );
 
-        cx.update(zz_ui::WindowExt::close_dialog);
+        cx.update(penna::WindowExt::close_dialog);
         cx.simulate_keystrokes("c cmd-dialogtest fn-dialogtest");
         assert_eq!(
             input.borrow().as_slice(),
@@ -8190,7 +8190,7 @@ mod tests {
                 InputMessage::CancelPrefix { request_id: 2 },
             ]
         );
-        cx.update(zz_ui::WindowExt::close_dialog);
+        cx.update(penna::WindowExt::close_dialog);
         mux.update(cx, |mux, cx| {
             mux.acknowledge_prefix_cancel_for_test(1, cx);
         });
@@ -8218,7 +8218,7 @@ mod tests {
                 InputMessage::CancelPrefix { request_id: 3 },
             ]
         );
-        cx.update(zz_ui::WindowExt::close_dialog);
+        cx.update(penna::WindowExt::close_dialog);
         mux.update(cx, |mux, cx| {
             mux.reset_session_state_for_test(cx);
             mux.acknowledge_prefix_cancel_for_test(2, cx);

@@ -4,14 +4,17 @@ use ala::{
     App, Bounds, Context, Div, FontWeight, QuitMode, Window, WindowBounds, WindowOptions, div, img,
     point, prelude::*, px, size,
 };
-use zz_ui::{
-    ActiveTheme as _, Assets, Colorize as _, Fill, IconName, Kind, Root, Selectable as _, Shadow,
-    Shape, Sizable as _, StylePatch, StyledExt as _, SurfaceRole, Theme, ThemeMode,
+use penna::{
+    ActiveTheme as _, Colorize as _, Fill, IconName, Kind, Root, Selectable as _, Shadow, Shape,
+    Sizable as _, StylePatch, StyledExt as _, SurfaceRole, Theme, ThemeMode,
     button::{Button, ButtonVariants as _},
     h_flex,
+    switch::Switch,
+};
+use zz_ui::{
+    Assets,
     interface_theme::{InterfaceTheme, parse_theme},
     roles,
-    switch::Switch,
 };
 
 struct Comparison {
@@ -287,7 +290,7 @@ fn main() {
                 },
                 |window, cx| {
                     window.set_window_title("macOS • zz-ui comparison");
-                    window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
+                    window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
                     window.set_adaptive_corner_fraction(Some(0.45));
                     let view = cx.new(|_| Comparison {
                         source,

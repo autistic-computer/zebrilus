@@ -1,6 +1,6 @@
 use ala::{App, AppContext as _, Entity, Focusable as _, SharedString, Window};
+use penna::{WindowExt as _, feedback::add_host_prompt_dialog, input::InputState};
 use zz_daemon_client::Endpoint;
-use zz_ui::{WindowExt as _, feedback::add_host_prompt_dialog, input::InputState};
 
 use crate::config;
 

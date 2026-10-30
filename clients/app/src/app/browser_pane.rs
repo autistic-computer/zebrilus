@@ -10,21 +10,21 @@ use ala::{
     canvas, div, point, prelude::*, px, size,
 };
 use futures::StreamExt as _;
-use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, ElementExt as _, Elevation, Icon,
     IconName, PaintState, StyledExt as _,
+    button::{Button, ButtonVariants as _},
+    input::{InputEvent, InputState},
+    sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
+};
+use zz_protocol::{BrowserCommand, BrowserDescriptor, PaneId};
+use zz_ui::{
     browser::{
         BrowserEmptyHint, BrowserErrorPanel, BrowserHeader, BrowserTabInfo, BrowserTabStrip,
         BrowserToolbar, CompactBrowserBar, browser_address, browser_start_surface,
         browser_toolbar_button,
     },
-    button::{Button, ButtonVariants as _},
-    compact::{
-        bottom_sheet, close_sheet, compact_tabs_button, floating_sheet, sheet_close, sheet_inset,
-        sheet_row,
-    },
-    input::{InputEvent, InputState},
+    compact::compact_tabs_button,
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
     roles,
 };
@@ -374,15 +374,15 @@ impl BrowserPane {
         }
         let theme = cx.theme();
         let appearance = ElementPickerAppearance {
-            highlight_outline: zz_ui::to_hex(theme.foreground),
-            highlight_fill: zz_ui::to_hex(theme.foreground.fill()),
-            highlight_contrast: zz_ui::to_hex(theme.background.opaque()),
-            preview_background: zz_ui::to_hex(theme.surface(Elevation::Panel).fill.opaque()),
-            preview_foreground: zz_ui::to_hex(theme.foreground),
-            preview_border: zz_ui::to_hex(theme.border()),
+            highlight_outline: penna::to_hex(theme.foreground),
+            highlight_fill: penna::to_hex(theme.foreground.fill()),
+            highlight_contrast: penna::to_hex(theme.background.opaque()),
+            preview_background: penna::to_hex(theme.surface(Elevation::Panel).fill.opaque()),
+            preview_foreground: penna::to_hex(theme.foreground),
+            preview_border: penna::to_hex(theme.border()),
             shadow: theme
-                .casts_shadow(zz_ui::SurfaceRole::POPOVER)
-                .then(|| zz_ui::to_hex(theme.shadow_color)),
+                .casts_shadow(penna::SurfaceRole::POPOVER)
+                .then(|| penna::to_hex(theme.shadow_color)),
             radius: f32::from(theme.radius),
             font_family: theme.mono_font_family.to_string(),
             page_zoom: 1.0,
@@ -1138,7 +1138,7 @@ impl Render for BrowserPane {
         let retry = self.writable(cx).then(|| {
             Button::new("ios-browser-retry")
                 .primary()
-                .on(zz_ui::feedback::alert_ground(cx))
+                .on(penna::feedback::alert_ground(cx))
                 .label("Try again")
                 .on_click(cx.listener(|this, _, _, cx| this.reload(cx)))
         });

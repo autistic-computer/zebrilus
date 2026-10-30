@@ -163,7 +163,7 @@ Kit widgets on the model:
   - On: the tone solid (primary by default), with `.on(ground)`.
   - Corners: a checkbox at half the theme radius, a radio round.
 - **`Button::tone(..)` / `.emphasis(..)`**: `ButtonVariant` is `Paint(Tone, Emphasis)`, `Link` or `Text`. The shorthands name the common pairs: `primary` (primary solid), `secondary` (neutral soft, the default), `ghost` (neutral ghost), `danger`, `warning` and `success` (soft). A dialog's destructive OK is `Paint(Danger, Solid)`.
-- **Tiles and rows** are surfaces of the `tile` and `row` item groups, or the `menu-item` button group for rows you press, or a role in one of them. `zz_ui::picker::row_surface` draws a row of a given height as a role with its hover and press, and `zz_ui::picker::list_row` builds a list row on it. A list of rows takes `list_inset`: padded in by the theme's row inset, with a hair of space between rows while they float. Rows round with `row_corners(element, layer, height)`: the layer's radius held to 40% of the row's height, square when the row inset is 0, a pill when the role asks for one.
+- **Tiles and rows** are surfaces of the `tile` and `row` item groups, or the `menu-item` button group for rows you press, or a role in one of them. `penna::row_surface` draws a row of a given height as a role with its hover and press, and `penna::list_row` builds a list row on it. A list of rows takes `list_inset`: padded in by the theme's row inset, with a hair of space between rows while they float. Rows round with `row_corners(element, layer, height)`: the layer's radius held to 40% of the row's height, square when the row inset is 0, a pill when the role asks for one.
 - **`ColorPicker`**: a swatch that opens a saturation and brightness field over a hue `Slider` and a hex field with a clear button, in a popover or, on a touch screen, a bottom sheet. It keeps the last hue picked while the color is gray or black, and `.swatch(size)` draws the trigger as a bare swatch to sit in a row of swatches.
 - **`touch::press_highlight`**: the press layer under a control on a touch screen. Without a color it paints the neutral ghost paint's pressed fill, and its corners resolve through `Window::resolve_corner_radii`, the same curve the control's own corners take. Add it before the control's content: a role's pressed fill is often opaque, and painted last it hides the label.
 
@@ -231,7 +231,7 @@ Kit widgets on the model:
 - `libs/penna/src/foundation/surface.rs`: kinds, roles, styles, `Theme::style` and `Theme::layer`.
 - `libs/penna/src/foundation/styled.rs`: `.surface`, `.surface_at`, `.layer`, `.rule_on`, `list_inset`, `focus_ring`, `row_corners` and `row_radius`.
 - `libs/penna/src/foundation/theme.rs`: the material fields, `CORNER_SMOOTHING`, `casts_shadow`, `outlined`, `inset_rows`, `outer_radius` and `inner_radius`.
-- `libs/penna/src/roles.rs`: the window chrome roles; `crates/zz-ui/src/roles.rs`: zz's roles by region.
+- `libs/penna/src/roles.rs`: the window chrome roles and the roles the kit's touch widgets, pickers and inline panels draw with; `crates/zz-ui/src/roles.rs`: zz's roles by region.
 - `libs/penna/src/{badge,check,kbd}.rs`: `Badge`, `Check`, `Keycap`.
 - The storybook's Foundation → Design system story (`#/design-system`) draws every recipe from the same code. Its sections are:
   - tones;

@@ -2,9 +2,9 @@
 
 zz's application UI on [`penna`](../penna): panes, terminal painting, the agent
 interface, the command palette, settings, navigation, and the compact (phone) shell.
-The desktop app and the thin clients (web, iOS) share it. It re-exports the kit, so
-zz code imports UI from `zz_ui` alone; anything another app could reuse belongs in
-`penna` instead, which depends on nothing from zz.
+The desktop app and the thin clients (web, iOS, Android) share it. Kit widgets and theme
+types come from `penna` directly, not through `zz_ui`; anything another app could reuse
+belongs in `penna`, which depends on nothing from zz.
 
 The app-owned `shell`, `navigation`, and `pane` modules share one background at
 `app_shell_surface`. The Linux client-decorated window paints that background at
@@ -52,8 +52,9 @@ selection, cursor, scrollbar, and image placement. It consumes `zz-terminal` vie
 engine features disabled. Each client owns its input, focus, image delivery, and connection
 lifecycle; native daemon and operating-system dependencies stay outside `zz-ui`.
 
-`src/compact/` is **zz-original**: phone-sized widgets for the thin clients, with no upstream
-counterpart. `Pager` is a renderer-free model that pages one pane per screen from touch pans and
+`src/compact/` is the phone shell: the floating pill bar and its morph, the bento overview,
+large titles, the HUD and the pill menu. The touch widgets under it live in `penna::touch`
+(`libs/penna/src/touch/`), zz-original with no upstream counterpart. `Pager` is a renderer-free model that pages one pane per screen from touch pans and
 wheel scrolls (rubber-banded edges, a quarter-width or velocity commit, one page per gesture,
 the fling ended after a release, a spring settle). `Lift` is the same kind of model for a drag up
 the bar: progress follows the finger over 300px with resistance past the top, and a release past
@@ -71,10 +72,10 @@ and number steppers answer taps in a 44px box around the visual, and workspace t
 menu rows grow to 44px. `touch::touch_scale` renders desktop-sized chrome under a coarse pointer
 with the rem size grown by 15/13, menus it opens included. Under a coarse pointer `SettingEntry`
 puts its control on the title line and the description below it, `Switch` grows to 44 by 26,
-`Select` opens a `compact::bottom_sheet` of `sheet_option` rows (search past 12 choices,
+`Select` opens a `sheet::bottom_sheet` of `sheet_option` rows (search past 12 choices,
 `SelectItem::font_family` previews fonts, `Select::title` names the sheet) instead of the popup
 menu, and `ColorPicker` shows its hex and opens the hex field and swatches in a sheet. Sheets
-opened from inside a page go through `compact::floating_sheet`, which lifts them onto the visible
+opened from inside a page go through `sheet::floating_sheet`, which lifts them onto the visible
 part of the window; `bottom_sheet` is sized in pixels so a touch-scaled parent leaves it alone.
 `sheet_action` is the same row with a muted icon in the check slot, for a command such as "New
 session" after a sheet's choices.

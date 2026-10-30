@@ -7,6 +7,10 @@ use ala::{
     MouseUpEvent, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, Subscription, Task,
     TextInputAction, TextInputConfiguration, UTF16Selection, Window, canvas, div, prelude::*, px,
 };
+use penna::{
+    ActiveTheme, IconName,
+    input::{InputEvent, InputState},
+};
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, ClientCore, CoreEvent, TERMINAL_TABLE,
     local_scroll::{
@@ -27,8 +31,6 @@ use zz_terminal::{
     TerminalPalette, TerminalViewAction, TerminalViewport,
 };
 use zz_ui::{
-    ActiveTheme, IconName,
-    input::{InputEvent, InputState},
     pane::{
         PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
         pane_unzoom_control, terminal_link_popup, terminal_mode_indicator, terminal_status_popup,
@@ -212,7 +214,7 @@ impl TerminalPane {
                             .retained_viewport(pane)
                             .and_then(|retained| {
                                 this.scroll
-                                    .observe(retained, false, zz_ui::compact::Instant::now())
+                                    .observe(retained, false, web_time::Instant::now())
                                     .restore
                             });
                     if let Some(target) = restore {
@@ -531,13 +533,13 @@ impl TerminalPane {
         }
         self.reset_cursor_blink(cx);
         let sticky;
-        let event = if !zz_ui::compact::StickyModifiers::get(cx).is_empty()
+        let event = if !penna::touch::StickyModifiers::get(cx).is_empty()
             && !matches!(
                 event.keystroke.key.as_str(),
                 "shift" | "control" | "alt" | "platform" | "function"
             ) {
             sticky = KeyDownEvent {
-                keystroke: zz_ui::compact::StickyModifiers::apply(&event.keystroke, cx),
+                keystroke: penna::touch::StickyModifiers::apply(&event.keystroke, cx),
                 is_held: event.is_held,
                 prefer_character_input: event.prefer_character_input,
             };
@@ -791,12 +793,12 @@ impl TerminalPane {
                 cx.stop_propagation();
             }
         }))
-        .on_action(cx.listener(|view, _: &zz_ui::input::Escape, window, cx| {
+        .on_action(cx.listener(|view, _: &penna::input::Escape, window, cx| {
             view.close_search(window, cx);
             view.swallowed_search_key = Some(KeyCode::Escape);
             cx.stop_propagation();
         }))
-        .on_action(|_: &zz_ui::input::Enter, _, cx| cx.stop_propagation())
+        .on_action(|_: &penna::input::Enter, _, cx| cx.stop_propagation())
         .into_any_element()
     }
 
@@ -1158,7 +1160,7 @@ impl TerminalPane {
             f32::from(delta),
             f32::from(self.line_height),
             retained,
-            zz_ui::compact::Instant::now(),
+            web_time::Instant::now(),
         ) else {
             return false;
         };
@@ -1172,7 +1174,7 @@ impl TerminalPane {
         };
         let step = self
             .scroll
-            .scroll_by_rows(delta, retained, zz_ui::compact::Instant::now());
+            .scroll_by_rows(delta, retained, web_time::Instant::now());
         self.apply_local_scroll(step, cx);
     }
 
@@ -1182,7 +1184,7 @@ impl TerminalPane {
         };
         let step = self
             .scroll
-            .scroll_to(target, retained, zz_ui::compact::Instant::now());
+            .scroll_to(target, retained, web_time::Instant::now());
         self.apply_local_scroll(step, cx);
     }
 
@@ -1237,10 +1239,7 @@ impl TerminalPane {
                 .timer(LOCAL_SCROLL_TIMEOUT.saturating_sub(LOCAL_SCROLL_DEBOUNCE))
                 .await;
             let _ = this.update(cx, |view, cx| {
-                if view
-                    .scroll
-                    .expire(generation, zz_ui::compact::Instant::now())
-                {
+                if view.scroll.expire(generation, web_time::Instant::now()) {
                     cx.notify();
                 }
             });
@@ -2043,7 +2042,7 @@ fn sticky_keystroke(text: &str, cx: &mut App) -> Option<ala::Keystroke> {
     let (Some(character), None) = (characters.next(), characters.next()) else {
         return None;
     };
-    if zz_ui::compact::StickyModifiers::get(cx).is_empty() {
+    if penna::touch::StickyModifiers::get(cx).is_empty() {
         return None;
     }
     let keystroke = ala::Keystroke {
@@ -2058,7 +2057,7 @@ fn sticky_keystroke(text: &str, cx: &mut App) -> Option<ala::Keystroke> {
         },
         key_char: Some(text.to_owned()),
     };
-    Some(zz_ui::compact::StickyModifiers::apply(&keystroke, cx))
+    Some(penna::touch::StickyModifiers::apply(&keystroke, cx))
 }
 
 #[must_use]

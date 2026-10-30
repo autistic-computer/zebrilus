@@ -4,13 +4,16 @@ use ala::{
     AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
     TextInputMode, Window, canvas, div, prelude::*, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, IconName, Theme, ThemeMode, UiZoom,
     color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
     input::{InputEvent, InputState, NumberInput},
-    interface_theme,
     menu::PopupMenuItem,
     select::{Select, SelectEvent, SelectState},
+    switch::Switch,
+};
+use zz_ui::{
+    interface_theme,
     settings::{
         SettingEntry, SettingsFold, SettingsScrollColumn, SettingsSection, SettingsSelectItem,
         SettingsStack, StackPosition,
@@ -23,7 +26,6 @@ use zz_ui::{
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
         settings_preview, settings_scroll_column, settings_title_bar,
     },
-    switch::Switch,
 };
 
 use super::AppShell;
@@ -152,7 +154,7 @@ impl Preferences {
         theme.colors = shown.colors(theme.mode);
         shown.materials.apply(theme);
         shown.apply_roles(theme);
-        window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
+        window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
         Theme::global_mut(cx).set_contrast(contrast);
         Theme::global_mut(cx).pip_opacity = self.pip_background_opacity;
         Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
@@ -237,7 +239,7 @@ impl Controls {
             |this, _, event: &ColorPickerEvent, window, cx| {
                 let ColorPickerEvent::Change(color) = event;
                 this.preferences.overrides.accent =
-                    color.map(|color| zz_ui::to_hex(color.opaque()));
+                    color.map(|color| penna::to_hex(color.opaque()));
                 this.preferences.save();
                 this.preferences.apply(&this.connection, window, cx);
             },
@@ -349,7 +351,7 @@ impl Controls {
                     .map(|(value, title)| SettingsSelectItem::new(*title, *value))
                     .collect::<Vec<_>>();
                 let index = choices.iter().position(|(value, _)| *value == current);
-                cx.new(|cx| SelectState::new(items, index.map(zz_ui::IndexPath::new), window, cx))
+                cx.new(|cx| SelectState::new(items, index.map(penna::IndexPath::new), window, cx))
             };
         let palette_layout = choice(
             &PALETTE_LAYOUTS,
@@ -406,7 +408,7 @@ impl AppShell {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        use zz_ui::{WindowExt as _, notification::Notification};
+        use penna::{WindowExt as _, notification::Notification};
         let notification = match saved {
             Ok(id) => {
                 self.theme_changed(window, cx);
@@ -458,7 +460,7 @@ impl AppShell {
         let sheet = self.host_sheets(window, cx);
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let sheet: Option<AnyElement> = None;
-        let route = zz_ui::compact::swipe_back(
+        let route = penna::touch::swipe_back(
             "settings-swipe-back",
             self.settings_route(section, picked, cx),
             move |window, cx| {
@@ -576,7 +578,7 @@ impl AppShell {
                         .absolute()
                         .inset_0()
                         .flex()
-                        .child(zz_ui::touch::touch_scale(content, cx)),
+                        .child(penna::touch::touch_scale(content, cx)),
                 ),
             )
             .child(settings_title_bar(title, fold, back))
@@ -1080,7 +1082,7 @@ impl AppShell {
                         .description("Set in the host's Ghostty configuration")
                         .control(
                             div()
-                                .text_size(zz_ui::rems_from_px(13.0))
+                                .text_size(penna::rems_from_px(13.0))
                                 .text_color(cx.theme().foreground.muted())
                                 .child("Shared"),
                         ),
@@ -1160,12 +1162,12 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
             about::about_copy_button("settings-about-copy-build-info")
                 .on(settings_card_ground(cx))
                 .on_click(move |_, window, cx| {
-                    use zz_ui::WindowExt as _;
+                    use penna::WindowExt as _;
                     cx.write_to_clipboard(ala::ClipboardItem::new_string(about::build_info(
                         &copied,
                     )));
                     window.push_notification(
-                        zz_ui::notification::Notification::success("Copied build information"),
+                        penna::notification::Notification::success("Copied build information"),
                         cx,
                     );
                 }),
@@ -1261,13 +1263,13 @@ fn choice_select(
 }
 
 fn number_control(input: &Entity<InputState>, cx: &App) -> ala::Div {
-    let width = if zz_ui::touch::CoarsePointer::get(cx) {
+    let width = if penna::touch::CoarsePointer::get(cx) {
         110.0
     } else {
         120.0
     };
     div()
-        .w(zz_ui::rems_from_px(width))
+        .w(penna::rems_from_px(width))
         .max_w_full()
         .flex_none()
         .child(NumberInput::new(input).on(settings_card_ground(cx)))
@@ -1299,7 +1301,7 @@ impl ala::RenderOnce for TerminalPreview {
         let paint_cache = Rc::clone(&cache);
         let background = if phone() {
             cx.theme()
-                .layer(zz_ui::roles::SETTINGS_CARD, zz_ui::PaintState::Rest)
+                .layer(zz_ui::roles::SETTINGS_CARD, penna::PaintState::Rest)
                 .fill
         } else {
             cx.theme().pane_color(terminal_background(
@@ -1597,7 +1599,7 @@ mod tests {
     #[ala::test]
     fn apply_draws_a_saved_theme_in_its_colors_materials_and_roles(cx: &mut ala::TestAppContext) {
         use ala::{AppContext as _, px};
-        use zz_ui::{ActiveTheme as _, ThemeMode};
+        use penna::{ActiveTheme as _, ThemeMode};
 
         cx.update(zz_ui::init);
         let mut preferences = Preferences {
@@ -1621,8 +1623,8 @@ mod tests {
             assert_eq!(theme.float_shadow.strength, 0.5);
             assert_eq!(theme.outline, px(0.4));
             assert_eq!(
-                theme.style(zz_ui::Kind::Button.role()).shape,
-                zz_ui::Shape::Pill
+                theme.style(penna::Kind::Button.role()).shape,
+                penna::Shape::Pill
             );
         });
         preferences.overrides.radius = Some(5.0);

@@ -1,13 +1,13 @@
 use std::rc::Rc;
 
-use zz_client::StatusBarPane;
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Corners, ElementId, IntoElement,
     ParentElement as _, Pixels, Render, SharedString, Stateful, Styled as _, Window, div, px,
 };
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName};
+use zz_client::StatusBarPane;
 use zz_protocol::{AgentProvider, BrowserDescriptor, EditorDescriptor, PaneId, PaneKindSnapshot};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
     navigation::status::{StatusAction, StatusPaneEntry},
     pane::{PaneChrome, PaneDragSource, PaneLens, pane_surface, terminal_pane_header},
 };

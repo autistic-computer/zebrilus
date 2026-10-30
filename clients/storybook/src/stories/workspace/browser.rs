@@ -2,9 +2,14 @@ use ala::{
     AnyElement, App, AppContext as _, Entity, Focusable as _, IntoElement, ParentElement as _,
     Styled as _, Window, div, prelude::*, px,
 };
+use penna::{
+    ActiveTheme as _, Colorize as _, Disableable as _, IconName,
+    button::{Button, ButtonVariants as _},
+    input::InputState,
+    menu::{DropdownMenu as _, PopupMenu},
+};
 use zz_protocol::PaneId;
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Disableable as _, IconName,
     browser::{
         BrowserActionMenuState, BrowserEmptyHint, BrowserErrorPanel, BrowserHeader,
         BrowserMenuActions, BrowserMenuProfile, BrowserPickStatus, BrowserProfileDiscoveryState,
@@ -13,9 +18,6 @@ use zz_ui::{
         browser_site_controls_button, browser_site_menu, browser_start_surface,
         browser_toolbar_button,
     },
-    button::{Button, ButtonVariants as _},
-    input::InputState,
-    menu::{DropdownMenu as _, PopupMenu},
     pane::{PaneDragSource, pane_header_icon_button, pane_surface},
 };
 

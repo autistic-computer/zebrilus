@@ -4404,7 +4404,7 @@ mod tests {
                 store: cx.new(|_| AgentTimelineStore::default()),
                 rows,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
@@ -4443,7 +4443,7 @@ mod tests {
                 store: cx.new(|_| AgentTimelineStore::default()),
                 rows,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.update(|window, cx| {
@@ -4472,7 +4472,7 @@ mod tests {
                 store: cx.new(|_| AgentTimelineStore::default()),
                 rows,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         let hover_html_block = |cx: &mut VisualTestContext| {
@@ -4524,7 +4524,7 @@ mod tests {
                 store: cx.new(|_| AgentTimelineStore::default()),
                 rows,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         let sink = Rc::clone(&asked);
@@ -4581,7 +4581,7 @@ mod tests {
                 store: cx.new(|_| AgentTimelineStore::default()),
                 rows,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         let sink = Rc::clone(&asked);
@@ -4644,7 +4644,7 @@ mod tests {
                 store: cx.new(|_| AgentTimelineStore::owned_by(7)),
                 rows,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         let shown = Rc::clone(&live_block);
@@ -4740,7 +4740,7 @@ mod tests {
                 rows: fold_timeline_rows(&[test_assistant(1, answer)]).rows,
             });
             let view = cx.new(|_| Panes { first, second });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         let active = Rc::new(std::cell::Cell::new(None::<u64>));
@@ -4877,7 +4877,7 @@ mod tests {
                 active_turn: false,
                 rewinds: None,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
@@ -4933,7 +4933,7 @@ mod tests {
                 active_turn: true,
                 rewinds: None,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
@@ -4960,7 +4960,7 @@ mod tests {
                 active_turn: false,
                 rewinds: None,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
@@ -4989,7 +4989,7 @@ mod tests {
                 active_turn: false,
                 rewinds: None,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
@@ -5033,7 +5033,7 @@ mod tests {
                 active_turn: false,
                 rewinds: None,
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();
@@ -5101,7 +5101,7 @@ mod tests {
                 active_turn,
                 rewinds: Some(recorded),
             });
-            crate::Root::new(view, window, cx)
+            penna::Root::new(view, window, cx)
         });
         let cx: &mut VisualTestContext = cx;
         cx.run_until_parked();

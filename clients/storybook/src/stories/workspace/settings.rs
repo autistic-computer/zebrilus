@@ -1,21 +1,24 @@
 use std::sync::{Arc, LazyLock};
 
-use zz_client::StatusBarSettings;
 use ala::{
     AnyElement, App, AppContext as _, Entity, FocusHandle, IntoElement, ParentElement as _,
     Styled as _, Window, div, prelude::*, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Emphasis, Highlight, Icon, IconName, IndexPath, StylePatch, SurfaceRole,
     ThemeMode, Tone,
     button::Button,
     color_picker::{ColorPicker, ColorPickerState},
     input::{InputState, NumberInput},
+    menu::PopupMenuItem,
+    select::{Select, SelectState},
+    switch::Switch,
+};
+use zz_client::StatusBarSettings;
+use zz_ui::{
     interface_theme::{
         InterfaceTheme, Materials, ThemeModeSetting, ThemeOverrides, builtin_themes,
     },
-    menu::PopupMenuItem,
-    select::{Select, SelectState},
     settings::{
         SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
         about::{
@@ -31,11 +34,10 @@ use zz_ui::{
         panes_preview::PanesPreview,
         providers::{ProvidersHost, providers_stack},
         settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
-        settings_navigation_row, settings_navigation_button, settings_navigation_group_gap,
+        settings_navigation_button, settings_navigation_group_gap, settings_navigation_row,
         settings_page_title, settings_scroll_column, settings_section_index, settings_title_bar,
         status_bar_preview::status_bar_page,
     },
-    switch::Switch,
 };
 
 use super::{fixtures::stateful, tree::sidebar};
@@ -154,13 +156,16 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
             rows.push(settings_navigation_group_gap().into_any_element());
         }
         previous = Some(group);
-        rows.push(settings_navigation_button(
-                    section.title(),
-                    section.title(),
-                    section.icon(),
-                    section == selected,
-                    cx,
-                ).into_any_element());
+        rows.push(
+            settings_navigation_button(
+                section.title(),
+                section.title(),
+                section.icon(),
+                section == selected,
+                cx,
+            )
+            .into_any_element(),
+        );
     }
     let list = div()
         .id("settings-nav")
@@ -169,9 +174,9 @@ fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
         .w_full()
         .gap(px(2.0))
         .px(px(6.0))
-        .child(settings_navigation_row(
-            settings_navigation_back_button("settings-back"),
-        ))
+        .child(settings_navigation_row(settings_navigation_back_button(
+            "settings-back",
+        )))
         .children(rows);
     let index = settings_section_index(
         &SettingsSection::ALL,

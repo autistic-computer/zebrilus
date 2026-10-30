@@ -11,6 +11,12 @@ use ala::{
     ListAlignment, ListState, Pixels, Render, ScrollWheelEvent, Subscription, Window, div,
     prelude::*, px,
 };
+use penna::{
+    Disableable as _,
+    button::Button,
+    input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
+    scroll::Scrollbar,
+};
 use serde_json::Value;
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, active_command_hint, bare_command_name, completion_query,
@@ -27,7 +33,6 @@ use zz_protocol::{
     AgentConnectionPhase, AgentImage, AgentQuestionAnswer, PaneId, PaneSnapshot, ProtocolMessage,
 };
 use zz_ui::{
-    Disableable as _,
     agent::{
         AGENT_CONTENT_MAX_WIDTH, AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore,
         AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText,
@@ -48,10 +53,7 @@ use zz_ui::{
         tasks::{TaskTrayAction, TrayPanel, task_tray},
         tool_output_text,
     },
-    button::Button,
     command::{PaletteSettings, target_picker},
-    input::{IndentInline, InputEvent, InputState, MoveDown, MoveUp},
-    scroll::Scrollbar,
     target::{TargetPicker, mention_at_caret, mention_keys},
 };
 
@@ -1322,7 +1324,7 @@ impl Render for AgentLens {
                     usage,
                     action: action.into_any_element(),
                     attachments: (!self.attachments.is_empty()).then(|| {
-                        zz_ui::h_flex()
+                        penna::h_flex()
                             .w_full()
                             .flex_wrap()
                             .gap_2()

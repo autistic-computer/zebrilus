@@ -8,8 +8,8 @@ mod terminal_app;
 mod app {
     use super::terminal_app::TerminalApp;
     use ala::{App, AppContext, Application, WindowOptions};
+    use penna::{Root, Theme, UiZoom};
     use std::{borrow::Cow, rc::Rc};
-    use zz_ui::{Root, Theme, UiZoom};
 
     pub fn run() {
         env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();

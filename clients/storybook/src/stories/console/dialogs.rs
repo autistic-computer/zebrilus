@@ -2,7 +2,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
     Render, Styled as _, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     WindowExt as _,
     button::{Button, ButtonVariants as _},
     feedback::{

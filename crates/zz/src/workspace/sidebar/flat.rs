@@ -8,6 +8,7 @@ use ala::{
     AnyElement, App, Context, Entity, InteractiveElement as _, IntoElement, ParentElement as _,
     ScrollHandle, SharedString, StatefulInteractiveElement as _, Styled as _, Window, div,
 };
+use penna::{menu::PopupMenuItem, scroll::ScrollableElement as _};
 use zz_client::{
     new_chat::open_picker_commands,
     window_summary::{age_label, summarize_chats},
@@ -15,7 +16,6 @@ use zz_client::{
 use zz_protocol::{PaneKindSnapshot, SessionId, WindowId};
 use zz_ui::{
     command::PaletteHostId,
-    menu::PopupMenuItem,
     navigation::{
         WORKSPACE_SIDEBAR_FADE_HEIGHT,
         flat::{
@@ -23,7 +23,6 @@ use zz_ui::{
         },
         workspace_sidebar_fade,
     },
-    scroll::ScrollableElement as _,
 };
 
 use super::{WorkspaceSidebar, activate_sidebar};

@@ -5,6 +5,7 @@ use ala::{
     MouseUpEvent, Pixels, Point, ScrollWheelEvent, Window, anchored, div, point, prelude::*, px,
     size,
 };
+use penna::ActiveTheme as _;
 use zz_client::{
     MenuBox, MenuKeyResult, MenuPointerKind,
     floating::{FloatCells, float_title},
@@ -15,7 +16,6 @@ use zz_protocol::{
 };
 use zz_protocol::{PaneId, WindowSnapshot};
 use zz_ui::{
-    ActiveTheme as _,
     command::floating::{
         MenuHits, RELEASE_BUTTONS, WHEEL_BUTTONS, confirm_prompt, display_menu, floating_frame,
         menu_enter, menu_hit_cell, menu_press_buttons,
@@ -460,7 +460,7 @@ impl AppShell {
         } else {
             title
         };
-        let icon = snapshot.map_or(zz_ui::IconName::SquareTerminal, |pane| {
+        let icon = snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
             zz_ui::pane::pane_kind_icon(&pane.kind)
         });
         let focused = active.active_pane == pane;

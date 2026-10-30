@@ -9,9 +9,9 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
-use serde_json::json;
 use ala::{AnyWindowHandle, App, AppContext as _, Task, WindowOptions};
-use zz_ui::{ActiveTheme as _, Colorize as _, Root, to_hex};
+use penna::{ActiveTheme as _, Colorize as _, Root, to_hex};
+use serde_json::json;
 
 pub use knobs::Knobs;
 pub use stories::STORIES;
@@ -117,7 +117,7 @@ pub fn theme_file_json() -> String {
 }
 
 pub fn roles_json() -> String {
-    fn walk(group: zz_ui::SurfaceRole, depth: usize, out: &mut Vec<(usize, zz_ui::SurfaceRole)>) {
+    fn walk(group: penna::SurfaceRole, depth: usize, out: &mut Vec<(usize, penna::SurfaceRole)>) {
         out.push((depth, group));
         for member in zz_ui::roles::members(group) {
             walk(member, depth + 1, out);
@@ -127,7 +127,7 @@ pub fn roles_json() -> String {
     let roles = knobs.roles;
     let materials = knobs.materials;
     json!(
-        zz_ui::Kind::ALL
+        penna::Kind::ALL
             .iter()
             .map(|kind| {
                 let mut members = Vec::new();
@@ -185,13 +185,13 @@ pub fn inspect(id: &str, cx: &mut App) {
             }
         })
     });
-    zz_ui::Theme::global_mut(cx).inspect = inspect;
+    penna::Theme::global_mut(cx).inspect = inspect;
     ring(1.0, cx);
     FLASH.with_borrow_mut(|current| *current = flash);
 }
 
 fn ring(strength: f32, cx: &mut App) {
-    let theme = zz_ui::Theme::global_mut(cx);
+    let theme = penna::Theme::global_mut(cx);
     theme.inspect_strength = strength;
     if strength <= 0.0 {
         theme.inspect = None;
@@ -250,7 +250,7 @@ pub fn show_story(story: &'static Story, cx: &mut App) -> Result<(), String> {
                 |window, cx| {
                     window.set_window_title(section.name);
                     window.set_zoom(knobs.zoom);
-                    window.set_default_corner_smoothing(zz_ui::CORNER_SMOOTHING);
+                    window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
                     window.set_adaptive_corner_fraction(Some(0.45));
                     let content = (section.build)(window, cx);
                     let floats = backdrop::floats(story.id, section.id);
@@ -322,7 +322,7 @@ mod web {
             ])
             .expect("failed to load the interface fonts");
         zz_ui::init(cx);
-        let theme = zz_ui::Theme::global_mut(cx);
+        let theme = penna::Theme::global_mut(cx);
         theme.font_family = super::knobs::UI_FONT.into();
         theme.mono_font_family = "Lilex".into();
         super::KNOBS.with(|knobs| knobs.borrow().apply(cx));

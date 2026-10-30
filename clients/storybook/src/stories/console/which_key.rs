@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ala::{AnyElement, App, IntoElement, Keystroke, Window, px, size};
-use zz_ui::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView};
+use penna::which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView};
 
 use crate::story::{Section, Story, stateless, states};
 

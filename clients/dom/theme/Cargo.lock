@@ -8861,6 +8861,7 @@ dependencies = [
  "js-sys",
  "log",
  "objc",
+ "penna",
  "percent-encoding",
  "raw-window-handle",
  "serde",
@@ -8869,6 +8870,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "web-time",
  "zz-client",
  "zz-daemon-client",
  "zz-protocol",
@@ -8923,6 +8925,7 @@ name = "zz-dom-theme"
 version = "0.1.0"
 dependencies = [
  "ala",
+ "penna",
  "serde_json",
  "wasm-bindgen",
  "zz-app",

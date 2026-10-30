@@ -33,6 +33,14 @@ use ala_cef::{
 };
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
+use penna::feedback::browser_clear_site_data_alert;
+use penna::{
+    ActiveTheme as _, Colorize as _, Elevation, IconName, WindowExt as _,
+    button::{Button, ButtonVariants as _},
+    input::{InputEvent, InputState},
+    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
+    to_hex,
+};
 use zz_client::{
     BROWSER_TABLE, ChromeAction,
     url_input::{diagnostic_url, normalize_url, resolve_address},
@@ -49,15 +57,7 @@ use zz_ui::browser::{
     browser_omnibox_panel, browser_omnibox_row, browser_recent_row, browser_site_controls_button,
     browser_site_menu, browser_start_surface, browser_toolbar_button,
 };
-use zz_ui::feedback::browser_clear_site_data_alert;
 use zz_ui::pane::{PaneDrag, PaneDragSource, pane_header_icon_button};
-use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName, WindowExt as _,
-    button::{Button, ButtonVariants as _},
-    input::{InputEvent, InputState},
-    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
-    to_hex,
-};
 
 #[cfg(target_os = "macos")]
 use crate::browser::macos_surface::MacBrowserSurfaceCache;
@@ -489,7 +489,7 @@ enum ZoomOp {
     clippy::disallowed_methods,
     reason = "the picker overlay is page CSS, not chrome"
 )]
-fn element_picker_appearance(theme: &zz_ui::Theme, page_zoom: f64) -> ElementPickerAppearance {
+fn element_picker_appearance(theme: &penna::Theme, page_zoom: f64) -> ElementPickerAppearance {
     ElementPickerAppearance {
         highlight_outline: to_hex(theme.foreground),
         highlight_fill: to_hex(theme.foreground.fill()),
@@ -498,7 +498,7 @@ fn element_picker_appearance(theme: &zz_ui::Theme, page_zoom: f64) -> ElementPic
         preview_foreground: to_hex(theme.foreground),
         preview_border: to_hex(theme.border()),
         shadow: theme
-            .casts_shadow(zz_ui::SurfaceRole::POPOVER)
+            .casts_shadow(penna::SurfaceRole::POPOVER)
             .then(|| to_hex(theme.shadow_color)),
         radius: f32::from(theme.radius),
         font_family: theme.mono_font_family.to_string(),
@@ -3967,7 +3967,7 @@ impl Render for BrowserView {
                 let retry_view = cx.entity();
                 Button::new("browser-retry")
                     .primary()
-                    .on(zz_ui::feedback::alert_ground(cx))
+                    .on(penna::feedback::alert_ground(cx))
                     .label("Try again")
                     .on_click(move |_, _, cx| {
                         retry_view.update(cx, BrowserView::on_retry);
@@ -4300,8 +4300,8 @@ mod tests {
     use ala_cef::BrowserError;
     #[cfg(not(target_os = "macos"))]
     use ala_cef::SessionId;
+    use penna::Root;
     use zz_daemon_client::DaemonError;
-    use zz_ui::Root;
 
     use super::*;
 
@@ -4312,10 +4312,10 @@ mod tests {
 
     #[test]
     fn element_picker_appearance_uses_resolved_theme_tokens() {
-        let mut theme = zz_ui::Theme::default();
-        theme.colors.background = zz_ui::parse_hex("#102030").unwrap();
-        theme.colors.foreground = zz_ui::parse_hex("#abcdef").unwrap();
-        theme.colors.shadow_color = zz_ui::parse_hex("#01020366").unwrap();
+        let mut theme = penna::Theme::default();
+        theme.colors.background = penna::parse_hex("#102030").unwrap();
+        theme.colors.foreground = penna::parse_hex("#abcdef").unwrap();
+        theme.colors.shadow_color = penna::parse_hex("#01020366").unwrap();
         theme.radius = px(17.0);
         theme.mono_font_family = "Iosevka".into();
 
@@ -4336,8 +4336,8 @@ mod tests {
         assert_eq!(appearance.page_zoom, 1.25);
 
         theme.styles.insert(
-            zz_ui::SurfaceRole::POPOVER.id.into(),
-            zz_ui::StylePatch::EMPTY.shadow(zz_ui::Shadow::None),
+            penna::SurfaceRole::POPOVER.id.into(),
+            penna::StylePatch::EMPTY.shadow(penna::Shadow::None),
         );
         assert_eq!(element_picker_appearance(&theme, 1.0).shadow, None);
     }
@@ -4669,14 +4669,14 @@ mod tests {
         let mut bindings = vec![KeyBinding::new(
             copy,
             RootCopy,
-            Some(zz_ui::ROOT_KEY_CONTEXT),
+            Some(penna::ROOT_KEY_CONTEXT),
         )];
         bindings.extend(browser_key_bindings());
         let keymap = Keymap::new(bindings);
         let bindings = bindings_for_contexts(
             &keymap,
             copy,
-            &["Root", zz_ui::ROOT_KEY_CONTEXT, BROWSER_KEY_CONTEXT],
+            &["Root", penna::ROOT_KEY_CONTEXT, BROWSER_KEY_CONTEXT],
         );
 
         assert_action_types(
@@ -4716,19 +4716,19 @@ mod tests {
         bindings.push(KeyBinding::new(
             "cmd-c",
             RootCopy,
-            Some(zz_ui::ROOT_KEY_CONTEXT),
+            Some(penna::ROOT_KEY_CONTEXT),
         ));
         #[cfg(not(target_os = "macos"))]
         bindings.push(KeyBinding::new(
             "ctrl-c",
             RootCopy,
-            Some(zz_ui::ROOT_KEY_CONTEXT),
+            Some(penna::ROOT_KEY_CONTEXT),
         ));
         bindings.extend(browser_key_bindings());
         let keymap = Keymap::new(bindings);
         let contexts = [
             "Root",
-            zz_ui::ROOT_KEY_CONTEXT,
+            penna::ROOT_KEY_CONTEXT,
             BROWSER_KEY_CONTEXT,
             "ZzInput",
         ];
@@ -4786,7 +4786,7 @@ mod tests {
         bindings.extend(browser_key_bindings());
         let keymap = Keymap::new(bindings);
         let contexts = [
-            KeyContext::parse(zz_ui::ROOT_KEY_CONTEXT).expect("valid zz root context"),
+            KeyContext::parse(penna::ROOT_KEY_CONTEXT).expect("valid zz root context"),
             KeyContext::parse(BROWSER_KEY_CONTEXT).expect("valid browser context"),
         ];
         #[cfg(target_os = "macos")]

@@ -4,12 +4,13 @@ use std::{
     sync::Arc,
 };
 
-use zz_client::{completion::PaneKindAvailability, place::ActionKind};
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyDownEvent,
     Keystroke, ParentElement as _, Render, SharedString, Styled as _, Subscription, WeakEntity,
     Window, div, prelude::*, px,
 };
+use penna::{ActiveTheme as _, IconName, StyledExt as _, h_flex, input::InputState, v_flex};
+use zz_client::{completion::PaneKindAvailability, place::ActionKind};
 use zz_protocol::{
     ChooseTreeItem, ChooseTreeKind, ChooseTreePaneKind, ChooseTreeState, ChooseTreeTarget,
     CommandInvocation, CommandPromptKind, CommandPromptMode, CommandPromptState, CommandPromptType,
@@ -17,7 +18,6 @@ use zz_protocol::{
     PromptCursor, SessionId, ShellKind, WindowId,
 };
 use zz_ui::{
-    ActiveTheme as _, IconName, StyledExt as _,
     command::{
         CommandPaletteSurface, CommandPaletteView, PaletteActionLevel, PaletteBackend, PaletteHint,
         PaletteHostId, PaletteMode, PalettePill, PaletteRow, PaletteSettings, PaletteStatus,
@@ -27,10 +27,7 @@ use zz_ui::{
         command_palette_tree_entry, palette_shortcut_hint, unified_command_palette_input,
     },
     files::{FilesAction, ListingSink, ListingUpdate},
-    h_flex,
-    input::InputState,
     target::TargetPicker,
-    v_flex,
 };
 
 use crate::story::{Section, Story, stateless, states};

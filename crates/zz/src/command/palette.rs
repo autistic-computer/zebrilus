@@ -1,6 +1,7 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{App, Entity, KeyDownEvent, SharedString, Subscription};
+use penna::IconName;
 use zz_client::{
     completion::PaneKindAvailability, gui_actions::GuiOffer, place::ActionKind, recents::Recents,
 };
@@ -8,7 +9,6 @@ use zz_protocol::{
     CommandInvocation, InputMessage, MuxSnapshot, PaneId, PaneStatusState, PathEntry, PathListRoot,
 };
 use zz_ui::{
-    IconName,
     command::{
         GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
         PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,

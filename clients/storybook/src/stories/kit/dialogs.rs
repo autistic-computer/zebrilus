@@ -2,7 +2,7 @@ use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Render,
     Styled as _, Window, div, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Emphasis, Icon, IconName, Tone, WindowExt as _,
     button::{Button, ButtonVariant, ButtonVariants as _},
     dialog::{Dialog, DialogButtonProps},

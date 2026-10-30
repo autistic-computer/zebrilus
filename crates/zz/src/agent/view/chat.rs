@@ -3,8 +3,8 @@ use std::rc::Rc;
 use ala::{
     AnyElement, Context, Entity, IntoElement, ScrollWheelEvent, Window, div, prelude::*, px,
 };
+use penna::ActiveTheme as _;
 use zz_protocol::chat::{ChatView, RequestView};
-use zz_ui::ActiveTheme as _;
 use zz_ui::agent::chat::{ChatClicks, ChatHooks, chat_live, chat_thread, shows_chat};
 use zz_ui::agent::presentation::spinner_phase;
 use zz_ui::agent::{AGENT_CONTENT_MAX_WIDTH, agent_jump_to_bottom_button};

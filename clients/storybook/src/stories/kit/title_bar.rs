@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window,
     div,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Icon, IconName, TitleBar,
     button::{Button, ButtonVariants as _},
     h_flex,

@@ -10,14 +10,14 @@ use ala::{
     MouseDownEvent, ParentElement as _, Render, Styled as _, Subscription, Window, div, prelude::*,
     px,
 };
-use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, Emphasis, Kind, PaintState, StyledExt as _, Tone,
     badge::Badge,
     button::{Button, ButtonVariants as _},
     code_editor::{CodeEditor, CodeEditorEvent, CodeEditorState, VimMode},
     feedback::{alert_actions, inline_alert},
 };
+use zz_protocol::{CommandInvocation, EditorDescriptor, PaneId};
 
 use crate::{
     config::{self, pane_content_radii},
@@ -480,7 +480,7 @@ impl EditorView {
                         alert_actions(cx).child(
                             Button::new(format!("editor-retry-{}", self.pane.0))
                                 .primary()
-                                .on(zz_ui::feedback::alert_ground(cx))
+                                .on(penna::feedback::alert_ground(cx))
                                 .label("Try again")
                                 .on_click(move |_, window, cx| {
                                     view.update(cx, |view, cx| {

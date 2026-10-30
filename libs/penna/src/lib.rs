@@ -9,6 +9,7 @@ pub mod check;
 pub mod code_editor;
 pub mod color_picker;
 pub mod dismissal;
+pub mod feedback;
 pub mod foundation;
 pub mod highlighter;
 pub mod icon;
@@ -17,7 +18,9 @@ pub mod interface_theme;
 pub mod kbd;
 pub mod list;
 pub mod menu;
+pub mod motion;
 pub mod overlay;
+pub mod picker;
 pub mod popover;
 pub mod pulse;
 pub mod roles;
@@ -38,6 +41,7 @@ pub mod tooltip;
 pub mod touch;
 #[cfg(feature = "tray")]
 pub mod tray;
+pub mod which_key;
 
 pub mod dialog {
     pub use super::overlay::{AlertDialog, Dialog, DialogButtonProps};

@@ -20,7 +20,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `crates/zz-cli` — headless `zz_cli` binary: the CLI, raw-terminal attach, and the ssh-side entry point
 - `crates/zz-terminal` — terminal engine: PTY sessions, libghostty-vt state, frame snapshots
 - `crates/zz-chrome-import` — Chrome profile, cookie, and history import
-- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, settings, navigation, phone shell); re-exports the kit
+- `crates/zz-ui` - zz's application UI on penna (panes, terminal painting, agent, palette, settings, navigation, phone shell); kit names come from `penna` directly, not through it
 - `crates/zz-tui` — raw-terminal attach client as a library (the binary lives in `zz-cli`)
 - `crates/zz-web` - local HTTP/WebSocket gateway for browser clients
 - `crates/zz-hotreload` - Subsecond hot-reload launcher for `just hot linux`

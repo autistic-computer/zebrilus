@@ -5,6 +5,12 @@ use ala::{
     Pixels, ScrollDelta, ScrollWheelEvent, Size, StyledText, TextRun, Window, canvas, div, font,
     linear_color_stop, linear_gradient, point, prelude::*, px, size,
 };
+use penna::{
+    ActiveTheme as _, Colorize as _, IconName,
+    button::{Button, ButtonVariants as _},
+    touch::{PageDot, PagerEvent, page_dots},
+};
+use web_time::Instant;
 use zz_client::{
     AgentAttentionStatus, StatusBarModel, StatusBarWindow, agent_attention_status,
     navigation::session_label, pane_rects, window_summary::summarize_window,
@@ -12,14 +18,11 @@ use zz_client::{
 use zz_protocol::{PaneId, PaneKindSnapshot, SessionId, WindowId};
 use zz_terminal::{Glyph, LocalColors, TerminalAppearance, TerminalPalette, TerminalViewport};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, IconName,
-    button::{Button, ButtonVariants as _},
     compact::{
-        BENTO_INSET, BentoSpan, HostState, Instant, PageDot, PagerEvent, PillLabel, PillPlacement,
-        bento_grid, compact_bar_button, compact_floating_bar, compact_floating_group,
-        compact_floating_pill, folding_title_bar, host_tile, host_tile_line, large_title,
-        mini_pane, overview_count, overview_host_empty, overview_session_heading, page_dots,
-        scrolled, window_layout, window_tile,
+        BENTO_INSET, BentoSpan, HostState, PillLabel, PillPlacement, bento_grid,
+        compact_bar_button, compact_floating_bar, compact_floating_group, compact_floating_pill,
+        folding_title_bar, host_tile, host_tile_line, large_title, mini_pane, overview_count,
+        overview_host_empty, overview_session_heading, scrolled, window_layout, window_tile,
     },
     terminal::terminal_background,
 };

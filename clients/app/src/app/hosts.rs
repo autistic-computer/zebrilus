@@ -1,22 +1,21 @@
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use ala::{AnyElement, Entity, Pixels, SharedString, Subscription, Window, px};
 use ala::{Context, IntoElement, div, prelude::*};
-use zz_ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName,
-    button::Button,
-    h_flex, rems_from_px,
-    settings::{
-        SettingEntry, SettingsScrollColumn, SettingsStack, settings_card_ground,
-        settings_page_heading, settings_scroll_column,
-    },
+use penna::{
+    ActiveTheme as _, Colorize as _, Icon, IconName, button::Button, h_flex, rems_from_px,
 };
 #[cfg(any(target_os = "ios", target_os = "android"))]
-use zz_ui::{
+use penna::{
     StyledExt as _,
     button::ButtonVariants as _,
-    compact::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
     input::{Input, InputEvent, InputState},
-    roles,
+    sheet::{bottom_sheet, close_sheet, floating_sheet, sheet_close, sheet_inset, sheet_row},
+};
+#[cfg(any(target_os = "ios", target_os = "android"))]
+use zz_ui::roles;
+use zz_ui::settings::{
+    SettingEntry, SettingsScrollColumn, SettingsStack, settings_card_ground, settings_page_heading,
+    settings_scroll_column,
 };
 
 use super::{AppShell, settings::with_control};
@@ -382,7 +381,7 @@ impl AppShell {
                     Button::new(("hosts-connect", index))
                         .when(
                             index == 0 && nothing_attached,
-                            zz_ui::button::ButtonVariants::primary,
+                            penna::button::ButtonVariants::primary,
                         )
                         .label("Connect")
                         .on(settings_card_ground(cx))
@@ -538,7 +537,7 @@ impl AppShell {
                             }
                         })),
                 )
-                .child(div().my(px(6.0)).rule_on(roles::LIST_RULE, zz_ui::Edge::Top, cx))
+                .child(div().my(px(6.0)).rule_on(roles::LIST_RULE, penna::Edge::Top, cx))
                 .child(note(
                     "Add this phone's key to authorized_keys on the host to sign in without a password."
                         .into(),
@@ -740,7 +739,7 @@ impl AppShell {
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 pub(super) fn copy_ssh_key(window: &mut Window, cx: &mut ala::App) {
-    use zz_ui::{WindowExt as _, notification::Notification};
+    use penna::{WindowExt as _, notification::Notification};
     let notification = match zz_daemon_client::app_ssh_public_key() {
         Ok(key) => {
             cx.write_to_clipboard(ala::ClipboardItem::new_string(key));

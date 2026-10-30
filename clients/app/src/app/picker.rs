@@ -3,6 +3,10 @@ use ala::{
     AnyElement, App, Context, Corners, ElementId, Entity, FocusHandle, Focusable, KeyDownEvent,
     MouseButton, Pixels, Render, Window, div, prelude::*, px,
 };
+use penna::{
+    Icon, IconName, StyledExt as _,
+    sheet::{bottom_sheet, close_sheet, sheet_close, sheet_row},
+};
 use zz_client::{
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place,
@@ -12,8 +16,6 @@ use zz_client::{
 };
 use zz_protocol::PaneId;
 use zz_ui::{
-    Icon, IconName, StyledExt as _,
-    compact::{bottom_sheet, close_sheet, sheet_close, sheet_row},
     pane::{
         ChatPickerRow, ChatPickerTarget, agent_provider_icon, chat_picker_rows, pane_picker_row,
         pane_picker_surface,

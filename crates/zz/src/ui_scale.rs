@@ -1,6 +1,6 @@
 use ala::{App, KeyBinding, Window};
+use penna::{ROOT_KEY_CONTEXT, UiZoom};
 use zz_client::{ChromeAction, UI_TABLE};
-use zz_ui::{ROOT_KEY_CONTEXT, UiZoom};
 
 use crate::keymap::ChromeChord;
 
@@ -62,8 +62,8 @@ fn apply(window: &mut Window, cx: &App) {
 #[cfg_attr(not(target_os = "macos"), allow(unused_variables))]
 pub(crate) fn place_traffic_lights(window: &Window, cx: &App) {
     #[cfg(target_os = "macos")]
-    window.set_traffic_light_position(zz_ui::TitleBar::traffic_light_position(
-        zz_ui::Theme::global(cx).title_bar_height(),
+    window.set_traffic_light_position(penna::TitleBar::traffic_light_position(
+        penna::Theme::global(cx).title_bar_height(),
         UiZoom::get(cx),
     ));
 }

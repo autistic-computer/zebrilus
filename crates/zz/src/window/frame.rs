@@ -4,7 +4,7 @@ use ala::{
     ResizeEdge, Size, Styled as _, Tiling, Window, canvas, div, point, prelude::FluentBuilder as _,
     px, quad, size,
 };
-use zz_ui::ActiveTheme as _;
+use penna::ActiveTheme as _;
 
 use crate::{
     config::{WINDOW_FRAME_BORDER_SIZE, window_corner_radius},

@@ -4,7 +4,7 @@ use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyBinding, MouseButton,
     ParentElement as _, Render, Styled as _, Subscription, Window, actions, div, px,
 };
-use zz_ui::{
+use penna::{
     ActiveTheme as _, Colorize as _, IconName, WindowExt as _,
     button::{Button, ButtonVariants as _},
     h_flex,

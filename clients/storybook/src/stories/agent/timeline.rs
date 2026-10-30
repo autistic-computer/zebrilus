@@ -5,12 +5,9 @@ use ala::{
     ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, canvas, div,
     prelude::FluentBuilder as _, px,
 };
-use zz_ui::{
-    ActiveTheme as _,
-    agent::{
-        AgentEntry, AgentTimeline, AgentTimelineStore, DisclosureKind, TimelineRow,
-        fold_timeline_rows,
-    },
+use penna::ActiveTheme as _;
+use zz_ui::agent::{
+    AgentEntry, AgentTimeline, AgentTimelineStore, DisclosureKind, TimelineRow, fold_timeline_rows,
 };
 
 use crate::story::Framed as _;

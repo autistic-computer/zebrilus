@@ -2,7 +2,7 @@ use ala::{
     AnyElement, App, IntoElement, ParentElement as _, Styled as _, Transformation, Window, div,
     percentage, px,
 };
-use zz_ui::{ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, Size, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, Sizable as _, Size, v_flex};
 
 use crate::story::{Section, Story, row, stateless, states};
 

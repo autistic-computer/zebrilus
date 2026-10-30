@@ -4,6 +4,7 @@ use ala::{
     AnyView, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _, Pixels,
     Render, RenderImage, Styled as _, TextRun, Window, canvas, div, px,
 };
+use penna::ActiveTheme as _;
 use zz_terminal::{
     ATTR_BOLD, ATTR_FAINT, ATTR_HYPERLINK, ATTR_INVISIBLE, ATTR_ITALIC, ATTR_OVERLINE,
     ATTR_STRIKETHROUGH, CellWidth, Color, Cursor, CursorStyle, GRAPHEME_TABLE_BIT, KittyLayer,
@@ -11,12 +12,9 @@ use zz_terminal::{
     ScrollbarState, SearchStatus, SessionStatus, TerminalAppearance, TerminalDictionary,
     TerminalMode, TerminalPresentation, TerminalViewport, UnderlineStyle,
 };
-use zz_ui::{
-    ActiveTheme as _,
-    terminal::{
-        RowRenderCache, TerminalImageSource, TerminalRenderInput, terminal_background,
-        terminal_font_for_style,
-    },
+use zz_ui::terminal::{
+    RowRenderCache, TerminalImageSource, TerminalRenderInput, terminal_background,
+    terminal_font_for_style,
 };
 
 use crate::story::{Section, Story, states};
@@ -938,7 +936,12 @@ fn links() -> Sample {
     let column = screen.write(1, 0, "Docs: ", 0);
     screen.write(1, column, "https://zzmux.sh/docs/terminal", link);
     let column = screen.write(2, 0, "PR:   ", 0);
-    screen.write(2, column, "https://github.com/autistic-computer/zebrilus/pull/214", link);
+    screen.write(
+        2,
+        column,
+        "https://github.com/autistic-computer/zebrilus/pull/214",
+        link,
+    );
     let column = screen.write(3, 0, "Styled by the program: ", 0);
     screen.write(3, column, "storybook", styled_link);
     let mut viewport = screen.viewport();
@@ -946,7 +949,9 @@ fn links() -> Sample {
     viewport.presentation = Arc::new(TerminalPresentation::new(
         Arc::from("gh"),
         None,
-        Some(Arc::from("https://github.com/autistic-computer/zebrilus/pull/214")),
+        Some(Arc::from(
+            "https://github.com/autistic-computer/zebrilus/pull/214",
+        )),
     ));
     Sample::new(viewport)
 }

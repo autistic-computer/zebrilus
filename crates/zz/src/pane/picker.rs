@@ -2,15 +2,13 @@ use ala::{
     AnyElement, App, Context, EventEmitter, FocusHandle, Focusable, IntoElement, KeyBinding,
     KeyDownEvent, Keystroke, MouseButton, NoAction, Render, Window, prelude::*,
 };
+use penna::IconName;
 use zz_client::new_chat::{
     AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place, folder_start,
     recent_folders, start_agent_commands,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
-use zz_ui::{
-    IconName,
-    pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row},
-};
+use zz_ui::pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row};
 
 use crate::mux::client::MuxClient;
 use crate::window::corners::WindowCorners;

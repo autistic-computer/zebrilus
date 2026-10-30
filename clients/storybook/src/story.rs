@@ -2,7 +2,7 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, InteractiveElement as _, IntoElement,
     ParentElement, Render, RenderOnce, SharedString, Styled, Window, div, px,
 };
-use zz_ui::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
+use penna::{ActiveTheme as _, Colorize as _, h_flex, v_flex};
 
 pub struct Story {
     pub id: &'static str,

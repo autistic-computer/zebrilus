@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
 use ala::{App, GlassMaterial, Hsla, WindowAppearance, px};
-use zz_ui::{
+use penna::{
     ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Shadow, Smoothing, Style,
     StylePatch, SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
-    interface_theme::{self, InterfaceTheme, Materials, ThemeColors},
 };
+use zz_ui::interface_theme::{self, InterfaceTheme, Materials, ThemeColors};
 
 pub const UI_FONT: &str = "Inter Variable";
 
@@ -550,7 +550,7 @@ pub fn theme_knobs(theme: &InterfaceTheme) -> serde_json::Map<String, serde_json
 fn resolved_colors(theme: &InterfaceTheme, mode: ThemeMode) -> Vec<(&'static str, String)> {
     let colors = theme.colors(mode);
     let ink = accent_ink(colors);
-    let rgb = |color: Hsla| zz_ui::to_hex(color.alpha(1.0));
+    let rgb = |color: Hsla| penna::to_hex(color.alpha(1.0));
     vec![
         ("background", rgb(colors.background)),
         ("foreground", rgb(colors.foreground)),
@@ -670,7 +670,7 @@ pub fn inherited(
     (style, origins)
 }
 
-pub fn knobs_json(knobs: zz_ui::Knobs) -> serde_json::Value {
+pub fn knobs_json(knobs: penna::Knobs) -> serde_json::Value {
     serde_json::json!({
         "fill": knobs.fill,
         "outline": knobs.outline,
@@ -705,7 +705,7 @@ fn accent_ink(colors: ThemeColor) -> Hsla {
 fn color(key: &str, value: &str, previous: Option<Hsla>) -> Result<Hsla, String> {
     let value = decode(value);
     let parsed =
-        zz_ui::parse_hex(&value).map_err(|error| format!("{key} must be a hex color: {error}"))?;
+        penna::parse_hex(&value).map_err(|error| format!("{key} must be a hex color: {error}"))?;
     let digits = value.trim().trim_start_matches('#').len();
     Ok(match previous {
         Some(previous) if digits != 8 && digits != 4 => parsed.alpha(previous.a),
@@ -937,7 +937,7 @@ mod tests {
         .unwrap();
         assert_eq!(tuned.materials.radius, 12.0);
         assert_eq!(tuned.materials.primary, PrimaryStyle::Accent);
-        assert_eq!(tuned.dark.on_accent, zz_ui::parse_hex("#112233").ok());
+        assert_eq!(tuned.dark.on_accent, penna::parse_hex("#112233").ok());
         assert_eq!(tuned.light, default.light);
         assert!(Knobs::parse("primary=loud").is_err());
         assert!(Knobs::parse("contact-y=low").is_err());
@@ -958,7 +958,7 @@ mod tests {
         assert_eq!(theme.roles.len(), 1);
         assert_eq!(
             theme.roles["tile"],
-            StylePatch::EMPTY.fill(zz_ui::Fill::Glass)
+            StylePatch::EMPTY.fill(penna::Fill::Glass)
         );
         let file = interface_theme::parse_theme(&theme.to_json()).unwrap();
         assert_eq!(file, theme);
@@ -977,15 +977,15 @@ mod tests {
             (
                 "icon-button".to_owned(),
                 StylePatch::EMPTY
-                    .fill(zz_ui::Fill::Tint)
+                    .fill(penna::Fill::Tint)
                     .outline(true)
-                    .hover(zz_ui::Highlight::Ring),
+                    .hover(penna::Highlight::Ring),
             ),
             (
                 "floating".to_owned(),
                 StylePatch::EMPTY
-                    .fill(zz_ui::Fill::Glass)
-                    .shape(zz_ui::Shape::Pill),
+                    .fill(penna::Fill::Glass)
+                    .shape(penna::Shape::Pill),
             ),
         ]);
         let patched = InterfaceTheme {
@@ -1024,25 +1024,25 @@ mod tests {
             themed,
         };
         let (style, origins) = inherited(zz_ui::roles::WINDOW_CONTROLS, &group_patches, &built_in);
-        assert_eq!(style.fill, zz_ui::Fill::Tint);
-        assert_eq!(origins[0], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
-        assert_eq!(origins[2], origin(zz_ui::SurfaceRole::ICON_BUTTON, false));
+        assert_eq!(style.fill, penna::Fill::Tint);
+        assert_eq!(origins[0], origin(penna::SurfaceRole::ICON_BUTTON, true));
+        assert_eq!(origins[2], origin(penna::SurfaceRole::ICON_BUTTON, false));
         assert_eq!(origins[3], origin(zz_ui::roles::WINDOW_CONTROLS, false));
-        assert_eq!(style.hover, zz_ui::Highlight::Ring);
-        assert_eq!(origins[5], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
+        assert_eq!(style.hover, penna::Highlight::Ring);
+        assert_eq!(origins[5], origin(penna::SurfaceRole::ICON_BUTTON, true));
         let (style, origins) = inherited(zz_ui::roles::DROP_ZONE, &group_patches, &built_in);
-        assert_eq!(style.fill, zz_ui::Fill::Glass);
-        assert_eq!(origins[0], origin(zz_ui::Kind::Floating.role(), true));
-        let (style, origins) = inherited(zz_ui::SurfaceRole::DIALOG, &group_patches, &built_in);
-        assert_eq!(style.shape, zz_ui::Shape::Round);
-        assert_eq!(origins[3], origin(zz_ui::Kind::Floating.role(), false));
+        assert_eq!(style.fill, penna::Fill::Glass);
+        assert_eq!(origins[0], origin(penna::Kind::Floating.role(), true));
+        let (style, origins) = inherited(penna::SurfaceRole::DIALOG, &group_patches, &built_in);
+        assert_eq!(style.shape, penna::Shape::Round);
+        assert_eq!(origins[3], origin(penna::Kind::Floating.role(), false));
         assert_eq!(
-            inherited(zz_ui::SurfaceRole::TOAST, &group_patches, &built_in)
+            inherited(penna::SurfaceRole::TOAST, &group_patches, &built_in)
                 .0
                 .shape,
-            zz_ui::Shape::Pill
+            penna::Shape::Pill
         );
-        let (style, origins) = inherited(zz_ui::SurfaceRole::DIALOG, &group_patches, &materials);
+        let (style, origins) = inherited(penna::SurfaceRole::DIALOG, &group_patches, &materials);
         assert!(!style.outline);
         assert_eq!(style.shadow, Shadow::None);
         let picked = Origin {
@@ -1052,7 +1052,7 @@ mod tests {
         assert_eq!((origins[1], origins[2]), (picked, picked));
         let (style, origins) = inherited(zz_ui::roles::WINDOW_CONTROLS, &group_patches, &materials);
         assert!(style.outline);
-        assert_eq!(origins[1], origin(zz_ui::SurfaceRole::ICON_BUTTON, true));
+        assert_eq!(origins[1], origin(penna::SurfaceRole::ICON_BUTTON, true));
     }
 
     #[test]
@@ -1063,11 +1063,11 @@ mod tests {
             .shadow_color
             .unwrap();
         assert!((tinted.a - 128.0 / 255.0).abs() < 1e-3);
-        assert_eq!(zz_ui::to_hex(tinted.alpha(1.0)), "#405060");
+        assert_eq!(penna::to_hex(tinted.alpha(1.0)), "#405060");
         let default = Knobs::parse("dark-shadow-color=%23102030").unwrap();
         let shadow = default.dark.shadow_color.unwrap();
         assert_eq!(shadow.a, ThemeColor::dark().shadow_color.a);
-        assert_eq!(zz_ui::to_hex(shadow.alpha(1.0)), "#102030");
+        assert_eq!(penna::to_hex(shadow.alpha(1.0)), "#102030");
     }
 
     #[test]

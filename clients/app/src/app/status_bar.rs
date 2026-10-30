@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use ala::{AnyElement, App, Context, Entity, IntoElement, px};
+use penna::ActiveTheme as _;
 use zz_client::StatusBarModel;
 use zz_ui::{
-    ActiveTheme as _,
     navigation::{
         WorkspaceStatusWindowState,
         status::{

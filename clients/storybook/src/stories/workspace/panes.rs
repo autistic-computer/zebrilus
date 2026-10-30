@@ -1,11 +1,11 @@
-use zz_client::new_chat::{ChatPicker, FolderChoice};
 use ala::{
     AnyElement, AnyView, App, IntoElement, ParentElement as _, Styled as _, Window, div,
     prelude::*, px, relative,
 };
+use penna::{ActiveTheme as _, Colorize as _, Elevation, IconName};
+use zz_client::new_chat::{ChatPicker, FolderChoice};
 use zz_protocol::{AgentProvider, DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
-    ActiveTheme as _, Colorize as _, Elevation, IconName,
     pane::{
         ChatPickerRow, FloatingSurface, PaneDragOverlayState, PaneLens, PaneOverlayCorner,
         PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, chat_picker_rows, pane_drag_chip,

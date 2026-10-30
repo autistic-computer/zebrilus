@@ -1,6 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
-use zz_ui::{ThemeMode, interface_theme::builtin_themes, theme_css};
+use penna::ThemeMode;
+use zz_ui::{interface_theme::builtin_themes, theme_css};
 
 fn main() -> std::io::Result<()> {
     let out = env::args()

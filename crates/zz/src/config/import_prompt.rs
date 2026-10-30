@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
 use ala::{App, Window};
-use zz_ui::WindowExt as _;
-use zz_ui::feedback::import_configuration_file_alert;
+use penna::WindowExt as _;
+use penna::feedback::import_configuration_file_alert;
 
 use crate::{config, user_data::platform_data_dir};
 
@@ -42,7 +42,7 @@ pub(crate) fn choose_tmux_config(window: &mut Window, cx: &mut App) {
                 .update(|window, cx| {
                     let Some(target) = zz_daemon_client::mux_config_write_path() else {
                         crate::window::toast::push(
-                            zz_ui::notification::Notification::error(
+                            penna::notification::Notification::error(
                                 "Could not resolve the zz multiplexer configuration path",
                             ),
                             cx,
@@ -80,11 +80,11 @@ fn run_tmux_import(path: PathBuf, window: &mut Window, cx: &mut App) {
             let result = task.await;
             let _ = window.update(|window, cx| match result {
                 Ok(output) => crate::window::toast::push(
-                    zz_ui::notification::Notification::success(output),
+                    penna::notification::Notification::success(output),
                     cx,
                 ),
                 Err(error) => {
-                    crate::window::toast::push(zz_ui::notification::Notification::info(error), cx);
+                    crate::window::toast::push(penna::notification::Notification::info(error), cx);
                     cx.set_global(config::settings::PendingMuxImport(true));
                     window.dispatch_action(Box::new(config::settings::OpenSettings), cx);
                 }

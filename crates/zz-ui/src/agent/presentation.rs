@@ -8,7 +8,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, PaintState,
     StyledExt as _, Surface, Tone, badge::Badge, button::Button, feedback::inline_alert, h_flex,
-    kbd::Keycap, picker::muted_on, pulse::pulse_phase, roles, v_flex,
+    kbd::Keycap, muted_on, pulse::pulse_phase, roles, v_flex,
 };
 
 pub use zz_client::agent_completion::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -267,7 +267,7 @@ pub(crate) struct CardTile {
 impl CardTile {
     pub(crate) fn new(tone: Tone, enabled: bool, selected: bool, cx: &App) -> Self {
         let surface = Surface::new(roles::AGENT_OPTION).tone(tone);
-        let state = crate::picker::row_state(selected, enabled);
+        let state = crate::row_state(selected, enabled);
         let layer = cx.theme().layer(surface, state);
         Self {
             surface,
@@ -288,7 +288,7 @@ impl CardTile {
     pub(crate) fn render(self, id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
         let enabled = self.state != PaintState::Disabled;
         let height = crate::picker::LIST_ROW_HEIGHT;
-        crate::picker::row_surface(h_flex().id(id), self.surface, self.state, height, cx)
+        crate::row_surface(h_flex().id(id), self.surface, self.state, height, cx)
             .w_full()
             .min_h(height)
             .items_start()

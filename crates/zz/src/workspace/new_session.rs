@@ -5,16 +5,14 @@ use ala::{
     App, Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, MouseButton, Render, Window,
     prelude::*,
 };
+use penna::button::{Button, ButtonVariants as _};
 use zz_client::{ChromeAction, UI_TABLE};
 use zz_protocol::{
     CommandInvocation, KeyBindingSnapshot, TmuxOption, command_spec, parse_tmux_command_options,
 };
-use zz_ui::{
-    button::{Button, ButtonVariants as _},
-    shell::{
-        empty_workspace, empty_workspace_action, empty_workspace_caption, empty_workspace_connect,
-        empty_workspace_hint, empty_workspace_keys,
-    },
+use zz_ui::shell::{
+    empty_workspace, empty_workspace_action, empty_workspace_caption, empty_workspace_connect,
+    empty_workspace_hint, empty_workspace_keys,
 };
 
 const DEFAULT_PREFIX: &str = "C-b";

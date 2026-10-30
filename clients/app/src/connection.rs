@@ -747,7 +747,7 @@ impl Connection {
     }
 
     pub fn set_color_scheme(&mut self, cx: &mut Context<Self>) {
-        use zz_ui::ActiveTheme as _;
+        use penna::ActiveTheme as _;
 
         let color_scheme = if cx.theme().mode.is_dark() {
             zz_terminal::TerminalColorScheme::Dark
@@ -1110,7 +1110,7 @@ impl Connection {
             prefetch,
             self.core.history_trickle_budget(),
             self.core.retained_viewport(pane),
-            zz_ui::compact::Instant::now(),
+            web_time::Instant::now(),
         ) {
             self.send(ProtocolMessage::HistoryRequest { pane, start, count }, cx);
         }
