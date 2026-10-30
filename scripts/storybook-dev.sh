@@ -36,7 +36,8 @@ cargo watch \
     --watch crates/zz-ui/assets \
     --watch crates/zz-client/src \
     --watch libs/penna/src \
-    --watch libs/penna/assets \
+    --watch libs/penna/themes \
+    --watch crates/zz-ui/themes \
     --watch libs/ala/crates/ala/src \
     --watch libs/ala/crates/ala-platform/src/web \
     --watch libs/ala/crates/ala-platform/src/wgpu \
