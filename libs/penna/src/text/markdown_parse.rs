@@ -684,10 +684,6 @@ mod tests {
     }
 
     impl MarkdownPlugin for TickerPlugin {
-        fn is_block(&self) -> bool {
-            true
-        }
-
         fn name(&self) -> &str {
             self.name
         }
@@ -726,5 +722,44 @@ mod tests {
                 symbol: "TSLA.US".to_string()
             })
         );
+    }
+
+    struct InlineTickerPlugin(TickerPlugin);
+
+    impl MarkdownPlugin for InlineTickerPlugin {
+        fn is_block(&self) -> bool {
+            false
+        }
+
+        fn name(&self) -> &str {
+            self.0.name()
+        }
+
+        fn parse(&self, node: &Node, cx: &MarkdownParseContext<'_>) -> Option<MarkdownNode> {
+            self.0.parse(node, cx)
+        }
+
+        fn render(
+            &self,
+            node: &MarkdownNode,
+            window: &mut ala::Window,
+            cx: &mut ala::App,
+        ) -> impl ala::IntoElement {
+            self.0.render(node, window, cx)
+        }
+    }
+
+    #[test]
+    fn inline_plugin_is_skipped_instead_of_panicking() {
+        let extensions =
+            MarkdownExtensions::default().plugin(InlineTickerPlugin(TickerPlugin::new("ticker")));
+
+        let mut cx = NodeContext {
+            markdown_extensions: extensions.into(),
+            ..NodeContext::default()
+        };
+        let document = parse("$TSLA.US", &mut cx).unwrap();
+
+        assert!(matches!(&document.blocks[0], BlockNode::Paragraph(_)));
     }
 }

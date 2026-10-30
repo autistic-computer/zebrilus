@@ -27,7 +27,7 @@ pub type MarkdownBlockRenderFn =
 
 pub trait MarkdownPlugin: Send + Sync + 'static {
     fn is_block(&self) -> bool {
-        false
+        true
     }
 
     fn name(&self) -> &str;
@@ -172,20 +172,23 @@ impl MarkdownExtensions {
     where
         P: MarkdownPlugin,
     {
+        if !plugin.is_block() {
+            log::warn!(
+                "skipping Markdown plugin {:?}: only block plugins are supported",
+                plugin.name()
+            );
+            return self;
+        }
+
         let plugin = Arc::new(plugin);
         let name = SharedString::from(plugin.name().to_string());
         let parser = plugin.clone();
         let renderer = plugin;
-
-        if parser.is_block() {
-            let mut extensions = self.block_parser(move |node, cx| parser.parse(node, cx));
-            extensions.push_block_renderer(name, move |node, window, cx| {
-                renderer.render(node, window, cx).into_any_element()
-            });
-            extensions
-        } else {
-            panic!("inline Markdown plugins are not supported by TextView yet")
-        }
+        let mut extensions = self.block_parser(move |node, cx| parser.parse(node, cx));
+        extensions.push_block_renderer(name, move |node, window, cx| {
+            renderer.render(node, window, cx).into_any_element()
+        });
+        extensions
     }
 
     pub(crate) fn revision(&self) -> u64 {
