@@ -1271,13 +1271,14 @@ fn a_read_reaches_every_pane_and_answer_for_its_directory() {
 
     fs::write(repo.join(".git").join("HEAD"), "ref: refs/heads/next\n").expect("HEAD");
     let terminal = Arc::clone(&shared.inner.lock().terminals[&first]);
-    let report = format!("file://host{}", repo.display());
-    shared.synchronize_pane_reported_path(first, &terminal, &report);
+    terminal.send_text(format!(
+        "printf '\\033]7;file://host{}\\a'\n",
+        repo.display()
+    ));
+    wait_until("both panes on the switched branch", || {
+        (branch(first), branch(second)) == ("next".into(), "next".into())
+    });
     shared.settle_pane_locations();
-    assert_eq!(
-        (branch(first), branch(second)),
-        ("next".into(), "next".into())
-    );
 
     let third = new_pane(&shared, &split);
     assert_eq!(branch(third), "next");
