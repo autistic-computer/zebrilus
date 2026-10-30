@@ -161,7 +161,7 @@ async function main() {
                 const rect = target?.getBoundingClientRect();
                 return {
                     windows: ala.windows().map((window) => ({ id: window.id, mount: window.mount, height: window.height })),
-                    clip: rect ? { x: rect.left + scrollX - 16, y: rect.top + scrollY - 16, width: rect.width + 32, height: rect.height + 32 } : null,
+                    clip: rect ? (() => { const x = Math.max(0, rect.left + scrollX - 16); const y = Math.max(0, rect.top + scrollY - 16); return { x, y, width: rect.right + scrollX + 16 - x, height: rect.bottom + scrollY + 16 - y }; })() : null,
                 };
             })()`,
         });
