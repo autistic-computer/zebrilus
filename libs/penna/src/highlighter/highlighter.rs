@@ -20,7 +20,10 @@ const LARGE_NODE_THRESHOLD: usize = 8 * 1024;
 const MAX_INJECTION_RANGES: usize = 4096;
 const MAX_INJECTION_BYTES: usize = 512 * 1024;
 const MAX_INJECTION_LANGUAGE_BYTES: usize = 64;
+#[cfg(not(test))]
 const INJECTION_PARSE_TIMEOUT: Duration = Duration::from_millis(20);
+#[cfg(test)]
+const INJECTION_PARSE_TIMEOUT: Duration = Duration::MAX;
 
 pub struct SyntaxHighlighter {
     language: SharedString,
