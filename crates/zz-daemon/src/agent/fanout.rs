@@ -113,7 +113,7 @@ impl AgentRuntime {
     }
 
     pub(crate) fn open(&self, pane: PaneId, spec: AgentPaneSpec) -> bool {
-        let lifecycle = self.lifecycle.lock();
+        let _lifecycle = self.lifecycle.lock();
         if self.host.contains(pane) {
             return true;
         }
@@ -121,11 +121,6 @@ impl AgentRuntime {
         self.fanout
             .open_lane(pane, generation, spec.provider, spec.resume_session.clone());
         if self.host.open(pane, generation, spec) {
-            let state = self.host.snapshot_state(pane);
-            drop(lifecycle);
-            if let Some(state) = state {
-                self.fanout.accept(pane, generation, &state, None);
-            }
             return true;
         }
         self.fanout.close_lane(pane);

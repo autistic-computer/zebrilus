@@ -787,6 +787,8 @@ impl PanePump {
         prompts: Receiver<QueuedPrompt>,
         close: Receiver<()>,
     ) {
+        let state = self.state.lock().clone();
+        (self.sink)(self.pane, self.generation, state, None);
         self.send(RuntimeCommand::Open {
             cwd: self.spec.cwd.clone(),
             resume_session: self.spec.resume_session.clone(),
