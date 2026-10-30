@@ -87213,6 +87213,14 @@ set-option -g @alias-mixed-next yes
             .permissions();
         permissions.set_mode(0o700);
         fs::set_permissions(&executable, permissions).expect("make fake zz executable runnable");
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while let Err(error) = std::process::Command::new(&executable).output() {
+            assert!(
+                error.kind() == std::io::ErrorKind::ExecutableFileBusy && Instant::now() < deadline,
+                "run fake zz executable: {error}"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
 
         let shared = Arc::new(Shared::new(1));
         shared
@@ -89297,6 +89305,27 @@ set-option -g @alias-mixed-next yes
     }
 
     #[cfg(all(feature = "agent", unix))]
+    fn wait_for_runtime_pid(shared: &Shared, pane: PaneId, pid: u32) {
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            let runtime = shared
+                .inner
+                .lock()
+                .engine
+                .pane_runtime_facts(pane)
+                .and_then(|runtime| runtime.pid);
+            if runtime == Some(pid) {
+                return;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "daemon never recorded shell pid {pid} for {pane}: {runtime:?}"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    #[cfg(all(feature = "agent", unix))]
     fn with_claude_peer_status(
         test: &str,
         check: impl FnOnce(&Arc<Shared>, PaneId, &Path, serde_json::Value),
@@ -89346,6 +89375,7 @@ set-option -g @alias-mixed-next yes
         let terminal = shared.inner.lock().terminals[&pane].clone();
         wait_for_terminal_identity(&terminal);
         let pid = terminal.process_id().expect("shell pid");
+        wait_for_runtime_pid(&shared, pane, pid);
         let start = std::process::Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "lstart="])
             .env("TZ", "UTC")
@@ -89740,6 +89770,7 @@ set-option -g @alias-mixed-next yes
         let terminal = shared.inner.lock().terminals[&pane].clone();
         wait_for_terminal_identity(&terminal);
         let pid = terminal.process_id().expect("shell pid");
+        wait_for_runtime_pid(&shared, pane, pid);
         let start = std::process::Command::new("ps")
             .args(["-p", &pid.to_string(), "-o", "lstart="])
             .env("TZ", "UTC")

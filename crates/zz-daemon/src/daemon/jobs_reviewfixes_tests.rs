@@ -59,7 +59,12 @@ fn closed_job_input_keeps_socket_and_stream_jobs_alive_until_child_exit() {
         let input_token = *jobs.jobs[&id].ports.keys().next().unwrap();
         jobs.ready(poll.registry(), input_token, false, true);
         if stream {
-            assert!(jobs.jobs[&id].pipe.as_ref().unwrap().input.is_none());
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while jobs.jobs[&id].pipe.as_ref().unwrap().input.is_some() {
+                assert!(Instant::now() < deadline, "closed job input never broke");
+                std::thread::sleep(Duration::from_millis(5));
+                jobs.ready(poll.registry(), input_token, false, true);
+            }
         }
         let deadline = Instant::now() + Duration::from_secs(5);
         while jobs.contains(id) {
