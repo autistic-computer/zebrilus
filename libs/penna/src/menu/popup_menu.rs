@@ -17,7 +17,7 @@ use ala::{ClickEvent, Div, Hsla, MouseDownEvent, Point, Subscription};
 
 use std::rc::Rc;
 
-const CONTEXT: &str = "ZzPopupMenu";
+const CONTEXT: &str = "PennaPopupMenu";
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([

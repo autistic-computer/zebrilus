@@ -10,7 +10,7 @@ use ala::{
 use crate::{Selectable, StyledExt as _, SurfaceRole, v_flex};
 use actions::Cancel;
 
-const CONTEXT: &str = "ZzPopover";
+const CONTEXT: &str = "PennaPopover";
 
 const WINDOW_MARGIN: Pixels = px(8.);
 
@@ -405,6 +405,43 @@ mod tests {
                     .content(|_, _, _| div().child("panel")),
             )
         }
+    }
+
+    struct Counted {
+        dismissed: std::rc::Rc<std::cell::Cell<usize>>,
+    }
+
+    impl Render for Counted {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let dismissed = self.dismissed.clone();
+            div().size_full().child(
+                Popover::new("popover")
+                    .trigger(Button::new("open").label("Open"))
+                    .content(|_, _, _| div().child("panel"))
+                    .on_dismiss(move |_, _| dismissed.set(dismissed.get() + 1)),
+            )
+        }
+    }
+
+    #[ala::test]
+    fn escape_closes_an_open_popover(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let dismissed = std::rc::Rc::new(std::cell::Cell::new(0));
+        let (_, cx) = cx.add_window_view({
+            let dismissed = dismissed.clone();
+            move |_, _| Counted { dismissed }
+        });
+        let draw = |cx: &mut VisualTestContext| {
+            cx.run_until_parked();
+            cx.update(|window, cx| _ = window.draw(cx));
+        };
+        draw(cx);
+        cx.simulate_click(point(8., 8.), Modifiers::default());
+        draw(cx);
+        assert_eq!(dismissed.get(), 0);
+
+        cx.simulate_keystrokes("escape");
+        assert_eq!(dismissed.get(), 1);
     }
 
     #[ala::test]

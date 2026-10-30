@@ -1,3 +1,3 @@
 use ala::actions;
 
-actions!(zz_popover, [Cancel]);
+actions!(penna_popover, [Cancel]);

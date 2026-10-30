@@ -1757,7 +1757,7 @@ impl AppShell {
         }
         let core = &self.connection.read(cx).core;
         let menu = window.focused(cx).is_some_and(|focus| {
-            cx.build_action("zz_menu::Cancel", None)
+            cx.build_action("penna_menu::Cancel", None)
                 .is_ok_and(|action| {
                     window
                         .highest_precedence_binding_for_action_in(action.as_ref(), &focus)

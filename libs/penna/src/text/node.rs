@@ -805,7 +805,7 @@ struct CachedCodeBlockStyles {
     styles: Vec<(Range<usize>, HighlightStyle)>,
 }
 
-pub const CODE_BLOCK_GROUP: &str = "zz-code-block";
+pub const CODE_BLOCK_GROUP: &str = "penna-code-block";
 
 #[derive(Debug, Clone)]
 pub struct CodeBlock {

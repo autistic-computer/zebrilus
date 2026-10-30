@@ -98,7 +98,7 @@ enum ResizeCover {
     Held,
     Awaiting(u64),
 }
-const OMNIBOX_INPUT_KEY_CONTEXT: &str = "BrowserOmnibox > ZzInput";
+const OMNIBOX_INPUT_KEY_CONTEXT: &str = "BrowserOmnibox > PennaInput";
 #[cfg(target_os = "macos")]
 const FULL_DISK_ACCESS_SETTINGS_URL: &str =
     "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles";
@@ -4710,7 +4710,7 @@ mod tests {
         ];
         let mut bindings = edits
             .iter()
-            .map(|(source, _)| KeyBinding::new(source, InputEdit, Some("ZzInput")))
+            .map(|(source, _)| KeyBinding::new(source, InputEdit, Some("PennaInput")))
             .collect::<Vec<_>>();
         #[cfg(target_os = "macos")]
         bindings.push(KeyBinding::new(
@@ -4730,7 +4730,7 @@ mod tests {
             "Root",
             penna::ROOT_KEY_CONTEXT,
             BROWSER_KEY_CONTEXT,
-            "ZzInput",
+            "PennaInput",
         ];
 
         for (source, command) in edits {
@@ -4752,9 +4752,9 @@ mod tests {
     #[test]
     fn focused_omnibox_outranks_single_line_input_navigation() {
         let mut bindings = vec![
-            KeyBinding::new("down", InputEdit, Some("ZzInput")),
-            KeyBinding::new("up", InputEdit, Some("ZzInput")),
-            KeyBinding::new("shift-delete", InputEdit, Some("ZzInput")),
+            KeyBinding::new("down", InputEdit, Some("PennaInput")),
+            KeyBinding::new("up", InputEdit, Some("PennaInput")),
+            KeyBinding::new("shift-delete", InputEdit, Some("PennaInput")),
         ];
         bindings.extend(browser_key_bindings());
         let keymap = Keymap::new(bindings);
@@ -4762,7 +4762,7 @@ mod tests {
             "Root",
             BROWSER_KEY_CONTEXT,
             zz_ui::browser::BROWSER_OMNIBOX_KEY_CONTEXT,
-            "ZzInput",
+            "PennaInput",
         ];
 
         for (source, action) in [

@@ -15,9 +15,9 @@ use super::{
 };
 use ala::TextAlign;
 
-actions!(zz_number_input, [Increment, Decrement]);
+actions!(penna_number_input, [Increment, Decrement]);
 
-const CONTEXT: &str = "ZzNumberInput";
+const CONTEXT: &str = "PennaNumberInput";
 
 pub(super) fn init(cx: &mut App) {
     cx.bind_keys([
@@ -216,7 +216,7 @@ impl RenderOnce for NumberInput {
         let ground = cx.theme().layer(surface, state).ground;
 
         h_flex()
-            .id(("zz-number-input", self.state.entity_id()))
+            .id(("penna-number-input", self.state.entity_id()))
             .role(Role::SpinButton)
             .aria_disabled(self.disabled)
             .key_context(CONTEXT)
@@ -231,7 +231,7 @@ impl RenderOnce for NumberInput {
             .refine_style(&self.style)
             .child(Self::stepper(
                 &self.state,
-                "zz-number-decrement",
+                "penna-number-decrement",
                 IconName::Minus,
                 StepDirection::Decrement,
                 self.size,
@@ -253,7 +253,7 @@ impl RenderOnce for NumberInput {
             )
             .child(Self::stepper(
                 &self.state,
-                "zz-number-increment",
+                "penna-number-increment",
                 IconName::Plus,
                 StepDirection::Increment,
                 self.size,
@@ -331,5 +331,37 @@ mod tests {
             stepped("", StepDirection::Increment, 1.0, None, None).as_deref(),
             Some("1")
         );
+    }
+
+    struct Field {
+        state: Entity<InputState>,
+    }
+
+    impl ala::Render for Field {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            ala::div()
+                .w(ala::px(160.0))
+                .child(NumberInput::new(&self.state))
+        }
+    }
+
+    #[ala::test]
+    fn arrow_keys_step_a_focused_number_input(cx: &mut ala::TestAppContext) {
+        use ala::AppContext as _;
+
+        cx.update(crate::init);
+        let (field, cx) = cx.add_window_view(|window, cx| Field {
+            state: cx.new(|cx| InputState::new(window, cx).default_value("4")),
+        });
+        let state = field.read_with(cx, |field, _| field.state.clone());
+        cx.update(|window, cx| {
+            window.draw(cx).clear(cx);
+            state.update(cx, |state, cx| state.focus(window, cx));
+        });
+
+        cx.simulate_keystrokes("up up");
+        assert_eq!(state.read_with(cx, |state, _| state.value()), "6");
+        cx.simulate_keystrokes("down");
+        assert_eq!(state.read_with(cx, |state, _| state.value()), "5");
     }
 }

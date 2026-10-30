@@ -11,14 +11,14 @@ pub use state::{SelectEvent, SelectState};
 
 use actions::{Cancel, Confirm, SelectNext, SelectPrev};
 
-const CONTEXT: &str = "ZzSelect";
+const CONTEXT: &str = "PennaSelect";
 
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectPrev, Some(CONTEXT)),
         KeyBinding::new("down", SelectNext, Some(CONTEXT)),
         KeyBinding::new("enter", Confirm, Some(CONTEXT)),
-        KeyBinding::new("space", Confirm, Some("ZzSelect && !ZzInput")),
+        KeyBinding::new("space", Confirm, Some("PennaSelect && !PennaInput")),
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
     ]);
 }

@@ -143,7 +143,7 @@ is not a literal page key; `<prefix> <prefix>` sends one.
 Chromium's standard edit accelerators are page-owned before raw surface input. They call CEF's
 focused-frame Undo, Redo, Cut, Copy, Paste, Paste-and-match-style, and Select-all commands directly
 instead of relying on synthetic platform key events. The nested `Browser` binding outranks the
-window-level `ZzRoot` copy handler, while a focused address field's deeper `ZzInput` context keeps
+window-level `PennaRoot` copy handler, while a focused address field's deeper `PennaInput` context keeps
 the same complete edit family and edits the URL normally.
 
 # Pane shortcuts

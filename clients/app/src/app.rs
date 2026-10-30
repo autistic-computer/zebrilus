@@ -2977,7 +2977,7 @@ impl Render for AppShell {
                 .flatten()
                 .is_some_and(|root| !root.read(cx).notifications(cx).is_empty())
                 || window.focused(cx).is_some_and(|focus| {
-                    cx.build_action("zz_menu::Cancel", None)
+                    cx.build_action("penna_menu::Cancel", None)
                         .is_ok_and(|action| {
                             window
                                 .highest_precedence_binding_for_action_in(action.as_ref(), &focus)

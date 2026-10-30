@@ -1,17 +1,17 @@
 use ala::{Action, App, KeyBinding, actions};
 use serde::Deserialize;
 
-pub(super) const CONTEXT: &str = "ZzInput";
+pub(super) const CONTEXT: &str = "PennaInput";
 
 #[allow(clippy::unsafe_derive_deserialize)]
 #[derive(Clone, Action, PartialEq, Eq, Deserialize)]
-#[action(namespace = zz_input, no_json)]
+#[action(namespace = penna_input, no_json)]
 pub struct Enter {
     pub shift: bool,
 }
 
 actions!(
-    zz_input,
+    penna_input,
     [
         Backspace,
         Copy,

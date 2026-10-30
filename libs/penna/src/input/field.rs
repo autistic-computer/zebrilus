@@ -235,7 +235,7 @@ impl Input {
 
     fn clear_button(state: &Entity<InputState>, cx: &App) -> Button {
         let state = state.clone();
-        Button::new("zz-input-clear")
+        Button::new("penna-input-clear")
             .icon(Icon::new(IconName::CircleX))
             .emphasis(Emphasis::Ghost)
             .small()
@@ -324,7 +324,7 @@ impl RenderOnce for Input {
         let has_suffix = suffix.is_some() || loading || show_clear;
 
         let mut element = div()
-            .id(("zz-input", self.state.entity_id()))
+            .id(("penna-input", self.state.entity_id()))
             .role(role)
             .aria_disabled(disabled)
             .key_context(actions::CONTEXT)

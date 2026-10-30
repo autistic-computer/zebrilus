@@ -124,8 +124,8 @@ few presets. Fixed items should be deleted from this page.
 - No controlled open for Popover, DropdownMenu, ContextMenu, ColorPicker and the model and mode
   pickers; stories send synthetic pointer events.
 - `PopupMenu::set_selected_index` is crate-private; stories focus the menu and dispatch
-  `zz_menu::SelectDown`.
-- Select opens only through focus plus `zz_select::Confirm`; DiscreteSlider is not a tab stop.
+  `penna_menu::SelectDown`.
+- Select opens only through focus plus `penna_select::Confirm`; DiscreteSlider is not a tab stop.
 - The agent turn clock runs on wall time, so finished turns cannot show a duration.
 - The title editor's edit mode and the rewind button are reachable only by pointer.
 - The palette's input and recent-commands history are private, so typed queries need real

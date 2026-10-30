@@ -461,10 +461,10 @@ impl Slider {
         let dismiss = drag.clone();
         floating_sheet(
             bottom_sheet(
-                ("zz-slider-sheet", id),
+                ("penna-slider-sheet", id),
                 self.label.clone(),
-                [sheet_close(("zz-slider-sheet-close", id))
-                    .on_click(move |_, _, cx| close_sheet(("zz-slider-sheet", id), cx))
+                [sheet_close(("penna-slider-sheet-close", id))
+                    .on_click(move |_, _, cx| close_sheet(("penna-slider-sheet", id), cx))
                     .into_any_element()],
                 v_flex()
                     .px(px(SHEET_PADDING_X))

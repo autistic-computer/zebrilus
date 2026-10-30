@@ -39,9 +39,9 @@ pub(crate) use window_selection::{SelectionScope, TextSelectionController, Windo
 
 const CONTEXT: &str = "TextView";
 
-pub const ROOT_KEY_CONTEXT: &str = "ZzRoot";
+pub const ROOT_KEY_CONTEXT: &str = "PennaRoot";
 
-actions!(zz_text, [Copy, SelectAll]);
+actions!(penna_text, [Copy, SelectAll]);
 
 pub(crate) fn clipboard_selection_text(selected_text: &str) -> &str {
     selected_text.strip_suffix('\n').unwrap_or(selected_text)

@@ -351,8 +351,8 @@ impl ColorPicker {
             .shadow(crate::lifted_shadow(cx));
         let state = state.clone();
         div()
-            .id(("zz-color-picker-field", state.entity_id()))
-            .debug_selector(|| "zz-color-picker-field".to_owned())
+            .id(("penna-color-picker-field", state.entity_id()))
+            .debug_selector(|| "penna-color-picker-field".to_owned())
             .relative()
             .w_full()
             .h(height)
@@ -398,7 +398,7 @@ impl ColorPicker {
         let state = state.clone();
         div().mx(px(-thumb(cx) / 2.0)).child(
             Slider::new(
-                ("zz-color-picker-hue", state.entity_id()),
+                ("penna-color-picker-hue", state.entity_id()),
                 "Hue",
                 hsv.hue * 360.0,
                 0.0..=360.0,
@@ -428,7 +428,7 @@ impl ColorPicker {
             .gap(px(6.0))
             .child(Input::new(&hex).flex_1().min_w_0())
             .child(
-                Button::new(("zz-color-picker-clear", state.entity_id()))
+                Button::new(("penna-color-picker-clear", state.entity_id()))
                     .ghost()
                     .flat()
                     .compact()
@@ -453,7 +453,7 @@ impl ColorPicker {
     }
 
     fn trigger(&self, shown: Hsla, coarse: bool, cx: &App) -> Button {
-        let id = ("zz-color-picker", self.state.entity_id());
+        let id = ("penna-color-picker", self.state.entity_id());
         let swatch = |size: Pixels| {
             div()
                 .size(size)
@@ -508,7 +508,7 @@ impl ColorPicker {
         field_chrome(
             field_text(
                 h_flex()
-                    .id(("zz-color-picker-field-trigger", self.state.entity_id()))
+                    .id(("penna-color-picker-field-trigger", self.state.entity_id()))
                     .w_full()
                     .h(size.control_h())
                     .px(size.input_px())
@@ -549,10 +549,10 @@ impl ColorPicker {
         let dismiss = self.state.clone();
         floating_sheet(
             bottom_sheet(
-                ("zz-color-picker-sheet", id),
+                ("penna-color-picker-sheet", id),
                 self.label.clone().unwrap_or_else(|| "Color".into()),
-                [sheet_close("zz-color-picker-sheet-close")
-                    .on_click(move |_, _, cx| close_sheet(("zz-color-picker-sheet", id), cx))
+                [sheet_close("penna-color-picker-sheet-close")
+                    .on_click(move |_, _, cx| close_sheet(("penna-color-picker-sheet", id), cx))
                     .into_any_element()],
                 div()
                     .px(px(SHEET_PADDING_X))
@@ -617,7 +617,7 @@ impl RenderOnce for ColorPicker {
         let state = self.state.clone();
         let inherited = self.inherited;
         let label = self.label.clone();
-        Popover::new(("zz-color-picker-popover", self.state.entity_id()))
+        Popover::new(("penna-color-picker-popover", self.state.entity_id()))
             .anchor(Anchor::TopRight)
             .trigger(self.trigger(shown, false, cx))
             .content(move |_, _, cx| {
@@ -684,7 +684,7 @@ mod tests {
         cx.simulate_click(point(px(20.0), px(20.0)), Modifiers::default());
         draw(cx);
         let field = cx
-            .debug_bounds("zz-color-picker-field")
+            .debug_bounds("penna-color-picker-field")
             .expect("open field");
         let at = |x: f32, y: f32| field.origin + point(field.size.width * x, field.size.height * y);
         cx.simulate_event(MouseDownEvent {

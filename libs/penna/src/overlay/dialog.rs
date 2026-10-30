@@ -25,7 +25,7 @@ use super::{
 };
 use crate::Colorize as _;
 
-pub(super) const CONTEXT: &str = "ZzDialog";
+pub(super) const CONTEXT: &str = "PennaDialog";
 
 pub(super) const ANIMATION_DURATION: Duration = SURFACE_ENTER_DURATION;
 
@@ -760,6 +760,42 @@ mod tests {
             second.bottom() <= viewport.height - EDGE_MARGIN,
             "{second:?}"
         );
+    }
+
+    #[ala::test]
+    fn escape_cancels_and_enter_confirms_the_top_dialog(cx: &mut TestAppContext) {
+        use std::{cell::RefCell, rc::Rc};
+
+        let cx = window(cx, size(px(1000.), px(800.)));
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let dialog = |calls: &Rc<RefCell<Vec<&'static str>>>| {
+            let (ok, cancel) = (calls.clone(), calls.clone());
+            move |dialog: Dialog, _: &mut Window, _: &mut App| {
+                let (ok, cancel) = (ok.clone(), cancel.clone());
+                dialog
+                    .title("Keys")
+                    .on_ok(move |_, _, _| {
+                        ok.borrow_mut().push("ok");
+                        true
+                    })
+                    .on_cancel(move |_, _, _| {
+                        cancel.borrow_mut().push("cancel");
+                        true
+                    })
+            }
+        };
+
+        open(cx, dialog(&calls));
+        cx.simulate_keystrokes("escape");
+        cx.run_until_parked();
+        assert_eq!(*calls.borrow(), ["cancel"]);
+        assert!(!cx.update(|window, cx| window.has_active_dialog(cx)));
+
+        open(cx, dialog(&calls));
+        cx.simulate_keystrokes("enter");
+        cx.run_until_parked();
+        assert_eq!(*calls.borrow(), ["cancel", "ok"]);
+        assert!(!cx.update(|window, cx| window.has_active_dialog(cx)));
     }
 
     #[ala::test]

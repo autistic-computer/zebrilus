@@ -121,7 +121,7 @@ impl OpenSelect {
         after_first_frame(window, move |window, cx| {
             let handle = ala::Focusable::focus_handle(target.read(cx), cx);
             handle.focus(window, cx);
-            dispatch("zz_select::Confirm", window, cx);
+            dispatch("penna_select::Confirm", window, cx);
         });
         cx.new(|_| Self { state }).into()
     }

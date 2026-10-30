@@ -197,11 +197,11 @@ impl Menus {
                 target.read(cx).focus_handle(cx).focus(window, cx);
                 let steps = if highlight == Highlight::Row { 3 } else { 7 };
                 for _ in 0..steps {
-                    dispatch("zz_menu::SelectDown", window, cx);
+                    dispatch("penna_menu::SelectDown", window, cx);
                 }
                 if highlight == Highlight::Submenu {
                     after_first_frame(window, |window, cx| {
-                        dispatch("zz_menu::SelectRight", window, cx);
+                        dispatch("penna_menu::SelectRight", window, cx);
                     });
                 }
             });
