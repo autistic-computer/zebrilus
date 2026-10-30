@@ -5133,7 +5133,6 @@ dependencies = [
  "log",
  "markdown",
  "ropey",
- "rust-embed",
  "serde",
  "serde_json",
  "smallvec",

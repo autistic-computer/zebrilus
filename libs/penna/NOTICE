@@ -18,12 +18,6 @@ src/icon/solar.json
   Licensed under CC BY 4.0. Credit and changes in src/icon/LICENSE-SOLAR.
 
 
-assets/icons/brand-chrome.svg
-
-  From Tabler Icons, https://tabler.io/icons
-  Copyright (c) 2020-2026 Paweł Kuna. MIT, see assets/icons/LICENSE-TABLER.
-
-
 themes/macos.json, themes/yaru.json
 
   Named for the platforms whose feel they imitate. penna is not affiliated

@@ -134,7 +134,6 @@ pub enum IconName {
     Bell,
     Bot,
     Braces,
-    BrandChrome,
     Calendar,
     CaseSensitive,
     Chat,
@@ -149,7 +148,6 @@ pub enum IconName {
     CircleUser,
     CircleX,
     Clock,
-    Claude,
     Xmark,
     Copy,
     Cpu,
@@ -191,7 +189,6 @@ pub enum IconName {
     Loader,
     Minus,
     Moon,
-    Openai,
     Palette,
     PanelBottom,
     PanelLeft,
@@ -237,7 +234,6 @@ impl IconName {
         Self::Bell,
         Self::Bot,
         Self::Braces,
-        Self::BrandChrome,
         Self::Calendar,
         Self::CaseSensitive,
         Self::Chat,
@@ -252,7 +248,6 @@ impl IconName {
         Self::CircleUser,
         Self::CircleX,
         Self::Clock,
-        Self::Claude,
         Self::Xmark,
         Self::Copy,
         Self::Cpu,
@@ -294,7 +289,6 @@ impl IconName {
         Self::Loader,
         Self::Minus,
         Self::Moon,
-        Self::Openai,
         Self::Palette,
         Self::PanelBottom,
         Self::PanelLeft,
@@ -340,7 +334,6 @@ impl IconName {
             Self::Bell => "icons/bell.svg",
             Self::Bot => "icons/bot.svg",
             Self::Braces => "icons/braces.svg",
-            Self::BrandChrome => "icons/brand-chrome.svg",
             Self::Calendar => "icons/calendar.svg",
             Self::CaseSensitive => "icons/case-sensitive.svg",
             Self::Chat => "icons/chat.svg",
@@ -355,7 +348,6 @@ impl IconName {
             Self::CircleUser => "icons/circle-user.svg",
             Self::CircleX => "icons/circle-x.svg",
             Self::Clock => "icons/clock.svg",
-            Self::Claude => "icons/claude.svg",
             Self::Xmark => "icons/xmark.svg",
             Self::Copy => "icons/copy.svg",
             Self::Cpu => "icons/cpu.svg",
@@ -397,7 +389,6 @@ impl IconName {
             Self::Loader => "icons/loader.svg",
             Self::Minus => "icons/minus.svg",
             Self::Moon => "icons/moon.svg",
-            Self::Openai => "icons/openai.svg",
             Self::Palette => "icons/palette.svg",
             Self::PanelBottom => "icons/panel-bottom.svg",
             Self::PanelLeft => "icons/panel-left.svg",
@@ -456,16 +447,10 @@ impl RenderOnce for IconName {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashSet, path::PathBuf};
-
     use ala::{AssetSource as _, TestAppContext};
 
     use super::{Assets, Icon, IconName};
     use crate::{Theme, ThemeMode};
-
-    fn icons_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/icons")
-    }
 
     #[test]
     fn every_variant_loads_from_the_asset_source() {
@@ -474,30 +459,12 @@ mod tests {
             let loaded = Assets
                 .load(path)
                 .unwrap_or_else(|error| panic!("{icon:?} ({path}) failed to load: {error}"));
-            assert!(loaded.is_some(), "{icon:?} ({path}) is not in assets/icons");
+            assert!(loaded.is_some(), "{icon:?} ({path}) is not drawn");
         }
     }
 
     #[test]
-    fn every_shipped_file_has_a_variant() {
-        let named: HashSet<&str> = IconName::ALL.iter().map(IconName::path).collect();
-
-        for entry in std::fs::read_dir(icons_dir()).expect("assets/icons is readable") {
-            let file_name = entry.expect("readable directory entry").file_name();
-            let file_name = file_name.to_string_lossy();
-            if !file_name.ends_with(".svg") {
-                continue;
-            }
-
-            assert!(
-                named.contains(format!("icons/{file_name}").as_str()),
-                "assets/icons/{file_name} has no IconName variant"
-            );
-        }
-    }
-
-    #[test]
-    fn every_drawn_icon_names_its_variant_and_ships_no_file() {
+    fn every_drawn_icon_names_its_variant() {
         let set: serde_json::Value =
             serde_json::from_str(include_str!("solar.json")).expect("the icon set parses");
         for icon in set["icons"].as_array().expect("the set lists icons") {
@@ -510,10 +477,6 @@ mod tests {
             assert_eq!(
                 Some(format!("{variant:?}").as_str()),
                 icon["variant"].as_str()
-            );
-            assert!(
-                !icons_dir().join(format!("{name}.svg")).exists(),
-                "assets/icons/{name}.svg shadows the drawn {name}"
             );
         }
     }

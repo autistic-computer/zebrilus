@@ -40,7 +40,6 @@ log = "0.4.34"
 markdown = { version = "1.0", features = ["serde"] }
 parking_lot = { version = "0.12.5", optional = true }
 ropey = { version = "=2.0.0-beta.1", features = ["metric_lines_lf", "metric_utf16"] }
-rust-embed = { version = "8.12", features = ["include-exclude"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
 smallvec = { version = "=1.16.1", features = ["serde"] }
@@ -54,9 +53,6 @@ tree-sitter-toml-ng = { version = "0.7.0", optional = true }
 unicode-segmentation = "1.13.3"
 web-time = "1.1.0"
 ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["default"] }
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-rust-embed = { version = "8.12", features = ["include-exclude", "debug-embed"] }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 url = "=2.5.8"

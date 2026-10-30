@@ -10,7 +10,7 @@ pub const STORY: Story = Story {
     id: "icons",
     name: "Icons",
     group: "Kit",
-    summary: "penna's own glyphs, drawn for the theme radius and smoothing, and the brand marks. An Icon takes the ambient text size and color unless a size or color is set.",
+    summary: "penna's own glyphs, drawn for the theme radius and smoothing, and the app's logo. An Icon takes the ambient text size and color unless a size or color is set.",
     sections: &[
         Section {
             id: "gallery",

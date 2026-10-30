@@ -12,10 +12,9 @@ a dependency of this workspace**; nothing outside ala (our ala) is left.
   (© 2024–2025 Longbridge). The icons are drawn by `src/icon/glyphs.rs` from
   `src/icon/solar.json`, adapted from the Solar Icons Set by 480 Design (CC BY 4.0,
   `src/icon/LICENSE-SOLAR`); they replaced an earlier Mac-school set, which replaced
-  Tabler, which replaced Iconoir. The brand
-  marks are files in `assets/icons`: `brand-chrome` is [Tabler Icons][tabler]
-  outline, MIT, retained as `assets/icons/LICENSE-TABLER` (© 2020–2026 Paweł Kuna),
-  and the vendor marks (`openai`, `claude`) are [Simple Icons][simple-icons], CC0-1.0.
+  Tabler, which replaced Iconoir. The kit ships no brand marks: an app
+  names its own icon files with `IconName::Asset` and serves them from its own
+  asset source.
 - `penna`'s own code is `MIT OR Apache-2.0` like the rest of the workspace;
   the ported portions remain under upstream's Apache-2.0 terms.
 
@@ -51,7 +50,7 @@ Everything is reached through `penna::<widget>`, mirroring upstream's namespace.
 | `kbd` | trimmed | `Kbd` formats a keystroke and draws it as our `Keycap` (neutral, soft by default, with `.emphasis()` and `.on(ground)`); upstream's `appearance(false)` plain-text mode becomes `Kbd::text`, which menus and tooltips show in the row's ink. Added `lowercase()` for hints that read as prose (`t`, `b`, `a`) rather than as a keycap legend. |
 | `switch` | trimmed | dropped inline label/`Side`/custom color; kept the animated thumb. The thumb uses `foreground` for visibility against the track. The checked track is the `accent` root, the only chromatic fill a neutral control gets |
 | `menu` | close-to-source | Owns its actions (`penna_menu`), key context (`PennaPopupMenu`) and `init()`; upstream's native `AppMenuBar` not carried over. Local rows use 12px text, 26px height (20px Small), 4px surface gutters, inset half-pixel separators, and the inset menu radius. Open submenu parents highlight in neutral gray; selected shortcut labels and icons brighten to full foreground. `PopupMenuItem::stepper` supports live values, pointer adjustments and Left/Right/Enter without dismissing, for a value such as a zoom level that the menu changes in place. |
-| `icon` | trimmed | `IconName` is a **hand-written** enum instead of upstream's build-time proc-macro codegen; our own `Assets` replaces `gpui-component-assets`, drawing penna's own set (`glyphs`, `solar.json`) for the theme radius and corner smoothing and embedding the brand marks from `assets/icons` |
+| `icon` | trimmed | `IconName` is a **hand-written** enum instead of upstream's build-time proc-macro codegen; our own `Assets` replaces `gpui-component-assets`, drawing penna's own set (`glyphs`, `solar.json`) for the theme radius and corner smoothing; `IconName::Asset` names a file the app's own asset source serves |
 | `tooltip` | trimmed | hangs off gpui's `.tooltip()` rather than upstream's `Root`-owned overlay; dropped `ComponentTooltip` after nothing adopted it |
 | `popover` | trimmed | owns its `Cancel` action and `PennaPopover` context; `on_dismiss` runs once for every close path, including trigger toggles; the panel stays inside `fully_visible_bounds` (safe areas and a soft keyboard), using the size it measured the frame before |
 | `slider` | **penna-original** | `DiscreteSlider` displays compact pills filled through the selected step, per-pill tooltips, a trailing selected value, keyboard navigation, and a slider accessibility value |
@@ -237,5 +236,3 @@ Checked against this fork and deliberately **not** taken:
 [checked-2026-10-19]: https://github.com/longbridge/gpui-kit/commit/1676826d9d49b90f4d7b6808b69924f58796f6f1
 
 [upstream]: https://github.com/longbridge/gpui-kit
-[tabler]: https://tabler.io/icons
-[simple-icons]: https://simpleicons.org

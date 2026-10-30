@@ -6292,7 +6292,6 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "ropey",
- "rust-embed",
  "serde",
  "serde_json",
  "smallvec",
