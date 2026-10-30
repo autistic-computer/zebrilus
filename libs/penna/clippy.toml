@@ -1,7 +1,7 @@
 doc-valid-idents = ["OpenAI", "AppKit", "KWin", ".."]
 
 disallowed-methods = [
-    { path = "ala::rgb", reason = "chrome colors must come from cx.theme(); see knowledge/configuration/ui-conventions doc" },
-    { path = "ala::rgba", reason = "chrome colors must come from cx.theme(); see knowledge/configuration/ui-conventions doc" },
-    { path = "ala::hsla", reason = "chrome colors must come from cx.theme(); see knowledge/configuration/ui-conventions doc" },
+    { path = "ala::rgb", reason = "chrome colors must come from cx.theme()" },
+    { path = "ala::rgba", reason = "chrome colors must come from cx.theme()" },
+    { path = "ala::hsla", reason = "chrome colors must come from cx.theme()" },
 ]
