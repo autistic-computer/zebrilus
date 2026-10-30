@@ -36,6 +36,13 @@ src/
   <widget>/     one directory per widget
   sheet.rs, dismissal.rs, touch/, pulse.rs, motion.rs   penna-original touch and motion primitives
   picker.rs, feedback.rs, which_key.rs   penna-original picker dialogs, inline alerts and prompt dialogs, which-key popup
+  interface_theme.rs   penna-original theme files: the built-in themes and the layers an app adds to them
+  settings/      penna-original appearance settings page
+  theme_css.rs   penna-original role looks written as CSS tokens
+  compact.rs, compact/   penna-original phone chrome: bars, title bars, pill menus, tile grids, HUD
+themes/          penna-original built-in themes (default, macos, yaru)
+web/             penna-original HTML kit painted with the CSS tokens
+storybook/       penna-original storybook: the harness crate, its page and the kit stories
 ```
 
 Everything is reached through `penna::<widget>`, mirroring upstream's namespace.
