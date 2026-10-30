@@ -3,7 +3,8 @@ use std::time::Duration;
 use semver::Version;
 use serde::Deserialize;
 
-const RELEASES_API: &str = "https://api.github.com/repos/autistic-computer/zebrilus/releases?per_page=10";
+const RELEASES_API: &str =
+    "https://api.github.com/repos/autistic-computer/zebrilus/releases?per_page=10";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -216,7 +217,9 @@ mod tests {
         };
         let asset = |name: &str| ReleaseAsset {
             name: name.to_owned(),
-            url: format!("https://github.com/autistic-computer/zebrilus/releases/download/v0.3.2/{name}"),
+            url: format!(
+                "https://github.com/autistic-computer/zebrilus/releases/download/v0.3.2/{name}"
+            ),
         };
         release.assets.push(asset("zz-0.3.2-macos-arm64.dmg"));
         assert_eq!(native_macos_asset(&release, "aarch64"), None);
