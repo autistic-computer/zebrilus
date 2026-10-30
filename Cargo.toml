@@ -19,7 +19,7 @@ resolver = "3"
 version = "0.22.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/autistic-computer/zz"
+repository = "https://github.com/autistic-computer/zebrilus"
 rust-version = "1.99"
 publish = false
 

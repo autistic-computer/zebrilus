@@ -38,7 +38,7 @@ roster below as a dated measurement. Add or close work in the registry, then reg
 keep this page for the detailed reasoning that a compact tracker row cannot carry.
 
 **State anchor:** the "implemented surface" section reflects
-[PR #4](https://github.com/demfabris/zz/pull/4) (`fix/tmux-compat-hunt-v2`, merged 2026-08-16
+[PR #4](https://github.com/autistic-computer/zebrilus/pull/4) (`fix/tmux-compat-hunt-v2`, merged 2026-08-16
 as `53b523e`) plus the phase 3d layout-string and phase 4a–4f-2 source dated 2026-08-17. PR #4 corrected the
 hunt-claim regressions, including two implemented backwards
 (`new-window -t` bare-target order, positional targets on the kill commands) plus the

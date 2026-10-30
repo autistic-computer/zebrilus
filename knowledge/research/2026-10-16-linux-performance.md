@@ -72,12 +72,12 @@ Fresh RAM probes use `target/profiles/linux-ram-20261016/` in the main checkout.
 They record their own source revisions, binary hashes, workloads, and results.
 
 Cross-platform runtime validation is tracked in
-[macOS #11](https://github.com/demfabris/zz/issues/11),
-[Windows/WSL #12](https://github.com/demfabris/zz/issues/12),
-[web #13](https://github.com/demfabris/zz/issues/13),
-[physical iOS #14](https://github.com/demfabris/zz/issues/14),
-[Intel/NVIDIA Linux #15](https://github.com/demfabris/zz/issues/15), and
-[experimental FreeBSD #16](https://github.com/demfabris/zz/issues/16).
+[macOS #11](https://github.com/autistic-computer/zebrilus/issues/11),
+[Windows/WSL #12](https://github.com/autistic-computer/zebrilus/issues/12),
+[web #13](https://github.com/autistic-computer/zebrilus/issues/13),
+[physical iOS #14](https://github.com/autistic-computer/zebrilus/issues/14),
+[Intel/NVIDIA Linux #15](https://github.com/autistic-computer/zebrilus/issues/15), and
+[experimental FreeBSD #16](https://github.com/autistic-computer/zebrilus/issues/16).
 Each issue pins baseline `0d729eb36f6247f445b331503a5e7a05fdd1d6f2` and
 candidate `cda21ce33feb350be7918e8af135c4119478bf60`, lists the applicable
 changes and breakage checks, and requires matched runtime evidence.

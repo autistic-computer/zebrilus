@@ -2,11 +2,11 @@ cask "zz" do
   version "0.0.0"
   sha256 "0000000000000000000000000000000000000000000000000000000000000000"
 
-  url "https://github.com/autistic-computer/zz/releases/download/v#{version}/zz-#{version}-macos-arm64.dmg",
-      verified: "github.com/autistic-computer/zz/"
+  url "https://github.com/autistic-computer/zebrilus/releases/download/v#{version}/zz-#{version}-macos-arm64.dmg",
+      verified: "github.com/autistic-computer/zebrilus/"
   name "zz"
   desc "Terminal multiplexer with terminal, browser, and agent panes"
-  homepage "https://github.com/autistic-computer/zz"
+  homepage "https://github.com/autistic-computer/zebrilus"
 
   livecheck do
     url :url
