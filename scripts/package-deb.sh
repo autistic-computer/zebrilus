@@ -49,7 +49,7 @@ install -d "$pkg_root/usr/share/doc/zz"
     cat <<'EOF'
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: zz
-Source: https://github.com/autistic-computer/zz
+Source: https://github.com/autistic-computer/zebrilus
 
 Files: *
 Copyright: 2026 Fabricio Dematte

@@ -7,7 +7,7 @@
    //          {{{{     &gt;&gt;        <br>
                                   <br>
 ---                               <br>
-name: zz                          <br>
+name: zebrilus                    <br>
 description: terminal multiplexer <br>
 author: autistic.computer         <br>
 license: mit or apache-2.0        <br>

@@ -223,7 +223,7 @@ let floor = px(28.0) * pinned;\n\
 ```";
 const RECENT: [&str; 3] = [
     "zed.dev/docs/key-bindings",
-    "github.com/autistic-computer/zz/pull/412",
+    "github.com/autistic-computer/zebrilus/pull/412",
     "localhost:4321",
 ];
 

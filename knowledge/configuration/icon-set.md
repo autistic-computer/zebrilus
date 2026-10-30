@@ -60,13 +60,6 @@ The bijection tests in `libs/penna/src/icon/mod.rs` hold `IconName` to the set p
 files: every variant loads, every file in `assets/icons` has a variant, and every icon in `solar.json`
 names its variant and has no file shadowing it.
 
-The site inlines static copies from `site/src/icons`, exported at the default theme's look (radius 24,
-smoothing 4) next to the brand marks. Re-export after changing the set:
-
-```sh
-cargo run -p penna --example export_icons -- site/src/icons 24 4
-```
-
 ## Part kinds
 
 Each part is an array whose first item is its kind. Points are `[x, y]` or `[x, y, cornerScale]`;

@@ -73,7 +73,8 @@ pub(crate) struct OpenUrl {
     pub(crate) url: String,
 }
 
-pub(crate) const RELEASE_NOTES_URL: &str = "https://github.com/autistic-computer/zz/releases";
+pub(crate) const RELEASE_NOTES_URL: &str = "https://github.com/autistic-computer/zebrilus/releases";
+const DOCS_URL: &str = "https://github.com/autistic-computer/zebrilus/blob/main/docs/README.md";
 
 #[derive(Default)]
 struct MenuSessions(BTreeSet<String>);
@@ -224,13 +225,13 @@ fn menu_tree(sessions: &BTreeSet<String>) -> Vec<Menu> {
             MenuItem::separator(),
         ]),
         Menu::new("Help").items([
-            open_url("zz Documentation", "https://zzmux.sh/docs"),
-            open_url("Keyboard Shortcuts", "https://zzmux.sh/docs"),
+            open_url("zz Documentation", DOCS_URL),
+            open_url("Keyboard Shortcuts", DOCS_URL),
             open_url("Release Notes", RELEASE_NOTES_URL),
             MenuItem::separator(),
             open_url(
                 "Report an Issue",
-                "https://github.com/autistic-computer/zz/issues/new",
+                "https://github.com/autistic-computer/zebrilus/issues/new",
             ),
             MenuItem::action("Open Logs", OpenLogs),
         ]),

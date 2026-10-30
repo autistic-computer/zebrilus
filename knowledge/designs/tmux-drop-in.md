@@ -1860,7 +1860,7 @@ See [split-pane layout](/concepts/split-pane-layout.md) for the shipped architec
 
 ## Phase 4 — the grind (shipped 2026-08-17: six waves, each reviewed to CONFIRMED-CLOSED)
 
-Running wave-by-wave on [PR #6](https://github.com/demfabris/zz/pull/6) (`feat/tmux-grind`),
+Running wave-by-wave on [PR #6](https://github.com/autistic-computer/zebrilus/pull/6) (`feat/tmux-grind`),
 same loop as phases 0–3: settled plan → codex → full gates → adversarial pin review → close.
 
 | Work | Scope | Status |

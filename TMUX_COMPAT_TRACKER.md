@@ -82,7 +82,7 @@ percentage is a ledger health metric, not a compatibility claim.
 | Orchestration | Cycle 18 ran end to end on the Ubuntu box on Claude Code Opus 5 at xhigh: two lanes, one adversarial review each, one gate alone, client then mux. Cycle 17's lanes ran on Ubuntu and were frozen mid-flight; one gate alone resumed them on the macbook, wire then panes then client then proof. Every review was approve-with-fixes and every must-fix landed on its branch before its gate with the reviewer's own probe re-run. Original campaign branches remain at their reviewed tips; rebased commits landed on main without force pushes. |
 | Campaign worktrees | Each lane works in its own worktree from `origin/main`; the gate integrates in `zz-gate-*` worktrees and removes them; the shared checkout is never edited |
 | Pinned tmux oracle | `7f2a35ad3321f9ba57a1062ca73b1f3ff26aca53` (the `3.8` tag; this campaign ran against the earlier `d77c9dc6` pin) |
-| GitHub tracker | [Issue #7](https://github.com/demfabris/zz/issues/7) owns claims, state transitions, and the published base |
+| GitHub tracker | [Issue #7](https://github.com/autistic-computer/zebrilus/issues/7) owns claims, state transitions, and the published base |
 | Agreed-scope meter | 100.0% (304 of 304 items frozen on 2026-08-31), 65 of 65 groups done, 0 partially burned; park dispositions 15 of 15; `python3 compat/progress.py` |
 | Completed fixed cohort | Cycle 18: 2/2 lanes integrated; frozen meter remains 100.0% (304/304) |
 | Previous completed cohort | Cycle 17: 4/4 lanes integrated; frozen meter 100.0% |
@@ -379,7 +379,7 @@ When sources disagree, use this order and correct stale documentation in the sam
    and [`knowledge/designs/tmux-drop-in.md`](knowledge/designs/tmux-drop-in.md) for rationale,
    baseline measurements, and older campaign history.
 8. This file for the cross-source checkpoint and resume instructions.
-9. [Issue #7](https://github.com/demfabris/zz/issues/7) as the external mirror for humans.
+9. [Issue #7](https://github.com/autistic-computer/zebrilus/issues/7) as the external mirror for humans.
 
 Start unfamiliar subsystem research at [`knowledge/index.md`](knowledge/index.md). Knowledge pages
 are maps; verify their cited source before changing behavior. Historical counts in the audit and
@@ -404,7 +404,7 @@ Either way, begin here:
 cd "$HOME/dev/zz"
 git status --short --branch
 git worktree list
-git fetch https://github.com/demfabris/zz.git main:refs/remotes/origin/main
+git fetch https://github.com/autistic-computer/zebrilus.git main:refs/remotes/origin/main
 git rev-parse HEAD origin/main
 ```
 

@@ -3,7 +3,7 @@ use std::time::Duration;
 use semver::Version;
 use serde::Deserialize;
 
-const RELEASES_API: &str = "https://api.github.com/repos/autistic-computer/zz/releases?per_page=10";
+const RELEASES_API: &str = "https://api.github.com/repos/autistic-computer/zebrilus/releases?per_page=10";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,7 +116,7 @@ pub fn native_macos_asset<'a>(
     };
     let name = format!("zz-native-{}-macos-{architecture}.dmg", release.version);
     let url = format!(
-        "https://github.com/autistic-computer/zz/releases/download/v{}/{name}",
+        "https://github.com/autistic-computer/zebrilus/releases/download/v{}/{name}",
         release.version
     );
     release
@@ -135,7 +135,7 @@ mod tests {
 
     fn release(tag: &str, prerelease: bool, draft: bool) -> String {
         format!(
-            r#"{{"tag_name":"{tag}","html_url":"https://github.com/autistic-computer/zz/releases/tag/{tag}","draft":{draft},"prerelease":{prerelease}}}"#
+            r#"{{"tag_name":"{tag}","html_url":"https://github.com/autistic-computer/zebrilus/releases/tag/{tag}","draft":{draft},"prerelease":{prerelease}}}"#
         )
     }
 
@@ -163,7 +163,7 @@ mod tests {
         assert_eq!(newest.version, version("0.3.1"));
         assert_eq!(
             newest.url,
-            "https://github.com/autistic-computer/zz/releases/tag/v0.3.1"
+            "https://github.com/autistic-computer/zebrilus/releases/tag/v0.3.1"
         );
     }
 
@@ -211,12 +211,12 @@ mod tests {
     fn native_assets_require_the_native_product_architecture_and_release_url() {
         let mut release = Release {
             version: version("0.3.2"),
-            url: "https://github.com/autistic-computer/zz/releases/tag/v0.3.2".to_owned(),
+            url: "https://github.com/autistic-computer/zebrilus/releases/tag/v0.3.2".to_owned(),
             assets: Vec::new(),
         };
         let asset = |name: &str| ReleaseAsset {
             name: name.to_owned(),
-            url: format!("https://github.com/autistic-computer/zz/releases/download/v0.3.2/{name}"),
+            url: format!("https://github.com/autistic-computer/zebrilus/releases/download/v0.3.2/{name}"),
         };
         release.assets.push(asset("zz-0.3.2-macos-arm64.dmg"));
         assert_eq!(native_macos_asset(&release, "aarch64"), None);

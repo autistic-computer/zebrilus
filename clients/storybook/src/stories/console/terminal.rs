@@ -938,7 +938,7 @@ fn links() -> Sample {
     let column = screen.write(1, 0, "Docs: ", 0);
     screen.write(1, column, "https://zzmux.sh/docs/terminal", link);
     let column = screen.write(2, 0, "PR:   ", 0);
-    screen.write(2, column, "https://github.com/autistic-computer/zz/pull/214", link);
+    screen.write(2, column, "https://github.com/autistic-computer/zebrilus/pull/214", link);
     let column = screen.write(3, 0, "Styled by the program: ", 0);
     screen.write(3, column, "storybook", styled_link);
     let mut viewport = screen.viewport();
@@ -946,7 +946,7 @@ fn links() -> Sample {
     viewport.presentation = Arc::new(TerminalPresentation::new(
         Arc::from("gh"),
         None,
-        Some(Arc::from("https://github.com/autistic-computer/zz/pull/214")),
+        Some(Arc::from("https://github.com/autistic-computer/zebrilus/pull/214")),
     ));
     Sample::new(viewport)
 }

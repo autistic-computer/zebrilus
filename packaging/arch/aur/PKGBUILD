@@ -4,7 +4,7 @@ pkgver=0.0.0
 pkgrel=1
 pkgdesc='Terminal, browser, and agent workspace'
 arch=('x86_64' 'aarch64')
-url='https://github.com/autistic-computer/zz'
+url='https://github.com/autistic-computer/zebrilus'
 license=('MIT OR Apache-2.0')
 depends=(
     'alsa-lib'
