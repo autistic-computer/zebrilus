@@ -390,7 +390,7 @@ file that still names one loads with the entry dropped. The agent history picker
 | `agent.option` | menu-item | answer tiles in question and permission cards, Show terminal on the card for an approval the lens cannot answer | `ui/agent/presentation.rs:239` | a row like the pane picker since 10-15; no fill at rest |
 | `agent.jump` | icon-button | jump-to-bottom button over the transcript | `ui/agent.rs:1025` | |
 | `agent.action` | icon-button | copy on answers, code blocks and diagrams, rewind on prompts | `ui/agent.rs:2464` | washed and lifted under the pointer, and the copy buttons always showed; since 10-15 no fill in any state, shown only while their message, block or figure is pointed at |
-| `inline-panel` | floating | panels raised inside a pane: question and approval cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:164`, `ui/agent/tasks.rs:221`, `kit/feedback.rs:34` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
+| `inline-panel` | floating | panels raised inside a pane: question and approval cards, plan and tasks tray, slash menu, side answer, failure alerts (agent, browser, editor) | `ui/agent/presentation.rs:211`, `ui/agent/tasks.rs:227`, `kit/feedback.rs:31` | all wear the floating popover look while sitting in the layout; kept on purpose, now as a role a theme can change |
 
 The agent's step rows (the trace line, thoughts and tool calls) had `agent.trace`, a `row`, until 2026-10-15. They draw no fill now: their ink is muted and a row you can open brightens it under the pointer, so the role had nothing left to style.
 
@@ -433,7 +433,7 @@ Text fields, number fields, selects, switches and buttons on setting rows are pl
 |---|---|---|---|---|
 | `phone.bar` | bar | 44px nav bars (settings, sheet header) | `kit/compact/bar.rs:205` (`compact_nav_bar`), `kit/compact/header.rs:61` (`folding_title_bar`) | three hand-made 44px headers; fixed, one `compact_nav_bar` |
 | `phone.pill` | button | the pills floating at the bottom of the phone, concentric with the screen's corners (`PillPlacement`): the pane pill with its icon tile and page dots, the host pill, the Hosts page's Settings button, the pill the keys sit in | `kit/compact/bar.rs:91` | took floating glass while in the layout; fixed, a solid fill without an edge |
-| `phone.button` | icon-button | back, close, gear | `kit/compact/bar.rs:192`, `kit/sheet.rs:94`, `app/app/compact/overview.rs:478` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
+| `phone.button` | icon-button | back, close, gear | `kit/compact/bar.rs:192`, `app/app/settings.rs:566`, `app/app/compact/overview.rs:668` | three sizes, two bare divs; fixed, one 44pt `compact_bar_button` with a 20pt glyph |
 | `phone.key` | button | key row keys, ctrl, alt and prefix keys, arrow pad; flat on the key pill until latched or held, concentric in it | `kit/touch/key_row.rs:104` | |
 | `phone.card` | tile | the overview's bento tiles: hosts on the Hosts page, windows on a host's page | `kit/compact/bento.rs` (`bento_tile`) | was one card per pane in a row per window until the 2026-10-26 drill-in |
 | `phone.mini` | tile | the panes inside a window's tile, where the window splits them, on the terminal's background; ringed in the accent on the pane the window opens to | `ui/compact/bento.rs` (`mini_pane`) | new 2026-10-26 with the drill-in overview |
@@ -461,7 +461,7 @@ What the inventory found on the kinds themselves:
 | `menu-item` | rows in menus, the palette, pickers, choosers, omnibox, slash menu, new-session actions | `kit/menu/menu_item.rs:97`, `kit/list/mod.rs:123`, `kit/picker.rs:134` | three corner rules; fixed, `row_corners` everywhere. Menus still move their selection on hover, lists hover with a wash |
 | `dialog` | alerts and prompts (ssh, add host, restart daemon, import) | `kit/overlay/dialog.rs:499` | |
 | `sheet` | which-key, phone bottom sheets | `kit/which_key.rs:419`, `kit/sheet.rs:355` | |
-| `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:188`, `app/app.rs:2036`, `kit/compact/hud.rs:18` | banner and HUD used the popover look; fixed, both draw as toasts |
+| `toast` | notifications, update offer, disconnected banner, pinch HUD | `kit/overlay/notification.rs:69`, `app/app.rs:2238`, `kit/compact/hud.rs:18` | banner and HUD used the popover look; fixed, both draw as toasts |
 | `tooltip` | floating | `kit/tooltip/mod.rs:53` | |
 | `keycap` | key hints everywhere | `kit/kbd.rs:189`, `:253` | Soft, Outline and plain text versions; fixed, `Kbd` and `Keycap` draw one cap (menus and tooltips still show bindings as text) |
 
