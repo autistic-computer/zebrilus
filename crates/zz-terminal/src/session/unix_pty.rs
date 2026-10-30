@@ -639,6 +639,37 @@ const SIGNAL_LIMIT: libc::c_int = 32;
 #[cfg(not(target_os = "macos"))]
 const SIGNAL_LIMIT: libc::c_int = 65;
 
+#[cfg(target_os = "linux")]
+const KERNEL_SIGSET_BYTES: usize = 8;
+
+#[cfg(target_os = "linux")]
+#[allow(
+    unsafe_code,
+    reason = "a raw rt_sigaction with an all-zero action, SIG_DFL in every kernel layout, because \
+              glibc's sigaction takes its abort lock for SIGABRT and a child sharing the parent's \
+              memory waits forever if the parent dies while another thread holds it"
+)]
+unsafe fn reset_signal(signal: libc::c_int) {
+    let action = [0_u64; 4];
+    unsafe {
+        libc::syscall(
+            libc::SYS_rt_sigaction,
+            signal,
+            action.as_ptr(),
+            std::ptr::null_mut::<libc::c_void>(),
+            KERNEL_SIGSET_BYTES,
+        );
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+#[allow(unsafe_code, reason = "signal is async-signal-safe")]
+unsafe fn reset_signal(signal: libc::c_int) {
+    unsafe {
+        libc::signal(signal, libc::SIG_DFL);
+    }
+}
+
 #[allow(
     unsafe_code,
     reason = "runs in the child between its creation and exec, on memory prepared beforehand"
@@ -653,7 +684,7 @@ unsafe fn exec_child(
     unsafe {
         for signal in 1..SIGNAL_LIMIT {
             if signal != libc::SIGKILL && signal != libc::SIGSTOP {
-                libc::signal(signal, libc::SIG_DFL);
+                reset_signal(signal);
             }
         }
         let empty: libc::sigset_t = std::mem::zeroed();
