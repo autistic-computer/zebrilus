@@ -9,8 +9,10 @@ timestamp: 2026-10-24T00:00:00Z
 
 # Overview
 
-zz's icon set has 88 glyphs: every icon zz ships except the four brand marks (`claude`, `openai`,
-`brand-chrome`, `zz`), which keep their own artwork as files in `libs/penna/assets/icons`. The
+zz's icon set has 95 glyphs: every `IconName` in penna except its three brand marks (`claude`,
+`openai`, `brand-chrome`), which keep their own artwork as files in `libs/penna/assets/icons`. The
+zz logo is not in the kit: its artwork is `crates/zz-ui/assets/icons/zz.svg`, which `zz_ui::Assets`
+serves at the path `zz_ui::ZZ_LOGO` (`icons/zz.svg`) before falling back to penna's assets. The
 set lives as skeletons in `libs/penna/src/icon/solar.json`, not as SVG files, and is drawn at
 paint time for the current theme, so radius 0 gives flat icons and higher radii round them the way zz
 rounds panes. The desktop app, the web and iOS clients and the storybook all draw it.
