@@ -99384,6 +99384,18 @@ bind - split-window -v -c "#{pane_current_path}"
             "second attached terminal view never became available",
             |viewport| viewport_text(viewport).contains("zz-terminal-ready"),
         );
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .is_none_or(|pane| pane.title != "shared fixture")
+        {
+            assert!(Instant::now() < deadline, "the fixture title did not sync");
+            thread::sleep(Duration::from_millis(5));
+        }
         shared.send_resync(first_client, &first_mailbox);
         shared.send_resync(second_client, &second_mailbox);
 
