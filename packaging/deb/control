@@ -7,7 +7,7 @@ Depends: @SHLIBDEPS@, libwayland-client0, libwayland-egl1, libegl1, hicolor-icon
 Suggests: gnome-keyring | kwalletd6 | kwalletd5
 Section: utils
 Priority: optional
-Homepage: https://github.com/autistic-computer/zz
+Homepage: https://github.com/autistic-computer/zebrilus
 Description: Terminal multiplexer with terminal, browser, and agent panes
  zz is a terminal multiplexer with three kinds of pane: a terminal, a Chromium
  browser, and an AI agent. They share one split layout, one focus model, one

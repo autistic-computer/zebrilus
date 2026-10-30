@@ -333,7 +333,7 @@ fn tags(_: &mut Window, cx: &mut App) -> AnyElement {
                 .child(terminal_search_prompt("/cargo test", 11, |_, _, _| {}, cx))
                 .child(terminal_status_popup("No matches for \"panic\"", cx))
                 .child(terminal_link_popup(
-                    "https://github.com/autistic-computer/zz/pull/412",
+                    "https://github.com/autistic-computer/zebrilus/pull/412",
                     cx,
                 )),
         )

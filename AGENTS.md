@@ -1,6 +1,6 @@
 # AGENTS.md
 
-zz is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on ala (our fork of Zed's GPUI UI framework, in `libs/ala`), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL, iOS and Android clients, and a raw-terminal attach client.
+Zebrilus (zz, repo autistic-computer/zebrilus) is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on ala (our fork of Zed's GPUI UI framework, in `libs/ala`), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL, iOS and Android clients, and a raw-terminal attach client.
 
 Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (see `mise.toml`).
 
@@ -37,7 +37,7 @@ Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (
 - `scripts/` — build, packaging, and profiling scripts
 - `bench/` — terminal throughput benchmark harness
 - `design/` - HTML mockups painted with the real theme: `crates/zz-ui/src/theme_css.rs` writes every role's look as CSS (`just design tokens`), `just design serve` shows them; see `design/README.md`
-- `site/` — zzmux.sh landing page and docs (Astro)
+- `site/` — zzmux.sh, which serves only `install.sh`; the landing page and docs were wiped 2026-10-30 for a rework
 - `third_party/` — vendored code (`ghostty/`, a trimmed Ghostty synced with `just vendor ghostty <rev>`; the libghostty-vt crates under `rust/`) and pinned reference material
 - `packaging/` — Arch package, AUR/cask templates
 
@@ -70,7 +70,7 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 | `just android <setup\|emulator\|run\|build\|device\|logs>` / `android rig [stop]` | ala Android app: install the SDK, NDK, emulator and `zz-phone` AVD, boot it, build and launch on it attached to the rig through `adb reverse`, build the APK, install a release arm64 build on a USB or wireless device, or follow its logcat |
 | `just ios <run\|build\|device\|bench> [iPhone\|iPad]` / `ios rig [stop]` / `ios testflight` | ala iOS app (iPhone by default): simulator, a paired device (release, signed, installed), a hands-free frame benchmark on the device, a throwaway daemon that `ios run` attaches to, or a signed `dev.zz.ios` TestFlight upload; `ZZ_ALA_DEMO=terminal` selects the terminal example |
 | `just libs <check\|push\|pull> <ala\|penna\|ala-cef>` | Lint and test a lib alone, push zz's `libs/<lib>` commits to its autistic-computer repo, or merge that repo's commits back (git subtree) |
-| `just site` | Docs site dev server with live reload |
+| `just site` | Deploy zzmux.sh (copies `install.sh` and runs wrangler) |
 | `just web run` / `web setup` / `web build [--release]` / `web serve` | Browser client dev loop / toolchain / assets / local gateway |
 | `just profile <cpu\|memory\|startup\|system\|metal\|terminal> mac …` | Capture profiling data; read it back with `just profile summary <cpu\|metal\|terminal> <run>` |
 | `just profile build mac` | Release-optimized bundle with dSYMs for profiling |

@@ -12,7 +12,7 @@ State rules the fold enforces:
 - INTEGRATED, REPAIR, and REJECTED are valid only from the current MAIN holder.
 
 Environment:
-  ZZ_BOARD_REPO    repository, default autistic-computer/zz
+  ZZ_BOARD_REPO    repository, default autistic-computer/zebrilus
   ZZ_BOARD_ISSUE   issue number, default 7
   ZZ_BOARD_HOLDER  holder identity, e.g. mbp/session-name (required to post)
 
@@ -28,7 +28,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-REPO = os.environ.get("ZZ_BOARD_REPO", "autistic-computer/zz")
+REPO = os.environ.get("ZZ_BOARD_REPO", "autistic-computer/zebrilus")
 ISSUE = int(os.environ.get("ZZ_BOARD_ISSUE", "7"))
 
 MAX_LEASE = timedelta(hours=24)

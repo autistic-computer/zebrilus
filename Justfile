@@ -54,7 +54,7 @@ headless platform *args:
     cargo build --release -p zz-cli {{ args }}
     scripts/package-headless.sh target/release/zz_cli "dist/zz-$version-headless-$os-$arch.tar.gz"
 
-[doc("Serve the landing page + docs site with live reload (localhost:4321/zz).")]
+[doc("Deploy zzmux.sh, which serves only install.sh.")]
 site:
-    npm --prefix site install
-    npm --prefix site run dev
+    rm -rf site/dist && mkdir -p site/dist && cp install.sh site/dist/
+    npx --yes wrangler@4.131.1 deploy --config site/wrangler.jsonc

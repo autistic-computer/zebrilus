@@ -714,7 +714,7 @@ fronts under TRIAGE, commit the orchestration records under MAIN (a records-only
 
 ## Resuming on another machine
 
-1. Clone `git@github.com:demfabris/zz.git` (HTTPS through `gh auth setup-git` where the SSH keys
+1. Clone `git@github.com:autistic-computer/zebrilus.git` (HTTPS through `gh auth setup-git` where the SSH keys
    are missing). Toolchain per `mise.toml`; the campaign only needs debug builds, `cargo test`, and
    `cargo clippy`.
 2. Populate the caches once: `compat/fetch-tmux.sh` builds the pinned tmux, `compat/fetch-corpus.sh`

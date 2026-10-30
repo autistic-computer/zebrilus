@@ -94,7 +94,7 @@ pub const STORY: Story = Story {
 
 const URLS: [&str; 4] = [
     "https://zed.dev/docs/key-bindings",
-    "https://github.com/autistic-computer/zz/pull/412",
+    "https://github.com/autistic-computer/zebrilus/pull/412",
     "http://localhost:4321/",
     "https://docs.rs/ala/latest/ala/struct.Window.html#method.use_keyed_state",
 ];
@@ -593,7 +593,7 @@ fn start_page(_: &mut Window, cx: &mut App) -> AnyElement {
         .children(
             [
                 "zed.dev/docs/key-bindings",
-                "github.com/autistic-computer/zz/pull/412",
+                "github.com/autistic-computer/zebrilus/pull/412",
                 "localhost:4321",
                 "docs.rs/ala/latest/ala/struct.Window.html#method.use_keyed_state",
             ]

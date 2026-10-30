@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo=autistic-computer/zz
+repo=autistic-computer/zebrilus
 channel=stable
 headless=0
 version=
@@ -225,7 +225,7 @@ install_linux_tarball() {
 
     say "installed zz $version -> $prefix (bin/zz, lib/zz, share/applications/zz.desktop)"
     if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
-        warn "this kernel restricts unprivileged user namespaces; browser panes need an AppArmor profile for $prefix/lib/zz/zz (see https://zzmux.sh/docs/getting-started#linux)"
+        warn "this kernel restricts unprivileged user namespaces; browser panes need an AppArmor profile for $prefix/lib/zz/zz"
     fi
     if [ -x /usr/bin/zz ]; then
         warn "/usr/bin/zz is also installed; $prefix/bin/zz shadows it when $prefix/bin comes first on PATH"
