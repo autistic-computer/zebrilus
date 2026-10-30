@@ -356,6 +356,7 @@ mod tests {
 
         let inline_bounds = cx.update(|window, cx| {
             crate::Root::read(window, cx)
+                .expect("the test window's root is a Root")
                 .text_selection
                 .inline_bounds()
                 .next()
@@ -445,6 +446,7 @@ mod tests {
         });
         let inline_bounds = cx.update(|window, cx| {
             crate::Root::read(window, cx)
+                .expect("the test window's root is a Root")
                 .text_selection
                 .inline_bounds()
                 .next()

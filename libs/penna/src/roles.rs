@@ -193,11 +193,66 @@ static APP: OnceLock<&'static [SurfaceRole]> = OnceLock::new();
 static RETIRED: OnceLock<&'static [&'static str]> = OnceLock::new();
 
 pub fn register(roles: &'static [SurfaceRole]) {
-    let _ = APP.set(roles);
+    if APP.get().is_none() {
+        check_app_ids(roles);
+    }
+    set_once(&APP, roles, "penna::roles::register");
+}
+
+pub(crate) fn registered() -> bool {
+    APP.get().is_some()
 }
 
 pub fn retire(ids: &'static [&'static str]) {
-    let _ = RETIRED.set(ids);
+    set_once(&RETIRED, ids, "penna::roles::retire");
+}
+
+pub(crate) fn set_once<T: PartialEq + ?Sized>(
+    slot: &OnceLock<&'static T>,
+    value: &'static T,
+    caller: &str,
+) {
+    let set = *slot.get_or_init(|| value);
+    assert!(
+        std::ptr::eq(set, value) || set == value,
+        "{caller} was already called with a different list; register once at startup, \
+         and pass the same list if you call it again"
+    );
+}
+
+fn spelled_like_a_theme_file(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c == '-' || c == '.')
+}
+
+fn check_app_ids(app: &[SurfaceRole]) {
+    for (index, role) in app.iter().enumerate() {
+        let id = role.id;
+        assert!(
+            spelled_like_a_theme_file(id),
+            "app role `{id}` can't be named in a theme file; spell role ids with lowercase \
+             letters, `-` and `.`"
+        );
+        assert!(
+            SurfaceRole::KIT.iter().all(|kit| kit.id != id),
+            "app role `{id}` takes the id of a penna kit role; give it an id of its own, \
+             such as `app.{id}`"
+        );
+        assert!(
+            CHROME
+                .iter()
+                .all(|chrome| chrome.id != id || chrome == role),
+            "app role `{id}` changes a penna chrome role that penna's widgets draw; list \
+             penna's role unchanged and restyle it in a theme layer, or give it an id of its \
+             own, such as `app.{id}`"
+        );
+        assert!(
+            app[..index].iter().all(|other| other.id != id),
+            "app role `{id}` is in the list twice; each role needs its own id"
+        );
+    }
 }
 
 pub fn is_retired(id: &str) -> bool {
@@ -232,13 +287,55 @@ mod tests {
     fn ids_are_unique_and_spelled_like_a_theme_file() {
         let ids = all().map(|role| role.id).collect::<Vec<_>>();
         for (index, id) in ids.iter().enumerate() {
-            assert!(
-                id.chars()
-                    .all(|c| c.is_ascii_lowercase() || c == '-' || c == '.'),
-                "{id}"
-            );
+            assert!(spelled_like_a_theme_file(id), "{id}");
             assert!(!ids[..index].contains(id), "{id} is named twice");
         }
+        check_app_ids(&CHROME);
+    }
+
+    #[test]
+    fn a_list_registers_once_and_again_only_unchanged() {
+        static FIRST: [&str; 2] = ["one", "two"];
+        static SAME: [&str; 2] = ["one", "two"];
+        let cell = OnceLock::new();
+        set_once(&cell, &FIRST[..], "register");
+        set_once(&cell, &FIRST[..], "register");
+        set_once(&cell, &SAME[..], "register");
+        let changed = std::panic::catch_unwind(|| set_once(&cell, &FIRST[..1], "register"));
+        let message = *changed.unwrap_err().downcast::<String>().unwrap();
+        assert!(
+            message.starts_with("register was already called with a different list"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn app_ids_that_clash_or_misspell_are_refused_by_name() {
+        let refusal = |roles: &[SurfaceRole]| {
+            *std::panic::catch_unwind(|| check_app_ids(roles))
+                .unwrap_err()
+                .downcast::<String>()
+                .unwrap()
+        };
+        let card = |id| SurfaceRole::new(id, Kind::Card, "Cards", "Cards the app draws");
+        let message = refusal(&[card("button")]);
+        assert!(
+            message.starts_with("app role `button` takes the id of a penna kit role"),
+            "{message}"
+        );
+        let message = refusal(&[card("Note Big")]);
+        assert!(
+            message.starts_with("app role `Note Big` can't be named in a theme file"),
+            "{message}"
+        );
+        let message = refusal(&[card("note"), card("note")]);
+        assert!(message.contains("`note` is in the list twice"), "{message}");
+        let message = refusal(&[card("sidebar").with(StylePatch::EMPTY.shadow(Shadow::Contact))]);
+        assert!(
+            message.starts_with("app role `sidebar` changes a penna chrome role"),
+            "{message}"
+        );
+        check_app_ids(&[card("note"), card("note.big"), WINDOW, SIDEBAR]);
     }
 
     #[test]

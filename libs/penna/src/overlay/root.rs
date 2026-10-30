@@ -1,14 +1,14 @@
 use std::rc::Rc;
 
-use crate::window_border;
+use crate::{window_border, window_paddings};
 use ala::{
-    Anchor, AnyView, App, AppContext as _, ClipboardItem, Context, Entity, FocusHandle,
-    InteractiveElement as _, IntoElement, ParentElement as _, Render, StyleRefinement, Styled,
-    WeakFocusHandle, Window, div, prelude::FluentBuilder as _,
+    Anchor, AnyView, App, AppContext as _, ClipboardItem, Context, Edges, Entity, FocusHandle,
+    InteractiveElement as _, IntoElement, ParentElement as _, Render, RenderOnce, StyleRefinement,
+    Styled, WeakFocusHandle, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, StyledExt as _,
+    ADAPTIVE_CORNER_FRACTION, ActiveTheme as _, CORNER_SMOOTHING, StyledExt as _,
     text::{self, SelectionScope, TextSelectionController, WindowTextSelection},
 };
 
@@ -34,6 +34,7 @@ pub struct Root {
     style: StyleRefinement,
     view: AnyView,
     bordered: bool,
+    own_layers: bool,
     active_dialogs: Vec<ActiveDialog>,
     next_dialog_id: u64,
     notification: Entity<NotificationList>,
@@ -43,11 +44,14 @@ pub struct Root {
 
 impl Root {
     #[must_use]
-    pub fn new(view: impl Into<AnyView>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(view: impl Into<AnyView>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        window.set_default_corner_smoothing(CORNER_SMOOTHING);
+        window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
         Self {
             style: StyleRefinement::default(),
             view: view.into(),
             bordered: true,
+            own_layers: true,
             active_dialogs: Vec::new(),
             next_dialog_id: 0,
             notification: cx.new(|_| NotificationList::new()),
@@ -63,28 +67,27 @@ impl Root {
     }
 
     #[must_use]
+    pub fn own_layers(mut self, own_layers: bool) -> Self {
+        self.own_layers = own_layers;
+        self
+    }
+
+    #[must_use]
     pub fn view(&self) -> &AnyView {
         &self.view
     }
 
-    pub fn update<F, R>(window: &mut Window, cx: &mut App, f: F) -> R
+    pub fn update<F, R>(window: &mut Window, cx: &mut App, f: F) -> Option<R>
     where
         F: FnOnce(&mut Self, &mut Window, &mut Context<Self>) -> R,
     {
-        let root = window
-            .root::<Self>()
-            .flatten()
-            .expect("the window's root view must be a penna::Root");
-
-        root.update(cx, |root, cx| f(root, window, cx))
+        let root = window.root::<Self>().flatten()?;
+        Some(root.update(cx, |root, cx| f(root, window, cx)))
     }
 
-    pub fn read<'a>(window: &'a Window, cx: &'a App) -> &'a Self {
-        window
-            .root::<Self>()
-            .flatten()
-            .expect("the window's root view must be a penna::Root")
-            .read(cx)
+    #[must_use]
+    pub fn read<'a>(window: &'a Window, cx: &'a App) -> Option<&'a Self> {
+        Some(window.root::<Self>().flatten()?.read(cx))
     }
 
     pub fn render_notification_layer(
@@ -364,7 +367,12 @@ impl Render for Root {
             .text_color(cx.theme().foreground)
             .refine_style(&self.style)
             .child(TextSelectionController)
-            .child(self.view.clone());
+            .child(self.view.clone())
+            .when(self.own_layers, |this| {
+                this.child(Layers {
+                    inset: !self.bordered,
+                })
+            });
 
         if self.bordered {
             window_border().child(inner).into_any_element()
@@ -374,10 +382,41 @@ impl Render for Root {
     }
 }
 
+#[derive(IntoElement)]
+struct Layers {
+    inset: bool,
+}
+
+impl RenderOnce for Layers {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let inset = if self.inset {
+            window_paddings(window)
+        } else {
+            Edges::all(px(0.0))
+        };
+        div()
+            .absolute()
+            .top(inset.top)
+            .right(inset.right)
+            .bottom(inset.bottom)
+            .left(inset.left)
+            .children(Root::render_dialog_layer(window, cx))
+            .children(Root::render_notification_layer(window, cx))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{cell::Cell, rc::Rc};
+
     use super::{Dialog, Root};
-    use ala::{App, AppContext as _, Context, IntoElement, Render, TestAppContext, Window, div};
+    use crate::{
+        ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, WindowExt as _, notification::Notification,
+    };
+    use ala::{
+        App, AppContext as _, Context, IntoElement, ParentElement as _, Render, TestAppContext,
+        VisualTestContext, Window, div,
+    };
 
     struct TestView;
 
@@ -387,8 +426,117 @@ mod tests {
         }
     }
 
+    struct LayeredView;
+
+    impl Render for LayeredView {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div().children(Root::render_dialog_layer(window, cx))
+        }
+    }
+
     fn noop_dialog(dialog: Dialog, _: &mut Window, _: &mut App) -> Dialog {
         dialog
+    }
+
+    fn root_window(
+        cx: &mut TestAppContext,
+        own_layers: bool,
+        view: impl Fn(&mut App) -> ala::AnyView + 'static,
+    ) -> &mut VisualTestContext {
+        cx.update(|cx| {
+            crate::init(cx);
+            cx.set_reduce_motion(true);
+        });
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            Root::new(view(cx), window, cx).own_layers(own_layers)
+        });
+        cx
+    }
+
+    fn draw(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| _ = window.draw(cx));
+        cx.update(|window, cx| _ = window.draw(cx));
+    }
+
+    fn counted_dialog(
+        count: &Rc<Cell<usize>>,
+    ) -> impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static {
+        let count = count.clone();
+        move |dialog, _, _| {
+            count.set(count.get() + 1);
+            dialog.title("Counted")
+        }
+    }
+
+    #[ala::test]
+    fn root_draws_dialogs_and_toasts_without_app_code(cx: &mut TestAppContext) {
+        let cx = root_window(cx, true, |cx| cx.new(|_| TestView).into());
+        let builds = Rc::new(Cell::new(0));
+        let build = counted_dialog(&builds);
+        cx.update(|window, cx| {
+            window.open_dialog(cx, build);
+            window.push_notification(Notification::info("Saved"), cx);
+        });
+        draw(cx);
+        builds.set(0);
+        cx.update(|window, cx| _ = window.draw(cx));
+        assert_eq!(builds.get(), 1, "the dialog layer is drawn once a frame");
+        assert!(cx.debug_bounds("dialog-0").is_some());
+        assert!(cx.debug_bounds("notification-message").is_some());
+    }
+
+    #[ala::test]
+    fn a_root_without_its_layers_leaves_them_to_the_app(cx: &mut TestAppContext) {
+        let cx = root_window(cx, false, |cx| cx.new(|_| TestView).into());
+        let builds = Rc::new(Cell::new(0));
+        let build = counted_dialog(&builds);
+        cx.update(|window, cx| window.open_dialog(cx, build));
+        draw(cx);
+        assert_eq!(builds.get(), 0);
+        assert!(cx.debug_bounds("dialog-0").is_none());
+    }
+
+    #[ala::test]
+    fn an_app_that_draws_the_layers_itself_still_draws_one(cx: &mut TestAppContext) {
+        let cx = root_window(cx, false, |cx| cx.new(|_| LayeredView).into());
+        let builds = Rc::new(Cell::new(0));
+        let build = counted_dialog(&builds);
+        cx.update(|window, cx| window.open_dialog(cx, build));
+        draw(cx);
+        builds.set(0);
+        cx.update(|window, cx| _ = window.draw(cx));
+        assert_eq!(builds.get(), 1);
+        assert!(cx.debug_bounds("dialog-0").is_some());
+    }
+
+    #[ala::test]
+    fn root_sets_the_window_corners(cx: &mut TestAppContext) {
+        let cx = root_window(cx, true, |cx| cx.new(|_| TestView).into());
+        cx.update(|window, _| {
+            assert_eq!(window.default_corner_smoothing(), CORNER_SMOOTHING);
+            assert_eq!(
+                window.adaptive_corner_fraction(),
+                Some(ADAPTIVE_CORNER_FRACTION)
+            );
+        });
+    }
+
+    #[ala::test]
+    fn overlay_calls_on_a_window_without_a_root_do_nothing(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let (_, cx) = cx.add_window_view(|_, _| TestView);
+        cx.update(|window, cx| {
+            window.push_notification(Notification::info("Lost"), cx);
+            window.open_dialog(cx, noop_dialog);
+            window.close_dialog(cx);
+            assert!(!window.has_active_dialog(cx));
+            assert!(window.notifications(cx).is_empty());
+            assert!(!window.dismiss_notification("missing", cx));
+            assert!(window.selected_text(cx).is_empty());
+            assert!(Root::read(window, cx).is_none());
+            assert!(Root::update(window, cx, |_, _, _| ()).is_none());
+        });
     }
 
     #[ala::test]

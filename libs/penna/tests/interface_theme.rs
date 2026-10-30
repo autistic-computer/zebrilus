@@ -30,8 +30,7 @@ fn builtins_parse_with_the_kit_roles_and_app_layers_add_the_apps() {
     let error = interface_theme::parse_theme(source).unwrap_err();
     assert!(error.contains("unknown role `app.card`"), "{error}");
 
-    roles::register(&APP_ROLES);
-    interface_theme::register(&APP_THEMES);
+    penna::register(&APP_ROLES, &[], &APP_THEMES);
     assert_eq!(roles::find("app.card"), Some(APP_ROLES[0]));
     assert!(roles::all().any(|role| role == roles::WINDOW_CONTROLS));
 

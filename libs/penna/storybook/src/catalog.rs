@@ -75,7 +75,7 @@ pub fn install(catalog: &'static Catalog) {
 }
 
 pub fn catalog() -> &'static Catalog {
-    INSTALLED.get_or_init(|| &PENNA)
+    INSTALLED.get().copied().unwrap_or(&PENNA)
 }
 
 impl Catalog {

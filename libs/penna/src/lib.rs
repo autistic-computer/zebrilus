@@ -53,10 +53,6 @@ pub mod notification {
     pub use super::overlay::Notification;
 }
 
-pub mod theme {
-    pub use super::foundation::{ActiveTheme, Colorize, Theme, ThemeColor, ThemeMode};
-}
-
 pub use foundation::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
     Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, Fill, Ground,
@@ -64,10 +60,9 @@ pub use foundation::{
     Kind, Knobs, Layer, PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, Paint, PaintExt,
     PaintState, PrimaryStyle, RULE_WIDTH, ScrollbarShow, Selectable, Shadow, ShadowMaterial, Shape,
     Side, Sizable, Size, Smoothing, StatefulSurfaceExt, Style, StylePatch, StyledExt, Surface,
-    SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, drawn_roles, h_flex,
-    lifted_shadow, list_row, muted_on, note_drawn_roles, oklab_lightness, oklch, parse_hex,
-    rems_from_px, row_corners, row_radius, row_state, row_surface, to_hex, to_oklch, v_flex,
-    window_border, window_paddings,
+    SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom, cubic_ease, h_flex, lifted_shadow,
+    list_row, muted_on, oklab_lightness, oklch, parse_hex, rems_from_px, row_corners, row_radius,
+    row_state, row_surface, to_hex, to_oklch, v_flex, window_border, window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};
@@ -75,6 +70,17 @@ pub use title_bar::{
     MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WindowControls, draws_window_controls,
     macos_traffic_light_clearance, window_controls_width,
 };
+
+pub fn register(
+    roles: &'static [SurfaceRole],
+    retired: &'static [&'static str],
+    themes: &'static [(&'static str, &'static str)],
+) {
+    roles::register(roles);
+    roles::retire(retired);
+    interface_theme::register(themes);
+    let _ = interface_theme::builtin_themes();
+}
 
 pub fn init(cx: &mut ala::App) {
     foundation::init(cx);
@@ -86,4 +92,11 @@ pub fn init(cx: &mut ala::App) {
     popover::init(cx);
     select::init(cx);
     text::init(cx);
+    interface_theme::default_theme().activate(None, None, cx);
+}
+
+#[cfg(test)]
+pub(crate) fn init_without_theme(cx: &mut ala::App) {
+    init(cx);
+    interface_theme::InterfaceTheme::default().activate(Some(ThemeMode::Light), None, cx);
 }

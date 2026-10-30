@@ -1,4 +1,4 @@
-use ala::{App, Entity, Window};
+use ala::{App, Context, Entity, Window};
 
 use super::{
     dialog::{AlertDialog, Dialog},
@@ -38,12 +38,33 @@ pub trait WindowExt: Sized {
     fn end_text_selection(&mut self, cx: &mut App);
 }
 
+fn update_root<R>(
+    window: &mut Window,
+    cx: &mut App,
+    call: &str,
+    f: impl FnOnce(&mut Root, &mut Window, &mut Context<Root>) -> R,
+) -> Option<R> {
+    let result = Root::update(window, cx, f);
+    if result.is_none() {
+        log::warn!("{call} needs a window whose root view is a penna::Root; nothing was done");
+    }
+    result
+}
+
+fn read_root<'a>(window: &'a Window, cx: &'a App, call: &str) -> Option<&'a Root> {
+    let root = Root::read(window, cx);
+    if root.is_none() {
+        log::warn!("{call} needs a window whose root view is a penna::Root; nothing was read");
+    }
+    root
+}
+
 impl WindowExt for Window {
     fn open_dialog<F>(&mut self, cx: &mut App, build: F)
     where
         F: Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     {
-        Root::update(self, cx, move |root, window, cx| {
+        update_root(self, cx, "open_dialog", move |root, window, cx| {
             root.open_dialog(build, window, cx);
         });
     }
@@ -58,52 +79,65 @@ impl WindowExt for Window {
     }
 
     fn has_active_dialog(&mut self, cx: &mut App) -> bool {
-        Root::read(self, cx).has_active_dialog()
+        Root::read(self, cx).is_some_and(Root::has_active_dialog)
     }
 
     fn close_dialog(&mut self, cx: &mut App) {
-        Root::update(self, cx, |root, window, cx| root.close_dialog(window, cx));
+        update_root(self, cx, "close_dialog", |root, window, cx| {
+            root.close_dialog(window, cx);
+        });
     }
 
     fn close_all_dialogs(&mut self, cx: &mut App) {
-        Root::update(self, cx, |root, window, cx| {
+        update_root(self, cx, "close_all_dialogs", |root, window, cx| {
             root.close_all_dialogs(window, cx);
         });
     }
 
     fn push_notification(&mut self, notification: Notification, cx: &mut App) {
-        Root::update(self, cx, |root, window, cx| {
+        update_root(self, cx, "push_notification", |root, window, cx| {
             root.push_notification(notification, window, cx);
         });
     }
 
     fn dismiss_notification(&mut self, key: &str, cx: &mut App) -> bool {
-        Root::update(self, cx, |root, window, cx| {
+        update_root(self, cx, "dismiss_notification", |root, window, cx| {
             root.dismiss_notification(key, window, cx)
         })
+        .unwrap_or(false)
     }
 
     fn clear_notifications(&mut self, cx: &mut App) {
-        Root::update(self, cx, |root, _, cx| root.clear_notifications(cx));
+        update_root(self, cx, "clear_notifications", |root, _, cx| {
+            root.clear_notifications(cx);
+        });
     }
 
     fn notifications(&mut self, cx: &mut App) -> Vec<Entity<Notification>> {
-        Root::read(self, cx).notifications(cx)
+        read_root(self, cx, "notifications")
+            .map(|root| root.notifications(cx))
+            .unwrap_or_default()
     }
 
     fn selected_text(&mut self, cx: &mut App) -> String {
-        Root::read(self, cx).window_selected_text(cx)
+        read_root(self, cx, "selected_text")
+            .map(|root| root.window_selected_text(cx))
+            .unwrap_or_default()
     }
 
     fn has_text_selection(&mut self, cx: &mut App) -> bool {
-        Root::read(self, cx).has_text_selection(cx)
+        Root::read(self, cx).is_some_and(|root| root.has_text_selection(cx))
     }
 
     fn clear_text_selection(&mut self, cx: &mut App) {
-        Root::update(self, cx, |root, _, cx| root.clear_text_selection(cx));
+        update_root(self, cx, "clear_text_selection", |root, _, cx| {
+            root.clear_text_selection(cx);
+        });
     }
 
     fn end_text_selection(&mut self, cx: &mut App) {
-        Root::update(self, cx, |root, _, cx| root.end_text_selection(cx));
+        update_root(self, cx, "end_text_selection", |root, _, cx| {
+            root.end_text_selection(cx);
+        });
     }
 }

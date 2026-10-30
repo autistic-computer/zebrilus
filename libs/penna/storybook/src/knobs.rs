@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use ala::{App, GlassMaterial, Hsla, WindowAppearance, px};
+use ala::{App, GlassMaterial, Hsla, px};
 use penna::interface_theme::{self, InterfaceTheme, Materials, ThemeColors};
 use penna::{
-    ADAPTIVE_CORNER_FRACTION, CORNER_SMOOTHING, Emphasis, PrimaryStyle, Shadow, Smoothing, Style,
-    StylePatch, SurfaceRole, Theme, ThemeColor, ThemeMode, Tone, UiZoom,
+    Emphasis, PrimaryStyle, Shadow, Smoothing, Style, StylePatch, SurfaceRole, Theme, ThemeColor,
+    ThemeMode, Tone, UiZoom,
 };
 
 use crate::catalog::{Control, catalog};
@@ -422,17 +422,12 @@ impl Knobs {
     }
 
     pub fn apply(&self, cx: &mut App) {
-        let mode = self.theme.unwrap_or_else(|| match cx.window_appearance() {
-            WindowAppearance::Dark | WindowAppearance::VibrantDark => ThemeMode::Dark,
-            WindowAppearance::Light | WindowAppearance::VibrantLight => ThemeMode::Light,
-        });
-        Theme::change(mode, None, cx);
+        self.interface_theme().activate(self.theme, None, cx);
         cx.set_reduce_motion(!self.motion);
         cx.set_animation_speed(self.speed);
         let font_loads =
             (self.materials.font.as_ref()).is_some_and(|family| cx.text_system().has_font(family));
         let theme = Theme::global_mut(cx);
-        self.interface_theme().apply(theme);
         theme.colors = theme.colors.tinted(self.tint_hue, self.tint);
         if !font_loads {
             theme.font_family = UI_FONT.into();
@@ -440,13 +435,11 @@ impl Knobs {
         theme.set_contrast(self.contrast);
         cx.set_global(UiZoom(self.zoom));
         (catalog().apply)(self, cx);
-        let knobs = self.clone();
+        let zoom = self.zoom;
         for window in cx.windows() {
             window
                 .update(cx, |_, window, _| {
-                    window.set_zoom(knobs.zoom);
-                    window.set_default_corner_smoothing(CORNER_SMOOTHING);
-                    window.set_adaptive_corner_fraction(Some(ADAPTIVE_CORNER_FRACTION));
+                    window.set_zoom(zoom);
                     window.refresh();
                 })
                 .ok();

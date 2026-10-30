@@ -287,8 +287,6 @@ pub fn show_story(story: Story, cx: &mut App) -> Result<(), String> {
                 |window, cx| {
                     window.set_window_title(section.name);
                     window.set_zoom(knobs.zoom);
-                    window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
-                    window.set_adaptive_corner_fraction(Some(0.45));
                     let content = (section.build)(window, cx);
                     let floats = catalog().floats(story.id, section.id);
                     let host = cx.new(|_| SectionHost::new(section.id, content, floats));

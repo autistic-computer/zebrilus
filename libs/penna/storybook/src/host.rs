@@ -2,7 +2,10 @@ use ala::{
     AnyView, Context, IntoElement, ParentElement as _, Render, Styled as _, Window, canvas, div,
     px, size,
 };
-use penna::{ActiveTheme as _, Root};
+use penna::{
+    ActiveTheme as _,
+    foundation::{drawn_roles, note_drawn_roles},
+};
 
 pub(crate) const PADDING: f32 = 24.0;
 
@@ -23,11 +26,9 @@ impl SectionHost {
 }
 
 impl Render for SectionHost {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        penna::note_drawn_roles();
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        note_drawn_roles();
         let section = self.section;
-        let dialog_layer = Root::render_dialog_layer(window, cx);
-        let notification_layer = Root::render_notification_layer(window, cx);
         let backdrop = self
             .floats
             .then(|| crate::backdrop::backdrop(crate::knobs().backdrop, cx))
@@ -57,7 +58,7 @@ impl Render for SectionHost {
                                 }
                             },
                             move |bounds, (), window, _| {
-                                let drawn = penna::drawn_roles();
+                                let drawn = drawn_roles();
                                 let size = window.viewport_size();
                                 if bounds.size.width > px(0.0)
                                     && size.width > px(0.0)
@@ -73,7 +74,5 @@ impl Render for SectionHost {
                         .size_full(),
                     ),
             )
-            .children(dialog_layer)
-            .children(notification_layer)
     }
 }

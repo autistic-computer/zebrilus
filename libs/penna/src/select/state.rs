@@ -621,7 +621,7 @@ mod tests {
     #[ala::test]
     fn long_popup_picker_reopens_at_the_committed_value(cx: &mut TestAppContext) {
         cx.update(|cx| {
-            crate::init(cx);
+            crate::init_without_theme(cx);
             cx.set_reduce_motion(true);
         });
         let (preview, cx) = cx.add_window_view(|window, cx| Preview {

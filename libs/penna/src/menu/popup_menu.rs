@@ -1297,7 +1297,7 @@ mod tests {
         }
         for (configured, expected) in [(12.0, Some(8.0)), (14.0, Some(10.0)), (25.0, None)] {
             cx.update(|cx| {
-                crate::init(cx);
+                crate::init_without_theme(cx);
                 cx.set_reduce_motion(true);
                 crate::Theme::global_mut(cx).radius = px(configured);
             });
@@ -1349,7 +1349,7 @@ mod tests {
     #[ala::test]
     fn open_submenu_parent_stays_neutral_while_leaf_stays_accented(cx: &mut ala::TestAppContext) {
         cx.update(|cx| {
-            crate::init(cx);
+            crate::init_without_theme(cx);
             cx.set_reduce_motion(true);
         });
         let (_, cx) = cx.add_window_view(|window, cx| {
@@ -1414,7 +1414,7 @@ mod tests {
         &mut ala::VisualTestContext,
     ) {
         cx.update(|cx| {
-            crate::init(cx);
+            crate::init_without_theme(cx);
             cx.set_reduce_motion(true);
         });
         struct Host(Entity<PopupMenu>);

@@ -204,7 +204,7 @@ mod tests {
 
     #[ala::test]
     fn a_row_roles_selected_highlight_reaches_the_selected_row(cx: &mut TestAppContext) {
-        cx.update(crate::init);
+        cx.update(crate::init_without_theme);
         let (_, cx) = cx.add_window_view(|_, _| Rows);
         cx.update(|window, cx| {
             _ = window.draw(cx);
