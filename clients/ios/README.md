@@ -303,13 +303,13 @@ output, `interval` is the time between new frames in milliseconds (8.33 at 120 H
 counts vsyncs that passed without a new frame inside a burst, `cpu` is the main-thread time of
 each display link tick, and an idle `link:` line with few ticks means the display link is paused.
 
-`ZZ_ALA_FRAME_LOG=1` prints, per burst of drawn frames, the interval between new frames (p50,
+`ALA_FRAME_LOG=1` prints, per burst of drawn frames, the interval between new frames (p50,
 p95, max), missed vsyncs, and the CPU time of each display link tick, plus link ticks and draws
-every five seconds. `ZZ_ALA_BENCH=swipe`, `scroll`, `drag`, or `fling` (optionally `:count`,
+every five seconds. `ALA_BENCH=swipe`, `scroll`, `drag`, or `fling` (optionally `:count`,
 default 16) waits eight seconds after launch and then plays horizontal pager swipes, vertical
 terminal flings, slow 1.5 s terminal drags that hold still before letting go, each followed by a
 fling back, or one terminal fling every 4 s, two toward older output and then three toward newer,
-from the display link. `ZZ_ALA_BENCH=sheet` opens the All bindings sheet on attach and flings
+from the display link. `ALA_BENCH=sheet` opens the All bindings sheet on attach and flings
 its list down and back, which with `ZZ_ALA_GLASS` set measures content moving under glass. `ALA_FRAME_STATS=frames.jsonl` writes ala's per-frame JSON stats into the app's
 `tmp` directory. `ZZ_ALA_GLASS=frosted` (or `regular`, `clear`, `bubble`, `smoked`) turns
 floating surfaces into liquid glass. Device and simulator launches forward these variables and `ZZ_ALA_SESSION`;

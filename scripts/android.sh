@@ -191,7 +191,7 @@ else
 fi
 "$adb" -s "$serial" install -r "$out/zz.apk"
 extras=()
-for key in ZZ_ALA_ENDPOINT ZZ_ALA_SESSION ZZ_ALA_FRAME_LOG ZZ_ALA_BENCH ZZ_ALA_GLASS ALA_FRAME_STATS RUST_LOG; do
+for key in ZZ_ALA_ENDPOINT ZZ_ALA_SESSION ALA_FRAME_LOG ALA_BENCH ZZ_ALA_GLASS ALA_FRAME_STATS RUST_LOG; do
     [[ -n "${!key:-}" ]] && extras+=(--es "$key" "${!key}")
 done
 if [[ "$mode" == run && -z "${ZZ_ALA_ENDPOINT:-}" ]]; then

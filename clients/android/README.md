@@ -50,7 +50,7 @@ wireless debugging) and launches it; pick one of several with `ZZ_ANDROID_DEVICE
 the app's logcat; Rust logging, stdout, stderr and panics all go there under the `zz` tag
 (`RUST_LOG` sets the level).
 
-The launch forwards `ZZ_ALA_ENDPOINT`, `ZZ_ALA_SESSION`, `ZZ_ALA_FRAME_LOG`, `ZZ_ALA_BENCH`,
+The launch forwards `ZZ_ALA_ENDPOINT`, `ZZ_ALA_SESSION`, `ALA_FRAME_LOG`, `ALA_BENCH`,
 `ZZ_ALA_GLASS`, `ALA_FRAME_STATS` and `RUST_LOG` as intent extras; the activity turns every
 `ZZ_*` and `ALA_*` string extra into an environment variable before the app starts. Without an
 endpoint the app opens the connection screen, as on iOS.

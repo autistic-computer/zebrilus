@@ -137,7 +137,7 @@ impl CompactState {
         self.zoom_intent = None;
         self.last_current = None;
         self.previous = None;
-        self.bindings = std::env::var("ZZ_ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
+        self.bindings = std::env::var("ALA_BENCH").is_ok_and(|bench| bench.starts_with("sheet"));
         self.menu = None;
         self.close_sheets();
     }

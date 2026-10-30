@@ -55,7 +55,7 @@ run() {
     local kind="$1" seconds="$2" log="$out/$1.log" env_json launch elapsed=0
     shift 2
     env_json="$(python3 -c 'import json, sys; print(json.dumps(dict(arg.split("=", 1) for arg in sys.argv[1:])))' \
-        "ZZ_ALA_ENDPOINT=$endpoint" "ZZ_ALA_SESSION=$session" ZZ_ALA_FRAME_LOG=1 \
+        "ZZ_ALA_ENDPOINT=$endpoint" "ZZ_ALA_SESSION=$session" ALA_FRAME_LOG=1 \
         ${ZZ_ALA_GLASS:+"ZZ_ALA_GLASS=$ZZ_ALA_GLASS"} "$@")"
     xcrun devicectl device process launch --device "$udid" --terminate-existing --console \
         --environment-variables "$env_json" "$bundle_id" > "$log" 2>&1 &
@@ -70,9 +70,9 @@ run() {
 }
 
 kinds=" ${ZZ_BENCH_KINDS:-swipe scroll sheet idle} "
-[[ "$kinds" != *" swipe "* ]] || run swipe $((15 + cycles * 14 / 10)) "ZZ_ALA_BENCH=swipe:$cycles"
-[[ "$kinds" != *" scroll "* ]] || run scroll $((15 + cycles * 3)) "ZZ_ALA_BENCH=scroll:$cycles"
-[[ "$kinds" != *" sheet "* ]] || run sheet $((15 + cycles * 3)) "ZZ_ALA_BENCH=sheet:$cycles"
+[[ "$kinds" != *" swipe "* ]] || run swipe $((15 + cycles * 14 / 10)) "ALA_BENCH=swipe:$cycles"
+[[ "$kinds" != *" scroll "* ]] || run scroll $((15 + cycles * 3)) "ALA_BENCH=scroll:$cycles"
+[[ "$kinds" != *" sheet "* ]] || run sheet $((15 + cycles * 3)) "ALA_BENCH=sheet:$cycles"
 [[ "$kinds" != *" idle "* ]] || run idle 25
 
 echo "logs: $out"

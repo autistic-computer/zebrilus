@@ -32,8 +32,12 @@ ala could start, and editing a backend still rebuilds only the platform crate. `
 `keyboard`, `momentum` and `pinch` modules are plain logic and build everywhere, which is how
 `zz-app` tests them on every OS. Upstream's `zlog`, `ztracing` (a no-op without tracy) and
 `util_macros` were deleted rather than folded, along with upstream's `hello_web` demo and the wgpu
-layout bench. Runtime names did not change: `ALA_*` and `ZZ_ALA_*` environment variables, iOS
-bundle ids, and the `ala` data directory. `libs/ala/UPSTREAM.md` maps upstream's paths to ours.
+layout bench. iOS bundle ids and the `ala` data directory kept their names. Since 2026-10-30
+every environment variable ala read under upstream's prefix or zz's (`ZZ_ALA_FRAME_LOG`,
+`ZZ_ALA_BENCH`, `ZZ_BENCH_*`, `ZZ_PATH_DUMP`) has an `ALA_` name instead; the unprefixed test and
+debug knobs it inherited, such as `SEED`, `ITERATIONS` and `LEAK_BACKTRACE`, kept theirs. The
+`ZZ_ALA_*` names left are zz's own, read by its iOS and Android apps. `libs/ala/UPSTREAM.md` maps
+upstream's paths and variable names to ours.
 
 `git log -- 'libs/ala/crates/ala*' 'crates/ala*' 'crates/zpui*' zpui ala` reaches back to the split. The first
 commit there is upstream at `933d8d9381`, limited to those crates; the next
@@ -86,6 +90,17 @@ depends on the crates by path (`../../libs/ala/crates/ala`).
 `gpui-component` and `gpui-component-assets` are gone from the workspace and its lockfiles; nothing
 outside ala itself is left. The fork's source revision and per-module port notes live in
 `libs/penna/UPSTREAM.md`, not here.
+
+# Embedding on iOS and Android
+
+On iOS, `IosPlatform::run` hands `AlaAppDelegate` to `UIApplicationMain`, and ala registers the
+other Objective-C classes it needs at launch: `AlaSceneDelegate`, `AlaView`, `AlaViewController`,
+`AlaTextPosition` and `AlaTextRange`. An app's `Info.plist` names `AlaSceneDelegate` as the
+`UISceneDelegateClassName` of its default scene configuration (zz's is `clients/ios/Info.plist`).
+Menu commands dispatch the `ala_ios::MenuCommand` action. `ALA_FRAME_LOG=1` prints frame pacing
+per burst of drawn frames, and `ALA_BENCH=swipe|scroll|drag|fling|sheet[:count]` plays a scripted
+gesture bench from the display link (zz also opens its bindings sheet for `sheet`); both log
+under an `[ala-ios]` prefix.
 
 # Pane renderer changes
 

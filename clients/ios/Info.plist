@@ -39,7 +39,7 @@
             <key>UIWindowSceneSessionRoleApplication</key>
             <array><dict>
                 <key>UISceneConfigurationName</key><string>Default Configuration</string>
-                <key>UISceneDelegateClassName</key><string>ZZAlaSceneDelegate</string>
+                <key>UISceneDelegateClassName</key><string>AlaSceneDelegate</string>
             </dict></array>
         </dict>
     </dict>
