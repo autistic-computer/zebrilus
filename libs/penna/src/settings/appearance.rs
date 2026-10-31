@@ -46,29 +46,19 @@ pub const ADVANCED_DISCLOSURE: &str = "settings-appearance-advanced";
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AppearancePageItem<T = Infallible> {
     Title,
-    Group {
-        title: &'static str,
-    },
+    Group { title: &'static str },
     ThemeMode,
     Accent,
     TintHue,
     Tint,
     Themes,
-    Advanced {
-        expanded: bool,
-    },
+    Advanced { expanded: bool },
     CornerRadius,
     ChromeContrast,
     UiFontFamily,
     UiZoom,
     Animations,
     AnimationSpeed,
-    WindowBackgroundBlur,
-    WindowBackgroundOpacity,
-    #[cfg(target_os = "linux")]
-    WindowCornerRadius,
-    #[cfg(target_os = "linux")]
-    UseSystemTitlebar,
     App(T),
 }
 
@@ -88,7 +78,6 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::Themes => "Theme",
             Self::CornerRadius => "Corner radius",
             Self::ChromeContrast => "Contrast",
-            Self::WindowBackgroundOpacity => "Window blur opacity",
             Self::AnimationSpeed => "Animation speed",
             Self::UiZoom => "UI zoom",
             _ => return None,
@@ -96,10 +85,7 @@ impl<T: Copy> AppearancePageItem<T> {
     }
 }
 
-pub fn appearance_page_items<T>(
-    has_window_blur: bool,
-    advanced: bool,
-) -> Vec<AppearancePageItem<T>> {
+pub fn appearance_page_items<T>(advanced: bool) -> Vec<AppearancePageItem<T>> {
     let mut items = vec![
         AppearancePageItem::Title,
         AppearancePageItem::Group { title: "Theme" },
@@ -120,17 +106,6 @@ pub fn appearance_page_items<T>(
         AppearancePageItem::UiZoom,
         AppearancePageItem::Animations,
         AppearancePageItem::AnimationSpeed,
-    ]);
-    if has_window_blur {
-        items.extend([
-            AppearancePageItem::WindowBackgroundBlur,
-            AppearancePageItem::WindowBackgroundOpacity,
-        ]);
-    }
-    #[cfg(target_os = "linux")]
-    items.extend([
-        AppearancePageItem::WindowCornerRadius,
-        AppearancePageItem::UseSystemTitlebar,
     ]);
     items
 }
@@ -444,25 +419,6 @@ pub fn tint_slider(
     )
 }
 
-pub fn window_opacity_slider(
-    opacity: f32,
-    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
-    cx: &App,
-) -> ala::Div {
-    value_slider(
-        Slider::new(
-            "settings-window-opacity",
-            "Window blur opacity",
-            opacity,
-            0.0..=1.0,
-            on_change,
-        )
-        .step(0.01)
-        .display(|opacity| format!("{:.0}%", opacity * 100.0).into()),
-        cx,
-    )
-}
-
 pub fn corner_radius_slider(
     radius: f32,
     on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
@@ -555,7 +511,7 @@ fn percent(
         .display(|value| format!("{:.0}%", value * 100.0).into())
 }
 
-fn value_slider(slider: Slider, cx: &App) -> ala::Div {
+pub fn value_slider(slider: Slider, cx: &App) -> ala::Div {
     if crate::touch::CoarsePointer::get(cx) {
         return div().w_full().child(slider);
     }
@@ -1025,25 +981,21 @@ mod tests {
     #[test]
     fn advanced_lists_the_other_knobs_only_while_expanded() {
         type Item = AppearancePageItem;
-        let collapsed = appearance_page_items::<Infallible>(true, false);
+        let collapsed = appearance_page_items::<Infallible>(false);
         assert!(matches!(
             collapsed.last(),
             Some(Item::Advanced { expanded: false })
         ));
         assert!(!collapsed.contains(&Item::CornerRadius));
 
-        let expanded = appearance_page_items::<Infallible>(true, true);
+        let expanded = appearance_page_items::<Infallible>(true);
         let advanced = expanded
             .iter()
             .position(|item| *item == Item::Advanced { expanded: true })
             .expect("Advanced heading");
         assert!(expanded[..advanced].contains(&Item::Themes));
         assert!(expanded[advanced..].contains(&Item::CornerRadius));
-        assert!(expanded[advanced..].contains(&Item::WindowBackgroundOpacity));
-        assert!(
-            !appearance_page_items::<Infallible>(false, true)
-                .contains(&Item::WindowBackgroundOpacity)
-        );
+        assert_eq!(expanded.last(), Some(&Item::AnimationSpeed));
     }
 
     #[test]

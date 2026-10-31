@@ -15,8 +15,7 @@ use penna::{
     settings::appearance::{
         SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
         corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
-        theme_picker, tint_hue_slider, tint_slider, ui_font_select, window_opacity_slider,
-        zoom_slider,
+        theme_picker, tint_hue_slider, tint_slider, ui_font_select, zoom_slider,
     },
     switch::Switch,
 };
@@ -28,7 +27,7 @@ use zz_ui::{
         about::{
             ABOUT_LOGO_SIZE, about_build_stack, about_copy_button, about_hero, about_project_stack,
         },
-        appearance::{AppearancePageItem, ZzRow},
+        appearance::{AppearancePageItem, ZzRow, window_opacity_slider},
         panes_page,
         panes_preview::PanesPreview,
         providers::{ProvidersHost, providers_stack},
@@ -438,7 +437,7 @@ fn appearance(controls: &Controls, _: &mut Window, cx: &mut App) -> AnyElement {
                     cx,
                 )))
                 .child(
-                    entry(AppearancePageItem::WindowBackgroundOpacity)
+                    SettingEntry::new(ZzRow::WindowBackgroundOpacity.title())
                         .control(window_opacity_slider(0.0, |_, _, _| {}, cx)),
                 ),
         )

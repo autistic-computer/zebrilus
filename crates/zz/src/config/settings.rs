@@ -44,7 +44,7 @@ use penna::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use penna::settings::appearance::{
     SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
     corner_radius_slider, picker_tile, theme_mode_control, theme_picker, tint_hue_slider,
-    tint_slider, ui_font_select, window_opacity_slider,
+    tint_slider, ui_font_select,
 };
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
@@ -92,7 +92,7 @@ struct HostsSectionState {
     error: Option<SharedString>,
 }
 
-use zz_ui::settings::appearance::{AppearancePageItem, ZzRow};
+use zz_ui::settings::appearance::{AppearancePageItem, ZzRow, window_opacity_slider};
 
 fn appearance_page_items(has_window_blur: bool, advanced: bool) -> Vec<AppearancePageItem> {
     zz_ui::settings::appearance::appearance_page_items(
@@ -855,32 +855,30 @@ impl SettingsView {
                     cx,
                 ),
             ),
-            AppearancePageItem::WindowBackgroundBlur => Self::boolean_setting(
+            AppearancePageItem::App(row @ ZzRow::WindowBackgroundBlur) => Self::boolean_setting(
                 ConfigKey::WindowBackgroundBlur,
-                "Window blur",
+                row.title(),
                 resolved.window_background_blur,
             ),
-            AppearancePageItem::WindowBackgroundOpacity => Self::slider_setting(
-                item,
-                window_opacity_slider(
-                    resolved.window_background_opacity.value,
-                    |opacity, _, cx| {
-                        let key = ConfigKey::WindowBackgroundOpacity;
-                        written(key, set_config_key(key, &format!("{opacity:.2}")), cx);
-                    },
-                    cx,
-                ),
-            )
-            .disabled(!resolved.window_background_blur.value),
-            #[cfg(target_os = "linux")]
-            AppearancePageItem::WindowCornerRadius => {
-                Self::numeric_setting("Window corner radius", &self.window_corner_radius, cx)
+            AppearancePageItem::App(row @ ZzRow::WindowBackgroundOpacity) => {
+                SettingEntry::new(row.title())
+                    .control(window_opacity_slider(
+                        resolved.window_background_opacity.value,
+                        |opacity, _, cx| {
+                            let key = ConfigKey::WindowBackgroundOpacity;
+                            written(key, set_config_key(key, &format!("{opacity:.2}")), cx);
+                        },
+                        cx,
+                    ))
+                    .disabled(!resolved.window_background_blur.value)
+            }
+            AppearancePageItem::App(row @ ZzRow::WindowCornerRadius) => {
+                Self::numeric_setting(row.title(), &self.window_corner_radius, cx)
                     .description("No effect with the system titlebar")
             }
-            #[cfg(target_os = "linux")]
-            AppearancePageItem::UseSystemTitlebar => Self::boolean_setting(
+            AppearancePageItem::App(row @ ZzRow::UseSystemTitlebar) => Self::boolean_setting(
                 ConfigKey::UseSystemTitlebar,
-                "System titlebar",
+                row.title(),
                 resolved.use_system_titlebar,
             ),
         };

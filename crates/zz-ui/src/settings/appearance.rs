@@ -1,7 +1,14 @@
+use ala::{App, Window};
+use penna::{settings::appearance::value_slider, slider::Slider};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ZzRow {
     ProgramColors,
     AppIcon,
+    WindowBackgroundBlur,
+    WindowBackgroundOpacity,
+    WindowCornerRadius,
+    UseSystemTitlebar,
 }
 
 impl ZzRow {
@@ -9,6 +16,10 @@ impl ZzRow {
         match self {
             Self::ProgramColors => "Program colors",
             Self::AppIcon => "App Icon",
+            Self::WindowBackgroundBlur => "Window blur",
+            Self::WindowBackgroundOpacity => "Window blur opacity",
+            Self::WindowCornerRadius => "Window corner radius",
+            Self::UseSystemTitlebar => "System titlebar",
         }
     }
 }
@@ -20,7 +31,7 @@ pub fn appearance_page_items(
     has_window_blur: bool,
     advanced: bool,
 ) -> Vec<AppearancePageItem> {
-    let mut items = penna::settings::appearance::appearance_page_items(has_window_blur, advanced);
+    let mut items = penna::settings::appearance::appearance_page_items(advanced);
     let sidebar = items
         .iter()
         .position(|item| matches!(item, AppearancePageItem::Advanced { .. }))
@@ -32,6 +43,9 @@ pub fn appearance_page_items(
             AppearancePageItem::App(ZzRow::ProgramColors),
         ],
     );
+    if !advanced {
+        return items;
+    }
     if macos
         && let Some(zoom) = items
             .iter()
@@ -39,7 +53,38 @@ pub fn appearance_page_items(
     {
         items.insert(zoom + 1, AppearancePageItem::App(ZzRow::AppIcon));
     }
+    if has_window_blur {
+        items.extend([
+            AppearancePageItem::App(ZzRow::WindowBackgroundBlur),
+            AppearancePageItem::App(ZzRow::WindowBackgroundOpacity),
+        ]);
+    }
+    if cfg!(target_os = "linux") {
+        items.extend([
+            AppearancePageItem::App(ZzRow::WindowCornerRadius),
+            AppearancePageItem::App(ZzRow::UseSystemTitlebar),
+        ]);
+    }
     items
+}
+
+pub fn window_opacity_slider(
+    opacity: f32,
+    on_change: impl Fn(f32, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> ala::Div {
+    value_slider(
+        Slider::new(
+            "settings-window-opacity",
+            ZzRow::WindowBackgroundOpacity.title(),
+            opacity,
+            0.0..=1.0,
+            on_change,
+        )
+        .step(0.01)
+        .display(|opacity| format!("{:.0}%", opacity * 100.0).into()),
+        cx,
+    )
 }
 
 #[cfg(test)]
@@ -67,11 +112,15 @@ mod tests {
             Item::App(ZzRow::AppIcon),
             Item::Animations,
             Item::AnimationSpeed,
-            Item::WindowBackgroundBlur,
-            Item::WindowBackgroundOpacity,
+            Item::App(ZzRow::WindowBackgroundBlur),
+            Item::App(ZzRow::WindowBackgroundOpacity),
         ];
-        #[cfg(target_os = "linux")]
-        expected.extend([Item::WindowCornerRadius, Item::UseSystemTitlebar]);
+        if cfg!(target_os = "linux") {
+            expected.extend([
+                Item::App(ZzRow::WindowCornerRadius),
+                Item::App(ZzRow::UseSystemTitlebar),
+            ]);
+        }
         assert_eq!(appearance_page_items(true, true, true), expected);
 
         expected.retain(|item| *item != Item::App(ZzRow::AppIcon));
@@ -84,5 +133,9 @@ mod tests {
         expected.truncate(advanced);
         expected.push(Item::Advanced { expanded: false });
         assert_eq!(appearance_page_items(true, true, false), expected);
+
+        let without_blur = appearance_page_items(false, false, true);
+        assert!(!without_blur.contains(&Item::App(ZzRow::WindowBackgroundBlur)));
+        assert!(!without_blur.contains(&Item::App(ZzRow::WindowBackgroundOpacity)));
     }
 }
