@@ -11,10 +11,9 @@ description = "Every penna widget in its states on one web page, and the harness
 repository = "https://github.com/autistic-computer/penna"
 publish = false
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 [features]
+default = ["editor"]
+editor = ["penna/editor"]
 page = []
 syntax-highlighting = ["penna/tree-sitter"]
 
@@ -22,7 +21,7 @@ syntax-highlighting = ["penna/tree-sitter"]
 serde_json = "1"
 web-time = "1"
 ala = { git = "https://github.com/autistic-computer/ala", branch = "main" }
-penna = { path = "..", features = ["editor"] }
+penna = { path = ".." }
 
 [dev-dependencies]
 ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["test-support"] }

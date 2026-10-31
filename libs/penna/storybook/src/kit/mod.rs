@@ -2,6 +2,7 @@ use crate::story::Story;
 
 mod appearance;
 mod buttons;
+#[cfg(feature = "editor")]
 mod code_editor;
 mod color_picker;
 mod compact;
@@ -33,6 +34,7 @@ pub const STORIES: &[Story] = &[
     sheet::STORY,
     scrollbars::STORY,
     markdown::STORY,
+    #[cfg(feature = "editor")]
     code_editor::STORY,
     color_picker::STORY,
     icons::STORY,
