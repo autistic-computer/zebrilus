@@ -1,13 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use serde_json::Value;
+use serde::Deserialize as _;
+use serde_json::{Value, json};
 use zz_machine::Machine;
-use zz_protocol::AgentQuestionAnswer;
-use zz_protocol::agent_stream::{AgentQuestion, AgentStreamPayload};
+use zz_protocol::agent_stream::{AgentImage, AgentQuestion, AgentStreamPayload};
 use zz_protocol::chat::{
     Answer, Ask, AskOption, ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind,
     PlanStep, QuestionAnswer, RequestId, StepStatus, Usage,
+};
+use zz_protocol::{
+    AgentQuestionAnswer, MAX_AGENT_IMAGE_FORMAT_BYTES, MAX_AGENT_PROMPT_BYTES,
+    MAX_AGENT_PROMPT_IMAGES,
 };
 
 use super::chat::{ChatMachine, ChatState, Ctx, Effect, Fact, Reject};
@@ -15,6 +19,7 @@ use super::turn::{self, End, Outcome, TurnMachine};
 
 const HISTORY_LIMIT: usize = 20_000;
 const TERMINAL_ANSWERS: u64 = 1 << 48;
+pub(crate) const MAX_PROMPT_IMAGES_BASE64: usize = MAX_AGENT_PROMPT_BYTES;
 
 #[derive(Default)]
 pub(crate) struct Shadow {
@@ -262,7 +267,11 @@ impl Shadow {
             item: item.clone(),
             parent,
             kind,
-            body: ItemBody::text(text),
+            body: ItemBody {
+                text: text.to_owned(),
+                images: images(update),
+                ..ItemBody::default()
+            },
             background: false,
         });
         if whole || alone {
@@ -521,6 +530,35 @@ impl Shadow {
         }
         effects
     }
+}
+
+pub(crate) fn attach_images(
+    update: &mut Value,
+    images: impl IntoIterator<Item = (String, String)>,
+) {
+    let mut left = MAX_PROMPT_IMAGES_BASE64;
+    let images = images
+        .into_iter()
+        .filter(|(format, data)| {
+            let fits = !format.is_empty()
+                && format.len() <= MAX_AGENT_IMAGE_FORMAT_BYTES
+                && !data.is_empty()
+                && data.len() <= left;
+            if fits {
+                left -= data.len();
+            }
+            fits
+        })
+        .take(MAX_AGENT_PROMPT_IMAGES)
+        .map(|(format, data)| json!({ "format": format, "data": data }))
+        .collect::<Vec<_>>();
+    if !images.is_empty() {
+        update["_meta"]["zz"]["images"] = Value::Array(images);
+    }
+}
+
+fn images(update: &Value) -> Vec<AgentImage> {
+    Vec::<AgentImage>::deserialize(&update["_meta"]["zz"]["images"]).unwrap_or_default()
 }
 
 pub(crate) fn chat_answer(option: Option<&str>) -> Answer {

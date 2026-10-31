@@ -253,6 +253,13 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
 - **Your messages.** Claude Code wraps a paste as `<pasted_content id="…">…</pasted_content
   id="…">` in its transcript; the runtime drops the wrapper (`claude::translate::prompt_text`). A
   long message stays inside a bubble capped at 260 px that scrolls.
+- **Pasted images.** The translators put a prompt's images on its `user_message_chunk` as
+  `_meta.zz.images` (`{ format, data }`, base64): Claude's base64 image blocks, minus the
+  `[Image #N]` placeholders, and Codex's data URLs and local image files. The bridge
+  (`chat_bridge::attach_images`) keeps at most 6 MiB of base64 per message so one stream item stays
+  under the 9 MiB batch cap, and the chat item carries them as `ItemBody::images`. The bubble draws
+  them first as 140 px tiles that open full size on click; `ChatPane::sync` decodes each item's
+  images once and keeps them in `ChatOpen::images`.
 - **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
   a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
   chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
@@ -263,8 +270,10 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close
   button or a second click closes it. An approval it waits on sits under its row.
 - **Answered questions.** The question, with the answer under it.
-- **Diagrams.** A mermaid or SVG block sits in a container whose header holds its label, Copy
-  source and Open full diagram, and the diagram draws on the container's own background.
+- **Diagrams.** A mermaid or SVG block sits in a card on the `code` role, like a code block, whose
+  header holds its label, Copy source and Open full diagram. The diagram's canvas is transparent, so
+  it shows the card through it; edge and relation labels keep a chip in the node fill. Answers use
+  the same markdown style as code blocks and tables elsewhere (`agent_text_view`).
 
 # Starting a chat
 

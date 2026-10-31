@@ -406,7 +406,7 @@ phone drawer, went with the Driver Agent on 2026-10-28. Its roles `chat.bubble`,
 | Role | Group | Covers | Where | Drift found |
 |---|---|---|---|---|
 | `code` | card | code blocks and their header, inline code | `kit/text/node.rs:719`, `kit/text/inline.rs:213` | inline code went square in paragraphs with images; fixed (see Bugs) |
-| `figure` | card | Mermaid frames, markdown tables | `ui/agent.rs:3033`, `kit/text/node.rs:1544` | three card fills across bubble, tile, diagram; fixed, figures have no fill of their own and tables wear the figure look |
+| `figure` | card | markdown tables | `kit/text/node.rs:1544` | three card fills across bubble, tile, diagram; fixed, figures have no fill of their own and tables wear the figure look; since 10-31 diagrams sit on `code` instead, since a figure painted nothing on the macOS theme |
 
 ### Browser pane
 

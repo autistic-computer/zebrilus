@@ -3,7 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde_json::{Value, json};
+
+use crate::agent::chat_bridge::{MAX_PROMPT_IMAGES_BASE64, attach_images};
 
 const MAX_TITLE_CHARS: usize = 500;
 
@@ -163,8 +166,8 @@ impl Translator {
 
     pub(crate) fn history_item(&mut self, item: &Value) -> Vec<Value> {
         if item["type"] == "userMessage" {
-            return user_text(item)
-                .map(|text| vec![chunk("user_message_chunk", &prompt_id(item), &text)])
+            return user_text(item, &self.cwd)
+                .map(|(text, images)| vec![user_chunk(&prompt_id(item), &text, images)])
                 .unwrap_or_default();
         }
         let mut updates = self.history_start(item);
@@ -267,13 +270,13 @@ impl Translator {
         let id = id.to_owned();
         match item["type"].as_str() {
             Some("userMessage") => {
-                let Some(text) = user_text(item) else {
+                let Some((text, images)) = user_text(item, &self.cwd) else {
                     return Vec::new();
                 };
                 if self.prompts.remove(text.trim()) {
                     return Vec::new();
                 }
-                vec![chunk("user_message_chunk", &prompt_id(item), &text)]
+                vec![user_chunk(&prompt_id(item), &text, images)]
             }
             Some("agentMessage" | "plan") => {
                 self.whole(&id, "agent_message_chunk", item["text"].as_str())
@@ -445,15 +448,59 @@ fn prompt_id(item: &Value) -> String {
         .map_or_else(|| id_of(item), str::to_owned)
 }
 
-fn user_text(item: &Value) -> Option<String> {
-    let text = item["content"]
-        .as_array()?
+fn user_text(item: &Value, cwd: &Path) -> Option<(String, Vec<(String, String)>)> {
+    let parts = item["content"].as_array()?;
+    let text = parts
         .iter()
         .filter(|part| part["type"] == "text")
         .filter_map(|part| part["text"].as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    (!text.trim().is_empty()).then_some(text)
+    let images = parts
+        .iter()
+        .filter_map(|part| match part["type"].as_str() {
+            Some("image") => part["url"]
+                .as_str()
+                .or_else(|| part["image_url"].as_str())
+                .and_then(data_url),
+            Some("localImage" | "local_image") => part["path"]
+                .as_str()
+                .and_then(|path| local_image(cwd, path)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    (!text.trim().is_empty() || !images.is_empty()).then_some((text, images))
+}
+
+fn data_url(url: &str) -> Option<(String, String)> {
+    let (head, data) = url.strip_prefix("data:")?.split_once(',')?;
+    let format = head.strip_suffix(";base64")?;
+    format
+        .starts_with("image/")
+        .then(|| (format.to_owned(), data.to_owned()))
+}
+
+fn local_image(cwd: &Path, path: &str) -> Option<(String, String)> {
+    let path = cwd.join(path);
+    let format = match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => return None,
+    };
+    let size = usize::try_from(std::fs::metadata(&path).ok()?.len()).ok()?;
+    if size > MAX_PROMPT_IMAGES_BASE64 / 4 * 3 {
+        return None;
+    }
+    Some((format.to_owned(), BASE64.encode(std::fs::read(&path).ok()?)))
+}
+
+fn user_chunk(message_id: &str, text: &str, images: Vec<(String, String)>) -> Value {
+    let mut update = chunk("user_message_chunk", message_id, text);
+    attach_images(&mut update, images);
+    update
 }
 
 fn chunk(kind: &str, message_id: &str, text: &str) -> Value {
@@ -1037,6 +1084,38 @@ mod tests {
                 .child("unknown", "item/started", &json!({}))
                 .is_none()
         );
+    }
+
+    #[test]
+    fn prompt_images_come_through_from_urls_and_local_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("shot.PNG"), b"png bytes").expect("write image");
+        let mut translator = Translator::new(dir.path().to_path_buf());
+        let item = json!({"type":"userMessage","id":"m1","content":[
+            {"type":"text","text":"compare these","text_elements":[]},
+            {"type":"image","url":"data:image/jpeg;base64,/9j/"},
+            {"type":"localImage","path":"shot.PNG"},
+            {"type":"local_image","path":"missing.png"},
+            {"type":"image","image_url":"https://example.com/remote.png"}]});
+        let updates = translator.history_item(&item);
+        assert_eq!(updates.len(), 1);
+        serde_json::from_value::<SessionUpdate>(updates[0].clone()).expect("ACP update");
+        assert_eq!(updates[0]["sessionUpdate"], "user_message_chunk");
+        assert_eq!(updates[0]["content"]["text"], "compare these");
+        assert_eq!(
+            updates[0]["_meta"]["zz"]["images"],
+            json!([
+                {"format":"image/jpeg","data":"/9j/"},
+                {"format":"image/png","data":BASE64.encode(b"png bytes")},
+            ])
+        );
+        let alone = json!({"type":"userMessage","id":"m2","content":[
+            {"type":"image","image_url":"data:image/png;base64,AAAA"}]});
+        translator.notification("item/started", &json!({ "item": alone }));
+        let updates = translator.notification("item/completed", &json!({ "item": alone }));
+        assert_eq!(updates.len(), 1);
+        assert_eq!(updates[0]["content"]["text"], "");
+        assert_eq!(updates[0]["_meta"]["zz"]["images"][0]["data"], "AAAA");
     }
 
     #[test]

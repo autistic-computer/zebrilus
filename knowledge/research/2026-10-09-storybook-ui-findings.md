@@ -15,11 +15,9 @@ few presets. Fixed items should be deleted from this page.
 
 # Crashes and broken rendering on web
 
-- **Mermaid flowcharts panic on wasm.** merman-render 0.6.2 calls `std::time::Instant::now()` for
-  flowchart, state, mindmap and architecture diagrams. An agent answer with a flowchart takes the
-  web client down. (`agent/mermaid` uses class and sequence diagrams to stay up.)
-- **Mermaid diagrams have no text on web**, and class diagram edges show black wedges. Fonts likely
-  never reach the SVG renderer on wasm. (`agent/mermaid`)
+- **Class diagram edges show black wedges on web** (`agent/mermaid`). Not rechecked since
+  2026-10-31, when fonts added with `TextSystem::add_fonts` started reaching the SVG renderer and
+  merman 0.9.3 stopped reading the clock on wasm.
 - **Bold and medium weights render regular with Inter Variable.** Font ids are per face, a variable
   font has one face, and `CosmicTextSystem::render_glyph_image` builds the swash scaler without a
   `wght` variation (`libs/ala/crates/ala-platform/src/wgpu/cosmic_text_system.rs`). Likely affects variable fonts

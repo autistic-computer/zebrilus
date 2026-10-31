@@ -102,7 +102,7 @@ libghostty-vt = { path = "third_party/rust/libghostty-vt", default-features = fa
 log = "0.4.34"
 mach2 = "0.5"
 memchr = "2.8.3"
-merman = { version = "=0.6.2", features = ["render"] }
+merman = { version = "=0.9.3", default-features = false, features = ["svg", "all-diagrams", "layout-cytoscape"] }
 metal = "0.33"
 mimalloc = "0.1.52"
 naga = { version = "=30.0.1", features = ["glsl-in", "wgsl-in", "wgsl-out"] }

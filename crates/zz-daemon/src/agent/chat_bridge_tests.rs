@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use serde_json::json;
-use zz_protocol::agent_stream::AgentStreamPayload;
+use zz_protocol::agent_stream::{AgentImage, AgentStreamPayload};
 use zz_protocol::chat::{
     Answer, ChatPhase, ChatView, ItemId, ItemKind, ItemStatus, RequestClose, RequestId,
 };
@@ -519,4 +519,27 @@ fn a_stamped_update_keeps_its_transcript_time() {
     let item = view.item(&ItemId::new("t1")).expect("tool item");
     assert_eq!(item.started_at, 1_790_000_000_000);
     assert_eq!(item.ended_at, Some(1_790_000_004_000));
+}
+
+#[test]
+fn prompt_images_reach_the_user_item() {
+    let mut shadow = Shadow::recording();
+    ready(&mut shadow);
+    shadow.payload(&update(json!({
+        "sessionUpdate": "user_message_chunk",
+        "messageId": "p1",
+        "content": { "type": "text", "text": "" },
+        "_meta": { "zz": { "images": [{ "format": "image/png", "data": "aGk=" }] } },
+    })));
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let view = view(&shadow);
+    let item = view.item(&ItemId::new("u:p1")).expect("user item");
+    assert_eq!(item.kind, ItemKind::User);
+    assert_eq!(
+        item.body.images,
+        [AgentImage {
+            format: "image/png".to_owned(),
+            data: b"hi".to_vec(),
+        }]
+    );
 }
