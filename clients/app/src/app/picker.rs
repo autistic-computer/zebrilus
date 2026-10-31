@@ -8,6 +8,7 @@ use penna::{
     sheet::{bottom_sheet, close_sheet, sheet_close, sheet_row},
 };
 use zz_client::{
+    agent_launch::AgentLaunches,
     new_chat::{
         AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place,
         folder_start, recent_folders, start_agent_commands,
@@ -83,6 +84,7 @@ impl PanePicker {
             self.pane,
             self.chat.folder(folders),
             agent,
+            &AgentLaunches::default(),
         );
         self.connection.update(cx, |connection, cx| {
             for command in commands {

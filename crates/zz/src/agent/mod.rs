@@ -1,4 +1,5 @@
 pub(crate) mod attachment;
+pub(crate) mod launch;
 
 #[cfg(feature = "agent-pane")]
 pub(crate) mod controller;

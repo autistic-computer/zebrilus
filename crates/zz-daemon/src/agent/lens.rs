@@ -200,6 +200,8 @@ struct Claude {
     listed: Vec<Listed>,
     listed_changed: bool,
     facts: Facts,
+    launch: Facts,
+    launch_pid: Option<u32>,
     dialog_closed: bool,
 }
 
@@ -225,6 +227,8 @@ impl Claude {
             listed: Vec::new(),
             listed_changed: false,
             facts: Facts::default(),
+            launch: Facts::default(),
+            launch_pid: None,
             dialog_closed: false,
         }
     }
@@ -247,10 +251,14 @@ impl Claude {
     }
 
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
+        let pane_pid = pane_pid?;
         let files = self.files.as_ref()?;
         let mut records = claude_peers::read_records_in(&files.registry).ok()?;
         records.retain(|record| record.zz.is_none());
-        let record = claude_peers::record_in_pane(&records, pane_pid?)?.clone();
+        let record = claude_peers::record_in_pane(&records, pane_pid).cloned();
+        self.follow_launch(pane_pid, record.as_ref());
+        let record = record?;
+        let files = self.files.as_ref()?;
         let cwd = PathBuf::from(&record.cwd);
         let path = sessions::session_file(&files.config, &cwd, &record.session_id);
         let session = record.session_id.clone();
@@ -260,6 +268,28 @@ impl Claude {
             path: path?,
             cwd,
         })
+    }
+
+    fn follow_launch(&mut self, pane_pid: u32, record: Option<&PeerRecord>) {
+        let (pid, cwd) = match record {
+            Some(record) => (record.pid, record.cwd.clone()),
+            None if self.launch_pid.is_none() => {
+                let Some(pid) = agent_pid(pane_pid, "claude") else {
+                    return;
+                };
+                let cwd = zz_daemon_client::process_info::working_directory(pid)
+                    .map(|cwd| cwd.display().to_string())
+                    .unwrap_or_default();
+                (pid, cwd)
+            }
+            None => return,
+        };
+        if self.launch_pid == Some(pid) {
+            return;
+        }
+        let config = self.files.as_ref().map(|files| files.config.as_path());
+        self.launch = Facts::claude_launch(&arguments(pid), config, &cwd);
+        self.launch_pid = Some(pid);
     }
 
     fn status(&mut self) -> Option<Status> {
@@ -494,12 +524,23 @@ struct Codex {
     busy: bool,
     ended: Option<Result<(), String>>,
     facts: Facts,
+    launch: Facts,
+    launch_pid: Option<u32>,
 }
 
 impl Codex {
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
         self.pid = codex_queue::codex_pid(pane_pid?);
         let pid = self.pid?;
+        if self.launch_pid != Some(pid) {
+            self.launch = Facts::codex_launch(
+                &arguments(pid),
+                codex_home().as_deref(),
+                zz_daemon_client::process_info::working_directory(pid)
+                    .map(|cwd| cwd.display().to_string()),
+            );
+            self.launch_pid = Some(pid);
+        }
         let (path, meta) = open_files(pid)
             .into_iter()
             .filter(|path| is_rollout(path))
@@ -586,11 +627,38 @@ fn is_rollout(path: &Path) -> bool {
             .is_some_and(|name| name.starts_with("rollout-"))
 }
 
-fn codex_sessions() -> Option<PathBuf> {
+fn codex_home() -> Option<PathBuf> {
     std::env::var_os("CODEX_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
-        .map(|home| home.join("sessions"))
+}
+
+fn codex_sessions() -> Option<PathBuf> {
+    codex_home().map(|home| home.join("sessions"))
+}
+
+fn agent_pid(pane_pid: u32, name: &str) -> Option<u32> {
+    std::iter::once(pane_pid)
+        .chain(zz_daemon_client::process_info::descendants(pane_pid))
+        .find(|pid| {
+            arguments(*pid).iter().take(2).any(|argument| {
+                Path::new(argument)
+                    .file_name()
+                    .is_some_and(|file| file == name)
+            })
+        })
+}
+
+fn arguments(pid: u32) -> Vec<String> {
+    zz_daemon_client::process_info::record(pid)
+        .map(|record| {
+            record
+                .arguments
+                .iter()
+                .map(|argument| argument.to_string_lossy().into_owned())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn subdirectories(path: &Path) -> Vec<PathBuf> {
@@ -743,10 +811,10 @@ impl Source {
         }
     }
 
-    fn facts(&self) -> &Facts {
+    fn facts(&self) -> Facts {
         match self {
-            Self::Claude(claude) => &claude.facts,
-            Self::Codex(codex) => &codex.facts,
+            Self::Claude(claude) => claude.facts.or(&claude.launch),
+            Self::Codex(codex) => codex.facts.or(&codex.launch),
         }
     }
 
@@ -869,7 +937,7 @@ impl Lens {
     }
 
     fn settings_changed(&mut self, option_id: &str, value: &str) -> AgentStreamPayload {
-        self.published = self.source.facts().clone();
+        self.published = self.source.facts();
         AgentStreamPayload::ConfigOptionsChanged {
             option_id: option_id.to_owned(),
             value: value.to_owned(),
@@ -879,7 +947,7 @@ impl Lens {
 
     fn follow_settings(&mut self) -> Vec<AgentStreamPayload> {
         let mut payloads = Vec::new();
-        let facts = self.source.facts().clone();
+        let facts = self.source.facts();
         let published = self.published.clone();
         for (option, now, then) in [
             (lens_settings::MODEL, &facts.model, &published.model),
@@ -995,7 +1063,7 @@ impl Lens {
         self.session = Some(found.session.clone());
         self.cwd.clone_from(&found.cwd);
         self.permission = None;
-        self.published = self.source.facts().clone();
+        self.published = self.source.facts();
         let config_options = self.config_options();
         let updates = replay
             .into_iter()
@@ -2042,6 +2110,81 @@ mod tests {
             payload,
             AgentStreamPayload::ConfigOptionsChanged { option_id, value, .. }
                 if option_id == "dialog" && value == "closed"
+        )));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_claude_that_has_not_registered_yet_shows_the_flags_it_started_with() {
+        use zz_daemon_client::unmasked::SpawnUnmasked as _;
+
+        let root = tempfile::tempdir().unwrap();
+        let claude = root.path().join("claude");
+        std::os::unix::fs::symlink("/bin/sh", &claude).unwrap();
+        std::fs::create_dir_all(root.path().join("registry")).unwrap();
+        let mut pane = std::process::Command::new("/bin/sh")
+            .args([
+                "-c",
+                r#""$0" -c 'sleep 5; :' x --model opus --effort low & wait"#,
+            ])
+            .arg(&claude)
+            .spawn_unmasked()
+            .expect("pane");
+        let mut source = Claude::new(Some(ClaudeFiles {
+            registry: root.path().join("registry"),
+            config: root.path().join("config"),
+        }));
+        let deadline = Instant::now() + Duration::from_secs(4);
+        while source.launch_pid.is_none() && Instant::now() < deadline {
+            assert!(source.locate(Some(pane.id())).is_none());
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let _ = pane.kill();
+        let _ = pane.wait();
+        assert_ne!(source.launch_pid, Some(pane.id()));
+        assert_eq!(source.launch.model.as_deref(), Some("opus"));
+        assert_eq!(source.launch.effort.as_deref(), Some("low"));
+    }
+
+    #[test]
+    fn a_fresh_chat_shows_the_configured_model_until_the_transcript_names_one() {
+        let claudes = Claudes::new();
+        std::fs::write(
+            claudes.root.path().join("config/settings.json"),
+            r#"{"model":"sonnet","effortLevel":"high"}"#,
+        )
+        .unwrap();
+        let mut lens = claudes.lens();
+        let opened = lens.open();
+        let ready = opened
+            .iter()
+            .find_map(|payload| match payload {
+                AgentStreamPayload::SessionReady {
+                    config_options: Some(options),
+                    ..
+                } => Some(options.clone()),
+                _ => None,
+            })
+            .expect("session ready");
+        assert_eq!(ready[0]["currentValue"], "sonnet");
+        assert_eq!(ready[0]["_meta"]["zz"]["label"], "Sonnet");
+        assert_eq!(ready[1]["currentValue"], "high");
+        assert_eq!(
+            ready[2]["currentValue"],
+            claudes.cwd().display().to_string()
+        );
+
+        claudes.line(&prompt("u1", None, "hello"));
+        let mut reply = answer("a1", "u1", "hi");
+        reply["message"]["model"] = json!("claude-opus-5-5");
+        claudes.line(&reply);
+        let tailed = lens.tick();
+        assert!(tailed.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::ConfigOptionsChanged { option_id, config_options, .. }
+                if option_id == "model"
+                    && config_options[0]["currentValue"] == "opus"
+                    && config_options[1]["currentValue"] == "high"
         )));
     }
 

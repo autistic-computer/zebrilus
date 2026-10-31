@@ -1,6 +1,8 @@
 use serde_json::Value;
 use zz_protocol::AgentProvider;
 
+use crate::agent_launch::interactive_shell;
+
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
 pub const CWD: &str = "cwd";
@@ -116,12 +118,13 @@ pub fn source_message(item: &str) -> Option<&str> {
 
 #[must_use]
 pub fn side_chat_command(provider: AgentProvider, session: &str) -> Vec<String> {
-    match provider {
+    let words = match provider {
         AgentProvider::ClaudeCode => ["claude", "--resume", session, "--fork-session"]
             .map(str::to_owned)
             .to_vec(),
         AgentProvider::Codex => ["codex", "fork", session].map(str::to_owned).to_vec(),
-    }
+    };
+    interactive_shell(&words)
 }
 
 #[must_use]
@@ -179,7 +182,11 @@ mod tests {
         );
         assert_eq!(
             side_chat_command(AgentProvider::ClaudeCode, "s"),
-            ["claude", "--resume", "s", "--fork-session"]
+            [
+                "/bin/sh",
+                "-c",
+                r#"exec "${SHELL:-/bin/sh}" -ic 'claude --resume s --fork-session'"#
+            ]
         );
         assert!(!real_session("lens-%3"));
     }

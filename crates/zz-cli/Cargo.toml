@@ -19,6 +19,7 @@ mimalloc.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
+zz-client.workspace = true
 zz-config.workspace = true
 zz-daemon = { workspace = true, features = ["default"] }
 zz-daemon-client.workspace = true

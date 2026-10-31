@@ -80,9 +80,22 @@ fn claude(session: &str, message: &str) -> Result<Command, String> {
     let lines = claude_fork_lines(&text, message, &fork)?;
     let target = source.with_file_name(format!("{fork}.jsonl"));
     write_new(&target, &(lines.join("\n") + "\n"))?;
-    let mut command = Command::new("claude");
-    command.args(["--resume", &fork]);
-    Ok(command)
+    Ok(agent(&["claude", "--resume", &fork]))
+}
+
+fn agent(words: &[&str]) -> Command {
+    let words = words
+        .iter()
+        .map(|word| (*word).to_owned())
+        .collect::<Vec<_>>();
+    let argv = if cfg!(unix) {
+        zz_client::agent_launch::interactive_shell(&words)
+    } else {
+        words
+    };
+    let mut command = Command::new(&argv[0]);
+    command.args(&argv[1..]);
+    command
 }
 
 fn claude_transcript(projects: &Path, session: &str) -> Result<PathBuf, String> {
@@ -177,9 +190,7 @@ fn codex(thread: &str, item: &str) -> Result<Command, String> {
         .map_err(|error| format!("could not read {}: {error}", rollout.display()))?;
     let turn = codex_turn(&text, item).ok_or("that message is not in the chat")?;
     let fork = codex_fork(thread, &turn)?;
-    let mut command = Command::new("codex");
-    command.args(["resume", &fork]);
-    Ok(command)
+    Ok(agent(&["codex", "resume", &fork]))
 }
 
 fn codex_rollout(directory: &Path, thread: &str, depth: usize) -> Option<PathBuf> {
@@ -337,6 +348,17 @@ mod tests {
         assert_eq!(codex_turn(&text, "i1").as_deref(), Some("t1"));
         assert_eq!(codex_turn(&text, "c2").as_deref(), Some("t2"));
         assert_eq!(codex_turn(&text, "i3"), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_fork_resumes_through_the_users_interactive_shell() {
+        let command = agent(&["claude", "--resume", "f"]);
+        assert_eq!(command.get_program(), "/bin/sh");
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            ["-c", r#"exec "${SHELL:-/bin/sh}" -ic 'claude --resume f'"#]
+        );
     }
 
     #[test]
