@@ -4,7 +4,7 @@
 name = "penna"
 version = "0.1.0"
 edition = "2024"
-license = "Apache-2.0"
+license = "Apache-2.0 AND CC-BY-4.0"
 rust-version = "1.99"
 description = "Widgets for ala: theme, primitives, widgets and icons"
 repository = "https://github.com/autistic-computer/penna"
