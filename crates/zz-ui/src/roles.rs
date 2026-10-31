@@ -492,7 +492,7 @@ mod tests {
         for (id, theme) in crate::interface_theme::builtin_themes() {
             for mode in [crate::ThemeMode::Light, crate::ThemeMode::Dark] {
                 let kit = penna::theme_css::kit_theme(theme, mode);
-                let css = penna::theme_css::stylesheet(id, &kit, &TONED);
+                let css = penna::theme_css::stylesheet(&kit, &TONED);
                 for role in all() {
                     let selector = format!("[data-penna=\"{}\"]", role.id);
                     assert!(css.contains(&selector), "{id} {mode:?} {}", role.id);

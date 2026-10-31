@@ -91,11 +91,7 @@ pub fn theme_action(json: &str, action: &str, argument: &str) -> Result<String, 
 pub fn stylesheet(json: &str, dark: bool) -> Result<String, JsError> {
     let preferences = decode(json)?;
     let kit = kit(&preferences, mode(dark));
-    Ok(theme_css::stylesheet(
-        &preferences.shown_theme().name,
-        &kit,
-        &roles::TONED,
-    ))
+    Ok(theme_css::stylesheet(&kit, &roles::TONED))
 }
 
 #[wasm_bindgen]
