@@ -406,6 +406,7 @@ pub struct ChatView {
     pub usage: Option<Usage>,
     pub skipped: u32,
     pub last_session: Option<String>,
+    pictured: VecDeque<ItemId>,
 }
 
 impl ChatView {
@@ -473,6 +474,7 @@ impl ChatView {
                         self.items.clear();
                         self.background.clear();
                         self.requests.clear();
+                        self.pictured.clear();
                     }
                     self.last_session = Some(session.clone());
                 }
@@ -592,12 +594,20 @@ impl ChatView {
                         request.turn = *turn;
                     }
                 }
+                if !body.images.is_empty() {
+                    self.picture(item);
+                }
             }
             ChatEvent::ItemAppended { item, text } => {
                 self.open_item_mut(item)?.body.text.push_str(text);
             }
             ChatEvent::ItemChanged { item, body } => {
                 self.open_item_mut(item)?.body = body.clone();
+                if body.images.is_empty() {
+                    self.pictured.retain(|known| known != item);
+                } else {
+                    self.picture(item);
+                }
             }
             ChatEvent::ItemBackgrounded { item } => {
                 self.open_item_mut(item)?;
@@ -686,6 +696,15 @@ impl ChatView {
         Ok(())
     }
 
+    fn picture(&mut self, id: &ItemId) {
+        let items = &mut self.items;
+        picture(&mut self.pictured, id.clone(), |oldest| {
+            if let Some(view) = items.get_mut(&oldest) {
+                view.body.images = Vec::new();
+            }
+        });
+    }
+
     fn running_mut(&mut self, id: TurnId) -> Result<&mut TurnView, Skip> {
         self.turns
             .last_mut()
@@ -703,7 +722,17 @@ impl ChatView {
     }
 }
 
-const LOGGED_IMAGES: usize = 8;
+const KEPT_IMAGES: usize = 8;
+
+fn picture<K: PartialEq>(pictured: &mut VecDeque<K>, key: K, mut strip: impl FnMut(K)) {
+    pictured.retain(|known| *known != key);
+    pictured.push_back(key);
+    while pictured.len() > KEPT_IMAGES
+        && let Some(oldest) = pictured.pop_front()
+    {
+        strip(oldest);
+    }
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct ChatLog {
@@ -755,7 +784,9 @@ impl ChatLog {
                     self.events.get_mut(index)
                 {
                     started.clone_from(body);
-                    if !body.images.is_empty() {
+                    if body.images.is_empty() {
+                        self.pictured.retain(|known| *known != index);
+                    } else {
                         self.picture(index);
                     }
                 }
@@ -767,15 +798,12 @@ impl ChatLog {
     }
 
     fn picture(&mut self, index: usize) {
-        self.pictured.retain(|known| *known != index);
-        self.pictured.push_back(index);
-        while self.pictured.len() > LOGGED_IMAGES {
-            if let Some(oldest) = self.pictured.pop_front()
-                && let Some(ChatEvent::ItemStarted { body, .. }) = self.events.get_mut(oldest)
-            {
+        let events = &mut self.events;
+        picture(&mut self.pictured, index, |oldest| {
+            if let Some(ChatEvent::ItemStarted { body, .. }) = events.get_mut(oldest) {
                 body.images = Vec::new();
             }
-        }
+        });
     }
 
     pub fn is_empty(&self) -> bool {

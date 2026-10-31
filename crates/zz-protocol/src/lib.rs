@@ -20,6 +20,8 @@ mod terminal_codec;
 mod tree_delta;
 
 #[cfg(test)]
+mod chat_tests;
+#[cfg(test)]
 mod control_tests;
 #[cfg(test)]
 mod float_wire_tests;

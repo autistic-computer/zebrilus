@@ -349,12 +349,16 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   for a prompt that is only images), and the image chunks after it stay for the timeline. The
   lens and both drivers drop `_meta.zz.images` from the raw update once the bridge has read it,
   so the stream carries each image once; the driver's journal keeps it, so a restored session's
-  chat shows it again. The fanout's chat log keeps images on the last 8 items that have them, so
-  a late client's replay shows older pastes as text only. The bubble draws them first as 140 px
-  tiles that open full size on click; `ChatPane::sync` decodes each item's images once and keeps
-  them in `ChatOpen::images`. When an item leaves the view or the session changes,
-  `ChatPane::release` drops the decoded pixels from ala's asset cache and the sprite atlas, unless
-  the same image is still shown.
+  chat shows it again. The fanout's chat log and every client's `ChatView` keep images on the
+  last 8 items that have them (an item that loses its images gives up its place), so a live chat
+  and a late client's replay both show older pastes as text only. The bubble draws them first as
+  140 px tiles that open full size on click; `ChatPane::sync` decodes each item's images once and
+  keeps them in `ChatOpen::images`. When an item leaves the view, loses its images, or the session
+  changes, `ChatPane::release` drops the decoded pixels from ala's asset cache and the sprite
+  atlas, unless a live chat pane still shows the same image (an app global lists each pane's
+  shown images). The desktop agent view and the thin client's lens hook
+  `ChatPane::close_on_release`, so closing the pane frees every image it held, through its window
+  or, when the window closed with it, from the asset cache alone.
 - **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
   a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
   chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
