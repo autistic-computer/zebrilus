@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use agent_client_protocol_schema::v1::{AvailableCommand, AvailableCommandInput};
 
+use crate::agent_settings::{LensSettings, setter};
+
 const MAX_COMPLETION_RESULTS: usize = 64;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
@@ -114,6 +116,78 @@ impl CommandCompletion {
     pub fn insertion(&self) -> String {
         format!("{} ", command_label(&self.command.name))
     }
+
+    pub fn submits(&self) -> bool {
+        (self.command.terminal && self.command.input_hint.is_none())
+            || matches!(setter(&self.insertion()), Some((_, Some(_))))
+    }
+}
+
+pub fn setting_completions(
+    value: &str,
+    cursor: usize,
+    settings: &LensSettings,
+) -> Option<Vec<CommandCompletion>> {
+    if cursor > value.len() || !value.is_char_boundary(cursor) || !value[cursor..].trim().is_empty()
+    {
+        return None;
+    }
+    let before = &value[..cursor];
+    let start = before.len() - before.trim_start().len();
+    let (name, needle) = before[start..].strip_prefix('/')?.split_once(' ')?;
+    if needle.contains(char::is_whitespace) {
+        return None;
+    }
+    let (option, _) = setter(&format!("/{name}"))?;
+    let (choices, current) = settings.choices(option)?;
+    let needle = needle.to_ascii_lowercase();
+    let mut ranked = choices
+        .iter()
+        .filter_map(|choice| {
+            let score = completion_score(&choice.value.to_ascii_lowercase(), &needle)
+                .into_iter()
+                .chain(completion_score(&choice.name.to_ascii_lowercase(), &needle))
+                .min()?;
+            let description = if choice.value == current {
+                format!("{} · current", choice.name)
+            } else {
+                choice.name.clone()
+            };
+            Some((
+                score,
+                CommandCompletion {
+                    command: AgentCommand {
+                        name: format!("{option} {}", choice.value),
+                        description,
+                        ..AgentCommand::default()
+                    },
+                    replacement: start..cursor,
+                },
+            ))
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by_key(|(score, _)| *score);
+    Some(
+        ranked
+            .into_iter()
+            .take(MAX_COMPLETION_RESULTS)
+            .map(|(_, completion)| completion)
+            .collect(),
+    )
+}
+
+pub fn composer_completions(
+    value: &str,
+    cursor: usize,
+    commands: &[AgentCommand],
+    settings: Option<&LensSettings>,
+) -> Vec<CommandCompletion> {
+    settings
+        .and_then(|settings| setting_completions(value, cursor, settings))
+        .or_else(|| {
+            completion_query(value, cursor).map(|query| ranked_completions(commands, &query))
+        })
+        .unwrap_or_default()
 }
 
 pub fn command_label(name: &str) -> String {
@@ -368,6 +442,45 @@ mod tests {
             ranked_completions(&commands, &query)[0].insertion(),
             "$hatch-pet "
         );
+    }
+
+    #[test]
+    fn model_and_effort_values_complete_after_their_command() {
+        use crate::agent_settings::Choice;
+        let choice = |value: &str, name: &str| Choice {
+            value: value.to_owned(),
+            name: name.to_owned(),
+        };
+        let settings = LensSettings {
+            model: "gpt-6-luna".to_owned(),
+            models: vec![
+                choice("gpt-6.1-sol", "GPT-6.1-Sol"),
+                choice("gpt-6-luna", "GPT-6-Luna"),
+            ],
+            effort: "high".to_owned(),
+            efforts: vec![choice("low", "Low"), choice("high", "High")],
+            ..LensSettings::default()
+        };
+        let commands = [command("model"), command("review")];
+        let all = composer_completions("/model ", 7, &commands, Some(&settings));
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].insertion(), "/model gpt-6.1-sol ");
+        assert_eq!(all[1].command.description, "GPT-6-Luna · current");
+        assert!(all.iter().all(CommandCompletion::submits));
+        let luna = composer_completions("  /model lun", 12, &commands, Some(&settings));
+        assert_eq!(luna.len(), 1);
+        assert_eq!(luna[0].replacement, 2..12);
+        let mut edited = "  /model lun".to_owned();
+        edited.replace_range(luna[0].replacement.clone(), &luna[0].insertion());
+        assert_eq!(edited.trim(), "/model gpt-6-luna");
+        let efforts = composer_completions("/effort h", 9, &commands, Some(&settings));
+        assert_eq!(efforts[0].insertion(), "/effort high ");
+        let named = composer_completions("/mod", 4, &commands, Some(&settings));
+        assert_eq!(named[0].insertion(), "/model ");
+        assert!(!named[0].submits());
+        assert!(composer_completions("/model x y", 10, &commands, Some(&settings)).is_empty());
+        assert!(composer_completions("/review ", 8, &commands, Some(&settings)).is_empty());
+        assert!(composer_completions("/model ", 7, &commands, None).is_empty());
     }
 
     #[test]

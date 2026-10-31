@@ -3,7 +3,7 @@ use std::{
     io::{Read as _, Seek as _, SeekFrom},
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicU64, Ordering},
     },
     time::{Duration, Instant, SystemTime},
@@ -30,7 +30,7 @@ use crate::agent::{
     codex_queue,
     host::RuntimeChannels,
     lens_commands::{self, Listed},
-    lens_settings::{self, Facts},
+    lens_settings::{self, Catalog, Facts},
     runtime::{RuntimeCommand, RuntimeControl},
     stream::{
         AgentPrompt, AgentPromptOutcome, AgentSessionCapabilities, AgentStreamPayload, agent_verb,
@@ -526,14 +526,61 @@ struct Codex {
     ended: Option<Result<(), String>>,
     facts: Facts,
     launch: Facts,
+    picks: CodexPicks,
     launch_pid: Option<u32>,
+}
+
+#[derive(Default)]
+struct CodexPicks {
+    catalog: Catalog,
+    stamp: Option<SystemTime>,
+    fresh: bool,
+    picked: Facts,
+    held: Vec<(&'static str, String)>,
+}
+
+impl CodexPicks {
+    fn refresh(&mut self) {
+        let Some(path) = codex_home().map(|home| home.join(lens_settings::CODEX_MODELS)) else {
+            return;
+        };
+        let stamp = std::fs::metadata(&path)
+            .and_then(|meta| meta.modified())
+            .ok();
+        if stamp != self.stamp {
+            let catalog = Catalog::codex(&path);
+            self.fresh |= catalog != self.catalog;
+            self.catalog = catalog;
+            self.stamp = stamp;
+        }
+    }
+
+    fn hold(&mut self, slot: &'static str, text: &str) {
+        self.held.retain(|(held, _)| *held != slot);
+        self.held.push((slot, text.to_owned()));
+    }
+
+    fn confirm(&mut self, named: &Facts) {
+        if self.held.is_empty() && *named != Facts::default() {
+            self.picked = Facts::default();
+        }
+    }
+
+    fn forget(&mut self) {
+        self.picked = Facts::default();
+        self.held.clear();
+    }
 }
 
 impl Codex {
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
+        self.picks.refresh();
         self.pid = codex_queue::codex_pid(pane_pid?);
         let pid = self.pid?;
         if self.launch_pid != Some(pid) {
+            if self.launch_pid.is_some() {
+                self.picks.forget();
+            }
             self.launch = Facts::codex_launch(
                 &arguments(pid),
                 codex_home().as_deref(),
@@ -777,7 +824,13 @@ impl Source {
     fn read(&mut self) -> Read {
         match self {
             Self::Claude(claude) => claude.read(),
-            Self::Codex(codex) => codex.read(),
+            Self::Codex(codex) => {
+                let before = std::mem::take(&mut codex.facts);
+                let read = codex.read();
+                codex.picks.confirm(&codex.facts);
+                codex.facts = codex.facts.or(&before);
+                read
+            }
         }
     }
 
@@ -841,14 +894,52 @@ impl Source {
     fn facts(&self) -> Facts {
         match self {
             Self::Claude(claude) => claude.facts.or(&claude.launch),
-            Self::Codex(codex) => codex.facts.or(&codex.launch),
+            Self::Codex(codex) => codex.picks.picked.or(&codex.facts).or(&codex.launch),
         }
     }
 
     fn facts_mut(&mut self) -> &mut Facts {
         match self {
             Self::Claude(claude) => &mut claude.facts,
-            Self::Codex(codex) => &mut codex.facts,
+            Self::Codex(codex) => &mut codex.picks.picked,
+        }
+    }
+
+    fn catalog(&self) -> &Catalog {
+        static CLAUDE: LazyLock<Catalog> = LazyLock::new(Catalog::claude);
+        match self {
+            Self::Claude(_) => &CLAUDE,
+            Self::Codex(codex) => &codex.picks.catalog,
+        }
+    }
+
+    fn take_catalog_change(&mut self) -> bool {
+        match self {
+            Self::Claude(_) => false,
+            Self::Codex(codex) => std::mem::take(&mut codex.picks.fresh),
+        }
+    }
+
+    fn hold(&mut self, slot: &'static str, text: &str) -> bool {
+        match self {
+            Self::Claude(_) => false,
+            Self::Codex(codex) => {
+                codex.picks.hold(slot, text);
+                true
+            }
+        }
+    }
+
+    fn take_held(&mut self) -> Vec<(&'static str, String)> {
+        match self {
+            Self::Claude(_) => Vec::new(),
+            Self::Codex(codex) => std::mem::take(&mut codex.picks.held),
+        }
+    }
+
+    fn forget_picks(&mut self) {
+        if let Self::Codex(codex) = self {
+            codex.picks.forget();
         }
     }
 
@@ -960,7 +1051,9 @@ impl Lens {
     }
 
     fn config_options(&self) -> Value {
-        self.source.facts().config_options(self.spec.provider)
+        self.source
+            .facts()
+            .config_options(self.spec.provider, self.source.catalog())
     }
 
     fn settings_changed(&mut self, option_id: &str, value: &str) -> AgentStreamPayload {
@@ -986,6 +1079,10 @@ impl Lens {
                 payloads.push(self.settings_changed(option, &value));
             }
         }
+        if self.source.take_catalog_change() {
+            let model = facts.model.clone().unwrap_or_default();
+            payloads.push(self.settings_changed(lens_settings::MODEL, &model));
+        }
         let shown = self.dialog.is_some_and(|since| {
             since.elapsed() >= DIALOG_SETTLE
                 && self.spec.provider == AgentProvider::ClaudeCode
@@ -1010,15 +1107,63 @@ impl Lens {
     }
 
     fn set(&mut self, option_id: String, value: &str) -> Vec<AgentStreamPayload> {
-        let submitted = lens_settings::command(self.spec.provider, &option_id, value)
-            .and_then(|text| self.spec.io.submit(&text));
-        match submitted {
-            Ok(()) => {
-                self.source.facts_mut().apply(&option_id, value.trim());
+        let busy = self.busy || self.turn.is_some();
+        let setter = lens_settings::command(
+            self.spec.provider,
+            &option_id,
+            value,
+            &self.source.facts(),
+            self.source.catalog(),
+        );
+        let sent = setter.and_then(|setter| {
+            if busy && self.source.hold(setter.slot, &setter.text) {
+                Ok(setter)
+            } else {
+                self.spec.io.submit(&setter.text).map(|()| setter)
+            }
+        });
+        match sent {
+            Ok(setter) => {
+                for (option, value) in &setter.applied {
+                    self.source.facts_mut().apply(option, value);
+                }
                 vec![self.settings_changed(&option_id, value.trim())]
             }
             Err(message) => vec![AgentStreamPayload::SettingFailed { option_id, message }],
         }
+    }
+
+    fn set_typed(&mut self, turn_id: u64, prompt: &AgentPrompt) -> Option<Vec<AgentStreamPayload>> {
+        let (option, value) =
+            lens_settings::typed(&prompt.text).filter(|_| prompt.images.is_empty())?;
+        let mut payloads = self.set(option.to_owned(), value);
+        let outcome = match payloads.last() {
+            Some(AgentStreamPayload::SettingFailed { message, .. }) => AgentPromptOutcome::Failed {
+                message: message.clone(),
+            },
+            _ => AgentPromptOutcome::Finished {
+                stop_reason: Value::from("end_turn"),
+            },
+        };
+        payloads.push(AgentStreamPayload::PromptFinished { turn_id, outcome });
+        Some(payloads)
+    }
+
+    fn release(&mut self) -> Vec<AgentStreamPayload> {
+        if self.busy || self.turn.is_some() {
+            return Vec::new();
+        }
+        let mut payloads = Vec::new();
+        for (slot, text) in self.source.take_held() {
+            if let Err(message) = self.spec.io.submit(&text) {
+                self.source.forget_picks();
+                payloads.push(AgentStreamPayload::SettingFailed {
+                    option_id: slot.to_owned(),
+                    message,
+                });
+            }
+        }
+        payloads
     }
 
     fn commands(&self) -> AgentStreamPayload {
@@ -1153,6 +1298,7 @@ impl Lens {
         self.failed = read.failed;
         payloads.extend(self.observe(read.finished, read.updates));
         self.failed = None;
+        payloads.extend(self.release());
         payloads.extend(self.follow_settings());
         if self.source.take_listing_change() {
             payloads.push(self.commands());
@@ -1476,7 +1622,9 @@ impl Lens {
         let unsupported = "The lens follows the terminal; use the CLI's own commands there.";
         match command {
             RuntimeCommand::Open { .. } => self.open(),
-            RuntimeCommand::Prompt { turn_id, prompt } => self.prompt(turn_id, &prompt),
+            RuntimeCommand::Prompt { turn_id, prompt } => self
+                .set_typed(turn_id, &prompt)
+                .unwrap_or_else(|| self.prompt(turn_id, &prompt)),
             RuntimeCommand::Verb { prompt } => self.steer(prompt),
             RuntimeCommand::ListSessions { client, .. } => {
                 vec![AgentStreamPayload::SessionListFailed {
@@ -2138,6 +2286,122 @@ mod tests {
             AgentStreamPayload::ConfigOptionsChanged { option_id, value, .. }
                 if option_id == "dialog" && value == "closed"
         )));
+    }
+
+    #[test]
+    fn a_codex_pick_made_mid_turn_waits_for_the_turn_to_end() {
+        let root = tempfile::tempdir().unwrap();
+        let rollout = root.path().join("rollout-2026-10-31T10-00-00-pick.jsonl");
+        let context = |model: &str, effort: &str| json!({ "type": "turn_context", "payload": { "model": model, "effort": effort } });
+        let event = |kind: &str| json!({ "type": "event_msg", "payload": { "type": kind } });
+        std::fs::write(&rollout, format!("{}\n", context("gpt-6.1-sol", "ultra"))).unwrap();
+        let append = |line: &Value| {
+            let mut file = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&rollout)
+                .unwrap();
+            writeln!(file, "{line}").unwrap();
+        };
+        let pane = Arc::new(FakePane::default());
+        let mut codex = Codex::default();
+        codex.picks.catalog = Catalog::codex_json(
+            r#"{"models":[
+                {"slug":"gpt-6.1-sol","visibility":"list","priority":1,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"},{"effort":"ultra"}]},
+                {"slug":"gpt-6-luna","display_name":"GPT-6-Luna","visibility":"list","priority":5,"default_reasoning_level":"medium","supported_reasoning_levels":[{"effort":"medium"},{"effort":"high"}]}
+            ]}"#,
+        );
+        codex.load(rollout.clone(), root.path());
+        let mut lens = Lens::with_source(
+            LensSpec {
+                pane: PaneId(7),
+                provider: AgentProvider::Codex,
+                io: pane.clone(),
+            },
+            Source::Codex(Box::new(codex)),
+            Arc::new(AtomicU64::new(1)),
+        );
+        lens.next_locate = Instant::now() + Duration::from_mins(1);
+        append(&event("task_started"));
+        assert!(
+            lens.tick()
+                .contains(&AgentStreamPayload::Activity { busy: true })
+        );
+        let set = |lens: &mut Lens, option: &str, value: &str| {
+            lens.command(RuntimeCommand::SetConfigOption {
+                option_id: option.to_owned(),
+                value: value.to_owned(),
+            })
+        };
+        let picked = set(&mut lens, "model", "gpt-6-luna");
+        assert!(matches!(
+            picked.as_slice(),
+            [AgentStreamPayload::ConfigOptionsChanged { config_options, .. }]
+                if config_options[0]["currentValue"] == "gpt-6-luna"
+                    && config_options[0]["_meta"]["zz"]["label"] == "GPT-6-Luna"
+                    && config_options[1]["currentValue"] == "medium"
+        ));
+        set(&mut lens, "effort", "high");
+        assert!(pane.sent.lock().is_empty());
+        lens.reload(
+            Found {
+                session: "thread-1".to_owned(),
+                path: rollout.clone(),
+                cwd: root.path().to_path_buf(),
+            },
+            false,
+        );
+        assert_eq!(lens.source.facts().model.as_deref(), Some("gpt-6-luna"));
+        append(&event("task_complete"));
+        lens.tick();
+        assert_eq!(*pane.sent.lock(), ["/model gpt-6-luna --reasoning=high"]);
+        assert_eq!(lens.source.facts().effort.as_deref(), Some("high"));
+        let typed = |lens: &mut Lens, text: &str| {
+            lens.command(RuntimeCommand::Prompt {
+                turn_id: 9,
+                prompt: AgentPrompt {
+                    text: text.to_owned(),
+                    ..AgentPrompt::default()
+                },
+            })
+        };
+        assert!(matches!(
+            typed(&mut lens, "/effort medium").as_slice(),
+            [
+                AgentStreamPayload::ConfigOptionsChanged { .. },
+                AgentStreamPayload::PromptFinished {
+                    turn_id: 9,
+                    outcome: AgentPromptOutcome::Finished { .. }
+                },
+            ]
+        ));
+        assert!(matches!(
+            typed(&mut lens, "/effort ultra").as_slice(),
+            [
+                AgentStreamPayload::SettingFailed { .. },
+                AgentStreamPayload::PromptFinished {
+                    turn_id: 9,
+                    outcome: AgentPromptOutcome::Failed { .. }
+                },
+            ]
+        ));
+        assert_eq!(
+            *pane.sent.lock(),
+            [
+                "/model gpt-6-luna --reasoning=high",
+                "/model gpt-6-luna --reasoning=medium"
+            ]
+        );
+        append(&event("task_started"));
+        lens.tick();
+        assert_eq!(lens.source.facts().model.as_deref(), Some("gpt-6-luna"));
+        append(&context("gpt-6-luna", "medium"));
+        lens.tick();
+        let Source::Codex(codex) = &lens.source else {
+            unreachable!()
+        };
+        assert_eq!(codex.picks.picked, Facts::default());
+        assert_eq!(codex.facts.model.as_deref(), Some("gpt-6-luna"));
+        assert_eq!(codex.facts.effort.as_deref(), Some("medium"));
     }
 
     #[cfg(unix)]
