@@ -5,11 +5,12 @@ use ala::{
 };
 use penna::ActiveTheme as _;
 use zz_protocol::chat::{ChatView, RequestView};
+use zz_ui::agent::agent_jump_to_bottom_button;
 use zz_ui::agent::chat::{
-    ChatClick, ChatClicks, ChatHooks, chat_agent_pip, chat_live, chat_thread, shows_chat,
+    ChatClick, ChatClicks, ChatHooks, chat_agent_pip, chat_column, chat_live, chat_thread,
+    shows_chat,
 };
 use zz_ui::agent::presentation::spinner_phase;
-use zz_ui::agent::{AGENT_CONTENT_MAX_WIDTH, agent_jump_to_bottom_button};
 
 use super::{AgentPaneState, AgentView, COMPOSER_OUTER_PADDING};
 
@@ -131,18 +132,8 @@ impl AgentView {
                     .overflow_y_scroll()
                     .track_scroll(&self.chat.scroll)
                     .on_scroll_wheel(wheel)
-                    .child(
-                        div().w_full().px_3().child(
-                            div()
-                                .w_full()
-                                .max_w(px(AGENT_CONTENT_MAX_WIDTH))
-                                .mx_auto()
-                                .pt_3()
-                                .pb(px(COMPOSER_OUTER_PADDING + 12.0))
-                                .text_color(app.theme().foreground)
-                                .child(body),
-                        ),
-                    ),
+                    .text_color(app.theme().foreground)
+                    .child(chat_column(body)),
             )
             .children(pip)
             .when(show_jump, |root| {

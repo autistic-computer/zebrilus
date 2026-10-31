@@ -421,25 +421,32 @@ the reference; the [command set](/tmux/commands.md) has the rows.
 
 # What the clients draw
 
-The kept pieces are `AgentTimeline` and its rows, the permission and question cards,
-`AgentComposer` and the task tray (`crates/zz-ui/src/agent.rs` and `crates/zz-ui/src/agent/`).
+The lens draws the chat (`crates/zz-ui/src/agent/chat.rs`): `chat_thread` draws the rows
+`zz_client::chat_rows` makes from the `ChatView`, inside `chat_column`, the column both apps share,
+and `chat_agent_pip` draws a subagent's chat in its PiP. The permission and question cards,
+`AgentComposer` and the task tray live in `crates/zz-ui/src/agent/`. Both apps still build
+`AgentTimeline` (`crates/zz-ui/src/agent.rs`) and draw it only while the chat view is empty, as
+against a daemon older than the chat machine or before the first chat turn arrives.
 `AgentComposer` holds the `Composer` pill: `+`, which starts an `@` mention with the palette's
 target picker (`zz_ui::target::TargetPicker`, inserted with its host), the field, the context ring
 and the round send button; the cards over it and the branch under it are the lens's own. The
-timeline mechanics carried over unchanged: the `TimelineStick` / `StickSpring` follow-the-tail pin
-(`agent.rs`), the display-only Markdown repair for streaming text (`zz-client/src/mend.rs`), the
-streamed-text fade (`penna/src/text/veil.rs`) and the shared leased animation clock
-(`penna/src/pulse.rs`).
+timeline keeps its `TimelineStick` / `StickSpring` follow-the-tail pin (`agent.rs`) for that case;
+the display-only Markdown repair for streaming text (`zz-client/src/mend.rs`), the streamed-text
+fade (`penna/src/text/veil.rs`) and the shared leased animation clock (`penna/src/pulse.rs`)
+carried over unchanged.
 
 - **Desktop.** `crates/zz/src/agent` (controller and view) behind the `agent-pane` cargo feature,
   which stays on by default; without it a stub stands in.
 - **Web and iPad.** `clients/app/src/app/agent_lens.rs`.
 - **HTML client.** `clients/dom/src/agent.rs` builds the lens view from the
   shared `zz-client` reducers as JSON; `clients/dom/web/js/agent.js` draws them with the design kit.
-- **Storybook.** An agent lens story replaces the Agent pane story.
+- **Storybook.** One Agent story (`clients/storybook/src/stories/agent`) draws every chat state
+  from fixed chat events with the same calls, `chat_column` included, and asks the way the
+  desktop draws them.
 
-The old agent pane's project, provider, model and effort pickers were deleted, not hidden; the
-lens's folder chip and model menu only type the CLI's own commands.
+The lens has no project picker and no provider picker; the old Agent pane's pickers were deleted,
+not hidden. Model, effort and folder are the composer footer's controls (see
+[Model, effort and folder](#model-effort-and-folder)).
 
 # Related
 

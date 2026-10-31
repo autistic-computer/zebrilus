@@ -1,16 +1,363 @@
 use std::sync::Arc;
 
 use ala::{Image, ImageFormat};
+use penna::IconName;
+use zz_protocol::chat::{
+    Answer, Ask, AskOption, ChatEvent, ChatView, ItemBody, ItemId, ItemKind, ItemStatus,
+    OptionKind, PlanStep, QuestionAnswer, RequestClose, RequestId, StepStatus, TurnBy, TurnId,
+    TurnOutcome,
+};
 use zz_protocol::{
-    AgentTaskWire,
+    AgentTaskWire, PaneId, SessionId, WindowId,
     agent_stream::{AgentQuestion, AgentQuestionOption},
 };
-use zz_ui::agent::{
-    AgentAside, AgentEntry, AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus,
-};
+use zz_ui::command::{PaletteHostId, PaletteStatus};
+use zz_ui::target::{TargetChat, TargetHost, TargetPane, TargetSession, TargetWindow};
 
-const WIDE_SCREENSHOT: &[u8] =
-    include_bytes!("../../../../../crates/zz-ui/src/fixtures/wide-screenshot.png");
+const START: u64 = 1_793_365_200_000;
+const STEP: u64 = 1500;
+
+pub struct Script {
+    pub view: ChatView,
+    pub at: u64,
+    turn: u64,
+}
+
+impl Script {
+    pub fn new() -> Self {
+        let mut script = Self {
+            view: ChatView::default(),
+            at: START,
+            turn: 0,
+        };
+        script.event(&ChatEvent::SessionReady {
+            session: "story".to_owned(),
+        });
+        script
+    }
+
+    pub fn event(&mut self, event: &ChatEvent) -> &mut Self {
+        self.at += STEP;
+        let _ = self.view.apply(event);
+        self
+    }
+
+    pub fn pause(&mut self, ms: u64) -> &mut Self {
+        self.at += ms;
+        self
+    }
+
+    pub fn turn(&mut self, prompt: &str) -> &mut Self {
+        self.turn += 1;
+        let at = self.at;
+        self.event(&ChatEvent::TurnStarted {
+            turn: TurnId(self.turn),
+            by: TurnBy::User { prompt: self.turn },
+            at,
+        });
+        let id = format!("u:story-{}", self.turn);
+        self.start(&id, None, ItemKind::User, ItemBody::text(prompt));
+        self.done(&id)
+    }
+
+    pub fn start(
+        &mut self,
+        id: &str,
+        parent: Option<&str>,
+        kind: ItemKind,
+        body: ItemBody,
+    ) -> &mut Self {
+        let at = self.at;
+        let turn = self.view.running().is_some().then_some(TurnId(self.turn));
+        self.event(&ChatEvent::ItemStarted {
+            item: ItemId::new(id),
+            turn,
+            parent: parent.map(ItemId::new),
+            kind,
+            body,
+            at,
+        })
+    }
+
+    pub fn text(&mut self, id: &str, text: &str) -> &mut Self {
+        self.start(id, None, ItemKind::Agent, ItemBody::text(text))
+    }
+
+    pub fn reply(&mut self, id: &str, text: &str) -> &mut Self {
+        self.text(id, text).done(id)
+    }
+
+    pub fn think(&mut self, id: &str, text: &str) -> &mut Self {
+        self.start(id, None, ItemKind::Reasoning, ItemBody::text(text))
+    }
+
+    pub fn tool(
+        &mut self,
+        id: &str,
+        parent: Option<&str>,
+        kind: ItemKind,
+        target: &str,
+    ) -> &mut Self {
+        self.start(
+            id,
+            parent,
+            kind,
+            ItemBody {
+                target: Some(target.to_owned()),
+                ..ItemBody::default()
+            },
+        )
+    }
+
+    pub fn ran(&mut self, id: &str, kind: ItemKind, target: &str) -> &mut Self {
+        self.tool(id, None, kind, target).done(id)
+    }
+
+    pub fn notice(&mut self, id: &str, kind: ItemKind, text: &str) -> &mut Self {
+        self.start(id, None, kind, ItemBody::text(text)).done(id)
+    }
+
+    pub fn plan(&mut self, id: &str, steps: &[(&str, StepStatus)]) -> &mut Self {
+        self.start(
+            id,
+            None,
+            ItemKind::Plan,
+            ItemBody {
+                steps: steps
+                    .iter()
+                    .map(|(text, status)| PlanStep {
+                        text: (*text).to_owned(),
+                        status: *status,
+                    })
+                    .collect(),
+                ..ItemBody::default()
+            },
+        )
+    }
+
+    pub fn done(&mut self, id: &str) -> &mut Self {
+        self.end(id, ItemStatus::Completed)
+    }
+
+    pub fn end(&mut self, id: &str, status: ItemStatus) -> &mut Self {
+        let at = self.at;
+        self.event(&ChatEvent::ItemEnded {
+            item: ItemId::new(id),
+            status,
+            at,
+        })
+    }
+
+    pub fn ask(&mut self, request: u64, item: Option<&str>, ask: Ask) -> &mut Self {
+        let at = self.at;
+        let turn = item
+            .and_then(|item| self.view.item(&ItemId::new(item)))
+            .and_then(|item| item.turn.filter(|_| !item.background))
+            .or_else(|| self.view.running().map(|turn| turn.id));
+        self.event(&ChatEvent::RequestOpened {
+            request: RequestId(request),
+            turn,
+            item: item.map(ItemId::new),
+            ask,
+            blocking: true,
+            at,
+        })
+    }
+
+    pub fn answer(&mut self, request: u64, answers: &[&str]) -> &mut Self {
+        self.close(
+            RequestId(request),
+            RequestClose::Answered {
+                answer: Answer::Questions {
+                    answers: answers
+                        .iter()
+                        .enumerate()
+                        .map(|(index, answer)| QuestionAnswer {
+                            question: format!("q{index}"),
+                            answers: vec![(*answer).to_owned()],
+                        })
+                        .collect(),
+                },
+            },
+        )
+    }
+
+    pub fn close(&mut self, request: RequestId, close: RequestClose) -> &mut Self {
+        let at = self.at;
+        self.event(&ChatEvent::RequestClosed { request, close, at })
+    }
+
+    pub fn finish(&mut self, outcome: TurnOutcome) -> &mut Self {
+        let at = self.at;
+        self.event(&ChatEvent::TurnEnded {
+            turn: TurnId(self.turn),
+            outcome,
+            at,
+        })
+    }
+
+    pub fn background(&mut self, id: &str) -> &mut Self {
+        self.event(&ChatEvent::ItemBackgrounded {
+            item: ItemId::new(id),
+        })
+    }
+}
+
+pub fn completed() -> TurnOutcome {
+    TurnOutcome::Completed {
+        stop_reason: "end_turn".to_owned(),
+    }
+}
+
+fn ask_option(id: &str, label: &str, kind: OptionKind) -> AskOption {
+    AskOption {
+        id: id.to_owned(),
+        label: label.to_owned(),
+        kind,
+    }
+}
+
+pub fn approval(title: &str, allow_similar: &str) -> Ask {
+    Ask::Approval {
+        title: title.to_owned(),
+        detail: None,
+        options: vec![
+            ask_option("allow", "Allow once", OptionKind::Allow),
+            ask_option("always", allow_similar, OptionKind::AllowAlways),
+            ask_option("deny", "Deny", OptionKind::Deny),
+        ],
+    }
+}
+
+pub fn lens_approval(title: &str) -> Ask {
+    Ask::Approval {
+        title: title.to_owned(),
+        detail: None,
+        options: vec![
+            ask_option("allow", "Allow", OptionKind::Allow),
+            ask_option("deny", "Deny", OptionKind::Deny),
+        ],
+    }
+}
+
+pub fn palettes() -> Ask {
+    let names = [
+        "Tokyo Night",
+        "Catppuccin",
+        "Nord",
+        "Gruvbox",
+        "Solarized",
+        "Rosé Pine",
+        "Dracula",
+        "One Dark",
+        "Kanagawa",
+        "Everforest",
+    ];
+    Ask::Approval {
+        title: "Which palette should the storybook use?".to_owned(),
+        detail: None,
+        options: names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| ask_option(&format!("palette-{index}"), name, OptionKind::Allow))
+            .collect(),
+    }
+}
+
+pub fn terminal_ask(title: &str) -> Ask {
+    Ask::Approval {
+        title: title.to_owned(),
+        detail: None,
+        options: Vec::new(),
+    }
+}
+
+pub fn placement() -> Ask {
+    Ask::Questions {
+        questions: vec![
+            AgentQuestion {
+                header: Some("Placement".to_owned()),
+                ..question(
+                    "q0",
+                    "Where should the setting live?",
+                    vec![
+                        option("Settings › Interface", Some("One value for every host")),
+                        option("Per host", Some("Each daemon keeps its own value")),
+                        option("Config file only", Some("A key in zz/config, no control")),
+                    ],
+                )
+            },
+            question("q1", "How long by default?", Vec::new()),
+        ],
+    }
+}
+
+pub fn agent(title: &str, prompt: &str) -> ItemBody {
+    ItemBody {
+        target: Some(prompt.to_owned()),
+        ..ItemBody::titled(title)
+    }
+}
+
+pub fn agents_script() -> Script {
+    let mut script = Script::new();
+    script
+        .turn("Find every place that works out agent state on its own. Use subagents.")
+        .text("a1", "Splitting it three ways.")
+        .start("ag1", None, ItemKind::Subagent, agent("Explore", "Find every place outside the chat machine that decides whether an agent is busy, idle or waiting."))
+        .tool("c1", Some("ag1"), ItemKind::Search, "AgentConnectionState")
+        .done("c1")
+        .tool("c2", Some("ag1"), ItemKind::Read, "crates/zz/src/agent/controller.rs")
+        .start("ag2", None, ItemKind::Subagent, agent("Protocol", "List the wire fields clients read to guess agent state."))
+        .start(
+            "c3",
+            Some("ag2"),
+            ItemKind::Agent,
+            ItemBody::text("Found 6 places: the host phase, the fanout turn id, the desktop submitted flag, the thin reducer, the lens runner and the sidebar status."),
+        )
+        .done("c3")
+        .pause(9000)
+        .done("ag2")
+        .start("ag3", None, ItemKind::Subagent, agent("Replay", "Run the replay tests and report any rejected facts."))
+        .tool("c4", Some("ag3"), ItemKind::Execute, "cargo test -p zz-daemon replay_tests")
+        .ask(3, Some("c4"), approval("Replay wants to run cargo test -p zz-daemon replay_tests", "Allow cargo test"));
+    script
+}
+
+pub fn story_hosts() -> Vec<TargetHost> {
+    let pane = |id: u64, program: &str| TargetPane {
+        id: PaneId(id),
+        title: String::new(),
+        program: Some(program.to_owned().into()),
+        icon: IconName::SquareTerminal,
+        chat: None,
+    };
+    vec![TargetHost {
+        id: PaletteHostId(0),
+        name: "macbook".to_owned(),
+        status: PaletteStatus::Online,
+        here: true,
+        sessions: vec![TargetSession {
+            id: SessionId(0),
+            name: "zebrilus".to_owned(),
+            windows: vec![TargetWindow {
+                id: WindowId(1),
+                index: 1,
+                name: "build".to_owned(),
+                panes: vec![
+                    pane(0, "bash"),
+                    TargetPane {
+                        chat: Some(TargetChat {
+                            title: "Fix the fanout replay".into(),
+                            icon: zz_ui::program::CLAUDE_ICON,
+                        }),
+                        ..pane(1, "claude")
+                    },
+                ],
+            }],
+        }],
+    }]
+}
 
 const TAB_STRIP: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300">
 <rect width="480" height="300" rx="14" fill="#1b1d22"/>
@@ -43,28 +390,6 @@ const BAR_CHART: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="420" 
 <rect x="40" y="30" width="160" height="12" rx="6" fill="#4a4740"/>
 </svg>"##;
 
-const TERMINAL: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="360" height="300" viewBox="0 0 360 300">
-<rect width="360" height="300" rx="14" fill="#0f1115"/>
-<circle cx="22" cy="20" r="6" fill="#ff5f57"/>
-<circle cx="42" cy="20" r="6" fill="#febc2e"/>
-<circle cx="62" cy="20" r="6" fill="#28c840"/>
-<rect x="20" y="50" width="180" height="9" rx="2" fill="#7dcfff"/>
-<rect x="20" y="70" width="260" height="9" rx="2" fill="#565f89"/>
-<rect x="20" y="90" width="230" height="9" rx="2" fill="#565f89"/>
-<rect x="20" y="110" width="120" height="9" rx="2" fill="#9ece6a"/>
-<rect x="20" y="130" width="300" height="9" rx="2" fill="#f7768e"/>
-<rect x="20" y="150" width="270" height="9" rx="2" fill="#f7768e"/>
-<rect x="20" y="170" width="140" height="9" rx="2" fill="#565f89"/>
-<rect x="20" y="200" width="10" height="14" fill="#c0caf5"/>
-</svg>"##;
-
-pub fn wide_screenshot() -> Arc<Image> {
-    Arc::new(Image::from_bytes(
-        ImageFormat::Png,
-        WIDE_SCREENSHOT.to_vec(),
-    ))
-}
-
 fn svg(source: &str) -> Arc<Image> {
     Arc::new(Image::from_bytes(
         ImageFormat::Svg,
@@ -80,128 +405,6 @@ pub fn chart_screenshot() -> Arc<Image> {
     svg(BAR_CHART)
 }
 
-pub fn terminal_screenshot() -> Arc<Image> {
-    svg(TERMINAL)
-}
-
-pub fn user(id: u64, text: &str) -> AgentEntry {
-    AgentEntry::User {
-        id,
-        markdown: text.into(),
-        images: Arc::from([]),
-        rewind_id: None,
-    }
-}
-
-pub fn user_with_images(id: u64, text: &str, images: Vec<Arc<Image>>) -> AgentEntry {
-    AgentEntry::User {
-        id,
-        markdown: text.into(),
-        images: images.into(),
-        rewind_id: None,
-    }
-}
-
-pub fn rewindable(id: u64, text: &str) -> AgentEntry {
-    AgentEntry::User {
-        id,
-        markdown: text.into(),
-        images: Arc::from([]),
-        rewind_id: Some(format!("message-{id}").into()),
-    }
-}
-
-pub fn assistant(id: u64, text: &str) -> AgentEntry {
-    AgentEntry::Assistant {
-        id,
-        markdown: text.into(),
-        aside: None,
-    }
-}
-
-pub fn aside(id: u64, text: &str, side: bool, reply_to: Option<u64>) -> AgentEntry {
-    AgentEntry::Assistant {
-        id,
-        markdown: text.into(),
-        aside: Some(AgentAside { side, reply_to }),
-    }
-}
-
-pub fn thought(id: u64, text: &str) -> AgentEntry {
-    AgentEntry::Reasoning {
-        id,
-        label: "Reasoning".into(),
-        markdown: text.into(),
-        default_expanded: false,
-    }
-}
-
-pub fn plan(id: u64, text: &str) -> AgentEntry {
-    AgentEntry::Plan {
-        id,
-        markdown: text.into(),
-    }
-}
-
-pub struct Tool(AgentToolEntry);
-
-pub fn tool(id: u64, kind: AgentToolKind, status: AgentToolStatus, label: &str) -> Tool {
-    Tool(AgentToolEntry {
-        id,
-        kind,
-        status,
-        label: label.to_owned().into(),
-        location: None,
-        input: None,
-        output: Arc::from([]),
-        default_expanded: false,
-        parent: None,
-        exit_code: None,
-    })
-}
-
-pub fn done(id: u64, kind: AgentToolKind, label: &str) -> AgentEntry {
-    tool(id, kind, AgentToolStatus::Completed, label).entry()
-}
-
-impl Tool {
-    pub fn text(mut self, output: &str) -> Self {
-        self.0.output = Arc::from([AgentToolPayload::Text(output.into())]);
-        self
-    }
-
-    pub fn terminal(mut self, output: &str) -> Self {
-        self.0.output = Arc::from([AgentToolPayload::Terminal(output.into())]);
-        self
-    }
-
-    pub fn exit(mut self, code: i64) -> Self {
-        self.0.exit_code = Some(code);
-        self
-    }
-
-    pub fn parent(mut self, parent: u64) -> Self {
-        self.0.parent = Some(parent);
-        self
-    }
-
-    pub fn entry(self) -> AgentEntry {
-        AgentEntry::Tool(self.0)
-    }
-}
-
-pub const TEST_FAILURE: &str = "running 14 tests\n\
-test browser::tab_strip::pinned_tabs_keep_their_icon ... ok\n\
-test browser::drag::reorder_across_pinned_boundary ... FAILED\n\
-test browser::drag::drop_preview_tracks_pointer ... FAILED\n\
-\n\
-failures:\n\
-    browser::drag::reorder_across_pinned_boundary\n\
-    browser::drag::drop_preview_tracks_pointer\n\
-\n\
-test result: FAILED. 12 passed; 2 failed; 0 ignored\n\
-error: test failed, to rerun pass `-p zz-ui --lib`";
-
 pub const PLAN: &str = "- [x] Find where the tab strip divides its width\n\
 - [x] Give pinned tabs a floor at their icon width\n\
 - [~] Fix drag reorder offsets across the pinned boundary\n\
@@ -211,6 +414,26 @@ pub const PLAN: &str = "- [x] Find where the tab strip divides its width\n\
 pub const PLAN_DONE: &str = "- [x] Find where the tab strip divides its width\n\
 - [x] Give pinned tabs a floor at their icon width\n\
 - [x] Fix drag reorder offsets across the pinned boundary";
+
+pub const PLAN_STEPS: &[(&str, StepStatus)] = &[
+    (
+        "Find where the tab strip divides its width",
+        StepStatus::Done,
+    ),
+    (
+        "Give pinned tabs a floor at their icon width",
+        StepStatus::Done,
+    ),
+    (
+        "Fix drag reorder offsets across the pinned boundary",
+        StepStatus::Running,
+    ),
+    ("Run the browser test suite", StepStatus::Pending),
+    (
+        "Update the tab strip notes in knowledge/",
+        StepStatus::Pending,
+    ),
+];
 
 pub fn tasks() -> Vec<AgentTaskWire> {
     vec![
@@ -256,7 +479,7 @@ pub fn question(id: &str, text: &str, options: Vec<AgentQuestionOption>) -> Agen
 
 pub fn branch_question() -> AgentQuestion {
     question(
-        "base",
+        "q0",
         "Which branch should the pull request target?",
         vec![
             option("main", Some("Ships with the next nightly")),
@@ -269,7 +492,7 @@ pub fn checks_question() -> AgentQuestion {
     AgentQuestion {
         multi_select: true,
         ..question(
-            "checks",
+            "q1",
             "Which checks should run before I push?",
             vec![
                 option("cargo test --workspace", None),

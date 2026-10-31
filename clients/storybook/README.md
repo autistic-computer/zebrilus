@@ -55,6 +55,9 @@ fn variants(_: &mut Window, _: &mut App) -> AnyElement {
   stateless ones use `stateless(fn, cx)`, which re-renders on every frame.
 - Build fixtures from the same types the app uses. Never reach a daemon, the network or the
   filesystem: everything must render in a browser tab from constants.
+- An agent chat state is a `Script` of chat events (`src/stories/agent/fixtures.rs`) drawn by
+  `Thread` (`src/stories/agent/chat.rs`), which makes the same calls the apps make: `chat_column`,
+  `chat_thread`, `chat_agent_pip` and an ask hook that draws asks the way the desktop does.
 - Ids must be lowercase with hyphens; `Catalog::problems`, checked by the tests, finds bad and
   duplicate ids and floating entries that name no section.
 - A section that floats over the content (a menu, a dialog, a palette) goes in the catalog's
