@@ -568,6 +568,18 @@ pub(crate) fn attach_images(
     }
 }
 
+pub(crate) fn without_images(mut payload: AgentStreamPayload) -> AgentStreamPayload {
+    if let AgentStreamPayload::Update { update } = &mut payload
+        && let Some(zz) = update
+            .get_mut("_meta")
+            .and_then(|meta| meta.get_mut("zz"))
+            .and_then(Value::as_object_mut)
+    {
+        zz.remove("images");
+    }
+    payload
+}
+
 fn images(update: &Value) -> Vec<AgentImage> {
     Vec::<AgentImage>::deserialize(&update["_meta"]["zz"]["images"]).unwrap_or_default()
 }

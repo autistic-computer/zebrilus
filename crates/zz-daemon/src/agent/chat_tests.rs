@@ -1022,3 +1022,42 @@ fn an_approval_that_names_an_item_nobody_has_seen_yet_does_not_die_with_the_turn
     );
     assert_eq!(chat.close(11), None);
 }
+
+#[test]
+fn the_log_keeps_pasted_images_on_its_latest_items_only() {
+    let shot = zz_protocol::agent_stream::AgentImage {
+        format: "image/png".to_owned(),
+        data: vec![1, 2, 3],
+    };
+    let mut log = zz_protocol::chat::ChatLog::default();
+    for index in 0..10 {
+        log.push(&ChatEvent::ItemStarted {
+            item: ItemId::new(format!("u:{index}")),
+            turn: None,
+            parent: None,
+            kind: ItemKind::User,
+            body: ItemBody {
+                text: format!("look {index}"),
+                images: vec![shot.clone()],
+                ..ItemBody::default()
+            },
+            at: 0,
+        });
+    }
+    let pictured = log
+        .events()
+        .filter_map(|event| match event {
+            ChatEvent::ItemStarted { item, body, .. } if !body.images.is_empty() => {
+                Some(item.as_str().to_owned())
+            }
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        pictured,
+        (2..10)
+            .map(|index| format!("u:{index}"))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(log.events().count(), 10);
+}

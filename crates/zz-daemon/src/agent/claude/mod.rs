@@ -17,7 +17,7 @@ use async_channel::Sender;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
 
-use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers};
+use crate::agent::chat_bridge::{Shadow, chat_answer, chat_answers, without_images};
 use serde_json::{Map, Value, json};
 use zz_protocol::agent_stream::agent_verb;
 use zz_protocol::chat::ChatEvent;
@@ -34,7 +34,7 @@ use crate::agent::{
     host::RuntimeChannels,
     journal::{AgentJournal, JournalEntry},
     runtime::{
-        RuntimeCommand, RuntimeControl, StderrTail, prompt_blocks, prompt_updates,
+        RuntimeCommand, RuntimeControl, StderrTail, prompt_blocks, prompt_echo,
         report_journal_error, tier_approves, validate_payload,
     },
     stream::{
@@ -459,6 +459,7 @@ impl Runtime {
             shadow.payload(&payload);
             shadow.drain()
         };
+        let payload = without_images(payload);
         if let Err(error) = validate_payload(&payload) {
             log::warn!(target: "zz::agent", "dropping an oversized Claude Code item: {error}");
             return self.send_chat(chat).await;
@@ -676,10 +677,7 @@ impl Runtime {
                         )
                         .await;
                 }
-                for update in prompt_updates(&prompt_blocks(prompt), &MessageId::new(uuid.clone()))
-                {
-                    let update =
-                        serde_json::to_value(&update).map_err(|error| error.to_string())?;
+                for update in prompt_echo(&prompt_blocks(prompt), &MessageId::new(uuid.clone()))? {
                     self.update(update, true).await?;
                 }
                 self.send(&json!({

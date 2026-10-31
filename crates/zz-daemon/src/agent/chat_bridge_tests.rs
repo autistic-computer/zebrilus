@@ -545,6 +545,55 @@ fn prompt_images_reach_the_user_item() {
 }
 
 #[test]
+fn a_chat_mode_prompt_shows_its_pasted_images_and_sends_them_once() {
+    use agent_client_protocol::schema::v1::MessageId;
+    use zz_protocol::ClientInstanceId;
+
+    use super::chat_bridge::without_images;
+    use super::runtime::{prompt_blocks, prompt_echo};
+    use super::stream::AgentPrompt;
+
+    let image = AgentImage {
+        format: "image/png".to_owned(),
+        data: b"hi".to_vec(),
+    };
+    let mut shadow = Shadow::recording().attached();
+    ready(&mut shadow);
+    let mut sent = Vec::new();
+    for (id, text) in [("p1", "what is this?"), ("p2", "")] {
+        let blocks = prompt_blocks(AgentPrompt {
+            owner: ClientInstanceId::default(),
+            text: text.to_owned(),
+            images: vec![image.clone()],
+        });
+        for echo in prompt_echo(&blocks, &MessageId::new(id)).expect("echo") {
+            let payload = update(echo);
+            shadow.payload(&payload);
+            sent.push(without_images(payload));
+        }
+        shadow.turn(&turn::Fact::Idle, None, Instant::now());
+    }
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let view = view(&shadow);
+    for (id, text) in [("u:p1", "what is this?"), ("u:p2", "")] {
+        let item = view.item(&ItemId::new(id)).expect("user item");
+        assert_eq!(item.body.text, text);
+        assert_eq!(item.body.images, std::slice::from_ref(&image), "{id}");
+    }
+    let chunks = sent
+        .iter()
+        .map(|payload| {
+            let AgentStreamPayload::Update { update } = payload else {
+                unreachable!()
+            };
+            assert!(update["_meta"]["zz"]["images"].is_null(), "{update}");
+            update["content"]["type"].as_str().unwrap_or_default()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(chunks, ["text", "image", "text", "image"]);
+}
+
+#[test]
 fn a_long_prompt_leaves_its_images_only_the_room_left_under_the_stream_cap() {
     let image = "A".repeat(MAX_PROMPT_IMAGES_BASE64 / 2);
     let mut short = json!({ "content": { "type": "text", "text": "look" } });

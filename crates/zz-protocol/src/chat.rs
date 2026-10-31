@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use serde::{Deserialize, Serialize};
 
@@ -703,10 +703,13 @@ impl ChatView {
     }
 }
 
+const LOGGED_IMAGES: usize = 8;
+
 #[derive(Clone, Debug, Default)]
 pub struct ChatLog {
     events: Vec<ChatEvent>,
     started: HashMap<ItemId, usize>,
+    pictured: VecDeque<usize>,
     queue: Option<ChatEvent>,
     usage: Option<ChatEvent>,
     session: Option<String>,
@@ -725,11 +728,15 @@ impl ChatLog {
                 }
                 self.events.push(event.clone());
             }
-            ChatEvent::ItemStarted { item, .. } => {
+            ChatEvent::ItemStarted { item, body, .. } => {
+                let index = self.events.len();
                 if !self.started.contains_key(item) {
-                    self.started.insert(item.clone(), self.events.len());
+                    self.started.insert(item.clone(), index);
                 }
                 self.events.push(event.clone());
+                if !body.images.is_empty() {
+                    self.picture(index);
+                }
             }
             ChatEvent::ItemAppended { item, text } => {
                 if let Some(ChatEvent::ItemStarted { body, .. }) = self
@@ -741,17 +748,33 @@ impl ChatLog {
                 }
             }
             ChatEvent::ItemChanged { item, body } => {
-                if let Some(ChatEvent::ItemStarted { body: started, .. }) = self
-                    .started
-                    .get(item)
-                    .and_then(|index| self.events.get_mut(*index))
+                let Some(index) = self.started.get(item).copied() else {
+                    return;
+                };
+                if let Some(ChatEvent::ItemStarted { body: started, .. }) =
+                    self.events.get_mut(index)
                 {
                     started.clone_from(body);
+                    if !body.images.is_empty() {
+                        self.picture(index);
+                    }
                 }
             }
             ChatEvent::QueueChanged { .. } => self.queue = Some(event.clone()),
             ChatEvent::UsageChanged { .. } => self.usage = Some(event.clone()),
             _ => self.events.push(event.clone()),
+        }
+    }
+
+    fn picture(&mut self, index: usize) {
+        self.pictured.retain(|known| *known != index);
+        self.pictured.push_back(index);
+        while self.pictured.len() > LOGGED_IMAGES {
+            if let Some(oldest) = self.pictured.pop_front()
+                && let Some(ChatEvent::ItemStarted { body, .. }) = self.events.get_mut(oldest)
+            {
+                body.images = Vec::new();
+            }
         }
     }
 

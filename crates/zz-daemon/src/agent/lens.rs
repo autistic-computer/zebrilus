@@ -17,7 +17,7 @@ use zz_protocol::{
 };
 
 use crate::agent::{
-    chat_bridge::{Shadow, chat_answers},
+    chat_bridge::{Shadow, chat_answers, without_images},
     claude::{
         sessions,
         translate::{self as claude_translate, Translator as ClaudeTranslator},
@@ -86,6 +86,8 @@ struct Tail {
     path: PathBuf,
     offset: u64,
     partial: Vec<u8>,
+    #[cfg(test)]
+    reads: usize,
 }
 
 impl Tail {
@@ -128,6 +130,10 @@ impl Tail {
     }
 
     fn lines(&mut self) -> Vec<Value> {
+        #[cfg(test)]
+        {
+            self.reads += 1;
+        }
         let Ok(mut file) = File::open(&self.path) else {
             return Vec::new();
         };
@@ -535,7 +541,14 @@ struct Codex {
     born: Option<u64>,
     children: Vec<CodexChild>,
     held: Vec<Value>,
-    asked: Option<(String, Value)>,
+    asked: Option<Question>,
+    dropped: Vec<Value>,
+}
+
+struct Question {
+    id: String,
+    item: Value,
+    at: Option<u64>,
 }
 
 struct CodexChild {
@@ -596,17 +609,7 @@ impl Codex {
         self.pid = codex_queue::codex_pid(pane_pid?);
         let pid = self.pid?;
         if self.launch_pid != Some(pid) {
-            if self.launch_pid.is_some() {
-                self.picks.forget();
-            }
-            self.launch = Facts::codex_launch(
-                &arguments(pid),
-                codex_home().as_deref(),
-                zz_daemon_client::process_info::working_directory(pid)
-                    .map(|cwd| cwd.display().to_string()),
-            );
-            self.launch_pid = Some(pid);
-            self.born = zz_daemon_client::process_info::start_time(pid);
+            self.launched(pid, zz_daemon_client::process_info::start_time(pid));
         }
         let (path, meta) = open_files(pid)
             .into_iter()
@@ -621,6 +624,31 @@ impl Codex {
         })
     }
 
+    fn launched(&mut self, pid: u32, born: Option<u64>) {
+        if self.launch_pid.is_some() {
+            self.picks.forget();
+        }
+        self.launch = Facts::codex_launch(
+            &arguments(pid),
+            codex_home().as_deref(),
+            zz_daemon_client::process_info::working_directory(pid)
+                .map(|cwd| cwd.display().to_string()),
+        );
+        self.launch_pid = Some(pid);
+        self.born = born;
+        if let Some(born) = born.map(|born| born.saturating_mul(1000))
+            && self
+                .asked
+                .as_ref()
+                .and_then(|asked| asked.at)
+                .is_some_and(|at| at < born)
+        {
+            self.asked = None;
+            let dropped = self.translator.drop_questions();
+            self.dropped.extend(stamped_at(dropped, born));
+        }
+    }
+
     fn load(&mut self, path: PathBuf, cwd: &Path) -> Vec<Value> {
         let (tail, text) = Tail::open(path);
         self.translator = CodexTranslator::new(cwd.to_path_buf());
@@ -629,13 +657,13 @@ impl Codex {
         self.children.clear();
         self.held.clear();
         self.asked = None;
+        self.dropped.clear();
         self.tail = Some(tail);
         let mut read = Read::default();
         for entry in text
             .lines()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         {
-            read.updates.extend(self.child_lines(None));
             self.entry(&entry, &mut read);
         }
         read.updates.extend(self.child_lines(None));
@@ -644,7 +672,10 @@ impl Codex {
     }
 
     fn read(&mut self) -> Read {
-        let mut read = Read::default();
+        let mut read = Read {
+            updates: std::mem::take(&mut self.dropped),
+            ..Read::default()
+        };
         for index in 0..self.children.len() {
             let child = &mut self.children[index];
             if child.tail.is_none() && !child.lost {
@@ -654,7 +685,6 @@ impl Codex {
         }
         let lines = self.tail.as_mut().map(Tail::lines).unwrap_or_default();
         for entry in lines {
-            read.updates.extend(self.child_lines(None));
             self.entry(&entry, &mut read);
         }
         read.updates.extend(self.child_lines(None));
@@ -674,6 +704,7 @@ impl Codex {
         match payload["type"].as_str() {
             Some("task_started") => self.busy = true,
             Some(end @ ("task_complete" | "turn_aborted")) => {
+                read.updates.extend(self.child_lines(None));
                 for held in std::mem::take(&mut self.held) {
                     read.updates.extend(self.translate_entry(&held));
                 }
@@ -701,7 +732,7 @@ impl Codex {
                 let Some(item) = rollout::v2_item(&payload["item"]) else {
                     return;
                 };
-                self.note_question(&item, entry);
+                let stale = self.note_question(&item, entry);
                 if item["type"] == "subAgentActivity" {
                     let thread = item["agentThreadId"].as_str().unwrap_or_default();
                     if item["kind"] == "started" {
@@ -715,6 +746,10 @@ impl Codex {
                     }
                 }
                 read.updates.extend(self.translate(&item, entry));
+                if stale {
+                    read.updates
+                        .extend(stamped(self.translator.drop_questions(), entry));
+                }
             }
             _ => {}
         }
@@ -730,20 +765,19 @@ impl Codex {
             .unwrap_or_default()
     }
 
-    fn note_question(&mut self, item: &Value, entry: &Value) {
+    fn note_question(&mut self, item: &Value, entry: &Value) -> bool {
         match item["type"].as_str() {
             Some("userInputRequest") => {
-                let asked = entry["timestamp"]
-                    .as_str()
-                    .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
-                    .and_then(|at| u64::try_from(at.timestamp()).ok());
-                let stale = asked
+                let at = recorded(entry);
+                let stale = at
                     .zip(self.born)
-                    .is_some_and(|(asked, born)| asked < born);
-                self.asked = item["id"]
-                    .as_str()
-                    .filter(|_| !stale)
-                    .map(|id| (id.to_owned(), item.clone()));
+                    .is_some_and(|(at, born)| at < born.saturating_mul(1000));
+                self.asked = item["id"].as_str().filter(|_| !stale).map(|id| Question {
+                    id: id.to_owned(),
+                    item: item.clone(),
+                    at,
+                });
+                return stale;
             }
             Some("userInputReply") => {
                 let answered = item["replies"]
@@ -751,7 +785,7 @@ impl Codex {
                     .into_iter()
                     .flatten()
                     .filter_map(|reply| reply["callId"].as_str())
-                    .any(|call| self.asked.as_ref().is_some_and(|(id, _)| id == call));
+                    .any(|call| self.asked.as_ref().is_some_and(|asked| asked.id == call));
                 if answered {
                     self.asked = None;
                 }
@@ -759,6 +793,7 @@ impl Codex {
             Some("userMessage") => self.asked = None,
             _ => {}
         }
+        false
     }
 
     fn final_answer(&mut self, entry: &Value) -> Vec<Value> {
@@ -791,7 +826,8 @@ impl Codex {
             return Vec::new();
         };
         self.children[index].answered = true;
-        let mut updates = stamped(self.translator.agent_answer(path, answer), entry);
+        let mut updates = self.child_lines(None);
+        updates.extend(stamped(self.translator.agent_answer(path, answer), entry));
         let (mine, others) = std::mem::take(&mut self.held)
             .into_iter()
             .partition::<Vec<_>, _>(|held| held["payload"]["item"]["agent_path"] == path);
@@ -886,7 +922,6 @@ impl Codex {
                 .map(Tail::lines)
                 .unwrap_or_default();
             for entry in lines {
-                updates.extend(self.child_lines(Some(&thread)));
                 updates.extend(self.child_entry(&thread, &entry));
             }
             updates.extend(self.child_lines(Some(&thread)));
@@ -901,18 +936,21 @@ impl Codex {
             return Vec::new();
         }
         let turn = |status: &str| json!({ "turn": { "status": status } });
+        let mut caught = Vec::new();
         let updates = match payload["type"].as_str() {
             Some("task_started") => {
                 self.translator
                     .child(thread, "turn/started", &turn("inProgress"))
             }
-            Some("task_complete") => {
+            Some(end @ ("task_complete" | "turn_aborted")) => {
+                caught = self.child_lines(Some(thread));
+                let status = if end == "task_complete" {
+                    "completed"
+                } else {
+                    "interrupted"
+                };
                 self.translator
-                    .child(thread, "turn/completed", &turn("completed"))
-            }
-            Some("turn_aborted") => {
-                self.translator
-                    .child(thread, "turn/completed", &turn("interrupted"))
+                    .child(thread, "turn/completed", &turn(status))
             }
             Some("item_completed") => {
                 let Some(item) = rollout::v2_item(&payload["item"]) else {
@@ -924,12 +962,15 @@ impl Codex {
                         Some(thread),
                         item["agentPath"].as_str(),
                     );
+                } else if item["type"] == "subAgentActivity" && item["kind"] == "completed" {
+                    caught = self.child_lines(Some(thread));
                 }
                 Some(self.translator.child_history(thread, &item))
             }
             _ => None,
         };
-        timed(stamped(updates.unwrap_or_default(), entry), entry)
+        caught.extend(timed(stamped(updates.unwrap_or_default(), entry), entry));
+        caught
     }
 }
 
@@ -941,10 +982,10 @@ fn timed(updates: Vec<Value>, entry: &Value) -> Vec<Value> {
         .map(|(completed, started)| completed.saturating_sub(started))
         .or_else(|| {
             let duration = &payload["item"]["duration"];
-            Some(
-                duration["secs"].as_u64()? * 1000
-                    + duration["nanos"].as_u64().unwrap_or_default() / 1_000_000,
-            )
+            duration["secs"]
+                .as_u64()?
+                .checked_mul(1000)?
+                .checked_add(duration["nanos"].as_u64().unwrap_or_default() / 1_000_000)
         })
         .filter(|ms| *ms > 0);
     let Some(ms) = ms else {
@@ -961,14 +1002,21 @@ fn timed(updates: Vec<Value>, entry: &Value) -> Vec<Value> {
         .collect()
 }
 
-fn stamped(updates: Vec<Value>, entry: &Value) -> Vec<Value> {
-    let Some(at) = entry["timestamp"]
+fn recorded(entry: &Value) -> Option<u64> {
+    entry["timestamp"]
         .as_str()
         .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
         .and_then(|at| u64::try_from(at.timestamp_millis()).ok())
-    else {
-        return updates;
-    };
+}
+
+fn stamped(updates: Vec<Value>, entry: &Value) -> Vec<Value> {
+    match recorded(entry) {
+        Some(at) => stamped_at(updates, at),
+        None => updates,
+    }
+}
+
+fn stamped_at(updates: Vec<Value>, at: u64) -> Vec<Value> {
     updates
         .into_iter()
         .map(|mut update| {
@@ -1170,7 +1218,7 @@ impl Source {
                 .rev()
                 .find(|(_, name, _)| name == "AskUserQuestion")
                 .map(|(id, _, input)| (id, input))?,
-            Self::Codex(codex) => codex.asked.as_ref().map(|(id, item)| (id, item))?,
+            Self::Codex(codex) => codex.asked.as_ref().map(|asked| (&asked.id, &asked.item))?,
         };
         Some((id.clone(), pickable(input)?))
     }
@@ -1195,7 +1243,7 @@ impl Source {
                 let (id, item) = codex
                     .asked
                     .as_ref()
-                    .map_or(("", &Value::Null), |(id, item)| (id.as_str(), item));
+                    .map_or(("", &Value::Null), |asked| (asked.id.as_str(), &asked.item));
                 let title = item["questions"][0]["question"].as_str().map_or_else(
                     || "Codex asks a question in the terminal".to_owned(),
                     |question| format!("Answer in the terminal: {question}"),
@@ -1602,7 +1650,7 @@ impl Lens {
             }
             return payloads;
         }
-        let mut payloads = self.settle(false).into_iter().collect::<Vec<_>>();
+        let mut payloads = self.settle(false);
         payloads.push(AgentStreamPayload::SessionReset { restoring: true });
         payloads.extend(updates);
         payloads.push(AgentStreamPayload::SessionSwitched {
@@ -1794,25 +1842,27 @@ impl Lens {
         payloads
     }
 
-    fn settle(&mut self, failed: bool) -> Option<AgentStreamPayload> {
-        let turn = self.turn.take()?;
-        if let Some(message) = self.failed.take() {
-            return Some(AgentStreamPayload::PromptFinished {
-                turn_id: turn.id,
-                outcome: AgentPromptOutcome::Failed { message },
-            });
-        }
-        let stop_reason = if failed || turn.cancelled {
-            "cancelled"
-        } else {
-            "end_turn"
+    fn settle(&mut self, failed: bool) -> Vec<AgentStreamPayload> {
+        let Some(turn) = self.turn.take() else {
+            return Vec::new();
         };
-        Some(AgentStreamPayload::PromptFinished {
-            turn_id: turn.id,
-            outcome: AgentPromptOutcome::Finished {
-                stop_reason: Value::from(stop_reason),
+        let outcome = match self.failed.take() {
+            Some(message) => AgentPromptOutcome::Failed { message },
+            None => AgentPromptOutcome::Finished {
+                stop_reason: Value::from(if failed || turn.cancelled {
+                    "cancelled"
+                } else {
+                    "end_turn"
+                }),
             },
-        })
+        };
+        vec![
+            AgentStreamPayload::PromptFinished {
+                turn_id: turn.id,
+                outcome,
+            },
+            AgentStreamPayload::Activity { busy: false },
+        ]
     }
 
     fn prompt(&mut self, turn_id: u64, prompt: &AgentPrompt) -> Vec<AgentStreamPayload> {
@@ -2086,22 +2136,11 @@ pub(crate) async fn run_lens(spec: LensSpec, channels: RuntimeChannels) -> Resul
     }
 }
 
-fn without_images(mut payload: AgentStreamPayload) -> AgentStreamPayload {
-    if let AgentStreamPayload::Update { update } = &mut payload
-        && let Some(zz) = update
-            .get_mut("_meta")
-            .and_then(|meta| meta.get_mut("zz"))
-            .and_then(Value::as_object_mut)
-    {
-        zz.remove("images");
-    }
-    payload
-}
-
 fn shadow_lens(shadow: &mut Shadow, payloads: &[AgentStreamPayload]) -> Vec<ChatEvent> {
     let now = Instant::now();
     let ready = payloads.iter().find_map(|payload| match payload {
-        AgentStreamPayload::SessionReady { session_id, .. } => Some(session_id.clone()),
+        AgentStreamPayload::SessionReady { session_id, .. }
+        | AgentStreamPayload::SessionSwitched { session_id, .. } => Some(session_id.clone()),
         _ => None,
     });
     for payload in payloads {
@@ -2110,12 +2149,13 @@ fn shadow_lens(shadow: &mut Shadow, payloads: &[AgentStreamPayload]) -> Vec<Chat
                 shadow.turn(&turn::Fact::SessionClosed, None, now);
                 shadow.payload(payload);
             }
-            AgentStreamPayload::SessionReady { .. } => {}
+            AgentStreamPayload::SessionReady { .. }
+            | AgentStreamPayload::SessionSwitched { .. }
+            | AgentStreamPayload::PromptFinished { .. } => {}
             AgentStreamPayload::Activity { busy: true } => {
                 shadow.turn(&turn::Fact::Busy, None, now);
             }
-            AgentStreamPayload::Activity { busy: false }
-            | AgentStreamPayload::PromptFinished { .. } => {
+            AgentStreamPayload::Activity { busy: false } => {
                 shadow.turn(&turn::Fact::Idle, None, now);
             }
             _ => shadow.payload(payload),
@@ -2567,6 +2607,99 @@ mod tests {
             AgentStreamPayload::SessionReset { restoring: true }
         )));
         assert_eq!(texts(&reloaded, "user_message_chunk"), ["keep", "instead"]);
+    }
+
+    #[test]
+    fn the_chat_follows_on_after_a_rewind_reloads_the_transcript() {
+        use zz_protocol::chat::{ChatPhase, ChatView};
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "keep"));
+        claudes.line(&answer("a1", "u1", "kept"));
+        claudes.line(&prompt("u2", Some("a1"), "dropped"));
+        claudes.line(&answer("a2", "u2", "gone"));
+        let mut lens = claudes.lens();
+        let mut shadow = Shadow::recording().attached();
+        shadow_lens(&mut shadow, &lens.open());
+        claudes.line(&prompt("u3", Some("a1"), "instead"));
+        let reloaded = lens.tick();
+        assert!(reloaded.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::SessionSwitched { session_id, .. } if session_id == SESSION
+        )));
+        shadow_lens(&mut shadow, &reloaded);
+        claudes.line(&answer("a3", "u3", "after the rewind"));
+        let after = shadow_lens(&mut shadow, &lens.tick());
+        assert!(
+            after.iter().any(|event| matches!(
+                event,
+                ChatEvent::ItemStarted { body, .. } if body.text == "after the rewind"
+            )),
+            "{after:?}"
+        );
+        let mut view = ChatView::default();
+        for event in &shadow.events {
+            view.apply(event)
+                .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+        }
+        assert!(
+            view.items
+                .values()
+                .any(|item| item.body.text == "instead" && !item.status.is_open())
+        );
+        assert_eq!(view.phase(), ChatPhase::Idle);
+    }
+
+    #[test]
+    fn a_setting_typed_mid_turn_leaves_the_running_turn_alone() {
+        use zz_protocol::chat::{ChatPhase, ChatView, ItemId};
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "hello"));
+        claudes.line(&answer("a1", "u1", "hi"));
+        let mut lens = claudes.lens();
+        let mut shadow = Shadow::recording().attached();
+        shadow_lens(&mut shadow, &lens.open());
+        claudes.record("busy", "");
+        claudes.line(&prompt("u2", Some("a1"), "run it"));
+        claudes.line(&tool_use("a2", "u2", "t1", "sleep 100"));
+        shadow_lens(&mut shadow, &lens.tick());
+        let typed = lens.command(RuntimeCommand::Prompt {
+            turn_id: 5,
+            prompt: AgentPrompt {
+                text: "/model opus".to_owned(),
+                ..AgentPrompt::default()
+            },
+        });
+        assert!(typed.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PromptFinished { turn_id: 5, .. }
+        )));
+        let after = shadow_lens(&mut shadow, &typed);
+        assert!(
+            !after.iter().any(|event| matches!(
+                event,
+                ChatEvent::TurnEnded { .. } | ChatEvent::ItemEnded { .. }
+            )),
+            "{after:?}"
+        );
+        let view = |shadow: &Shadow| {
+            let mut view = ChatView::default();
+            for event in &shadow.events {
+                view.apply(event)
+                    .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+            }
+            view
+        };
+        let running = view(&shadow);
+        assert_eq!(running.phase(), ChatPhase::Running);
+        assert!(
+            running
+                .item(&ItemId::new("t1"))
+                .is_some_and(|tool| tool.status.is_open())
+        );
+        claudes.record("idle", "");
+        claudes.line(&turn_duration("d1", "a2"));
+        shadow_lens(&mut shadow, &lens.tick());
+        assert_eq!(view(&shadow).phase(), ChatPhase::Idle);
     }
 
     #[test]
