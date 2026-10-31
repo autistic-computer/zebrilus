@@ -9,7 +9,7 @@ use ala::{
 use super::{
     arrow_pad::ArrowPad,
     concentric,
-    popover_key::{PopoverKey, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords},
+    popover_key::PopoverKey,
     sticky::{StickyModifier, StickyModifiers},
 };
 use crate::{
@@ -170,62 +170,6 @@ impl KeyRowKey {
             *icon = Some(glyph);
         }
         self
-    }
-}
-
-#[derive(Clone)]
-pub struct ToolKeys {
-    pub arrows: Entity<ArrowPad>,
-    pub control: Entity<PopoverKey>,
-    pub alt: Entity<PopoverKey>,
-    pub prefix: Entity<PopoverKey>,
-    pub scroll: ScrollHandle,
-}
-
-impl ToolKeys {
-    pub fn new(cx: &mut App) -> Self {
-        let scroll = ScrollHandle::new();
-        let latch = |label: &'static str, modifier, items: Vec<PopoverKeyItem>, cx: &mut App| {
-            cx.new(|cx| {
-                PopoverKey::new(label, PopoverKeyTap::Latch(modifier), cx)
-                    .icon(modifier.icon())
-                    .items(items)
-                    .columns(2)
-                    .scrolls(scroll.clone())
-            })
-        };
-        Self {
-            arrows: cx.new(ArrowPad::new),
-            control: latch("ctrl", StickyModifier::Control, control_chords(), cx),
-            alt: latch("alt", StickyModifier::Alt, alt_chords(), cx),
-            prefix: cx.new(|cx| PopoverKey::new("prefix", PopoverKeyTap::Press, cx)),
-            scroll,
-        }
-    }
-
-    pub fn lead(&self) -> KeyRowKey {
-        KeyRowKey::Popover(self.prefix.clone())
-    }
-
-    pub fn row(&self) -> Vec<KeyRowKey> {
-        vec![
-            KeyRowKey::Popover(self.control.clone()),
-            KeyRowKey::Popover(self.alt.clone()),
-            KeyRowKey::tab(),
-            KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
-            KeyRowKey::text("/"),
-            KeyRowKey::text("@"),
-            KeyRowKey::Arrows(self.arrows.clone()),
-            KeyRowKey::Hide,
-        ]
-    }
-
-    pub fn close(&self, cx: &mut App) {
-        for key in [&self.control, &self.alt, &self.prefix] {
-            if key.read(cx).is_open() {
-                key.update(cx, PopoverKey::close);
-            }
-        }
     }
 }
 
@@ -555,10 +499,53 @@ mod tests {
     use ala::{Context, Render, Subscription, TestAppContext, VisualTestContext};
 
     use super::*;
-    use crate::touch::PopoverKeyEvent;
+    use crate::touch::{PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
+
+    struct Keys {
+        arrows: Entity<ArrowPad>,
+        control: Entity<PopoverKey>,
+        alt: Entity<PopoverKey>,
+        lead: Entity<PopoverKey>,
+        scroll: ScrollHandle,
+    }
+
+    impl Keys {
+        fn new(cx: &mut App) -> Self {
+            let scroll = ScrollHandle::new();
+            let latch = |modifier: StickyModifier, label: &'static str, item, cx: &mut App| {
+                cx.new(|cx| {
+                    PopoverKey::new(label, PopoverKeyTap::Latch(modifier), cx)
+                        .icon(modifier.icon())
+                        .items(vec![PopoverKeyItem::new(item, item)])
+                        .columns(2)
+                        .scrolls(scroll.clone())
+                })
+            };
+            Self {
+                arrows: cx.new(ArrowPad::new),
+                control: latch(StickyModifier::Control, "ctrl", "ctrl-c", cx),
+                alt: latch(StickyModifier::Alt, "alt", "alt-b", cx),
+                lead: cx.new(|cx| PopoverKey::new("lead", PopoverKeyTap::Press, cx)),
+                scroll,
+            }
+        }
+
+        fn row(&self) -> Vec<KeyRowKey> {
+            vec![
+                KeyRowKey::Popover(self.control.clone()),
+                KeyRowKey::Popover(self.alt.clone()),
+                KeyRowKey::tab(),
+                KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
+                KeyRowKey::text("/"),
+                KeyRowKey::text("@"),
+                KeyRowKey::Arrows(self.arrows.clone()),
+                KeyRowKey::Hide,
+            ]
+        }
+    }
 
     struct Host {
-        keys: ToolKeys,
+        keys: Keys,
         sent: Rc<RefCell<Vec<String>>>,
         width: Option<ala::Pixels>,
         _press: Subscription,
@@ -577,7 +564,7 @@ mod tests {
                     .when(self.width.is_none(), Styled::right_0)
                     .child(
                         KeyRow::new(self.keys.row())
-                            .lead(self.keys.lead())
+                            .lead(KeyRowKey::Popover(self.keys.lead.clone()))
                             .track_scroll(&self.keys.scroll)
                             .on_key(move |keystroke, _, _| {
                                 sent.borrow_mut().push(keystroke.unparse());
@@ -605,12 +592,12 @@ mod tests {
     ) -> (ala::Entity<Host>, &mut VisualTestContext) {
         cx.update(crate::init);
         let (host, cx) = cx.add_window_view(move |_, cx| {
-            let keys = ToolKeys::new(cx);
+            let keys = Keys::new(cx);
             let sent: Rc<RefCell<Vec<String>>> = Rc::default();
             let pressed = Rc::clone(&sent);
-            let press = cx.subscribe(&keys.prefix, move |_, _, event: &PopoverKeyEvent, _| {
+            let press = cx.subscribe(&keys.lead, move |_, _, event: &PopoverKeyEvent, _| {
                 if *event == PopoverKeyEvent::Press {
-                    pressed.borrow_mut().push("prefix".into());
+                    pressed.borrow_mut().push("lead".into());
                 }
             });
             Host {
@@ -642,9 +629,9 @@ mod tests {
         assert!(cx.update(|_, cx| StickyModifiers::get(cx).is_empty()));
         tap(cx, "key-row-key-5");
         tap(cx, "key-row-key-7");
-        tap(cx, "popover-key-prefix");
+        tap(cx, "popover-key-lead");
         let sent = host.read_with(cx, |host, _| host.sent.borrow().clone());
-        assert_eq!(sent, ["escape", "ctrl-/", "@", "hide", "prefix"]);
+        assert_eq!(sent, ["escape", "ctrl-/", "@", "hide", "lead"]);
         assert!(cx.debug_bounds("popover-key-card").is_none());
     }
 
@@ -687,7 +674,7 @@ mod tests {
     fn keys_share_one_width_in_the_set_order(cx: &mut TestAppContext) {
         let (_, cx) = host(cx);
         let keys = [
-            "popover-key-prefix",
+            "popover-key-lead",
             "popover-key-ctrl",
             "popover-key-alt",
             "key-row-key-2",
@@ -730,15 +717,15 @@ mod tests {
     }
 
     #[ala::test]
-    fn the_prefix_stays_put_while_the_row_scrolls(cx: &mut TestAppContext) {
+    fn the_lead_key_stays_put_while_the_row_scrolls(cx: &mut TestAppContext) {
         let (host, cx) = host_with_width(cx, Some(ala::px(200.0)));
         let scroll = host.read_with(cx, |host, _| host.keys.scroll.clone());
-        let prefix = cx.debug_bounds("popover-key-prefix").expect("prefix");
+        let lead = cx.debug_bounds("popover-key-lead").expect("lead");
         scroll.set_offset(ala::point(-scroll.max_offset().x, ala::px(0.0)));
         redraw(cx);
-        assert_eq!(cx.debug_bounds("popover-key-prefix"), Some(prefix));
+        assert_eq!(cx.debug_bounds("popover-key-lead"), Some(lead));
         let ctrl = cx.debug_bounds("popover-key-ctrl");
-        assert!(ctrl.is_none_or(|ctrl| ctrl.right() <= prefix.right()));
+        assert!(ctrl.is_none_or(|ctrl| ctrl.right() <= lead.right()));
     }
 
     #[ala::test]

@@ -585,7 +585,7 @@ mod tests {
         let mut theme = crate::Theme::default();
         for (value, expected) in [(-1.0, 1.0), (0.5, 1.0), (4.0, 2.0), (f32::NAN, 1.0)] {
             theme.set_contrast(value);
-            assert_close(theme.contrast, expected);
+            assert_close(theme.contrast(), expected);
             assert_close(contrast(), expected);
         }
         theme.set_contrast(1.0);

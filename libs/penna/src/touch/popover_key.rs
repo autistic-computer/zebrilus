@@ -86,37 +86,6 @@ impl PopoverKeyItem {
     }
 }
 
-fn chords(chords: &[(&'static str, &'static str, &'static str)]) -> Vec<PopoverKeyItem> {
-    chords
-        .iter()
-        .map(|(keystroke, cap, label)| PopoverKeyItem::new(*keystroke, *label).cap(*cap))
-        .collect()
-}
-
-pub fn control_chords() -> Vec<PopoverKeyItem> {
-    chords(&[
-        ("ctrl-c", "^C", "Interrupt"),
-        ("ctrl-d", "^D", "End input"),
-        ("ctrl-z", "^Z", "Suspend"),
-        ("ctrl-l", "^L", "Clear"),
-        ("ctrl-r", "^R", "History"),
-        ("ctrl-u", "^U", "Kill line"),
-        ("ctrl-w", "^W", "Kill word"),
-        ("ctrl-k", "^K", "Kill to end"),
-        ("ctrl-a", "^A", "Line start"),
-        ("ctrl-e", "^E", "Line end"),
-    ])
-}
-
-pub fn alt_chords() -> Vec<PopoverKeyItem> {
-    chords(&[
-        ("alt-b", "M-b", "Word back"),
-        ("alt-f", "M-f", "Word ahead"),
-        ("alt-d", "M-d", "Kill word"),
-        ("alt-.", "M-.", "Last arg"),
-    ])
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PopoverKeyTap {
     Latch(StickyModifier),
@@ -599,12 +568,22 @@ mod tests {
         }
     }
 
+    fn items() -> Vec<PopoverKeyItem> {
+        "cdzlruwkae"
+            .chars()
+            .map(|key| {
+                PopoverKeyItem::new(format!("ctrl-{key}"), format!("Item {key}"))
+                    .cap(format!("^{}", key.to_ascii_uppercase()))
+            })
+            .collect()
+    }
+
     fn host(tap: PopoverKeyTap, cx: &mut TestAppContext) -> (Entity<Host>, &mut VisualTestContext) {
         cx.update(crate::init);
         let (host, cx) = cx.add_window_view(move |_, cx| {
             let key = cx.new(|cx| {
                 PopoverKey::new("ctrl", tap, cx)
-                    .items(control_chords())
+                    .items(items())
                     .columns(2)
                     .footer(PopoverKeyItem::new("more", "More").icon(IconName::ChevronRight))
             });

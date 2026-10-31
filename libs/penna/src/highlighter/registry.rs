@@ -104,7 +104,7 @@ mod tests {
     #[test]
     fn registry_contains_the_supported_grammar_set() {
         let registry = LanguageRegistry::singleton();
-        for language in ["json", "markdown", "rust", "tmux", "toml"] {
+        for language in ["json", "markdown", "rust", "toml"] {
             assert!(registry.language(language).is_some(), "{language}");
         }
         assert!(registry.language("javascript").is_none());

@@ -1,19 +1,16 @@
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Icon, IconName, Layer,
-    Sizable as _, StyledExt as _, SurfaceRole, Tone,
-    badge::Badge,
-    h_flex,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Icon, IconName, Layer, Sizable as _,
+    StyledExt as _, SurfaceRole, h_flex,
     input::{Input, InputState},
     list_row, roles, v_flex,
 };
 use ala::{
-    AnimationElement, App, Div, ElementId, Entity, FULL_CORNER_RADIUS, FontWeight, MouseButton,
-    Pixels, SharedString, Stateful, div, prelude::*, px, relative,
+    AnimationElement, App, Div, ElementId, Entity, FULL_CORNER_RADIUS, MouseButton, Pixels,
+    SharedString, Stateful, div, prelude::*, px, relative,
 };
 
 const PICKER_ROW_HEIGHT: Pixels = px(26.0);
 pub const LIST_ROW_HEIGHT: Pixels = px(32.0);
-const HISTORY_ROW_HEIGHT: Pixels = px(52.0);
 
 pub fn outer_radius(layer: &Layer, inset: Pixels) -> Pixels {
     if layer.radius > px(0.0) && layer.radius < FULL_CORNER_RADIUS {
@@ -122,29 +119,11 @@ pub fn picker_footer(cx: &App) -> Div {
 }
 
 pub fn picker_row(id: impl Into<ElementId>, selected: bool, cx: &App) -> Stateful<Div> {
-    sized_picker_row(id, PICKER_ROW_HEIGHT, selected, cx)
-}
-
-fn sized_picker_row(
-    id: impl Into<ElementId>,
-    height: Pixels,
-    selected: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    list_row(id, height, selected, true, cx)
+    list_row(id, PICKER_ROW_HEIGHT, selected, true, cx)
         .w_full()
         .gap_2()
         .px_2p5()
         .cursor_pointer()
-}
-
-pub fn directory_row(
-    id: impl Into<ElementId>,
-    label: impl Into<SharedString>,
-    selected: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    path_row(id, IconName::Folder, label, selected, cx)
 }
 
 pub fn path_row(
@@ -170,67 +149,4 @@ pub fn path_row(
                 .text_size(crate::rems_from_px(12.0))
                 .child(label.into()),
         )
-}
-
-pub fn history_row(
-    id: impl Into<ElementId>,
-    title: impl Into<SharedString>,
-    directory: impl Into<SharedString>,
-    updated_at: Option<SharedString>,
-    selected: bool,
-    current: bool,
-    cx: &App,
-) -> Stateful<Div> {
-    sized_picker_row(id, HISTORY_ROW_HEIGHT, selected, cx).child(
-        v_flex()
-            .flex_1()
-            .min_w_0()
-            .gap(px(2.0))
-            .child(
-                div()
-                    .w_full()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .whitespace_nowrap()
-                    .text_size(crate::rems_from_px(12.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .child(title.into()),
-            )
-            .child(
-                h_flex()
-                    .min_w_0()
-                    .gap_1()
-                    .text_size(crate::rems_from_px(9.0))
-                    .opacity(if selected { 1.0 } else { 0.8 })
-                    .child(
-                        Badge::new(directory)
-                            .small()
-                            .min_w_0()
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .text_size(crate::rems_from_px(9.0)),
-                    )
-                    .when(current, |row| {
-                        row.child(
-                            Badge::new("CURRENT")
-                                .small()
-                                .tone(Tone::Success)
-                                .emphasis(Emphasis::Solid),
-                        )
-                    })
-                    .child(div().flex_1())
-                    .when_some(updated_at, |row, timestamp| {
-                        row.child(
-                            div()
-                                .flex_none()
-                                .max_w(px(112.0))
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .whitespace_nowrap()
-                                .child(timestamp),
-                        )
-                    }),
-            ),
-    )
 }

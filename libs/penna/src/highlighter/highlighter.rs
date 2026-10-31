@@ -1141,11 +1141,6 @@ mod tests {
             ("markdown", "# Editor\n\n`code`\n"),
             ("json", "{\"editor\": true}\n"),
             ("toml", "editor = true\n"),
-            (
-                "tmux",
-                "# Prefix\nunbind C-b\nset -g prefix C-a\nset -g history-limit 10000\n\
-                 set -g default-terminal \"tmux-256color\"\n",
-            ),
         ] {
             let text = Rope::from(source);
             let mut highlighter = SyntaxHighlighter::new(language);

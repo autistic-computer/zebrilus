@@ -762,10 +762,8 @@ mod tests {
         )
         .unwrap();
         let glass = theme.materials.glass.unwrap();
-        let mut kit = Theme {
-            mode: ThemeMode::Light,
-            ..Theme::default()
-        };
+        let mut kit = Theme::default();
+        kit.mode = ThemeMode::Light;
         theme.apply(&mut kit);
         assert_eq!(
             kit.glass,

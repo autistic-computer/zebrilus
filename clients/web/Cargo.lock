@@ -5141,7 +5141,6 @@ dependencies = [
  "tree-sitter-language",
  "tree-sitter-md",
  "tree-sitter-rust",
- "tree-sitter-tmux",
  "tree-sitter-toml-ng",
  "unicode-segmentation",
  "url",

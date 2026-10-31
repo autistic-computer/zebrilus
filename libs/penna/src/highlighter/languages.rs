@@ -9,7 +9,6 @@ pub enum Language {
     Markdown,
     MarkdownInline,
     Rust,
-    Tmux,
     Toml,
 }
 
@@ -27,7 +26,6 @@ impl Language {
             Self::Markdown,
             Self::MarkdownInline,
             Self::Rust,
-            Self::Tmux,
             Self::Toml,
         ]
         .into_iter()
@@ -40,7 +38,6 @@ impl Language {
             Self::Markdown => "markdown",
             Self::MarkdownInline => "markdown_inline",
             Self::Rust => "rust",
-            Self::Tmux => "tmux",
             Self::Toml => "toml",
         }
     }
@@ -56,7 +53,6 @@ impl Language {
             "markdown" | "md" | "mdx" => Some(Self::Markdown),
             "markdown_inline" | "markdown-inline" => Some(Self::MarkdownInline),
             "rust" | "rs" => Some(Self::Rust),
-            "tmux" | "tmux.conf" => Some(Self::Tmux),
             "toml" => Some(Self::Toml),
             _ => None,
         }
@@ -98,12 +94,6 @@ impl Language {
                 tree_sitter_rust::LANGUAGE,
                 include_str!("languages/rust/highlights.scm"),
                 include_str!("languages/rust/injections.scm"),
-                "",
-            ),
-            Self::Tmux => (
-                tree_sitter_tmux::LANGUAGE,
-                tree_sitter_tmux::HIGHLIGHTS_QUERY,
-                "",
                 "",
             ),
             Self::Toml => (

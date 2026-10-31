@@ -28,7 +28,6 @@ tree-sitter = [
     "dep:tree-sitter-json",
     "dep:tree-sitter-md",
     "dep:tree-sitter-rust",
-    "dep:tree-sitter-tmux",
     "dep:tree-sitter-toml-ng",
 ]
 
@@ -48,7 +47,6 @@ tree-sitter-json = { version = "0.24.8", optional = true }
 tree-sitter-language = { version = "0.1.8", optional = true }
 tree-sitter-md = { version = "0.5.3", optional = true }
 tree-sitter-rust = { version = "0.24.2", optional = true }
-tree-sitter-tmux = { version = "0.1.4", optional = true }
 tree-sitter-toml-ng = { version = "0.7.0", optional = true }
 unicode-segmentation = "1.13.3"
 web-time = "1.1.0"

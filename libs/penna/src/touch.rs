@@ -21,13 +21,10 @@ pub use arrow_pad::{ArrowDirection, ArrowPad, ArrowPadEvent, arrow_pad_bubble, r
 pub use dots::{PageDot, page_dots, page_dots_in};
 pub use key_row::{
     KEY_PILL_HEIGHT, KEY_ROW_HEIGHT, KEY_ROW_MARGIN_X, KEY_ROW_MARGIN_Y, KeyRow, KeyRowKey,
-    ToolKeys,
 };
 pub use lift::{Lift, LiftEvent, LiftResponse};
 pub use pager::{Pager, PagerEvent, PagerLayout, PagerResponse};
-pub use popover_key::{
-    PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap, alt_chords, control_chords,
-};
+pub use popover_key::{PopoverKey, PopoverKeyEvent, PopoverKeyItem, PopoverKeyTap};
 pub use press::{
     PressCorners, PressFeedback, instant_press_highlight, press_feedback, press_highlight,
 };

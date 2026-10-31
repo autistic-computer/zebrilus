@@ -37,7 +37,10 @@ use penna::{
     sidebar::{chrome_button, sidebar_footer, sidebar_panel, sidebar_titlebar},
     switch::Switch,
     text::{TextView, TextViewStyle},
-    touch::{ArrowDirection, KeyRow, PageDot, ToolKeys, WhichKeyList, arrow_pad_bubble, page_dots},
+    touch::{
+        ArrowDirection, ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, arrow_pad_bubble,
+        page_dots,
+    },
     v_flex,
     which_key::{WhichKeyCap, WhichKeyHeader, WhichKeyRow, WhichKeyView},
 };
@@ -608,26 +611,25 @@ fn placement() -> PillPlacement {
     PillPlacement::new(Some(px(SCREEN_RADIUS)), px(SAFE_BOTTOM))
 }
 
-fn key_row(keys: &ToolKeys) -> KeyRow {
-    KeyRow::new(keys.row())
-        .lead(keys.lead())
-        .track_scroll(&keys.scroll)
-        .on_key(|_, _, _| {})
-        .on_hide(|_, _| {})
+fn key_row(arrows: &Entity<ArrowPad>) -> KeyRow {
+    KeyRow::new(vec![
+        KeyRowKey::tab(),
+        KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
+        KeyRowKey::Arrows(arrows.clone()),
+    ])
+    .on_key(|_, _, _| {})
 }
 
 struct Phone {
-    keys: ToolKeys,
-    menu: ToolKeys,
+    keys: Entity<ArrowPad>,
+    menu: Entity<ArrowPad>,
 }
 
 impl Phone {
     fn view(_: &mut Window, cx: &mut App) -> AnyView {
-        cx.new(|cx| {
-            let keys = ToolKeys::new(cx);
-            let menu = ToolKeys::new(cx);
-            menu.prefix.update(cx, |key, cx| key.set_armed(true, cx));
-            Self { keys, menu }
+        cx.new(|cx| Self {
+            keys: cx.new(ArrowPad::new),
+            menu: cx.new(ArrowPad::new),
         })
         .into()
     }
