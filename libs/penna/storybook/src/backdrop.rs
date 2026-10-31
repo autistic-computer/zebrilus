@@ -148,7 +148,11 @@ pub const KIT_FLOATING: &[&str] = &[
     "dialogs",
     "sheet",
     "choices/select-open",
+    "feedback/callouts",
+    "feedback/inline-alert",
     "which-key",
+    "compact/hud",
+    "compact/keys",
 ];
 
 pub fn backdrop(kind: Backdrop, cx: &App) -> Option<AnyElement> {
