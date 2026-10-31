@@ -33,24 +33,7 @@ const MORE_STOP: f32 = 0.55;
 const EDGE_SLACK: f32 = 1.0;
 const KEY_GROUP: &str = "key-row-key";
 pub(super) const KEY_SLOP: (f32, f32) = (KEY_GAP / 2.0, (KEY_ROW_HEIGHT - KEY_SIZE) / 2.0);
-const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
-
-fn modifier_icon(modifier: StickyModifier) -> IconName {
-    match (modifier, APPLE) {
-        (StickyModifier::Control, true) => IconName::KeyControl,
-        (StickyModifier::Control, false) => IconName::KeyControlIso,
-        (StickyModifier::Alt, true) => IconName::KeyOption,
-        (StickyModifier::Alt, false) => IconName::KeyAltIso,
-    }
-}
-
-fn tab_icon() -> IconName {
-    if APPLE {
-        IconName::KeyTab
-    } else {
-        IconName::KeyTabIso
-    }
-}
+pub(super) const APPLE: bool = cfg!(any(target_os = "macos", target_os = "ios"));
 
 pub(super) fn keystroke_glyph(keystroke: &Keystroke) -> AnyElement {
     let modifiers = keystroke.modifiers;
@@ -62,8 +45,8 @@ pub(super) fn keystroke_glyph(keystroke: &Keystroke) -> AnyElement {
         key: keystroke.key.clone(),
         key_char: None,
     });
-    let mark = |modifier| {
-        let icon = modifier_icon(modifier);
+    let mark = |modifier: StickyModifier| {
+        let icon = modifier.icon();
         let tight = icon == IconName::KeyControl;
         div()
             .when(tight, |mark| mark.mr(rems_from_px(-3.0)))
@@ -173,6 +156,14 @@ impl KeyRowKey {
         }
     }
 
+    pub fn tab() -> Self {
+        Self::named("tab", "tab").icon(if APPLE {
+            IconName::KeyTab
+        } else {
+            IconName::KeyTabIso
+        })
+    }
+
     #[must_use]
     pub fn icon(mut self, glyph: IconName) -> Self {
         if let Self::Key { icon, .. } = &mut self {
@@ -197,7 +188,7 @@ impl ToolKeys {
         let latch = |label: &'static str, modifier, items: Vec<PopoverKeyItem>, cx: &mut App| {
             cx.new(|cx| {
                 PopoverKey::new(label, PopoverKeyTap::Latch(modifier), cx)
-                    .icon(modifier_icon(modifier))
+                    .icon(modifier.icon())
                     .items(items)
                     .columns(2)
                     .scrolls(scroll.clone())
@@ -220,7 +211,7 @@ impl ToolKeys {
         vec![
             KeyRowKey::Popover(self.control.clone()),
             KeyRowKey::Popover(self.alt.clone()),
-            KeyRowKey::named("tab", "tab").icon(tab_icon()),
+            KeyRowKey::tab(),
             KeyRowKey::named("esc", "escape").icon(IconName::KeyEscape),
             KeyRowKey::text("/"),
             KeyRowKey::text("@"),
@@ -385,7 +376,7 @@ impl KeyRow {
                 Self::cap(
                     index,
                     look,
-                    key_glyph(label.into(), Some(modifier_icon(modifier))),
+                    key_glyph(label.into(), Some(modifier.icon())),
                     cx,
                 )
                 .on_click(move |_, window, cx| {

@@ -1,9 +1,23 @@
 use ala::{App, Keystroke, Modifiers};
 
+use super::key_row::APPLE;
+use crate::IconName;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StickyModifier {
     Control,
     Alt,
+}
+
+impl StickyModifier {
+    pub fn icon(self) -> IconName {
+        match (self, APPLE) {
+            (Self::Control, true) => IconName::KeyControl,
+            (Self::Control, false) => IconName::KeyControlIso,
+            (Self::Alt, true) => IconName::KeyOption,
+            (Self::Alt, false) => IconName::KeyAltIso,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

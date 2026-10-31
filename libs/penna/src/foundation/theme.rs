@@ -292,6 +292,10 @@ impl Theme {
         (self.radius - inset).max(px(0.0))
     }
 
+    pub fn contrast(&self) -> f32 {
+        self.contrast
+    }
+
     pub fn set_contrast(&mut self, value: f32) {
         color::set_contrast(value);
         self.contrast = color::contrast();
