@@ -650,15 +650,15 @@ impl Appearance {
         theme.font_family = family;
         theme.set_contrast(self.contrast);
         cx.set_global(crate::UiZoom(self.zoom));
-        match window {
-            Some(window) => window.set_zoom(self.zoom),
-            None => {
+        if let Some(window) = window {
+            window.set_zoom(self.zoom);
+        } else {
+            let zoom = self.zoom;
+            cx.defer(move |cx| {
                 for window in cx.windows() {
-                    window
-                        .update(cx, |_, window, _| window.set_zoom(self.zoom))
-                        .ok();
+                    window.update(cx, |_, window, _| window.set_zoom(zoom)).ok();
                 }
-            }
+            });
         }
         cx.refresh_windows();
     }
@@ -1319,6 +1319,24 @@ mod tests {
             assert_eq!(crate::UiZoom::get(cx), 1.25);
             assert!(cx.reduce_motion());
         });
+    }
+
+    #[ala::test]
+    fn applying_without_a_window_from_a_window_callback_zooms_that_window(
+        cx: &mut ala::TestAppContext,
+    ) {
+        cx.update(crate::init);
+        let window = cx.add_empty_window();
+        let appearance = Appearance {
+            zoom: 1.5,
+            ..Appearance::default()
+        };
+        window.update(|window, cx| {
+            appearance.apply(&[], None, cx);
+            assert_eq!(window.zoom(), 1.0);
+        });
+        window.run_until_parked();
+        window.update(|window, _| assert_eq!(window.zoom(), 1.5));
     }
 
     #[test]
