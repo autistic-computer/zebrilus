@@ -10,6 +10,7 @@ use zz_protocol::{AgentProvider, BrowserDescriptor, EditorDescriptor, PaneId, Pa
 use zz_ui::{
     navigation::status::{StatusAction, StatusPaneEntry},
     pane::{PaneChrome, PaneDragSource, PaneLens, pane_surface, terminal_pane_header},
+    pane_look::PaneLook,
 };
 
 pub const PANE_CHOICES: [(&str, IconName, &str); 3] = [
@@ -102,7 +103,7 @@ pub fn chrome(active: bool, scrim: bool, gaps: bool, cx: &App) -> PaneChrome {
     PaneChrome::new(radii(gaps, cx), gaps)
         .active(active)
         .dimmed(!active && scrim, crate::pane().inactive)
-        .frame(gaps.then(|| cx.theme().pane_frame(cx.theme().background, active)))
+        .frame(gaps.then(|| PaneLook::global(cx).frame(cx.theme(), cx.theme().background, active)))
 }
 
 pub fn terminal_body(lines: &[(Tone, &'static str)], dimmed: bool, cx: &App) -> ala::Div {

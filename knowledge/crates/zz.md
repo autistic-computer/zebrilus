@@ -302,8 +302,9 @@ per-component plumbing.
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown, tool previews,
   and code blocks match the terminal typeface;
 - `contrast` from `chrome-contrast`, which scales derived colors and survives mode changes;
-- `pane_glow_strength`, `pane_frames` and `pane_margin` from `pane-glow-strength`, `pane-gaps` and
-  `pane-margin`, and the `zz_ui::pip::PipOpacity` global from `pip-background-opacity`.
+- `pane_margin` from `pane-margin`, the `zz_ui::pane_look::PaneLook` global (`glow_strength` and
+  `frames`) from `pane-glow-strength` and `pane-gaps`, and the `zz_ui::pip::PipOpacity` global from
+  `pip-background-opacity`.
 
 `penna::Root::new` sets a window's default corner smoothing to `penna::CORNER_SMOOTHING` (4) and
 its adaptive corner fraction when the window opens; `refresh_current_theme` sets both again on
@@ -441,7 +442,7 @@ built:
 `div()` tree. Flush layouts use draggable 1px split-owned separators; the active pane colors only
 its half of each adjacent segment with a washed foreground accent, including the projected edge at
 nested T-junctions. Gapped layouts draw each pane's frame and fill in glass from
-`Theme::pane_frame`, with no border: the edge is the theme glass's own glint, fresnel and contour,
+`PaneLook::frame`, with no border: the edge is the theme glass's own glint, fresnel and contour,
 the glint and fresnel glow painted in the accent on the active pane, and a hairline stands in
 where the window cannot sample its backdrop or the theme has no glass.
 `pane-inactive-opacity` controls the retained strength of inactive content from `0` to `1`, with

@@ -9,6 +9,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
+use zz_ui::pane_look::pane_color;
 use zz_ui::shell::window_drag_handle;
 
 #[cfg(target_os = "macos")]
@@ -3891,7 +3892,7 @@ impl Render for BrowserView {
         let browser_surface = div()
             .id("browser-content")
             .when(!shows_empty_state, |surface| {
-                surface.bg(cx.theme().pane_color(cx.theme().background))
+                surface.bg(pane_color(cx.theme(), cx.theme().background))
             })
             .relative()
             .flex()

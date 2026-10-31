@@ -19,6 +19,7 @@ use penna::{
 };
 use zz_ui::{
     interface_theme,
+    pane_look::{PaneLook, pane_color},
     settings::{
         SettingEntry, SettingsFold, SettingsScrollColumn, SettingsSection, SettingsSelectItem,
         SettingsStack, StackPosition,
@@ -143,8 +144,10 @@ impl Preferences {
         window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
         Theme::global_mut(cx).set_contrast(contrast);
         cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));
-        Theme::global_mut(cx).pane_glow_strength = self.pane_glow_strength;
-        Theme::global_mut(cx).pane_frames = self.gaps;
+        cx.set_global(PaneLook {
+            frames: self.gaps,
+            glow_strength: self.pane_glow_strength,
+        });
         Theme::global_mut(cx).pane_margin = self.margin();
         let available_fonts = cx.text_system().all_font_names();
         let wanted_font = self.shown_ui_font();
@@ -285,7 +288,10 @@ impl Controls {
                     cx.set_global(zz_ui::pip::PipOpacity(
                         this.preferences.pip_background_opacity,
                     ));
-                    Theme::global_mut(cx).pane_glow_strength = this.preferences.pane_glow_strength;
+                    cx.set_global(PaneLook {
+                        frames: this.preferences.gaps,
+                        glow_strength: this.preferences.pane_glow_strength,
+                    });
                     Theme::global_mut(cx).pane_margin = this.preferences.margin();
                     cx.refresh_windows();
                     cx.notify();
@@ -1289,10 +1295,10 @@ impl ala::RenderOnce for TerminalPreview {
                 .layer(zz_ui::roles::SETTINGS_CARD, penna::PaintState::Rest)
                 .fill
         } else {
-            cx.theme().pane_color(terminal_background(
-                appearance.background,
-                appearance.background_opacity,
-            ))
+            pane_color(
+                cx.theme(),
+                terminal_background(appearance.background, appearance.background_opacity),
+            )
         };
         let font = terminal_font_for_style(&appearance, &cx.theme().mono_font_family, false, false);
         let font_size = px(appearance.font_size_points);

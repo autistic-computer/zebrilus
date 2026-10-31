@@ -61,6 +61,7 @@ use zz_ui::{
         pane_drag_preview, pane_drop_preview, pane_header_frame, pane_split_hit_target,
         pane_split_surface, pane_surface,
     },
+    pane_look::PaneLook,
     settings::{SettingsSection, settings_navigation_button, settings_navigation_group_gap},
     shell::{app_shell_surface, app_workspace_surface, titlebar_over_panes},
 };
@@ -1709,7 +1710,7 @@ impl AppShell {
             } else {
                 px(0.0)
             },
-            theme.pane_edge_width().max(px(1.0)),
+            PaneLook::global(cx).edge_width(theme).max(px(1.0)),
             cx,
         );
         if !self.preferences.animations || cx.reduce_motion() {
@@ -2047,11 +2048,9 @@ impl AppShell {
                     !active && (lens_shown || !matches!(pane.kind, PaneKindSnapshot::Terminal)),
                     self.preferences.pane_inactive_opacity,
                 )
-                .frame(
-                    frame
-                        .framed
-                        .then(|| cx.theme().pane_frame(cx.theme().background, active)),
-                );
+                .frame(frame.framed.then(|| {
+                    PaneLook::global(cx).frame(cx.theme(), cx.theme().background, active)
+                }));
             let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal);
             let mut status_tags = Vec::new();
             if !terminal_pane && let Some(label) = dead_label {

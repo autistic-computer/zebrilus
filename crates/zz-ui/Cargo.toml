@@ -11,7 +11,7 @@ publish = false
 default = []
 agent = ["dep:merman"]
 editor = ["penna/editor"]
-tree-sitter = ["penna/tree-sitter"]
+tree-sitter = ["penna/tree-sitter", "dep:tree-sitter-tmux"]
 
 [dependencies]
 image.workspace = true
@@ -23,6 +23,7 @@ rust-embed = { version = "8.12", features = ["include-exclude"] }
 serde.workspace = true
 serde_json.workspace = true
 smallvec.workspace = true
+tree-sitter-tmux = { version = "0.1.4", optional = true }
 web-time.workspace = true
 ala = { workspace = true, features = ["default"] }
 zz-client.workspace = true

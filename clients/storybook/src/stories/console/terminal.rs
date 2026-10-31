@@ -12,6 +12,7 @@ use zz_terminal::{
     ScrollbarState, SearchStatus, SessionStatus, TerminalAppearance, TerminalDictionary,
     TerminalMode, TerminalPresentation, TerminalViewport, UnderlineStyle,
 };
+use zz_ui::pane_look::pane_color;
 use zz_ui::terminal::{
     RowRenderCache, TerminalImageSource, TerminalRenderInput, terminal_background,
     terminal_font_for_style,
@@ -430,10 +431,10 @@ impl Render for SampleView {
             + px(appearance.padding_left + appearance.padding_right + 1.0);
         let height = cell_height * f32::from(viewport.rows)
             + px(appearance.padding_top + appearance.padding_bottom + 1.0);
-        let background = cx.theme().pane_color(terminal_background(
-            appearance.background,
-            appearance.background_opacity,
-        ));
+        let background = pane_color(
+            cx.theme(),
+            terminal_background(appearance.background, appearance.background_opacity),
+        );
         div()
             .w(width)
             .h(height)

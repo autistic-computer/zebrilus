@@ -21,6 +21,7 @@ use zz_ui::{
         menu_enter, menu_hit_cell, menu_press_buttons,
     },
     pane::{FloatingSurface, PipGrab, moving_pane},
+    pane_look::pane_color,
     pip::{PipCard, PipDrag, PipLayout, PipStage, PipSurface, PipThrow},
 };
 
@@ -437,7 +438,7 @@ impl AppShell {
         let pane = float.pane;
         let snapshot = active.panes.get(&pane);
         let fill = self.terminals.get(&pane).map_or_else(
-            || cx.theme().pane_color(cx.theme().background),
+            || pane_color(cx.theme(), cx.theme().background),
             |terminal| terminal.read(cx).fill(cx),
         );
         let surface = PipSurface::new(("web-float", pane.0), content)

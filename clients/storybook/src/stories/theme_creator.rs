@@ -19,7 +19,7 @@ use penna::{
     sheet::{BottomSheet, bottom_sheet, sheet_close, sheet_row},
     switch::Switch,
     text::{TextView, TextViewStyle},
-    touch::{ArrowDirection, ToolKeys, WhichKeyList, arrow_pad_bubble, page_dots},
+    touch::{ArrowDirection, WhichKeyList, arrow_pad_bubble, page_dots},
     v_flex,
     which_key::WhichKeyView,
 };
@@ -33,7 +33,7 @@ use zz_ui::{
         command_palette_entry, command_palette_row_height, command_palette_section,
         unified_command_palette_input,
     },
-    compact::overview_count,
+    compact::{ToolKeys, overview_count},
     interface_theme::{ThemeModeSetting, pinned_theme_mode},
     pane::{
         FloatingSurface, PaneOverlayCorner, PaneSplitAxis, pane_drag_chip, pane_drop_preview,
@@ -41,6 +41,7 @@ use zz_ui::{
         pane_picker_surface, pane_split_surface, pane_status_badge, pane_surface, pane_sync_badge,
         pane_waiting_state, terminal_mode_indicator,
     },
+    pane_look::PaneLook,
     pip::PipSurface,
     settings::{SettingEntry, SettingsStack, panes_preview::PanesPreview, settings_card_ground},
     shell::{
@@ -1213,7 +1214,7 @@ fn panes(find: &Entity<InputState>, _: &mut Window, cx: &mut App) -> AnyElement 
                 .into_any_element(),
                 pane_drop_preview(
                     cx.theme().pane_radius(),
-                    cx.theme().pane_edge_width().max(px(1.0)),
+                    PaneLook::global(cx).edge_width(cx.theme()).max(px(1.0)),
                     cx,
                 )
                 .top(cx.theme().pane_header_height() + px(6.0))

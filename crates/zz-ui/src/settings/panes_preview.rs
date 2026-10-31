@@ -10,6 +10,7 @@ use crate::{
         pane_header_actions, pane_header_frame, pane_header_icon_button, pane_split_surface,
         pane_surface, terminal_pane_header,
     },
+    pane_look::PaneLook,
 };
 use ala::{
     AnyElement, App, Corners, Hsla, IntoElement, Pixels, RenderOnce, Window, div, prelude::*, px,
@@ -96,7 +97,10 @@ impl RenderOnce for PanesPreview {
                 PaneChrome::new(radii, self.gaps)
                     .active(active)
                     .rim_over_content(covers_frame)
-                    .frame(self.gaps.then(|| cx.theme().pane_frame(backdrop, active))),
+                    .frame(
+                        self.gaps
+                            .then(|| PaneLook::global(cx).frame(cx.theme(), backdrop, active)),
+                    ),
                 cx,
             )
             .min_w_0()

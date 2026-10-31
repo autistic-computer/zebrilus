@@ -11575,6 +11575,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+ "tree-sitter-tmux",
  "url",
  "web-time",
  "zz-client",

@@ -9,6 +9,7 @@ use penna::ActiveTheme as _;
 use zz_ui::agent::{
     AgentEntry, AgentTimeline, AgentTimelineStore, DisclosureKind, TimelineRow, fold_timeline_rows,
 };
+use zz_ui::pane_look::pane_color;
 
 use crate::story::Framed as _;
 use crate::story::states;
@@ -26,7 +27,7 @@ pub fn pane_frame(cx: &App) -> Div {
         .overflow_hidden()
         .rounded(theme.radius)
         .framed(cx)
-        .bg(theme.pane_color(theme.background))
+        .bg(pane_color(theme, theme.background))
 }
 
 pub struct Case {

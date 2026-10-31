@@ -25,6 +25,7 @@ use zz_ui::{
         browser_toolbar_button, compact_tabs_button,
     },
     pane::{PaneDrag, PaneDragSource, pane_header_icon_button},
+    pane_look::PaneLook,
     roles,
 };
 
@@ -1128,7 +1129,7 @@ impl Render for BrowserPane {
             .map(|(_, image)| image);
         let visible = self.visible && self.profile.available();
         let theme = cx.theme();
-        let edge = theme.pane_edge_width();
+        let edge = PaneLook::global(cx).edge_width(theme);
         let radius = (self.radii.bottom_left.min(self.radii.bottom_right) - edge).max(px(0.0));
         let waiting = !self.profile.available();
         let error = tab.error.clone().filter(|_| !waiting);

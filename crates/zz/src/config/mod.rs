@@ -2425,7 +2425,7 @@ mod tests {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
                 assert_f32_eq(chrome_contrast(cx), expected);
-                assert_f32_eq(penna::Theme::global(cx).contrast, expected);
+                assert_f32_eq(penna::Theme::global(cx).contrast(), expected);
                 assert_f32_eq(
                     penna::Colorize::wash(&penna::Theme::global(cx).foreground).a,
                     0.28 * expected,
@@ -2440,7 +2440,7 @@ mod tests {
                 );
                 for mode in [penna::ThemeMode::Dark, penna::ThemeMode::Light] {
                     penna::Theme::change(mode, None, cx);
-                    assert_f32_eq(penna::Theme::global(cx).contrast, expected);
+                    assert_f32_eq(penna::Theme::global(cx).contrast(), expected);
                     assert_f32_eq(
                         penna::Colorize::wash(&penna::Theme::global(cx).foreground).a,
                         0.28 * expected,
@@ -2518,14 +2518,20 @@ mod tests {
             cx.update(|cx| {
                 install_config(Some(&path), Some(load_config(&path)), cx);
                 crate::theme::refresh_current_theme(cx);
-                assert_f32_eq(penna::Theme::global(cx).pane_glow_strength, expected);
+                assert_f32_eq(
+                    zz_ui::pane_look::PaneLook::global(cx).glow_strength,
+                    expected,
+                );
                 assert_eq!(
                     resolved_config(cx).pane_glow_strength.provenance,
                     provenance
                 );
                 for mode in [penna::ThemeMode::Dark, penna::ThemeMode::Light] {
                     penna::Theme::change(mode, None, cx);
-                    assert_f32_eq(penna::Theme::global(cx).pane_glow_strength, expected);
+                    assert_f32_eq(
+                        zz_ui::pane_look::PaneLook::global(cx).glow_strength,
+                        expected,
+                    );
                 }
             });
         }

@@ -8,7 +8,9 @@ use web_time::{Duration, Instant};
 use zz_client::floating::{FloatCells, FloatPlace, PipGeometry};
 use zz_protocol::{PaneBorderLines, PaneId, WindowId, WindowSnapshot};
 
-use crate::{ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, roles};
+use crate::{
+    ActiveTheme as _, Colorize as _, PaintState, StyledExt as _, pane_look::pane_color, roles,
+};
 
 const GROUP: &str = "pip";
 const MARGIN: f32 = zz_client::floating::PIP_MARGIN;
@@ -498,7 +500,7 @@ impl RenderOnce for PipSurface {
         let stashed = self.stashed.is_some();
         let fill = self
             .fill
-            .unwrap_or_else(|| cx.theme().pane_color(cx.theme().background));
+            .unwrap_or_else(|| pane_color(cx.theme(), cx.theme().background));
         let material = pip_material(fill, cx);
         let header = self.header.map(|header| {
             div()

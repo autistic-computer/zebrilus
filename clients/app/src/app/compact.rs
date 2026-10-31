@@ -24,7 +24,7 @@ use penna::{
     sheet::{bottom_sheet, close_sheet},
     touch::{
         ArrowPadEvent, KEY_ROW_HEIGHT, KeyRow, Lift, LiftEvent, PageDot, Pager, PagerEvent,
-        PopoverKey, PopoverKeyEvent, ToolKeys, WhichKeyList, page_dots_in,
+        PopoverKey, PopoverKeyEvent, WhichKeyList, page_dots_in,
     },
     which_key::{WhichKeyCap, WhichKeyRow},
 };
@@ -32,7 +32,7 @@ use web_time::Instant;
 use zz_client::StatusBarModel;
 use zz_protocol::{InputMessage, PaneId, PaneKindSnapshot, WindowId};
 use zz_terminal::KeyAction;
-use zz_ui::{command::tmux_keystroke, roles};
+use zz_ui::{command::tmux_keystroke, compact::ToolKeys, roles};
 
 use super::AppShell;
 use crate::terminal::{TerminalDisplayPreferences, TerminalText};
@@ -806,7 +806,7 @@ impl AppShell {
                     );
                     browser.set_pill(reserve, hole, cx);
                 });
-                background = cx.theme().pane_color(cx.theme().background);
+                background = zz_ui::pane_look::pane_color(cx.theme(), cx.theme().background);
                 if can_focus && self.focused_pane != Some(pane_id) {
                     browser.read(cx).focus_handle(cx).focus(window, cx);
                     self.focused_pane = Some(pane_id);

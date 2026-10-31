@@ -15,6 +15,7 @@ use zz_ui::{
         pane_waiting_state, terminal_link_popup, terminal_mode_indicator, terminal_search_prompt,
         terminal_status_popup,
     },
+    pane_look::PaneLook,
     pip::PipSurface,
     settings::panes_preview::PanesPreview,
 };
@@ -717,7 +718,7 @@ fn drag_and_drop(_: &mut Window, cx: &mut App) -> AnyElement {
         .child(
             pane_drop_preview(
                 cx.theme().pane_radius(),
-                cx.theme().pane_edge_width().max(px(1.0)),
+                PaneLook::global(cx).edge_width(cx.theme()).max(px(1.0)),
                 cx,
             )
             .top(px(pane.margin))

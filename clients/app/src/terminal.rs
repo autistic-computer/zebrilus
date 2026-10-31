@@ -35,6 +35,7 @@ use zz_ui::{
         PaneOverlayCorner, pane_overlay_stack, pane_status_badge, pane_sync_badge,
         pane_unzoom_control, terminal_link_popup, terminal_mode_indicator, terminal_status_popup,
     },
+    pane_look::pane_color,
     terminal::{
         FindBarAction, GridSize, PaintState, RowRenderCache, TerminalRenderInput,
         cursor_should_blink, selection_autoscroll_lines, terminal_font_for_style,
@@ -461,7 +462,7 @@ impl TerminalPane {
                 )
             },
         );
-        cx.theme().pane_color(background)
+        pane_color(cx.theme(), background)
     }
 
     fn observe_image_hover(&mut self, uri: Option<Arc<str>>, cx: &mut Context<Self>) {

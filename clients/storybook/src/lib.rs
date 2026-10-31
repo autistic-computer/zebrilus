@@ -136,10 +136,11 @@ fn apply(knobs: &Knobs, cx: &mut App) {
     let pane = PaneKnobs::of(knobs);
     cx.set_global(zz_ui::program::ProgramColors(knobs.flag("program-colors")));
     cx.set_global(zz_ui::pip::PipOpacity(pane.pip));
-    let theme = penna::Theme::global_mut(cx);
-    theme.pane_glow_strength = pane.glow;
-    theme.pane_frames = pane.gaps;
-    theme.pane_margin = px(if pane.gaps { pane.margin } else { 0.0 });
+    cx.set_global(zz_ui::pane_look::PaneLook {
+        frames: pane.gaps,
+        glow_strength: pane.glow,
+    });
+    penna::Theme::global_mut(cx).pane_margin = px(if pane.gaps { pane.margin } else { 0.0 });
 }
 
 #[cfg(target_family = "wasm")]

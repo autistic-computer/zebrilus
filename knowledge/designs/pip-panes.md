@@ -39,7 +39,7 @@ timestamp: 2026-10-26T00:00:00-03:00
 
 # Look
 
-`PipSurface` (`crates/zz-ui/src/pip.rs`) is the card: the pane's colour (`Theme::pane_color`, a
+`PipSurface` (`crates/zz-ui/src/pip.rs`) is the card: the pane's colour (`zz_ui::pane_look::pane_color`, a
 terminal's background over the window) laid at `pip-background-opacity` (the
 `zz_ui::pip::PipOpacity` global, 80% when unset) over a frost of what is under it
 (`pip_material`: the theme's glass in a glass theme, a 24 px blur otherwise; a renderer that

@@ -7,6 +7,7 @@ use zz_terminal::{
     SessionStatus, TerminalAppearance, TerminalColorScheme, TerminalViewport, UnderlineStyle,
     apply_appearance_overrides,
 };
+use zz_ui::pane_look::pane_color;
 use zz_ui::terminal::{
     RowRenderCache, TerminalRenderInput, cursor_should_blink, terminal_background,
 };
@@ -122,10 +123,10 @@ impl Render for TerminalPreview {
         let cursor_visible = self.cursor_visible;
         #[cfg(test)]
         let painted_geometry = Rc::clone(&self.painted_geometry);
-        let background = cx.theme().pane_color(terminal_background(
-            appearance.background,
-            appearance.background_opacity,
-        ));
+        let background = pane_color(
+            cx.theme(),
+            terminal_background(appearance.background, appearance.background_opacity),
+        );
         let font = terminal_font(&appearance);
         let font_size = terminal_font_size(&appearance);
         let line_height = terminal_line_height(&appearance);

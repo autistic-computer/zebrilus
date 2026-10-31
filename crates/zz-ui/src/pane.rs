@@ -3,6 +3,7 @@ use crate::{
     Icon, IconName, InteractiveSurfaceExt as _, Layer, PaintState, Selectable as _, Sizable as _,
     StyledExt as _, Surface, Tone,
     button::{Button, ButtonVariants as _},
+    pane_look::PaneLook,
     roles,
 };
 use ala::{
@@ -544,7 +545,7 @@ pub fn pane_surface(
                 surface.child(pane_frame_hairline(
                     chrome.radii,
                     frame.glint_width,
-                    theme.pane_edge_color(chrome.active),
+                    PaneLook::global(cx).edge_color(theme, chrome.active),
                     !glass,
                 ))
             },

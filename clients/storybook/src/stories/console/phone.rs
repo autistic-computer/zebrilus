@@ -15,8 +15,8 @@ use penna::{
     },
     settings::large_title,
     touch::{
-        ArrowPad, KEY_ROW_HEIGHT, KeyRow, PageDot, PopoverKey, PopoverKeyTap, ToolKeys,
-        WhichKeyList, page_dots,
+        ArrowPad, KEY_ROW_HEIGHT, KeyRow, PageDot, PopoverKey, PopoverKeyTap, WhichKeyList,
+        page_dots,
     },
     v_flex,
     which_key::WhichKeyRow,
@@ -24,7 +24,7 @@ use penna::{
 use zz_protocol::AgentProvider;
 use zz_ui::{
     compact::{
-        HostState, host_tile, host_tile_line, mini_pane, overview_host_empty,
+        HostState, ToolKeys, host_tile, host_tile_line, mini_pane, overview_host_empty,
         overview_session_heading, window_layout, window_span, window_tile,
     },
     pane::agent_provider_icon,

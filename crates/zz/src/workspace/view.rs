@@ -53,6 +53,7 @@ use zz_ui::{
         pane_split_hit_target, pane_split_slot, pane_split_surface, pane_surface, pane_sync_badge,
         pane_unzoom_control, pane_waiting_state, terminal_pane_header,
     },
+    pane_look::{PaneLook, pane_color},
     shell::{app_connection_state, app_workspace_surface},
 };
 
@@ -3320,7 +3321,7 @@ impl AppView {
     fn pane_drop_preview_element(&self, drag: &PaneDragState, cx: &App) -> Option<AnyElement> {
         let preview = drag.preview?;
         let radius = config::pane_content_radii(cx, WindowCorners::NONE).top_left;
-        let border = cx.theme().pane_edge_width().max(px(1.0));
+        let border = PaneLook::global(cx).edge_width(cx.theme()).max(px(1.0));
         let rendered = self.pane_drop_preview.clone();
         Some(
             pane_drop_preview(radius, border, cx)
@@ -3568,8 +3569,11 @@ impl AppView {
                         .dimmed(surface_dimmed, inactive_opacity)
                         .rim_over_content(covers_frame)
                         .frame(gaps.then(|| {
-                            cx.theme()
-                                .pane_frame(crate::theme::chrome_background(cx), active)
+                            PaneLook::global(cx).frame(
+                                cx.theme(),
+                                crate::theme::chrome_background(cx),
+                                active,
+                            )
                         })),
                     cx,
                 )
@@ -3968,7 +3972,7 @@ impl AppView {
             let own_header =
                 snapshot.is_some_and(|pane| matches!(pane.kind, PaneKindSnapshot::Browser(_)));
             let fill = self.terminals.get(&pane).map_or_else(
-                || cx.theme().pane_color(cx.theme().background),
+                || pane_color(cx.theme(), cx.theme().background),
                 |terminal| terminal.read(cx).fill(cx),
             );
             let surface = PipSurface::new(("floating-pane", pane.0), content)

@@ -153,7 +153,7 @@ materials decide what those look like, and the theme can change any role by id. 
    with the pane's own color, its rim the theme's glass as the theme defines it (glint width,
    specular, fresnel, edge, noise) and its corners the theme radius plus 3.5
    (`Theme::pane_radius()`). A theme without glass (Default) draws a hairline the outline's width
-   instead (`Theme::pane_edge_width()`), none when the outline is 0. The
+   instead (`zz_ui::pane_look::PaneLook::edge_width`), none when the outline is 0. The
    continuous app background sits beneath both pane and shadow. Flush panes have no
    outer shadow. Only shared divider segments touching the active flush pane use the accent
    color; exterior edges stay unoutlined. The settings preview follows the same rule.
@@ -162,9 +162,9 @@ materials decide what those look like, and the theme can change any role by id. 
    its small 2px control shadow. Circular and fully rounded surfaces retain circular shadows.
 
    The active gapped pane shows focus through its fill and rim:
-   `Theme::pane_frame` washes its fill toward white (5% in dark, 30% in light) and veils the other
+   `PaneLook::frame` washes its fill toward white (5% in dark, 30% in light) and veils the other
    panes' fills toward black (18% in dark, 5% in light), and the others' rims, the glass glint or
-   the hairline without glass (`Theme::pane_edge_color`), show at 70%. Their content dims by
+   the hairline without glass (`PaneLook::edge_color`), show at 70%. Their content dims by
    `pane-inactive-opacity` as before. Settings > Panes > Selected pane contrast scales all of it
    from 0–200%; 0 draws the active pane like the others. `pane-glow-strength` stores the factor
    from 0–2, defaulting to 1. It is the draw the pane already makes, with no layer of its own.
@@ -433,8 +433,9 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
   font even under a theme with its own), else the theme's font, else the system UI font;
 - `mono_font_family` from the terminal's resolved primary family, so Agent Markdown and code blocks
   match the terminal typeface;
-- `theme.contrast` from `chrome-contrast`, preserved across the same refreshes;
-- the pane glow, gaps and margin from `pane-glow-strength`, `pane-gaps` and `pane-margin`.
+- the contrast (`Theme::set_contrast`) from `chrome-contrast`, preserved across the same refreshes;
+- the pane glow and gaps (the `zz_ui::pane_look::PaneLook` global) from `pane-glow-strength` and
+  `pane-gaps`, and the margin from `pane-margin`.
 
 The thin clients keep the selected theme id, their own saved themes and their overrides in their
 preferences, and `Preferences::apply` activates `Preferences::shown_theme()` (the theme with the

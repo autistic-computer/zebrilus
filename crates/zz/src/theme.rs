@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ala::{App, Entity, Global, Hsla, SharedString, Window};
 use penna::{Theme, ThemeMode, interface_theme::InterfaceTheme};
 use zz_terminal::TerminalAppearance;
+use zz_ui::pane_look::PaneLook;
 
 use crate::{config, mux::client::MuxClient};
 
@@ -118,10 +119,13 @@ fn apply_zz_overrides(active: &InterfaceTheme, cx: &mut App) {
         .unwrap_or_else(|| ala::Font::default().family);
     let chrome_contrast = config::chrome_contrast(cx);
     let pip_opacity = config::pip_background_opacity(cx);
-    let pane_glow_strength = config::resolved_config(cx).pane_glow_strength.value;
-    let pane_frames = config::pane_gaps(cx);
+    let pane_look = PaneLook {
+        frames: config::pane_gaps(cx),
+        glow_strength: config::resolved_config(cx).pane_glow_strength.value,
+    };
     let pane_margin = config::pane_margin(cx);
     cx.set_global(zz_ui::pip::PipOpacity(pip_opacity));
+    cx.set_global(pane_look);
     let theme = Theme::global_mut(cx);
 
     theme.font_family = ui_font_family;
@@ -130,8 +134,6 @@ fn apply_zz_overrides(active: &InterfaceTheme, cx: &mut App) {
     }
 
     theme.set_contrast(chrome_contrast);
-    theme.pane_glow_strength = pane_glow_strength;
-    theme.pane_frames = pane_frames;
     theme.pane_margin = pane_margin;
 }
 
@@ -306,10 +308,11 @@ mod tests {
                 cx.set_global(config);
                 refresh_current_theme(cx);
                 let theme = Theme::global(cx);
-                assert_eq!(theme.pane_frames, gaps, "{id} with gaps {gaps}");
+                let look = PaneLook::global(cx);
+                assert_eq!(look.frames, gaps, "{id} with gaps {gaps}");
                 let outlined = theme.style(zz_ui::roles::PANE).outline;
                 assert_eq!(
-                    theme.pane_edge_width(),
+                    look.edge_width(theme),
                     if gaps && outlined {
                         theme.outline
                     } else {
@@ -330,7 +333,7 @@ mod tests {
 
             let theme = Theme::global(cx);
             assert_alpha(theme.background, 0.4);
-            assert_alpha(theme.pane_color(theme.background), 1.0);
+            assert_alpha(zz_ui::pane_look::pane_color(theme, theme.background), 1.0);
         });
     }
 

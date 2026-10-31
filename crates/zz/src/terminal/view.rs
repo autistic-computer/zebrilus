@@ -41,6 +41,7 @@ use zz_ui::{
         pane_unzoom_control, terminal_link_popup, terminal_mode_indicator as terminal_mode_tag,
         terminal_status_popup,
     },
+    pane_look::pane_color,
     terminal::FindBarAction,
 };
 
@@ -1070,10 +1071,13 @@ impl TerminalView {
     }
 
     pub(crate) fn fill(&self, cx: &App) -> Hsla {
-        cx.theme().pane_color(terminal_background(
-            self.retained.read().viewport.background,
-            self.render_appearance.source.background_opacity,
-        ))
+        pane_color(
+            cx.theme(),
+            terminal_background(
+                self.retained.read().viewport.background,
+                self.render_appearance.source.background_opacity,
+            ),
+        )
     }
 
     pub(crate) fn local_scroll_target(&self) -> Option<u32> {

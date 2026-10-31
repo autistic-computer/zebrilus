@@ -89,6 +89,6 @@ page, tree rows, menu items, which-key rows, and key row keys. `yield_back_swipe
 horizontal scroller that keeps a rightward pan while it can still scroll back, since `swipe_back`
 now takes a pan that starts anywhere on the page. Its tool keys share one gesture: a tap does the key's own job, and a
 hold or a slide raises a card above it, where releasing on an item picks it. `ArrowPad` is the
-direction card and repeats while held; `PopoverKey` is a menu or chord grid (`ToolKeys` builds the
-ctrl, alt, and prefix set). A long press released in place leaves the card open for taps. Colors
-come from the theme; nothing here depends on a platform.
+direction card and repeats while held; `PopoverKey` is a menu or chord grid (zz-ui's
+`compact::ToolKeys` builds the ctrl, alt, and prefix set). A long press released in place leaves the
+card open for taps. Colors come from the theme; nothing here depends on a platform.

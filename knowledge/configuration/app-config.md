@@ -459,10 +459,10 @@ the `zz_ui::pip::PipOpacity` global, which `pip_material` reads. Panes themselve
 fill: the window shows through them, and a browser page, blank, loading and error backgrounds
 stay opaque.
 
-With gaps the pane frame owns the single fill (`Theme::pane_frames`, set from `pane-gaps`).
-`Theme::pane_background` returns zero alpha, so content roots paint nothing under the frame, and
-`Theme::pane_frame(fill, plane, active)` gives the frame the pane's own color over the window
-plane. Under a theme with glass, a pane whose role takes glass draws the frame in the theme's
+With gaps the pane frame owns the single fill (`PaneLook::frames` in the
+`zz_ui::pane_look::PaneLook` global, set from `pane-gaps`). Content roots paint nothing under the
+frame, and `PaneLook::frame(theme, plane, active)` gives the frame the pane's own color over the
+window plane. Under a theme with glass, a pane whose role takes glass draws the frame in the theme's
 glass with blur, refraction and dispersion off: tiled panes sit on the flat app background, so
 there is nothing to frost. On an opaque window the tint is solid and the glass draws in place with
 no backdrop copy, costing about what a bordered fill does. The glass edge (glint, fresnel, thin
@@ -472,7 +472,7 @@ the active pane: its tint is washed toward white and the other panes' tints are 
 black, their glint dimmed to 70%, all scaled by `pane-glow-strength` (see UI conventions). Under a
 theme without glass (Default) the frame is a
 plain fill at the pane opacity with an even line over the content, the outline width wide, in the
-divider color, dimmer on the other panes (`Theme::pane_edge_color`), because a lit glass edge there drew a bright top
+divider color, dimmer on the other panes (`PaneLook::edge_color`), because a lit glass edge there drew a bright top
 and a dark band along the bottom that differed from pane to pane; with no outlines there is no
 line. A line the glass glint's width stands in for the glass edge where the window cannot sample
 its backdrop (WebGL, DirectX), since glass paints only its fill there. A content root that paints
@@ -481,7 +481,7 @@ The iPad browser's page is a native web view laid over everything ala draws, so 
 inside the frame by the pane edge width on its sides and bottom, with its corners eased by the same
 amount, and the pane's root paints the pane background like every other pane.
 Floating panes take the theme's full glass like every popover. Settings previews that are not
-inside a frame use `Theme::pane_color`.
+inside a frame use `zz_ui::pane_look::pane_color`.
 
 The agent lens surface uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
 the `agent.composer` field role), so at rest it draws what the theme gives that role, a soft wash
@@ -841,8 +841,8 @@ accent and the tint stay.
 Terminal reads saved appearance entries into its controls and writes edits back through the
 bounded, comment-preserving `zz/config` writer. Multiplexer mounts the native rope-backed
 `CodeEditor` for `zz/mux.conf` with line numbers disabled, 12px monospace text, tmux-grammar
-highlighting (`tree-sitter-tmux`, upstream's own `highlights.scm`), and a deliberately square 2px-
-inset frame . a file surface, not a control. Save uses the
+highlighting (`tree-sitter-tmux`, upstream's own `highlights.scm`, registered by `zz_ui::init`),
+and a deliberately square 2px-inset frame . a file surface, not a control. Save uses the
 1 MiB bounded atomic writer; a clean editor reloads when entered, while unsaved text is retained. A
 successful mux save asks the daemon to `reload-config`.
 
