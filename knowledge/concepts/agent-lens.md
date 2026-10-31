@@ -161,7 +161,9 @@ lens, from typing in the terminal, or from a peer message.
   with an answered record instead of a user bubble. A prompt typed in the terminal, `turn_aborted`,
   or Stop while a turn runs drop an unanswered question (recorded with no answer); the composer
   offers no Stop once the turn is over. While it is open the lens refuses prompts and steers, so
-  they cannot land in the overlay as option picks. A plain `send_user_message_async` message stays
+  they cannot land in the overlay as option picks, and holds a model or effort pick until the
+  question is answered. A question recorded before the running Codex process started is ignored,
+  since its overlay died with the old process. A plain `send_user_message_async` message stays
   text.
 
 # Slash commands
