@@ -2457,6 +2457,10 @@ mod completion_tests {
                 floats: false,
                 chat: zz_ui::agent::chat::ChatPane::default(),
                 chat_inline: false,
+                terminal: None,
+                sheet: None,
+                refocus: false,
+                lens_height: Rc::default(),
                 _subscriptions: Vec::new(),
             }
         });
@@ -2546,6 +2550,10 @@ mod completion_tests {
                 floats: false,
                 chat: zz_ui::agent::chat::ChatPane::default(),
                 chat_inline: false,
+                terminal: None,
+                sheet: None,
+                refocus: false,
+                lens_height: Rc::default(),
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);
