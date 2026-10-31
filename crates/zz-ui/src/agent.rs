@@ -34,10 +34,10 @@ use crate::{
     v_flex,
 };
 use ala::{
-    AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, EntityId, FollowMode,
-    FontWeight, Global, Hsla, Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior,
-    ListState, ObjectFit, Pixels, RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas,
-    div, img, list, prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, FollowMode, FontWeight,
+    Global, Hsla, Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior, ListState,
+    ObjectFit, Pixels, RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas, div, img,
+    list, prelude::*, px, relative,
 };
 use parking_lot::RwLock;
 use presentation::{spinner, spinner_phase};
@@ -2288,14 +2288,6 @@ fn markdown_view_with_extensions(
 ) -> AgentMarkdownView {
     let truncated = markdown.is_truncated();
     let full_source = markdown.clone();
-    let style = TextViewStyle {
-        highlight_theme: Arc::clone(&cx.theme().highlight_theme),
-        is_dark: cx.theme().is_dark(),
-        ..TextViewStyle::default()
-    }
-    .code_role(crate::roles::CODE)
-    .figure_role(crate::roles::FIGURE);
-
     let (state, extensions, streaming, owner) = store.update(cx, |store, cx| {
         (
             store.markdown(id, slot, markdown, cx),
@@ -2307,12 +2299,36 @@ fn markdown_view_with_extensions(
     AgentMarkdownView {
         state,
         extensions,
-        style,
         streaming,
         owner,
         full_source: (!assistant).then_some(full_source),
         truncated,
     }
+}
+
+fn agent_markdown_style(cx: &App) -> TextViewStyle {
+    TextViewStyle {
+        highlight_theme: Arc::clone(&cx.theme().highlight_theme),
+        is_dark: cx.theme().is_dark(),
+        ..TextViewStyle::default()
+    }
+    .code_role(crate::roles::CODE)
+    .figure_role(crate::roles::FIGURE)
+}
+
+pub(crate) fn agent_text_view(
+    text: TextView,
+    scope: u64,
+    owner: Option<u64>,
+    cx: &App,
+) -> TextView {
+    text.style(agent_markdown_style(cx))
+        .code_block_actions(move |code_block, window, cx| {
+            agent_code_block_chrome(code_block, scope, window, cx)
+        })
+        .code_block_body(move |code_block, window, cx| {
+            agent_code_block_body(code_block, scope, owner, window, cx)
+        })
 }
 
 fn resolve_workspace_link(cwd: Option<&Path>, url: &str) -> Option<String> {
@@ -2357,7 +2373,6 @@ fn file_url(_path: &Path) -> Option<String> {
 struct AgentMarkdownView {
     state: Entity<TextViewState>,
     extensions: MarkdownExtensions,
-    style: TextViewStyle,
     streaming: bool,
     owner: Option<u64>,
     full_source: Option<AgentMarkdown>,
@@ -2365,25 +2380,22 @@ struct AgentMarkdownView {
 }
 
 impl ala::RenderOnce for AgentMarkdownView {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
-        let owner = self.owner;
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let state_id = self.state.entity_id();
-        let text = TextView::new(&self.state)
-            .style(self.style)
-            .max_w_full()
-            .min_w_0()
-            .selectable(true)
-            .streaming(self.streaming)
-            .code_block_actions(move |code_block, window, cx| {
-                agent_code_block_chrome(code_block, state_id, window, cx)
-            })
-            .code_block_body(move |code_block, window, cx| {
-                agent_code_block_body(code_block, state_id, owner, window, cx)
-            })
-            .markdown_extensions(self.extensions)
-            .when(self.truncated, |text| {
-                text.scrollable(true).h(px(MARKDOWN_PREVIEW_HEIGHT))
-            });
+        let text = agent_text_view(
+            TextView::new(&self.state),
+            state_id.as_u64(),
+            self.owner,
+            cx,
+        )
+        .max_w_full()
+        .min_w_0()
+        .selectable(true)
+        .streaming(self.streaming)
+        .markdown_extensions(self.extensions)
+        .when(self.truncated, |text| {
+            text.scrollable(true).h(px(MARKDOWN_PREVIEW_HEIGHT))
+        });
         v_flex().w_full().min_w_0().gap_2().child(text).when_some(
             self.truncated.then_some(self.full_source).flatten(),
             move |this, source| {
@@ -2481,9 +2493,9 @@ fn render_image_bytes(image: &RenderImage) -> usize {
     usize::try_from(size.width.0).unwrap_or(0) * usize::try_from(size.height.0).unwrap_or(0) * 4
 }
 
-fn html_block_id(state: EntityId, code_block: &CodeBlock) -> u64 {
+fn html_block_id(scope: u64, code_block: &CodeBlock) -> u64 {
     let mut hasher = DefaultHasher::new();
-    state.hash(&mut hasher);
+    scope.hash(&mut hasher);
     code_block.span.map(|span| span.start).hash(&mut hasher);
     code_block.code().hash(&mut hasher);
     hasher.finish()
@@ -2695,7 +2707,7 @@ impl HtmlPreviewState {
 
 fn agent_code_block_body(
     code_block: &CodeBlock,
-    state_id: EntityId,
+    scope: u64,
     owner: Option<u64>,
     window: &mut Window,
     cx: &mut App,
@@ -2703,7 +2715,7 @@ fn agent_code_block_body(
     let language = code_block_language(code_block.lang());
     let code = code_block.code();
     let visual = previews_by_default(code_block);
-    let block = html_block_id(state_id, code_block);
+    let block = html_block_id(scope, code_block);
     if !previews_html(&language, cx) || !html_preview_shown(block, visual, cx) {
         return None;
     }
@@ -2849,7 +2861,7 @@ fn agent_code_block_body(
 
 fn agent_code_block_chrome(
     code_block: &CodeBlock,
-    state_id: EntityId,
+    scope: u64,
     _window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
@@ -2864,7 +2876,7 @@ fn agent_code_block_chrome(
         })
         .flatten();
     let visual = previews_by_default(code_block);
-    let block = html_block_id(state_id, code_block);
+    let block = html_block_id(scope, code_block);
     let preview = previews_html(&language, cx).then(|| html_preview_shown(block, visual, cx));
     let page = code.clone();
     let ground = cx.theme().ground_of(crate::roles::CODE);
@@ -3040,18 +3052,9 @@ impl MarkdownPlugin for RichMarkdownPlugin {
         state.update(cx, |state, cx| {
             state.synchronize_markdown(&source.source, false, cx);
         });
-        let style = TextViewStyle {
-            highlight_theme: Arc::clone(&cx.theme().highlight_theme),
-            is_dark: cx.theme().is_dark(),
-            ..TextViewStyle::default()
-        }
-        .code_role(crate::roles::CODE)
-        .figure_role(crate::roles::FIGURE);
-
         div().w_full().min_w_0().child(AgentMarkdownView {
             state,
             extensions: standard_markdown_extensions(),
-            style,
             streaming: false,
             owner: None,
             full_source: None,
@@ -3284,11 +3287,11 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
             .into_any_element(),
     };
 
-    let figure = cx.theme().ground_of(crate::roles::FIGURE);
+    let card = cx.theme().ground_of(crate::roles::CODE);
     v_flex()
         .id(("agent-figure", source_offset))
         .w_full()
-        .surface(crate::roles::FIGURE, cx)
+        .surface(crate::roles::CODE, cx)
         .overflow_hidden()
         .child(
             h_flex()
@@ -3303,7 +3306,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                 .child(div().flex_1().child(kind.label()))
                 .child(message_action(
                     Button::compact_icon(("agent-mermaid-copy", source_offset), IconName::Copy)
-                        .on(figure)
+                        .on(card)
                         .tooltip("Copy source")
                         .on_click(move |_, _, cx| {
                             cx.write_to_clipboard(ClipboardItem::new_string(
@@ -3318,7 +3321,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                             ("agent-mermaid-preview", source_offset),
                             IconName::WindowMaximize,
                         )
-                        .on(figure)
+                        .on(card)
                         .tooltip("Open full diagram")
                         .on_click(move |_, window, cx| {
                             open_render_image_preview(Arc::clone(&image), window, cx);
@@ -3332,7 +3335,6 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
 
 #[derive(Clone)]
 struct MermaidTheme {
-    background: String,
     svg_css: String,
     config: merman::MermaidConfig,
 }
@@ -3347,7 +3349,6 @@ impl MermaidTheme {
     }
 
     fn new(colors: MermaidThemeColors, font_family: &str, dark: bool) -> Self {
-        let background = css_color(colors.background);
         let surface = css_color(colors.surface);
         let muted = css_color(colors.muted);
         let foreground = css_color(colors.foreground);
@@ -3363,13 +3364,13 @@ impl MermaidTheme {
         let danger_foreground = css_color(colors.danger_foreground);
         let font_family = mermaid_font_family(font_family);
         let mut theme_variables: serde_json::Map<String, serde_json::Value> = [
-            ("background", background.as_str()),
+            ("background", surface.as_str()),
             ("primaryColor", surface.as_str()),
             ("primaryTextColor", foreground.as_str()),
             ("primaryBorderColor", border.as_str()),
             ("secondaryColor", muted.as_str()),
             ("secondaryTextColor", foreground.as_str()),
-            ("tertiaryColor", background.as_str()),
+            ("tertiaryColor", surface.as_str()),
             ("tertiaryTextColor", foreground.as_str()),
             ("mainBkg", surface.as_str()),
             ("nodeBorder", border.as_str()),
@@ -3377,7 +3378,7 @@ impl MermaidTheme {
             ("lineColor", primary.as_str()),
             ("textColor", foreground.as_str()),
             ("titleColor", foreground.as_str()),
-            ("edgeLabelBackground", background.as_str()),
+            ("edgeLabelBackground", surface.as_str()),
             ("clusterBkg", muted.as_str()),
             ("clusterBorder", border.as_str()),
             ("noteBkgColor", surface.as_str()),
@@ -3440,7 +3441,7 @@ impl MermaidTheme {
         theme_variables.insert(
             "xyChart".to_owned(),
             serde_json::json!({
-                "backgroundColor": &background,
+                "backgroundColor": "transparent",
                 "titleColor": &foreground,
                 "xAxisTitleColor": &foreground,
                 "xAxisLabelColor": &foreground,
@@ -3480,7 +3481,6 @@ impl MermaidTheme {
         }));
         let svg_css = mermaid_svg_theme_css(MermaidCssPalette {
             font_family: &font_family,
-            background: &background,
             surface: &surface,
             muted: &muted,
             foreground: &foreground,
@@ -3495,11 +3495,7 @@ impl MermaidTheme {
             danger: &danger,
             danger_foreground: &danger_foreground,
         });
-        Self {
-            background,
-            svg_css,
-            config,
-        }
+        Self { svg_css, config }
     }
 }
 
@@ -3524,7 +3520,7 @@ struct MermaidThemeColors {
 impl MermaidThemeColors {
     fn from_app(cx: &App) -> Self {
         Self {
-            background: cx.theme().ground_of(crate::roles::FIGURE).opaque().fill,
+            background: cx.theme().ground_of(crate::roles::CODE).opaque().fill,
             surface: cx.theme().surface(Elevation::Panel).fill,
             muted: cx
                 .theme()
@@ -3570,7 +3566,6 @@ fn mermaid_font_family(font_family: &str) -> String {
 #[derive(Clone, Copy)]
 struct MermaidCssPalette<'a> {
     font_family: &'a str,
-    background: &'a str,
     surface: &'a str,
     muted: &'a str,
     foreground: &'a str,
@@ -3589,7 +3584,6 @@ struct MermaidCssPalette<'a> {
 fn mermaid_svg_theme_css(palette: MermaidCssPalette<'_>) -> String {
     let MermaidCssPalette {
         font_family,
-        background,
         surface,
         muted,
         foreground,
@@ -3606,9 +3600,11 @@ fn mermaid_svg_theme_css(palette: MermaidCssPalette<'_>) -> String {
     } = palette;
     format!(
         r"
-svg {{ background-color: {background} !important; }}
+svg {{ background-color: transparent !important; }}
+defs svg, g svg {{ overflow: visible !important; }}
 text, tspan {{ font-family: {font_family} !important; fill: {foreground} !important; }}
-.background {{ fill: {background} !important; }}
+.background {{ fill: transparent !important; }}
+.edgeLabel .background, .edgeLabel rect, .labelBkg {{ fill: {surface} !important; opacity: 1 !important; }}
 marker path {{ fill: {primary} !important; stroke: {primary} !important; }}
 
 .actor {{ fill: {surface} !important; stroke: {border} !important; }}
@@ -3623,17 +3619,21 @@ marker path {{ fill: {primary} !important; stroke: {primary} !important; }}
 
 .mindmap-node .label-container, .mindmap-node .node-bkg {{ fill: {surface} !important; stroke: {primary} !important; }}
 .mindmap-node text, .mindmap-node tspan {{ fill: {foreground} !important; }}
-.mindmapDiagram .edge {{ stroke: {primary} !important; }}
+.mindmap-node line {{ stroke: {border} !important; }}
+.mindmapDiagram .edge, .section-edge--1, .section-edge-0, .section-edge-1, .section-edge-2,
+.section-edge-3, .section-edge-4, .section-edge-5, .section-edge-6, .section-edge-7,
+.section-edge-8, .section-edge-9, .section-edge-10 {{ stroke: {primary} !important; }}
 
 .timeline-node .node-bkg {{ fill: {surface} !important; stroke: {border} !important; }}
 .timeline-node text, .timeline-node tspan {{ fill: {foreground} !important; }}
+.timeline-node line {{ stroke: {border} !important; }}
 .timelineDiagram .lineWrapper line {{ stroke: {primary} !important; }}
 
 .entityBox {{ fill: {surface} !important; stroke: {border} !important; }}
 .node .row-rect-odd path {{ fill: {surface} !important; }}
 .node .row-rect-even path {{ fill: {muted} !important; }}
 .entityLabel, .entityLabel text, .entityLabel tspan, .erDiagramTitleText {{ fill: {foreground} !important; }}
-.relationshipLabelBox {{ fill: {background} !important; opacity: 1 !important; }}
+.relationshipLabelBox {{ fill: {surface} !important; opacity: 1 !important; }}
 .relationshipLine {{ stroke: {primary} !important; }}
 .marker.er {{ fill: none !important; stroke: {primary} !important; }}
 .edgeLabel .label text, .edgeLabel .label tspan {{ fill: {foreground} !important; }}
@@ -3677,25 +3677,24 @@ text.journey-section, text.task, .legend {{ fill: {foreground} !important; }}
 }
 
 fn mermaid_theme_key(cx: &App) -> u64 {
+    const LOOK: u32 = 3;
     let mut hasher = DefaultHasher::new();
+    LOOK.hash(&mut hasher);
+    let colors = MermaidThemeColors::from_app(cx);
     for color in [
-        cx.theme().ground_of(crate::roles::FIGURE).opaque().fill,
-        cx.theme().surface(Elevation::Panel).fill,
-        cx.theme()
-            .paint(Tone::Neutral, Emphasis::Soft)
-            .opaque()
-            .fill,
-        cx.theme().foreground,
-        cx.theme().foreground.muted(),
-        cx.theme().border(),
-        cx.theme().foreground,
-        cx.theme().paint(Tone::Neutral, Emphasis::Solid).text,
-        cx.theme().success,
-        cx.theme().paint(Tone::Success, Emphasis::Solid).text,
-        cx.theme().warning,
-        cx.theme().paint(Tone::Warning, Emphasis::Solid).text,
-        cx.theme().danger,
-        cx.theme().paint(Tone::Danger, Emphasis::Solid).text,
+        colors.surface,
+        colors.muted,
+        colors.foreground,
+        colors.muted_foreground,
+        colors.border,
+        colors.primary,
+        colors.primary_foreground,
+        colors.success,
+        colors.success_foreground,
+        colors.warning,
+        colors.warning_foreground,
+        colors.danger,
+        colors.danger_foreground,
     ] {
         color.h.to_bits().hash(&mut hasher);
         color.s.to_bits().hash(&mut hasher);
@@ -3812,22 +3811,45 @@ impl FigureRenderState {
 }
 
 fn render_mermaid_svg(source: &str, theme: &MermaidTheme) -> Result<String, String> {
-    let renderer = merman::render::HeadlessRenderer::new()
-        .with_site_config(theme.config.clone())
-        .with_vendored_text_measurer()
-        .with_diagram_id("zz-agent-mermaid");
-    let pipeline = merman::render::SvgPipeline::resvg_safe().with_postprocessor(
-        merman::render::ScopedCssPostprocessor::new(theme.svg_css.clone())
-            .with_override_policy(merman::render::CssOverridePolicy::StripExistingImportant),
-    );
-    let svg = renderer
-        .render_svg_with_pipeline_sync(source, &pipeline)
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "Mermaid returned no diagram".to_owned())?;
-    Ok(themed_mermaid_canvas(svg, &theme.background))
+    use merman::svg::{CssOverridePolicy, ScopedCssPostprocessor, SvgPipeline, SvgRenderOptions};
+
+    let now = web_time::SystemTime::now()
+        .duration_since(web_time::UNIX_EPOCH)
+        .ok()
+        .and_then(|since| i64::try_from(since.as_millis()).ok())
+        .unwrap_or_default();
+    let renderer = merman::Renderer::new()
+        .with_engine(merman::Engine::new().with_site_config(theme.config.clone()))
+        .with_runtime_policy(
+            merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(now),
+        );
+    let request = merman::SvgRequest {
+        pipeline: Some(
+            SvgPipeline::resvg_safe().with_postprocessor(
+                ScopedCssPostprocessor::new(theme.svg_css.clone())
+                    .with_override_policy(CssOverridePolicy::StripExistingImportant),
+            ),
+        ),
+        options: SvgRenderOptions {
+            diagram_id: Some("zz-agent-mermaid".to_owned()),
+            ..SvgRenderOptions::default()
+        },
+        ..merman::SvgRequest::default()
+    };
+    let output = renderer
+        .render(merman::RenderRequest::svg(
+            source,
+            merman::OperationControl::new(),
+            request,
+        ))
+        .map_err(|error| error.to_string())?;
+    let merman::RenderOutput::Svg(Some(svg)) = output else {
+        return Err("Mermaid returned no diagram".to_owned());
+    };
+    Ok(transparent_mermaid_canvas(svg.into_parts().0))
 }
 
-fn themed_mermaid_canvas(mut svg: String, background: &str) -> String {
+fn transparent_mermaid_canvas(mut svg: String) -> String {
     const MERMAN_CANVASES: [&str; 2] = ["background-color:white", "background-color: white"];
     for canvas in MERMAN_CANVASES {
         let Some(offset) = svg.find(canvas) else {
@@ -3835,7 +3857,7 @@ fn themed_mermaid_canvas(mut svg: String, background: &str) -> String {
         };
         svg.replace_range(
             offset..offset + canvas.len(),
-            &format!("background-color:{background}"),
+            "background-color:transparent",
         );
         break;
     }
@@ -5241,17 +5263,30 @@ mod tests {
         assert_eq!(collapsed_lines, 1);
     }
 
+    fn opaque_canvas(svg: &str) -> Option<String> {
+        let root = &svg[..svg.find('>')?];
+        let style = root.split("style=\"").nth(1)?.split('"').next()?;
+        style
+            .split(';')
+            .filter_map(|rule| rule.split_once(':'))
+            .find(|(key, value)| key.trim() == "background-color" && value.trim() != "transparent")
+            .map(|(_, value)| value.trim().to_owned())
+    }
+
     #[test]
     fn mermaid_renderer_produces_resvg_safe_svg() {
         let theme = test_mermaid_theme();
-        let canvas = format!("background-color:{}", theme.background);
-        let svg = render_mermaid_svg("flowchart LR\n    Picker --> Agent", &theme)
+        let svg = render_mermaid_svg("flowchart LR\n    Picker -->|asks| Agent", &theme)
             .expect("Mermaid fixture should render");
 
         assert!(svg.contains("<svg"));
         assert!(!svg.contains("<foreignObject"));
-        assert!(svg.contains(&canvas));
-        assert!(!svg.contains("background-color:white"));
+        assert_eq!(opaque_canvas(&svg), None);
+        assert!(
+            !svg.contains("#101112"),
+            "the card color must not be painted: {svg}"
+        );
+        assert!(svg.contains(".edgeLabel .background"));
         assert!(svg.contains("data-merman-postprocess=\"scoped-css\""));
     }
 
@@ -5320,7 +5355,6 @@ mod tests {
         };
 
         let theme = test_mermaid_theme();
-        let canvas = format!("background-color:{}", theme.background);
         let snapshot_directory = std::env::var_os("ZZ_MERMAID_SNAPSHOT_DIR");
         if let Some(directory) = &snapshot_directory {
             std::fs::create_dir_all(directory).expect("create Mermaid snapshot directory");
@@ -5334,7 +5368,15 @@ mod tests {
                 svg.contains("data-merman-postprocess=\"scoped-css\""),
                 "{name} omitted the theme override"
             );
-            assert!(svg.contains(&canvas), "{name} retained the light canvas");
+            assert!(
+                opaque_canvas(&svg).is_none(),
+                "{name} kept an opaque canvas: {:?}",
+                opaque_canvas(&svg)
+            );
+            assert!(
+                !svg.contains("#101112"),
+                "{name} paints the card color, which shows as a box on glass"
+            );
 
             if let Some(directory) = &snapshot_directory {
                 std::fs::write(

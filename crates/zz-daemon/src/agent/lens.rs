@@ -481,7 +481,7 @@ impl Claude {
         self.note_listing(entry);
         let branched = entry["type"] == "user"
             && entry["isCompactSummary"] != true
-            && claude_translate::prompt_text(entry).is_some()
+            && claude_translate::user_prompt(entry).is_some()
             && self.last.is_some()
             && entry["parentUuid"].as_str() != self.last.as_deref();
         self.last = Some(uuid.to_owned());

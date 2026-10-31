@@ -233,16 +233,11 @@ pub const CODE: SurfaceRole = SurfaceRole::new(
     "code",
     Kind::Card,
     "Code",
-    "Code blocks and inline code in messages",
+    "Code blocks, diagrams and inline code in messages",
 )
 .with(P.outline(false).shadow(Shadow::None));
-pub const FIGURE: SurfaceRole = SurfaceRole::new(
-    "figure",
-    Kind::Card,
-    "Figures",
-    "Diagram frames and tables in messages",
-)
-.with(P.fill(Fill::None));
+pub const FIGURE: SurfaceRole =
+    SurfaceRole::new("figure", Kind::Card, "Tables", "Tables in messages").with(P.fill(Fill::None));
 
 pub const BROWSER_TAB: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TAB,

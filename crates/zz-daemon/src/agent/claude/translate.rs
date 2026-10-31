@@ -7,6 +7,8 @@ use std::fmt::Write as _;
 
 use serde_json::{Value, json};
 
+use crate::agent::chat_bridge::attach_images;
+
 const MAX_TITLE_CHARS: usize = 500;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -451,8 +453,12 @@ impl Translator {
             return Vec::new();
         }
         let id = frame["uuid"].as_str().unwrap_or("user");
-        prompt_text(frame)
-            .map(|text| chunk("user_message_chunk", id, &text))
+        user_prompt(frame)
+            .map(|(text, images)| {
+                let mut update = chunk("user_message_chunk", id, &text);
+                attach_images(&mut update, images);
+                update
+            })
             .into_iter()
             .collect()
     }
@@ -651,6 +657,54 @@ fn created_task_id(text: &str) -> Option<String> {
 pub(crate) fn prompt_text(frame: &Value) -> Option<String> {
     let text = message_text(frame);
     (!text.trim().is_empty() && !is_internal_user_text(&text)).then(|| without_paste_tags(&text))
+}
+
+pub(crate) fn user_prompt(frame: &Value) -> Option<(String, Vec<(String, String)>)> {
+    let images = message_images(frame);
+    if images.is_empty() {
+        return prompt_text(frame).map(|text| (text, images));
+    }
+    let text = message_text(frame);
+    (!is_internal_user_text(&text))
+        .then(|| (without_image_tags(&without_paste_tags(&text)), images))
+}
+
+fn message_images(frame: &Value) -> Vec<(String, String)> {
+    frame["message"]["content"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|block| block["type"] == "image" && block["source"]["type"] == "base64")
+        .filter_map(|block| {
+            let source = &block["source"];
+            Some((
+                source["media_type"].as_str()?.to_owned(),
+                source["data"].as_str()?.to_owned(),
+            ))
+        })
+        .collect()
+}
+
+fn without_image_tags(text: &str) -> String {
+    const OPEN: &str = "[Image #";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(OPEN) {
+        let tail = &rest[at + OPEN.len()..];
+        let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+        if digits > 0 && tail[digits..].starts_with(']') {
+            out.push_str(&rest[..at]);
+            rest = &tail[digits + 1..];
+            if out.ends_with(' ') {
+                rest = rest.strip_prefix(' ').unwrap_or(rest);
+            }
+        } else {
+            out.push_str(&rest[..at + OPEN.len()]);
+            rest = tail;
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_owned()
 }
 
 fn without_paste_tags(text: &str) -> String {
@@ -1411,6 +1465,40 @@ mod tests {
         let internal = json!({"type":"user","uuid":"u2","parent_tool_use_id":null,
             "message":{"role":"user","content":"<local-command-stdout>x</local-command-stdout>"}});
         assert!(translator.frame(&internal).is_empty());
+    }
+
+    #[test]
+    fn pasted_images_ride_on_the_prompt_without_their_placeholders() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let image = |data: &str| json!({"type":"image","source":{"type":"base64","media_type":"image/png","data":data}});
+        let prompt = json!({"type":"user","uuid":"u1","parent_tool_use_id":null,"message":{"role":"user",
+            "content":[{"type":"text","text":"what is [Image #2] next to [Image #3]?"},image("AAAA"),image("BBBB")]}});
+        let updates = translator.frame(&prompt);
+        assert_eq!(kinds(&updates), ["user_message_chunk"]);
+        serde_json::from_value::<SessionUpdate>(updates[0].clone()).expect("ACP update");
+        assert_eq!(updates[0]["content"]["text"], "what is next to ?");
+        assert_eq!(
+            updates[0]["_meta"]["zz"]["images"],
+            json!([{"format":"image/png","data":"AAAA"},{"format":"image/png","data":"BBBB"}])
+        );
+        let alone = json!({"type":"user","uuid":"u2","isSidechain":false,"message":{"role":"user",
+            "content":[{"type":"text","text":"[Image #4]"},image("CCCC")]}});
+        let updates = translator.history_entry(&alone);
+        assert_eq!(kinds(&updates), ["user_message_chunk"]);
+        assert_eq!(updates[0]["content"]["text"], "");
+        assert_eq!(updates[0]["_meta"]["zz"]["images"][0]["data"], "CCCC");
+        let plain =
+            json!({"type":"user","uuid":"u3","message":{"role":"user","content":"see [Image #1]"}});
+        assert_eq!(
+            translator.history_entry(&plain)[0]["content"]["text"],
+            "see [Image #1]"
+        );
+        let huge = "A".repeat(crate::agent::chat_bridge::MAX_PROMPT_IMAGES_BASE64 + 4);
+        let over = json!({"type":"user","uuid":"u4","message":{"role":"user",
+            "content":[{"type":"text","text":"big [Image #5]"},image(&huge)]}});
+        let updates = translator.history_entry(&over);
+        assert_eq!(updates[0]["content"]["text"], "big");
+        assert!(updates[0]["_meta"]["zz"]["images"].is_null());
     }
 
     #[test]

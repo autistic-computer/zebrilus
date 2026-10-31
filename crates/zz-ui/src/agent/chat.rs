@@ -1,19 +1,24 @@
 use std::{
     collections::{HashMap, HashSet},
+    hash::{DefaultHasher, Hash as _, Hasher as _},
     ops::Range,
     rc::Rc,
+    sync::Arc,
     time::Duration,
 };
 
 use ala::{
-    AnyElement, App, ClipboardItem, Div, FontWeight, HighlightStyle, IntoElement, ScrollHandle,
-    ScrollWheelEvent, SharedString, Stateful, StyledText, Transformation, Window, div, percentage,
-    prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Div, FontWeight, HighlightStyle, Image, ImageFormat,
+    IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, StyledText,
+    Transformation, Window, div, percentage, prelude::*, px, relative,
 };
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
-use zz_protocol::chat::{
-    Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, OptionKind, RequestClose, RequestView,
-    SessionView, StepStatus, TurnId, TurnView,
+use zz_protocol::{
+    agent_stream::AgentImage,
+    chat::{
+        Answer, Ask, ChatView, ItemId, ItemKind, ItemStatus, OptionKind, RequestClose, RequestView,
+        SessionView, StepStatus, TurnId, TurnView,
+    },
 };
 
 use super::presentation::{
@@ -21,7 +26,10 @@ use super::presentation::{
     permission_option,
 };
 use super::refs::{ChatRefs, RefLinks, linkify_markdown, ref_text};
-use super::{ActivityMark, RowEnd, activity_row_marked, assistant_markdown_extensions};
+use super::{
+    ActivityMark, RowEnd, TRANSCRIPT_ATTACHMENT, activity_row_marked, agent_text_view,
+    assistant_markdown_extensions, attachment_tile,
+};
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
     Tone, WindowExt as _, button::Button, h_flex, notification::Notification, pip::PipSurface,
@@ -35,6 +43,7 @@ pub struct ChatOpen {
     pub agent: Option<ItemId>,
     pub highlighted: usize,
     pub arrivals: HashMap<ItemId, u64>,
+    pub images: HashMap<ItemId, Arc<[Arc<Image>]>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -146,8 +155,14 @@ impl ChatPane {
         {
             self.open.agent = None;
         }
+        self.open.images.retain(|id, _| view.item(id).is_some());
         let now = chat_rows::now_ms();
         for item in view.items.values() {
+            if !item.body.images.is_empty() && !self.open.images.contains_key(&item.id) {
+                self.open
+                    .images
+                    .insert(item.id.clone(), decode_images(&item.body.images));
+            }
             if item.kind == ItemKind::Agent
                 && item.parent.is_none()
                 && self.known.insert(item.id.clone())
@@ -197,6 +212,16 @@ impl ChatPane {
     pub fn shows_jump(&self) -> bool {
         self.away && self.distance() > FOLLOW_SLACK
     }
+}
+
+fn decode_images(images: &[AgentImage]) -> Arc<[Arc<Image>]> {
+    images
+        .iter()
+        .filter_map(|image| {
+            let format = ImageFormat::from_mime_type(&image.format)?;
+            Some(Arc::new(Image::from_bytes(format, image.data.clone())))
+        })
+        .collect()
 }
 
 fn toggle<T: PartialEq>(open: &mut Vec<T>, value: T) {
@@ -341,12 +366,13 @@ impl Draw<'_, '_> {
             Unit::User(id) => user_bubble(
                 id,
                 text_of(self.view, id),
+                self.images(id).as_deref().unwrap_or_default(),
                 self.view.item(id).map(|item| item.started_at),
                 self.hooks.fork_from(id),
                 self.hooks.refs,
                 cx,
             ),
-            Unit::Text(id) => markdown(id, self.shown_text(id), self.hooks.refs),
+            Unit::Text(id) => markdown(id, self.shown_text(id), self.hooks.refs, cx),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
@@ -412,6 +438,14 @@ impl Draw<'_, '_> {
                 )
             })
             .into_any_element()
+    }
+
+    fn images(&self, id: &ItemId) -> Option<Arc<[Arc<Image>]>> {
+        if let Some(images) = self.open.images.get(id) {
+            return Some(Arc::clone(images));
+        }
+        let item = self.view.item(id)?;
+        (!item.body.images.is_empty()).then(|| decode_images(&item.body.images))
     }
 
     fn shown_text(&self, id: &ItemId) -> SharedString {
@@ -561,6 +595,7 @@ impl Draw<'_, '_> {
                 body.child(user_bubble(
                     &ItemId::new(format!("prompt-{}", id.as_str())),
                     prompt.into(),
+                    self.images(id).as_deref().unwrap_or_default(),
                     None,
                     None,
                     self.hooks.refs,
@@ -573,6 +608,7 @@ impl Draw<'_, '_> {
                     &ItemId::new(format!("result-{}", id.as_str())),
                     result.into(),
                     self.hooks.refs,
+                    cx,
                 ))
             })
             .when_some(footer, |body, footer| {
@@ -855,12 +891,14 @@ fn message_actions(
 fn user_bubble(
     id: &ItemId,
     text: SharedString,
+    images: &[Arc<Image>],
     stamp: Option<u64>,
     fork: Option<(ChatClicks, ItemId)>,
     refs: Option<&ChatRefs>,
     cx: &App,
 ) -> AnyElement {
     let key = id.as_str().to_owned();
+    let ground = cx.theme().ground_of(crate::roles::AGENT_BUBBLE);
     let body = refs
         .and_then(|refs| {
             ref_text(
@@ -878,24 +916,44 @@ fn user_bubble(
         .items_end()
         .gap_1()
         .child(
-            div()
+            v_flex()
                 .max_w(relative(0.8))
+                .gap_2()
                 .px_3()
                 .py_2()
                 .surface(crate::roles::AGENT_BUBBLE, cx)
                 .text_size(crate::rems_from_px(13.0))
-                .child(
-                    div()
-                        .id(SharedString::from(format!("chat-user-scroll-{key}")))
-                        .max_h(px(USER_MAX_HEIGHT))
-                        .overflow_y_scroll()
-                        .child(body),
-                ),
+                .when(!images.is_empty(), |bubble| {
+                    bubble.child(h_flex().flex_wrap().gap_1().children(
+                        images.iter().enumerate().map(|(index, image)| {
+                            attachment_tile(
+                                (
+                                    SharedString::from(format!("chat-user-attachment-{key}")),
+                                    index,
+                                ),
+                                Arc::clone(image),
+                                TRANSCRIPT_ATTACHMENT,
+                                ground,
+                                cx,
+                            )
+                            .debug_selector(|| "chat-user-attachment".to_owned())
+                        }),
+                    ))
+                })
+                .when(!text.is_empty(), |bubble| {
+                    bubble.child(
+                        div()
+                            .id(SharedString::from(format!("chat-user-scroll-{key}")))
+                            .max_h(px(USER_MAX_HEIGHT))
+                            .overflow_y_scroll()
+                            .child(body),
+                    )
+                }),
         )
         .child(message_actions(
             &format!("user-{key}"),
             stamp,
-            Some(text),
+            (!text.is_empty()).then_some(text),
             fork,
             USER_GROUP,
             cx,
@@ -903,8 +961,13 @@ fn user_bubble(
         .into_any_element()
 }
 
-fn markdown(id: &ItemId, text: SharedString, refs: Option<&ChatRefs>) -> AnyElement {
+fn markdown(id: &ItemId, text: SharedString, refs: Option<&ChatRefs>, cx: &App) -> AnyElement {
     let id = SharedString::from(format!("chat-text-{}", id.as_str()));
+    let scope = {
+        let mut hasher = DefaultHasher::new();
+        id.hash(&mut hasher);
+        hasher.finish()
+    };
     let view = match refs {
         Some(refs) => {
             let (linked, targets) = linkify_markdown(&text, refs);
@@ -920,7 +983,10 @@ fn markdown(id: &ItemId, text: SharedString, refs: Option<&ChatRefs>) -> AnyElem
     div()
         .w_full()
         .text_size(crate::rems_from_px(13.0))
-        .child(view.markdown_extensions(assistant_markdown_extensions()))
+        .child(
+            agent_text_view(view, scope, None, cx)
+                .markdown_extensions(assistant_markdown_extensions()),
+        )
         .into_any_element()
 }
 
@@ -1174,9 +1240,101 @@ fn record_row(request: &RequestView, cx: &App) -> AnyElement {
 
 #[cfg(test)]
 mod tests {
-    use zz_protocol::chat::{ChatEvent, ItemBody, ItemId, ItemKind, TurnBy, TurnId};
+    use ala::{
+        Context, IntoElement, Render, TestAppContext, VisualTestContext, Window, div, prelude::*,
+        px,
+    };
+    use zz_protocol::agent_stream::AgentImage;
+    use zz_protocol::chat::{ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, TurnBy, TurnId};
 
-    use super::{ChatClick, ChatPane, ChatView};
+    use super::{ChatClick, ChatHooks, ChatOpen, ChatPane, ChatView, chat_thread};
+
+    fn pasted(view: &mut ChatView, id: &str, text: &str) {
+        view.apply(&ChatEvent::ItemStarted {
+            item: ItemId::new(id),
+            turn: Some(TurnId(1)),
+            parent: None,
+            kind: ItemKind::User,
+            body: ItemBody {
+                text: text.to_owned(),
+                images: vec![AgentImage {
+                    format: "image/png".to_owned(),
+                    data: include_bytes!("../fixtures/wide-screenshot.png").to_vec(),
+                }],
+                ..ItemBody::default()
+            },
+            at: 2,
+        })
+        .expect("prompt");
+        view.apply(&ChatEvent::ItemEnded {
+            item: ItemId::new(id),
+            status: ItemStatus::Completed,
+            at: 2,
+        })
+        .expect("prompt ends");
+    }
+
+    struct ThreadTest {
+        view: ChatView,
+        open: ChatOpen,
+    }
+
+    impl Render for ThreadTest {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            div().w(px(420.0)).child(chat_thread(
+                &self.view,
+                10,
+                &self.open,
+                0.0,
+                &ChatHooks::default(),
+                cx,
+            ))
+        }
+    }
+
+    #[test]
+    fn pasted_images_are_decoded_once_per_item() {
+        let mut pane = ChatPane::default();
+        let mut view = ready("s1");
+        pasted(&mut view, "u1", "what is this?");
+        pane.sync(&view);
+        let first = pane.open.images.get(&ItemId::new("u1")).cloned();
+        assert_eq!(first.as_ref().map(|images| images.len()), Some(1));
+        pane.sync(&view);
+        assert!(std::sync::Arc::ptr_eq(
+            first.as_ref().expect("cached"),
+            pane.open
+                .images
+                .get(&ItemId::new("u1"))
+                .expect("still cached")
+        ));
+        pane.sync(&ready("s2"));
+        assert!(pane.open.images.is_empty());
+    }
+
+    #[ala::test]
+    fn a_pasted_image_shows_as_a_tile_in_the_bubble(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut view = ready("s1");
+        pasted(&mut view, "u1", "");
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| ThreadTest {
+                view,
+                open: ChatOpen::default(),
+            });
+            penna::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let tile = cx
+            .debug_bounds("chat-user-attachment")
+            .expect("the pasted image should be painted");
+        assert_eq!(tile.size.width, super::TRANSCRIPT_ATTACHMENT);
+        assert_eq!(tile.size.width, tile.size.height);
+    }
 
     fn ready(session: &str) -> ChatView {
         let mut view = ChatView::default();

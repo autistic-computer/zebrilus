@@ -8,7 +8,7 @@ use std::{
 
 use serde_json::Value;
 
-use super::translate::{Translator, prompt_text};
+use super::translate::{Translator, user_prompt};
 use crate::agent::stream::AgentSessionSummary;
 
 const MAX_SANITIZED_LENGTH: usize = 200;
@@ -339,7 +339,7 @@ pub(crate) fn prompts(path: &Path) -> Vec<(String, Option<String>)> {
         .filter(|entry| {
             entry["type"] == "user"
                 && entry["isCompactSummary"] != true
-                && prompt_text(entry).is_some()
+                && user_prompt(entry).is_some()
         })
         .filter_map(|entry| {
             Some((
@@ -565,13 +565,15 @@ mod tests {
             r#"{"type":"user","uuid":"u3","parentUuid":"a2","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"a.rs"}]}}"#,
             r#"{"type":"user","uuid":"u4","parentUuid":"u3","message":{"role":"user","content":"<task-notification>done</task-notification>"}}"#,
             r#"{"type":"assistant","uuid":"a3","parentUuid":"u4","message":{"id":"m3","content":[{"type":"text","text":"two"}]}}"#,
+            r#"{"type":"user","uuid":"u5","parentUuid":"a3","message":{"role":"user","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}}]}}"#,
         ];
         std::fs::write(&path, lines.join("\n")).expect("write");
         assert_eq!(
             prompts(&path),
             [
                 ("u1".to_owned(), None),
-                ("u2".to_owned(), Some("x1".to_owned()))
+                ("u2".to_owned(), Some("x1".to_owned())),
+                ("u5".to_owned(), Some("a3".to_owned()))
             ]
         );
         let kept = transcript(&path, PathBuf::from("/work"), Some("x1"));

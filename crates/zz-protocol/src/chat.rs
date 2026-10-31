@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::agent_stream::AgentQuestion;
+use crate::agent_stream::{AgentImage, AgentQuestion};
 
 #[derive(
     Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
@@ -134,6 +134,8 @@ pub struct ItemBody {
     pub steps: Vec<PlanStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<AgentImage>,
 }
 
 impl ItemBody {
