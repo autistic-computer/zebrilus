@@ -1,12 +1,15 @@
+use std::cell::Cell;
 use std::sync::Arc;
 
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, Keystroke,
-    ParentElement as _, Render, Styled as _, Window, div, prelude::*, px, size,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, KeyBinding, Keystroke,
+    ParentElement as _, Render, SharedString, Styled as _, Window, actions, div, prelude::*, px,
+    size,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Edge, Elevation, Icon, IconName, IndexPath, StyledExt as _,
-    Surface,
+    ActiveTheme as _, Colorize as _, Edge, Elevation, Emphasis, Icon, IconName, IndexPath,
+    StyledExt as _, Surface, Tone,
+    badge::Badge,
     button::{Button, ButtonVariants as _},
     color_picker::{ColorPicker, ColorPickerState},
     compact::{
@@ -18,7 +21,10 @@ use penna::{
     h_flex,
     input::{Input, InputState, NumberInput},
     interface_theme::{ThemeOverrides, builtin_themes},
+    kbd::Kbd,
     menu::{PopupMenu, PopupMenuItem},
+    notification::Notification,
+    overlay::{dialog_description, dialog_footer, dialog_gutter, dialog_surface, dialog_title},
     picker::{path_row, picker_footer, picker_header, picker_list, picker_search},
     roles,
     select::{Select, SelectState},
@@ -35,8 +41,10 @@ use penna::{
     sheet::{bottom_sheet, sheet_row},
     shell::{app_shell_surface, app_titlebar_strip},
     sidebar::{chrome_button, sidebar_footer, sidebar_panel, sidebar_titlebar},
+    slider::DiscreteSlider,
     switch::Switch,
     text::{TextView, TextViewStyle},
+    tooltip::Tooltip,
     touch::{
         ArrowDirection, ArrowPad, KeyRow, KeyRowKey, PageDot, WhichKeyList, arrow_pad_bubble,
         page_dots,
@@ -46,10 +54,10 @@ use penna::{
 };
 
 use super::{
-    GAP, MEDIUM, PHONE_WIDTH, PLATE_PADDING, Preferences, READING, SAFE_BOTTOM, SCREEN_RADIUS,
-    Toasts, WIDE, buttons, card, dialog, heading, labeled, over_backdrop, phone_frame, tiles,
+    GAP, MEDIUM, PHONE_WIDTH, PLATE_PADDING, READING, SAFE_BOTTOM, SCREEN_RADIUS, WIDE, card,
+    heading, labeled, over_backdrop, phone_frame, tiles, toggle,
 };
-use crate::kit::menus::{bind_keys, pane_menu, view_menu};
+use crate::kit::menus::view_menu;
 use crate::story::{Framed as _, Section, stateless};
 
 pub const WINDOW: Section = Section {
@@ -94,7 +102,8 @@ const PICKER_WIDTH: f32 = 360.0;
 const PHONE_PAGE_HEIGHT: f32 = 190.0;
 const KEYS_PAGE_HEIGHT: f32 = 470.0;
 const PHONE_SHEET_HEIGHT: f32 = 420.0;
-const KINDS: [&str; 3] = ["SSH", "HTTPS", "Local"];
+const SECURITY: [&str; 3] = ["TLS", "STARTTLS", "None"];
+const UNDO_STEPS: [&str; 5] = ["10", "50", "100", "500", "∞"];
 const DENSITY: [&str; 3] = ["Compact", "Regular", "Roomy"];
 const NAVIGATION: [(&str, IconName); 5] = [
     ("General", IconName::Settings),
@@ -292,11 +301,267 @@ impl Render for AppWindow {
     }
 }
 
+actions!(
+    storybook_creator,
+    [
+        NewDocument,
+        ShowDetails,
+        ShowComments,
+        CopyLink,
+        RenameDocument,
+        CloseDocument
+    ]
+);
+
+thread_local! {
+    static BOUND: Cell<bool> = const { Cell::new(false) };
+}
+
+fn bind_keys(cx: &mut App) {
+    if BOUND.with(|bound| bound.replace(true)) {
+        return;
+    }
+    cx.bind_keys([
+        KeyBinding::new("cmd-n", NewDocument, None),
+        KeyBinding::new("cmd-alt-i", ShowDetails, None),
+        KeyBinding::new("cmd-alt-m", ShowComments, None),
+        KeyBinding::new("cmd-alt-l", CopyLink, None),
+        KeyBinding::new("cmd-shift-w", CloseDocument, None),
+    ]);
+}
+
+fn document_menu(menu: PopupMenu, window: &mut Window, cx: &mut Context<PopupMenu>) -> PopupMenu {
+    menu.label("Document")
+        .item(
+            PopupMenuItem::new("New document")
+                .icon(IconName::Plus)
+                .action(Box::new(NewDocument)),
+        )
+        .item(
+            PopupMenuItem::new("Show details")
+                .icon(IconName::PanelRight)
+                .action(Box::new(ShowDetails)),
+        )
+        .item(
+            PopupMenuItem::new("Show comments")
+                .icon(IconName::PanelBottom)
+                .action(Box::new(ShowComments)),
+        )
+        .separator()
+        .item(PopupMenuItem::new("Spell check").checked(true))
+        .item(PopupMenuItem::new("Track changes"))
+        .submenu_with_icon(
+            Some(Icon::new(IconName::Layers)),
+            "Move to",
+            window,
+            cx,
+            |menu, _, _| {
+                menu.item(PopupMenuItem::new("Inbox"))
+                    .item(PopupMenuItem::new("Drafts").checked(true))
+                    .item(PopupMenuItem::new("Archive"))
+                    .separator()
+                    .item(PopupMenuItem::new("New folder").icon(IconName::Plus))
+            },
+        )
+        .separator()
+        .item(
+            PopupMenuItem::new("Copy link")
+                .icon(IconName::Copy)
+                .action(Box::new(CopyLink)),
+        )
+        .menu_with_disabled("Rename", Box::new(RenameDocument), true)
+        .item(
+            PopupMenuItem::new("Close")
+                .icon(IconName::Xmark)
+                .action(Box::new(CloseDocument)),
+        )
+}
+
+struct Preferences {
+    reopen: bool,
+    animations: bool,
+    sounds: bool,
+    undo_steps: usize,
+}
+
+impl Preferences {
+    fn view(cx: &mut App) -> Entity<Self> {
+        cx.new(|_| Self {
+            reopen: true,
+            animations: true,
+            sounds: false,
+            undo_steps: 2,
+        })
+    }
+}
+
+impl Render for Preferences {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let this = cx.entity();
+        card("creator-preferences", cx)
+            .child(heading("General", "How the app starts and behaves.", cx))
+            .child(toggle(
+                "creator-reopen",
+                "Reopen documents",
+                "Open what was open before a restart",
+                self.reopen,
+                cx.listener(|this, checked: &bool, _, cx| {
+                    this.reopen = *checked;
+                    cx.notify();
+                }),
+                cx,
+            ))
+            .child(toggle(
+                "creator-animations",
+                "Animations",
+                "Menus and dialogs ease in",
+                self.animations,
+                cx.listener(|this, checked: &bool, _, cx| {
+                    this.animations = *checked;
+                    cx.notify();
+                }),
+                cx,
+            ))
+            .child(toggle(
+                "creator-sounds",
+                "Sounds",
+                "Play a sound when a message arrives",
+                self.sounds,
+                cx.listener(|this, checked: &bool, _, cx| {
+                    this.sounds = *checked;
+                    cx.notify();
+                }),
+                cx,
+            ))
+            .child(DiscreteSlider::new(
+                "creator-undo-steps",
+                "Undo steps",
+                UNDO_STEPS
+                    .iter()
+                    .map(|label| SharedString::from(*label))
+                    .collect(),
+                self.undo_steps,
+                move |index, _, cx| {
+                    this.update(cx, |this, cx| {
+                        this.undo_steps = index;
+                        cx.notify();
+                    });
+                },
+            ))
+    }
+}
+
+struct Toasts {
+    toasts: [Entity<Notification>; 2],
+    tooltip: Entity<Tooltip>,
+}
+
+impl Toasts {
+    fn new(cx: &mut App) -> Self {
+        let toast = |notification: Notification, cx: &mut App| {
+            cx.new(|_| notification.autohide(false).width(px(320.0)))
+        };
+        let toasts = [
+            toast(
+                Notification::success("All 12 files are up to date.").title("Sync finished"),
+                cx,
+            ),
+            toast(
+                Notification::error("The server did not answer.").title("Upload failed"),
+                cx,
+            ),
+        ];
+        let tooltip = cx.new(|_| Tooltip::new("Show details").action(&ShowDetails, None));
+        Self { toasts, tooltip }
+    }
+
+    fn stack(&self) -> ala::Div {
+        v_flex()
+            .gap_3()
+            .items_center()
+            .children(self.toasts.iter().cloned())
+            .child(self.tooltip.clone())
+    }
+}
+
+fn buttons(cx: &App) -> AnyElement {
+    let keys = ["cmd-k", "cmd-shift-p", "cmd-enter"];
+    card("creator-buttons", cx)
+        .child(heading("Actions", "Buttons, tags and key hints.", cx))
+        .child(
+            h_flex()
+                .flex_wrap()
+                .gap_2()
+                .child(
+                    Button::new("creator-primary")
+                        .primary()
+                        .label("New document"),
+                )
+                .child(Button::new("creator-default").label("Share"))
+                .child(Button::new("creator-ghost").ghost().label("Rename"))
+                .child(Button::new("creator-danger").danger().label("Delete")),
+        )
+        .child(
+            h_flex()
+                .gap_2()
+                .child(Button::new("creator-show-details").icon(IconName::PanelRight))
+                .child(Button::new("creator-show-comments").icon(IconName::PanelBottom))
+                .child(Button::new("creator-search").ghost().icon(IconName::Search))
+                .child(
+                    Button::new("creator-settings")
+                        .ghost()
+                        .icon(IconName::Settings),
+                )
+                .child(div().flex_1())
+                .child(Button::new("creator-small").label("Small")),
+        )
+        .child(
+            h_flex()
+                .flex_wrap()
+                .items_center()
+                .gap_2()
+                .child(Badge::new("synced").tone(Tone::Success))
+                .child(
+                    Badge::new("shared")
+                        .tone(Tone::Primary)
+                        .emphasis(Emphasis::Solid),
+                )
+                .child(Badge::new("3 files"))
+                .children(
+                    keys.into_iter()
+                        .map(|key| Kbd::new(Keystroke::parse(key).unwrap_or_default())),
+                ),
+        )
+        .into_any_element()
+}
+
+fn dialog(cx: &App) -> AnyElement {
+    dialog_surface(cx)
+        .w_full()
+        .max_w(px(360.0))
+        .child(dialog_gutter().child(dialog_title().child("Delete \"Drafts\"?")))
+        .child(dialog_gutter().child(
+            dialog_description(cx).child("Its 12 documents and their history are gone for good."),
+        ))
+        .child(
+            dialog_gutter().child(
+                dialog_footer(cx)
+                    .child(Button::new("creator-dialog-cancel").label("Cancel"))
+                    .child(
+                        Button::new("creator-dialog-delete")
+                            .danger()
+                            .label("Delete folder"),
+                    ),
+            ),
+        )
+        .into_any_element()
+}
+
 struct Controls {
-    host: Entity<InputState>,
+    server: Entity<InputState>,
     user: Entity<InputState>,
     port: Entity<InputState>,
-    kind: Entity<SelectState<Vec<&'static str>>>,
+    security: Entity<SelectState<Vec<&'static str>>>,
     density: Entity<SelectState<Vec<&'static str>>>,
     preferences: Entity<Preferences>,
 }
@@ -306,39 +571,35 @@ impl Controls {
         let field = |value: &'static str, window: &mut Window, cx: &mut App| {
             cx.new(|cx| InputState::new(window, cx).default_value(value))
         };
-        let host = field("build.example.com", window, cx);
-        let user = field("deploy", window, cx);
+        let server = field("mail.example.com", window, cx);
+        let user = field("ada", window, cx);
         let port = cx.new(|cx| {
             InputState::new(window, cx)
                 .step(1.0)
                 .min(1.0)
                 .max(65535.0)
-                .default_value("22")
+                .default_value("993")
         });
-        let kind =
-            cx.new(|cx| SelectState::new(KINDS.to_vec(), Some(IndexPath::new(0)), window, cx));
+        let security =
+            cx.new(|cx| SelectState::new(SECURITY.to_vec(), Some(IndexPath::new(0)), window, cx));
         let density =
             cx.new(|cx| SelectState::new(DENSITY.to_vec(), Some(IndexPath::new(1)), window, cx));
         let preferences = Preferences::view(cx);
         cx.new(|_| Self {
-            host,
+            server,
             user,
             port,
-            kind,
+            security,
             density,
             preferences,
         })
         .into()
     }
 
-    fn connection(&self, cx: &App) -> AnyElement {
-        card("creator-connection", cx)
-            .child(heading(
-                "New connection",
-                "Saved connections show in the sidebar.",
-                cx,
-            ))
-            .child(labeled("Host", Input::new(&self.host), cx))
+    fn account(&self, cx: &App) -> AnyElement {
+        card("creator-account", cx)
+            .child(heading("New account", "Accounts show in the sidebar.", cx))
+            .child(labeled("Server", Input::new(&self.server), cx))
             .child(
                 h_flex()
                     .gap_3()
@@ -353,17 +614,17 @@ impl Controls {
                         cx,
                     ))),
             )
-            .child(labeled("Kind", Select::new(&self.kind), cx))
+            .child(labeled("Security", Select::new(&self.security), cx))
             .child(
                 h_flex()
                     .pt_1()
                     .gap_2()
                     .justify_end()
-                    .child(Button::new("creator-connection-cancel").label("Cancel"))
+                    .child(Button::new("creator-account-cancel").label("Cancel"))
                     .child(
-                        Button::new("creator-connection-save")
+                        Button::new("creator-account-add")
                             .primary()
-                            .label("Connect"),
+                            .label("Add account"),
                     ),
             )
             .into_any_element()
@@ -417,7 +678,7 @@ impl Render for Controls {
         tiles(
             window,
             vec![
-                vec![self.connection(cx)],
+                vec![self.account(cx)],
                 vec![self.preferences.clone().into_any_element()],
                 vec![buttons(cx), self.settings(cx)],
             ],
@@ -426,7 +687,7 @@ impl Render for Controls {
 }
 
 struct Floating {
-    pane_menu: Entity<PopupMenu>,
+    document_menu: Entity<PopupMenu>,
     view_menu: Entity<PopupMenu>,
     search: Entity<InputState>,
     toasts: Toasts,
@@ -435,12 +696,12 @@ struct Floating {
 impl Floating {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
         bind_keys(cx);
-        let pane_menu = PopupMenu::build(window, cx, pane_menu);
+        let document_menu = PopupMenu::build(window, cx, document_menu);
         let view_menu = PopupMenu::build(window, cx, view_menu);
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Open a file"));
         let toasts = Toasts::new(cx);
         cx.new(|_| Self {
-            pane_menu,
+            document_menu,
             view_menu,
             search,
             toasts,
@@ -475,7 +736,7 @@ impl Floating {
 impl Render for Floating {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let width = window.viewport_size().width.as_f32();
-        let menus = over_backdrop("creator-menus", self.pane_menu.clone(), cx);
+        let menus = over_backdrop("creator-menus", self.document_menu.clone(), cx);
         let view = over_backdrop("creator-view-menu", self.view_menu.clone(), cx);
         let toasts = over_backdrop("creator-toasts", self.toasts.stack(), cx);
         let picker = over_backdrop("creator-picker", self.picker(cx), cx);
