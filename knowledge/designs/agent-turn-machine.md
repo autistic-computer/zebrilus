@@ -26,8 +26,8 @@ removed on 2026-10-28.
 `external_turn` on Codex and `stale_commands` / `lifecycle_seen` on Claude), the host's
 `active_turn` and `external_busy`, the fanout lane's `external_turn`, `turn_end` and `turn_id`, and
 the desktop client's `AgentConnectionState` with `background_turn`. Each reads a different subset of
-signals. The turn the agent starts on its own needed three fixes, one per flag (9a9558226,
-f88dacaf3, bda6042b6).
+signals. The turn the agent starts on its own needed three fixes, one per flag (59ef0db69,
+c64dc2b80, 4c6d31987).
 
 A Codex review on 2026-10-21 found three more in the Claude driver alone: `/steer` ends the turn as
 cancelled while the steered command keeps running, a hard failure is reported as a user cancel, and

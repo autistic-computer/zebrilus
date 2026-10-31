@@ -23,7 +23,7 @@ building?
 # Method
 
 MacBook Pro M4 Max, macOS 27.0, profiling bundles (`cargo xtask bundle-cef --profile
-profiling`) of `2ecd80bb1` and later commits, each in its own worktree. The driver reused
+profiling`) of `e9477ed21` and later commits, each in its own worktree. The driver reused
 `bench/gpui/frames.py` (isolated `HOME` and socket, perl writer at 240 rows/s, 5 s warmup, 20 s
 window, 3 repeats) with one added scenario, `fixed`: the streaming pane resized to 100x30 beside
 two idle panes. Windows sat on the secondary display (DELL P2725QE, 2688x1512 pt at scale 2)
@@ -66,7 +66,7 @@ true` left zz's own GPU time alone but doubled WindowServer's (87 to 172 ms/s).
 
 | Change | Where | Result (median of 3) |
 | --- | --- | --- |
-| Terminal pane header as a cached view (`TerminalHeaderView`) | zz `760ca933e` | 9 panes: main thread 16.3 to 11.7%, layout 1.59 to 0.78 ms, nodes 297 to 117 |
+| Terminal pane header as a cached view (`TerminalHeaderView`) | zz `92f0fa7bf` | 9 panes: main thread 16.3 to 11.7%, layout 1.59 to 0.78 ms, nodes 297 to 117 |
 | Closed-form blur for wide inset shadows, interior discard | `demfabris/gpui` `c57bb78` | zz fragment time in the large window 237 to 144 ms/s; offscreen glow 0.69 to 0.28 ms per frame |
 
 Rejected: the whole pane frame (surface, header, content) as one cached view. GPUI re-renders

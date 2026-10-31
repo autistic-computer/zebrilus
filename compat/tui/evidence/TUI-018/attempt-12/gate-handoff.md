@@ -1,7 +1,7 @@
 # TUI-018 seventh pass, handoff for the reviewer and the gate
 
-Branch `campaign/tui-stream-alias-7`, based on `campaign/tui-stream-alias-6` (`60cf9e1c`) merged
-with `origin/main` `ce1a26e4` (zz 0.11.1). Wire stays at 105, unreleased; both appends of this pass
+Branch `campaign/tui-stream-alias-7`, based on `campaign/tui-stream-alias-6` (`5acfbab8`) merged
+with `origin/main` `c93f7fd4` (zz 0.11.1). Wire stays at 105, unreleased; both appends of this pass
 go into the existing v105 entry.
 
 ## What to re-measure first
@@ -12,11 +12,11 @@ go into the existing v105 entry.
    `stream-split-print-term`, `stream-display-kill-close`, `stream-display-kill-write`,
    `stream-split-kill-close` and `stream-split-kill-write`; `ZZ_STREAM_MATRIX_FILTER` accepts
    `'split-print|kill-close|kill-write'` with `--matrix` if you only want those seven.
-2. Revert `d7e718dd` and run the same filter. All six must go red, four of them on exit, stdout and
+2. Revert `bb6b0ec0` and run the same filter. All six must go red, four of them on exit, stdout and
    state at once. new-cases-baseline-tip7.txt is that run against the pre-fix binary.
 3. `--self-check`. Both equivalences must pass; the pane-death sabotage is "do not kill the pane on
    the zz side", which is only one-sided if the scene is restored afterwards, which is what
-   `771fc5df` adds.
+   `2fb59b80` adds.
 
 ## What this pass claims and what it does not
 

@@ -226,7 +226,7 @@ Files the gate added to this directory:
 - `gate-tui-stock-keys.txt` -- exit 0 on its first run, 50 cases agree.
 - `gate-attached-client.txt` -- PASS.
 - `gate-status-background-jobs-baseline.txt` -- the one red the gate chased:
-  three solo runs red at the tip, nine runs at origin/main 1147d7cb in the same
+  three solo runs red at the tip, nine runs at origin/main ea193ab4 in the same
   worktree and target dir, 2 green and 7 red in both failure spellings.
 
 Excursion the lane's list did not name, added here on the reviewer's nit 5:

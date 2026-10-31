@@ -1,6 +1,6 @@
 # TUI-018 fifth-pass review handoff
 
-Keep TUI-018 at review. Production revision df47f4db is rebased onto origin/main af18f443; no independent approval or verified claim is made. The frozen binary and source hashes are in corrected-hashes.txt. The complete carried three-dot footprint is in footprint.txt, including test-helper changes and every evidence file.
+Keep TUI-018 at review. Production revision 05aa5637 is rebased onto origin/main fbdd41af; no independent approval or verified claim is made. The frozen binary and source hashes are in corrected-hashes.txt. The complete carried three-dot footprint is in footprint.txt, including test-helper changes and every evidence file.
 
 The five requested edges are implemented: spent load-buffer continues direct, alias and file queues with sticky failure; split-window validates and creates its pane before requesting input; zoom changes land before EOF, including failed splits with and without -Z; attached control SIGTERM closes frames and exits zero; and a pre-main constructor preserves closed fd 0 for reached readers while leaving unused input alone. Stream usage/runtime diagnostics remain on the tmux exit-1 side of the native exit-code split. There is no fifth-pass wire change; version remains 104.
 

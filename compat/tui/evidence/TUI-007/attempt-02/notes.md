@@ -115,7 +115,7 @@ Measured 2026-09-12 at `0752c9b8`. The file this branch carries stops in its fir
 replaced with exactly that indicator, so the wait can never be satisfied and nothing after it runs.
 Nothing in this lane's diff touches `compat/attached-client.sh`, which is not in this lane's zones.
 
-`origin/main` (`ce010be5`) carries the modes lane's fix to that one function. `diff`ing main's copy
+`origin/main` (`8bfac781`) carries the modes lane's fix to that one function. `diff`ing main's copy
 against this branch's gives three hunks and nothing else: the `zz` arm of the `case` drops its own
 pattern so both sides use `\[[0-9]+/[0-9]+\]`, and the awk that strips the indicator stops being
 guarded by `side == "tmux"`. All three are copy-mode detection; none of them is an overlay probe or
@@ -213,13 +213,13 @@ Files this gate added, all prefixed `gate-`:
 
 Two gate commits, on top of the 17 rebased ones:
 
-- `c708b0ae` — the trailing-space fix. `status_overlay` trimmed trailing spaces off
+- `75ee6e02` — the trailing-space fix. `status_overlay` trimmed trailing spaces off
   every message-area front; the pin only loses them when a status row's fill sits
   under the overlay and absorbs them. With `status off` it paints them. Trims only
   when `model.status_block_rows() > 0` now, and both halves are pinned by unit tests.
   The fixture header stated the rule without its condition, and overstated which
   `*-under-message` case carries trailing spaces (the reviewer's nit); both corrected.
-- `d0960379` — the review's one must-fix. The branch's four wire appends
+- `0f2f0873` — the review's one must-fix. The branch's four wire appends
   (`DisplayPanesState.colour` and `.active_colour`, `InputMessage::DismissClientMessage`,
   `DisplayPanesAction::Dismiss`) are now named in the v102 history entry. Main moved to
   102 with the caps lane, so they go there rather than reopening 101. No code change.

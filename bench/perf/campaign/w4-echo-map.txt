@@ -1,10 +1,10 @@
 W4 ECHOMAP: where the echo latency goes, stage by stage. 2026-10-03.
-Hosts: the Linux leg stopped at about 11:30 when the ssh control master to alienware expired (new logins need the owner's YubiKey). The full stage table below is measured on the Mac (M4 Max, macOS) at DL4's head perf/deliver4 970ec32ab and on the pinned tmux next-3.8; the Linux rows are the ones taken before the ssh loss. Section 7 lists what carries over and what needs the Linux leg; section 8 has the Linux commands.
-Gate rows to beat (quiet alienware, 52f8e3ab): echo.p50.idle zz 1.63 ms, tmux 0.931 ms, final rule 1.5x -> zz needs 1.40 ms or less. DL4 is credited with about 64 us of it on Linux.
+Hosts: the Linux leg stopped at about 11:30 when the ssh control master to alienware expired (new logins need the owner's YubiKey). The full stage table below is measured on the Mac (M4 Max, macOS) at DL4's head perf/deliver4 b03aa1ff7 and on the pinned tmux next-3.8; the Linux rows are the ones taken before the ssh loss. Section 7 lists what carries over and what needs the Linux leg; section 8 has the Linux commands.
+Gate rows to beat (quiet alienware, ed308bfc): echo.p50.idle zz 1.63 ms, tmux 0.931 ms, final rule 1.5x -> zz needs 1.40 ms or less. DL4 is credited with about 64 us of it on Linux.
 Evidence (scratch, not committed): /tmp/zzpc/echomap/mac/{m-probe-dl4,m-probe-tmux,m-clean-dl4,m-clean-base,m-clean-tmux,m-count-dl4,m-count-base}.json, stages-dl4-idle.json, stages-tmux-idle.json; zz probe patch /tmp/zzpc/echomap/probes-dl4-970ec32a-mac.patch (not committed). Tools committed here: w4-echomap.py (driver), w4-echomap-stages.py (stage walker), w4-echomap-sct.c / w4-echomap-sct-mac.c (LD_PRELOAD / DYLD interposer for tmux syscalls), w4-echomap-hop.c (kernel hop probe), w4-echomap-run.sh (Linux series).
 Method: the driver runs echo.py's pane and key pattern (200 keys, 20-50 ms gaps, a carriage return every 25 keys, idle and busy30 sessions) through zz attach or tmux attach in a PTY, records the bench write and echo-seen instants on the probe clock (CLOCK_UPTIME_RAW on macOS, CLOCK_MONOTONIC on Linux), and samples per-process counters. zz carries temporary CLOCK_UPTIME_RAW probes (buffered, flushed by a side thread every 200 ms); tmux runs under an interposer that stamps read/readv/write/writev/recvmsg/sendmsg/select/kevent/poll. The Mac load average was 25-40 (other lanes building), so the walls are loaded-host walls; the counts are not affected.
 
-1. The echo path, hop by hop (source, DL4 970ec32ab)
+1. The echo path, hop by hop (source, DL4 b03aa1ff7)
  bench write -> [W1] zz attach main thread: EventLoop::wait (kqueue on macOS, select on Linux, no timeout) -> read_terminal -> EventParser -> InteractiveClient::send_input -> ProtocolSender::send_encoded (socket write)
  -> [W2] daemon loop: EventLoop::poll_ready (mio) -> read_ready (socket read) -> dispatch -> input path (several ServerState locks, hook_events::HookScope::open and InputFocusScope::open snapshots, note_terminal_input, run_event_hooks) -> Shared::dispatch_input_key -> TerminalSession::send_key_for_view -> CommandQueues::send -> ActorWake::notify (1-byte wake-pipe write)
  -> [W3] zz-pty-shard-N: Shard::poll -> drain_wake_pipe (2 reads) -> PaneActor::on_wake (Wake::Input) -> on_command Key -> encode_key -> PtyWriter::flush_pending (pty write)
@@ -17,7 +17,7 @@ Method: the driver runs echo.py's pane and key pattern (200 keys, 20-50 ms gaps,
  Serial wakes per echo: zz Linux 8 (W1, W2, W3, W4, W5, W6, W7, bench), zz macOS 7 (no W5), tmux 4 (T1, T2, T3, bench).
 
 2. Stage table, macOS, idle pane (p50 since the bench write, step p50, step p99, in us; 198-200 keys)
- zz DL4 970ec32ab (probe build; probe-run echo p50 0.193 ms, p99 0.498):
+ zz DL4 b03aa1ff7 (probe build; probe-run echo p50 0.193 ms, p99 0.498):
   client key read             25.5   25.5   67.1   bench pty write -> client wake -> stdin read
   client socket write         41.8   16.2   47.9   parse + encode + write
   loop wake                   46.5    5.3   51.8

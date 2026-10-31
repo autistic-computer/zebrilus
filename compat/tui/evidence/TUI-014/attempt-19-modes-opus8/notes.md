@@ -1,6 +1,6 @@
 # TUI-014 eighth pass, 2026-09-18 (lane modes-opus8)
 
-Branch `campaign/tui-customize-4` rebased onto `origin/main` `ce1a26e4` (release zz 0.11.1) and
+Branch `campaign/tui-customize-4` rebased onto `origin/main` `c93f7fd4` (release zz 0.11.1) and
 pushed as `campaign/tui-customize-5`. The runtime under test is `target/debug/zz_cli`, copied to
 `target/lane/zz_cli-final` and hashed before any run; `environment.txt` carries both binaries'
 hashes and the fixture environment. `PROTOCOL_VERSION` stays 105 and this pass appends nothing to
@@ -176,7 +176,7 @@ this pass's tallies and wire version.
 `compat/tui-mouse.sh` exits 1 on `paste-under-menu/screen`, a TUI-008 case, measured three times
 on this box with three binaries:
 
-    origin/main ce1a26e4              1 of 45 asserted checks differ, paste-under-menu/screen
+    origin/main c93f7fd4              1 of 45 asserted checks differ, paste-under-menu/screen
     this branch before this pass      1 of 45 asserted checks differ, the same check, same row
     this tip                          1 of 55 asserted checks differ, the same check, same row
 

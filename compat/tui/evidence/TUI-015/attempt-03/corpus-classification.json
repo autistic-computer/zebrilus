@@ -1,7 +1,7 @@
 {
   "smoke/cli-chain-parse-abort": {
     "classification": "inherited",
-    "main": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+    "main": "12390407a56daa5028249bc9d0359df68052e86f",
     "candidate_exit": 1,
     "main_exit": 1,
     "divergence": "Step 2: CLI_PARSE_ABORT=broken versus CLI_PARSE_ABORT=clean:6; runtime order remains clean.",
@@ -63,7 +63,7 @@
   },
   "smoke/default-client-command": {
     "classification": "inherited",
-    "main": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+    "main": "12390407a56daa5028249bc9d0359df68052e86f",
     "candidate_exit": 1,
     "main_exit": 1,
     "divergence": "single-command-output and multiple-command-output fail; DEFAULT_CLIENT_COMMAND is absent. One OUT and two WARN divergences.",
@@ -115,7 +115,7 @@
   },
   "smoke/jobs-command-environment": {
     "classification": "inherited",
-    "main": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+    "main": "12390407a56daa5028249bc9d0359df68052e86f",
     "candidate_exit": 1,
     "main_exit": 1,
     "divergence": "positive-destroyed and positive-missing fail; JOBS_COMMAND_ENVIRONMENT is absent. One OUT and two WARN divergences.",
@@ -133,7 +133,7 @@
   },
   "smoke/plugin-runtime-resurrect-restore": {
     "classification": "shared baseline failure on the pin side",
-    "main": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+    "main": "12390407a56daa5028249bc9d0359df68052e86f",
     "candidate_exit": 1,
     "main_exit": 1,
     "divergence": "zz restores both ALPHA/BETA panes with their cwd; tmux-side title assertion sees shell-generated titles and sets failed:tmux-side-only.",
@@ -151,7 +151,7 @@
   },
   "smoke/source-replay-diagnostics": {
     "classification": "inherited",
-    "main": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+    "main": "12390407a56daa5028249bc9d0359df68052e86f",
     "candidate_exit": 1,
     "main_exit": 1,
     "divergence": "Step 60 control confirm acceptance times out (request-rc:124, no events) on zz; the pin returns request-rc:1 and source replay diagnostic events.",
@@ -225,7 +225,7 @@
         ]
       }
     ],
-    "main": "04fe4a7da33e415bf993b8619dce1951d16f1815",
+    "main": "12390407a56daa5028249bc9d0359df68052e86f",
     "limits": "Candidate fails 5/5, main fails 1/4. The same failure exists on main, but the small unequal samples do not establish equal failure rates or exclude differing timing sensitivity. No scheduling source cause established, no assertion or timing altered. Executable-placement copies were prepared but no placement probe was run once main reproduced the failure."
   }
 }

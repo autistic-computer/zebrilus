@@ -284,7 +284,7 @@ which is worse to read than the one they are in.
 
 # The cycle-6 caps gate
 
-Rebased as local `gate-caps` onto origin/main `ce010be5` (the cycle-6 copy
+Rebased as local `gate-caps` onto origin/main `8bfac781` (the cycle-6 copy
 gate) in /home/demfabris/dev/zz-gate-tui6. The reviewer's verdict, its
 checks_run, what this gate did with each finding and how the suspicions were
 weighed are in `review.md`. Everything this gate ran is in `gate-01` to
@@ -296,23 +296,23 @@ clock it was taken at, so no two captures are byte-identical.
 Three commits from the earlier, reboot-killed run of this gate, each checked
 against the review and re-proved here:
 
-- `96205d66` the sub-16-colour guard in `downgrade_palette`, with
+- `10a34e96` the sub-16-colour guard in `downgrade_palette`, with
   `\e[38;5;12mA` and `\e[38;5;9mQ` permanently in the colour sample.
-- `13e186b0` the two wire appends named in `wire-protocol.md`, and the
+- `f3a9a4e6` the two wire appends named in `wire-protocol.md`, and the
   `style_classes` array in both payload tables in `terminal-lanes.md`.
-- `90b105dc` the three comment blocks in `terminal_event.rs` promoted to `///`
+- `b1589c52` the three comment blocks in `terminal_event.rs` promoted to `///`
   documentation, and a const assertion guarding the attribute bits.
 
 Two of this run's own:
 
-- `6da5095a` **PROTOCOL_VERSION 102**. The review judged the appends against
+- `2c777753` **PROTOCOL_VERSION 102**. The review judged the appends against
   101 and found them clean as pure appends, which they are; but 101 shipped in
-  zz 0.8.0 at `60f12b66` before this lane landed, so a released client would
+  zz 0.8.0 at `e1d34e21` before this lane landed, so a released client would
   pass the envelope check and misdecode every frame's style dictionary. The
   v101 entry closes with the tag it shipped in and a v102 entry opens with this
-  lane's two appends; `git log 60f12b66..origin/main -- crates/zz-protocol` is
+  lane's two appends; `git log e1d34e21..origin/main -- crates/zz-protocol` is
   empty, so v102 is this lane's alone. Whole story in `gate-16`.
-- `4b2075ac` the delayed live job in `smoke/jobs-command-environment` gets the
+- `6dec50cd` the delayed live job in `smoke/jobs-command-environment` gets the
   same four seconds its two siblings in that file already get. Whole story in
   `gate-15`.
 

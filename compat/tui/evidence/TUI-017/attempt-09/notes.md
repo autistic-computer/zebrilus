@@ -1,7 +1,7 @@
 # Edited tab provenance and write cost
 
 The lane ran `git rebase origin/main` before making this revision. It was already
-based on `af18f443`, including the empty-exact-window resolver review and the
+based on `fbdd41af`, including the empty-exact-window resolver review and the
 credential-scrubbing harness changes. Final production source is `686506a1`.
 The resolver is unchanged by this revision. Both obligations remain at review.
 

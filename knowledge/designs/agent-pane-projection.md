@@ -13,7 +13,7 @@ timestamp: 2026-10-23T00:00:00-03:00
 
 > **Superseded 2026-10-23.** The Agent pane is gone, and this projection went with it: the shadow
 > terminal, `PaneLane::project` and `AgentPublisher::feed_agent_pane_text` were deleted in
-> `fc9503ece`. Claude Code and Codex now run in ordinary terminal panes, so `capture-pane`,
+> `e0608066e`. Claude Code and Codex now run in ordinary terminal panes, so `capture-pane`,
 > `show-last-output`, `pipe-pane` and the bell work on them as on any terminal, and the GUI draws an
 > [agent lens](/concepts/agent-lens.md) over them ([design](/designs/agent-lens.md)). The rest of
 > this page is history.

@@ -1,4 +1,4 @@
-# --self-check at the final fixture, ZZ_BIN=target/alias7-bins/zz_cli-cand2, revision 771fc5df
+# --self-check at the final fixture, ZZ_BIN=target/alias7-bins/zz_cli-cand2, revision 2fb59b80
 
 self-check: one deliberate one-sided difference per channel, plus two equivalences
 ok    self-check equivalence: the same command on both sides

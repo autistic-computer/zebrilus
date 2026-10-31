@@ -10,7 +10,7 @@ tags:
 - resize
 timestamp: 2026-09-16T22:03:45Z
 status: partially_fixed
-git_commit: 8d4438c0466a8a01293236511844ed35ce30261b
+git_commit: 9816d60a5d0aef02d547413a283374968a2bb6a9
 resource:
 - crates/zz/src/workspace/view.rs
 - crates/zz/src/agent/controller.rs
@@ -53,8 +53,8 @@ confirmed both Codex and Claude Code. Do not narrow the report to one provider.
 - The daemon also writes prompts to its terminal projection. Missing desktop rows do not prove
   that the provider conversation or every daemon representation lost the prompt.
 
-Commit `dd7d0a3b` (2026-08-15) restricted retention to the attached session, following the
-daemon-runtime move in `5b8e253b` (2026-08-14).
+Commit `6a475878` (2026-08-15) restricted retention to the attached session, following the
+daemon-runtime move in `57db9ad7` (2026-08-14).
 
 ## Limits and checks
 
@@ -99,7 +99,7 @@ still reaches the paragraph edge.
 
 `CODE_FILL_PAD_X` adds 3 px on each side during painting. The original text layout reserves no
 corresponding width, so the fill consumes part of the spaces separating code and prose.
-Commit `9ba4d0f0` (2026-08-17) introduced this custom background geometry.
+Commit `2f8fbd99` (2026-08-17) introduced this custom background geometry.
 
 ## Verification
 

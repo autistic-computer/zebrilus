@@ -22,7 +22,7 @@ Work items, status, branches: `compat/catchup/ledger.json` through `ledger.py`.
 
 Every item is merged except the two fabrico deferred (`later.share`, `later.menu-input`). The pin is the tmux 3.8
 tag; floating panes ship in the mux, daemon, wire and all four clients; display-popup is master's modal pane by
-ruling. The closing full suite on `eb1a79f53` plus `fix.close-out` left `run.sh --attached-client`, every
+ruling. The closing full suite on `7ad7859bf` plus `fix.close-out` left `run.sh --attached-client`, every
 `tui-*.sh` fixture, clippy and `just compat check` green. Three `cargo ci-test` failures are outside the campaign
 (two `zz` agent::view timeline tests and the signal-disposition race in `zz-daemon-client`). The desktop and web
 float screenshots in float.clients' clause 4 were taken on 2026-10-10 after an alienware reboot; the three client
@@ -242,7 +242,7 @@ check `pgrep -af codex` on resume.
   both. Windows may hold only floating panes (a zz-only "keep one tile" rule needed more custom
   transfer rules than it saved), and the v2 layout writer keeps 3.8's structural position for
   floating leaves so `#{window_layout}` matches tmux.
-- 2026-10-09 orchestrator: pin.move merged (8730732ec); the pin is tmux 3.8. Any checkout's
+- 2026-10-09 orchestrator: pin.move merged (64555a5b9); the pin is tmux 3.8. Any checkout's
   `compat/.cache` must be refetched (`compat/fetch-tmux.sh`) before `just compat check` passes there;
   `wt.sh add` copies the main checkout's cache, so refresh that one first.
 - 2026-10-09 orchestrator: fix.capture-links gets a third, final fix pass after two reviews (output

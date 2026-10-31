@@ -24,7 +24,7 @@ status: open
 
 Results and method are in [macOS (Metal)](/research/2026-09-30-gpui-fork-lab.md#macos-metal).
 
-1. The `gpui-lab` branch, rebased onto main `4e7c62acb` and merged as `eb11056f7`, passed clippy and every workspace test on macOS
+1. The `gpui-lab` branch, rebased onto main `da21a23b6` and merged as `2eadfc8aa`, passed clippy and every workspace test on macOS
    except `zz-daemon` load flakes, which pass alone (its daemon code equals main's).
 2. Metal yardstick: `bench/gpui/frames.py`. The lab pin `cc9e4d1804` against `e01edb6b1a`:
    main-thread CPU -5.5% stream, -8.5% grid, -4.9% scroll, -12.6% chrome, no repeat overlapping.

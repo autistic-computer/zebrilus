@@ -1,5 +1,5 @@
 # split-window latency and -I -P stream order, alienware, 2026-09-18
-# zz binary: target/alias7-bins/zz_cli-tip7 (branch tip 60cf9e1c merged with origin/main ce1a26e4, before this pass's source change)
+# zz binary: target/alias7-bins/zz_cli-tip7 (branch tip 5acfbab8 merged with origin/main c93f7fd4, before this pass's source change)
 # pin: compat/.cache/tmux-src/tmux d77c9dc6
 
 split-empty zz run1 2205 ms pane=%1

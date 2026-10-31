@@ -17,7 +17,7 @@
         "smoke/plugin-runtime-resurrect-restore",
         "smoke/status-background-jobs"
       ],
-      "control": "target/capture-residuals-main-control/zz_cli at main af18f443",
+      "control": "target/capture-residuals-main-control/zz_cli at main fbdd41af",
       "evidence": "corpus-main-control-rows.txt",
       "result": "all seven fail on the control with the same step count and the same TOPO/GEO/FMT/OUT/WARN divergence counts as the candidate",
       "causes": [

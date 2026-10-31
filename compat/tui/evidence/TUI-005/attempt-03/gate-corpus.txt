@@ -1,4 +1,4 @@
-revision: 1166303b0d64e78f30f9739f24e9f9f87318312c (gate tip with the regenerated gaps report; the later flip commit touches only compat/tui-copy-mode.sh, which the corpus does not read)
+revision: e0283898cfe851c6afec3073d0b7572f51c611e6 (gate tip with the regenerated gaps report; the later flip commit touches only compat/tui-copy-mode.sh, which the corpus does not read)
 command: PATH=/opt/homebrew/bin:$PATH ZZ_COMPAT_ZZ=/home/demfabris/dev/zz-gate-target/debug/zz ZZ_COMPAT_TMUX=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_CORPUS=/home/demfabris/dev/zz/compat/.cache/plugins compat/run.sh --strict-geometry <explicit scenario names>
 selection: compat/run.sh --strict-geometry --delta origin/main..HEAD --commands send-keys,send-prefix,copy-mode --list gives 163 rows (every smoke row, the changed rows, and every row naming a touched command); status-options.txt was added by hand so that every keys and status scenario is covered. 164 rows, run as explicit-name chunks.
 started: 2026-09-11T20:20-03:00 through 2026-09-11T21:26-03:00

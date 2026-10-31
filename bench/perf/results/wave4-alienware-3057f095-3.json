@@ -24,7 +24,7 @@
   "arch": "x86_64",
   "ncpu": 16,
   "python": "3.14.7",
-  "git_sha": "774557287c695afb2463b09fe78c76d3fe98ccec",
+  "git_sha": "003e91ab107114988d5a905cf2fc2776d480fa6c",
   "git_dirty": false,
   "zz_bin": "/home/demfabris/.cache/zz-perf/batch12-77455728-cli",
   "zz_version": "tmux 3.8-zz",

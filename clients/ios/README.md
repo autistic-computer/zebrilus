@@ -481,7 +481,7 @@ just web build
 
 - `015b3a39` (2026-08-07): original UIKit backend and ala card demo.
 - `22c6bb5d` (2026-08-08): separate ala iOS client.
-- `4c23f8d6` (2026-08-15): replacement with the Swift client. Its parent contains
+- `adbb9a3d` (2026-08-15): replacement with the Swift client. Its parent contains
   the last full ala iOS implementation.
 
 `ala_platform::ios` restores the small window/display adapter and scene startup

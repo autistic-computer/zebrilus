@@ -32,7 +32,7 @@ The reviewer's verdict JSON, verbatim:
 
 ## The reviewer's checks_run, verbatim
 
-1. setup: fetched origin main + campaign refs; origin/main has moved to e2bf6765 (caps gate) but the merge-base with the branch is ce010be5, so every zone/wire judgement below is git diff ce010be5...55487e10 (three dots)
+1. setup: fetched origin main + campaign refs; origin/main has moved to d862274e (caps gate) but the merge-base with the branch is 8bfac781, so every zone/wire judgement below is git diff 8bfac781...55487e10 (three dots)
 2. checkout --detach 55487e10 in /home/demfabris/dev/zz-tui-mux-review; touched every crates/**/*.rs plus Cargo.*; CARGO_TARGET_DIR=/home/demfabris/dev/zz-tui-mux/target; cargo build -p zz -> exit 0
 3. read the full branch diff by hand: crates/zz-mux/src/{command,formats,status}.rs, crates/zz-daemon/src/daemon.rs, compat/tui-screen-diff.sh, compat/tui/, knowledge/tmux/tui-parity.md
 4. read the pin's format-draw.c format_trim_left, format_trim_right, format_width and format_leading_hashes, and status.c status_line_size and resize.c:452 (CLIENT_STATUSOFF when c->tty.sy <= s->statuslines); compared them line by line with the new Rust format_trim_left/format_trim_right and interactive_client_window_extent
@@ -53,11 +53,11 @@ The reviewer's verdict JSON, verbatim:
 19. cargo test -p zz --jobs 4 -- --test-threads=3 -> exit 0, 638 lib and 125 cli_binary green
 20. cargo clippy -p zz-mux -p zz-daemon --all-targets --all-features --jobs 4 -- -D warnings -> exit 0
 21. every cargo command through the two-slot flock with MemoryMax=5G; nothing hit the cap, nothing timed out on a slot
-22. ZONES: git diff ce010be5...HEAD --name-only holds nothing outside the batch's list. No crates/zz-tui change of any kind, so no render.rs hunk to name.
+22. ZONES: git diff 8bfac781...HEAD --name-only holds nothing outside the batch's list. No crates/zz-tui change of any kind, so no render.rs hunk to name.
 23. WIRE: crates/zz-protocol is untouched, no message gained a field, no protocol doc edited. The branch still carries the base's PROTOCOL_VERSION 101 while origin/main is now 102 from the caps gate; the mux lane appends nothing, so it owes no v102 line and the gate picks up 102 on its rebase.
 24. GUI: cargo build -p zz clean, and no presentation path moves. client_sizes is written from exactly two non-test sites, InputMessage::ClientTerminalSize (sent only from crates/zz-tui/src/app.rs:698 and :927) and the client-size-v1 hello fact (crates/zz-daemon/src/client.rs:1192, attached only when EndpointFactsScope includes terminal size, which connect_endpoint_with_prompts_and_terminal picks only for terminal_surface). A GUI client falls through to the terminal_geometries back-solve, which returns the extent it already holds, so resize_window_to_extent no-ops.
 25. COMMENTS AND ATTRIBUTION: git diff over crates/ adds no // or /* line (one stale doc block was removed); no Co-Authored-By, no 'Generated with', no mention of claude in any of the six commit messages
-26. LEDGER OWNERSHIP: a structural key-by-key diff of compat/tui/campaign.json between ce010be5 and the tip changes exactly five leaves, all under item 3 (TUI-004): status, evidence_note, next_action and two appended sources. No other obligation, no proof block, nothing set to verified. compat/tmux-gaps.json untouched.
+26. LEDGER OWNERSHIP: a structural key-by-key diff of compat/tui/campaign.json between 8bfac781 and the tip changes exactly five leaves, all under item 3 (TUI-004): status, evidence_note, next_action and two appended sources. No other obligation, no proof block, nothing set to verified. compat/tmux-gaps.json untouched.
 27. TRACKERS: python3 compat/tui/tracker.py check -> 0; python3 compat/tmux-tracker.py check -> 0; python3 -B compat/tui/tracker_test.py -> OK, 8 tests. Re-running both write-report at the tip leaves git status empty.
 28. EVIDENCE: compat/tui/evidence/TUI-004/attempt-05/ has environment.txt first, 20 files, notes.md names every one of them (checked by script), no .log anywhere in the diff, git check-ignore over every added path finds nothing ignored. The test evidence captured at 451cf194 is attested: git diff 451cf194 55487e10 -- crates/ is empty.
 29. COMMITS: one per punch-list item, scope confirmed per commit (efd9beb2 sizing, df1dedcb trim, 881e0b35 records, 451cf194 the short-client rule in daemon.rs alone, d7a7982f its records, 55487e10 a fixture comment fix)

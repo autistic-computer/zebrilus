@@ -12,5 +12,5 @@
     "client-tree-usage": "ok    client-tree-usage"
   },
   "summary": "all 186 asserted comparisons identical, 32 recorded not asserted (0 for a sibling lane, owners TUI-014=6 TUI-015=3 TUI-017=4 decided:TUI-015=4 decided:TUI-016=1 decided:TUI-017=6 gap:clients.interactive-refresh=8 unattributed=0)",
-  "later_landed_on_main": "60e7340c"
+  "later_landed_on_main": "a71a5d6a"
 }

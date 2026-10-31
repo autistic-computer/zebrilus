@@ -29,7 +29,7 @@ const LANES = [
   {
     id: 'W1-ATTACH', slug: 'attach', n: 6, groups: 'attach,echo,throughput,chatty', start: 'fix',
     reports: 'bench/perf/campaign/attach-review.json',
-    note: 'RESUME: the lane is built and reviewed, and a fix pass was cut off mid-verification. Its commits 46510b07, 6e475f57, 08186223 and the WIP commit 73eafb94 are on perf/attach, which holds perf/wave1 only up to 9eb5888b. First run `git merge perf/wave1` in the worktree so the lane has the Linux instruction probe and the Linux W0 JSONs; without them the quick gates have no instr twins and no W0, and the vs-W0 rules and drift check do not run. findings_status in the reports file says which findings those commits look to address; verify each one, finish the rest, re-run every lane check, and replace the WIP commit message with a real one only by adding a follow-up commit (never rewrite pushed history).',
+    note: 'RESUME: the lane is built and reviewed, and a fix pass was cut off mid-verification. Its commits fcbb62f6, 62739edf, 08186223 and the WIP commit 130c0b29 are on perf/attach, which holds perf/wave1 only up to cd104e83. First run `git merge perf/wave1` in the worktree so the lane has the Linux instruction probe and the Linux W0 JSONs; without them the quick gates have no instr twins and no W0, and the vs-W0 rules and drift check do not run. findings_status in the reports file says which findings those commits look to address; verify each one, finish the rest, re-run every lane check, and replace the WIP commit message with a real one only by adding a follow-up commit (never rewrite pushed history).',
   },
 ]
 

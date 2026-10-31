@@ -1,23 +1,23 @@
 # cargo suites at the cycle 6 overlays gate
-# revision: d096037976907dc66b8485ec0490e9a2caa4376c (the tests below ran at this tip;
-#   the earlier suites in this file ran at c1191e8a, the rebase tip, and are marked)
+# revision: 0f2f0873e25b03f615a83d88e84cbdba13a708e9 (the tests below ran at this tip;
+#   the earlier suites in this file ran at 7bdc68d2, the rebase tip, and are marked)
 # every command went through the box's two-slot lock with MemoryMax=7G and
 # MemorySwapMax=2G, HOME and XDG_CONFIG_HOME scrubbed to /tmp/zzgate6-home,
 # CARGO_HOME left at the real one, CARGO_TARGET_DIR=/home/demfabris/dev/zz-gate-target
 # captured: cycle 6 overlays gate, alienware, 2026-09-12
 
-cargo test -p zz-tui --jobs 6 -- --test-threads=4          exit 0   204 passed (at d0960379)
-cargo test -p zz --jobs 6 -- --test-threads=4              exit 0   638 lib + 125 cli_binary + 19 across 8 more targets (at d0960379)
+cargo test -p zz-tui --jobs 6 -- --test-threads=4          exit 0   204 passed (at 0f2f0873)
+cargo test -p zz --jobs 6 -- --test-threads=4              exit 0   638 lib + 125 cli_binary + 19 across 8 more targets (at 0f2f0873)
 cargo clippy --workspace --all-targets --all-features
-  --jobs 6 -- -D warnings                                  exit 0   (at d0960379)
-cargo build -p zz --jobs 6                                 exit 0   (at d0960379)
+  --jobs 6 -- -D warnings                                  exit 0   (at 0f2f0873)
+cargo build -p zz --jobs 6                                 exit 0   (at 0f2f0873)
 cargo fmt -p zz-tui -- --check                             exit 1   4 spots, none this lane's:
   lib.rs:585, render.rs:3037, tty.rs:126, tty.rs:202. render.rs alone is dirty at
   origin/main too (rustfmt --check on `git show origin/main:crates/zz-tui/src/render.rs`
   reports 1 diff), and lib.rs and tty.rs are the caps lane's. The one spot this gate
   added was reformatted before the commit.
 
-At the rebase tip c1191e8a, before the trailing-space fix:
+At the rebase tip 7bdc68d2, before the trailing-space fix:
 cargo test -p zz-tui                                       exit 0   203 passed
 cargo test -p zz-mux -p zz-protocol -p zz-client           exit 0   524 + 222 + the small suites
 cargo test -p zz-daemon --lib                              exit 0   890 passed

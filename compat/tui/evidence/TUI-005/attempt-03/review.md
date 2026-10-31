@@ -1,8 +1,8 @@
 # TUI-005 review and cycle-6 copy gate
 
-revision: a4a812063c52300285d0e838f51a6468f40faf02 (gate tip before this records commit)
+revision: b7dbcbf61949769489d12236bad53e51b780d288 (gate tip before this records commit)
 lane tip reviewed: 8d766d0dd89e30dd0abcc696f4110a6a3781ee6a on campaign/tui-copy-2
-gate worktree: /home/demfabris/dev/zz-gate-tui6, rebased onto origin/main 60f12b66 (release: zz 0.8.0)
+gate worktree: /home/demfabris/dev/zz-gate-tui6, rebased onto origin/main e1d34e21 (release: zz 0.8.0)
 pin: d77c9dc6aa021e4bc61f0da128c591af695e6466 (tmux next-3.8)
 
 ## Reviewer verdict, verbatim
@@ -63,23 +63,23 @@ appear on both sides with no ancestor to reconcile them (daemon.rs, status.rs,
 session.rs, render.rs, mode_view.rs, the two protocol files, campaign.json,
 tmux-gaps.json, the two fixtures and the generated reports). The rebase is the
 operation that matches how the lanes land, and it was clean: the five lane
-commits replayed onto origin/main 60f12b66 with ONE conflict, the generated
+commits replayed onto origin/main e1d34e21 with ONE conflict, the generated
 `knowledge/tmux/tui-parity.md` status-count line, resolved by regenerating the
 report. The rebased diff against origin/main
 is byte for byte the lane's own diff against its BASE (30 files, +4086/-25), so
 the rebase carried the lane and nothing else. BASE (origin/campaign/tui-cycle5-gated
 5d9bf198) was already on main by content: the modes gate carried it in at
-41f3db77.
+3aed351a.
 
 ### One gate commit the lane did not owe
 
 `knowledge/tmux/gaps.md` was STALE AT origin/main, not because of this lane.
-Main's own da092d5b ("Own the configuration files and import tmux on request")
+Main's own 15b9435c ("Own the configuration files and import tmux on request")
 edited `compat/tmux-gaps.json` (config.discovery and presentation.native-status)
 without regenerating the report, and both `compat/run.sh` and `compat/check.sh`
 refuse to run while the two disagree. Proved by checking out origin/main's two
 files alone into the gate worktree: `python3 compat/tmux-tracker.py check` said
-`knowledge/tmux/gaps.md is stale`. Commit ef759623 regenerates it; the diff is
+`knowledge/tmux/gaps.md is stale`. Commit e0283898 regenerates it; the diff is
 the two sentences main left behind and nothing of this lane's.
 
 ### Sibling flip
@@ -90,7 +90,7 @@ backward, re-entry search-again and forward-search-re-entry-searches-up, per
 table) and `emacs-ordinary-pane-search-backspace`, whose incremental prompt
 already paints the match. The modes lane landed
 `copy-mode-current-match-style` in `crates/zz-tui` render.rs and merged at
-41f3db77, so commit a4a81206 drops MATCH_REASON, sets the emacs
+3aed351a, so commit b7dbcbf6 drops MATCH_REASON, sets the emacs
 `SEARCH_OPEN_MODE` back to all six channels, and takes the recorded-channel
 argument off all twelve call sites. The fixture now has NO recorded case at all.
 

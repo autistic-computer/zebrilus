@@ -228,7 +228,7 @@ could tie to real Claude Code or Codex behavior.
    row stays put. History replayed while no turn runs lands in the background and is drawn before
    the first turn that started after it. If one ever
    needs more room it opens as a zz split pane or a PiP, never a view inside the chat. The old driver-backed pane kind
-   (`d20c49f4b`) stays gone, confirmed by fabrico on 2026-10-29: chat mode's windows run the CLI with the lens over it, so the lens is
+   (`69ceca016`) stays gone, confirmed by fabrico on 2026-10-29: chat mode's windows run the CLI with the lens over it, so the lens is
    the chat surface. Checked live in zz Dev on 2026-10-29 (scratch HOME, Claude Code 2.1.312):
    parallel background subagents, a subagent opened in place, a question answered from the card
    and one answered in the terminal. The web and iPad clients were checked only by tests and the

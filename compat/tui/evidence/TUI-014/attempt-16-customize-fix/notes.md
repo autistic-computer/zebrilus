@@ -1,6 +1,6 @@
 Fix pass after the c0e9bd83 review rejection, 2026-09-17.
 
-Rebased campaign/tui-customize-2 onto origin/main d1508a16, resolving generated
+Rebased campaign/tui-customize-2 onto origin/main 12390407, resolving generated
 gap reports by regeneration. This pass targets campaign/tui-customize-3.
 
 The first pre-fix focused run failed during setup because run_on_both does not
@@ -32,7 +32,7 @@ The v1 attached array probe found hooks are absent from pinned customize-mode (w
 
 The minimal environment omitted a UTF-8 locale. The first chooser run fails because the pin draws ACS border letters instead of UTF-8 glyphs. Stopped its fixture pipeline, the in-progress client roster and verifier (143), retained their logs, and restarted all attached proofs with LANG=C.UTF-8 and LC_ALL=C.UTF-8. The binary is unchanged.
 
-The shared origin/main ref advanced from the initial rebase base d1508a16 to af18f443 while proofs ran (the capture lane plus credential scrubbing). An isolated /home/demfabris/dev/zz-c11-modes-main-baseline worktree builds that tip for failure attribution. The candidate still has the measured initial rebase base d1508a16; main-advanced-paths.txt names the later runtime/harness changes.
+The shared origin/main ref advanced from the initial rebase base 12390407 to fbdd41af while proofs ran (the capture lane plus credential scrubbing). An isolated /home/demfabris/dev/zz-c11-modes-main-baseline worktree builds that tip for failure attribution. The candidate still has the measured initial rebase base 12390407; main-advanced-paths.txt names the later runtime/harness changes.
 
 The broad tail fill passes the two requested default cases but regresses short dim, colored and underlined rows. Short rows leave default cells in the pin’s allocation; an exact allocation boundary can retain the last style in capture. The corrected renderer clears an unselected row before writing only its contents, so the outer grid allocates and clears the same cells instead of receiving painted padding. Extra attached cases cover short dim, foreground, background, underline and a background run ending at column 20. The v3 package tests and clippy pass. The build initially reused stale current-main protocol artifacts from the shared target; touching this worktree’s crate roots forced recompilation without changing their contents.
 

@@ -1,4 +1,4 @@
-Review of perf/loop at 362c83bc7. Code read from an exported copy (/tmp/zzpc/review2/snap), because the worktree had uncommitted edits from another session. Line numbers are from that copy.
+Review of perf/loop at 1e804a383. Code read from an exported copy (/tmp/zzpc/review2/snap), because the worktree had uncommitted edits from another session. Line numbers are from that copy.
 
 1. P1, CONFIRMED (from the code, not reproduced): an event hook that waits panics the hook runner.
    CommandTask items have loop_wait=true (wait_queue.rs:129). When a task finishes (wait_queue.rs:261/408), run_event_hooks (daemon.rs:7698) only queues hooks to LoopHooks when loop_leaf is set (8548), and only LoopHooks sets it. So the hooks run through the synchronous runner (8569). A run-shell, if-shell or wait-for inside the hook parks (16169), advance_inserted_frames returns None, and `.expect("synchronous inserted queue finished")` (14530) panics.
@@ -8,7 +8,7 @@ Review of perf/loop at 362c83bc7. Code read from an exported copy (/tmp/zzpc/rev
    - write_ready returns after 256 KiB and calls notify_one (event_loop.rs:1788-1790), which does nothing on the loop thread (daemon.rs:2434-2438).
    - If the batch went out in full, `frames` is empty, so no WRITABLE interest is registered (event_loop.rs:1592 and after).
    - Frames and command output are now enqueued on the loop thread (the zz-pane-*/zz-output-* threads are gone), so the remainder waits for an unrelated event.
-   Why Linux: a 256 KiB send buffer comes out at about 416 KiB there, so a full batch fits in one writev. A probe on this Mac took only 256 KiB of a 300 KiB write, which arms WRITABLE. ffcef23e2's Linux wake (event_loop.rs:1566-1582) only covers Control clients.
+   Why Linux: a 256 KiB send buffer comes out at about 416 KiB there, so a full batch fits in one writev. A probe on this Mac took only 256 KiB of a 300 KiB write, which arms WRITABLE. 438d95c84's Linux wake (event_loop.rs:1566-1582) only covers Control clients.
    Scenario: Linux GUI client, a window switch with large panes or kitty images queues about 600 KiB in one turn. About 300 KiB goes out; the rest waits for the next key press or timer.
 
 3. P3, CONFIRMED: the Windows test build no longer compiles.

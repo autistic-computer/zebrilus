@@ -1,5 +1,5 @@
 {
-  "production_revision": "df47f4db",
+  "production_revision": "05aa5637",
   "checks": [
     {
       "artifact": "compat/tui/evidence/TUI-018/attempt-10/tests-closing.txt",

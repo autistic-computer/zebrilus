@@ -1,6 +1,6 @@
 # TUI-018 fifth pass
 
-Base: origin/main c23b4f3bb699fae08cd8aa273c658a7346d705e1. The carried alias-4 work was rebased before these changes. No environment dump was taken. provenance.txt contains only revision IDs, tool versions, dates and file hashes.
+Base: origin/main fbdd41af5f22e6b086b9553ffe829b748ad3b455. The carried alias-4 work was rebased before these changes. No environment dump was taken. provenance.txt contains only revision IDs, tool versions, dates and file hashes.
 
 The fixture declares 91 matrix cells before their fixes: 37 additions and three former closed-descriptor records promoted to assertions. There are 90 asserted cells and one existing, explicitly decided input-cap cell. All four result channels are compared: stdout, stderr, exit status and resulting state. Pending split cells additionally sample pane count and zoom before EOF. The six attached-control signal cells retain raw PTY captures and compare normalized framing, status and retained state.
 
@@ -21,7 +21,7 @@ A neighbouring held-input case exposed another part of split ordering: a failed 
 
 The first unfinished stream/self-check and corpus runners were stopped to extend that matrix; their partial outputs remain. The provider then interrupted the session with “Selected model is at capacity”, terminating the remaining active jobs. test-packages.txt, client-commands.txt and fmt-2.txt have no completion status and are not claimed as passes. The initial clippy run failed on two style lints; the arms are merged and the termination test now compares complete output for idempotence. Closing checks use fresh filenames and the corrected immutable binary.
 
-The fixture and production corrections are saved in commits cf6ea65d, 2408702c, b0709452 and a26d4633. The corrected-neighbours run passes all seven assertions (including failed zoomed splits with and without -Z). The full 241-row selection contains the entire previous 230-row selection. Linux is the only installed Rust target; no macOS compilation or execution is claimed.
+The fixture and production corrections are saved in commits 6f8398ca, 58b64cc4, 7d529757 and 05aa5637. The corrected-neighbours run passes all seven assertions (including failed zoomed splits with and without -Z). The full 241-row selection contains the entire previous 230-row selection. Linux is the only installed Rust target; no macOS compilation or execution is claimed.
 
 The closing full test run stalled in the existing wait-exit acknowledgement test for more than two minutes. wait-exit-intervention.txt records the targeted SIGKILL of that test's child so the package run could continue; this is an interrupted failure. The bounded FIFO comparison then reproduces the acknowledgement-plus-EOF stall on fresh main (killed after seven seconds) while the corrected binary exits 0 in that trial. These observations establish intermittency, not a claimed wait-exit fix. The first closing integration run also reports a refresh-size test failure; isolated retries are separate evidence.
 

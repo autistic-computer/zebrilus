@@ -1,4 +1,4 @@
-# run 3, ZZ_BIN=target/alias7-bins/zz_cli-cand2 (sha256 66d541d5...), revision 378e27ed
+# run 3, ZZ_BIN=target/alias7-bins/zz_cli-cand2 (sha256 66d541d5...), revision 96b4b35c
 
 caller stream forms at 80x24 (pin tmux, cap 1048576 bytes)
 ok    source-file-applies

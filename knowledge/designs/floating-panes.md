@@ -17,7 +17,7 @@ timestamp: 2026-10-23T00:00:00-03:00
 # Decisions
 
 Ruling: fabrico, 2026-10-09 ([research](/research/2026-10-09-tmux-compat-revisit.md)); review rulings
-by the orchestrator the same day: match 3.8, invent no zz rules. Pointers are at `13f8a5361`;
+by the orchestrator the same day: match 3.8, invent no zz rules. Pointers are at `f64fe699f`;
 re-locate by symbol.
 
 1. A floating pane is an ordinary `Pane` whose leaf in the window's `CellLayout` is flagged floating,

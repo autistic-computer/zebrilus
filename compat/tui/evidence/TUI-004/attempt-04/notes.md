@@ -29,7 +29,7 @@ wait for `\[[0-9]+/[0-9]+\]`, and `wait_for_ordered_current_lines` strips a
 trailing `[n/m]` on both sides, not only the pin's. No other zz-only
 expectation was false; the fixture passes to the end.
 
-The flake, measured (`daemon-focus-flake.txt`): 0 of 20 failures at 6c7284a2,
+The flake, measured (`daemon-focus-flake.txt`): 0 of 20 failures at 1bcb06dc,
 5 of 20 at BASE. Instrumented runs show the stray `StatusChanged` is published
 by the `zz-pane-0` thread: the output-view terminal's watcher syncs the pane
 title asynchronously and publishes the client's first status render. The test
@@ -147,10 +147,10 @@ knowledge/protocol/wire-protocol.md (the v101 entry).
 
 ## Gate, cycle 6
 
-The gate rebased the lane onto origin/main cbec4728 and applied the review's
-three must-fixes, one commit each: 71411d79 drops the four added doc comments,
-dd2e3320 names the ModePresentation match-style appends in the v101 wire entry,
-and abb53cdd keeps the border style's attributes on the pane status row.
+The gate rebased the lane onto origin/main 91facfc5 and applied the review's
+three must-fixes, one commit each: 93cdf944 drops the four added doc comments,
+4441b5f3 names the ModePresentation match-style appends in the v101 wire entry,
+and eb599cb6 keeps the border style's attributes on the pane status row.
 grounded() now layers each format segment over the border style with
 apply_style, so bold survives on the border glyphs around the text and after
 `#[default]`. tui-screen-diff.sh gains the review's probe as
@@ -158,7 +158,7 @@ pane-border-attributes-top and pane-border-attributes-bottom, plus a one-sided
 bold sabotage. At the pre-fix build both checkpoints differ on row 11 by bold
 alone (`gate-border-attributes-prefix.txt`); with the fix they match
 (`gate-border-attributes-fix.txt`, both runs from an untracked 80x24-only copy
-of the fixture, deleted after). Every `gate-*.txt` run is at abb53cdd with a
+of the fixture, deleted after). Every `gate-*.txt` run is at eb599cb6 with a
 clean tree (`gate-environment.txt`).
 
 ## Files
@@ -169,7 +169,7 @@ clean tree (`gate-environment.txt`).
 | `proofs-at-tip.txt` | every proof command at the tip with its exit code. |
 | `attached-client-item0.txt` | attached-client.sh after the item-0 change, before any code change. |
 | `attached-client-tip.txt` | attached-client.sh at the tip: PASS. |
-| `daemon-focus-flake.txt` | 20 solo runs at 6c7284a2 and at BASE, 40 after the test change, and the failing assertion. |
+| `daemon-focus-flake.txt` | 20 solo runs at 1bcb06dc and at BASE, 40 after the test change, and the failing assertion. |
 | `daemon-focus-flake-tip.txt` | 20 solo runs at the tip. |
 | `indicators-item1.txt`, `indicators-self-check-item1.txt` | tui-indicators.sh on the item-1 working tree. |
 | `indicators-run-1.txt` .. `-3.txt`, `indicators-self-check.txt` | tui-indicators.sh at the tip, three runs and the self-check. |

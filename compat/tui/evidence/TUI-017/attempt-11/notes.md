@@ -78,7 +78,7 @@ upstream `uzaaft/libghostty-rs` at `46a9d2a` again.
   (smoke 144, changed 0, command-matched 44 over
   `--commands capture-pane,copy-mode,resize-pane`), exit 1 with 7 rows
   divergent after the retry pass — and all 7 diverge identically on the
-  ec10cad8 control build (delta-main-control.txt), so inherited 7, caused
+  599dc1dc control build (delta-main-control.txt), so inherited 7, caused
   here 0. The 7: known/known-spread-mixed 1 GEO (matches its registered
   `0 1 0 0 0` tuple); micro-flags 1 OUT (the box-locale `%b`: `Sep` vs
   `set`); show-options-hooks 7 OUT (`lock-command` default `"lock -np"`

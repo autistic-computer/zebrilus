@@ -2,7 +2,7 @@
 type: Design Plan
 title: Agent lens . the agent view of a terminal pane
 description: "zz stops drawing its own agent pane. Claude Code and Codex run as their real TUIs in ordinary terminal panes, and a terminal running one of them gets a lens button in its header that swaps the cell grid for the agent timeline of that same pane. The daemon tails the transcript the CLI already writes (Claude's session jsonl, the rollout Codex holds open) through the existing translators, the lens composer pastes into the TUI, and a Claude permission prompt is answered with the keys the TUI takes. The Agent pane kind, its pickers and every place that treats it as a pane type are deleted; the native drivers stay in the source."
-status: Built and merged to main in d20c49f4b (2026-10-23; replaces the abandoned 2026-09-17 attempt)
+status: Built and merged to main in 69ceca016 (2026-10-23; replaces the abandoned 2026-09-17 attempt)
 resource: crates/zz-daemon/src/agent/lens.rs
 tags:
 - agent

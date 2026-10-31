@@ -1,6 +1,6 @@
 # Alias-stream correction, cycle 11
 
-The lane starts at 5ae3cef7 and rebases onto origin/main 86215c66. It keeps
+The lane starts at 5ae3cef7 and rebases onto origin/main 1f9e5325. It keeps
 TUI-018 at review. The batch authorizes the branch campaign/tui-stream-alias-3,
 commits, and its push; this lane does not update the board or open a PR.
 

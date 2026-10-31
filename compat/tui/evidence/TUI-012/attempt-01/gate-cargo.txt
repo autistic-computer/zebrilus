@@ -1,6 +1,6 @@
 TUI-012 attempt-01 - the cycle 6 superset gate's workspace checks
-Gate tip cf4a74bee1adc6e8fcc533ea3c1f4ae194f66cd4, campaign/tui-superset rebased onto
-origin/main 686b7be6 (cycle 6 input and roster already in). Clean worktree.
+Gate tip 15c10fe407185c875751a68b609a3bb9a4c6fe79, campaign/tui-superset rebased onto
+origin/main c85eeea1 (cycle 6 input and roster already in). Clean worktree.
 
 Every command below ran through the box's shared two-slot lock with a per-command memory cap:
   S=$((RANDOM % 2)); systemd-run --user --scope -q -p MemoryMax=7G -p MemorySwapMax=2G \
@@ -78,7 +78,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 15.01s
 
 == cargo fmt --all -- --check -> exit 0 ==
-(no output; green on main again since the roster gate's commit c4863b39)
+(no output; green on main again since the roster gate's commit cc0ca1d6)
 
 NOTE ON cli_binary. The reviewer saw three control-mode tests red
 (refresh_client_b_reports_initial_change_and_exact_removal,

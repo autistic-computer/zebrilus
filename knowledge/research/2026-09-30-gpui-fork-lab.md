@@ -319,7 +319,7 @@ A web sweep of GPUI forks, apps that patch GPUI, and unmerged zed PRs (three `ag
 lanes) found mostly what this lab had already judged: retained mode, window composition and the
 gpui-ce MSAA fix. What was new since 09-30 went through one implementation lane each on
 `demfabris/gpui`, a failing-first test per fix, and a six-way A/B with `bench/gpui/frames.py`
-(profiling bundles, three repeats, base `499a950c98`). The window sat on the secondary display
+(profiling bundles, three repeats, base `63990de7a9`). The window sat on the secondary display
 (`--bounds=-2600,80,1280,900`) because macOS stops drawing a covered window: an earlier attempt
 on the main display, with the machine in use, drew 0 frames in most windows. Run-to-run spread
 was about 10% on main-thread CPU with the machine in use, so only large effects count.

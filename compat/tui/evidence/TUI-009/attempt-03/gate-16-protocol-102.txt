@@ -1,8 +1,8 @@
-# The wire moves to 102, this gate's own commit 6da5095a
+# The wire moves to 102, this gate's own commit 2c777753
 # captured: cycle 6 caps gate, alienware
 
 WHY
-101 shipped in zz 0.8.0, tagged on main at 60f12b66, before this lane landed.
+101 shipped in zz 0.8.0, tagged on main at e1d34e21, before this lane landed.
 This lane appends, after that tag:
   - one u32 colour class word per style on the Terminal lane's viewport
     payload and per appended style on its patch payload, after the kitty
@@ -16,7 +16,7 @@ passes the version check and then misdecodes the style dictionary of every
 frame. So the version moves.
 
 WHAT ELSE LANDED ON THE WIRE SINCE THE TAG
-  git log 60f12b66..origin/main -- crates/zz-protocol   ->   empty
+  git log e1d34e21..origin/main -- crates/zz-protocol   ->   empty
 The cycle-6 copy lane changed nothing under crates/zz-protocol, so the v102
 entry names this lane's two appends and nothing else.
 

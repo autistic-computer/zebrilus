@@ -39,7 +39,7 @@ that already keeps only the newest frame per pane.
 
 # How frames flow today
 
-Read at `323283d16` (2026-10-18).
+Read at `fb76cc344` (2026-10-18).
 
 **Daemon.** A pane's frames reach a client's `OutboundMailbox` (`crates/zz-daemon/src/daemon.rs`)
 through `PaneSink::deliver` (`daemon/shard_sink.rs`) or, off the fast path, through
@@ -207,7 +207,7 @@ congestion-window gain, was also measured; see Results for why 5/4 stays.
 
 # Measurement plan
 
-- **Local.** `just perf gate` before (`323283d16`) and after; `cargo ci-test`; clippy, including
+- **Local.** `just perf gate` before (`fb76cc344`) and after; `cargo ci-test`; clippy, including
   the no-agent daemon lint.
 - **Unit.** `FlowWindow` tests (`daemon/flow_tests.rs`): growth by 1.25× per round on a link with
   room, settling at 1.25× BDP, a rate drop, the 16 KiB floor, idle samples never shrinking the
@@ -268,7 +268,7 @@ attached ASCII 1300 ms, `echo.wire_bytes` 33 / 149 B as before.
 
 A first run on 2026-10-18 failed three throughput rules against W0. The host was slow, not the
 change: the gate's own pty ceiling (`cat` through a cooked pty, no zz) read 54 MB/s that day
-against 109-131 MB/s on other days, with the CPU at 1.6 GHz. An A/B against `323283d16` built the
+against 109-131 MB/s on other days, with the CPU at 1.6 GHz. An A/B against `fb76cc344` built the
 same way found no regression: an interleaved main, flow, flow, main run of the cli, chatty, mem,
 echo and control groups put every row within noise, and 300 alternating `list-panes` per build gave
 2.66 / 3.24 ms on main against 2.57 / 2.74 ms on flow.

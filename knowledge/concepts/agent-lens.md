@@ -16,7 +16,7 @@ grid; clicking again shows the terminal. The terminal process stays the source o
 timeline is read from the transcript the CLI already writes, and the composer types into the TUI.
 
 The rulings, the full deletion map and the history of the earlier attempt are in the
-[agent lens design](/designs/agent-lens.md). Both halves are on main (merged in `d20c49f4b`).
+[agent lens design](/designs/agent-lens.md). Both halves are on main (merged in `69ceca016`).
 
 Until 2026-10-23 zz had a separate Agent pane (`PaneKindSnapshot::Agent`) that spawned an ACP
 adapter or a native driver per pane, with project, history, provider, model and effort pickers.

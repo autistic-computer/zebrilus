@@ -1,4 +1,4 @@
-W4-DELIVER slicing plan: frames straight from shards. Source read and Mac measurements at perf/deliver 4a6956729 (= main 06ea9cf1 + brief generator), 2026-10-02.
+W4-DELIVER slicing plan: frames straight from shards. Source read and Mac measurements at perf/deliver 5145be9e1 (= main 2007daa3 + brief generator), 2026-10-02.
 One line per slice: id | moves | removes | write zone | risks | done criterion | gate. Host and order sit at the start of moves.
 Evidence (scratch, not committed): /tmp/zzpc/w4-deliver/probe-mac-1.json, profile-mac-sym.json, control-mac-1.json, echo-mac-1.json, made by bench/perf/campaign/w4-deliver-{probe,profile,control,echo}.py.
 The Mac host ran at load 25 (other lanes building): instruction counts, thread counts and sample counts are usable, wall times in these files are not.

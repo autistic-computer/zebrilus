@@ -22,7 +22,7 @@ Neither was worth building without numbers. This note has the numbers.
 - alienware: RTX 3070 Laptop, NVIDIA 615.78.08, CachyOS 7.2.11, on AC with the
   `powersave` governor. Another session's cargo builds ran on and off during the
   runs (load average 7 to 10), which is the noise in rep 1.
-- zz at `261426caf` plus the resize-cover change, debug build (dependencies at
+- zz at `0fc63e82b` plus the resize-cover change, debug build (dependencies at
   `opt-level = 2`, so wgpu, ash and the driver run optimized).
 - Headless gamescope 3.17 at 1600x1000, `-r 60` or `-r 120`, isolated socket,
   XDG dirs and `HOME`. One terminal pane and one browser pane split side by side

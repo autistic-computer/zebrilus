@@ -179,7 +179,7 @@ watch-only agent pane over the parent (`new-pane -d --kind agent -T Subagents`, 
 `@zz-subagents=%<parent>`) and fed it from the files the CLI writes: Claude's
 `<session>/subagents/agent-<id>.jsonl` and Codex's child rollouts under `$CODEX_HOME/sessions/`.
 The float closed 5 s after the last subagent finished, and its task tray could stop a child. It
-was a watch-only agent pane, so it went with the Agent pane kind in fc9503ece: `agent/feed.rs`,
+was a watch-only agent pane, so it went with the Agent pane kind in e0608066e: `agent/feed.rs`,
 `agent/claude/subagents.rs`, `agent/codex/children.rs` and `daemon/subagent_feeds.rs` are
 deleted, and the `watch` flag on `AgentSessionCapabilities` (wire v109) is no longer set by
 anything. The Codex rollout reader the lens uses now lives in `agent/codex/rollout.rs`. Showing

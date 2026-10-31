@@ -6,7 +6,7 @@ carries a deterministic corpus regression, found below, that no fixture on the b
 branch is pushed as `campaign/tui-mouse-menus-2-gated` with the review applied, so the next gate
 starts from the fixes rather than from the review.
 
-Base: origin/main 5d31bee6. attempt-04/review.md is the verdict this gate applied, copied in beside
+Base: origin/main f459c6b8. attempt-04/review.md is the verdict this gate applied, copied in beside
 the runs it names.
 
 ## Why it is held
@@ -122,7 +122,7 @@ building one was past the 40 minutes the gate had for it.
 
 ## What this gate proved, and what it did not
 
-Proved at this tip (which is menus + the three commits above, on origin/main 5d31bee6):
+Proved at this tip (which is menus + the three commits above, on origin/main f459c6b8):
 
 - `cargo test -p zz-protocol -p zz-mux -p zz-terminal -p zz-tui -p zz-client`: exit 0.
 - `cargo test -p zz-daemon` (empty HOME, `--skip russh_socks`): exit 0, 906 lib tests.
@@ -137,13 +137,13 @@ compat/attached-client.sh, compat/status-row.sh, verify-claims --run TUI-008, co
 
 Note on the two clippy and rustfmt reds this gate met: both are origin/main's, not this branch's.
 `crates/zz-daemon/src/russh_prompt.rs` is byte-identical to origin/main's and carries all seven
-`-D warnings` errors (duration_suboptimal_units, default_trait_access) from main's 5377ae99;
+`-D warnings` errors (duration_suboptimal_units, default_trait_access) from main's e11e8fca;
 `rustfmt --check` on origin/main's own crates/zz-protocol/src/catalog.rs flags the same `-P` line it
 flags here. Neither is charged to a lane.
 
 ## Regression fixed on menus-3
 
-2026-09-15, `campaign/tui-mouse-menus-3`, based on origin/main `501d7398`.
+2026-09-15, `campaign/tui-mouse-menus-3`, based on origin/main `de481af9`.
 Kept the settled menus commits through `0e31ce05`; replaced attempts `8e0dc652`
 and `68d3549e` with part (1), `8d5c9737`, and part (3), `4caca47d`.
 Part (2), static validation of a split bind-key tail, is omitted.

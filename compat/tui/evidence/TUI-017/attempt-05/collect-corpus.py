@@ -41,7 +41,7 @@ for scenario in scenarios:
     else:
         match = next((name for name in ['main', 'main_first'] if row.get(name, {}).get('diverges') and row['candidate']['diff_lines'] == row[name]['diff_lines']), None)
         if match:
-            row['classification'] = 'inherited; exact diff lines reproduce on clean 86215c66'
+            row['classification'] = 'inherited; exact diff lines reproduce on clean 1f9e5325'
         else:
             match = next((name for name in ['main', 'main_first'] if row.get(name, {}).get('diverges') and set(row['candidate']['diff_lines']).issubset(set(row[name]['diff_lines']))), None)
             assert match, scenario

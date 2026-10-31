@@ -1,6 +1,6 @@
 # Empty exact windows with configured pane indices
 
-The lane rebases onto main `af18f443`, including review fix `cf8e0b8b` and
+The lane rebases onto main `fbdd41af`, including review fix `3a6d8533` and
 its six asserted empty-exact-window cases. The resolver keeps main's removal
 of the leading `=` from an empty exact window component, then recurses through
 `resolve_named_session_with_pane_index` with the configured lookup callback.

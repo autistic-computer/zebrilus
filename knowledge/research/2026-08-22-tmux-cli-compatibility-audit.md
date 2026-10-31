@@ -4,7 +4,7 @@ title: tmux CLI compatibility and alias boundary
 description: A commit-pinned inventory of the tmux command, flag, option, format, hook, key, packaging, and native zz command surfaces, with the exact boundary around alias tmux=zz.
 date: 2026-08-22T16:12:36-03:00
 researcher: Codex
-git_commit: 1dc1943d4955899e45555290011ef9a047966186
+git_commit: 3109d83c056e1ae691ad83cf606847654feb2e9e
 branch: main
 repository: demfabris/zz
 topic: How close zz is to supporting alias tmux=zz while retaining a richer native GUI CLI
@@ -22,11 +22,11 @@ what is missing, and what still prevents a practical `alias tmux=zz`?
 
 The reference is tmux commit `d77c9dc6aa021e4bc61f0da128c591af695e6466`
 (`next-3.8`). The zz source anchor is commit
-[`1dc1943`](https://github.com/autistic-computer/zebrilus/tree/1dc1943d4955899e45555290011ef9a047966186).
+[`3109d83`](https://github.com/autistic-computer/zebrilus/tree/3109d83c056e1ae691ad83cf606847654feb2e9e).
 
 # Post-anchor implementation update
 
-The audit below remains a reproducible snapshot of `1dc1943`. The implementation tranche completed
+The audit below remains a reproducible snapshot of `3109d83`. The implementation tranche completed
 later on 2026-08-22 changed the live ledger without rewriting that historical baseline:
 
 - Executable tmux verbs increased from 80 to 83: `show-prompt-history`,
@@ -140,8 +140,8 @@ The executable catalog contains 94 verbs: 80 tmux verbs and 14 zz-native verbs. 
 contains 92 canonical verbs and 78 aliases. A separate resolver table recognizes the 12
 unimplemented canonical names and their seven aliases. The source keeps that boundary explicit and
 keeps unsupported flags in a build-checked ledger
-([catalog](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-protocol/src/catalog.rs#L189-L209),
-[ledger](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-mux/tests/catalog_floor.rs#L10-L82)).
+([catalog](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-protocol/src/catalog.rs#L189-L209),
+[ledger](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-mux/tests/catalog_floor.rs#L10-L82)).
 
 ## Executable tmux verbs (80)
 
@@ -262,7 +262,7 @@ or has no catalog marker.
 - `show-options -H` is accepted but does not include stored hook rows; `show-hooks` does.
 - `set-hook -B` and `show-hooks -B` are catalog-accepted but reject at execution because zz has no
   tmux format-monitor model.
-- At the `1dc1943` source anchor, `capture-pane -p` and `-T` were inert, and
+- At the `3109d83` source anchor, `capture-pane -p` and `-T` were inert, and
   buffer-versus-stdout routing differed; the post-anchor update above records the routing repair.
 - Copy mode and both choosers require an attached interactive client. A headless tmux pane can enter
   a mode, but a headless zz pane cannot because zz owns mode state per client view.
@@ -283,8 +283,8 @@ or has no catalog marker.
 # Options
 
 The option table has 180 non-hook names, and `BEHAVES` is a tested 104-name roster
-([source](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-mux/src/tmux_options.rs#L761-L866),
-[tests](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-mux/src/tmux_options.rs#L1335-L1370)).
+([source](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-mux/src/tmux_options.rs#L761-L866),
+[tests](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-mux/src/tmux_options.rs#L1335-L1370)).
 
 ## Behavior consumers (104)
 
@@ -345,7 +345,7 @@ Twenty-nine are explicitly low-demand or parked: the 21 theme/palette keys, `loc
 # Formats
 
 The registry contains the pin's 198 names
-([registry](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-mux/src/formats.rs#L289-L500)).
+([registry](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-mux/src/formats.rs#L289-L500)).
 
 Thirty-four are always unavailable. Thirty-three have no backing seam; `client_termname` has a
 per-client seam whose retained value is always empty because the attaching terminal name is not
@@ -411,7 +411,7 @@ The important shared-key differences are:
 | `M-Up`, `M-Left`, `C-Up`, `C-Left` | floating-aware `if-shell` resize | direct tiled-pane `resize-pane` |
 
 The source deliberately binds the picker and sidebar verbs
-([defaults](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-protocol/src/key.rs#L46-L89)).
+([defaults](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-protocol/src/key.rs#L46-L89)).
 An imported binding that names `split-window` still creates a terminal pane. The compatibility
 decision is therefore not “copy all stock defaults”; it is “tmux command names retain tmux meaning,
 while zz defaults may call zz-only commands.”
@@ -419,13 +419,13 @@ while zz defaults may call zz-only commands.”
 # Alias and packaging boundary
 
 The installed launcher rewrites no arguments to `attach`
-([launcher](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz/src/bin/zz_cli.rs#L28-L40)).
+([launcher](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz/src/bin/zz_cli.rs#L28-L40)).
 The raw-terminal client first executes `has-session`; an empty daemon produces `no sessions` before
 the lower-level interactive attach can perform its lazy creation
-([preflight](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-tui/src/lib.rs#L436-L471),
-[lazy attach](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-daemon/src/daemon.rs#L9321-L9363)).
+([preflight](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-tui/src/lib.rs#L436-L471),
+[lazy attach](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-daemon/src/daemon.rs#L9321-L9363)).
 
-Invocation behavior at the `1dc1943` source anchor:
+Invocation behavior at the `3109d83` source anchor:
 
 | Invocation | Current result |
 | --- | --- |
@@ -441,8 +441,8 @@ At that source anchor, nested attach refusal is only checked for a command named
 before the engine runs.
 An attaching `new-session` produces the same attach effect later without that check, so nested
 `attach` refuses but nested attaching `new-session` remains permissive
-([dispatch check](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-daemon/src/daemon.rs#L4453-L4468),
-[effect application](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-daemon/src/daemon.rs#L5700-L5715)).
+([dispatch check](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-daemon/src/daemon.rs#L4453-L4468),
+[effect application](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-daemon/src/daemon.rs#L5700-L5715)).
 
 Top-level `-L`, `-S`, `-f`, `-c`, `-l`, `-N`, `-C`, `-CC`, and `-V` exist. `-2`, `-q`, `-u`, and
 `-v` are accepted no-ops; `-T` consumes a value and is a no-op; `-D` is rejected. Real tmux socket
@@ -473,7 +473,7 @@ Five more daemon-owned workspace commands are dispatched outside that catalog:
 Together they already cover the main superset direction: pane-kind picking, browser creation and
 control, agent prompt delivery and runtime selection, editor selection, GUI navigation, browser
 capture, and diagnostic markers. The daemon's `tools` output documents the agent-facing subset
-([workspace tools](https://github.com/autistic-computer/zebrilus/blob/1dc1943d4955899e45555290011ef9a047966186/crates/zz-daemon/src/daemon.rs#L21839-L21880)).
+([workspace tools](https://github.com/autistic-computer/zebrilus/blob/3109d83c056e1ae691ad83cf606847654feb2e9e/crates/zz-daemon/src/daemon.rs#L21839-L21880)).
 
 The native CLI itself has two structural gaps:
 

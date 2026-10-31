@@ -3,8 +3,8 @@
 Fix-pass status: **active**. The rejected historical narrative below is superseded by the fix-pass section.
 
 Clause 1. Attempt-01 belongs to cycle 9's introspection lane, which closed clause 2's residues on
-`campaign/tui-introspection`; that branch reached `origin/main` as 501d7398 while this lane was
-proving clause 1 on 5d31bee6, and this branch was rebased onto it. Two cases this lane had recorded
+`campaign/tui-introspection`; that branch reached `origin/main` as de481af9 while this lane was
+proving clause 1 on f459c6b8, and this branch was rebased onto it. Two cases this lane had recorded
 against clause 2 then flipped to asserted with no code change of its own: `capture-control-escape`
 (`-C` with `-e`) and `capture-line-numbers-trailing` (`-L` with `-N`). Both clauses assert at the
 rebased tip.

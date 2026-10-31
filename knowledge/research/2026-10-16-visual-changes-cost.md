@@ -15,7 +15,7 @@ timestamp: 2026-10-16T23:00:00Z
 
 # Question
 
-`d6b52ad11` reworked the chrome (34px pane headers, labels that fade instead of ending
+`e288fea6a` reworked the chrome (34px pane headers, labels that fade instead of ending
 in an ellipsis, glass that blurs native browser pages, picked outlines and shadows). Did it make
 frames slower, and what is cheap to win back? Linux PR 17 was rebased on it and measured in the
 same runs.
@@ -30,9 +30,9 @@ scenario. Medians below.
 
 | Label | Tree |
 | --- | --- |
-| base | `32ee3ab37` (the tree before the visual commit, same as `0d729eb36`) |
-| main | `0e53ca4e0` (visual commit `d6b52ad11`) |
-| pr | PR 17 rebased on main (`f0f806ca8`) |
+| base | `5523e28c3` (the tree before the visual commit, same as `67ccece76`) |
+| main | `6557cd8bd` (visual commit `e288fea6a`) |
+| pr | PR 17 rebased on main (`601977f3f`) |
 | c1 | pr plus the `Primitive` change below |
 
 All four were built alike: `cargo xtask bundle-cef --profile profiling` with

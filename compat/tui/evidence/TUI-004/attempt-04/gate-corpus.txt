@@ -1,4 +1,4 @@
-Corpus at the gate tip abb53cdd, binary /home/demfabris/dev/zz-gate-target/debug/zz, pin d77c9dc6.
+Corpus at the gate tip eb599cb6, binary /home/demfabris/dev/zz-gate-target/debug/zz, pin d77c9dc6.
 Selection: compat/run.sh --strict-geometry --delta origin/main..HEAD --commands copy-mode,send-keys,set-option,set-window-option,split-window,select-pane --list (230 rows; every keys, status and smoke row, smoke/tui-client-input-backpressure included, is already in it).
 Run as explicit names in sequential chunks: PATH=/opt/homebrew/bin:$PATH ZZ_COMPAT_ZZ=<zz> ZZ_COMPAT_TMUX=<pin> ZZ_COMPAT_CORPUS=<corpus> compat/run.sh --strict-geometry <names>
 Chunks that exited 1 hold only the four environmental rows of this box: lane2-store, micro-flags, show-options-hooks, smoke/plugin-runtime-resurrect-restore (OUT on the first pass and the retry).

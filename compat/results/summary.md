@@ -288,7 +288,7 @@
 ## Attached-client fixture
 
 Status: `PASS`
-Recorded at: `940a6b3a360e`
+Recorded at: `18d5b94f066e`
 
 ## Retries
 

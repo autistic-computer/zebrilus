@@ -10,7 +10,7 @@ last_updated: 2026-10-09
 
 # Summary
 
-Measured 2026-10-09 at `main` 2f7dfe694 (zz 0.16.0, protocol 107). Three research passes: one
+Measured 2026-10-09 at `main` 70c0e22bf (zz 0.16.0, protocol 107). Three research passes: one
 re-read every refused item in `compat/tmux-gaps.json` against the code as it is now, one did the same
 for the three structural refusals (floating panes, linked windows, multi-user ACL), and one built the
 pin, the tmux 3.8 tag and upstream master and diffed their oracle inventories.

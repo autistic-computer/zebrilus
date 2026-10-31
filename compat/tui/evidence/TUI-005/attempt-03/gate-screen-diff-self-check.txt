@@ -1,4 +1,4 @@
-revision: a4a812063c52300285d0e838f51a6468f40faf02
+revision: b7dbcbf61949769489d12236bad53e51b780d288
 command: PATH=/opt/homebrew/bin:$PATH ZZ_BIN=/home/demfabris/dev/zz-gate-target/debug/zz TMUX_BIN=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_TMUX=/home/demfabris/dev/zz/compat/.cache/tmux-src/tmux ZZ_COMPAT_CORPUS=/home/demfabris/dev/zz/compat/.cache/plugins compat/tui-screen-diff.sh --self-check
 started: 2026-09-11T21:41:40-03:00 (ran 62 s, finished 2026-09-11T21:42:42-03:00)
 exit: 0

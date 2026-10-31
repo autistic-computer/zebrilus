@@ -1,6 +1,6 @@
 # Target grammar after the tab revision
 
-The final source is `686506a1`, based on `origin/main` at `af18f443`. The resolver
+The final source is `686506a1`, based on `origin/main` at `fbdd41af`. The resolver
 is unchanged from the previous reviewed integration. Empty exact window
 normalization still carries the configured pane-index callback.
 

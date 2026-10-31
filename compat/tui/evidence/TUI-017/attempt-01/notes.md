@@ -1,6 +1,6 @@
 # TUI-017 attempt-01, cycle 9 introspection lane
 
-Base `origin/main` f5c52feb. Branch `campaign/tui-introspection`. Box: alienware,
+Base `origin/main` 05ea6d57. Branch `campaign/tui-introspection`. Box: alienware,
 CachyOS Linux, pin d77c9dc6. Clause 2 only; clause 1's six rich transports are
 untouched and stay refused.
 

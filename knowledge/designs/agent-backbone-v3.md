@@ -23,7 +23,7 @@ last_updated: 2026-10-23
 ([agent lens](/designs/agent-lens.md)). Lane B below and the Agent pane rows are history.
 
 You are picking this up on another machine with no memory of the session that wrote it. Everything
-you need is in this file plus the source it points at. Line numbers are from `main` at `4f069977`
+you need is in this file plus the source it points at. Line numbers are from `main` at `dc712c19`
 on 2026-09-09; treat them as "near here", and reverify before editing.
 
 The question fabrico asked: how far can an AI agent go using zz as its whole backbone (terminal

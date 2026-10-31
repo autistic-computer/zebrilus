@@ -1,6 +1,6 @@
 # TUI-018 sixth pass
 
-Base: campaign/tui-stream-alias-5 at fd5e76d8, which merges cleanly into origin/main af18f443. The
+Base: campaign/tui-stream-alias-5 at 1693c608, which merges cleanly into origin/main fbdd41af. The
 four findings of the sixth review are built, none is recorded. The one wire change is a tail append; see the tip section for the 105 bump. No environment dump was taken.
 
 ## What changed
@@ -15,7 +15,7 @@ four findings of the sixth review are built, none is recorded. The one wire chan
    SIGTERM or a read error. Two neighbouring defects had to go for screen and cursor to match: a
    PTY-free pane's terminal now takes the pane's laid-out size before a chunk is fed (it stayed
    80x24 in a detached session), and the output-view actor refreshes `#{cursor_x}`, `#{cursor_y}` and
-   `#{history_size}` after each fed chunk (they stayed 0). Both reproduce on the fd5e76d8 binary
+   `#{history_size}` after each fed chunk (they stayed 0). Both reproduce on the 1693c608 binary
    (probes/cursor-base.txt, probes/geom-base.txt).
 3. Unreadable stdin. Both read shapes duplicate fd 0 and read the duplicate, so Rust's `Stdin` no
    longer turns EBADF into end of file, and every read error maps to the pin's `Input/output error`.
@@ -42,7 +42,7 @@ has one call site, in the CLI command path.
 ## Proof
 
 All counted runs use `target/alias6-bins/zz_cli-final` (sha256 in binary-hashes.txt, built from
-613ef711 and unchanged through e3e6b003) and the scrubbed environment.
+df9c2048 and unchanged through 313c0124) and the scrubbed environment.
 
 - `compat/tui-command-streams.sh`, three runs (streams-1/2/3.txt): 201 asserted comparisons
   identical, 0 recorded, 5 decided, exit 0 each. The 45 new cells: 9 delivery cases
@@ -53,7 +53,7 @@ All counted runs use `target/alias6-bins/zz_cli-final` (sha256 in binary-hashes.
   has a sabotage in the channel its fix moves: delivery cases withhold, drop or corrupt the bytes the
   zz side writes (state), spent and unreadable pane rows change the sampled state, source and buffer
   rows swap the reader for a missing file (stderr), guard rows drop one guarded command (stdout).
-- Fix reverted: the same 51 filtered cells against the fd5e76d8 binary
+- Fix reverted: the same 51 filtered cells against the 1693c608 binary
   (new-cases-baseline-fd5e76d8.txt) fail 33, which is every new cell except 12 that already matched
   the pin: alias and file spent pane readers, write-only pane readers, and file-replay shell guards.
   Those 12 stay as regression guards.
@@ -61,17 +61,17 @@ All counted runs use `target/alias6-bins/zz_cli-final` (sha256 in binary-hashes.
   `TUI-014=6 TUI-015=3 TUI-017=4 decided:TUI-015=4 decided:TUI-016=1 decided:TUI-017=6
   gap:clients.interactive-refresh=8 unattributed=0`, no TUI-018 record, exit 0.
 - `compat/attached-client.sh` (attached-client.txt): PASS.
-- Probes (probes/): each finding on the fd5e76d8 binary and the final binary, plus run-shell guard
+- Probes (probes/): each finding on the 1693c608 binary and the final binary, plus run-shell guard
   edges (`-t` missing pane, nonzero exit, invalid delay, output) that stay identical to the pin.
 - Delta corpus (`--commands source-file,load-buffer,display-message,split-window,run-shell,send-text,agent-send`,
   220 rows, 2531 steps, three shards): 210 zero-divergence rows, 3 registered `known/` rows, 7 rows
   red twice. lane2-store, show-options-hooks, smoke/cli-chain-parse-abort,
   smoke/default-client-command and smoke/plugin-runtime-resurrect-restore fail with identical diff
-  lines on the fd5e76d8 binary (candidate-comparisons/ against base-comparisons/). micro-flags fails
+  lines on the 1693c608 binary (candidate-comparisons/ against base-comparisons/). micro-flags fails
   on both with the same locale difference, `17-Sep-26` against the pin's `17-set-26`; only the clock
   minute differs. smoke/status-background-jobs fails at the `drawn DATE changes at seconds 1, 3, 5
   and 7` checkpoint on both binaries: over eight alternating trials the candidate is red twice 3
-  times and the fd5e76d8 binary once, first attempts fail 5 and 4 times
+  times and the 1693c608 binary once, first attempts fail 5 and 4 times
   (status-background-jobs-trials.txt). It is timing-sensitive on both and attempt-10 recorded the
   same checkpoint on fresh main; the rate difference is within this sample's noise but is not
   claimed to be zero. No row is classified as caused here.
@@ -81,8 +81,8 @@ All counted runs use `target/alias6-bins/zz_cli-final` (sha256 in binary-hashes.
   107 pass, cli_binary 134 pass and 2 fail. `wait_exit_holds_the_control_process_until_a_second_blank_line`
   stalled and passes 3 of 3 alone. `control_sourced_run_shell_closes_before_raw_output_and_same_line_continues`
   races a `%window-renamed @0 cat` notification between the sourced guard and the child output: the
-  fd5e76d8 binary passes it 2 of 8 times under the same test binary, the final binary 0 of 5, and
-  ten alternating trials each pass the fd5e76d8 binary once and the final binary twice
+  1693c608 binary passes it 2 of 8 times under the same test binary, the final binary 0 of 5, and
+  ten alternating trials each pass the 1693c608 binary once and the final binary twice
   (test-sourced-run-shell-alternating.txt). A direct reproduction shows the same transcript order on
   both binaries.
 - `clippy -p zz-protocol -p zz-terminal -p zz-daemon -p zz-cli --all-targets --all-features -D warnings`,
@@ -91,23 +91,23 @@ All counted runs use `target/alias6-bins/zz_cli-final` (sha256 in binary-hashes.
 
 Residual found while measuring, not in this batch: `zz -C cmd ; run-shell 'sleep 1' ; tail`
 with stdin at EOF exits after the run-shell guard, where the pin runs the queue to the end
-(probes/f4d-*.txt, identical on the fd5e76d8 binary).
+(probes/f4d-*.txt, identical on the 1693c608 binary).
 
 ## The tip after zz 0.11.0
 
-origin/main moved while this pass ran: 2fa763d0 released zz 0.11.0, and that release shipped
+origin/main moved while this pass ran: 7f913cd2 released zz 0.11.0, and that release shipped
 `PROTOCOL_VERSION` 104, the number this branch had been appending to. `python3 compat/wire-version.py`
 now says a release shipped 104, so the branch merges origin/main (no file is touched on both sides)
 and moves this cycle's three appends (`CommandInvocation.stdin_available`,
 `ClientFileOperation::ReadStdin` and `ReadStdinChunk`) into a v105 entry, with both pins and the
-`0x69` hello bytes updated. The proof above is at e3e6b003; at the merged tip 4bb7a2ca, with
+`0x69` hello bytes updated. The proof above is at 313c0124; at the merged tip c45ec3a2, with
 `target/alias6-bins/zz_cli-tip` (tip-binary-hash.txt), the fixtures were re-run:
 `compat/tui-command-streams.sh` 201 asserted, 0 recorded, 5 decided (tip-streams.txt);
 `compat/tui-client-commands.sh` 198 asserted with `unattributed=0` (tip-client-commands.txt);
 `compat/attached-client.sh` PASS (tip-attached-client.txt); zz-protocol tests 231 plus 23
 (tip-test-zz-protocol.txt); `compat/check.sh` including `evidence-secrets` and
 `wire-version: 105 is unreleased` (tip-compat-check.txt). The delta corpus, the self-check and the
-other packages' tests were not re-run at the tip: between e3e6b003 and the tip the only source change
+other packages' tests were not re-run at the tip: between 313c0124 and the tip the only source change
 is the protocol number and main's five commits, none of which touches a file this branch touches.
 
 `cargo fmt --all -- --check` fails at the tip on `crates/zz/src/terminal/view.rs`

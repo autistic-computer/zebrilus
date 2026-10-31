@@ -1,4 +1,4 @@
-DIGEST of run-01: compat/tui-choosers.sh against zz at 6c7284a2 (unchanged origin/main) and the pin, exit 1.
+DIGEST of run-01: compat/tui-choosers.sh against zz at 1bcb06dc (unchanged origin/main) and the pin, exit 1.
 The raw run printed 235589 bytes because every differing row prints styled; this digest keeps every verdict line,
 and for each differing case its header line and the first two differing row pairs, produced by the awk filter in notes.md.
 

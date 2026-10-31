@@ -2,7 +2,7 @@
 
 Cycle 5, the choosers lane. Every file here is a real run on alienware.
 
-## Baseline, before any product change (zz at 6c7284a2, unchanged origin/main)
+## Baseline, before any product change (zz at 1bcb06dc, unchanged origin/main)
 
 - `environment.txt`: both binaries' sha256, the zz revision and its clean
   state, the pin, the OS line, TERM, shell, bash, outer sizes and locale.

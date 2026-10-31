@@ -1,6 +1,6 @@
 # Capture residuals after landing capture-12
 
-The lane rebases onto `origin/main` at `af18f443`. Main includes the reviewed
+The lane rebases onto `origin/main` at `fbdd41af`. Main includes the reviewed
 empty-exact-window resolver fix, its six asserted cases, and credential
 scrubbing in both corpus harnesses. The seven lane commits replay without
 duplicating the landed capture-12 work. The tested source is `57160865`.
