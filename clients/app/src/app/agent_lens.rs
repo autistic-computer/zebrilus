@@ -38,12 +38,12 @@ use zz_protocol::{
 };
 use zz_ui::{
     agent::{
-        AGENT_CONTENT_MAX_WIDTH, AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore,
-        AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText,
-        MarkdownSlot, TimelineRow, TimelineStick, agent_jump_to_bottom_button,
+        AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore, AgentToolEntry,
+        AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText, MarkdownSlot, TimelineRow,
+        TimelineStick, agent_jump_to_bottom_button,
         chat::{
-            ChatClick, ChatClicks, ChatHooks, ChatPane, chat_agent_pip, chat_live, chat_thread,
-            shows_chat,
+            ChatClick, ChatClicks, ChatHooks, ChatPane, chat_agent_pip, chat_column, chat_live,
+            chat_thread, shows_chat,
         },
         composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer},
         composer_attachment,
@@ -1747,17 +1747,7 @@ impl AgentLens {
                     .overflow_y_scroll()
                     .track_scroll(&self.chat.scroll)
                     .on_scroll_wheel(wheel)
-                    .child(
-                        div().w_full().px_3().child(
-                            div()
-                                .w_full()
-                                .max_w(px(AGENT_CONTENT_MAX_WIDTH))
-                                .mx_auto()
-                                .pt_3()
-                                .pb(px(COMPOSER_OUTER_PADDING + 12.0))
-                                .child(body),
-                        ),
-                    ),
+                    .child(chat_column(body)),
             )
             .children(pip)
             .when(show_jump, |root| {

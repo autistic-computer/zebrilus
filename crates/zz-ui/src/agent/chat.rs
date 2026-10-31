@@ -215,6 +215,18 @@ pub fn chat_live(view: &ChatView) -> bool {
     view.running().is_some() || view.open_items().next().is_some()
 }
 
+pub fn chat_column(body: impl IntoElement) -> Div {
+    div().w_full().px_3().child(
+        div()
+            .w_full()
+            .max_w(px(super::AGENT_CONTENT_MAX_WIDTH))
+            .mx_auto()
+            .pt_3()
+            .pb(px(super::composer::COMPOSER_OUTER_PADDING + 12.0))
+            .child(body),
+    )
+}
+
 pub fn chat_thread(
     view: &ChatView,
     now: u64,
