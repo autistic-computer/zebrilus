@@ -89,6 +89,12 @@ pub const LIST_RULE: SurfaceRole = SurfaceRole::new(
     "List dividers",
     "Lines between menu groups, setting rows and stacked cards",
 );
+pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
+    "rule.tree",
+    Kind::Rule,
+    "Tree guides",
+    "The lines that join a tree's children",
+);
 
 pub const INLINE_PANEL: SurfaceRole = SurfaceRole::new(
     "inline-panel",
@@ -163,7 +169,7 @@ pub const PICKER: SurfaceRole = SurfaceRole::under(
     "Dialogs that search a list and pick from it, such as a file picker",
 );
 
-pub const CHROME: [SurfaceRole; 23] = [
+pub const CHROME: [SurfaceRole; 24] = [
     WINDOW,
     SIDEBAR,
     TITLEBAR,
@@ -180,6 +186,7 @@ pub const CHROME: [SurfaceRole; 23] = [
     BAR_RULE,
     SIDEBAR_RULE,
     LIST_RULE,
+    TREE_RULE,
     INLINE_PANEL,
     PHONE_PILL,
     PHONE_PILL_ICON,

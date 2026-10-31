@@ -1,3 +1,5 @@
+pub mod tree;
+
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
     MouseDownEvent, MouseMoveEvent, ParentElement, RenderOnce, Stateful,
