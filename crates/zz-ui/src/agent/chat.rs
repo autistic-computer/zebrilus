@@ -267,12 +267,11 @@ impl Draw<'_, '_> {
             .count();
         let expanded = self.open.turns.contains(&turn.id);
         let fold = rows.fold.filter(|_| !rows.folded.is_empty());
-        v_flex()
-            .id(("chat-turn", turn.id.0))
-            .group(TURN_GROUP)
+        let reply = v_flex()
+            .id(("chat-reply", turn.id.0))
+            .group(REPLY_GROUP)
             .w_full()
             .gap_3()
-            .children(rows.shown[..lead].iter().map(|unit| self.unit(unit, live)))
             .when_some(fold, |column, fold| {
                 column.child(self.hooks.clickable(
                     fold_row(turn.id, fold, expanded, self.cx),
@@ -307,21 +306,32 @@ impl Draw<'_, '_> {
                         _ => None,
                     })
                     .and_then(|id| self.hooks.fork_from(id));
-                let last = self
-                    .view
-                    .turns
-                    .last()
-                    .is_some_and(|last| last.id == turn.id);
+                let stamp = ordered
+                    .clone()
+                    .rev()
+                    .find_map(|unit| match unit {
+                        Unit::Text(id) => self.view.item(id),
+                        _ => None,
+                    })
+                    .map(|item| item.started_at)
+                    .or(turn.ended_at);
                 column.when(!reply.is_empty() || fork.is_some(), |column| {
                     column.child(message_actions(
                         &format!("turn-{}", turn.id.0),
+                        stamp,
                         (!reply.is_empty()).then(|| reply.into()),
                         fork,
-                        if last { None } else { Some(TURN_GROUP) },
+                        REPLY_GROUP,
                         self.cx,
                     ))
                 })
-            })
+            });
+        v_flex()
+            .id(("chat-turn", turn.id.0))
+            .w_full()
+            .gap_3()
+            .children(rows.shown[..lead].iter().map(|unit| self.unit(unit, live)))
+            .child(reply)
             .into_any_element()
     }
 
@@ -331,6 +341,7 @@ impl Draw<'_, '_> {
             Unit::User(id) => user_bubble(
                 id,
                 text_of(self.view, id),
+                self.view.item(id).map(|item| item.started_at),
                 self.hooks.fork_from(id),
                 self.hooks.refs,
                 cx,
@@ -551,6 +562,7 @@ impl Draw<'_, '_> {
                     &ItemId::new(format!("prompt-{}", id.as_str())),
                     prompt.into(),
                     None,
+                    None,
                     self.hooks.refs,
                     cx,
                 ))
@@ -761,22 +773,47 @@ fn text_of(view: &ChatView, id: &ItemId) -> SharedString {
 }
 
 const USER_GROUP: &str = "chat-user";
-const TURN_GROUP: &str = "chat-turn";
+const REPLY_GROUP: &str = "chat-reply";
+
+fn stamp_label(at: u64) -> Option<String> {
+    let at = chrono::DateTime::from_timestamp_millis(i64::try_from(at).ok()?)?
+        .with_timezone(&chrono::Local);
+    let today = chrono::Local::now();
+    let format = if at.date_naive() == today.date_naive() {
+        "%-I:%M %p"
+    } else if chrono::Datelike::year(&at) == chrono::Datelike::year(&today) {
+        "%b %-d, %-I:%M %p"
+    } else {
+        "%b %-d %Y, %-I:%M %p"
+    };
+    Some(at.format(format).to_string())
+}
 
 fn message_actions(
     key: &str,
+    stamp: Option<u64>,
     copy: Option<SharedString>,
     fork: Option<(ChatClicks, ItemId)>,
-    hover: Option<&'static str>,
+    group: &'static str,
     cx: &App,
 ) -> AnyElement {
+    let stamp = stamp.filter(|at| *at > 0).and_then(stamp_label);
     h_flex()
         .flex_none()
         .gap_0p5()
-        .when_some(
-            hover.filter(|_| !crate::touch::CoarsePointer::get(cx)),
-            |row, group| row.invisible().group_hover(group, ala::Styled::visible),
-        )
+        .items_center()
+        .when(!crate::touch::CoarsePointer::get(cx), |row| {
+            row.invisible().group_hover(group, ala::Styled::visible)
+        })
+        .when_some(stamp, |row, stamp| {
+            row.child(
+                div()
+                    .px_1()
+                    .text_size(crate::rems_from_px(11.5))
+                    .text_color(cx.theme().foreground.faint())
+                    .child(stamp),
+            )
+        })
         .when_some(copy, |row, text| {
             row.child(
                 Button::compact_icon(
@@ -818,6 +855,7 @@ fn message_actions(
 fn user_bubble(
     id: &ItemId,
     text: SharedString,
+    stamp: Option<u64>,
     fork: Option<(ChatClicks, ItemId)>,
     refs: Option<&ChatRefs>,
     cx: &App,
@@ -856,9 +894,10 @@ fn user_bubble(
         )
         .child(message_actions(
             &format!("user-{key}"),
+            stamp,
             Some(text),
             fork,
-            Some(USER_GROUP),
+            USER_GROUP,
             cx,
         ))
         .into_any_element()

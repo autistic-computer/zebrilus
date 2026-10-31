@@ -14,6 +14,7 @@ editor = ["penna/editor"]
 tree-sitter = ["penna/tree-sitter", "dep:tree-sitter-tmux"]
 
 [dependencies]
+chrono = { workspace = true, features = ["clock"] }
 image.workspace = true
 log.workspace = true
 markdown = { version = "1.0", features = ["serde"] }

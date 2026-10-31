@@ -343,7 +343,7 @@ impl Claude {
         for entry in sessions::chain_tail(&text) {
             self.facts.claude_entry(&entry);
             self.track(&entry);
-            updates.extend(self.translator.history_entry(&entry));
+            updates.extend(stamped(self.translator.history_entry(&entry), &entry));
             updates.extend(self.agent_lines(false));
         }
         updates.extend(self.finished_agents());
@@ -441,7 +441,7 @@ impl Claude {
         let mut updates = Vec::new();
         for entry in entries {
             self.track(&entry);
-            updates.extend(self.translator.sidechain_entry(&entry));
+            updates.extend(stamped(self.translator.sidechain_entry(&entry), &entry));
         }
         updates
     }
@@ -490,7 +490,8 @@ impl Claude {
             return;
         }
         self.track(entry);
-        read.updates.extend(self.translator.history_entry(entry));
+        read.updates
+            .extend(stamped(self.translator.history_entry(entry), entry));
     }
 
     fn track(&mut self, entry: &Value) {
@@ -603,12 +604,38 @@ impl Codex {
                     rollout::v2_item(item)
                 };
                 if let Some(item) = item {
-                    read.updates.extend(self.translator.history_item(&item));
+                    read.updates
+                        .extend(stamped(self.translator.history_item(&item), entry));
                 }
             }
             _ => {}
         }
     }
+}
+
+fn stamped(updates: Vec<Value>, entry: &Value) -> Vec<Value> {
+    let Some(at) = entry["timestamp"]
+        .as_str()
+        .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+        .and_then(|at| u64::try_from(at.timestamp_millis()).ok())
+    else {
+        return updates;
+    };
+    updates
+        .into_iter()
+        .map(|mut update| {
+            if update.is_object() && update["_meta"]["zz"]["at"].is_null() {
+                if !update["_meta"].is_object() {
+                    update["_meta"] = json!({});
+                }
+                if !update["_meta"]["zz"].is_object() {
+                    update["_meta"]["zz"] = json!({});
+                }
+                update["_meta"]["zz"]["at"] = Value::from(at);
+            }
+            update
+        })
+        .collect()
 }
 
 fn codex_error(message: &str) -> String {

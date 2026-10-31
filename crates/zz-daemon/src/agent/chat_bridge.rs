@@ -35,6 +35,7 @@ pub(crate) struct Shadow {
     keep: bool,
     codex: bool,
     now: Option<Instant>,
+    stamp: Option<u64>,
     replaying: bool,
     session: Option<String>,
 }
@@ -185,6 +186,12 @@ impl Shadow {
     }
 
     fn update(&mut self, update: &Value) {
+        self.stamp = update["_meta"]["zz"]["at"].as_u64();
+        self.dispatch(update);
+        self.stamp = None;
+    }
+
+    fn dispatch(&mut self, update: &Value) {
         match update["sessionUpdate"].as_str() {
             Some("user_message_chunk") => self.text(update, "u", ItemKind::User, true),
             Some("agent_message_chunk") => {
@@ -474,11 +481,13 @@ impl Shadow {
     fn step(&mut self, fact: Fact) -> Vec<Effect> {
         let ctx = Ctx {
             now: self.now.unwrap_or_else(Instant::now),
-            at: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_or(0, |since| {
-                    u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
-                }),
+            at: self.stamp.unwrap_or_else(|| {
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map_or(0, |since| {
+                        u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+                    })
+            }),
         };
         let step = ChatMachine::step(&mut self.state, &fact, &ctx);
         if let Some(reject) = step.rejected {

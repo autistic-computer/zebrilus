@@ -500,3 +500,23 @@ fn a_question_card_answered_in_the_terminal_still_leaves_its_answer() {
             .any(|request| matches!(request.close, Some(RequestClose::Answered { .. })))
     );
 }
+
+#[test]
+fn a_stamped_update_keeps_its_transcript_time() {
+    let mut shadow = Shadow::recording();
+    ready(&mut shadow);
+    running(&mut shadow, "c1");
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "cargo test",
+        "kind": "execute", "status": "in_progress", "rawInput": { "command": "cargo test" },
+        "_meta": { "zz": { "at": 1_790_000_000_000_u64 } },
+    })));
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
+        "_meta": { "zz": { "at": 1_790_000_004_000_u64 } },
+    })));
+    let view = view(&shadow);
+    let item = view.item(&ItemId::new("t1")).expect("tool item");
+    assert_eq!(item.started_at, 1_790_000_000_000);
+    assert_eq!(item.ended_at, Some(1_790_000_004_000));
+}
