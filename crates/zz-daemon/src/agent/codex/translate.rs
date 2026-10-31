@@ -18,6 +18,8 @@ pub(crate) struct Translator {
     finished: HashSet<String>,
     parents: HashMap<String, String>,
     pending: HashMap<String, Vec<(String, Value)>>,
+    paths: HashMap<String, String>,
+    asked: Vec<(String, Vec<String>)>,
     restoring: bool,
 }
 
@@ -163,9 +165,11 @@ impl Translator {
 
     pub(crate) fn history_item(&mut self, item: &Value) -> Vec<Value> {
         if item["type"] == "userMessage" {
-            return user_text(item)
-                .map(|text| vec![chunk("user_message_chunk", &prompt_id(item), &text)])
-                .unwrap_or_default();
+            let mut updates = self.drop_questions();
+            updates.extend(
+                user_text(item).map(|text| chunk("user_message_chunk", &prompt_id(item), &text)),
+            );
+            return updates;
         }
         let mut updates = self.history_start(item);
         updates.extend(self.history_end(item));
@@ -203,10 +207,90 @@ impl Translator {
         vec![chunk(kind, id, delta)]
     }
 
+    pub(crate) fn drop_questions(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.asked)
+            .into_iter()
+            .map(|(id, questions)| {
+                let answered = questions
+                    .into_iter()
+                    .map(|question| json!({ "question": question, "answer": "" }))
+                    .collect::<Vec<_>>();
+                answer_update(&id, &answered)
+            })
+            .collect()
+    }
+
+    pub(crate) fn agent_answer(&self, path: &str, text: &str) -> Vec<Value> {
+        let Some(row) = self.paths.get(path) else {
+            return Vec::new();
+        };
+        if text.trim().is_empty() {
+            return Vec::new();
+        }
+        vec![json!({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": row,
+            "content": [text_content(&tail(text))],
+        })]
+    }
+
+    fn ask(&mut self, id: &str, item: &Value) -> Vec<Value> {
+        let questions = item["questions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|question| question["question"].as_str())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        let title = questions
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "Question".to_owned());
+        self.asked.retain(|(asked, _)| asked != id);
+        self.asked.push((id.to_owned(), questions));
+        vec![json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": id,
+            "title": clip_title(&title),
+            "kind": "other",
+            "status": "in_progress",
+            "rawInput": { "questions": item["questions"] },
+            "_meta": {
+                "codex": { "itemType": "userInputRequest" },
+                "zz": { "background": true },
+            },
+        })]
+    }
+
+    fn replied(&mut self, item: &Value) -> Vec<Value> {
+        let mut calls = Vec::<(String, Vec<Value>)>::new();
+        for reply in item["replies"].as_array().into_iter().flatten() {
+            let Some(call) = reply["callId"].as_str() else {
+                continue;
+            };
+            let answer = json!({ "question": reply["question"], "answer": reply["answer"] });
+            match calls.iter_mut().find(|(known, _)| known == call) {
+                Some((_, answers)) => answers.push(answer),
+                None => calls.push((call.to_owned(), vec![answer])),
+            }
+        }
+        calls
+            .into_iter()
+            .filter(|(call, _)| {
+                let known = self.asked.iter().any(|(asked, _)| asked == call);
+                self.asked.retain(|(asked, _)| asked != call);
+                known
+            })
+            .map(|(call, answers)| answer_update(&call, &answers))
+            .collect()
+    }
+
     fn started(&mut self, item: &Value) -> Vec<Value> {
         let id = id_of(item);
-        if item["type"] == "subAgentActivity" {
-            return self.activity(&id, item);
+        match item["type"].as_str() {
+            Some("subAgentActivity") => return self.activity(&id, item),
+            Some("userInputRequest") => return self.ask(&id, item),
+            _ => {}
         }
         let adopted = if item["tool"] == "spawnAgent" {
             self.adopt(&id, item)
@@ -278,6 +362,8 @@ impl Translator {
             Some("agentMessage" | "plan") => {
                 self.whole(&id, "agent_message_chunk", item["text"].as_str())
             }
+            None | Some("userInputRequest") => Vec::new(),
+            Some("userInputReply") => self.replied(item),
             Some("reasoning") => {
                 let text = item["summary"]
                     .as_array()
@@ -293,6 +379,9 @@ impl Translator {
                 let Some(mut status) = tool_status(item) else {
                     return Vec::new();
                 };
+                if tool_info(item, &self.cwd).is_none() {
+                    return Vec::new();
+                }
                 if status == "completed"
                     && !self.restoring
                     && self.spawned.contains_key(&id)
@@ -318,7 +407,6 @@ impl Translator {
                 }
                 vec![update]
             }
-            None => Vec::new(),
         }
     }
 
@@ -402,6 +490,9 @@ impl Translator {
             })];
         }
         self.agents.insert(thread.to_owned(), id.to_owned());
+        if let Some(path) = item["agentPath"].as_str() {
+            self.paths.insert(path.to_owned(), id.to_owned());
+        }
         let thread = thread.to_owned();
         let name = item["agentPath"]
             .as_str()
@@ -454,6 +545,15 @@ fn user_text(item: &Value) -> Option<String> {
         .collect::<Vec<_>>()
         .join("\n");
     (!text.trim().is_empty()).then_some(text)
+}
+
+fn answer_update(id: &str, answered: &[Value]) -> Value {
+    json!({
+        "sessionUpdate": "tool_call_update",
+        "toolCallId": id,
+        "status": "completed",
+        "_meta": { "zz": { "answered": answered } },
+    })
 }
 
 fn chunk(kind: &str, message_id: &str, text: &str) -> Value {
@@ -512,6 +612,21 @@ fn tool_output(item: &Value) -> Option<String> {
                 .collect::<Vec<_>>();
             (!parts.is_empty()).then(|| parts.join("\n"))
         }
+        "webSearch" => {
+            let lines = item["results"]
+                .as_array()?
+                .iter()
+                .filter_map(|result| {
+                    let url = result["url"].as_str()?;
+                    Some(
+                        result["title"]
+                            .as_str()
+                            .map_or_else(|| url.to_owned(), |title| format!("{title} {url}")),
+                    )
+                })
+                .collect::<Vec<_>>();
+            (!lines.is_empty()).then(|| lines.join("\n"))
+        }
         "collabAgentToolCall" => item["agentsStates"]
             .as_object()
             .map(|states| {
@@ -539,6 +654,7 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
         "commandExecution" => {
             let action = item["commandActions"]
                 .as_array()
+                .filter(|actions| actions.len() == 1)
                 .and_then(|actions| actions.first());
             let command = action
                 .and_then(|action| action["command"].as_str())
@@ -607,38 +723,36 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
             Vec::new(),
             Vec::new(),
         ),
-        "webSearch" => (
-            item["query"].as_str().map_or_else(
-                || "Web search".to_owned(),
-                |query| format!("Search \"{query}\""),
+        "webSearch" => (web_title(item), "fetch", Vec::new(), Vec::new()),
+        "extension" if item["kind"] == "clock.sleep" => (
+            item["durationMs"].as_u64().map_or_else(
+                || "Waited".to_owned(),
+                |ms| format!("Waited {}", wait_time(ms)),
             ),
-            "fetch",
+            "other",
             Vec::new(),
             Vec::new(),
         ),
-        "collabAgentToolCall" => (
-            match item["tool"].as_str() {
-                Some("wait") => "Wait for agents".to_owned(),
-                Some("closeAgent") => "Close agent".to_owned(),
-                Some("interruptAgent") => "Stop agent".to_owned(),
-                Some("listAgents") => "List agents".to_owned(),
-                Some("resumeAgent") => "Resume agent".to_owned(),
-                tool => item["prompt"].as_str().map_or_else(
-                    || {
-                        if tool == Some("spawnAgent") {
-                            "Start agent"
-                        } else {
-                            "Message agent"
-                        }
-                        .to_owned()
-                    },
-                    str::to_owned,
+        "collabAgentToolCall" => {
+            let (title, kind) = match item["tool"].as_str() {
+                Some("listAgents" | "closeAgent") => return None,
+                Some("wait") => ("Waited for agents".to_owned(), "other"),
+                Some("interruptAgent") => ("Stop agent".to_owned(), "other"),
+                Some("resumeAgent") => ("Resume agent".to_owned(), "other"),
+                None | Some("spawnAgent") => (
+                    item["prompt"].as_str().unwrap_or("Start agent").to_owned(),
+                    "think",
                 ),
-            },
-            "think",
-            Vec::new(),
-            Vec::new(),
-        ),
+                Some(_) => (
+                    item["prompt"]
+                        .as_str()
+                        .unwrap_or("Message agent")
+                        .to_owned(),
+                    "other",
+                ),
+            };
+            (title, kind, Vec::new(), Vec::new())
+        }
         "imageView" => (
             format!(
                 "View {}",
@@ -665,9 +779,13 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
             "contentItems",
             "changes",
             "status",
+            "results",
         ] {
             fields.remove(key);
         }
+    }
+    if let Some(url) = item["action"]["url"].as_str() {
+        input["url"] = Value::from(url);
     }
     Some(ToolInfo {
         title: clip_title(&title),
@@ -676,6 +794,34 @@ pub(crate) fn tool_info(item: &Value, cwd: &Path) -> Option<ToolInfo> {
         content,
         locations,
     })
+}
+
+fn web_title(item: &Value) -> String {
+    let action = &item["action"];
+    let query = item["query"].as_str().filter(|query| !query.is_empty());
+    match (action["type"].as_str(), action["url"].as_str()) {
+        (Some("openPage"), Some(url)) => format!("Open {url}"),
+        (Some("findInPage"), url) => {
+            let pattern = action["pattern"].as_str().or(query).unwrap_or_default();
+            url.map_or_else(
+                || format!("Find \"{pattern}\""),
+                |url| format!("Find \"{pattern}\" in {url}"),
+            )
+        }
+        _ => query.map_or_else(
+            || "Web search".to_owned(),
+            |query| format!("Search \"{query}\""),
+        ),
+    }
+}
+
+fn wait_time(ms: u64) -> String {
+    let seconds = ms.div_ceil(1000);
+    match (seconds / 60, seconds % 60) {
+        (0, seconds) => format!("{seconds}s"),
+        (minutes, 0) => format!("{minutes}m"),
+        (minutes, seconds) => format!("{minutes}m {seconds}s"),
+    }
 }
 
 fn split_diff(diff: &str) -> (String, String) {
@@ -1013,7 +1159,12 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(steps.len(), 1);
         assert_eq!(steps[0]["title"], "ls");
-        assert!(calls.iter().any(|call| call["title"] == "Wait for agents"));
+        let wait = calls
+            .iter()
+            .find(|call| call["title"] == "Waited for agents")
+            .expect("wait row");
+        assert_eq!(wait["kind"], "other");
+        assert_eq!(wait["rawInput"]["tool"], "wait");
         let row = updates
             .iter()
             .filter(|update| {
@@ -1037,6 +1188,149 @@ mod tests {
                 .child("unknown", "item/started", &json!({}))
                 .is_none()
         );
+    }
+
+    fn history(translator: &mut Translator, item: &Value) -> Vec<Value> {
+        let updates = translator.history_item(item);
+        for update in &updates {
+            serde_json::from_value::<SessionUpdate>(update.clone())
+                .unwrap_or_else(|error| panic!("{update} is not an ACP update: {error}"));
+        }
+        updates
+    }
+
+    #[test]
+    fn only_a_spawn_is_an_agent_and_bookkeeping_stays_out() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let collab = |id: &str, tool: &str| {
+            json!({"type": "collabAgentToolCall", "id": id, "tool": tool, "status": "completed",
+                "receiverThreadIds": [], "agentsStates": {}})
+        };
+        assert!(history(&mut translator, &collab("l", "listAgents")).is_empty());
+        assert!(history(&mut translator, &collab("c", "closeAgent")).is_empty());
+        let wait = history(&mut translator, &collab("w", "wait"));
+        assert_eq!(wait[0]["title"], "Waited for agents");
+        assert_eq!(wait[0]["kind"], "other");
+        assert_eq!(wait[1]["status"], "completed");
+        let spawn = history(&mut translator, &collab("s", "spawnAgent"));
+        assert_eq!(spawn[0]["kind"], "think");
+        let sleep = history(
+            &mut translator,
+            &json!({"type": "extension", "id": "z", "kind": "clock.sleep", "durationMs": 60000,
+                "status": "completed"}),
+        );
+        assert_eq!(sleep[0]["title"], "Waited 1m");
+        assert_eq!(sleep[1]["status"], "completed");
+        assert!(
+            history(
+                &mut translator,
+                &json!({"type": "extension", "id": "q", "kind": "mystery", "status": "completed"}),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn web_rows_name_the_page_or_the_query() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let web = |id: &str, query: &str, action: Value| {
+            json!({"type": "webSearch", "id": id, "query": query, "action": action,
+                "status": "completed",
+                "results": [{"title": "Example Domain", "url": "https://example.com/"}]})
+        };
+        let open = history(
+            &mut translator,
+            &web(
+                "o",
+                "https://example.com",
+                json!({"type": "openPage", "url": "https://example.com"}),
+            ),
+        );
+        assert_eq!(open[0]["title"], "Open https://example.com");
+        assert_eq!(open[0]["kind"], "fetch");
+        assert_eq!(open[0]["rawInput"]["url"], "https://example.com");
+        assert!(open[0]["rawInput"]["results"].is_null());
+        assert_eq!(
+            open[1]["content"][0]["content"]["text"],
+            "Example Domain https://example.com/"
+        );
+        let search = history(
+            &mut translator,
+            &web("s", "zz terminal", json!({"type": "search", "query": null})),
+        );
+        assert_eq!(search[0]["title"], "Search \"zz terminal\"");
+        let find = history(
+            &mut translator,
+            &web(
+                "f",
+                "'Zebrilus'",
+                json!({"type": "findInPage", "url": null, "pattern": "Zebrilus"}),
+            ),
+        );
+        assert_eq!(find[0]["title"], "Find \"Zebrilus\"");
+    }
+
+    #[test]
+    fn a_command_of_several_parts_is_titled_whole() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let updates = history(
+            &mut translator,
+            &json!({"type": "commandExecution", "id": "c", "command": "cat a.rs && rm b.rs",
+            "status": "completed", "exitCode": 0, "commandActions": [
+                {"type": "read", "command": "cat a.rs", "path": "a.rs"},
+                {"type": "unknown", "command": "rm b.rs", "path": null},
+            ]}),
+        );
+        assert_eq!(updates[0]["title"], "cat a.rs && rm b.rs");
+        assert_eq!(updates[0]["kind"], "execute");
+    }
+
+    fn asked(id: &str) -> Value {
+        json!({"type": "userInputRequest", "id": id, "questions": [
+            {"id": "q0", "question": "Which part?", "options": [{"label": "A"}, {"label": "B"}]},
+        ]})
+    }
+
+    #[test]
+    fn an_async_question_stays_open_until_its_reply() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let ask = history(&mut translator, &asked("call_q"));
+        assert_eq!(ask.len(), 1, "{ask:?}");
+        assert_eq!(ask[0]["sessionUpdate"], "tool_call");
+        assert_eq!(ask[0]["title"], "Which part?");
+        assert_eq!(ask[0]["_meta"]["zz"]["background"], true);
+        let reply = history(
+            &mut translator,
+            &json!({"type": "userInputReply", "id": "u", "replies": [
+                {"callId": "call_q", "index": 0, "question": "Which part?", "answer": "B"},
+            ]}),
+        );
+        assert_eq!(reply.len(), 1, "{reply:?}");
+        assert_eq!(reply[0]["toolCallId"], "call_q");
+        assert_eq!(reply[0]["status"], "completed");
+        assert_eq!(
+            reply[0]["_meta"]["zz"]["answered"],
+            json!([{"question": "Which part?", "answer": "B"}])
+        );
+        assert!(
+            !reply
+                .iter()
+                .any(|update| update["sessionUpdate"] == "user_message_chunk")
+        );
+    }
+
+    #[test]
+    fn a_new_prompt_closes_a_question_nobody_answered() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        history(&mut translator, &asked("call_q"));
+        let prompt = history(
+            &mut translator,
+            &json!({"type": "userMessage", "id": "u", "content": [{"type": "text", "text": "go on"}]}),
+        );
+        assert_eq!(prompt[0]["toolCallId"], "call_q");
+        assert_eq!(prompt[0]["_meta"]["zz"]["answered"][0]["answer"], "");
+        assert_eq!(prompt[1]["sessionUpdate"], "user_message_chunk");
+        assert!(translator.drop_questions().is_empty());
     }
 
     #[test]

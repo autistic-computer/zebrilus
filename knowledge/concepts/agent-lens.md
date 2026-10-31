@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-31T18:00:00-03:00
+timestamp: 2026-10-31T19:30:00-03:00
 ---
 
 # Overview
@@ -84,13 +84,37 @@ but no pane opens them now.
   runtime falls back to the newest parentless rollout in the last 7 day folders of
   `$CODEX_HOME/sessions` whose cwd matches the pane and that was modified since the process started
   (`newest_rollout`); two Codex panes in one folder can then pick each other's session.
-  `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items and
-  `codex::translate::Translator::history_item` translates them. `task_started` marks the pane busy;
-  `task_complete` and `turn_aborted` mark it idle. A `task_complete` that carries an `error` (an API
-  error, such as a model the login does not allow) fails the lens turn with Codex's message, so
-  `agent-send --wait` exits 1. While a lens turn waits on a pane whose rollout is not found yet,
-  the runtime looks on every tick instead of every 5 s, and a rollout found after its turn already
-  ended settles that turn from its last `task_complete`.
+  `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items into the app
+  server's shapes and `codex::translate::Translator::history_item` translates them:
+  - A command recorded as `[bash|zsh|sh|dash, -c|-lc, script]` shows only its script, and a
+    command of several parts is titled by the whole command, not its first part.
+  - A file change's map of paths becomes the list of changes with the paths untouched (adds as
+    `+` lines, updates as their diff, deletes as `-` lines).
+  - Items recorded without a status (context compaction, image views, extensions) are done; an
+    image path loses its `file://`.
+  - Extensions: `web.search` becomes a web row (`Open <url>`, `Find "<pattern>"` or
+    `Search "<query>"`, its results as output) and `clock.sleep` a "Waited 1m" step; other kinds
+    are dropped.
+  - Agent tools: only a spawned agent and `SubAgentActivity` are subagent rows. `wait` is a
+    "Waited for agents" step, interrupting, resuming or messaging an agent are plain steps, and
+    `list_agents` and `close_agent` are not shown.
+  - Subagents: a started `SubAgentActivity` names the child's thread. The runtime finds the child
+    rollout `rollout-*-<thread>.jsonl` next to the root, or in the last 7 day folders when the
+    root sits in `$CODEX_HOME/sessions` (it keeps looking for 30 s), reads it before each root
+    line and feeds it through `Translator::child`: the child's tools nest under the agent row and
+    its last message becomes the row's result. Its children's children work the same way. With
+    no child file, the row waits for the root's `FINAL_ANSWER` agent message and takes the text
+    after `Payload:` as its result (or ends with the turn).
+  - Times: each line's `timestamp` stamps its rows, and `completed_at_ms - started_at_ms` (or a
+    command's `duration`) goes in `_meta.zz.ms`, so a step starts that long before its record.
+  - `token_count` lines fill the context ring (`usage_update`).
+
+  `task_started` marks the pane busy; `task_complete` and `turn_aborted` mark it idle. A
+  `task_complete` that carries an `error` (an API error, such as a model the login does not allow)
+  fails the lens turn with Codex's message, so `agent-send --wait` exits 1. While a lens turn
+  waits on a pane whose rollout is not found yet, the runtime looks on every tick instead of every
+  5 s, and a rollout found after its turn already ended settles that turn from its last
+  `task_complete`.
 
 Claude's session record carries `status` (`busy`, `idle`, `waiting`). The runtime turns it into
 `Activity { busy }` events, so the pane's phase follows the TUI whether the turn came from the
@@ -126,6 +150,17 @@ lens, from typing in the terminal, or from a peer message.
   terminal PiP (below) so the user answers there.
 - **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
   card; the user answers in the terminal.
+- **Codex questions.** `request_user_input_async` records an `AgentMessage` with `questions` and
+  `delivery: "async"`. It becomes a question row that sits outside the turn from the start, since
+  the call does not block the turn and the question can outlive it. While it is open the runtime
+  reports `waiting`: one question with 1 to 9 options raises a question card answered with the
+  option's digit (the TUI's overlay takes digits), anything else a card that points at the
+  terminal. The answer comes back as a `UserMessage` wrapped in
+  `<send_user_message_question_reply>`, often as the first line of a new turn, and closes the row
+  with an answered record instead of a user bubble. A plain prompt, `turn_aborted` or Stop drop an
+  unanswered question (recorded with no answer). While it is open the lens refuses prompts and
+  steers, so they cannot land in the overlay as option picks. A plain `send_user_message_async`
+  message stays text.
 
 # Slash commands
 
@@ -258,6 +293,10 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
   you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it arrived; replies
   already there on the first look show at once).
+- **Thinking.** A finished run whose reasoning is only headings (Codex records the headings of its
+  summaries; the reasoning itself is encrypted) leaves no row, while the running one still shows
+  its heading. Opening a run lists its reasoning, heading removed and muted, in order with its
+  steps; a run with nothing to list has no disclosure. Claude's thinking reads the same way.
 - **Subagents.** One row each: the CLI's mark, the name, a status glyph (spinning, Needs you, done,
   failed, stopped) and the time it took. Clicking one opens its chat in a PiP over the thread
   (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close

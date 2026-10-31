@@ -285,6 +285,10 @@ impl Shadow {
             ..ItemBody::default()
         };
         let parent = update["_meta"]["zz"]["parent"].as_str().map(ItemId::new);
+        let ended = self.stamp;
+        if let Some(ms) = update["_meta"]["zz"]["ms"].as_u64() {
+            self.stamp = ended.map(|at| at.saturating_sub(ms));
+        }
         self.step(Fact::ItemStarted {
             item: item.clone(),
             parent,
@@ -292,6 +296,7 @@ impl Shadow {
             body: body.clone(),
             background: false,
         });
+        self.stamp = ended;
         if self.open(&item) {
             self.bodies.insert(item.clone(), body);
         }
@@ -435,7 +440,12 @@ impl Shadow {
         let running = self
             .state
             .open_kinds()
-            .filter(|(_, kind, turn)| !kind.is_text() && turn.is_some() && *turn == current)
+            .filter(|(id, kind, turn)| {
+                !kind.is_text()
+                    && turn.is_some()
+                    && *turn == current
+                    && !self.asked.values().any(|asked| asked == *id)
+            })
             .map(|(id, _, _)| id.clone())
             .collect::<Vec<_>>();
         for item in running {
@@ -584,9 +594,12 @@ fn ask(tool_call: &Value, options: &Value, questions: &[AgentQuestion]) -> Ask {
 fn tool_kind(update: &Value) -> ItemKind {
     let name = update["_meta"]["claudeCode"]["toolName"].as_str();
     let codex = update["_meta"]["codex"]["itemType"].as_str();
-    if matches!(name, Some("Agent" | "Task"))
-        || matches!(codex, Some("collabAgentToolCall" | "subAgentActivity"))
-    {
+    let spawned = codex == Some("collabAgentToolCall")
+        && matches!(
+            update["rawInput"]["tool"].as_str(),
+            None | Some("spawnAgent")
+        );
+    if matches!(name, Some("Agent" | "Task")) || codex == Some("subAgentActivity") || spawned {
         return ItemKind::Subagent;
     }
     if name.is_some_and(|name| name.starts_with("mcp__")) || codex == Some("mcpToolCall") {
