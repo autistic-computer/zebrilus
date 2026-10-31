@@ -105,10 +105,12 @@ impl AgentView {
         };
         self.chat.sync(chat);
         let ask = |request: &RequestView, cx: &ala::App| self.inline_ask(request, state, view, cx);
+        let refs = self.chat_refs(view, app);
         let hooks = ChatHooks {
             click: Some(click),
             ask: Some(&ask),
             fork: self.forks(),
+            refs: Some(&refs),
         };
         let body = chat_thread(chat, now, &self.chat.open, phase, &hooks, app);
         div()

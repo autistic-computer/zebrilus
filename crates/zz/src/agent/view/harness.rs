@@ -1,13 +1,20 @@
 use ala::{
-    AnyElement, AnyView, Context, Entity, IntoElement, KeyDownEvent, SharedString, StyleRefinement,
-    Window, div, prelude::*,
+    AnyElement, AnyView, Context, Entity, IntoElement, KeyDownEvent, Pixels, SharedString,
+    StyleRefinement, Window, canvas, div, prelude::*,
 };
+use std::sync::Arc;
 use zz_client::agent_settings::{
     self, fork_command, real_session, side_chat_command, source_message,
 };
+
 use zz_protocol::CommandInvocation;
+use zz_ui::agent::refs::{ChatRefs, open_path};
+use zz_ui::command::{PaletteTarget, target_hosts};
+use zz_ui::target::{RefTarget, ResolvedTarget};
+
+use crate::command::palette::palette_backend;
 use zz_ui::agent::controls::{agent_directory_chip, agent_settings_menu, agent_side_chat_button};
-use zz_ui::agent::presentation::terminal_sheet;
+use zz_ui::agent::presentation::terminal_pip;
 
 use super::{AgentPaneState, AgentView};
 use crate::terminal::view::TerminalView;
@@ -88,6 +95,44 @@ impl AgentView {
         false
     }
 
+    pub(super) fn chat_refs(&self, view: &Entity<Self>, cx: &ala::App) -> ChatRefs {
+        let view = view.downgrade();
+        ChatRefs {
+            hosts: target_hosts(&palette_backend(self.mux.clone()).tree(cx)),
+            cwd: self
+                .pane_state
+                .settings
+                .as_ref()
+                .map(|settings| settings.cwd.clone())
+                .filter(|cwd| !cwd.is_empty()),
+            open: Arc::new(move |target, window, cx| {
+                view.update(cx, |view, cx| view.open_ref(target, window, cx))
+                    .ok();
+            }),
+        }
+    }
+
+    fn open_ref(&mut self, target: &ResolvedTarget, _: &mut Window, cx: &mut Context<Self>) {
+        let backend = palette_backend(self.mux.clone());
+        let place = match &target.target {
+            RefTarget::Host => {
+                backend.activate_host(target.host, cx);
+                return;
+            }
+            RefTarget::Session(id) => PaletteTarget::Session(*id),
+            RefTarget::Window(id) => PaletteTarget::Window(*id),
+            RefTarget::Pane(id) => PaletteTarget::Pane(*id),
+            RefTarget::Path { .. } => {
+                let anchor = target.here.then_some(self.pane);
+                if let Some(command) = open_path(&target.target, anchor) {
+                    backend.execute(target.host, command, cx);
+                }
+                return;
+            }
+        };
+        backend.activate(target.host, place, cx);
+    }
+
     pub(super) fn sheet_open(&self) -> bool {
         self.sheet.is_some()
     }
@@ -103,19 +148,55 @@ impl AgentView {
         }
         let sheet = self.sheet.as_ref()?;
         let terminal = self.terminal.clone()?;
-        let body = AnyView::from(terminal)
-            .cached(StyleRefinement::default().size_full())
-            .into_any_element();
+        let fill = terminal.read(cx).fill(cx);
+        let height = self.lens_height.get();
+        let body = div().relative().size_full().overflow_hidden().child(
+            div()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .map(|slot| {
+                    if height > Pixels::ZERO {
+                        slot.h(height)
+                    } else {
+                        slot.top_0()
+                    }
+                })
+                .child(
+                    AnyView::from(terminal)
+                        .cached(StyleRefinement::default().size_full())
+                        .into_any_element(),
+                ),
+        );
         let done = {
             let view = view.clone();
             move |window: &mut Window, cx: &mut ala::App| {
                 view.update(cx, |view, cx| view.close_sheet(true, window, cx));
             }
         };
+        let icon = match self.pane_state.provider {
+            zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
+            zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
+        };
+        let measured = self.lens_height.clone();
+        let entity = view.entity_id();
         Some(
             div()
                 .absolute()
                 .inset_0()
+                .child(
+                    canvas(
+                        move |bounds, _, cx| {
+                            if measured.replace(bounds.size.height) != bounds.size.height {
+                                cx.notify(entity);
+                            }
+                        },
+                        |_, (), _, _| {},
+                    )
+                    .absolute()
+                    .size_full(),
+                )
                 .capture_key_down(cx.listener(|view, event: &KeyDownEvent, window, cx| {
                     let modifiers = event.keystroke.modifiers;
                     if view.pane_state.provider == zz_protocol::AgentProvider::Codex
@@ -128,10 +209,12 @@ impl AgentView {
                         view.close_sheet(false, window, cx);
                     }
                 }))
-                .child(terminal_sheet(
-                    ("agent-terminal-sheet", self.pane.0),
+                .child(terminal_pip(
+                    ("agent-terminal-pip", self.pane.0),
                     sheet.title.clone(),
-                    body,
+                    icon,
+                    body.into_any_element(),
+                    fill,
                     done,
                     cx,
                 ))

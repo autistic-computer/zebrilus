@@ -252,14 +252,14 @@ fn place_row(
             fleet.session(&place).map_or_else(String::new, |session| {
                 count(session.windows.len(), "window")
             }),
-            IconName::Folder,
+            IconName::Layers,
             None,
         ),
         Level::Window => (
             fleet
                 .window(&place)
                 .map_or_else(String::new, |window| count(window.panes.len(), "pane")),
-            IconName::PanelsTopLeft,
+            IconName::AppWindow,
             None,
         ),
         Level::Pane => tree_pane(tree, &place).map_or_else(

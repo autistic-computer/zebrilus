@@ -492,6 +492,188 @@ pub(crate) fn pane_detail(pane: &TargetPane, place: Option<String>) -> String {
         .join(" · ")
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RefTarget {
+    Host,
+    Session(SessionId),
+    Window(WindowId),
+    Pane(PaneId),
+    Path { path: String, line: Option<u32> },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedTarget {
+    pub kind: TargetKind,
+    pub host: PaletteHostId,
+    pub here: bool,
+    pub label: String,
+    pub icon: IconName,
+    pub target: RefTarget,
+}
+
+#[must_use]
+pub fn resolve_target(body: &str, hosts: &[TargetHost]) -> Option<ResolvedTarget> {
+    let body = unescape(body);
+    let (host, rest) = match body.split_once(':') {
+        Some((first, rest)) => match hosts.iter().find(|host| host.name == first) {
+            Some(host) => (host, rest),
+            None => (hosts.iter().find(|host| host.here)?, body.as_str()),
+        },
+        None => match hosts.iter().find(|host| host.name == body) {
+            Some(host) => (host, ""),
+            None => (hosts.iter().find(|host| host.here)?, body.as_str()),
+        },
+    };
+    let resolved = |kind, label: String, icon, target| {
+        let label = if host.here {
+            label
+        } else {
+            format!("{label} · {}", host.name)
+        };
+        Some(ResolvedTarget {
+            kind,
+            host: host.id,
+            here: host.here,
+            label,
+            icon,
+            target,
+        })
+    };
+    if rest.is_empty() {
+        return resolved(
+            TargetKind::Host,
+            host.name.clone(),
+            host_icon(host),
+            RefTarget::Host,
+        );
+    }
+    if rest.starts_with(['/', '~']) {
+        let (path, line) = split_line(rest);
+        let dir = path.ends_with('/');
+        let name = path
+            .trim_end_matches('/')
+            .rsplit('/')
+            .next()
+            .unwrap_or(path);
+        let name = if name.is_empty() || name == "~" {
+            path.to_owned()
+        } else if dir {
+            format!("{name}/")
+        } else {
+            name.to_owned()
+        };
+        let label = line.map_or_else(|| name.clone(), |line| format!("{name}:{line}"));
+        let (kind, icon) = if dir {
+            (TargetKind::Dir, IconName::Folder)
+        } else {
+            (TargetKind::File, IconName::File)
+        };
+        return resolved(
+            kind,
+            label,
+            icon,
+            RefTarget::Path {
+                path: path.to_owned(),
+                line,
+            },
+        );
+    }
+    if rest.starts_with('%') {
+        let (session, window, pane) = host.sessions.iter().find_map(|session| {
+            session.windows.iter().find_map(|window| {
+                window
+                    .panes
+                    .iter()
+                    .find(|pane| pane.id.to_string() == rest)
+                    .map(|pane| (session, window, pane))
+            })
+        })?;
+        return pane_ref(session, window, pane, resolved);
+    }
+    let (session, rest) = rest
+        .split_once(':')
+        .map_or((rest, None), |(session, rest)| (session, Some(rest)));
+    let session = find_session(host, session)?;
+    let Some(rest) = rest else {
+        return resolved(
+            TargetKind::Session,
+            session.name.clone(),
+            IconName::Layers,
+            RefTarget::Session(session.id),
+        );
+    };
+    let (window, pane) = rest
+        .split_once('.')
+        .map_or((rest, None), |(window, pane)| (window, Some(pane)));
+    let window = find_window(session, window)?;
+    let Some(pane) = pane else {
+        return resolved(
+            TargetKind::Window,
+            format!("{} › {}", session.name, window.name),
+            IconName::AppWindow,
+            RefTarget::Window(window.id),
+        );
+    };
+    let pane = window
+        .panes
+        .iter()
+        .find(|candidate| candidate.id.to_string() == pane)?;
+    pane_ref(session, window, pane, resolved)
+}
+
+fn pane_ref(
+    session: &TargetSession,
+    window: &TargetWindow,
+    pane: &TargetPane,
+    resolved: impl Fn(TargetKind, String, IconName, RefTarget) -> Option<ResolvedTarget>,
+) -> Option<ResolvedTarget> {
+    if let Some(chat) = &pane.chat {
+        return resolved(
+            TargetKind::Chat,
+            chat.title.to_string(),
+            chat.icon.clone(),
+            RefTarget::Pane(pane.id),
+        );
+    }
+    let title = pane.title.trim();
+    let name = pane
+        .program
+        .as_ref()
+        .map(ToString::to_string)
+        .or_else(|| (!title.is_empty()).then(|| title.to_owned()))
+        .unwrap_or_else(|| pane.id.to_string());
+    resolved(
+        TargetKind::Pane,
+        format!("{name} · {}:{}", session.name, window.index),
+        pane.icon.clone(),
+        RefTarget::Pane(pane.id),
+    )
+}
+
+fn split_line(path: &str) -> (&str, Option<u32>) {
+    let mut rest = path;
+    let mut line = None;
+    for _ in 0..2 {
+        let Some((head, tail)) = rest.rsplit_once(':') else {
+            break;
+        };
+        let Ok(number) = tail.parse::<u32>() else {
+            break;
+        };
+        line = Some(number);
+        rest = head;
+    }
+    (rest, line)
+}
+
+fn host_icon(host: &TargetHost) -> IconName {
+    if host.here {
+        IconName::Laptop
+    } else {
+        IconName::Server
+    }
+}
+
 fn host_item(host: &TargetHost, place: &Place) -> TargetItem {
     let detail = match host.status {
         PaletteStatus::Online | PaletteStatus::Running => count(host.sessions.len(), "session"),
@@ -504,7 +686,7 @@ fn host_item(host: &TargetHost, place: &Place) -> TargetItem {
         detail,
         place,
         "",
-        IconName::HardDrive,
+        host_icon(host),
     );
     item.status = Some(host.status);
     item
@@ -517,7 +699,7 @@ fn session_item(session: &TargetSession, place: &Place, label: String) -> Target
         count(session.windows.len(), "window"),
         place,
         &session_ref(session),
-        IconName::Folder,
+        IconName::Layers,
     )
     .at(PaletteTarget::Session(session.id))
 }
@@ -534,7 +716,7 @@ fn window_item(
         count(window.panes.len(), "pane"),
         place,
         &format!("{}:{}", session_ref(session), window.index),
-        IconName::PanelsTopLeft,
+        IconName::AppWindow,
     )
     .at(PaletteTarget::Window(window.id))
 }

@@ -459,7 +459,7 @@ impl UnifiedPalette {
                     window_name.clear();
                     session_active = item.active();
                     window_active = false;
-                    (String::new(), session_active, IconName::Folder)
+                    (String::new(), session_active, IconName::Layers)
                 }
                 ChooseTreeTarget::Window(_) => {
                     name.clone_into(&mut window_name);
@@ -467,7 +467,7 @@ impl UnifiedPalette {
                     if window_active {
                         self.chooser_current_window = Some(index);
                     }
-                    (session_name.clone(), window_active, IconName::PanelsTopLeft)
+                    (session_name.clone(), window_active, IconName::AppWindow)
                 }
                 ChooseTreeTarget::Pane(_) => (
                     [session_name.as_str(), window_name.as_str()]

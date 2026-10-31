@@ -1,0 +1,450 @@
+use std::{ops::Range, sync::Arc};
+
+use ala::{
+    AnyElement, App, FontWeight, HighlightStyle, InteractiveText, IntoElement, SharedString,
+    StyledText, Window,
+};
+
+use zz_protocol::{CommandInvocation, PaneId};
+
+use crate::{
+    ActiveTheme as _, Emphasis, Tone,
+    target::{RefTarget, ResolvedTarget, TargetHost, resolve_target},
+    text::{LinkClick, TextLinks},
+};
+
+pub const REF_SCHEME: &str = "zzref:";
+
+pub type RefOpener = Arc<dyn Fn(&ResolvedTarget, &mut Window, &mut App) + Send + Sync>;
+
+#[derive(Clone)]
+pub struct ChatRefs {
+    pub hosts: Vec<TargetHost>,
+    pub cwd: Option<String>,
+    pub open: RefOpener,
+}
+
+impl ChatRefs {
+    fn resolve(&self, token: &str) -> Option<ResolvedTarget> {
+        resolve_target(token, &self.hosts)
+    }
+
+    fn resolve_code(&self, code: &str) -> Option<ResolvedTarget> {
+        if let Some(token) = code.strip_prefix('@') {
+            return (ref_end(code, 0) == code.len())
+                .then(|| self.resolve(token))
+                .flatten();
+        }
+        if code.starts_with(['%', '$']) && !code.contains(char::is_whitespace) {
+            return self.resolve(code);
+        }
+        let path = self.code_path(code)?;
+        self.resolve(&path)
+    }
+
+    fn code_path(&self, code: &str) -> Option<String> {
+        if code.contains(char::is_whitespace) || code.contains("://") || !code.contains('/') {
+            return None;
+        }
+        let bare = code.split(':').next().unwrap_or(code);
+        let name = bare.trim_end_matches('/').rsplit('/').next()?;
+        let file = name.rsplit_once('.').is_some_and(|(stem, extension)| {
+            !stem.is_empty() && extension.chars().all(|c| c.is_ascii_alphanumeric())
+        });
+        if !file && !bare.ends_with('/') {
+            return None;
+        }
+        if code.starts_with(['/', '~']) {
+            return Some(code.to_owned());
+        }
+        let cwd = self.cwd.as_deref()?.trim_end_matches('/');
+        let relative = code.strip_prefix("./").unwrap_or(code);
+        Some(format!("{cwd}/{relative}"))
+    }
+}
+
+fn starts_ref(text: &str, at: usize) -> bool {
+    text[..at]
+        .chars()
+        .next_back()
+        .is_none_or(|before| before.is_whitespace() || "([{'\"*_".contains(before))
+}
+
+fn ref_end(text: &str, start: usize) -> usize {
+    let mut end = text.len();
+    let mut escaped = false;
+    for (offset, character) in text[start + 1..].char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if character.is_whitespace() || "`)]}<>\"',".contains(character) {
+            end = start + 1 + offset;
+            break;
+        }
+    }
+    let trimmed = text[..end].trim_end_matches(['.', ';', ':', '!', '?']);
+    trimmed.len().max(start + 1)
+}
+
+#[must_use]
+pub fn ref_spans(text: &str) -> Vec<Range<usize>> {
+    let mut spans = Vec::new();
+    let mut from = 0;
+    while let Some(found) = text[from..].find('@') {
+        let start = from + found;
+        if starts_ref(text, start) {
+            let end = ref_end(text, start);
+            if end > start + 1 {
+                spans.push(start..end);
+                from = end;
+                continue;
+            }
+        }
+        from = start + 1;
+    }
+    spans
+}
+
+fn escape_label(label: &str) -> String {
+    let mut escaped = String::with_capacity(label.len());
+    for character in label.chars() {
+        if "\\`*_[]<>#|~".contains(character) {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
+}
+
+fn link(target: ResolvedTarget, targets: &mut Vec<ResolvedTarget>) -> String {
+    let label = escape_label(&target.label);
+    targets.push(target);
+    format!("[{label}]({REF_SCHEME}{})", targets.len() - 1)
+}
+
+fn fence(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start_matches(' ');
+    if line.len() - trimmed.len() > 3 {
+        return None;
+    }
+    ["```", "~~~"]
+        .into_iter()
+        .find(|marker| trimmed.starts_with(marker))
+}
+
+fn linkify_prose(text: &str, refs: &ChatRefs, targets: &mut Vec<ResolvedTarget>, out: &mut String) {
+    let mut last = 0;
+    for span in ref_spans(text) {
+        let Some(target) = refs.resolve(&text[span.start + 1..span.end]) else {
+            continue;
+        };
+        out.push_str(&text[last..span.start]);
+        out.push_str(&link(target, targets));
+        last = span.end;
+    }
+    out.push_str(&text[last..]);
+}
+
+fn linkify_line(line: &str, refs: &ChatRefs, targets: &mut Vec<ResolvedTarget>, out: &mut String) {
+    let mut rest = line;
+    while let Some(open) = rest.find('`') {
+        let ticks = rest[open..].len() - rest[open..].trim_start_matches('`').len();
+        let marker = &rest[open..open + ticks];
+        let Some(close) = rest[open + ticks..]
+            .find(marker)
+            .map(|at| open + ticks + at)
+        else {
+            break;
+        };
+        linkify_prose(&rest[..open], refs, targets, out);
+        let code = &rest[open + ticks..close];
+        match refs.resolve_code(code.trim()) {
+            Some(target) => out.push_str(&link(target, targets)),
+            None => out.push_str(&rest[open..close + ticks]),
+        }
+        rest = &rest[close + ticks..];
+    }
+    linkify_prose(rest, refs, targets, out);
+}
+
+#[must_use]
+pub fn linkify_markdown(text: &str, refs: &ChatRefs) -> (String, Vec<ResolvedTarget>) {
+    let mut out = String::with_capacity(text.len());
+    let mut targets = Vec::new();
+    let mut open_fence: Option<&str> = None;
+    for line in text.split_inclusive('\n') {
+        if let Some(marker) = open_fence {
+            if fence(line).is_some_and(|closing| closing == marker) {
+                open_fence = None;
+            }
+            out.push_str(line);
+            continue;
+        }
+        if let Some(marker) = fence(line) {
+            open_fence = Some(marker);
+            out.push_str(line);
+            continue;
+        }
+        linkify_line(line, refs, &mut targets, &mut out);
+    }
+    (out, targets)
+}
+
+fn ref_highlight(cx: &App) -> HighlightStyle {
+    let paint = cx.theme().paint(Tone::Primary, Emphasis::Soft);
+    HighlightStyle {
+        color: Some(paint.text),
+        background_color: Some(paint.fill),
+        font_weight: Some(FontWeight::MEDIUM),
+        ..HighlightStyle::default()
+    }
+}
+
+pub struct RefLinks {
+    targets: Vec<ResolvedTarget>,
+    open: RefOpener,
+}
+
+impl RefLinks {
+    #[must_use]
+    pub fn new(targets: Vec<ResolvedTarget>, open: RefOpener) -> Self {
+        Self { targets, open }
+    }
+
+    fn target(&self, url: &str) -> Option<&ResolvedTarget> {
+        let index = url.strip_prefix(REF_SCHEME)?.parse::<usize>().ok()?;
+        self.targets.get(index)
+    }
+}
+
+impl TextLinks for RefLinks {
+    fn style(&self, url: &str, cx: &App) -> Option<HighlightStyle> {
+        self.target(url).map(|_| ref_highlight(cx))
+    }
+
+    fn click(&self, click: &LinkClick, window: &mut Window, cx: &mut App) -> bool {
+        let Some(target) = self.target(&click.url) else {
+            return false;
+        };
+        (self.open)(target, window, cx);
+        true
+    }
+}
+
+#[must_use]
+pub fn ref_text(
+    id: impl Into<ala::ElementId>,
+    text: &str,
+    refs: &ChatRefs,
+    cx: &App,
+) -> Option<AnyElement> {
+    let mut shown = String::with_capacity(text.len());
+    let mut ranges = Vec::new();
+    let mut targets = Vec::new();
+    let mut last = 0;
+    for span in ref_spans(text) {
+        let Some(target) = refs.resolve(&text[span.start + 1..span.end]) else {
+            continue;
+        };
+        shown.push_str(&text[last..span.start]);
+        let start = shown.len();
+        shown.push_str(&target.label);
+        ranges.push(start..shown.len());
+        targets.push(target);
+        last = span.end;
+    }
+    if targets.is_empty() {
+        return None;
+    }
+    shown.push_str(&text[last..]);
+    let style = ref_highlight(cx);
+    let highlights = ranges
+        .iter()
+        .map(|range| (range.clone(), style))
+        .collect::<Vec<_>>();
+    let open = Arc::clone(&refs.open);
+    Some(
+        InteractiveText::new(
+            id,
+            StyledText::new(SharedString::from(shown)).with_highlights(highlights),
+        )
+        .on_click(ranges, move |index, window, cx| {
+            if let Some(target) = targets.get(index) {
+                open(target, window, cx);
+            }
+        })
+        .into_any_element(),
+    )
+}
+
+const FLOAT_WIDTH: &str = "80%";
+const FLOAT_HEIGHT: &str = "75%";
+
+fn shell_quote(text: &str) -> String {
+    format!("'{}'", text.replace('\'', "'\\''"))
+}
+
+#[must_use]
+pub fn open_path(target: &RefTarget, anchor: Option<PaneId>) -> Option<CommandInvocation> {
+    let RefTarget::Path { path, line } = target else {
+        return None;
+    };
+    let trimmed = path.trim_end_matches('/');
+    let (dir, file) = match trimmed.rsplit_once('/') {
+        _ if path.ends_with('/') || trimmed.is_empty() || trimmed == "~" => (path.as_str(), None),
+        Some((parent, name)) => (if parent.is_empty() { "/" } else { parent }, Some(name)),
+        None => (".", Some(trimmed)),
+    };
+    let title = file.unwrap_or_else(|| trimmed.rsplit('/').next().unwrap_or(trimmed));
+    let mut arguments = anchor
+        .map(|anchor| vec!["-t".to_owned(), anchor.to_string()])
+        .unwrap_or_default();
+    arguments.extend(
+        [
+            "-x",
+            FLOAT_WIDTH,
+            "-y",
+            FLOAT_HEIGHT,
+            "-c",
+            dir,
+            "-T",
+            title,
+        ]
+        .map(str::to_owned),
+    );
+    if let Some(file) = file {
+        let jump = line.map_or_else(String::new, |line| format!("+{line} "));
+        let editor = format!(
+            "exec \"${{VISUAL:-${{EDITOR:-vi}}}}\" {jump}{}",
+            shell_quote(file)
+        );
+        arguments.push(format!(
+            "exec \"${{SHELL:-/bin/sh}}\" -ic {}",
+            shell_quote(&editor)
+        ));
+    }
+    Some(CommandInvocation::new("new-pane", arguments))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use zz_protocol::{PaneId, SessionId, WindowId};
+
+    use super::open_path;
+
+    use super::{ChatRefs, linkify_markdown, ref_spans};
+    use crate::{
+        IconName,
+        command::{PaletteHostId, PaletteStatus},
+        target::{RefTarget, TargetHost, TargetPane, TargetSession, TargetWindow},
+    };
+
+    fn refs() -> ChatRefs {
+        ChatRefs {
+            hosts: vec![TargetHost {
+                id: PaletteHostId(0),
+                name: "macbook".to_owned(),
+                status: PaletteStatus::Online,
+                here: true,
+                sessions: vec![TargetSession {
+                    id: SessionId(0),
+                    name: "zebrilus 0".to_owned(),
+                    windows: vec![TargetWindow {
+                        id: WindowId(1),
+                        index: 1,
+                        name: "bash".to_owned(),
+                        panes: vec![TargetPane {
+                            id: PaneId(0),
+                            title: String::new(),
+                            program: Some("bash".into()),
+                            icon: IconName::SquareTerminal,
+                            chat: None,
+                        }],
+                    }],
+                }],
+            }],
+            cwd: Some("/repo".to_owned()),
+            open: Arc::new(|_, _, _| {}),
+        }
+    }
+
+    #[test]
+    fn spans_skip_mail_addresses_and_trailing_punctuation() {
+        let text = "see @macbook:$0:1.%0, mail me@host.com or (@zebrilus\\ 0).";
+        let spans = ref_spans(text)
+            .into_iter()
+            .map(|span| &text[span])
+            .collect::<Vec<_>>();
+        assert_eq!(spans, ["@macbook:$0:1.%0", "@zebrilus\\ 0"]);
+    }
+
+    #[test]
+    fn markdown_links_refs_but_leaves_code_blocks_alone() {
+        let text = "pane @macbook:$0:1.%0 and `%0` in `crates/a.rs:4`\n```\n@macbook:$0\n```\n";
+        let (out, targets) = linkify_markdown(text, &refs());
+        assert_eq!(
+            out,
+            "pane [bash · zebrilus 0:1](zzref:0) and [bash · zebrilus 0:1](zzref:1) in [a.rs:4](zzref:2)\n```\n@macbook:$0\n```\n"
+        );
+        assert_eq!(
+            targets[2].target,
+            RefTarget::Path {
+                path: "/repo/crates/a.rs".to_owned(),
+                line: Some(4)
+            }
+        );
+    }
+
+    #[test]
+    fn unknown_refs_stay_as_written() {
+        let (out, targets) = linkify_markdown("ask @claude and `main`", &refs());
+        assert_eq!(out, "ask @claude and `main`");
+        assert!(targets.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "the test runs the command line a pane would run, in a plain shell"
+    )]
+    fn files_open_in_the_editor_from_an_interactive_shell() {
+        let command = open_path(
+            &RefTarget::Path {
+                path: "~/src/it's.rs".to_owned(),
+                line: Some(3),
+            },
+            Some(PaneId(4)),
+        )
+        .expect("a file opens");
+        let arguments = command
+            .args
+            .iter()
+            .map(|argument| argument.as_str().to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            arguments[..arguments.len() - 1],
+            [
+                "-t", "%4", "-x", "80%", "-y", "75%", "-c", "~/src", "-T", "it's.rs"
+            ]
+        );
+        let home = std::env::temp_dir();
+        let output = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&arguments[arguments.len() - 1])
+            .env_clear()
+            .env("SHELL", "/bin/sh")
+            .env("EDITOR", "echo")
+            .env("HOME", &home)
+            .output()
+            .expect("the shell runs");
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "+3 it's.rs\n");
+    }
+}

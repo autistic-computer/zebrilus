@@ -5,7 +5,7 @@ use ala::{
     ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
     prelude::*, px,
 };
-use penna::{input::InputState, scroll::Scrollbar};
+use penna::{ActiveTheme as _, input::InputState, scroll::Scrollbar};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
     agent::{
@@ -13,7 +13,7 @@ use zz_ui::{
         AgentToolStatus as Status, TimelineRow,
         composer::COMPOSER_OUTER_PADDING,
         fold_timeline_rows,
-        presentation::{lens_welcome, spinner_phase, terminal_sheet, terminal_wait_card},
+        presentation::{lens_welcome, spinner_phase, terminal_pip, terminal_wait_card},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
     pane::{PaneDragSource, PaneLens, TerminalPaneAction, terminal_pane_header},
@@ -486,10 +486,17 @@ impl LensPane {
             })
             .child(composer)
             .when_some(self.sheet, |lens, title| {
-                lens.relative().child(terminal_sheet(
+                let icon = if title.contains("Codex") {
+                    zz_ui::program::OPENAI_ICON
+                } else {
+                    zz_ui::program::CLAUDE_ICON
+                };
+                lens.relative().child(terminal_pip(
                     ("lens-sheet", self.scene.pane()),
                     title,
+                    icon,
                     terminal_body(self.scene.terminal(), false, cx).into_any_element(),
+                    cx.theme().background,
                     |_, _| {},
                     cx,
                 ))
@@ -572,7 +579,7 @@ pub fn panes(window: &mut Window, cx: &mut App) -> AnyView {
 pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
     let panes = vec![
         (
-            "Claude Code running /config: its own dialog opens in a sheet over the chat, keys go to it, and the sheet closes when Claude logs the dialog closing, or on Esc or Done",
+            "Claude Code running /config: its own dialog opens in a wide PiP over the chat, keys go to it, and the PiP closes when Claude's input box comes back, or on Done",
             build_with(
                 Scene::Claude,
                 Look::Page(560.0),
@@ -583,7 +590,7 @@ pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
             ),
         ),
         (
-            "Codex choosing its model: the footer's model button opens /model in the sheet; Esc or Done closes it",
+            "Codex choosing its model: the footer's model button opens /model in the PiP; Esc or Done closes it",
             build_with(
                 Scene::Codex,
                 Look::Page(480.0),

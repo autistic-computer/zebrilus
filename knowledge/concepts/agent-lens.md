@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent lens
-description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal sheet for the CLI's own dialogs, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
+description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
 timestamp: 2026-10-31T12:42:12-03:00
@@ -123,7 +123,7 @@ lens, from typing in the terminal, or from a peer message.
   Deny (sends Escape). Any other `waitingFor` (a plan approval, a question) raises a request with no
   options, titled "Waiting for a ... in the terminal". Clients draw it with
   `zz_ui::agent::presentation::terminal_wait_card`, whose one action, Show terminal, opens the
-  terminal sheet (below) so the user answers there.
+  terminal PiP (below) so the user answers there.
 - **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
   card; the user answers in the terminal.
 
@@ -136,7 +136,7 @@ rest of the lens:
 
 - **Built-ins**, a fixed list per CLI. The ones whose own UI is a dialog in the TUI carry
   `_meta.zz.terminal` and show "opens terminal": picking one types it into the CLI and opens the
-  terminal sheet (`agent_completion::terminal_command`). Claude Code: `model`, `effort`, `plan`, `status`, `config`, `context`, `usage`,
+  terminal PiP (`agent_completion::terminal_command`). Claude Code: `model`, `effort`, `plan`, `status`, `config`, `context`, `usage`,
   `permissions`, `mcp`, `hooks`, `memory`, `resume`, `rewind`, `plugin`, `skills`, `btw`, `doctor`,
   `theme`, `login`, `logout`, `help`. Codex: `model`, `permissions`, `status`, `mcp`, `resume`,
   `fork`, `mention`, `logout`. The rest (`clear`, `compact`, `goal`, `subtask`, `cd`, `add-dir`,
@@ -154,21 +154,24 @@ rest of the lens:
 Skills carry `_meta.zz.skill` and show "skill". Old clients skip the `_meta` field and show the
 plain list.
 
-# The terminal sheet
+# The terminal PiP
 
 On the desktop a command that only the CLI's own screen can show does not flip the pane. The lens
-draws the pane's live `TerminalView` in a sheet over the dimmed chat
-(`zz_ui::agent::presentation::terminal_sheet`, `crates/zz/src/agent/view/harness.rs`), titled
-"/config · Claude Code", and keys go to the CLI. The same `TerminalView` the pane would show is
-painted there, so it reflows to the sheet's height. The sheet closes when:
+draws the pane's live `TerminalView` in a wide PiP card over the chat, with no scrim
+(`zz_ui::agent::presentation::terminal_pip`, `crates/zz/src/agent/view/harness.rs`). Its header
+shows the CLI's mark, "/config · Claude Code" and Done, and keys go to the CLI. The `TerminalView`
+keeps the pane's own size, so the card shows its bottom rows, where the CLI draws its dialog: the
+lens measures its own height and pins the terminal's bottom edge to the card's. The PiP closes when:
 
-- Claude Code logs the dialog closing. Every `local-command-stdout` line ("Settings dialog
-  dismissed", "Set model to …") makes the runtime send `ConfigOptionsChanged` with `option_id`
-  `dialog` and value `closed`; clients count those (`AgentPaneState::dialogs_closed`).
-- Esc is pressed: it goes to the CLI, which closes its dialog, and the sheet closes with it.
-- Done is pressed, which also sends Escape to the CLI.
+- Claude Code logs the dialog closing. Every `local-command-stdout` line ("Set model to …",
+  "Disabled auto-compact") makes the runtime send `ConfigOptionsChanged` with `option_id` `dialog`
+  and value `closed`; clients count those (`AgentPaneState::dialogs_closed`).
+- Claude Code's input box is back on screen. Closing /status, /usage, /context, /mcp or an
+  unchanged /config logs nothing, so the runtime checks the screen for the `❯` line between two
+  rules (`lens_settings::claude_composer_shown`) and sends the same `dialog` signal.
+- Done is pressed, which also sends Escape to the CLI. For Codex, Esc closes it too.
 
-Codex logs nothing for its dialogs, so its sheet closes on Esc or Done. The web, iPad and iPhone
+Codex logs nothing for its dialogs, so its PiP closes on Esc or Done. The web, iPad and iPhone
 clients still flip to the terminal for these commands, since closing the lens there also closes its
 stream.
 
@@ -189,7 +192,7 @@ agent_side_chat_button}`):
   `fable`) and effort levels (`low` to `max`). Picking one sends `AgentSetConfigOption`, which the
   runtime types as `/model <alias>` or `/effort <level>` (`lens_settings::command`).
 - **Codex.** Its model and effort are only set in its `/model` dialog, so the button types `/model`
-  and opens the sheet. The option carries `_meta.zz.terminal: "/model"` for that.
+  and opens the PiP. The option carries `_meta.zz.terminal: "/model"` for that.
 - **Folder.** On the local host the folder chip opens a folder picker and the runtime types
   `/cd <path>`. On a remote host it only shows the folder.
 
@@ -199,7 +202,9 @@ agent_side_chat_button}`):
   fork of the session: `claude --resume <session> --fork-session`, or `codex fork <session>`. The
   main chat never sees it. In chat mode the side chat gets its lens like any agent pane; in raw mode
   the header toggle opens it.
-- **Fork from here.** Hovering a message you sent shows a branch button. It opens a new window after
+- **Copy and Fork from here.** Hovering a message shows Copy and a branch button under it; the last
+  answer keeps them shown, and on touch they always show. Copy puts the message's text (for an
+  answer, every text block of the turn) on the clipboard. Fork opens a new window after
   the chat's running `zz tools --fork-chat <claude|codex> <session> <message>`, which runs on the
   CLI's host through the pane's private `zz` (`crates/zz-cli/src/fork_chat.rs`):
   - Claude Code: it copies the transcript through the end of that message's turn under a new
@@ -209,6 +214,24 @@ agent_side_chat_button}`):
     `codex resume <new thread>`.
   - The chat item id carries the source id (`u:<uuid>` for Claude, `u:<item id>` for Codex), and
     `zz_client::agent_settings::source_message` reads it back.
+
+# References in the chat
+
+zz references in a message show as named links (`zz_ui::agent::refs`, resolved by
+`zz_ui::target::resolve_target` against the same host tree the `@` menu lists):
+
+- An `@` token as the `@` menu writes it: `@host:session:window.%pane`, `@session:window`,
+  `@host:%pane`, `@host`, `@~/path/`, `@host:/path/file.rs:12`.
+- In inline code, the same token, a pane or session id (`%3`, `$0`, `$0:1.%2`), or a file path with
+  an extension (`crates/zz/src/main.rs:40`), resolved against the chat's folder.
+
+A pane shows as its program and window ("bash · zebrilus 0:1"), a chat as its title, a window as
+"session › name", a file as its name and line, a folder with a trailing slash, and anything on
+another host adds " · host". Tokens that resolve to nothing stay as written, and fenced code
+blocks are left alone. Clicking a pane, window, session, chat or host switches to it like the
+palette does; a file opens in a float running `$VISUAL` or `$EDITOR` (from the user's interactive
+shell) at that line, and a folder opens a shell float there (`refs::open_path`). The assistant's
+markdown carries them as `zzref:` links; the user's bubble draws them as clickable ranges.
 
 # How the stream reaches a client
 

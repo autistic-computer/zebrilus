@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, InteractiveElement as _,
@@ -7,6 +7,7 @@ use ala::{
 };
 use penna::button::Button;
 use penna::v_flex;
+use penna::{IconName, WindowExt as _, notification::Notification};
 use zz_protocol::agent_stream::{AgentQuestion, AgentQuestionOption};
 use zz_protocol::chat::RequestView;
 use zz_protocol::chat::{
@@ -14,8 +15,12 @@ use zz_protocol::chat::{
     OptionKind, PlanStep, QuestionAnswer, RequestClose, RequestId, StepStatus, TurnBy, TurnId,
     TurnOutcome,
 };
+use zz_protocol::{PaneId, SessionId, WindowId};
 use zz_ui::agent::chat::{ChatClicks, ChatHooks, ChatOpen, ChatPane, chat_thread};
 use zz_ui::agent::presentation::{permission_card, permission_option};
+use zz_ui::agent::refs::ChatRefs;
+use zz_ui::command::{PaletteHostId, PaletteStatus};
+use zz_ui::target::{TargetChat, TargetHost, TargetPane, TargetSession, TargetWindow};
 
 use crate::story::{stateless, states};
 
@@ -319,6 +324,83 @@ pub fn finished(_: &mut Window, cx: &mut App) -> AnyView {
                     spinner_free(&script.view, &opened, script.at, cx),
                 )
                 .into_any_element()
+        },
+        cx,
+    )
+}
+
+fn story_hosts() -> Vec<TargetHost> {
+    let pane = |id: u64, program: &str| TargetPane {
+        id: PaneId(id),
+        title: String::new(),
+        program: Some(program.to_owned().into()),
+        icon: IconName::SquareTerminal,
+        chat: None,
+    };
+    vec![TargetHost {
+        id: PaletteHostId(0),
+        name: "macbook".to_owned(),
+        status: PaletteStatus::Online,
+        here: true,
+        sessions: vec![TargetSession {
+            id: SessionId(0),
+            name: "zebrilus".to_owned(),
+            windows: vec![TargetWindow {
+                id: WindowId(1),
+                index: 1,
+                name: "build".to_owned(),
+                panes: vec![
+                    pane(0, "bash"),
+                    TargetPane {
+                        chat: Some(TargetChat {
+                            title: "Fix the fanout replay".into(),
+                            icon: zz_ui::program::CLAUDE_ICON,
+                        }),
+                        ..pane(1, "claude")
+                    },
+                ],
+            }],
+        }],
+    }]
+}
+
+pub fn references(_: &mut Window, cx: &mut App) -> AnyView {
+    stateless(
+        |_, cx| {
+            let mut script = Script::new();
+            script
+                .turn("@macbook:zebrilus:1.%0 what is this, and is @macbook:%1 still on it?")
+                .text(
+                    "a1",
+                    "@macbook:zebrilus:1.%0 is an idle bash in @zebrilus, window @zebrilus:1. The chat in `%1` is still working on `crates/zz-daemon/src/agent/fanout.rs:1576`, and its notes are in @~/dev/notes/.\n\n```sh\nzz send-keys -t @macbook:zebrilus:1.%0 ls\n```",
+                )
+                .done("a1")
+                .finish(completed());
+            let refs = ChatRefs {
+                hosts: story_hosts(),
+                cwd: Some("/Users/me/dev/zebrilus".to_owned()),
+                open: Arc::new(|target, window, cx| {
+                    window.push_notification(
+                        Notification::new().message(format!("Open {}", target.label)),
+                        cx,
+                    );
+                }),
+            };
+            let click: ChatClicks = Rc::new(|_, _, _| {});
+            let hooks = ChatHooks {
+                click: Some(click),
+                fork: true,
+                refs: Some(&refs),
+                ..ChatHooks::default()
+            };
+            frame(chat_thread(
+                &script.view,
+                script.at,
+                &ChatOpen::default(),
+                0.25,
+                &hooks,
+                cx,
+            ))
         },
         cx,
     )
@@ -679,6 +761,7 @@ impl Render for Playground {
             click: Some(click),
             ask: Some(&ask),
             fork: true,
+            refs: None,
         };
         let body = chat_thread(
             &self.script.view,

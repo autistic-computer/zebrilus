@@ -30,6 +30,12 @@ const CHAT: Story = Story {
             build: chat::finished,
         },
         Section {
+            id: "references",
+            name: "References",
+            summary: "zz references in a message, written as @host:session:window.%pane, a pane or session id in code, or a file path in code, show as named links: a pane by its program and window, a chat by its title, a file by its name and line. Clicking one switches to it, or opens the file or folder in a float. Hovering a message shows Copy and Fork; the last answer keeps them shown.",
+            build: chat::references,
+        },
+        Section {
             id: "asks",
             name: "Inline asks",
             summary: "An approval sits on the tool row that needs it, a question sits in the thread, and an answered question leaves a one-line record.",
@@ -191,13 +197,13 @@ const STORY: Story = Story {
         Section {
             id: "lens-approval",
             name: "Lens approval",
-            summary: "A Claude Code permission prompt becomes a card above the composer whose answers are the keys the TUI takes. Its other dialogs (plan approval, questions) get a card whose one action, Show terminal, opens the TUI in a sheet over the chat. Codex records nothing while its dialog is up, so its lens has no card.",
+            summary: "A Claude Code permission prompt becomes a card above the composer whose answers are the keys the TUI takes. Its other dialogs (plan approval, questions) get a card whose one action, Show terminal, opens the TUI in a PiP over the chat. Codex records nothing while its dialog is up, so its lens has no card.",
             build: lens::approvals,
         },
         Section {
             id: "lens-sheet",
-            name: "Lens terminal sheet",
-            summary: "Commands that only the CLI's own screen can show (/config, /status, /usage, /mcp, Codex's /model) open the pane's live terminal in a sheet over the dimmed chat. Keys go to the CLI. Claude logs when its dialog closes, so the sheet closes with it; Esc or Done close it too.",
+            name: "Lens terminal PiP",
+            summary: "Commands that only the CLI's own screen can show (/config, /status, /usage, /mcp, Codex's /model) open the pane's live terminal in a wide PiP over the chat, pinned to the bottom of the screen where the CLI draws its dialog. Keys go to the CLI. The PiP closes when the CLI's input box comes back; Esc (Codex) or Done close it too.",
             build: lens::sheets,
         },
     ],

@@ -1,5 +1,7 @@
 use std::{
+    cell::Cell,
     collections::{BTreeSet, HashMap},
+    rc::Rc,
     sync::Arc,
 };
 use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, Composer};
@@ -22,9 +24,9 @@ use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
 
 use ala::{
     AnyElement, Context, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Image,
-    IntoElement, KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render,
-    ScrollStrategy, SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*,
-    px, uniform_list,
+    IntoElement, KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Pixels,
+    Render, ScrollStrategy, SharedString, Subscription, UniformListScrollHandle, Window, div,
+    prelude::*, px, uniform_list,
 };
 use zz_client::agent_completion::{
     CommandCompletion, active_command_hint, command_label, completion_query,
@@ -480,6 +482,7 @@ pub(crate) struct AgentView {
     terminal: Option<Entity<crate::terminal::view::TerminalView>>,
     sheet: Option<harness::Sheet>,
     refocus: bool,
+    lens_height: Rc<Cell<Pixels>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -600,6 +603,7 @@ impl AgentView {
             chat_inline: false,
             terminal: None,
             sheet: None,
+            lens_height: Rc::default(),
             refocus: false,
             _subscriptions: vec![
                 input_observer,

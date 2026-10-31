@@ -1,8 +1,8 @@
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
 use ala::{
-    AnyElement, App, Div, IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful,
-    Window, div, prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Div, IntoElement, ScrollHandle, ScrollWheelEvent, SharedString,
+    Stateful, Window, div, prelude::*, px, relative,
 };
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
 use zz_protocol::chat::{
@@ -14,10 +14,11 @@ use super::presentation::{
     card_chip, card_glyph, card_header, card_surface, card_tiles, permission_card,
     permission_option,
 };
-use super::{ActivityMark, RowEnd, activity_row_marked};
+use super::refs::{ChatRefs, RefLinks, linkify_markdown, ref_text};
+use super::{ActivityMark, RowEnd, activity_row_marked, assistant_markdown_extensions};
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, StyledExt as _, Tone,
-    button::Button, h_flex, text::TextView, v_flex,
+    WindowExt as _, button::Button, h_flex, notification::Notification, text::TextView, v_flex,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -43,6 +44,7 @@ pub struct ChatHooks<'a> {
     pub click: Option<ChatClicks>,
     pub ask: Option<&'a dyn Fn(&RequestView, &App) -> Option<AnyElement>>,
     pub fork: bool,
+    pub refs: Option<&'a ChatRefs>,
 }
 
 impl ChatHooks<'_> {
@@ -57,6 +59,14 @@ impl ChatHooks<'_> {
                 .on_click(move |_, window, cx| click(&target, window, cx)),
             None => element,
         }
+    }
+
+    fn fork_from(&self, id: &ItemId) -> Option<(ChatClicks, ItemId)> {
+        self.click
+            .clone()
+            .filter(|_| self.fork)
+            .filter(|_| zz_client::agent_settings::source_message(id.as_str()).is_some())
+            .map(|click| (click, id.clone()))
     }
 }
 
@@ -204,6 +214,7 @@ impl Draw<'_, '_> {
         let fold = rows.fold.filter(|_| !rows.folded.is_empty());
         v_flex()
             .id(("chat-turn", turn.id.0))
+            .group(TURN_GROUP)
             .w_full()
             .gap_3()
             .children(rows.shown[..lead].iter().map(|unit| self.unit(unit, live)))
@@ -217,22 +228,56 @@ impl Draw<'_, '_> {
                 column.children(rows.folded.iter().map(|unit| self.unit(unit, live)))
             })
             .children(rows.shown[lead..].iter().map(|unit| self.unit(unit, live)))
+            .when(!live, |column| {
+                let ordered = rows.shown[..lead]
+                    .iter()
+                    .chain(&rows.folded)
+                    .chain(&rows.shown[lead..]);
+                let reply = ordered
+                    .clone()
+                    .filter_map(|unit| match unit {
+                        Unit::Text(id) => Some(text_of(self.view, id)),
+                        _ => None,
+                    })
+                    .filter(|text| !text.trim().is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                let fork = ordered
+                    .clone()
+                    .find_map(|unit| match unit {
+                        Unit::User(id) => Some(id),
+                        _ => None,
+                    })
+                    .and_then(|id| self.hooks.fork_from(id));
+                let last = self
+                    .view
+                    .turns
+                    .last()
+                    .is_some_and(|last| last.id == turn.id);
+                column.when(!reply.is_empty() || fork.is_some(), |column| {
+                    column.child(message_actions(
+                        &format!("turn-{}", turn.id.0),
+                        (!reply.is_empty()).then(|| reply.into()),
+                        fork,
+                        if last { None } else { Some(TURN_GROUP) },
+                        self.cx,
+                    ))
+                })
+            })
             .into_any_element()
     }
 
     fn unit(&self, unit: &Unit, live: bool) -> AnyElement {
         let cx = self.cx;
         match unit {
-            Unit::User(id) => {
-                let fork = self
-                    .hooks
-                    .click
-                    .clone()
-                    .filter(|_| self.hooks.fork)
-                    .filter(|_| zz_client::agent_settings::source_message(id.as_str()).is_some());
-                user_bubble(id, text_of(self.view, id), fork, cx)
-            }
-            Unit::Text(id) => markdown(id, text_of(self.view, id)),
+            Unit::User(id) => user_bubble(
+                id,
+                text_of(self.view, id),
+                self.hooks.fork_from(id),
+                self.hooks.refs,
+                cx,
+            ),
+            Unit::Text(id) => markdown(id, text_of(self.view, id), self.hooks.refs),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
@@ -547,39 +592,84 @@ fn text_of(view: &ChatView, id: &ItemId) -> SharedString {
 }
 
 const USER_GROUP: &str = "chat-user";
+const TURN_GROUP: &str = "chat-turn";
 
-fn user_bubble(id: &ItemId, text: SharedString, fork: Option<ChatClicks>, cx: &App) -> AnyElement {
-    let key = id.as_str().to_owned();
+fn message_actions(
+    key: &str,
+    copy: Option<SharedString>,
+    fork: Option<(ChatClicks, ItemId)>,
+    hover: Option<&'static str>,
+    cx: &App,
+) -> AnyElement {
     h_flex()
+        .flex_none()
+        .gap_0p5()
+        .when_some(
+            hover.filter(|_| !crate::touch::CoarsePointer::get(cx)),
+            |row, group| row.invisible().group_hover(group, ala::Styled::visible),
+        )
+        .when_some(copy, |row, text| {
+            row.child(
+                Button::compact_icon(
+                    SharedString::from(format!("chat-copy-{key}")),
+                    IconName::Copy,
+                )
+                .surface_role(crate::roles::AGENT_ACTION)
+                .tooltip("Copy")
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
+                    window.push_notification(
+                        Notification::new()
+                            .message("Copied")
+                            .autohide_after(Duration::from_millis(1600)),
+                        cx,
+                    );
+                }),
+            )
+        })
+        .when_some(fork, |row, (fork, id)| {
+            let target = ChatClick::Fork(id);
+            row.child(
+                Button::compact_icon(
+                    SharedString::from(format!("chat-fork-{key}")),
+                    IconName::GitBranch,
+                )
+                .surface_role(crate::roles::AGENT_ACTION)
+                .tooltip("Fork from here: a new chat that goes on from this message")
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    fork(&target, window, cx);
+                }),
+            )
+        })
+        .into_any_element()
+}
+
+fn user_bubble(
+    id: &ItemId,
+    text: SharedString,
+    fork: Option<(ChatClicks, ItemId)>,
+    refs: Option<&ChatRefs>,
+    cx: &App,
+) -> AnyElement {
+    let key = id.as_str().to_owned();
+    let body = refs
+        .and_then(|refs| {
+            ref_text(
+                SharedString::from(format!("chat-user-text-{key}")),
+                &text,
+                refs,
+                cx,
+            )
+        })
+        .unwrap_or_else(|| text.clone().into_any_element());
+    v_flex()
         .id(SharedString::from(format!("chat-user-{key}")))
         .group(USER_GROUP)
         .w_full()
-        .justify_end()
-        .items_center()
+        .items_end()
         .gap_1()
-        .when_some(fork, |row, fork| {
-            let target = ChatClick::Fork(id.clone());
-            row.child(
-                div()
-                    .flex_none()
-                    .when(!crate::touch::CoarsePointer::get(cx), |slot| {
-                        slot.invisible()
-                            .group_hover(USER_GROUP, ala::Styled::visible)
-                    })
-                    .child(
-                        Button::compact_icon(
-                            SharedString::from(format!("chat-fork-{key}")),
-                            IconName::GitBranch,
-                        )
-                        .surface_role(crate::roles::AGENT_ACTION)
-                        .tooltip("Fork from here: a new chat that goes on from this message")
-                        .on_click(move |_, window, cx| {
-                            cx.stop_propagation();
-                            fork(&target, window, cx);
-                        }),
-                    ),
-            )
-        })
         .child(
             div()
                 .max_w(relative(0.8))
@@ -587,19 +677,36 @@ fn user_bubble(id: &ItemId, text: SharedString, fork: Option<ChatClicks>, cx: &A
                 .py_2()
                 .surface(crate::roles::AGENT_BUBBLE, cx)
                 .text_size(crate::rems_from_px(13.0))
-                .child(text),
+                .child(body),
         )
+        .child(message_actions(
+            &format!("user-{key}"),
+            Some(text),
+            fork,
+            Some(USER_GROUP),
+            cx,
+        ))
         .into_any_element()
 }
 
-fn markdown(id: &ItemId, text: SharedString) -> AnyElement {
+fn markdown(id: &ItemId, text: SharedString, refs: Option<&ChatRefs>) -> AnyElement {
+    let id = SharedString::from(format!("chat-text-{}", id.as_str()));
+    let view = match refs {
+        Some(refs) => {
+            let (linked, targets) = linkify_markdown(&text, refs);
+            let view = TextView::markdown(id, linked);
+            if targets.is_empty() {
+                view
+            } else {
+                view.links(RefLinks::new(targets, refs.open.clone()))
+            }
+        }
+        None => TextView::markdown(id, text),
+    };
     div()
         .w_full()
         .text_size(crate::rems_from_px(13.0))
-        .child(TextView::markdown(
-            SharedString::from(format!("chat-text-{}", id.as_str())),
-            text,
-        ))
+        .child(view.markdown_extensions(assistant_markdown_extensions()))
         .into_any_element()
 }
 

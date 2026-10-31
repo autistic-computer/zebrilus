@@ -1,14 +1,15 @@
 use std::time::Duration;
 
 use ala::{
-    AnyElement, App, Div, ElementId, EntityId, FontWeight, SharedString, Stateful, Transformation,
-    Window, div, ease_in_out, percentage, prelude::*, px,
+    AnyElement, App, Div, ElementId, EntityId, FontWeight, Hsla, SharedString, Stateful,
+    Transformation, Window, div, ease_in_out, percentage, prelude::*, px,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, PaintState,
-    StyledExt as _, Surface, Tone, badge::Badge, button::Button, feedback::inline_alert, h_flex,
-    kbd::Keycap, muted_on, pulse::pulse_phase, roles, v_flex,
+    Sizable as _, StyledExt as _, Surface, Tone, badge::Badge, button::Button,
+    feedback::inline_alert, h_flex, kbd::Keycap, muted_on, pip::PipSurface, pulse::pulse_phase,
+    roles, v_flex,
 };
 
 pub use zz_client::agent_completion::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -171,58 +172,67 @@ pub fn terminal_wait_card(
         )
 }
 
-pub const TERMINAL_SHEET_HEIGHT: f32 = 0.62;
+pub const TERMINAL_PIP_HEIGHT: f32 = 0.62;
+pub const TERMINAL_PIP_GAP: f32 = 8.0;
 
-pub fn terminal_sheet(
+pub fn terminal_pip(
     id: impl Into<ElementId>,
     title: impl Into<SharedString>,
+    icon: IconName,
     body: AnyElement,
+    fill: Hsla,
     on_done: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Div {
     let id = id.into();
-    div()
-        .absolute()
-        .inset_0()
+    let header = h_flex()
+        .flex_none()
+        .h(cx.theme().pane_header_height())
+        .w_full()
+        .pl_2()
+        .pr_1()
+        .gap_2()
+        .items_center()
         .child(
-            div()
-                .id((id.clone(), "scrim"))
-                .absolute()
-                .inset_0()
-                .bg(cx.theme().scrim)
-                .occlude(),
+            Icon::new(icon)
+                .small()
+                .text_color(cx.theme().foreground.muted()),
         )
         .child(
-            v_flex()
-                .absolute()
-                .left_0()
-                .right_0()
-                .bottom_0()
-                .h(ala::relative(TERMINAL_SHEET_HEIGHT))
-                .overflow_hidden()
-                .surface(roles::INLINE_PANEL, cx)
-                .child(
-                    card_header()
-                        .items_center()
-                        .child(card_glyph(
-                            Icon::new(IconName::SquareTerminal)
-                                .text_color(cx.theme().foreground.muted()),
-                            cx,
-                        ))
-                        .child(div().min_w_0().flex_1().child(title.into()))
-                        .child(
-                            card_button(Button::new((id, "done")), cx)
-                                .label("Done")
-                                .emphasis(Emphasis::Ghost)
-                                .compact()
-                                .tooltip("Close the dialog and go back to the chat")
-                                .on_click(move |_, window, cx| {
-                                    cx.stop_propagation();
-                                    on_done(window, cx);
-                                }),
-                        ),
-                )
-                .child(div().flex_1().min_h_0().overflow_hidden().child(body)),
+            div()
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .text_size(crate::rems_from_px(12.0))
+                .text_color(cx.theme().foreground.muted())
+                .child(title.into()),
+        )
+        .child(
+            Button::new((id.clone(), "done"))
+                .label("Done")
+                .emphasis(Emphasis::Ghost)
+                .compact()
+                .tooltip("Close the dialog and go back to the chat")
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    on_done(window, cx);
+                }),
+        );
+    div()
+        .absolute()
+        .left_0()
+        .right_0()
+        .bottom(px(TERMINAL_PIP_GAP))
+        .h(ala::relative(TERMINAL_PIP_HEIGHT))
+        .child(
+            PipSurface::new(
+                id,
+                v_flex()
+                    .size_full()
+                    .child(header)
+                    .child(div().flex_1().min_h_0().overflow_hidden().child(body)),
+            )
+            .fill(fill),
         )
 }
 

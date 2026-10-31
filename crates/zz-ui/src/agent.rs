@@ -3,6 +3,7 @@ pub mod composer;
 pub mod controls;
 pub mod presentation;
 pub mod question;
+pub mod refs;
 pub mod slash;
 pub mod tasks;
 
@@ -2964,7 +2965,7 @@ fn standard_markdown_extensions() -> MarkdownExtensions {
         .clone()
 }
 
-fn assistant_markdown_extensions() -> MarkdownExtensions {
+pub(crate) fn assistant_markdown_extensions() -> MarkdownExtensions {
     static EXTENSIONS: OnceLock<MarkdownExtensions> = OnceLock::new();
     EXTENSIONS
         .get_or_init(|| {

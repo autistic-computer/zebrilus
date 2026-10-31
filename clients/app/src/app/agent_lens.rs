@@ -55,11 +55,12 @@ use zz_ui::{
             terminal_wait_card,
         },
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
+        refs::{ChatRefs, open_path},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
         tool_output_text,
     },
-    command::{PaletteSettings, target_picker},
-    target::{TargetPicker, mention_at_caret, mention_keys},
+    command::{PaletteSettings, PaletteTarget, target_hosts, target_picker},
+    target::{RefTarget, ResolvedTarget, TargetPicker, mention_at_caret, mention_keys},
 };
 
 use crate::{command_palette::palette_backend, connection::Connection};
@@ -104,6 +105,40 @@ impl AgentLens {
             .filter(|cwd| !cwd.is_empty())
             .or_else(|| self.terminal(cx).map(|pane| pane.summary.cwd.clone()))
             .unwrap_or_default()
+    }
+
+    fn chat_refs(&self, entity: &Entity<Self>, cx: &App) -> ChatRefs {
+        let view = entity.downgrade();
+        let cwd = self.chat_cwd(cx);
+        ChatRefs {
+            hosts: target_hosts(
+                &palette_backend(self.connection.clone(), PaletteSettings::default()).tree(cx),
+            ),
+            cwd: (!cwd.is_empty()).then_some(cwd),
+            open: Arc::new(move |target, _, cx| {
+                view.update(cx, |this, cx| this.open_ref(target, cx)).ok();
+            }),
+        }
+    }
+
+    fn open_ref(&self, target: &ResolvedTarget, cx: &mut App) {
+        let backend = palette_backend(self.connection.clone(), PaletteSettings::default());
+        let place = match &target.target {
+            RefTarget::Host => {
+                backend.activate_host(target.host, cx);
+                return;
+            }
+            RefTarget::Session(id) => PaletteTarget::Session(*id),
+            RefTarget::Window(id) => PaletteTarget::Window(*id),
+            RefTarget::Pane(id) => PaletteTarget::Pane(*id),
+            RefTarget::Path { .. } => {
+                if let Some(command) = open_path(&target.target, target.here.then_some(self.pane)) {
+                    backend.execute(target.host, command, cx);
+                }
+                return;
+            }
+        };
+        backend.activate(target.host, place, cx);
     }
 
     fn harness_controls(
@@ -1671,10 +1706,12 @@ impl AgentLens {
         let inline = RefCell::new(inline);
         let ask = |request: &RequestView, _: &App| inline.borrow_mut().remove(&request.id.0);
         let forks = self.forks(cx);
+        let refs = self.chat_refs(&entity, cx);
         let hooks = ChatHooks {
             click: Some(click),
             ask: Some(&ask),
             fork: forks,
+            refs: Some(&refs),
         };
         let body = chat_thread(
             &self.transcript.lens.chat,
