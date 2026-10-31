@@ -1,4 +1,4 @@
-use std::f32::consts::PI;
+use std::{f32::consts::PI, rc::Rc};
 
 use ala::{
     AnyElement, App, ElementId, IntoElement, PathBuilder, Role, SharedString, Window, canvas, div,
@@ -10,7 +10,7 @@ use crate::{
     Sizable as _, SurfaceRole, Tone,
     button::{Button, ButtonVariants},
     h_flex,
-    menu::{DropdownMenu as _, PopupMenuItem},
+    menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
     roles,
     tooltip::Tooltip,
 };
@@ -81,14 +81,14 @@ pub fn agent_settings_menu(
     settings: &LensSettings,
     enabled: bool,
     on_pick: impl Fn(&'static str, String, &mut Window, &mut App) + 'static,
-    on_terminal: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
     let summary = settings.summary();
+    let choices = !settings.models.is_empty() || !settings.efforts.is_empty();
     let button = agent_chrome_button(id)
         .surface_role(SurfaceRole::QUIET_BUTTON)
         .text_color(cx.theme().foreground.muted())
-        .disabled(!enabled)
+        .disabled(!enabled || !choices)
         .child(if summary.is_empty() {
             "Model".to_owned()
         } else {
@@ -99,46 +99,49 @@ pub fn agent_settings_menu(
                 .small()
                 .text_color(cx.theme().foreground.muted()),
         );
-    if settings.terminal.is_some() || settings.models.is_empty() {
-        return button
-            .tooltip("Choose the model and effort in the CLI's own dialog")
-            .on_click(move |_, window, cx| on_terminal(window, cx))
-            .into_any_element();
-    }
     let settings = settings.clone();
-    let on_pick = std::rc::Rc::new(on_pick);
+    let on_pick = Rc::new(on_pick);
     button
         .tooltip("Choose the model and effort")
         .dropdown_menu(move |menu, _, _| {
-            let menu = menu.item(PopupMenuItem::label("Model"));
-            let menu = settings.models.iter().fold(menu, |menu, choice| {
-                let pick = on_pick.clone();
-                let value = choice.value.clone();
-                menu.item(
-                    PopupMenuItem::new(choice.name.clone())
-                        .checked(choice.value == settings.model)
-                        .on_click(move |_, window, cx| {
-                            pick(agent_settings::MODEL, value.clone(), window, cx);
-                        }),
-                )
-            });
-            if settings.efforts.is_empty() {
-                return menu;
-            }
-            let menu = menu.separator().item(PopupMenuItem::label("Effort"));
-            settings.efforts.iter().fold(menu, |menu, choice| {
-                let pick = on_pick.clone();
-                let value = choice.value.clone();
-                menu.item(
-                    PopupMenuItem::new(choice.name.clone())
-                        .checked(choice.value == settings.effort)
-                        .on_click(move |_, window, cx| {
-                            pick(agent_settings::EFFORT, value.clone(), window, cx);
-                        }),
-                )
-            })
+            let menu = choice_items(menu, "Model", agent_settings::MODEL, &settings, &on_pick);
+            let menu = if settings.models.is_empty() || settings.efforts.is_empty() {
+                menu
+            } else {
+                menu.separator()
+            };
+            choice_items(menu, "Effort", agent_settings::EFFORT, &settings, &on_pick)
         })
         .into_any_element()
+}
+
+fn choice_items<F>(
+    menu: PopupMenu,
+    title: &'static str,
+    option: &'static str,
+    settings: &LensSettings,
+    on_pick: &Rc<F>,
+) -> PopupMenu
+where
+    F: Fn(&'static str, String, &mut Window, &mut App) + 'static,
+{
+    let Some((choices, current)) = settings
+        .choices(option)
+        .filter(|(choices, _)| !choices.is_empty())
+    else {
+        return menu;
+    };
+    choices
+        .iter()
+        .fold(menu.item(PopupMenuItem::label(title)), |menu, choice| {
+            let pick = on_pick.clone();
+            let value = choice.value.clone();
+            menu.item(
+                PopupMenuItem::new(choice.name.clone())
+                    .checked(choice.value == current)
+                    .on_click(move |_, window, cx| pick(option, value.clone(), window, cx)),
+            )
+        })
 }
 
 pub fn agent_side_chat_button(

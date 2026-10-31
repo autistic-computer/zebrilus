@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-31T18:00:00-03:00
+timestamp: 2026-10-31T20:30:00-03:00
 ---
 
 # Overview
@@ -136,12 +136,19 @@ rest of the lens:
 
 - **Built-ins**, a fixed list per CLI. The ones whose own UI is a dialog in the TUI carry
   `_meta.zz.terminal` and show "opens terminal": picking one types it into the CLI and opens the
-  terminal PiP (`agent_completion::terminal_command`). Claude Code: `model`, `effort`, `plan`, `status`, `config`, `context`, `usage`,
-  `permissions`, `mcp`, `hooks`, `memory`, `resume`, `rewind`, `plugin`, `skills`, `btw`, `doctor`,
-  `theme`, `login`, `logout`, `help`. Codex: `model`, `permissions`, `status`, `mcp`, `resume`,
-  `fork`, `mention`, `logout`. The rest (`clear`, `compact`, `goal`, `subtask`, `cd`, `add-dir`,
-  `export`, `copy`, `reload-skills`, `exit`; Codex `new`, `compact`, `review`, `init`, `diff`,
-  `rename`, `quit`) run from the lens, and what they do shows in the timeline.
+  terminal PiP (`agent_completion::terminal_command`). Claude Code: `plan`, `status`, `config`,
+  `context`, `usage`, `permissions`, `mcp`, `hooks`, `memory`, `resume`, `rewind`, `plugin`,
+  `skills`, `btw`, `doctor`, `theme`, `login`, `logout`, `help`. Codex (0.166): `side`, `btw`,
+  `permissions`, `status`, `usage`, `mcp`, `skills`, `resume`, `fork`, `mention`, `raw`, `logout`.
+  The rest (`clear`, `compact`, `goal`, `subtask`, `cd`, `add-dir`, `export`, `copy`,
+  `reload-skills`, `exit`; Codex `new`, `clear`, `compact`, `recap`, `goal`, `plan`, `review`,
+  `init`, `diff`, `cd`, `pwd`, `rename`, `export`, `copy`, `quit`) run from the lens, and what they
+  do shows in the timeline.
+- **`/model` and `/effort`**, for both CLIs, are the footer menu's setters (below). Typed with a
+  value (`/model sonnet`, `/effort high`) the client sends `AgentSetConfigOption` instead of a prompt
+  (`agent_settings::setter`); typed bare, the command stays in the composer as `/model ` and the
+  suggestion list shows the values from the session's config options, the current one marked
+  (`agent_completion::setting_completions`). Picking a value sets it.
 - **Claude Code skills and commands** from `~/.claude` (or `CLAUDE_CONFIG_DIR`) and every
   `.claude` from the pane's folder up to its git root: `skills/*/SKILL.md` (frontmatter `name`,
   `description`, `argument-hint`), `commands/**/*.md` (a subfolder becomes `dir:name`), and the
@@ -179,10 +186,11 @@ stream.
 
 The runtime reads what the CLI is set to from its own files (`agent/lens_settings.rs`): Claude Code
 assistant lines carry `message.model`, `effort` and `cwd`, and "Set model to …" / "Set effort level
-to …" lines update them at once. Codex `turn_context` lines carry `model`, `effort` and `cwd`. It
-sends them as the session's ACP config options (`model`, `effort` and `cwd`, in `SessionReady`,
-`SessionSwitched` and `ConfigOptionsChanged`), so no wire change was needed and old clients ignore
-them. Clients parse them with `zz_client::agent_settings::LensSettings`.
+to …" lines update them at once. Codex `turn_context` lines and `event_msg` `thread_settings_applied`
+lines carry `model`, the effort (`effort` or `reasoning_effort`) and `cwd`. It sends them as the
+session's ACP config options (`model`, `effort` and `cwd`, in `SessionReady`, `SessionSwitched` and
+`ConfigOptionsChanged`), so no wire change was needed and old clients ignore them. Clients parse them
+with `zz_client::agent_settings::LensSettings`.
 
 Until the transcript names them, the footer shows what the CLI was started with
 (`Facts::claude_launch`, `Facts::codex_launch`): the agent process's own arguments (Claude Code
@@ -194,17 +202,37 @@ pid (`process_info::record`), over its config (Claude Code `settings.json` under
 Claude Code writes its `sessions/<pid>.json` record only after the first prompt, so until then the
 lens takes the first process in the pane whose first or second argument is named `claude`.
 
+The models on offer come from a catalog per CLI (`lens_settings::Catalog`):
+
+- **Claude Code.** The aliases `opus`, `sonnet`, `haiku` and `fable`, each with the levels `low` to
+  `max`.
+- **Codex.** `$CODEX_HOME/models_cache.json`, the list Codex itself fetches (read up to 8 MiB,
+  reread when its mtime changes): the models with `visibility` `list`, by `priority`, named by
+  `display_name`, each with its `supported_reasoning_levels` and `default_reasoning_level`. Without
+  the file the current model stands alone with `low`, `medium`, `high` and `xhigh`.
+
+The current model is always one of the choices, even when the catalog hides it. The `model` option's
+entries carry `_meta.zz.efforts` and `_meta.zz.defaultEffort`; the `effort` option lists the current
+model's levels, named from one table (`xhigh` is "Extra high").
+
 The composer footer shows the folder on the left and, on the right, the model and effort button and
 the side chat button (`zz_ui::agent::controls::{agent_directory_chip, agent_settings_menu,
-agent_side_chat_button}`):
+agent_side_chat_button}`). The button opens the same menu for every CLI: the models, then the
+current model's levels. Picking one sends `AgentSetConfigOption`, which the runtime types into the
+TUI (`lens_settings::command`) and shows at once:
 
-- **Claude Code.** The button opens a menu of the model aliases (`opus`, `sonnet`, `haiku`,
-  `fable`) and effort levels (`low` to `max`). Picking one sends `AgentSetConfigOption`, which the
-  runtime types as `/model <alias>` or `/effort <level>` (`lens_settings::command`).
-- **Codex.** Its model and effort are only set in its `/model` dialog, so the button types `/model`
-  and opens the PiP. The option carries `_meta.zz.terminal: "/model"` for that.
+- **Claude Code.** `/model <alias>` or `/effort <level>`. Its "Set model to …" line confirms it.
+- **Codex.** Codex has no `/effort`; its `/model` takes the level inline, so a model pick types
+  `/model <slug> --reasoning=<level>`, keeping the current level when the new model takes it and the
+  model's default otherwise, and a level pick types `/model <current slug> --reasoning=<level>`.
+  Codex answers "Model changed to … for this session only" in the terminal and writes nothing to
+  the rollout until the next turn, so the lens holds the pick over what the rollout says, across a
+  reload, until a turn starts or a rollout line names the settings. Codex refuses `/model` while a
+  task runs, so a pick made mid-turn is held and typed when the turn ends; a later pick replaces a
+  held one. A slug or level the catalog does not list fails with `SettingFailed` before anything is
+  typed.
 - **Folder.** On the local host the folder chip opens a folder picker and the runtime types
-  `/cd <path>`. On a remote host it only shows the folder.
+  `/cd <path>`. On a remote host it only shows the folder. Codex holds a mid-turn `/cd` the same way.
 
 # Side chats and forks
 
@@ -356,8 +384,8 @@ streamed-text fade (`penna/src/text/veil.rs`) and the shared leased animation cl
   shared `zz-client` reducers as JSON; `clients/dom/web/js/agent.js` draws them with the design kit.
 - **Storybook.** An agent lens story replaces the Agent pane story.
 
-The lens has no project or directory picker and no provider, model or effort picker; that code was
-deleted, not hidden.
+The old agent pane's project, provider, model and effort pickers were deleted, not hidden; the
+lens's folder chip and model menu only type the CLI's own commands.
 
 # Related
 

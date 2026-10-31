@@ -179,18 +179,37 @@ pub fn claude_settings() -> LensSettings {
             ("max", "Max"),
         ]),
         cwd: "/Users/you/src/zebrilus".to_owned(),
-        terminal: None,
     }
 }
 
 pub fn codex_settings() -> LensSettings {
+    let choices = |list: &[(&str, &str)]| {
+        list.iter()
+            .map(|(value, name)| Choice {
+                value: (*value).to_owned(),
+                name: (*name).to_owned(),
+            })
+            .collect::<Vec<_>>()
+    };
     LensSettings {
-        model: "gpt-5.5-codex".to_owned(),
-        model_label: "gpt-5.5-codex".to_owned(),
-        effort: "high".to_owned(),
+        model: "gpt-6.1-sol".to_owned(),
+        model_label: "GPT-6.1-Sol".to_owned(),
+        models: choices(&[
+            ("gpt-6.1-sol", "GPT-6.1-Sol"),
+            ("gpt-6-astra", "GPT-6-Astra"),
+            ("gpt-6.1-terra", "GPT-6.1 Terra"),
+            ("gpt-6-luna", "GPT-6-Luna"),
+        ]),
+        effort: "xhigh".to_owned(),
+        efforts: choices(&[
+            ("low", "Low"),
+            ("medium", "Medium"),
+            ("high", "High"),
+            ("xhigh", "Extra high"),
+            ("max", "Max"),
+            ("ultra", "Ultra"),
+        ]),
         cwd: "/Users/you/src/zebrilus".to_owned(),
-        terminal: Some("/model".to_owned()),
-        ..LensSettings::default()
     }
 }
 
@@ -206,7 +225,6 @@ pub fn footer_controls(
             settings,
             enabled,
             |_, _, _, _| {},
-            |_, _| {},
             cx,
         ),
         agent_side_chat_button(SharedString::from(format!("{id}-side")), enabled, |_, _| {})

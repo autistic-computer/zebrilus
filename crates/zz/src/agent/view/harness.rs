@@ -257,26 +257,8 @@ impl AgentView {
                 });
             }
         };
-        let terminal = {
-            let view = view.clone();
-            let command = settings
-                .terminal
-                .clone()
-                .unwrap_or_else(|| "/model".to_owned());
-            move |window: &mut Window, cx: &mut ala::App| {
-                view.update(cx, |view, cx| {
-                    view.run_terminal_command(&command, window, cx);
-                });
-            }
-        };
-        let menu = agent_settings_menu(
-            ("agent-settings", self.pane.0),
-            settings,
-            enabled,
-            pick,
-            terminal,
-            cx,
-        );
+        let menu =
+            agent_settings_menu(("agent-settings", self.pane.0), settings, enabled, pick, cx);
         let side = {
             let view = view.clone();
             agent_side_chat_button(
@@ -287,24 +269,6 @@ impl AgentView {
             .into_any_element()
         };
         (directory, vec![menu, side])
-    }
-
-    fn run_terminal_command(&mut self, command: &str, window: &mut Window, cx: &mut Context<Self>) {
-        let pane = self.pane;
-        let result = self.controller.update(cx, |controller, cx| {
-            controller.prompt(pane, command, Vec::new(), cx)
-        });
-        match result {
-            Ok(()) => {
-                if !self.open_sheet(command, None, window, cx) {
-                    cx.emit(super::ShowTerminal);
-                }
-            }
-            Err(error) => {
-                self.submission_error = Some(error);
-                cx.notify();
-            }
-        }
     }
 
     fn pick_directory(&mut self, window: &mut Window, cx: &mut Context<Self>) {

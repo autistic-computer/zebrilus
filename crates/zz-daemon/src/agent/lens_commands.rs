@@ -71,8 +71,8 @@ const CLAUDE: &[Builtin] = &[
         None,
     ),
     lens("exit", "Quit Claude Code", None),
-    tui("model", "Pick the model in the terminal"),
-    tui("effort", "Pick the effort level in the terminal"),
+    lens("model", "Switch the model", Some("model")),
+    lens("effort", "Set the reasoning effort", Some("level")),
     tui("plan", "Plan mode, in the terminal"),
     tui(
         "status",
@@ -101,12 +101,22 @@ const CLAUDE: &[Builtin] = &[
 ];
 
 const CODEX: &[Builtin] = &[
+    lens("model", "Switch the model", Some("model")),
+    lens("effort", "Set the reasoning effort", Some("level")),
     lens("new", "Start a new chat", None),
+    lens("clear", "Clear the terminal and start a new chat", None),
     lens(
         "compact",
         "Summarize the conversation to free context",
         None,
     ),
+    lens("recap", "Summarize the conversation so far", None),
+    lens(
+        "goal",
+        "Set or view the goal for a long-running task",
+        Some("objective, clear, pause or resume"),
+    ),
+    lens("plan", "Switch to Plan mode", None),
     lens("review", "Review the current changes and find issues", None),
     lens(
         "init",
@@ -114,21 +124,30 @@ const CODEX: &[Builtin] = &[
         None,
     ),
     lens("diff", "Show the git diff, untracked files included", None),
-    lens("rename", "Rename the current thread", Some("name")),
-    lens("quit", "Quit Codex", None),
-    tui(
-        "model",
-        "Pick the model and reasoning effort in the terminal",
+    lens(
+        "cd",
+        "Move this session to a new working directory",
+        Some("path"),
     ),
+    lens("pwd", "Show the current working directory", None),
+    lens("rename", "Rename the current thread", Some("name")),
+    lens("export", "Export the conversation as Markdown", None),
+    lens("copy", "Copy the last response", None),
+    lens("quit", "Quit Codex", None),
+    tui("side", "Ask a side question in the terminal"),
+    tui("btw", "Ask a side question in the terminal"),
     tui("permissions", "Choose what Codex may do, in the terminal"),
     tui(
         "status",
         "Session configuration and token usage, in the terminal",
     ),
+    tui("usage", "Account usage and limit resets, in the terminal"),
     tui("mcp", "Configured MCP tools, in the terminal"),
+    tui("skills", "Browse skills in the terminal"),
     tui("resume", "Resume a saved chat in the terminal"),
     tui("fork", "Fork the current chat in the terminal"),
     tui("mention", "Mention a file, in the terminal"),
+    tui("raw", "Raw scrollback mode, in the terminal"),
     tui("logout", "Sign out of Codex in the terminal"),
 ];
 
@@ -618,7 +637,17 @@ mod tests {
         let names = names(&update);
         assert!(names.contains(&"$hatch-pet".to_owned()), "{names:?}");
         assert!(names.contains(&"prompts:ship".to_owned()), "{names:?}");
-        assert_eq!(command(&update, "model")["_meta"]["zz"]["terminal"], true);
+        for name in [
+            "model", "effort", "cd", "pwd", "goal", "plan", "export", "clear",
+        ] {
+            assert!(names.contains(&name.to_owned()), "{name} in {names:?}");
+            assert!(command(&update, name)["_meta"].is_null(), "{name}");
+        }
+        assert_eq!(command(&update, "model")["input"]["hint"], "model");
+        assert_eq!(command(&update, "side")["_meta"]["zz"]["terminal"], true);
+        assert!(!opens_terminal(AgentProvider::Codex, "/model"));
+        assert!(!opens_terminal(AgentProvider::ClaudeCode, "/effort high"));
+        assert!(opens_terminal(AgentProvider::Codex, "/status"));
     }
 
     #[test]

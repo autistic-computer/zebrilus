@@ -22,7 +22,6 @@ pub struct LensSettings {
     pub effort: String,
     pub efforts: Vec<Choice>,
     pub cwd: String,
-    pub terminal: Option<String>,
 }
 
 impl LensSettings {
@@ -62,7 +61,6 @@ impl LensSettings {
             cwd: find(CWD)
                 .map(|cwd| text(&cwd["currentValue"]))
                 .unwrap_or_default(),
-            terminal: model["_meta"]["zz"]["terminal"].as_str().map(str::to_owned),
         })
     }
 
@@ -93,6 +91,15 @@ impl LensSettings {
     }
 
     #[must_use]
+    pub fn choices(&self, option: &str) -> Option<(&[Choice], &str)> {
+        match option {
+            MODEL => Some((&self.models, &self.model)),
+            EFFORT => Some((&self.efforts, &self.effort)),
+            _ => None,
+        }
+    }
+
+    #[must_use]
     pub fn short_cwd(&self, home: Option<&str>) -> String {
         let cwd = self.cwd.trim_end_matches('/');
         if let Some(home) = home.map(|home| home.trim_end_matches('/'))
@@ -107,6 +114,19 @@ impl LensSettings {
         }
         cwd.to_owned()
     }
+}
+
+#[must_use]
+pub fn setter(text: &str) -> Option<(&'static str, Option<&str>)> {
+    let command = text.trim().strip_prefix('/')?;
+    let (name, value) = command
+        .split_once(char::is_whitespace)
+        .map_or((command, ""), |(name, value)| (name, value.trim()));
+    let option = [MODEL, EFFORT].into_iter().find(|option| *option == name)?;
+    if value.contains(char::is_whitespace) {
+        return None;
+    }
+    Some((option, (!value.is_empty()).then_some(value)))
 }
 
 #[must_use]
@@ -151,23 +171,42 @@ mod tests {
     #[test]
     fn lens_settings_read_the_daemons_config_options() {
         let options = json!([
-            {"id":"model","currentValue":"opus","options":[{"value":"opus","name":"Opus"},{"value":"haiku","name":"Haiku"}],"_meta":{"zz":{"label":"Opus 5.5","terminal":null}}},
+            {"id":"model","currentValue":"opus","options":[{"value":"opus","name":"Opus"},{"value":"haiku","name":"Haiku"}],"_meta":{"zz":{"label":"Opus 5.5"}}},
             {"id":"effort","currentValue":"xhigh","options":[{"value":"high","name":"High"},{"value":"xhigh","name":"Extra high"}]},
             {"id":"cwd","currentValue":"/Users/me/src/zz","options":[]},
         ]);
         let settings = LensSettings::parse(&options).expect("settings");
         assert_eq!(settings.summary(), "Opus 5.5 · Extra high");
         assert_eq!(settings.models.len(), 2);
-        assert_eq!(settings.terminal, None);
+        assert_eq!(
+            settings.choices(EFFORT).map(|(_, current)| current),
+            Some("xhigh")
+        );
         assert_eq!(settings.short_cwd(Some("/Users/me")), "~/src/zz");
         assert_eq!(settings.short_cwd(Some("/Users/m")), "/Users/me/src/zz");
         let codex = LensSettings::parse(&json!([
-            {"id":"model","currentValue":"gpt-5.5-codex","options":[],"_meta":{"zz":{"label":"gpt-5.5-codex","terminal":"/model"}}},
+            {"id":"model","currentValue":"gpt-6-luna","options":[{"value":"gpt-6-luna","name":"GPT-6-Luna","_meta":{"zz":{"efforts":["low","high"],"defaultEffort":"low"}}}],"_meta":{"zz":{"label":"GPT-6-Luna"}}},
+            {"id":"effort","currentValue":"high","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]},
         ]))
         .expect("codex");
-        assert_eq!(codex.terminal.as_deref(), Some("/model"));
-        assert_eq!(codex.summary(), "gpt-5.5-codex");
+        assert_eq!(codex.summary(), "GPT-6-Luna · High");
+        assert_eq!(codex.models.len(), 1);
         assert_eq!(LensSettings::from_json(""), None);
+    }
+
+    #[test]
+    fn typed_model_and_effort_commands_become_setters() {
+        assert_eq!(
+            setter(" /model gpt-6-luna "),
+            Some((MODEL, Some("gpt-6-luna")))
+        );
+        assert_eq!(setter("/effort high"), Some((EFFORT, Some("high"))));
+        assert_eq!(setter("/model"), Some((MODEL, None)));
+        assert_eq!(setter("/effort "), Some((EFFORT, None)));
+        assert_eq!(setter("/model gpt-6-luna --reasoning=low"), None);
+        assert_eq!(setter("/models"), None);
+        assert_eq!(setter("switch /model opus"), None);
+        assert_eq!(setter("/cd /tmp"), None);
     }
 
     #[test]

@@ -19,8 +19,8 @@ use penna::{
 };
 use serde_json::Value;
 use zz_client::agent_completion::{
-    AgentCommand, CommandCompletion, active_command_hint, command_label, completion_query,
-    meaningful_command_description, pane_commands, ranked_completions, terminal_command,
+    AgentCommand, CommandCompletion, active_command_hint, command_label, composer_completions,
+    meaningful_command_description, pane_commands, terminal_command,
 };
 use zz_client::agent_lens::{
     LensEmpty, LensTranscript, PendingPermission, accepts_prompt, conversation_changed, lens_empty,
@@ -28,7 +28,7 @@ use zz_client::agent_lens::{
     turn_running,
 };
 use zz_client::agent_settings::{
-    LensSettings, fork_command, real_session, side_chat_command, source_message,
+    LensSettings, fork_command, real_session, setter, side_chat_command, source_message,
 };
 use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
 use zz_protocol::chat::RequestView;
@@ -176,26 +176,11 @@ impl AgentLens {
                 );
             });
         };
-        let terminal = {
-            let entity = cx.entity();
-            let command = settings
-                .terminal
-                .clone()
-                .unwrap_or_else(|| "/model".to_owned());
-            move |_: &mut Window, cx: &mut App| {
-                entity.update(cx, |this, cx| {
-                    if this.send_prompt(&command, &[], cx) {
-                        cx.emit(ShowTerminal);
-                    }
-                });
-            }
-        };
         let menu = agent_settings_menu(
             ("agent-settings", self.pane.0),
             &settings,
             enabled,
             pick,
-            terminal,
             cx,
         );
         let side = {
@@ -491,10 +476,19 @@ impl AgentLens {
         self.completions = if self.completion_dismissed {
             Arc::from([])
         } else {
-            completion_query(&self.last_input, self.last_cursor).map_or_else(
-                || Arc::from([]),
-                |query| ranked_completions(&self.commands, &query).into(),
+            let settings = self
+                .connection
+                .read(cx)
+                .core
+                .agent_state(self.pane)
+                .and_then(|state| self.lens_settings(state));
+            composer_completions(
+                &self.last_input,
+                self.last_cursor,
+                &self.commands,
+                settings.as_ref(),
             )
+            .into()
         };
         self.completion_selected = (!self.completions.is_empty()).then_some(
             self.completion_selected
@@ -538,6 +532,7 @@ impl AgentLens {
             return;
         };
         let insertion = completion.insertion();
+        let submits = completion.submits();
         self.completion_dismissed = true;
         self.input.update(cx, |input, cx| {
             input.set_selected_range(completion.replacement, cx);
@@ -546,7 +541,7 @@ impl AgentLens {
         self.completions = Arc::from([]);
         self.completion_selected = None;
         self.input.read(cx).focus_handle(cx).focus(window, cx);
-        if completion.command.terminal && completion.command.input_hint.is_none() {
+        if submits {
             self.submit(window, cx);
         }
         cx.notify();
@@ -695,8 +690,52 @@ impl AgentLens {
         }
     }
 
+    fn set_from_composer(
+        &mut self,
+        option: &'static str,
+        value: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = match value {
+            Some(value) => {
+                let connection = self.connection.read(cx);
+                if !connection.connected || connection.core.attached_read_only() {
+                    return;
+                }
+                let (pane, value) = (self.pane, value.to_owned());
+                self.connection.update(cx, |connection, cx| {
+                    connection.send(
+                        ProtocolMessage::AgentSetConfigOption {
+                            pane,
+                            option_id: option.to_owned(),
+                            value,
+                        },
+                        cx,
+                    );
+                });
+                self.draft_error = None;
+                String::new()
+            }
+            None => format!("/{option} "),
+        };
+        self.input
+            .update(cx, |input, cx| input.set_value(text, window, cx));
+        self.last_input.clear();
+        self.completions = Arc::from([]);
+        self.completion_selected = None;
+        self.completion_dismissed = false;
+        cx.notify();
+    }
+
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.input.read(cx).value().to_string();
+        if self.attachments.is_empty()
+            && let Some((option, value)) = setter(&text)
+        {
+            self.set_from_composer(option, value, window, cx);
+            return;
+        }
         let attachments = self.attachments.clone();
         if !self.send_prompt(&text, &attachments, cx) {
             return;

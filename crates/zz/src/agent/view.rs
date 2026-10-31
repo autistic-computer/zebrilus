@@ -29,9 +29,10 @@ use ala::{
     prelude::*, px, uniform_list,
 };
 use zz_client::agent_completion::{
-    CommandCompletion, active_command_hint, command_label, completion_query,
-    meaningful_command_description, pane_commands, ranked_completions, terminal_command,
+    CommandCompletion, active_command_hint, command_label, composer_completions,
+    meaningful_command_description, pane_commands, terminal_command,
 };
+use zz_client::agent_settings::setter;
 use zz_client::agent_transcript::rewind_command;
 use zz_ui::{
     command::target_picker,
@@ -833,17 +834,17 @@ impl AgentView {
     }
 
     fn recompute_completions(&mut self, commands: &[AgentCommand]) {
-        let Some(query) = completion_query(&self.last_input, self.last_cursor) else {
-            self.completions = Arc::from([]);
-            self.completion_selected = None;
-            return;
+        self.completions = if self.completion_dismissed {
+            Arc::from([])
+        } else {
+            composer_completions(
+                &self.last_input,
+                self.last_cursor,
+                commands,
+                self.pane_state.settings.as_ref(),
+            )
+            .into()
         };
-        if self.completion_dismissed {
-            self.completions = Arc::from([]);
-            self.completion_selected = None;
-            return;
-        }
-        self.completions = ranked_completions(commands, &query).into();
         self.completion_selected = (!self.completions.is_empty()).then_some(
             self.completion_selected
                 .unwrap_or_default()
@@ -964,6 +965,7 @@ impl AgentView {
             return;
         };
         let insertion = completion.insertion();
+        let submits = completion.submits();
         self.completion_dismissed = true;
         self.input.update(cx, |input, cx| {
             input.set_selected_range(completion.replacement, cx);
@@ -972,7 +974,7 @@ impl AgentView {
         self.completions = Arc::from([]);
         self.completion_selected = None;
         self.focus(cx).focus(window, cx);
-        if completion.command.terminal && completion.command.input_hint.is_none() {
+        if submits {
             self.submit(window, cx);
         }
         cx.notify();
@@ -1069,6 +1071,12 @@ impl AgentView {
         if value.trim().is_empty() && self.attachments.is_empty() {
             return;
         }
+        if self.attachments.is_empty()
+            && let Some((option, picked)) = setter(&value)
+        {
+            self.set_from_composer(option, picked, window, cx);
+            return;
+        }
         let attachments = self.attachments.clone();
         let result = self.controller.update(cx, |controller, cx| {
             controller.prompt(self.pane, &value, attachments, cx)
@@ -1091,6 +1099,43 @@ impl AgentView {
             }
             Err(error) => self.submission_error = Some(error),
         }
+        cx.notify();
+    }
+
+    fn set_from_composer(
+        &mut self,
+        option: &'static str,
+        value: Option<&str>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let text = match value {
+            Some(value) => {
+                let pane = self.pane;
+                let sent = self.controller.update(cx, |controller, cx| {
+                    controller.set_option(pane, option, value, cx)
+                });
+                if !sent {
+                    self.submission_error = Some(Arc::from("the agent is not connected"));
+                    cx.notify();
+                    return;
+                }
+                self.submission_error = None;
+                String::new()
+            }
+            None => format!("/{option} "),
+        };
+        self.input.update(cx, |input, cx| {
+            input.set_value(text.clone(), window, cx);
+        });
+        self.last_cursor = text.len();
+        self.last_input = text;
+        self.completion_dismissed = false;
+        let commands = pane_commands(
+            &self.pane_state.available_commands,
+            self.pane_state.session_capabilities.verbs,
+        );
+        self.recompute_completions(&commands);
         cx.notify();
     }
 
