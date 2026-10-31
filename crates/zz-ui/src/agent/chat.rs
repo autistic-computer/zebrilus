@@ -413,27 +413,40 @@ impl Draw<'_, '_> {
             }
             RunLabel::Done { .. } => run_label(&run.label).into(),
         };
-        let expanded = self.open.runs.contains(&first);
+        let opens = chat_rows::run_shows(view, &run.items);
+        let expanded = opens && self.open.runs.contains(&first);
+        let row = activity_row_marked(
+            SharedString::from(format!("chat-run-{}", first.as_str())),
+            mark,
+            label,
+            if opens {
+                RowEnd::Disclosure(expanded)
+            } else {
+                RowEnd::None
+            },
+            self.cx,
+        );
+        let row = if opens {
+            self.hooks.clickable(row, ChatClick::Run(first.clone()))
+        } else {
+            row
+        };
         v_flex()
             .w_full()
-            .child(self.hooks.clickable(
-                activity_row_marked(
-                    SharedString::from(format!("chat-run-{}", first.as_str())),
-                    mark,
-                    label,
-                    RowEnd::Disclosure(expanded),
-                    self.cx,
-                ),
-                ChatClick::Run(first.clone()),
-            ))
+            .child(row)
             .when(expanded, |column| {
                 column.child(
                     v_flex().w_full().pl(px(18.0)).children(
                         run.items
                             .iter()
                             .filter_map(|id| view.item(id))
-                            .filter(|item| item.kind.is_tool())
-                            .map(|item| step_row(item, self.phase, self.cx)),
+                            .filter_map(|item| {
+                                if item.kind.is_tool() {
+                                    Some(step_row(item, self.phase, self.cx))
+                                } else {
+                                    thought_row(item, self.cx)
+                                }
+                            }),
                     ),
                 )
             })
@@ -1030,6 +1043,22 @@ fn step_row(item: &zz_protocol::chat::ItemView, phase: f32, cx: &App) -> AnyElem
         cx,
     )
     .into_any_element()
+}
+
+fn thought_row(item: &zz_protocol::chat::ItemView, cx: &App) -> Option<AnyElement> {
+    let body = chat_rows::reasoning_body(&item.body.text)?;
+    Some(
+        div()
+            .w_full()
+            .py_1()
+            .text_size(crate::rems_from_px(12.5))
+            .text_color(cx.theme().foreground.muted())
+            .child(TextView::markdown(
+                SharedString::from(format!("chat-thought-{}", item.id.as_str())),
+                body,
+            ))
+            .into_any_element(),
+    )
 }
 
 fn asks_under<'a>(view: &'a ChatView, root: &ItemId) -> Vec<&'a RequestView> {

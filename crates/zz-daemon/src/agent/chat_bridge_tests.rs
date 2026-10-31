@@ -564,3 +564,108 @@ fn a_long_prompt_leaves_its_images_only_the_room_left_under_the_stream_cap() {
     attach_images(&mut long, [("image/png".to_owned(), image)]);
     assert!(long["_meta"].is_null());
 }
+
+#[test]
+fn a_tool_with_a_duration_starts_that_long_before_its_record() {
+    let mut shadow = Shadow::recording();
+    ready(&mut shadow);
+    running(&mut shadow, "c1");
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "sleep 20",
+        "kind": "execute", "status": "in_progress", "rawInput": { "command": "sleep 20" },
+        "_meta": { "zz": { "at": 1_790_000_020_000_u64, "ms": 20_000 } },
+    })));
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
+        "_meta": { "zz": { "at": 1_790_000_020_000_u64 } },
+    })));
+    let view = view(&shadow);
+    let item = view.item(&ItemId::new("t1")).expect("tool item");
+    assert_eq!(item.started_at, 1_790_000_000_000);
+    assert_eq!(item.ended_at, Some(1_790_000_020_000));
+}
+
+#[test]
+fn only_a_spawned_codex_agent_is_a_subagent() {
+    let mut shadow = Shadow::recording().codex();
+    ready(&mut shadow);
+    running(&mut shadow, "t1");
+    for (id, tool) in [("w", "wait"), ("s", "spawnAgent")] {
+        shadow.payload(&update(json!({
+            "sessionUpdate": "tool_call", "toolCallId": id, "title": id, "kind": "other",
+            "status": "in_progress", "rawInput": { "tool": tool },
+            "_meta": { "codex": { "itemType": "collabAgentToolCall" } },
+        })));
+    }
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "s~2", "title": "s", "kind": "think",
+        "status": "in_progress", "rawInput": { "agentThreadId": "child" },
+        "_meta": { "codex": { "itemType": "collabAgentToolCall" } },
+    })));
+    let view = view(&shadow);
+    let kind = |id: &str| view.item(&ItemId::new(id)).map(|item| item.kind);
+    assert_eq!(kind("w"), Some(ItemKind::Tool));
+    assert_eq!(kind("s"), Some(ItemKind::Subagent));
+    assert_eq!(kind("s~2"), Some(ItemKind::Subagent));
+}
+
+#[test]
+fn an_async_codex_question_outlives_its_turn_and_takes_its_answer() {
+    let mut shadow = Shadow::recording().codex().attached();
+    ready(&mut shadow);
+    shadow.turn(&turn::Fact::Busy, None, Instant::now());
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "call_q", "title": "Which part?",
+        "kind": "other", "status": "in_progress",
+        "_meta": { "codex": { "itemType": "userInputRequest" }, "zz": { "background": true } },
+    })));
+    shadow.payload(&AgentStreamPayload::PermissionRequested {
+        request_id: 8,
+        tool_call: json!({ "toolCallId": "call_q", "title": "Which part?", "kind": "other" }),
+        options: json!([]),
+        questions: vec![zz_protocol::agent_stream::AgentQuestion {
+            id: "q0".to_owned(),
+            question: "Which part?".to_owned(),
+            ..Default::default()
+        }],
+    });
+    shadow.turn(&turn::Fact::Idle, None, Instant::now());
+    let idle = view(&shadow);
+    assert!(idle.running().is_none());
+    assert!(
+        idle.request(RequestId(8))
+            .is_some_and(zz_protocol::chat::RequestView::is_open)
+    );
+    assert_eq!(idle.phase(), ChatPhase::Waiting);
+    shadow.answered(
+        8,
+        Answer::Questions {
+            answers: vec![zz_protocol::chat::QuestionAnswer {
+                question: "q0".to_owned(),
+                answers: vec!["B".to_owned()],
+            }],
+        },
+    );
+    shadow.payload(&AgentStreamPayload::PermissionResolved {
+        request_id: 8,
+        canceled: false,
+    });
+    shadow.turn(&turn::Fact::Busy, None, Instant::now());
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call_update", "toolCallId": "call_q", "status": "completed",
+        "_meta": { "zz": { "answered": [ { "question": "Which part?", "answer": "B" } ] } },
+    })));
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let view = view(&shadow);
+    assert_eq!(view.requests.len(), 1);
+    assert!(matches!(
+        view.request(RequestId(8))
+            .and_then(|request| request.close.clone()),
+        Some(RequestClose::Answered { .. })
+    ));
+    assert_eq!(
+        view.item(&ItemId::new("call_q"))
+            .map(|item| item.status.clone()),
+        Some(ItemStatus::Completed)
+    );
+}

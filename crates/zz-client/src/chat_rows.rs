@@ -505,6 +505,9 @@ fn flush(view: &ChatView, run: &mut Vec<ItemId>, out: &mut Vec<Unit>, tail: bool
         return;
     }
     let items = std::mem::take(run);
+    if !tail && !run_shows(view, &items) {
+        return;
+    }
     let running = items
         .iter()
         .rev()
@@ -546,6 +549,36 @@ fn live_label(item: &ItemView) -> RunLabel {
         action,
         detail: target,
     }
+}
+
+pub fn run_shows(view: &ChatView, items: &[ItemId]) -> bool {
+    items
+        .iter()
+        .filter_map(|id| view.item(id))
+        .any(|item| item.kind.is_tool() || reasoning_body(&item.body.text).is_some())
+}
+
+pub fn reasoning_body(text: &str) -> Option<String> {
+    let mut rest = text.trim_start();
+    loop {
+        let line = rest.lines().next().unwrap_or_default();
+        let after = if line.starts_with('#') {
+            &rest[line.len()..]
+        } else if let Some(bold) = rest.strip_prefix("**")
+            && let Some(end) = bold.find("**")
+            && !bold[..end].contains('\n')
+        {
+            &bold[end + 2..]
+        } else {
+            break;
+        };
+        let trimmed = after.trim_start();
+        if trimmed.len() == rest.len() {
+            break;
+        }
+        rest = trimmed;
+    }
+    (!rest.trim().is_empty()).then(|| rest.trim_end().to_owned())
 }
 
 fn heading(text: &str) -> Option<String> {
