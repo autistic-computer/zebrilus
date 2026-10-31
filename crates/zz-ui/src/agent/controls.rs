@@ -9,9 +9,12 @@ use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
     Sizable as _, SurfaceRole, Tone,
     button::{Button, ButtonVariants},
-    h_flex, roles,
+    h_flex,
+    menu::{DropdownMenu as _, PopupMenuItem},
+    roles,
     tooltip::Tooltip,
 };
+use zz_client::agent_settings::{self, LensSettings};
 
 use super::composer::{COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, composer_ground};
 
@@ -52,6 +55,103 @@ pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, cx: 
 
 pub fn agent_chrome_button(id: impl Into<ElementId>) -> Button {
     Button::new(id).ghost().small().h(px(24.0)).px_2()
+}
+
+pub fn agent_directory_chip(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    enabled: bool,
+    cx: &App,
+) -> Button {
+    agent_chrome_button(id)
+        .surface_role(SurfaceRole::QUIET_BUTTON)
+        .min_w_0()
+        .flex_shrink_1()
+        .max_w(px(220.0))
+        .overflow_hidden()
+        .icon(IconName::Folder)
+        .text_color(cx.theme().foreground.muted())
+        .tooltip("Move this chat to another folder")
+        .disabled(!enabled)
+        .child(div().min_w_0().text_ellipsis().child(label.into()))
+}
+
+pub fn agent_settings_menu(
+    id: impl Into<ElementId>,
+    settings: &LensSettings,
+    enabled: bool,
+    on_pick: impl Fn(&'static str, String, &mut Window, &mut App) + 'static,
+    on_terminal: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let summary = settings.summary();
+    let button = agent_chrome_button(id)
+        .surface_role(SurfaceRole::QUIET_BUTTON)
+        .text_color(cx.theme().foreground.muted())
+        .disabled(!enabled)
+        .child(if summary.is_empty() {
+            "Model".to_owned()
+        } else {
+            summary
+        })
+        .child(
+            Icon::new(IconName::ChevronDown)
+                .small()
+                .text_color(cx.theme().foreground.muted()),
+        );
+    if settings.terminal.is_some() || settings.models.is_empty() {
+        return button
+            .tooltip("Choose the model and effort in the CLI's own dialog")
+            .on_click(move |_, window, cx| on_terminal(window, cx))
+            .into_any_element();
+    }
+    let settings = settings.clone();
+    let on_pick = std::rc::Rc::new(on_pick);
+    button
+        .tooltip("Choose the model and effort")
+        .dropdown_menu(move |menu, _, _| {
+            let menu = menu.item(PopupMenuItem::label("Model"));
+            let menu = settings.models.iter().fold(menu, |menu, choice| {
+                let pick = on_pick.clone();
+                let value = choice.value.clone();
+                menu.item(
+                    PopupMenuItem::new(choice.name.clone())
+                        .checked(choice.value == settings.model)
+                        .on_click(move |_, window, cx| {
+                            pick(agent_settings::MODEL, value.clone(), window, cx);
+                        }),
+                )
+            });
+            if settings.efforts.is_empty() {
+                return menu;
+            }
+            let menu = menu.separator().item(PopupMenuItem::label("Effort"));
+            settings.efforts.iter().fold(menu, |menu, choice| {
+                let pick = on_pick.clone();
+                let value = choice.value.clone();
+                menu.item(
+                    PopupMenuItem::new(choice.name.clone())
+                        .checked(choice.value == settings.effort)
+                        .on_click(move |_, window, cx| {
+                            pick(agent_settings::EFFORT, value.clone(), window, cx);
+                        }),
+                )
+            })
+        })
+        .into_any_element()
+}
+
+pub fn agent_side_chat_button(
+    id: impl Into<ElementId>,
+    enabled: bool,
+    on_click: impl Fn(&mut Window, &mut App) + 'static,
+) -> Button {
+    agent_chrome_button(id)
+        .surface_role(SurfaceRole::QUIET_BUTTON)
+        .icon(IconName::ChatPlus)
+        .tooltip("Side chat: a floating copy of this chat for a quick question")
+        .disabled(!enabled)
+        .on_click(move |_, window, cx| on_click(window, cx))
 }
 
 pub fn agent_queue_chip(

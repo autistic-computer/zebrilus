@@ -33,6 +33,7 @@ pub enum ChatClick {
     Turn(TurnId),
     Run(ItemId),
     Agent(ItemId),
+    Fork(ItemId),
 }
 
 pub type ChatClicks = Rc<dyn Fn(&ChatClick, &mut Window, &mut App)>;
@@ -41,6 +42,7 @@ pub type ChatClicks = Rc<dyn Fn(&ChatClick, &mut Window, &mut App)>;
 pub struct ChatHooks<'a> {
     pub click: Option<ChatClicks>,
     pub ask: Option<&'a dyn Fn(&RequestView, &App) -> Option<AnyElement>>,
+    pub fork: bool,
 }
 
 impl ChatHooks<'_> {
@@ -74,6 +76,7 @@ impl ChatPane {
             ChatClick::Turn(turn) => toggle(&mut self.open.turns, *turn),
             ChatClick::Run(item) => toggle(&mut self.open.runs, item.clone()),
             ChatClick::Agent(item) => toggle(&mut self.open.agents, item.clone()),
+            ChatClick::Fork(_) => return,
         }
         self.away = true;
     }
@@ -220,7 +223,15 @@ impl Draw<'_, '_> {
     fn unit(&self, unit: &Unit, live: bool) -> AnyElement {
         let cx = self.cx;
         match unit {
-            Unit::User(id) => user_bubble(id, text_of(self.view, id), cx),
+            Unit::User(id) => {
+                let fork = self
+                    .hooks
+                    .click
+                    .clone()
+                    .filter(|_| self.hooks.fork)
+                    .filter(|_| zz_client::agent_settings::source_message(id.as_str()).is_some());
+                user_bubble(id, text_of(self.view, id), fork, cx)
+            }
             Unit::Text(id) => markdown(id, text_of(self.view, id)),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
@@ -535,11 +546,40 @@ fn text_of(view: &ChatView, id: &ItemId) -> SharedString {
         .into()
 }
 
-fn user_bubble(id: &ItemId, text: SharedString, cx: &App) -> AnyElement {
+const USER_GROUP: &str = "chat-user";
+
+fn user_bubble(id: &ItemId, text: SharedString, fork: Option<ChatClicks>, cx: &App) -> AnyElement {
+    let key = id.as_str().to_owned();
     h_flex()
-        .id(SharedString::from(format!("chat-user-{}", id.as_str())))
+        .id(SharedString::from(format!("chat-user-{key}")))
+        .group(USER_GROUP)
         .w_full()
         .justify_end()
+        .items_center()
+        .gap_1()
+        .when_some(fork, |row, fork| {
+            let target = ChatClick::Fork(id.clone());
+            row.child(
+                div()
+                    .flex_none()
+                    .when(!crate::touch::CoarsePointer::get(cx), |slot| {
+                        slot.invisible()
+                            .group_hover(USER_GROUP, ala::Styled::visible)
+                    })
+                    .child(
+                        Button::compact_icon(
+                            SharedString::from(format!("chat-fork-{key}")),
+                            IconName::GitBranch,
+                        )
+                        .surface_role(crate::roles::AGENT_ACTION)
+                        .tooltip("Fork from here: a new chat that goes on from this message")
+                        .on_click(move |_, window, cx| {
+                            cx.stop_propagation();
+                            fork(&target, window, cx);
+                        }),
+                    ),
+            )
+        })
         .child(
             div()
                 .max_w(relative(0.8))

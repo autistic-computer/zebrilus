@@ -187,7 +187,7 @@ fn inline_alerts(_: &mut Window, cx: &mut App) -> AnyElement {
             "agent lens: a prompt with images, no title",
             inline_alert(
                 None,
-                "The lens sends text only; paste images in the terminal.",
+                "could not paste the image: %3: text not echoed in 2s, nothing submitted",
                 cx,
             ),
         )

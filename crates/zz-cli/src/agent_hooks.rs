@@ -31,6 +31,7 @@ pub(crate) fn run(arguments: &[RawText]) -> ExitCode {
             }
             return ExitCode::SUCCESS;
         }
+        [flag, rest @ ..] if flag == "--fork-chat" => return crate::fork_chat::run(rest),
         [flag] if flag == "--install-hooks" => (flag, true),
         [flag] if flag == "--remove-hooks" => (flag, false),
         _ => return guide(arguments),

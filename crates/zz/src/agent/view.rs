@@ -67,6 +67,7 @@ use crate::{
 };
 
 mod chat;
+mod harness;
 
 const AGENT_KEY_CONTEXT: &str = "Agent";
 const STICK_FRAME_INTERVAL: std::time::Duration = std::time::Duration::from_micros(16_667);
@@ -476,6 +477,9 @@ pub(crate) struct AgentView {
     floats: bool,
     chat: zz_ui::agent::chat::ChatPane,
     chat_inline: bool,
+    terminal: Option<Entity<crate::terminal::view::TerminalView>>,
+    sheet: Option<harness::Sheet>,
+    refocus: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -594,6 +598,9 @@ impl AgentView {
             floats,
             chat: zz_ui::agent::chat::ChatPane::default(),
             chat_inline: false,
+            terminal: None,
+            sheet: None,
+            refocus: false,
             _subscriptions: vec![
                 input_observer,
                 timeline_store_observer,
@@ -682,7 +689,8 @@ impl AgentView {
         let cwd = self.pane_state.cwd.clone();
         self.timeline_store
             .update(cx, |store, cx| store.set_cwd(Some(cwd), cx));
-        changed || store_changed
+        let closed = self.follow_dialogs();
+        changed || store_changed || closed
     }
 
     fn update_timeline_store(
@@ -998,6 +1006,9 @@ impl AgentView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.sheet_open() {
+            return;
+        }
         if self.completions.is_empty() && self.handle_permission_key(event, window, cx) {
             cx.stop_propagation();
             return;
@@ -1060,7 +1071,9 @@ impl AgentView {
         });
         match result {
             Ok(()) => {
-                if terminal_command(&value, &self.pane_state.available_commands).is_some() {
+                if terminal_command(&value, &self.pane_state.available_commands).is_some()
+                    && !self.open_sheet(value.trim(), None, window, cx)
+                {
                     cx.emit(ShowTerminal);
                 }
                 self.input.update(cx, |input, cx| {
@@ -1186,7 +1199,13 @@ impl AgentView {
                 terminal_wait_card(
                     format!("agent-show-terminal-{}-{request_id}", self.pane.0),
                     permission.title.clone(),
-                    move |_, cx| view.update(cx, |_, cx| cx.emit(ShowTerminal)),
+                    move |window, cx| {
+                        view.update(cx, |view, cx| {
+                            if !view.open_sheet("", Some(request_id), window, cx) {
+                                cx.emit(ShowTerminal);
+                            }
+                        });
+                    },
                     cx,
                 )
                 .into_any_element(),
@@ -1674,7 +1693,10 @@ impl AgentView {
             .read(cx)
             .is_open()
             .then(|| self.mention.clone().into_any_element());
+        let (directory, controls) = self.render_harness_controls(state, view, cx);
         zz_ui::agent::composer::AgentComposer {
+            directory,
+            controls,
             composer: Composer {
                 input: self.input.clone(),
                 leading: Some(add.into_any_element()),
@@ -1813,6 +1835,7 @@ impl Render for AgentView {
         let view = cx.entity();
         let input_focus = self.focus(cx);
         let chat_body = use_chat.then(|| self.render_chat(&state, &view, cx));
+        let sheet = self.render_sheet(&view, window, cx);
         let timeline = AgentTimeline::new(
             rows,
             self.timeline_scroll.clone(),
@@ -1884,7 +1907,8 @@ impl Render for AgentView {
                         this.child(self.render_jump_to_end(&view, cx))
                     }),
             )
-            .child(self.render_composer(&state, &view, cx));
+            .child(self.render_composer(&state, &view, cx))
+            .children(sheet);
         round_div_radii(root, pane_content_radii(cx, self.window_corners))
             .when(!floats, |root| root.rounded_tl(px(0.0)).rounded_tr(px(0.0)))
     }
@@ -1906,6 +1930,8 @@ fn disconnected_pane_state() -> AgentPaneState {
         tasks: Arc::from([]),
         pending_composer: None,
         queued_prompts: 0,
+        settings: None,
+        dialogs_closed: 0,
     }
 }
 

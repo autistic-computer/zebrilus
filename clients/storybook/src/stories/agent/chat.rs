@@ -52,7 +52,7 @@ impl Script {
             by: TurnBy::User { prompt: self.turn },
             at,
         });
-        let id = format!("u{}", self.turn);
+        let id = format!("u:story-{}", self.turn);
         self.start(&id, None, ItemKind::User, ItemBody::text(prompt));
         self.done(&id)
     }
@@ -678,6 +678,7 @@ impl Render for Playground {
         let hooks = ChatHooks {
             click: Some(click),
             ask: Some(&ask),
+            fork: true,
         };
         let body = chat_thread(
             &self.script.view,

@@ -2,6 +2,7 @@ pub mod agent_completion;
 pub mod agent_lens;
 pub mod agent_output;
 pub mod agent_question;
+pub mod agent_settings;
 pub mod agent_timeline;
 pub mod agent_transcript;
 pub mod chat_rows;

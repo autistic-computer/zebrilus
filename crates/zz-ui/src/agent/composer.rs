@@ -104,6 +104,8 @@ pub struct AgentComposer {
     pub composer: Composer,
     pub git: Option<AnyElement>,
     pub prefix: Vec<AnyElement>,
+    pub directory: Option<AnyElement>,
+    pub controls: Vec<AnyElement>,
 }
 
 impl RenderOnce for AgentComposer {
@@ -166,9 +168,20 @@ impl RenderOnce for AgentComposer {
                                 h_flex()
                                     .min_w_0()
                                     .flex_1()
+                                    .gap(px(CHROME_GAP))
                                     .overflow_hidden()
+                                    .children(self.directory)
                                     .children(self.git),
-                            ),
+                            )
+                            .when(!self.controls.is_empty(), |footer| {
+                                footer.child(
+                                    h_flex()
+                                        .flex_none()
+                                        .gap(px(CHROME_GAP))
+                                        .items_center()
+                                        .children(self.controls),
+                                )
+                            }),
                     ),
             )
     }

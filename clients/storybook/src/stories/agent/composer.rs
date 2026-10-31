@@ -11,12 +11,14 @@ use penna::{
     input::InputState,
 };
 use zz_client::agent_completion::{active_command_hint, pane_commands};
+use zz_client::agent_settings::{Choice, LensSettings};
 use zz_ui::agent::{
     COMPOSER_ATTACHMENT, agent_attachment_thumbnail,
     composer::{AgentComposer, COMPOSER_MAX_WIDTH, COMPOSER_OUTER_PADDING, Composer},
     controls::{
-        ComposerAction, composer_action, composer_action_button, composer_add_button,
-        context_usage_meter, git_summary_footer,
+        ComposerAction, agent_directory_chip, agent_settings_menu, agent_side_chat_button,
+        composer_action, composer_action_button, composer_add_button, context_usage_meter,
+        git_summary_footer,
     },
     presentation::error_card,
 };
@@ -136,8 +138,80 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             cx,
         )),
         prefix: draft.prefix,
+        directory: Some(
+            agent_directory_chip(
+                SharedString::from(format!("{id}-directory")),
+                "~/src/zebrilus",
+                draft.writable,
+                cx,
+            )
+            .into_any_element(),
+        ),
+        controls: footer_controls(&id, &claude_settings(), draft.writable, cx),
     }
     .into_any_element()
+}
+
+pub fn claude_settings() -> LensSettings {
+    let choices = |list: &[(&str, &str)]| {
+        list.iter()
+            .map(|(value, name)| Choice {
+                value: (*value).to_owned(),
+                name: (*name).to_owned(),
+            })
+            .collect::<Vec<_>>()
+    };
+    LensSettings {
+        model: "opus".to_owned(),
+        model_label: "Opus 5.5".to_owned(),
+        models: choices(&[
+            ("opus", "Opus"),
+            ("sonnet", "Sonnet"),
+            ("haiku", "Haiku"),
+            ("fable", "Fable"),
+        ]),
+        effort: "xhigh".to_owned(),
+        efforts: choices(&[
+            ("low", "Low"),
+            ("medium", "Medium"),
+            ("high", "High"),
+            ("xhigh", "Extra high"),
+            ("max", "Max"),
+        ]),
+        cwd: "/Users/you/src/zebrilus".to_owned(),
+        terminal: None,
+    }
+}
+
+pub fn codex_settings() -> LensSettings {
+    LensSettings {
+        model: "gpt-5.5-codex".to_owned(),
+        model_label: "gpt-5.5-codex".to_owned(),
+        effort: "high".to_owned(),
+        cwd: "/Users/you/src/zebrilus".to_owned(),
+        terminal: Some("/model".to_owned()),
+        ..LensSettings::default()
+    }
+}
+
+pub fn footer_controls(
+    id: &str,
+    settings: &LensSettings,
+    enabled: bool,
+    cx: &App,
+) -> Vec<AnyElement> {
+    vec![
+        agent_settings_menu(
+            SharedString::from(format!("{id}-settings")),
+            settings,
+            enabled,
+            |_, _, _, _| {},
+            |_, _| {},
+            cx,
+        ),
+        agent_side_chat_button(SharedString::from(format!("{id}-side")), enabled, |_, _| {})
+            .into_any_element(),
+    ]
 }
 
 pub fn queue_chip(id: SharedString, queued: usize, enabled: bool, cx: &App) -> AnyElement {
@@ -407,5 +481,36 @@ impl Render for Controls {
             )
             .state("context usage meter", usage)
             .state("git summary", git)
+            .state(
+                "folder, model and effort, side chat: Claude Code sets them from the lens",
+                row()
+                    .child(agent_directory_chip(
+                        "dir-claude",
+                        "~/src/zebrilus",
+                        true,
+                        cx,
+                    ))
+                    .children(footer_controls("claude", &claude_settings(), true, cx)),
+            )
+            .state(
+                "Codex picks its model in its own /model dialog, opened in the sheet",
+                row()
+                    .child(agent_directory_chip(
+                        "dir-codex",
+                        "~/src/zebrilus",
+                        true,
+                        cx,
+                    ))
+                    .children(footer_controls("codex", &codex_settings(), true, cx)),
+            )
+            .state(
+                "a remote host's folder is shown, not changed from here",
+                row().child(agent_directory_chip(
+                    "dir-remote",
+                    "/srv/build/zebrilus",
+                    false,
+                    cx,
+                )),
+            )
     }
 }

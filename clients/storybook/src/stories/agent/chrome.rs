@@ -147,7 +147,7 @@ impl Render for EmptyStates {
             .state(
                 "error card, a prompt with images",
                 error_card(
-                    "The lens sends text only; paste images in the terminal.",
+                    "could not paste the image: %3: text not echoed in 2s, nothing submitted",
                     false,
                     cx,
                 ),

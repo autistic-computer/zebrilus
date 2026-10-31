@@ -5,7 +5,7 @@ use ala::{
 };
 use penna::ActiveTheme as _;
 use zz_protocol::chat::{ChatView, RequestView};
-use zz_ui::agent::chat::{ChatClicks, ChatHooks, chat_live, chat_thread, shows_chat};
+use zz_ui::agent::chat::{ChatClick, ChatClicks, ChatHooks, chat_live, chat_thread, shows_chat};
 use zz_ui::agent::presentation::spinner_phase;
 use zz_ui::agent::{AGENT_CONTENT_MAX_WIDTH, agent_jump_to_bottom_button};
 
@@ -77,6 +77,9 @@ impl AgentView {
             let view = view.clone();
             Rc::new(move |click, _, cx| {
                 view.update(cx, |view, cx| {
+                    if let ChatClick::Fork(item) = click {
+                        view.fork_from(item.as_str(), cx);
+                    }
                     view.chat.click(click);
                     cx.notify();
                 });
@@ -105,6 +108,7 @@ impl AgentView {
         let hooks = ChatHooks {
             click: Some(click),
             ask: Some(&ask),
+            fork: self.forks(),
         };
         let body = chat_thread(chat, now, &self.chat.open, phase, &hooks, app);
         div()

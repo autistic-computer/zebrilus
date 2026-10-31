@@ -27,22 +27,27 @@ use zz_client::agent_lens::{
     lens_placeholder, pending_permissions, restore_reclaim_id, restored_prompts, track_usage,
     turn_running,
 };
+use zz_client::agent_settings::{
+    LensSettings, fork_command, real_session, side_chat_command, source_message,
+};
 use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
 use zz_protocol::chat::RequestView;
 use zz_protocol::{
-    AgentConnectionPhase, AgentImage, AgentQuestionAnswer, PaneId, PaneSnapshot, ProtocolMessage,
+    AgentConnectionPhase, AgentImage, AgentPaneWire, AgentQuestionAnswer, PaneId, PaneSnapshot,
+    ProtocolMessage,
 };
 use zz_ui::{
     agent::{
         AGENT_CONTENT_MAX_WIDTH, AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore,
         AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText,
         MarkdownSlot, TimelineRow, TimelineStick, agent_jump_to_bottom_button,
-        chat::{ChatClicks, ChatHooks, ChatPane, chat_live, chat_thread, shows_chat},
+        chat::{ChatClick, ChatClicks, ChatHooks, ChatPane, chat_live, chat_thread, shows_chat},
         composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer},
         composer_attachment,
         controls::{
-            ComposerAction, agent_queue_chip, composer_action, composer_action_button,
-            composer_add_button, context_usage_meter, git_summary_footer,
+            ComposerAction, agent_directory_chip, agent_queue_chip, agent_settings_menu,
+            agent_side_chat_button, composer_action, composer_action_button, composer_add_button,
+            context_usage_meter, git_summary_footer,
         },
         fold_timeline_rows,
         presentation::{
@@ -58,6 +63,155 @@ use zz_ui::{
 };
 
 use crate::{command_palette::palette_backend, connection::Connection};
+
+const SIDE_CHAT_WIDTH: &str = "46%";
+const SIDE_CHAT_HEIGHT: &str = "72%";
+
+impl AgentLens {
+    fn lens_settings(&self, state: &AgentPaneWire) -> Option<LensSettings> {
+        self.transcript
+            .lens
+            .settings
+            .clone()
+            .or_else(|| LensSettings::from_json(&state.config_options))
+    }
+
+    fn session(&self, cx: &App) -> Option<String> {
+        self.connection
+            .read(cx)
+            .core
+            .agent_state(self.pane)?
+            .session_id
+            .clone()
+            .filter(|session| real_session(session))
+    }
+
+    fn provider(&self, cx: &App) -> Option<zz_protocol::AgentProvider> {
+        self.terminal(cx)
+            .and_then(zz_client::window_summary::pane_agent)
+    }
+
+    fn forks(&self, cx: &App) -> bool {
+        self.session(cx).is_some() && self.provider(cx).is_some()
+    }
+
+    fn chat_cwd(&self, cx: &App) -> String {
+        self.transcript
+            .lens
+            .settings
+            .as_ref()
+            .map(|settings| settings.cwd.clone())
+            .filter(|cwd| !cwd.is_empty())
+            .or_else(|| self.terminal(cx).map(|pane| pane.summary.cwd.clone()))
+            .unwrap_or_default()
+    }
+
+    fn harness_controls(
+        &self,
+        state: &AgentPaneWire,
+        enabled: bool,
+        cx: &mut Context<Self>,
+    ) -> (Option<AnyElement>, Vec<AnyElement>) {
+        let Some(settings) = self.lens_settings(state) else {
+            return (None, Vec::new());
+        };
+        let directory = (!settings.cwd.is_empty()).then(|| {
+            agent_directory_chip(
+                ("agent-directory", self.pane.0),
+                settings.short_cwd(None),
+                false,
+                cx,
+            )
+            .into_any_element()
+        });
+        let pane = self.pane;
+        let connection = self.connection.clone();
+        let pick = move |option: &'static str, value: String, _: &mut Window, cx: &mut App| {
+            connection.update(cx, |connection, cx| {
+                connection.send(
+                    ProtocolMessage::AgentSetConfigOption {
+                        pane,
+                        option_id: option.to_owned(),
+                        value,
+                    },
+                    cx,
+                );
+            });
+        };
+        let terminal = {
+            let entity = cx.entity();
+            let command = settings
+                .terminal
+                .clone()
+                .unwrap_or_else(|| "/model".to_owned());
+            move |_: &mut Window, cx: &mut App| {
+                entity.update(cx, |this, cx| {
+                    if this.send_prompt(&command, &[], cx) {
+                        cx.emit(ShowTerminal);
+                    }
+                });
+            }
+        };
+        let menu = agent_settings_menu(
+            ("agent-settings", self.pane.0),
+            &settings,
+            enabled,
+            pick,
+            terminal,
+            cx,
+        );
+        let side = {
+            let entity = cx.entity();
+            agent_side_chat_button(
+                ("agent-side-chat", self.pane.0),
+                enabled && self.forks(cx),
+                move |_, cx| entity.update(cx, AgentLens::open_side_chat),
+            )
+            .into_any_element()
+        };
+        (directory, vec![menu, side])
+    }
+
+    fn open_side_chat(&mut self, cx: &mut Context<Self>) {
+        let (Some(session), Some(provider)) = (self.session(cx), self.provider(cx)) else {
+            return;
+        };
+        let mut arguments = vec![
+            "-t".to_owned(),
+            self.pane.to_string(),
+            "-c".to_owned(),
+            self.chat_cwd(cx),
+            "-x".to_owned(),
+            SIDE_CHAT_WIDTH.to_owned(),
+            "-y".to_owned(),
+            SIDE_CHAT_HEIGHT.to_owned(),
+            "-T".to_owned(),
+            "Side chat".to_owned(),
+        ];
+        arguments.extend(side_chat_command(provider, &session));
+        self.connection.update(cx, |connection, cx| {
+            connection.command("new-pane", arguments, cx);
+        });
+    }
+
+    fn fork_from(&mut self, item: &str, cx: &mut Context<Self>) {
+        let (Some(message), Some(session), Some(provider)) =
+            (source_message(item), self.session(cx), self.provider(cx))
+        else {
+            return;
+        };
+        let mut arguments = vec![
+            "-c".to_owned(),
+            self.chat_cwd(cx),
+            "-n".to_owned(),
+            "fork".to_owned(),
+        ];
+        arguments.extend(fork_command(provider, &session, message));
+        self.connection.update(cx, |connection, cx| {
+            connection.command("new-window", arguments, cx);
+        });
+    }
+}
 
 pub(super) struct AgentLens {
     pane: PaneId,
@@ -1316,7 +1470,10 @@ impl Render for AgentLens {
                 .children(prefix)
                 .into_any_element()
         } else {
+            let (directory, controls) = self.harness_controls(&state, ready, cx);
             AgentComposer {
+                directory,
+                controls,
                 composer: Composer {
                     input: self.input.clone(),
                     leading: Some({
@@ -1495,6 +1652,9 @@ impl AgentLens {
             let entity = entity.clone();
             Rc::new(move |click, _, cx| {
                 entity.update(cx, |this, cx| {
+                    if let ChatClick::Fork(item) = click {
+                        this.fork_from(item.as_str(), cx);
+                    }
                     this.chat.click(click);
                     cx.notify();
                 });
@@ -1510,9 +1670,11 @@ impl AgentLens {
         let pane = self.pane.0;
         let inline = RefCell::new(inline);
         let ask = |request: &RequestView, _: &App| inline.borrow_mut().remove(&request.id.0);
+        let forks = self.forks(cx);
         let hooks = ChatHooks {
             click: Some(click),
             ask: Some(&ask),
+            fork: forks,
         };
         let body = chat_thread(
             &self.transcript.lens.chat,

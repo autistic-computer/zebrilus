@@ -12,7 +12,7 @@ use std::{
 use serde_json::{Value, json};
 use zz_protocol::{
     AgentProvider, AgentQuestionAnswer, MAX_AGENT_PERMISSION_BYTES, PaneId,
-    agent_stream::{AgentQuestion, AgentQuestionOption},
+    agent_stream::{AgentImage, AgentQuestion, AgentQuestionOption},
     chat::ChatEvent,
 };
 
@@ -30,6 +30,7 @@ use crate::agent::{
     codex_queue,
     host::RuntimeChannels,
     lens_commands::{self, Listed},
+    lens_settings::{self, Facts},
     runtime::{RuntimeCommand, RuntimeControl},
     stream::{
         AgentPrompt, AgentPromptOutcome, AgentSessionCapabilities, AgentStreamPayload, agent_verb,
@@ -42,6 +43,8 @@ const LOCATE: Duration = Duration::from_secs(1);
 const CODEX_LOCATE: Duration = Duration::from_secs(5);
 const ROLLOUT_DAYS: usize = 7;
 const SETTLE: Duration = Duration::from_secs(5);
+const DIALOG_SETTLE: Duration = Duration::from_millis(800);
+const DIALOG_GIVE_UP: Duration = Duration::from_mins(30);
 const IDLE_GRACE: Duration = Duration::from_secs(2);
 const TAIL_BYTES: u64 = 8 * 1024 * 1024;
 const READ_LIMIT: u64 = 4 * 1024 * 1024;
@@ -53,6 +56,8 @@ pub(crate) trait LensPane: Send + Sync {
     fn pid(&self) -> Option<u32>;
     fn submit(&self, text: &str) -> Result<(), String>;
     fn keys(&self, keys: &[&str]) -> Result<(), String>;
+    fn attach(&self, images: &[AgentImage]) -> Result<(), String>;
+    fn screen(&self) -> Option<String>;
 }
 
 #[derive(Clone)]
@@ -194,6 +199,8 @@ struct Claude {
     agents: Vec<Subagent>,
     listed: Vec<Listed>,
     listed_changed: bool,
+    facts: Facts,
+    dialog_closed: bool,
 }
 
 struct Subagent {
@@ -217,6 +224,8 @@ impl Claude {
             agents: Vec::new(),
             listed: Vec::new(),
             listed_changed: false,
+            facts: Facts::default(),
+            dialog_closed: false,
         }
     }
 
@@ -299,14 +308,17 @@ impl Claude {
         }
         self.listed_changed = false;
         self.discover();
+        self.facts = Facts::default();
         let mut updates = Vec::new();
         for entry in sessions::chain_tail(&text) {
+            self.facts.claude_entry(&entry);
             self.track(&entry);
             updates.extend(self.translator.history_entry(&entry));
             updates.extend(self.agent_lines(false));
         }
         updates.extend(self.finished_agents());
         self.tail = Some(tail);
+        self.dialog_closed = false;
         updates
     }
 
@@ -433,6 +445,9 @@ impl Claude {
         if entry["isSidechain"] == true {
             return;
         }
+        if self.facts.claude_entry(entry) {
+            self.dialog_closed = true;
+        }
         self.note_listing(entry);
         let branched = entry["type"] == "user"
             && entry["isCompactSummary"] != true
@@ -478,6 +493,7 @@ struct Codex {
     translator: CodexTranslator,
     busy: bool,
     ended: Option<Result<(), String>>,
+    facts: Facts,
 }
 
 impl Codex {
@@ -501,6 +517,7 @@ impl Codex {
         let (tail, text) = Tail::open(path);
         self.translator = CodexTranslator::new(cwd.to_path_buf());
         self.busy = false;
+        self.facts = Facts::default();
         let mut read = Read::default();
         for entry in text
             .lines()
@@ -523,6 +540,7 @@ impl Codex {
     }
 
     fn entry(&mut self, entry: &Value, read: &mut Read) {
+        self.facts.codex_entry(entry);
         if entry["type"] != "event_msg" {
             return;
         }
@@ -724,6 +742,27 @@ impl Source {
             Self::Codex(_) => false,
         }
     }
+
+    fn facts(&self) -> &Facts {
+        match self {
+            Self::Claude(claude) => &claude.facts,
+            Self::Codex(codex) => &codex.facts,
+        }
+    }
+
+    fn facts_mut(&mut self) -> &mut Facts {
+        match self {
+            Self::Claude(claude) => &mut claude.facts,
+            Self::Codex(codex) => &mut codex.facts,
+        }
+    }
+
+    fn take_dialog_closed(&mut self) -> bool {
+        match self {
+            Self::Claude(claude) => std::mem::take(&mut claude.dialog_closed),
+            Self::Codex(_) => false,
+        }
+    }
 }
 
 struct Turn {
@@ -753,6 +792,8 @@ struct Lens {
     failed: Option<String>,
     permission: Option<Permission>,
     next_locate: Instant,
+    published: Facts,
+    dialog: Option<Instant>,
 }
 
 fn pickable(input: &Value) -> Option<AgentQuestion> {
@@ -814,11 +855,75 @@ impl Lens {
             failed: None,
             permission: None,
             next_locate: Instant::now(),
+            published: Facts::default(),
+            dialog: None,
         }
     }
 
     fn placeholder(&self) -> String {
         format!("lens-{}", self.spec.pane)
+    }
+
+    fn config_options(&self) -> Value {
+        self.source.facts().config_options(self.spec.provider)
+    }
+
+    fn settings_changed(&mut self, option_id: &str, value: &str) -> AgentStreamPayload {
+        self.published = self.source.facts().clone();
+        AgentStreamPayload::ConfigOptionsChanged {
+            option_id: option_id.to_owned(),
+            value: value.to_owned(),
+            config_options: self.config_options(),
+        }
+    }
+
+    fn follow_settings(&mut self) -> Vec<AgentStreamPayload> {
+        let mut payloads = Vec::new();
+        let facts = self.source.facts().clone();
+        let published = self.published.clone();
+        for (option, now, then) in [
+            (lens_settings::MODEL, &facts.model, &published.model),
+            (lens_settings::EFFORT, &facts.effort, &published.effort),
+            (lens_settings::CWD, &facts.cwd, &published.cwd),
+        ] {
+            if now != then {
+                let value = now.clone().unwrap_or_default();
+                payloads.push(self.settings_changed(option, &value));
+            }
+        }
+        let shown = self.dialog.is_some_and(|since| {
+            since.elapsed() >= DIALOG_SETTLE
+                && self.spec.provider == AgentProvider::ClaudeCode
+                && self
+                    .spec
+                    .io
+                    .screen()
+                    .is_some_and(|screen| lens_settings::claude_composer_shown(&screen))
+        });
+        if self.source.take_dialog_closed() || shown {
+            self.dialog = None;
+            payloads
+                .push(self.settings_changed(lens_settings::DIALOG, lens_settings::DIALOG_CLOSED));
+        }
+        if self
+            .dialog
+            .is_some_and(|since| since.elapsed() >= DIALOG_GIVE_UP)
+        {
+            self.dialog = None;
+        }
+        payloads
+    }
+
+    fn set(&mut self, option_id: String, value: &str) -> Vec<AgentStreamPayload> {
+        let submitted = lens_settings::command(self.spec.provider, &option_id, value)
+            .and_then(|text| self.spec.io.submit(&text));
+        match submitted {
+            Ok(()) => {
+                self.source.facts_mut().apply(&option_id, value.trim());
+                vec![self.settings_changed(&option_id, value.trim())]
+            }
+            Err(message) => vec![AgentStreamPayload::SettingFailed { option_id, message }],
+        }
     }
 
     fn commands(&self) -> AgentStreamPayload {
@@ -842,7 +947,10 @@ impl Lens {
             agent_name: agent_name.to_owned(),
             agent_key: agent_key.to_owned(),
             auth_methods: Vec::new(),
-            capabilities: AgentSessionCapabilities::default(),
+            capabilities: AgentSessionCapabilities {
+                images: true,
+                ..AgentSessionCapabilities::default()
+            },
         }];
         payloads.extend(self.locate(true));
         payloads.extend(self.observe(false, Vec::new()));
@@ -859,7 +967,7 @@ impl Lens {
                     AgentStreamPayload::SessionReady {
                         session_id: self.placeholder(),
                         modes: None,
-                        config_options: None,
+                        config_options: Some(self.config_options()),
                     },
                     self.commands(),
                 ]
@@ -887,6 +995,8 @@ impl Lens {
         self.session = Some(found.session.clone());
         self.cwd.clone_from(&found.cwd);
         self.permission = None;
+        self.published = self.source.facts().clone();
+        let config_options = self.config_options();
         let updates = replay
             .into_iter()
             .map(|update| AgentStreamPayload::Update { update });
@@ -898,12 +1008,17 @@ impl Lens {
             payloads.push(AgentStreamPayload::SessionReady {
                 session_id: found.session,
                 modes: None,
-                config_options: None,
+                config_options: Some(config_options),
             });
             return payloads;
         }
         if first {
             let mut payloads = updates.collect::<Vec<_>>();
+            payloads.push(AgentStreamPayload::ConfigOptionsChanged {
+                option_id: lens_settings::MODEL.to_owned(),
+                value: self.published.model.clone().unwrap_or_default(),
+                config_options,
+            });
             if let Some(ended) = ended {
                 self.failed = ended.err();
                 payloads.extend(self.settle(false));
@@ -918,7 +1033,7 @@ impl Lens {
             session_id: found.session,
             cwd: found.cwd,
             modes: None,
-            config_options: None,
+            config_options: Some(config_options),
             replay: Vec::new(),
         });
         payloads
@@ -943,6 +1058,7 @@ impl Lens {
         self.failed = read.failed;
         payloads.extend(self.observe(read.finished, read.updates));
         self.failed = None;
+        payloads.extend(self.follow_settings());
         if self.source.take_listing_change() {
             payloads.push(self.commands());
         }
@@ -1134,14 +1250,24 @@ impl Lens {
                 },
             }]
         };
-        if !prompt.images.is_empty() {
-            return failed("The lens sends text only; paste images in the terminal.");
-        }
-        if prompt.text.trim().is_empty() {
+        if prompt.text.trim().is_empty() && prompt.images.is_empty() {
             return failed("Nothing to send.");
         }
-        match self.spec.io.submit(&prompt.text) {
+        if !prompt.images.is_empty()
+            && let Err(message) = self.spec.io.attach(&prompt.images)
+        {
+            return failed(&message);
+        }
+        let submitted = if prompt.text.trim().is_empty() {
+            self.spec.io.keys(&["Enter"])
+        } else {
+            self.spec.io.submit(&prompt.text)
+        };
+        match submitted {
             Ok(()) => {
+                if lens_commands::opens_terminal(self.spec.provider, &prompt.text) {
+                    self.dialog = Some(Instant::now());
+                }
                 self.turn = Some(Turn {
                     id: turn_id,
                     sent: Instant::now(),
@@ -1274,12 +1400,7 @@ impl Lens {
                     message: unsupported.to_owned(),
                 }]
             }
-            RuntimeCommand::SetConfigOption { option_id, .. } => {
-                vec![AgentStreamPayload::SettingFailed {
-                    option_id,
-                    message: unsupported.to_owned(),
-                }]
-            }
+            RuntimeCommand::SetConfigOption { option_id, value } => self.set(option_id, &value),
             RuntimeCommand::SetMode { .. } => vec![AgentStreamPayload::SettingFailed {
                 option_id: "legacy-session-mode".to_owned(),
                 message: unsupported.to_owned(),
@@ -1417,6 +1538,7 @@ mod tests {
         sent: Mutex<Vec<String>>,
         keys: Mutex<Vec<String>>,
         refuse: bool,
+        screen: Mutex<Option<String>>,
     }
 
     impl LensPane for FakePane {
@@ -1437,6 +1559,17 @@ mod tests {
                 .lock()
                 .extend(keys.iter().map(|key| (*key).to_owned()));
             Ok(())
+        }
+
+        fn attach(&self, images: &[AgentImage]) -> Result<(), String> {
+            self.sent
+                .lock()
+                .extend(images.iter().map(|image| format!("image:{}", image.format)));
+            Ok(())
+        }
+
+        fn screen(&self) -> Option<String> {
+            self.screen.lock().clone()
         }
     }
 
@@ -1872,6 +2005,109 @@ mod tests {
             AgentStreamPayload::PromptFinished { turn_id: 3, outcome: AgentPromptOutcome::Finished { stop_reason } }
                 if stop_reason == "end_turn"
         )));
+    }
+
+    #[test]
+    fn the_lens_sets_model_and_effort_by_typing_them_and_reports_closed_dialogs() {
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "hello"));
+        let mut lens = claudes.lens();
+        lens.open();
+        let set = lens.command(RuntimeCommand::SetConfigOption {
+            option_id: "effort".to_owned(),
+            value: "max".to_owned(),
+        });
+        assert_eq!(*claudes.pane.sent.lock(), ["/effort max"]);
+        assert!(matches!(
+            set.as_slice(),
+            [AgentStreamPayload::ConfigOptionsChanged { option_id, value, config_options }]
+                if option_id == "effort" && value == "max" && config_options[1]["currentValue"] == "max"
+        ));
+        let refused = lens.command(RuntimeCommand::SetConfigOption {
+            option_id: "effort".to_owned(),
+            value: "turbo".to_owned(),
+        });
+        assert!(matches!(
+            refused.as_slice(),
+            [AgentStreamPayload::SettingFailed { .. }]
+        ));
+        claudes.line(&json!({
+            "type": "user",
+            "uuid": "c1",
+            "parentUuid": "u1",
+            "message": { "role": "user", "content": "<local-command-stdout>Settings dialog dismissed</local-command-stdout>" },
+        }));
+        let closed = lens.tick();
+        assert!(closed.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::ConfigOptionsChanged { option_id, value, .. }
+                if option_id == "dialog" && value == "closed"
+        )));
+    }
+
+    #[test]
+    fn pasted_images_go_in_ahead_of_the_text() {
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "hello"));
+        let mut lens = claudes.lens();
+        lens.open();
+        let image = AgentImage {
+            format: "image/png".to_owned(),
+            data: vec![1, 2, 3],
+        };
+        assert!(
+            lens.command(RuntimeCommand::Prompt {
+                turn_id: 4,
+                prompt: AgentPrompt {
+                    text: "what is this".to_owned(),
+                    images: vec![image.clone()],
+                    ..AgentPrompt::default()
+                },
+            })
+            .is_empty()
+        );
+        assert_eq!(
+            *claudes.pane.sent.lock(),
+            ["image:image/png", "what is this"]
+        );
+        lens.command(RuntimeCommand::Prompt {
+            turn_id: 5,
+            prompt: AgentPrompt {
+                images: vec![image],
+                ..AgentPrompt::default()
+            },
+        });
+        assert_eq!(*claudes.pane.keys.lock(), ["Enter"]);
+    }
+
+    #[test]
+    fn a_claude_dialog_counts_as_closed_once_its_input_box_is_back() {
+        let claudes = Claudes::new();
+        claudes.line(&prompt("u1", None, "hello"));
+        let mut lens = claudes.lens();
+        lens.open();
+        *claudes.pane.screen.lock() = Some("  Status   Config\n   Esc to cancel\n".to_owned());
+        lens.command(RuntimeCommand::Prompt {
+            turn_id: 6,
+            prompt: AgentPrompt {
+                text: "/status".to_owned(),
+                ..AgentPrompt::default()
+            },
+        });
+        std::thread::sleep(DIALOG_SETTLE);
+        let closed = |payloads: &[AgentStreamPayload]| {
+            payloads.iter().any(|payload| {
+                matches!(payload, AgentStreamPayload::ConfigOptionsChanged { option_id, .. } if option_id == "dialog")
+            })
+        };
+        assert!(
+            !closed(&lens.tick()),
+            "the dialog still covers the input box"
+        );
+        let rule = "─".repeat(30);
+        *claudes.pane.screen.lock() = Some(format!("{rule}\n❯ \n{rule}\n"));
+        assert!(closed(&lens.tick()));
+        assert!(!closed(&lens.tick()), "it reports the close once");
     }
 
     fn verb(text: &str) -> RuntimeCommand {

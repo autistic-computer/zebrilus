@@ -1093,7 +1093,7 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
         name: "tools",
         aliases: &[],
         description: "Show workspace commands, optionally limited to agent, terminal, browser, or advanced",
-        usage: "[--skill] [--context] [--install-hooks] [--remove-hooks] [section]",
+        usage: "[--skill] [--context] [--install-hooks] [--remove-hooks] [--fork-chat] [section]",
         options: &[
             CommandOptionSpec::flag(
                 "--skill",
@@ -1110,6 +1110,10 @@ pub static DAEMON_COMMAND_SPECS: &[CommandSpec] = &[
             CommandOptionSpec::flag(
                 "--remove-hooks",
                 "remove the startup-context hook and stub skill zz installed",
+            ),
+            CommandOptionSpec::flag(
+                "--fork-chat",
+                "fork a Claude Code or Codex chat through one message and resume it here: --fork-chat <claude|codex> <session> <message>",
             ),
         ],
         positionals: &[FreeForm],

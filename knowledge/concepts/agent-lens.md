@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent lens
-description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, prompts pasted into the TUI, Claude permission prompts, and what agent-send and agent-respond do with it.
+description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal sheet for the CLI's own dialogs, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-31T00:00:00-03:00
+timestamp: 2026-10-31T12:42:12-03:00
 ---
 
 # Overview
@@ -100,9 +100,10 @@ lens, from typing in the terminal, or from a peer message.
 
 - **Prompts.** The composer sends `AgentPrompt` as before. The runtime delivers it with
   `TerminalLens::submit`, the bracketed paste plus Enter that waits for the text to echo before
-  pressing Enter (`paste_and_submit`). Images are refused with "The lens sends text only; paste
-  images in the terminal." Slash commands are the CLI's own and are typed through (see Slash
-  commands below). The composer's
+  pressing Enter (`paste_and_submit`). Pasted images are saved in the daemon's paste folder and
+  their paths pasted in first, without Enter (`TerminalLens::attach`); both CLIs turn a pasted
+  image path into an attachment, and `[Image` counts as the paste having landed. Slash commands
+  are the CLI's own and are typed through (see Slash commands below). The composer's
   placeholder names the agent ("Message Claude Code…"), and before the agent has written a
   transcript the lens shows `presentation::lens_welcome`: the agent's mark, "Claude Code is waiting
   for its first prompt" and "What you send here is typed into the terminal."
@@ -121,8 +122,8 @@ lens, from typing in the terminal, or from a peer message.
   `tool_result`. The runtime raises a permission request for that tool with Allow (sends `1`) and
   Deny (sends Escape). Any other `waitingFor` (a plan approval, a question) raises a request with no
   options, titled "Waiting for a ... in the terminal". Clients draw it with
-  `zz_ui::agent::presentation::terminal_wait_card`, whose one action, Show terminal, switches the
-  pane back to the TUI so the user answers there.
+  `zz_ui::agent::presentation::terminal_wait_card`, whose one action, Show terminal, opens the
+  terminal sheet (below) so the user answers there.
 - **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
   card; the user answers in the terminal.
 
@@ -134,9 +135,8 @@ suggestion list the native drivers fill (`agent/lens_commands.rs`). It is read f
 rest of the lens:
 
 - **Built-ins**, a fixed list per CLI. The ones whose own UI is a dialog in the TUI carry
-  `_meta.zz.terminal` and show "opens terminal": picking one types it into the CLI and switches the
-  pane to its terminal (`agent_completion::terminal_command`), and the lens comes back with the
-  toggle. Claude Code: `model`, `effort`, `plan`, `status`, `config`, `context`, `usage`,
+  `_meta.zz.terminal` and show "opens terminal": picking one types it into the CLI and opens the
+  terminal sheet (`agent_completion::terminal_command`). Claude Code: `model`, `effort`, `plan`, `status`, `config`, `context`, `usage`,
   `permissions`, `mcp`, `hooks`, `memory`, `resume`, `rewind`, `plugin`, `skills`, `btw`, `doctor`,
   `theme`, `login`, `logout`, `help`. Codex: `model`, `permissions`, `status`, `mcp`, `resume`,
   `fork`, `mention`, `logout`. The rest (`clear`, `compact`, `goal`, `subtask`, `cd`, `add-dir`,
@@ -153,6 +153,62 @@ rest of the lens:
 
 Skills carry `_meta.zz.skill` and show "skill". Old clients skip the `_meta` field and show the
 plain list.
+
+# The terminal sheet
+
+On the desktop a command that only the CLI's own screen can show does not flip the pane. The lens
+draws the pane's live `TerminalView` in a sheet over the dimmed chat
+(`zz_ui::agent::presentation::terminal_sheet`, `crates/zz/src/agent/view/harness.rs`), titled
+"/config · Claude Code", and keys go to the CLI. The same `TerminalView` the pane would show is
+painted there, so it reflows to the sheet's height. The sheet closes when:
+
+- Claude Code logs the dialog closing. Every `local-command-stdout` line ("Settings dialog
+  dismissed", "Set model to …") makes the runtime send `ConfigOptionsChanged` with `option_id`
+  `dialog` and value `closed`; clients count those (`AgentPaneState::dialogs_closed`).
+- Esc is pressed: it goes to the CLI, which closes its dialog, and the sheet closes with it.
+- Done is pressed, which also sends Escape to the CLI.
+
+Codex logs nothing for its dialogs, so its sheet closes on Esc or Done. The web, iPad and iPhone
+clients still flip to the terminal for these commands, since closing the lens there also closes its
+stream.
+
+# Model, effort and folder
+
+The runtime reads what the CLI is set to from its own files (`agent/lens_settings.rs`): Claude Code
+assistant lines carry `message.model`, `effort` and `cwd`, and "Set model to …" / "Set effort level
+to …" lines update them at once. Codex `turn_context` lines carry `model`, `effort` and `cwd`. It
+sends them as the session's ACP config options (`model`, `effort` and `cwd`, in `SessionReady`,
+`SessionSwitched` and `ConfigOptionsChanged`), so no wire change was needed and old clients ignore
+them. Clients parse them with `zz_client::agent_settings::LensSettings`.
+
+The composer footer shows the folder on the left and, on the right, the model and effort button and
+the side chat button (`zz_ui::agent::controls::{agent_directory_chip, agent_settings_menu,
+agent_side_chat_button}`):
+
+- **Claude Code.** The button opens a menu of the model aliases (`opus`, `sonnet`, `haiku`,
+  `fable`) and effort levels (`low` to `max`). Picking one sends `AgentSetConfigOption`, which the
+  runtime types as `/model <alias>` or `/effort <level>` (`lens_settings::command`).
+- **Codex.** Its model and effort are only set in its `/model` dialog, so the button types `/model`
+  and opens the sheet. The option carries `_meta.zz.terminal: "/model"` for that.
+- **Folder.** On the local host the folder chip opens a folder picker and the runtime types
+  `/cd <path>`. On a remote host it only shows the folder.
+
+# Side chats and forks
+
+- **Side chat.** The footer's chat-plus button opens a floating pane in the same window running a
+  fork of the session: `claude --resume <session> --fork-session`, or `codex fork <session>`. The
+  main chat never sees it. In chat mode the side chat gets its lens like any agent pane; in raw mode
+  the header toggle opens it.
+- **Fork from here.** Hovering a message you sent shows a branch button. It opens a new window after
+  the chat's running `zz tools --fork-chat <claude|codex> <session> <message>`, which runs on the
+  CLI's host through the pane's private `zz` (`crates/zz-cli/src/fork_chat.rs`):
+  - Claude Code: it copies the transcript through the end of that message's turn under a new
+    session id in the same project folder, then runs `claude --resume <new id>`.
+  - Codex: it finds the message's `turn_id` in the rollout, asks the app server for `thread/fork`
+    with `lastTurnId` (through `codex app-server proxy`, or its own `codex app-server`), then runs
+    `codex resume <new thread>`.
+  - The chat item id carries the source id (`u:<uuid>` for Claude, `u:<item id>` for Codex), and
+    `zz_client::agent_settings::source_message` reads it back.
 
 # How the stream reaches a client
 

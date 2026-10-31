@@ -2694,7 +2694,14 @@ impl AppView {
         }
         let controller = self.agent_controller.clone();
         let mux = self.mux.clone();
-        let view = cx.new(|cx| AgentView::new(pane, provider, controller, mux, window, cx));
+        let terminal = self.terminals.get(&pane).cloned();
+        let view = cx.new(|cx| {
+            let mut view = AgentView::new(pane, provider, controller, mux, window, cx);
+            if let Some(terminal) = terminal {
+                view.set_terminal(terminal);
+            }
+            view
+        });
         cx.subscribe_in(
             &view,
             window,

@@ -16,6 +16,7 @@ pub use agent_hooks::install_agent_hooks;
 pub mod diagnostics;
 mod events;
 mod fleet;
+mod fork_chat;
 mod list_hosts;
 
 #[cfg(test)]

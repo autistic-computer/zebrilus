@@ -47,6 +47,41 @@ impl LensPane for TerminalLens {
             .then_some(())
             .ok_or_else(|| format!("{}: input queue is full", self.pane))
     }
+
+    fn attach(&self, images: &[zz_protocol::agent_stream::AgentImage]) -> Result<(), String> {
+        let shared = self.owner.upgrade().ok_or("zz is shutting down")?;
+        let directory = shared.server.paste_directory.clone();
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_millis());
+        for (index, image) in images.iter().enumerate() {
+            let extension = match image.format.as_str() {
+                "image/png" => "png",
+                "image/jpeg" => "jpg",
+                "image/gif" => "gif",
+                "image/webp" => "webp",
+                other => return Err(format!("the CLI cannot take {other} images")),
+            };
+            let stem = format!("lens-{}-{stamp}-{index}", self.pane.0);
+            let path = write_paste_upload(&directory, &stem, extension, &image.data)
+                .map_err(|error| format!("could not save the image: {error}"))?;
+            let path = path
+                .to_str()
+                .ok_or("the image landed on a path that is not valid UTF-8")?
+                .to_owned();
+            shared
+                .paste_and_submit(self.pane, &path, SEND_TEXT_TIMEOUT, false)
+                .map_err(|error| format!("could not paste the image: {error}"))?;
+        }
+        prune_paste_uploads(&directory, PASTE_UPLOAD_RETENTION);
+        Ok(())
+    }
+
+    fn screen(&self) -> Option<String> {
+        let shared = self.owner.upgrade()?;
+        let terminal = shared.inner.lock().terminals.get(&self.pane).cloned()?;
+        terminal.capture(CaptureOptions::default()).ok()
+    }
 }
 
 pub(super) fn lens_provider(process: &[String]) -> Option<AgentProvider> {

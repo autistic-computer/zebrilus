@@ -11333,6 +11333,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "uuid",
  "windows 0.62.2",
  "zz-config",
  "zz-daemon",

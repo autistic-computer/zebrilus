@@ -188,6 +188,8 @@ impl AgentCursor {
 pub struct LensTranscript<I> {
     pub model: AgentTranscript<I>,
     pub chat: ChatView,
+    pub settings: Option<crate::agent_settings::LensSettings>,
+    pub dialogs_closed: u64,
     decode: ImageDecoder<I>,
     session_reset: bool,
 }
@@ -197,6 +199,8 @@ impl<I> LensTranscript<I> {
         Self {
             model: AgentTranscript::new(decode),
             chat: ChatView::default(),
+            settings: None,
+            dialogs_closed: 0,
             decode,
             session_reset: false,
         }
@@ -207,9 +211,34 @@ impl<I> LensTranscript<I> {
         self.session_reset = false;
     }
 
+    fn note_settings(&mut self, item: &Value) {
+        let options = item
+            .get("config_options")
+            .or_else(|| item.get("configOptions"));
+        if let Some(settings) = options.and_then(crate::agent_settings::LensSettings::parse) {
+            self.settings = Some(settings);
+        }
+    }
+
     pub fn apply(&mut self, item: &Value) -> bool {
         let mut restarted = false;
-        match item.get("item").and_then(Value::as_str).unwrap_or_default() {
+        let kind = item.get("item").and_then(Value::as_str).unwrap_or_default();
+        if matches!(
+            kind,
+            "sessionReady" | "sessionSwitched" | "configOptionsChanged"
+        ) {
+            self.note_settings(item);
+        }
+        if kind == "configOptionsChanged"
+            && item
+                .get("option_id")
+                .or_else(|| item.get("optionId"))
+                .and_then(Value::as_str)
+                == Some(crate::agent_settings::DIALOG)
+        {
+            self.dialogs_closed += 1;
+        }
+        match kind {
             "sessionReset" => {
                 self.restart();
                 restarted = true;

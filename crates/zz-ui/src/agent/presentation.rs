@@ -171,6 +171,61 @@ pub fn terminal_wait_card(
         )
 }
 
+pub const TERMINAL_SHEET_HEIGHT: f32 = 0.62;
+
+pub fn terminal_sheet(
+    id: impl Into<ElementId>,
+    title: impl Into<SharedString>,
+    body: AnyElement,
+    on_done: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Div {
+    let id = id.into();
+    div()
+        .absolute()
+        .inset_0()
+        .child(
+            div()
+                .id((id.clone(), "scrim"))
+                .absolute()
+                .inset_0()
+                .bg(cx.theme().scrim)
+                .occlude(),
+        )
+        .child(
+            v_flex()
+                .absolute()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .h(ala::relative(TERMINAL_SHEET_HEIGHT))
+                .overflow_hidden()
+                .surface(roles::INLINE_PANEL, cx)
+                .child(
+                    card_header()
+                        .items_center()
+                        .child(card_glyph(
+                            Icon::new(IconName::SquareTerminal)
+                                .text_color(cx.theme().foreground.muted()),
+                            cx,
+                        ))
+                        .child(div().min_w_0().flex_1().child(title.into()))
+                        .child(
+                            card_button(Button::new((id, "done")), cx)
+                                .label("Done")
+                                .emphasis(Emphasis::Ghost)
+                                .compact()
+                                .tooltip("Close the dialog and go back to the chat")
+                                .on_click(move |_, window, cx| {
+                                    cx.stop_propagation();
+                                    on_done(window, cx);
+                                }),
+                        ),
+                )
+                .child(div().flex_1().min_h_0().overflow_hidden().child(body)),
+        )
+}
+
 pub fn card_close(button: Button, cx: &App) -> Div {
     div()
         .flex_none()

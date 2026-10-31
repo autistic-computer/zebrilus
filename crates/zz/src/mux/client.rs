@@ -77,6 +77,10 @@ pub(crate) enum AgentRequest {
     StopTask {
         task_id: String,
     },
+    SetConfigOption {
+        option_id: String,
+        value: String,
+    },
 }
 
 #[cfg(feature = "agent-pane")]
@@ -3077,6 +3081,10 @@ impl MuxClient {
         true
     }
 
+    pub(crate) fn attached_is_local(&self) -> bool {
+        self.attached_host == HostId::LOCAL
+    }
+
     pub fn execute(&self, command: CommandInvocation) {
         self.execute_on_host(self.attached_host, command);
     }
@@ -3912,6 +3920,13 @@ impl MuxClient {
                 option_id,
             } => client.agent_respond_permission(pane, request_id, option_id),
             AgentRequest::Replay { from_seq } => client.agent_replay(pane, from_seq),
+            AgentRequest::SetConfigOption { option_id, value } => {
+                client.send(&zz_protocol::ProtocolMessage::AgentSetConfigOption {
+                    pane,
+                    option_id,
+                    value,
+                })
+            }
             AgentRequest::AcknowledgePromptRestore { reclaim_id } => {
                 client.agent_acknowledge_prompt_restore(pane, reclaim_id)
             }

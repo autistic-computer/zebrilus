@@ -13,7 +13,7 @@ use zz_ui::{
         AgentToolStatus as Status, TimelineRow,
         composer::COMPOSER_OUTER_PADDING,
         fold_timeline_rows,
-        presentation::{lens_welcome, spinner_phase, terminal_wait_card},
+        presentation::{lens_welcome, spinner_phase, terminal_sheet, terminal_wait_card},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
     pane::{PaneDragSource, PaneLens, TerminalPaneAction, terminal_pane_header},
@@ -281,10 +281,22 @@ pub struct LensPane {
     list: ListState,
     input: Entity<InputState>,
     tray: Option<TrayPanel>,
+    sheet: Option<&'static str>,
     _observe: Subscription,
 }
 
 fn build(scene: Scene, look: Look, open: bool, window: &mut Window, cx: &mut App) -> AnyView {
+    build_with(scene, look, open, None, window, cx)
+}
+
+fn build_with(
+    scene: Scene,
+    look: Look,
+    open: bool,
+    sheet: Option<&'static str>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
     let input = composer_input("", window, cx);
     input.update(cx, |input, cx| {
         input.set_placeholder(format!("Message {}…", scene.provider().label()), cx);
@@ -302,6 +314,7 @@ fn build(scene: Scene, look: Look, open: bool, window: &mut Window, cx: &mut App
             store,
             input,
             tray: None,
+            sheet,
             _observe: observe,
         }
     })
@@ -472,6 +485,15 @@ impl LensPane {
                     .into_any_element()
             })
             .child(composer)
+            .when_some(self.sheet, |lens, title| {
+                lens.relative().child(terminal_sheet(
+                    ("lens-sheet", self.scene.pane()),
+                    title,
+                    terminal_body(self.scene.terminal(), false, cx).into_any_element(),
+                    |_, _| {},
+                    cx,
+                ))
+            })
             .into_any_element()
     }
 }
@@ -547,6 +569,34 @@ pub fn panes(window: &mut Window, cx: &mut App) -> AnyView {
     cx.new(|_| Panes(panes)).into()
 }
 
+pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
+    let panes = vec![
+        (
+            "Claude Code running /config: its own dialog opens in a sheet over the chat, keys go to it, and the sheet closes when Claude logs the dialog closing, or on Esc or Done",
+            build_with(
+                Scene::Claude,
+                Look::Page(560.0),
+                true,
+                Some("/config · Claude Code"),
+                window,
+                cx,
+            ),
+        ),
+        (
+            "Codex choosing its model: the footer's model button opens /model in the sheet; Esc or Done closes it",
+            build_with(
+                Scene::Codex,
+                Look::Page(480.0),
+                true,
+                Some("/model · Codex"),
+                window,
+                cx,
+            ),
+        ),
+    ];
+    cx.new(|_| Panes(panes)).into()
+}
+
 pub fn approvals(window: &mut Window, cx: &mut App) -> AnyView {
     let panes = vec![
         (
@@ -554,7 +604,7 @@ pub fn approvals(window: &mut Window, cx: &mut App) -> AnyView {
             build(Scene::ClaudeAsks, Look::Page(500.0), true, window, cx),
         ),
         (
-            "Claude Code at a plan approval or question: the lens cannot answer it, so Show terminal switches back to the TUI",
+            "Claude Code at a plan approval or question: the lens cannot answer it, so Show terminal opens the TUI in a sheet",
             build(Scene::ClaudePlans, Look::Page(440.0), true, window, cx),
         ),
         (

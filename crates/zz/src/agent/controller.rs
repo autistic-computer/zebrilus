@@ -74,6 +74,7 @@ pub(crate) type AgentThreadEntry = zz_client::agent_transcript::AgentThreadEntry
 pub(crate) use zz_client::agent_completion::AgentCommand;
 
 use zz_client::agent_completion::agent_command_model;
+use zz_client::agent_settings::{self, LensSettings};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 #[allow(
@@ -107,6 +108,8 @@ pub(crate) struct AgentPaneState {
     pub(crate) tasks: Arc<[AgentTaskWire]>,
     pub(crate) pending_composer: Option<Arc<str>>,
     pub(crate) queued_prompts: usize,
+    pub(crate) settings: Option<LensSettings>,
+    pub(crate) dialogs_closed: u64,
 }
 
 #[derive(Debug)]
@@ -127,6 +130,8 @@ struct AgentThread {
     session_capabilities: AgentSessionCapabilities,
     session_reset: bool,
     unknown_updates: u64,
+    settings: Option<LensSettings>,
+    dialogs_closed: u64,
 }
 
 impl AgentThread {
@@ -148,6 +153,8 @@ impl AgentThread {
             session_capabilities: AgentSessionCapabilities::default(),
             session_reset: false,
             unknown_updates: 0,
+            settings: None,
+            dialogs_closed: 0,
         }
     }
 
@@ -167,6 +174,8 @@ impl AgentThread {
             tasks: self.tasks.clone(),
             pending_composer: None,
             queued_prompts: 0,
+            settings: self.settings.clone(),
+            dialogs_closed: self.dialogs_closed,
         }
     }
 
@@ -628,6 +637,46 @@ impl AgentController {
             .is_some_and(|mux| mux.read(cx).send_agent_request(pane, request))
     }
 
+    fn apply_settings(&mut self, pane: PaneId, payload: &AgentStreamPayload) -> bool {
+        let (options, dialog) = match payload {
+            AgentStreamPayload::SessionReady {
+                config_options: Some(options),
+                ..
+            }
+            | AgentStreamPayload::SessionSwitched {
+                config_options: Some(options),
+                ..
+            } => (options, false),
+            AgentStreamPayload::ConfigOptionsChanged {
+                option_id,
+                config_options,
+                ..
+            } => (config_options, option_id == agent_settings::DIALOG),
+            _ => return false,
+        };
+        let Some(thread) = self.panes.get_mut(&pane) else {
+            return false;
+        };
+        if let Some(settings) = LensSettings::parse(options) {
+            thread.settings = Some(settings);
+        }
+        if dialog {
+            thread.dialogs_closed += 1;
+        }
+        true
+    }
+
+    pub(crate) fn set_option(&self, pane: PaneId, option_id: &str, value: &str, cx: &App) -> bool {
+        self.send(
+            pane,
+            AgentRequest::SetConfigOption {
+                option_id: option_id.to_owned(),
+                value: value.to_owned(),
+            },
+            cx,
+        )
+    }
+
     pub(crate) fn apply_stream_items(
         &mut self,
         pane: PaneId,
@@ -646,6 +695,15 @@ impl AgentController {
             if let AgentStreamPayload::StateSynced { state } = &item.payload {
                 self.apply_pane_state(pane, state, cx);
                 continue;
+            }
+            if self.apply_settings(pane, &item.payload) {
+                changed = true;
+                if matches!(
+                    item.payload,
+                    AgentStreamPayload::ConfigOptionsChanged { .. }
+                ) {
+                    continue;
+                }
             }
             if let AgentStreamPayload::Chat { event } = &item.payload {
                 if let Some(thread) = self.panes.get_mut(&pane)
@@ -711,6 +769,9 @@ impl AgentController {
             }
         }
         thread.git.clone_from(&state.git);
+        if let Some(settings) = LensSettings::from_json(&state.config_options) {
+            thread.settings = Some(settings);
+        }
         if *thread.tasks != *state.tasks {
             thread.tasks = state.tasks.clone().into();
         }

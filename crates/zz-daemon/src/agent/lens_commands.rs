@@ -145,6 +145,23 @@ struct Found {
     skill: bool,
 }
 
+pub(crate) fn opens_terminal(provider: AgentProvider, text: &str) -> bool {
+    let Some(name) = text
+        .trim()
+        .strip_prefix('/')
+        .and_then(|rest| rest.split_whitespace().next())
+    else {
+        return false;
+    };
+    let builtins = match provider {
+        AgentProvider::ClaudeCode => CLAUDE,
+        AgentProvider::Codex => CODEX,
+    };
+    builtins
+        .iter()
+        .any(|builtin| builtin.terminal && builtin.name == name)
+}
+
 pub(crate) fn skill_listing(entry: &Value) -> Option<Vec<Listed>> {
     let attachment = &entry["attachment"];
     if entry["type"] != "attachment" || attachment["type"] != "skill_listing" {
