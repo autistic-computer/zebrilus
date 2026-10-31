@@ -39,14 +39,7 @@ pub fn app_workspace_surface(
 }
 
 pub fn app_connection_state(message: impl IntoElement, cx: &App) -> ala::Div {
-    div()
-        .flex()
-        .flex_1()
-        .items_center()
-        .justify_center()
-        .text_size(crate::rems_from_px(12.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(message)
+    crate::feedback::empty_state(None, message, cx)
 }
 
 #[derive(Default)]

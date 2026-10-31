@@ -318,7 +318,8 @@ pads around.
 **Every toast stacks at the top center of the workspace window**, whichever view raised it. The
 close button sits in the toast's flex row, vertically centered beside its content. Settings is a route in
 that window, and `AppShell` mounts both the dialog and notification layers for either route.
-`crates/zz/src/window/toast.rs` keeps the workspace `WindowHandle<Root>` in a global and defers its
+`penna::overlay::push_toast` (re-exported as `crates/zz/src/window/toast.rs`'s `push`) sends a toast
+to the `WindowHandle<Root>` that `set_toast_host` stored in a global, and defers that window's
 update until the current window callback finishes. Updating that handle during its own click
 callback fails because ala has temporarily removed the window from its registry. Views that
 already receive the workspace `Window` can call `window.push_notification` directly.

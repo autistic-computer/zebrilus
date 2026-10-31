@@ -32,9 +32,9 @@ use zz_ui::{
         panes_page,
         panes_preview::PanesPreview,
         providers::{ProvidersHost, providers_stack},
-        settings_card_ground, settings_list_disclosure_header, settings_navigation_back_button,
-        settings_navigation_button, settings_navigation_group_gap, settings_navigation_row,
-        settings_page_title, settings_scroll_column, settings_section_index, settings_title_bar,
+        settings_card_ground, settings_list_disclosure_header, settings_page_title,
+        settings_scroll_column, settings_section_index, settings_section_navigation,
+        settings_title_bar,
         status_bar_preview::status_bar_page,
     },
 };
@@ -146,37 +146,13 @@ impl Controls {
 }
 
 fn navigation(_: &mut Window, cx: &mut App) -> AnyElement {
-    let selected = SettingsSection::Appearance;
-    let mut rows = Vec::new();
-    let mut previous = None;
-    for section in SettingsSection::ALL {
-        let group = section.navigation_group();
-        if previous.is_some_and(|previous| previous != group) {
-            rows.push(settings_navigation_group_gap().into_any_element());
-        }
-        previous = Some(group);
-        rows.push(
-            settings_navigation_button(
-                section.title(),
-                section.title(),
-                section.icon(),
-                section == selected,
-                cx,
-            )
-            .into_any_element(),
-        );
-    }
-    let list = div()
-        .id("settings-nav")
-        .flex()
-        .flex_col()
-        .w_full()
-        .gap(px(2.0))
-        .px(px(6.0))
-        .child(settings_navigation_row(settings_navigation_back_button(
-            "settings-back",
-        )))
-        .children(rows);
+    let list = settings_section_navigation(
+        "settings-nav",
+        &SettingsSection::ALL,
+        SettingsSection::Appearance,
+        |_, _, _| {},
+    )
+    .on_back(|_, _, _| {});
     let index = settings_section_index(
         &SettingsSection::ALL,
         |section| match section {

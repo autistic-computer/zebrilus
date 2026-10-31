@@ -708,9 +708,10 @@ then paints whichever frame the view handed it: the Linux/Windows GPU texture th
   returns focus to the active pane. Plain `r` opens the existing native rename prompt for a selected
   session/window; a selected pane targets its parent window. Pane rows follow live terminal OSC and
   browser document titles without changing explicit session/window names.
-- `workspace/tree.rs` is a small, standalone `UniformListDecoration` (`WorkspaceIndentGuides`) that
-  paints the nested vertical indent guides behind the sidebar's tree rows; it is presentation-only
-  and has no mux awareness (algorithm adapted from Zed's project panel).
+- `workspace/tree.rs` re-exports penna's `list::tree::IndentGuides`, a standalone
+  `UniformListDecoration` that paints the nested vertical indent guides behind the sidebar's tree
+  rows in the `rule.tree` role; it is presentation-only and has no mux awareness (algorithm
+  adapted from Zed's project panel).
 - `chooser/tree.rs`, `chooser/buffer.rs`, `pane/display.rs` are three daemon-driven
   native modals: each owns a `revision`-gated `synchronize(state, revision, cx)` that no-ops unless
   the daemon's revision counter advanced, a 1×1 focus-trap `EntityInputHandler` used only to receive
@@ -816,7 +817,7 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/workspace/sidebar.rs` | `WorkspaceSidebar` . one merged tree over every fleet host, each expanding into its own session/window/pane hierarchy; direct sidebar/titlebar modes, host and session creation, target deletion, and the window split/delete overflow menu |
 | `crates/zz/src/workspace/add_host.rs` | The **Add host** dialog, opened from the final muted sidebar row: one `[user@]host[:port]` field, named after its host component, validated through `config::validate_fleet_host`, written and republished by `config::add_fleet_host` |
 | `crates/zz/src/workspace/ssh_prompt.rs` | The dialog ssh's password and host-key questions appear in, opened from `MuxClient`'s `SshPromptRequest` event. Names the ssh destination, quotes ssh's own prompt, and answers a host key with exactly `yes`/`no`; dismissing it parks the host until Reconnect |
-| `crates/zz/src/workspace/tree.rs` | `WorkspaceIndentGuides` . tree row indent-guide painting decoration |
+| `crates/zz/src/workspace/tree.rs` | re-exports penna's `IndentGuides` . tree row indent-guide painting decoration |
 | `crates/zz/src/chooser/tree.rs` | `ChooseTreeView` . native window/pane chooser overlay |
 | `crates/zz/src/chooser/buffer.rs` | `ChooseBufferView` . native paste-buffer chooser overlay |
 | `crates/zz/src/pane/display.rs` | `DisplayPanesView` . native pane-numbering overlay input target |

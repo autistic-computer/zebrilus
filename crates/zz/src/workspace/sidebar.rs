@@ -20,7 +20,7 @@ use ala::{
     prelude::FluentBuilder as _, px, uniform_list,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, StyledExt as _, rems_from_px,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, rems_from_px,
     scroll::ScrollableElement as _,
 };
 use zz_client::{ChromeAction, SIDEBAR_TABLE, UI_TABLE, program::Program};
@@ -39,13 +39,7 @@ use zz_ui::navigation::{
     workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
     workspace_tree_opened, workspace_tree_row, workspace_tree_shortcut,
 };
-use zz_ui::{
-    program::program_mark,
-    settings::{
-        settings_navigation_back_button, settings_navigation_button, settings_navigation_group_gap,
-        settings_navigation_row,
-    },
-};
+use zz_ui::{program::program_mark, settings::settings_section_navigation};
 
 use crate::{
     agent::{
@@ -66,7 +60,7 @@ use crate::{
         },
     },
     window::corners::WindowCorners,
-    workspace::tree::{IndentGuideColors, WorkspaceIndentGuides},
+    workspace::tree::{IndentGuideColors, IndentGuides},
 };
 
 #[cfg(test)]
@@ -790,44 +784,22 @@ impl WorkspaceSidebar {
         };
         let selected = settings.read(cx).section();
         let close_sidebar = sidebar.clone();
-        let back =
-            settings_navigation_back_button("settings-back").on_click(move |_, window, cx| {
-                close_sidebar.update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
-            });
-        let mut items = vec![settings_navigation_row(back).into_any_element()];
-        let mut current_group = None;
-        for &section in &crate::profile::profile(cx).settings_sections {
-            let group = section.navigation_group();
-            if current_group.is_some_and(|current| current != group) {
-                items.push(settings_navigation_group_gap().into_any_element());
-            }
-            current_group = Some(group);
-            let settings = settings.clone();
-            let navigation_sidebar = sidebar.clone();
-            items.push(
-                settings_navigation_button(
-                    section.title(),
-                    section.title(),
-                    section.icon(),
-                    section == selected,
-                    cx,
-                )
-                .on_click(move |_, window, cx| {
-                    settings.update(cx, |settings, cx| {
-                        settings.set_section(section, window, cx);
-                    });
-                    navigation_sidebar.update(cx, |_, cx| cx.notify());
-                })
-                .into_any_element(),
-            );
-        }
-        div()
-            .flex()
-            .flex_col()
-            .w_full()
-            .list_inset(cx)
-            .children(items)
-            .into_any_element()
+        let navigation_sidebar = sidebar.clone();
+        settings_section_navigation(
+            "settings-navigation",
+            &crate::profile::profile(cx).settings_sections,
+            selected,
+            move |section, window, cx| {
+                settings.update(cx, |settings, cx| {
+                    settings.set_section(section, window, cx);
+                });
+                navigation_sidebar.update(cx, |_, cx| cx.notify());
+            },
+        )
+        .on_back(move |_, window, cx| {
+            close_sidebar.update(cx, |sidebar, cx| sidebar.close_settings(window, cx));
+        })
+        .into_any_element()
     }
 
     pub(crate) fn render_controls(
@@ -1300,7 +1272,7 @@ fn render_expanded_navigation(
     } else {
         None
     };
-    let decoration = WorkspaceIndentGuides::new(
+    let decoration = IndentGuides::new(
         depths,
         active_row,
         px(TREE_INDENT_WIDTH),

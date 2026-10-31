@@ -63,7 +63,7 @@ pub const STORY: Story = Story {
         Section {
             id: "indent-guides",
             name: "Indent guides",
-            summary: "WorkspaceIndentGuides drawn as a uniform_list decoration. Only the guide of the active row's nearest ancestor lights up.",
+            summary: "IndentGuides drawn as a uniform_list decoration. Only the guide of the active row's nearest ancestor lights up.",
             build: |window, cx| stateful(window, cx, |_, _| sidebar_scrolls(), indent_guides),
         },
         Section {

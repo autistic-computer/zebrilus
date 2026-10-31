@@ -2,7 +2,7 @@ pub use penna::roles::{
     ARROW_PAD, BAR_RULE, CHROME_BUTTON, INLINE_PANEL, LIST_RULE, PHONE_ADD, PHONE_BAR,
     PHONE_BUTTON, PHONE_CARD, PHONE_KEY, PHONE_PILL, PHONE_PILL_ICON, PHONE_ROW, PICKER,
     SETTINGS_CARD, SETTINGS_PREVIEW, SETTINGS_TILE, SIDEBAR, SIDEBAR_ROW, SIDEBAR_RULE, TITLEBAR,
-    WINDOW, WINDOW_CONTROLS,
+    TREE_RULE, WINDOW, WINDOW_CONTROLS,
 };
 use penna::{Fill, Highlight, Ink, Kind, Knobs, Shadow, Shape, StylePatch, SurfaceRole};
 
@@ -336,12 +336,6 @@ pub const SPLIT_RULE: SurfaceRole = SurfaceRole::new(
     Kind::Rule,
     "Split lines",
     "Lines between panes when they have no gaps",
-);
-pub const TREE_RULE: SurfaceRole = SurfaceRole::new(
-    "rule.tree",
-    Kind::Rule,
-    "Tree guides",
-    "The lines that join a tree's children",
 );
 
 pub(crate) static ZZ: &[SurfaceRole] = &[

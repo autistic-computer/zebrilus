@@ -7,8 +7,12 @@ use ala::{
 };
 use penna::sidebar::SIDEBAR_CONTENT_INSET;
 use penna::{
-    ActiveTheme as _, Colorize as _, Ground, Icon, IconName, menu::PopupMenuItem, motion::Instant,
-    rems_from_px, scroll::ScrollableElement as _,
+    ActiveTheme as _, Colorize as _, Ground, Icon, IconName,
+    list::tree::{IndentGuideColors, IndentGuides},
+    menu::PopupMenuItem,
+    motion::Instant,
+    rems_from_px,
+    scroll::ScrollableElement as _,
 };
 use std::{collections::BTreeSet, rc::Rc};
 use zz_client::{
@@ -35,7 +39,6 @@ use zz_ui::{
             tree_host_indicator, tree_host_marker, tree_navigation, tree_node_marker,
             tree_row_menu,
         },
-        tree::{IndentGuideColors, WorkspaceIndentGuides},
         workspace_tree_action_button, workspace_tree_disclosure, workspace_tree_opened,
         workspace_tree_row,
     },
@@ -270,7 +273,7 @@ pub(super) fn session_tree(
         .then(|| rows.iter().rposition(|row| row.on_active_path))
         .flatten();
     let depths: Rc<[usize]> = rows.iter().map(|row| usize::from(row.depth)).collect();
-    let guides = WorkspaceIndentGuides::new(
+    let guides = IndentGuides::new(
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),

@@ -1,1 +1,1 @@
-pub(crate) use zz_ui::navigation::tree::{IndentGuideColors, WorkspaceIndentGuides};
+pub(crate) use penna::list::tree::{IndentGuideColors, IndentGuides};

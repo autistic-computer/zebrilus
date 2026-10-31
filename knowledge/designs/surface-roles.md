@@ -476,7 +476,7 @@ they fill with `theme.scrim`.
 | `rule.sidebar` | sidebar edge and its resize hover | `ui/navigation.rs:323` |
 | `rule.split` | split divider and the accent half on the active pane's side | `ui/pane.rs:636` |
 | `rule.list` | menu separators, setting row lines, prompt card lines | `ui/settings.rs:1357`, `kit/menu/popup_menu.rs:922` |
-| `rule.tree` | tree indent guides | `ui/navigation/tree.rs:157` |
+| `rule.tree` | tree indent guides | `kit/list/tree.rs:29` |
 
 ### Not roles
 

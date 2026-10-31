@@ -7,7 +7,11 @@ use ala::{
     AnyElement, App, Hsla, IntoElement, Keystroke, ListSizingBehavior, ParentElement as _,
     Stateful, Styled as _, UniformListScrollHandle, div, prelude::*, px, uniform_list,
 };
-use penna::{ActiveTheme as _, Colorize as _, Icon, IconName, scroll::ScrollableElement as _};
+use penna::{
+    ActiveTheme as _, Colorize as _, Icon, IconName,
+    list::tree::{IndentGuideColors, IndentGuides},
+    scroll::ScrollableElement as _,
+};
 use zz_client::program::Program;
 use zz_ui::{
     navigation::{
@@ -17,7 +21,6 @@ use zz_ui::{
             TreeRowMenuItem, tree_action_strip, tree_host_indicator, tree_host_marker,
             tree_node_marker, tree_row_menu,
         },
-        tree::{IndentGuideColors, WorkspaceIndentGuides},
         workspace_add_host_button, workspace_layout_button, workspace_settings_button,
         workspace_sidebar_footer_controls, workspace_sidebar_surface,
         workspace_sidebar_view_button, workspace_tree_action_button, workspace_tree_disclosure,
@@ -350,8 +353,8 @@ pub fn render_node(node: &Node, active: bool, state: TreeState, cx: &App) -> Any
     }
 }
 
-pub fn guides(depths: Rc<[usize]>, active_row: Option<usize>, cx: &App) -> WorkspaceIndentGuides {
-    WorkspaceIndentGuides::new(
+pub fn guides(depths: Rc<[usize]>, active_row: Option<usize>, cx: &App) -> IndentGuides {
+    IndentGuides::new(
         depths,
         active_row,
         px(WORKSPACE_TREE_INDENT_WIDTH),

@@ -96,6 +96,25 @@ impl SettingsSection {
     }
 }
 
+pub fn settings_section_navigation(
+    id: impl Into<ElementId>,
+    sections: &[SettingsSection],
+    selected: SettingsSection,
+    on_pick: impl Fn(SettingsSection, &mut Window, &mut App) + 'static,
+) -> SettingsNavigation {
+    let picks = sections.to_vec();
+    settings_navigation(
+        id,
+        sections.iter().map(|section| NavSection {
+            title: section.title().into(),
+            icon: section.icon(),
+            group: section.navigation_group() as usize,
+        }),
+        sections.iter().position(|section| *section == selected),
+    )
+    .on_pick(move |index, window, cx| on_pick(picks[index], window, cx))
+}
+
 pub fn settings_section_index(
     sections: &[SettingsSection],
     meta: impl Fn(SettingsSection) -> Option<SharedString>,

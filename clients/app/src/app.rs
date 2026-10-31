@@ -62,7 +62,7 @@ use zz_ui::{
         pane_split_surface, pane_surface,
     },
     pane_look::PaneLook,
-    settings::{SettingsSection, settings_navigation_button, settings_navigation_group_gap},
+    settings::{SettingsSection, settings_section_navigation},
     shell::{app_shell_surface, app_workspace_surface, titlebar_over_panes},
 };
 
@@ -1020,46 +1020,24 @@ impl AppShell {
         sidebar::reconcile(self, window, cx);
         let ground = self.sidebar_ground(window, cx);
         let navigation = if let Some(selected) = self.settings {
-            let mut rows = Vec::new();
-            let mut previous_group = None;
-            for section in settings::sections() {
-                let group = section.navigation_group();
-                if previous_group.is_some_and(|previous| previous != group) {
-                    rows.push(settings_navigation_group_gap().into_any_element());
-                }
-                previous_group = Some(group);
-                rows.push(
-                    settings_navigation_button(
-                        section.title(),
-                        section.title(),
-                        section.icon(),
-                        section == selected,
-                        cx,
-                    )
-                    .on_click(cx.listener(move |this, _, _, cx| {
+            let view = cx.weak_entity();
+            settings_section_navigation(
+                "web-settings-nav",
+                &settings::sections(),
+                selected,
+                move |section, _, cx| {
+                    let _ = view.update(cx, |this, cx| {
                         this.settings = Some(section);
                         cx.notify();
-                    }))
-                    .into_any_element(),
-                );
-            }
-            div()
-                .id("web-settings-nav")
-                .flex()
-                .flex_col()
-                .w_full()
-                .list_inset(cx)
-                .child(zz_ui::settings::settings_navigation_row(
-                    zz_ui::settings::settings_navigation_back_button("web-settings-back").on_click(
-                        cx.listener(|this, _, _, cx| {
-                            this.settings = None;
-                            this.focused_pane = None;
-                            cx.notify();
-                        }),
-                    ),
-                ))
-                .children(rows)
-                .into_any_element()
+                    });
+                },
+            )
+            .on_back(cx.listener(|this, _, _, cx| {
+                this.settings = None;
+                this.focused_pane = None;
+                cx.notify();
+            }))
+            .into_any_element()
         } else if self.preferences.flat_sidebar {
             let fade = workspace_sidebar_fade(ground, cx);
             sidebar::flat_tree(self, fade, ground, cx)
