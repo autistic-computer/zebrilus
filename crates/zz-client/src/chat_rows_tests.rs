@@ -6,7 +6,8 @@ use zz_protocol::chat::{
 
 use crate::chat_rows::{
     AgentState, Fold, RunLabel, Unit, agent_ms, agent_prompt, agent_rows, agent_state, answered,
-    background_live, background_rows, duration, run_summary, turn_rows, unit_at,
+    background_live, background_rows, duration, reasoning_body, run_shows, run_summary, turn_rows,
+    unit_at,
 };
 
 struct Thread {
@@ -845,4 +846,90 @@ fn a_working_agent_shows_its_run_only_while_the_run_is_last() {
         ItemBody::titled("Inner"),
     );
     assert_eq!(agent_state(&thread.view, &ItemId::new("ag")), thinking);
+}
+
+#[test]
+fn a_finished_thought_with_only_headings_leaves_no_row() {
+    let mut thread = Thread::new();
+    thread.start("u1", None, ItemKind::User, ItemBody::text("go"));
+    thread.done("u1");
+    thread.start(
+        "h1",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Planning task execution sequence**\n\n**Organizing replies**"),
+    );
+    thread.done("h1");
+    thread.start("a1", None, ItemKind::Agent, ItemBody::text("first"));
+    thread.done("a1");
+    thread.start(
+        "h2",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Planning next step**"),
+    );
+    thread.done("h2");
+    thread.start("a2", None, ItemKind::Agent, ItemBody::text("second"));
+    thread.done("a2");
+    thread.start(
+        "h3",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Wrapping up**"),
+    );
+    let live = thread.rows();
+    assert!(matches!(
+        live.shown.last(),
+        Some(Unit::Run(run)) if run.label == RunLabel::Thinking { heading: Some("Wrapping up".to_owned()) }
+    ));
+    assert!(!run_shows(&thread.view, &ids(&["h3"])));
+    thread.done("h3");
+    thread.finish(completed());
+    let rows = thread.rows();
+    let all = rows.folded.iter().chain(&rows.shown).collect::<Vec<_>>();
+    assert!(
+        !all.iter().any(|unit| matches!(unit, Unit::Run(_))),
+        "{all:?}"
+    );
+}
+
+#[test]
+fn a_thought_with_a_body_stays_a_row_to_open() {
+    let mut thread = Thread::new();
+    thread.start(
+        "t1",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Checking the turn machine**\n\nCodex reports idle first."),
+    );
+    thread.done("t1");
+    thread.start("a1", None, ItemKind::Agent, ItemBody::text("done"));
+    thread.done("a1");
+    thread.finish(completed());
+    let rows = thread.rows();
+    assert!(matches!(
+        &rows.folded[..],
+        [Unit::Run(run)] if run.label == RunLabel::Done { summary: "Thought".to_owned() }
+    ));
+    assert!(run_shows(&thread.view, &ids(&["t1"])));
+}
+
+#[test]
+fn a_thought_body_drops_its_leading_headings() {
+    assert_eq!(reasoning_body("**Planning next step**"), None);
+    assert_eq!(reasoning_body("**A**\n\n**B**\n"), None);
+    assert_eq!(reasoning_body("## Plan\n"), None);
+    assert_eq!(reasoning_body(""), None);
+    assert_eq!(
+        reasoning_body("**Checking the turn machine.** Codex reports idle first.").as_deref(),
+        Some("Codex reports idle first.")
+    );
+    assert_eq!(
+        reasoning_body("**A**\n\nbody\n\n**B**\n\nmore").as_deref(),
+        Some("body\n\n**B**\n\nmore")
+    );
+    assert_eq!(
+        reasoning_body("Just thinking aloud.").as_deref(),
+        Some("Just thinking aloud.")
+    );
 }
