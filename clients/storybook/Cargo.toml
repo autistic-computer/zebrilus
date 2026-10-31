@@ -10,9 +10,6 @@ rust-version = "1.99"
 description = "zz's UI pieces in every state, on one web page, for people and agents"
 publish = false
 
-[lib]
-crate-type = ["cdylib", "rlib"]
-
 [features]
 syntax-highlighting = ["zz-ui/tree-sitter"]
 

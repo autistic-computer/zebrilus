@@ -42,4 +42,5 @@ cargo watch \
     --watch libs/ala/crates/ala-platform/src/web \
     --watch libs/ala/crates/ala-platform/src/wgpu \
     --watch scripts/build-storybook.sh \
+    --watch libs/penna/storybook/build.sh \
     --shell "$ROOT/scripts/build-storybook.sh"

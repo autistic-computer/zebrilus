@@ -75,9 +75,19 @@ just storybook penna        # build penna's own page, serve it on http://127.0.0
 just storybook penna-build  # build it into libs/penna/storybook/dist; --release for an optimized build
 ```
 
-`libs/penna/storybook/build.sh [--release] [--out <dir>] [-- <cargo args>]` builds penna's page on
-its own, in the penna repo too; the just recipe passes the `libs/ala` patches after `--` and shares
-`target/storybook` with zz's page.
+`libs/penna/storybook/build.sh [--manifest <Cargo.toml>] [--release] [--out <dir>] [-- <cargo args>]`
+builds a storybook page: penna's own by default, in the penna repo too, or an app's with
+`--manifest`. `scripts/build-storybook.sh` is zz's call of it: `--manifest
+clients/storybook/Cargo.toml --out clients/storybook/dist`, `-- --locked`, and `target/storybook` as
+the target directory. The script runs Cargo in the manifest's folder, so the Cargo config and
+toolchain file there apply wherever it is called from (`WEB_TOOLCHAIN` overrides the toolchain). It
+reads the crate with `cargo metadata`, builds its library as a wasm32 cdylib, turns on
+the crate's `page` and `syntax-highlighting` features when it has them (`WEB_SYNTAX_HIGHLIGHTING=0`
+skips the second, which needs llvm-ar), wants the wasm-bindgen CLI at the version the lockfile
+resolves, and writes into `dist` next to the manifest unless `--out` says otherwise. The just
+recipe for penna's page passes the `libs/ala` patches after `--` and shares `target/storybook` with
+zz's page. penna's CI builds the page with `--release` on every run and keeps it as the
+`storybook-page` artifact, with the HTML kit and its tokens under `kit/`.
 
 The URL holds the story, the section and the knobs: `#/agent/composer?theme=dark&radius=4`.
 Knobs: `theme` (the mode: `system`, `light`, `dark`), `interface-theme` (`default` or
