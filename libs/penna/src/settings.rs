@@ -80,6 +80,97 @@ pub fn settings_navigation_group_gap() -> ala::Div {
     div().flex_none().h(px(12.0))
 }
 
+#[derive(Clone, Debug)]
+pub struct NavSection {
+    pub title: SharedString,
+    pub icon: IconName,
+    pub group: usize,
+}
+
+type NavPick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+
+#[must_use]
+pub fn settings_navigation(
+    id: impl Into<ElementId>,
+    sections: impl IntoIterator<Item = NavSection>,
+    selected: Option<usize>,
+) -> SettingsNavigation {
+    SettingsNavigation {
+        id: id.into(),
+        sections: sections.into_iter().collect(),
+        selected,
+        on_pick: None,
+        on_back: None,
+    }
+}
+
+#[derive(IntoElement)]
+pub struct SettingsNavigation {
+    id: ElementId,
+    sections: Vec<NavSection>,
+    selected: Option<usize>,
+    on_pick: Option<NavPick>,
+    on_back: Option<EntryClick>,
+}
+
+impl SettingsNavigation {
+    #[must_use]
+    pub fn on_pick(mut self, on_pick: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
+        self.on_pick = Some(Rc::new(on_pick));
+        self
+    }
+
+    #[must_use]
+    pub fn on_back(
+        mut self,
+        on_back: impl Fn(&ala::ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Self {
+        self.on_back = Some(Rc::new(on_back));
+        self
+    }
+}
+
+impl RenderOnce for SettingsNavigation {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let back = self.on_back.map(|on_back| {
+            settings_navigation_row(
+                settings_navigation_back_button("back")
+                    .on_click(move |event, window, cx| on_back(event, window, cx)),
+            )
+        });
+        let mut rows = Vec::with_capacity(self.sections.len() * 2);
+        let mut group = None;
+        for (index, section) in self.sections.into_iter().enumerate() {
+            if group.is_some_and(|group| group != section.group) {
+                rows.push(settings_navigation_group_gap().into_any_element());
+            }
+            group = Some(section.group);
+            let on_pick = self.on_pick.clone();
+            rows.push(
+                settings_navigation_button(
+                    section.title.clone(),
+                    section.title,
+                    section.icon,
+                    self.selected == Some(index),
+                    cx,
+                )
+                .when_some(on_pick, |button, on_pick| {
+                    button.on_click(move |_, window, cx| on_pick(index, window, cx))
+                })
+                .into_any_element(),
+            );
+        }
+        div()
+            .id(self.id)
+            .flex()
+            .flex_col()
+            .w_full()
+            .list_inset(cx)
+            .children(back)
+            .children(rows)
+    }
+}
+
 const SETTINGS_CONTENT_MAX_WIDTH: f32 = 760.0;
 pub const SETTINGS_PAGE_PADDING: f32 = 14.0;
 
