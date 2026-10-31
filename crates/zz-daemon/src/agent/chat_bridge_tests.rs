@@ -6,7 +6,7 @@ use zz_protocol::chat::{
     Answer, ChatPhase, ChatView, ItemId, ItemKind, ItemStatus, RequestClose, RequestId,
 };
 
-use super::chat_bridge::{Shadow, chat_answer};
+use super::chat_bridge::{MAX_PROMPT_IMAGES_BASE64, Shadow, attach_images, chat_answer};
 use super::turn::{self, End};
 
 fn view(shadow: &Shadow) -> ChatView {
@@ -542,4 +542,25 @@ fn prompt_images_reach_the_user_item() {
             data: b"hi".to_vec(),
         }]
     );
+}
+
+#[test]
+fn a_long_prompt_leaves_its_images_only_the_room_left_under_the_stream_cap() {
+    let image = "A".repeat(MAX_PROMPT_IMAGES_BASE64 / 2);
+    let mut short = json!({ "content": { "type": "text", "text": "look" } });
+    attach_images(
+        &mut short,
+        [
+            ("image/png".to_owned(), image.clone()),
+            ("image/png".to_owned(), image.clone()),
+        ],
+    );
+    assert_eq!(
+        short["_meta"]["zz"]["images"].as_array().map(Vec::len),
+        Some(1)
+    );
+    let text = "b".repeat(MAX_PROMPT_IMAGES_BASE64 / 2 + 1);
+    let mut long = json!({ "content": { "type": "text", "text": text } });
+    attach_images(&mut long, [("image/png".to_owned(), image)]);
+    assert!(long["_meta"].is_null());
 }

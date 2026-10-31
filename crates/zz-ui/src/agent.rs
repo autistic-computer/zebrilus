@@ -3349,7 +3349,6 @@ impl MermaidTheme {
     }
 
     fn new(colors: MermaidThemeColors, font_family: &str, dark: bool) -> Self {
-        let background = css_color(colors.background);
         let surface = css_color(colors.surface);
         let muted = css_color(colors.muted);
         let foreground = css_color(colors.foreground);
@@ -3365,7 +3364,7 @@ impl MermaidTheme {
         let danger_foreground = css_color(colors.danger_foreground);
         let font_family = mermaid_font_family(font_family);
         let mut theme_variables: serde_json::Map<String, serde_json::Value> = [
-            ("background", background.as_str()),
+            ("background", surface.as_str()),
             ("primaryColor", surface.as_str()),
             ("primaryTextColor", foreground.as_str()),
             ("primaryBorderColor", border.as_str()),
@@ -3678,12 +3677,11 @@ text.journey-section, text.task, .legend {{ fill: {foreground} !important; }}
 }
 
 fn mermaid_theme_key(cx: &App) -> u64 {
-    const LOOK: u32 = 2;
+    const LOOK: u32 = 3;
     let mut hasher = DefaultHasher::new();
     LOOK.hash(&mut hasher);
     let colors = MermaidThemeColors::from_app(cx);
     for color in [
-        colors.background,
         colors.surface,
         colors.muted,
         colors.foreground,
@@ -5374,6 +5372,10 @@ mod tests {
                 opaque_canvas(&svg).is_none(),
                 "{name} kept an opaque canvas: {:?}",
                 opaque_canvas(&svg)
+            );
+            assert!(
+                !svg.contains("#101112"),
+                "{name} paints the card color, which shows as a box on glass"
             );
 
             if let Some(directory) = &snapshot_directory {

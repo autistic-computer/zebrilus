@@ -256,10 +256,11 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
 - **Pasted images.** The translators put a prompt's images on its `user_message_chunk` as
   `_meta.zz.images` (`{ format, data }`, base64): Claude's base64 image blocks, minus the
   `[Image #N]` placeholders, and Codex's data URLs and local image files. The bridge
-  (`chat_bridge::attach_images`) keeps at most 6 MiB of base64 per message so one stream item stays
-  under the 9 MiB batch cap, and the chat item carries them as `ItemBody::images`. The bubble draws
-  them first as 140 px tiles that open full size on click; `ChatPane::sync` decodes each item's
-  images once and keeps them in `ChatOpen::images`.
+  (`chat_bridge::attach_images`) keeps a message's text and base64 together under 6 MiB so one
+  stream item stays under the 9 MiB batch cap, and the chat item carries them as `ItemBody::images`;
+  a user item is held to that cap rather than the 1 MiB one other chat items get
+  (`runtime::validate_payload`). The bubble draws them first as 140 px tiles that open full size on
+  click; `ChatPane::sync` decodes each item's images once and keeps them in `ChatOpen::images`.
 - **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
   a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
   chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while

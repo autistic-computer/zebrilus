@@ -536,7 +536,8 @@ pub(crate) fn attach_images(
     update: &mut Value,
     images: impl IntoIterator<Item = (String, String)>,
 ) {
-    let mut left = MAX_PROMPT_IMAGES_BASE64;
+    let text = update["content"]["text"].as_str().map_or(0, str::len);
+    let mut left = MAX_PROMPT_IMAGES_BASE64.saturating_sub(text);
     let images = images
         .into_iter()
         .filter(|(format, data)| {

@@ -33,6 +33,7 @@ use parking_lot::Mutex;
 use serde_json::Value;
 #[cfg(test)]
 use zz_protocol::ClientInstanceId;
+use zz_protocol::chat::{ChatEvent, ItemKind};
 use zz_protocol::{
     AgentAutoApprove, AgentProvider, ClientId, MAX_AGENT_AUTH_METHODS, MAX_AGENT_PERMISSION_BYTES,
     MAX_AGENT_RESULT_BYTES, MAX_AGENT_SESSION_DIRECTORIES, MAX_AGENT_UPDATES_BYTES,
@@ -1653,6 +1654,13 @@ pub(crate) fn validate_payload(
         {
             MAX_AGENT_UPDATES_BYTES
         }
+        AgentStreamPayload::Chat {
+            event:
+                ChatEvent::ItemStarted {
+                    kind: ItemKind::User,
+                    ..
+                },
+        } => MAX_AGENT_UPDATES_BYTES,
         _ => MAX_AGENT_RESULT_BYTES,
     };
     if bytes.len() > limit {
@@ -1839,6 +1847,33 @@ mod tests {
         let mut option = PermissionOption::new(PermissionOptionId::new(id), "label", kind);
         option.meta = None;
         option
+    }
+
+    #[test]
+    fn a_prompt_with_pasted_images_fits_the_chat_stream() {
+        use zz_protocol::chat::{ItemBody, ItemId};
+
+        let started = |kind, body| AgentStreamPayload::Chat {
+            event: ChatEvent::ItemStarted {
+                item: ItemId::new("u:p1"),
+                turn: None,
+                parent: None,
+                kind,
+                body,
+                at: 0,
+            },
+        };
+        let shot = ItemBody {
+            text: "what is this?".to_owned(),
+            images: vec![AgentImage {
+                format: "image/png".to_owned(),
+                data: vec![7; 3 * 1024 * 1024],
+            }],
+            ..ItemBody::default()
+        };
+        assert!(validate_payload(&started(ItemKind::User, shot)).is_ok());
+        let long = ItemBody::text("a".repeat(2 * MAX_AGENT_RESULT_BYTES));
+        assert!(validate_payload(&started(ItemKind::Agent, long)).is_err());
     }
 
     #[test]
