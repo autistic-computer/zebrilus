@@ -343,8 +343,8 @@ The lens draws the chat (`crates/zz-ui/src/agent/chat.rs`): `chat_thread` draws 
 `zz_client::chat_rows` makes from the `ChatView`, inside `chat_column`, the column both apps share,
 and `chat_agent_pip` draws a subagent's chat in its PiP. The permission and question cards,
 `AgentComposer` and the task tray live in `crates/zz-ui/src/agent/`. Both apps still build
-`AgentTimeline` (`crates/zz-ui/src/agent.rs`) and draw it only while the chat view is empty, which
-happens against a daemon older than the chat machine.
+`AgentTimeline` (`crates/zz-ui/src/agent.rs`) and draw it only while the chat view is empty, as
+against a daemon older than the chat machine or before the first chat turn arrives.
 `AgentComposer` holds the `Composer` pill: `+`, which starts an `@` mention with the palette's
 target picker (`zz_ui::target::TargetPicker`, inserted with its host), the field, the context ring
 and the round send button; the cards over it and the branch under it are the lens's own. The

@@ -240,6 +240,30 @@ pub fn lens_approval(title: &str) -> Ask {
     }
 }
 
+pub fn palettes() -> Ask {
+    let names = [
+        "Tokyo Night",
+        "Catppuccin",
+        "Nord",
+        "Gruvbox",
+        "Solarized",
+        "Rosé Pine",
+        "Dracula",
+        "One Dark",
+        "Kanagawa",
+        "Everforest",
+    ];
+    Ask::Approval {
+        title: "Which palette should the storybook use?".to_owned(),
+        detail: None,
+        options: names
+            .iter()
+            .enumerate()
+            .map(|(index, name)| ask_option(&format!("palette-{index}"), name, OptionKind::Allow))
+            .collect(),
+    }
+}
+
 pub fn terminal_ask(title: &str) -> Ask {
     Ask::Approval {
         title: title.to_owned(),

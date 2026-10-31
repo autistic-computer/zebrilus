@@ -9,11 +9,11 @@ use penna::{
     ActiveTheme as _, IconName, WindowExt as _, button::Button, input::InputEvent,
     notification::Notification, v_flex,
 };
-use zz_protocol::agent_stream::AgentQuestion;
 use zz_protocol::chat::{
     Answer, Ask, ItemBody, ItemId, ItemKind, ItemStatus, OptionKind, QuestionAnswer, RequestClose,
     RequestId, RequestView, StepStatus, TurnId, TurnOutcome,
 };
+use zz_protocol::{MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
 use zz_ui::agent::{
     AGENT_CONTENT_MAX_WIDTH, agent_jump_to_bottom_button,
     chat::{
@@ -29,7 +29,7 @@ use zz_ui::pane_look::pane_color;
 
 use super::fixtures::{
     Script, agent, agents_script, approval, branch_question, checks_question, completed,
-    lens_approval, placement, question, story_hosts, terminal_ask,
+    lens_approval, palettes, placement, question, story_hosts, terminal_ask,
 };
 use crate::story::states;
 
@@ -70,6 +70,7 @@ pub struct Thread {
     pane: ChatPane,
     cards: Vec<(RequestId, QuestionCardState)>,
     highlighted: usize,
+    sent: Vec<RequestId>,
     refs: Option<ChatRefs>,
     vendor: IconName,
     frame: Frame,
@@ -86,6 +87,7 @@ impl Thread {
             pane: ChatPane::default(),
             cards: Vec::new(),
             highlighted: 0,
+            sent: Vec::new(),
             refs: None,
             vendor: zz_ui::program::CLAUDE_ICON,
             frame: Frame::Grow(0.0),
@@ -132,6 +134,11 @@ impl Thread {
 
     fn remade(mut self, remake: fn() -> Script) -> Self {
         self.remake = Some(remake);
+        self
+    }
+
+    fn sent(mut self, request: u64) -> Self {
+        self.sent.push(RequestId(request));
         self
     }
 
@@ -324,6 +331,7 @@ impl Thread {
                 .into_any_element(),
             );
         }
+        let enabled = !self.sent.contains(&id);
         let highlighted = current.then_some(self.highlighted);
         let tiles = options
             .iter()
@@ -339,15 +347,17 @@ impl Thread {
                     option.label.clone(),
                     deny,
                     highlighted == Some(index),
-                    true,
+                    enabled,
                     cx,
                 )
-                .on_click(move |_, _, cx| {
-                    answer.update(cx, |thread, cx| {
-                        thread.choose(id, chosen.clone(), deny);
-                        cx.notify();
-                    });
-                    cx.stop_propagation();
+                .when(enabled, |tile| {
+                    tile.on_click(move |_, _, cx| {
+                        answer.update(cx, |thread, cx| {
+                            thread.choose(id, chosen.clone(), deny);
+                            cx.notify();
+                        });
+                        cx.stop_propagation();
+                    })
                 })
                 .when(current, |tile| {
                     tile.on_hover(move |hovered, _, cx| {
@@ -920,15 +930,6 @@ sequenceDiagram\n\
     Lens-->>CLI: prompt typed into the TUI\n\
 ```";
 
-const FLOW: &str = "Here is the flow:\n\n\
-```mermaid\n\
-flowchart LR\n\
-  A[Prompt] --> B{Tool?}\n\
-  B -- yes --> C[Run it]\n\
-  B -- no --> D[Answer]\n\
-  C --> B\n\
-```";
-
 const BROKEN_MERMAID: &str = "```mermaid\n\
 timelineDiagramX\n\
     Prompt --> Answer\n\
@@ -973,10 +974,6 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
             (
                 "mermaid sequence diagram",
                 Thread::new(said("How does a prompt get to the lens?", SEQUENCE)),
-            ),
-            (
-                "mermaid flowchart",
-                Thread::new(said("Draw the agent loop.", FLOW)),
             ),
             (
                 "a source that does not parse",
@@ -1119,6 +1116,32 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
             None,
             terminal_ask("Waiting for a plan approval in the terminal"),
         );
+    let mut long = Script::new();
+    long.turn("Give pinned tabs a width floor everywhere they are drawn.")
+        .tool(
+            "e1",
+            None,
+            ItemKind::Edit,
+            "crates/zz-ui/src/browser/tab_strip.rs",
+        )
+        .ask(
+            1,
+            Some("e1"),
+            lens_approval(
+                "Edit crates/zz-ui/src/browser/tab_strip.rs, crates/zz-ui/src/browser/drag.rs and four more files to give pinned tabs a width floor",
+            ),
+        );
+    let mut many = Script::new();
+    many.turn("Pick the palette the storybook screenshots use.")
+        .ask(1, None, palettes());
+    let mut sent = Script::new();
+    sent.turn("Run the browser suite.")
+        .tool("x1", None, ItemKind::Execute, "cargo test -p zz-ui browser")
+        .ask(
+            1,
+            Some("x1"),
+            approval("Run cargo test -p zz-ui browser?", "Allow cargo test"),
+        );
     let mut answered = Script::new();
     answered
         .turn("Add a setting for how long finished chats stay in the sidebar.")
@@ -1133,6 +1156,18 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
     add(
         "an approval on the tool that needs it, first option highlighted",
         &Thread::new(approve).view(window, cx),
+    );
+    add(
+        "a long title wraps over the tiles",
+        &Thread::new(long).view(window, cx),
+    );
+    add(
+        "ten choices: digits stop at nine",
+        &Thread::new(many).view(window, cx),
+    );
+    add(
+        "answered: the tiles stay greyed until the CLI moves on",
+        &Thread::new(sent).sent(1).view(window, cx),
     );
     add(
         "two asks: the first is live, the question behind it waits greyed out",
@@ -1172,6 +1207,18 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         type_other(state, 0, "not-a-real-token-1234", window, cx);
     });
     add("a secret", &secret);
+    add(
+        "a question whose id is too long for zz to send back",
+        &Thread::new(asked(
+            "Open the pull request.",
+            8,
+            vec![AgentQuestion {
+                id: "q".repeat(MAX_AGENT_OPTION_BYTES + 1),
+                ..branch_question()
+            }],
+        ))
+        .view(window, cx),
+    );
     add(
         "a dialog the lens cannot answer: its one action shows the terminal",
         &Thread::new(wait).view(window, cx),

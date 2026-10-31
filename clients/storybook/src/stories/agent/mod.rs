@@ -84,7 +84,7 @@ const STORY: Story = Story {
         Section {
             id: "asks",
             name: "Asks",
-            summary: "Approvals and questions sit in the thread, drawn the way the desktop draws them: an approval on the tool row that needs it, with its options as tiles (digits pick, Enter confirms, Esc cancels); the first open question as the question card; a dialog the lens cannot answer as a card whose one action shows the terminal; anything behind the first ask greyed out until its turn; and an answered question as a record. Click an option to answer it.",
+            summary: "Approvals and questions sit in the thread, drawn the way the desktop draws them: an approval on the tool row that needs it, with its options as tiles (digits pick, Enter confirms, Esc cancels) that grey out once you answer, until the CLI moves on; the first open question as the question card; a dialog the lens cannot answer as a card whose one action shows the terminal; anything behind the first ask greyed out until its turn; and an answered question as a record. Click an option to answer it.",
             build: chat::asks,
         },
         Section {
