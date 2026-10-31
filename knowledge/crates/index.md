@@ -15,7 +15,7 @@
 <!-- okf:listing:end -->
 
 Workspace members without a crate page here: `ala` and the `ala-*` crates (our ala, see
-[ala](/references/ala.md)), `penna` (widget kit, a maintained gpui-component fork), `ala-cef` (has a page here),
+[ala](/references/ala.md)), `penna` (widget kit, a maintained gpui-component fork, see [penna](/references/penna.md)), `ala-cef` (has a page here),
 `zz-ui` (zz's application UI), `zz-tui` (the library behind `zz attach`), `zz-app` (the thin-client app
 web, iOS and Android share, in `clients/app`), `zz-ios` (the iOS entry point, in `clients/ios`), and
 `zz-android` (the Android entry point, in `clients/android`).

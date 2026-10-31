@@ -29,7 +29,7 @@ there before acting, because source is the ground truth and these pages are a ma
 | [designs](designs/index.md) | Feature plans and decision records, each carrying a `status:` field |
 | [playbooks](playbooks/index.md) | Prerequisites, running zz, building/updating the CEF bundle, updating the tmux reference |
 | [research](research/index.md) | Dated investigations that preserve reproduction evidence, source analysis, and unresolved proof gaps |
-| [references](references/index.md) | External pins: CEF artifacts, GPUI revision, tmux upstream, Ghostty colors |
+| [references](references/index.md) | Our libs ala and penna, and external pins: CEF artifacts, tmux upstream, Ghostty colors |
 
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Subdirectories

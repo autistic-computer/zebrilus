@@ -9,7 +9,7 @@ tags:
 - theme
 - design-system
 - design-plan
-timestamp: 2026-10-30T00:00:00Z
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Surface roles: shared materials composed per piece of UI
@@ -267,7 +267,7 @@ A theme with glass chrome over flat pill buttons, colors left out:
 }
 ```
 
-Kind names, group ids and role ids share the `roles` map. An id `zz_ui::roles::find` does not know is an
+Kind names, group ids and role ids share the `roles` map. An id `penna::roles::find` does not know is an
 error that suggests the role it was probably meant to be (`chromebutton` gets `chrome.button`,
 `composer` gets `agent.composer`).
 
@@ -512,8 +512,8 @@ a role is not built.
 The preview is the catalog's plates: regions that paint real UI. penna's page shows penna's five
 (an app window with the sidebar and the appearance rows, controls, floating surfaces, content and
 the phone chrome); zz lists its eleven instead. An app makes its own roles editable by registering
-them (`penna::roles::register`, and `penna::roles::retire` for ids that are gone) in its catalog's
-`register` function and adding a plate that draws them to the catalog's `plates`, next to penna's
+them (`penna::register`, which takes the roles, the ids that are gone and the app's theme layers) in its
+catalog's `register` function and adding a plate that draws them to the catalog's `plates`, next to penna's
 if it wants the kit's surfaces in view. Its roles show in the Roles step under their parents from
 `penna::roles::all()`, picking one shows the plates that drew it (each section host records the
 roles it paints, so no plate lists them), Export writes their patches, and Import drops retired

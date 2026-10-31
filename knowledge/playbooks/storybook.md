@@ -9,7 +9,7 @@ tags:
 - penna
 - wasm
 - agents
-timestamp: 2026-10-30T00:00:00Z
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # What it is
@@ -38,7 +38,13 @@ app's storybook is that harness plus a `penna_storybook::Catalog`:
 | `plates` | the theme creator's regions, in order; the creator opens the page (`#/theme-creator`) when the list is not empty. penna's are `penna_storybook::creator::PLATES` |
 | `stories` | story lists in page order after the creator; penna's are `penna_storybook::FOUNDATION` and `KIT` |
 | `knobs`, `apply` | app knobs on the App step (a `Knob` names its URL key, label, section heading and a `Control::Check` or `Control::Range`) and the function that applies them after the theme knobs; stories read them with `knobs().value(name)` or `flag(name)` |
-| `floating` | `story` or `story/section` entries that draw the backdrop knob under them; penna's are `backdrop::KIT_FLOATING` |
+| `floating` | `story` or `story/section` entries that draw the backdrop knob under them; penna's are `backdrop::KIT_FLOATING`, which name Kit stories, so a catalog whose `stories` leave out `KIT` sets its own (`&[]` for none) |
+
+An app's catalog can name only the fields it changes and end with `..PENNA`
+(`penna_storybook::PENNA`, penna's own catalog), so a field added later does not break it; zz's
+spells out every field. `penna_storybook::install` runs the catalog's `register` and fixes the
+catalog for the process, and `catalog()` read before that gives `PENNA` without fixing it.
+[penna](/references/penna.md) has the whole setup of an app on the kit, its storybook included.
 
 zz's catalog is `zz_storybook::CATALOG` in `clients/storybook/src/lib.rs`: the creator's plates
 (`PLATES` in `clients/storybook/src/stories/theme_creator.rs`), penna's Foundation, zz's agent,

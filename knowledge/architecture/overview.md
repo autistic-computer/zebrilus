@@ -4,7 +4,7 @@ title: zz system overview
 description: zz multiplexes terminal and Chromium browser panes, with an agent lens over terminals running Claude Code or Codex, over a persistent daemon shared by desktop, web, mobile ala, and terminal clients.
 resource: crates/zz/src/lib.rs
 tags: [architecture, overview, ala, multiplexer, daemon]
-timestamp: 2026-10-29T00:00:00-03:00
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Overview
@@ -66,7 +66,7 @@ from the CLI's own transcript.
 | [zz-client](/crates/zz-client.md) | sans-IO protocol reduction and client-local chrome key tables shared by client shells |
 | [zz](/crates/zz.md) | long-lived ala mux client; reconciles layouts; hosts terminal and CEF runtimes and the agent lens viewport |
 | `ala`, `ala-macros`, `ala-platform` | ala, our GPUI: the core with Zed's utility code folded in, its macros, and every platform backend (iOS's UIKit and Android's NDK ones included) as a module per target |
-| `penna` | widget kit on ala: theme, primitives, widgets, icons; no zz dependencies |
+| `penna` | widget kit on ala: theme, primitives, widgets, settings and phone chrome, icons; no zz dependencies (see [penna](/references/penna.md)) |
 | `zz-ui` | zz's application UI on penna, shared by the desktop and thin clients |
 | `zz-app` (`clients/app`) | the thin-client app the web, iOS and Android clients share |
 | `zz-ios` (`clients/ios`) | iOS entry point around zz-app and ala-platform's UIKit backend |
@@ -74,7 +74,7 @@ from the CLI's own transcript.
 | [zz-chrome-import](/crates/zz-chrome-import.md) | Chrome profile discovery, cookie decryption, read-only history extraction |
 | [zz-xtask](/crates/zz-xtask.md) | builds and validates platform CEF bundles |
 
-Workspace members without a dedicated page here: the ala crates (see [ala](/references/ala.md)), `penna`, `zz-ui`, `zz-app`, `zz-ios`, `zz-android`, and `zz-tui` (`zz attach`).
+Workspace members without a dedicated page here: the ala crates (see [ala](/references/ala.md)), `penna` (see [penna](/references/penna.md)), `zz-ui`, `zz-app`, `zz-ios`, `zz-android`, and `zz-tui` (`zz attach`).
 The UIKit backend is `libs/ala/crates/ala-platform/src/ios`; the iOS app and its launch resources live in `clients/ios`.
 The Android backend is `libs/ala/crates/ala-platform/src/android`; the Android app, its Java glue and manifest live in `clients/android`.
 See [crates](/crates/index.md).

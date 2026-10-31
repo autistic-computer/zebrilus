@@ -4,20 +4,20 @@ title: UI design conventions
 description: The component, palette, and styling rules that keep zz application chrome consistent and theme-aware.
 resource: crates/zz-ui/src/command/palette_view.rs
 tags: [ui, ala, zz-ui, theme, chrome, clippy]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Overview
 
-**`penna` (`libs/penna`) is zz's base component layer**, re-exported by `zz-ui`. It is a full fork of `gpui-component`, not a
+**`penna` (`libs/penna`) is zz's base component layer**; zz's crates import kit names from `penna` directly, and
+`zz-ui` holds zz's own UI on it. Setting up another app on it is in [penna](/references/penna.md). It is a full fork of `gpui-component`, not a
 dependency on it: commit `7811a47` vendored the widget set and removed the upstream crate from the
 workspace entirely. The fork revision and the per-module port notes live in `libs/penna/UPSTREAM.md`;
 read that file before widening or diverging the surface.
 
-Application chrome must use zz-ui's components and theme vocabulary rather than maintaining a
-parallel widget set or color palette. Import `zz_ui::ActiveTheme` (not `gpui_component::ActiveTheme`;
-that path does not resolve) and read colors from `cx.theme()` at the point where an ala element
-is rendered.
+Application chrome must use penna's and zz-ui's components and theme vocabulary rather than
+maintaining a parallel widget set or color palette. Import `penna::ActiveTheme` and read colors from
+`cx.theme()` at the point where an ala element is rendered.
 
 The house-style reference is `crates/zz-ui/src/command/palette_view.rs`. It demonstrates `cx.theme()`
 derivations alongside the `Input`/`InputState`, `ListItem`, `Kbd`, `Keycap`, `Badge` and `Check` widgets.
@@ -368,8 +368,10 @@ through the settings portal (GNOME `font-name`, KDE `kdeglobals` `font`), and fo
 without a portal value it falls back to ala's fallback stack. Config reload and OS appearance
 changes reapply the choice to open windows.
 The `UiFontConfig` global holds this string separately so `AppConfig` remains `Copy`.
-Native entrypoints register `penna::settings::appearance::AvailableFonts` from their ala platform text system. The picker queries
-that catalog directly to avoid offering ala fallback names that are not installed.
+Native entrypoints set `penna::settings::appearance::AvailableFonts` from their ala platform text system as a global
+(`crates/zz/src/lib.rs` builds it before the platform moves into the application). The picker
+(`ui_font_select`, which the kit's UI font row uses) queries that catalog directly to avoid offering ala
+fallback names that are not installed; without it, as in the thin clients, it lists the text system's names.
 
 # UI zoom and scalable metrics
 
@@ -382,7 +384,7 @@ Each change updates the global `UiZoom` and applies it to every open window with
 
 `Window::set_zoom` folds that multiplier into the window scale factor and logical viewport, so the
 entire ala element tree follows UI zoom, including values expressed in pixels. Continue to use a
-named `Size` or `zz_ui::rems_from_px` when that captures a component's semantic sizing contract, but
+named `Size` or `penna::rems_from_px` when that captures a component's semantic sizing contract, but
 do not multiply metrics by `UiZoom` again. Browser viewports already receive the effective window
 scale factor, so native-to-CEF geometry follows the same rule. Geometry that must remain physically
 screen-sized needs to opt out explicitly with `UiZoom::unzoomed`.
@@ -439,9 +441,10 @@ Corner smoothing is not a material: every window draws `CORNER_SMOOTHING` (4), w
   `pane-gaps`, and the margin from `pane-margin`.
 
 The thin clients keep the selected theme id, their own saved themes and their overrides in their
-preferences, and `Preferences::apply` activates `Preferences::shown_theme()` (the theme with the
-device's `ThemeOverrides` composed as on desktop), then sets the UI font from the preference, else
-the theme's font, else the bundled Inter.
+preferences as a `penna::interface_theme::Appearance`, and `Preferences::apply` adjusts its mode,
+contrast, zoom and animations for the platform and calls `Appearance::apply`, which activates the
+theme with the device's `ThemeOverrides` composed as on desktop; it then sets the UI font from the
+preference, else the theme's font, else the bundled Inter.
 
 `chrome-contrast` defaults to 1.0 and accepts 1.0–2.0; other values are reported like any numeric
 key. The Interface page shows it as a slider from 100% to 200%, in steps of 5. It scales the elevation step in `raised()` and `washed()`, the amounts in `hover()` and

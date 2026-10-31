@@ -9,7 +9,7 @@ tags:
 - window
 - appearance
 - mux
-timestamp: 2026-10-28T00:00:00-03:00
+timestamp: 2026-10-31T00:00:00Z
 ---
 
 # Overview
@@ -294,7 +294,7 @@ shadow, in a color set or in a `glass` object, is an error rather than ignored: 
 it and, when it differs from a real key only in case, dashes or underscores, names the key that
 was meant (`` unknown field `row_inset`, did you mean `row-inset`? ``). Material and color keys
 are kebab-case while glass fields keep `GlassMaterial`'s snake_case (`light_color`,
-`edge_shadow`), which is the usual slip. A role id `zz_ui::roles::find` does not know is an error
+`edge_shadow`), which is the usual slip. A role id `penna::roles::find` does not know is an error
 too, and suggests the role meant (`` unknown role `chromebutton`, did you mean `chrome.button`? ``),
 as is a prop value outside its list. The exception is a role zz no longer draws
 (`zz_ui::roles::RETIRED`): the file loads and that entry is dropped. Settings Import, the thin clients' Import and the storybook's
