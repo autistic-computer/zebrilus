@@ -171,6 +171,7 @@ fn restrict_to_current_user(path: &std::path::Path) -> io::Result<()> {
 }
 
 #[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
 fn restrict_to_current_user(_: &std::path::Path) -> io::Result<()> {
     Ok(())
 }
