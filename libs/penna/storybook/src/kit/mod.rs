@@ -1,5 +1,6 @@
 use crate::story::Story;
 
+mod appearance;
 mod buttons;
 mod code_editor;
 mod color_picker;
@@ -37,6 +38,7 @@ pub const STORIES: &[Story] = &[
     icons::STORY,
     title_bar::STORY,
     navigation::STORY,
+    appearance::STORY,
     which_key::STORY,
     compact::STORY,
 ];

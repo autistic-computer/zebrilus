@@ -1,16 +1,21 @@
-use super::{SettingsSelectItem, StackPosition};
+use super::{SettingEntry, SettingsSelectItem, StackPosition};
 use crate::button::{Button, ButtonVariants as _};
-use crate::interface_theme::{ACCENTS, InterfaceTheme, MAX_CORNER_RADIUS, ThemeOverrides};
+use crate::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
+use crate::interface_theme::{
+    ACCENTS, Appearance, AppearanceChange, DEFAULT_TINT_HUE, InterfaceTheme, MAX_CORNER_RADIUS,
+    SavedThemes, ThemeOverrides,
+};
 use crate::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use crate::segmented::SegmentedControl;
-use crate::select::{SelectItem as _, SelectState};
+use crate::select::{Select, SelectEvent, SelectItem as _, SelectState};
 use crate::slider::Slider;
+use crate::switch::Switch;
 use crate::{ActiveTheme as _, Colorize as _, IconName, StyledExt as _, ThemeColor, ThemeMode};
 use ala::{
-    Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Window, div,
-    prelude::*, px,
+    Anchor, AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
+    Window, div, prelude::*, px,
 };
-use std::{convert::Infallible, rc::Rc, sync::Arc};
+use std::{cell::RefCell, convert::Infallible, rc::Rc, sync::Arc};
 
 const THEME_PREVIEW_WIDTH: f32 = 84.0;
 const THEME_PREVIEW_HEIGHT: f32 = 56.0;
@@ -72,6 +77,7 @@ impl<T: Copy> AppearancePageItem<T> {
 
     pub const fn title(self) -> Option<&'static str> {
         Some(match self {
+            Self::ThemeMode => "Mode",
             Self::Accent => "Accent",
             Self::TintHue => "Tint",
             Self::Tint => "Tint strength",
@@ -79,8 +85,10 @@ impl<T: Copy> AppearancePageItem<T> {
             Self::CornerRadius => "Corner radius",
             Self::ChromeContrast => "Contrast",
             Self::AnimationSpeed => "Animation speed",
+            Self::UiFontFamily => "UI font",
             Self::UiZoom => "UI zoom",
-            _ => return None,
+            Self::Animations => "Animations",
+            Self::Title | Self::Group { .. } | Self::Advanced { .. } | Self::App(_) => return None,
         })
     }
 }
@@ -203,10 +211,21 @@ fn accent_label(accent: ala::Hsla, label: SharedString, cx: &App) -> ala::Div {
         )
 }
 
+type ThemeMenu = Rc<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu>;
+
 pub fn theme_picker(
     picks: &ThemePicks,
     on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
     more: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    cx: &App,
+) -> ala::Div {
+    picker(picks, on_pick, Some(Rc::new(more)), cx)
+}
+
+fn picker(
+    picks: &ThemePicks,
+    on_pick: impl Fn(usize, &mut Window, &mut App) + 'static,
+    more: Option<ThemeMenu>,
     cx: &App,
 ) -> ala::Div {
     let theme_mode = cx.theme().mode;
@@ -258,14 +277,16 @@ pub fn theme_picker(
                         })
                 }),
         )
-        .child(
+        .children(more.map(|more| {
             Button::new("settings-theme-more")
                 .ghost()
                 .icon(IconName::Ellipsis)
                 .tooltip("More")
                 .on(ground)
-                .dropdown_menu_with_anchor(Anchor::TopRight, more),
-        )
+                .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, window, cx| {
+                    more(menu, window, cx)
+                })
+        }))
 }
 
 pub const SWATCH: f32 = 18.0;
@@ -609,6 +630,281 @@ pub fn ui_font_select(
     let selected = selected.unwrap_or_default();
     let index = items.iter().position(|item| item.value() == selected);
     cx.new(|cx| SelectState::new(items, index.map(crate::IndexPath::new), window, cx))
+}
+
+type OnChange = Rc<dyn Fn(AppearanceChange, &mut Window, &mut App)>;
+
+pub struct AppearanceControls {
+    accent: Entity<ColorPickerState>,
+    ui_font: RefCell<Option<(Entity<SelectState<Vec<SettingsSelectItem>>>, Subscription)>>,
+    zoom: FocusHandle,
+    on_change: OnChange,
+    theme_menu: Option<ThemeMenu>,
+    _accent: Subscription,
+}
+
+impl AppearanceControls {
+    pub fn new(
+        appearance: &Appearance,
+        on_change: impl Fn(AppearanceChange, &mut Window, &mut App) + 'static,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Self {
+        let on_change: OnChange = Rc::new(on_change);
+        let accent = cx.new(|cx| ColorPickerState::new(custom_accent(appearance), window, cx));
+        let changed = Rc::clone(&on_change);
+        let subscription = window.subscribe(
+            &accent,
+            cx,
+            move |_, event: &ColorPickerEvent, window, cx| {
+                let ColorPickerEvent::Change(color) = event;
+                let accent = color.map(|color| crate::to_hex(color.opaque()));
+                changed(AppearanceChange::Accent(accent), window, cx);
+            },
+        );
+        Self {
+            accent,
+            ui_font: RefCell::default(),
+            zoom: cx.focus_handle(),
+            on_change,
+            theme_menu: None,
+            _accent: subscription,
+        }
+    }
+
+    #[must_use]
+    pub fn theme_menu(
+        mut self,
+        menu: impl Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static,
+    ) -> Self {
+        self.theme_menu = Some(Rc::new(menu));
+        self
+    }
+
+    pub fn zoom_focus(&self) -> &FocusHandle {
+        &self.zoom
+    }
+
+    pub fn sync(
+        &self,
+        appearance: &Appearance,
+        saved: &SavedThemes,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let accent = custom_accent(appearance);
+        self.accent
+            .update(cx, |picker, cx| picker.set_color(accent, window, cx));
+        if let Some((select, _)) = &*self.ui_font.borrow() {
+            let font = appearance.ui_font(saved).to_owned();
+            select.update(cx, |select, cx| {
+                select.set_selected_value(&font, window, cx);
+            });
+        }
+    }
+
+    fn ui_font_select(
+        &self,
+        appearance: &Appearance,
+        saved: &SavedThemes,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Entity<SelectState<Vec<SettingsSelectItem>>> {
+        if let Some((select, _)) = &*self.ui_font.borrow() {
+            return select.clone();
+        }
+        let select = ui_font_select(Some(appearance.ui_font(saved)), window, cx);
+        let changed = Rc::clone(&self.on_change);
+        let subscription = window.subscribe(
+            &select,
+            cx,
+            move |_, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
+                if let SelectEvent::Confirm(Some(family)) = event {
+                    changed(AppearanceChange::UiFont(family.clone()), window, cx);
+                }
+            },
+        );
+        *self.ui_font.borrow_mut() = Some((select.clone(), subscription));
+        select
+    }
+
+    fn change(
+        &self,
+        change: fn(f32) -> AppearanceChange,
+    ) -> impl Fn(f32, &mut Window, &mut App) + use<> {
+        let on_change = Rc::clone(&self.on_change);
+        move |value, window, cx| on_change(change(value), window, cx)
+    }
+}
+
+fn custom_accent(appearance: &Appearance) -> Option<ala::Hsla> {
+    appearance
+        .overrides
+        .accent
+        .as_deref()
+        .filter(|accent| !ACCENTS.contains(accent))
+        .and_then(|accent| crate::interface_theme::accent_color(accent, ThemeMode::Dark))
+}
+
+pub fn theme_picks<'a>(appearance: &'a Appearance, saved: &'a SavedThemes) -> ThemePicks<'a> {
+    let themes = crate::interface_theme::builtin_themes()
+        .iter()
+        .map(|(id, theme)| (SharedString::from(*id), theme))
+        .chain(saved.iter().map(|(id, theme)| (id.clone(), theme)))
+        .collect::<Vec<_>>();
+    let active = appearance.theme_id(saved);
+    let selected = themes
+        .iter()
+        .position(|(id, _)| id.as_str() == active)
+        .unwrap_or(0);
+    ThemePicks {
+        themes,
+        selected,
+        overrides: &appearance.overrides,
+    }
+}
+
+fn placed(entry: SettingEntry, control: impl IntoElement, stacked: bool) -> SettingEntry {
+    if stacked {
+        entry.child(control)
+    } else {
+        entry.control(control)
+    }
+}
+
+pub fn kit_row<T: Copy>(
+    item: AppearancePageItem<T>,
+    appearance: &Appearance,
+    saved: &SavedThemes,
+    controls: &AppearanceControls,
+    stacked: bool,
+    window: &mut Window,
+    cx: &mut App,
+) -> Option<SettingEntry> {
+    let title = item.title()?;
+    let entry = SettingEntry::new(title);
+    let on_change = Rc::clone(&controls.on_change);
+    Some(match item {
+        AppearancePageItem::ThemeMode => entry.control(theme_mode_control(
+            appearance.theme_mode(),
+            move |mode, window, cx| on_change(AppearanceChange::Mode(mode), window, cx),
+            cx,
+        )),
+        AppearancePageItem::Themes => {
+            let picks = theme_picks(appearance, saved);
+            let picked = picks
+                .themes
+                .iter()
+                .map(|(id, _)| {
+                    let mut next = appearance.clone();
+                    next.pick_theme(id, saved);
+                    (id.clone(), next.ui_font(saved).to_owned())
+                })
+                .collect::<Vec<_>>();
+            let fonts = controls
+                .ui_font
+                .borrow()
+                .as_ref()
+                .map(|(select, _)| select.clone());
+            let on_pick = move |index: usize, window: &mut Window, cx: &mut App| {
+                let (id, font) = &picked[index];
+                if let Some(select) = &fonts {
+                    select.update(cx, |select, cx| {
+                        select.set_selected_value(font, window, cx);
+                    });
+                }
+                on_change(AppearanceChange::Theme(id.clone()), window, cx);
+            };
+            entry.control(picker(&picks, on_pick, controls.theme_menu.clone(), cx))
+        }
+        AppearancePageItem::Accent => {
+            let picks = theme_picks(appearance, saved);
+            let custom = ColorPicker::new(&controls.accent, ala::transparent_black())
+                .label(title)
+                .swatch(px(SWATCH));
+            let picker = controls.accent.clone();
+            let swatches = accent_swatches(
+                &picks,
+                cx.theme().mode,
+                custom,
+                move |name, window, cx| {
+                    picker.update(cx, |picker, cx| picker.set_color(None, window, cx));
+                    on_change(
+                        AppearanceChange::Accent(name.map(str::to_owned)),
+                        window,
+                        cx,
+                    );
+                },
+                cx,
+            );
+            placed(entry, swatches, stacked)
+        }
+        AppearancePageItem::TintHue => {
+            let hue = appearance.overrides.tint_hue.unwrap_or(DEFAULT_TINT_HUE);
+            let slider = tint_hue_slider(hue, controls.change(AppearanceChange::TintHue), cx);
+            placed(entry, slider, stacked)
+        }
+        AppearancePageItem::Tint => {
+            let tint = appearance.overrides.tint.unwrap_or(0.0);
+            let slider = tint_slider(tint, controls.change(AppearanceChange::Tint), cx);
+            placed(entry, slider, stacked)
+        }
+        AppearancePageItem::CornerRadius => {
+            let slider = corner_radius_slider(
+                appearance.corner_radius(saved),
+                controls.change(AppearanceChange::Radius),
+                cx,
+            );
+            placed(entry, slider, stacked)
+        }
+        AppearancePageItem::ChromeContrast => {
+            let slider = contrast_slider(
+                appearance.contrast,
+                controls.change(AppearanceChange::Contrast),
+                cx,
+            );
+            placed(entry, slider, stacked)
+        }
+        AppearancePageItem::UiFontFamily => {
+            let select = controls.ui_font_select(appearance, saved, window, cx);
+            entry.control(
+                div().w(px(200.0)).max_w_full().flex_none().child(
+                    Select::new(&select)
+                        .title(title)
+                        .placeholder("System default")
+                        .on(super::settings_card_ground(cx)),
+                ),
+            )
+        }
+        AppearancePageItem::UiZoom => {
+            let slider = zoom_slider(
+                appearance.zoom,
+                &controls.zoom,
+                controls.change(AppearanceChange::Zoom),
+                cx,
+            );
+            placed(entry, slider, stacked)
+        }
+        AppearancePageItem::Animations => entry.control(
+            Switch::new("settings-animations")
+                .checked(appearance.animations)
+                .on_click(move |animations, window, cx| {
+                    on_change(AppearanceChange::Animations(*animations), window, cx);
+                }),
+        ),
+        AppearancePageItem::AnimationSpeed => {
+            let slider = animation_speed_slider(
+                appearance.animation_speed,
+                controls.change(AppearanceChange::AnimationSpeed),
+                cx,
+            );
+            placed(entry, slider, stacked)
+        }
+        AppearancePageItem::Title
+        | AppearancePageItem::Group { .. }
+        | AppearancePageItem::Advanced { .. }
+        | AppearancePageItem::App(_) => return None,
+    })
 }
 
 pub fn picker_tile(
@@ -1013,5 +1309,33 @@ mod tests {
             [1, 2].map(|index| run_position(&items, index, Item::is_entry)),
             [StackPosition::First, StackPosition::Last]
         );
+    }
+
+    #[ala::test]
+    fn kit_rows_draw_every_kit_entry_and_leave_the_rest_to_the_app(cx: &mut ala::TestAppContext) {
+        type Item = AppearancePageItem<u8>;
+        cx.update(crate::init);
+        let cx = cx.add_empty_window();
+        let changes = Rc::new(RefCell::new(Vec::new()));
+        let seen = Rc::clone(&changes);
+        cx.update(|window, cx| {
+            let appearance = Appearance::default();
+            let controls = AppearanceControls::new(
+                &appearance,
+                move |change, _, _| seen.borrow_mut().push(change),
+                window,
+                cx,
+            );
+            let mut items = appearance_page_items::<u8>(true);
+            items.push(Item::App(1));
+            for item in items {
+                let row = kit_row(item, &appearance, &[], &controls, false, window, cx);
+                let kit_entry = item.is_entry() && !matches!(item, Item::App(_));
+                assert_eq!(row.is_some(), kit_entry, "{item:?}");
+                assert_eq!(item.title().is_some(), kit_entry, "{item:?}");
+            }
+            controls.change(AppearanceChange::Contrast)(1.5, window, cx);
+        });
+        assert_eq!(*changes.borrow(), [AppearanceChange::Contrast(1.5)]);
     }
 }

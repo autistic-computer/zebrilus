@@ -1,7 +1,9 @@
 use std::collections::BTreeMap;
 
 use ala::{App, GlassMaterial, Hsla, px};
-use penna::interface_theme::{self, InterfaceTheme, Materials, ThemeColors};
+use penna::interface_theme::{
+    self, Appearance, InterfaceTheme, Materials, ThemeColors, ThemeOverrides,
+};
 use penna::{
     Emphasis, PrimaryStyle, Shadow, Smoothing, Style, StylePatch, SurfaceRole, Theme, ThemeColor,
     ThemeMode, Tone, UiZoom,
@@ -421,6 +423,24 @@ impl Knobs {
         }
     }
 
+    pub fn appearance(&self) -> Appearance {
+        let mut appearance = Appearance {
+            theme: Some(self.interface.to_owned()),
+            overrides: ThemeOverrides {
+                tint: Some(self.tint),
+                tint_hue: Some(self.tint_hue),
+                ..ThemeOverrides::default()
+            },
+            contrast: self.contrast,
+            zoom: self.zoom,
+            animations: self.motion,
+            animation_speed: self.speed,
+            ..Appearance::default()
+        };
+        appearance.set_theme_mode(self.theme);
+        appearance
+    }
+
     pub fn apply(&self, cx: &mut App) {
         self.interface_theme().activate(self.theme, None, cx);
         cx.set_reduce_motion(!self.motion);
@@ -762,6 +782,26 @@ mod tests {
         assert_eq!(controls("control-radius=4&radius=8"), Some(4.0));
         assert_eq!(controls("radius=8&control-radius=8"), None);
         assert_eq!(controls("radius=8"), None);
+    }
+
+    #[test]
+    fn the_appearance_knobs_make_an_appearance() {
+        let knobs = Knobs::parse(
+            "theme=light&interface-theme=macos&contrast=1.5&tint=0.3&tint-hue=145&zoom=1.25&motion=0&speed=0.5",
+        )
+        .unwrap();
+        let appearance = knobs.appearance();
+        assert_eq!(appearance.theme_mode(), Some(ThemeMode::Light));
+        assert_eq!(appearance.theme.as_deref(), Some("macos"));
+        assert_eq!(
+            (appearance.overrides.tint, appearance.overrides.tint_hue),
+            (Some(0.3), Some(145.0))
+        );
+        assert_eq!(appearance.contrast, 1.5);
+        assert_eq!(appearance.zoom, 1.25);
+        assert!(!appearance.animations);
+        assert_eq!(appearance.animation_speed, 0.5);
+        assert_eq!(Knobs::default().appearance().theme_mode(), None);
     }
 
     #[test]

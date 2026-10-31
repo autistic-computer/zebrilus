@@ -509,6 +509,172 @@ pub fn default_theme() -> &'static InterfaceTheme {
     builtin_theme(DEFAULT_THEME).expect("the default theme is built in")
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Appearance {
+    pub mode: Option<String>,
+    pub theme: Option<String>,
+    #[serde(flatten)]
+    pub overrides: ThemeOverrides,
+    pub contrast: f32,
+    pub ui_font_family: String,
+    pub zoom: f32,
+    pub animations: bool,
+    pub animation_speed: f32,
+}
+
+impl Default for Appearance {
+    fn default() -> Self {
+        Self {
+            mode: None,
+            theme: None,
+            overrides: ThemeOverrides::default(),
+            contrast: 1.0,
+            ui_font_family: String::new(),
+            zoom: 1.0,
+            animations: true,
+            animation_speed: crate::motion::DEFAULT_ANIMATION_SPEED,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum AppearanceChange {
+    Mode(Option<ThemeMode>),
+    Theme(SharedString),
+    Accent(Option<String>),
+    TintHue(f32),
+    Tint(f32),
+    Radius(f32),
+    Contrast(f32),
+    UiFont(String),
+    Zoom(f32),
+    Animations(bool),
+    AnimationSpeed(f32),
+}
+
+pub type SavedThemes = [(SharedString, InterfaceTheme)];
+
+impl Appearance {
+    pub fn theme_mode(&self) -> Option<ThemeMode> {
+        match self.mode.as_deref().map(str::trim) {
+            Some("light") => Some(ThemeMode::Light),
+            Some("dark") => Some(ThemeMode::Dark),
+            _ => None,
+        }
+    }
+
+    pub fn set_theme_mode(&mut self, mode: Option<ThemeMode>) {
+        let mode = match mode {
+            None => "system",
+            Some(ThemeMode::Light) => "light",
+            Some(ThemeMode::Dark) => "dark",
+        };
+        self.mode = Some(mode.to_owned());
+    }
+
+    pub fn theme_id(&self, saved: &SavedThemes) -> &str {
+        self.theme
+            .as_deref()
+            .filter(|id| knows_theme(id, saved))
+            .unwrap_or(DEFAULT_THEME)
+    }
+
+    pub fn interface_theme<'a>(&self, saved: &'a SavedThemes) -> &'a InterfaceTheme {
+        self.theme
+            .as_deref()
+            .and_then(|id| saved_theme(id, saved).or_else(|| builtin_theme(id)))
+            .unwrap_or_else(|| default_theme())
+    }
+
+    pub fn shown_theme(&self, saved: &SavedThemes) -> InterfaceTheme {
+        let mut theme = self.interface_theme(saved).clone();
+        self.overrides.apply_to(&mut theme);
+        theme
+    }
+
+    pub fn corner_radius(&self, saved: &SavedThemes) -> f32 {
+        self.overrides
+            .radius
+            .unwrap_or_else(|| self.interface_theme(saved).materials.radius)
+    }
+
+    pub fn ui_font<'a>(&'a self, saved: &'a SavedThemes) -> &'a str {
+        if self.ui_font_family.is_empty() {
+            self.interface_theme(saved)
+                .materials
+                .font
+                .as_deref()
+                .unwrap_or("")
+        } else {
+            &self.ui_font_family
+        }
+    }
+
+    pub fn pick_theme(&mut self, id: &str, saved: &SavedThemes) {
+        self.theme = knows_theme(id, saved).then(|| id.to_owned());
+        self.overrides.pick_theme();
+        if self.interface_theme(saved).materials.font.is_some() {
+            self.ui_font_family.clear();
+        }
+    }
+
+    pub fn change(&mut self, change: AppearanceChange, saved: &SavedThemes) {
+        match change {
+            AppearanceChange::Mode(mode) => self.set_theme_mode(mode),
+            AppearanceChange::Theme(id) => self.pick_theme(&id, saved),
+            AppearanceChange::Accent(accent) => self.overrides.accent = accent,
+            AppearanceChange::TintHue(hue) => self.overrides.tint_hue = Some(hue),
+            AppearanceChange::Tint(tint) => self.overrides.tint = Some(tint),
+            AppearanceChange::Radius(radius) => self.overrides.radius = Some(radius),
+            AppearanceChange::Contrast(contrast) => self.contrast = contrast,
+            AppearanceChange::UiFont(family) => self.ui_font_family = family,
+            AppearanceChange::Zoom(zoom) => self.zoom = zoom,
+            AppearanceChange::Animations(animations) => self.animations = animations,
+            AppearanceChange::AnimationSpeed(speed) => self.animation_speed = speed,
+        }
+    }
+
+    pub fn apply(&self, saved: &SavedThemes, mut window: Option<&mut Window>, cx: &mut App) {
+        cx.set_reduce_motion(!self.animations);
+        cx.set_animation_speed(self.animation_speed);
+        self.shown_theme(saved)
+            .activate(self.theme_mode(), window.as_deref_mut(), cx);
+        let font = self.ui_font(saved);
+        let family = if !font.is_empty() && cx.text_system().has_font(font) {
+            SharedString::from(font.to_owned())
+        } else {
+            ala::Font::default().family
+        };
+        let theme = Theme::global_mut(cx);
+        theme.font_family = family;
+        theme.set_contrast(self.contrast);
+        cx.set_global(crate::UiZoom(self.zoom));
+        match window {
+            Some(window) => window.set_zoom(self.zoom),
+            None => {
+                for window in cx.windows() {
+                    window
+                        .update(cx, |_, window, _| window.set_zoom(self.zoom))
+                        .ok();
+                }
+            }
+        }
+        cx.refresh_windows();
+    }
+}
+
+fn saved_theme<'a>(id: &str, saved: &'a SavedThemes) -> Option<&'a InterfaceTheme> {
+    saved
+        .iter()
+        .find(|(saved, _)| saved.as_str() == id)
+        .map(|(_, theme)| theme)
+}
+
+fn knows_theme(id: &str, saved: &SavedThemes) -> bool {
+    is_builtin_theme(id) || saved_theme(id, saved).is_some()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1025,6 +1191,133 @@ mod tests {
             );
             default_theme().activate(None, None, cx);
             assert_shows(default_theme(), system, cx);
+        });
+    }
+
+    #[test]
+    fn appearance_reads_and_writes_the_same_keys() {
+        assert_eq!(
+            serde_json::from_str::<Appearance>("{}").unwrap(),
+            Appearance::default()
+        );
+        let source = r#"{"mode":"dark","theme":"macos","radius":12,"accent":"green","tint":0.25,"tint-hue":145,"contrast":1.5,"ui_font_family":"Inter","zoom":1.25,"animations":false,"animation_speed":0.5,"sidebar":true}"#;
+        let appearance = serde_json::from_str::<Appearance>(source).unwrap();
+        assert_eq!(
+            appearance,
+            Appearance {
+                mode: Some("dark".into()),
+                theme: Some("macos".into()),
+                overrides: ThemeOverrides {
+                    radius: Some(12.0),
+                    accent: Some("green".into()),
+                    tint: Some(0.25),
+                    tint_hue: Some(145.0),
+                },
+                contrast: 1.5,
+                ui_font_family: "Inter".into(),
+                zoom: 1.25,
+                animations: false,
+                animation_speed: 0.5,
+            }
+        );
+        let written = serde_json::to_value(&appearance).unwrap();
+        let mut keys = written
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [
+                "accent",
+                "animation_speed",
+                "animations",
+                "contrast",
+                "mode",
+                "radius",
+                "theme",
+                "tint",
+                "tint-hue",
+                "ui_font_family",
+                "zoom"
+            ]
+        );
+        assert_eq!(
+            serde_json::from_value::<Appearance>(written).unwrap(),
+            appearance
+        );
+    }
+
+    #[test]
+    fn appearance_changes_follow_the_theme_rules() {
+        let font = parse_theme(r#"{"name":"Mono","materials":{"font":"Lilex","radius":2}}"#);
+        let saved = [(SharedString::from("theme-1"), font.unwrap())];
+        let mut appearance = Appearance {
+            ui_font_family: "Inter".into(),
+            ..Appearance::default()
+        };
+        assert_eq!(appearance.theme_mode(), None);
+        assert_eq!(appearance.theme_id(&saved), DEFAULT_THEME);
+        for (mode, spelled) in [
+            (Some(ThemeMode::Dark), "dark"),
+            (Some(ThemeMode::Light), "light"),
+            (None, "system"),
+        ] {
+            appearance.change(AppearanceChange::Mode(mode), &saved);
+            assert_eq!(appearance.mode.as_deref(), Some(spelled));
+            assert_eq!(appearance.theme_mode(), mode);
+        }
+        appearance.change(AppearanceChange::Radius(7.0), &saved);
+        appearance.change(AppearanceChange::Accent(Some("pink".into())), &saved);
+        assert_eq!(appearance.corner_radius(&saved), 7.0);
+        assert_eq!(appearance.ui_font(&saved), "Inter");
+
+        appearance.change(AppearanceChange::Theme("macos".into()), &saved);
+        assert_eq!(appearance.theme_id(&saved), "macos");
+        assert_eq!(appearance.overrides.radius, None);
+        assert_eq!(appearance.overrides.accent.as_deref(), Some("pink"));
+        assert_eq!(appearance.ui_font(&saved), "Inter");
+
+        appearance.change(AppearanceChange::Theme("theme-1".into()), &saved);
+        assert_eq!(appearance.interface_theme(&saved).name, "Mono");
+        assert_eq!(appearance.ui_font(&saved), "Lilex");
+        assert_eq!(appearance.corner_radius(&saved), 2.0);
+        assert_eq!(appearance.shown_theme(&saved).materials.radius, 2.0);
+
+        appearance.change(AppearanceChange::Theme("vaporwave".into()), &saved);
+        assert_eq!(appearance.theme, None);
+        assert_eq!(appearance.theme_id(&saved), DEFAULT_THEME);
+    }
+
+    #[ala::test]
+    fn applying_an_appearance_shows_its_theme_contrast_zoom_and_reduced_motion(
+        cx: &mut ala::TestAppContext,
+    ) {
+        let appearance = Appearance {
+            mode: Some("dark".into()),
+            overrides: ThemeOverrides {
+                radius: Some(5.0),
+                accent: Some("green".into()),
+                ..ThemeOverrides::default()
+            },
+            contrast: 1.5,
+            zoom: 1.25,
+            animations: false,
+            ..Appearance::default()
+        };
+        cx.update(|cx| {
+            crate::init(cx);
+            appearance.apply(&[], None, cx);
+            let theme = Theme::global(cx);
+            assert_eq!(theme.mode, ThemeMode::Dark);
+            assert_eq!(theme.radius, px(5.0));
+            assert_eq!(Some(theme.accent), accent_color("green", ThemeMode::Dark));
+            assert_eq!(theme.contrast(), 1.5);
+            assert_eq!(theme.font_family, ala::Font::default().family);
+            assert_eq!(crate::UiZoom::get(cx), 1.25);
+            assert!(cx.reduce_motion());
         });
     }
 

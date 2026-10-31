@@ -1,3 +1,4 @@
+pub mod about;
 pub mod appearance;
 
 use std::{cell::Cell, rc::Rc};
