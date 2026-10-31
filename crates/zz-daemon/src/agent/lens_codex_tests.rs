@@ -13,8 +13,8 @@ use zz_protocol::chat::{
 use zz_protocol::{AgentProvider, AgentQuestionAnswer, PaneId, agent_stream::AgentImage};
 
 use super::{
-    AgentPrompt, AgentStreamPayload, Codex, Found, Lens, LensPane, LensSpec, RuntimeCommand,
-    RuntimeControl, Shadow, Source, shadow_lens,
+    AgentPrompt, AgentStreamPayload, Codex, Found, Lens, LensPane, LensSpec, READ_LIMIT,
+    RuntimeCommand, RuntimeControl, Shadow, Source, shadow_lens,
 };
 
 const ROOT: &str = "rollout-2026-10-31T15-26-23-01a19336-7aab-7cb2-b50a-7c1a49be3375.jsonl";
@@ -816,6 +816,102 @@ fn loading_a_rollout_reads_each_child_where_order_matters_not_before_every_line(
         let reads = child.tail.as_ref().expect("found the child").reads;
         assert!(reads <= 2, "{} read {reads} times", child.thread);
     }
+}
+
+#[test]
+fn a_child_rollout_past_the_read_limit_ends_before_its_agent_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let event = |at: &str, payload: Value| {
+        json!({ "timestamp": at, "type": "event_msg", "payload": payload }).to_string()
+    };
+    let thread = "child-big";
+    let result = "counted every line";
+    let mut child = vec![
+        json!({ "type": "session_meta", "payload": {
+            "id": thread, "parent_thread_id": "root", "cwd": "/work",
+        } })
+        .to_string(),
+        event(
+            "2026-10-31T10:00:02.000Z",
+            json!({ "type": "task_started" }),
+        ),
+    ];
+    let filler = "x".repeat(64 * 1024);
+    let mut size = 0;
+    let mut index = 0;
+    while size <= READ_LIMIT + 64 * 1024 {
+        let line = event(
+            "2026-10-31T10:00:03.000Z",
+            json!({ "type": "item_completed", "item": {
+                "type": "Reasoning", "id": format!("r{index}"), "summary_text": [filler], "raw_content": [],
+            } }),
+        );
+        size += line.len() as u64 + 1;
+        index += 1;
+        child.push(line);
+    }
+    child.push(event(
+        "2026-10-31T10:00:04.000Z",
+        json!({ "type": "item_completed", "item": {
+            "type": "CommandExecution", "id": "exec-late", "command": ["wc", "-l", "big.txt"],
+            "cwd": "/work", "parsed_cmd": [{ "type": "unknown", "cmd": "wc -l big.txt" }],
+            "status": "completed", "aggregated_output": "9 big.txt\n", "exit_code": 0,
+        } }),
+    ));
+    child.push(event(
+        "2026-10-31T10:00:05.000Z",
+        json!({ "type": "item_completed", "item": {
+            "type": "AgentMessage", "id": "msg-late",
+            "content": [{ "type": "Text", "text": result }], "phase": "final_answer",
+        } }),
+    ));
+    child.push(event(
+        "2026-10-31T10:00:05.100Z",
+        json!({ "type": "task_complete" }),
+    ));
+    let child = child.join("\n") + "\n";
+    assert!(child.find(result).unwrap() as u64 > READ_LIMIT);
+    std::fs::write(
+        dir.path()
+            .join(format!("rollout-2026-10-31T10-00-01-{thread}.jsonl")),
+        child,
+    )
+    .unwrap();
+    let agent = |at: &str, id: &str, kind: &str| {
+        event(
+            at,
+            json!({ "type": "item_completed", "item": {
+            "type": "SubAgentActivity", "id": id, "kind": kind,
+            "agent_thread_id": thread, "agent_path": "/root/big_counter",
+        } }),
+        )
+    };
+    let root = dir.path().join("rollout-2026-10-31T10-00-00-root.jsonl");
+    let lines = [
+        event(
+            "2026-10-31T10:00:00.000Z",
+            json!({ "type": "task_started" }),
+        ),
+        agent("2026-10-31T10:00:01.000Z", "call_big", "started"),
+        agent(
+            "2026-10-31T10:00:06.000Z",
+            "subagent-completed-big",
+            "completed",
+        ),
+        event(
+            "2026-10-31T10:00:07.000Z",
+            json!({ "type": "task_complete" }),
+        ),
+    ];
+    std::fs::write(&root, lines.join("\n") + "\n").unwrap();
+    let (_, payloads) = open(root, Arc::default(), Codex::default());
+    let (shadow, view) = chat(&payloads);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let agent = view.item(&ItemId::new("call_big")).expect("the agent row");
+    assert_eq!(agent.status, ItemStatus::Completed);
+    assert_eq!(agent.body.text, result);
+    let command = titled(&view, "wc -l big.txt");
+    assert_eq!(command.parent.as_ref(), Some(&agent.id));
 }
 
 #[test]

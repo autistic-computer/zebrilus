@@ -106,8 +106,10 @@ but no pane opens them now.
     its last message becomes the row's result. Its children's children work the same way. With
     no child file, the row waits for the root's `FINAL_ANSWER` agent message and takes the text
     after `Payload:` as its result (or ends with the turn). Child files are read where order
-    matters, before an agent's end, a `FINAL_ANSWER` message and a turn's end, and after each
-    batch of root lines; rows are ordered by their own timestamps.
+    matters, before an agent's end, a `FINAL_ANSWER` message, a turn's end and the end of a load,
+    and there each child is read to its end, so a child longer than one 4 MiB read still finishes
+    before its agent row closes; after each batch of root lines a child gets one 4 MiB read. Rows
+    are ordered by their own timestamps.
   - Times: each line's `timestamp` stamps its rows, and `completed_at_ms - started_at_ms` (or a
     command's `duration`) goes in `_meta.zz.ms`, so a step starts that long before its record.
   - `token_count` lines fill the context ring (`usage_update`).

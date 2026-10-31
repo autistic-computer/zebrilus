@@ -85,6 +85,7 @@ impl std::fmt::Debug for LensSpec {
 struct Tail {
     path: PathBuf,
     offset: u64,
+    size: u64,
     partial: Vec<u8>,
     #[cfg(test)]
     reads: usize,
@@ -138,6 +139,7 @@ impl Tail {
             return Vec::new();
         };
         let length = file.metadata().map_or(0, |metadata| metadata.len());
+        self.size = length;
         if length < self.offset {
             self.offset = 0;
             self.partial.clear();
@@ -158,6 +160,19 @@ impl Tail {
             let line = self.partial.drain(..=end).collect::<Vec<_>>();
             if let Ok(entry) = serde_json::from_slice::<Value>(&line) {
                 lines.push(entry);
+            }
+        }
+        lines
+    }
+
+    fn backlog(&mut self) -> Vec<Value> {
+        let mut lines = self.lines();
+        let end = self.size;
+        while self.offset < end {
+            let before = self.offset;
+            lines.extend(self.lines());
+            if self.offset <= before {
+                break;
             }
         }
         lines
@@ -659,7 +674,7 @@ impl Codex {
         {
             self.entry(&entry, &mut read);
         }
-        read.updates.extend(self.child_lines(None));
+        read.updates.extend(self.child_lines(None, true));
         self.ended = (!self.busy && read.finished).then(|| read.failed.map_or(Ok(()), Err));
         read.updates
     }
@@ -680,7 +695,7 @@ impl Codex {
         for entry in lines {
             self.entry(&entry, &mut read);
         }
-        read.updates.extend(self.child_lines(None));
+        read.updates.extend(self.child_lines(None, false));
         read
     }
 
@@ -697,7 +712,7 @@ impl Codex {
         match payload["type"].as_str() {
             Some("task_started") => self.busy = true,
             Some("task_complete" | "turn_aborted") => {
-                read.updates.extend(self.child_lines(None));
+                read.updates.extend(self.child_lines(None, true));
                 for held in std::mem::take(&mut self.held) {
                     read.updates.extend(self.translate_entry(&held));
                 }
@@ -733,7 +748,7 @@ impl Codex {
                             self.held.push(entry.clone());
                             return;
                         }
-                        read.updates.extend(self.child_lines(None));
+                        read.updates.extend(self.child_lines(None, true));
                     }
                 }
                 read.updates.extend(self.translate(&item, entry));
@@ -808,7 +823,7 @@ impl Codex {
             return Vec::new();
         };
         self.children[index].answered = true;
-        let mut updates = self.child_lines(None);
+        let mut updates = self.child_lines(None, true);
         updates.extend(stamped(self.translator.agent_answer(path, answer), entry));
         let (mine, others) = std::mem::take(&mut self.held)
             .into_iter()
@@ -889,7 +904,7 @@ impl Codex {
         }
     }
 
-    fn child_lines(&mut self, parent: Option<&str>) -> Vec<Value> {
+    fn child_lines(&mut self, parent: Option<&str>, drain: bool) -> Vec<Value> {
         let mut updates = Vec::new();
         let mut index = 0;
         while index < self.children.len() {
@@ -901,12 +916,12 @@ impl Codex {
             let lines = self.children[index]
                 .tail
                 .as_mut()
-                .map(Tail::lines)
+                .map(|tail| if drain { tail.backlog() } else { tail.lines() })
                 .unwrap_or_default();
             for entry in lines {
                 updates.extend(self.child_entry(&thread, &entry));
             }
-            updates.extend(self.child_lines(Some(&thread)));
+            updates.extend(self.child_lines(Some(&thread), drain));
             index += 1;
         }
         updates
@@ -925,7 +940,7 @@ impl Codex {
                     .child(thread, "turn/started", &turn("inProgress"))
             }
             Some(end @ ("task_complete" | "turn_aborted")) => {
-                caught = self.child_lines(Some(thread));
+                caught = self.child_lines(Some(thread), true);
                 let status = if end == "task_complete" {
                     "completed"
                 } else {
@@ -945,7 +960,7 @@ impl Codex {
                         item["agentPath"].as_str(),
                     );
                 } else if item["type"] == "subAgentActivity" && item["kind"] == "completed" {
-                    caught = self.child_lines(Some(thread));
+                    caught = self.child_lines(Some(thread), true);
                 }
                 Some(self.translator.child_history(thread, &item))
             }
