@@ -108,7 +108,7 @@ const STORY: Story = Story {
         Section {
             id: "terminal-pip",
             name: "Terminal PiP",
-            summary: "Commands that only the CLI's own screen can show (/config, /status, /usage, /mcp, Codex's /model), and dialogs the lens cannot answer, open the pane's live terminal in a wide PiP over the chat, pinned to the bottom of the screen where the CLI draws its dialog. Keys go to the CLI. The PiP closes when the CLI's input box comes back; Esc (Codex) or Done close it too.",
+            summary: "Commands that only the CLI's own screen can show (/config, /status, /usage, /mcp), and dialogs the lens cannot answer, open the pane's live terminal in a wide PiP over the chat, pinned to the bottom of the screen where the CLI draws its dialog. Keys go to the CLI. The PiP closes when the CLI's input box comes back; Esc (Codex) or Done close it too.",
             build: lens::sheets,
         },
         Section {

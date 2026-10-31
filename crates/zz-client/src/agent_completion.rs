@@ -154,7 +154,7 @@ pub fn setting_completions(
                 choice.name.clone()
             };
             Some((
-                score,
+                (score, choice.value != current),
                 CommandCompletion {
                     command: AgentCommand {
                         name: format!("{option} {}", choice.value),
@@ -166,7 +166,7 @@ pub fn setting_completions(
             ))
         })
         .collect::<Vec<_>>();
-    ranked.sort_by_key(|(score, _)| *score);
+    ranked.sort_by_key(|(rank, _)| *rank);
     Some(
         ranked
             .into_iter()
@@ -464,9 +464,15 @@ mod tests {
         let commands = [command("model"), command("review")];
         let all = composer_completions("/model ", 7, &commands, Some(&settings));
         assert_eq!(all.len(), 2);
-        assert_eq!(all[0].insertion(), "/model gpt-6.1-sol ");
-        assert_eq!(all[1].command.description, "GPT-6-Luna · current");
+        assert_eq!(all[0].insertion(), "/model gpt-6-luna ");
+        assert_eq!(all[0].command.description, "GPT-6-Luna · current");
+        assert_eq!(all[1].insertion(), "/model gpt-6.1-sol ");
         assert!(all.iter().all(CommandCompletion::submits));
+        let sol = composer_completions("/model g", 8, &commands, Some(&settings));
+        assert_eq!(sol[0].insertion(), "/model gpt-6-luna ");
+        assert_eq!(sol[1].insertion(), "/model gpt-6.1-sol ");
+        let exact = composer_completions("/model gpt-6.1-sol", 18, &commands, Some(&settings));
+        assert_eq!(exact[0].insertion(), "/model gpt-6.1-sol ");
         let luna = composer_completions("  /model lun", 12, &commands, Some(&settings));
         assert_eq!(luna.len(), 1);
         assert_eq!(luna[0].replacement, 2..12);

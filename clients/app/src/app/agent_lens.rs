@@ -28,7 +28,8 @@ use zz_client::agent_lens::{
     turn_running,
 };
 use zz_client::agent_settings::{
-    LensSettings, fork_command, real_session, setter, side_chat_command, source_message,
+    ComposerSetter, LensSettings, composer_setter, fork_command, real_session, side_chat_command,
+    source_message,
 };
 use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
 use zz_protocol::chat::RequestView;
@@ -692,13 +693,12 @@ impl AgentLens {
 
     fn set_from_composer(
         &mut self,
-        option: &'static str,
-        value: Option<&str>,
+        picked: ComposerSetter<'_>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let text = match value {
-            Some(value) => {
+        let text = match picked {
+            ComposerSetter::Set(option, value) => {
                 let connection = self.connection.read(cx);
                 if !connection.connected || connection.core.attached_read_only() {
                     return;
@@ -717,7 +717,11 @@ impl AgentLens {
                 self.draft_error = None;
                 String::new()
             }
-            None => format!("/{option} "),
+            ComposerSetter::Keep => {
+                self.draft_error = None;
+                String::new()
+            }
+            ComposerSetter::List(option) => format!("/{option} "),
         };
         self.input
             .update(cx, |input, cx| input.set_value(text, window, cx));
@@ -730,10 +734,16 @@ impl AgentLens {
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.input.read(cx).value().to_string();
+        let settings = self
+            .connection
+            .read(cx)
+            .core
+            .agent_state(self.pane)
+            .and_then(|state| self.lens_settings(state));
         if self.attachments.is_empty()
-            && let Some((option, value)) = setter(&text)
+            && let Some(picked) = composer_setter(&text, settings.as_ref())
         {
-            self.set_from_composer(option, value, window, cx);
+            self.set_from_composer(picked, window, cx);
             return;
         }
         let attachments = self.attachments.clone();

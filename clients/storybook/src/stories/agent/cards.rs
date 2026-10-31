@@ -89,10 +89,7 @@ pub fn slash_commands(query: &str) -> Vec<CommandCompletion> {
                 None,
             )
         },
-        AgentCommand {
-            terminal: true,
-            ..command("model", "Pick the model in the terminal", None)
-        },
+        command("model", "Switch the model", Some("model")),
         AgentCommand {
             skill: true,
             ..command(

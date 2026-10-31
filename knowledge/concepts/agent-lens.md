@@ -184,10 +184,13 @@ rest of the lens:
   `init`, `diff`, `cd`, `pwd`, `rename`, `export`, `copy`, `quit`) run from the lens, and what they
   do shows in the timeline.
 - **`/model` and `/effort`**, for both CLIs, are the footer menu's setters (below). Typed with a
-  value (`/model sonnet`, `/effort high`) the client sends `AgentSetConfigOption` instead of a prompt
-  (`agent_settings::setter`); typed bare, the command stays in the composer as `/model ` and the
-  suggestion list shows the values from the session's config options, the current one marked
-  (`agent_completion::setting_completions`). Picking a value sets it. A prompt that still arrives as
+  value (`/model sonnet`, `/effort high`) the client sends `AgentSetConfigOption` instead of a prompt,
+  and sends nothing when the value is already the current one (`agent_settings::composer_setter`);
+  typed bare, the command stays in the composer as `/model ` and the suggestion list shows the
+  values from the session's config options, the current one first and marked, so Enter keeps it
+  (`agent_completion::setting_completions`). Picking a value sets it. When the session lists no
+  values yet, a bare `/model` or `/effort` goes to the CLI as a prompt and the CLI opens its own
+  picker. A prompt that still arrives as
   `/model <value>` or `/effort <value>` (the HTML client, `zz agent-send`) goes to the same setter in
   the runtime (`lens_settings::typed`) and finishes at once, failed if the setter refused it.
 - **Claude Code skills and commands** from `~/.claude` (or `CLAUDE_CONFIG_DIR`) and every
@@ -259,7 +262,8 @@ model's levels, named from one table (`xhigh` is "Extra high").
 The composer footer shows the folder on the left and, on the right, the model and effort button and
 the side chat button (`zz_ui::agent::controls::{agent_directory_chip, agent_settings_menu,
 agent_side_chat_button}`). The button opens the same menu for every CLI: the models, then the
-current model's levels. Picking one sends `AgentSetConfigOption`, which the runtime types into the
+current model's levels. It takes picks while a turn runs too, on the desktop and the thin clients
+alike. Picking one sends `AgentSetConfigOption`, which the runtime types into the
 TUI (`lens_settings::command`) and shows at once:
 
 - **Claude Code.** `/model <alias>` or `/effort <level>`. Its "Set model to …" line confirms it.
