@@ -560,10 +560,15 @@ impl CodexPicks {
         self.held.push((slot, text.to_owned()));
     }
 
-    fn confirm(&mut self, before: &Facts, after: &Facts, started: bool) {
-        if self.held.is_empty() && (started || before != after) {
+    fn confirm(&mut self, named: &Facts) {
+        if self.held.is_empty() && *named != Facts::default() {
             self.picked = Facts::default();
         }
+    }
+
+    fn forget(&mut self) {
+        self.picked = Facts::default();
+        self.held.clear();
     }
 }
 
@@ -573,6 +578,9 @@ impl Codex {
         self.pid = codex_queue::codex_pid(pane_pid?);
         let pid = self.pid?;
         if self.launch_pid != Some(pid) {
+            if self.launch_pid.is_some() {
+                self.picks.forget();
+            }
             self.launch = Facts::codex_launch(
                 &arguments(pid),
                 codex_home().as_deref(),
@@ -817,11 +825,10 @@ impl Source {
         match self {
             Self::Claude(claude) => claude.read(),
             Self::Codex(codex) => {
-                let (before, busy) = (codex.facts.clone(), codex.busy);
+                let before = std::mem::take(&mut codex.facts);
                 let read = codex.read();
-                codex
-                    .picks
-                    .confirm(&before, &codex.facts, codex.busy && !busy);
+                codex.picks.confirm(&codex.facts);
+                codex.facts = codex.facts.or(&before);
                 read
             }
         }
@@ -932,7 +939,7 @@ impl Source {
 
     fn forget_picks(&mut self) {
         if let Self::Codex(codex) = self {
-            codex.picks.picked = Facts::default();
+            codex.picks.forget();
         }
     }
 
@@ -1124,6 +1131,22 @@ impl Lens {
             }
             Err(message) => vec![AgentStreamPayload::SettingFailed { option_id, message }],
         }
+    }
+
+    fn set_typed(&mut self, turn_id: u64, prompt: &AgentPrompt) -> Option<Vec<AgentStreamPayload>> {
+        let (option, value) =
+            lens_settings::typed(&prompt.text).filter(|_| prompt.images.is_empty())?;
+        let mut payloads = self.set(option.to_owned(), value);
+        let outcome = match payloads.last() {
+            Some(AgentStreamPayload::SettingFailed { message, .. }) => AgentPromptOutcome::Failed {
+                message: message.clone(),
+            },
+            _ => AgentPromptOutcome::Finished {
+                stop_reason: Value::from("end_turn"),
+            },
+        };
+        payloads.push(AgentStreamPayload::PromptFinished { turn_id, outcome });
+        Some(payloads)
     }
 
     fn release(&mut self) -> Vec<AgentStreamPayload> {
@@ -1599,7 +1622,9 @@ impl Lens {
         let unsupported = "The lens follows the terminal; use the CLI's own commands there.";
         match command {
             RuntimeCommand::Open { .. } => self.open(),
-            RuntimeCommand::Prompt { turn_id, prompt } => self.prompt(turn_id, &prompt),
+            RuntimeCommand::Prompt { turn_id, prompt } => self
+                .set_typed(turn_id, &prompt)
+                .unwrap_or_else(|| self.prompt(turn_id, &prompt)),
             RuntimeCommand::Verb { prompt } => self.steer(prompt),
             RuntimeCommand::ListSessions { client, .. } => {
                 vec![AgentStreamPayload::SessionListFailed {
@@ -2330,18 +2355,53 @@ mod tests {
         lens.tick();
         assert_eq!(*pane.sent.lock(), ["/model gpt-6-luna --reasoning=high"]);
         assert_eq!(lens.source.facts().effort.as_deref(), Some("high"));
+        let typed = |lens: &mut Lens, text: &str| {
+            lens.command(RuntimeCommand::Prompt {
+                turn_id: 9,
+                prompt: AgentPrompt {
+                    text: text.to_owned(),
+                    ..AgentPrompt::default()
+                },
+            })
+        };
         assert!(matches!(
-            set(&mut lens, "effort", "ultra").as_slice(),
-            [AgentStreamPayload::SettingFailed { .. }]
+            typed(&mut lens, "/effort medium").as_slice(),
+            [
+                AgentStreamPayload::ConfigOptionsChanged { .. },
+                AgentStreamPayload::PromptFinished {
+                    turn_id: 9,
+                    outcome: AgentPromptOutcome::Finished { .. }
+                },
+            ]
         ));
+        assert!(matches!(
+            typed(&mut lens, "/effort ultra").as_slice(),
+            [
+                AgentStreamPayload::SettingFailed { .. },
+                AgentStreamPayload::PromptFinished {
+                    turn_id: 9,
+                    outcome: AgentPromptOutcome::Failed { .. }
+                },
+            ]
+        ));
+        assert_eq!(
+            *pane.sent.lock(),
+            [
+                "/model gpt-6-luna --reasoning=high",
+                "/model gpt-6-luna --reasoning=medium"
+            ]
+        );
         append(&event("task_started"));
-        append(&context("gpt-6-luna", "high"));
+        lens.tick();
+        assert_eq!(lens.source.facts().model.as_deref(), Some("gpt-6-luna"));
+        append(&context("gpt-6-luna", "medium"));
         lens.tick();
         let Source::Codex(codex) = &lens.source else {
             unreachable!()
         };
         assert_eq!(codex.picks.picked, Facts::default());
         assert_eq!(codex.facts.model.as_deref(), Some("gpt-6-luna"));
+        assert_eq!(codex.facts.effort.as_deref(), Some("medium"));
     }
 
     #[cfg(unix)]

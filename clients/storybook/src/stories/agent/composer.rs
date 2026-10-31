@@ -511,7 +511,7 @@ impl Render for Controls {
                     .children(footer_controls("claude", &claude_settings(), true, cx)),
             )
             .state(
-                "Codex picks its model in its own /model dialog, opened in the sheet",
+                "the same controls on Codex, with the models and levels its cache lists",
                 row()
                     .child(agent_directory_chip(
                         "dir-codex",

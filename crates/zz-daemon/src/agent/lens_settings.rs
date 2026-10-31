@@ -74,7 +74,7 @@ pub(crate) struct Catalog(Vec<ModelChoice>);
 #[derive(Deserialize)]
 struct CodexCache {
     #[serde(default)]
-    models: Vec<CodexModel>,
+    models: Vec<Value>,
 }
 
 #[derive(Deserialize)]
@@ -126,6 +126,7 @@ impl Catalog {
         let mut models = cache
             .models
             .into_iter()
+            .filter_map(|model| serde_json::from_value::<CodexModel>(model).ok())
             .filter(|model| model_name(&model.slug))
             .collect::<Vec<_>>();
         models.sort_by_key(|model| model.priority.unwrap_or(i64::MAX));
@@ -506,6 +507,16 @@ pub(crate) fn command(
         }
         _ => Err(format!("the lens cannot set {option}")),
     }
+}
+
+pub(crate) fn typed(text: &str) -> Option<(&'static str, &str)> {
+    let (name, value) = text
+        .trim()
+        .strip_prefix('/')?
+        .split_once(char::is_whitespace)?;
+    let option = [MODEL, EFFORT].into_iter().find(|option| *option == name)?;
+    let value = value.trim();
+    (!value.is_empty() && !value.contains(char::is_whitespace)).then_some((option, value))
 }
 
 fn model_name(value: &str) -> bool {
@@ -894,6 +905,13 @@ mod tests {
         assert!(text(AgentProvider::ClaudeCode, EFFORT, "turbo", &none, &claude).is_err());
         assert!(text(AgentProvider::ClaudeCode, MODEL, "opus; rm", &none, &claude).is_err());
         assert!(text(AgentProvider::ClaudeCode, CWD, "a\nb", &none, &claude).is_err());
+        assert_eq!(typed(" /model gpt-6-luna "), Some((MODEL, "gpt-6-luna")));
+        assert_eq!(typed("/effort high"), Some((EFFORT, "high")));
+        assert_eq!(typed("/model"), None);
+        assert_eq!(typed("/model  "), None);
+        assert_eq!(typed("/model gpt-6-luna --reasoning=low"), None);
+        assert_eq!(typed("/cd /tmp"), None);
+        assert_eq!(typed("use /model opus"), None);
     }
 
     #[test]

@@ -148,7 +148,9 @@ rest of the lens:
   value (`/model sonnet`, `/effort high`) the client sends `AgentSetConfigOption` instead of a prompt
   (`agent_settings::setter`); typed bare, the command stays in the composer as `/model ` and the
   suggestion list shows the values from the session's config options, the current one marked
-  (`agent_completion::setting_completions`). Picking a value sets it.
+  (`agent_completion::setting_completions`). Picking a value sets it. A prompt that still arrives as
+  `/model <value>` or `/effort <value>` (the HTML client, `zz agent-send`) goes to the same setter in
+  the runtime (`lens_settings::typed`) and finishes at once, failed if the setter refused it.
 - **Claude Code skills and commands** from `~/.claude` (or `CLAUDE_CONFIG_DIR`) and every
   `.claude` from the pane's folder up to its git root: `skills/*/SKILL.md` (frontmatter `name`,
   `description`, `argument-hint`), `commands/**/*.md` (a subfolder becomes `dir:name`), and the
@@ -225,12 +227,13 @@ TUI (`lens_settings::command`) and shows at once:
 - **Codex.** Codex has no `/effort`; its `/model` takes the level inline, so a model pick types
   `/model <slug> --reasoning=<level>`, keeping the current level when the new model takes it and the
   model's default otherwise, and a level pick types `/model <current slug> --reasoning=<level>`.
-  Codex answers "Model changed to … for this session only" in the terminal and writes nothing to
-  the rollout until the next turn, so the lens holds the pick over what the rollout says, across a
-  reload, until a turn starts or a rollout line names the settings. Codex refuses `/model` while a
-  task runs, so a pick made mid-turn is held and typed when the turn ends; a later pick replaces a
-  held one. A slug or level the catalog does not list fails with `SettingFailed` before anything is
-  typed.
+  Codex answers "Model changed to … for this session only" in the terminal, and its rollout names
+  the settings in the `turn_context` it writes about a second after the next turn starts, so the
+  lens lays the pick over what the rollout says, across a reload, until a rollout line names the
+  settings again; a pick Codex refused shows until then. Codex refuses `/model` while a task runs,
+  so a pick made mid-turn is held and typed when the turn ends; a later pick replaces a held one.
+  A new Codex process in the pane drops the picks. A slug or level the catalog does not list fails
+  with `SettingFailed` before anything is typed.
 - **Folder.** On the local host the folder chip opens a folder picker and the runtime types
   `/cd <path>`. On a remote host it only shows the folder. Codex holds a mid-turn `/cd` the same way.
 

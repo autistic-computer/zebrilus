@@ -680,7 +680,14 @@ impl AgentController {
             },
             cx,
         );
-        if sent && let Some(thread) = self.panes.get(&pane) {
+        if sent
+            && let Some(thread) = self.panes.get(&pane)
+            && thread
+                .settings
+                .as_ref()
+                .and_then(|settings| settings.choices(option_id))
+                .is_some_and(|(choices, _)| choices.iter().any(|choice| choice.value == value))
+        {
             let provider = thread.provider;
             launch::update(|launches| launches.pick(provider, option_id, value));
         }
