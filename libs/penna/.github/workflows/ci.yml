@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -35,6 +37,12 @@ jobs:
       - name: Install the pinned Rust toolchain
         run: rustup toolchain install
 
+      - name: Update the lockfiles to the latest ala and crates
+        if: github.event_name == 'schedule'
+        run: |
+          cargo update
+          cargo update --manifest-path storybook/Cargo.toml
+
       - uses: Swatinem/rust-cache@v2.9.2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -48,16 +56,88 @@ jobs:
 
       - name: Lint
         run: |
-          cargo clippy --all-targets --all-features -- -D warnings
-          cargo clippy --manifest-path storybook/Cargo.toml --all-targets --all-features -- -D warnings
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+          cargo clippy --locked --manifest-path storybook/Cargo.toml --all-targets --all-features -- -D warnings
 
       - name: Lint the storybook for wasm
         if: runner.os == 'Linux'
+        run: cargo clippy --locked --manifest-path storybook/Cargo.toml --target wasm32-unknown-unknown --lib --features page -- -D warnings
+
+      - name: Lint and test the default features
         run: |
-          rustup target add wasm32-unknown-unknown
-          cargo clippy --manifest-path storybook/Cargo.toml --target wasm32-unknown-unknown --lib --features page -- -D warnings
+          cargo clippy --locked --lib --no-default-features -- -D warnings
+          cargo test --locked --test highlighter_api
 
       - name: Test
         run: |
-          cargo test --all-features
-          cargo test --manifest-path storybook/Cargo.toml --all-features
+          cargo test --locked --all-features
+          cargo test --locked --manifest-path storybook/Cargo.toml --all-features
+
+  windows:
+    name: windows-2025
+    runs-on: windows-2025
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Update the lockfile to the latest ala and crates
+        if: github.event_name == 'schedule'
+        run: cargo update
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
+      - name: Lint the Windows tray
+        run: cargo clippy --locked --lib --features tray,editor -- -D warnings
+
+  page:
+    name: storybook page
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang libfontconfig-dev libwayland-dev libx11-xcb-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev llvm pkg-config
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Update the lockfiles to the latest ala and crates
+        if: github.event_name == 'schedule'
+        run: |
+          cargo update
+          cargo update --manifest-path storybook/Cargo.toml
+
+      - name: Read the wasm-bindgen version the lockfile pins
+        run: echo "WASM_BINDGEN=$(cargo metadata --locked --format-version 1 --manifest-path storybook/Cargo.toml | jq -r '[.packages[] | select(.name == "wasm-bindgen")][0].version')" >> "$GITHUB_ENV"
+
+      - uses: taiki-e/install-action@v2.87.13
+        with:
+          tool: wasm-bindgen@${{ env.WASM_BINDGEN }}
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
+      - name: Build the page
+        run: |
+          storybook/build.sh --release --out site -- --locked
+          cargo run --locked --example theme_css -- site/kit/tokens
+          cp -R web/. site/kit/
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: storybook-page
+          path: site
+          if-no-files-found: error
