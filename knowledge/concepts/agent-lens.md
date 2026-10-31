@@ -154,21 +154,26 @@ lens, from typing in the terminal, or from a peer message.
 - **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
   card; the user answers in the terminal.
 - **Codex questions.** `request_user_input_async` records an `AgentMessage` with `questions` and
-  `delivery: "async"`. It becomes a question row marked as background from the start, so it does not
-  hold its turn open: the call does not block the turn and the question can outlive it. While it is
-  open the runtime reports `waiting`: one question with 1 to 9 options raises a question card
-  answered with the option's digit (the TUI's overlay takes digits), anything else a card that
-  points at the terminal. The answer comes back as a `UserMessage` wrapped in
-  `<send_user_message_question_reply>`, often as the first line of a new turn, and closes the row
-  with an answered record instead of a user bubble. A prompt typed in the terminal, `turn_aborted`,
-  or Stop while a turn runs drop an unanswered question (recorded with no answer); the composer
-  offers no Stop once the turn is over. While it is open the lens refuses prompts and steers, so
-  they cannot land in the overlay as option picks, and holds a model or effort pick until the
-  question is answered. A question recorded before the running Codex process started is ignored,
-  since its overlay died with the old process, and its row closes with no answer. The same goes
-  for one still open when `codex resume` starts a new process in the pane: the thread and rollout
-  stay the same, so the runtime drops it when it sees the new process. A plain
-  `send_user_message_async` message stays text.
+  `delivery: "async"`. It becomes a question row marked as background from the start, so the call
+  does not block its turn. Codex 0.166 shows the question editor collapsed: keys typed then
+  (digits, Enter, text) go to its ordinary composer, and only its edit-queued-message key
+  (Shift+Left or Alt+Up by default) opens the editor. So the lens never answers by typing. While a
+  question is open the runtime reports `waiting` and raises a request with no options, titled with
+  the first unanswered question, which clients draw as the terminal card; Show terminal opens the
+  terminal PiP, where the user answers in Codex's editor. Codex sends each answer on its own, as a
+  `UserMessage` wrapped in `<send_user_message_question_reply>` whose `questionItemId` is
+  `["request_user_input_async", <call id>, <index>]`. The runtime records each answer by call and
+  index, moves the card to the next unanswered question, and once every question of the call has
+  one, closes the row with an answered record instead of a user bubble and withdraws the card.
+  Codex drops its open questions when a live turn ends, so `task_complete`, `turn_aborted` and Stop
+  close the row the same way, keeping the answers given and "no answer" for the rest. A prompt or
+  steer from the lens or the terminal while a question is open goes to Codex's composer as usual
+  and leaves the question open, and a model or effort pick waits only for the running turn. A
+  question recorded before the running Codex process started is ignored, since its editor died
+  with the old process, and its row closes with no answer. The same goes for one still open when
+  `codex resume` starts a new process in the pane: the thread and rollout stay the same, so the
+  runtime drops it when it sees the new process. A plain `send_user_message_async` message stays
+  text.
 
 # Slash commands
 

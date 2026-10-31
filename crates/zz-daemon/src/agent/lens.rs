@@ -50,7 +50,7 @@ const TAIL_BYTES: u64 = 8 * 1024 * 1024;
 const READ_LIMIT: u64 = 4 * 1024 * 1024;
 const PERMISSION_PROMPT: &str = "permission prompt";
 const CODEX_QUESTION: &str = "question";
-const CODEX_ASKING: &str = "Codex is waiting for an answer to its question. Pick an option on its card or answer in the terminal.";
+const CODEX_QUESTION_TITLE: &str = "Codex asks a question in the terminal";
 const CHILD_WAIT: Duration = Duration::from_secs(30);
 const FINAL_ANSWER: &str = "Message Type: FINAL_ANSWER";
 pub(crate) const ALLOW: &str = "allow";
@@ -541,14 +541,8 @@ struct Codex {
     born: Option<u64>,
     children: Vec<CodexChild>,
     held: Vec<Value>,
-    asked: Option<Question>,
+    asked: Vec<(String, Option<u64>)>,
     dropped: Vec<Value>,
-}
-
-struct Question {
-    id: String,
-    item: Value,
-    at: Option<u64>,
 }
 
 struct CodexChild {
@@ -639,11 +633,10 @@ impl Codex {
         if let Some(born) = born.map(|born| born.saturating_mul(1000))
             && self
                 .asked
-                .as_ref()
-                .and_then(|asked| asked.at)
-                .is_some_and(|at| at < born)
+                .iter()
+                .any(|(_, at)| at.is_some_and(|at| at < born))
         {
-            self.asked = None;
+            self.asked.clear();
             let dropped = self.translator.drop_questions();
             self.dropped.extend(stamped_at(dropped, born));
         }
@@ -656,7 +649,7 @@ impl Codex {
         self.facts = Facts::default();
         self.children.clear();
         self.held.clear();
-        self.asked = None;
+        self.asked.clear();
         self.dropped.clear();
         self.tail = Some(tail);
         let mut read = Read::default();
@@ -703,16 +696,14 @@ impl Codex {
         }
         match payload["type"].as_str() {
             Some("task_started") => self.busy = true,
-            Some(end @ ("task_complete" | "turn_aborted")) => {
+            Some("task_complete" | "turn_aborted") => {
                 read.updates.extend(self.child_lines(None));
                 for held in std::mem::take(&mut self.held) {
                     read.updates.extend(self.translate_entry(&held));
                 }
-                if end == "turn_aborted" {
-                    self.asked = None;
-                    read.updates
-                        .extend(stamped(self.translator.drop_questions(), entry));
-                }
+                self.asked.clear();
+                read.updates
+                    .extend(stamped(self.translator.drop_questions(), entry));
                 self.busy = false;
                 read.finished = true;
                 read.failed = payload["error"]["message"].as_str().map(codex_error);
@@ -750,13 +741,20 @@ impl Codex {
                     read.updates
                         .extend(stamped(self.translator.drop_questions(), entry));
                 }
+                let translator = &self.translator;
+                self.asked.retain(|(id, _)| translator.asks(id));
             }
             _ => {}
         }
     }
 
     fn translate(&mut self, item: &Value, entry: &Value) -> Vec<Value> {
-        timed(stamped(self.translator.history_item(item), entry), entry)
+        let updates = if item["type"] == "userMessage" {
+            self.translator.user_message(item)
+        } else {
+            self.translator.history_item(item)
+        };
+        timed(stamped(updates, entry), entry)
     }
 
     fn translate_entry(&mut self, entry: &Value) -> Vec<Value> {
@@ -766,34 +764,18 @@ impl Codex {
     }
 
     fn note_question(&mut self, item: &Value, entry: &Value) -> bool {
-        match item["type"].as_str() {
-            Some("userInputRequest") => {
-                let at = recorded(entry);
-                let stale = at
-                    .zip(self.born)
-                    .is_some_and(|(at, born)| at < born.saturating_mul(1000));
-                self.asked = item["id"].as_str().filter(|_| !stale).map(|id| Question {
-                    id: id.to_owned(),
-                    item: item.clone(),
-                    at,
-                });
-                return stale;
-            }
-            Some("userInputReply") => {
-                let answered = item["replies"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|reply| reply["callId"].as_str())
-                    .any(|call| self.asked.as_ref().is_some_and(|asked| asked.id == call));
-                if answered {
-                    self.asked = None;
-                }
-            }
-            Some("userMessage") => self.asked = None,
-            _ => {}
+        if item["type"] != "userInputRequest" {
+            return false;
         }
-        false
+        let at = recorded(entry);
+        let stale = at
+            .zip(self.born)
+            .is_some_and(|(at, born)| at < born.saturating_mul(1000));
+        if let Some(id) = item["id"].as_str().filter(|_| !stale) {
+            self.asked.retain(|(asked, _)| asked != id);
+            self.asked.push((id.to_owned(), at));
+        }
+        stale
     }
 
     fn final_answer(&mut self, entry: &Value) -> Vec<Value> {
@@ -1191,7 +1173,7 @@ impl Source {
             Self::Claude(claude) => claude.status(),
             Self::Codex(codex) => Some(Status {
                 busy: codex.busy,
-                waiting: codex.asked.as_ref().map(|_| CODEX_QUESTION.to_owned()),
+                waiting: codex.translator.asking().map(|_| CODEX_QUESTION.to_owned()),
             }),
         }
     }
@@ -1211,47 +1193,34 @@ impl Source {
     }
 
     fn pending_question(&self) -> Option<(String, AgentQuestion)> {
-        let (id, input) = match self {
-            Self::Claude(claude) => claude
-                .open
-                .iter()
-                .rev()
-                .find(|(_, name, _)| name == "AskUserQuestion")
-                .map(|(id, _, input)| (id, input))?,
-            Self::Codex(codex) => codex.asked.as_ref().map(|asked| (&asked.id, &asked.item))?,
+        let Self::Claude(claude) = self else {
+            return None;
         };
+        let (id, _, input) = claude
+            .open
+            .iter()
+            .rev()
+            .find(|(_, name, _)| name == "AskUserQuestion")?;
         Some((id.clone(), pickable(input)?))
-    }
-
-    fn asking(&self) -> bool {
-        matches!(self, Self::Codex(codex) if codex.asked.is_some())
     }
 
     fn dismiss_question(&mut self) -> Vec<Value> {
         let Self::Codex(codex) = self else {
             return Vec::new();
         };
-        if codex.asked.take().is_none() {
-            return Vec::new();
-        }
+        codex.asked.clear();
         codex.translator.drop_questions()
     }
 
-    fn waiting_card(&self, why: &str, request_id: u64) -> (String, String) {
-        match self {
-            Self::Codex(codex) if why == CODEX_QUESTION => {
-                let (id, item) = codex
-                    .asked
-                    .as_ref()
-                    .map_or(("", &Value::Null), |asked| (asked.id.as_str(), &asked.item));
-                let title = item["questions"][0]["question"].as_str().map_or_else(
-                    || "Codex asks a question in the terminal".to_owned(),
-                    |question| format!("Answer in the terminal: {question}"),
-                );
-                (id.to_owned(), title)
-            }
-            _ => (format!("lens-wait-{request_id}"), waiting_title(why)),
-        }
+    fn question_card(&self) -> Option<(String, String)> {
+        let Self::Codex(codex) = self else {
+            return None;
+        };
+        let (id, question) = codex.translator.asking()?;
+        let title = Some(question.trim())
+            .filter(|question| !question.is_empty())
+            .unwrap_or(CODEX_QUESTION_TITLE);
+        Some((id.to_owned(), title.to_owned()))
     }
 
     const fn every(&self) -> Duration {
@@ -1349,6 +1318,7 @@ struct Permission {
     answerable: bool,
     answered: bool,
     choices: Vec<String>,
+    card: Option<(String, String)>,
 }
 
 struct Lens {
@@ -1491,7 +1461,7 @@ impl Lens {
     }
 
     fn set(&mut self, option_id: String, value: &str) -> Vec<AgentStreamPayload> {
-        let busy = self.busy || self.turn.is_some() || self.source.asking();
+        let busy = self.busy || self.turn.is_some();
         let setter = lens_settings::command(
             self.spec.provider,
             &option_id,
@@ -1534,7 +1504,7 @@ impl Lens {
     }
 
     fn release(&mut self) -> Vec<AgentStreamPayload> {
-        if self.busy || self.turn.is_some() || self.source.asking() {
+        if self.busy || self.turn.is_some() {
             return Vec::new();
         }
         let mut payloads = Vec::new();
@@ -1744,19 +1714,23 @@ impl Lens {
             .then(|| self.source.pending_question())
             .flatten();
         let tool = question.as_ref().map(|(id, _)| id.clone()).or(tool);
+        let card = (why == CODEX_QUESTION)
+            .then(|| self.source.question_card())
+            .flatten();
         if let Some(permission) = &self.permission {
             let upgrade = (answerable || question.is_some())
                 && !permission.answered
                 && permission.tool.is_none()
                 && tool.is_some();
+            let moved = permission.card != card;
             let same = !permission.answered || permission.tool.is_none() || permission.tool == tool;
-            if !upgrade && same {
+            if !upgrade && !moved && same {
                 return payloads;
             }
-            if upgrade {
+            if upgrade || (moved && !permission.answered) {
                 payloads.push(AgentStreamPayload::PermissionResolved {
                     request_id: permission.request_id,
-                    canceled: true,
+                    canceled: upgrade,
                 });
             }
             self.permission = None;
@@ -1773,6 +1747,7 @@ impl Lens {
                     .iter()
                     .map(|option| option.label.clone())
                     .collect(),
+                card: None,
             });
             payloads.push(AgentStreamPayload::PermissionRequested {
                 request_id,
@@ -1820,7 +1795,9 @@ impl Lens {
                 answers,
             )
         } else {
-            let (id, title) = self.source.waiting_card(why, request_id);
+            let (id, title) = card
+                .clone()
+                .unwrap_or_else(|| (format!("lens-wait-{request_id}"), waiting_title(why)));
             (
                 json!({ "toolCallId": id, "title": title, "kind": "other" }),
                 json!([]),
@@ -1832,6 +1809,7 @@ impl Lens {
             answerable,
             answered: false,
             choices: Vec::new(),
+            card,
         });
         payloads.push(AgentStreamPayload::PermissionRequested {
             request_id,
@@ -1877,9 +1855,6 @@ impl Lens {
         if prompt.text.trim().is_empty() && prompt.images.is_empty() {
             return failed("Nothing to send.");
         }
-        if self.source.asking() {
-            return failed(CODEX_ASKING);
-        }
         if !prompt.images.is_empty()
             && let Err(message) = self.spec.io.attach(&prompt.images)
         {
@@ -1915,12 +1890,7 @@ impl Lens {
         if text.is_empty() {
             return Vec::new();
         }
-        let submitted = if self.source.asking() {
-            Err(CODEX_ASKING.to_owned())
-        } else {
-            self.spec.io.submit(text)
-        };
-        match submitted {
+        match self.spec.io.submit(text) {
             Ok(()) => Vec::new(),
             Err(error) => {
                 log::debug!(target: "zz::agent", "could not steer {}: {error}", self.spec.pane);

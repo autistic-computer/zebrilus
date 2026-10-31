@@ -22,8 +22,28 @@ pub(crate) struct Translator {
     parents: HashMap<String, String>,
     pending: HashMap<String, Vec<(String, Value)>>,
     paths: HashMap<String, String>,
-    asked: Vec<(String, Vec<String>)>,
+    asked: Vec<Asked>,
     restoring: bool,
+}
+
+struct Asked {
+    id: String,
+    questions: Vec<String>,
+    answers: Vec<Option<String>>,
+}
+
+impl Asked {
+    fn closed(self) -> Value {
+        let answered = self
+            .questions
+            .iter()
+            .zip(&self.answers)
+            .map(|(question, answer)| {
+                json!({ "question": question, "answer": answer.as_deref().unwrap_or_default() })
+            })
+            .collect::<Vec<_>>();
+        answer_update(&self.id, &answered)
+    }
 }
 
 const PENDING_THREADS: usize = 32;
@@ -169,10 +189,7 @@ impl Translator {
     pub(crate) fn history_item(&mut self, item: &Value) -> Vec<Value> {
         if item["type"] == "userMessage" {
             let mut updates = self.drop_questions();
-            updates.extend(
-                user_text(item, &self.cwd)
-                    .map(|(text, images)| user_chunk(&prompt_id(item), &text, images)),
-            );
+            updates.extend(self.user_message(item));
             return updates;
         }
         let mut updates = self.history_start(item);
@@ -211,17 +228,33 @@ impl Translator {
         vec![chunk(kind, id, delta)]
     }
 
+    pub(crate) fn user_message(&self, item: &Value) -> Vec<Value> {
+        user_text(item, &self.cwd)
+            .map(|(text, images)| user_chunk(&prompt_id(item), &text, images))
+            .into_iter()
+            .collect()
+    }
+
     pub(crate) fn drop_questions(&mut self) -> Vec<Value> {
         std::mem::take(&mut self.asked)
             .into_iter()
-            .map(|(id, questions)| {
-                let answered = questions
-                    .into_iter()
-                    .map(|question| json!({ "question": question, "answer": "" }))
-                    .collect::<Vec<_>>();
-                answer_update(&id, &answered)
-            })
+            .map(Asked::closed)
             .collect()
+    }
+
+    pub(crate) fn asking(&self) -> Option<(&str, &str)> {
+        let asked = self.asked.first()?;
+        let question = asked
+            .questions
+            .iter()
+            .zip(&asked.answers)
+            .find(|(_, answer)| answer.is_none())
+            .map_or("", |(question, _)| question.as_str());
+        Some((&asked.id, question))
+    }
+
+    pub(crate) fn asks(&self, id: &str) -> bool {
+        self.asked.iter().any(|asked| asked.id == id)
     }
 
     pub(crate) fn agent_answer(&self, path: &str, text: &str) -> Vec<Value> {
@@ -243,15 +276,19 @@ impl Translator {
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|question| question["question"].as_str())
-            .map(str::to_owned)
+            .map(|question| question["question"].as_str().unwrap_or_default().to_owned())
             .collect::<Vec<_>>();
         let title = questions
-            .first()
+            .iter()
+            .find(|question| !question.is_empty())
             .cloned()
             .unwrap_or_else(|| "Question".to_owned());
-        self.asked.retain(|(asked, _)| asked != id);
-        self.asked.push((id.to_owned(), questions));
+        self.asked.retain(|asked| asked.id != id);
+        self.asked.push(Asked {
+            id: id.to_owned(),
+            answers: vec![None; questions.len()],
+            questions,
+        });
         vec![json!({
             "sessionUpdate": "tool_call",
             "toolCallId": id,
@@ -267,26 +304,39 @@ impl Translator {
     }
 
     fn replied(&mut self, item: &Value) -> Vec<Value> {
-        let mut calls = Vec::<(String, Vec<Value>)>::new();
+        let mut touched = Vec::<String>::new();
         for reply in item["replies"].as_array().into_iter().flatten() {
             let Some(call) = reply["callId"].as_str() else {
                 continue;
             };
-            let answer = json!({ "question": reply["question"], "answer": reply["answer"] });
-            match calls.iter_mut().find(|(known, _)| known == call) {
-                Some((_, answers)) => answers.push(answer),
-                None => calls.push((call.to_owned(), vec![answer])),
+            let Some(slot) = self
+                .asked
+                .iter_mut()
+                .find(|asked| asked.id == call)
+                .and_then(|asked| {
+                    let index =
+                        usize::try_from(reply["index"].as_u64().unwrap_or_default()).ok()?;
+                    asked.answers.get_mut(index)
+                })
+            else {
+                continue;
+            };
+            *slot = Some(reply["answer"].as_str().unwrap_or_default().to_owned());
+            if !touched.iter().any(|known| known == call) {
+                touched.push(call.to_owned());
             }
         }
-        calls
-            .into_iter()
-            .filter(|(call, _)| {
-                let known = self.asked.iter().any(|(asked, _)| asked == call);
-                self.asked.retain(|(asked, _)| asked != call);
-                known
-            })
-            .map(|(call, answers)| answer_update(&call, &answers))
-            .collect()
+        let mut updates = Vec::new();
+        for call in touched {
+            if let Some(index) = self
+                .asked
+                .iter()
+                .position(|asked| asked.id == call && asked.answers.iter().all(Option::is_some))
+            {
+                updates.push(self.asked.remove(index).closed());
+            }
+        }
+        updates
     }
 
     fn started(&mut self, item: &Value) -> Vec<Value> {
@@ -1375,6 +1425,65 @@ mod tests {
             !reply
                 .iter()
                 .any(|update| update["sessionUpdate"] == "user_message_chunk")
+        );
+    }
+
+    #[test]
+    fn a_question_in_two_parts_closes_once_both_replies_arrive() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        history(
+            &mut translator,
+            &json!({"type": "userInputRequest", "id": "call_q", "questions": [
+                {"id": "q0", "question": "Which color?", "options": [{"label": "Red"}]},
+                {"id": "q1", "question": "Which size?", "options": [{"label": "Large"}]},
+            ]}),
+        );
+        let reply = |translator: &mut Translator, index: u64, question: &str, answer: &str| {
+            history(
+                translator,
+                &json!({"type": "userInputReply", "id": format!("u{index}"), "replies": [
+                    {"callId": "call_q", "index": index, "question": question, "answer": answer},
+                ]}),
+            )
+        };
+        assert!(reply(&mut translator, 0, "Which color?", "Red").is_empty());
+        assert_eq!(translator.asking(), Some(("call_q", "Which size?")));
+        let done = reply(&mut translator, 1, "Which size?", "Large");
+        assert_eq!(done.len(), 1, "{done:?}");
+        assert_eq!(done[0]["status"], "completed");
+        assert_eq!(
+            done[0]["_meta"]["zz"]["answered"],
+            json!([
+                {"question": "Which color?", "answer": "Red"},
+                {"question": "Which size?", "answer": "Large"},
+            ])
+        );
+        assert_eq!(translator.asking(), None);
+    }
+
+    #[test]
+    fn a_dropped_question_keeps_the_part_already_answered() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        history(
+            &mut translator,
+            &json!({"type": "userInputRequest", "id": "call_q", "questions": [
+                {"id": "q0", "question": "Which color?"},
+                {"id": "q1", "question": "Which size?"},
+            ]}),
+        );
+        history(
+            &mut translator,
+            &json!({"type": "userInputReply", "id": "u", "replies": [
+                {"callId": "call_q", "index": 0, "question": "Which color?", "answer": "Red"},
+            ]}),
+        );
+        let dropped = translator.drop_questions();
+        assert_eq!(
+            dropped[0]["_meta"]["zz"]["answered"],
+            json!([
+                {"question": "Which color?", "answer": "Red"},
+                {"question": "Which size?", "answer": ""},
+            ])
         );
     }
 
