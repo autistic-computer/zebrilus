@@ -74,10 +74,7 @@ pub const LABEL_FADE: ala::Pixels = ala::px(28.0);
 
 #[cfg(all(test, feature = "tree-sitter"))]
 mod tests {
-    use penna::{
-        code_editor::Rope,
-        highlighter::{HighlightTheme, SyntaxHighlighter},
-    };
+    use penna::highlighter::{HighlightTheme, Rope, SyntaxHighlighter};
 
     #[ala::test]
     fn a_tmux_fence_highlights_after_init(cx: &mut ala::TestAppContext) {
