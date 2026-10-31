@@ -257,8 +257,13 @@ impl AgentView {
                 });
             }
         };
-        let menu =
-            agent_settings_menu(("agent-settings", self.pane.0), settings, enabled, pick, cx);
+        let menu = agent_settings_menu(
+            ("agent-settings", self.pane.0),
+            settings,
+            state.connection.accepts_setting(),
+            pick,
+            cx,
+        );
         let side = {
             let view = view.clone();
             agent_side_chat_button(

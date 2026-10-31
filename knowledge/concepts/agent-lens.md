@@ -188,10 +188,13 @@ rest of the lens:
   `init`, `diff`, `cd`, `pwd`, `rename`, `export`, `copy`, `quit`) run from the lens, and what they
   do shows in the timeline.
 - **`/model` and `/effort`**, for both CLIs, are the footer menu's setters (below). Typed with a
-  value (`/model sonnet`, `/effort high`) the client sends `AgentSetConfigOption` instead of a prompt
-  (`agent_settings::setter`); typed bare, the command stays in the composer as `/model ` and the
-  suggestion list shows the values from the session's config options, the current one marked
-  (`agent_completion::setting_completions`). Picking a value sets it. A prompt that still arrives as
+  value (`/model sonnet`, `/effort high`) the client sends `AgentSetConfigOption` instead of a prompt,
+  and sends nothing when the value is already the current one (`agent_settings::composer_setter`);
+  typed bare, the command stays in the composer as `/model ` and the suggestion list shows the
+  values from the session's config options, the current one first and marked, so Enter keeps it
+  (`agent_completion::setting_completions`). Picking a value sets it. When the session lists no
+  values yet, a bare `/model` or `/effort` goes to the CLI as a prompt and the CLI opens its own
+  picker. A prompt that still arrives as
   `/model <value>` or `/effort <value>` (the HTML client, `zz agent-send`) goes to the same setter in
   the runtime (`lens_settings::typed`) and finishes at once, failed if the setter refused it.
 - **Claude Code skills and commands** from `~/.claude` (or `CLAUDE_CONFIG_DIR`) and every
@@ -263,7 +266,8 @@ model's levels, named from one table (`xhigh` is "Extra high").
 The composer footer shows the folder on the left and, on the right, the model and effort button and
 the side chat button (`zz_ui::agent::controls::{agent_directory_chip, agent_settings_menu,
 agent_side_chat_button}`). The button opens the same menu for every CLI: the models, then the
-current model's levels. Picking one sends `AgentSetConfigOption`, which the runtime types into the
+current model's levels. It takes picks while a turn runs too, on the desktop and the thin clients
+alike. Picking one sends `AgentSetConfigOption`, which the runtime types into the
 TUI (`lens_settings::command`) and shows at once:
 
 - **Claude Code.** `/model <alias>` or `/effort <level>`. Its "Set model to …" line confirms it.
@@ -341,7 +345,9 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   chat shows it again. The fanout's chat log keeps images on the last 8 items that have them, so
   a late client's replay shows older pastes as text only. The bubble draws them first as 140 px
   tiles that open full size on click; `ChatPane::sync` decodes each item's images once and keeps
-  them in `ChatOpen::images`.
+  them in `ChatOpen::images`. When an item leaves the view or the session changes,
+  `ChatPane::release` drops the decoded pixels from ala's asset cache and the sprite atlas, unless
+  the same image is still shown.
 - **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
   a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
   chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
@@ -350,7 +356,10 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
 - **Thinking.** A finished run whose reasoning is only headings (Codex records the headings of its
   summaries; the reasoning itself is encrypted) leaves no row, while the running one still shows
   its heading. Opening a run lists its reasoning, heading removed and muted, in order with its
-  steps; a run with nothing to list has no disclosure. Claude's thinking reads the same way.
+  steps; a run with nothing to list has no disclosure. A heading is a line that is all bold or a
+  `#` heading (one to six `#` and a space), so a thought that opens with inline bold or `#42`
+  keeps its text (`chat_rows::reasoning_body`). The opened text is selectable and scrolls inside
+  260 px. Claude's thinking reads the same way.
 - **Subagents.** One row each: the CLI's mark, the name, a status glyph (spinning, Needs you, done,
   failed, stopped) and the time it took. Clicking one opens its chat in a PiP over the thread
   (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close
@@ -359,7 +368,9 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
 - **Diagrams.** A mermaid or SVG block sits in a card on the `code` role, like a code block, whose
   header holds its label, Copy source and Open full diagram. The diagram's canvas is transparent, so
   it shows the card through it; edge and relation labels keep a chip in the node fill. Answers use
-  the same markdown style as code blocks and tables elsewhere (`agent_text_view`).
+  the same markdown style as code blocks and tables elsewhere (`agent_text_view`). The chat passes
+  its pane as the owner (`ChatHooks::owner`), so on the desktop an HTML block's live page can reply
+  to the agent, and two panes showing the same item keep their own preview toggles.
 
 # Starting a chat
 

@@ -32,7 +32,7 @@ use zz_client::agent_completion::{
     CommandCompletion, active_command_hint, command_label, composer_completions,
     meaningful_command_description, pane_commands, terminal_command,
 };
-use zz_client::agent_settings::setter;
+use zz_client::agent_settings::{ComposerSetter, composer_setter};
 use zz_client::agent_transcript::rewind_command;
 use zz_ui::{
     command::target_picker,
@@ -1072,9 +1072,9 @@ impl AgentView {
             return;
         }
         if self.attachments.is_empty()
-            && let Some((option, picked)) = setter(&value)
+            && let Some(picked) = composer_setter(&value, self.pane_state.settings.as_ref())
         {
-            self.set_from_composer(option, picked, window, cx);
+            self.set_from_composer(picked, window, cx);
             return;
         }
         let attachments = self.attachments.clone();
@@ -1104,13 +1104,12 @@ impl AgentView {
 
     fn set_from_composer(
         &mut self,
-        option: &'static str,
-        value: Option<&str>,
+        picked: ComposerSetter<'_>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let text = match value {
-            Some(value) => {
+        let text = match picked {
+            ComposerSetter::Set(option, value) => {
                 let pane = self.pane;
                 let sent = self.controller.update(cx, |controller, cx| {
                     controller.set_option(pane, option, value, cx)
@@ -1123,7 +1122,11 @@ impl AgentView {
                 self.submission_error = None;
                 String::new()
             }
-            None => format!("/{option} "),
+            ComposerSetter::Keep => {
+                self.submission_error = None;
+                String::new()
+            }
+            ComposerSetter::List(option) => format!("/{option} "),
         };
         self.input.update(cx, |input, cx| {
             input.set_value(text.clone(), window, cx);
@@ -1883,7 +1886,7 @@ impl Render for AgentView {
         let floats = self.floats;
         let view = cx.entity();
         let input_focus = self.focus(cx);
-        let chat_body = use_chat.then(|| self.render_chat(&state, &view, cx));
+        let chat_body = use_chat.then(|| self.render_chat(&state, &view, window, cx));
         let sheet = self.render_sheet(&view, window, cx);
         let timeline = AgentTimeline::new(
             rows,

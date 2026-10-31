@@ -64,6 +64,7 @@ pub struct ChatHooks<'a> {
     pub fork: bool,
     pub refs: Option<&'a ChatRefs>,
     pub vendor: Option<IconName>,
+    pub owner: Option<u64>,
 }
 
 impl ChatHooks<'_> {
@@ -94,6 +95,7 @@ const REVEAL_MAX_MS: u64 = 900;
 const REVEAL_MIN_MS: u64 = 220;
 const REVEAL_MS_PER_CHAR: u64 = 2;
 const USER_MAX_HEIGHT: f32 = 260.0;
+const THOUGHT_MAX_HEIGHT: f32 = 260.0;
 const SHIMMER_MS: u64 = 1600;
 
 #[derive(Default)]
@@ -104,6 +106,7 @@ pub struct ChatPane {
     session: Option<String>,
     known: HashSet<ItemId>,
     primed: bool,
+    retired: Vec<Arc<Image>>,
 }
 
 impl ChatPane {
@@ -138,7 +141,9 @@ impl ChatPane {
             _ => view.last_session.clone(),
         };
         if session != self.session {
-            self.open = ChatOpen::default();
+            let open = std::mem::take(&mut self.open);
+            self.retired
+                .extend(open.images.into_values().flat_map(|images| images.to_vec()));
             self.session = session;
             self.known.clear();
             self.primed = false;
@@ -155,7 +160,12 @@ impl ChatPane {
         {
             self.open.agent = None;
         }
-        self.open.images.retain(|id, _| view.item(id).is_some());
+        self.retired.extend(
+            self.open
+                .images
+                .extract_if(|id, _| view.item(id).is_none())
+                .flat_map(|(_, images)| images.to_vec()),
+        );
         let now = chat_rows::now_ms();
         for item in view.items.values() {
             if !item.body.images.is_empty() && !self.open.images.contains_key(&item.id) {
@@ -175,6 +185,27 @@ impl ChatPane {
         self.open
             .arrivals
             .retain(|_, at| now.saturating_sub(*at) < REVEAL_MAX_MS);
+    }
+
+    pub fn release(&mut self, window: &mut Window, cx: &mut App) {
+        if self.retired.is_empty() {
+            return;
+        }
+        let shown = self
+            .open
+            .images
+            .values()
+            .flat_map(|images| images.iter().map(|image| image.id))
+            .collect::<HashSet<_>>();
+        for image in self.retired.drain(..) {
+            if shown.contains(&image.id) {
+                continue;
+            }
+            if let Some(render) = Arc::clone(&image).get_render_image(window, cx) {
+                cx.drop_image(render, Some(window));
+            }
+            image.remove_asset(cx);
+        }
     }
 
     fn distance(&self) -> f32 {
@@ -384,7 +415,7 @@ impl Draw<'_, '_> {
                 self.hooks.refs,
                 cx,
             ),
-            Unit::Text(id) => markdown(id, self.shown_text(id), self.hooks.refs, cx),
+            Unit::Text(id) => markdown(id, self.shown_text(id), self.hooks, cx),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
@@ -456,7 +487,7 @@ impl Draw<'_, '_> {
                                 if item.kind.is_tool() {
                                     Some(step_row(item, self.phase, self.cx))
                                 } else {
-                                    thought_row(item, self.cx)
+                                    thought_row(item, self.hooks.owner, self.cx)
                                 }
                             }),
                     ),
@@ -632,7 +663,7 @@ impl Draw<'_, '_> {
                 body.child(markdown(
                     &ItemId::new(format!("result-{}", id.as_str())),
                     result.into(),
-                    self.hooks.refs,
+                    self.hooks,
                     cx,
                 ))
             })
@@ -986,14 +1017,17 @@ fn user_bubble(
         .into_any_element()
 }
 
-fn markdown(id: &ItemId, text: SharedString, refs: Option<&ChatRefs>, cx: &App) -> AnyElement {
+fn block_scope(owner: Option<u64>, id: &str) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    owner.hash(&mut hasher);
+    id.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn markdown(id: &ItemId, text: SharedString, hooks: &ChatHooks<'_>, cx: &App) -> AnyElement {
     let id = SharedString::from(format!("chat-text-{}", id.as_str()));
-    let scope = {
-        let mut hasher = DefaultHasher::new();
-        id.hash(&mut hasher);
-        hasher.finish()
-    };
-    let view = match refs {
+    let scope = block_scope(hooks.owner, &id);
+    let view = match hooks.refs {
         Some(refs) => {
             let (linked, targets) = linkify_markdown(&text, refs);
             let view = TextView::markdown(id, linked);
@@ -1009,7 +1043,7 @@ fn markdown(id: &ItemId, text: SharedString, refs: Option<&ChatRefs>, cx: &App) 
         .w_full()
         .text_size(crate::rems_from_px(13.0))
         .child(
-            agent_text_view(view, scope, None, cx)
+            agent_text_view(view, scope, hooks.owner, cx)
                 .markdown_extensions(assistant_markdown_extensions()),
         )
         .into_any_element()
@@ -1057,18 +1091,28 @@ fn step_row(item: &zz_protocol::chat::ItemView, phase: f32, cx: &App) -> AnyElem
     .into_any_element()
 }
 
-fn thought_row(item: &zz_protocol::chat::ItemView, cx: &App) -> Option<AnyElement> {
+fn thought_row(
+    item: &zz_protocol::chat::ItemView,
+    owner: Option<u64>,
+    cx: &App,
+) -> Option<AnyElement> {
     let body = chat_rows::reasoning_body(&item.body.text)?;
+    let id = SharedString::from(format!("chat-thought-{}", item.id.as_str()));
+    let scope = block_scope(owner, &id);
     Some(
         div()
+            .id(SharedString::from(format!(
+                "chat-thought-scroll-{}",
+                item.id.as_str()
+            )))
             .w_full()
+            .max_h(px(THOUGHT_MAX_HEIGHT))
+            .overflow_y_scroll()
             .py_1()
             .text_size(crate::rems_from_px(12.5))
             .text_color(cx.theme().foreground.muted())
-            .child(TextView::markdown(
-                SharedString::from(format!("chat-thought-{}", item.id.as_str())),
-                body,
-            ))
+            .debug_selector(|| "chat-thought".to_owned())
+            .child(agent_text_view(TextView::markdown(id, body), scope, owner, cx).selectable(true))
             .into_any_element(),
     )
 }
@@ -1399,6 +1443,95 @@ mod tests {
         })
         .expect("item");
         view
+    }
+
+    #[ala::test]
+    fn an_evicted_image_drops_its_decoded_pixels(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut view = ready("s1");
+        pasted(&mut view, "u1", "");
+        let mut pane = ChatPane::default();
+        pane.sync(&view);
+        let image = pane.open.images[&ItemId::new("u1")][0].clone();
+        let open = pane.open.clone();
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| ThreadTest { view, open });
+            penna::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let render = cx
+            .update(|window, cx| image.clone().get_render_image(window, cx))
+            .expect("the pasted image should be decoded");
+        cx.update(|window, cx| {
+            assert!(image.is_asset_cached(cx));
+            assert!(window.has_image_atlas_entry(&render));
+            let mut again = ready("s2");
+            pasted(&mut again, "u1", "");
+            pane.sync(&again);
+            pane.release(window, cx);
+            assert!(
+                image.is_asset_cached(cx),
+                "the same image shown again stays"
+            );
+            assert!(window.has_image_atlas_entry(&render));
+            pane.sync(&ready("s3"));
+            pane.release(window, cx);
+            assert!(!image.is_asset_cached(cx));
+            assert!(!window.has_image_atlas_entry(&render));
+        });
+    }
+
+    #[ala::test]
+    fn an_opened_thought_scrolls_inside_a_capped_height(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut view = ready("s1");
+        let long = (0..200)
+            .map(|line| format!("Line {line} of a long thought."))
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        view.apply(&ChatEvent::ItemStarted {
+            item: ItemId::new("t1"),
+            turn: Some(TurnId(1)),
+            parent: None,
+            kind: ItemKind::Reasoning,
+            body: ItemBody::text(long),
+            at: 3,
+        })
+        .expect("thought");
+        let open = ChatOpen {
+            runs: vec![ItemId::new("t1")],
+            ..ChatOpen::default()
+        };
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|_| ThreadTest { view, open });
+            penna::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        let thought = cx
+            .debug_bounds("chat-thought")
+            .expect("the opened thought should be painted");
+        assert!(thought.size.height <= px(super::THOUGHT_MAX_HEIGHT));
+        assert!(thought.size.height > px(40.0));
+    }
+
+    #[test]
+    fn the_same_item_in_two_panes_keeps_separate_block_scopes() {
+        assert_ne!(
+            super::block_scope(Some(7), "chat-text-a1"),
+            super::block_scope(Some(8), "chat-text-a1")
+        );
+        assert_eq!(
+            super::block_scope(Some(7), "chat-text-a1"),
+            super::block_scope(Some(7), "chat-text-a1")
+        );
     }
 
     #[test]

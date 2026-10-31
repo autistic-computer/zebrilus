@@ -28,7 +28,8 @@ use zz_client::agent_lens::{
     turn_running,
 };
 use zz_client::agent_settings::{
-    LensSettings, fork_command, real_session, setter, side_chat_command, source_message,
+    ComposerSetter, LensSettings, composer_setter, fork_command, real_session, side_chat_command,
+    source_message,
 };
 use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
 use zz_protocol::chat::RequestView;
@@ -692,13 +693,12 @@ impl AgentLens {
 
     fn set_from_composer(
         &mut self,
-        option: &'static str,
-        value: Option<&str>,
+        picked: ComposerSetter<'_>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let text = match value {
-            Some(value) => {
+        let text = match picked {
+            ComposerSetter::Set(option, value) => {
                 let connection = self.connection.read(cx);
                 if !connection.connected || connection.core.attached_read_only() {
                     return;
@@ -717,7 +717,11 @@ impl AgentLens {
                 self.draft_error = None;
                 String::new()
             }
-            None => format!("/{option} "),
+            ComposerSetter::Keep => {
+                self.draft_error = None;
+                String::new()
+            }
+            ComposerSetter::List(option) => format!("/{option} "),
         };
         self.input
             .update(cx, |input, cx| input.set_value(text, window, cx));
@@ -730,10 +734,16 @@ impl AgentLens {
 
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.input.read(cx).value().to_string();
+        let settings = self
+            .connection
+            .read(cx)
+            .core
+            .agent_state(self.pane)
+            .and_then(|state| self.lens_settings(state));
         if self.attachments.is_empty()
-            && let Some((option, value)) = setter(&text)
+            && let Some(picked) = composer_setter(&text, settings.as_ref())
         {
-            self.set_from_composer(option, value, window, cx);
+            self.set_from_composer(picked, window, cx);
             return;
         }
         let attachments = self.attachments.clone();
@@ -1613,7 +1623,7 @@ impl Render for AgentLens {
             }
             .into_any_element()
         };
-        let chat = use_chat.then(|| self.render_chat(inline, cx));
+        let chat = use_chat.then(|| self.render_chat(inline, window, cx));
         let provider = self
             .terminal(cx)
             .and_then(zz_client::window_summary::pane_agent);
@@ -1715,6 +1725,7 @@ impl AgentLens {
     fn render_chat(
         &mut self,
         inline: HashMap<u64, AnyElement>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let now = zz_client::chat_rows::now_ms();
@@ -1724,6 +1735,7 @@ impl AgentLens {
             0.0
         };
         self.chat.sync(&self.transcript.lens.chat);
+        self.chat.release(window, cx);
         self.chat.pin();
         let entity = cx.entity();
         let click: ChatClicks = {
@@ -1759,6 +1771,7 @@ impl AgentLens {
                 zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
                 zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
             }),
+            owner: Some(pane),
         };
         let body = chat_thread(
             &self.transcript.lens.chat,

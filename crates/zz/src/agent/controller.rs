@@ -57,6 +57,10 @@ impl AgentConnectionState {
         matches!(self, Self::Ready)
     }
 
+    pub(crate) const fn accepts_setting(self) -> bool {
+        matches!(self, Self::Ready | Self::Running)
+    }
+
     pub(crate) const fn has_active_turn(self) -> bool {
         matches!(self, Self::Running | Self::Cancelling)
     }
@@ -1252,6 +1256,18 @@ mod tests {
 
     fn thread() -> AgentThread {
         AgentThread::new(AgentProvider::Codex, PathBuf::from("/workspace"), None)
+    }
+
+    #[test]
+    fn the_model_menu_takes_picks_while_a_turn_runs() {
+        use AgentConnectionState::{
+            Cancelling, Disconnected, Failed, Ready, Restoring, Running, Starting,
+        };
+        assert!(Ready.accepts_setting() && Running.accepts_setting());
+        assert!(!Running.accepts_prompt());
+        for state in [Starting, Restoring, Cancelling, Failed, Disconnected] {
+            assert!(!state.accepts_setting(), "{state:?}");
+        }
     }
 
     #[test]

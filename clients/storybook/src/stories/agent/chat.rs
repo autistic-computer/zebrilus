@@ -467,6 +467,7 @@ impl Render for Thread {
             fork: true,
             refs: self.refs.as_ref(),
             vendor: Some(self.vendor.clone()),
+            owner: None,
         };
         let view = &self.script.view;
         let now = self.script.at;
@@ -691,6 +692,32 @@ fn agents_done() -> Script {
     script
 }
 
+fn long_thought() -> Script {
+    let thought = [
+        "**Important**: the cache is stale after a session switch, so the first thing to check is who clears it.",
+        "#42 is the culprit here: the reset drops the open rows but keeps the decoded images.",
+        "The thread keys images by user item id and the PiP prompt by agent id, so the two never collide.",
+        "Dropping the Arc alone leaves the decoded pixels in the asset cache and the atlas for the life of the app.",
+        "A pasted Retina screenshot is about 20 MB of RGBA, which matters on a phone.",
+        "So eviction should queue the images and release them where the window is at hand.",
+        "The same image can come back under the same content hash after a fork, so skip any that is still shown.",
+        "Then a test: paste, draw, switch sessions, and check the cache and the atlas are empty.",
+    ]
+    .join("\n\n");
+    let mut script = Script::new();
+    script
+        .turn("Why does memory grow after switching chats?")
+        .think("t1", &thought)
+        .done("t1")
+        .ran("r1", ItemKind::Read, "crates/zz-ui/src/agent/chat.rs")
+        .reply(
+            "a1",
+            "Evicted images kept their decoded pixels. The chat now releases them when an item leaves the view.",
+        )
+        .finish(completed());
+    script
+}
+
 pub fn finished(window: &mut Window, cx: &mut App) -> AnyView {
     let first_run = |turn: u64, run: &str| ChatOpen {
         turns: vec![TurnId(turn)],
@@ -703,6 +730,10 @@ pub fn finished(window: &mut Window, cx: &mut App) -> AnyView {
             (
                 "opened, first run expanded",
                 Thread::new(fixed()).opened(first_run(1, "r1")),
+            ),
+            (
+                "a long thought scrolls inside its cap; inline bold and #42 keep their words",
+                Thread::new(long_thought()).opened(first_run(1, "t1")),
             ),
             (
                 "a step failed: the run counts it and the step turns red",

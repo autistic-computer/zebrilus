@@ -129,6 +129,31 @@ pub fn setter(text: &str) -> Option<(&'static str, Option<&str>)> {
     Some((option, (!value.is_empty()).then_some(value)))
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ComposerSetter<'a> {
+    List(&'static str),
+    Keep,
+    Set(&'static str, &'a str),
+}
+
+#[must_use]
+pub fn composer_setter<'a>(
+    text: &'a str,
+    settings: Option<&LensSettings>,
+) -> Option<ComposerSetter<'a>> {
+    let (option, value) = setter(text)?;
+    let choices = settings.and_then(|settings| settings.choices(option));
+    match value {
+        None => choices
+            .filter(|(choices, _)| !choices.is_empty())
+            .map(|_| ComposerSetter::List(option)),
+        Some(value) if choices.is_some_and(|(_, current)| current == value) => {
+            Some(ComposerSetter::Keep)
+        }
+        Some(value) => Some(ComposerSetter::Set(option, value)),
+    }
+}
+
 #[must_use]
 pub fn source_message(item: &str) -> Option<&str> {
     let id = item.strip_prefix("u:")?;
@@ -207,6 +232,48 @@ mod tests {
         assert_eq!(setter("/models"), None);
         assert_eq!(setter("switch /model opus"), None);
         assert_eq!(setter("/cd /tmp"), None);
+    }
+
+    #[test]
+    fn a_composer_setter_lists_only_known_choices_and_skips_the_current_value() {
+        let settings = LensSettings {
+            model: "sonnet".to_owned(),
+            models: vec![
+                Choice {
+                    value: "opus".to_owned(),
+                    name: "Opus".to_owned(),
+                },
+                Choice {
+                    value: "sonnet".to_owned(),
+                    name: "Sonnet".to_owned(),
+                },
+            ],
+            effort: "high".to_owned(),
+            ..LensSettings::default()
+        };
+        assert_eq!(
+            composer_setter("/model", Some(&settings)),
+            Some(ComposerSetter::List(MODEL))
+        );
+        assert_eq!(composer_setter("/effort ", Some(&settings)), None);
+        assert_eq!(composer_setter("/model", None), None);
+        assert_eq!(
+            composer_setter("/model sonnet", Some(&settings)),
+            Some(ComposerSetter::Keep)
+        );
+        assert_eq!(
+            composer_setter("/effort high", Some(&settings)),
+            Some(ComposerSetter::Keep)
+        );
+        assert_eq!(
+            composer_setter("/model opus", Some(&settings)),
+            Some(ComposerSetter::Set(MODEL, "opus"))
+        );
+        assert_eq!(
+            composer_setter("/effort low", None),
+            Some(ComposerSetter::Set(EFFORT, "low"))
+        );
+        assert_eq!(composer_setter("/cd /tmp", Some(&settings)), None);
     }
 
     #[test]

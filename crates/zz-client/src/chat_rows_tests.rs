@@ -920,10 +920,20 @@ fn a_thought_body_drops_its_leading_headings() {
     assert_eq!(reasoning_body("**A**\n\n**B**\n"), None);
     assert_eq!(reasoning_body("## Plan\n"), None);
     assert_eq!(reasoning_body(""), None);
+    assert_eq!(reasoning_body("# Plan\n### Steps"), None);
     assert_eq!(
-        reasoning_body("**Checking the turn machine.** Codex reports idle first.").as_deref(),
+        reasoning_body("**Checking the turn machine.**\nCodex reports idle first.").as_deref(),
         Some("Codex reports idle first.")
     );
+    for kept in [
+        "**Checking the turn machine.** Codex reports idle first.",
+        "**Important**: the cache is stale, so rebuild it.",
+        "#42 is the culprit here",
+        "#include <stdio.h> is missing",
+        "**A** and **B** both fail.",
+    ] {
+        assert_eq!(reasoning_body(kept).as_deref(), Some(kept));
+    }
     assert_eq!(
         reasoning_body("**A**\n\nbody\n\n**B**\n\nmore").as_deref(),
         Some("body\n\n**B**\n\nmore")

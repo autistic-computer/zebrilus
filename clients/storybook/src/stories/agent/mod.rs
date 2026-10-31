@@ -54,7 +54,7 @@ const STORY: Story = Story {
         Section {
             id: "finished",
             name: "Finished turn",
-            summary: "When the reply lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps. A run counts its failed and denied steps. A turn you stopped folds behind You stopped after, and a failed one behind Failed after with a red mark.",
+            summary: "When the reply lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps and its thinking, which scrolls inside 260 px. A run counts its failed and denied steps. A turn you stopped folds behind You stopped after, and a failed one behind Failed after with a red mark.",
             build: chat::finished,
         },
         Section {
@@ -108,7 +108,7 @@ const STORY: Story = Story {
         Section {
             id: "terminal-pip",
             name: "Terminal PiP",
-            summary: "Commands that only the CLI's own screen can show (/config, /status, /usage, /mcp, Codex's /model), and dialogs the lens cannot answer, open the pane's live terminal in a wide PiP over the chat, pinned to the bottom of the screen where the CLI draws its dialog. Keys go to the CLI. The PiP closes when the CLI's input box comes back; Esc (Codex) or Done close it too.",
+            summary: "Commands that only the CLI's own screen can show (/config, /status, /usage, /mcp), and dialogs the lens cannot answer, open the pane's live terminal in a wide PiP over the chat, pinned to the bottom of the screen where the CLI draws its dialog. Keys go to the CLI. The PiP closes when the CLI's input box comes back; Esc (Codex) or Done close it too.",
             build: lens::sheets,
         },
         Section {
