@@ -33,14 +33,14 @@ tree-sitter = [
 [dependencies]
 anyhow = "1"
 async-channel = "2.5.0"
-image = { version = "=0.25.10", default-features = false }
+image = { version = "0.25.10", default-features = false }
 log = "0.4.34"
 markdown = { version = "1.0", features = ["serde"] }
 parking_lot = { version = "0.12.5", optional = true }
 ropey = { version = "=2.0.0-beta.1", features = ["metric_lines_lf", "metric_utf16"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
-smallvec = { version = "=1.16.1", features = ["serde"] }
+smallvec = { version = "1.16.1", features = ["serde"] }
 tree-sitter = { version = "0.27.0", optional = true }
 tree-sitter-json = { version = "0.24.8", optional = true }
 tree-sitter-language = "0.1.8"
@@ -49,13 +49,13 @@ tree-sitter-rust = { version = "0.24.2", optional = true }
 tree-sitter-toml-ng = { version = "0.7.0", optional = true }
 unicode-segmentation = "1.13.3"
 web-time = "1.1.0"
-ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["default"] }
+ala = { git = "https://github.com/autistic-computer/ala", branch = "main", default-features = false }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-url = "=2.5.8"
+url = "2.5.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ksni = { version = "=0.3.6", optional = true, default-features = false, features = ["async-io", "blocking"] }
+ksni = { version = "0.3.6", optional = true, default-features = false, features = ["async-io", "blocking"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = { version = "0.6.4", optional = true }
@@ -63,7 +63,7 @@ objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, 
 objc2-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["NSData", "NSGeometry", "NSString"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "=0.62.2", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.62.2", optional = true, features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 ala = { git = "https://github.com/autistic-computer/ala", branch = "main", features = ["test-support"] }
