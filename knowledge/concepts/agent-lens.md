@@ -88,8 +88,9 @@ but no pane opens them now.
   server's shapes and `codex::translate::Translator::history_item` translates them:
   - A command recorded as `[bash|zsh|sh|dash, -c|-lc, script]` shows only its script, and a
     command of several parts is titled by the whole command, not its first part.
-  - A file change's map of paths becomes the list of changes with the paths untouched (adds as
-    `+` lines, updates as their diff, deletes as `-` lines).
+  - A file change's map of paths becomes the list of changes with the paths untouched (adds and
+    deletes as one hunk of `+` or `-` lines, updates as their diff). Only lines before a diff's
+    first `@@` count as `---`/`+++` file headers.
   - Items recorded without a status (context compaction, image views, extensions) are done; an
     image path loses its `file://`.
   - Extensions: `web.search` becomes a web row (`Open <url>`, `Find "<pattern>"` or
@@ -151,16 +152,17 @@ lens, from typing in the terminal, or from a peer message.
 - **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
   card; the user answers in the terminal.
 - **Codex questions.** `request_user_input_async` records an `AgentMessage` with `questions` and
-  `delivery: "async"`. It becomes a question row that sits outside the turn from the start, since
-  the call does not block the turn and the question can outlive it. While it is open the runtime
-  reports `waiting`: one question with 1 to 9 options raises a question card answered with the
-  option's digit (the TUI's overlay takes digits), anything else a card that points at the
-  terminal. The answer comes back as a `UserMessage` wrapped in
+  `delivery: "async"`. It becomes a question row marked as background from the start, so it does not
+  hold its turn open: the call does not block the turn and the question can outlive it. While it is
+  open the runtime reports `waiting`: one question with 1 to 9 options raises a question card
+  answered with the option's digit (the TUI's overlay takes digits), anything else a card that
+  points at the terminal. The answer comes back as a `UserMessage` wrapped in
   `<send_user_message_question_reply>`, often as the first line of a new turn, and closes the row
-  with an answered record instead of a user bubble. A plain prompt, `turn_aborted` or Stop drop an
-  unanswered question (recorded with no answer). While it is open the lens refuses prompts and
-  steers, so they cannot land in the overlay as option picks. A plain `send_user_message_async`
-  message stays text.
+  with an answered record instead of a user bubble. A prompt typed in the terminal, `turn_aborted`,
+  or Stop while a turn runs drop an unanswered question (recorded with no answer); the composer
+  offers no Stop once the turn is over. While it is open the lens refuses prompts and steers, so
+  they cannot land in the overlay as option picks. A plain `send_user_message_async` message stays
+  text.
 
 # Slash commands
 

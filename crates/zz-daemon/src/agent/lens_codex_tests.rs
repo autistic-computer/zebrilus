@@ -386,3 +386,41 @@ fn a_child_transcript_found_later_still_nests_under_its_agent() {
         .expect("the child's command");
     assert_eq!(nested["_meta"]["zz"]["parent"], COUNTER);
 }
+
+#[test]
+fn a_child_transcript_found_only_when_its_agent_ends_still_comes_first() {
+    let rollout = Rollout::new(true);
+    let child = rollout.dir.path().join(CHILD);
+    let hidden = rollout.dir.path().join("held.jsonl");
+    std::fs::rename(&child, &hidden).unwrap();
+    let mut codex = Codex::default();
+    let text = std::fs::read_to_string(rollout.path()).unwrap();
+    let cut = text
+        .lines()
+        .position(|line| line.contains("\"kind\":\"started\""))
+        .expect("an agent start");
+    let head = text
+        .lines()
+        .take(cut + 1)
+        .fold(String::new(), |all, line| all + line + "\n");
+    std::fs::write(rollout.path(), &head).unwrap();
+    codex.load(rollout.path(), Path::new("/work"));
+    codex.children[0].lost = true;
+    std::fs::rename(&hidden, &child).unwrap();
+    std::fs::write(rollout.path(), text).unwrap();
+    let read = codex.read();
+    let nested = read
+        .updates
+        .iter()
+        .position(|update| update["title"] == "wc -l alpha.txt beta.txt gamma.json")
+        .expect("the child's command");
+    let ended = read
+        .updates
+        .iter()
+        .position(|update| update["toolCallId"] == COUNTER && update["status"] == "completed")
+        .expect("the agent's end");
+    assert!(
+        nested < ended,
+        "the child's step came after its agent ended"
+    );
+}

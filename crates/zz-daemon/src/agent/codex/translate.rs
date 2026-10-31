@@ -616,14 +616,13 @@ fn tool_output(item: &Value) -> Option<String> {
             let lines = item["results"]
                 .as_array()?
                 .iter()
-                .filter_map(|result| {
-                    let url = result["url"].as_str()?;
-                    Some(
-                        result["title"]
-                            .as_str()
-                            .map_or_else(|| url.to_owned(), |title| format!("{title} {url}")),
-                    )
-                })
+                .filter_map(
+                    |result| match (result["title"].as_str(), result["url"].as_str()) {
+                        (Some(title), Some(url)) => Some(format!("{title} {url}")),
+                        (Some(line), None) | (None, Some(line)) => Some(line.to_owned()),
+                        (None, None) => None,
+                    },
+                )
                 .collect::<Vec<_>>();
             (!lines.is_empty()).then(|| lines.join("\n"))
         }
@@ -827,8 +826,13 @@ fn wait_time(ms: u64) -> String {
 fn split_diff(diff: &str) -> (String, String) {
     let mut old = String::new();
     let mut new = String::new();
+    let mut hunk = false;
     for line in diff.lines() {
-        if line.starts_with("@@") || line.starts_with("---") || line.starts_with("+++") {
+        if line.starts_with("@@") {
+            hunk = true;
+            continue;
+        }
+        if !hunk && (line.starts_with("---") || line.starts_with("+++")) {
             continue;
         }
         if let Some(rest) = line.strip_prefix('-') {
@@ -1268,6 +1272,13 @@ mod tests {
             ),
         );
         assert_eq!(find[0]["title"], "Find \"Zebrilus\"");
+        let failed = history(
+            &mut translator,
+            &json!({"type": "webSearch", "id": "e", "query": "https://example.com/x",
+                "action": {"type": "openPage", "url": "https://example.com/x"},
+                "status": "completed", "results": [{"title": "Internal Error"}]}),
+        );
+        assert_eq!(failed[1]["content"][0]["content"]["text"], "Internal Error");
     }
 
     #[test]
@@ -1346,5 +1357,21 @@ mod tests {
         let updates = translator.notification("item/started", &json!({ "item": added }));
         assert_eq!(updates[0]["content"][0]["oldText"], Value::Null);
         assert_eq!(updates[0]["content"][0]["newText"], "fn main() {}\n");
+    }
+
+    #[test]
+    fn diff_lines_that_look_like_file_headers_stay_inside_a_hunk() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let changed = json!({"type":"fileChange","id":"f1","status":"completed","changes":[
+            {"path":"/work/a.sql","kind":{"type":"update"},
+                "diff":"--- a/a.sql\n+++ b/a.sql\n@@ -1,2 +1,2 @@\n--- old note\n+++i;\n select 1;\n"},
+            {"path":"/work/b.md","kind":{"type":"delete"},
+                "diff":"@@ -1,3 +0,0 @@\n----\n-title: b\n----\n"}]});
+        let updates = translator.notification("item/started", &json!({ "item": changed }));
+        let content = &updates[0]["content"];
+        assert_eq!(content[0]["oldText"], "-- old note\nselect 1;\n");
+        assert_eq!(content[0]["newText"], "++i;\nselect 1;\n");
+        assert_eq!(content[1]["oldText"], "---\ntitle: b\n---\n");
+        assert_eq!(content[1]["newText"], "");
     }
 }

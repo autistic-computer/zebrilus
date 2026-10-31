@@ -50,7 +50,7 @@ const TAIL_BYTES: u64 = 8 * 1024 * 1024;
 const READ_LIMIT: u64 = 4 * 1024 * 1024;
 const PERMISSION_PROMPT: &str = "permission prompt";
 const CODEX_QUESTION: &str = "question";
-const CODEX_ASKING: &str = "Codex is waiting for an answer to its question. Pick an option on its card or answer in the terminal; stop dismisses it.";
+const CODEX_ASKING: &str = "Codex is waiting for an answer to its question. Pick an option on its card or answer in the terminal.";
 const CHILD_WAIT: Duration = Duration::from_secs(30);
 const FINAL_ANSWER: &str = "Message Type: FINAL_ANSWER";
 pub(crate) const ALLOW: &str = "allow";
@@ -657,9 +657,12 @@ impl Codex {
                     let thread = item["agentThreadId"].as_str().unwrap_or_default();
                     if item["kind"] == "started" {
                         self.adopt(thread, None, item["agentPath"].as_str());
-                    } else if item["kind"] == "completed" && self.untold(thread) {
-                        self.held.push(entry.clone());
-                        return;
+                    } else if item["kind"] == "completed" {
+                        if self.untold(thread) {
+                            self.held.push(entry.clone());
+                            return;
+                        }
+                        read.updates.extend(self.child_lines(None));
                     }
                 }
                 read.updates.extend(self.translate(&item, entry));

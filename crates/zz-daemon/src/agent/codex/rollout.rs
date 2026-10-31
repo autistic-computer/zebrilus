@@ -122,7 +122,13 @@ fn file_changes(changes: &Value) -> Value {
         return camelize(changes);
     };
     let lines = |text: &str, sign: char| {
-        text.lines().fold(String::new(), |mut all, line| {
+        let count = text.lines().count();
+        let header = if sign == '+' {
+            format!("@@ -0,0 +1,{count} @@\n")
+        } else {
+            format!("@@ -1,{count} +0,0 @@\n")
+        };
+        text.lines().fold(header, |mut all, line| {
             all.push(sign);
             all.push_str(line);
             all.push('\n');
@@ -162,27 +168,32 @@ fn questions(item: &Value) -> Option<Value> {
             .iter()
             .enumerate()
             .map(|(index, question)| {
-                json!({
-                    "id": format!("q{index}"),
-                    "question": question["title"].as_str().or_else(|| question["question"].as_str()).unwrap_or_default(),
-                    "options": question["options"].as_array().into_iter().flatten().filter_map(Value::as_str).map(|label| json!({ "label": label })).collect::<Vec<_>>(),
-                })
+                let title = question["title"]
+                    .as_str()
+                    .or_else(|| question["question"].as_str())
+                    .unwrap_or_default();
+                let options = question["options"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .map(|label| json!({ "label": label }))
+                    .collect::<Vec<_>>();
+                json!({ "id": format!("q{index}"), "question": title, "options": options })
             })
             .collect(),
     ))
 }
 
 fn replies(text: &str) -> Option<Value> {
-    let body = text
-        .trim()
-        .strip_prefix(QUESTION_REPLY)?
-        .trim_end()
-        .strip_suffix(QUESTION_REPLY_END)?;
-    let entries = serde_json::from_str::<Value>(body.trim()).ok()?;
+    let body = text.trim().strip_prefix(QUESTION_REPLY)?.trim_end();
+    let body = body.strip_suffix(QUESTION_REPLY_END).unwrap_or(body);
+    let entries = serde_json::from_str::<Value>(body.trim()).unwrap_or_default();
     Some(Value::Array(
         entries
-            .as_array()?
-            .iter()
+            .as_array()
+            .into_iter()
+            .flatten()
             .filter_map(|entry| {
                 let item = serde_json::from_str::<Value>(entry["questionItemId"].as_str()?).ok()?;
                 Some(json!({
@@ -369,7 +380,7 @@ mod tests {
                     "type": "update", "unified_diff": "@@ -1 +1 @@\n-a\n+b\n",
                     "move_path": "/work/new_name.txt",
                 },
-                "/work/gone_file.txt": { "type": "delete", "content": "bye\n" },
+                "/work/gone_file.txt": { "type": "delete", "content": "---\ntitle: bye\n---\n" },
             },
         }))
         .unwrap();
@@ -383,7 +394,7 @@ mod tests {
         assert_eq!(change("/work/my_file.rs")["kind"]["type"], "add");
         assert_eq!(
             change("/work/my_file.rs")["diff"],
-            "+fn main() {}\n+fn other() {}\n"
+            "@@ -0,0 +1,2 @@\n+fn main() {}\n+fn other() {}\n"
         );
         assert_eq!(
             change("/work/old_name.txt")["diff"],
@@ -393,7 +404,10 @@ mod tests {
             change("/work/old_name.txt")["kind"]["movePath"],
             "/work/new_name.txt"
         );
-        assert_eq!(change("/work/gone_file.txt")["diff"], "-bye\n");
+        assert_eq!(
+            change("/work/gone_file.txt")["diff"],
+            "@@ -1,3 +0,0 @@\n----\n-title: bye\n----\n"
+        );
         assert_eq!(change("/work/gone_file.txt")["kind"]["type"], "delete");
     }
 
@@ -436,6 +450,15 @@ mod tests {
             json!({ "type": "userInputReply", "id": "u", "replies": [{
                 "callId": "call_q", "index": 0, "question": "Which one?", "answer": "B",
             }] })
+        );
+        let garbled = v2_item(&json!({
+            "type": "UserMessage", "id": "u3",
+            "content": [{ "type": "text", "text": "<send_user_message_question_reply>\n[{\"quest" }],
+        }))
+        .unwrap();
+        assert_eq!(
+            garbled,
+            json!({ "type": "userInputReply", "id": "u3", "replies": [] })
         );
         let prompt = v2_item(&json!({
             "type": "UserMessage", "id": "u2", "content": [{ "type": "text", "text": "hello" }],
