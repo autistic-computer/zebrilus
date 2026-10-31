@@ -51,12 +51,14 @@ penna's own `run` is behind its `page` feature, so a linked app never exports tw
 `wasm/storybook.js`. `Catalog::problems` lists bad or duplicate ids (plates included) and floating
 entries that name no section; each crate's tests assert it is empty for its catalog.
 
-Each is its own wasm Cargo workspace, like `clients/web`. `zz-storybook` keeps a lockfile;
-`penna-storybook`'s is ignored like penna's, and in zebrilus every build of it patches its git
-dependencies on ala and ala-platform to `libs/ala` with `--config`. Their dev profiles optimize
-dependencies the way the root workspace does (`[profile.dev.package]`): third-party crates and ala
-optimized, the crates they edit (`penna`, `penna-storybook`, `zz-ui`, `zz-client`, `zz-protocol`,
-`zz-terminal`) not. Without it, a debug build drew one Theme creator frame in about 100 ms. Keep
+Each is its own wasm Cargo workspace, like `clients/web`, and each keeps a lockfile. penna's two
+lockfiles pin ala from GitHub for the penna repo; in zebrilus every build of penna's page patches
+its git dependencies on ala and ala-platform to `libs/ala` with `--config`, and the just recipe puts
+the lockfiles back afterwards (`scripts/penna-locks.sh`). `penna-storybook`'s default `editor`
+feature turns on penna's `editor` and the Code editor story; an app that leaves it out sets
+`default-features = false`. The two workspaces' dev profiles optimize dependencies the way the root
+workspace does (`[profile.dev.package]`): third-party crates and ala optimized, the crates they
+edit (`penna`, `penna-storybook`, `zz-ui`, `zz-client`, `zz-protocol`, `zz-terminal`) not. Without it, a debug build drew one Theme creator frame in about 100 ms. Keep
 those at `opt-level = 0`: optimized and incremental, an edit to `zz-ui` once left an rlib that
 failed to link with undefined `anon.*.llvm.*` symbols.
 

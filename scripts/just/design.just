@@ -8,7 +8,10 @@ tokens:
 
 [doc("Write penna's own CSS tokens, the kit's roles only, into libs/penna/web/tokens.")]
 penna-tokens:
-    cargo run -q --manifest-path libs/penna/Cargo.toml --config 'patch."https://github.com/autistic-computer/ala".ala.path="'"$PWD"'/libs/ala/crates/ala"' --example theme_css
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source scripts/penna-locks.sh
+    cargo run -q --manifest-path libs/penna/Cargo.toml --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --example theme_css
 
 [doc("Serve design/ on 127.0.0.1:8090 without caching, with penna's kit page at /penna/.")]
 serve: tokens penna-tokens
