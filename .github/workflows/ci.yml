@@ -101,6 +101,7 @@ jobs:
           cargo clippy --manifest-path libs/ala/Cargo.toml --workspace --all-targets --all-features -- -D warnings
           cargo metadata --locked --format-version 1 --manifest-path libs/penna/Cargo.toml >/dev/null
           cargo metadata --locked --format-version 1 --manifest-path libs/penna/storybook/Cargo.toml >/dev/null
+          cargo metadata --locked --format-version 1 --manifest-path libs/ala-cef/Cargo.toml >/dev/null
           cargo clippy --manifest-path libs/penna/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
           cargo clippy --manifest-path libs/penna/Cargo.toml --lib --no-default-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
           cargo clippy --manifest-path libs/penna/storybook/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\"" -- -D warnings

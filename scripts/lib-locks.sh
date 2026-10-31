@@ -1,10 +1,14 @@
-for penna_manifest in libs/penna/Cargo.toml libs/penna/storybook/Cargo.toml; do
-    if ! cargo metadata --locked --format-version 1 --manifest-path "$penna_manifest" >/dev/null; then
-        echo "${penna_manifest%Cargo.toml}Cargo.lock does not match its manifest against ala from GitHub; refresh it without the libs/ala patch: cargo update --workspace --manifest-path $penna_manifest" >&2
+lib_manifests=(libs/penna/Cargo.toml libs/penna/storybook/Cargo.toml libs/ala-cef/Cargo.toml)
+for lib_manifest in "${lib_manifests[@]}"; do
+    if ! cargo metadata --locked --format-version 1 --manifest-path "$lib_manifest" >/dev/null; then
+        echo "${lib_manifest%Cargo.toml}Cargo.lock does not match its manifest against ala from GitHub; refresh it without the libs/ala patch: cargo update --workspace --manifest-path $lib_manifest" >&2
         exit 1
     fi
 done
-penna_locks="$(mktemp -d)"
-cp libs/penna/Cargo.lock "$penna_locks/penna"
-cp libs/penna/storybook/Cargo.lock "$penna_locks/storybook"
-trap 'cp "$penna_locks/penna" libs/penna/Cargo.lock; cp "$penna_locks/storybook" libs/penna/storybook/Cargo.lock; rm -rf "$penna_locks"' EXIT
+lib_locks="$(mktemp -d)"
+for lib_manifest in "${lib_manifests[@]}"; do
+    lock="${lib_manifest%Cargo.toml}Cargo.lock"
+    mkdir -p "$lib_locks/$(dirname "$lock")"
+    cp "$lock" "$lib_locks/$lock"
+done
+trap 'for lib_manifest in "${lib_manifests[@]}"; do lock="${lib_manifest%Cargo.toml}Cargo.lock"; cp "$lib_locks/$lock" "$lock"; done; rm -rf "$lib_locks"' EXIT

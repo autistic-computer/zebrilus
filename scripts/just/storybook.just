@@ -23,7 +23,7 @@ serve:
 penna-build *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    source scripts/penna-locks.sh
+    source scripts/lib-locks.sh
     CARGO_TARGET_DIR="$PWD/target/storybook" libs/penna/storybook/build.sh {{ args }} -- \
         --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" \
         --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\""

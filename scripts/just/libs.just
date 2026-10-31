@@ -4,7 +4,7 @@ set working-directory := "../.."
 
 org := "git@github.com:autistic-computer"
 
-[doc("Lint and test a lib (ala|penna|ala-cef) on its own, the way its repo's CI does, against the ala in libs/; penna includes its storybook, checks its lockfiles against ala from GitHub and leaves them as they were.")]
+[doc("Lint and test a lib (ala|penna|ala-cef) on its own, the way its repo's CI does, against the ala in libs/; penna includes its storybook; penna and ala-cef check their lockfiles against ala from GitHub and leave them as they were.")]
 check lib:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -13,8 +13,8 @@ check lib:
         penna|ala-cef) args=(--config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"") ;;
         *) echo "unknown lib: {{ lib }} (expected: ala|penna|ala-cef)" >&2; exit 2 ;;
     esac
-    if [[ "{{ lib }}" == penna ]]; then
-        source scripts/penna-locks.sh
+    if [[ "{{ lib }}" != ala ]]; then
+        source scripts/lib-locks.sh
     fi
     cargo fmt --manifest-path libs/{{ lib }}/Cargo.toml --all -- --check
     cargo clippy --manifest-path libs/{{ lib }}/Cargo.toml "${args[@]}" --all-targets --all-features -- -D warnings

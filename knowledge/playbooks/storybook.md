@@ -60,7 +60,7 @@ entries that name no section; each crate's tests assert it is empty for its cata
 Each is its own wasm Cargo workspace, like `clients/web`, and each keeps a lockfile. penna's two
 lockfiles pin ala from GitHub for the penna repo; in zebrilus every build of penna's page patches
 its git dependencies on ala and ala-platform to `libs/ala` with `--config`, and the just recipe puts
-the lockfiles back afterwards (`scripts/penna-locks.sh`). `penna-storybook`'s default `editor`
+the lockfiles back afterwards (`scripts/lib-locks.sh`). `penna-storybook`'s default `editor`
 feature turns on penna's `editor` and the Code editor story; an app that leaves it out sets
 `default-features = false`. The two workspaces' dev profiles optimize dependencies the way the root
 workspace does (`[profile.dev.package]`): third-party crates and ala optimized, the crates they
