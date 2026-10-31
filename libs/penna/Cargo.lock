@@ -39,7 +39,7 @@ dependencies = [
 [[package]]
 name = "ala"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#1cdb5e77f06bd25d4ffe20358a96178104735e84"
+source = "git+https://github.com/autistic-computer/ala?branch=main#7253bc7793c0cc6821373ba09d2cbe15db42c045"
 dependencies = [
  "accesskit",
  "ala-macros",
@@ -112,7 +112,7 @@ dependencies = [
 [[package]]
 name = "ala-macros"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#1cdb5e77f06bd25d4ffe20358a96178104735e84"
+source = "git+https://github.com/autistic-computer/ala?branch=main#7253bc7793c0cc6821373ba09d2cbe15db42c045"
 dependencies = [
  "heck",
  "proc-macro2",
