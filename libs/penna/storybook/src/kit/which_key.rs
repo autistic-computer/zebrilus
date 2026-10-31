@@ -8,7 +8,7 @@ use crate::story::{Section, Story, stateless, states};
 pub const STORY: Story = Story {
     id: "which-key",
     name: "Which-key",
-    group: "Commands",
+    group: "Kit",
     summary: "The sheet that appears after the prefix: every binding in the table, grouped, with your own bindings in the accent color.",
     sections: &[
         Section {
@@ -26,7 +26,7 @@ pub const STORY: Story = Story {
         Section {
             id: "other-tables",
             name: "Other tables",
-            summary: "A key table with no prefix names itself in the header. Keys with no keystroke spelling show their tmux name.",
+            summary: "A key table with no prefix names itself in the header. Keys with no keystroke spelling show the name they were bound with.",
             build: |_, cx| stateless(other_tables, cx),
         },
     ],
@@ -65,7 +65,7 @@ fn key(id: &str, label: &str, group: &str) -> WhichKeyRow {
     binding(id, &[id], id, label, group, false, false)
 }
 
-pub(crate) fn prefix_rows() -> Vec<WhichKeyRow> {
+pub fn prefix_rows() -> Vec<WhichKeyRow> {
     const DIGITS: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
     vec![
         key("c", "New window", "Windows"),
@@ -156,7 +156,7 @@ pub(crate) fn prefix_rows() -> Vec<WhichKeyRow> {
     ]
 }
 
-pub(crate) fn prefix_header() -> WhichKeyHeader {
+pub fn prefix_header() -> WhichKeyHeader {
     WhichKeyHeader {
         table: "prefix".into(),
         prefix: Keystroke::parse("ctrl-b").ok(),

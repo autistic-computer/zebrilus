@@ -15,6 +15,7 @@ mod selection;
 mod sheet;
 mod support;
 mod title_bar;
+pub mod which_key;
 
 pub const STORIES: &[Story] = &[
     buttons::STORY,
@@ -31,4 +32,5 @@ pub const STORIES: &[Story] = &[
     color_picker::STORY,
     icons::STORY,
     title_bar::STORY,
+    which_key::STORY,
 ];

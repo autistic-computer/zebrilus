@@ -949,7 +949,7 @@ impl Render for Keys {
 }
 
 pub(crate) fn binding_rows() -> Arc<[WhichKeyRow]> {
-    super::which_key::prefix_rows()
+    penna_storybook::kit::which_key::prefix_rows()
         .into_iter()
         .filter(|row| {
             row.group

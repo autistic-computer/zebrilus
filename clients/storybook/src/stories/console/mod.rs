@@ -8,14 +8,12 @@ mod path_picker;
 pub(super) mod phone;
 mod terminal;
 mod tmux_styles;
-pub(super) mod which_key;
 
 pub const STORIES: &[Story] = &[
     palette::STORY,
     palette::PROMPTS,
     chooser::STORY,
     path_picker::STORY,
-    which_key::STORY,
     menus::STORY,
     dialogs::STORY,
     tmux_styles::STORY,

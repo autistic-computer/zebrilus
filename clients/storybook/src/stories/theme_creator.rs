@@ -63,7 +63,6 @@ use super::{
             binding_rows, groups, host_bar, host_page, hosts_bar, hosts_page, key_row, placement,
             tool_keys,
         },
-        which_key::{prefix_header, prefix_rows},
     },
     workspace::{
         browser::header as browser_header,
@@ -83,7 +82,10 @@ use penna_storybook::creator::{
     GAP, PHONE_WIDTH, PLATE_PADDING, Preferences, READING, SAFE_BOTTOM, SCREEN_RADIUS, Toasts,
     buttons, card, dialog, heading, labeled, over_backdrop, phone_frame, tiles,
 };
-use penna_storybook::kit::menus::{bind_keys, pane_menu, view_menu};
+use penna_storybook::kit::{
+    menus::{bind_keys, pane_menu, view_menu},
+    which_key::{prefix_header, prefix_rows},
+};
 
 pub const PLATES: &[Section] = &[
     Section {

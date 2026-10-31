@@ -148,6 +148,7 @@ pub const KIT_FLOATING: &[&str] = &[
     "dialogs",
     "sheet",
     "choices/select-open",
+    "which-key",
 ];
 
 pub fn backdrop(kind: Backdrop, cx: &App) -> Option<AnyElement> {
