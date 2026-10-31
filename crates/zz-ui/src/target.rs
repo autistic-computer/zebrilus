@@ -67,6 +67,13 @@ pub struct TargetPane {
     pub title: String,
     pub program: Option<SharedString>,
     pub icon: IconName,
+    pub chat: Option<TargetChat>,
+}
+
+#[derive(Clone, Debug)]
+pub struct TargetChat {
+    pub title: SharedString,
+    pub icon: IconName,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,6 +82,7 @@ pub enum TargetKind {
     Session,
     Window,
     Pane,
+    Chat,
     Dir,
     File,
 }
@@ -87,6 +95,7 @@ impl TargetKind {
             Self::Session => "session",
             Self::Window => "window",
             Self::Pane => "pane",
+            Self::Chat => "chat",
             Self::Dir => "dir",
             Self::File => "file",
         }
@@ -355,7 +364,7 @@ impl TargetItem {
             TargetKind::Host | TargetKind::Session => ":",
             TargetKind::Window => ".",
             TargetKind::Dir => "/",
-            TargetKind::Pane | TargetKind::File => "",
+            TargetKind::Pane | TargetKind::Chat | TargetKind::File => "",
         };
         format!("{}{next}", self.typed)
     }
@@ -542,6 +551,62 @@ fn pane_item(pane: &TargetPane, place: &Place, rest: &str, where_: Option<String
     .at(PaletteTarget::Pane(pane.id))
 }
 
+#[derive(Clone, Copy)]
+struct Chats {
+    shown: bool,
+    own: Option<PaneId>,
+}
+
+fn chat_items(hosts: &[TargetHost], filter: &str, chats: Chats) -> Vec<TargetItem> {
+    let mut items = Vec::new();
+    if !chats.shown {
+        return items;
+    }
+    for host in hosts
+        .iter()
+        .filter(|host| host.here)
+        .chain(hosts.iter().filter(|host| !host.here))
+        .filter(|host| matches!(host.status, PaletteStatus::Online | PaletteStatus::Running))
+    {
+        let place = Place {
+            host,
+            written: false,
+        };
+        for session in &host.sessions {
+            for window in &session.windows {
+                for pane in &window.panes {
+                    let Some(chat) = pane.chat.as_ref().filter(|_| Some(pane.id) != chats.own)
+                    else {
+                        continue;
+                    };
+                    let detail = pane
+                        .program
+                        .iter()
+                        .map(ToString::to_string)
+                        .chain(std::iter::once(format!(
+                            "{}:{}",
+                            session.name, window.index
+                        )))
+                        .chain((!host.here).then(|| host.name.clone()))
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    let item = TargetItem::new(
+                        TargetKind::Chat,
+                        chat.title.clone(),
+                        detail.clone(),
+                        &place,
+                        &pane.id.to_string(),
+                        chat.icon.clone(),
+                    )
+                    .at(PaletteTarget::Pane(pane.id));
+                    items.extend(item.matching(filter, &detail));
+                }
+            }
+        }
+    }
+    items
+}
+
 fn home_item(place: &Place) -> TargetItem {
     TargetItem::new(TargetKind::Dir, "~/", "files", place, "~", IconName::Folder)
 }
@@ -604,7 +669,7 @@ fn fleet_items(hosts: &[TargetHost], filter: &str) -> Vec<TargetItem> {
     items
 }
 
-fn target_items(query: &TargetQuery, hosts: &[TargetHost]) -> Vec<TargetItem> {
+fn target_items(query: &TargetQuery, hosts: &[TargetHost], chats: Chats) -> Vec<TargetItem> {
     let filter = query.filter.as_str();
     let host_named = |name: &str| hosts.iter().find(|host| host.name == name);
     let mut items: Vec<TargetItem> = match &query.level {
@@ -619,9 +684,13 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost]) -> Vec<TargetItem> {
             if filter.starts_with('%') {
                 panes_by_id(here, &place, filter)
             } else if filter.is_empty() {
-                here.sessions
-                    .iter()
-                    .map(|session| session_item(session, &place, session.name.clone()))
+                chat_items(hosts, filter, chats)
+                    .into_iter()
+                    .chain(
+                        here.sessions
+                            .iter()
+                            .map(|session| session_item(session, &place, session.name.clone())),
+                    )
                     .chain(hosts.iter().filter(|host| !host.here).map(|host| {
                         host_item(
                             host,
@@ -635,7 +704,9 @@ fn target_items(query: &TargetQuery, hosts: &[TargetHost]) -> Vec<TargetItem> {
                     .collect()
             } else {
                 let mut items = fleet_items(hosts, filter);
+                items.extend(chat_items(hosts, filter, chats));
                 items.extend(home_item(&place).matching(filter, ""));
+                items.sort_by_key(|item| item.score);
                 items.truncate(TARGET_MAX_ROWS);
                 return items;
             }
@@ -765,6 +836,7 @@ pub struct TargetPicker {
     backend: Rc<dyn TargetBackend>,
     composer: Option<Entity<InputState>>,
     anchor: Option<PaneId>,
+    own: Option<PaneId>,
     body: Option<String>,
     token: Option<TargetToken>,
     dismissed: Option<usize>,
@@ -792,6 +864,7 @@ impl TargetPicker {
             backend,
             composer: None,
             anchor: None,
+            own: None,
             body: None,
             token: None,
             dismissed: None,
@@ -826,6 +899,10 @@ impl TargetPicker {
 
     pub fn set_anchor(&mut self, anchor: Option<PaneId>) {
         self.anchor = anchor;
+    }
+
+    pub fn set_own_chat(&mut self, pane: Option<PaneId>) {
+        self.own = pane;
     }
 
     #[must_use]
@@ -980,7 +1057,11 @@ impl TargetPicker {
             }
             return;
         }
-        let items = target_items(query, hosts);
+        let chats = Chats {
+            shown: self.composer.is_some(),
+            own: self.own,
+        };
+        let items = target_items(query, hosts, chats);
         self.land(keep, items, cx);
     }
 

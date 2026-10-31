@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Unified palette and tmux command completions
-description: The palette's words-and-verbs model (no sigils, words match places and actions, a verb asks for its slots in turn, the footer shows the tmux command, `:` for raw tmux), chips and keys, insert path and prefix F, the empty palette and recents, written @host:target places, GUI settings as verbs with a live theme preview, tmux command-alias entries as verbs, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
+description: The palette's words-and-verbs model (no sigils, words match places and actions, a verb asks for its slots in turn, the footer shows the tmux command, `:` for raw tmux), chips and keys, insert path and prefix F, the empty palette and recents, agent chats in chat mode, written @host:target places, GUI settings as verbs with a live theme preview, tmux command-alias entries as verbs, shared zz-ui presentation with key glyphs per platform, and preserved tmux prompt behavior.
 resource: crates/zz-ui/src/command.rs
 tags: [ala, command-prompt, tmux, completions, ui]
-timestamp: 2026-10-28T00:00:00-03:00
+timestamp: 2026-10-31T00:00:00-03:00
 ---
 
 # Overview
@@ -55,8 +55,21 @@ key`) switches to `:<command> `.
 
 The footer's usage line says what Enter runs, with names: `runs  capture-pane -p -t zz:1.0` for a
 highlighted pane in read pane's picker, `runs  select-window -t zz:2` on a window row, `gui · no
-tmux command` for a setting. The parser is `zz_client::place::parse`; rows are built in
-`crates/zz-ui/src/command/palette_places.rs` and the keys in `palette_view_places.rs`.
+tmux command` for a setting. The line keeps its room while the palette lists places or raw tmux,
+even on a row that runs nothing (a host, a recent file), so the palette does not change height as
+the selection moves (`CommandPaletteSurface::reserve_usage`). The parser is
+`zz_client::place::parse`; rows are built in `crates/zz-ui/src/command/palette_places.rs` and the
+keys in `palette_view_places.rs`.
+
+# Chats
+
+With the sidebar in chat mode (`PaletteTree::chat_mode`) the empty palette lists a Chats section
+after Needs you: every window running Claude Code or Codex on the connected hosts, this host first
+and the chat you are in last, so Enter goes to another chat. Typing matches chat titles too, and
+the Chats section leads when it holds the best match. The rows come from the same summary the
+sidebar draws (`palette_chats`, built on `window_summary::summarize_chat`), and Enter on one goes to
+its window. The lens composer's `@` picker lists the other chats first in either mode and inserts
+the agent's pane, `@macbook:%12`.
 
 # Chips and keys
 

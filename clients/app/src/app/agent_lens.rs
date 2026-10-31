@@ -19,8 +19,8 @@ use penna::{
 };
 use serde_json::Value;
 use zz_client::agent_completion::{
-    AgentCommand, CommandCompletion, active_command_hint, bare_command_name, completion_query,
-    meaningful_command_description, pane_commands, ranked_completions,
+    AgentCommand, CommandCompletion, active_command_hint, command_label, completion_query,
+    meaningful_command_description, pane_commands, ranked_completions, terminal_command,
 };
 use zz_client::agent_lens::{
     LensEmpty, LensTranscript, PendingPermission, accepts_prompt, conversation_changed, lens_empty,
@@ -188,6 +188,7 @@ impl AgentLens {
             Some(input.clone()),
             cx,
         );
+        mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
         Self {
             pane,
             connection,
@@ -353,6 +354,9 @@ impl AgentLens {
         self.completions = Arc::from([]);
         self.completion_selected = None;
         self.input.read(cx).focus_handle(cx).focus(window, cx);
+        if completion.command.terminal && completion.command.input_hint.is_none() {
+            self.submit(window, cx);
+        }
         cx.notify();
     }
 
@@ -415,9 +419,10 @@ impl AgentLens {
                         Some(
                             zz_ui::agent::slash::suggestion_row(
                                 format!("web-agent-completion-{}-{index}", pane.0),
-                                bare_command_name(&command.name),
+                                &command_label(&command.name),
                                 meaningful_command_description(&command.description)
                                     .map(|description| description.to_owned().into()),
+                                zz_ui::agent::slash::SlashKind::of(command.terminal, command.skill),
                                 selected == Some(index),
                                 cx,
                             )
@@ -503,6 +508,9 @@ impl AgentLens {
         let attachments = self.attachments.clone();
         if !self.send_prompt(&text, &attachments, cx) {
             return;
+        }
+        if terminal_command(&text, &self.commands).is_some() {
+            cx.emit(ShowTerminal);
         }
         self.attachments.clear();
         self.draft_error = None;
@@ -1315,7 +1323,7 @@ impl Render for AgentLens {
                         let input = self.input.clone();
                         composer_add_button(
                             ("agent-mention", self.pane.0),
-                            "Mention a host, session or file",
+                            "Mention a chat, host, session or file",
                             cx,
                         )
                         .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))

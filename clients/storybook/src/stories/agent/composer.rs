@@ -25,7 +25,10 @@ use super::{
     cards::{slash_commands, slash_list},
     fixtures::{chart_screenshot, tab_strip_screenshot},
 };
+use crate::stories::console::palette::chat_backend;
 use crate::story::{row, states};
+use zz_protocol::PaneId;
+use zz_ui::{command::target_picker, target::TargetPicker};
 
 pub const PLACEHOLDER: &str = "Message Claude Code…";
 
@@ -41,12 +44,13 @@ pub fn composer_input(value: &str, window: &mut Window, cx: &mut App) -> Entity<
     })
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum Prefix {
     None,
     Queued(usize),
     Slash,
     Error(&'static str),
+    Mention(Entity<TargetPicker>),
 }
 
 pub struct Draft {
@@ -97,7 +101,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
     });
     let leading = composer_add_button(
         SharedString::from(format!("{id}-mention")),
-        "Mention a host, session or file",
+        "Mention a chat, host, session or file",
         cx,
     )
     .into_any_element();
@@ -215,6 +219,13 @@ pub fn composers(window: &mut Window, cx: &mut App) -> AnyView {
             cx,
         ),
         case(
+            "@ lists the other chats first",
+            "Compare with @",
+            false,
+            Prefix::None,
+            cx,
+        ),
+        case(
             "error above the input",
             "Switch to plan mode",
             false,
@@ -234,6 +245,16 @@ pub fn composers(window: &mut Window, cx: &mut App) -> AnyView {
     let mut read_only = case("read-only attach", "", false, Prefix::None, cx);
     read_only.writable = false;
     cases.push(read_only);
+    for case in &mut cases {
+        if case.input.read(cx).value().ends_with('@') {
+            let picker = target_picker(&chat_backend(), Some(case.input.clone()), cx);
+            picker.update(cx, |picker, cx| {
+                picker.set_own_chat(Some(PaneId(10)));
+                picker.set_body("", cx);
+            });
+            case.prefix = Prefix::Mention(picker);
+        }
+    }
     cx.new(|_| Composers { cases }).into()
 }
 
@@ -242,11 +263,11 @@ impl Render for Composers {
         let mut states = states();
         for (index, case) in self.cases.iter().enumerate() {
             let id = SharedString::from(format!("composer-{index}"));
-            let prefix = match case.prefix {
+            let prefix = match &case.prefix {
                 Prefix::None => Vec::new(),
                 Prefix::Queued(queued) => vec![queue_chip(
                     SharedString::from(format!("{id}-unqueue")),
-                    queued,
+                    *queued,
                     case.writable,
                     cx,
                 )],
@@ -257,6 +278,7 @@ impl Render for Composers {
                     cx,
                 )],
                 Prefix::Error(error) => vec![error_card(error, false, cx).into_any_element()],
+                Prefix::Mention(picker) => vec![picker.clone().into_any_element()],
             };
             let element = composer(
                 Draft {

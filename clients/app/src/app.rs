@@ -916,6 +916,7 @@ impl AppShell {
             self.connection.clone(),
             self.preferences.palette_settings(),
             self.gui_offers(window),
+            self.preferences.flat_sidebar,
         );
         let palette = cx.new(|cx| build(backend, window, cx));
         self.observe_palette(&palette, window, cx);

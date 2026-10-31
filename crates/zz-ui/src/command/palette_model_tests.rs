@@ -187,6 +187,8 @@ fn navigation_tree() -> PaletteTree {
     };
     PaletteTree {
         attached: LOCAL,
+        chats: Vec::new(),
+        chat_mode: false,
         hosts: vec![PaletteTreeHost {
             id: LOCAL,
             name: "local".to_owned(),

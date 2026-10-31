@@ -23,7 +23,7 @@ use zz_ui::{
     command::{
         GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
         PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
-        PaletteTreeSession, PaletteTreeWindow,
+        PaletteTreeSession, PaletteTreeWindow, palette_chats,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
 };
@@ -53,7 +53,7 @@ pub fn palette_backend(
     connection: Entity<Connection>,
     settings: PaletteSettings,
 ) -> Rc<dyn PaletteBackend> {
-    palette_backend_with(connection, settings, Vec::new())
+    palette_backend_with(connection, settings, Vec::new(), false)
 }
 
 #[must_use]
@@ -61,11 +61,13 @@ pub fn palette_backend_with(
     connection: Entity<Connection>,
     settings: PaletteSettings,
     gui: Vec<GuiOffer>,
+    chat_mode: bool,
 ) -> Rc<dyn PaletteBackend> {
     Rc::new(ConnectionPalette {
         connection,
         settings,
         gui,
+        chat_mode,
     })
 }
 
@@ -73,6 +75,7 @@ struct ConnectionPalette {
     connection: Entity<Connection>,
     settings: PaletteSettings,
     gui: Vec<GuiOffer>,
+    chat_mode: bool,
 }
 
 impl PaletteBackend for ConnectionPalette {
@@ -150,6 +153,12 @@ impl PaletteBackend for ConnectionPalette {
             Vec::new()
         };
         PaletteTree {
+            chats: if connection.connected {
+                palette_chats(HOST, &snapshot.sessions)
+            } else {
+                Vec::new()
+            },
+            chat_mode: self.chat_mode,
             attached: HOST,
             hosts: vec![PaletteTreeHost {
                 id: HOST,

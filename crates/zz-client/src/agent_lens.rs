@@ -141,6 +141,10 @@ impl AgentCursor {
                                     .pointer("/input/hint")
                                     .and_then(Value::as_str)
                                     .map(ToOwned::to_owned),
+                                terminal: command.pointer("/_meta/zz/terminal")
+                                    == Some(&Value::Bool(true)),
+                                skill: command.pointer("/_meta/zz/skill")
+                                    == Some(&Value::Bool(true)),
                             })
                         })
                         .collect::<Vec<_>>()

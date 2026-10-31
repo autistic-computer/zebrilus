@@ -301,6 +301,8 @@ fn backend(tree: PaletteTree) -> (Rc<dyn PaletteBackend>, Calls) {
 fn local_host(status: PaletteStatus, sessions: Vec<PaletteTreeSession>) -> PaletteTree {
     PaletteTree {
         attached: LOCAL,
+        chats: Vec::new(),
+        chat_mode: false,
         hosts: vec![PaletteTreeHost {
             id: LOCAL,
             name: "local".to_owned(),

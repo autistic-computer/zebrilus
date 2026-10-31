@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent lens
-description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, prompts pasted into the TUI, Claude permission prompts, and what agent-send and agent-respond do with it.
+description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, prompts pasted into the TUI, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-28T00:00:00-03:00
+timestamp: 2026-10-31T00:00:00-03:00
 ---
 
 # Overview
@@ -36,7 +36,11 @@ feeds are gone. The [daemon-owned agent runtime](/designs/agent-daemon-runtime.m
 - **Phone.** In the compact shell (iPhone) the lens opens by default for a terminal running an
   agent, since typing into a TUI with a phone keyboard is slow. Closing it with the toggle keeps that
   pane on its terminal until the agent exits (`CompactState::lens_dismissed` in
-  `clients/app/src/app/compact.rs`). Desktop, web and iPad open it only from the toggle.
+  `clients/app/src/app/compact.rs`). With the desktop sidebar in chat mode every terminal running an
+  agent in the attached session opens with its lens on (`AppView::open_chat_lenses` in
+  `crates/zz/src/workspace/view.rs`); turning it off with the toggle keeps that pane on its
+  terminal until the agent exits (`lens_dismissed`). In raw mode, and on web and iPad, it opens
+  only from the toggle.
 - **Daemon.** `lens_provider` in `crates/zz-daemon/src/daemon/lens.rs` looks for a `claude` or
   `codex` basename in the pane's process list (case-insensitive, `.exe` stripped), and
   `terminal_agent` only answers for `PaneKind::Terminal`.
@@ -97,7 +101,8 @@ lens, from typing in the terminal, or from a peer message.
 - **Prompts.** The composer sends `AgentPrompt` as before. The runtime delivers it with
   `TerminalLens::submit`, the bracketed paste plus Enter that waits for the text to echo before
   pressing Enter (`paste_and_submit`). Images are refused with "The lens sends text only; paste
-  images in the terminal." Slash commands are the CLI's own and are typed through. The composer's
+  images in the terminal." Slash commands are the CLI's own and are typed through (see Slash
+  commands below). The composer's
   placeholder names the agent ("Message Claude Code…"), and before the agent has written a
   transcript the lens shows `presentation::lens_welcome`: the agent's mark, "Claude Code is waiting
   for its first prompt" and "What you send here is typed into the terminal."
@@ -120,6 +125,34 @@ lens, from typing in the terminal, or from a peer message.
   pane back to the TUI so the user answers there.
 - **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
   card; the user answers in the terminal.
+
+# Slash commands
+
+The lens runtime publishes the CLI's commands as an ACP `available_commands_update` after every
+session reset and whenever Claude's skill list changes, so `/` in the composer opens the same
+suggestion list the native drivers fill (`agent/lens_commands.rs`). It is read from files, like the
+rest of the lens:
+
+- **Built-ins**, a fixed list per CLI. The ones whose own UI is a dialog in the TUI carry
+  `_meta.zz.terminal` and show "opens terminal": picking one types it into the CLI and switches the
+  pane to its terminal (`agent_completion::terminal_command`), and the lens comes back with the
+  toggle. Claude Code: `model`, `effort`, `plan`, `status`, `config`, `context`, `usage`,
+  `permissions`, `mcp`, `hooks`, `memory`, `resume`, `rewind`, `plugin`, `skills`, `btw`, `doctor`,
+  `theme`, `login`, `logout`, `help`. Codex: `model`, `permissions`, `status`, `mcp`, `resume`,
+  `fork`, `mention`, `logout`. The rest (`clear`, `compact`, `goal`, `subtask`, `cd`, `add-dir`,
+  `export`, `copy`, `reload-skills`, `exit`; Codex `new`, `compact`, `review`, `init`, `diff`,
+  `rename`, `quit`) run from the lens, and what they do shows in the timeline.
+- **Claude Code skills and commands** from `~/.claude` (or `CLAUDE_CONFIG_DIR`) and every
+  `.claude` from the pane's folder up to its git root: `skills/*/SKILL.md` (frontmatter `name`,
+  `description`, `argument-hint`), `commands/**/*.md` (a subfolder becomes `dir:name`), and the
+  skills and commands of the plugins `enabledPlugins` turns on, named `plugin:name`. The
+  transcript's `skill_listing` attachment adds the skills Claude Code itself loaded (bundled ones
+  included) once it has written one.
+- **Codex skills** from `$CODEX_HOME/skills` and `.codex/skills` up to the git root, listed as
+  `$name` and inserted that way, and prompts from `$CODEX_HOME/prompts` as `prompts:name`.
+
+Skills carry `_meta.zz.skill` and show "skill". Old clients skip the `_meta` field and show the
+plain list.
 
 # How the stream reaches a client
 

@@ -5,7 +5,7 @@ use zz_protocol::{PaneId, SessionId, WindowId};
 
 use super::*;
 use crate::command::{
-    PaletteHostId, PaletteTreeHost, PaletteTreeSession, PaletteTreeWindow,
+    PaletteChat, PaletteHostId, PaletteTreeHost, PaletteTreeSession, PaletteTreeWindow,
     palette_model::{PaletteAction, PaletteMode},
 };
 
@@ -49,6 +49,8 @@ fn window(
 fn tree() -> PaletteTree {
     PaletteTree {
         attached: PaletteHostId(0),
+        chats: Vec::new(),
+        chat_mode: false,
         hosts: vec![
             PaletteTreeHost {
                 id: PaletteHostId(0),
@@ -169,7 +171,17 @@ fn rows(
     history: &[String],
     recents: &Recents,
 ) -> Vec<String> {
-    palette.rebuild_places(text, history, recents, 0, tree(), availability(), &|_| None);
+    rows_in(palette, text, history, recents, tree())
+}
+
+fn rows_in(
+    palette: &mut UnifiedPalette,
+    text: &str,
+    history: &[String],
+    recents: &Recents,
+    tree: PaletteTree,
+) -> Vec<String> {
+    palette.rebuild_places(text, history, recents, 0, tree, availability(), &|_| None);
     palette
         .rows
         .iter()
@@ -219,6 +231,62 @@ fn the_empty_palette_lists_what_needs_you_recents_then_this_hosts_sessions() {
             "  xps",
         ]
     );
+}
+
+fn chat_tree(chat_mode: bool) -> PaletteTree {
+    let chat = |host, session, window, pane, title: &str| PaletteChat {
+        host: PaletteHostId(host),
+        session: SessionId(session),
+        window: WindowId(window),
+        pane: PaneId(pane),
+        title: title.to_owned(),
+        detail: "Claude Code".to_owned(),
+        icon: IconName::SquareTerminal,
+        running: false,
+    };
+    PaletteTree {
+        chats: vec![
+            chat(0, 3, 10, 20, "Review sidebar"),
+            chat(0, 5, 12, 22, "Fix flat rows"),
+            chat(1, 7, 41, 52, "Atlas tests"),
+        ],
+        chat_mode,
+        ..tree()
+    }
+}
+
+#[test]
+fn chat_mode_lists_every_chat_with_the_current_one_last() {
+    let recents = Recents::default();
+    let mut palette = palette(vec![auto_host()]);
+    let listed = rows_in(&mut palette, "", &[], &recents, chat_tree(true));
+    let chats = listed.iter().position(|row| row == "Chats").expect("chats");
+    assert_eq!(
+        listed[chats + 1..chats + 4],
+        ["  Fix flat rows", "  Atlas tests", "  Review sidebar"]
+    );
+    assert!(matches!(
+        palette.rows[chats + 1].action,
+        Some(PaletteAction::Place(Place {
+            window: Some(WindowId(12)),
+            pane: None,
+            ..
+        }))
+    ));
+    assert_eq!(palette.rows[chats + 2].row.right.as_ref(), "xps");
+    assert_eq!(palette.rows[chats + 3].row.right.as_ref(), "current");
+    let raw = rows_in(&mut palette, "", &[], &recents, chat_tree(false));
+    assert!(!raw.iter().any(|row| row == "Chats"));
+}
+
+#[test]
+fn typing_in_chat_mode_finds_chats_by_title() {
+    let recents = Recents::default();
+    let mut palette = palette(vec![auto_host()]);
+    let found = rows_in(&mut palette, "atlas", &[], &recents, chat_tree(true));
+    assert_eq!(found[..2], ["Chats", "  Atlas tests"]);
+    let found = rows_in(&mut palette, "atlas", &[], &recents, chat_tree(false));
+    assert!(!found.iter().any(|row| row == "Chats"));
 }
 
 #[test]

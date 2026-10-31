@@ -19,11 +19,11 @@ use zz_protocol::{
 };
 use zz_ui::{
     command::{
-        CommandPaletteSurface, CommandPaletteView, PaletteActionLevel, PaletteBackend, PaletteHint,
-        PaletteHostId, PaletteMode, PalettePill, PaletteRow, PaletteSettings, PaletteStatus,
-        PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane, PaletteTreeSession,
-        PaletteTreeWindow, command_kind_badge, command_palette_empty, command_palette_entry,
-        command_palette_input, command_palette_row, command_palette_section,
+        CommandPaletteSurface, CommandPaletteView, PaletteActionLevel, PaletteBackend, PaletteChat,
+        PaletteHint, PaletteHostId, PaletteMode, PalettePill, PaletteRow, PaletteSettings,
+        PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
+        PaletteTreeSession, PaletteTreeWindow, command_kind_badge, command_palette_empty,
+        command_palette_entry, command_palette_input, command_palette_row, command_palette_section,
         command_palette_tree_entry, palette_shortcut_hint, unified_command_palette_input,
     },
     files::{FilesAction, ListingSink, ListingUpdate},
@@ -61,6 +61,27 @@ pub const STORY: Story = Story {
             name: "Empty palette",
             summary: "The palette as it opens: the host chip, then the windows whose agents wait on you, recent places, actions, settings and files, this host's sessions and the other hosts.",
             build: |window, cx| unified(window, cx, online_tree(), true, None, &[]),
+        },
+        Section {
+            id: "chats",
+            name: "Chats in chat mode",
+            summary: "With the sidebar in chat mode the empty palette lists every agent chat on the connected hosts, this host first and the one you are in last, so Enter switches chats the way the sidebar does. The footer keeps its usage line even when the highlighted row runs nothing, so the palette does not change height as you move.",
+            build: |window, cx| unified(window, cx, chat_tree(), true, None, &["down", "down"]),
+        },
+        Section {
+            id: "chat-search",
+            name: "Words find chats",
+            summary: "In chat mode typing matches chat titles too; the Chats section leads when it holds the best match.",
+            build: |window, cx| {
+                unified(
+                    window,
+                    cx,
+                    chat_tree(),
+                    true,
+                    None,
+                    &["a", "t", "l", "a", "s"],
+                )
+            },
         },
         Section {
             id: "search",
@@ -688,6 +709,8 @@ fn host(
 fn online_tree() -> PaletteTree {
     PaletteTree {
         attached: LOCAL,
+        chats: Vec::new(),
+        chat_mode: false,
         hosts: vec![
             host(
                 LOCAL,
@@ -832,9 +855,65 @@ fn online_tree() -> PaletteTree {
     }
 }
 
+pub(crate) fn chat_backend() -> Rc<dyn PaletteBackend> {
+    backend(chat_tree(), true)
+}
+
+fn chat_tree() -> PaletteTree {
+    let chat =
+        |host, session, window, pane, title: &str, detail: &str, icon, running| PaletteChat {
+            host,
+            session: SessionId(session),
+            window: WindowId(window),
+            pane: PaneId(pane),
+            title: title.to_owned(),
+            detail: detail.to_owned(),
+            icon,
+            running,
+        };
+    PaletteTree {
+        chats: vec![
+            chat(
+                LOCAL,
+                1,
+                2,
+                12,
+                "fix the atlas tests",
+                "Waiting for input · Allow Bash?",
+                zz_ui::CLAUDE_ICON,
+                false,
+            ),
+            chat(
+                LOCAL,
+                1,
+                1,
+                10,
+                "palette chats",
+                "Claude Code",
+                zz_ui::CLAUDE_ICON,
+                false,
+            ),
+            chat(
+                GPU,
+                3,
+                5,
+                16,
+                "tune the lr schedule",
+                "Working · Reading train.py",
+                zz_ui::OPENAI_ICON,
+                true,
+            ),
+        ],
+        chat_mode: true,
+        ..online_tree()
+    }
+}
+
 fn offline_tree() -> PaletteTree {
     PaletteTree {
         attached: LOCAL,
+        chats: Vec::new(),
+        chat_mode: false,
         hosts: vec![host(
             LOCAL,
             "local",
@@ -1560,6 +1639,34 @@ impl Render for Surfaces {
                         v_flex().children(targets.iter().enumerate().map(|(index, row)| {
                             div().h(px(28.0)).child(command_palette_entry(
                                 ("surface-verb-target", index),
+                                row,
+                                index == 0,
+                                cx,
+                            ))
+                        })),
+                    )
+                    .hints(TARGET_HINTS),
+                ),
+            )
+            .state(
+                "a row that runs nothing keeps the usage line's room",
+                div().id("surface-reserved").child(
+                    CommandPaletteSurface::new(
+                        unified_command_palette_input(
+                            &self.empty,
+                            [PalettePill::Host {
+                                label: "local".into(),
+                                status: PaletteStatus::Online,
+                            }],
+                            cx,
+                        ),
+                        5,
+                    )
+                    .reserve_usage()
+                    .rows(
+                        v_flex().children(targets.iter().enumerate().map(|(index, row)| {
+                            div().h(px(28.0)).child(command_palette_entry(
+                                ("surface-reserved-target", index),
                                 row,
                                 index == 0,
                                 cx,

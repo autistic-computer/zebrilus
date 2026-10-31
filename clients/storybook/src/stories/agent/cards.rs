@@ -6,7 +6,7 @@ use ala::{
 };
 use penna::{Disableable as _, button::Button, input::InputEvent};
 use zz_client::agent_completion::{
-    AgentCommand, CommandCompletion, bare_command_name, completion_query,
+    AgentCommand, CommandCompletion, command_label, completion_query,
     meaningful_command_description, pane_commands, ranked_completions,
 };
 use zz_protocol::{AgentTaskWire, MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
@@ -14,7 +14,7 @@ use zz_ui::agent::{
     composer::COMPOSER_MAX_WIDTH,
     presentation::{permission_card, permission_option, spinner_phase, terminal_wait_card},
     question::QuestionCardState,
-    slash::{suggestion_list, suggestion_list_height, suggestion_row},
+    slash::{SlashKind, suggestion_list, suggestion_list_height, suggestion_row},
     tasks::{TaskTrayAction, TrayPanel, task_tray},
 };
 
@@ -342,39 +342,54 @@ impl Render for Questions {
 }
 
 pub fn slash_commands(query: &str) -> Vec<CommandCompletion> {
-    let vendor = [
-        (
+    let command = |name: &str, description: &str, hint: Option<&str>| AgentCommand {
+        name: name.to_owned(),
+        description: description.to_owned(),
+        input_hint: hint.map(str::to_owned),
+        ..AgentCommand::default()
+    };
+    let vendor = vec![
+        command(
             "compact",
-            "Clear conversation history but keep a summary in context",
-            None,
+            "Free up context by summarizing the conversation so far",
+            Some("instructions"),
         ),
-        ("review", "Review a pull request", Some("PR number")),
-        (
-            "init",
-            "Initialize a new CLAUDE.md file with codebase documentation",
-            None,
-        ),
-        (
-            "pr-comments",
-            "Get comments from a GitHub pull request",
-            None,
-        ),
-        (
-            "security-review",
-            "Complete a security review of the pending changes on the current branch",
-            None,
-        ),
-        ("statusline", "…", None),
-    ]
-    .into_iter()
-    .map(
-        |(name, description, hint): (&str, &str, Option<&str>)| AgentCommand {
-            name: name.to_owned(),
-            description: description.to_owned(),
-            input_hint: hint.map(str::to_owned),
+        command("clear", "Start a new session with empty context", None),
+        AgentCommand {
+            terminal: true,
+            ..command(
+                "status",
+                "Version, model, account and connectivity, in the terminal",
+                None,
+            )
         },
-    )
-    .collect::<Vec<_>>();
+        AgentCommand {
+            terminal: true,
+            ..command("model", "Pick the model in the terminal", None)
+        },
+        AgentCommand {
+            skill: true,
+            ..command(
+                "security-review",
+                "Complete a security review of the pending changes on the current branch",
+                None,
+            )
+        },
+        AgentCommand {
+            skill: true,
+            ..command(
+                "codex:setup",
+                "Check whether the local Codex CLI is installed and authenticated",
+                None,
+            )
+        },
+        AgentCommand {
+            skill: true,
+            ..command("$hatch-pet", "Create or repair a Codex pet", None)
+        },
+        command("frontend:lint", "Lint the frontend", Some("[path]")),
+        command("statusline", "…", None),
+    ];
     let commands = pane_commands(&vendor, true);
     let value = format!("/{query}");
     completion_query(&value, value.len())
@@ -398,9 +413,10 @@ pub fn slash_list(
                     let command = &completions.get(index)?.command;
                     Some(suggestion_row(
                         SharedString::from(format!("{prefix}-{index}")),
-                        bare_command_name(&command.name),
+                        &command_label(&command.name),
                         meaningful_command_description(&command.description)
                             .map(|description| description.to_owned().into()),
+                        SlashKind::of(command.terminal, command.skill),
                         selected == Some(index),
                         cx,
                     ))
@@ -430,6 +446,24 @@ fn render_slash_menu(_: &mut Window, cx: &mut App) -> AnyElement {
         .state(
             "nothing selected yet",
             prefix_width(slash_list("slash-none", &slash_commands("fo"), None, cx)),
+        )
+        .state(
+            "skills, plugin skills and a Codex $skill",
+            prefix_width(slash_list(
+                "slash-skills",
+                &slash_commands("se"),
+                Some(0),
+                cx,
+            )),
+        )
+        .state(
+            "commands that open the terminal",
+            prefix_width(slash_list(
+                "slash-terminal",
+                &slash_commands("st"),
+                Some(0),
+                cx,
+            )),
         )
         .state(
             "a command without a description",

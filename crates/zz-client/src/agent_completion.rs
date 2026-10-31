@@ -4,11 +4,13 @@ use agent_client_protocol_schema::v1::{AvailableCommand, AvailableCommandInput};
 
 const MAX_COMPLETION_RESULTS: usize = 64;
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize)]
 pub struct AgentCommand {
     pub name: String,
     pub description: String,
     pub input_hint: Option<String>,
+    pub terminal: bool,
+    pub skill: bool,
 }
 
 pub fn agent_command_model(command: AvailableCommand) -> AgentCommand {
@@ -16,11 +18,29 @@ pub fn agent_command_model(command: AvailableCommand) -> AgentCommand {
         AvailableCommandInput::Unstructured(input) => Some(input.hint),
         _ => None,
     });
+    let flag = |key: &str| {
+        command
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.get("zz"))
+            .and_then(|zz| zz.get(key))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or_default()
+    };
     AgentCommand {
+        terminal: flag("terminal"),
+        skill: flag("skill"),
         name: command.name,
         description: command.description,
         input_hint,
     }
+}
+
+pub fn terminal_command<'a>(value: &str, commands: &'a [AgentCommand]) -> Option<&'a AgentCommand> {
+    let name = value.trim().strip_prefix('/')?.split_whitespace().next()?;
+    commands
+        .iter()
+        .find(|command| command.terminal && bare_command_name(&command.name) == name)
 }
 
 pub const MAX_RENDERED_ERROR_BYTES: usize = 1024;
@@ -72,6 +92,7 @@ pub fn pane_commands(vendor: &[AgentCommand], verbs: bool) -> Vec<AgentCommand> 
             name: (*name).to_owned(),
             description: (*description).to_owned(),
             input_hint: input_hint.map(str::to_owned),
+            ..AgentCommand::default()
         });
     vendor
         .iter()
@@ -91,7 +112,16 @@ pub struct CommandCompletion {
 
 impl CommandCompletion {
     pub fn insertion(&self) -> String {
-        format!("/{} ", bare_command_name(&self.command.name))
+        format!("{} ", command_label(&self.command.name))
+    }
+}
+
+pub fn command_label(name: &str) -> String {
+    let name = bare_command_name(name);
+    if name.starts_with('$') {
+        name.to_owned()
+    } else {
+        format!("/{name}")
     }
 }
 
@@ -224,7 +254,7 @@ mod tests {
         AgentCommand {
             name: name.to_owned(),
             description: format!("Run {name}"),
-            input_hint: None,
+            ..AgentCommand::default()
         }
     }
 
@@ -303,6 +333,41 @@ mod tests {
             Some("Argument · optional context".to_owned())
         );
         assert_eq!(active_command_hint("$review ", &[command]), None);
+    }
+
+    #[test]
+    fn lens_commands_carry_their_terminal_and_skill_flags() {
+        let parse = |value: serde_json::Value| {
+            agent_command_model(serde_json::from_value::<AvailableCommand>(value).unwrap())
+        };
+        let status = parse(serde_json::json!({
+            "name": "status",
+            "description": "Status in the terminal",
+            "_meta": { "zz": { "terminal": true, "skill": false } },
+        }));
+        let pet = parse(serde_json::json!({
+            "name": "$hatch-pet",
+            "description": "Make a pet",
+            "_meta": { "zz": { "skill": true } },
+        }));
+        let plain = parse(serde_json::json!({ "name": "compact", "description": "Compact" }));
+        assert!(status.terminal && !status.skill);
+        assert!(pet.skill && !pet.terminal);
+        assert!(!plain.terminal && !plain.skill);
+        let commands = [status, pet, plain];
+        assert_eq!(
+            terminal_command(" /status ", &commands).map(|command| command.name.as_str()),
+            Some("status")
+        );
+        assert!(terminal_command("/compact", &commands).is_none());
+        assert!(terminal_command("why /status", &commands).is_none());
+        assert_eq!(command_label("$hatch-pet"), "$hatch-pet");
+        assert_eq!(command_label("/compact"), "/compact");
+        let query = completion_query("/hat", 4).unwrap();
+        assert_eq!(
+            ranked_completions(&commands, &query)[0].insertion(),
+            "$hatch-pet "
+        );
     }
 
     #[test]

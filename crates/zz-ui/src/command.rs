@@ -17,8 +17,8 @@ pub use palette::{
     command_palette_section, command_palette_tree_entry, unified_command_palette_input,
 };
 pub use palette_model::{
-    PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree, PaletteTreeHost,
-    PaletteTreePane, PaletteTreeSession, PaletteTreeWindow,
+    PaletteChat, PaletteHostId, PaletteMode, PaletteSettings, PaletteTarget, PaletteTree,
+    PaletteTreeHost, PaletteTreePane, PaletteTreeSession, PaletteTreeWindow, palette_chats,
 };
 pub use palette_places::palette_fleet;
 pub use palette_view::{
@@ -133,6 +133,7 @@ pub fn command_kind_badge(
 pub struct CommandPaletteSurface {
     input: AnyElement,
     usage: Option<SharedString>,
+    reserve_usage: bool,
     rows: Option<AnyElement>,
     hints: Vec<PaletteHint>,
     revision: u64,
@@ -147,6 +148,7 @@ impl CommandPaletteSurface {
         Self {
             input: input.into_any_element(),
             usage: None,
+            reserve_usage: false,
             rows: None,
             hints: Vec::new(),
             revision,
@@ -194,6 +196,12 @@ impl CommandPaletteSurface {
     }
 
     #[must_use]
+    pub fn reserve_usage(mut self) -> Self {
+        self.reserve_usage = true;
+        self
+    }
+
+    #[must_use]
     pub fn usage(mut self, usage: impl Into<SharedString>) -> Self {
         let usage = usage.into();
         self.usage = (!usage.is_empty()).then_some(usage);
@@ -220,7 +228,7 @@ impl RenderOnce for CommandPaletteSurface {
             .rounded(command_palette_radius(cx))
             .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .children(input)
-            .children(self.usage.map(|usage| {
+            .children((self.usage.is_some() || self.reserve_usage).then(|| {
                 div()
                     .h(px(24.0))
                     .min_w_0()
@@ -234,7 +242,7 @@ impl RenderOnce for CommandPaletteSurface {
                     .text_size(crate::rems_from_px(10.0))
                     .line_height(px(16.0))
                     .text_color(cx.theme().foreground.muted())
-                    .child(usage)
+                    .children(self.usage)
             }))
             .children(self.rows.map(|rows| {
                 div()

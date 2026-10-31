@@ -12,7 +12,7 @@ use zz_ui::{
     command::{
         GuiLevel, PaletteActionLevel, PaletteBackend, PaletteHostId, PaletteSettings,
         PaletteStatus, PaletteTarget, PaletteTree, PaletteTreeHost, PaletteTreePane,
-        PaletteTreeSession, PaletteTreeWindow,
+        PaletteTreeSession, PaletteTreeWindow, palette_chats,
     },
     files::{FilesAction, ListingSink, ListingUpdate, listing_pane},
     target::TargetPicker,
@@ -148,7 +148,17 @@ impl PaletteBackend for MuxPalette {
     fn tree(&self, cx: &App) -> PaletteTree {
         let mux = self.mux.read(cx);
         let attached = mux.attached_host();
+        let mut chats = mux
+            .fleet_hosts()
+            .filter(|(_, _, state, _)| matches!(state, HostState::Connected))
+            .filter_map(|(host, _, _, snapshot)| Some((host, snapshot?)))
+            .flat_map(|(host, snapshot)| palette_chats(host.into(), &snapshot.sessions))
+            .collect::<Vec<_>>();
+        let here = PaletteHostId::from(attached);
+        chats.sort_by_key(|chat| chat.host != here);
         PaletteTree {
+            chats,
+            chat_mode: crate::config::resolved_config(cx).flat_sidebar.value,
             attached: attached.into(),
             hosts: MuxTreeModel::from_mux(mux)
                 .hosts

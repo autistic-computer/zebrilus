@@ -701,6 +701,7 @@ struct SynchronizeSignature {
     revision: AppRevision,
     sidebar_focused: bool,
     route: WorkspaceRoute,
+    chat_mode: bool,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -718,6 +719,7 @@ pub struct AppView {
     agents: BTreeMap<PaneId, Entity<AgentView>>,
     lenses: BTreeSet<PaneId>,
     pending_lenses: BTreeSet<PaneId>,
+    lens_dismissed: BTreeSet<PaneId>,
     editors: BTreeMap<PaneId, Entity<EditorView>>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
     menu: Option<Entity<MenuView>>,
@@ -1121,6 +1123,7 @@ impl AppView {
             agents: BTreeMap::new(),
             lenses: BTreeSet::new(),
             pending_lenses: BTreeSet::new(),
+            lens_dismissed: BTreeSet::new(),
             editors: BTreeMap::new(),
             command_output: None,
             menu: None,
@@ -1894,14 +1897,19 @@ impl AppView {
 
     fn synchronize_panes(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let revision = AppRevision::for_mux(self.mux.read(cx));
-        let (sidebar_focused, route) = {
+        let (sidebar_focused, route, chat_mode) = {
             let sidebar = self.sidebar.read(cx);
-            (sidebar.is_focused(window), sidebar.route())
+            (
+                sidebar.is_focused(window),
+                sidebar.route(),
+                sidebar.chat_mode(),
+            )
         };
         if let Some(last) = &self.synchronized_signature
             && last.revision == revision
             && last.sidebar_focused == sidebar_focused
             && last.route == route
+            && last.chat_mode == chat_mode
         {
             return;
         }
@@ -1966,6 +1974,7 @@ impl AppView {
         let mut wanted_agents = BTreeSet::new();
         let mut wanted_editors = BTreeSet::new();
         self.promote_pending_lenses(&snapshot, attached);
+        self.open_chat_lenses(&snapshot, attached, chat_mode);
         let lensed = self.lensed_panes(&snapshot, attached);
         let open = lensed.keys().copied().collect::<BTreeSet<_>>();
         #[cfg(feature = "agent-pane")]
@@ -2559,6 +2568,7 @@ impl AppView {
             revision,
             sidebar_focused: self.sidebar.read(cx).is_focused(window),
             route,
+            chat_mode,
         });
     }
 
@@ -2614,6 +2624,41 @@ impl AppView {
         );
     }
 
+    fn open_chat_lenses(
+        &mut self,
+        snapshot: &MuxSnapshot,
+        attached: Option<SessionId>,
+        chat_mode: bool,
+    ) {
+        let agents = snapshot
+            .sessions
+            .iter()
+            .flat_map(|session| {
+                session.windows.iter().flat_map(move |window| {
+                    window.panes.values().map(move |pane| (session.id, pane))
+                })
+            })
+            .filter(|(_, pane)| {
+                matches!(pane.kind, PaneKindSnapshot::Terminal)
+                    && zz_client::window_summary::pane_agent(pane).is_some()
+            })
+            .map(|(session, pane)| (session, pane.id))
+            .collect::<Vec<_>>();
+        self.lens_dismissed
+            .retain(|pane| agents.iter().any(|(_, agent)| agent == pane));
+        if !chat_mode {
+            return;
+        }
+        self.lenses.extend(
+            agents
+                .into_iter()
+                .filter(|(session, pane)| {
+                    Some(*session) == attached && !self.lens_dismissed.contains(pane)
+                })
+                .map(|(_, pane)| pane),
+        );
+    }
+
     fn lensed_panes(
         &self,
         snapshot: &MuxSnapshot,
@@ -2664,8 +2709,11 @@ impl AppView {
     }
 
     fn toggle_lens(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.lenses.remove(&pane) {
+        if self.lenses.remove(&pane) {
+            self.lens_dismissed.insert(pane);
+        } else {
             self.lenses.insert(pane);
+            self.lens_dismissed.remove(&pane);
         }
         #[cfg(feature = "agent-pane")]
         if !self.lenses.contains(&pane) {

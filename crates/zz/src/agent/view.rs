@@ -27,8 +27,8 @@ use ala::{
     px, uniform_list,
 };
 use zz_client::agent_completion::{
-    CommandCompletion, active_command_hint, bare_command_name, completion_query,
-    meaningful_command_description, pane_commands, ranked_completions,
+    CommandCompletion, active_command_hint, command_label, completion_query,
+    meaningful_command_description, pane_commands, ranked_completions, terminal_command,
 };
 use zz_client::agent_transcript::rewind_command;
 use zz_ui::{
@@ -45,6 +45,7 @@ use penna::{
 };
 use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 use zz_ui::agent::DisclosureKind;
+use zz_ui::agent::slash::SlashKind;
 use zz_ui::agent::{
     AGENT_CONTENT_MAX_WIDTH, AgentAside, AgentEntry, AgentMarkdown, AgentTimeline,
     AgentTimelineStore, AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus,
@@ -563,6 +564,7 @@ impl AgentView {
             }
         });
         let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
+        mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
         Self {
             pane,
             mux,
@@ -958,6 +960,9 @@ impl AgentView {
         self.completions = Arc::from([]);
         self.completion_selected = None;
         self.focus(cx).focus(window, cx);
+        if completion.command.terminal && completion.command.input_hint.is_none() {
+            self.submit(window, cx);
+        }
         cx.notify();
     }
 
@@ -1055,6 +1060,9 @@ impl AgentView {
         });
         match result {
             Ok(()) => {
+                if terminal_command(&value, &self.pane_state.available_commands).is_some() {
+                    cx.emit(ShowTerminal);
+                }
                 self.input.update(cx, |input, cx| {
                     input.set_value("", window, cx);
                 });
@@ -1561,7 +1569,7 @@ impl AgentView {
                     .filter_map(|index| {
                         let completion = completions.get(index)?.clone();
                         let command = completion.command.clone();
-                        let name = bare_command_name(&command.name);
+                        let label = command_label(&command.name);
                         let description = meaningful_command_description(&command.description)
                             .map(ToOwned::to_owned);
                         let is_selected = selected == Some(index);
@@ -1570,8 +1578,9 @@ impl AgentView {
                         Some(
                             zz_ui::agent::slash::suggestion_row(
                                 format!("agent-completion-{}-{index}", pane.0),
-                                name,
+                                &label,
                                 description.map(Into::into),
+                                SlashKind::of(command.terminal, command.skill),
                                 is_selected,
                                 cx,
                             )
@@ -1655,7 +1664,7 @@ impl AgentView {
             let input = self.input.clone();
             composer_add_button(
                 format!("agent-mention-{}", self.pane.0),
-                "Mention a host, session or file",
+                "Mention a chat, host, session or file",
                 cx,
             )
             .on_click(move |_, window, cx| mention_at_caret(&input, "@", window, cx))
@@ -2131,7 +2140,7 @@ mod completion_tests {
         AgentCommand {
             name: name.to_owned(),
             description: format!("Run {name}"),
-            input_hint: None,
+            ..AgentCommand::default()
         }
     }
 

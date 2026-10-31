@@ -1,8 +1,9 @@
-use std::{collections::BTreeSet, rc::Rc};
+use std::{collections::BTreeSet, ops::Range, rc::Rc};
 
 use ala::SharedString;
 use zz_client::{
     completion::PaneKindAvailability,
+    fuzzy::fuzzy_match,
     place::{
         self, Candidate, Fleet, FleetHost, FleetPane, FleetSession, FleetWindow, Level, Part, Place,
     },
@@ -13,8 +14,8 @@ use zz_client::{
 use super::{
     PalettePill, PaletteRow, PaletteStatus,
     palette_model::{
-        PaletteAction, PaletteEntry, PaletteTree, PaletteTreePane, UnifiedPalette, command_entries,
-        count,
+        PaletteAction, PaletteChat, PaletteEntry, PaletteTree, PaletteTreePane, UnifiedPalette,
+        command_entries, count,
     },
 };
 use crate::IconName;
@@ -23,6 +24,8 @@ pub const PLACE_ROWS: usize = 50;
 const VERB_ROWS: usize = 30;
 const RECENT_PLACES: usize = 5;
 const RECENT_OTHERS: usize = 3;
+const CHAT_ROWS: usize = 30;
+const CHAT_DETAIL_PENALTY: i64 = 1000;
 pub const PLACE_PLACEHOLDER: &str = "Type a place or an action";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -298,6 +301,72 @@ fn place_entry(
     )
 }
 
+fn chat_place(chat: &PaletteChat) -> Place {
+    Place {
+        host: Some(chat.host.0),
+        session: Some(chat.session),
+        window: Some(chat.window),
+        pane: None,
+    }
+}
+
+fn chat_entry(
+    fleet: &Fleet,
+    chat: &PaletteChat,
+    matches: Vec<Range<usize>>,
+    current: &Place,
+) -> PaletteEntry {
+    let place = chat_place(chat);
+    let right = if is_current(current, &place, Level::Window) {
+        "current".to_owned()
+    } else if chat.host.0 == fleet.here {
+        String::new()
+    } else {
+        fleet
+            .host(chat.host.0)
+            .map_or_else(String::new, |host| host.name.clone())
+    };
+    PaletteEntry::row(
+        PaletteRow {
+            label: chat.title.clone().into(),
+            matches,
+            detail: chat.detail.clone().into(),
+            right: right.into(),
+            running: chat.running,
+            icon: Some(chat.icon.clone()),
+            ..Default::default()
+        },
+        PaletteAction::Place(place),
+    )
+}
+
+fn chat_matches(
+    tree: &PaletteTree,
+    fleet: &Fleet,
+    query: &str,
+) -> (Vec<PaletteEntry>, Option<i64>) {
+    let current = fleet.current();
+    let mut found = tree
+        .chats
+        .iter()
+        .filter_map(|chat| {
+            if let Some((score, matches)) = fuzzy_match(query, &chat.title) {
+                return Some((score as i64, matches, chat));
+            }
+            fuzzy_match(query, &chat.detail)
+                .map(|(score, _)| (score as i64 + CHAT_DETAIL_PENALTY, Vec::new(), chat))
+        })
+        .collect::<Vec<_>>();
+    found.sort_by_key(|(score, ..)| *score);
+    let best = found.first().map(|(score, ..)| *score);
+    let rows = found
+        .into_iter()
+        .take(CHAT_ROWS)
+        .map(|(_, matches, chat)| chat_entry(fleet, chat, matches, &current))
+        .collect();
+    (rows, best)
+}
+
 fn candidate_at(fleet: &Fleet, place: Place) -> Option<Candidate> {
     Some(Candidate {
         level: place.level()?,
@@ -478,7 +547,22 @@ impl UnifiedPalette {
                 (Some(_), None) => true,
                 _ => false,
             };
-        let mut rows = Vec::new();
+        let (chat_rows, chat_best) = if self.tree.chat_mode && !drilled {
+            chat_matches(&self.tree, &fleet, &search)
+        } else {
+            (Vec::new(), None)
+        };
+        let chats_first = chat_best.is_some_and(|chat| {
+            verbs.first().is_none_or(|verb| chat <= verb.score)
+                && places.first().is_none_or(|place| chat <= place.score)
+        });
+        let (mut lead, mut trail) = (Vec::new(), Vec::new());
+        section(
+            if chats_first { &mut lead } else { &mut trail },
+            "Chats",
+            chat_rows,
+        );
+        let mut rows = lead;
         if verbs_first {
             section(&mut rows, actions, verb_rows);
             section(&mut rows, "Places", place_rows);
@@ -486,6 +570,7 @@ impl UnifiedPalette {
             section(&mut rows, "Places", place_rows);
             section(&mut rows, actions, verb_rows);
         }
+        rows.append(&mut trail);
         if !self.chips.iter().any(|chip| chip.level == Level::Host) {
             let part = Part {
                 level: Level::Host,
@@ -588,6 +673,15 @@ impl UnifiedPalette {
             .collect();
         section(&mut rows, "Needs you", needs);
         let current = fleet.current();
+        if self.tree.chat_mode {
+            let mut chats = self.tree.chats.iter().take(PLACE_ROWS).collect::<Vec<_>>();
+            chats.sort_by_key(|chat| is_current(&current, &chat_place(chat), Level::Window));
+            let chats = chats
+                .into_iter()
+                .map(|chat| chat_entry(fleet, chat, Vec::new(), &current))
+                .collect();
+            section(&mut rows, "Chats", chats);
+        }
         let recent = recents
             .top(RecentKind::Place, RECENT_PLACES * 4, now)
             .into_iter()

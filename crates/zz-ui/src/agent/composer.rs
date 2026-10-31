@@ -16,6 +16,7 @@ pub const COMPOSER_BUTTON: f32 = 28.0;
 pub const COMPOSER_INSET: f32 = 6.0;
 pub const COMPOSER_HEIGHT: f32 = COMPOSER_BUTTON + 2.0 * COMPOSER_INSET;
 const COMPOSER_RADIUS: f32 = COMPOSER_HEIGHT / 2.0;
+const COMPOSER_BACKING_INSET: f32 = 1.0;
 const COMPOSER_TEXT: f32 = 13.0;
 const COMPOSER_TEXT_PADDING: f32 = (COMPOSER_BUTTON - COMPOSER_TEXT * 1.25) / 2.0;
 
@@ -109,10 +110,18 @@ impl RenderOnce for AgentComposer {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_prefix = !self.prefix.is_empty();
         let layer = cx.theme().layer(roles::AGENT_COMPOSER, PaintState::Rest);
-        let backing = layer
-            .glass
-            .is_none()
-            .then(|| cx.theme().background.opaque());
+        let radius = layer.radius.min(px(COMPOSER_RADIUS));
+        let backing = layer.glass.is_none().then(|| {
+            div()
+                .absolute()
+                .top(px(COMPOSER_BACKING_INSET))
+                .bottom(px(COMPOSER_BACKING_INSET))
+                .left(px(COMPOSER_BACKING_INSET))
+                .right(px(COMPOSER_BACKING_INSET))
+                .rounded(radius - px(COMPOSER_BACKING_INSET))
+                .corner_smoothing(layer.smoothing)
+                .bg(cx.theme().background.opaque())
+        });
         v_flex()
             .flex_none()
             .w_full()
@@ -131,9 +140,9 @@ impl RenderOnce for AgentComposer {
                             .children(self.prefix)
                             .child(
                                 div()
+                                    .relative()
                                     .w_full()
-                                    .rounded(layer.radius.min(px(COMPOSER_RADIUS)))
-                                    .when_some(backing, Styled::bg)
+                                    .children(backing)
                                     .child(self.composer),
                             ),
                     ),

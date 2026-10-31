@@ -29,6 +29,7 @@ use crate::agent::{
     },
     codex_queue,
     host::RuntimeChannels,
+    lens_commands::{self, Listed},
     runtime::{RuntimeCommand, RuntimeControl},
     stream::{
         AgentPrompt, AgentPromptOutcome, AgentSessionCapabilities, AgentStreamPayload, agent_verb,
@@ -191,6 +192,8 @@ struct Claude {
     open: Vec<(String, String, Value)>,
     subagents: Option<PathBuf>,
     agents: Vec<Subagent>,
+    listed: Vec<Listed>,
+    listed_changed: bool,
 }
 
 struct Subagent {
@@ -212,6 +215,25 @@ impl Claude {
             open: Vec::new(),
             subagents: None,
             agents: Vec::new(),
+            listed: Vec::new(),
+            listed_changed: false,
+        }
+    }
+
+    fn note_listing(&mut self, entry: &Value) {
+        let Some(listed) = lens_commands::skill_listing(entry) else {
+            return;
+        };
+        if entry["attachment"]["isInitial"] == false {
+            for skill in listed {
+                if !self.listed.iter().any(|known| known.name == skill.name) {
+                    self.listed.push(skill);
+                    self.listed_changed = true;
+                }
+            }
+        } else if self.listed != listed {
+            self.listed = listed;
+            self.listed_changed = true;
         }
     }
 
@@ -266,6 +288,16 @@ impl Claude {
             .find_map(|entry| entry["uuid"].as_str().map(str::to_owned));
         self.subagents = Some(tail.path.with_extension("").join("subagents"));
         self.agents.clear();
+        self.listed.clear();
+        for line in text
+            .lines()
+            .filter(|line| line.contains("\"skill_listing\""))
+        {
+            if let Ok(entry) = serde_json::from_str::<Value>(line) {
+                self.note_listing(&entry);
+            }
+        }
+        self.listed_changed = false;
         self.discover();
         let mut updates = Vec::new();
         for entry in sessions::chain_tail(&text) {
@@ -401,6 +433,7 @@ impl Claude {
         if entry["isSidechain"] == true {
             return;
         }
+        self.note_listing(entry);
         let branched = entry["type"] == "user"
             && entry["isCompactSummary"] != true
             && claude_translate::prompt_text(entry).is_some()
@@ -677,6 +710,20 @@ impl Source {
             Self::Codex(_) => CODEX_LOCATE,
         }
     }
+
+    fn listed(&self) -> &[Listed] {
+        match self {
+            Self::Claude(claude) => &claude.listed,
+            Self::Codex(_) => &[],
+        }
+    }
+
+    fn take_listing_change(&mut self) -> bool {
+        match self {
+            Self::Claude(claude) => std::mem::take(&mut claude.listed_changed),
+            Self::Codex(_) => false,
+        }
+    }
 }
 
 struct Turn {
@@ -774,6 +821,17 @@ impl Lens {
         format!("lens-{}", self.spec.pane)
     }
 
+    fn commands(&self) -> AgentStreamPayload {
+        AgentStreamPayload::Update {
+            update: lens_commands::update(
+                self.spec.provider,
+                &self.cwd,
+                std::env::home_dir().as_deref(),
+                self.source.listed(),
+            ),
+        }
+    }
+
     fn open(&mut self) -> Vec<AgentStreamPayload> {
         let (agent_name, agent_key) = match self.spec.provider {
             AgentProvider::ClaudeCode => ("Claude Code", "claude-code"),
@@ -803,6 +861,7 @@ impl Lens {
                         modes: None,
                         config_options: None,
                     },
+                    self.commands(),
                 ]
             } else {
                 Vec::new()
@@ -815,6 +874,13 @@ impl Lens {
     }
 
     fn reload(&mut self, found: Found, opening: bool) -> Vec<AgentStreamPayload> {
+        let mut payloads = self.load(found, opening);
+        self.source.take_listing_change();
+        payloads.push(self.commands());
+        payloads
+    }
+
+    fn load(&mut self, found: Found, opening: bool) -> Vec<AgentStreamPayload> {
         let replay = self.source.load(found.path, &found.cwd);
         let ended = self.source.take_ended();
         let first = self.session.is_none();
@@ -877,6 +943,9 @@ impl Lens {
         self.failed = read.failed;
         payloads.extend(self.observe(read.finished, read.updates));
         self.failed = None;
+        if self.source.take_listing_change() {
+            payloads.push(self.commands());
+        }
         payloads
     }
 

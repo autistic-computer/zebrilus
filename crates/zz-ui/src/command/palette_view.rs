@@ -45,8 +45,8 @@ use crate::{
     },
     notification::Notification,
     target::{
-        TargetBackend, TargetHost, TargetKind, TargetPane, TargetPicker, TargetPickerEvent,
-        TargetSession, TargetWindow, pop_level,
+        TargetBackend, TargetChat, TargetHost, TargetKind, TargetPane, TargetPicker,
+        TargetPickerEvent, TargetSession, TargetWindow, pop_level,
     },
 };
 
@@ -137,6 +137,14 @@ pub fn target_hosts(tree: &PaletteTree) -> Vec<TargetHost> {
                                     title: pane.label.clone(),
                                     program: pane.program.clone(),
                                     icon: pane.icon.clone(),
+                                    chat: tree
+                                        .chats
+                                        .iter()
+                                        .find(|chat| chat.host == host.id && chat.pane == pane.id)
+                                        .map(|chat| TargetChat {
+                                            title: chat.title.clone().into(),
+                                            icon: chat.icon.clone(),
+                                        }),
                                 })
                                 .collect(),
                         })
@@ -230,7 +238,7 @@ fn target_hints(item: Option<&crate::target::TargetItem>, typed: &str) -> Vec<Pa
     let enter = match item.map(|item| item.kind) {
         Some(TargetKind::Host) => "open",
         Some(TargetKind::Session | TargetKind::Window) => "switch",
-        Some(TargetKind::Pane) => "focus",
+        Some(TargetKind::Pane | TargetKind::Chat) => "focus",
         Some(TargetKind::Dir | TargetKind::File) => "insert",
         None => "choose",
     };
@@ -1390,11 +1398,15 @@ impl CommandPaletteView {
         let usage: Option<SharedString> = places_usage
             .map(SharedString::from)
             .or_else(|| typed_usage.map(SharedString::from));
+        let reserve_usage = places || unified.mode == Some(PaletteMode::Command);
         let entries = Arc::new(unified.rows.clone());
         let palette = cx.entity();
         let rows_palette = palette.clone();
         let list_height = (entries.len() as f32 * command_palette_row_height()).min(
-            super::command_palette_list_height(window.viewport_size().height, usage.is_some()),
+            super::command_palette_list_height(
+                window.viewport_size().height,
+                reserve_usage || usage.is_some(),
+            ),
         );
         let rows = uniform_list(
             "unified-palette-rows",
@@ -1614,6 +1626,9 @@ impl CommandPaletteView {
         let mut surface = CommandPaletteSurface::new(input, cx.entity_id().as_u64()).hints(hints);
         if let Some(usage) = usage {
             surface = surface.usage(usage);
+        }
+        if reserve_usage {
+            surface = surface.reserve_usage();
         }
         surface = if let Some((rows, _)) = level_view {
             surface.rows(rows)

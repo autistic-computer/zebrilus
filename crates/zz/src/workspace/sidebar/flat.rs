@@ -330,6 +330,10 @@ impl WorkspaceSidebar {
         }
     }
 
+    pub(crate) const fn chat_mode(&self) -> bool {
+        self.flat
+    }
+
     pub(super) fn toggle_flat(&mut self, cx: &mut Context<Self>) {
         self.flat = !self.flat;
         let value = if self.flat { "true" } else { "false" };
@@ -338,6 +342,10 @@ impl WorkspaceSidebar {
         {
             log::warn!(target: "zz::config", "could not save flat-sidebar: {error}");
         }
+        let mut config = crate::config::resolved_config(cx);
+        config.0.flat_sidebar.value = self.flat;
+        cx.set_global(config);
+        cx.emit(super::SidebarModeChanged);
         cx.notify();
     }
 }

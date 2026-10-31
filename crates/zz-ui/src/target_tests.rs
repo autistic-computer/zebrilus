@@ -39,6 +39,7 @@ fn pane(id: u64, title: &str, program: Option<&'static str>) -> TargetPane {
         title: title.to_owned(),
         program: program.map(SharedString::from),
         icon: IconName::SquareTerminal,
+        chat: None,
     }
 }
 
@@ -213,7 +214,14 @@ fn backspace_on_a_levels_edge_goes_up_one_level() {
 }
 
 fn items(body: &str) -> Vec<TargetItem> {
-    target_items(&parse_target(body, &hosts()), &hosts())
+    target_items(
+        &parse_target(body, &hosts()),
+        &hosts(),
+        Chats {
+            shown: true,
+            own: None,
+        },
+    )
 }
 
 fn tokens(body: &str) -> Vec<String> {
@@ -567,4 +575,48 @@ fn the_picker_follows_the_composer_and_owns_its_keys(cx: &mut TestAppContext) {
     );
     cx.simulate_keystrokes("escape escape");
     assert_eq!(keys.borrow().last().map(String::as_str), Some("escape"));
+}
+
+fn chat_hosts() -> Vec<TargetHost> {
+    let mut hosts = hosts();
+    let chat = |title: &str| TargetChat {
+        title: title.to_owned().into(),
+        icon: IconName::SquareTerminal,
+    };
+    hosts[0].sessions[0].windows[0].panes.push(TargetPane {
+        chat: Some(chat("Fix the outline")),
+        ..pane(6, "claude", Some("Claude Code"))
+    });
+    hosts[0].sessions[0].windows[0].panes.push(TargetPane {
+        chat: Some(chat("This chat")),
+        ..pane(9, "claude", Some("Claude Code"))
+    });
+    hosts[1].sessions[0].windows[1].panes[0].chat = Some(chat("Fix tests"));
+    hosts
+}
+
+#[test]
+fn an_empty_mention_lists_other_chats_first_and_skips_its_own() {
+    let hosts = chat_hosts();
+    let chats = Chats {
+        shown: true,
+        own: Some(PaneId(9)),
+    };
+    let listed = target_items(&parse_target("", &hosts), &hosts, chats);
+    let listed_chats = listed
+        .iter()
+        .take_while(|item| item.kind == TargetKind::Chat)
+        .map(|item| (item.label.to_string(), item.insertion()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        listed_chats,
+        [
+            ("Fix the outline".to_owned(), "@macbook:%6 ".to_owned()),
+            ("Fix tests".to_owned(), "@ubuntu:%12 ".to_owned()),
+        ]
+    );
+    assert_eq!(listed[2].token, "macbook:main");
+    let found = target_items(&parse_target("outline", &hosts), &hosts, chats);
+    assert_eq!(found[0].kind, TargetKind::Chat);
+    assert_eq!(found[0].token, "macbook:%6");
 }

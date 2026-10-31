@@ -18,10 +18,39 @@ pub fn suggestion_list_height(count: usize) -> Pixels {
         ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SlashKind {
+    Command,
+    Skill,
+    Terminal,
+}
+
+impl SlashKind {
+    #[must_use]
+    pub const fn of(terminal: bool, skill: bool) -> Self {
+        if terminal {
+            Self::Terminal
+        } else if skill {
+            Self::Skill
+        } else {
+            Self::Command
+        }
+    }
+
+    const fn badge(self) -> Option<&'static str> {
+        match self {
+            Self::Command => None,
+            Self::Skill => Some("skill"),
+            Self::Terminal => Some("opens terminal"),
+        }
+    }
+}
+
 pub fn suggestion_row(
     id: impl Into<ElementId>,
-    name: &str,
+    label: &str,
     description: Option<SharedString>,
+    kind: SlashKind,
     selected: bool,
     cx: &App,
 ) -> Stateful<Div> {
@@ -55,7 +84,7 @@ pub fn suggestion_row(
                     .text_size(crate::rems_from_px(12.0))
                     .line_height(px(16.0))
                     .font_weight(ala::FontWeight::MEDIUM)
-                    .child(format!("/{name}")),
+                    .child(label.to_owned()),
             )
             .when_some(description, |column, description| {
                 column.child(
@@ -72,6 +101,14 @@ pub fn suggestion_row(
                 )
             }),
     )
+    .children(kind.badge().map(|badge| {
+        div()
+            .flex_none()
+            .text_size(crate::rems_from_px(10.0))
+            .line_height(px(14.0))
+            .text_color(muted)
+            .child(badge)
+    }))
 }
 
 pub fn suggestion_list(rows: impl IntoElement, cx: &App) -> Div {

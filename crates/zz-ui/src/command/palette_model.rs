@@ -8,10 +8,11 @@ use zz_client::{
     place::{Fleet, Place},
     recents::RecentKey,
     verbs::Verb,
+    window_summary,
 };
 use zz_protocol::{
-    ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, PaneId, SessionId, WindowId,
-    command_specs,
+    ChooseTreeState, ChooseTreeTarget, CommandSpec, CommandValueKind, PaneId, SessionId,
+    SessionSnapshot, WindowId, command_specs,
 };
 
 use super::{
@@ -85,6 +86,20 @@ impl Default for PaletteSettings {
 pub struct PaletteTree {
     pub attached: PaletteHostId,
     pub hosts: Vec<PaletteTreeHost>,
+    pub chats: Vec<PaletteChat>,
+    pub chat_mode: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct PaletteChat {
+    pub host: PaletteHostId,
+    pub session: SessionId,
+    pub window: WindowId,
+    pub pane: PaneId,
+    pub title: String,
+    pub detail: String,
+    pub icon: IconName,
+    pub running: bool,
 }
 
 impl PaletteTree {
@@ -92,6 +107,38 @@ impl PaletteTree {
     pub fn host(&self, id: PaletteHostId) -> Option<&PaletteTreeHost> {
         self.hosts.iter().find(|host| host.id == id)
     }
+}
+
+#[must_use]
+pub fn palette_chats(host: PaletteHostId, sessions: &[SessionSnapshot]) -> Vec<PaletteChat> {
+    sessions
+        .iter()
+        .flat_map(|session| {
+            session
+                .windows
+                .iter()
+                .map(move |window| (session.id, window))
+        })
+        .filter_map(|(session, window)| {
+            let summary = window_summary::summarize_chat(window)?;
+            let pane = window.panes.get(&summary.headline)?;
+            let provider = window_summary::pane_agent(pane)?;
+            Some(PaletteChat {
+                host,
+                session,
+                window: window.id,
+                pane: pane.id,
+                detail: summary
+                    .detail
+                    .iter()
+                    .map(|part| part.text.as_str())
+                    .collect(),
+                title: summary.title,
+                icon: crate::pane::agent_provider_icon(provider),
+                running: summary.attention == window_summary::Attention::Working,
+            })
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug)]

@@ -56,7 +56,9 @@ then puts the window in that folder's session:
   `kill-window -a` its starting shell; a session holding only the picker is renamed instead.
 
 The desktop opens the agent's lens as soon as the CLI is detected in that pane, and switches to the
-window if it moved sessions.
+window if it moved sessions. In chat mode every agent pane opens with its lens on, not only new
+ones; turning a lens off keeps that pane on its terminal until the agent exits. The command
+palette lists the chats too (see the [palette](/concepts/command-palette.md)).
 
 # Daemon changes
 

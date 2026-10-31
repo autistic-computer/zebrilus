@@ -39,6 +39,8 @@ impl PaletteBackend for Backend {
     fn tree(&self, _: &App) -> PaletteTree {
         PaletteTree {
             attached: PaletteHostId(0),
+            chats: Vec::new(),
+            chat_mode: false,
             hosts: vec![PaletteTreeHost {
                 id: PaletteHostId(0),
                 name: "local".to_owned(),

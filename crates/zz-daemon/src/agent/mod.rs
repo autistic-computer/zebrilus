@@ -22,6 +22,8 @@ pub(crate) mod host;
 pub(crate) mod journal;
 #[cfg(unix)]
 pub(crate) mod lens;
+#[cfg(unix)]
+pub(crate) mod lens_commands;
 pub(crate) mod paths;
 pub(crate) mod runtime;
 pub(crate) mod stream;
