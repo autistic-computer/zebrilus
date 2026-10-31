@@ -7,7 +7,7 @@ resource: crates/zz-daemon/src/agent/chat.rs
 tags:
 - agent
 - design-plan
-timestamp: 2026-10-29T00:00:00-03:00
+timestamp: 2026-10-31T19:10:00-03:00
 ---
 
 # Why
@@ -104,7 +104,9 @@ the journal or from memory, and the chat events would be lost. So the lane keeps
 chat event in order, with text appends and body changes folded into the item's start and only the
 latest queue and usage kept. Both rebuild paths end with `Restart` and that log, which folds to the
 same view (the random test checks it on every seed). The log grows with items and turns, not with
-streamed text, and keeps pasted images only on the last 8 items that have them. A daemon restart needs no journal for this: the driver restores the session's
+streamed text, and keeps pasted images only on the last 8 items that have them. `ChatView` applies
+the same rule as it folds events, so a connected client's view holds no more images than a replay
+would give it. A daemon restart needs no journal for this: the driver restores the session's
 history and the bridge replays it through the machine.
 
 # Rules
