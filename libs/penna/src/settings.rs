@@ -149,7 +149,7 @@ impl RenderOnce for SettingsNavigation {
             let on_pick = self.on_pick.clone();
             rows.push(
                 settings_navigation_button(
-                    section.title.clone(),
+                    ("penna-settings-section", index),
                     section.title,
                     section.icon,
                     self.selected == Some(index),
