@@ -5,7 +5,9 @@ use ala::{
 };
 use penna::ActiveTheme as _;
 use zz_protocol::chat::{ChatView, RequestView};
-use zz_ui::agent::chat::{ChatClick, ChatClicks, ChatHooks, chat_live, chat_thread, shows_chat};
+use zz_ui::agent::chat::{
+    ChatClick, ChatClicks, ChatHooks, chat_agent_pip, chat_live, chat_thread, shows_chat,
+};
 use zz_ui::agent::presentation::spinner_phase;
 use zz_ui::agent::{AGENT_CONTENT_MAX_WIDTH, agent_jump_to_bottom_button};
 
@@ -62,11 +64,13 @@ impl AgentView {
         view: &Entity<Self>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
+        let now = zz_client::chat_rows::now_ms();
         let live = self
             .controller
             .read(cx)
             .pane_chat(self.pane)
-            .is_some_and(chat_live);
+            .is_some_and(chat_live)
+            || self.chat.revealing(now);
         let phase = if live {
             spinner_phase(cx.entity_id(), cx)
         } else {
@@ -98,7 +102,6 @@ impl AgentView {
                 cx.stop_propagation();
             }
         };
-        let now = zz_client::chat_rows::now_ms();
         let app: &ala::App = cx;
         let Some(chat) = self.controller.read(app).pane_chat(self.pane) else {
             return div().into_any_element();
@@ -111,8 +114,13 @@ impl AgentView {
             ask: Some(&ask),
             fork: self.forks(),
             refs: Some(&refs),
+            vendor: Some(match self.pane_state.provider {
+                zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
+                zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
+            }),
         };
         let body = chat_thread(chat, now, &self.chat.open, phase, &hooks, app);
+        let pip = chat_agent_pip(chat, now, &self.chat.open, phase, &hooks, app);
         div()
             .relative()
             .size_full()
@@ -136,6 +144,7 @@ impl AgentView {
                         ),
                     ),
             )
+            .children(pip)
             .when(show_jump, |root| {
                 root.child(
                     div()

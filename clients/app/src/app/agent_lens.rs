@@ -41,7 +41,10 @@ use zz_ui::{
         AGENT_CONTENT_MAX_WIDTH, AgentEntry, AgentMarkdown, AgentTimeline, AgentTimelineStore,
         AgentToolEntry, AgentToolKind, AgentToolPayload, AgentToolStatus, AgentToolText,
         MarkdownSlot, TimelineRow, TimelineStick, agent_jump_to_bottom_button,
-        chat::{ChatClick, ChatClicks, ChatHooks, ChatPane, chat_live, chat_thread, shows_chat},
+        chat::{
+            ChatClick, ChatClicks, ChatHooks, ChatPane, chat_agent_pip, chat_live, chat_thread,
+            shows_chat,
+        },
         composer::{AgentComposer, COMPOSER_OUTER_PADDING, Composer},
         composer_attachment,
         controls::{
@@ -1675,7 +1678,8 @@ impl AgentLens {
         inline: HashMap<u64, AnyElement>,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let phase = if chat_live(&self.transcript.lens.chat) {
+        let now = zz_client::chat_rows::now_ms();
+        let phase = if chat_live(&self.transcript.lens.chat) || self.chat.revealing(now) {
             zz_ui::agent::presentation::spinner_phase(cx.entity_id(), cx)
         } else {
             0.0
@@ -1712,10 +1716,22 @@ impl AgentLens {
             ask: Some(&ask),
             fork: forks,
             refs: Some(&refs),
+            vendor: self.provider(cx).map(|provider| match provider {
+                zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
+                zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
+            }),
         };
         let body = chat_thread(
             &self.transcript.lens.chat,
-            zz_client::chat_rows::now_ms(),
+            now,
+            &self.chat.open,
+            phase,
+            &hooks,
+            cx,
+        );
+        let pip = chat_agent_pip(
+            &self.transcript.lens.chat,
+            now,
             &self.chat.open,
             phase,
             &hooks,
@@ -1743,6 +1759,7 @@ impl AgentLens {
                         ),
                     ),
             )
+            .children(pip)
             .when(show_jump, |root| {
                 root.child(
                     div()

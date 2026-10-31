@@ -687,7 +687,7 @@ fn an_answered_question_card_lists_each_answer() {
     assert_eq!(
         answered(request),
         pairs(&[
-            ("Scope", "zz-client, zz-daemon"),
+            ("Which crates?", "zz-client, zz-daemon"),
             ("Run the tests?", "Yes"),
             ("Anything else?", "no answer"),
         ])
@@ -708,7 +708,7 @@ fn a_withdrawn_question_card_has_no_answers() {
         },
     );
     let expected = pairs(&[
-        ("Scope", "no answer"),
+        ("Which crates?", "no answer"),
         ("Run the tests?", "no answer"),
         ("Anything else?", "no answer"),
     ]);

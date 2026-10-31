@@ -16,7 +16,7 @@ use zz_protocol::chat::{
     TurnOutcome,
 };
 use zz_protocol::{PaneId, SessionId, WindowId};
-use zz_ui::agent::chat::{ChatClicks, ChatHooks, ChatOpen, ChatPane, chat_thread};
+use zz_ui::agent::chat::{ChatClicks, ChatHooks, ChatOpen, ChatPane, chat_agent_pip, chat_thread};
 use zz_ui::agent::presentation::{permission_card, permission_option};
 use zz_ui::agent::refs::ChatRefs;
 use zz_ui::command::{PaletteHostId, PaletteStatus};
@@ -237,7 +237,10 @@ fn spinner_free(view: &ChatView, open: &ChatOpen, now: u64, cx: &App) -> AnyElem
         now,
         open,
         0.25,
-        &ChatHooks::default(),
+        &ChatHooks {
+            vendor: Some(zz_ui::program::CLAUDE_ICON),
+            ..ChatHooks::default()
+        },
         cx,
     ))
 }
@@ -364,6 +367,28 @@ fn story_hosts() -> Vec<TargetHost> {
     }]
 }
 
+pub fn long_and_diagram(_: &mut Window, cx: &mut App) -> AnyView {
+    stateless(
+        |_, cx| {
+            let prompt = (1..=40)
+                .map(|line| format!("{line}. a pasted line of the brief, long enough to wrap once or twice in the bubble"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let mut script = Script::new();
+            script
+                .turn(&prompt)
+                .text(
+                    "a1",
+                    "Here is the flow:\n\n```mermaid\nflowchart LR\n  A[Prompt] --> B{Tool?}\n  B -- yes --> C[Run it]\n  B -- no --> D[Answer]\n  C --> B\n```\n\nAnd a plain code block:\n\n```rust\nfn main() {}\n```",
+                )
+                .done("a1")
+                .finish(completed());
+            spinner_free(&script.view, &ChatOpen::default(), script.at, cx)
+        },
+        cx,
+    )
+}
+
 pub fn references(_: &mut Window, cx: &mut App) -> AnyView {
     stateless(
         |_, cx| {
@@ -391,6 +416,7 @@ pub fn references(_: &mut Window, cx: &mut App) -> AnyView {
                 click: Some(click),
                 fork: true,
                 refs: Some(&refs),
+                vendor: Some(zz_ui::program::CLAUDE_ICON),
                 ..ChatHooks::default()
             };
             frame(chat_thread(
@@ -499,18 +525,38 @@ pub fn subagents(_: &mut Window, cx: &mut App) -> AnyView {
                     "working, done, needs you",
                     spinner_free(&script.view, &ChatOpen::default(), script.at, cx),
                 )
-                .state(
-                    "Explore and Protocol opened in place",
-                    spinner_free(
-                        &script.view,
-                        &ChatOpen {
-                            agents: vec![ItemId::new("ag1"), ItemId::new("ag2")],
-                            ..ChatOpen::default()
-                        },
-                        script.at,
-                        cx,
-                    ),
-                )
+                .state("Explore opened in its PiP", {
+                    let open = ChatOpen {
+                        agent: Some(ItemId::new("ag1")),
+                        ..ChatOpen::default()
+                    };
+                    let hooks = ChatHooks {
+                        vendor: Some(zz_ui::program::CLAUDE_ICON),
+                        ..ChatHooks::default()
+                    };
+                    div()
+                        .relative()
+                        .w_full()
+                        .max_w(px(640.0))
+                        .h(px(560.0))
+                        .child(chat_thread(
+                            &script.view,
+                            script.at,
+                            &open,
+                            0.25,
+                            &hooks,
+                            cx,
+                        ))
+                        .children(chat_agent_pip(
+                            &script.view,
+                            script.at,
+                            &open,
+                            0.25,
+                            &hooks,
+                            cx,
+                        ))
+                        .into_any_element()
+                })
                 .into_any_element()
         },
         cx,
@@ -762,8 +808,17 @@ impl Render for Playground {
             ask: Some(&ask),
             fork: true,
             refs: None,
+            vendor: Some(zz_ui::program::CLAUDE_ICON),
         };
         let body = chat_thread(
+            &self.script.view,
+            self.script.at,
+            &self.pane.open,
+            0.25,
+            &hooks,
+            cx,
+        );
+        let pip = chat_agent_pip(
             &self.script.view,
             self.script.at,
             &self.pane.open,
@@ -776,7 +831,15 @@ impl Render for Playground {
             .w_full()
             .gap_3()
             .child(Button::new("try-reset").label("Reset").on_click(reset))
-            .child(frame(body))
+            .child(
+                div()
+                    .relative()
+                    .w_full()
+                    .max_w(px(640.0))
+                    .min_h(px(560.0))
+                    .child(body)
+                    .children(pip),
+            )
     }
 }
 

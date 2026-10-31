@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: Agent chat machine . one owner for everything a chat shows
-description: "One pure machine in the daemon owns a driver-backed chat: the session, the turn (through the existing turn machine), every item with its parent and scope, subagents, approvals and questions, and the prompt queue. It emits typed chat events; the journal keeps them and every client folds them with one projector in zz-protocol, so a replay builds the same view the live stream did. Built and fuzzed next to the Claude and Codex drivers, which send its events on the agent stream; the desktop lens folds them and draws the chat, with asks inline and subagents opening in place."
-status: Built (2026-10-29, branch feat/agent-chat); events on the agent stream with replay through a compacted log; the desktop lens draws the chat with inline asks and subagents opening in place, checked live in zz Dev against Claude Code 2.1.312
+description: "One pure machine in the daemon owns a driver-backed chat: the session, the turn (through the existing turn machine), every item with its parent and scope, subagents, approvals and questions, and the prompt queue. It emits typed chat events; the journal keeps them and every client folds them with one projector in zz-protocol, so a replay builds the same view the live stream did. Built and fuzzed next to the Claude and Codex drivers, which send its events on the agent stream; the desktop lens folds them and draws the chat, with asks inline and each subagent's chat in a PiP."
+status: Built (2026-10-29, branch feat/agent-chat); events on the agent stream with replay through a compacted log; the desktop lens draws the chat with inline asks and subagents opening in place, checked live in zz Dev against Claude Code 2.1.312; 2026-10-31 subagents became one row each opening a PiP
 resource: crates/zz-daemon/src/agent/chat.rs
 tags:
 - agent
@@ -35,10 +35,11 @@ reducer, lens runner), from untyped ACP `session/update` values. That is where t
 - **Background work outlives its turn.** Subagents and commands that run in the background keep
   their requests and end on their own.
 
-In `chat_rows` and `zz_ui::agent::chat`: one card for subagents started together
-with a compact row each; the subagent's prompt and a footer line when its row is opened in place;
-question → answer pairs for answered questions (the run line already counted failures). A subagent
-opens in place. Mermaid and code-block actions are a separate piece of the markdown view.
+In `chat_rows` and `zz_ui::agent::chat`: each subagent is its own row (the CLI's mark, its name,
+a status glyph and how long it took), and clicking one opens its chat in a PiP over the thread
+(`chat_agent_pip`): its prompt, its own rows, its answer and a footer line. An answered question
+shows the question and the answer under it. Mermaid and code-block actions are a separate piece of
+the markdown view.
 
 # Shape
 

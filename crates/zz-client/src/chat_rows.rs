@@ -261,11 +261,10 @@ pub fn answered(request: &RequestView) -> Vec<(String, String)> {
     questions
         .iter()
         .map(|question| {
-            let label = question
-                .header
-                .clone()
-                .filter(|header| !header.is_empty())
-                .unwrap_or_else(|| question.question.clone());
+            let label = Some(question.question.clone())
+                .filter(|text| !text.is_empty())
+                .or_else(|| question.header.clone())
+                .unwrap_or_default();
             let value = answers
                 .iter()
                 .find(|answer| answer.question == question.id)

@@ -650,7 +650,39 @@ fn created_task_id(text: &str) -> Option<String> {
 
 pub(crate) fn prompt_text(frame: &Value) -> Option<String> {
     let text = message_text(frame);
-    (!text.trim().is_empty() && !is_internal_user_text(&text)).then_some(text)
+    (!text.trim().is_empty() && !is_internal_user_text(&text)).then(|| without_paste_tags(&text))
+}
+
+fn without_paste_tags(text: &str) -> String {
+    const OPEN: &str = "<pasted_content id=\"";
+    const CLOSE: &str = "</pasted_content id=\"";
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let open = rest.find(OPEN);
+        let close = rest.find(CLOSE);
+        let (at, closing) = match (open, close) {
+            (Some(open), Some(close)) if close < open => (close, true),
+            (Some(open), _) => (open, false),
+            (None, Some(close)) => (close, true),
+            (None, None) => break,
+        };
+        let Some(end) = rest[at..].find("\">").map(|end| at + end + 2) else {
+            break;
+        };
+        let head = &rest[..at];
+        out.push_str(if closing {
+            head.strip_suffix('\n').unwrap_or(head)
+        } else {
+            head
+        });
+        rest = &rest[end..];
+        if !closing {
+            rest = rest.strip_prefix('\n').unwrap_or(rest);
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_owned()
 }
 
 fn message_text(frame: &Value) -> String {
@@ -1053,6 +1085,28 @@ pub(crate) fn available_commands(commands: &[Value], hidden: &HashSet<String>) -
         })
         .collect::<Vec<_>>();
     json!({ "sessionUpdate": "available_commands_update", "availableCommands": commands })
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::without_paste_tags;
+
+    #[test]
+    fn pasted_text_shows_without_its_wrapper() {
+        assert_eq!(
+            without_paste_tags(
+                "\n\n<pasted_content id=\"d953\">\nfirst line\n\nsecond\n</pasted_content id=\"d953\">\n"
+            ),
+            "first line\n\nsecond"
+        );
+        assert_eq!(
+            without_paste_tags(
+                "look <pasted_content id=\"1\">\na\n</pasted_content id=\"1\"> and <pasted_content id=\"2\">\nb\n</pasted_content id=\"2\">"
+            ),
+            "look a and b"
+        );
+        assert_eq!(without_paste_tags("plain <b>text</b>"), "plain <b>text</b>");
+    }
 }
 
 #[cfg(test)]

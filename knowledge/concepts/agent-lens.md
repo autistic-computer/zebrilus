@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent lens
-description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
+description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
 timestamp: 2026-10-31T18:00:00-03:00
@@ -245,6 +245,26 @@ palette does; a file opens in a float running `$VISUAL` or `$EDITOR` at that lin
 the user's interactive shell like the CLIs below, and a folder opens a shell float there
 (`refs::open_path`). The assistant's
 markdown carries them as `zzref:` links; the user's bubble draws them as clickable ranges.
+
+# How the chat reads
+
+`zz_ui::agent::chat` draws the folded chat (`chat_thread`):
+
+- **Your messages.** Claude Code wraps a paste as `<pasted_content id="…">…</pasted_content
+  id="…">` in its transcript; the runtime drops the wrapper (`claude::translate::prompt_text`). A
+  long message stays inside a bubble capped at 260 px that scrolls.
+- **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
+  a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
+  chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
+  you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it arrived; replies
+  already there on the first look show at once).
+- **Subagents.** One row each: the CLI's mark, the name, a status glyph (spinning, Needs you, done,
+  failed, stopped) and the time it took. Clicking one opens its chat in a PiP over the thread
+  (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close
+  button or a second click closes it. An approval it waits on sits under its row.
+- **Answered questions.** The question, with the answer under it.
+- **Diagrams.** A mermaid or SVG block sits in a container whose header holds its label, Copy
+  source and Open full diagram, and the diagram draws on the container's own background.
 
 # Starting a chat
 

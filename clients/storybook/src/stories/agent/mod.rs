@@ -20,7 +20,7 @@ const CHAT: Story = Story {
         Section {
             id: "live",
             name: "Live turn",
-            summary: "One line per run of tools; while a tool runs the line names it, between tools it shows the latest reasoning heading.",
+            summary: "One line per run of tools; while a tool runs the line names it, between tools it shows the latest reasoning heading. The bottom line says Thinking or Working with a shimmer, a turning sparkle and the time since the prompt. A reply that lands while you watch types itself in over under a second.",
             build: chat::live,
         },
         Section {
@@ -28,6 +28,12 @@ const CHAT: Story = Story {
             name: "Finished turn",
             summary: "When the answer lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps.",
             build: chat::finished,
+        },
+        Section {
+            id: "long-and-diagram",
+            name: "Long message and diagram",
+            summary: "A long pasted prompt stays inside a capped bubble that scrolls. A mermaid block draws in a container with a header holding its label, Copy source and Open full diagram, on the container's own background.",
+            build: chat::long_and_diagram,
         },
         Section {
             id: "references",
@@ -44,7 +50,7 @@ const CHAT: Story = Story {
         Section {
             id: "subagents",
             name: "Subagents",
-            summary: "Subagents started together share one card, a row each: status, name, a one-line preview and how long it took. A row opens in place to show the prompt, the agent's own rows and a footer; an approval waits right under its agent.",
+            summary: "Each subagent is its own row: the CLI's mark, its name, a status glyph (spinning while it works, Needs you, done, failed) and how long it took. Clicking a row opens its chat in a PiP over the thread: its prompt, its own rows, its answer and a footer; the PiP's close button or a second click closes it. An approval waits right under its agent.",
             build: chat::subagents,
         },
         Section {

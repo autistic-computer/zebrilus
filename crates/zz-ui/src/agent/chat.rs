@@ -1,8 +1,14 @@
-use std::{rc::Rc, time::Duration};
+use std::{
+    collections::{HashMap, HashSet},
+    ops::Range,
+    rc::Rc,
+    time::Duration,
+};
 
 use ala::{
-    AnyElement, App, ClipboardItem, Div, IntoElement, ScrollHandle, ScrollWheelEvent, SharedString,
-    Stateful, Window, div, prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Div, FontWeight, HighlightStyle, IntoElement, ScrollHandle,
+    ScrollWheelEvent, SharedString, Stateful, StyledText, Transformation, Window, div, percentage,
+    prelude::*, px, relative,
 };
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
 use zz_protocol::chat::{
@@ -17,16 +23,18 @@ use super::presentation::{
 use super::refs::{ChatRefs, RefLinks, linkify_markdown, ref_text};
 use super::{ActivityMark, RowEnd, activity_row_marked, assistant_markdown_extensions};
 use crate::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Edge, Icon, IconName, StyledExt as _, Tone,
-    WindowExt as _, button::Button, h_flex, notification::Notification, text::TextView, v_flex,
+    ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, StyledExt as _,
+    Tone, WindowExt as _, button::Button, h_flex, notification::Notification, pip::PipSurface,
+    text::TextView, v_flex,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct ChatOpen {
     pub turns: Vec<TurnId>,
     pub runs: Vec<ItemId>,
-    pub agents: Vec<ItemId>,
+    pub agent: Option<ItemId>,
     pub highlighted: usize,
+    pub arrivals: HashMap<ItemId, u64>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,6 +42,7 @@ pub enum ChatClick {
     Turn(TurnId),
     Run(ItemId),
     Agent(ItemId),
+    CloseAgent,
     Fork(ItemId),
 }
 
@@ -45,6 +54,7 @@ pub struct ChatHooks<'a> {
     pub ask: Option<&'a dyn Fn(&RequestView, &App) -> Option<AnyElement>>,
     pub fork: bool,
     pub refs: Option<&'a ChatRefs>,
+    pub vendor: Option<IconName>,
 }
 
 impl ChatHooks<'_> {
@@ -71,6 +81,11 @@ impl ChatHooks<'_> {
 }
 
 const FOLLOW_SLACK: f32 = 24.0;
+const REVEAL_MAX_MS: u64 = 900;
+const REVEAL_MIN_MS: u64 = 220;
+const REVEAL_MS_PER_CHAR: u64 = 2;
+const USER_MAX_HEIGHT: f32 = 260.0;
+const SHIMMER_MS: u64 = 1600;
 
 #[derive(Default)]
 pub struct ChatPane {
@@ -78,6 +93,8 @@ pub struct ChatPane {
     pub scroll: ScrollHandle,
     pub away: bool,
     session: Option<String>,
+    known: HashSet<ItemId>,
+    primed: bool,
 }
 
 impl ChatPane {
@@ -85,10 +102,25 @@ impl ChatPane {
         match click {
             ChatClick::Turn(turn) => toggle(&mut self.open.turns, *turn),
             ChatClick::Run(item) => toggle(&mut self.open.runs, item.clone()),
-            ChatClick::Agent(item) => toggle(&mut self.open.agents, item.clone()),
+            ChatClick::Agent(item) => {
+                self.open.agent = (self.open.agent.as_ref() != Some(item)).then(|| item.clone());
+                return;
+            }
+            ChatClick::CloseAgent => {
+                self.open.agent = None;
+                return;
+            }
             ChatClick::Fork(_) => return,
         }
         self.away = true;
+    }
+
+    #[must_use]
+    pub fn revealing(&self, now: u64) -> bool {
+        self.open
+            .arrivals
+            .values()
+            .any(|at| now.saturating_sub(*at) < REVEAL_MAX_MS)
     }
 
     pub fn sync(&mut self, view: &ChatView) {
@@ -99,12 +131,35 @@ impl ChatPane {
         if session != self.session {
             self.open = ChatOpen::default();
             self.session = session;
+            self.known.clear();
+            self.primed = false;
         }
         self.open
             .turns
             .retain(|turn| view.turns.iter().any(|held| held.id == *turn));
         self.open.runs.retain(|id| view.item(id).is_some());
-        self.open.agents.retain(|id| view.item(id).is_some());
+        if self
+            .open
+            .agent
+            .as_ref()
+            .is_some_and(|id| view.item(id).is_none())
+        {
+            self.open.agent = None;
+        }
+        let now = chat_rows::now_ms();
+        for item in view.items.values() {
+            if item.kind == ItemKind::Agent
+                && item.parent.is_none()
+                && self.known.insert(item.id.clone())
+                && self.primed
+            {
+                self.open.arrivals.insert(item.id.clone(), now);
+            }
+        }
+        self.primed = true;
+        self.open
+            .arrivals
+            .retain(|_, at| now.saturating_sub(*at) < REVEAL_MAX_MS);
     }
 
     fn distance(&self) -> f32 {
@@ -228,6 +283,9 @@ impl Draw<'_, '_> {
                 column.children(rows.folded.iter().map(|unit| self.unit(unit, live)))
             })
             .children(rows.shown[lead..].iter().map(|unit| self.unit(unit, live)))
+            .when(live && !self.view.waiting(), |column| {
+                column.child(self.thinking(turn))
+            })
             .when(!live, |column| {
                 let ordered = rows.shown[..lead]
                     .iter()
@@ -277,7 +335,7 @@ impl Draw<'_, '_> {
                 self.hooks.refs,
                 cx,
             ),
-            Unit::Text(id) => markdown(id, text_of(self.view, id), self.hooks.refs),
+            Unit::Text(id) => markdown(id, self.shown_text(id), self.hooks.refs),
             Unit::Run(run) => self.run(run, live),
             Unit::Subagent(id) => self.agents(std::slice::from_ref(id)),
             Unit::Agents(ids) => self.agents(ids),
@@ -345,118 +403,118 @@ impl Draw<'_, '_> {
             .into_any_element()
     }
 
-    fn agents(&self, ids: &[ItemId]) -> AnyElement {
-        let cx = self.cx;
-        let Some(first) = ids.first() else {
-            return div().into_any_element();
+    fn shown_text(&self, id: &ItemId) -> SharedString {
+        let text = text_of(self.view, id);
+        let Some(at) = self.open.arrivals.get(id) else {
+            return text;
         };
-        let states = ids
-            .iter()
-            .map(|id| chat_rows::agent_state(self.view, id))
-            .collect::<Vec<_>>();
-        card_surface(cx)
-            .id(SharedString::from(format!(
-                "chat-agents-{}",
-                first.as_str()
-            )))
-            .when(ids.len() > 1, |card| {
-                card.child(
-                    card_header()
-                        .child(card_glyph(Icon::new(IconName::Bot), cx))
-                        .child(
-                            div()
-                                .min_w_0()
-                                .flex_1()
-                                .child(format!("{} subagents", ids.len())),
-                        )
-                        .child(card_chip(group_summary(&states))),
+        let length = u64::try_from(text.len()).unwrap_or(u64::MAX);
+        let duration = length
+            .saturating_mul(REVEAL_MS_PER_CHAR)
+            .clamp(REVEAL_MIN_MS, REVEAL_MAX_MS);
+        let elapsed = self.now.saturating_sub(*at);
+        if elapsed >= duration {
+            return text;
+        }
+        let mut cut = usize::try_from(length * elapsed / duration).unwrap_or(text.len());
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        let cut = text[..cut].rfind(char::is_whitespace).unwrap_or_default();
+        text[..cut].to_owned().into()
+    }
+
+    fn thinking(&self, turn: &TurnView) -> AnyElement {
+        let cx = self.cx;
+        let working = turn.items.iter().any(|id| {
+            self.view.item(id).is_some_and(|item| {
+                item.status.is_open()
+                    && !matches!(
+                        item.kind,
+                        ItemKind::Agent | ItemKind::Reasoning | ItemKind::User
+                    )
+            })
+        });
+        let label = if working { "Working" } else { "Thinking" };
+        let seconds = self.now.saturating_sub(turn.started_at) / 1000;
+        let elapsed =
+            (seconds > 0 && seconds < 86_400).then(|| chat_rows::duration(seconds * 1000));
+        h_flex()
+            .id(("chat-thinking", turn.id.0))
+            .gap_2()
+            .items_center()
+            .text_size(crate::rems_from_px(12.5))
+            .child(
+                Icon::new(IconName::Sparkle)
+                    .size(px(13.0))
+                    .text_color(cx.theme().foreground.muted())
+                    .transform(Transformation::rotate(percentage(self.phase))),
+            )
+            .child(shimmer(label, self.now, cx))
+            .when_some(elapsed, |row, elapsed| {
+                row.child(
+                    div()
+                        .text_color(cx.theme().foreground.faint())
+                        .child(elapsed),
                 )
             })
-            .child(
-                v_flex().w_full().px(px(12.0)).py(px(6.0)).gap_1().children(
-                    ids.iter()
-                        .zip(&states)
-                        .map(|(id, state)| self.agent(id, state.as_ref())),
-                ),
-            )
             .into_any_element()
     }
 
-    fn agent(&self, id: &ItemId, state: Option<&AgentState>) -> AnyElement {
+    fn agents(&self, ids: &[ItemId]) -> AnyElement {
+        v_flex()
+            .w_full()
+            .gap_1p5()
+            .children(ids.iter().map(|id| self.agent(id)))
+            .into_any_element()
+    }
+
+    fn agent(&self, id: &ItemId) -> AnyElement {
         let cx = self.cx;
         let Some(item) = self.view.item(id) else {
             return div().into_any_element();
         };
-        let expanded = self.open.agents.contains(id);
+        let state = chat_rows::agent_state(self.view, id);
         let ms = chat_rows::agent_ms(self.view, id, self.now)
             .filter(|ms| item.status.is_open() || *ms >= 1000);
-        let mut mark = ActivityMark::plain(IconName::Bot);
-        mark.spread = true;
-        let preview = match state {
-            Some(AgentState::Working { label }) => {
-                mark.spin = Some(self.phase);
-                run_label(label)
-            }
-            Some(AgentState::Waiting) => {
-                mark.tint = Some(cx.theme().warning);
-                "Needs you".to_owned()
-            }
-            Some(AgentState::Done { result }) => {
-                mark.tint = Some(cx.theme().success);
-                result
-                    .as_deref()
-                    .and_then(|result| result.lines().find(|line| !line.trim().is_empty()))
-                    .unwrap_or_default()
-                    .trim()
-                    .to_owned()
-            }
-            Some(AgentState::Failed { message }) => {
-                mark.tint = Some(cx.theme().danger);
-                message.clone().unwrap_or_else(|| "Failed".to_owned())
-            }
-            Some(AgentState::Stopped) | None => "Stopped".to_owned(),
-        };
-        if !preview.is_empty() && !expanded {
-            mark.detail = Some(preview.into());
-        }
-        mark.tag = ms.map(|ms| {
-            (
-                chat_rows::duration(ms).into(),
-                if matches!(state, Some(AgentState::Failed { .. })) {
-                    Tone::Danger
-                } else {
-                    Tone::Neutral
-                },
-            )
-        });
-        let title = if item.body.title.is_empty() {
-            "Subagent".to_owned()
-        } else {
-            item.body.title.clone()
-        };
-        let row = self.hooks.clickable(
-            activity_row_marked(
-                SharedString::from(format!("chat-agent-{}", id.as_str())),
-                mark,
-                title.into(),
-                RowEnd::Disclosure(expanded),
-                cx,
-            ),
-            ChatClick::Agent(id.clone()),
-        );
-        v_flex()
+        let open = self.open.agent.as_ref() == Some(id);
+        let foreground = cx.theme().foreground;
+        let row = h_flex()
+            .id(SharedString::from(format!("chat-agent-{}", id.as_str())))
             .w_full()
-            .child(row)
-            .when(expanded, |column| {
-                column.child(self.agent_body(id, state, ms))
-            })
-            .when(!expanded, |column| {
-                column.children(
-                    asks_under(self.view, id)
-                        .into_iter()
-                        .map(|request| div().w_full().pt_1().pb_2().child(self.ask(request))),
+            .h(px(36.0))
+            .px(px(8.0))
+            .gap_2()
+            .items_center()
+            .surface(crate::roles::INLINE_PANEL, cx)
+            .text_size(crate::rems_from_px(13.0))
+            .text_color(if open { foreground } else { foreground.muted() })
+            .hover(move |row| row.text_color(foreground))
+            .child(vendor_tile(self.hooks.vendor.clone(), cx))
+            .child(div().min_w_0().flex_1().truncate().child(agent_title(item)))
+            .children(agent_status(state.as_ref(), self.phase, cx))
+            .when_some(ms, |row, ms| {
+                row.child(
+                    div()
+                        .flex_none()
+                        .text_size(crate::rems_from_px(11.5))
+                        .text_color(cx.theme().foreground.faint())
+                        .child(chat_rows::duration(ms)),
                 )
             })
+            .child(
+                Icon::new(IconName::PictureInPicture)
+                    .size(px(13.0))
+                    .text_color(cx.theme().foreground.faint()),
+            );
+        v_flex()
+            .w_full()
+            .child(self.hooks.clickable(row, ChatClick::Agent(id.clone())))
+            .children(
+                asks_under(self.view, id)
+                    .into_iter()
+                    .map(|request| div().w_full().pt_1().pb_2().child(self.ask(request))),
+            )
             .into_any_element()
     }
 
@@ -477,34 +535,34 @@ impl Draw<'_, '_> {
             (Some(AgentState::Stopped) | None, Some(took)) => Some(format!("Stopped after {took}")),
             (Some(AgentState::Stopped) | None, None) => Some("Stopped".to_owned()),
         };
+        let result = match state {
+            Some(AgentState::Done {
+                result: Some(result),
+            }) => Some(result.clone()),
+            _ => None,
+        };
+        let rows = chat_rows::agent_rows(self.view, id);
+        let says = rows.iter().any(|unit| matches!(unit, Unit::Text(_)));
         v_flex()
             .w_full()
-            .ml(px(6.0))
-            .pl(px(12.0))
-            .pt_1()
-            .pb_2()
-            .gap_2()
-            .rule_on(crate::roles::TREE_RULE, Edge::Left, cx)
+            .gap_3()
             .when_some(prompt, |body, prompt| {
-                body.child(
-                    v_flex()
-                        .w_full()
-                        .gap_1()
-                        .text_size(crate::rems_from_px(12.0))
-                        .text_color(cx.theme().foreground.muted())
-                        .child(
-                            div()
-                                .text_color(cx.theme().foreground.faint())
-                                .child("Prompt"),
-                        )
-                        .child(div().line_clamp(6).child(prompt)),
-                )
+                body.child(user_bubble(
+                    &ItemId::new(format!("prompt-{}", id.as_str())),
+                    prompt.into(),
+                    None,
+                    self.hooks.refs,
+                    cx,
+                ))
             })
-            .children(
-                chat_rows::agent_rows(self.view, id)
-                    .iter()
-                    .map(|unit| self.unit(unit, live)),
-            )
+            .children(rows.iter().map(|unit| self.unit(unit, live)))
+            .when_some(result.filter(|_| !says), |body, result| {
+                body.child(markdown(
+                    &ItemId::new(format!("result-{}", id.as_str())),
+                    result.into(),
+                    self.hooks.refs,
+                ))
+            })
             .when_some(footer, |body, footer| {
                 body.child(
                     div()
@@ -516,57 +574,168 @@ impl Draw<'_, '_> {
     }
 }
 
+fn agent_title(item: &zz_protocol::chat::ItemView) -> String {
+    if item.body.title.is_empty() {
+        "Subagent".to_owned()
+    } else {
+        item.body.title.clone()
+    }
+}
+
+fn vendor_tile(vendor: Option<IconName>, cx: &App) -> Div {
+    div()
+        .flex_none()
+        .size(px(22.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .rounded(px(6.0))
+        .bg(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill)
+        .child(Icon::new(vendor.unwrap_or(IconName::Bot)).size(px(13.0)))
+}
+
+fn agent_status(state: Option<&AgentState>, phase: f32, cx: &App) -> Option<AnyElement> {
+    let glyph = |icon: IconName, color| Icon::new(icon).size(px(13.0)).text_color(color);
+    Some(match state? {
+        AgentState::Working { .. } => super::spinner(phase)
+            .size(px(13.0))
+            .text_color(cx.theme().foreground.muted())
+            .into_any_element(),
+        AgentState::Waiting => h_flex()
+            .flex_none()
+            .gap_1()
+            .text_size(crate::rems_from_px(11.5))
+            .text_color(cx.theme().warning)
+            .child(glyph(IconName::TriangleAlert, cx.theme().warning))
+            .child("Needs you")
+            .into_any_element(),
+        AgentState::Done { .. } => glyph(IconName::Check, cx.theme().success).into_any_element(),
+        AgentState::Failed { .. } => glyph(IconName::CircleX, cx.theme().danger).into_any_element(),
+        AgentState::Stopped => {
+            glyph(IconName::Stop, cx.theme().foreground.faint()).into_any_element()
+        }
+    })
+}
+
+fn shimmer(label: &str, now: u64, cx: &App) -> StyledText {
+    let text = format!("{label}…");
+    let count = text.chars().count();
+    let span = u64::try_from(count + 8).unwrap_or(u64::MAX);
+    let head = usize::try_from((now % SHIMMER_MS) * span / SHIMMER_MS).unwrap_or_default();
+    let theme = cx.theme();
+    let mut highlights: Vec<(Range<usize>, HighlightStyle)> = Vec::new();
+    for (index, (offset, character)) in text.char_indices().enumerate() {
+        let distance = (index + 4).abs_diff(head);
+        let color = match distance {
+            0 | 1 => theme.foreground,
+            2 | 3 => theme.foreground.muted(),
+            _ => theme.foreground.faint(),
+        };
+        let range = offset..offset + character.len_utf8();
+        match highlights.last_mut() {
+            Some((last, style)) if style.color == Some(color) && last.end == range.start => {
+                last.end = range.end;
+            }
+            _ => highlights.push((
+                range,
+                HighlightStyle {
+                    color: Some(color),
+                    ..HighlightStyle::default()
+                },
+            )),
+        }
+    }
+    StyledText::new(text).with_highlights(highlights)
+}
+
+#[must_use]
+pub fn chat_agent_pip(
+    view: &ChatView,
+    now: u64,
+    open: &ChatOpen,
+    phase: f32,
+    hooks: &ChatHooks<'_>,
+    cx: &App,
+) -> Option<AnyElement> {
+    let id = open.agent.as_ref()?;
+    let item = view.item(id)?;
+    let draw = Draw {
+        view,
+        now,
+        open,
+        phase,
+        hooks,
+        cx,
+    };
+    let state = chat_rows::agent_state(view, id);
+    let ms = chat_rows::agent_ms(view, id, now).filter(|ms| item.status.is_open() || *ms >= 1000);
+    let close = hooks.click.clone();
+    let header = h_flex()
+        .flex_none()
+        .h(cx.theme().pane_header_height())
+        .w_full()
+        .pl_2()
+        .pr_1()
+        .gap_2()
+        .items_center()
+        .text_size(crate::rems_from_px(12.5))
+        .child(vendor_tile(hooks.vendor.clone(), cx))
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .truncate()
+                .font_weight(FontWeight::MEDIUM)
+                .child(agent_title(item)),
+        )
+        .children(agent_status(state.as_ref(), phase, cx))
+        .child(
+            Button::compact_icon("chat-agent-pip-close", IconName::Xmark)
+                .surface_role(crate::roles::AGENT_ACTION)
+                .tooltip("Close")
+                .on_click(move |_, window, cx| {
+                    cx.stop_propagation();
+                    if let Some(close) = &close {
+                        close(&ChatClick::CloseAgent, window, cx);
+                    }
+                }),
+        );
+    let body = div()
+        .id(SharedString::from(format!(
+            "chat-agent-pip-{}",
+            id.as_str()
+        )))
+        .flex_1()
+        .min_h_0()
+        .overflow_y_scroll()
+        .px_3()
+        .pt_2()
+        .pb_3()
+        .text_color(cx.theme().foreground)
+        .child(draw.agent_body(id, state.as_ref(), ms));
+    Some(
+        div()
+            .absolute()
+            .top(px(10.0))
+            .right(px(10.0))
+            .w(relative(0.62))
+            .min_w(px(300.0))
+            .max_w(px(560.0))
+            .h(relative(0.72))
+            .child(PipSurface::new(
+                SharedString::from(format!("chat-agent-pip-surface-{}", id.as_str())),
+                v_flex().size_full().child(header).child(body),
+            ))
+            .into_any_element(),
+    )
+}
+
 fn run_label(label: &RunLabel) -> String {
     match label {
         RunLabel::Live { action, detail } => format!("{action} {detail}"),
         RunLabel::Thinking { heading } => heading.clone().unwrap_or_else(|| "Thinking".to_owned()),
         RunLabel::Done { summary } => summary.clone(),
     }
-}
-
-fn group_summary(states: &[Option<AgentState>]) -> String {
-    let count = |matches: fn(&AgentState) -> bool| {
-        states
-            .iter()
-            .filter(|state| state.as_ref().is_some_and(matches))
-            .count()
-    };
-    [
-        (
-            count(|state| matches!(state, AgentState::Working { .. })),
-            "working",
-        ),
-        (
-            count(|state| matches!(state, AgentState::Waiting)),
-            "need you",
-        ),
-        (
-            count(|state| matches!(state, AgentState::Done { .. })),
-            "done",
-        ),
-        (
-            count(|state| matches!(state, AgentState::Failed { .. })),
-            "failed",
-        ),
-        (
-            states
-                .iter()
-                .filter(|state| matches!(state, Some(AgentState::Stopped) | None))
-                .count(),
-            "stopped",
-        ),
-    ]
-    .into_iter()
-    .filter(|(count, _)| *count > 0)
-    .map(|(count, word)| {
-        if count == 1 && word == "need you" {
-            "1 needs you".to_owned()
-        } else {
-            format!("{count} {word}")
-        }
-    })
-    .collect::<Vec<_>>()
-    .join(" · ")
 }
 
 fn fold_row(turn: TurnId, fold: Fold, expanded: bool, cx: &App) -> Stateful<Div> {
@@ -677,7 +846,13 @@ fn user_bubble(
                 .py_2()
                 .surface(crate::roles::AGENT_BUBBLE, cx)
                 .text_size(crate::rems_from_px(13.0))
-                .child(body),
+                .child(
+                    div()
+                        .id(SharedString::from(format!("chat-user-scroll-{key}")))
+                        .max_h(px(USER_MAX_HEIGHT))
+                        .overflow_y_scroll()
+                        .child(body),
+                ),
         )
         .child(message_actions(
             &format!("user-{key}"),
@@ -907,45 +1082,25 @@ fn record_card(request: &RequestView, cx: &App) -> AnyElement {
     if pairs.is_empty() {
         return record_row(request, cx);
     }
-    let noun = if pairs.len() == 1 {
-        "question"
-    } else {
-        "questions"
-    };
     v_flex()
         .id(SharedString::from(format!("chat-record-{}", request.id.0)))
         .w_full()
-        .gap_1()
-        .px(px(12.0))
-        .py(px(8.0))
+        .gap_3()
+        .px(px(14.0))
+        .py(px(10.0))
         .surface(crate::roles::INLINE_PANEL, cx)
-        .text_size(crate::rems_from_px(12.5))
-        .child(
-            h_flex()
-                .gap_2()
-                .text_color(cx.theme().foreground.muted())
-                .child(Icon::new(IconName::CheckRead).size(px(12.0)))
-                .child(format!("{} {noun}", pairs.len())),
-        )
-        .children(pairs.into_iter().map(|(label, value)| {
-            h_flex()
+        .text_size(crate::rems_from_px(13.0))
+        .children(pairs.into_iter().map(|(question, answer)| {
+            v_flex()
                 .w_full()
-                .gap_2()
-                .pl(px(20.0))
+                .gap_1()
+                .child(div().w_full().child(question))
                 .child(
                     div()
-                        .flex_none()
-                        .max_w(relative(0.4))
-                        .truncate()
+                        .w_full()
                         .text_color(cx.theme().foreground.muted())
-                        .child(label),
+                        .child(answer),
                 )
-                .child(
-                    Icon::new(IconName::ArrowRight)
-                        .size(px(11.0))
-                        .text_color(cx.theme().foreground.faint()),
-                )
-                .child(div().min_w_0().flex_1().truncate().child(value))
         }))
         .into_any_element()
 }
@@ -1016,11 +1171,25 @@ mod tests {
         pane.click(&ChatClick::Agent(ItemId::new("a")));
         pane.click(&ChatClick::Turn(TurnId(1)));
         pane.sync(&first);
-        assert_eq!(pane.open.agents, [ItemId::new("a")]);
+        assert_eq!(pane.open.agent, Some(ItemId::new("a")));
         assert!(pane.away);
         pane.sync(&ready("s2"));
-        assert!(pane.open.agents.is_empty());
+        assert_eq!(pane.open.agent, None);
         assert!(pane.open.turns.is_empty());
+    }
+
+    #[test]
+    fn an_agent_pip_closes_on_a_second_click_or_close() {
+        let mut pane = ChatPane::default();
+        let view = ready("s1");
+        pane.sync(&view);
+        pane.click(&ChatClick::Agent(ItemId::new("a")));
+        pane.click(&ChatClick::Agent(ItemId::new("a")));
+        assert_eq!(pane.open.agent, None);
+        pane.click(&ChatClick::Agent(ItemId::new("a")));
+        pane.click(&ChatClick::CloseAgent);
+        assert_eq!(pane.open.agent, None);
+        assert!(!pane.away);
     }
 
     #[test]
@@ -1030,6 +1199,31 @@ mod tests {
         pane.sync(&view);
         pane.click(&ChatClick::Agent(ItemId::new("gone")));
         pane.sync(&view);
-        assert!(pane.open.agents.is_empty());
+        assert_eq!(pane.open.agent, None);
+    }
+
+    #[test]
+    fn only_replies_that_arrive_after_the_first_look_type_in() {
+        let mut pane = ChatPane::default();
+        let mut view = ready("s1");
+        let reply = |view: &mut ChatView, id: &str| {
+            view.apply(&ChatEvent::ItemStarted {
+                item: ItemId::new(id),
+                turn: Some(TurnId(1)),
+                parent: None,
+                kind: ItemKind::Agent,
+                body: ItemBody::text("hello there"),
+                at: 3,
+            })
+            .expect("reply");
+        };
+        reply(&mut view, "old");
+        pane.sync(&view);
+        assert!(pane.open.arrivals.is_empty());
+        reply(&mut view, "new");
+        pane.sync(&view);
+        assert!(pane.open.arrivals.contains_key(&ItemId::new("new")));
+        assert!(!pane.open.arrivals.contains_key(&ItemId::new("old")));
+        assert!(pane.revealing(zz_client::chat_rows::now_ms()));
     }
 }

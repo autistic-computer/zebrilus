@@ -46,6 +46,7 @@ const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
 const RICH_MARKDOWN_NODE_NAME: &str = "zz-rich-markdown";
 const FIGURE_MAX_HEIGHT: f32 = 560.0;
+const FIGURE_HEADER_HEIGHT: f32 = 30.0;
 const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
 const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
 const ACTIVITY_ROW_HEIGHT: f32 = 28.0;
@@ -2083,7 +2084,6 @@ fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> 
 
 const USER_ENTRY_GROUP: &str = "agent-user-entry";
 const ASSISTANT_ENTRY_GROUP: &str = "agent-assistant-entry";
-const FIGURE_GROUP: &str = "agent-figure";
 
 fn message_action(button: Button, cx: &App) -> Button {
     button
@@ -3285,51 +3285,49 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
     };
 
     let figure = cx.theme().ground_of(crate::roles::FIGURE);
-    div()
+    v_flex()
         .id(("agent-figure", source_offset))
-        .group(FIGURE_GROUP)
-        .relative()
         .w_full()
-        .p_3()
         .surface(crate::roles::FIGURE, cx)
         .overflow_hidden()
-        .child(content)
         .child(
-            div().absolute().top_1().right_1().child(
-                shown_on_hover(FIGURE_GROUP, cx).child(
-                    h_flex()
-                        .gap_1()
-                        .child(message_action(
-                            Button::compact_icon(
-                                ("agent-mermaid-copy", source_offset),
-                                IconName::Copy,
-                            )
-                            .on(figure)
-                            .tooltip("Copy source")
-                            .on_click(move |_, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(
-                                    mermaid_source.clone(),
-                                ));
-                            }),
-                            cx,
-                        ))
-                        .when_some(preview_image, |this, image| {
-                            this.child(message_action(
-                                Button::compact_icon(
-                                    ("agent-mermaid-preview", source_offset),
-                                    IconName::WindowMaximize,
-                                )
-                                .on(figure)
-                                .tooltip("Open full diagram")
-                                .on_click(move |_, window, cx| {
-                                    open_render_image_preview(Arc::clone(&image), window, cx);
-                                }),
-                                cx,
-                            ))
+            h_flex()
+                .w_full()
+                .h(px(FIGURE_HEADER_HEIGHT))
+                .pl_3()
+                .pr_1()
+                .gap_1()
+                .items_center()
+                .text_size(crate::rems_from_px(11.5))
+                .text_color(cx.theme().foreground.muted())
+                .child(div().flex_1().child(kind.label()))
+                .child(message_action(
+                    Button::compact_icon(("agent-mermaid-copy", source_offset), IconName::Copy)
+                        .on(figure)
+                        .tooltip("Copy source")
+                        .on_click(move |_, _, cx| {
+                            cx.write_to_clipboard(ClipboardItem::new_string(
+                                mermaid_source.clone(),
+                            ));
                         }),
-                ),
-            ),
+                    cx,
+                ))
+                .when_some(preview_image, |this, image| {
+                    this.child(message_action(
+                        Button::compact_icon(
+                            ("agent-mermaid-preview", source_offset),
+                            IconName::WindowMaximize,
+                        )
+                        .on(figure)
+                        .tooltip("Open full diagram")
+                        .on_click(move |_, window, cx| {
+                            open_render_image_preview(Arc::clone(&image), window, cx);
+                        }),
+                        cx,
+                    ))
+                }),
         )
+        .child(div().w_full().px_3().pb_3().child(content))
 }
 
 #[derive(Clone)]
@@ -3526,7 +3524,7 @@ struct MermaidThemeColors {
 impl MermaidThemeColors {
     fn from_app(cx: &App) -> Self {
         Self {
-            background: cx.theme().background,
+            background: cx.theme().ground_of(crate::roles::FIGURE).opaque().fill,
             surface: cx.theme().surface(Elevation::Panel).fill,
             muted: cx
                 .theme()
@@ -3681,7 +3679,7 @@ text.journey-section, text.task, .legend {{ fill: {foreground} !important; }}
 fn mermaid_theme_key(cx: &App) -> u64 {
     let mut hasher = DefaultHasher::new();
     for color in [
-        cx.theme().background,
+        cx.theme().ground_of(crate::roles::FIGURE).opaque().fill,
         cx.theme().surface(Elevation::Panel).fill,
         cx.theme()
             .paint(Tone::Neutral, Emphasis::Soft)
