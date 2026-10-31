@@ -1,3 +1,4 @@
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
@@ -6,13 +7,14 @@ use std::time::{Duration, Instant};
 use parking_lot::Mutex;
 use serde_json::{Value, json};
 use zz_protocol::chat::{
-    Answer, Ask, ChatEvent, ChatView, ItemId, ItemKind, ItemStatus, RequestClose, Usage,
+    Answer, Ask, ChatEvent, ChatView, ItemId, ItemKind, ItemStatus, QuestionAnswer, RequestClose,
+    RequestView, Usage,
 };
 use zz_protocol::{AgentProvider, AgentQuestionAnswer, PaneId, agent_stream::AgentImage};
 
 use super::{
-    AgentPrompt, AgentPromptOutcome, AgentStreamPayload, CODEX_ASKING, Codex, Found, Lens,
-    LensPane, LensSpec, RuntimeCommand, RuntimeControl, Shadow, Source, shadow_lens,
+    AgentPrompt, AgentStreamPayload, Codex, Found, Lens, LensPane, LensSpec, READ_LIMIT,
+    RuntimeCommand, RuntimeControl, Shadow, Source, shadow_lens,
 };
 
 const ROOT: &str = "rollout-2026-10-31T15-26-23-01a19336-7aab-7cb2-b50a-7c1a49be3375.jsonl";
@@ -21,6 +23,8 @@ const QUESTION: &str = "call_331ba9da50bd4c2fb650d772e5d6d45e";
 const COUNTER: &str = "call_1db63d77e8d243cd9f12c091a00172b6";
 const BACKGROUND: &str = "call_2553eb67216f4bb68bbd47dca33a9f3a";
 const TICKS: &str = "exec-b4d43416-19dd-4752-bc10-6790ffe5f6ae";
+const ASKED: &str = "Which part of this chat UI test are you most interested in checking?";
+const REPLY: &str = "send_user_message_question_reply";
 
 #[derive(Default)]
 struct Pane {
@@ -63,16 +67,32 @@ fn fixture(name: &str) -> String {
     .expect("fixture")
 }
 
+fn fixture_line(marker: &str) -> String {
+    fixture("rollout-lens-stress.jsonl")
+        .lines()
+        .find(|line| line.contains(marker))
+        .unwrap_or_else(|| panic!("no fixture line with {marker}"))
+        .to_owned()
+}
+
 struct Rollout {
     dir: tempfile::TempDir,
 }
 
 impl Rollout {
-    fn new(answered: bool) -> Self {
+    fn new() -> Self {
+        Self::until(None)
+    }
+
+    fn asking() -> Self {
+        Self::until(Some(REPLY))
+    }
+
+    fn until(marker: Option<&str>) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let root = fixture("rollout-lens-stress.jsonl")
             .lines()
-            .filter(|line| answered || !line.contains("send_user_message_question_reply"))
+            .take_while(|line| marker.is_none_or(|marker| !line.contains(marker)))
             .fold(String::new(), |all, line| all + line + "\n");
         std::fs::write(dir.path().join(ROOT), root).unwrap();
         std::fs::write(
@@ -87,42 +107,115 @@ impl Rollout {
         self.dir.path().join(ROOT)
     }
 
+    fn append(&self, line: &str) {
+        append(&self.path(), line);
+    }
+
     fn lens(&self, pane: Arc<Pane>) -> (Lens, Vec<AgentStreamPayload>) {
         self.lens_with(pane, Codex::default())
     }
 
     fn lens_with(&self, pane: Arc<Pane>, codex: Codex) -> (Lens, Vec<AgentStreamPayload>) {
-        let mut lens = Lens::with_source(
-            LensSpec {
-                pane: PaneId(7),
-                provider: AgentProvider::Codex,
-                io: pane,
-            },
-            Source::Codex(Box::new(codex)),
-            Arc::new(AtomicU64::new(1)),
-        );
-        let mut payloads = lens.reload(
-            Found {
-                session: "01a19336-7aab-7cb2-b50a-7c1a49be3375".to_owned(),
-                path: self.path(),
-                cwd: PathBuf::from("/work"),
-            },
-            true,
-        );
-        payloads.extend(lens.observe(false, Vec::new()));
-        (lens, payloads)
+        open(self.path(), pane, codex)
     }
 }
 
-fn chat(payloads: &[AgentStreamPayload]) -> (Shadow, ChatView) {
+fn append(path: &Path, line: &str) {
+    let mut file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+    writeln!(file, "{line}").unwrap();
+}
+
+fn open(path: PathBuf, pane: Arc<Pane>, codex: Codex) -> (Lens, Vec<AgentStreamPayload>) {
+    let mut lens = Lens::with_source(
+        LensSpec {
+            pane: PaneId(7),
+            provider: AgentProvider::Codex,
+            io: pane,
+        },
+        Source::Codex(Box::new(codex)),
+        Arc::new(AtomicU64::new(1)),
+    );
+    let mut payloads = lens.reload(
+        Found {
+            session: "01a19336-7aab-7cb2-b50a-7c1a49be3375".to_owned(),
+            path,
+            cwd: PathBuf::from("/work"),
+        },
+        true,
+    );
+    payloads.extend(lens.observe(false, Vec::new()));
+    lens.next_locate = Instant::now() + Duration::from_mins(1);
+    (lens, payloads)
+}
+
+fn chats(rounds: &[&[AgentStreamPayload]]) -> (Shadow, ChatView) {
     let mut shadow = Shadow::recording().codex().attached();
-    shadow_lens(&mut shadow, payloads);
+    for payloads in rounds {
+        shadow_lens(&mut shadow, payloads);
+    }
     let mut view = ChatView::default();
     for event in &shadow.events {
         view.apply(event)
             .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
     }
     (shadow, view)
+}
+
+fn record<'a>(view: &'a ChatView, item: &str) -> &'a RequestView {
+    view.requests
+        .iter()
+        .find(|request| {
+            request.item.as_ref().is_some_and(|id| id.as_str() == item)
+                && matches!(request.ask, Ask::Questions { .. })
+        })
+        .unwrap_or_else(|| panic!("no answer record for {item}"))
+}
+
+fn answers(pairs: &[(&str, &str)]) -> RequestClose {
+    RequestClose::Answered {
+        answer: Answer::Questions {
+            answers: pairs
+                .iter()
+                .map(|(question, answer)| QuestionAnswer {
+                    question: (*question).to_owned(),
+                    answers: vec![(*answer).to_owned()],
+                })
+                .collect(),
+        },
+    }
+}
+
+fn requested(payloads: &[AgentStreamPayload]) -> Vec<(u64, &Value, &Value, usize)> {
+    payloads
+        .iter()
+        .filter_map(|payload| match payload {
+            AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call,
+                options,
+                questions,
+            } => Some((*request_id, tool_call, options, questions.len())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn resolved(payloads: &[AgentStreamPayload]) -> Vec<u64> {
+    payloads
+        .iter()
+        .filter_map(|payload| match payload {
+            AgentStreamPayload::PermissionResolved { request_id, .. } => Some(*request_id),
+            _ => None,
+        })
+        .collect()
+}
+
+fn waiting(lens: &mut Lens) -> Option<String> {
+    lens.source.status().expect("status").waiting
+}
+
+fn chat(payloads: &[AgentStreamPayload]) -> (Shadow, ChatView) {
+    chats(&[payloads])
 }
 
 fn updates(payloads: &[AgentStreamPayload]) -> Vec<&Value> {
@@ -144,7 +237,7 @@ fn titled<'a>(view: &'a ChatView, title: &str) -> &'a zz_protocol::chat::ItemVie
 
 #[test]
 fn a_recorded_codex_session_reads_as_a_clean_chat() {
-    let rollout = Rollout::new(true);
+    let rollout = Rollout::new();
     let (_, payloads) = rollout.lens(Arc::default());
     let (shadow, view) = chat(&payloads);
     assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
@@ -189,26 +282,9 @@ fn a_recorded_codex_session_reads_as_a_clean_chat() {
         "background complete: word=terminal, ready=true\n\nExit status: 0."
     );
 
-    let record = view
-        .requests
-        .iter()
-        .find(|request| {
-            request
-                .item
-                .as_ref()
-                .is_some_and(|item| item.as_str() == QUESTION)
-        })
-        .expect("an answer record");
     assert_eq!(
-        record.close,
-        Some(RequestClose::Answered {
-            answer: Answer::Questions {
-                answers: vec![zz_protocol::chat::QuestionAnswer {
-                    question: "q0".to_owned(),
-                    answers: vec!["Tool output and files".to_owned()],
-                }],
-            },
-        })
+        record(&view, QUESTION).close,
+        Some(answers(&[("q0", "Tool output and files")]))
     );
     assert!(!view.items.values().any(|item| {
         item.body
@@ -265,91 +341,170 @@ fn a_recorded_codex_session_reads_as_a_clean_chat() {
 }
 
 #[test]
-fn an_unanswered_codex_question_is_the_only_thing_left_open() {
-    let rollout = Rollout::new(false);
+fn an_unanswered_codex_question_points_at_the_terminal_until_its_reply() {
+    let rollout = Rollout::asking();
     let pane = Arc::new(Pane::default());
-    let (mut lens, payloads) = rollout.lens(pane.clone());
-    let (shadow, view) = chat(&payloads);
+    let (mut lens, opened) = rollout.lens(pane.clone());
+    let (shadow, view) = chat(&opened);
     assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
     let open = view
         .open_items()
         .map(|item| item.id.as_str())
         .collect::<Vec<_>>();
     assert_eq!(open, [QUESTION]);
-    let request = view.open_requests().next().expect("a question card");
-    assert_eq!(request.item.as_ref().map(ItemId::as_str), Some(QUESTION));
-    let Ask::Questions { questions } = &request.ask else {
-        panic!("not a question: {:?}", request.ask);
+    let asked = requested(&opened);
+    let [(request_id, tool_call, options, 0)] = asked.as_slice() else {
+        panic!("not one terminal card: {asked:?}");
     };
-    assert_eq!(questions.len(), 1);
+    assert_eq!(tool_call["toolCallId"], QUESTION);
+    assert_eq!(tool_call["title"], ASKED);
+    assert_eq!(**options, json!([]));
+    let request = view.open_requests().next().expect("a terminal card");
+    assert_eq!(request.item.as_ref().map(ItemId::as_str), Some(QUESTION));
     assert_eq!(
-        questions[0]
-            .options
-            .iter()
-            .map(|option| option.label.as_str())
-            .collect::<Vec<_>>(),
-        [
-            "Markdown and diagrams",
-            "Tool output and files",
-            "Background tasks and agents"
-        ]
+        request.ask,
+        Ask::Approval {
+            title: ASKED.to_owned(),
+            detail: None,
+            options: Vec::new(),
+        }
     );
 
-    let refused = lens.command(RuntimeCommand::Prompt {
-        turn_id: 9,
-        prompt: AgentPrompt {
-            text: "2".to_owned(),
-            ..AgentPrompt::default()
-        },
-    });
-    assert!(refused.iter().any(|payload| matches!(
-        payload,
-        AgentStreamPayload::PromptFinished { turn_id: 9, outcome: AgentPromptOutcome::Failed { message } }
-            if message == CODEX_ASKING
-    )));
-    let steered = lens.command(RuntimeCommand::Verb {
-        prompt: AgentPrompt {
-            text: "/steer 3".to_owned(),
-            ..AgentPrompt::default()
-        },
-    });
-    assert!(steered.iter().any(|payload| matches!(
-        payload,
-        AgentStreamPayload::PromptsReclaimed { prompts } if prompts[0].text == "3"
-    )));
-    assert!(pane.sent.lock().is_empty());
-
-    let answered = lens.control(RuntimeControl::AnswerQuestion {
-        request_id: request.id.0,
+    let picked = lens.control(RuntimeControl::AnswerQuestion {
+        request_id: *request_id,
         answers: vec![AgentQuestionAnswer {
-            id: questions[0].id.clone(),
+            id: "q0".to_owned(),
             answers: vec!["Tool output and files".to_owned()],
         }],
     });
-    assert_eq!(*pane.keys.lock(), ["2"]);
+    assert!(picked.is_empty(), "{picked:?}");
+    assert!(pane.keys.lock().is_empty());
+    assert_eq!(waiting(&mut lens).as_deref(), Some("question"));
+
+    rollout.append(&fixture_line(REPLY));
+    let replied = lens.tick();
+    assert_eq!(resolved(&replied), [*request_id]);
+    assert_eq!(waiting(&mut lens), None);
+    let (shadow, view) = chats(&[&opened, &replied]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
     assert_eq!(
-        answered,
-        [AgentStreamPayload::PermissionResolved {
-            request_id: request.id.0,
-            canceled: false,
-        }]
+        view.item(&ItemId::new(QUESTION))
+            .expect("the question")
+            .status,
+        ItemStatus::Completed
+    );
+    assert_eq!(
+        record(&view, QUESTION).close,
+        Some(answers(&[("q0", "Tool output and files")]))
+    );
+    assert!(view.open_requests().next().is_none());
+}
+
+#[test]
+fn prompts_and_steers_reach_codex_while_its_question_waits() {
+    let rollout = Rollout::asking();
+    let pane = Arc::new(Pane::default());
+    let (mut lens, _) = rollout.lens(pane.clone());
+    assert_eq!(waiting(&mut lens).as_deref(), Some("question"));
+    let sent = lens.command(RuntimeCommand::Prompt {
+        turn_id: 9,
+        prompt: AgentPrompt {
+            text: "also look at the diagrams".to_owned(),
+            ..AgentPrompt::default()
+        },
+    });
+    assert!(sent.is_empty(), "{sent:?}");
+    let steered = lens.command(RuntimeCommand::Verb {
+        prompt: AgentPrompt {
+            text: "/steer and the tables".to_owned(),
+            ..AgentPrompt::default()
+        },
+    });
+    assert!(steered.is_empty(), "{steered:?}");
+    assert_eq!(
+        *pane.sent.lock(),
+        ["also look at the diagrams", "and the tables"]
     );
 }
 
 #[test]
+fn a_message_sent_while_codex_asks_leaves_the_question_open() {
+    let rollout = Rollout::asking();
+    let (mut lens, opened) = rollout.lens(Arc::default());
+    let steer = json!({
+        "timestamp": "2026-10-31T18:35:10.000Z", "type": "event_msg",
+        "payload": { "type": "item_completed", "item": {
+            "type": "UserMessage", "id": "steer-1",
+            "content": [{ "type": "text", "text": "also look at the diagrams" }],
+        } },
+    });
+    rollout.append(&steer.to_string());
+    let steered = lens.tick();
+    assert!(resolved(&steered).is_empty(), "{steered:?}");
+    assert_eq!(waiting(&mut lens).as_deref(), Some("question"));
+    rollout.append(&fixture_line(REPLY));
+    let replied = lens.tick();
+    let (shadow, view) = chats(&[&opened, &steered, &replied]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert!(
+        view.items
+            .values()
+            .any(|item| item.body.text == "also look at the diagrams")
+    );
+    assert_eq!(
+        record(&view, QUESTION).close,
+        Some(answers(&[("q0", "Tool output and files")]))
+    );
+}
+
+#[test]
+fn a_codex_turn_that_ends_drops_the_question_it_left_open() {
+    let rollout = Rollout::asking();
+    let pane = Arc::new(Pane::default());
+    let (mut lens, opened) = rollout.lens(pane.clone());
+    let asked = requested(&opened);
+    let [(request_id, ..)] = asked.as_slice() else {
+        panic!("no card: {opened:?}");
+    };
+    let request_id = *request_id;
+    rollout.append(&fixture_line("\"type\":\"task_complete\""));
+    let ended = lens.tick();
+    assert!(
+        updates(&ended)
+            .iter()
+            .any(|update| update["toolCallId"] == QUESTION && update["status"] == "completed"),
+        "{ended:?}"
+    );
+    assert_eq!(resolved(&ended), [request_id]);
+    assert_eq!(waiting(&mut lens), None);
+    let (shadow, view) = chats(&[&opened, &ended]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert_eq!(record(&view, QUESTION).close, Some(answers(&[("q0", "")])));
+    assert!(view.open_items().next().is_none());
+    assert!(view.open_requests().next().is_none());
+    assert!(
+        lens.command(RuntimeCommand::SetConfigOption {
+            option_id: "cwd".to_owned(),
+            value: "/elsewhere".to_owned(),
+        })
+        .iter()
+        .all(|payload| !matches!(payload, AgentStreamPayload::SettingFailed { .. }))
+    );
+    assert_eq!(*pane.sent.lock(), ["/cd /elsewhere"]);
+}
+
+#[test]
 fn a_codex_waiting_on_a_question_says_so_until_it_is_dismissed() {
-    let rollout = Rollout::new(false);
+    let rollout = Rollout::asking();
     let pane = Arc::new(Pane::default());
     let (mut lens, _) = rollout.lens(pane.clone());
-    let status = lens.source.status().expect("status");
-    assert!(!status.busy);
-    assert_eq!(status.waiting.as_deref(), Some("question"));
+    assert_eq!(waiting(&mut lens).as_deref(), Some("question"));
     let stopped = lens.control(RuntimeControl::Cancel {
         turn_id: 0,
         session_id: None,
     });
     assert_eq!(*pane.keys.lock(), ["Escape"]);
-    assert!(!lens.source.asking());
+    assert_eq!(waiting(&mut lens), None);
     assert!(stopped.iter().any(|payload| matches!(
         payload,
         AgentStreamPayload::Update { update }
@@ -364,8 +519,98 @@ fn a_codex_waiting_on_a_question_says_so_until_it_is_dismissed() {
 }
 
 #[test]
+fn a_codex_question_in_several_parts_waits_for_every_answer() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("rollout-2026-10-31T10-00-00-root.jsonl");
+    let event = |at: &str, payload: Value| {
+        json!({ "timestamp": at, "type": "event_msg", "payload": payload }).to_string()
+    };
+    let reply = |at: &str, index: u64, question: &str, answer: &str| {
+        let id = json!(["request_user_input_async", "call_two", index]).to_string();
+        let entries = json!([{ "questionItemId": id, "question": question, "answer": answer }]);
+        event(
+            at,
+            json!({ "type": "item_completed", "item": {
+            "type": "UserMessage", "id": format!("reply-{index}"),
+            "content": [{ "type": "text", "text": format!(
+                "<send_user_message_question_reply>\n{entries}\n</send_user_message_question_reply>\n"
+            ) }],
+        } }),
+        )
+    };
+    let lines = [
+        event(
+            "2026-10-31T10:00:00.000Z",
+            json!({ "type": "task_started" }),
+        ),
+        event(
+            "2026-10-31T10:00:01.000Z",
+            json!({ "type": "item_completed", "item": {
+            "type": "AgentMessage", "id": "call_two", "delivery": "async",
+            "content": [{ "type": "Text", "text": "Two questions" }],
+            "questions": [
+                { "title": "Which color?", "options": ["Red", "Blue"] },
+                { "title": "Which size?", "options": ["Small", "Large"] },
+            ],
+        } }),
+        ),
+    ];
+    std::fs::write(&root, lines.join("\n") + "\n").unwrap();
+    let (mut lens, opened) = open(root.clone(), Arc::default(), Codex::default());
+    let first = requested(&opened);
+    let [(first, tool_call, _, 0)] = first.as_slice() else {
+        panic!("no card: {opened:?}");
+    };
+    assert_eq!(tool_call["toolCallId"], "call_two");
+    assert_eq!(tool_call["title"], "Which color?");
+    let first = *first;
+
+    append(
+        &root,
+        &reply("2026-10-31T10:00:02.000Z", 0, "Which color?", "Blue"),
+    );
+    let half = lens.tick();
+    assert!(
+        !updates(&half)
+            .iter()
+            .any(|update| update["toolCallId"] == "call_two"),
+        "{half:?}"
+    );
+    assert_eq!(resolved(&half), [first]);
+    let second = requested(&half);
+    let [(second, tool_call, _, 0)] = second.as_slice() else {
+        panic!("no card for the second question: {half:?}");
+    };
+    assert_eq!(tool_call["toolCallId"], "call_two");
+    assert_eq!(tool_call["title"], "Which size?");
+    let second = *second;
+    assert_eq!(waiting(&mut lens).as_deref(), Some("question"));
+
+    append(
+        &root,
+        &reply("2026-10-31T10:00:03.000Z", 1, "Which size?", "Large"),
+    );
+    let done = lens.tick();
+    assert_eq!(resolved(&done), [second]);
+    assert_eq!(waiting(&mut lens), None);
+    let (shadow, view) = chats(&[&opened, &half, &done]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert_eq!(
+        view.item(&ItemId::new("call_two"))
+            .expect("the question")
+            .status,
+        ItemStatus::Completed
+    );
+    assert_eq!(
+        record(&view, "call_two").close,
+        Some(answers(&[("q0", "Blue"), ("q1", "Large")]))
+    );
+    assert!(view.open_requests().next().is_none());
+}
+
+#[test]
 fn a_child_transcript_found_later_still_nests_under_its_agent() {
-    let rollout = Rollout::new(true);
+    let rollout = Rollout::new();
     let child = rollout.dir.path().join(CHILD);
     let hidden = rollout.dir.path().join("held.jsonl");
     std::fs::rename(&child, &hidden).unwrap();
@@ -394,7 +639,7 @@ fn a_child_transcript_found_later_still_nests_under_its_agent() {
 
 #[test]
 fn a_child_transcript_found_only_when_its_agent_ends_still_comes_first() {
-    let rollout = Rollout::new(true);
+    let rollout = Rollout::new();
     let child = rollout.dir.path().join(CHILD);
     let hidden = rollout.dir.path().join("held.jsonl");
     std::fs::rename(&child, &hidden).unwrap();
@@ -431,66 +676,60 @@ fn a_child_transcript_found_only_when_its_agent_ends_still_comes_first() {
 }
 
 #[test]
-fn a_pick_made_while_codex_asks_waits_for_the_answer() {
-    let rollout = Rollout::new(false);
+fn a_pick_waits_for_the_turn_not_for_a_question() {
+    let pick = |lens: &mut Lens| {
+        let picked = lens.command(RuntimeCommand::SetConfigOption {
+            option_id: "cwd".to_owned(),
+            value: "/elsewhere".to_owned(),
+        });
+        assert!(
+            picked
+                .iter()
+                .all(|payload| !matches!(payload, AgentStreamPayload::SettingFailed { .. })),
+            "{picked:?}"
+        );
+    };
+    let running = Rollout::asking();
     let pane = Arc::new(Pane::default());
-    let (mut lens, _) = rollout.lens(pane.clone());
-    assert!(lens.source.asking());
-    let picked = lens.command(RuntimeCommand::SetConfigOption {
-        option_id: "effort".to_owned(),
-        value: "low".to_owned(),
-    });
+    let (mut lens, _) = running.lens(pane.clone());
+    assert_eq!(waiting(&mut lens).as_deref(), Some("question"));
+    pick(&mut lens);
     assert!(
-        !picked
-            .iter()
-            .any(|payload| matches!(payload, AgentStreamPayload::SettingFailed { .. })),
-        "{picked:?}"
+        pane.sent.lock().is_empty(),
+        "a pick waits while the turn runs"
     );
-    assert!(
-        lens.observe(false, Vec::new())
-            .iter()
-            .all(|payload| !matches!(payload, AgentStreamPayload::SettingFailed { .. }))
-    );
-    assert!(pane.sent.lock().is_empty());
+
+    let idle = Rollout::asking();
+    let text = std::fs::read_to_string(idle.path()).unwrap();
+    let text = text
+        .lines()
+        .filter(|line| !line.contains("\"type\":\"task_started\""))
+        .fold(String::new(), |all, line| all + line + "\n");
+    std::fs::write(idle.path(), text).unwrap();
+    let pane = Arc::new(Pane::default());
+    let (mut lens, _) = idle.lens(pane.clone());
+    assert_eq!(waiting(&mut lens).as_deref(), Some("question"));
+    assert!(!lens.source.status().expect("status").busy);
+    pick(&mut lens);
+    assert_eq!(*pane.sent.lock(), ["/cd /elsewhere"]);
 }
 
 #[test]
 fn a_question_from_before_this_codex_started_is_not_waiting() {
-    let rollout = Rollout::new(false);
+    let rollout = Rollout::asking();
     let pane = Arc::new(Pane::default());
     let codex = Codex {
         born: Some(4_000_000_000),
         ..Codex::default()
     };
     let (mut lens, payloads) = rollout.lens_with(pane.clone(), codex);
-    assert!(!lens.source.asking());
-    let status = lens.source.status().expect("status");
-    assert_eq!(status.waiting, None);
-    assert!(
-        !payloads
-            .iter()
-            .any(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. }))
-    );
-    let sent = lens.command(RuntimeCommand::Prompt {
-        turn_id: 9,
-        prompt: AgentPrompt {
-            text: "go on".to_owned(),
-            ..AgentPrompt::default()
-        },
-    });
-    assert!(!sent.iter().any(|payload| matches!(
-        payload,
-        AgentStreamPayload::PromptFinished {
-            outcome: AgentPromptOutcome::Failed { .. },
-            ..
-        }
-    )));
-    assert_eq!(*pane.sent.lock(), ["go on"]);
+    assert_eq!(waiting(&mut lens), None);
+    assert!(requested(&payloads).is_empty(), "{payloads:?}");
 }
 
 #[test]
 fn a_question_from_before_this_codex_started_leaves_no_running_row() {
-    let rollout = Rollout::new(false);
+    let rollout = Rollout::asking();
     let codex = Codex {
         born: Some(4_000_000_000),
         ..Codex::default()
@@ -506,10 +745,8 @@ fn a_question_from_before_this_codex_started_leaves_no_running_row() {
 
 #[test]
 fn a_codex_resumed_in_the_same_pane_drops_the_question_the_old_one_left_open() {
-    let rollout = Rollout::new(false);
-    let pane = Arc::new(Pane::default());
-    let (mut lens, opened) = rollout.lens(pane.clone());
-    lens.next_locate = Instant::now() + Duration::from_mins(1);
+    let rollout = Rollout::asking();
+    let (mut lens, opened) = rollout.lens(Arc::default());
     let relaunch = |lens: &mut Lens, born: u64| {
         let Source::Codex(codex) = &mut lens.source else {
             unreachable!()
@@ -517,12 +754,13 @@ fn a_codex_resumed_in_the_same_pane_drops_the_question_the_old_one_left_open() {
         codex.launched(std::process::id(), Some(born));
     };
     relaunch(&mut lens, 1);
-    assert!(
-        lens.source.asking(),
+    assert_eq!(
+        waiting(&mut lens).as_deref(),
+        Some("question"),
         "a question asked after it started stays"
     );
     relaunch(&mut lens, 4_000_000_000);
-    assert!(!lens.source.asking());
+    assert_eq!(waiting(&mut lens), None);
     let resumed = lens.tick();
     assert!(
         updates(&resumed)
@@ -530,31 +768,11 @@ fn a_codex_resumed_in_the_same_pane_drops_the_question_the_old_one_left_open() {
             .any(|update| update["toolCallId"] == QUESTION && update["status"] == "completed"),
         "{resumed:?}"
     );
-    assert!(
-        resumed
-            .iter()
-            .any(|payload| matches!(payload, AgentStreamPayload::PermissionResolved { .. }))
-    );
-    let mut shadow = Shadow::recording().codex().attached();
-    shadow_lens(&mut shadow, &opened);
-    shadow_lens(&mut shadow, &resumed);
+    assert_eq!(resolved(&resumed).len(), 1, "{resumed:?}");
+    let (shadow, view) = chats(&[&opened, &resumed]);
     assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
-    let mut view = ChatView::default();
-    for event in &shadow.events {
-        view.apply(event)
-            .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
-    }
     assert!(view.open_items().next().is_none());
     assert!(view.open_requests().next().is_none());
-    let sent = lens.command(RuntimeCommand::Prompt {
-        turn_id: 9,
-        prompt: AgentPrompt {
-            text: "go on".to_owned(),
-            ..AgentPrompt::default()
-        },
-    });
-    assert!(sent.is_empty(), "{sent:?}");
-    assert_eq!(*pane.sent.lock(), ["go on"]);
 }
 
 #[test]
@@ -598,6 +816,102 @@ fn loading_a_rollout_reads_each_child_where_order_matters_not_before_every_line(
         let reads = child.tail.as_ref().expect("found the child").reads;
         assert!(reads <= 2, "{} read {reads} times", child.thread);
     }
+}
+
+#[test]
+fn a_child_rollout_past_the_read_limit_ends_before_its_agent_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let event = |at: &str, payload: Value| {
+        json!({ "timestamp": at, "type": "event_msg", "payload": payload }).to_string()
+    };
+    let thread = "child-big";
+    let result = "counted every line";
+    let mut child = vec![
+        json!({ "type": "session_meta", "payload": {
+            "id": thread, "parent_thread_id": "root", "cwd": "/work",
+        } })
+        .to_string(),
+        event(
+            "2026-10-31T10:00:02.000Z",
+            json!({ "type": "task_started" }),
+        ),
+    ];
+    let filler = "x".repeat(64 * 1024);
+    let mut size = 0;
+    let mut index = 0;
+    while size <= READ_LIMIT + 64 * 1024 {
+        let line = event(
+            "2026-10-31T10:00:03.000Z",
+            json!({ "type": "item_completed", "item": {
+                "type": "Reasoning", "id": format!("r{index}"), "summary_text": [filler], "raw_content": [],
+            } }),
+        );
+        size += line.len() as u64 + 1;
+        index += 1;
+        child.push(line);
+    }
+    child.push(event(
+        "2026-10-31T10:00:04.000Z",
+        json!({ "type": "item_completed", "item": {
+            "type": "CommandExecution", "id": "exec-late", "command": ["wc", "-l", "big.txt"],
+            "cwd": "/work", "parsed_cmd": [{ "type": "unknown", "cmd": "wc -l big.txt" }],
+            "status": "completed", "aggregated_output": "9 big.txt\n", "exit_code": 0,
+        } }),
+    ));
+    child.push(event(
+        "2026-10-31T10:00:05.000Z",
+        json!({ "type": "item_completed", "item": {
+            "type": "AgentMessage", "id": "msg-late",
+            "content": [{ "type": "Text", "text": result }], "phase": "final_answer",
+        } }),
+    ));
+    child.push(event(
+        "2026-10-31T10:00:05.100Z",
+        json!({ "type": "task_complete" }),
+    ));
+    let child = child.join("\n") + "\n";
+    assert!(child.find(result).unwrap() as u64 > READ_LIMIT);
+    std::fs::write(
+        dir.path()
+            .join(format!("rollout-2026-10-31T10-00-01-{thread}.jsonl")),
+        child,
+    )
+    .unwrap();
+    let agent = |at: &str, id: &str, kind: &str| {
+        event(
+            at,
+            json!({ "type": "item_completed", "item": {
+            "type": "SubAgentActivity", "id": id, "kind": kind,
+            "agent_thread_id": thread, "agent_path": "/root/big_counter",
+        } }),
+        )
+    };
+    let root = dir.path().join("rollout-2026-10-31T10-00-00-root.jsonl");
+    let lines = [
+        event(
+            "2026-10-31T10:00:00.000Z",
+            json!({ "type": "task_started" }),
+        ),
+        agent("2026-10-31T10:00:01.000Z", "call_big", "started"),
+        agent(
+            "2026-10-31T10:00:06.000Z",
+            "subagent-completed-big",
+            "completed",
+        ),
+        event(
+            "2026-10-31T10:00:07.000Z",
+            json!({ "type": "task_complete" }),
+        ),
+    ];
+    std::fs::write(&root, lines.join("\n") + "\n").unwrap();
+    let (_, payloads) = open(root, Arc::default(), Codex::default());
+    let (shadow, view) = chat(&payloads);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let agent = view.item(&ItemId::new("call_big")).expect("the agent row");
+    assert_eq!(agent.status, ItemStatus::Completed);
+    assert_eq!(agent.body.text, result);
+    let command = titled(&view, "wc -l big.txt");
+    assert_eq!(command.parent.as_ref(), Some(&agent.id));
 }
 
 #[test]
