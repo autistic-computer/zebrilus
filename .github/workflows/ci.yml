@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+      CEF_PATH: ${{ github.workspace }}/.cef-cache
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ninja-build pkg-config
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Update the lockfile to the latest ala and crates
+        if: github.event_name == 'schedule'
+        run: cargo update
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
+      - name: Cache the CEF distribution
+        uses: actions/cache@v6.1.0
+        with:
+          path: ${{ github.workspace }}/.cef-cache
+          key: cef-154.0.23-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
+
+      - name: Lint
+        run: |
+          cargo clippy --locked --all-targets --all-features -- -D warnings
+          cargo clippy --locked --lib --no-default-features -- -D warnings
+
+      - name: Lint the pure half for wasm
+        if: runner.os == 'Linux'
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo clippy --locked --lib --no-default-features --target wasm32-unknown-unknown -- -D warnings
+
+      - name: Test
+        run: cargo test --locked --all-features
+
+  windows:
+    name: windows-2025
+    runs-on: windows-2025
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install
+
+      - name: Update the lockfile to the latest ala and crates
+        if: github.event_name == 'schedule'
+        run: cargo update
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+          cache-on-failure: true
+
+      - name: Lint the host on ala
+        run: cargo clippy --locked --lib --no-default-features --features host -- -D warnings
