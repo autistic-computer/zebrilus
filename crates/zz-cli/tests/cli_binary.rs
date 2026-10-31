@@ -1903,7 +1903,23 @@ mod daemon_autostart {
 
         let listed = fixture.run(&["list-sessions", "-F", "#{session_name}"]);
         assert_eq!(listed.status.code(), Some(0));
-        assert_eq!(listed.stdout, b"base\nfromevent\n");
+        if listed.stdout != b"base\nfromevent\n" {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let later = loop {
+                let later = fixture
+                    .run(&["list-sessions", "-F", "#{session_name}"])
+                    .stdout;
+                if later != listed.stdout || Instant::now() >= deadline {
+                    break later;
+                }
+                thread::sleep(Duration::from_millis(20));
+            };
+            panic!(
+                "list-sessions right after new-session: {:?}; after polling up to 10 s: {:?}",
+                String::from_utf8_lossy(&listed.stdout),
+                String::from_utf8_lossy(&later),
+            );
+        }
         assert!(listed.stderr.is_empty());
     }
 
