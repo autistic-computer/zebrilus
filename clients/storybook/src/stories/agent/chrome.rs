@@ -1,92 +1,64 @@
-use std::sync::Arc;
-
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ListAlignment,
-    ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
-    px,
+    AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
+    SharedString, Styled as _, Window, px,
 };
-use penna::scroll::Scrollbar;
 use zz_protocol::AgentProvider;
+use zz_protocol::chat::ItemKind;
 use zz_ui::agent::{
-    AgentTimeline, AgentTimelineStore, AgentToolKind as Kind, TimelineRow,
     agent_jump_to_bottom_button,
-    composer::COMPOSER_OUTER_PADDING,
-    fold_timeline_rows,
     presentation::{empty_state, error_card, lens_welcome},
 };
 
 use super::{
-    fixtures::{assistant, done, thought, user},
-    timeline::pane_frame,
+    chat::{Frame, Thread, empty_column, pane_fill},
+    fixtures::{Script, completed},
 };
 use crate::story::{row, states};
 
-pub struct Jump {
-    store: Entity<AgentTimelineStore>,
-    rows: Arc<Vec<TimelineRow>>,
-    list: ListState,
-    _observe: Subscription,
+fn conversation() -> Script {
+    let mut script = Script::new();
+    script
+        .turn("Why do pinned tabs shrink when I open thirty tabs?")
+        .think("t1", "**Reading the tab strip.** It divides the width evenly.")
+        .done("t1")
+        .ran("r1", ItemKind::Read, "crates/zz-ui/src/browser/tab_strip.rs")
+        .reply("a1", "Every tab gets the same share of the width, pinned or not. With thirty tabs that share drops below the icon, so pinned tabs collapse first because they have no title to keep them wide.\n\nThe fix is a floor at the icon width for pinned tabs, with the rest of the width divided among the unpinned ones.")
+        .finish(completed())
+        .turn("Do it, and keep the drop preview in sync.")
+        .ran("e1", ItemKind::Edit, "crates/zz-ui/src/browser/tab_strip.rs")
+        .ran("e2", ItemKind::Edit, "crates/zz-ui/src/browser/drag.rs")
+        .ran("x1", ItemKind::Execute, "cargo test -p zz-ui browser")
+        .reply("a2", "Done. Pinned tabs keep a 28px floor and the drop preview reads the same widths.")
+        .finish(completed())
+        .turn("Write it up for the changelog.")
+        .reply("a3", "- Pinned tabs keep their icon width however many tabs are open\n- The drop preview follows the pointer across the pinned boundary")
+        .finish(completed());
+    script
 }
 
-pub fn jump(_: &mut Window, cx: &mut App) -> AnyView {
-    cx.new(|cx| {
-        let rows = fold_timeline_rows(&[
-            user(1, "Why do pinned tabs shrink when I open thirty tabs?"),
-            thought(2, "The tab strip divides the width evenly."),
-            done(3, Kind::Read, "Read crates/zz-ui/src/browser/tab_strip.rs"),
-            assistant(4, "Every tab gets the same share of the width, pinned or not. With thirty tabs that share drops below the icon, so pinned tabs collapse first because they have no title to keep them wide.\n\nThe fix is a floor at the icon width for pinned tabs, with the rest of the width divided among the unpinned ones."),
-            user(5, "Do it, and keep the drop preview in sync."),
-            done(6, Kind::Edit, "Edit crates/zz-ui/src/browser/tab_strip.rs"),
-            done(7, Kind::Edit, "Edit crates/zz-ui/src/browser/drag.rs"),
-            done(8, Kind::Execute, "cargo test -p zz-ui browser"),
-            assistant(9, "Done. Pinned tabs keep a 28px floor and the drop preview reads the same widths."),
-        ])
-        .rows;
-        let store = cx.new(|_| AgentTimelineStore::default());
-        let observe = cx.observe(&store, |_, _, cx| cx.notify());
-        Jump {
-            list: ListState::new(rows.len(), ListAlignment::Top, px(1200.0)),
-            rows,
-            store,
-            _observe: observe,
-        }
-    })
-    .into()
+pub struct Jump {
+    thread: AnyView,
+}
+
+pub fn jump(window: &mut Window, cx: &mut App) -> AnyView {
+    let thread = Thread::new(conversation())
+        .framed(Frame::Scroll(Some(320.0)))
+        .away()
+        .view(window, cx)
+        .into();
+    cx.new(|_| Jump { thread }).into()
 }
 
 impl Render for Jump {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let timeline = AgentTimeline::new(self.rows.clone(), self.list.clone(), self.store.clone())
-            .bottom_padding(COMPOSER_OUTER_PADDING);
         states()
             .state(
                 "button",
                 row().child(agent_jump_to_bottom_button("jump-alone", cx)),
             )
             .state(
-                "over a timeline scrolled up",
-                pane_frame(cx)
-                    .h(px(300.0))
-                    .child(timeline)
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom(px(COMPOSER_OUTER_PADDING))
-                            .child(Scrollbar::vertical(&self.list)),
-                    )
-                    .child(
-                        div()
-                            .absolute()
-                            .left_0()
-                            .right_0()
-                            .bottom(px(2.0 * COMPOSER_OUTER_PADDING))
-                            .flex()
-                            .justify_center()
-                            .child(agent_jump_to_bottom_button("jump-over-timeline", cx)),
-                    ),
+                "over a chat scrolled up: click it to follow the newest message again",
+                self.thread.clone(),
             )
     }
 }
@@ -101,14 +73,8 @@ impl Render for EmptyStates {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let view = cx.entity_id();
         let empty = |message: &str, busy: bool, cx: &mut App| -> AnyElement {
-            pane_frame(cx)
-                .child(empty_state(
-                    SharedString::from(message.to_owned()),
-                    busy,
-                    view,
-                    cx,
-                ))
-                .into_any_element()
+            let state = empty_state(SharedString::from(message.to_owned()), busy, view, cx);
+            pane_fill(cx).child(empty_column(state)).into_any_element()
         };
         let messages = [
             ("opening", "Reading Claude Code’s transcript…", true),
@@ -130,18 +96,19 @@ impl Render for EmptyStates {
             .fold(states().columns(2), |states, (label, message, busy)| {
                 states.state(*label, empty(message, *busy, cx))
             });
+        let welcome = |provider, cx: &App| {
+            pane_fill(cx)
+                .h(px(340.0))
+                .child(empty_column(lens_welcome(provider, cx)))
+        };
         states()
             .state(
                 "welcome: Claude Code has not written a transcript yet",
-                pane_frame(cx)
-                    .h(px(340.0))
-                    .child(lens_welcome(AgentProvider::ClaudeCode, cx)),
+                welcome(AgentProvider::ClaudeCode, cx),
             )
             .state(
                 "welcome: Codex before its first prompt",
-                pane_frame(cx)
-                    .h(px(340.0))
-                    .child(lens_welcome(AgentProvider::Codex, cx)),
+                welcome(AgentProvider::Codex, cx),
             )
             .state("waiting and failure messages", grid)
             .state(

@@ -1,36 +1,29 @@
-use std::sync::Arc;
+use std::rc::Rc;
 
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, IntoElement, ListAlignment,
-    ListState, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window, div,
-    prelude::*, px,
+    AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, IntoElement,
+    ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
-use penna::{ActiveTheme as _, input::InputState, scroll::Scrollbar};
+use penna::{ActiveTheme as _, input::InputState};
+use zz_protocol::chat::{ItemKind, ItemStatus};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
     agent::{
-        AgentEntry, AgentTimeline, AgentTimelineStore, AgentToolKind as Kind,
-        AgentToolStatus as Status, TimelineRow,
-        composer::COMPOSER_OUTER_PADDING,
-        fold_timeline_rows,
-        presentation::{lens_welcome, spinner_phase, terminal_pip, terminal_wait_card},
+        presentation::{lens_welcome, spinner_phase, terminal_pip},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
     pane::{PaneDragSource, PaneLens, TerminalPaneAction, terminal_pane_header},
+    pane_look::pane_color,
     pip::PipSurface,
 };
 
 use super::{
-    cards::permission,
+    chat::{Frame, Show, Thread, Views, empty_column},
     composer::{Draft, composer, composer_input},
-    fixtures::{
-        PLAN, TEST_FAILURE, assistant, done, plan, tab_strip_screenshot, tasks, thought, tool,
-        user, user_with_images,
-    },
-    timeline::pane_frame,
+    fixtures::{PLAN, PLAN_STEPS, Script, completed, lens_approval, tasks, terminal_ask},
 };
 use crate::stories::workspace::fixtures::{CLAUDE, CODEX, Tone, terminal_body};
-use crate::story::states;
+use crate::story::{Framed as _, states};
 
 const FIRST_ANSWER: &str = "Pinned tabs now keep a **28px floor**, and only the unpinned tabs \
 share what is left of the strip:\n\n\
@@ -78,23 +71,7 @@ const CLAUDE_PLANS: &[(Tone, &str)] = &[
     (Tone::Muted, "    3. No, keep planning"),
 ];
 
-const CODEX_ASKS: &[(Tone, &str)] = &[
-    (Tone::Muted, "~/dev/zz main*"),
-    (Tone::Plain, "› Bump the storybook lock and commit it"),
-    (
-        Tone::Muted,
-        "• Ran cargo update --manifest-path clients/storybook/Cargo.toml",
-    ),
-    (Tone::Plain, "  Allow command?"),
-    (Tone::Plain, "    git commit -am 'Bump the storybook lock'"),
-    (Tone::Success, "  › Yes (y)"),
-    (Tone::Muted, "    Always for this session (p)"),
-    (Tone::Muted, "    No, tell Codex what to do (esc)"),
-];
-
 const CODEX_FIRST: &[(Tone, &str)] = &[(Tone::Muted, "~/dev/zz main"), (Tone::Plain, "› ")];
-
-const ANSWERS: [(&str, Option<bool>); 2] = [("Allow", Some(true)), ("Deny", Some(false))];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Scene {
@@ -102,7 +79,6 @@ enum Scene {
     Codex,
     ClaudeAsks,
     ClaudePlans,
-    CodexAsks,
     CodexFirst,
 }
 
@@ -110,7 +86,7 @@ impl Scene {
     const fn provider(self) -> AgentProvider {
         match self {
             Self::Claude | Self::ClaudeAsks | Self::ClaudePlans => AgentProvider::ClaudeCode,
-            Self::Codex | Self::CodexAsks | Self::CodexFirst => AgentProvider::Codex,
+            Self::Codex | Self::CodexFirst => AgentProvider::Codex,
         }
     }
 
@@ -119,7 +95,6 @@ impl Scene {
             Self::Claude => 14,
             Self::Codex => 15,
             Self::ClaudeAsks => 16,
-            Self::CodexAsks => 17,
             Self::ClaudePlans => 18,
             Self::CodexFirst => 19,
         }
@@ -130,7 +105,7 @@ impl Scene {
             Self::Claude => "Pinned tabs keep their icon width",
             Self::ClaudeAsks => "Open the pinned tabs pull request",
             Self::ClaudePlans => "Plan the pinned tabs fix",
-            Self::Codex | Self::CodexAsks | Self::CodexFirst => "codex",
+            Self::Codex | Self::CodexFirst => "codex",
         }
     }
 
@@ -140,7 +115,6 @@ impl Scene {
             Self::Codex => CODEX,
             Self::ClaudeAsks => CLAUDE_ASKS,
             Self::ClaudePlans => CLAUDE_PLANS,
-            Self::CodexAsks => CODEX_ASKS,
             Self::CodexFirst => CODEX_FIRST,
         }
     }
@@ -149,118 +123,124 @@ impl Scene {
         !matches!(self, Self::Codex | Self::CodexFirst)
     }
 
-    fn entries(self) -> Vec<AgentEntry> {
-        match self {
-            Self::Claude => vec![
-                user_with_images(
-                    1,
-                    "Pinned tabs shrink to nothing when I open thirty tabs. Can you make them keep their icon width?",
-                    vec![tab_strip_screenshot()],
-                ),
-                thought(
-                    2,
-                    "The tab strip hands every tab the same share of the width, so pinned tabs shrink with the rest.",
-                ),
-                done(3, Kind::Search, "rg -n \"pinned\" crates/zz-ui/src/browser"),
-                done(4, Kind::Read, "Read crates/zz-ui/src/browser/tab_strip.rs"),
-                done(5, Kind::Edit, "Edit crates/zz-ui/src/browser/tab_strip.rs"),
-                tool(
-                    6,
-                    Kind::Execute,
-                    Status::Completed,
-                    "cargo test -p zz-ui browser::tab_strip",
-                )
-                .terminal("running 6 tests\ntest result: ok. 6 passed; 0 failed")
-                .entry(),
-                assistant(7, FIRST_ANSWER),
-                user(8, "Run the whole browser suite and fix whatever breaks."),
-                plan(14, PLAN),
-                tool(
-                    9,
-                    Kind::Execute,
-                    Status::Failed,
-                    "cargo test -p zz-ui browser",
-                )
-                .terminal(TEST_FAILURE)
-                .exit(101)
-                .entry(),
-                thought(
-                    10,
-                    "Two failures, both in drag. The drop preview still measures each tab itself instead of reading the widths the layout pass stored.",
-                ),
-                done(11, Kind::Read, "Read crates/zz-ui/src/browser/drag.rs"),
-                done(12, Kind::Edit, "Edit crates/zz-ui/src/browser/drag.rs"),
-                tool(
-                    13,
-                    Kind::Execute,
-                    Status::Running,
-                    "cargo test -p zz-ui browser::drag",
-                )
-                .entry(),
-            ],
-            Self::Codex => vec![
-                user(1, "Fix the flaky tab drag test"),
-                thought(
-                    2,
-                    "The drop preview measures each tab itself, so it disagrees with the layout once pinned tabs stop shrinking.",
-                ),
-                done(
-                    3,
-                    Kind::Search,
-                    "rg -n \"drop_preview\" crates/zz-ui/src/browser",
-                ),
-                done(4, Kind::Read, "Read crates/zz-ui/src/browser/drag.rs"),
-                done(5, Kind::Edit, "Edit crates/zz-ui/src/browser/drag.rs"),
-                tool(
-                    6,
-                    Kind::Execute,
-                    Status::Completed,
-                    "cargo test -p zz-ui browser::drag",
-                )
-                .terminal("running 9 tests\ntest result: ok. 9 passed; 0 failed")
-                .entry(),
-                assistant(7, CODEX_ANSWER),
-            ],
-            Self::ClaudeAsks => vec![
-                user(
-                    1,
-                    "Tests are green. Push the branch and open a pull request.",
-                ),
-                done(2, Kind::Execute, "git status --short"),
-                tool(
-                    3,
-                    Kind::Execute,
-                    Status::NeedsApproval,
-                    "git push -u origin fix/pinned-tab-width",
-                )
-                .entry(),
-            ],
-            Self::ClaudePlans => vec![
-                user(
-                    1,
-                    "Plan how pinned tabs keep their width, then wait for me.",
-                ),
-                done(2, Kind::Search, "rg -n \"pinned\" crates/zz-ui/src/browser"),
-                done(3, Kind::Read, "Read crates/zz-ui/src/browser/tab_strip.rs"),
-                done(4, Kind::Read, "Read crates/zz-ui/src/browser/drag.rs"),
-            ],
-            Self::CodexAsks => vec![
-                user(1, "Bump the storybook lock and commit it"),
-                done(
-                    2,
-                    Kind::Execute,
-                    "cargo update --manifest-path clients/storybook/Cargo.toml",
-                ),
-                tool(
-                    3,
-                    Kind::Execute,
-                    Status::Running,
-                    "git commit -am 'Bump the storybook lock'",
-                )
-                .entry(),
-            ],
-            Self::CodexFirst => Vec::new(),
+    fn icon(self) -> penna::IconName {
+        match self.provider() {
+            AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
+            AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
         }
+    }
+
+    fn script(self) -> Script {
+        let mut script = Script::new();
+        match self {
+            Self::Claude => {
+                script
+                    .turn("Pinned tabs shrink to nothing when I open thirty tabs. Can you make them keep their icon width?")
+                    .think(
+                        "t1",
+                        "**Reading the tab strip.** It hands every tab the same share of the width, so pinned tabs shrink with the rest.",
+                    )
+                    .done("t1")
+                    .ran(
+                        "s1",
+                        ItemKind::Search,
+                        "rg -n \"pinned\" crates/zz-ui/src/browser",
+                    )
+                    .ran("r1", ItemKind::Read, "crates/zz-ui/src/browser/tab_strip.rs")
+                    .ran("e1", ItemKind::Edit, "crates/zz-ui/src/browser/tab_strip.rs")
+                    .ran(
+                        "x1",
+                        ItemKind::Execute,
+                        "cargo test -p zz-ui browser::tab_strip",
+                    )
+                    .pause(64_000)
+                    .reply("a1", FIRST_ANSWER)
+                    .finish(completed())
+                    .turn("Run the whole browser suite and fix whatever breaks.")
+                    .plan("p1", PLAN_STEPS)
+                    .tool("x2", None, ItemKind::Execute, "cargo test -p zz-ui browser")
+                    .end(
+                        "x2",
+                        ItemStatus::Failed {
+                            message: Some("2 tests failed".to_owned()),
+                        },
+                    )
+                    .think(
+                        "t2",
+                        "**Two failures, both in drag.** The drop preview still measures each tab itself instead of reading the widths the layout pass stored.",
+                    )
+                    .done("t2")
+                    .ran("r2", ItemKind::Read, "crates/zz-ui/src/browser/drag.rs")
+                    .ran("e2", ItemKind::Edit, "crates/zz-ui/src/browser/drag.rs")
+                    .tool(
+                        "x3",
+                        None,
+                        ItemKind::Execute,
+                        "cargo test -p zz-ui browser::drag",
+                    );
+            }
+            Self::Codex => {
+                script
+                    .turn("Fix the flaky tab drag test")
+                    .think(
+                        "t1",
+                        "**Finding the drift.** The drop preview measures each tab itself, so it disagrees with the layout once pinned tabs stop shrinking.",
+                    )
+                    .done("t1")
+                    .ran(
+                        "s1",
+                        ItemKind::Search,
+                        "rg -n \"drop_preview\" crates/zz-ui/src/browser",
+                    )
+                    .ran("r1", ItemKind::Read, "crates/zz-ui/src/browser/drag.rs")
+                    .ran("e1", ItemKind::Edit, "crates/zz-ui/src/browser/drag.rs")
+                    .ran(
+                        "x1",
+                        ItemKind::Execute,
+                        "cargo test -p zz-ui browser::drag",
+                    )
+                    .reply("a1", CODEX_ANSWER)
+                    .finish(completed());
+            }
+            Self::ClaudeAsks => {
+                script
+                    .turn("Tests are green. Push the branch and open a pull request.")
+                    .ran("x1", ItemKind::Execute, "git status --short")
+                    .tool(
+                        "x2",
+                        None,
+                        ItemKind::Execute,
+                        "git push -u origin fix/pinned-tab-width",
+                    )
+                    .ask(
+                        1,
+                        Some("x2"),
+                        lens_approval("git push -u origin fix/pinned-tab-width"),
+                    );
+            }
+            Self::ClaudePlans => {
+                script
+                    .turn("Plan how pinned tabs keep their width, then wait for me.")
+                    .ran(
+                        "s1",
+                        ItemKind::Search,
+                        "rg -n \"pinned\" crates/zz-ui/src/browser",
+                    )
+                    .ran(
+                        "r1",
+                        ItemKind::Read,
+                        "crates/zz-ui/src/browser/tab_strip.rs",
+                    )
+                    .ran("r2", ItemKind::Read, "crates/zz-ui/src/browser/drag.rs")
+                    .ask(
+                        1,
+                        None,
+                        terminal_ask("Waiting for a plan approval in the terminal"),
+                    );
+            }
+            Self::CodexFirst => {}
+        }
+        script
     }
 }
 
@@ -272,17 +252,26 @@ enum Look {
     Phone,
 }
 
+fn pane_frame(cx: &App) -> Div {
+    let theme = cx.theme();
+    div()
+        .relative()
+        .w_full()
+        .min_w_0()
+        .overflow_hidden()
+        .rounded(theme.radius)
+        .framed(cx)
+        .bg(pane_color(theme, theme.background))
+}
+
 pub struct LensPane {
     scene: Scene,
     look: Look,
     open: bool,
-    store: Entity<AgentTimelineStore>,
-    rows: Arc<Vec<TimelineRow>>,
-    list: ListState,
+    thread: Entity<Thread>,
     input: Entity<InputState>,
     tray: Option<TrayPanel>,
-    sheet: Option<&'static str>,
-    _observe: Subscription,
+    sheet: Option<SharedString>,
 }
 
 fn build(scene: Scene, look: Look, open: bool, window: &mut Window, cx: &mut App) -> AnyView {
@@ -301,21 +290,27 @@ fn build_with(
     input.update(cx, |input, cx| {
         input.set_placeholder(format!("Message {}…", scene.provider().label()), cx);
     });
-    cx.new(|cx| {
-        let rows = fold_timeline_rows(&scene.entries()).rows;
-        let store = cx.new(|_| AgentTimelineStore::default());
-        let observe = cx.observe(&store, |_, _, cx| cx.notify());
+    cx.new(|cx: &mut Context<LensPane>| {
+        let lens = cx.weak_entity();
+        let show: Show = Rc::new(move |_: &mut Window, cx: &mut App| {
+            let _ = lens.update(cx, |lens, cx| {
+                lens.sheet = Some(lens.scene.provider().label().into());
+                cx.notify();
+            });
+        });
+        let thread = Thread::new(scene.script())
+            .framed(Frame::Scroll(None))
+            .vendor(scene.icon())
+            .terminal(show)
+            .view(window, cx);
         LensPane {
             scene,
             look,
             open,
-            list: ListState::new(rows.len(), ListAlignment::Bottom, px(1200.0)),
-            rows,
-            store,
+            thread,
             input,
             tray: None,
-            sheet,
-            _observe: observe,
+            sheet: sheet.map(SharedString::from),
         }
     })
     .into()
@@ -380,67 +375,35 @@ impl LensPane {
     }
 
     fn prefix(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        match self.scene {
-            Scene::Claude => {
-                let phase = spinner_phase(cx.entity_id(), cx);
-                let entity = cx.entity();
-                let tasks = tasks().into_iter().take(1).collect::<Vec<_>>();
-                task_tray(
-                    "lens-tray",
-                    Some(PLAN),
-                    &tasks,
-                    self.tray,
-                    true,
-                    phase,
-                    move |action, _, cx| {
-                        if let TaskTrayAction::Toggle(panel) = action {
-                            entity.update(cx, |view, cx| {
-                                view.tray = (view.tray != Some(panel)).then_some(panel);
-                                cx.notify();
-                            });
-                        }
-                    },
-                    cx,
-                )
-                .map(IntoElement::into_any_element)
-                .into_iter()
-                .collect()
-            }
-            Scene::ClaudeAsks => vec![permission(
-                "lens-permission",
-                "git push -u origin fix/pinned-tab-width",
-                None,
-                &ANSWERS,
-                0,
-                true,
-                cx,
-            )],
-            Scene::ClaudePlans => {
-                let entity = cx.entity();
-                vec![
-                    terminal_wait_card(
-                        "lens-wait",
-                        "Waiting for a plan approval in the terminal",
-                        move |_, cx| {
-                            entity.update(cx, |view, cx| {
-                                view.open = false;
-                                cx.notify();
-                            });
-                        },
-                        cx,
-                    )
-                    .into_any_element(),
-                ]
-            }
-            Scene::Codex | Scene::CodexAsks | Scene::CodexFirst => Vec::new(),
+        if self.scene != Scene::Claude {
+            return Vec::new();
         }
+        let phase = spinner_phase(cx.entity_id(), cx);
+        let entity = cx.entity();
+        let tasks = tasks().into_iter().take(1).collect::<Vec<_>>();
+        task_tray(
+            "lens-tray",
+            Some(PLAN),
+            &tasks,
+            self.tray,
+            true,
+            phase,
+            move |action, _, cx| {
+                if let TaskTrayAction::Toggle(panel) = action {
+                    entity.update(cx, |view, cx| {
+                        view.tray = (view.tray != Some(panel)).then_some(panel);
+                        cx.notify();
+                    });
+                }
+            },
+            cx,
+        )
+        .map(IntoElement::into_any_element)
+        .into_iter()
+        .collect()
     }
 
     fn lens(&self, cx: &mut Context<Self>) -> AnyElement {
-        let timeline = AgentTimeline::new(self.rows.clone(), self.list.clone(), self.store.clone())
-            .active_turn(self.scene.running())
-            .bottom_padding(COMPOSER_OUTER_PADDING)
-            .open_output(|_, _, _| {});
         let prefix = self.prefix(cx);
         let composer = composer(
             Draft {
@@ -453,51 +416,43 @@ impl LensPane {
             },
             cx,
         );
+        let chat = self.thread.read(cx).shows_chat();
+        let entity = cx.entity();
         div()
+            .relative()
             .flex()
             .flex_col()
             .flex_1()
             .min_h_0()
             .min_w_0()
-            .child(if self.rows.is_empty() {
+            .child(if chat {
                 div()
-                    .flex_1()
-                    .min_h_0()
-                    .child(lens_welcome(self.scene.provider(), cx))
-                    .into_any_element()
-            } else {
-                div()
-                    .id("lens-timeline")
                     .relative()
                     .flex_1()
                     .min_h_0()
-                    .overflow_hidden()
-                    .child(timeline)
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .right_0()
-                            .bottom(px(COMPOSER_OUTER_PADDING))
-                            .child(Scrollbar::vertical(&self.list)),
-                    )
+                    .child(self.thread.clone())
+                    .into_any_element()
+            } else {
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .child(empty_column(lens_welcome(self.scene.provider(), cx)))
                     .into_any_element()
             })
             .child(composer)
-            .when_some(self.sheet, |lens, title| {
-                let icon = if title.contains("Codex") {
-                    zz_ui::program::OPENAI_ICON
-                } else {
-                    zz_ui::program::CLAUDE_ICON
-                };
-                lens.relative().child(terminal_pip(
+            .when_some(self.sheet.clone(), |lens, title| {
+                lens.child(terminal_pip(
                     ("lens-sheet", self.scene.pane()),
                     title,
-                    icon,
+                    self.scene.icon(),
                     terminal_body(self.scene.terminal(), false, cx).into_any_element(),
                     cx.theme().background,
-                    |_, _| {},
+                    move |_, cx| {
+                        entity.update(cx, |view, cx| {
+                            view.sheet = None;
+                            cx.notify();
+                        });
+                    },
                     cx,
                 ))
             })
@@ -548,21 +503,23 @@ impl Render for LensPane {
     }
 }
 
-pub struct Panes(Vec<(&'static str, AnyView)>);
-
-impl Render for Panes {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        self.0.iter().fold(states(), |states, (label, view)| {
-            states.state(*label, view.clone())
-        })
-    }
+fn panes_of(cases: Vec<(&'static str, AnyView)>, cx: &mut App) -> AnyView {
+    let views = cases
+        .into_iter()
+        .map(|(label, view)| (SharedString::from(label), view))
+        .collect();
+    cx.new(|_| Views(views)).into()
 }
 
 pub fn panes(window: &mut Window, cx: &mut App) -> AnyView {
-    let panes = vec![
+    let cases = vec![
         (
             "Claude Code with the lens open: a turn running, the plan and a background task above the composer",
             build(Scene::Claude, Look::Page(640.0), true, window, cx),
+        ),
+        (
+            "Claude Code at its permission prompt: the card sits on the tool row; Allow types 1, Deny presses Esc",
+            build(Scene::ClaudeAsks, Look::Page(480.0), true, window, cx),
         ),
         (
             "Codex showing its terminal: the toggle opens the lens on the same session",
@@ -573,11 +530,11 @@ pub fn panes(window: &mut Window, cx: &mut App) -> AnyView {
             build(Scene::CodexFirst, Look::Page(360.0), true, window, cx),
         ),
     ];
-    cx.new(|_| Panes(panes)).into()
+    panes_of(cases, cx)
 }
 
 pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
-    let panes = vec![
+    let cases = vec![
         (
             "Claude Code running /config: its own dialog opens in a wide PiP over the chat, keys go to it, and the PiP closes when Claude's input box comes back, or on Done",
             build_with(
@@ -585,6 +542,17 @@ pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
                 Look::Page(560.0),
                 true,
                 Some("/config · Claude Code"),
+                window,
+                cx,
+            ),
+        ),
+        (
+            "Claude Code at a plan approval the lens cannot answer: Show terminal on the card opens the dialog in the PiP",
+            build_with(
+                Scene::ClaudePlans,
+                Look::Page(520.0),
+                true,
+                Some("Claude Code"),
                 window,
                 cx,
             ),
@@ -601,25 +569,7 @@ pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
             ),
         ),
     ];
-    cx.new(|_| Panes(panes)).into()
-}
-
-pub fn approvals(window: &mut Window, cx: &mut App) -> AnyView {
-    let panes = vec![
-        (
-            "Claude Code at its permission prompt: Allow types 1, Deny presses Esc",
-            build(Scene::ClaudeAsks, Look::Page(500.0), true, window, cx),
-        ),
-        (
-            "Claude Code at a plan approval or question: the lens cannot answer it, so Show terminal opens the TUI in a sheet",
-            build(Scene::ClaudePlans, Look::Page(440.0), true, window, cx),
-        ),
-        (
-            "Codex at its own dialog: the rollout says nothing while it waits, so the lens shows the running step and no card",
-            build(Scene::CodexAsks, Look::Page(380.0), true, window, cx),
-        ),
-    ];
-    cx.new(|_| Panes(panes)).into()
+    panes_of(cases, cx)
 }
 
 struct ToggleCase {

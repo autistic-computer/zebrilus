@@ -9,7 +9,7 @@ tags:
 - penna
 - wasm
 - agents
-timestamp: 2026-10-31T00:00:00Z
+timestamp: 2026-10-31T23:00:00Z
 ---
 
 # What it is
@@ -201,8 +201,11 @@ authoring rules; the short version:
 
 - One section per component piece, its states laid out with `states()`.
 - Fixtures from constants only. No daemon, network, filesystem or `std::time::Instant`.
-- Sections holding entities (`InputState`, `SelectState`, `AgentTimelineStore`) build a view once
+- Sections holding entities (`InputState`, `SelectState`, `QuestionCardState`) build a view once
   in `build`; stateless ones use `stateless(fn, cx)`.
+- Agent chat states are a `Script` of chat events (`stories/agent/fixtures.rs`) drawn by the
+  agent story's `Thread`, which calls `chat_column`, `chat_thread` and `chat_agent_pip` and draws
+  asks the way the desktop does. A new chat state is a new script, not a new drawing.
 - Open dialogs deferred: `Root` does not exist yet while `build` runs.
 
 # Check a change

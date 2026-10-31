@@ -4,29 +4,24 @@ use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, IntoElement, ParentElement as _, Render,
     SharedString, Styled as _, Window, div, px, uniform_list,
 };
-use penna::{Disableable as _, button::Button, input::InputEvent};
+use penna::{Disableable as _, button::Button};
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, command_label, completion_query,
     meaningful_command_description, pane_commands, ranked_completions,
 };
-use zz_protocol::{AgentTaskWire, MAX_AGENT_OPTION_BYTES, agent_stream::AgentQuestion};
+use zz_protocol::AgentTaskWire;
 use zz_ui::agent::{
     composer::COMPOSER_MAX_WIDTH,
-    presentation::{permission_card, permission_option, spinner_phase, terminal_wait_card},
-    question::QuestionCardState,
+    presentation::{permission_card, permission_option, spinner_phase},
     slash::{SlashKind, suggestion_list, suggestion_list_height, suggestion_row},
     tasks::{TaskTrayAction, TrayPanel, task_tray},
 };
 
-use super::fixtures::{PLAN, PLAN_DONE, branch_question, checks_question, question, tasks};
+use super::fixtures::{PLAN, PLAN_DONE, tasks};
 use crate::story::{stateless, states};
 
 fn prefix_width(element: impl IntoElement) -> impl IntoElement {
     div().w_full().max_w(px(COMPOSER_MAX_WIDTH)).child(element)
-}
-
-pub fn permissions(_: &mut Window, cx: &mut App) -> AnyView {
-    stateless(render_permissions, cx)
 }
 
 pub(crate) fn permission(
@@ -71,275 +66,6 @@ pub(crate) const COMMAND: [(&str, Option<bool>); 3] = [
     ("Always allow this session", Some(true)),
     ("Reject", Some(false)),
 ];
-
-const PLAN_EXIT: [(&str, Option<bool>); 3] = [
-    ("Yes, and auto-accept edits", Some(true)),
-    ("Yes, and manually approve edits", Some(true)),
-    ("No, keep planning", Some(false)),
-];
-
-const TEN: [(&str, Option<bool>); 10] = [
-    ("Tokyo Night", Some(true)),
-    ("Catppuccin", Some(true)),
-    ("Nord", Some(true)),
-    ("Gruvbox", Some(true)),
-    ("Solarized", Some(true)),
-    ("Rosé Pine", Some(true)),
-    ("Dracula", Some(true)),
-    ("One Dark", Some(true)),
-    ("Kanagawa", Some(true)),
-    ("Everforest", Some(true)),
-];
-
-fn render_permissions(_: &mut Window, cx: &mut App) -> AnyElement {
-    states()
-        .state(
-            "command approval, first option highlighted",
-            prefix_width(permission(
-                "permission-command",
-                "cargo test -p zz-ui browser",
-                None,
-                &COMMAND,
-                0,
-                true,
-                cx,
-            )),
-        )
-        .state(
-            "plan approval, first of two requests",
-            prefix_width(permission(
-                "permission-plan",
-                "Ready to code?",
-                Some("1/2"),
-                &PLAN_EXIT,
-                1,
-                true,
-                cx,
-            )),
-        )
-        .state(
-            "waiting on a dialog the lens cannot answer: its one action shows the terminal",
-            prefix_width(terminal_wait_card(
-                "permission-wait",
-                "Claude Code needs your input in the terminal",
-                |_, _| {},
-                cx,
-            )),
-        )
-        .state(
-            "long title",
-            prefix_width(permission(
-                "permission-long",
-                "Edit crates/zz-ui/src/browser/tab_strip.rs, crates/zz-ui/src/browser/drag.rs and four more files to give pinned tabs a width floor",
-                None,
-                &[("Allow", Some(true)), ("Reject", Some(false))],
-                0,
-                true,
-                cx,
-            )),
-        )
-        .state(
-            "answered, waiting for the agent",
-            prefix_width(permission(
-                "permission-answered",
-                "cargo test -p zz-ui browser",
-                None,
-                &COMMAND,
-                0,
-                false,
-                cx,
-            )),
-        )
-        .state(
-            "ten choices, digits stop at nine",
-            prefix_width(permission(
-                "permission-ten",
-                "Which palette should the storybook use?",
-                None,
-                &TEN,
-                9,
-                true,
-                cx,
-            )),
-        )
-        .into_any_element()
-}
-
-struct QuestionCase {
-    label: &'static str,
-    state: QuestionCardState,
-    counter: Option<SharedString>,
-    enabled: bool,
-}
-
-pub struct Questions {
-    cases: Vec<QuestionCase>,
-}
-
-fn card(
-    index: usize,
-    questions: Vec<AgentQuestion>,
-    window: &mut Window,
-    cx: &mut Context<Questions>,
-) -> QuestionCardState {
-    QuestionCardState::new(
-        index as u64 + 1,
-        questions,
-        window,
-        cx,
-        move |view: &mut Questions, question, event, _, cx| {
-            if matches!(event, InputEvent::Change)
-                && let Some(case) = view.cases.get_mut(index)
-                && case.state.input_changed(question, cx)
-            {
-                cx.notify();
-            }
-        },
-    )
-}
-
-fn type_other(
-    state: &mut QuestionCardState,
-    question: usize,
-    text: &str,
-    window: &mut Window,
-    cx: &mut App,
-) {
-    if let Some(input) = state.other_input(question) {
-        input.update(cx, |input, cx| input.set_value(text.to_owned(), window, cx));
-    }
-    state.input_changed(question, cx);
-}
-
-pub fn questions(window: &mut Window, cx: &mut App) -> AnyView {
-    cx.new(|cx| {
-        let mut cases = Vec::new();
-        let mut add = |label, state, counter: Option<&str>, enabled| {
-            cases.push(QuestionCase {
-                label,
-                state,
-                counter: counter.map(|counter| counter.to_owned().into()),
-                enabled,
-            });
-        };
-
-        add(
-            "one question, a pick submits it",
-            card(0, vec![branch_question()], window, cx),
-            None,
-            true,
-        );
-
-        let mut headed = branch_question();
-        headed.header = Some("Base".into());
-        add(
-            "with a header chip",
-            card(1, vec![headed], window, cx),
-            None,
-            true,
-        );
-
-        let mut multi = card(2, vec![checks_question()], window, cx);
-        multi.card.pick(0, 0);
-        multi.card.pick(0, 1);
-        add("pick any, two picked", multi, None, true);
-
-        let mut several = card(3, vec![branch_question(), checks_question()], window, cx);
-        several.card.pick(0, 0);
-        add(
-            "several questions, second in focus, 2 of 3",
-            several,
-            Some("2/3"),
-            true,
-        );
-
-        let mut typed = card(4, vec![branch_question()], window, cx);
-        typed.card.select_other(0);
-        type_other(&mut typed, 0, "release/0.15", window, cx);
-        add("typed answer replaces the choice", typed, None, true);
-
-        let mut free = card(
-            5,
-            vec![question(
-                "name",
-                "What should the release be called?",
-                Vec::new(),
-            )],
-            window,
-            cx,
-        );
-        type_other(&mut free, 0, "0.16 Pinned", window, cx);
-        add("free text", free, None, true);
-
-        let mut secret = card(
-            6,
-            vec![AgentQuestion {
-                secret: true,
-                ..question("token", "Paste the deploy token for staging", Vec::new())
-            }],
-            window,
-            cx,
-        );
-        type_other(&mut secret, 0, "not-a-real-token-1234", window, cx);
-        add("secret", secret, None, true);
-
-        let mut complete = card(7, vec![branch_question(), checks_question()], window, cx);
-        complete.card.pick(0, 1);
-        complete.card.pick(1, 0);
-        complete.card.pick(1, 2);
-        add("complete, Submit enabled", complete, None, true);
-
-        let unsendable = AgentQuestion {
-            id: "q".repeat(MAX_AGENT_OPTION_BYTES + 1),
-            ..branch_question()
-        };
-        add(
-            "a card zz cannot answer",
-            card(8, vec![unsendable], window, cx),
-            None,
-            true,
-        );
-
-        add(
-            "read-only",
-            card(9, vec![branch_question()], window, cx),
-            None,
-            false,
-        );
-
-        Questions { cases }
-    })
-    .into()
-}
-
-impl Render for Questions {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        self.cases
-            .iter()
-            .enumerate()
-            .fold(states().columns(2), |states, (index, case)| {
-                let entity = entity.clone();
-                states.state(
-                    case.label,
-                    case.state.render(
-                        &format!("question-{index}"),
-                        case.counter.clone(),
-                        case.enabled,
-                        move |action, window, cx| {
-                            entity.update(cx, |view, cx| {
-                                if let Some(case) = view.cases.get_mut(index) {
-                                    case.state.action(action, window, cx);
-                                    cx.notify();
-                                }
-                            });
-                        },
-                        cx,
-                    ),
-                )
-            })
-    }
-}
 
 pub fn slash_commands(query: &str) -> Vec<CommandCompletion> {
     let command = |name: &str, description: &str, hint: Option<&str>| AgentCommand {
