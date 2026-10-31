@@ -24,6 +24,7 @@ zz-terminal.workspace = true
 
 [dev-dependencies]
 markdown = "1.0"
+tempfile.workspace = true
 zz-daemon = { workspace = true, features = ["default"] }
 zz-daemon-client.workspace = true
 

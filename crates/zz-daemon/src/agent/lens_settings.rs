@@ -1,5 +1,9 @@
+use std::path::Path;
+
 use serde_json::{Value, json};
 use zz_protocol::AgentProvider;
+
+use crate::agent::lens_commands::read_small;
 
 pub(crate) const MODEL: &str = "model";
 pub(crate) const EFFORT: &str = "effort";
@@ -144,6 +148,122 @@ impl Facts {
             _ => {}
         }
     }
+
+    pub(crate) fn or(&self, launch: &Self) -> Self {
+        Self {
+            model: self.model.clone().or_else(|| launch.model.clone()),
+            effort: self.effort.clone().or_else(|| launch.effort.clone()),
+            cwd: self.cwd.clone().or_else(|| launch.cwd.clone()),
+        }
+    }
+
+    pub(crate) fn claude_launch(arguments: &[String], config: Option<&Path>, cwd: &str) -> Self {
+        let mut facts = Self {
+            cwd: Some(cwd.to_owned()).filter(|cwd| !cwd.is_empty()),
+            ..Self::default()
+        };
+        let project = Path::new(cwd).join(".claude");
+        let files = config
+            .map(|config| config.join("settings.json"))
+            .into_iter()
+            .chain(["settings.json", "settings.local.json"].map(|name| project.join(name)));
+        for settings in files
+            .filter_map(|path| read_small(&path))
+            .filter_map(|text| serde_json::from_str::<Value>(&text).ok())
+        {
+            if let Some(model) = launch_text(&settings["model"]) {
+                facts.model = Some(model);
+            }
+            if let Some(effort) = launch_text(&settings["effortLevel"]) {
+                facts.effort = Some(effort);
+            }
+        }
+        if let Some(model) = option_values(arguments, &["--model"])
+            .pop()
+            .and_then(setting_text)
+        {
+            facts.model = Some(model);
+        }
+        if let Some(effort) = option_values(arguments, &["--effort"])
+            .pop()
+            .and_then(setting_text)
+        {
+            facts.effort = Some(effort);
+        }
+        facts
+    }
+
+    pub(crate) fn codex_launch(
+        arguments: &[String],
+        home: Option<&Path>,
+        cwd: Option<String>,
+    ) -> Self {
+        let mut facts = Self {
+            cwd,
+            ..Self::default()
+        };
+        if let Some(text) = home.and_then(|home| read_small(&home.join("config.toml"))) {
+            facts.model = toml_top_level(&text, "model");
+            facts.effort = toml_top_level(&text, "model_reasoning_effort");
+        }
+        for (key, value) in option_values(arguments, &["-c", "--config"])
+            .into_iter()
+            .filter_map(|value| value.split_once('='))
+        {
+            match (key.trim(), setting_text(value)) {
+                ("model", Some(model)) => facts.model = Some(model),
+                ("model_reasoning_effort", Some(effort)) => facts.effort = Some(effort),
+                _ => {}
+            }
+        }
+        if let Some(model) = option_values(arguments, &["-m", "--model"])
+            .pop()
+            .and_then(setting_text)
+        {
+            facts.model = Some(model);
+        }
+        facts
+    }
+}
+
+fn launch_text(value: &Value) -> Option<String> {
+    value.as_str().and_then(setting_text)
+}
+
+fn option_values<'a>(arguments: &'a [String], names: &[&str]) -> Vec<&'a str> {
+    let mut values = Vec::new();
+    let mut words = arguments.iter();
+    while let Some(word) = words.next() {
+        if names.contains(&word.as_str()) {
+            values.extend(words.next().map(String::as_str));
+        } else if let Some(value) = names
+            .iter()
+            .filter(|name| name.starts_with("--"))
+            .find_map(|name| word.strip_prefix(name)?.strip_prefix('='))
+        {
+            values.push(value);
+        }
+    }
+    values
+}
+
+fn setting_text(value: &str) -> Option<String> {
+    let value = value.trim();
+    let text = match value.chars().next() {
+        Some(quote @ ('"' | '\'')) => value[1..].split(quote).next().unwrap_or_default(),
+        _ => value.split('#').next().unwrap_or_default().trim(),
+    };
+    (!text.is_empty() && text.len() <= MAX_VALUE_BYTES && !text.chars().any(char::is_control))
+        .then(|| text.to_owned())
+}
+
+fn toml_top_level(text: &str, key: &str) -> Option<String> {
+    text.lines()
+        .map(str::trim)
+        .take_while(|line| !line.starts_with('['))
+        .filter_map(|line| line.split_once('='))
+        .filter(|(name, _)| name.trim().trim_matches('"') == key)
+        .find_map(|(_, value)| setting_text(value))
 }
 
 pub(crate) fn command(
@@ -218,6 +338,14 @@ fn model_alias(model: &str) -> Option<&'static str> {
 }
 
 fn model_label(model: &str) -> String {
+    if let Some((rest, name)) = CLAUDE_MODELS.iter().find_map(|(alias, name)| {
+        model
+            .strip_prefix(alias)
+            .filter(|rest| rest.is_empty() || rest.starts_with('['))
+            .map(|rest| (rest, name))
+    }) {
+        return format!("{name}{rest}");
+    }
     let id = model
         .split_once("(claude-")
         .map_or(model, |(_, inner)| inner.trim_end_matches(')'));
@@ -301,6 +429,8 @@ mod tests {
         assert_eq!(model_label("claude-opus-5-5"), "Opus 5.5");
         assert_eq!(model_label("haiku (claude-haiku-5-5)"), "Haiku 5.5");
         assert_eq!(model_label("Opus 5.5 (default)"), "Opus 5.5");
+        assert_eq!(model_label("sonnet"), "Sonnet");
+        assert_eq!(model_label("opus[1m]"), "Opus[1m]");
         assert_eq!(model_label(""), "");
     }
 
@@ -320,6 +450,106 @@ mod tests {
         assert_eq!(facts.cwd.as_deref(), Some("/repo"));
         let options = facts.config_options(AgentProvider::Codex);
         assert_eq!(options[0]["_meta"]["zz"]["terminal"], "/model");
+    }
+
+    #[test]
+    fn launch_facts_read_the_command_line_over_the_clis_config() {
+        let root = tempfile::tempdir().unwrap();
+        let words = |words: &[&str]| {
+            words
+                .iter()
+                .map(|word| (*word).to_owned())
+                .collect::<Vec<_>>()
+        };
+        let config = root.path().join("claude");
+        let project = root.path().join("project");
+        std::fs::create_dir_all(&config).unwrap();
+        std::fs::create_dir_all(project.join(".claude")).unwrap();
+        std::fs::write(
+            config.join("settings.json"),
+            r#"{"model":"sonnet","effortLevel":"xhigh"}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            project.join(".claude/settings.local.json"),
+            r#"{"model":"opus[1m]"}"#,
+        )
+        .unwrap();
+        let cwd = project.to_str().unwrap();
+        let claude = Facts::claude_launch(
+            &words(&["claude", "--dangerously-skip-permissions"]),
+            Some(&config),
+            cwd,
+        );
+        assert_eq!(claude.model.as_deref(), Some("opus[1m]"));
+        assert_eq!(claude.effort.as_deref(), Some("xhigh"));
+        assert_eq!(claude.cwd.as_deref(), Some(cwd));
+        let claude = Facts::claude_launch(
+            &words(&[
+                "node",
+                "/x/cli.js",
+                "--effort",
+                "xhigh",
+                "--model=haiku",
+                "--effort",
+                "high",
+            ]),
+            None,
+            cwd,
+        );
+        assert_eq!(claude.model.as_deref(), Some("haiku"));
+        assert_eq!(claude.effort.as_deref(), Some("high"));
+        let transcript = Facts {
+            model: Some("claude-opus-5-5".to_owned()),
+            ..Facts::default()
+        };
+        assert_eq!(
+            transcript.or(&claude),
+            Facts {
+                model: Some("claude-opus-5-5".to_owned()),
+                effort: Some("high".to_owned()),
+                cwd: Some(cwd.to_owned()),
+            }
+        );
+
+        let home = root.path().join("codex");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::write(
+            home.join("config.toml"),
+            "model = \"gpt-5.5\" # default\nmodel_reasoning_effort = 'medium'\n\n[profiles.fast]\nmodel = \"gpt-5.5-mini\"\n",
+        )
+        .unwrap();
+        let codex = Facts::codex_launch(&words(&["codex"]), Some(&home), None);
+        assert_eq!(codex.model.as_deref(), Some("gpt-5.5"));
+        assert_eq!(codex.effort.as_deref(), Some("medium"));
+        let codex = Facts::codex_launch(
+            &words(&[
+                "codex",
+                "-c",
+                "model_reasoning_effort=\"high\"",
+                "--config=model=o3",
+            ]),
+            Some(&home),
+            None,
+        );
+        assert_eq!(codex.model.as_deref(), Some("o3"));
+        assert_eq!(codex.effort.as_deref(), Some("high"));
+        let codex = Facts::codex_launch(
+            &words(&[
+                "codex",
+                "-c",
+                "model=o3",
+                "-m",
+                "gpt-5.5-codex",
+                "resume",
+                "t",
+            ]),
+            None,
+            Some("/repo".to_owned()),
+        );
+        assert_eq!(codex.model.as_deref(), Some("gpt-5.5-codex"));
+        assert_eq!(codex.effort, None);
+        assert_eq!(codex.cwd.as_deref(), Some("/repo"));
     }
 
     #[test]

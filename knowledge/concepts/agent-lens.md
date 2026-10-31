@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-31T12:42:12-03:00
+timestamp: 2026-10-31T18:00:00-03:00
 ---
 
 # Overview
@@ -184,6 +184,16 @@ sends them as the session's ACP config options (`model`, `effort` and `cwd`, in 
 `SessionSwitched` and `ConfigOptionsChanged`), so no wire change was needed and old clients ignore
 them. Clients parse them with `zz_client::agent_settings::LensSettings`.
 
+Until the transcript names them, the footer shows what the CLI was started with
+(`Facts::claude_launch`, `Facts::codex_launch`): the agent process's own arguments (Claude Code
+`--model`, `--effort`; Codex `-m`/`--model`, `-c model=…`, `-c model_reasoning_effort=…`), read by
+pid (`process_info::record`), over its config (Claude Code `settings.json` under
+`$CLAUDE_CONFIG_DIR` or `~/.claude`, then the folder's `.claude/settings.json` and
+`settings.local.json`, keys `model` and `effortLevel`; Codex top-level `model` and
+`model_reasoning_effort` in `$CODEX_HOME/config.toml`). The transcript's values win once they arrive.
+Claude Code writes its `sessions/<pid>.json` record only after the first prompt, so until then the
+lens takes the first process in the pane whose first or second argument is named `claude`.
+
 The composer footer shows the folder on the left and, on the right, the model and effort button and
 the side chat button (`zz_ui::agent::controls::{agent_directory_chip, agent_settings_menu,
 agent_side_chat_button}`):
@@ -199,8 +209,9 @@ agent_side_chat_button}`):
 # Side chats and forks
 
 - **Side chat.** The footer's chat-plus button opens a floating pane in the same window running a
-  fork of the session: `claude --resume <session> --fork-session`, or `codex fork <session>`. The
-  main chat never sees it. In chat mode the side chat gets its lens like any agent pane; in raw mode
+  fork of the session: `claude --resume <session> --fork-session`, or `codex fork <session>`,
+  through the user's interactive shell like a new chat (see [Starting a chat](#starting-a-chat)).
+  The main chat never sees it. In chat mode the side chat gets its lens like any agent pane; in raw mode
   the header toggle opens it.
 - **Copy and Fork from here.** Hovering a message shows Copy and a branch button under it; the last
   answer keeps them shown, and on touch they always show. Copy puts the message's text (for an
@@ -208,10 +219,11 @@ agent_side_chat_button}`):
   the chat's running `zz tools --fork-chat <claude|codex> <session> <message>`, which runs on the
   CLI's host through the pane's private `zz` (`crates/zz-cli/src/fork_chat.rs`):
   - Claude Code: it copies the transcript through the end of that message's turn under a new
-    session id in the same project folder, then runs `claude --resume <new id>`.
+    session id in the same project folder, then runs `claude --resume <new id>` through the user's
+    interactive shell.
   - Codex: it finds the message's `turn_id` in the rollout, asks the app server for `thread/fork`
     with `lastTurnId` (through `codex app-server proxy`, or its own `codex app-server`), then runs
-    `codex resume <new thread>`.
+    `codex resume <new thread>` the same way.
   - The chat item id carries the source id (`u:<uuid>` for Claude, `u:<item id>` for Codex), and
     `zz_client::agent_settings::source_message` reads it back.
 
@@ -229,9 +241,26 @@ A pane shows as its program and window ("bash · zebrilus 0:1"), a chat as its t
 "session › name", a file as its name and line, a folder with a trailing slash, and anything on
 another host adds " · host". Tokens that resolve to nothing stay as written, and fenced code
 blocks are left alone. Clicking a pane, window, session, chat or host switches to it like the
-palette does; a file opens in a float running `$VISUAL` or `$EDITOR` (from the user's interactive
-shell) at that line, and a folder opens a shell float there (`refs::open_path`). The assistant's
+palette does; a file opens in a float running `$VISUAL` or `$EDITOR` at that line, started through
+the user's interactive shell like the CLIs below, and a folder opens a shell float there
+(`refs::open_path`). The assistant's
 markdown carries them as `zzref:` links; the user's bubble draws them as clickable ranges.
+
+# Starting a chat
+
+zz starts every agent CLI (new chat, side chat, fork) through the user's interactive shell, so
+aliases and shell functions such as `alias claude='claude --dangerously-skip-permissions'` apply.
+The pane runs `/bin/sh -c` with `exec "${SHELL:-/bin/sh}" -ic '<command>'`
+(`zz_client::agent_launch::interactive_shell`); `/bin/sh` parses that line whatever the pane's
+default shell is, and the user's shell only sees a plain command line. Bash and zsh exec the
+expanded command, so the pane's process is still `claude` or `codex` and the lens finds it.
+
+A new chat starts with the model and effort last picked for that provider: Claude Code
+`--model <alias> --effort <level>`, after the alias's own flags so they win, and Codex
+`-c model="<model>" -c model_reasoning_effort="<level>"` (Codex refuses a second `-m`). The desktop
+remembers them in `agent-launch.json` in its data folder (`crates/zz/src/agent/launch.rs`) when the
+footer menu sets one, or when the lens settings change model or effort within a chat (the CLI's own
+`/model` and `/effort`). The web, iPad, iPhone and HTML clients start chats without them.
 
 # How the stream reaches a client
 

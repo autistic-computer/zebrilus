@@ -17,7 +17,7 @@ use zz_protocol::{
 };
 
 use crate::{
-    agent::attachment,
+    agent::{attachment, launch},
     mux::client::{AgentRequest, MuxClient},
 };
 
@@ -638,7 +638,7 @@ impl AgentController {
     }
 
     fn apply_settings(&mut self, pane: PaneId, payload: &AgentStreamPayload) -> bool {
-        let (options, dialog) = match payload {
+        let (options, option) = match payload {
             AgentStreamPayload::SessionReady {
                 config_options: Some(options),
                 ..
@@ -646,18 +646,23 @@ impl AgentController {
             | AgentStreamPayload::SessionSwitched {
                 config_options: Some(options),
                 ..
-            } => (options, false),
+            } => (options, ""),
             AgentStreamPayload::ConfigOptionsChanged {
                 option_id,
                 config_options,
                 ..
-            } => (config_options, option_id == agent_settings::DIALOG),
+            } => (config_options, option_id.as_str()),
             _ => return false,
         };
+        let dialog = option == agent_settings::DIALOG;
         let Some(thread) = self.panes.get_mut(&pane) else {
             return false;
         };
         if let Some(settings) = LensSettings::parse(options) {
+            if matches!(option, agent_settings::MODEL | agent_settings::EFFORT) {
+                let (provider, before) = (thread.provider, thread.settings.as_ref());
+                launch::update(|launches| launches.follow(provider, before, &settings));
+            }
             thread.settings = Some(settings);
         }
         if dialog {
@@ -667,14 +672,19 @@ impl AgentController {
     }
 
     pub(crate) fn set_option(&self, pane: PaneId, option_id: &str, value: &str, cx: &App) -> bool {
-        self.send(
+        let sent = self.send(
             pane,
             AgentRequest::SetConfigOption {
                 option_id: option_id.to_owned(),
                 value: value.to_owned(),
             },
             cx,
-        )
+        );
+        if sent && let Some(thread) = self.panes.get(&pane) {
+            let provider = thread.provider;
+            launch::update(|launches| launches.pick(provider, option_id, value));
+        }
+        sent
     }
 
     pub(crate) fn apply_stream_items(

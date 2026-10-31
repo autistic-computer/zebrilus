@@ -431,7 +431,7 @@ fn read_dir(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-fn read_small(path: &Path) -> Option<String> {
+pub(crate) fn read_small(path: &Path) -> Option<String> {
     let file = std::fs::File::open(path).ok()?;
     if file.metadata().ok()?.len() > MAX_FILE_BYTES {
         return None;

@@ -5,6 +5,7 @@ use zz_protocol::{
 };
 
 use crate::{
+    agent_launch::{AgentLaunches, interactive_shell},
     fuzzy::fuzzy_match,
     navigation::{last_component, pane_place, session_place},
     program::Program,
@@ -192,18 +193,19 @@ pub fn start_agent_commands(
     pane: PaneId,
     folder: &str,
     agent: AgentChoice,
+    launches: &AgentLaunches,
 ) -> Vec<CommandInvocation> {
-    let mut commands = vec![command(
-        "select-pane-kind",
-        [
-            "-t".to_owned(),
-            pane.to_string(),
-            "-c".to_owned(),
-            folder.to_owned(),
-            "terminal".to_owned(),
-            agent.command().to_owned(),
-        ],
-    )];
+    let mut arguments = vec![
+        "-t".to_owned(),
+        pane.to_string(),
+        "-c".to_owned(),
+        folder.to_owned(),
+        "terminal".to_owned(),
+    ];
+    arguments.extend(interactive_shell(
+        &launches.command(agent.provider(), agent.command()),
+    ));
+    let mut commands = vec![command("select-pane-kind", arguments)];
     let Some((session, window)) = holder(snapshot, pane) else {
         return commands;
     };
@@ -649,30 +651,46 @@ mod tests {
     fn the_folder_decides_the_session_the_chat_lands_in() {
         let fleet = fleet();
         let claude = AGENT_CHOICES[0];
-        assert_eq!(claude.title(), "Claude Code");
-        assert_eq!(
-            lines(&start_agent_commands(&fleet, PaneId(4), "~/dev/zz", claude)),
-            ["select-pane-kind -t %4 -c ~/dev/zz terminal claude"]
-        );
-        assert_eq!(
+        let fresh = AgentLaunches::default();
+        let mut picked = AgentLaunches::default();
+        picked.pick(AgentProvider::ClaudeCode, "model", "opus");
+        let start = |folder: &str, agent: AgentChoice, launches: &AgentLaunches| {
             lines(&start_agent_commands(
                 &fleet,
                 PaneId(4),
-                "~/dev/clairvo",
-                AGENT_CHOICES[1]
-            )),
+                folder,
+                agent,
+                launches,
+            ))
+        };
+        let run = |folder: &str, line: &str| {
+            format!(
+                r#"select-pane-kind -t %4 -c {folder} terminal /bin/sh -c exec "${{SHELL:-/bin/sh}}" -ic '{line}'"#
+            )
+        };
+        assert_eq!(claude.title(), "Claude Code");
+        assert_eq!(
+            start("~/dev/zz", claude, &fresh),
+            [run("~/dev/zz", "claude")]
+        );
+        assert_eq!(
+            start("~/dev/zz", claude, &picked),
+            [run("~/dev/zz", "claude --model opus")]
+        );
+        assert_eq!(
+            start("~/dev/clairvo", AGENT_CHOICES[1], &picked),
             [
-                "select-pane-kind -t %4 -c ~/dev/clairvo terminal codex",
-                "move-window -s @3 -t $2:",
+                run("~/dev/clairvo", "codex"),
+                "move-window -s @3 -t $2:".to_owned(),
             ]
         );
         assert_eq!(
-            lines(&start_agent_commands(&fleet, PaneId(4), "~/notes", claude)),
+            start("~/notes", claude, &fresh),
             [
-                "select-pane-kind -t %4 -c ~/notes terminal claude",
-                "new-session -d -s notes -c ~/notes",
-                "move-window -s @3 -t notes:",
-                "kill-window -a -t @3",
+                run("~/notes", "claude"),
+                "new-session -d -s notes -c ~/notes".to_owned(),
+                "move-window -s @3 -t notes:".to_owned(),
+                "kill-window -a -t @3".to_owned(),
             ]
         );
     }

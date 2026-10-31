@@ -48,7 +48,9 @@ yet, so its Tab lists the folders the host's panes have been in and takes a type
 (`folder_rows`).
 
 Choosing an agent runs `select-pane-kind -t <pane> -c <folder> terminal <cli>` (`start_agent_commands`),
-then puts the window in that folder's session:
+the CLI started through the user's interactive shell with the model and effort last picked (see
+[Starting a chat](/concepts/agent-lens.md#starting-a-chat)), then puts the window in that folder's
+session:
 
 - the folder's session is the picker's own: nothing moves;
 - another session is the folder's: `move-window` into it;

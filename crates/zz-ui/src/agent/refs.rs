@@ -5,6 +5,7 @@ use ala::{
     StyledText, Window,
 };
 
+use zz_client::agent_launch::interactive_shell;
 use zz_protocol::{CommandInvocation, PaneId};
 
 use crate::{
@@ -319,14 +320,14 @@ pub fn open_path(target: &RefTarget, anchor: Option<PaneId>) -> Option<CommandIn
     );
     if let Some(file) = file {
         let jump = line.map_or_else(String::new, |line| format!("+{line} "));
-        let editor = format!(
-            "exec \"${{VISUAL:-${{EDITOR:-vi}}}}\" {jump}{}",
-            shell_quote(file)
-        );
-        arguments.push(format!(
-            "exec \"${{SHELL:-/bin/sh}}\" -ic {}",
-            shell_quote(&editor)
-        ));
+        arguments.extend(interactive_shell(&[
+            "sh".to_owned(),
+            "-c".to_owned(),
+            format!(
+                "exec \"${{VISUAL:-${{EDITOR:-vi}}}}\" {jump}{}",
+                shell_quote(file)
+            ),
+        ]));
     }
     Some(CommandInvocation::new("new-pane", arguments))
 }
@@ -430,15 +431,14 @@ mod tests {
             .map(|argument| argument.as_str().to_owned())
             .collect::<Vec<_>>();
         assert_eq!(
-            arguments[..arguments.len() - 1],
+            arguments[..10],
             [
                 "-t", "%4", "-x", "80%", "-y", "75%", "-c", "~/src", "-T", "it's.rs"
             ]
         );
         let home = std::env::temp_dir();
-        let output = std::process::Command::new("/bin/sh")
-            .arg("-c")
-            .arg(&arguments[arguments.len() - 1])
+        let output = std::process::Command::new(&arguments[10])
+            .args(&arguments[11..])
             .env_clear()
             .env("SHELL", "/bin/sh")
             .env("EDITOR", "echo")
