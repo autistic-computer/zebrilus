@@ -1,6 +1,10 @@
+use ala::SharedString;
 use penna::ThemeMode;
 use serde::{Deserialize, Deserializer, Serialize, de::value::MapDeserializer};
-use zz_ui::interface_theme::{self, InterfaceTheme, ThemeModeSetting, ThemeOverrides};
+use zz_ui::interface_theme::{
+    self, Appearance, AppearanceChange, InterfaceTheme, SavedThemes, ThemeModeSetting,
+    ThemeOverrides,
+};
 
 pub const MAX_SAVED_THEMES: usize = 32;
 const MAX_THEME_BYTES: usize = 64 * 1024;
@@ -13,22 +17,14 @@ pub struct Preferences {
     pub program_colors: bool,
     pub sidebar_width: f32,
     pub status_badges: bool,
-    pub animations: bool,
-    pub animation_speed: f32,
     pub gaps: bool,
     pub dark: bool,
-    #[serde(default)]
-    pub mode: Option<String>,
-    pub theme: Option<String>,
     #[serde(deserialize_with = "saved_themes")]
-    pub themes: Vec<(String, InterfaceTheme)>,
-    pub ui_font_family: String,
+    pub themes: Vec<(SharedString, InterfaceTheme)>,
     pub terminal_font_family: Option<String>,
     pub terminal_font_scale: f32,
-    pub zoom: f32,
     #[serde(flatten)]
-    pub overrides: ThemeOverrides,
-    pub contrast: f32,
+    pub appearance: Appearance,
     pub pip_background_opacity: f32,
     pub pane_inactive_opacity: f32,
     pub pane_glow_strength: f32,
@@ -49,19 +45,15 @@ impl Default for Preferences {
             program_colors: true,
             sidebar_width: penna::sidebar::SIDEBAR_DEFAULT_WIDTH,
             status_badges: true,
-            animations: true,
-            animation_speed: interface_theme::DEFAULT_ANIMATION_SPEED,
             gaps: false,
             dark: true,
-            mode: Some("system".into()),
-            theme: None,
             themes: Vec::new(),
-            ui_font_family: String::new(),
             terminal_font_family: None,
             terminal_font_scale: 1.0,
-            zoom: 1.0,
-            overrides: ThemeOverrides::default(),
-            contrast: 1.0,
+            appearance: Appearance {
+                mode: Some("system".into()),
+                ..Appearance::default()
+            },
             pip_background_opacity: 0.8,
             pane_inactive_opacity: 0.7,
             pane_glow_strength: 1.0,
@@ -95,8 +87,9 @@ impl Preferences {
             !id.is_empty() && !interface_theme::is_builtin_theme(id) && ids.insert(id.clone())
         });
         self.themes.truncate(MAX_SAVED_THEMES);
-        self.theme = self.theme.take().filter(|id| self.knows_theme(id));
-        let overrides = &mut self.overrides;
+        let theme = self.appearance.theme.take();
+        self.appearance.theme = theme.filter(|id| self.knows_theme(id));
+        let overrides = &mut self.appearance.overrides;
         for (value, max) in [
             (&mut overrides.radius, interface_theme::MAX_CORNER_RADIUS),
             (&mut overrides.tint, 1.0),
@@ -110,15 +103,17 @@ impl Preferences {
             .accent
             .take()
             .filter(|accent| interface_theme::accent_color(accent, ThemeMode::Dark).is_some());
-        self.zoom = bounded(self.zoom, 0.5, 3.0, 1.0);
-        self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
-        self.contrast = bounded(self.contrast, 1.0, 2.0, 1.0);
-        self.animation_speed = bounded(
-            self.animation_speed,
+        let appearance = &mut self.appearance;
+        appearance.zoom = bounded(appearance.zoom, 0.5, 3.0, 1.0);
+        appearance.contrast = bounded(appearance.contrast, 1.0, 2.0, 1.0);
+        appearance.animation_speed = bounded(
+            appearance.animation_speed,
             interface_theme::MIN_ANIMATION_SPEED,
             interface_theme::MAX_ANIMATION_SPEED,
             interface_theme::DEFAULT_ANIMATION_SPEED,
         );
+        appearance.ui_font_family = appearance.ui_font_family.trim().into();
+        self.terminal_font_scale = bounded(self.terminal_font_scale, 0.5, 3.0, 1.0);
         for (value, min, max, fallback) in [
             (&mut self.pip_background_opacity, 0., 1., 0.8),
             (&mut self.pane_inactive_opacity, 0., 1., 0.7),
@@ -127,8 +122,7 @@ impl Preferences {
         ] {
             *value = bounded(*value, min, max, fallback);
         }
-        self.mode = Some(self.theme_mode().as_str().into());
-        self.ui_font_family = self.ui_font_family.trim().into();
+        self.appearance.mode = Some(self.theme_mode().as_str().into());
         self.terminal_font_family = self
             .terminal_font_family
             .map(|family| family.trim().to_owned())
@@ -161,29 +155,26 @@ impl Preferences {
     }
 
     #[must_use]
+    pub fn saved(&self) -> &SavedThemes {
+        zz_ui::register();
+        &self.themes
+    }
+
+    #[must_use]
     pub fn interface_theme(&self) -> &InterfaceTheme {
-        self.theme
-            .as_deref()
-            .and_then(|id| {
-                self.saved_theme(id)
-                    .or_else(|| interface_theme::builtin_theme(id))
-            })
-            .unwrap_or_else(|| interface_theme::default_theme())
+        self.appearance.interface_theme(self.saved())
     }
 
     #[must_use]
     pub fn theme_id(&self) -> &str {
-        self.theme
-            .as_deref()
-            .filter(|id| self.knows_theme(id))
-            .unwrap_or(interface_theme::DEFAULT_THEME)
+        self.appearance.theme_id(self.saved())
     }
 
     #[must_use]
     pub fn saved_theme(&self, id: &str) -> Option<&InterfaceTheme> {
         self.themes
             .iter()
-            .find(|(saved, _)| saved == id)
+            .find(|(saved, _)| saved.as_str() == id)
             .map(|(_, theme)| theme)
     }
 
@@ -192,11 +183,12 @@ impl Preferences {
     }
 
     pub fn set_interface_theme(&mut self, id: &str) {
-        self.theme = self.knows_theme(id).then(|| id.to_owned());
-        self.overrides.pick_theme();
-        if self.interface_theme().materials.font.is_some() {
-            self.ui_font_family.clear();
-        }
+        self.change_appearance(AppearanceChange::Theme(id.to_owned().into()));
+    }
+
+    pub fn change_appearance(&mut self, change: AppearanceChange) {
+        zz_ui::register();
+        self.appearance.change(change, &self.themes);
     }
 
     pub fn import_theme(&mut self, clipboard: &str) -> Result<String, String> {
@@ -224,46 +216,36 @@ impl Preferences {
             .find(|id| self.saved_theme(id).is_none())
             .expect("one more id than themes holds a free one");
         theme.name_after(&id);
-        self.themes.push((id.clone(), theme));
+        self.themes.push((id.clone().into(), theme));
         self.set_interface_theme(&id);
         Ok(id)
     }
 
     pub fn delete_theme(&mut self, id: &str) {
-        self.themes.retain(|(saved, _)| saved != id);
-        if self.theme.as_deref() == Some(id) {
+        self.themes.retain(|(saved, _)| saved.as_str() != id);
+        if self.appearance.theme.as_deref() == Some(id) {
             self.set_interface_theme(interface_theme::DEFAULT_THEME);
         }
     }
 
     #[must_use]
     pub fn shown_ui_font(&self) -> &str {
-        if self.ui_font_family.is_empty() {
-            self.interface_theme()
-                .materials
-                .font
-                .as_deref()
-                .unwrap_or("")
-        } else {
-            &self.ui_font_family
-        }
+        self.appearance.ui_font(self.saved())
     }
 
     #[must_use]
     pub fn shown_theme(&self) -> InterfaceTheme {
-        let mut theme = self.interface_theme().clone();
-        self.overrides.apply_to(&mut theme);
-        theme
+        self.appearance.shown_theme(self.saved())
     }
 
     #[must_use]
     pub fn widget_corner_radius(&self) -> f32 {
-        self.shown_theme().materials.radius
+        self.appearance.corner_radius(self.saved())
     }
 
     #[must_use]
     pub fn theme_mode(&self) -> ThemeModeSetting {
-        self.mode.as_deref().map_or(
+        self.appearance.mode.as_deref().map_or(
             if self.dark {
                 ThemeModeSetting::Dark
             } else {
@@ -284,10 +266,10 @@ impl Preferences {
         }
         let mut preferences: Self = serde_json::from_value(source.clone())?;
         if source.get("mode").is_none() && source.get("dark").is_none() {
-            preferences.mode = Some("system".into());
+            preferences.appearance.mode = Some("system".into());
         }
         if source.get("theme").is_none() {
-            preferences.overrides = ThemeOverrides::default();
+            preferences.appearance.overrides = ThemeOverrides::default();
         }
         Ok(preferences.sanitized())
     }
@@ -360,11 +342,11 @@ impl Preferences {
 
 fn saved_themes<'de, D: Deserializer<'de>>(
     deserializer: D,
-) -> Result<Vec<(String, InterfaceTheme)>, D::Error> {
+) -> Result<Vec<(SharedString, InterfaceTheme)>, D::Error> {
     Ok(
         Vec::<(String, serde_json::Value)>::deserialize(deserializer)?
             .into_iter()
-            .filter_map(|(id, theme)| Some((id, serde_json::from_value(theme).ok()?)))
+            .filter_map(|(id, theme)| Some((id.into(), serde_json::from_value(theme).ok()?)))
             .collect(),
     )
 }
@@ -391,7 +373,7 @@ pub(crate) fn support_directory() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::Preferences;
-    use zz_ui::interface_theme::{self, ThemeModeSetting, ThemeOverrides};
+    use zz_ui::interface_theme::{self, Appearance, ThemeModeSetting, ThemeOverrides};
 
     #[test]
     fn preferences_persist_and_missing_fields_keep_defaults() {
@@ -409,31 +391,30 @@ mod tests {
             Preferences::default()
         );
         let expected = Preferences {
-            mode: Some("light".into()),
-            animations: false,
             flat_sidebar: true,
-            ui_font_family: "Inter Variable".into(),
             terminal_font_family: Some("Lilex".into()),
             terminal_font_scale: 1.25,
             pane_margin: 7.5,
-            overrides: ThemeOverrides {
-                accent: Some("green".into()),
-                tint: Some(0.25),
-                tint_hue: Some(200.0),
-                ..ThemeOverrides::default()
+            appearance: Appearance {
+                mode: Some("light".into()),
+                animations: false,
+                ui_font_family: "Inter Variable".into(),
+                overrides: ThemeOverrides {
+                    accent: Some("green".into()),
+                    tint: Some(0.25),
+                    tint_hue: Some(200.0),
+                    ..ThemeOverrides::default()
+                },
+                ..Appearance::default()
             },
             ..Preferences::default()
         };
         expected.save_path(&path).unwrap();
         assert_eq!(Preferences::load_path(&path).unwrap(), expected);
         std::fs::write(&path, r#"{"mode":"dark"}"#).unwrap();
-        assert_eq!(
-            Preferences::load_path(&path).unwrap(),
-            Preferences {
-                mode: Some("dark".into()),
-                ..Preferences::default()
-            }
-        );
+        let mut dark = Preferences::default();
+        dark.appearance.mode = Some("dark".into());
+        assert_eq!(Preferences::load_path(&path).unwrap(), dark);
         std::fs::write(&path, "broken json").unwrap();
         assert_eq!(
             Preferences::load_path(&path).unwrap_err().kind(),
@@ -472,8 +453,8 @@ mod tests {
     fn older_preferences_gain_status_and_appearance_defaults() {
         let defaults = serde_json::from_str::<Preferences>(r#"{"sidebar":false}"#).unwrap();
         assert!(!defaults.sidebar);
-        assert!(defaults.animations);
-        assert_eq!(defaults.overrides, ThemeOverrides::default());
+        assert!(defaults.appearance.animations);
+        assert_eq!(defaults.appearance.overrides, ThemeOverrides::default());
         assert_eq!(
             defaults.sidebar_width,
             penna::sidebar::SIDEBAR_DEFAULT_WIDTH
@@ -481,13 +462,13 @@ mod tests {
         let status = defaults.status_bar_settings();
         assert!(status.badges);
         assert!(!status.show_host && !status.show_update);
-        let changed = Preferences {
+        let mut changed = Preferences {
             status_badges: false,
-            animations: false,
-            theme: Some("macos".into()),
             sidebar_width: 320.0,
             ..defaults
         };
+        changed.appearance.animations = false;
+        changed.appearance.theme = Some("macos".into());
         let saved = serde_json::to_string(&changed).unwrap();
         let restored = serde_json::from_str::<Preferences>(&saved)
             .unwrap()
@@ -496,7 +477,7 @@ mod tests {
             restored.status_bar_settings(),
             changed.status_bar_settings()
         );
-        assert!(!restored.animations);
+        assert!(!restored.appearance.animations);
         let macos = &interface_theme::builtin_theme("macos").unwrap().materials;
         assert_eq!(restored.shown_theme().materials.outline, macos.outline);
         assert_eq!(restored.widget_corner_radius(), macos.radius);
@@ -524,19 +505,19 @@ mod tests {
             .sanitized();
             assert_eq!(preferences.sidebar_width(available), expected);
         }
-        let invalid = Preferences {
+        let mut invalid = Preferences {
             sidebar_width: f32::NAN,
-            overrides: ThemeOverrides {
-                radius: Some(f32::INFINITY),
-                accent: Some("chartreuse".into()),
-                tint: Some(f32::NAN),
-                tint_hue: Some(f32::NAN),
-            },
             ..Preferences::default()
-        }
-        .sanitized();
+        };
+        invalid.appearance.overrides = ThemeOverrides {
+            radius: Some(f32::INFINITY),
+            accent: Some("chartreuse".into()),
+            tint: Some(f32::NAN),
+            tint_hue: Some(f32::NAN),
+        };
+        let invalid = invalid.sanitized();
         assert_eq!(invalid.sidebar_width, Preferences::default().sidebar_width);
-        assert_eq!(invalid.overrides, ThemeOverrides::default());
+        assert_eq!(invalid.appearance.overrides, ThemeOverrides::default());
         assert_eq!(
             invalid.widget_corner_radius(),
             interface_theme::default_theme().materials.radius
@@ -546,17 +527,14 @@ mod tests {
             ((30.0, 2.0, 400.0), (25.0, 1.0, 360.0)),
             ((12.5, 0.5, 145.0), (12.5, 0.5, 145.0)),
         ] {
-            let overrides = Preferences {
-                overrides: ThemeOverrides {
-                    radius: Some(value.0),
-                    tint: Some(value.1),
-                    tint_hue: Some(value.2),
-                    ..ThemeOverrides::default()
-                },
-                ..Preferences::default()
-            }
-            .sanitized()
-            .overrides;
+            let mut preferences = Preferences::default();
+            preferences.appearance.overrides = ThemeOverrides {
+                radius: Some(value.0),
+                tint: Some(value.1),
+                tint_hue: Some(value.2),
+                ..ThemeOverrides::default()
+            };
+            let overrides = preferences.sanitized().appearance.overrides;
             assert_eq!(
                 (overrides.radius, overrides.tint, overrides.tint_hue),
                 (Some(expected.0), Some(expected.1), Some(expected.2))
@@ -567,30 +545,26 @@ mod tests {
                 accent: Some(accent.into()),
                 ..ThemeOverrides::default()
             };
-            let preferences = Preferences {
-                overrides: valid.clone(),
-                ..Preferences::default()
-            }
-            .sanitized();
-            assert_eq!(preferences.overrides, valid);
+            let mut preferences = Preferences::default();
+            preferences.appearance.overrides = valid.clone();
+            assert_eq!(preferences.sanitized().appearance.overrides, valid);
         }
     }
 
     #[test]
     fn contrast_defaults_clamps_and_round_trips_with_preferences() {
         let defaults = serde_json::from_str::<Preferences>("{}").unwrap();
-        assert_eq!(defaults.contrast, 1.0);
+        assert_eq!(defaults.appearance.contrast, 1.0);
         for (value, expected) in [(0.1, 1.0), (3.0, 2.0), (1.5, 1.5), (f32::NAN, 1.0)] {
-            let preferences = Preferences {
-                contrast: value,
-                ..Preferences::default()
-            }
-            .sanitized();
-            assert_eq!(preferences.contrast, expected);
+            let mut preferences = Preferences::default();
+            preferences.appearance.contrast = value;
+            let preferences = preferences.sanitized();
+            assert_eq!(preferences.appearance.contrast, expected);
             let saved = serde_json::to_string(&preferences).unwrap();
             assert_eq!(
                 serde_json::from_str::<Preferences>(&saved)
                     .unwrap()
+                    .appearance
                     .contrast,
                 expected
             );
@@ -599,13 +573,8 @@ mod tests {
 
     #[test]
     fn full_widget_radius_survives_saved_preferences() {
-        let preferences = Preferences {
-            overrides: ThemeOverrides {
-                radius: Some(25.0),
-                ..ThemeOverrides::default()
-            },
-            ..Preferences::default()
-        };
+        let mut preferences = Preferences::default();
+        preferences.appearance.overrides.radius = Some(25.0);
         let saved = serde_json::to_string(&preferences).unwrap();
         let loaded = serde_json::from_str::<Preferences>(&saved)
             .unwrap()
@@ -618,7 +587,7 @@ mod tests {
         let builtin = interface_theme::default_theme();
         let older = Preferences::decode(r#"{"radius":12,"tint":0.3,"style":"flat"}"#).unwrap();
         assert_eq!(older.theme_id(), "default");
-        assert_eq!(older.overrides, ThemeOverrides::default());
+        assert_eq!(older.appearance.overrides, ThemeOverrides::default());
         assert_eq!(older.shown_theme(), *builtin);
 
         let mut tuned =
@@ -627,15 +596,15 @@ mod tests {
         assert_eq!(tuned.widget_corner_radius(), 12.0);
         let saved = serde_json::to_string(&tuned).unwrap();
         assert_eq!(
-            Preferences::decode(&saved).unwrap().overrides,
-            tuned.overrides
+            Preferences::decode(&saved).unwrap().appearance.overrides,
+            tuned.appearance.overrides
         );
 
         tuned.set_interface_theme("default");
         let picked = Preferences::decode(&serde_json::to_string(&tuned).unwrap()).unwrap();
         assert_eq!(picked.theme_id(), "default");
         assert_eq!(
-            picked.overrides,
+            picked.appearance.overrides,
             ThemeOverrides {
                 accent: Some("green".into()),
                 tint: Some(0.4),
@@ -659,10 +628,8 @@ mod tests {
         assert_eq!(restored.theme_id(), "theme-1");
         assert_eq!(restored.interface_theme().name, "Neon");
 
-        let mut glass = Preferences {
-            theme: Some("macos".into()),
-            ..Preferences::default()
-        };
+        let mut glass = Preferences::default();
+        glass.appearance.theme = Some("macos".into());
         glass.save_theme(glass.shown_theme()).unwrap();
         let restored = Preferences::decode(&serde_json::to_string(&glass).unwrap()).unwrap();
         assert_eq!(restored.theme_id(), "theme-1");
@@ -675,7 +642,7 @@ mod tests {
         assert!(older.themes.is_empty());
         assert_eq!(older.theme_id(), "default");
         assert_eq!(
-            older.overrides,
+            older.appearance.overrides,
             ThemeOverrides {
                 radius: Some(12.0),
                 ..ThemeOverrides::default()
@@ -693,30 +660,27 @@ mod tests {
     #[test]
     fn sanitizing_keeps_a_selection_only_while_it_names_a_theme() {
         let theme = zz_ui::interface_theme::InterfaceTheme::default;
-        let preferences = Preferences {
-            theme: Some("theme-2".into()),
+        let mut preferences = Preferences {
             themes: vec![
                 ("theme-2".into(), theme()),
                 ("default".into(), theme()),
-                (String::new(), theme()),
+                (String::new().into(), theme()),
                 ("theme-2".into(), theme()),
             ],
             ..Preferences::default()
-        }
-        .sanitized();
-        assert_eq!(preferences.theme.as_deref(), Some("theme-2"));
+        };
+        preferences.appearance.theme = Some("theme-2".into());
+        let mut preferences = preferences.sanitized();
+        assert_eq!(preferences.appearance.theme.as_deref(), Some("theme-2"));
         assert_eq!(preferences.themes.len(), 1);
-        let dangling = Preferences {
-            theme: Some("theme-9".into()),
-            ..preferences
-        }
-        .sanitized();
-        assert_eq!(dangling.theme, None);
+        preferences.appearance.theme = Some("theme-9".into());
+        let dangling = preferences.sanitized();
+        assert_eq!(dangling.appearance.theme, None);
         assert_eq!(dangling.theme_id(), "default");
 
         let crowded = Preferences {
             themes: (1..=40)
-                .map(|index| (format!("theme-{index}"), theme()))
+                .map(|index| (format!("theme-{index}").into(), theme()))
                 .collect(),
             ..Preferences::default()
         }
@@ -750,10 +714,13 @@ mod tests {
         while preferences.themes.len() < super::MAX_SAVED_THEMES {
             preferences.import_theme("{}").unwrap();
         }
-        preferences.overrides.accent = Some("green".into());
+        preferences.appearance.overrides.accent = Some("green".into());
         assert!(preferences.import_theme(NEON).is_err());
         assert_eq!(preferences.themes.len(), super::MAX_SAVED_THEMES);
-        assert_eq!(preferences.overrides.accent.as_deref(), Some("green"));
+        assert_eq!(
+            preferences.appearance.overrides.accent.as_deref(),
+            Some("green")
+        );
     }
 
     #[test]
@@ -761,16 +728,19 @@ mod tests {
         let mut preferences = Preferences::default();
         preferences.import_theme(NEON).unwrap();
         preferences.import_theme("{}").unwrap();
-        preferences.overrides.radius = Some(4.0);
-        preferences.overrides.accent = Some("pink".into());
+        preferences.appearance.overrides.radius = Some(4.0);
+        preferences.appearance.overrides.accent = Some("pink".into());
         preferences.delete_theme("theme-1");
         assert_eq!(preferences.theme_id(), "theme-2");
-        assert_eq!(preferences.overrides.radius, Some(4.0));
+        assert_eq!(preferences.appearance.overrides.radius, Some(4.0));
         preferences.delete_theme("theme-2");
         assert!(preferences.themes.is_empty());
         assert_eq!(preferences.theme_id(), "default");
-        assert_eq!(preferences.overrides.radius, None);
-        assert_eq!(preferences.overrides.accent.as_deref(), Some("pink"));
+        assert_eq!(preferences.appearance.overrides.radius, None);
+        assert_eq!(
+            preferences.appearance.overrides.accent.as_deref(),
+            Some("pink")
+        );
         assert_eq!(preferences.import_theme("{}").unwrap(), "theme-1");
     }
 
@@ -782,7 +752,7 @@ mod tests {
         .unwrap()
         .sanitized();
         assert!(preferences.gaps);
-        assert_eq!(preferences.overrides.radius, Some(8.0));
+        assert_eq!(preferences.appearance.overrides.radius, Some(8.0));
         assert_eq!(preferences.pane_margin, 6.0);
         assert_eq!(preferences.pip_background_opacity, 0.8);
         assert_eq!(preferences.pane_glow_strength, 1.0);

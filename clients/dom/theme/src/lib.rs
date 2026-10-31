@@ -38,7 +38,7 @@ fn color(color: Hsla) -> String {
 
 fn kit(preferences: &Preferences, mode: ThemeMode) -> Theme {
     let mut kit = theme_css::kit_theme(&preferences.shown_theme(), mode);
-    kit.set_contrast(preferences.contrast);
+    kit.set_contrast(preferences.appearance.contrast);
     kit.pane_margin = preferences.margin();
     let font = preferences.shown_ui_font();
     kit.font_family = if font.is_empty() { WEB_UI_FONT } else { font }
@@ -186,7 +186,7 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
             preferences
                 .themes
                 .iter()
-                .map(|(id, theme)| (id.clone(), theme, true)),
+                .map(|(id, theme)| (id.to_string(), theme, true)),
         )
         .map(|(id, theme, saved)| {
             let name = if theme.name.is_empty() {
@@ -198,16 +198,17 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
         })
         .collect::<Vec<_>>();
     let selected = preferences.theme_id();
-    let mut own = preferences.overrides.clone();
+    let overrides = &preferences.appearance.overrides;
+    let mut own = overrides.clone();
     own.accent = None;
     let mut base = preferences.interface_theme().clone();
     own.apply_to(&mut base);
-    let accent = preferences.overrides.accent.clone();
+    let accent = overrides.accent.clone();
     let custom = accent
         .as_deref()
         .filter(|accent| !ACCENTS.contains(accent))
         .and_then(|accent| interface_theme::accent_color(accent, ThemeMode::Dark));
-    let hue = preferences.overrides.tint_hue.unwrap_or(DEFAULT_TINT_HUE);
+    let hue = overrides.tint_hue.unwrap_or(DEFAULT_TINT_HUE);
     Ok(json!({
         "themes": themes,
         "selected": selected,
@@ -231,7 +232,7 @@ pub fn picks(json: &str, dark: bool) -> Result<String, JsError> {
             "hue": hue,
             "dot": color(oklch(0.72, 0.13, hue)),
             "stops": (0..=HUE_STOPS).map(|stop| color(oklch(0.72, 0.13, f32::from(stop) * 360.0 / f32::from(HUE_STOPS)))).collect::<Vec<_>>(),
-            "strength": preferences.overrides.tint.unwrap_or(0.0),
+            "strength": overrides.tint.unwrap_or(0.0),
         },
         "radius": preferences.widget_corner_radius(),
         "font": preferences.shown_ui_font(),

@@ -1691,7 +1691,7 @@ impl AppShell {
             PaneLook::global(cx).edge_width(theme).max(px(1.0)),
             cx,
         );
-        if !self.preferences.animations || cx.reduce_motion() {
+        if !self.preferences.appearance.animations || cx.reduce_motion() {
             rendered.set(preview.to);
             return Some(
                 surface

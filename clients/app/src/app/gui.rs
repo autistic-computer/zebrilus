@@ -17,7 +17,10 @@ impl AppShell {
                 })
                 .flatten(),
             GuiOffer::toggle(PANE_GAPS, preferences.gaps),
-            theme_offer(&super::settings::theme_picks(preferences)),
+            theme_offer(&penna::settings::appearance::theme_picks(
+                &preferences.appearance,
+                preferences.saved(),
+            )),
             GuiOffer::toggle(SIDEBAR_LAYOUT, preferences.flat_sidebar),
         ]
         .into_iter()

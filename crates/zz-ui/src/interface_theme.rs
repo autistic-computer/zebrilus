@@ -1,8 +1,9 @@
 use crate::ThemeMode;
 
 pub use penna::interface_theme::{
-    ACCENTS, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE, InterfaceTheme, MAX_CORNER_RADIUS,
-    Materials, ThemeColors, ThemeOverrides, accent_color,
+    ACCENTS, Appearance, AppearanceChange, BUILTIN_THEMES, DEFAULT_THEME, DEFAULT_TINT_HUE,
+    InterfaceTheme, MAX_CORNER_RADIUS, Materials, SavedThemes, ThemeColors, ThemeOverrides,
+    accent_color,
 };
 pub use penna::motion::{DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED};
 pub use zz_client::appearance::{AccentSetting, ThemeModeSetting};

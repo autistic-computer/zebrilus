@@ -1,128 +1,53 @@
-use ala::{App, ElementId, IntoElement, ParentElement as _, SharedString, Styled as _, div, px};
+use penna::settings::about::{About, AboutLink};
 
-use super::{SettingEntry, SettingsStack, settings_card_ground, settings_provenance_badge};
-use crate::{
-    ActiveTheme as _, Colorize as _, IconName, Sizable as _, StyledExt as _,
-    button::{Button, ButtonVariants as _},
-};
+pub use penna::settings::about::ABOUT_LOGO_SIZE;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const REPOSITORY_URL: &str = "https://github.com/autistic-computer/zebrilus";
 pub const RELEASES_URL: &str = "https://github.com/autistic-computer/zebrilus/releases";
 pub const ISSUES_URL: &str = "https://github.com/autistic-computer/zebrilus/issues/new";
-pub const ABOUT_LOGO_SIZE: f32 = 88.0;
 
-#[must_use]
-pub fn about_hero(logo: impl IntoElement, cx: &App) -> ala::Div {
-    div()
-        .flex()
-        .flex_col()
-        .items_center()
-        .gap(px(12.0))
-        .pt(px(20.0))
-        .pb(px(10.0))
-        .child(logo)
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap(px(5.0))
-                .child(
-                    div()
-                        .text_size(crate::rems_from_px(22.0))
-                        .font_medium()
-                        .child("zz"),
-                )
-                .child(
-                    div()
-                        .text_size(crate::rems_from_px(12.0))
-                        .text_color(cx.theme().foreground.muted())
-                        .child("tmux, ghostty and ala walked into a mux."),
-                )
-                .child(settings_provenance_badge(concat!(
-                    "v",
-                    env!("CARGO_PKG_VERSION")
-                ))),
-        )
-}
-
-#[must_use]
-pub fn about_value(value: impl Into<SharedString>, cx: &App) -> ala::Div {
-    div()
-        .flex_none()
-        .font_family(cx.theme().mono_font_family.clone())
-        .text_size(crate::rems_from_px(11.0))
-        .text_color(cx.theme().foreground.muted())
-        .child(value.into())
-}
-
-#[must_use]
-pub fn about_link_button(
-    id: impl Into<ElementId>,
-    label: &'static str,
-    url: &'static str,
-    cx: &App,
-) -> Button {
-    Button::new(id)
-        .icon(IconName::ExternalLink)
-        .label(label)
-        .on(settings_card_ground(cx))
-        .on_click(move |_, _, cx| cx.open_url(url))
-}
-
-#[must_use]
-pub fn about_copy_button(id: impl Into<ElementId>) -> Button {
-    Button::new(id)
-        .small()
-        .compact()
-        .ghost()
-        .icon(IconName::Copy)
-        .tooltip("Copy build information")
-}
+pub const ZZ_ABOUT: About = About {
+    name: "zz",
+    tagline: "tmux, ghostty and ala walked into a mux.",
+    version: VERSION,
+    license: "MIT or Apache-2.0",
+    links: &[
+        AboutLink {
+            id: "settings-about-repository",
+            title: "Source code",
+            label: "GitHub",
+            url: REPOSITORY_URL,
+        },
+        AboutLink {
+            id: "settings-about-releases",
+            title: "Releases",
+            label: "Releases",
+            url: RELEASES_URL,
+        },
+        AboutLink {
+            id: "settings-about-issues",
+            title: "Report an issue",
+            label: "New issue",
+            url: ISSUES_URL,
+        },
+    ],
+};
 
 #[must_use]
 pub fn build_info(platform: &str) -> String {
-    format!("zz {VERSION} ({platform})")
+    penna::settings::about::build_info(&ZZ_ABOUT, platform)
 }
 
-#[must_use]
-pub fn about_build_stack(
-    platform: impl Into<SharedString>,
-    copy: impl IntoElement,
-    cx: &App,
-) -> SettingsStack {
-    SettingsStack::titled("Build")
-        .child(
-            SettingEntry::new("Version")
-                .title_actions(copy)
-                .control(about_value(VERSION, cx)),
-        )
-        .child(SettingEntry::new("Platform").control(about_value(platform, cx)))
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[must_use]
-pub fn about_project_stack(cx: &App) -> SettingsStack {
-    SettingsStack::titled("Project")
-        .child(SettingEntry::new("Source code").control(about_link_button(
-            "settings-about-repository",
-            "GitHub",
-            REPOSITORY_URL,
-            cx,
-        )))
-        .child(SettingEntry::new("Releases").control(about_link_button(
-            "settings-about-releases",
-            "Releases",
-            RELEASES_URL,
-            cx,
-        )))
-        .child(
-            SettingEntry::new("Report an issue").control(about_link_button(
-                "settings-about-issues",
-                "New issue",
-                ISSUES_URL,
-                cx,
-            )),
-        )
-        .child(SettingEntry::new("License").control(about_value("MIT or Apache-2.0", cx)))
+    #[test]
+    fn build_info_names_zz_and_its_version() {
+        assert_eq!(
+            build_info("macos · aarch64"),
+            format!("zz {VERSION} (macos · aarch64)")
+        );
+    }
 }

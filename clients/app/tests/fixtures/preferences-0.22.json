@@ -1,0 +1,66 @@
+{
+  "sidebar": false,
+  "flat_sidebar": true,
+  "program_colors": false,
+  "sidebar_width": 312.0,
+  "status_badges": false,
+  "animations": false,
+  "animation_speed": 1.5,
+  "gaps": true,
+  "dark": true,
+  "mode": "light",
+  "theme": "theme-1",
+  "themes": [
+    [
+      "theme-1",
+      {
+        "name": "Neon",
+        "materials": {
+          "radius": 3.0,
+          "smoothing": 4.0,
+          "outline": 0.5,
+          "row-inset": 4.0,
+          "primary": "foreground",
+          "highlight-strength": 1.0,
+          "font": "Lilex",
+          "glass": null,
+          "contact": {
+            "y": 1.0,
+            "blur": 2.0,
+            "spread": 0.0,
+            "strength": 1.0
+          },
+          "float": {
+            "y": 12.0,
+            "blur": 32.0,
+            "spread": -4.0,
+            "strength": 1.0
+          }
+        },
+        "light": {},
+        "dark": {
+          "accent": "#ff00ffff"
+        }
+      }
+    ]
+  ],
+  "ui_font_family": "Inter Variable",
+  "terminal_font_family": "Lilex",
+  "terminal_font_scale": 1.25,
+  "zoom": 1.35,
+  "radius": 7.0,
+  "accent": "#ff8800",
+  "tint": 0.25,
+  "tint-hue": 145.0,
+  "contrast": 1.4,
+  "pip_background_opacity": 0.6,
+  "pane_inactive_opacity": 0.5,
+  "pane_glow_strength": 1.5,
+  "pane_margin": 7.5,
+  "palette_grouped": false,
+  "palette_show_keys": false,
+  "palette_vim_mode": true,
+  "extend_bottom_safe_area": true,
+  "keep_screen_awake": true,
+  "system_text_size": false
+}

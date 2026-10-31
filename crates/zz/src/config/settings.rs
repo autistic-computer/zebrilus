@@ -40,22 +40,18 @@ use crate::{
     window::toast,
     workspace::add_host,
 };
-use penna::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use penna::settings::appearance::{
-    SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
-    corner_radius_slider, picker_tile, theme_mode_control, theme_picker, tint_hue_slider,
-    tint_slider, ui_font_select,
+    AppearanceControls, ThemePicks, kit_row, picker_tile, ui_font_select,
 };
 use zz_client::url_input::SearchProvider;
 use zz_protocol::ConfigOverrideEntry;
 use zz_terminal::{TerminalColorScheme, discover_ghostty_config};
 use zz_ui::dialogs::import_configuration_file_alert;
-use zz_ui::interface_theme::{self, InterfaceTheme};
+use zz_ui::interface_theme::{self, Appearance, AppearanceChange, InterfaceTheme, SavedThemes};
 use zz_ui::settings::{
     SettingEntry, SettingsScrollColumn, SettingsSection, SettingsSelectItem, SettingsStack,
-    StackPosition, settings_card_ground, settings_list_disclosure_header,
-    settings_list_group_header, settings_page_content, settings_page_title, settings_preview,
-    settings_scroll_column,
+    settings_card_ground, settings_list_disclosure_header, settings_list_group_header,
+    settings_page_content, settings_page_title, settings_preview, settings_scroll_column,
 };
 
 ala::actions!(zz, [OpenSettings]);
@@ -119,7 +115,7 @@ pub(crate) struct SettingsView {
     pane_margin: Entity<InputState>,
     editor_font_size: Entity<InputState>,
     which_key_delay: Entity<InputState>,
-    accent_picker: Entity<ColorPickerState>,
+    appearance_controls: AppearanceControls,
     window_corner_radius: Entity<InputState>,
     mux_config_editor: Option<ConfigFileEditor>,
     mux_split_controls: Option<multiplexer::SplitControls>,
@@ -199,8 +195,17 @@ impl SettingsView {
             window,
             cx,
         );
-        let accent_picker = cx.new(|cx| {
-            ColorPickerState::new(custom_accent(observed.chrome_accent.value), window, cx)
+        let appearance_controls = AppearanceControls::new(
+            &appearance(cx),
+            |change, _, cx| appearance_changed(change, cx),
+            window,
+            cx,
+        )
+        .theme_menu(|menu, _, _| {
+            menu.item(
+                PopupMenuItem::new("Import from clipboard")
+                    .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
+            )
         });
         let window_corner_radius = numeric_value_input(
             ConfigKey::WindowCornerRadius,
@@ -237,15 +242,6 @@ impl SettingsView {
             ),
             numeric_input_subscription(&pane_margin, ConfigKey::PaneMargin, window, cx),
             numeric_input_subscription(&which_key_delay, ConfigKey::WhichKeyDelay, window, cx),
-            cx.subscribe(&accent_picker, |_, _, event: &ColorPickerEvent, cx| {
-                let ColorPickerEvent::Change(color) = event;
-                let key = ConfigKey::ChromeAccent;
-                let result = match color {
-                    Some(color) => set_config_key(key, &penna::to_hex(color.opaque())),
-                    None => remove_config_key(key),
-                };
-                written(key, result, cx);
-            }),
             numeric_input_subscription(
                 &window_corner_radius,
                 ConfigKey::WindowCornerRadius,
@@ -271,7 +267,7 @@ impl SettingsView {
             pane_margin,
             editor_font_size,
             which_key_delay,
-            accent_picker,
+            appearance_controls,
             window_corner_radius,
             mux_config_editor: None,
             mux_split_controls: None,
@@ -476,10 +472,9 @@ impl SettingsView {
                 window,
                 cx,
             );
-            let accent = custom_accent(resolved.chrome_accent.value);
-            self.accent_picker.update(cx, |picker, cx| {
-                picker.set_color(accent, window, cx);
-            });
+            let saved = config::themes(cx).saved.clone();
+            self.appearance_controls
+                .sync(&appearance(cx), &saved, window, cx);
             if !numeric_input_matches_value(
                 ConfigKey::PipBackgroundOpacity,
                 &self.pip_background_opacity.read(cx).value(),
@@ -733,11 +728,6 @@ impl SettingsView {
             )
     }
 
-    fn slider_setting(item: AppearancePageItem, slider: impl IntoElement) -> SettingEntry {
-        let title = item.title().unwrap_or_default();
-        SettingEntry::new(title).control(slider)
-    }
-
     fn numeric_setting(
         title: &'static str,
         input: &Entity<InputState>,
@@ -759,12 +749,31 @@ impl SettingsView {
         );
         let view = cx.entity();
         let resolved = *resolved;
+        let appearance = appearance(cx);
+        let saved = config::themes(cx).saved.clone();
         penna::settings::appearance::appearance_page(
             SettingsSection::Appearance.title(),
             items,
-            move |item, position, _, cx| {
-                view.update(cx, |this, cx| {
-                    this.appearance_item(item, &resolved, position, cx)
+            move |item, position, window, cx| {
+                view.update(cx, |this, cx| match item {
+                    AppearancePageItem::Advanced { expanded } => settings_list_disclosure_header(
+                        penna::settings::appearance::ADVANCED_DISCLOSURE,
+                        "Advanced",
+                        expanded,
+                    )
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.appearance_advanced = !this.appearance_advanced;
+                        cx.notify();
+                    }))
+                    .into_any_element(),
+                    item => {
+                        let entry =
+                            this.appearance_item(item, &resolved, &appearance, &saved, window, cx);
+                        entry.map_or_else(
+                            || div().into_any_element(),
+                            |entry| entry.position(position).into_any_element(),
+                        )
+                    }
                 })
             },
         )
@@ -775,86 +784,21 @@ impl SettingsView {
         &self,
         item: AppearancePageItem,
         resolved: &AppConfig,
-        position: StackPosition,
-        cx: &Context<Self>,
-    ) -> AnyElement {
-        match item {
-            AppearancePageItem::Title => {
-                return settings_page_title(SettingsSection::Appearance, cx).into_any_element();
-            }
-            AppearancePageItem::Group { title } => {
-                return settings_list_group_header(title, cx).into_any_element();
-            }
-            AppearancePageItem::Advanced { expanded } => {
-                return settings_list_disclosure_header(
-                    penna::settings::appearance::ADVANCED_DISCLOSURE,
-                    "Advanced",
-                    expanded,
-                )
-                .on_click(cx.listener(|this, _, _, cx| {
-                    this.appearance_advanced = !this.appearance_advanced;
-                    cx.notify();
-                }))
-                .into_any_element();
-            }
-            _ => {}
-        }
-
-        let entry = match item {
-            AppearancePageItem::Title
-            | AppearancePageItem::Group { .. }
-            | AppearancePageItem::Advanced { .. } => {
-                unreachable!("returned above")
-            }
-            AppearancePageItem::ThemeMode => Self::theme_mode_setting(resolved, cx),
-            AppearancePageItem::Accent => self.accent_setting(cx),
-            AppearancePageItem::TintHue => Self::tint_hue_setting(resolved, cx),
-            AppearancePageItem::Tint => Self::tint_setting(resolved, cx),
-            AppearancePageItem::Themes => Self::themes_setting(cx),
-            AppearancePageItem::CornerRadius => Self::slider_setting(
-                item,
-                corner_radius_slider(
-                    resolved.widget_corner_radius.value,
-                    |radius, _, cx| {
-                        let key = ConfigKey::WidgetCornerRadius;
-                        written(key, set_config_key(key, &format!("{radius:.0}")), cx);
-                    },
-                    cx,
-                ),
-            ),
+        appearance: &Appearance,
+        saved: &SavedThemes,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<SettingEntry> {
+        Some(match item {
             AppearancePageItem::UiFontFamily => self.ui_font_setting(cx),
             AppearancePageItem::UiZoom => self.ui_zoom_setting(cx),
             AppearancePageItem::App(ZzRow::AppIcon) => Self::app_icon_setting(resolved, cx),
-            AppearancePageItem::ChromeContrast => Self::slider_setting(
-                item,
-                contrast_slider(
-                    resolved.chrome_contrast.value,
-                    |contrast, _, cx| {
-                        let key = ConfigKey::ChromeContrast;
-                        written(key, set_config_key(key, &format!("{contrast:.2}")), cx);
-                    },
-                    cx,
-                ),
-            ),
-            AppearancePageItem::App(ZzRow::ProgramColors) => {
-                let title = ZzRow::ProgramColors.title();
-                Self::boolean_setting(ConfigKey::ProgramColors, title, resolved.program_colors)
-                    .description("Fill sidebar tiles with the running program's colors")
-            }
-            AppearancePageItem::Animations => {
-                Self::boolean_setting(ConfigKey::Animations, "Animations", resolved.animations)
-            }
-            AppearancePageItem::AnimationSpeed => Self::slider_setting(
-                item,
-                animation_speed_slider(
-                    resolved.animation_speed.value,
-                    |speed, _, cx| {
-                        let key = ConfigKey::AnimationSpeed;
-                        written(key, set_config_key(key, &format!("{speed:.2}")), cx);
-                    },
-                    cx,
-                ),
-            ),
+            AppearancePageItem::App(row @ ZzRow::ProgramColors) => Self::boolean_setting(
+                ConfigKey::ProgramColors,
+                row.title(),
+                resolved.program_colors,
+            )
+            .description("Fill sidebar tiles with the running program's colors"),
             AppearancePageItem::App(row @ ZzRow::WindowBackgroundBlur) => Self::boolean_setting(
                 ConfigKey::WindowBackgroundBlur,
                 row.title(),
@@ -881,9 +825,18 @@ impl SettingsView {
                 row.title(),
                 resolved.use_system_titlebar,
             ),
-        };
-
-        entry.position(position).into_any_element()
+            item => {
+                return kit_row(
+                    item,
+                    appearance,
+                    saved,
+                    &self.appearance_controls,
+                    false,
+                    window,
+                    cx,
+                );
+            }
+        })
     }
 
     fn ui_zoom_setting(&self, cx: &Context<Self>) -> SettingEntry {
@@ -893,98 +846,6 @@ impl SettingsView {
                 .flex_none()
                 .child(NumberInput::new(&self.ui_zoom).on(settings_card_ground(cx))),
         )
-    }
-
-    fn theme_mode_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        SettingEntry::new("Mode").control(theme_mode_control(
-            interface_theme::pinned_theme_mode(resolved.theme_mode.value),
-            |mode, _, cx| {
-                let mode = interface_theme::theme_mode_setting(mode);
-                if let Err(error) = set_config_key(ConfigKey::ThemeMode, mode.as_str()) {
-                    report_write_error("set", ConfigKey::ThemeMode.as_str(), &error, cx);
-                }
-            },
-            cx,
-        ))
-    }
-
-    fn accent_setting(&self, cx: &Context<Self>) -> SettingEntry {
-        let title = AppearancePageItem::Accent.title().unwrap_or_default();
-        let mode = cx.theme().mode;
-        let custom = ColorPicker::new(&self.accent_picker, ala::transparent_black())
-            .label("Accent")
-            .swatch(px(SWATCH));
-        let swatches = with_theme_picks(cx, |picks| {
-            accent_swatches(
-                picks,
-                mode,
-                custom,
-                |name, _, cx| {
-                    let key = ConfigKey::ChromeAccent;
-                    let result = match name {
-                        Some(name) => set_config_key(key, name),
-                        None => remove_config_key(key),
-                    };
-                    written(key, result, cx);
-                },
-                cx,
-            )
-        });
-        SettingEntry::new(title).control(swatches)
-    }
-
-    fn tint_hue_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let title = AppearancePageItem::TintHue.title().unwrap_or_default();
-        SettingEntry::new(title).control(tint_hue_slider(
-            resolved.chrome_tint_hue.value,
-            |hue, _, cx| {
-                let key = ConfigKey::ChromeTintHue;
-                written(key, set_config_key(key, &format!("{hue:.0}")), cx);
-            },
-            cx,
-        ))
-    }
-
-    fn tint_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
-        let title = AppearancePageItem::Tint.title().unwrap_or_default();
-        SettingEntry::new(title).control(tint_slider(
-            resolved.chrome_tint.value,
-            |tint, _, cx| {
-                let key = ConfigKey::ChromeTint;
-                written(key, set_config_key(key, &format!("{tint:.2}")), cx);
-            },
-            cx,
-        ))
-    }
-
-    fn themes_setting(cx: &Context<Self>) -> SettingEntry {
-        let title = AppearancePageItem::Themes.title().unwrap_or_default();
-        let picker = with_theme_picks(cx, |picks| {
-            let ids = picks
-                .themes
-                .iter()
-                .map(|(id, theme)| (id.clone(), theme.materials.font.is_some()))
-                .collect::<Vec<_>>();
-            theme_picker(
-                picks,
-                move |index, _, cx| {
-                    let (id, sets_font) = &ids[index];
-                    written(
-                        ConfigKey::InterfaceTheme,
-                        set_interface_theme(id, *sets_font),
-                        cx,
-                    );
-                },
-                |menu, _, _| {
-                    menu.item(
-                        PopupMenuItem::new("Import from clipboard")
-                            .on_click(|_, _, cx| import_theme_from_clipboard(cx)),
-                    )
-                },
-                cx,
-            )
-        });
-        SettingEntry::new(title).control(picker)
     }
 
     fn app_icon_setting(resolved: &AppConfig, cx: &Context<Self>) -> SettingEntry {
@@ -1474,26 +1335,30 @@ impl SettingsView {
     }
 
     fn about_section(cx: &Context<Self>) -> AnyElement {
+        use penna::settings::about::{
+            about_build_stack, about_copy_button, about_hero, about_project_stack,
+        };
+        use zz_ui::settings::about::{ABOUT_LOGO_SIZE, ZZ_ABOUT, build_info};
+
         Self::scroll_column("settings-about")
-            .child(zz_ui::settings::about::about_hero(
-                img(crate::app_icon::about_logo(cx.theme().mode))
-                    .size(px(zz_ui::settings::about::ABOUT_LOGO_SIZE)),
+            .child(about_hero(
+                &ZZ_ABOUT,
+                img(crate::app_icon::about_logo(cx.theme().mode)).size(px(ABOUT_LOGO_SIZE)),
                 cx,
             ))
             .child(Self::updates_stack(cx))
-            .child(zz_ui::settings::about::about_build_stack(
+            .child(about_build_stack(
+                &ZZ_ABOUT,
                 platform(),
-                zz_ui::settings::about::about_copy_button("settings-about-copy-build-info")
+                about_copy_button("settings-about-copy-build-info")
                     .on(settings_card_ground(cx))
                     .on_click(|_, _, cx| {
-                        cx.write_to_clipboard(ClipboardItem::new_string(
-                            zz_ui::settings::about::build_info(&platform()),
-                        ));
+                        cx.write_to_clipboard(ClipboardItem::new_string(build_info(&platform())));
                         toast::push(Notification::success("Copied build information"), cx);
                     }),
                 cx,
             ))
-            .child(zz_ui::settings::about::about_project_stack(cx))
+            .child(about_project_stack(&ZZ_ABOUT, cx))
             .into_any_element()
     }
 
@@ -2120,13 +1985,89 @@ pub(crate) fn written(key: ConfigKey, result: std::io::Result<()>, cx: &mut App)
     }
 }
 
-fn custom_accent(accent: zz_client::appearance::AccentSetting) -> Option<ala::Hsla> {
-    match accent {
-        zz_client::appearance::AccentSetting::Color([r, g, b, a]) => {
-            Some(ala::Rgba { r, g, b, a }.into())
-        }
-        _ => None,
+fn appearance(cx: &App) -> Appearance {
+    let resolved = config::resolved_config(cx);
+    Appearance {
+        mode: Some(resolved.theme_mode.value.as_str().to_owned()),
+        theme: Some(config::themes(cx).selected.to_string()),
+        overrides: config::theme_overrides(cx),
+        contrast: resolved.chrome_contrast.value,
+        ui_font_family: config::ui_font_family(cx).value.unwrap_or_default(),
+        zoom: penna::UiZoom::get(cx),
+        animations: resolved.animations.value,
+        animation_speed: resolved.animation_speed.value,
     }
+}
+
+fn appearance_changed(change: AppearanceChange, cx: &mut App) {
+    let (key, result) = match change {
+        AppearanceChange::Mode(mode) => {
+            let mode = interface_theme::theme_mode_setting(mode);
+            (
+                ConfigKey::ThemeMode,
+                set_config_key(ConfigKey::ThemeMode, mode.as_str()),
+            )
+        }
+        AppearanceChange::Theme(id) => {
+            let sets_font = interface_theme::builtin_theme(&id)
+                .or_else(|| {
+                    config::themes(cx)
+                        .saved
+                        .iter()
+                        .find(|(saved, _)| *saved == id)
+                        .map(|(_, theme)| theme)
+                })
+                .is_some_and(|theme| theme.materials.font.is_some());
+            (
+                ConfigKey::InterfaceTheme,
+                set_interface_theme(&id, sets_font),
+            )
+        }
+        AppearanceChange::Accent(accent) => {
+            let key = ConfigKey::ChromeAccent;
+            let result = match accent {
+                Some(accent) => set_config_key(key, &accent),
+                None => remove_config_key(key),
+            };
+            (key, result)
+        }
+        AppearanceChange::TintHue(hue) => {
+            let key = ConfigKey::ChromeTintHue;
+            (key, set_config_key(key, &format!("{hue:.0}")))
+        }
+        AppearanceChange::Tint(tint) => {
+            let key = ConfigKey::ChromeTint;
+            (key, set_config_key(key, &format!("{tint:.2}")))
+        }
+        AppearanceChange::Radius(radius) => {
+            let key = ConfigKey::WidgetCornerRadius;
+            (key, set_config_key(key, &format!("{radius:.0}")))
+        }
+        AppearanceChange::Contrast(contrast) => {
+            let key = ConfigKey::ChromeContrast;
+            (key, set_config_key(key, &format!("{contrast:.2}")))
+        }
+        AppearanceChange::UiFont(family) => (
+            ConfigKey::UiFontFamily,
+            config::set_ui_font_family((!family.is_empty()).then_some(family.as_str())),
+        ),
+        AppearanceChange::Zoom(zoom) => {
+            crate::ui_scale::set_percent(zoom * 100.0, cx);
+            return;
+        }
+        AppearanceChange::Animations(animations) => {
+            let key = ConfigKey::Animations;
+            (
+                key,
+                set_config_key(key, if animations { "true" } else { "false" }),
+            )
+        }
+        AppearanceChange::AnimationSpeed(speed) => {
+            let key = ConfigKey::AnimationSpeed;
+            (key, set_config_key(key, &format!("{speed:.2}")))
+        }
+    };
+    written(key, result, cx);
 }
 
 fn shown_ui_font(

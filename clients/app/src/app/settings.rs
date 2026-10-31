@@ -1,28 +1,29 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use ala::{
-    AnyElement, App, Context, Entity, FocusHandle, IntoElement, SharedString, Subscription,
-    TextInputMode, Window, canvas, div, prelude::*, px,
+    AnyElement, App, Context, Entity, IntoElement, Subscription, TextInputMode, Window, canvas,
+    div, prelude::*, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, IconName, Theme, ThemeMode, UiZoom,
-    color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
+    ActiveTheme as _, Colorize as _, IconName, Theme,
     input::{InputEvent, InputState, NumberInput},
     menu::PopupMenuItem,
     select::{Select, SelectEvent, SelectState},
-    settings::appearance::{
-        ADVANCED_DISCLOSURE, SWATCH, ThemePicks, accent_swatches, animation_speed_slider,
-        appearance_page, contrast_slider, corner_radius_slider, percent_slider, theme_mode_control,
-        theme_picker, tint_hue_slider, tint_slider, ui_font_select, zoom_slider,
+    settings::{
+        about::{about_build_stack, about_copy_button, about_hero, about_project_stack},
+        appearance::{
+            ADVANCED_DISCLOSURE, AppearanceControls, appearance_page, kit_row, percent_slider,
+        },
     },
     switch::Switch,
 };
 use zz_ui::{
-    interface_theme,
+    interface_theme::{self, AppearanceChange},
     pane_look::{PaneLook, pane_color},
     settings::{
         SettingEntry, SettingsFold, SettingsScrollColumn, SettingsSection, SettingsSelectItem,
         SettingsStack, StackPosition,
+        about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
         appearance::{AppearancePageItem, ZzRow, appearance_page_items},
         settings_card_ground, settings_list_disclosure_header, settings_page_heading,
         settings_preview, settings_scroll_column, settings_title_bar,
@@ -93,12 +94,13 @@ pub(super) fn sections() -> Vec<SettingsSection> {
 }
 
 fn interface_zoom(preferences: &Preferences, system_scale: f32, phone: bool) -> f32 {
+    let zoom = preferences.appearance.zoom;
     if phone {
-        preferences.zoom * system_scale.min(PHONE_MAX_ZOOM)
+        zoom * system_scale.min(PHONE_MAX_ZOOM)
     } else if preferences.system_text_size {
-        preferences.zoom * system_scale
+        zoom * system_scale
     } else {
-        preferences.zoom
+        zoom
     }
 }
 
@@ -115,17 +117,14 @@ impl Preferences {
         if !cx.has_global::<PlatformReduceMotion>() {
             cx.set_global(PlatformReduceMotion(cx.reduce_motion()));
         }
-        cx.set_reduce_motion(cx.global::<PlatformReduceMotion>().0 || !self.animations);
-        cx.set_animation_speed(self.animation_speed);
         cx.set_global(zz_ui::program::ProgramColors(self.program_colors));
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let (contrast, text_scale) = (
-            self.contrast * if system.increase_contrast { 1.25 } else { 1.0 },
+            self.appearance.contrast * if system.increase_contrast { 1.25 } else { 1.0 },
             system.text_scale,
         );
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
-        let (contrast, text_scale) = (self.contrast, 1.0);
-        let zoom = interface_zoom(self, text_scale, phone());
+        let (contrast, text_scale) = (self.appearance.contrast, 1.0);
         let pinned = interface_theme::pinned_theme_mode(self.theme_mode());
         #[cfg(any(target_os = "ios", target_os = "android"))]
         let mode = {
@@ -136,13 +135,17 @@ impl Preferences {
                     ala::WindowAppearance::Light
                 }
             }));
-            Some(pinned.unwrap_or_else(|| ThemeMode::from(cx.window_appearance())))
+            Some(pinned.unwrap_or_else(|| penna::ThemeMode::from(cx.window_appearance())))
         };
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         let mode = pinned;
-        self.shown_theme().activate(mode, Some(window), cx);
+        let mut shown = self.appearance.clone();
+        shown.set_theme_mode(mode);
+        shown.contrast = contrast;
+        shown.zoom = interface_zoom(self, text_scale, phone());
+        shown.animations &= !cx.global::<PlatformReduceMotion>().0;
+        shown.apply(self.saved(), Some(window), cx);
         window.set_default_corner_smoothing(penna::CORNER_SMOOTHING);
-        Theme::global_mut(cx).set_contrast(contrast);
         cx.set_global(zz_ui::pip::PipOpacity(self.pip_background_opacity));
         cx.set_global(PaneLook {
             frames: self.gaps,
@@ -173,8 +176,6 @@ impl Preferences {
         let terminal =
             localized_font_appearance(&connection.read(cx).core, &available_fonts, "Lilex", cx);
         Theme::global_mut(cx).mono_font_family = terminal.font_families[0].clone().into();
-        cx.set_global(UiZoom(zoom));
-        window.set_zoom(zoom);
         connection.update(cx, Connection::set_color_scheme);
         cx.refresh_windows();
     }
@@ -186,7 +187,8 @@ impl Preferences {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.zoom = ((self.zoom + step) * 10.0).round().clamp(5.0, 30.0) / 10.0;
+        let zoom = &mut self.appearance.zoom;
+        *zoom = ((*zoom + step) * 10.0).round().clamp(5.0, 30.0) / 10.0;
         self.save();
         self.apply(connection, window, cx);
     }
@@ -197,19 +199,17 @@ impl Preferences {
         window: &mut Window,
         cx: &mut App,
     ) {
-        self.zoom = 1.0;
+        self.appearance.zoom = 1.0;
         self.save();
         self.apply(connection, window, cx);
     }
 }
 
 pub(super) struct Controls {
-    accent: Entity<ColorPickerState>,
+    appearance: AppearanceControls,
     panes: [Entity<InputState>; 4],
-    ui_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     terminal_font: Entity<SelectState<Vec<SettingsSelectItem>>>,
     palette_layout: Entity<SelectState<Vec<SettingsSelectItem>>>,
-    zoom: FocusHandle,
     advanced: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -221,18 +221,43 @@ impl Controls {
         cx: &mut Context<AppShell>,
     ) -> Self {
         let mut subscriptions = Vec::new();
-        let accent = cx.new(|cx| ColorPickerState::new(custom_accent(preferences), window, cx));
-        subscriptions.push(cx.subscribe_in(
-            &accent,
-            window,
-            |this, _, event: &ColorPickerEvent, window, cx| {
-                let ColorPickerEvent::Change(color) = event;
-                this.preferences.overrides.accent =
-                    color.map(|color| penna::to_hex(color.opaque()));
-                this.preferences.save();
-                this.preferences.apply(&this.connection, window, cx);
+        let changed = cx.entity().downgrade();
+        let menu = cx.entity().downgrade();
+        let appearance = AppearanceControls::new(
+            &preferences.appearance,
+            move |change, window, cx| {
+                let _ = changed.update(cx, |this, cx| this.appearance_changed(change, window, cx));
             },
-        ));
+            window,
+            cx,
+        )
+        .theme_menu(move |popup, _, cx| {
+            let saved = menu.upgrade().is_some_and(|view| {
+                let preferences = &view.read(cx).preferences;
+                preferences.saved_theme(preferences.theme_id()).is_some()
+            });
+            let import = menu.clone();
+            let delete = menu.clone();
+            popup
+                .item(
+                    PopupMenuItem::new("Import from clipboard").on_click(move |_, window, cx| {
+                        let _ = import.update(cx, |this, cx| this.import_theme(window, cx));
+                    }),
+                )
+                .when(saved, |popup| {
+                    popup
+                        .separator()
+                        .item(
+                            PopupMenuItem::new("Delete theme").on_click(move |_, window, cx| {
+                                let _ = delete.update(cx, |this, cx| {
+                                    let id = this.preferences.theme_id().to_owned();
+                                    this.preferences.delete_theme(&id);
+                                    this.theme_changed(window, cx);
+                                });
+                            }),
+                        )
+                })
+        });
         let pane_values = [
             preferences.pip_background_opacity,
             preferences.pane_inactive_opacity,
@@ -299,7 +324,6 @@ impl Controls {
             ));
             input
         });
-        let ui_font = ui_font_select(Some(preferences.shown_ui_font()), window, cx);
         let mut families = cx.text_system().all_font_names();
         families.retain(|family| !family.starts_with('.') && !family.trim().is_empty());
         families.sort_by_cached_key(|family| family.to_lowercase());
@@ -319,25 +343,18 @@ impl Controls {
                 cx,
             );
         });
-        for (select, terminal) in [(&ui_font, false), (&terminal_font, true)] {
-            subscriptions.push(cx.subscribe_in(
-                select,
-                window,
-                move |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
-                    let SelectEvent::Confirm(Some(value)) = event else {
-                        return;
-                    };
-                    if terminal {
-                        this.preferences.terminal_font_family =
-                            (!value.is_empty()).then(|| value.clone());
-                    } else {
-                        this.preferences.ui_font_family.clone_from(value);
-                    }
-                    this.preferences.save();
-                    this.preferences.apply(&this.connection, window, cx);
-                },
-            ));
-        }
+        subscriptions.push(cx.subscribe_in(
+            &terminal_font,
+            window,
+            |this, _, event: &SelectEvent<Vec<SettingsSelectItem>>, window, cx| {
+                let SelectEvent::Confirm(Some(value)) = event else {
+                    return;
+                };
+                this.preferences.terminal_font_family = (!value.is_empty()).then(|| value.clone());
+                this.preferences.save();
+                this.preferences.apply(&this.connection, window, cx);
+            },
+        ));
         let choice =
             |choices: &[(&str, &str)], current: &str, window: &mut Window, cx: &mut App| {
                 let items = choices
@@ -366,32 +383,36 @@ impl Controls {
             },
         ));
         Self {
-            accent,
+            appearance,
             panes,
-            ui_font,
             terminal_font,
             palette_layout,
-            zoom: cx.focus_handle(),
             advanced: false,
             _subscriptions: subscriptions,
         }
-    }
-
-    fn sync_theme_inputs(&self, preferences: &Preferences, window: &mut Window, cx: &mut App) {
-        let accent = custom_accent(preferences);
-        self.accent
-            .update(cx, |picker, cx| picker.set_color(accent, window, cx));
-        let font = preferences.shown_ui_font().to_owned();
-        self.ui_font.update(cx, |select, cx| {
-            select.set_selected_value(&font, window, cx);
-        });
     }
 }
 
 impl AppShell {
     pub(super) fn theme_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.settings_controls
-            .sync_theme_inputs(&self.preferences, window, cx);
+        let preferences = &self.preferences;
+        self.settings_controls.appearance.sync(
+            &preferences.appearance,
+            preferences.saved(),
+            window,
+            cx,
+        );
+        self.preferences.save();
+        self.preferences.apply(&self.connection, window, cx);
+    }
+
+    fn appearance_changed(
+        &mut self,
+        change: AppearanceChange,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.preferences.change_appearance(change);
         self.preferences.save();
         self.preferences.apply(&self.connection, window, cx);
     }
@@ -596,38 +617,38 @@ impl AppShell {
                 let items = appearance_page_items(false, false, self.settings_controls.advanced)
                     .into_iter()
                     .filter(|item| {
-                        matches!(
-                            item,
-                            AppearancePageItem::Title
-                                | AppearancePageItem::Group { .. }
-                                | AppearancePageItem::Advanced { .. }
-                                | AppearancePageItem::ThemeMode
-                                | AppearancePageItem::Accent
-                                | AppearancePageItem::TintHue
-                                | AppearancePageItem::Tint
-                                | AppearancePageItem::Themes
-                                | AppearancePageItem::App(ZzRow::ProgramColors)
-                                | AppearancePageItem::CornerRadius
-                                | AppearancePageItem::ChromeContrast
-                                | AppearancePageItem::UiFontFamily
-                                | AppearancePageItem::UiZoom
-                                | AppearancePageItem::Animations
-                                | AppearancePageItem::AnimationSpeed
-                        )
+                        !matches!(item, AppearancePageItem::App(row) if *row != ZzRow::ProgramColors)
                     })
                     .filter(|item| !narrow || !matches!(item, AppearancePageItem::Title))
                     .collect::<Vec<_>>();
-                let zoom = &self.settings_controls.zoom;
+                let zoom = self.settings_controls.appearance.zoom_focus();
                 let row_focus = items
                     .iter()
                     .map(|item| matches!(item, AppearancePageItem::UiZoom).then(|| zoom.clone()))
                     .collect::<Vec<_>>();
                 let view = cx.entity();
-                return appearance_page(section.title(), items, move |item, position, _, cx| {
-                    view.update(cx, |this, cx| {
-                        this.appearance_item(item, position, narrow, cx)
-                    })
-                })
+                return appearance_page(
+                    section.title(),
+                    items,
+                    move |item, position, window, cx| {
+                        view.update(cx, |this, cx| match item {
+                            AppearancePageItem::Advanced { expanded } => {
+                                settings_list_disclosure_header(
+                                    ADVANCED_DISCLOSURE,
+                                    "Advanced",
+                                    expanded,
+                                )
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.settings_controls.advanced =
+                                        !this.settings_controls.advanced;
+                                    cx.notify();
+                                }))
+                                .into_any_element()
+                            }
+                            item => this.appearance_item(item, position, narrow, window, cx),
+                        })
+                    },
+                )
                 .row_focus(row_focus)
                 .when_some(fold, |page, fold| page.large_title(section.title(), fold))
                 .into_any_element();
@@ -778,82 +799,12 @@ impl AppShell {
         item: AppearancePageItem,
         position: StackPosition,
         narrow: bool,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let entry = match item {
-            AppearancePageItem::ThemeMode => {
-                let view = cx.entity().downgrade();
-                SettingEntry::new("Mode").control(theme_mode_control(
-                    interface_theme::pinned_theme_mode(self.preferences.theme_mode()),
-                    move |mode, window, cx| {
-                        let mode = interface_theme::theme_mode_setting(mode);
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.mode = Some(mode.as_str().into());
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        });
-                    },
-                    cx,
-                ))
-            }
-            AppearancePageItem::UiFontFamily => SettingEntry::new("UI font").control(font_select(
-                &self.settings_controls.ui_font,
-                "UI font",
-                "System default",
-                cx,
-            )),
-            AppearancePageItem::UiZoom => {
-                let view = cx.entity().downgrade();
-                let slider = zoom_slider(
-                    self.preferences.zoom,
-                    &self.settings_controls.zoom,
-                    move |zoom, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.zoom = zoom;
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        });
-                    },
-                    cx,
-                );
-                let title = item.title().unwrap_or_default();
-                with_control(SettingEntry::new(title), slider, narrow)
-            }
-            AppearancePageItem::ChromeContrast => {
-                let title = item.title().unwrap_or_default();
-                let view = cx.entity().downgrade();
-                let slider = contrast_slider(
-                    self.preferences.contrast,
-                    move |contrast, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.contrast = contrast;
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        });
-                    },
-                    cx,
-                );
-                with_control(SettingEntry::new(title), slider, narrow)
-            }
-            AppearancePageItem::AnimationSpeed => {
-                let title = item.title().unwrap_or_default();
-                let view = cx.entity().downgrade();
-                let slider = animation_speed_slider(
-                    self.preferences.animation_speed,
-                    move |speed, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.animation_speed = speed;
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        });
-                    },
-                    cx,
-                );
-                with_control(SettingEntry::new(title), slider, narrow)
-            }
-            AppearancePageItem::App(ZzRow::ProgramColors) => {
-                let title = ZzRow::ProgramColors.title();
-                SettingEntry::new(title)
+            AppearancePageItem::App(row @ ZzRow::ProgramColors) => Some(
+                SettingEntry::new(row.title())
                     .description("Fill sidebar tiles with the running program's colors")
                     .control(
                         Switch::new("settings-program-colors")
@@ -863,150 +814,23 @@ impl AppShell {
                                 this.preferences.save();
                                 this.preferences.apply(&this.connection, window, cx);
                             })),
-                    )
-            }
-            AppearancePageItem::Animations => SettingEntry::new("Animations").control(
-                Switch::new("settings-animations")
-                    .checked(self.preferences.animations)
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        this.preferences.animations = !this.preferences.animations;
-                        this.preferences.save();
-                        this.preferences.apply(&this.connection, window, cx);
-                    })),
+                    ),
             ),
-            AppearancePageItem::Accent => {
-                let title = item.title().unwrap_or_default();
-                let custom =
-                    ColorPicker::new(&self.settings_controls.accent, ala::transparent_black())
-                        .label("Accent")
-                        .swatch(px(SWATCH));
-                let view = cx.entity().downgrade();
-                let swatches = accent_swatches(
-                    &theme_picks(&self.preferences),
-                    cx.theme().mode,
-                    custom,
-                    move |name, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.overrides.accent = name.map(str::to_owned);
-                            this.theme_changed(window, cx);
-                        });
-                    },
-                    cx,
-                );
-                with_control(SettingEntry::new(title), swatches, narrow)
-            }
-            AppearancePageItem::TintHue => {
-                let title = item.title().unwrap_or_default();
-                let hue = self
-                    .preferences
-                    .overrides
-                    .tint_hue
-                    .unwrap_or(interface_theme::DEFAULT_TINT_HUE);
-                let view = cx.entity().downgrade();
-                let slider = tint_hue_slider(
-                    hue,
-                    move |hue, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.overrides.tint_hue = Some(hue);
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        });
-                    },
-                    cx,
-                );
-                with_control(SettingEntry::new(title), slider, narrow)
-            }
-            AppearancePageItem::Tint => {
-                let title = item.title().unwrap_or_default();
-                let tint = self.preferences.overrides.tint.unwrap_or(0.0);
-                let view = cx.entity().downgrade();
-                let slider = tint_slider(
-                    tint,
-                    move |tint, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.overrides.tint = Some(tint);
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        });
-                    },
-                    cx,
-                );
-                with_control(SettingEntry::new(title), slider, narrow)
-            }
-            AppearancePageItem::Themes => {
-                let title = item.title().unwrap_or_default();
-                let picks = theme_picks(&self.preferences);
-                let ids = picks
-                    .themes
-                    .iter()
-                    .map(|(id, _)| id.clone())
-                    .collect::<Vec<_>>();
-                let view = cx.entity().downgrade();
-                let menu_view = view.clone();
-                let saved = self
-                    .preferences
-                    .saved_theme(self.preferences.theme_id())
-                    .is_some();
-                SettingEntry::new(title).control(theme_picker(
-                    &picks,
-                    move |index, window, cx| {
-                        let id = ids[index].clone();
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.set_interface_theme(&id);
-                            this.theme_changed(window, cx);
-                        });
-                    },
-                    move |menu, _, _| {
-                        let import = menu_view.clone();
-                        let delete = menu_view.clone();
-                        menu.item(PopupMenuItem::new("Import from clipboard").on_click(
-                            move |_, window, cx| {
-                                let _ = import.update(cx, |this, cx| this.import_theme(window, cx));
-                            },
-                        ))
-                        .when(saved, |menu| {
-                            menu.separator()
-                                .item(PopupMenuItem::new("Delete theme").on_click(
-                                    move |_, window, cx| {
-                                        let _ = delete.update(cx, |this, cx| {
-                                            let id = this.preferences.theme_id().to_owned();
-                                            this.preferences.delete_theme(&id);
-                                            this.theme_changed(window, cx);
-                                        });
-                                    },
-                                ))
-                        })
-                    },
-                    cx,
-                ))
-            }
-            AppearancePageItem::Advanced { expanded } => {
-                return settings_list_disclosure_header(ADVANCED_DISCLOSURE, "Advanced", expanded)
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.settings_controls.advanced = !this.settings_controls.advanced;
-                        cx.notify();
-                    }))
-                    .into_any_element();
-            }
-            AppearancePageItem::CornerRadius => {
-                let title = item.title().unwrap_or_default();
-                let view = cx.entity().downgrade();
-                let slider = corner_radius_slider(
-                    self.preferences.widget_corner_radius(),
-                    move |radius, window, cx| {
-                        let _ = view.update(cx, |this, cx| {
-                            this.preferences.overrides.radius = Some(radius);
-                            this.preferences.save();
-                            this.preferences.apply(&this.connection, window, cx);
-                        });
-                    },
-                    cx,
-                );
-                with_control(SettingEntry::new(title), slider, narrow)
-            }
-            _ => return div().into_any_element(),
+            AppearancePageItem::App(_) => None,
+            item => kit_row(
+                item,
+                &self.preferences.appearance,
+                self.preferences.saved(),
+                &self.settings_controls.appearance,
+                narrow,
+                window,
+                cx,
+            ),
         };
-        entry.position(position).into_any_element()
+        entry.map_or_else(
+            || div().into_any_element(),
+            |entry| entry.position(position).into_any_element(),
+        )
     }
 
     fn pane_setting(&self, control: PaneControl, cx: &mut Context<Self>) -> SettingEntry {
@@ -1115,8 +939,6 @@ impl AppShell {
 }
 
 fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
-    use zz_ui::settings::about;
-
     static LOGOS: std::sync::LazyLock<[Arc<ala::Image>; 2]> = std::sync::LazyLock::new(|| {
         let [light, dark]: [&'static [u8]; 2] = if zz_protocol::app_identity::DEVELOPMENT {
             [
@@ -1144,19 +966,21 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
     let copied = platform.clone();
     let logo = Arc::clone(&LOGOS[usize::from(cx.theme().mode.is_dark())]);
     settings_scroll_column("settings-about")
-        .child(about::about_hero(
-            ala::img(logo).size(px(about::ABOUT_LOGO_SIZE)),
+        .child(about_hero(
+            &ZZ_ABOUT,
+            ala::img(logo).size(px(ABOUT_LOGO_SIZE)),
             cx,
         ))
-        .child(about::about_build_stack(
+        .child(about_build_stack(
+            &ZZ_ABOUT,
             platform,
-            about::about_copy_button("settings-about-copy-build-info")
+            about_copy_button("settings-about-copy-build-info")
                 .on(settings_card_ground(cx))
                 .on_click(move |_, window, cx| {
                     use penna::WindowExt as _;
-                    cx.write_to_clipboard(ala::ClipboardItem::new_string(about::build_info(
-                        &copied,
-                    )));
+                    cx.write_to_clipboard(ala::ClipboardItem::new_string(
+                        zz_ui::settings::about::build_info(&copied),
+                    ));
                     window.push_notification(
                         penna::notification::Notification::success("Copied build information"),
                         cx,
@@ -1164,7 +988,7 @@ fn about_page(cx: &mut Context<AppShell>) -> SettingsScrollColumn {
                 }),
             cx,
         ))
-        .child(about::about_project_stack(cx))
+        .child(about_project_stack(&ZZ_ABOUT, cx))
 }
 
 pub(super) fn with_control(
@@ -1188,38 +1012,6 @@ fn number_field_event(event: &InputEvent, window: &mut Window, cx: &mut App) {
 pub(super) fn finish_field(window: &mut Window, cx: &mut App) {
     if super::compact::keyboard_visible(window) {
         window.blur(cx);
-    }
-}
-
-fn custom_accent(preferences: &Preferences) -> Option<ala::Hsla> {
-    preferences
-        .overrides
-        .accent
-        .as_deref()
-        .filter(|accent| !interface_theme::ACCENTS.contains(accent))
-        .and_then(|accent| interface_theme::accent_color(accent, ThemeMode::Dark))
-}
-
-pub(super) fn theme_picks(preferences: &Preferences) -> ThemePicks<'_> {
-    let themes = interface_theme::builtin_themes()
-        .iter()
-        .map(|(id, theme)| (SharedString::from(*id), theme))
-        .chain(
-            preferences
-                .themes
-                .iter()
-                .map(|(id, theme)| (SharedString::from(id.clone()), theme)),
-        )
-        .collect::<Vec<_>>();
-    let active = preferences.theme_id();
-    let selected = themes
-        .iter()
-        .position(|(id, _)| **id == *active)
-        .unwrap_or(0);
-    ThemePicks {
-        themes,
-        selected,
-        overrides: &preferences.overrides,
     }
 }
 
@@ -1537,19 +1329,17 @@ mod tests {
 
     #[test]
     fn phone_scale_is_ui_zoom_over_the_capped_system_text_size() {
-        let zoomed = Preferences {
-            zoom: 1.5,
+        let mut zoomed = Preferences {
             system_text_size: false,
             ..Preferences::default()
         };
+        zoomed.appearance.zoom = 1.5;
         assert_eq!(interface_zoom(&zoomed, 1.12, false), 1.5);
         assert!((interface_zoom(&zoomed, 1.12, true) - 1.68).abs() < 1e-6);
         assert!((interface_zoom(&zoomed, 0.82, true) - 1.23).abs() < 1e-6);
         assert!((interface_zoom(&zoomed, 1.9, true) - 2.025).abs() < 1e-6);
-        let following = Preferences {
-            zoom: 1.5,
-            ..Preferences::default()
-        };
+        let mut following = Preferences::default();
+        following.appearance.zoom = 1.5;
         assert!((interface_zoom(&following, 1.2, false) - 1.8).abs() < 1e-6);
     }
 
@@ -1593,10 +1383,8 @@ mod tests {
         use penna::{ActiveTheme as _, ThemeMode};
 
         cx.update(zz_ui::init);
-        let mut preferences = Preferences {
-            mode: Some("dark".into()),
-            ..Preferences::default()
-        };
+        let mut preferences = Preferences::default();
+        preferences.appearance.mode = Some("dark".into());
         preferences
             .import_theme(
                 r##"{"name":"Neon","materials":{"radius":3,"outline":0.4,"float":{"strength":0.5}},"roles":{"button":{"shape":"pill"}},"dark":{"accent":"#ff00ff"}}"##,
@@ -1618,8 +1406,8 @@ mod tests {
                 penna::Shape::Pill
             );
         });
-        preferences.overrides.radius = Some(5.0);
-        preferences.overrides.accent = Some("green".into());
+        preferences.appearance.overrides.radius = Some(5.0);
+        preferences.appearance.overrides.accent = Some("green".into());
         window.update(|window, cx| {
             preferences.apply(&connection, window, cx);
             let theme = cx.theme();

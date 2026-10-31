@@ -886,12 +886,15 @@ read those files on its own. Accepting imports the found donors; Cancel imports 
 accepts other paths. Existing installs receive this offer once more after the ownership change.
 
 The desktop and the thin clients build the Interface page from the same item list
-(`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group and
-App Icon row added), laid out by `penna::settings::appearance::appearance_page`, with the same row
-titles (`AppearancePageItem::title`) and the same picker, swatches and sliders (`theme_picker` and
-`accent_swatches` over a `ThemePicks`, `tint_hue_slider`, `tint_slider`,
-`corner_radius_slider`, `contrast_slider`); the thin clients keep the values in their own preferences instead of `zz/config`
-(see [interface themes](/designs/interface-themes.md)). The Materials group that ended Advanced
+(`zz_ui::settings::appearance::appearance_page_items`: penna's list with zz's Sidebar group, App
+Icon row and window rows added as `ZzRow`s), laid out by
+`penna::settings::appearance::appearance_page`. Both draw penna's rows with `kit_row` from a
+`penna::interface_theme::Appearance`, with the row titles from `AppearancePageItem::title`, and
+draw only their `ZzRow`s themselves; the desktop also keeps its own UI font select and UI zoom
+field. Each edit comes back as an `AppearanceChange`: the desktop builds its `Appearance` from
+`zz/config` and writes each change to its key, and the thin clients keep the `Appearance`
+flattened into their preferences, so the file keeps the same keys (see
+[interface themes](/designs/interface-themes.md)). The Materials group that ended Advanced
 until 2026-10-15 is gone: a theme sets outlines, shadows, row inset, primary and glass together,
 and only Corner radius stays, first under Advanced. Corner radius and Contrast are sliders like
 the tint's, with their value beside them: the radius from 0 to 25 in whole pixels ("10px"), the

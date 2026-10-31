@@ -12,6 +12,7 @@ use penna::{
     input::{InputState, NumberInput},
     menu::PopupMenuItem,
     select::{Select, SelectState},
+    settings::about::{about_build_stack, about_copy_button, about_hero, about_project_stack},
     settings::appearance::{
         SWATCH, ThemePicks, accent_swatches, animation_speed_slider, contrast_slider,
         corner_radius_slider, interface_theme_preview, picker_tile, theme_mode_control,
@@ -24,9 +25,7 @@ use zz_ui::{
     interface_theme::{InterfaceTheme, Materials, ThemeOverrides, builtin_themes},
     settings::{
         SettingEntry, SettingsFold, SettingsSection, SettingsSelectItem, SettingsStack,
-        about::{
-            ABOUT_LOGO_SIZE, about_build_stack, about_copy_button, about_hero, about_project_stack,
-        },
+        about::{ABOUT_LOGO_SIZE, ZZ_ABOUT},
         appearance::{AppearancePageItem, ZzRow, window_opacity_slider},
         panes_page,
         panes_preview::PanesPreview,
@@ -733,13 +732,18 @@ fn about(_: &mut Window, cx: &mut App) -> AnyElement {
             "page",
             div().id("about").flex().h(px(780.0)).child(
                 settings_scroll_column("settings-about")
-                    .child(about_hero(ala::img(logo).size(px(ABOUT_LOGO_SIZE)), cx))
+                    .child(about_hero(
+                        &ZZ_ABOUT,
+                        ala::img(logo).size(px(ABOUT_LOGO_SIZE)),
+                        cx,
+                    ))
                     .child(about_build_stack(
+                        &ZZ_ABOUT,
                         "browser · wasm32",
                         about_copy_button("copy-build"),
                         cx,
                     ))
-                    .child(about_project_stack(cx)),
+                    .child(about_project_stack(&ZZ_ABOUT, cx)),
             ),
         )
         .into_any_element()
