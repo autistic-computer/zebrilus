@@ -573,6 +573,10 @@ impl AgentView {
         });
         let mention = target_picker(&palette_backend(mux.clone()), Some(input.clone()), cx);
         mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
+        let chat_release =
+            zz_ui::agent::chat::ChatPane::close_on_release(window, cx, |view: &mut Self| {
+                &mut view.chat
+            });
         Self {
             pane,
             mux,
@@ -612,6 +616,7 @@ impl AgentView {
                 input_subscription,
                 controller_observer,
                 mux_observer,
+                chat_release,
             ],
         }
     }

@@ -367,6 +367,7 @@ impl AgentLens {
             cx,
         );
         mention.update(cx, |picker, _| picker.set_own_chat(Some(pane)));
+        let chat_release = ChatPane::close_on_release(window, cx, |lens: &mut Self| &mut lens.chat);
         Self {
             pane,
             connection,
@@ -406,6 +407,7 @@ impl AgentLens {
                 subscription,
                 timeline_observer,
                 input_observer,
+                chat_release,
             ],
         }
     }

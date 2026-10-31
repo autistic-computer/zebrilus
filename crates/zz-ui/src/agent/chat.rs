@@ -1,16 +1,17 @@
 use std::{
+    cell::RefCell,
     collections::{HashMap, HashSet},
     hash::{DefaultHasher, Hash as _, Hasher as _},
     ops::Range,
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
 };
 
 use ala::{
-    AnyElement, App, ClipboardItem, Div, FontWeight, HighlightStyle, Image, ImageFormat,
-    IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, StyledText,
-    Transformation, Window, div, percentage, prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Context, Div, FontWeight, Global, HighlightStyle, Image,
+    ImageFormat, IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, StyledText,
+    Subscription, Transformation, Window, div, percentage, prelude::*, px, relative,
 };
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
 use zz_protocol::{
@@ -107,7 +108,14 @@ pub struct ChatPane {
     known: HashSet<ItemId>,
     primed: bool,
     retired: Vec<Arc<Image>>,
+    shown: Rc<RefCell<HashSet<u64>>>,
+    listed: bool,
 }
+
+#[derive(Default)]
+struct ShownImages(Vec<Weak<RefCell<HashSet<u64>>>>);
+
+impl Global for ShownImages {}
 
 impl ChatPane {
     pub fn click(&mut self, click: &ChatClick) {
@@ -163,7 +171,7 @@ impl ChatPane {
         self.retired.extend(
             self.open
                 .images
-                .extract_if(|id, _| view.item(id).is_none())
+                .extract_if(|id, _| view.item(id).is_none_or(|item| item.body.images.is_empty()))
                 .flat_map(|(_, images)| images.to_vec()),
         );
         let now = chat_rows::now_ms();
@@ -188,20 +196,63 @@ impl ChatPane {
     }
 
     pub fn release(&mut self, window: &mut Window, cx: &mut App) {
-        if self.retired.is_empty() {
-            return;
-        }
-        let shown = self
+        *self.shown.borrow_mut() = self
             .open
             .images
             .values()
             .flat_map(|images| images.iter().map(|image| image.id))
-            .collect::<HashSet<_>>();
+            .collect();
+        if !self.listed {
+            self.listed = true;
+            cx.default_global::<ShownImages>()
+                .0
+                .push(Rc::downgrade(&self.shown));
+        }
+        self.free(Some(window), cx);
+    }
+
+    pub fn close(&mut self, window: Option<&mut Window>, cx: &mut App) {
+        let open = std::mem::take(&mut self.open.images);
+        self.retired
+            .extend(open.into_values().flat_map(|images| images.to_vec()));
+        self.shown.borrow_mut().clear();
+        self.free(window, cx);
+    }
+
+    pub fn close_on_release<T: 'static>(
+        window: &Window,
+        cx: &mut Context<T>,
+        chat: fn(&mut T) -> &mut ChatPane,
+    ) -> Subscription {
+        let handle = window.window_handle();
+        cx.on_release(move |owner, cx| {
+            let chat = chat(owner);
+            if handle
+                .update(cx, |_, window, cx| chat.close(Some(window), cx))
+                .is_err()
+            {
+                chat.close(None, cx);
+            }
+        })
+    }
+
+    fn free(&mut self, mut window: Option<&mut Window>, cx: &mut App) {
+        if self.retired.is_empty() {
+            return;
+        }
+        let panes = &mut cx.default_global::<ShownImages>().0;
+        panes.retain(|pane| pane.strong_count() > 0);
+        let mut shown = HashSet::new();
+        for pane in panes.iter().filter_map(Weak::upgrade) {
+            shown.extend(pane.borrow().iter().copied());
+        }
         for image in self.retired.drain(..) {
             if shown.contains(&image.id) {
                 continue;
             }
-            if let Some(render) = Arc::clone(&image).get_render_image(window, cx) {
+            if let Some(window) = window.as_deref_mut()
+                && let Some(render) = Arc::clone(&image).get_render_image(window, cx)
+            {
                 cx.drop_image(render, Some(window));
             }
             image.remove_asset(cx);
@@ -1325,16 +1376,30 @@ fn record_row(request: &RequestView, cx: &App) -> AnyElement {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use ala::{
-        Context, IntoElement, Render, TestAppContext, VisualTestContext, Window, div, prelude::*,
-        px,
+        Context, Entity, Image, IntoElement, Render, RenderImage, Subscription, TestAppContext,
+        VisualTestContext, Window, div, prelude::*, px,
     };
     use zz_protocol::agent_stream::AgentImage;
     use zz_protocol::chat::{ChatEvent, ItemBody, ItemId, ItemKind, ItemStatus, TurnBy, TurnId};
 
     use super::{ChatClick, ChatHooks, ChatOpen, ChatPane, ChatView, chat_thread};
 
+    const SHOT: &[u8] = include_bytes!("../fixtures/wide-screenshot.png");
+
+    fn shot(tag: u8) -> Vec<u8> {
+        let mut data = SHOT.to_vec();
+        data.push(tag);
+        data
+    }
+
     fn pasted(view: &mut ChatView, id: &str, text: &str) {
+        pasted_shot(view, id, text, SHOT.to_vec());
+    }
+
+    fn pasted_shot(view: &mut ChatView, id: &str, text: &str, data: Vec<u8>) {
         view.apply(&ChatEvent::ItemStarted {
             item: ItemId::new(id),
             turn: Some(TurnId(1)),
@@ -1344,7 +1409,7 @@ mod tests {
                 text: text.to_owned(),
                 images: vec![AgentImage {
                     format: "image/png".to_owned(),
-                    data: include_bytes!("../fixtures/wide-screenshot.png").to_vec(),
+                    data,
                 }],
                 ..ItemBody::default()
             },
@@ -1483,6 +1548,205 @@ mod tests {
             assert!(!image.is_asset_cached(cx));
             assert!(!window.has_image_atlas_entry(&render));
         });
+    }
+
+    struct Owner {
+        view: ChatView,
+        chat: ChatPane,
+        _release: Subscription,
+    }
+
+    impl Owner {
+        fn new(view: ChatView, window: &Window, cx: &mut Context<Self>) -> Self {
+            Self {
+                view,
+                chat: ChatPane::default(),
+                _release: ChatPane::close_on_release(window, cx, |owner: &mut Self| {
+                    &mut owner.chat
+                }),
+            }
+        }
+
+        fn image(&self, id: &str) -> Arc<Image> {
+            self.chat.open.images[&ItemId::new(id)][0].clone()
+        }
+    }
+
+    impl Render for Owner {
+        fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            self.chat.sync(&self.view);
+            self.chat.release(window, cx);
+            div().w(px(420.0)).child(chat_thread(
+                &self.view,
+                10,
+                &self.chat.open,
+                0.0,
+                &ChatHooks::default(),
+                cx,
+            ))
+        }
+    }
+
+    struct Owners {
+        first: Option<Entity<Owner>>,
+        second: Entity<Owner>,
+    }
+
+    impl Render for Owners {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .children(self.first.clone())
+                .child(self.second.clone())
+        }
+    }
+
+    fn painted(cx: &mut VisualTestContext) {
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        cx.run_until_parked();
+    }
+
+    fn decoded(cx: &mut VisualTestContext, image: &Arc<Image>) -> Arc<RenderImage> {
+        cx.update(|window, cx| image.clone().get_render_image(window, cx))
+            .expect("the pasted image should be decoded")
+    }
+
+    fn held(cx: &mut VisualTestContext, image: &Arc<Image>, render: &RenderImage) -> (bool, bool) {
+        cx.update(|window, cx| {
+            (
+                image.is_asset_cached(cx),
+                window.has_image_atlas_entry(render),
+            )
+        })
+    }
+
+    #[ala::test]
+    fn a_ninth_pasted_image_frees_the_oldest_ones_pixels(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut view = ready("s1");
+        pasted_shot(&mut view, "u0", "", shot(0));
+        let slot = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let captured = slot.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let owner = cx.new(|cx| Owner::new(view, window, cx));
+            captured.replace(Some(owner.clone()));
+            penna::Root::new(owner, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        let owner = slot.borrow_mut().take().expect("owner");
+        painted(cx);
+        let oldest = cx.update(|_, cx| owner.read(cx).image("u0"));
+        let oldest_pixels = decoded(cx, &oldest);
+        assert_eq!(held(cx, &oldest, &oldest_pixels), (true, true));
+        for index in 1..9 {
+            cx.update(|_, cx| {
+                owner.update(cx, |owner, cx| {
+                    pasted_shot(&mut owner.view, &format!("u{index}"), "", shot(index));
+                    cx.notify();
+                });
+            });
+            painted(cx);
+        }
+        let newest = cx.update(|_, cx| owner.read(cx).image("u8"));
+        let newest_pixels = decoded(cx, &newest);
+        let items = cx.update(|_, cx| {
+            let mut items = owner
+                .read(cx)
+                .chat
+                .open
+                .images
+                .keys()
+                .map(|id| id.as_str().to_owned())
+                .collect::<Vec<_>>();
+            items.sort();
+            items
+        });
+        assert_eq!(
+            items,
+            (1..9).map(|index| format!("u{index}")).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            held(cx, &oldest, &oldest_pixels),
+            (false, false),
+            "the ninth image frees the first one's pixels"
+        );
+        assert_eq!(held(cx, &newest, &newest_pixels), (true, true));
+    }
+
+    #[ala::test]
+    fn closing_a_chat_frees_its_images_but_not_one_another_chat_shows(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut first = ready("s1");
+        pasted_shot(&mut first, "both", "", shot(1));
+        pasted_shot(&mut first, "own", "", shot(2));
+        let mut second = ready("s2");
+        pasted_shot(&mut second, "both", "", shot(1));
+        let slot = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let captured = slot.clone();
+        let (_, cx) = cx.add_window_view(move |window, cx| {
+            let owners = cx.new(|cx| Owners {
+                first: Some(cx.new(|cx| Owner::new(first, window, cx))),
+                second: cx.new(|cx| Owner::new(second, window, cx)),
+            });
+            captured.replace(Some(owners.clone()));
+            penna::Root::new(owners, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        let owners = slot.borrow_mut().take().expect("owners");
+        painted(cx);
+        let (shared, own) = cx.update(|_, cx| {
+            let first = owners.read(cx).first.clone().expect("first chat");
+            let first = first.read(cx);
+            (first.image("both"), first.image("own"))
+        });
+        let shared_pixels = decoded(cx, &shared);
+        let own_pixels = decoded(cx, &own);
+        assert_eq!(held(cx, &shared, &shared_pixels), (true, true));
+        assert_eq!(held(cx, &own, &own_pixels), (true, true));
+        cx.update(|_, cx| {
+            owners.update(cx, |owners, cx| {
+                owners.first = None;
+                cx.notify();
+            });
+        });
+        painted(cx);
+        assert_eq!(
+            held(cx, &own, &own_pixels),
+            (false, false),
+            "the closed chat's own image is freed"
+        );
+        assert_eq!(
+            held(cx, &shared, &shared_pixels),
+            (true, true),
+            "the other chat still shows the shared image"
+        );
+    }
+
+    #[ala::test]
+    fn closing_the_window_frees_its_chats_images(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let mut view = ready("s1");
+        pasted_shot(&mut view, "own", "", shot(3));
+        let slot = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let captured = slot.clone();
+        let (_, window_cx) = cx.add_window_view(move |window, cx| {
+            let owner = cx.new(|cx| Owner::new(view, window, cx));
+            captured.replace(Some(owner.downgrade()));
+            penna::Root::new(owner, window, cx)
+        });
+        let window_cx: &mut VisualTestContext = window_cx;
+        let owner = slot.borrow_mut().take().expect("owner");
+        painted(window_cx);
+        let image = window_cx.update(|_, cx| owner.upgrade().expect("owner").read(cx).image("own"));
+        window_cx.update(|window, cx| {
+            assert!(image.is_asset_cached(cx));
+            window.remove_window();
+        });
+        cx.run_until_parked();
+        assert!(owner.upgrade().is_none(), "the window took its chat along");
+        cx.update(|cx| assert!(!image.is_asset_cached(cx)));
     }
 
     #[ala::test]
