@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicU64;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
-use serde_json::Value;
+use serde_json::{Value, json};
 use zz_protocol::chat::{
     Answer, Ask, ChatEvent, ChatView, ItemId, ItemKind, ItemStatus, RequestClose, Usage,
 };
@@ -485,4 +486,125 @@ fn a_question_from_before_this_codex_started_is_not_waiting() {
         }
     )));
     assert_eq!(*pane.sent.lock(), ["go on"]);
+}
+
+#[test]
+fn a_question_from_before_this_codex_started_leaves_no_running_row() {
+    let rollout = Rollout::new(false);
+    let codex = Codex {
+        born: Some(4_000_000_000),
+        ..Codex::default()
+    };
+    let (_, payloads) = rollout.lens_with(Arc::default(), codex);
+    let (shadow, view) = chat(&payloads);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let question = view.item(&ItemId::new(QUESTION)).expect("the question row");
+    assert_eq!(question.status, ItemStatus::Completed);
+    assert!(view.open_items().next().is_none());
+    assert!(view.open_requests().next().is_none());
+}
+
+#[test]
+fn a_codex_resumed_in_the_same_pane_drops_the_question_the_old_one_left_open() {
+    let rollout = Rollout::new(false);
+    let pane = Arc::new(Pane::default());
+    let (mut lens, opened) = rollout.lens(pane.clone());
+    lens.next_locate = Instant::now() + Duration::from_mins(1);
+    let relaunch = |lens: &mut Lens, born: u64| {
+        let Source::Codex(codex) = &mut lens.source else {
+            unreachable!()
+        };
+        codex.launched(std::process::id(), Some(born));
+    };
+    relaunch(&mut lens, 1);
+    assert!(
+        lens.source.asking(),
+        "a question asked after it started stays"
+    );
+    relaunch(&mut lens, 4_000_000_000);
+    assert!(!lens.source.asking());
+    let resumed = lens.tick();
+    assert!(
+        updates(&resumed)
+            .iter()
+            .any(|update| update["toolCallId"] == QUESTION && update["status"] == "completed"),
+        "{resumed:?}"
+    );
+    assert!(
+        resumed
+            .iter()
+            .any(|payload| matches!(payload, AgentStreamPayload::PermissionResolved { .. }))
+    );
+    let mut shadow = Shadow::recording().codex().attached();
+    shadow_lens(&mut shadow, &opened);
+    shadow_lens(&mut shadow, &resumed);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let mut view = ChatView::default();
+    for event in &shadow.events {
+        view.apply(event)
+            .unwrap_or_else(|skip| panic!("skipped {event:?}: {skip:?}"));
+    }
+    assert!(view.open_items().next().is_none());
+    assert!(view.open_requests().next().is_none());
+    let sent = lens.command(RuntimeCommand::Prompt {
+        turn_id: 9,
+        prompt: AgentPrompt {
+            text: "go on".to_owned(),
+            ..AgentPrompt::default()
+        },
+    });
+    assert!(sent.is_empty(), "{sent:?}");
+    assert_eq!(*pane.sent.lock(), ["go on"]);
+}
+
+#[test]
+fn loading_a_rollout_reads_each_child_where_order_matters_not_before_every_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let event = |payload: Value| {
+        json!({ "timestamp": "2026-10-31T10:00:01.000Z", "type": "event_msg", "payload": payload })
+            .to_string()
+    };
+    let mut lines = vec![event(json!({ "type": "task_started" }))];
+    for child in 0..3 {
+        let thread = format!("child-{child}");
+        lines.push(event(json!({ "type": "item_completed", "item": {
+            "type": "SubAgentActivity", "id": format!("call_{child}"), "kind": "started",
+            "agent_thread_id": thread, "agent_path": format!("/root/a{child}"),
+        } })));
+        std::fs::write(
+            dir.path()
+                .join(format!("rollout-2026-10-31T10-00-01-{thread}.jsonl")),
+            format!(
+                "{}\n",
+                json!({ "type": "session_meta", "payload": {
+                    "id": thread, "parent_thread_id": "root", "cwd": "/work",
+                } })
+            ),
+        )
+        .unwrap();
+    }
+    for index in 0..200 {
+        lines.push(event(json!({ "type": "item_completed", "item": {
+            "type": "Reasoning", "id": format!("r{index}"), "summary_text": ["**x**"], "raw_content": [],
+        } })));
+    }
+    lines.push(event(json!({ "type": "task_complete" })));
+    let root = dir.path().join("rollout-2026-10-31T10-00-00-root.jsonl");
+    std::fs::write(&root, lines.join("\n") + "\n").unwrap();
+    let mut codex = Codex::default();
+    codex.load(root, Path::new("/work"));
+    assert_eq!(codex.children.len(), 3);
+    for child in &codex.children {
+        let reads = child.tail.as_ref().expect("found the child").reads;
+        assert!(reads <= 2, "{} read {reads} times", child.thread);
+    }
+}
+
+#[test]
+fn a_duration_too_long_to_count_is_left_off() {
+    let entry = json!({ "type": "event_msg", "payload": { "type": "item_completed", "item": {
+        "duration": { "secs": u64::MAX, "nanos": 999_999_999 },
+    } } });
+    let updates = super::timed(vec![json!({ "sessionUpdate": "tool_call" })], &entry);
+    assert!(updates[0]["_meta"].is_null(), "{updates:?}");
 }

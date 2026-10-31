@@ -101,11 +101,13 @@ but no pane opens them now.
     `list_agents` and `close_agent` are not shown.
   - Subagents: a started `SubAgentActivity` names the child's thread. The runtime finds the child
     rollout `rollout-*-<thread>.jsonl` next to the root, or in the last 7 day folders when the
-    root sits in `$CODEX_HOME/sessions` (it keeps looking for 30 s), reads it before each root
-    line and feeds it through `Translator::child`: the child's tools nest under the agent row and
+    root sits in `$CODEX_HOME/sessions` (it keeps looking for 30 s), and feeds it through
+    `Translator::child`: the child's tools nest under the agent row and
     its last message becomes the row's result. Its children's children work the same way. With
     no child file, the row waits for the root's `FINAL_ANSWER` agent message and takes the text
-    after `Payload:` as its result (or ends with the turn).
+    after `Payload:` as its result (or ends with the turn). Child files are read where order
+    matters, before an agent's end, a `FINAL_ANSWER` message and a turn's end, and after each
+    batch of root lines; rows are ordered by their own timestamps.
   - Times: each line's `timestamp` stamps its rows, and `completed_at_ms - started_at_ms` (or a
     command's `duration`) goes in `_meta.zz.ms`, so a step starts that long before its record.
   - `token_count` lines fill the context ring (`usage_update`).
@@ -163,8 +165,10 @@ lens, from typing in the terminal, or from a peer message.
   offers no Stop once the turn is over. While it is open the lens refuses prompts and steers, so
   they cannot land in the overlay as option picks, and holds a model or effort pick until the
   question is answered. A question recorded before the running Codex process started is ignored,
-  since its overlay died with the old process. A plain `send_user_message_async` message stays
-  text.
+  since its overlay died with the old process, and its row closes with no answer. The same goes
+  for one still open when `codex resume` starts a new process in the pane: the thread and rollout
+  stay the same, so the runtime drops it when it sees the new process. A plain
+  `send_user_message_async` message stays text.
 
 # Slash commands
 
@@ -329,8 +333,15 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   (`chat_bridge::attach_images`) keeps a message's text and base64 together under 6 MiB so one
   stream item stays under the 9 MiB batch cap, and the chat item carries them as `ItemBody::images`;
   a user item is held to that cap rather than the 1 MiB one other chat items get
-  (`runtime::validate_payload`). The bubble draws them first as 140 px tiles that open full size on
-  click; `ChatPane::sync` decodes each item's images once and keeps them in `ChatOpen::images`.
+  (`runtime::validate_payload`). In chat mode a prompt sent through the native drivers gets the
+  same treatment: `runtime::prompt_echo` puts its images on its first text chunk (an empty one
+  for a prompt that is only images), and the image chunks after it stay for the timeline. The
+  lens and both drivers drop `_meta.zz.images` from the raw update once the bridge has read it,
+  so the stream carries each image once; the driver's journal keeps it, so a restored session's
+  chat shows it again. The fanout's chat log keeps images on the last 8 items that have them, so
+  a late client's replay shows older pastes as text only. The bubble draws them first as 140 px
+  tiles that open full size on click; `ChatPane::sync` decodes each item's images once and keeps
+  them in `ChatOpen::images`.
 - **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
   a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
   chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while

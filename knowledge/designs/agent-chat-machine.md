@@ -58,7 +58,12 @@ vendor frame -> driver -> Fact -> ChatMachine (owns TurnMachine) -> ChatEvent ->
   ids, the queue), so a text delta is a `stay` with one emitted event and no clone.
 - The lens runner (`agent/lens.rs`) runs the same bridge over what it reads from a terminal
   Claude Code or Codex session (its readiness held back until the transcript history is in, its
-  busy and idle as the turn), so every lens pane already sends chat events too.
+  busy and idle as the turn), so every lens pane already sends chat events too. A reload (a
+  rewind, `/clear`, Codex `/new`, a new rollout) closes the chat's session and its
+  `SessionSwitched` readies it again. Only the end of a lens prompt counts as idle: the lens sends
+  `Activity { busy: false }` with its `PromptFinished`, so a `/model` or `/effort` it handles for
+  the composer, or a prompt it refuses, settles the host's turn and leaves a running chat turn
+  alone.
 - What a Claude Code transcript says differently from stream-json, found in a live run on
   2026-10-29 (2.1.312) and handled by the shared translator and the lens:
   - Explore and other subagents run in the background by default. The launch result carries
@@ -99,7 +104,7 @@ the journal or from memory, and the chat events would be lost. So the lane keeps
 chat event in order, with text appends and body changes folded into the item's start and only the
 latest queue and usage kept. Both rebuild paths end with `Restart` and that log, which folds to the
 same view (the random test checks it on every seed). The log grows with items and turns, not with
-streamed text. A daemon restart needs no journal for this: the driver restores the session's
+streamed text, and keeps pasted images only on the last 8 items that have them. A daemon restart needs no journal for this: the driver restores the session's
 history and the bridge replays it through the machine.
 
 # Rules

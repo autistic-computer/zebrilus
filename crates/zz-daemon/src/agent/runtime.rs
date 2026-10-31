@@ -30,7 +30,7 @@ use agent_client_protocol::{
 use async_channel::{Receiver, Sender};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use parking_lot::Mutex;
-use serde_json::Value;
+use serde_json::{Value, json};
 #[cfg(test)]
 use zz_protocol::ClientInstanceId;
 use zz_protocol::chat::{ChatEvent, ItemKind};
@@ -41,6 +41,7 @@ use zz_protocol::{
 };
 
 use crate::agent::{
+    chat_bridge::attach_images,
     environment::{
         AgentWorkspaceEnvironment, with_platform_environment, with_workspace_environment,
     },
@@ -1817,6 +1818,43 @@ pub(crate) fn prompt_updates(
         }
     }
     updates
+}
+
+pub(crate) fn prompt_echo(
+    blocks: &[ContentBlock],
+    message_id: &MessageId,
+) -> Result<Vec<Value>, String> {
+    let mut updates = prompt_updates(blocks, message_id)
+        .iter()
+        .map(serde_json::to_value)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    let images = blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Image(image) => Some((image.mime_type.clone(), image.data.clone())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    if images.is_empty() {
+        return Ok(updates);
+    }
+    let text = updates
+        .iter()
+        .position(|update| update["content"]["type"] == "text")
+        .unwrap_or_else(|| {
+            updates.insert(
+                0,
+                json!({
+                    "sessionUpdate": "user_message_chunk",
+                    "messageId": message_id.0.as_ref(),
+                    "content": { "type": "text", "text": "" },
+                }),
+            );
+            0
+        });
+    attach_images(&mut updates[text], images);
+    Ok(updates)
 }
 
 fn capped(mut text: String, max_bytes: usize) -> String {
