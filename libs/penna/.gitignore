@@ -1,6 +1,4 @@
 /target
-/Cargo.lock
 /web/tokens/
 /storybook/target
-/storybook/Cargo.lock
 /storybook/dist
