@@ -1,5 +1,7 @@
 #[cfg(feature = "host")]
 mod artifact;
+#[cfg(feature = "chrome-import")]
+pub mod chrome_import;
 mod cookie;
 #[cfg(not(target_family = "wasm"))]
 pub mod element_picker;
