@@ -1,7 +1,7 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, IntoElement,
+    AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, Image, IntoElement,
     ParentElement as _, Render, ScrollWheelEvent, SharedString, Styled as _, Window, div,
     prelude::*, px,
 };
@@ -28,8 +28,9 @@ use zz_ui::agent::{
 use zz_ui::pane_look::pane_color;
 
 use super::fixtures::{
-    Script, agent, agents_script, approval, branch_question, checks_question, completed,
-    lens_approval, palettes, placement, question, story_hosts, terminal_ask,
+    Script, agent, agents_script, approval, branch_question, chart_screenshot, checks_question,
+    completed, lens_approval, palettes, placement, question, story_hosts, tab_strip_screenshot,
+    terminal_ask,
 };
 use crate::story::states;
 
@@ -738,7 +739,13 @@ const STEP_KINDS: [(ItemKind, &str); 8] = [
 
 fn steps_in(status: Option<&ItemStatus>) -> Script {
     let mut script = Script::new();
-    script.turn("Wire chat_column into both apps and test it.");
+    script
+        .turn("Wire chat_column into both apps and test it.")
+        .think(
+            "t0",
+            "**Planning the change**\n\nBoth apps build the column by hand, so one helper in zz-ui keeps their padding and width in step.",
+        )
+        .done("t0");
     for (index, (kind, target)) in STEP_KINDS.iter().enumerate() {
         let id = format!("s{index}");
         let body = if matches!(kind, ItemKind::Mcp | ItemKind::Tool) {
@@ -762,7 +769,7 @@ fn steps_in(status: Option<&ItemStatus>) -> Script {
 
 pub fn steps(window: &mut Window, cx: &mut App) -> AnyView {
     let open = || ChatOpen {
-        runs: vec![ItemId::new("s0")],
+        runs: vec![ItemId::new("t0")],
         ..ChatOpen::default()
     };
     let case = |label, status: Option<ItemStatus>| {
@@ -784,6 +791,18 @@ pub fn steps(window: &mut Window, cx: &mut App) -> AnyView {
         window,
         cx,
     )
+}
+
+fn shown(prompt: &str, images: &[Arc<Image>]) -> Script {
+    let mut script = Script::new();
+    script
+        .turn_with_images(prompt, images)
+        .reply(
+            "a1",
+            "Pinned tabs share the strip with the rest, so past thirty tabs their share drops below the icon.",
+        )
+        .finish(completed());
+    script
 }
 
 fn said(prompt: &str, reply: &str) -> Script {
@@ -855,6 +874,17 @@ pub fn messages(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(answered),
             ),
             ("two replies: Copy takes both", Thread::new(two)),
+            (
+                "a prompt with two screenshots: tiles come first and open full size",
+                Thread::new(shown(
+                    "Pinned tabs shrink to nothing past thirty tabs, and the chart shows when it started.",
+                    &[tab_strip_screenshot(), chart_screenshot()],
+                )),
+            ),
+            (
+                "a screenshot with no text",
+                Thread::new(shown("", &[tab_strip_screenshot()])),
+            ),
         ],
         window,
         cx,
@@ -930,6 +960,15 @@ sequenceDiagram\n\
     Lens-->>CLI: prompt typed into the TUI\n\
 ```";
 
+const FLOWCHART: &str = "```mermaid\n\
+flowchart LR\n\
+    Transcript[transcript line] --> Translator\n\
+    Translator --> Machine{chat machine}\n\
+    Machine -->|item| View[ChatView]\n\
+    Machine -->|ask| Card[question card]\n\
+    View --> Thread[chat thread]\n\
+```";
+
 const BROKEN_MERMAID: &str = "```mermaid\n\
 timelineDiagramX\n\
     Prompt --> Answer\n\
@@ -974,6 +1013,10 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
             (
                 "mermaid sequence diagram",
                 Thread::new(said("How does a prompt get to the lens?", SEQUENCE)),
+            ),
+            (
+                "mermaid flowchart",
+                Thread::new(said("Where does a chat row come from?", FLOWCHART)),
             ),
             (
                 "a source that does not parse",

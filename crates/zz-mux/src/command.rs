@@ -47692,7 +47692,7 @@ mod tests {
         assert!(rows.contains(&"debug-marker [note ...]"));
         assert!(
             rows.contains(
-                &"tools [--skill] [--context] [--install-hooks] [--remove-hooks] [section]"
+                &"tools [--skill] [--context] [--install-hooks] [--remove-hooks] [--fork-chat] [section]"
             )
         );
         assert!(rows.contains(

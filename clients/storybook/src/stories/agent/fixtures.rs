@@ -9,7 +9,7 @@ use zz_protocol::chat::{
 };
 use zz_protocol::{
     AgentTaskWire, PaneId, SessionId, WindowId,
-    agent_stream::{AgentQuestion, AgentQuestionOption},
+    agent_stream::{AgentImage, AgentQuestion, AgentQuestionOption},
 };
 use zz_ui::command::{PaletteHostId, PaletteStatus};
 use zz_ui::target::{TargetChat, TargetHost, TargetPane, TargetSession, TargetWindow};
@@ -48,6 +48,10 @@ impl Script {
     }
 
     pub fn turn(&mut self, prompt: &str) -> &mut Self {
+        self.turn_with_images(prompt, &[])
+    }
+
+    pub fn turn_with_images(&mut self, prompt: &str, images: &[Arc<Image>]) -> &mut Self {
         self.turn += 1;
         let at = self.at;
         self.event(&ChatEvent::TurnStarted {
@@ -56,7 +60,17 @@ impl Script {
             at,
         });
         let id = format!("u:story-{}", self.turn);
-        self.start(&id, None, ItemKind::User, ItemBody::text(prompt));
+        let body = ItemBody {
+            images: images
+                .iter()
+                .map(|image| AgentImage {
+                    format: image.format.mime_type().to_owned(),
+                    data: image.bytes.clone(),
+                })
+                .collect(),
+            ..ItemBody::text(prompt)
+        };
+        self.start(&id, None, ItemKind::User, body);
         self.done(&id)
     }
 

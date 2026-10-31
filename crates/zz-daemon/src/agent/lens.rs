@@ -532,6 +532,7 @@ struct Codex {
     launch: Facts,
     picks: CodexPicks,
     launch_pid: Option<u32>,
+    born: Option<u64>,
     children: Vec<CodexChild>,
     held: Vec<Value>,
     asked: Option<(String, Value)>,
@@ -605,6 +606,7 @@ impl Codex {
                     .map(|cwd| cwd.display().to_string()),
             );
             self.launch_pid = Some(pid);
+            self.born = zz_daemon_client::process_info::start_time(pid);
         }
         let (path, meta) = open_files(pid)
             .into_iter()
@@ -699,7 +701,7 @@ impl Codex {
                 let Some(item) = rollout::v2_item(&payload["item"]) else {
                     return;
                 };
-                self.note_question(&item);
+                self.note_question(&item, entry);
                 if item["type"] == "subAgentActivity" {
                     let thread = item["agentThreadId"].as_str().unwrap_or_default();
                     if item["kind"] == "started" {
@@ -728,10 +730,20 @@ impl Codex {
             .unwrap_or_default()
     }
 
-    fn note_question(&mut self, item: &Value) {
+    fn note_question(&mut self, item: &Value, entry: &Value) {
         match item["type"].as_str() {
             Some("userInputRequest") => {
-                self.asked = item["id"].as_str().map(|id| (id.to_owned(), item.clone()));
+                let asked = entry["timestamp"]
+                    .as_str()
+                    .and_then(|at| chrono::DateTime::parse_from_rfc3339(at).ok())
+                    .and_then(|at| u64::try_from(at.timestamp()).ok());
+                let stale = asked
+                    .zip(self.born)
+                    .is_some_and(|(asked, born)| asked < born);
+                self.asked = item["id"]
+                    .as_str()
+                    .filter(|_| !stale)
+                    .map(|id| (id.to_owned(), item.clone()));
             }
             Some("userInputReply") => {
                 let answered = item["replies"]
@@ -1431,7 +1443,7 @@ impl Lens {
     }
 
     fn set(&mut self, option_id: String, value: &str) -> Vec<AgentStreamPayload> {
-        let busy = self.busy || self.turn.is_some();
+        let busy = self.busy || self.turn.is_some() || self.source.asking();
         let setter = lens_settings::command(
             self.spec.provider,
             &option_id,
@@ -1474,7 +1486,7 @@ impl Lens {
     }
 
     fn release(&mut self) -> Vec<AgentStreamPayload> {
-        if self.busy || self.turn.is_some() {
+        if self.busy || self.turn.is_some() || self.source.asking() {
             return Vec::new();
         }
         let mut payloads = Vec::new();
@@ -2062,7 +2074,7 @@ pub(crate) async fn run_lens(spec: LensSpec, channels: RuntimeChannels) -> Resul
             Input::Tick => Vec::new(),
         };
         let chat = shadow_lens(&mut shadow, &payloads);
-        for payload in payloads.into_iter().chain(
+        for payload in payloads.into_iter().map(without_images).chain(
             chat.into_iter()
                 .map(|event| AgentStreamPayload::Chat { event }),
         ) {
@@ -2072,6 +2084,18 @@ pub(crate) async fn run_lens(spec: LensSpec, channels: RuntimeChannels) -> Resul
                 .map_err(|error| error.to_string())?;
         }
     }
+}
+
+fn without_images(mut payload: AgentStreamPayload) -> AgentStreamPayload {
+    if let AgentStreamPayload::Update { update } = &mut payload
+        && let Some(zz) = update
+            .get_mut("_meta")
+            .and_then(|meta| meta.get_mut("zz"))
+            .and_then(Value::as_object_mut)
+    {
+        zz.remove("images");
+    }
+    payload
 }
 
 fn shadow_lens(shadow: &mut Shadow, payloads: &[AgentStreamPayload]) -> Vec<ChatEvent> {

@@ -83947,7 +83947,13 @@ set-option -g @alias-mixed-next yes
                 .iter()
                 .map(|option| option.name)
                 .collect::<Vec<_>>(),
-            ["--skill", "--context", "--install-hooks", "--remove-hooks"]
+            [
+                "--skill",
+                "--context",
+                "--install-hooks",
+                "--remove-hooks",
+                "--fork-chat"
+            ]
         );
         assert!(spec.options.iter().all(|option| option.value.is_none()));
         assert_eq!(spec.positional_maximum(), Some(1));

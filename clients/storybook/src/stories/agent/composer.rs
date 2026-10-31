@@ -62,6 +62,7 @@ pub struct Draft {
     pub writable: bool,
     pub images: Vec<Arc<Image>>,
     pub prefix: Vec<AnyElement>,
+    pub settings: LensSettings,
 }
 
 pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
@@ -147,7 +148,7 @@ pub fn composer(draft: Draft, cx: &mut App) -> AnyElement {
             )
             .into_any_element(),
         ),
-        controls: footer_controls(&id, &claude_settings(), draft.writable, cx),
+        controls: footer_controls(&id, &draft.settings, draft.writable, cx),
     }
     .into_any_element()
 }
@@ -380,6 +381,7 @@ impl Render for Composers {
                     writable: case.writable,
                     images: case.images.clone(),
                     prefix,
+                    settings: claude_settings(),
                 },
                 cx,
             );

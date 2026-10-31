@@ -87,13 +87,17 @@ impl Rollout {
     }
 
     fn lens(&self, pane: Arc<Pane>) -> (Lens, Vec<AgentStreamPayload>) {
+        self.lens_with(pane, Codex::default())
+    }
+
+    fn lens_with(&self, pane: Arc<Pane>, codex: Codex) -> (Lens, Vec<AgentStreamPayload>) {
         let mut lens = Lens::with_source(
             LensSpec {
                 pane: PaneId(7),
                 provider: AgentProvider::Codex,
                 io: pane,
             },
-            Source::Codex(Box::default()),
+            Source::Codex(Box::new(codex)),
             Arc::new(AtomicU64::new(1)),
         );
         let mut payloads = lens.reload(
@@ -423,4 +427,62 @@ fn a_child_transcript_found_only_when_its_agent_ends_still_comes_first() {
         nested < ended,
         "the child's step came after its agent ended"
     );
+}
+
+#[test]
+fn a_pick_made_while_codex_asks_waits_for_the_answer() {
+    let rollout = Rollout::new(false);
+    let pane = Arc::new(Pane::default());
+    let (mut lens, _) = rollout.lens(pane.clone());
+    assert!(lens.source.asking());
+    let picked = lens.command(RuntimeCommand::SetConfigOption {
+        option_id: "effort".to_owned(),
+        value: "low".to_owned(),
+    });
+    assert!(
+        !picked
+            .iter()
+            .any(|payload| matches!(payload, AgentStreamPayload::SettingFailed { .. })),
+        "{picked:?}"
+    );
+    assert!(
+        lens.observe(false, Vec::new())
+            .iter()
+            .all(|payload| !matches!(payload, AgentStreamPayload::SettingFailed { .. }))
+    );
+    assert!(pane.sent.lock().is_empty());
+}
+
+#[test]
+fn a_question_from_before_this_codex_started_is_not_waiting() {
+    let rollout = Rollout::new(false);
+    let pane = Arc::new(Pane::default());
+    let codex = Codex {
+        born: Some(4_000_000_000),
+        ..Codex::default()
+    };
+    let (mut lens, payloads) = rollout.lens_with(pane.clone(), codex);
+    assert!(!lens.source.asking());
+    let status = lens.source.status().expect("status");
+    assert_eq!(status.waiting, None);
+    assert!(
+        !payloads
+            .iter()
+            .any(|payload| matches!(payload, AgentStreamPayload::PermissionRequested { .. }))
+    );
+    let sent = lens.command(RuntimeCommand::Prompt {
+        turn_id: 9,
+        prompt: AgentPrompt {
+            text: "go on".to_owned(),
+            ..AgentPrompt::default()
+        },
+    });
+    assert!(!sent.iter().any(|payload| matches!(
+        payload,
+        AgentStreamPayload::PromptFinished {
+            outcome: AgentPromptOutcome::Failed { .. },
+            ..
+        }
+    )));
+    assert_eq!(*pane.sent.lock(), ["go on"]);
 }

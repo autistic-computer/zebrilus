@@ -19,7 +19,7 @@ use zz_ui::{
 
 use super::{
     chat::{Frame, Show, Thread, Views, empty_column},
-    composer::{Draft, composer, composer_input},
+    composer::{Draft, claude_settings, codex_settings, composer, composer_input},
     fixtures::{PLAN, PLAN_STEPS, Script, completed, lens_approval, tasks, terminal_ask},
 };
 use crate::stories::workspace::fixtures::{CLAUDE, CODEX, Tone, terminal_body};
@@ -413,6 +413,10 @@ impl LensPane {
                 writable: true,
                 images: Vec::new(),
                 prefix,
+                settings: match self.scene.provider() {
+                    AgentProvider::Codex => codex_settings(),
+                    AgentProvider::ClaudeCode => claude_settings(),
+                },
             },
             cx,
         );
@@ -558,12 +562,12 @@ pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
             ),
         ),
         (
-            "Codex choosing its model: the footer's model button opens /model in the PiP; Esc or Done closes it",
+            "Codex showing its usage: commands only its own screen draws (/usage, /skills, /side) open in the PiP; Esc or Done closes it",
             build_with(
                 Scene::Codex,
                 Look::Page(480.0),
                 true,
-                Some("/model · Codex"),
+                Some("/usage · Codex"),
                 window,
                 cx,
             ),

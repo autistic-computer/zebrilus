@@ -19,7 +19,7 @@ use std::{
 use web_time::{Duration, Instant};
 
 use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Elevation, Emphasis, Ground, Icon, IconName,
+    ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Ground, Icon, IconName,
     PaintExt as _, PaintState, Sizable as _, StyledExt as _, Surface, SurfaceRole, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     badge::Badge,
@@ -3464,8 +3464,14 @@ impl MermaidTheme {
             "htmlLabels": false,
             "flowchart": {
                 "htmlLabels": false,
-                "padding": 16
+                "padding": 16,
+                "look": "classic"
             },
+            "class": { "look": "classic" },
+            "er": { "look": "classic" },
+            "requirement": { "look": "classic" },
+            "sequence": { "look": "classic" },
+            "state": { "look": "classic" },
             "gantt": {
                 "useWidth": 640,
                 "fontSize": 13,
@@ -3519,9 +3525,10 @@ struct MermaidThemeColors {
 
 impl MermaidThemeColors {
     fn from_app(cx: &App) -> Self {
+        let background = cx.theme().ground_of(crate::roles::CODE).opaque().fill;
         Self {
-            background: cx.theme().ground_of(crate::roles::CODE).opaque().fill,
-            surface: cx.theme().surface(Elevation::Panel).fill,
+            background,
+            surface: background.blend(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill),
             muted: cx
                 .theme()
                 .paint(Tone::Neutral, Emphasis::Soft)
@@ -3677,7 +3684,7 @@ text.journey-section, text.task, .legend {{ fill: {foreground} !important; }}
 }
 
 fn mermaid_theme_key(cx: &App) -> u64 {
-    const LOOK: u32 = 3;
+    const LOOK: u32 = 5;
     let mut hasher = DefaultHasher::new();
     LOOK.hash(&mut hasher);
     let colors = MermaidThemeColors::from_app(cx);
