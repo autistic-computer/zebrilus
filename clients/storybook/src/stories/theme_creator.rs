@@ -79,13 +79,16 @@ use crate::story::Framed as _;
 use crate::story::{Section, stateless};
 use penna::StyledExt as _;
 use penna_storybook::creator::{
-    GAP, PHONE_WIDTH, PLATE_PADDING, Preferences, READING, SAFE_BOTTOM, SCREEN_RADIUS, Toasts,
-    buttons, card, dialog, heading, labeled, over_backdrop, phone_frame, tiles,
+    GAP, PHONE_WIDTH, PLATE_PADDING, READING, SAFE_BOTTOM, SCREEN_RADIUS, card, heading, labeled,
+    over_backdrop, phone_frame, tiles,
 };
 use penna_storybook::kit::{
     menus::{bind_keys, pane_menu, view_menu},
     which_key::{prefix_header, prefix_rows},
 };
+use showcase::{Preferences, Toasts, buttons, dialog};
+
+mod showcase;
 
 pub const PLATES: &[Section] = &[
     Section {

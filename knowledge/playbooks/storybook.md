@@ -130,7 +130,8 @@ and which-key, markdown and an inline alert, and the phone chrome from `penna::c
 `penna::touch`. zz's creator is every surface of zz in eleven plates (Workspace, Flat sidebar,
 Lens, Panes, PiP, Start, Controls, Floating, Content, Phone, Drawers); its Controls, Floating and
 Phone plates reuse the creator's parts (`tiles`, `card`, `heading`, `labeled`, `over_backdrop`,
-`phone_frame`, `Preferences`, `Toasts`, `buttons`, `dialog`). The Lens region has
+`phone_frame`) and keep zz's own preferences card, buttons, toasts and dialog in
+`clients/storybook/src/stories/theme_creator/showcase.rs`. The Lens region has
 the plan-approval card with Show terminal and the welcome before a first prompt. The bar links (on
 windows wider than 1240px) jump between regions, and `theme-creator/<region>` in the address opens
 at one.
