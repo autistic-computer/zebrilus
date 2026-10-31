@@ -2,7 +2,7 @@
 type: Concept
 title: Browser history & omnibox autocomplete
 description: Profile-scoped browser history, recent-use ranking, learned selections, and Chrome-like URL-bar autocomplete.
-resource: crates/zz-chrome-import/src/recent_pages.rs
+resource: crates/zz/src/browser/recent_pages/store.rs
 tags:
 - browser
 - history
@@ -155,11 +155,11 @@ without weakening locally learned use.
 
 | File | Role |
 | --- | --- |
-| `crates/zz-chrome-import/src/recent_pages.rs` | Bounded storage, migration, matching, scoring, learning, deletion, and tests. |
+| `crates/zz/src/browser/recent_pages/store.rs` | Bounded storage, migration, matching, scoring, learning, deletion, and tests. |
 | `crates/zz/src/browser/recent_pages.rs` | Lazy desktop history loading, revision notifications, batched background saves, and shutdown flush. |
 | `crates/zz/src/browser/view.rs` | Input events, successful-use credit, keyboard selection, Escape stages, and result actions. |
 | `crates/zz-ui/src/browser.rs` | Native result panel and title/URL rows under the compact toolbar. |
-| `crates/zz-chrome-import/src/history.rs` | Read-only extraction of Chrome timestamps and use counts. |
+| `libs/ala-cef/src/chrome_import/history.rs` | Read-only extraction of Chrome timestamps and use counts. |
 
 # Related
 

@@ -119,7 +119,7 @@ profiles. See [remote browser egress](/designs/remote-browser-egress.md).
 
 ## Installed Chrome discovery
 
-`crates/zz-chrome-import/src/profiles.rs` refreshes the chooser once in the background
+`libs/ala-cef/src/chrome_import/profiles.rs` refreshes the chooser once in the background
 when the browser view mounts. It reads at most 16 MiB from the stable Google
 Chrome `Local State` file for the current OS:
 
@@ -223,9 +223,9 @@ egress host.
 | `src/profile.rs` | `BrowserProfilePaths`, profile-name rules, user-only permissions. |
 | `src/cookie.rs` | Bounded Cookie-Editor/Netscape parsing and CEF-neutral cookie normalization. |
 | `src/cef_runtime.rs` | Global `root_cache_path` setting and per-profile `RequestContext` creation. |
-| `crates/zz-chrome-import/src/profiles.rs` | Background Chrome profile discovery, safe platform paths, and the bounded sanitized label cache. |
-| `crates/zz-chrome-import/src/cookie.rs` | Site-scoped and profile-wide queries, cookie-identity deduplication, bounded SQLite snapshot, platform key lookup, Chrome decryption, and chunked CEF-neutral normalization. |
-| `crates/zz-chrome-import/src/history.rs` | Bounded read-only Chrome history snapshot, Chromium timestamp conversion, and newest-5,000 HTTP(S) extraction. |
+| `libs/ala-cef/src/chrome_import/profiles.rs` | Background Chrome profile discovery, safe platform paths, and the bounded sanitized label cache. |
+| `libs/ala-cef/src/chrome_import/cookie.rs` | Site-scoped and profile-wide queries, cookie-identity deduplication, bounded SQLite snapshot, platform key lookup, Chrome decryption, and chunked CEF-neutral normalization. |
+| `libs/ala-cef/src/chrome_import/history.rs` | Bounded read-only Chrome history snapshot, Chromium timestamp conversion, and newest-5,000 HTTP(S) extraction. |
 | `crates/zz/src/browser/recent_pages.rs` | Bounded profile-scoped history, legacy migration, Chrome merge, recent-page queries, and omnibox scoring. |
 
 # Related

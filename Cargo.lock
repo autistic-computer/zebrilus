@@ -322,25 +322,39 @@ dependencies = [
 name = "ala-cef"
 version = "0.1.0"
 dependencies = [
+ "aes 0.9.3",
+ "aes-gcm",
  "ala",
  "ash",
  "async-channel",
  "base64 0.23.1",
  "block2 0.6.2",
+ "cbc 0.2.1",
  "cef",
  "getrandom 0.4.3",
  "log",
  "objc2 0.6.4",
  "objc2-core-foundation",
+ "objc2-foundation 0.3.2",
  "objc2-io-surface",
  "objc2-metal 0.3.2",
+ "oo7",
  "parking_lot",
+ "pbkdf2 0.13.0",
  "pollster 1.0.1",
+ "rusqlite",
+ "security-framework",
  "serde",
  "serde_json",
+ "sha1 0.11.0",
+ "sha2 0.11.0",
+ "smol",
+ "tempfile",
  "thiserror 2.0.20",
  "url",
  "wgpu",
+ "windows 0.62.2",
+ "zeroize",
 ]
 
 [[package]]
@@ -11248,7 +11262,6 @@ dependencies = [
  "wgpu",
  "windows 0.62.2",
  "x11rb",
- "zz-chrome-import",
  "zz-cli",
  "zz-client",
  "zz-config",
@@ -11306,34 +11319,6 @@ dependencies = [
  "zz-protocol",
  "zz-terminal",
  "zz-ui",
-]
-
-[[package]]
-name = "zz-chrome-import"
-version = "0.22.0"
-dependencies = [
- "aes 0.9.3",
- "aes-gcm",
- "ala-cef",
- "base64 0.23.1",
- "cbc 0.2.1",
- "log",
- "objc2-foundation 0.3.2",
- "oo7",
- "pbkdf2 0.13.0",
- "rusqlite",
- "security-framework",
- "serde",
- "serde_json",
- "sha1 0.11.0",
- "sha2 0.11.0",
- "smol",
- "tempfile",
- "thiserror 2.0.20",
- "url",
- "windows 0.62.2",
- "zeroize",
- "zz-protocol",
 ]
 
 [[package]]

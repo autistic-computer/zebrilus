@@ -638,18 +638,18 @@ The rightmost three-dot menu opens URLs externally, copies/reloads the current U
 the zz-owned browser profile, exposes page zoom controls, toggles the element picker, imports
 cookies and history from a chosen stable Google Chrome source profile, retains bounded Cookie-Editor
 JSON/Netscape `cookies.txt` file import as a fallback, and clears current-origin site data behind a
-destructive zz-ui confirmation. `zz-chrome-import/src/profiles.rs` discovers stable signed-in and
+destructive zz-ui confirmation. ala-cef's `chrome_import/profiles.rs` discovers stable signed-in and
 signed-out profiles in the background from Chrome's bounded `Local State` display metadata,
 preserves Chrome's picker order, and supplies both the isolated-storage switcher and read-only import
 source picker. Source selection does not switch the pane: cookies enter its current zz profile and
 history enters the app-owned list. On macOS discovery uses `NSHomeDirectory()` so app-bundle launches
 do not depend on a shell `HOME` value.
 
-`zz-chrome-import/src/cookie.rs` snapshots the selected Chrome cookie database and WAL sidecars into a
+ala-cef's `chrome_import/cookie.rs` snapshots the selected Chrome cookie database and WAL sidecars into a
 bounded private temporary directory, reads every usable unpartitioned host, deduplicates the CEF
 identity by name/domain/path with later expiry winning, unlocks encrypted values through macOS
 Keychain or Linux Secret Service, and normalizes large profiles in bounded chunks before the public
-CEF `CookieManager` write. `zz-chrome-import/src/history.rs` independently snapshots `History`, extracts
+CEF `CookieManager` write. `chrome_import/history.rs` independently snapshots `History`, extracts
 the newest 5,000 HTTP(S) rows, and `browser/recent_pages.rs` merges them by URL with the newer visit winning.
 Neither path writes Chrome's profile or transfers passwords, autofill, cache, or local storage.
 Import/clear completion is surfaced through the mounted notification layer, and successful cookie
@@ -810,8 +810,8 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/terminal/view.rs` | `TerminalView` . per-pane terminal entity: input translation, selection, search, IME, cursor blink |
 | `crates/zz/src/terminal/element.rs` | `TerminalElement` . custom `Element` painting the terminal grid; `RowRenderCache` shaped-row cache |
 | `crates/zz/src/browser/view.rs` | `BrowserView` . per-pane browser entity: toolbar, address bar, CEF frame consumption, input translation, blank-page empty state |
-| `crates/zz-chrome-import` | Google-Chrome profile/cookie/history import . extracted to its own crate; see [zz-chrome-import](/crates/zz-chrome-import.md) |
 | `crates/zz/src/browser/recent_pages.rs` | App-owned browser history global . records live visits, merges Chrome imports by newest URL visit, persists `<data dir>/zz/browser/recent-pages`, feeds the browser empty state |
+| `crates/zz/src/browser/recent_pages/store.rs` | The stored history behind it: bounded file format, migration, matching, scoring, learning, deletion |
 | `crates/zz/src/browser/element.rs` | `BrowserElement` . custom `Element` painting the browser frame (GPU texture, macOS surface, or BGRA `RenderImage`) behind the resize cover |
 | `crates/zz/src/browser/controller.rs` | `BrowserController` . owns `BrowserRuntime`, per-pane `BrowserSession`s, latest-frame mailbox, CEF pump scheduling, shutdown state machine |
 | `crates/zz/src/workspace/sidebar.rs` | `WorkspaceSidebar` . one merged tree over every fleet host, each expanding into its own session/window/pane hierarchy; direct sidebar/titlebar modes, host and session creation, target deletion, and the window split/delete overflow menu |

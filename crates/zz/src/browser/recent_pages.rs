@@ -1,10 +1,10 @@
+mod store;
+
 use ala::{App, Global, Task};
 use std::{cell::OnceCell, future, path::PathBuf, sync::Arc, time::Duration};
-use zz_chrome_import::recent_pages::RecentPages as StoredPages;
+use store::RecentPages as StoredPages;
 
-pub(crate) use zz_chrome_import::recent_pages::{
-    HistorySuggestion, MAX_TITLE_BYTES, MAX_URL_BYTES, RecentPage,
-};
+pub(crate) use store::{HistorySuggestion, MAX_TITLE_BYTES, MAX_URL_BYTES, RecentPage};
 
 #[derive(Default)]
 pub(crate) struct RecentPages {

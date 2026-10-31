@@ -1,8 +1,7 @@
 <!-- okf:listing:start (managed by okf.py index — edit prose outside this fence) -->
 # Concepts
 
-* [ala-cef crate](ala-cef.md) - Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, and frame mailboxes.
-* [zz-chrome-import crate](zz-chrome-import.md) - Store-agnostic Google Chrome data import - profile discovery, cookie snapshot/decryption, and read-only history extraction - isolating the app's only sqlite/crypto/keychain dependencies.
+* [ala-cef crate](ala-cef.md) - Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, frame mailboxes, and Chrome profile, cookie and history import.
 * [zz-cli crate](zz-cli.md) - Headless CLI, daemon entrypoint, and terminal attach client shared with the desktop app.
 * [zz-client crate](zz-client.md) - Renderer-free client state, effects, chrome keymaps, and normalized pane geometry shared by native and terminal skins.
 * [zz-daemon-client crate](zz-daemon-client.md) - The client half of the zz daemon. Local and ssh endpoints, ssh askpass, the command and interactive clients, and the transport, config paths, and process facts the server shares.

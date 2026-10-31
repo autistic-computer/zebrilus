@@ -1,10 +1,10 @@
 ---
 type: Rust Crate
 title: ala-cef crate
-description: Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, and frame mailboxes.
+description: Browser-neutral abstraction over CEF Alloy off-screen rendering. Owns CEF init, named private request contexts, page zoom, input, lifecycle, frame mailboxes, and Chrome profile, cookie and history import.
 resource: libs/ala-cef/src/lib.rs
 tags: [browser, cef, crate, osr]
-timestamp: 2026-10-29T21:38:47Z
+timestamp: 2026-10-31T12:44:37Z
 ---
 
 # Overview
@@ -37,7 +37,7 @@ It splits into three layers by Cargo feature:
 - **No features**: `cookie`, `element_picker`, `event`, `input`, `lifecycle`,
   `page_zoom`, `profile`. Pure types, validation and state
   machines on `url`, `serde` and `parking_lot`; this is what the thin
-  clients' browser panes (`clients/app`) and `zz-chrome-import` use, and it
+  clients' browser panes (`clients/app`) use, and it
   builds for WASM, iOS and Android. The root workspace dependency turns
   default features off. CI keeps it out of `zz-cli`'s tree, so `zz-config`
   takes `SearchProvider` from `zz-client`'s `url_input`, not from here.
@@ -49,6 +49,18 @@ It splits into three layers by Cargo feature:
   CEF handler (`cef::wrap_*!`) callback. Its module attribute locally allows
   `unsafe_code` solely to validate and copy CEF's callback-scoped BGRA paint
   buffer into owned memory; no borrowed CEF pointer survives that callback.
+- **`chrome-import`**: adds `chrome_import`, which reads an installed Google
+  Chrome without CEF, on top of the pure half alone. `profiles` parses a
+  bounded `Local State` in Chrome's picker order and caches the labels in a
+  directory the app names; `cookie` snapshots the cookie database and its WAL
+  into a private temporary directory, decrypts values through the macOS
+  Keychain, Linux Secret Service or Windows DPAPI, and deduplicates by CEF
+  cookie identity; `history` snapshots `History` read-only and returns the
+  newest HTTP(S) rows under caller-given `ImportLimits`. It holds ala-cef's only
+  `rusqlite` (bundled SQLite), crypto and keychain dependencies. Imported
+  profiles are named `chrome:<storage key>`. `crates/zz` turns it on and
+  drives it from the browser's three-dot menu in `browser/view.rs`; the stored
+  history it feeds stays in zz (`crates/zz/src/browser/recent_pages/store.rs`).
 
 `cargo test -p ala-cef --no-default-features --features host` runs the
 CEF-free tests without downloading Chromium; `cargo check -p ala-cef
@@ -87,6 +99,7 @@ runtime types (only under `cef-runtime`):
 | `RuntimePhase`, `SessionPhase` | `lifecycle` | Runtime + session state machines |
 | `BrowserProfilePaths` (`under`, `normalize`), `BrowserProfileError`, profile-name constants/normalization | `profile` | Safe named-profile validation, path resolution, creation; the default directory's name also names the default profile |
 | `parse_cookie_import`, `BrowserCookie`, `CookieImportBatch`, `CookieImportResult`, `SiteDataClearResult` | `cookie` | Bounded Cookie-Editor/Netscape parsing plus browser-data operation results |
+| `chrome_import::{profiles, cookie, history}` | `chrome_import` (`chrome-import` feature) | Chrome profile discovery and label cache, cookie snapshot and decryption, read-only history import |
 | `BrowserBootstrap`, `BrowserRuntime`, `BrowserSession`, `BrowserError`, `RuntimeSignal`, `bootstrap`, `bootstrap_with_profile_paths`, `run_subprocess` (+ `bootstrap_windows`) | `cef_runtime` | CEF init, subprocess dispatch, session control. `bootstrap` takes a closure that resolves the profile paths, called only in the browser process; zz passes `browser::profile_paths` |
 
 # Key files
@@ -101,7 +114,10 @@ runtime types (only under `cef-runtime`):
 | `src/lifecycle.rs` | `RuntimePhase` and `SessionPhase` strict transition tables. |
 | `src/page_zoom.rs` | Chrome percentage ladder and logarithmic CEF zoom-level conversion. |
 | `src/profile.rs` | `BrowserProfilePaths`, profile-name rules; encoded named paths, user-only permissions. zz picks the data dir in `crates/zz/src/browser/mod.rs`. |
-| `src/cookie.rs` | Cookie-Editor JSON/Netscape parsing, normalization, limits, and secret-free result types (CEF-free, so `zz-chrome-import` builds without Chromium). |
+| `src/cookie.rs` | Cookie-Editor JSON/Netscape parsing, normalization, limits, and secret-free result types (CEF-free, so `chrome_import` builds without Chromium). |
+| `src/chrome_import/profiles.rs` | Background Chrome profile discovery, platform paths, the sanitized label cache. |
+| `src/chrome_import/cookie.rs` | Cookie database snapshot, platform key lookup and decryption, chunked normalization into `BrowserCookie`s. |
+| `src/chrome_import/history.rs` | Read-only `History` snapshot, Chromium timestamps, newest-N HTTP(S) rows. |
 | `src/element_picker.rs` | Token-guarded in-page element-picker protocol state (`ElementPickState`). |
 | `src/element_picker.js` | Injected renderer-side script backing the element picker (~45 KB). |
 | `Cargo.toml` | Takes the workspace `cef` dependency (pinned in the root `Cargo.toml`, `accelerated_osr` feature) as an optional dep behind `cef-runtime`. |

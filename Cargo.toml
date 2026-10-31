@@ -28,8 +28,6 @@ accesskit = { version = "0.24.0", features = ["enumn"] }
 accesskit_macos = "0.26.0"
 accesskit_unix = "0.22"
 accesskit_windows = "0.34"
-aes = "=0.9.3"
-aes-gcm = { version = "=0.11.1", default-features = false, features = ["aes", "alloc"] }
 agent-client-protocol = "2.1.0"
 anyhow = "1.0.86"
 ashpd = { version = "0.13", default-features = false, features = [
@@ -50,7 +48,6 @@ bitflags = "2.6.0"
 block2 = "0.6.2"
 bytes = "1.0"
 cargo_metadata = "0.23.1"
-cbc = "=0.2.1"
 cbindgen = { version = "0.28.0", default-features = false }
 cef = { version = "=154.0.0", features = ["accelerated_osr"] }
 chrono = { version = "0.4.45", default-features = false }
@@ -120,10 +117,8 @@ objc2-io-surface = "0.3.2"
 objc2-metal = "0.3.2"
 objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["std"] }
 objc2-user-notifications = "0.3"
-oo7 = { version = "=0.6.0", default-features = false }
 parking_lot = "0.12.5"
 pathfinder_geometry = "0.5"
-pbkdf2 = "=0.13.0"
 plist = "1.10.1"
 pollster = "1.0.1"
 portable-pty = "0.9.0"
@@ -143,17 +138,13 @@ resvg = { version = "0.46.0", default-features = false, features = [
     "memmap-fonts",
     "raster-images",
 ] }
-rusqlite = { version = "=0.40.2", default-features = false, features = ["bundled"] }
 rustc-hash = "2.1.0"
 rustix = { version = "1.1.4", features = ["event", "pipe", "process", "termios"] }
 schemars = { version = "1.0", features = ["indexmap2"] }
-security-framework = "=3.7.0"
 semver = { version = "1.0", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = "1.0.151"
 serde_urlencoded = "0.7"
-sha1 = "=0.11.0"
-sha2 = "=0.11.0"
 slotmap = "1.0.6"
 smallvec = { version = "=1.16.1", features = ["serde"] }
 smol = "=2.0.2"
@@ -193,7 +184,6 @@ ala-platform = { path = "libs/ala/crates/ala-platform", default-features = false
 
 zz = { path = "crates/zz" }
 zz-app = { path = "clients/app" }
-zz-chrome-import = { path = "crates/zz-chrome-import" }
 zz-cli = { path = "crates/zz-cli" }
 zz-client = { path = "crates/zz-client" }
 zz-config = { path = "crates/zz-config" }

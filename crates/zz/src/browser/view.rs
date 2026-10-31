@@ -30,7 +30,7 @@ use ala_cef::{
     BrowserCursor, BrowserEvent, BrowserGpuContext, BrowserKey, ContextMenuRequest,
     CookieImportBatch, EditCommand, ElementPickerAppearance, ImeCharacterBounds, KeyInput,
     MAX_COOKIE_IMPORT_BYTES, Modifiers, PointerButton, PointerEvent, PointerPhase, RuntimePhase,
-    SessionId, Viewport, WheelEvent, ime_range_bounds, parse_cookie_import,
+    SessionId, Viewport, WheelEvent, chrome_import, ime_range_bounds, parse_cookie_import,
 };
 #[cfg(target_os = "macos")]
 use core_video::pixel_buffer::CVPixelBuffer;
@@ -64,7 +64,6 @@ use zz_ui::pane::{PaneDrag, PaneDragSource, pane_header_icon_button};
 use crate::browser::macos_surface::MacBrowserSurfaceCache;
 #[cfg(target_os = "macos")]
 use crate::browser::underlay::PaneUnderlay;
-use zz_chrome_import as chrome_import;
 
 use super::recent_pages::{self, HistorySuggestion, RecentPage};
 use crate::{
@@ -2840,18 +2839,21 @@ impl BrowserView {
         cx.spawn_in(window, async move |_, window| {
             let result = background
                 .spawn(async move {
+                    let cache_dir = zz_protocol::app_identity::browser_data_dir();
                     match chrome_import::profiles::discover_profiles() {
                         Ok(profiles) => {
-                            if let Err(error) =
-                                chrome_import::profiles::save_cached_profiles(&profiles)
-                            {
+                            if let Err(error) = cache_dir.map_err(Into::into).and_then(|dir| {
+                                chrome_import::profiles::save_cached_profiles(&dir, &profiles)
+                            }) {
                                 log::warn!("could not cache Chrome profile labels: {error}");
                             }
                             (profiles, None)
                         }
                         Err(error) => {
                             log::warn!("could not discover Chrome profiles: {error}");
-                            let profiles = chrome_import::profiles::load_cached_profiles()
+                            let profiles = cache_dir
+                                .map_err(Into::into)
+                                .and_then(|dir| chrome_import::profiles::load_cached_profiles(&dir))
                                 .unwrap_or_else(|cache_error| {
                                     log::warn!(
                                         "could not load cached Chrome profile labels: {cache_error}"
@@ -3439,7 +3441,7 @@ impl Render for BrowserChromeView {
             let copy_url = menu_url.clone();
             let current_profile_label = menu_chrome_profiles
                 .iter()
-                .find(|profile| profile.zz_profile == menu_profile)
+                .find(|profile| profile.profile == menu_profile)
                 .map_or_else(
                     || {
                         if menu_profile == ala_cef::DEFAULT_BROWSER_PROFILE {
@@ -3457,7 +3459,7 @@ impl Render for BrowserChromeView {
                 profiles: menu_chrome_profiles
                     .iter()
                     .map(|profile| {
-                        BrowserMenuProfile::new(profile.zz_profile.clone(), profile.menu_label())
+                        BrowserMenuProfile::new(profile.profile.clone(), profile.menu_label())
                     })
                     .collect(),
                 profile_discovery: match menu_discovery {

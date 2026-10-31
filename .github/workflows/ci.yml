@@ -169,7 +169,7 @@ jobs:
         shell: bash
         run: |
           tree=$(cargo tree -p zz-cli -e normal --prefix none)
-          if grep -Eq '^(ala|ala-platform|ala-cef|wgpu|cef|penna|zz-ui|zz-chrome-import) ' <<<"$tree"; then
+          if grep -Eq '^(ala|ala-platform|ala-cef|wgpu|cef|penna|zz-ui) ' <<<"$tree"; then
             echo "zz-cli links GUI crates"
             exit 1
           fi

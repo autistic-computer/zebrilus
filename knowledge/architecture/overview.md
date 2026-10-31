@@ -62,7 +62,7 @@ from the CLI's own transcript.
 | [zz-daemon](/crates/zz-daemon.md) | persistent daemon: mux state, PTYs, agent lens runtimes, frame and agent-stream fanout, the listening socket, attachment |
 | [zz-daemon-client](/crates/zz-daemon-client.md) | the client half every client links: local and ssh endpoints, askpass, `CommandClient`/`InteractiveClient`, the shared transport |
 | [zz-terminal](/crates/zz-terminal.md) | per-PTY child + libghostty on a worker thread; publishes terminal frames |
-| [ala-cef](/crates/ala-cef.md) | CEF init, subprocess dispatch, request context, input translation, frame mailboxes |
+| [ala-cef](/crates/ala-cef.md) | CEF init, subprocess dispatch, request context, input translation, frame mailboxes, and Chrome profile, cookie and history import behind `chrome-import` |
 | [zz-client](/crates/zz-client.md) | sans-IO protocol reduction and client-local chrome key tables shared by client shells |
 | [zz](/crates/zz.md) | long-lived ala mux client; reconciles layouts; hosts terminal and CEF runtimes and the agent lens viewport |
 | `ala`, `ala-macros`, `ala-platform` | ala, our GPUI: the core with Zed's utility code folded in, its macros, and every platform backend (iOS's UIKit and Android's NDK ones included) as a module per target |
@@ -71,7 +71,6 @@ from the CLI's own transcript.
 | `zz-app` (`clients/app`) | the thin-client app the web, iOS and Android clients share |
 | `zz-ios` (`clients/ios`) | iOS entry point around zz-app and ala-platform's UIKit backend |
 | `zz-android` (`clients/android`) | Android entry point around zz-app and ala-platform's NDK backend, with the Java glue and APK files |
-| [zz-chrome-import](/crates/zz-chrome-import.md) | Chrome profile discovery, cookie decryption, read-only history extraction |
 | [zz-xtask](/crates/zz-xtask.md) | builds and validates platform CEF bundles |
 
 Workspace members without a dedicated page here: the ala crates (see [ala](/references/ala.md)), `penna` (see [penna](/references/penna.md)), `zz-ui`, `zz-app`, `zz-ios`, `zz-android`, and `zz-tui` (`zz attach`).

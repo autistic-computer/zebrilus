@@ -114,7 +114,7 @@ zz speaks these; it ships none of their implementations.
   peers and `agent-send` reaches a Claude Code session. None of Anthropic's code is copied, and
   the daemon hosts no vendor's agent loop.
 - **Google Chrome's on-disk profile, cookie, and history formats**, read-only, in
-  `crates/zz-chrome-import`. Reading the format required the platform keychain and DPAPI
+  `libs/ala-cef/src/chrome_import`. Reading the format required the platform keychain and DPAPI
   storage-key handling; no Chrome code is used.
 - **The Kitty graphics protocol** ([kovidgoyal/kitty](https://github.com/kovidgoyal/kitty)) and
   **OSC 52**, both implemented by the VT engine.
