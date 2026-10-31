@@ -63,6 +63,7 @@ impl AgentView {
         &mut self,
         state: &AgentPaneState,
         view: &Entity<Self>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let now = zz_client::chat_rows::now_ms();
@@ -119,9 +120,12 @@ impl AgentView {
                 zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
                 zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
             }),
+            owner: Some(pane),
         };
         let body = chat_thread(chat, now, &self.chat.open, phase, &hooks, app);
         let pip = chat_agent_pip(chat, now, &self.chat.open, phase, &hooks, app);
+        self.chat.release(window, cx);
+        let app: &ala::App = cx;
         div()
             .relative()
             .size_full()

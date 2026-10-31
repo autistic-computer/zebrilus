@@ -1886,7 +1886,7 @@ impl Render for AgentView {
         let floats = self.floats;
         let view = cx.entity();
         let input_focus = self.focus(cx);
-        let chat_body = use_chat.then(|| self.render_chat(&state, &view, cx));
+        let chat_body = use_chat.then(|| self.render_chat(&state, &view, window, cx));
         let sheet = self.render_sheet(&view, window, cx);
         let timeline = AgentTimeline::new(
             rows,

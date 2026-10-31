@@ -54,7 +54,7 @@ const STORY: Story = Story {
         Section {
             id: "finished",
             name: "Finished turn",
-            summary: "When the reply lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps. A run counts its failed and denied steps. A turn you stopped folds behind You stopped after, and a failed one behind Failed after with a red mark.",
+            summary: "When the reply lands, the work before it folds behind Worked for. Opening the fold lists each run; opening a run lists its steps and its thinking, which scrolls inside 260 px. A run counts its failed and denied steps. A turn you stopped folds behind You stopped after, and a failed one behind Failed after with a red mark.",
             build: chat::finished,
         },
         Section {

@@ -560,25 +560,25 @@ pub fn run_shows(view: &ChatView, items: &[ItemId]) -> bool {
 
 pub fn reasoning_body(text: &str) -> Option<String> {
     let mut rest = text.trim_start();
-    loop {
-        let line = rest.lines().next().unwrap_or_default();
-        let after = if line.starts_with('#') {
-            &rest[line.len()..]
-        } else if let Some(bold) = rest.strip_prefix("**")
-            && let Some(end) = bold.find("**")
-            && !bold[..end].contains('\n')
-        {
-            &bold[end + 2..]
-        } else {
-            break;
-        };
-        let trimmed = after.trim_start();
-        if trimmed.len() == rest.len() {
-            break;
-        }
-        rest = trimmed;
+    while let Some(line) = rest.lines().next()
+        && heading_line(line).is_some()
+    {
+        rest = rest[line.len()..].trim_start();
     }
     (!rest.trim().is_empty()).then(|| rest.trim_end().to_owned())
+}
+
+fn heading_line(line: &str) -> Option<&str> {
+    let line = line.trim();
+    if let Some(inner) = line
+        .strip_prefix("**")
+        .and_then(|rest| rest.strip_suffix("**"))
+    {
+        return (!inner.trim().is_empty() && !inner.contains("**")).then_some(inner);
+    }
+    let marks = line.len() - line.trim_start_matches('#').len();
+    let rest = &line[marks..];
+    ((1..=6).contains(&marks) && (rest.is_empty() || rest.starts_with([' ', '\t']))).then_some(rest)
 }
 
 fn heading(text: &str) -> Option<String> {

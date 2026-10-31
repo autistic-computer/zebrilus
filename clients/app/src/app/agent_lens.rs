@@ -1623,7 +1623,7 @@ impl Render for AgentLens {
             }
             .into_any_element()
         };
-        let chat = use_chat.then(|| self.render_chat(inline, cx));
+        let chat = use_chat.then(|| self.render_chat(inline, window, cx));
         let provider = self
             .terminal(cx)
             .and_then(zz_client::window_summary::pane_agent);
@@ -1725,6 +1725,7 @@ impl AgentLens {
     fn render_chat(
         &mut self,
         inline: HashMap<u64, AnyElement>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let now = zz_client::chat_rows::now_ms();
@@ -1734,6 +1735,7 @@ impl AgentLens {
             0.0
         };
         self.chat.sync(&self.transcript.lens.chat);
+        self.chat.release(window, cx);
         self.chat.pin();
         let entity = cx.entity();
         let click: ChatClicks = {
@@ -1769,6 +1771,7 @@ impl AgentLens {
                 zz_protocol::AgentProvider::ClaudeCode => zz_ui::program::CLAUDE_ICON,
                 zz_protocol::AgentProvider::Codex => zz_ui::program::OPENAI_ICON,
             }),
+            owner: Some(pane),
         };
         let body = chat_thread(
             &self.transcript.lens.chat,
