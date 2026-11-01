@@ -1,3 +1,5 @@
+#[cfg(unix)]
+pub(crate) mod control;
 pub(crate) mod rollout;
 pub(crate) mod translate;
 

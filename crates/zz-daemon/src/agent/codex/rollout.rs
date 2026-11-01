@@ -238,6 +238,27 @@ fn extension(item: &Value) -> Option<Value> {
     }
 }
 
+pub(crate) fn live_item(item: &Value) -> Option<Value> {
+    let id = item["id"].clone();
+    match item["type"].as_str() {
+        Some("subAgentActivity") if item["kind"] == "interacted" => None,
+        Some("agentMessage") => Some(questions(item).map_or_else(
+            || item.clone(),
+            |questions| json!({ "type": "userInputRequest", "id": id, "questions": questions }),
+        )),
+        Some("userMessage") => Some(
+            texts(&item["content"])
+                .first()
+                .and_then(|text| replies(text))
+                .map_or_else(
+                    || item.clone(),
+                    |replies| json!({ "type": "userInputReply", "id": id, "replies": replies }),
+                ),
+        ),
+        _ => Some(item.clone()),
+    }
+}
+
 pub(crate) fn v2_item(item: &Value) -> Option<Value> {
     let kind = item["type"].as_str()?;
     let mut characters = kind.chars();
