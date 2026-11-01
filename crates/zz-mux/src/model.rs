@@ -2568,6 +2568,57 @@ impl MuxState {
         Ok(inherit_cwd_from)
     }
 
+    pub fn convert_pane(&mut self, pane: PaneId, kind: PaneKind) -> Result<(), ServerError> {
+        let default_title = self.default_pane_title.clone();
+        let pane_state = self
+            .pane_mut(pane)
+            .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
+        if !matches!(
+            (&pane_state.kind, &kind),
+            (PaneKind::Terminal, PaneKind::Agent(_)) | (PaneKind::Agent(_), PaneKind::Terminal)
+        ) {
+            let into = if matches!(kind, PaneKind::Agent(_)) {
+                "an agent"
+            } else {
+                "a terminal"
+            };
+            return Err(ServerError::InvalidCommand(format!(
+                "pane {pane} cannot turn into {into}"
+            )));
+        }
+        if !pane_state.title_pinned {
+            pane_state.title = pane_title(&kind, &default_title);
+        }
+        pane_state.kind = kind;
+        pane_state.summary.process.clear();
+        pane_state.summary.flip_armed = false;
+        self.revive_pane(pane)?;
+        self.bump_generation();
+        Ok(())
+    }
+
+    pub fn update_agent(
+        &mut self,
+        pane: PaneId,
+        update: impl FnOnce(&mut AgentDescriptor),
+    ) -> Result<bool, ServerError> {
+        let pane_state = self
+            .pane_mut(pane)
+            .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?;
+        let PaneKind::Agent(agent) = &mut pane_state.kind else {
+            return Err(ServerError::InvalidCommand(format!(
+                "pane {pane} is not an agent"
+            )));
+        };
+        let before = agent.clone();
+        update(agent);
+        if *agent == before {
+            return Ok(false);
+        }
+        self.bump_generation();
+        Ok(true)
+    }
+
     pub fn update_browser_url(&mut self, pane: PaneId, url: String) -> Result<(), ServerError> {
         let pane_state = self
             .pane_mut(pane)
