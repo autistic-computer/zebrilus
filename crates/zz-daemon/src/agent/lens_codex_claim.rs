@@ -15,6 +15,7 @@ use crate::agent::codex::control::{self, Connection, Next};
 const EVERY: Duration = Duration::from_secs(1);
 const NAME_CHARS: usize = 48;
 const PROJECT_CHARS: usize = 24;
+const GONE: &str = "thread not loaded";
 
 pub(in super::super) enum Claim {
     Thread(Found),
@@ -288,11 +289,15 @@ impl Codex {
             if known.get(id).is_some_and(Option::is_none) {
                 continue;
             }
-            let read = idle.connection.call(
+            let read = match idle.connection.call(
                 "thread/read",
                 &json!({ "threadId": id, "includeTurns": false }),
                 JOIN,
-            )?;
+            ) {
+                Ok(read) => read,
+                Err(error) if error.starts_with(GONE) => continue,
+                Err(error) => return Err(error),
+            };
             if let Some((read, thread)) = Known::of(&read["thread"])
                 && read == *id
             {

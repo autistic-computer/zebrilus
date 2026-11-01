@@ -1463,3 +1463,20 @@ fn a_prompt_after_the_tui_exits_does_not_go_to_its_thread() {
     let sent = outgoing(&peer);
     assert!(named(&sent, "turn/start").is_empty(), "{sent:?}");
 }
+
+#[test]
+fn a_thread_gone_between_the_list_and_its_read_does_not_spoil_the_claim() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = rollout_of(dir.path(), THREAD);
+    write_rollout(&path, THREAD, &[]);
+    let (wire, peer) = Connection::pair();
+    peer.deliver(json!({ "id": 0, "result": { "userAgent": "codex" } }));
+    peer.deliver(json!({ "id": 1, "result": { "data": [SECOND, THREAD], "nextCursor": null } }));
+    peer.deliver(json!({ "id": 2, "error": { "code": -32600, "message": format!("thread not loaded: {SECOND}") } }));
+    peer.deliver(json!({ "id": 3, "result": listed(THREAD, &path, Some("Reply with pong")) }));
+    let mut codex = claiming(wire, FIRST_START, &[]);
+    let Claim::Thread(found) = codex.claim() else {
+        panic!("the TUI's own thread is still claimed");
+    };
+    assert_eq!(found.session, THREAD);
+}
