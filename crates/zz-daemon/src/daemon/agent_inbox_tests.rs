@@ -74,6 +74,20 @@ fn runtime(shared: &Arc<Shared>, pane: PaneId) -> (Publisher, Arc<AgentRuntime>,
     (publisher, runtime, generation)
 }
 
+fn settle(fixture: &mut Fixture) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        fixture.inbox.turn(&fixture.shared);
+        take_reliable_messages(&fixture.mailbox);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        if !fixture.shared.agent_tx.pending.load(Ordering::Acquire)
+            || std::time::Instant::now() > deadline
+        {
+            break;
+        }
+    }
+}
+
 fn titled(title: &str) -> AgentPaneWire {
     AgentPaneWire {
         title: Some(title.to_owned()),
@@ -133,8 +147,7 @@ fn agent_inbox_bounds_each_turn_and_keeps_the_next_wake() {
     let mut fixture = fixture();
     let pane = fixture.pane;
     let (publisher, runtime, generation) = runtime(&fixture.shared, pane);
-    fixture.inbox.turn(&fixture.shared);
-    take_reliable_messages(&fixture.mailbox);
+    settle(&mut fixture);
     for index in 0..=DRAIN_BURST {
         publisher.publish_agent_state(generation, pane, titled(&index.to_string()));
     }
