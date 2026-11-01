@@ -72,7 +72,7 @@ const STORY: Story = Story {
         Section {
             id: "messages",
             name: "Messages",
-            summary: "Your messages sit right-aligned in a raised bubble that caps its height and scrolls; replies have no bubble. Hovering a message shows when it was sent, Copy and Fork; on a reply, Copy takes every text of the turn.",
+            summary: "Your messages sit right-aligned in a raised bubble that caps its height and scrolls; replies have no bubble. Hovering a message shows when it was sent, Copy and Fork, muted until the pointer is on them; on a reply, Copy takes every text of the turn.",
             build: chat::messages,
         },
         Section {

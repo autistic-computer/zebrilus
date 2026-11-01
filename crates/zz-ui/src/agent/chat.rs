@@ -959,11 +959,13 @@ fn message_actions(
         })
         .when_some(copy, |row, text| {
             row.child(
-                Button::compact_icon(
-                    SharedString::from(format!("chat-copy-{key}")),
-                    IconName::Copy,
+                super::message_action(
+                    Button::compact_icon(
+                        SharedString::from(format!("chat-copy-{key}")),
+                        IconName::Copy,
+                    ),
+                    cx,
                 )
-                .surface_role(crate::roles::AGENT_ACTION)
                 .tooltip("Copy")
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();
@@ -980,11 +982,13 @@ fn message_actions(
         .when_some(fork, |row, (fork, id)| {
             let target = ChatClick::Fork(id);
             row.child(
-                Button::compact_icon(
-                    SharedString::from(format!("chat-fork-{key}")),
-                    IconName::GitBranch,
+                super::message_action(
+                    Button::compact_icon(
+                        SharedString::from(format!("chat-fork-{key}")),
+                        IconName::GitBranch,
+                    ),
+                    cx,
                 )
-                .surface_role(crate::roles::AGENT_ACTION)
                 .tooltip("Fork from here: a new chat that goes on from this message")
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();
