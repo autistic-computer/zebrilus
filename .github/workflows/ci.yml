@@ -102,12 +102,15 @@ jobs:
           cargo metadata --locked --format-version 1 --manifest-path libs/penna/Cargo.toml >/dev/null
           cargo metadata --locked --format-version 1 --manifest-path libs/penna/storybook/Cargo.toml >/dev/null
           cargo metadata --locked --format-version 1 --manifest-path libs/ala-cef/Cargo.toml >/dev/null
+          cargo metadata --locked --format-version 1 --manifest-path libs/pele/Cargo.toml >/dev/null
           cargo clippy --manifest-path libs/penna/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
           cargo clippy --manifest-path libs/penna/Cargo.toml --lib --no-default-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
           cargo clippy --manifest-path libs/penna/storybook/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\"" -- -D warnings
           rustup target add wasm32-unknown-unknown
           cargo clippy --manifest-path libs/penna/storybook/Cargo.toml --target wasm32-unknown-unknown --lib --features page --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\"" -- -D warnings
           cargo clippy --manifest-path libs/ala-cef/Cargo.toml --all-targets --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" -- -D warnings
+          cargo clippy --manifest-path libs/pele/Cargo.toml --locked --all-targets --all-features -- -D warnings
+          cargo clippy --manifest-path libs/pele/Cargo.toml --locked --lib --target wasm32-unknown-unknown -- -D warnings
 
       - name: Check browser client
         if: runner.os == 'Linux'
@@ -134,6 +137,7 @@ jobs:
           cargo test --manifest-path libs/penna/Cargo.toml --test highlighter_api --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
           cargo test --manifest-path libs/penna/storybook/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\"" --config "patch.\"https://github.com/autistic-computer/ala\".ala-platform.path=\"$PWD/libs/ala/crates/ala-platform\""
           cargo test --manifest-path libs/ala-cef/Cargo.toml --all-features --config "patch.\"https://github.com/autistic-computer/ala\".ala.path=\"$PWD/libs/ala/crates/ala\""
+          cargo test --manifest-path libs/pele/Cargo.toml --locked --all-features
 
       - name: Test the iOS input logic
         if: runner.os != 'Linux'

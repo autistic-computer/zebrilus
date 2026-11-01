@@ -102,7 +102,6 @@ libghostty-vt = { path = "third_party/rust/libghostty-vt", default-features = fa
 log = "0.4.34"
 mach2 = "0.5"
 memchr = "2.8.3"
-merman = { version = "=0.9.3", default-features = false, features = ["svg", "all-diagrams", "layout-cytoscape"] }
 metal = "0.33"
 mimalloc = "0.1.52"
 naga = { version = "=30.0.1", features = ["glsl-in", "wgsl-in", "wgsl-out"] }
@@ -132,7 +131,7 @@ rand = "0.9"
 raw-window-handle = "0.6.2"
 rayon = "1.8"
 regex = "1.13.1"
-resvg = { version = "0.46.0", default-features = false, features = [
+resvg = { version = "0.48.1", default-features = false, features = [
     "text",
     "system-fonts",
     "memmap-fonts",
@@ -162,7 +161,7 @@ unicode-bidi = { version = "0.3.18", default-features = false, features = [
 unicode-segmentation = "1.10"
 unicode-width = "0.2.2"
 url = "=2.5.8"
-usvg = { version = "0.46.0", default-features = false }
+usvg = { version = "0.48.1", default-features = false }
 uuid = { version = "1.1.2", features = ["v4", "v5", "v7", "serde"] }
 wasm-bindgen = "0.2.120"
 wasm-bindgen-futures = "0.4"
@@ -179,6 +178,7 @@ zeroize = "=1.9.0"
 ala = { path = "libs/ala/crates/ala", default-features = false }
 penna = { path = "libs/penna" }
 ala-cef = { path = "libs/ala-cef", default-features = false }
+pele = { path = "libs/pele" }
 ala-macros = { path = "libs/ala/crates/ala-macros" }
 ala-platform = { path = "libs/ala/crates/ala-platform", default-features = false }
 

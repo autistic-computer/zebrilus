@@ -1,0 +1,256 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "repository": "https://github.com/obsidianmd/pele",
+    "revision": "36e584d59152181927e0d8bf70fddcd2a5f33d6c",
+    "registered_diagram_types": 33
+  },
+  "status": "native-port-in-progress",
+  "javascript_runtime_required": false,
+  "dom_required": false,
+  "output": "static SVG with concrete theme values",
+  "implemented": [
+    {
+      "type": "flowchart",
+      "status": "partial",
+      "verification": "See tests/fixtures/compatibility.json and tools/compat.mjs; no full parser or pixel equivalence claim.",
+      "features": [
+        "Node, direction, label, chain and Cartesian edge parsing",
+        "Common node shapes and 36 extended static SVG shape definitions",
+        "Class/style directives and safe hyperlink metadata",
+        "Compound layout with nested subgraphs, per-subgraph directions, edges to subgraphs and collapsed views",
+        "Per-edge curves and width-based auto-direction"
+      ]
+    },
+    {
+      "type": "sequence",
+      "status": "partial",
+      "verification": "See tests/fixtures/compatibility.json and tools/compat.mjs; no full parser or pixel equivalence claim.",
+      "features": [
+        "Participant and actor declarations, aliases and typed participant metadata",
+        "Solid/dashed and common bidirectional arrow messages",
+        "Notes, activations, automatic numbering and grouped/nested sequence blocks",
+        "Participant creation and destruction, checked against upstream lifeline, actor and message geometry in tests/sequence.rs"
+      ]
+    },
+    {
+      "type": "pie",
+      "status": "partial",
+      "verification": "See tests/fixtures/compatibility.json and tools/compat.mjs; exact geometry is reported separately from renderability."
+    },
+    {
+      "type": "quadrantChart",
+      "status": "partial",
+      "verification": "See tests/fixtures/compatibility.json and tools/compat.mjs; exact geometry is reported separately from renderability."
+    },
+    {
+      "type": "class",
+      "status": "partial",
+      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/class.rs, tests/fixtures/class-reference.json and tools/compat.mjs.",
+      "features": [
+        "Classes, members, methods, visibility, generics and annotations",
+        "Relations with markers, cardinalities and labels",
+        "Namespaces, notes, styles, classDef and safe links"
+      ]
+    },
+    {
+      "type": "state",
+      "status": "partial",
+      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/state.rs, tests/fixtures/state.json and tools/compat.mjs.",
+      "features": [
+        "Start and end states, composite states with their own direction and concurrency regions",
+        "Fork, join, choice, notes and state descriptions",
+        "classDef, class and ::: styles and safe links"
+      ]
+    },
+    {
+      "type": "er",
+      "status": "partial",
+      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/er.rs, tests/fixtures/er.json and tools/compat.mjs.",
+      "features": [
+        "Entities with attribute tables, keys, comments and aliases",
+        "Every relationship cardinality, identifying and non-identifying",
+        "Directions, styles, classDef and safe links"
+      ]
+    },
+    {
+      "type": "gantt",
+      "status": "partial",
+      "verification": "Documentation SVG bodies match upstream with theme colors in place of CSS variables; see tests/gantt.rs, tests/fixtures/gantt.json and tools/compat.mjs.",
+      "features": [
+        "Sections, tasks, dependencies, milestones and task states",
+        "Date formats, durations, excludes, weekends and axis ticks, computed in UTC",
+        "Safe links; the today marker is not drawn because RenderOptions has no current date"
+      ]
+    }
+  ],
+  "not_ported": [
+    "gitGraph",
+    "mindmap",
+    "timeline",
+    "journey",
+    "xychart",
+    "requirement",
+    "c4",
+    "sankey",
+    "block",
+    "packet",
+    "kanban",
+    "architecture",
+    "radar",
+    "treemap",
+    "info",
+    "agentflow",
+    "usecase",
+    "railroad",
+    "treeView",
+    "venn",
+    "cynefin",
+    "wardley",
+    "swimlane",
+    "ishikawa",
+    "eventmodeling"
+  ],
+  "remaining_cross_cutting_work": [
+    "Full parser compatibility against upstream Mermaid parser specifications and differential fuzzing for flowchart, sequence, pie and quadrant",
+    "Byte-level SVG or pixel-level compatibility is asserted only for the class, state, ER and gantt documentation samples",
+    "Upstream entity encoding before parsing is not applied to flowcharts, and the shared preprocessor rejects some front matter and unterminated directives upstream accepts",
+    "Icons, math, images, executable click callbacks and browser mount/zoom APIs are outside the initial native rendering scope",
+    "Multilingual font fallback through a host text measurer still needs validation on each platform",
+    "The browser WebAssembly target builds and renders; Windows, iOS and Android builds still need validation"
+  ],
+  "verification": {
+    "integration_suite": "tests/compatibility.rs",
+    "pinned_corpus": "tests/fixtures/compatibility.json",
+    "differential_runner": "tools/compat.mjs",
+    "differential_mode": "Reports intentional unsupported types, rendering failures, error categories and geometry deltas separately. Static native SVG intentionally differs from upstream CSS-variable SVG.",
+    "recorded": {
+      "date": "2026-10-30",
+      "pinned_diagram_fixtures": 32,
+      "font_width_oracles": 56,
+      "styled_label_oracles": 15,
+      "extended_shape_oracles": 108,
+      "integration_tests_passed": 19,
+      "full_documentation_sample": {
+        "total_cases": 554,
+        "rendering_targets_in_eight_implemented_types": 274,
+        "native_rendered": 268,
+        "matching_outer_dimensions": 264,
+        "non_matching_outer_dimensions": 4,
+        "rejected_rendering_targets": 6,
+        "intentionally_unported_cases": 274,
+        "expected_error_fixtures": 6,
+        "upstream_invalid_documentation_examples": 0,
+        "per_type": {
+          "flowchart": {
+            "rendering_targets": 119,
+            "native_rendered": 117,
+            "matching_outer_dimensions": 116,
+            "known_rejections": 2
+          },
+          "sequence": {
+            "rendering_targets": 42,
+            "native_rendered": 38,
+            "matching_outer_dimensions": 35,
+            "known_rejections": 4
+          },
+          "pie": {
+            "rendering_targets": 8,
+            "native_rendered": 8,
+            "matching_outer_dimensions": 8,
+            "known_rejections": 0
+          },
+          "quadrantChart": {
+            "rendering_targets": 5,
+            "native_rendered": 5,
+            "matching_outer_dimensions": 5,
+            "known_rejections": 0
+          },
+          "class": {
+            "rendering_targets": 39,
+            "native_rendered": 39,
+            "matching_outer_dimensions": 39,
+            "known_rejections": 0
+          },
+          "state": {
+            "rendering_targets": 23,
+            "native_rendered": 23,
+            "matching_outer_dimensions": 23,
+            "known_rejections": 0
+          },
+          "er": {
+            "rendering_targets": 26,
+            "native_rendered": 26,
+            "matching_outer_dimensions": 26,
+            "known_rejections": 0
+          },
+          "gantt": {
+            "rendering_targets": 12,
+            "native_rendered": 12,
+            "matching_outer_dimensions": 12,
+            "known_rejections": 0
+          }
+        },
+        "interpretation": "Rendering and matching outer dimensions do not establish full SVG, parser or pixel equivalence. Intentional unsupported cases are not rendered successes."
+      },
+      "supported_type_rejections": [
+        {
+          "case": "flowchart-docs.json:68",
+          "type": "flowchart",
+          "code": "unsupported-diagram",
+          "reason": "Flowchart metadata icon is not yet ported"
+        },
+        {
+          "case": "flowchart-docs.json:69",
+          "type": "flowchart",
+          "code": "unsupported-diagram",
+          "reason": "Flowchart metadata img is not yet ported"
+        },
+        {
+          "case": "sequence-docs.json:15",
+          "type": "sequence",
+          "code": "unsupported-diagram",
+          "reason": "Sequence creation, destruction, and participant menu metadata are not ported yet"
+        },
+        {
+          "case": "sequence-docs.json:17",
+          "type": "sequence",
+          "code": "syntax",
+          "reason": "Invalid sequence participant: ()John"
+        },
+        {
+          "case": "sequence-docs.json:36",
+          "type": "sequence",
+          "code": "unsupported-diagram",
+          "reason": "Sequence creation, destruction, and participant menu metadata are not ported yet"
+        },
+        {
+          "case": "sequence-docs.json:37",
+          "type": "sequence",
+          "code": "unsupported-diagram",
+          "reason": "Sequence creation, destruction, and participant menu metadata are not ported yet"
+        }
+      ],
+      "runtime_validated": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin"
+      ],
+      "build_validated": [
+        "x86_64-unknown-linux-gnu",
+        "aarch64-apple-darwin",
+        "wasm32-unknown-unknown"
+      ],
+      "chart_geometry_oracles": 162,
+      "layout_graph_oracles": 120,
+      "layout_reference_test": "tests/layout_parity.rs"
+    },
+    "layout_oracle_generator": "tools/layout-fixtures.mjs",
+    "compound_oracle_generator": "tools/compound-fixtures.mjs",
+    "diagram_oracle_generators": [
+      "tools/class-fixtures.mjs",
+      "tools/state-fixtures.mjs",
+      "tools/er-fixtures.mjs",
+      "tools/gantt-fixtures.mjs"
+    ]
+  }
+}

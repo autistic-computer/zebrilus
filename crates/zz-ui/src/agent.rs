@@ -45,7 +45,6 @@ use presentation::{spinner, spinner_phase};
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
 const RICH_MARKDOWN_NODE_NAME: &str = "zz-rich-markdown";
-const FIGURE_MAX_HEIGHT: f32 = 560.0;
 const FIGURE_HEADER_HEIGHT: f32 = 30.0;
 const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
 const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
@@ -2579,7 +2578,7 @@ fn visual_page_head(cx: &App) -> String {
     format!(
         "<!doctype html><html><head><meta charset=\"utf-8\"><style>:root{{color-scheme:{};font-family:{};--font-size-base:14px;{root}}}{VISUAL_PAGE_CSS}</style><script>{VISUAL_PAGE_SCRIPT}</script></head><body>",
         if dark { "dark" } else { "light" },
-        mermaid_font_family(cx.theme().font_family.as_ref()),
+        mermaid_font_family(cx.theme().font_family.as_ref(), "system-ui", "sans-serif"),
     )
 }
 
@@ -3167,6 +3166,7 @@ fn parse_figure(
         .as_deref()
         .is_some_and(|language| language.eq_ignore_ascii_case(kind.language()))
         || code.value.len() > FIGURE_MAX_SOURCE_BYTES
+        || (kind == FigureKind::Mermaid && !pele::supports(&code.value))
     {
         return None;
     }
@@ -3251,14 +3251,12 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
             .id(("agent-mermaid", source.source_offset))
             .w_full()
             .min_w_0()
-            .max_h(px(FIGURE_MAX_HEIGHT))
             .overflow_hidden()
             .child(
                 div().flex().w_full().justify_center().child(
                     img(ImageSource::Render(image.clone()))
                         .debug_selector(|| "agent-figure-image".to_owned())
                         .max_w_full()
-                        .max_h(px(FIGURE_MAX_HEIGHT))
                         .mx_auto(),
                 ),
             )
@@ -3333,175 +3331,112 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
         .child(div().w_full().px_3().pb_3().child(content))
 }
 
-#[derive(Clone)]
-struct MermaidTheme {
-    svg_css: String,
-    config: merman::MermaidConfig,
+const MERMAID_FONT_SIZE: f64 = 13.0;
+const MERMAID_LAYOUT_WIDTH: f64 = 640.0;
+const MERMAID_MEASURE_SIZE: f32 = 64.0;
+const MERMAID_MAX_RADIUS: f64 = 4.0;
+
+fn mermaid_options(cx: &App) -> pele::RenderOptions {
+    let theme = cx.theme();
+    let measurer = AppTextMeasurer {
+        text_system: cx.text_system().clone(),
+        sans: ala::font(theme.font_family.clone()),
+        mono: ala::font(theme.mono_font_family.clone()),
+        advances: parking_lot::Mutex::default(),
+    };
+    mermaid_render_options(
+        MermaidThemeColors::from_app(cx),
+        [theme.font_family.as_ref(), theme.mono_font_family.as_ref()],
+        f64::from(theme.radius).min(MERMAID_MAX_RADIUS),
+        Some(Arc::new(measurer)),
+    )
 }
 
-impl MermaidTheme {
-    fn from_app(cx: &App) -> Self {
-        Self::new(
-            MermaidThemeColors::from_app(cx),
-            cx.theme().font_family.as_ref(),
-            cx.theme().is_dark(),
-        )
+fn mermaid_render_options(
+    colors: MermaidThemeColors,
+    [font_family, mono_font_family]: [&str; 2],
+    radius: f64,
+    measurer: Option<Arc<dyn pele::text::TextMeasurer>>,
+) -> pele::RenderOptions {
+    pele::RenderOptions {
+        font_size: MERMAID_FONT_SIZE,
+        font_family: mermaid_font_family(font_family, "system-ui", "sans-serif"),
+        font_family_mono: mermaid_font_family(mono_font_family, "monospace", "monospace"),
+        id_prefix: "zz-mermaid".to_owned(),
+        max_width: Some(MERMAID_LAYOUT_WIDTH),
+        transparent: true,
+        theme: pele::Theme {
+            background: css_color(colors.background),
+            foreground: css_color(colors.foreground),
+            muted: css_color(colors.muted_foreground),
+            line: css_color(colors.primary),
+            surface: css_color(colors.surface),
+            surface_alt: css_color(colors.muted),
+            border: css_color(colors.border),
+            accent: css_color(colors.primary),
+            series: [
+                colors.primary,
+                colors.success,
+                colors.warning,
+                colors.danger,
+                colors.muted_foreground,
+            ]
+            .map(css_color)
+            .to_vec(),
+            radius,
+        },
+        measurer,
+        ..pele::RenderOptions::default()
     }
+}
 
-    fn new(colors: MermaidThemeColors, font_family: &str, dark: bool) -> Self {
-        let surface = css_color(colors.surface);
-        let muted = css_color(colors.muted);
-        let foreground = css_color(colors.foreground);
-        let muted_foreground = css_color(colors.muted_foreground);
-        let border = css_color(colors.border);
-        let primary = css_color(colors.primary);
-        let primary_foreground = css_color(colors.primary_foreground);
-        let success = css_color(colors.success);
-        let success_foreground = css_color(colors.success_foreground);
-        let warning = css_color(colors.warning);
-        let warning_foreground = css_color(colors.warning_foreground);
-        let danger = css_color(colors.danger);
-        let danger_foreground = css_color(colors.danger_foreground);
-        let font_family = mermaid_font_family(font_family);
-        let mut theme_variables: serde_json::Map<String, serde_json::Value> = [
-            ("background", surface.as_str()),
-            ("primaryColor", surface.as_str()),
-            ("primaryTextColor", foreground.as_str()),
-            ("primaryBorderColor", border.as_str()),
-            ("secondaryColor", muted.as_str()),
-            ("secondaryTextColor", foreground.as_str()),
-            ("tertiaryColor", surface.as_str()),
-            ("tertiaryTextColor", foreground.as_str()),
-            ("mainBkg", surface.as_str()),
-            ("nodeBorder", border.as_str()),
-            ("nodeTextColor", foreground.as_str()),
-            ("lineColor", primary.as_str()),
-            ("textColor", foreground.as_str()),
-            ("titleColor", foreground.as_str()),
-            ("edgeLabelBackground", surface.as_str()),
-            ("clusterBkg", muted.as_str()),
-            ("clusterBorder", border.as_str()),
-            ("noteBkgColor", surface.as_str()),
-            ("noteBorderColor", border.as_str()),
-            ("noteTextColor", foreground.as_str()),
-            ("actorBkg", surface.as_str()),
-            ("actorBorder", border.as_str()),
-            ("actorTextColor", foreground.as_str()),
-            ("activationBkgColor", muted.as_str()),
-            ("activationBorderColor", border.as_str()),
-            ("labelTextColor", foreground.as_str()),
-            ("loopTextColor", foreground.as_str()),
-            ("signalColor", foreground.as_str()),
-            ("signalTextColor", foreground.as_str()),
-            ("classText", foreground.as_str()),
-            ("labelColor", foreground.as_str()),
-            ("attributeBackgroundColorOdd", surface.as_str()),
-            ("attributeBackgroundColorEven", muted.as_str()),
-            ("fontFamily", font_family.as_str()),
-            ("fontSize", "13px"),
-            ("pieTitleTextColor", foreground.as_str()),
-            ("pieSectionTextColor", foreground.as_str()),
-            ("pieLegendTextColor", foreground.as_str()),
-            ("pieStrokeColor", border.as_str()),
-            ("pieOuterStrokeColor", border.as_str()),
-            ("pie1", primary.as_str()),
-            ("pie2", success.as_str()),
-            ("pie3", warning.as_str()),
-            ("pie4", danger.as_str()),
-            ("pie5", muted_foreground.as_str()),
-            ("git0", primary.as_str()),
-            ("git1", success.as_str()),
-            ("git2", warning.as_str()),
-            ("git3", danger.as_str()),
-            ("gitBranchLabel0", primary_foreground.as_str()),
-            ("commitLabelColor", foreground.as_str()),
-            ("commitLabelBackground", muted.as_str()),
-            ("tagLabelColor", foreground.as_str()),
-            ("tagLabelBackground", surface.as_str()),
-            ("tagLabelBorder", border.as_str()),
-            ("quadrant1Fill", surface.as_str()),
-            ("quadrant2Fill", muted.as_str()),
-            ("quadrant3Fill", surface.as_str()),
-            ("quadrant4Fill", muted.as_str()),
-            ("quadrant1TextFill", foreground.as_str()),
-            ("quadrant2TextFill", foreground.as_str()),
-            ("quadrant3TextFill", foreground.as_str()),
-            ("quadrant4TextFill", foreground.as_str()),
-            ("quadrantPointFill", primary.as_str()),
-            ("quadrantPointTextFill", foreground.as_str()),
-            ("quadrantTitleFill", foreground.as_str()),
-            ("quadrantXAxisTextFill", foreground.as_str()),
-            ("quadrantYAxisTextFill", foreground.as_str()),
-            ("quadrantExternalBorderStrokeFill", border.as_str()),
-            ("quadrantInternalBorderStrokeFill", border.as_str()),
-        ]
-        .into_iter()
-        .map(|(key, value)| (key.to_owned(), value.into()))
-        .collect();
-        theme_variables.insert(
-            "xyChart".to_owned(),
-            serde_json::json!({
-                "backgroundColor": "transparent",
-                "titleColor": &foreground,
-                "xAxisTitleColor": &foreground,
-                "xAxisLabelColor": &foreground,
-                "xAxisTickColor": &border,
-                "xAxisLineColor": &border,
-                "yAxisTitleColor": &foreground,
-                "yAxisLabelColor": &foreground,
-                "yAxisTickColor": &border,
-                "yAxisLineColor": &border,
-                "plotColorPalette": format!(
-                    "{primary},{success},{warning},{danger},{muted_foreground}"
-                )
-            }),
-        );
-        let config = merman::MermaidConfig::from_value(serde_json::json!({
-            "theme": "base",
-            "darkMode": dark,
-            "fontFamily": &font_family,
-            "fontSize": 13,
-            "htmlLabels": false,
-            "flowchart": {
-                "htmlLabels": false,
-                "padding": 16,
-                "look": "classic"
-            },
-            "class": { "look": "classic" },
-            "er": { "look": "classic" },
-            "requirement": { "look": "classic" },
-            "sequence": { "look": "classic" },
-            "state": { "look": "classic" },
-            "gantt": {
-                "useWidth": 640,
-                "fontSize": 13,
-                "sectionFontSize": 13,
-                "barHeight": 24,
-                "barGap": 6
-            },
-            "xyChart": {
-                "width": 640,
-                "height": 420
-            },
-            "themeVariables": theme_variables
-        }));
-        let svg_css = mermaid_svg_theme_css(MermaidCssPalette {
-            font_family: &font_family,
-            surface: &surface,
-            muted: &muted,
-            foreground: &foreground,
-            muted_foreground: &muted_foreground,
-            border: &border,
-            primary: &primary,
-            primary_foreground: &primary_foreground,
-            success: &success,
-            success_foreground: &success_foreground,
-            warning: &warning,
-            warning_foreground: &warning_foreground,
-            danger: &danger,
-            danger_foreground: &danger_foreground,
-        });
-        Self { svg_css, config }
+struct AppTextMeasurer {
+    text_system: Arc<ala::TextSystem>,
+    sans: ala::Font,
+    mono: ala::Font,
+    advances: parking_lot::Mutex<HashMap<(char, u8), f32>>,
+}
+
+impl AppTextMeasurer {
+    fn advance(&self, character: char, style: u8) -> f32 {
+        let mut font = if style & pele::text::MONO == 0 {
+            self.sans.clone()
+        } else {
+            self.mono.clone()
+        };
+        if style & pele::text::BOLD != 0 {
+            font = font.bold();
+        }
+        if style & pele::text::ITALIC != 0 {
+            font = font.italic();
+        }
+        let font_id = self.text_system.resolve_font(&font);
+        f32::from(
+            self.text_system
+                .layout_width(font_id, px(MERMAID_MEASURE_SIZE), character),
+        ) / MERMAID_MEASURE_SIZE
+    }
+}
+
+impl pele::text::TextMeasurer for AppTextMeasurer {
+    fn width(&self, text: &str, size: f64, style: u8) -> f64 {
+        let size = if style & (pele::text::SUB | pele::text::SUP) == 0 {
+            size
+        } else {
+            size / 1.2
+        };
+        let style = style & (pele::text::BOLD | pele::text::ITALIC | pele::text::MONO);
+        let mut advances = self.advances.lock();
+        let em = text
+            .chars()
+            .filter(|character| !character.is_control())
+            .map(|character| {
+                *advances
+                    .entry((character, style))
+                    .or_insert_with(|| self.advance(character, style))
+            })
+            .sum::<f32>();
+        f64::from(em) * size
     }
 }
 
@@ -3516,11 +3451,8 @@ struct MermaidThemeColors {
     primary: Hsla,
     primary_foreground: Hsla,
     success: Hsla,
-    success_foreground: Hsla,
     warning: Hsla,
-    warning_foreground: Hsla,
     danger: Hsla,
-    danger_foreground: Hsla,
 }
 
 impl MermaidThemeColors {
@@ -3540,168 +3472,49 @@ impl MermaidThemeColors {
             primary: cx.theme().foreground,
             primary_foreground: cx.theme().paint(Tone::Neutral, Emphasis::Solid).text,
             success: cx.theme().success,
-            success_foreground: cx.theme().paint(Tone::Success, Emphasis::Solid).text,
             warning: cx.theme().warning,
-            warning_foreground: cx.theme().paint(Tone::Warning, Emphasis::Solid).text,
             danger: cx.theme().danger,
-            danger_foreground: cx.theme().paint(Tone::Danger, Emphasis::Solid).text,
         }
     }
 }
 
-fn mermaid_font_family(font_family: &str) -> String {
-    let mapped = ala::font_name_with_fallbacks(font_family, "system-ui");
+fn mermaid_font_family(font_family: &str, system: &str, generic: &str) -> String {
+    let mapped = ala::font_name_with_fallbacks(font_family, system);
     let sanitized = mapped
         .chars()
         .filter(|character| !matches!(character, ';' | '{' | '}'))
         .collect::<String>();
     let sanitized = if sanitized.trim().is_empty() {
-        "system-ui"
+        system
     } else {
         sanitized.trim()
     };
     if sanitized
         .split(',')
-        .any(|family| family.trim().eq_ignore_ascii_case("sans-serif"))
+        .any(|family| family.trim().eq_ignore_ascii_case(generic))
     {
         sanitized.to_owned()
     } else {
-        format!("{sanitized}, sans-serif")
+        format!("{sanitized}, {generic}")
     }
 }
 
-#[derive(Clone, Copy)]
-struct MermaidCssPalette<'a> {
-    font_family: &'a str,
-    surface: &'a str,
-    muted: &'a str,
-    foreground: &'a str,
-    muted_foreground: &'a str,
-    border: &'a str,
-    primary: &'a str,
-    primary_foreground: &'a str,
-    success: &'a str,
-    success_foreground: &'a str,
-    warning: &'a str,
-    warning_foreground: &'a str,
-    danger: &'a str,
-    danger_foreground: &'a str,
-}
-
-fn mermaid_svg_theme_css(palette: MermaidCssPalette<'_>) -> String {
-    let MermaidCssPalette {
-        font_family,
-        surface,
-        muted,
-        foreground,
-        muted_foreground,
-        border,
-        primary,
-        primary_foreground,
-        success,
-        success_foreground,
-        warning,
-        warning_foreground,
-        danger,
-        danger_foreground,
-    } = palette;
-    format!(
-        r"
-svg {{ background-color: transparent !important; }}
-defs svg, g svg {{ overflow: visible !important; }}
-text, tspan {{ font-family: {font_family} !important; fill: {foreground} !important; }}
-.background {{ fill: transparent !important; }}
-.edgeLabel .background, .edgeLabel rect, .labelBkg {{ fill: {surface} !important; opacity: 1 !important; }}
-marker path {{ fill: {primary} !important; stroke: {primary} !important; }}
-
-.actor {{ fill: {surface} !important; stroke: {border} !important; }}
-.actor-line, .messageLine0, .messageLine1 {{ stroke: {primary} !important; }}
-.messageText, text.actor, text.actor tspan {{ fill: {foreground} !important; }}
-
-.statediagram-state .label-container path, .statediagram-state .label-container rect,
-.statediagram-state .label-container polygon {{ fill: {surface} !important; stroke: {border} !important; }}
-.statediagram-state .nodeLabel {{ fill: {foreground} !important; }}
-.transition {{ stroke: {primary} !important; }}
-.state-start {{ fill: {primary} !important; stroke: {primary} !important; }}
-
-.mindmap-node .label-container, .mindmap-node .node-bkg {{ fill: {surface} !important; stroke: {primary} !important; }}
-.mindmap-node text, .mindmap-node tspan {{ fill: {foreground} !important; }}
-.mindmap-node line {{ stroke: {border} !important; }}
-.mindmapDiagram .edge, .section-edge--1, .section-edge-0, .section-edge-1, .section-edge-2,
-.section-edge-3, .section-edge-4, .section-edge-5, .section-edge-6, .section-edge-7,
-.section-edge-8, .section-edge-9, .section-edge-10 {{ stroke: {primary} !important; }}
-
-.timeline-node .node-bkg {{ fill: {surface} !important; stroke: {border} !important; }}
-.timeline-node text, .timeline-node tspan {{ fill: {foreground} !important; }}
-.timeline-node line {{ stroke: {border} !important; }}
-.timelineDiagram .lineWrapper line {{ stroke: {primary} !important; }}
-
-.entityBox {{ fill: {surface} !important; stroke: {border} !important; }}
-.node .row-rect-odd path {{ fill: {surface} !important; }}
-.node .row-rect-even path {{ fill: {muted} !important; }}
-.entityLabel, .entityLabel text, .entityLabel tspan, .erDiagramTitleText {{ fill: {foreground} !important; }}
-.relationshipLabelBox {{ fill: {surface} !important; opacity: 1 !important; }}
-.relationshipLine {{ stroke: {primary} !important; }}
-.marker.er {{ fill: none !important; stroke: {primary} !important; }}
-.edgeLabel .label text, .edgeLabel .label tspan {{ fill: {foreground} !important; }}
-
-.pieTitleText, .legend text {{ fill: {foreground} !important; }}
-.slice {{ fill: {foreground} !important; }}
-.pieCircle, .pieOuterCircle {{ stroke: {border} !important; }}
-
-.titleText, .sectionTitle0, .sectionTitle1, .sectionTitle2, .sectionTitle3,
-.grid .tick text, .taskTextOutside0, .taskTextOutside1, .taskTextOutside2,
-.taskTextOutside3, .taskTextOutsideLeft, .taskTextOutsideRight {{ fill: {foreground} !important; }}
-.grid .tick {{ stroke: {border} !important; }}
-.section0, .section2 {{ fill: {surface} !important; opacity: 1 !important; }}
-.section1, .section3 {{ fill: {muted} !important; opacity: 1 !important; }}
-.task0, .task1, .task2, .task3 {{ fill: {primary} !important; stroke: {border} !important; }}
-.taskText0, .taskText1, .taskText2, .taskText3 {{ fill: {primary_foreground} !important; }}
-.active0, .active1, .active2, .active3 {{ fill: {warning} !important; stroke: {border} !important; }}
-.activeText0, .activeText1, .activeText2, .activeText3 {{ fill: {warning_foreground} !important; }}
-.done0, .done1, .done2, .done3 {{ fill: {success} !important; stroke: {border} !important; }}
-.doneText0, .doneText1, .doneText2, .doneText3 {{ fill: {success_foreground} !important; }}
-.crit0, .crit1, .crit2, .crit3, .doneCrit0, .doneCrit1, .doneCrit2, .doneCrit3 {{ fill: {danger} !important; stroke: {border} !important; }}
-.critText0, .critText1, .critText2, .critText3,
-.doneCritText0, .doneCritText1, .doneCritText2, .doneCritText3 {{ fill: {danger_foreground} !important; }}
-.today {{ stroke: {danger} !important; }}
-
-.face {{ fill: {surface} !important; stroke: {border} !important; }}
-.mouth {{ stroke: {foreground} !important; }}
-.task-type-0, .task-type-2, .task-type-4, .task-type-6,
-.section-type-0, .section-type-2, .section-type-4, .section-type-6 {{ fill: {surface} !important; stroke: {border} !important; }}
-.task-type-1, .task-type-3, .task-type-5, .task-type-7,
-.section-type-1, .section-type-3, .section-type-5, .section-type-7 {{ fill: {muted} !important; stroke: {border} !important; }}
-text.journey-section, text.task, .legend {{ fill: {foreground} !important; }}
-
-.commit-label-bkg, .tag-label-bkg, .branchLabelBkg {{ fill: {surface} !important; stroke: {border} !important; }}
-.commit-label, .tag-label, .commit-id, .commit-msg, .branch-label {{ fill: {foreground} !important; }}
-.branchLabel text, .branchLabel tspan {{ fill: {foreground} !important; }}
-.gitTitleText, .statediagramTitleText, .treemapTitle, .treemapLabel {{ fill: {foreground} !important; }}
-.treemapValue {{ fill: {muted_foreground} !important; }}
-"
-    )
-}
-
 fn mermaid_theme_key(cx: &App) -> u64 {
-    const LOOK: u32 = 5;
+    const LOOK: u32 = 6;
     let mut hasher = DefaultHasher::new();
     LOOK.hash(&mut hasher);
     let colors = MermaidThemeColors::from_app(cx);
     for color in [
+        colors.background,
         colors.surface,
         colors.muted,
         colors.foreground,
         colors.muted_foreground,
         colors.border,
         colors.primary,
-        colors.primary_foreground,
         colors.success,
-        colors.success_foreground,
         colors.warning,
-        colors.warning_foreground,
         colors.danger,
-        colors.danger_foreground,
     ] {
         color.h.to_bits().hash(&mut hasher);
         color.s.to_bits().hash(&mut hasher);
@@ -3709,7 +3522,8 @@ fn mermaid_theme_key(cx: &App) -> u64 {
         color.a.to_bits().hash(&mut hasher);
     }
     cx.theme().font_family.hash(&mut hasher);
-    cx.theme().is_dark().hash(&mut hasher);
+    cx.theme().mono_font_family.hash(&mut hasher);
+    f32::from(cx.theme().radius).to_bits().hash(&mut hasher);
     hasher.finish()
 }
 
@@ -3778,7 +3592,7 @@ impl FigureRenderState {
             return;
         }
         self.result = FigureRenderResult::Pending;
-        let theme = MermaidTheme::from_app(cx);
+        let options = mermaid_options(cx);
         let svg_renderer = cx.svg_renderer();
         let delay = cx.background_executor().timer(FIGURE_RENDER_DEBOUNCE);
         let task = cx.spawn(async move |this: ala::WeakEntity<Self>, cx| {
@@ -3786,7 +3600,7 @@ impl FigureRenderState {
             let result = cx
                 .background_spawn(async move {
                     let svg = match source.kind {
-                        FigureKind::Mermaid => render_mermaid_svg(&source.source, &theme)?,
+                        FigureKind::Mermaid => render_mermaid_svg(&source.source, &options)?,
                         FigureKind::Svg => source.source,
                     };
                     svg_renderer
@@ -3817,58 +3631,19 @@ impl FigureRenderState {
     }
 }
 
-fn render_mermaid_svg(source: &str, theme: &MermaidTheme) -> Result<String, String> {
-    use merman::svg::{CssOverridePolicy, ScopedCssPostprocessor, SvgPipeline, SvgRenderOptions};
-
-    let now = web_time::SystemTime::now()
-        .duration_since(web_time::UNIX_EPOCH)
-        .ok()
-        .and_then(|since| i64::try_from(since.as_millis()).ok())
-        .unwrap_or_default();
-    let renderer = merman::Renderer::new()
-        .with_engine(merman::Engine::new().with_site_config(theme.config.clone()))
-        .with_runtime_policy(
-            merman::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(now),
-        );
-    let request = merman::SvgRequest {
-        pipeline: Some(
-            SvgPipeline::resvg_safe().with_postprocessor(
-                ScopedCssPostprocessor::new(theme.svg_css.clone())
-                    .with_override_policy(CssOverridePolicy::StripExistingImportant),
-            ),
-        ),
-        options: SvgRenderOptions {
-            diagram_id: Some("zz-agent-mermaid".to_owned()),
-            ..SvgRenderOptions::default()
-        },
-        ..merman::SvgRequest::default()
-    };
-    let output = renderer
-        .render(merman::RenderRequest::svg(
-            source,
-            merman::OperationControl::new(),
-            request,
-        ))
-        .map_err(|error| error.to_string())?;
-    let merman::RenderOutput::Svg(Some(svg)) = output else {
-        return Err("Mermaid returned no diagram".to_owned());
-    };
-    Ok(transparent_mermaid_canvas(svg.into_parts().0))
-}
-
-fn transparent_mermaid_canvas(mut svg: String) -> String {
-    const MERMAN_CANVASES: [&str; 2] = ["background-color:white", "background-color: white"];
-    for canvas in MERMAN_CANVASES {
-        let Some(offset) = svg.find(canvas) else {
-            continue;
-        };
-        svg.replace_range(
-            offset..offset + canvas.len(),
-            "background-color:transparent",
-        );
-        break;
-    }
-    svg
+fn render_mermaid_svg(source: &str, options: &pele::RenderOptions) -> Result<String, String> {
+    pele::render(source, options)
+        .map(|result| result.svg)
+        .map_err(|error| {
+            if error.line > 0 {
+                format!(
+                    "Line {}, column {}: {}",
+                    error.line, error.column, error.message
+                )
+            } else {
+                error.message
+            }
+        })
 }
 
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -4487,6 +4262,19 @@ mod tests {
             .expect("the svg block should paint as an image");
         assert_eq!(figure.size.width, px(80.0));
         assert_eq!(figure.size.height, px(40.0));
+    }
+
+    #[ala::test]
+    fn a_tall_figure_draws_at_its_own_size(cx: &mut TestAppContext) {
+        let cx = painted_answer(
+            "```svg\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"900\"><rect width=\"120\" height=\"900\" fill=\"red\"/></svg>\n```\n",
+            cx,
+        );
+        let figure = cx
+            .debug_bounds("agent-figure-image")
+            .expect("the svg block should paint as an image");
+        assert_eq!(figure.size.width, px(120.0));
+        assert_eq!(figure.size.height, px(900.0));
     }
 
     #[ala::test]
@@ -5214,8 +5002,8 @@ mod tests {
         .into()
     }
 
-    fn test_mermaid_theme() -> MermaidTheme {
-        MermaidTheme::new(
+    fn test_mermaid_options() -> pele::RenderOptions {
+        mermaid_render_options(
             MermaidThemeColors {
                 background: test_color([0x10, 0x11, 0x12]),
                 surface: test_color([0x19, 0x1a, 0x1d]),
@@ -5226,15 +5014,187 @@ mod tests {
                 primary: test_color([0x8b, 0x5c, 0xf6]),
                 primary_foreground: test_color([0xff, 0xff, 0xff]),
                 success: test_color([0x2f, 0x85, 0x5a]),
-                success_foreground: test_color([0xff, 0xff, 0xff]),
                 warning: test_color([0xb7, 0x79, 0x1f]),
-                warning_foreground: test_color([0xff, 0xff, 0xff]),
                 danger: test_color([0xc5, 0x30, 0x30]),
-                danger_foreground: test_color([0xff, 0xff, 0xff]),
             },
-            ".SystemUIFont",
-            true,
+            [".SystemUIFont", ".ZedMono"],
+            6.0,
+            None,
         )
+    }
+
+    const MERMAID_FAMILIES: [(&str, &str); 8] = [
+        (
+            "flowchart",
+            "flowchart TD\n    Start([Prompt]) --> Agent[Agent loop]\n    Agent --> Tool{Use a tool?}\n    Tool -->|Yes| Result[Read result]\n    Tool -->|No| Done([Answer])",
+        ),
+        (
+            "sequence",
+            "sequenceDiagram\n    participant User\n    participant Agent\n    participant Tool\n    User->>Agent: Fix the rendering\n    Agent->>Tool: Render fixture\n    Tool-->>Agent: SVG\n    Agent-->>User: Verified result",
+        ),
+        (
+            "class",
+            "classDiagram\n    class Agent {\n        +String model\n        +run() Result\n    }\n    class Tool {\n        +String name\n        +execute() Output\n    }\n    Agent --> Tool : invokes",
+        ),
+        (
+            "state",
+            "stateDiagram-v2\n    [*] --> Idle\n    Idle --> Rendering\n    Rendering --> Ready\n    Rendering --> Failed\n    Ready --> [*]",
+        ),
+        (
+            "er",
+            "erDiagram\n    USER ||--o{ SESSION : owns\n    SESSION ||--o{ MESSAGE : contains\n    USER {\n        string id PK\n        string email UK\n    }\n    SESSION {\n        string id PK\n        datetime created_at\n    }",
+        ),
+        (
+            "gantt",
+            "gantt\n    title Project Timeline\n    dateFormat YYYY-MM-DD\n    section Design\n        Wireframes :done, design, 2026-07-01, 3d\n    section Build\n        Core Agent Loop :active, core, 2026-07-05, 5d\n        Tool Integration :tools, after core, 4d\n    section Ship\n        Testing :crit, test, after tools, 3d",
+        ),
+        (
+            "pie",
+            "pie showData\n    title Tool Usage Breakdown\n    \"Read\" : 42\n    \"Edit\" : 28\n    \"Execute\" : 18\n    \"Search\" : 12",
+        ),
+        (
+            "quadrant",
+            "quadrantChart\n    title Rendering quality\n    x-axis Clipped --> Fits\n    y-axis Low contrast --> Readable\n    ER: [0.8, 0.85]\n    Gantt: [0.75, 0.8]\n    Pie: [0.9, 0.9]",
+        ),
+    ];
+
+    #[test]
+    fn mermaid_options_carry_the_app_theme() {
+        let options = test_mermaid_options();
+        assert!(options.transparent, "the card shows through the canvas");
+        assert!((options.font_size - 13.0).abs() < f64::EPSILON);
+        assert_eq!(options.font_family, "system-ui, sans-serif");
+        assert_eq!(options.font_family_mono, "Lilex, monospace");
+        assert_eq!(options.max_width, Some(MERMAID_LAYOUT_WIDTH));
+        let theme = &options.theme;
+        assert_eq!(theme.background, "#101112");
+        assert_eq!(theme.surface, "#191a1d");
+        assert_eq!(theme.surface_alt, "#24262b");
+        assert_eq!(theme.foreground, "#e8e9ed");
+        assert_eq!(theme.muted, "#979ba6");
+        assert_eq!(theme.line, "#8b5cf6");
+        assert_eq!(theme.border, "#383a40");
+        assert_eq!(
+            theme.series,
+            ["#8b5cf6", "#2f855a", "#b7791f", "#c53030", "#979ba6"]
+        );
+        assert!((theme.radius - 6.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn every_supported_mermaid_family_draws_in_theme_colors_on_a_transparent_canvas() {
+        let options = test_mermaid_options();
+        let renderer = ala::SvgRenderer::new(Arc::new(()));
+        let snapshot_directory = std::env::var_os("ZZ_MERMAID_SNAPSHOT_DIR");
+        if let Some(directory) = &snapshot_directory {
+            std::fs::create_dir_all(directory).expect("create Mermaid snapshot directory");
+        }
+
+        for (name, source) in MERMAID_FAMILIES {
+            assert!(pele::supports(source), "{name} should be supported");
+            let svg = render_mermaid_svg(source, &options)
+                .unwrap_or_else(|error| panic!("{name} fixture should render: {error}"));
+            assert!(
+                !svg.contains("height=\"100%\""),
+                "{name} paints a canvas, which shows as a box on glass"
+            );
+            assert!(!svg.contains("<foreignObject"), "{name} was not resvg-safe");
+            assert!(
+                svg.contains("font-family=\"system-ui, sans-serif\" font-size=\"13\""),
+                "{name} should use the app font at 13px"
+            );
+            assert!(
+                svg.contains("fill=\"#e8e9ed\""),
+                "{name} should draw text in the foreground"
+            );
+            renderer
+                .render_single_frame(svg.as_bytes(), 1.0)
+                .unwrap_or_else(|error| panic!("{name} should rasterize: {error}"));
+
+            if let Some(directory) = &snapshot_directory {
+                std::fs::write(
+                    std::path::Path::new(directory).join(format!("{name}.svg")),
+                    svg,
+                )
+                .expect("write Mermaid snapshot");
+            }
+        }
+    }
+
+    #[test]
+    fn mermaid_tells_unsupported_types_from_broken_sources() {
+        for source in [
+            "mindmap\n  root((zz))\n    panes",
+            "timeline\n    2026 : the swap",
+            "gitGraph\n    commit\n    branch fix",
+            "journey\n    title Rendering\n    section Fix\n      Run: 5: Agent",
+            "xychart-beta\n    x-axis [a, b]\n    bar [3, 9]",
+        ] {
+            assert!(!pele::supports(source), "{source} is not a supported type");
+        }
+        let broken = "flowchart LR\n    Prompt[ask the agent --> Answer";
+        assert!(pele::supports(broken));
+        let error = render_mermaid_svg(broken, &test_mermaid_options())
+            .expect_err("an unterminated label should not render");
+        assert!(error.starts_with("Line 2, column "), "{error}");
+    }
+
+    #[ala::test]
+    fn mermaid_labels_are_measured_by_the_app_text_system(cx: &mut TestAppContext) {
+        cx.update(crate::init);
+        let options = cx.update(|cx| mermaid_options(cx));
+        let measurer = options
+            .measurer
+            .as_deref()
+            .expect("mermaid labels should be measured by the app");
+        assert!(
+            (measurer.width("iiii", 13.0, 0) - measurer.width("WWWW", 13.0, 0)).abs()
+                < f64::EPSILON,
+            "the test text system gives every glyph the same advance"
+        );
+        assert!(pele::text::measure("iiii", 13.0, 0) < pele::text::measure("WWWW", 13.0, 0));
+        let width = |label: &str| {
+            pele::render(&format!("flowchart LR\n    A[{label}]"), &options)
+                .expect("a one node flowchart renders")
+                .width
+        };
+        assert!((width("iiiiiiii") - width("WWWWWWWW")).abs() < f64::EPSILON);
+    }
+
+    fn painted_answer<'a>(answer: &str, cx: &'a mut TestAppContext) -> &'a mut VisualTestContext {
+        cx.update(crate::init);
+        let rows = fold_timeline_rows(&[test_assistant(1, answer)]).rows;
+        let (_, cx) = cx.add_window_view(|window, cx| {
+            let view = cx.new(|cx| TimelineRowsTest {
+                store: cx.new(|_| AgentTimelineStore::default()),
+                rows,
+            });
+            penna::Root::new(view, window, cx)
+        });
+        let cx: &mut VisualTestContext = cx;
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        cx.executor().advance_clock(FIGURE_RENDER_DEBOUNCE);
+        cx.run_until_parked();
+        cx.update(|window, cx| {
+            _ = window.draw(cx);
+        });
+        cx
+    }
+
+    #[ala::test]
+    fn a_supported_mermaid_block_renders_as_a_figure(cx: &mut TestAppContext) {
+        let cx = painted_answer("```mermaid\nflowchart LR\n    A --> B\n```\n", cx);
+        assert!(cx.debug_bounds("agent-figure-image").is_some());
+        assert!(cx.debug_bounds("agent-code-language").is_none());
+    }
+
+    #[ala::test]
+    fn an_unsupported_mermaid_block_stays_a_code_block(cx: &mut TestAppContext) {
+        let cx = painted_answer("```mermaid\nmindmap\n  root((zz))\n    panes\n```\n", cx);
+        assert!(cx.debug_bounds("agent-figure-image").is_none());
+        assert!(cx.debug_bounds("agent-code-language").is_some());
     }
 
     #[ala::test]
@@ -5268,143 +5228,6 @@ mod tests {
 
         assert_eq!(raw_lines, 2, "nowrap does not join lines split by `\\n`");
         assert_eq!(collapsed_lines, 1);
-    }
-
-    fn opaque_canvas(svg: &str) -> Option<String> {
-        let root = &svg[..svg.find('>')?];
-        let style = root.split("style=\"").nth(1)?.split('"').next()?;
-        style
-            .split(';')
-            .filter_map(|rule| rule.split_once(':'))
-            .find(|(key, value)| key.trim() == "background-color" && value.trim() != "transparent")
-            .map(|(_, value)| value.trim().to_owned())
-    }
-
-    #[test]
-    fn mermaid_renderer_produces_resvg_safe_svg() {
-        let theme = test_mermaid_theme();
-        let svg = render_mermaid_svg("flowchart LR\n    Picker -->|asks| Agent", &theme)
-            .expect("Mermaid fixture should render");
-
-        assert!(svg.contains("<svg"));
-        assert!(!svg.contains("<foreignObject"));
-        assert_eq!(opaque_canvas(&svg), None);
-        assert!(
-            !svg.contains("#101112"),
-            "the card color must not be painted: {svg}"
-        );
-        assert!(svg.contains(".edgeLabel .background"));
-        assert!(svg.contains("data-merman-postprocess=\"scoped-css\""));
-    }
-
-    #[test]
-    fn mermaid_common_variants_render_with_readable_theme_and_width() {
-        const FIXTURES: [(&str, &str); 13] = [
-            (
-                "flowchart",
-                "flowchart TD\n    Start([Prompt]) --> Agent[Agent loop]\n    Agent --> Tool{Use a tool?}\n    Tool -->|Yes| Result[Read result]\n    Tool -->|No| Done([Answer])",
-            ),
-            (
-                "sequence",
-                "sequenceDiagram\n    participant User\n    participant Agent\n    participant Tool\n    User->>Agent: Fix Mermaid rendering\n    Agent->>Tool: Render fixture\n    Tool-->>Agent: SVG\n    Agent-->>User: Verified result",
-            ),
-            (
-                "state",
-                "stateDiagram-v2\n    [*] --> Idle\n    Idle --> Rendering\n    Rendering --> Ready\n    Rendering --> Failed\n    Ready --> [*]",
-            ),
-            (
-                "er",
-                "erDiagram\n    USER ||--o{ SESSION : owns\n    SESSION ||--o{ MESSAGE : contains\n    USER {\n        string id PK\n        string email UK\n    }\n    SESSION {\n        string id PK\n        datetime created_at\n    }\n    MESSAGE {\n        string id PK\n        string content\n    }",
-            ),
-            (
-                "class",
-                "classDiagram\n    class Agent {\n        +String model\n        +run() Result\n    }\n    class Tool {\n        +String name\n        +execute() Output\n    }\n    Agent --> Tool : invokes",
-            ),
-            (
-                "pie",
-                "pie showData\n    title Tool Usage Breakdown\n    \"Read\" : 42\n    \"Edit\" : 28\n    \"Execute\" : 18\n    \"Search\" : 12",
-            ),
-            (
-                "gantt",
-                "gantt\n    title Project Timeline\n    dateFormat YYYY-MM-DD\n    section Design\n        Wireframes :done, design, 2026-07-01, 3d\n    section Build\n        Core Agent Loop :active, core, 2026-07-05, 5d\n        Tool Integration :tools, after core, 4d\n    section Ship\n        Testing :crit, test, after tools, 3d",
-            ),
-            (
-                "mindmap",
-                "mindmap\n  root((Agent))\n    Context\n      Files\n      Knowledge\n    Work\n      Reason\n      Tools\n    Verify\n      Tests\n      Visuals",
-            ),
-            (
-                "journey",
-                "journey\n    title Rendering repair\n    section Diagnose\n      Reproduce variants: 3: Agent\n      Inspect SVG: 4: Agent\n    section Verify\n      Run tests: 5: Agent\n      Review snapshots: 5: User, Agent",
-            ),
-            (
-                "gitgraph",
-                "gitGraph\n    commit id: \"baseline\"\n    branch fix/mermaid\n    commit id: \"theme\"\n    commit id: \"sizing\"\n    checkout main\n    merge fix/mermaid",
-            ),
-            (
-                "quadrant",
-                "quadrantChart\n    title Rendering quality\n    x-axis Clipped --> Fits\n    y-axis Low contrast --> Readable\n    ER: [0.8, 0.85]\n    Gantt: [0.75, 0.8]\n    Pie: [0.9, 0.9]",
-            ),
-            (
-                "timeline",
-                "timeline\n    title Mermaid renderer\n    section Diagnose\n        Font metrics : ER clipping\n        Fixed canvas : Tiny Gantt\n    section Repair\n        Theme CSS : Visible labels\n        Snapshots : Visual verification",
-            ),
-            (
-                "xychart",
-                "xychart-beta\n    title \"Render readability\"\n    x-axis [\"Before\", \"After\"]\n    y-axis \"Score\" 0 --> 10\n    bar [3, 9]",
-            ),
-        ];
-
-        let fixture = |name: &str| {
-            FIXTURES
-                .into_iter()
-                .find_map(|(candidate, source)| (candidate == name).then_some(source))
-                .unwrap_or_else(|| panic!("{name} should be one of the fixtures"))
-        };
-
-        let theme = test_mermaid_theme();
-        let snapshot_directory = std::env::var_os("ZZ_MERMAID_SNAPSHOT_DIR");
-        if let Some(directory) = &snapshot_directory {
-            std::fs::create_dir_all(directory).expect("create Mermaid snapshot directory");
-        }
-
-        for (name, source) in FIXTURES {
-            let svg = render_mermaid_svg(source, &theme)
-                .unwrap_or_else(|error| panic!("{name} fixture should render: {error}"));
-            assert!(!svg.contains("<foreignObject"), "{name} was not resvg-safe");
-            assert!(
-                svg.contains("data-merman-postprocess=\"scoped-css\""),
-                "{name} omitted the theme override"
-            );
-            assert!(
-                opaque_canvas(&svg).is_none(),
-                "{name} kept an opaque canvas: {:?}",
-                opaque_canvas(&svg)
-            );
-            assert!(
-                !svg.contains("#101112"),
-                "{name} paints the card color, which shows as a box on glass"
-            );
-
-            if let Some(directory) = &snapshot_directory {
-                std::fs::write(
-                    std::path::Path::new(directory).join(format!("{name}.svg")),
-                    svg,
-                )
-                .expect("write Mermaid snapshot");
-            }
-        }
-
-        let gantt = render_mermaid_svg(fixture("gantt"), &theme).expect("Gantt should render");
-        assert!(
-            gantt.contains("viewBox=\"0 0 640 "),
-            "Gantt should use the transcript-sized canvas: {gantt}"
-        );
-
-        let er = render_mermaid_svg(fixture("er"), &theme).expect("ER should render");
-        assert!(
-            er.contains("system-ui, sans-serif"),
-            "ER should use the conservatively measured font stack: {er}"
-        );
     }
 
     #[test]

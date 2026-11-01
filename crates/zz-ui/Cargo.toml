@@ -9,7 +9,7 @@ publish = false
 
 [features]
 default = []
-agent = ["dep:merman"]
+agent = ["dep:pele"]
 editor = ["penna/editor"]
 tree-sitter = ["penna/tree-sitter", "dep:tree-sitter-tmux"]
 
@@ -18,8 +18,8 @@ chrono = { workspace = true, features = ["clock"] }
 image.workspace = true
 log.workspace = true
 markdown = { version = "1.0", features = ["serde"] }
-merman = { workspace = true, optional = true }
 parking_lot.workspace = true
+pele = { workspace = true, optional = true }
 rust-embed = { version = "8.12", features = ["include-exclude"] }
 serde.workspace = true
 serde_json.workspace = true

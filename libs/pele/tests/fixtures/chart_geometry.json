@@ -1,0 +1,4264 @@
+{
+  "upstream_revision": "36e584d59152181927e0d8bf70fddcd2a5f33d6c",
+  "fixtures": [
+    {
+      "id": "pie-0-left",
+      "source": "pie \n title Example 0\n\"Item 0\": 3",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-0-right",
+      "source": "pie \n title Example 0\n\"Item 0\": 3",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-0-center",
+      "source": "pie \n title Example 0\n\"Item 0\": 3",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-0-top",
+      "source": "pie \n title Example 0\n\"Item 0\": 3",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-0-bottom",
+      "source": "pie \n title Example 0\n\"Item 0\": 3",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-1-left",
+      "source": "pie showData\n title Example 1\n\"Item 0\": 4\n\"Item 1\": 8",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 367,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-1-right",
+      "source": "pie showData\n title Example 1\n\"Item 0\": 4\n\"Item 1\": 8",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 367,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-1-center",
+      "source": "pie showData\n title Example 1\n\"Item 0\": 4\n\"Item 1\": 8",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-1-top",
+      "source": "pie showData\n title Example 1\n\"Item 0\": 4\n\"Item 1\": 8",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-1-bottom",
+      "source": "pie showData\n title Example 1\n\"Item 0\": 4\n\"Item 1\": 8",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-2-left",
+      "source": "pie \n title Example 2\n\"Item 0\": 5\n\"Item 1\": 10\n\"Item 2\": 15",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-2-right",
+      "source": "pie \n title Example 2\n\"Item 0\": 5\n\"Item 1\": 10\n\"Item 2\": 15",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-2-center",
+      "source": "pie \n title Example 2\n\"Item 0\": 5\n\"Item 1\": 10\n\"Item 2\": 15",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-2-top",
+      "source": "pie \n title Example 2\n\"Item 0\": 5\n\"Item 1\": 10\n\"Item 2\": 15",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-2-bottom",
+      "source": "pie \n title Example 2\n\"Item 0\": 5\n\"Item 1\": 10\n\"Item 2\": 15",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-3-left",
+      "source": "pie showData\n title Example 3\n\"Item 0\": 6\n\"Item 1\": 12\n\"Item 2\": 18\n\"Item 3\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-3-right",
+      "source": "pie showData\n title Example 3\n\"Item 0\": 6\n\"Item 1\": 12\n\"Item 2\": 18\n\"Item 3\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-3-center",
+      "source": "pie showData\n title Example 3\n\"Item 0\": 6\n\"Item 1\": 12\n\"Item 2\": 18\n\"Item 3\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-3-top",
+      "source": "pie showData\n title Example 3\n\"Item 0\": 6\n\"Item 1\": 12\n\"Item 2\": 18\n\"Item 3\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-3-bottom",
+      "source": "pie showData\n title Example 3\n\"Item 0\": 6\n\"Item 1\": 12\n\"Item 2\": 18\n\"Item 3\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-4-left",
+      "source": "pie \n title Example 4\n\"Item 0\": 7\n\"Item 1\": 14\n\"Item 2\": 21\n\"Item 3\": 28\n\"Item 4\": 35",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-4-right",
+      "source": "pie \n title Example 4\n\"Item 0\": 7\n\"Item 1\": 14\n\"Item 2\": 21\n\"Item 3\": 28\n\"Item 4\": 35",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-4-center",
+      "source": "pie \n title Example 4\n\"Item 0\": 7\n\"Item 1\": 14\n\"Item 2\": 21\n\"Item 3\": 28\n\"Item 4\": 35",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-4-top",
+      "source": "pie \n title Example 4\n\"Item 0\": 7\n\"Item 1\": 14\n\"Item 2\": 21\n\"Item 3\": 28\n\"Item 4\": 35",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-4-bottom",
+      "source": "pie \n title Example 4\n\"Item 0\": 7\n\"Item 1\": 14\n\"Item 2\": 21\n\"Item 3\": 28\n\"Item 4\": 35",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-5-left",
+      "source": "pie showData\n title Example 5\n\"Item 0\": 8\n\"Item 1\": 16\n\"Item 2\": 24\n\"Item 3\": 32\n\"Item 4\": 40\n\"Item 5\": 48",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-5-right",
+      "source": "pie showData\n title Example 5\n\"Item 0\": 8\n\"Item 1\": 16\n\"Item 2\": 24\n\"Item 3\": 32\n\"Item 4\": 40\n\"Item 5\": 48",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-5-center",
+      "source": "pie showData\n title Example 5\n\"Item 0\": 8\n\"Item 1\": 16\n\"Item 2\": 24\n\"Item 3\": 32\n\"Item 4\": 40\n\"Item 5\": 48",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-5-top",
+      "source": "pie showData\n title Example 5\n\"Item 0\": 8\n\"Item 1\": 16\n\"Item 2\": 24\n\"Item 3\": 32\n\"Item 4\": 40\n\"Item 5\": 48",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-5-bottom",
+      "source": "pie showData\n title Example 5\n\"Item 0\": 8\n\"Item 1\": 16\n\"Item 2\": 24\n\"Item 3\": 32\n\"Item 4\": 40\n\"Item 5\": 48",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "quadrant-0",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0, 0.25] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 500,
+            "chartHeight": 400,
+            "xAxisPosition": "bottom",
+            "yAxisPosition": "left",
+            "pointTextPadding": 5
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 320,
+        "height": 256,
+        "points": [
+          {
+            "label": "B",
+            "cx": "117.4",
+            "cy": "114",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "34",
+            "cy": "177",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-1",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0.5, 0.75] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 495,
+            "chartHeight": 405,
+            "xAxisPosition": "top",
+            "yAxisPosition": "right",
+            "pointTextPadding": 6
+          }
+        }
+      },
+      "expected": {
+        "width": 495,
+        "height": 405,
+        "points": [
+          {
+            "label": "B",
+            "cx": "143.9",
+            "cy": "173.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "234.5",
+            "cy": "124.25",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-2",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [1, 0.25] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 490,
+            "chartHeight": 410,
+            "xAxisPosition": "bottom",
+            "yAxisPosition": "left",
+            "pointTextPadding": 7
+          }
+        }
+      },
+      "expected": {
+        "width": 490,
+        "height": 410,
+        "points": [
+          {
+            "label": "B",
+            "cx": "168.4",
+            "cy": "175.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "482",
+            "cy": "292.5",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-3",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0, 0.75] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 485,
+            "chartHeight": 415,
+            "xAxisPosition": "top",
+            "yAxisPosition": "right",
+            "pointTextPadding": 8
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 320,
+        "height": 274,
+        "points": [
+          {
+            "label": "B",
+            "cx": "91.4",
+            "cy": "121.2",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "8",
+            "cy": "91.5",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-4",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0.5, 0.25] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 480,
+            "chartHeight": 420,
+            "xAxisPosition": "bottom",
+            "yAxisPosition": "left",
+            "pointTextPadding": 9
+          }
+        }
+      },
+      "expected": {
+        "width": 480,
+        "height": 420,
+        "points": [
+          {
+            "label": "B",
+            "cx": "165.4",
+            "cy": "179.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "253",
+            "cy": "300",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-5",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [1, 0.75] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 475,
+            "chartHeight": 425,
+            "xAxisPosition": "top",
+            "yAxisPosition": "right",
+            "pointTextPadding": 10
+          }
+        }
+      },
+      "expected": {
+        "width": 475,
+        "height": 425,
+        "points": [
+          {
+            "label": "B",
+            "cx": "137.9",
+            "cy": "181.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "441",
+            "cy": "129.25",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-6",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0, 0.25] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 470,
+            "chartHeight": 430,
+            "xAxisPosition": "bottom",
+            "yAxisPosition": "left",
+            "pointTextPadding": 11
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 320,
+        "height": 293,
+        "points": [
+          {
+            "label": "B",
+            "cx": "117.4",
+            "cy": "128.8",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "34",
+            "cy": "204.75",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-7",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0.5, 0.75] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 465,
+            "chartHeight": 435,
+            "xAxisPosition": "top",
+            "yAxisPosition": "right",
+            "pointTextPadding": 12
+          }
+        }
+      },
+      "expected": {
+        "width": 465,
+        "height": 435,
+        "points": [
+          {
+            "label": "B",
+            "cx": "134.9",
+            "cy": "185.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "219.5",
+            "cy": "131.75",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-8",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [1, 0.25] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 460,
+            "chartHeight": 440,
+            "xAxisPosition": "bottom",
+            "yAxisPosition": "left",
+            "pointTextPadding": 13
+          }
+        }
+      },
+      "expected": {
+        "width": 460,
+        "height": 440,
+        "points": [
+          {
+            "label": "B",
+            "cx": "159.4",
+            "cy": "187.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "452",
+            "cy": "315",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-9",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0, 0.75] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 455,
+            "chartHeight": 445,
+            "xAxisPosition": "top",
+            "yAxisPosition": "right",
+            "pointTextPadding": 14
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 320,
+        "height": 313,
+        "points": [
+          {
+            "label": "B",
+            "cx": "91.4",
+            "cy": "136.8",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "8",
+            "cy": "101.25",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-10",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [0.5, 0.25] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 450,
+            "chartHeight": 450,
+            "xAxisPosition": "bottom",
+            "yAxisPosition": "left",
+            "pointTextPadding": 15
+          }
+        }
+      },
+      "expected": {
+        "width": 450,
+        "height": 450,
+        "points": [
+          {
+            "label": "B",
+            "cx": "156.4",
+            "cy": "191.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "238",
+            "cy": "322.5",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "quadrant-11",
+      "source": "quadrantChart\n title Priorities\n x-axis Low --> High\n y-axis Low impact --> High impact\n quadrant-1 Plan\n quadrant-2 Do\n quadrant-3 Ignore\n quadrant-4 Delegate\n A:::work: [1, 0.75] radius:12,color:#f00\n B: [0.3, 0.6]\n classDef work stroke-color:#00f,stroke-width:3px",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "quadrantChart": {
+            "chartWidth": 445,
+            "chartHeight": 455,
+            "xAxisPosition": "top",
+            "yAxisPosition": "right",
+            "pointTextPadding": 16
+          }
+        }
+      },
+      "expected": {
+        "width": 445,
+        "height": 455,
+        "points": [
+          {
+            "label": "B",
+            "cx": "128.9",
+            "cy": "193.6",
+            "r": "5"
+          },
+          {
+            "label": "A",
+            "cx": "411",
+            "cy": "136.75",
+            "r": "12"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pie-6-left",
+      "source": "pie \n title Example 6\n\"Item 0\": 9\n\"Item 1\": 18\n\"Item 2\": 27\n\"Item 3\": 36\n\"Item 4\": 45\n\"Item 5\": 54\n\"Item 6\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 403,
+        "height": 352,
+        "paths": [
+          "M0,-120A120,120 0 0 1 26.7,-116.99L10.68,-46.8A48,48 0 0 0 0,-48Z",
+          "M26.7,-116.99A120,120 0 0 1 74.82,-93.82L29.93,-37.53A48,48 0 0 0 10.68,-46.8Z",
+          "M74.82,-93.82A120,120 0 0 1 116.99,-26.7L46.8,-10.68A48,48 0 0 0 29.93,-37.53Z",
+          "M116.99,-26.7A120,120 0 0 1 93.82,74.82L37.53,29.93A48,48 0 0 0 46.8,-10.68Z",
+          "M93.82,74.82A120,120 0 0 1 -26.7,116.99L-10.68,46.8A48,48 0 0 0 37.53,29.93Z",
+          "M-26.7,116.99A120,120 0 0 1 -120,0L-48,0A48,48 0 0 0 -10.68,46.8Z",
+          "M-120,0A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -48,0Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-6-right",
+      "source": "pie \n title Example 6\n\"Item 0\": 9\n\"Item 1\": 18\n\"Item 2\": 27\n\"Item 3\": 36\n\"Item 4\": 45\n\"Item 5\": 54\n\"Item 6\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 403,
+        "height": 352,
+        "paths": [
+          "M0,-120A120,120 0 0 1 26.7,-116.99L10.68,-46.8A48,48 0 0 0 0,-48Z",
+          "M26.7,-116.99A120,120 0 0 1 74.82,-93.82L29.93,-37.53A48,48 0 0 0 10.68,-46.8Z",
+          "M74.82,-93.82A120,120 0 0 1 116.99,-26.7L46.8,-10.68A48,48 0 0 0 29.93,-37.53Z",
+          "M116.99,-26.7A120,120 0 0 1 93.82,74.82L37.53,29.93A48,48 0 0 0 46.8,-10.68Z",
+          "M93.82,74.82A120,120 0 0 1 -26.7,116.99L-10.68,46.8A48,48 0 0 0 37.53,29.93Z",
+          "M-26.7,116.99A120,120 0 0 1 -120,0L-48,0A48,48 0 0 0 -10.68,46.8Z",
+          "M-120,0A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -48,0Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-6-center",
+      "source": "pie \n title Example 6\n\"Item 0\": 9\n\"Item 1\": 18\n\"Item 2\": 27\n\"Item 3\": 36\n\"Item 4\": 45\n\"Item 5\": 54\n\"Item 6\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 352,
+        "paths": [
+          "M0,-120A120,120 0 0 1 26.7,-116.99L10.68,-46.8A48,48 0 0 0 0,-48Z",
+          "M26.7,-116.99A120,120 0 0 1 74.82,-93.82L29.93,-37.53A48,48 0 0 0 10.68,-46.8Z",
+          "M74.82,-93.82A120,120 0 0 1 116.99,-26.7L46.8,-10.68A48,48 0 0 0 29.93,-37.53Z",
+          "M116.99,-26.7A120,120 0 0 1 93.82,74.82L37.53,29.93A48,48 0 0 0 46.8,-10.68Z",
+          "M93.82,74.82A120,120 0 0 1 -26.7,116.99L-10.68,46.8A48,48 0 0 0 37.53,29.93Z",
+          "M-26.7,116.99A120,120 0 0 1 -120,0L-48,0A48,48 0 0 0 -10.68,46.8Z",
+          "M-120,0A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -48,0Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-6-top",
+      "source": "pie \n title Example 6\n\"Item 0\": 9\n\"Item 1\": 18\n\"Item 2\": 27\n\"Item 3\": 36\n\"Item 4\": 45\n\"Item 5\": 54\n\"Item 6\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 554,
+        "paths": [
+          "M0,-120A120,120 0 0 1 26.7,-116.99L10.68,-46.8A48,48 0 0 0 0,-48Z",
+          "M26.7,-116.99A120,120 0 0 1 74.82,-93.82L29.93,-37.53A48,48 0 0 0 10.68,-46.8Z",
+          "M74.82,-93.82A120,120 0 0 1 116.99,-26.7L46.8,-10.68A48,48 0 0 0 29.93,-37.53Z",
+          "M116.99,-26.7A120,120 0 0 1 93.82,74.82L37.53,29.93A48,48 0 0 0 46.8,-10.68Z",
+          "M93.82,74.82A120,120 0 0 1 -26.7,116.99L-10.68,46.8A48,48 0 0 0 37.53,29.93Z",
+          "M-26.7,116.99A120,120 0 0 1 -120,0L-48,0A48,48 0 0 0 -10.68,46.8Z",
+          "M-120,0A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -48,0Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-6-bottom",
+      "source": "pie \n title Example 6\n\"Item 0\": 9\n\"Item 1\": 18\n\"Item 2\": 27\n\"Item 3\": 36\n\"Item 4\": 45\n\"Item 5\": 54\n\"Item 6\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 554,
+        "paths": [
+          "M0,-120A120,120 0 0 1 26.7,-116.99L10.68,-46.8A48,48 0 0 0 0,-48Z",
+          "M26.7,-116.99A120,120 0 0 1 74.82,-93.82L29.93,-37.53A48,48 0 0 0 10.68,-46.8Z",
+          "M74.82,-93.82A120,120 0 0 1 116.99,-26.7L46.8,-10.68A48,48 0 0 0 29.93,-37.53Z",
+          "M116.99,-26.7A120,120 0 0 1 93.82,74.82L37.53,29.93A48,48 0 0 0 46.8,-10.68Z",
+          "M93.82,74.82A120,120 0 0 1 -26.7,116.99L-10.68,46.8A48,48 0 0 0 37.53,29.93Z",
+          "M-26.7,116.99A120,120 0 0 1 -120,0L-48,0A48,48 0 0 0 -10.68,46.8Z",
+          "M-120,0A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -48,0Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-7-left",
+      "source": "pie showData\n title Example 7\n\"Item 0\": 10\n\"Item 1\": 20\n\"Item 2\": 30\n\"Item 3\": 40\n\"Item 4\": 50\n\"Item 5\": 60\n\"Item 6\": 70\n\"Item 7\": 80",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 431,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-7-right",
+      "source": "pie showData\n title Example 7\n\"Item 0\": 10\n\"Item 1\": 20\n\"Item 2\": 30\n\"Item 3\": 40\n\"Item 4\": 50\n\"Item 5\": 60\n\"Item 6\": 70\n\"Item 7\": 80",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 431,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-7-center",
+      "source": "pie showData\n title Example 7\n\"Item 0\": 10\n\"Item 1\": 20\n\"Item 2\": 30\n\"Item 3\": 40\n\"Item 4\": 50\n\"Item 5\": 60\n\"Item 6\": 70\n\"Item 7\": 80",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-7-top",
+      "source": "pie showData\n title Example 7\n\"Item 0\": 10\n\"Item 1\": 20\n\"Item 2\": 30\n\"Item 3\": 40\n\"Item 4\": 50\n\"Item 5\": 60\n\"Item 6\": 70\n\"Item 7\": 80",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 580,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-7-bottom",
+      "source": "pie showData\n title Example 7\n\"Item 0\": 10\n\"Item 1\": 20\n\"Item 2\": 30\n\"Item 3\": 40\n\"Item 4\": 50\n\"Item 5\": 60\n\"Item 6\": 70\n\"Item 7\": 80",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 580,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-8-left",
+      "source": "pie \n title Example 8\n\"Item 0\": 11",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-8-right",
+      "source": "pie \n title Example 8\n\"Item 0\": 11",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-8-center",
+      "source": "pie \n title Example 8\n\"Item 0\": 11",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-8-top",
+      "source": "pie \n title Example 8\n\"Item 0\": 11",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-8-bottom",
+      "source": "pie \n title Example 8\n\"Item 0\": 11",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-9-left",
+      "source": "pie showData\n title Example 9\n\"Item 0\": 12\n\"Item 1\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,60L41.57,24A48,48 0 0 0 0,-48Z",
+          "M103.92,60A120,120 0 1 1 0,-120L0,-48A48,48 0 1 0 41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-9-right",
+      "source": "pie showData\n title Example 9\n\"Item 0\": 12\n\"Item 1\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,60L41.57,24A48,48 0 0 0 0,-48Z",
+          "M103.92,60A120,120 0 1 1 0,-120L0,-48A48,48 0 1 0 41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-9-center",
+      "source": "pie showData\n title Example 9\n\"Item 0\": 12\n\"Item 1\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,60L41.57,24A48,48 0 0 0 0,-48Z",
+          "M103.92,60A120,120 0 1 1 0,-120L0,-48A48,48 0 1 0 41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-9-top",
+      "source": "pie showData\n title Example 9\n\"Item 0\": 12\n\"Item 1\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,60L41.57,24A48,48 0 0 0 0,-48Z",
+          "M103.92,60A120,120 0 1 1 0,-120L0,-48A48,48 0 1 0 41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-9-bottom",
+      "source": "pie showData\n title Example 9\n\"Item 0\": 12\n\"Item 1\": 24",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,60L41.57,24A48,48 0 0 0 0,-48Z",
+          "M103.92,60A120,120 0 1 1 0,-120L0,-48A48,48 0 1 0 41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-10-left",
+      "source": "pie \n title Example 10\n\"Item 0\": 13\n\"Item 1\": 26\n\"Item 2\": 39",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-10-right",
+      "source": "pie \n title Example 10\n\"Item 0\": 13\n\"Item 1\": 26\n\"Item 2\": 39",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-10-center",
+      "source": "pie \n title Example 10\n\"Item 0\": 13\n\"Item 1\": 26\n\"Item 2\": 39",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-10-top",
+      "source": "pie \n title Example 10\n\"Item 0\": 13\n\"Item 1\": 26\n\"Item 2\": 39",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-10-bottom",
+      "source": "pie \n title Example 10\n\"Item 0\": 13\n\"Item 1\": 26\n\"Item 2\": 39",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-11-left",
+      "source": "pie showData\n title Example 11\n\"Item 0\": 14\n\"Item 1\": 28\n\"Item 2\": 42\n\"Item 3\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-11-right",
+      "source": "pie showData\n title Example 11\n\"Item 0\": 14\n\"Item 1\": 28\n\"Item 2\": 42\n\"Item 3\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-11-center",
+      "source": "pie showData\n title Example 11\n\"Item 0\": 14\n\"Item 1\": 28\n\"Item 2\": 42\n\"Item 3\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-11-top",
+      "source": "pie showData\n title Example 11\n\"Item 0\": 14\n\"Item 1\": 28\n\"Item 2\": 42\n\"Item 3\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-11-bottom",
+      "source": "pie showData\n title Example 11\n\"Item 0\": 14\n\"Item 1\": 28\n\"Item 2\": 42\n\"Item 3\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-12-left",
+      "source": "pie \n title Example 12\n\"Item 0\": 15\n\"Item 1\": 30\n\"Item 2\": 45\n\"Item 3\": 60\n\"Item 4\": 75",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,-120A120,120 0 0 1 48.81,-109.63L19.52,-43.85A48,48 0 0 0 0,-48Z",
+          "M48.81,-109.63A120,120 0 0 1 114.13,-37.08L45.65,-14.83A48,48 0 0 0 19.52,-43.85Z",
+          "M114.13,-37.08A120,120 0 0 1 70.53,97.08L28.21,38.83A48,48 0 0 0 45.65,-14.83Z",
+          "M70.53,97.08A120,120 0 0 1 -103.92,60L-41.57,24A48,48 0 0 0 28.21,38.83Z",
+          "M-103.92,60A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-12-right",
+      "source": "pie \n title Example 12\n\"Item 0\": 15\n\"Item 1\": 30\n\"Item 2\": 45\n\"Item 3\": 60\n\"Item 4\": 75",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,-120A120,120 0 0 1 48.81,-109.63L19.52,-43.85A48,48 0 0 0 0,-48Z",
+          "M48.81,-109.63A120,120 0 0 1 114.13,-37.08L45.65,-14.83A48,48 0 0 0 19.52,-43.85Z",
+          "M114.13,-37.08A120,120 0 0 1 70.53,97.08L28.21,38.83A48,48 0 0 0 45.65,-14.83Z",
+          "M70.53,97.08A120,120 0 0 1 -103.92,60L-41.57,24A48,48 0 0 0 28.21,38.83Z",
+          "M-103.92,60A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-12-center",
+      "source": "pie \n title Example 12\n\"Item 0\": 15\n\"Item 1\": 30\n\"Item 2\": 45\n\"Item 3\": 60\n\"Item 4\": 75",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 48.81,-109.63L19.52,-43.85A48,48 0 0 0 0,-48Z",
+          "M48.81,-109.63A120,120 0 0 1 114.13,-37.08L45.65,-14.83A48,48 0 0 0 19.52,-43.85Z",
+          "M114.13,-37.08A120,120 0 0 1 70.53,97.08L28.21,38.83A48,48 0 0 0 45.65,-14.83Z",
+          "M70.53,97.08A120,120 0 0 1 -103.92,60L-41.57,24A48,48 0 0 0 28.21,38.83Z",
+          "M-103.92,60A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-12-top",
+      "source": "pie \n title Example 12\n\"Item 0\": 15\n\"Item 1\": 30\n\"Item 2\": 45\n\"Item 3\": 60\n\"Item 4\": 75",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,-120A120,120 0 0 1 48.81,-109.63L19.52,-43.85A48,48 0 0 0 0,-48Z",
+          "M48.81,-109.63A120,120 0 0 1 114.13,-37.08L45.65,-14.83A48,48 0 0 0 19.52,-43.85Z",
+          "M114.13,-37.08A120,120 0 0 1 70.53,97.08L28.21,38.83A48,48 0 0 0 45.65,-14.83Z",
+          "M70.53,97.08A120,120 0 0 1 -103.92,60L-41.57,24A48,48 0 0 0 28.21,38.83Z",
+          "M-103.92,60A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-12-bottom",
+      "source": "pie \n title Example 12\n\"Item 0\": 15\n\"Item 1\": 30\n\"Item 2\": 45\n\"Item 3\": 60\n\"Item 4\": 75",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,-120A120,120 0 0 1 48.81,-109.63L19.52,-43.85A48,48 0 0 0 0,-48Z",
+          "M48.81,-109.63A120,120 0 0 1 114.13,-37.08L45.65,-14.83A48,48 0 0 0 19.52,-43.85Z",
+          "M114.13,-37.08A120,120 0 0 1 70.53,97.08L28.21,38.83A48,48 0 0 0 45.65,-14.83Z",
+          "M70.53,97.08A120,120 0 0 1 -103.92,60L-41.57,24A48,48 0 0 0 28.21,38.83Z",
+          "M-103.92,60A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -41.57,24Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-13-left",
+      "source": "pie showData\n title Example 13\n\"Item 0\": 16\n\"Item 1\": 32\n\"Item 2\": 48\n\"Item 3\": 64\n\"Item 4\": 80\n\"Item 5\": 96",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-13-right",
+      "source": "pie showData\n title Example 13\n\"Item 0\": 16\n\"Item 1\": 32\n\"Item 2\": 48\n\"Item 3\": 64\n\"Item 4\": 80\n\"Item 5\": 96",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-13-center",
+      "source": "pie showData\n title Example 13\n\"Item 0\": 16\n\"Item 1\": 32\n\"Item 2\": 48\n\"Item 3\": 64\n\"Item 4\": 80\n\"Item 5\": 96",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-13-top",
+      "source": "pie showData\n title Example 13\n\"Item 0\": 16\n\"Item 1\": 32\n\"Item 2\": 48\n\"Item 3\": 64\n\"Item 4\": 80\n\"Item 5\": 96",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-13-bottom",
+      "source": "pie showData\n title Example 13\n\"Item 0\": 16\n\"Item 1\": 32\n\"Item 2\": 48\n\"Item 3\": 64\n\"Item 4\": 80\n\"Item 5\": 96",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-14-left",
+      "source": "pie \n title Example 14\n\"Item 0\": 17\n\"Item 1\": 34\n\"Item 2\": 51\n\"Item 3\": 68\n\"Item 4\": 85\n\"Item 5\": 102\n\"Item 6\": 119",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 403,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-14-right",
+      "source": "pie \n title Example 14\n\"Item 0\": 17\n\"Item 1\": 34\n\"Item 2\": 51\n\"Item 3\": 68\n\"Item 4\": 85\n\"Item 5\": 102\n\"Item 6\": 119",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 403,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-14-center",
+      "source": "pie \n title Example 14\n\"Item 0\": 17\n\"Item 1\": 34\n\"Item 2\": 51\n\"Item 3\": 68\n\"Item 4\": 85\n\"Item 5\": 102\n\"Item 6\": 119",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-14-top",
+      "source": "pie \n title Example 14\n\"Item 0\": 17\n\"Item 1\": 34\n\"Item 2\": 51\n\"Item 3\": 68\n\"Item 4\": 85\n\"Item 5\": 102\n\"Item 6\": 119",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 554,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-14-bottom",
+      "source": "pie \n title Example 14\n\"Item 0\": 17\n\"Item 1\": 34\n\"Item 2\": 51\n\"Item 3\": 68\n\"Item 4\": 85\n\"Item 5\": 102\n\"Item 6\": 119",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 554,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-15-left",
+      "source": "pie showData\n title Example 15\n\"Item 0\": 18\n\"Item 1\": 36\n\"Item 2\": 54\n\"Item 3\": 72\n\"Item 4\": 90\n\"Item 5\": 108\n\"Item 6\": 126\n\"Item 7\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 438,
+        "height": 352,
+        "paths": [
+          "M0,-120A120,120 0 0 1 20.84,-118.18L8.34,-47.27A48,48 0 0 0 0,-48Z",
+          "M20.84,-118.18A120,120 0 0 1 60,-103.92L24,-41.57A48,48 0 0 0 8.34,-47.27Z",
+          "M60,-103.92A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 24,-41.57Z",
+          "M103.92,-60A120,120 0 0 1 118.18,20.84L47.27,8.34A48,48 0 0 0 41.57,-24Z",
+          "M118.18,20.84A120,120 0 0 1 60,103.92L24,41.57A48,48 0 0 0 47.27,8.34Z",
+          "M60,103.92A120,120 0 0 1 -60,103.92L-24,41.57A48,48 0 0 0 24,41.57Z",
+          "M-60,103.92A120,120 0 0 1 -118.18,-20.84L-47.27,-8.34A48,48 0 0 0 -24,41.57Z",
+          "M-118.18,-20.84A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -47.27,-8.34Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-15-right",
+      "source": "pie showData\n title Example 15\n\"Item 0\": 18\n\"Item 1\": 36\n\"Item 2\": 54\n\"Item 3\": 72\n\"Item 4\": 90\n\"Item 5\": 108\n\"Item 6\": 126\n\"Item 7\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 438,
+        "height": 352,
+        "paths": [
+          "M0,-120A120,120 0 0 1 20.84,-118.18L8.34,-47.27A48,48 0 0 0 0,-48Z",
+          "M20.84,-118.18A120,120 0 0 1 60,-103.92L24,-41.57A48,48 0 0 0 8.34,-47.27Z",
+          "M60,-103.92A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 24,-41.57Z",
+          "M103.92,-60A120,120 0 0 1 118.18,20.84L47.27,8.34A48,48 0 0 0 41.57,-24Z",
+          "M118.18,20.84A120,120 0 0 1 60,103.92L24,41.57A48,48 0 0 0 47.27,8.34Z",
+          "M60,103.92A120,120 0 0 1 -60,103.92L-24,41.57A48,48 0 0 0 24,41.57Z",
+          "M-60,103.92A120,120 0 0 1 -118.18,-20.84L-47.27,-8.34A48,48 0 0 0 -24,41.57Z",
+          "M-118.18,-20.84A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -47.27,-8.34Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-15-center",
+      "source": "pie showData\n title Example 15\n\"Item 0\": 18\n\"Item 1\": 36\n\"Item 2\": 54\n\"Item 3\": 72\n\"Item 4\": 90\n\"Item 5\": 108\n\"Item 6\": 126\n\"Item 7\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 352,
+        "paths": [
+          "M0,-120A120,120 0 0 1 20.84,-118.18L8.34,-47.27A48,48 0 0 0 0,-48Z",
+          "M20.84,-118.18A120,120 0 0 1 60,-103.92L24,-41.57A48,48 0 0 0 8.34,-47.27Z",
+          "M60,-103.92A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 24,-41.57Z",
+          "M103.92,-60A120,120 0 0 1 118.18,20.84L47.27,8.34A48,48 0 0 0 41.57,-24Z",
+          "M118.18,20.84A120,120 0 0 1 60,103.92L24,41.57A48,48 0 0 0 47.27,8.34Z",
+          "M60,103.92A120,120 0 0 1 -60,103.92L-24,41.57A48,48 0 0 0 24,41.57Z",
+          "M-60,103.92A120,120 0 0 1 -118.18,-20.84L-47.27,-8.34A48,48 0 0 0 -24,41.57Z",
+          "M-118.18,-20.84A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -47.27,-8.34Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-15-top",
+      "source": "pie showData\n title Example 15\n\"Item 0\": 18\n\"Item 1\": 36\n\"Item 2\": 54\n\"Item 3\": 72\n\"Item 4\": 90\n\"Item 5\": 108\n\"Item 6\": 126\n\"Item 7\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 580,
+        "paths": [
+          "M0,-120A120,120 0 0 1 20.84,-118.18L8.34,-47.27A48,48 0 0 0 0,-48Z",
+          "M20.84,-118.18A120,120 0 0 1 60,-103.92L24,-41.57A48,48 0 0 0 8.34,-47.27Z",
+          "M60,-103.92A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 24,-41.57Z",
+          "M103.92,-60A120,120 0 0 1 118.18,20.84L47.27,8.34A48,48 0 0 0 41.57,-24Z",
+          "M118.18,20.84A120,120 0 0 1 60,103.92L24,41.57A48,48 0 0 0 47.27,8.34Z",
+          "M60,103.92A120,120 0 0 1 -60,103.92L-24,41.57A48,48 0 0 0 24,41.57Z",
+          "M-60,103.92A120,120 0 0 1 -118.18,-20.84L-47.27,-8.34A48,48 0 0 0 -24,41.57Z",
+          "M-118.18,-20.84A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -47.27,-8.34Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-15-bottom",
+      "source": "pie showData\n title Example 15\n\"Item 0\": 18\n\"Item 1\": 36\n\"Item 2\": 54\n\"Item 3\": 72\n\"Item 4\": 90\n\"Item 5\": 108\n\"Item 6\": 126\n\"Item 7\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 580,
+        "paths": [
+          "M0,-120A120,120 0 0 1 20.84,-118.18L8.34,-47.27A48,48 0 0 0 0,-48Z",
+          "M20.84,-118.18A120,120 0 0 1 60,-103.92L24,-41.57A48,48 0 0 0 8.34,-47.27Z",
+          "M60,-103.92A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 24,-41.57Z",
+          "M103.92,-60A120,120 0 0 1 118.18,20.84L47.27,8.34A48,48 0 0 0 41.57,-24Z",
+          "M118.18,20.84A120,120 0 0 1 60,103.92L24,41.57A48,48 0 0 0 47.27,8.34Z",
+          "M60,103.92A120,120 0 0 1 -60,103.92L-24,41.57A48,48 0 0 0 24,41.57Z",
+          "M-60,103.92A120,120 0 0 1 -118.18,-20.84L-47.27,-8.34A48,48 0 0 0 -24,41.57Z",
+          "M-118.18,-20.84A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -47.27,-8.34Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-16-left",
+      "source": "pie \n title Example 16\n\"Item 0\": 19",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-16-right",
+      "source": "pie \n title Example 16\n\"Item 0\": 19",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-16-center",
+      "source": "pie \n title Example 16\n\"Item 0\": 19",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-16-top",
+      "source": "pie \n title Example 16\n\"Item 0\": 19",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-16-bottom",
+      "source": "pie \n title Example 16\n\"Item 0\": 19",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-17-left",
+      "source": "pie showData\n title Example 17\n\"Item 0\": 20\n\"Item 1\": 40",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-17-right",
+      "source": "pie showData\n title Example 17\n\"Item 0\": 20\n\"Item 1\": 40",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-17-center",
+      "source": "pie showData\n title Example 17\n\"Item 0\": 20\n\"Item 1\": 40",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-17-top",
+      "source": "pie showData\n title Example 17\n\"Item 0\": 20\n\"Item 1\": 40",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-17-bottom",
+      "source": "pie showData\n title Example 17\n\"Item 0\": 20\n\"Item 1\": 40",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-18-left",
+      "source": "pie \n title Example 18\n\"Item 0\": 21\n\"Item 1\": 42\n\"Item 2\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 0,-48Z",
+          "M103.92,-60A120,120 0 0 1 0,120L0,48A48,48 0 0 0 41.57,-24Z",
+          "M0,120A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 0,48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-18-right",
+      "source": "pie \n title Example 18\n\"Item 0\": 21\n\"Item 1\": 42\n\"Item 2\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 0,-48Z",
+          "M103.92,-60A120,120 0 0 1 0,120L0,48A48,48 0 0 0 41.57,-24Z",
+          "M0,120A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 0,48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-18-center",
+      "source": "pie \n title Example 18\n\"Item 0\": 21\n\"Item 1\": 42\n\"Item 2\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 0,-48Z",
+          "M103.92,-60A120,120 0 0 1 0,120L0,48A48,48 0 0 0 41.57,-24Z",
+          "M0,120A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 0,48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-18-top",
+      "source": "pie \n title Example 18\n\"Item 0\": 21\n\"Item 1\": 42\n\"Item 2\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 0,-48Z",
+          "M103.92,-60A120,120 0 0 1 0,120L0,48A48,48 0 0 0 41.57,-24Z",
+          "M0,120A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 0,48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-18-bottom",
+      "source": "pie \n title Example 18\n\"Item 0\": 21\n\"Item 1\": 42\n\"Item 2\": 63",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,-120A120,120 0 0 1 103.92,-60L41.57,-24A48,48 0 0 0 0,-48Z",
+          "M103.92,-60A120,120 0 0 1 0,120L0,48A48,48 0 0 0 41.57,-24Z",
+          "M0,120A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 0,48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-19-left",
+      "source": "pie showData\n title Example 19\n\"Item 0\": 22\n\"Item 1\": 44\n\"Item 2\": 66\n\"Item 3\": 88",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-19-right",
+      "source": "pie showData\n title Example 19\n\"Item 0\": 22\n\"Item 1\": 44\n\"Item 2\": 66\n\"Item 3\": 88",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-19-center",
+      "source": "pie showData\n title Example 19\n\"Item 0\": 22\n\"Item 1\": 44\n\"Item 2\": 66\n\"Item 3\": 88",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-19-top",
+      "source": "pie showData\n title Example 19\n\"Item 0\": 22\n\"Item 1\": 44\n\"Item 2\": 66\n\"Item 3\": 88",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-19-bottom",
+      "source": "pie showData\n title Example 19\n\"Item 0\": 22\n\"Item 1\": 44\n\"Item 2\": 66\n\"Item 3\": 88",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 70.53,-97.08Z",
+          "M0,0L70.53,-97.08A120,120 0 0 1 114.13,37.08Z",
+          "M0,0L114.13,37.08A120,120 0 0 1 -70.53,97.08Z",
+          "M0,0L-70.53,97.08A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-20-left",
+      "source": "pie \n title Example 20\n\"Item 0\": 23\n\"Item 1\": 46\n\"Item 2\": 69\n\"Item 3\": 92\n\"Item 4\": 115",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-20-right",
+      "source": "pie \n title Example 20\n\"Item 0\": 23\n\"Item 1\": 46\n\"Item 2\": 69\n\"Item 3\": 92\n\"Item 4\": 115",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-20-center",
+      "source": "pie \n title Example 20\n\"Item 0\": 23\n\"Item 1\": 46\n\"Item 2\": 69\n\"Item 3\": 92\n\"Item 4\": 115",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-20-top",
+      "source": "pie \n title Example 20\n\"Item 0\": 23\n\"Item 1\": 46\n\"Item 2\": 69\n\"Item 3\": 92\n\"Item 4\": 115",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-20-bottom",
+      "source": "pie \n title Example 20\n\"Item 0\": 23\n\"Item 1\": 46\n\"Item 2\": 69\n\"Item 3\": 92\n\"Item 4\": 115",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-21-left",
+      "source": "pie showData\n title Example 21\n\"Item 0\": 24\n\"Item 1\": 48\n\"Item 2\": 72\n\"Item 3\": 96\n\"Item 4\": 120\n\"Item 5\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 382,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 35.37,-114.67L14.15,-45.87A48,48 0 0 0 0,-48Z",
+          "M35.37,-114.67A120,120 0 0 1 93.82,-74.82L37.53,-29.93A48,48 0 0 0 14.15,-45.87Z",
+          "M93.82,-74.82A120,120 0 0 1 116.99,26.7L46.8,10.68A48,48 0 0 0 37.53,-29.93Z",
+          "M116.99,26.7A120,120 0 0 1 17.89,118.66L7.15,47.46A48,48 0 0 0 46.8,10.68Z",
+          "M17.89,118.66A120,120 0 0 1 -116.99,26.7L-46.8,10.68A48,48 0 0 0 7.15,47.46Z",
+          "M-116.99,26.7A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -46.8,10.68Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-21-right",
+      "source": "pie showData\n title Example 21\n\"Item 0\": 24\n\"Item 1\": 48\n\"Item 2\": 72\n\"Item 3\": 96\n\"Item 4\": 120\n\"Item 5\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 382,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 35.37,-114.67L14.15,-45.87A48,48 0 0 0 0,-48Z",
+          "M35.37,-114.67A120,120 0 0 1 93.82,-74.82L37.53,-29.93A48,48 0 0 0 14.15,-45.87Z",
+          "M93.82,-74.82A120,120 0 0 1 116.99,26.7L46.8,10.68A48,48 0 0 0 37.53,-29.93Z",
+          "M116.99,26.7A120,120 0 0 1 17.89,118.66L7.15,47.46A48,48 0 0 0 46.8,10.68Z",
+          "M17.89,118.66A120,120 0 0 1 -116.99,26.7L-46.8,10.68A48,48 0 0 0 7.15,47.46Z",
+          "M-116.99,26.7A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -46.8,10.68Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-21-center",
+      "source": "pie showData\n title Example 21\n\"Item 0\": 24\n\"Item 1\": 48\n\"Item 2\": 72\n\"Item 3\": 96\n\"Item 4\": 120\n\"Item 5\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 35.37,-114.67L14.15,-45.87A48,48 0 0 0 0,-48Z",
+          "M35.37,-114.67A120,120 0 0 1 93.82,-74.82L37.53,-29.93A48,48 0 0 0 14.15,-45.87Z",
+          "M93.82,-74.82A120,120 0 0 1 116.99,26.7L46.8,10.68A48,48 0 0 0 37.53,-29.93Z",
+          "M116.99,26.7A120,120 0 0 1 17.89,118.66L7.15,47.46A48,48 0 0 0 46.8,10.68Z",
+          "M17.89,118.66A120,120 0 0 1 -116.99,26.7L-46.8,10.68A48,48 0 0 0 7.15,47.46Z",
+          "M-116.99,26.7A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -46.8,10.68Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-21-top",
+      "source": "pie showData\n title Example 21\n\"Item 0\": 24\n\"Item 1\": 48\n\"Item 2\": 72\n\"Item 3\": 96\n\"Item 4\": 120\n\"Item 5\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,-120A120,120 0 0 1 35.37,-114.67L14.15,-45.87A48,48 0 0 0 0,-48Z",
+          "M35.37,-114.67A120,120 0 0 1 93.82,-74.82L37.53,-29.93A48,48 0 0 0 14.15,-45.87Z",
+          "M93.82,-74.82A120,120 0 0 1 116.99,26.7L46.8,10.68A48,48 0 0 0 37.53,-29.93Z",
+          "M116.99,26.7A120,120 0 0 1 17.89,118.66L7.15,47.46A48,48 0 0 0 46.8,10.68Z",
+          "M17.89,118.66A120,120 0 0 1 -116.99,26.7L-46.8,10.68A48,48 0 0 0 7.15,47.46Z",
+          "M-116.99,26.7A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -46.8,10.68Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-21-bottom",
+      "source": "pie showData\n title Example 21\n\"Item 0\": 24\n\"Item 1\": 48\n\"Item 2\": 72\n\"Item 3\": 96\n\"Item 4\": 120\n\"Item 5\": 144",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,-120A120,120 0 0 1 35.37,-114.67L14.15,-45.87A48,48 0 0 0 0,-48Z",
+          "M35.37,-114.67A120,120 0 0 1 93.82,-74.82L37.53,-29.93A48,48 0 0 0 14.15,-45.87Z",
+          "M93.82,-74.82A120,120 0 0 1 116.99,26.7L46.8,10.68A48,48 0 0 0 37.53,-29.93Z",
+          "M116.99,26.7A120,120 0 0 1 17.89,118.66L7.15,47.46A48,48 0 0 0 46.8,10.68Z",
+          "M17.89,118.66A120,120 0 0 1 -116.99,26.7L-46.8,10.68A48,48 0 0 0 7.15,47.46Z",
+          "M-116.99,26.7A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -46.8,10.68Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-22-left",
+      "source": "pie \n title Example 22\n\"Item 0\": 25\n\"Item 1\": 50\n\"Item 2\": 75\n\"Item 3\": 100\n\"Item 4\": 125\n\"Item 5\": 150\n\"Item 6\": 175",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 403,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-22-right",
+      "source": "pie \n title Example 22\n\"Item 0\": 25\n\"Item 1\": 50\n\"Item 2\": 75\n\"Item 3\": 100\n\"Item 4\": 125\n\"Item 5\": 150\n\"Item 6\": 175",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 403,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-22-center",
+      "source": "pie \n title Example 22\n\"Item 0\": 25\n\"Item 1\": 50\n\"Item 2\": 75\n\"Item 3\": 100\n\"Item 4\": 125\n\"Item 5\": 150\n\"Item 6\": 175",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-22-top",
+      "source": "pie \n title Example 22\n\"Item 0\": 25\n\"Item 1\": 50\n\"Item 2\": 75\n\"Item 3\": 100\n\"Item 4\": 125\n\"Item 5\": 150\n\"Item 6\": 175",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 554,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-22-bottom",
+      "source": "pie \n title Example 22\n\"Item 0\": 25\n\"Item 1\": 50\n\"Item 2\": 75\n\"Item 3\": 100\n\"Item 4\": 125\n\"Item 5\": 150\n\"Item 6\": 175",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 554,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 26.7,-116.99Z",
+          "M0,0L26.7,-116.99A120,120 0 0 1 74.82,-93.82Z",
+          "M0,0L74.82,-93.82A120,120 0 0 1 116.99,-26.7Z",
+          "M0,0L116.99,-26.7A120,120 0 0 1 93.82,74.82Z",
+          "M0,0L93.82,74.82A120,120 0 0 1 -26.7,116.99Z",
+          "M0,0L-26.7,116.99A120,120 0 0 1 -120,0Z",
+          "M0,0L-120,0A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-23-left",
+      "source": "pie showData\n title Example 23\n\"Item 0\": 26\n\"Item 1\": 52\n\"Item 2\": 78\n\"Item 3\": 104\n\"Item 4\": 130\n\"Item 5\": 156\n\"Item 6\": 182\n\"Item 7\": 208",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 438,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-23-right",
+      "source": "pie showData\n title Example 23\n\"Item 0\": 26\n\"Item 1\": 52\n\"Item 2\": 78\n\"Item 3\": 104\n\"Item 4\": 130\n\"Item 5\": 156\n\"Item 6\": 182\n\"Item 7\": 208",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 438,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-23-center",
+      "source": "pie showData\n title Example 23\n\"Item 0\": 26\n\"Item 1\": 52\n\"Item 2\": 78\n\"Item 3\": 104\n\"Item 4\": 130\n\"Item 5\": 156\n\"Item 6\": 182\n\"Item 7\": 208",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 352,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-23-top",
+      "source": "pie showData\n title Example 23\n\"Item 0\": 26\n\"Item 1\": 52\n\"Item 2\": 78\n\"Item 3\": 104\n\"Item 4\": 130\n\"Item 5\": 156\n\"Item 6\": 182\n\"Item 7\": 208",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 580,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-23-bottom",
+      "source": "pie showData\n title Example 23\n\"Item 0\": 26\n\"Item 1\": 52\n\"Item 2\": 78\n\"Item 3\": 104\n\"Item 4\": 130\n\"Item 5\": 156\n\"Item 6\": 182\n\"Item 7\": 208",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 312,
+        "height": 580,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 20.84,-118.18Z",
+          "M0,0L20.84,-118.18A120,120 0 0 1 60,-103.92Z",
+          "M0,0L60,-103.92A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 118.18,20.84Z",
+          "M0,0L118.18,20.84A120,120 0 0 1 60,103.92Z",
+          "M0,0L60,103.92A120,120 0 0 1 -60,103.92Z",
+          "M0,0L-60,103.92A120,120 0 0 1 -118.18,-20.84Z",
+          "M0,0L-118.18,-20.84A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-24-left",
+      "source": "pie \n title Example 24\n\"Item 0\": 27",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-24-right",
+      "source": "pie \n title Example 24\n\"Item 0\": 27",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-24-center",
+      "source": "pie \n title Example 24\n\"Item 0\": 27",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-24-top",
+      "source": "pie \n title Example 24\n\"Item 0\": 27",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-24-bottom",
+      "source": "pie \n title Example 24\n\"Item 0\": 27",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 342,
+        "paths": [
+          "M0,-120A120,120 0 1 1 0,120A120,120 0 1 1 0,-120ZM0,-48A48,48 0 1 0 0,48A48,48 0 1 0 0,-48Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-25-left",
+      "source": "pie showData\n title Example 25\n\"Item 0\": 28\n\"Item 1\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-25-right",
+      "source": "pie showData\n title Example 25\n\"Item 0\": 28\n\"Item 1\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 375,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-25-center",
+      "source": "pie showData\n title Example 25\n\"Item 0\": 28\n\"Item 1\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-25-top",
+      "source": "pie showData\n title Example 25\n\"Item 0\": 28\n\"Item 1\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-25-bottom",
+      "source": "pie showData\n title Example 25\n\"Item 0\": 28\n\"Item 1\": 56",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 368,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,60Z",
+          "M0,0L103.92,60A120,120 0 1 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-26-left",
+      "source": "pie \n title Example 26\n\"Item 0\": 29\n\"Item 1\": 58\n\"Item 2\": 87",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-26-right",
+      "source": "pie \n title Example 26\n\"Item 0\": 29\n\"Item 1\": 58\n\"Item 2\": 87",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 347,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-26-center",
+      "source": "pie \n title Example 26\n\"Item 0\": 29\n\"Item 1\": 58\n\"Item 2\": 87",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-26-top",
+      "source": "pie \n title Example 26\n\"Item 0\": 29\n\"Item 1\": 58\n\"Item 2\": 87",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-26-bottom",
+      "source": "pie \n title Example 26\n\"Item 0\": 29\n\"Item 1\": 58\n\"Item 2\": 87",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 394,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 103.92,-60Z",
+          "M0,0L103.92,-60A120,120 0 0 1 0,120Z",
+          "M0,0L0,120A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-27-left",
+      "source": "pie showData\n title Example 27\n\"Item 0\": 30\n\"Item 1\": 60\n\"Item 2\": 90\n\"Item 3\": 120",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 382,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-27-right",
+      "source": "pie showData\n title Example 27\n\"Item 0\": 30\n\"Item 1\": 60\n\"Item 2\": 90\n\"Item 3\": 120",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 382,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-27-center",
+      "source": "pie showData\n title Example 27\n\"Item 0\": 30\n\"Item 1\": 60\n\"Item 2\": 90\n\"Item 3\": 120",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-27-top",
+      "source": "pie showData\n title Example 27\n\"Item 0\": 30\n\"Item 1\": 60\n\"Item 2\": 90\n\"Item 3\": 120",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-27-bottom",
+      "source": "pie showData\n title Example 27\n\"Item 0\": 30\n\"Item 1\": 60\n\"Item 2\": 90\n\"Item 3\": 120",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0.4,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 420,
+        "paths": [
+          "M0,-120A120,120 0 0 1 70.53,-97.08L28.21,-38.83A48,48 0 0 0 0,-48Z",
+          "M70.53,-97.08A120,120 0 0 1 114.13,37.08L45.65,14.83A48,48 0 0 0 28.21,-38.83Z",
+          "M114.13,37.08A120,120 0 0 1 -70.53,97.08L-28.21,38.83A48,48 0 0 0 45.65,14.83Z",
+          "M-70.53,97.08A120,120 0 0 1 0,-120L0,-48A48,48 0 0 0 -28.21,38.83Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-28-left",
+      "source": "pie \n title Example 28\n\"Item 0\": 31\n\"Item 1\": 62\n\"Item 2\": 93\n\"Item 3\": 124\n\"Item 4\": 155",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-28-right",
+      "source": "pie \n title Example 28\n\"Item 0\": 31\n\"Item 1\": 62\n\"Item 2\": 93\n\"Item 3\": 124\n\"Item 4\": 155",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-28-center",
+      "source": "pie \n title Example 28\n\"Item 0\": 31\n\"Item 1\": 62\n\"Item 2\": 93\n\"Item 3\": 124\n\"Item 4\": 155",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-28-top",
+      "source": "pie \n title Example 28\n\"Item 0\": 31\n\"Item 1\": 62\n\"Item 2\": 93\n\"Item 3\": 124\n\"Item 4\": 155",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-28-bottom",
+      "source": "pie \n title Example 28\n\"Item 0\": 31\n\"Item 1\": 62\n\"Item 2\": 93\n\"Item 3\": 124\n\"Item 4\": 155",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        },
+        "maxWidth": 320
+      },
+      "expected": {
+        "width": 256,
+        "height": 446,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 48.81,-109.63Z",
+          "M0,0L48.81,-109.63A120,120 0 0 1 114.13,-37.08Z",
+          "M0,0L114.13,-37.08A120,120 0 0 1 70.53,97.08Z",
+          "M0,0L70.53,97.08A120,120 0 0 1 -103.92,60Z",
+          "M0,0L-103.92,60A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-29-left",
+      "source": "pie showData\n title Example 29\n\"Item 0\": 32\n\"Item 1\": 64\n\"Item 2\": 96\n\"Item 3\": 128\n\"Item 4\": 160\n\"Item 5\": 192",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "left",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 382,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-29-right",
+      "source": "pie showData\n title Example 29\n\"Item 0\": 32\n\"Item 1\": 64\n\"Item 2\": 96\n\"Item 3\": 128\n\"Item 4\": 160\n\"Item 5\": 192",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "right",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 382,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-29-center",
+      "source": "pie showData\n title Example 29\n\"Item 0\": 32\n\"Item 1\": 64\n\"Item 2\": 96\n\"Item 3\": 128\n\"Item 4\": 160\n\"Item 5\": 192",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "center",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 296,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-29-top",
+      "source": "pie showData\n title Example 29\n\"Item 0\": 32\n\"Item 1\": 64\n\"Item 2\": 96\n\"Item 3\": 128\n\"Item 4\": 160\n\"Item 5\": 192",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "top",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    },
+    {
+      "id": "pie-29-bottom",
+      "source": "pie showData\n title Example 29\n\"Item 0\": 32\n\"Item 1\": 64\n\"Item 2\": 96\n\"Item 3\": 128\n\"Item 4\": 160\n\"Item 5\": 192",
+      "options": {
+        "fontSize": 16,
+        "padding": 8,
+        "config": {
+          "pie": {
+            "legendPosition": "bottom",
+            "donutHole": 0,
+            "textPosition": 0.75
+          }
+        }
+      },
+      "expected": {
+        "width": 256,
+        "height": 472,
+        "paths": [
+          "M0,0L0,-120A120,120 0 0 1 35.37,-114.67Z",
+          "M0,0L35.37,-114.67A120,120 0 0 1 93.82,-74.82Z",
+          "M0,0L93.82,-74.82A120,120 0 0 1 116.99,26.7Z",
+          "M0,0L116.99,26.7A120,120 0 0 1 17.89,118.66Z",
+          "M0,0L17.89,118.66A120,120 0 0 1 -116.99,26.7Z",
+          "M0,0L-116.99,26.7A120,120 0 0 1 0,-120Z"
+        ]
+      }
+    }
+  ]
+}
