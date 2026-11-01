@@ -9864,6 +9864,12 @@ impl Shared {
                                     &shim.executable,
                                 );
                             }
+                            #[cfg(all(unix, feature = "agent"))]
+                            crate::agent::claude_plugin::pane_environment(
+                                &mut env,
+                                *pane,
+                                &self.socket_path,
+                            );
                             if let Some(path) = &working_directory {
                                 env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
                             }
@@ -10039,6 +10045,12 @@ impl Shared {
                                 &shim.executable,
                             );
                         }
+                        #[cfg(all(unix, feature = "agent"))]
+                        crate::agent::claude_plugin::pane_environment(
+                            &mut env,
+                            *pane,
+                            &self.socket_path,
+                        );
                         if let Some(path) = &working_directory {
                             env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
                         }

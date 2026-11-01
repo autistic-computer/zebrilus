@@ -10,6 +10,8 @@ pub(crate) mod child;
 pub(crate) mod claude;
 #[cfg(unix)]
 pub(crate) mod claude_peers;
+#[cfg(unix)]
+pub(crate) mod claude_plugin;
 pub(crate) mod codex;
 #[cfg(unix)]
 pub(crate) mod codex_queue;
