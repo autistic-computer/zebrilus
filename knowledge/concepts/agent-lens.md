@@ -382,7 +382,9 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   code block of its source, and a supported source that does not parse shows the error with its
   line and column. The diagram's canvas is transparent, so it shows the card through it; nodes fill
   with the card blended with the soft neutral paint, text is the app font at 13 px measured by the
-  app's text system, and series colors come from primary, success, warning, danger and muted. Answers use
+  app's text system (ala's SVG renderer draws `system-ui` in the face that text system uses), and
+  series colors come from primary, success, warning, danger and muted. A flowchart, class, state or
+  ER diagram that runs across and is wider than 640 px turns to run down when that fits. Answers use
   the same markdown style as code blocks and tables elsewhere (`agent_text_view`). The chat passes
   its pane as the owner (`ChatHooks::owner`), so on the desktop an HTML block's live page can reply
   to the agent, and two panes showing the same item keep their own preview toggles.

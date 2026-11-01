@@ -988,6 +988,10 @@ sequenceDiagram\n\
     Daemon->>Daemon: chat machine\n\
     Daemon-->>Lens: chat event\n\
     Lens->>Lens: fold into ChatView\n\
+    create participant Sub as subagent\n\
+    Lens->>Sub: open its chat\n\
+    destroy Sub\n\
+    Sub-->>Lens: answer\n\
     Lens-->>CLI: prompt typed into the TUI\n\
 ```";
 
@@ -998,6 +1002,11 @@ flowchart LR\n\
     Machine -->|item| View[ChatView]\n\
     Machine -->|ask| Card[question card]\n\
     View --> Thread[chat thread]\n\
+```";
+
+const WIDE_FLOWCHART: &str = "```mermaid\n\
+flowchart LR\n\
+    Prompt --> Lens[lens pastes it] --> CLI[CLI runs a turn] --> Transcript[transcript line] --> Translator --> Machine[chat machine] --> View[ChatView] --> Thread[chat thread]\n\
 ```";
 
 const STATES: &str = "```mermaid\n\
@@ -1115,7 +1124,11 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(said("Where does a chat row come from?", FLOWCHART)),
             ),
             (
-                "mermaid sequence diagram",
+                "a flowchart too wide for the transcript turns to run down",
+                Thread::new(said("Trace a prompt end to end.", WIDE_FLOWCHART)),
+            ),
+            (
+                "mermaid sequence diagram, with a participant created and destroyed",
                 Thread::new(said("How does a prompt get to the lens?", SEQUENCE)),
             ),
             (

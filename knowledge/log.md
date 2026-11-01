@@ -1,6 +1,7 @@
 # Update Log
 
 ## 2026-11-01
+* **Update**: Agent chat diagrams draw in the app font and fit the transcript ([agent lens](/concepts/agent-lens.md)). ala's SVG renderer draws `system-ui` and private names like `.SystemUIFont` in the face the text system uses (System Font on macOS, the desktop family elsewhere), so labels measured by the app match what is drawn within 0.4 percent on macOS; ala moved to resvg 0.48, which can outline the macOS 27 system font. pele turns a diagram that is too wide for the transcript to run down when that fits, draws sequence `create` and `destroy`, and keeps gantt done, active and critical bars clear of a card close to their color.
 * **Update**: The agent chat draws mermaid with pele, our Rust Mermaid renderer, now a fourth lib at `libs/pele` (subtree of autistic-computer/pele-rs, `just libs check|push|pull pele`) ([agent lens](/concepts/agent-lens.md), [architecture](/architecture/overview.md)). Flowchart, sequence, class, state, ER, gantt, pie and quadrant diagrams draw on a transparent canvas in the theme's colors, with labels in the app font at 13 px measured by the app's text system; any other mermaid type stays a plain code block, and a source that does not parse shows the error with its line and column. The old renderer and about forty crates left every lockfile; pele builds for the web client and draws in the wasm storybook.
 
 ## 2026-10-31
