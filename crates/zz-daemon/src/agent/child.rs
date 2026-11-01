@@ -18,6 +18,10 @@ use crate::agent::{
 
 const REAP_GRACE: Duration = Duration::from_secs(2);
 const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
+#[cfg(unix)]
+const SOCKET_HANDSHAKE: Duration = Duration::from_secs(5);
+#[cfg(unix)]
+const SOCKET_POLL: Duration = Duration::from_millis(20);
 
 pub(crate) enum Input<C, K> {
     Command(Result<C, async_channel::RecvError>),
@@ -244,6 +248,80 @@ impl Process {
             })?;
         }
         Ok(process)
+    }
+}
+
+#[cfg(unix)]
+impl Process {
+    pub(crate) fn connect(
+        path: &std::path::Path,
+        agent: &str,
+        generation: u64,
+        events: &Sender<ChildEvent>,
+    ) -> Result<Self, String> {
+        use std::{io::ErrorKind, os::unix::net::UnixStream};
+
+        use tungstenite::Message;
+
+        let failed = |error: &dyn std::fmt::Display| format!("could not reach {agent}: {error}");
+        let stream = UnixStream::connect(path).map_err(|error| failed(&error))?;
+        stream
+            .set_read_timeout(Some(SOCKET_HANDSHAKE))
+            .and_then(|()| stream.set_write_timeout(Some(SOCKET_HANDSHAKE)))
+            .map_err(|error| failed(&error))?;
+        let (mut socket, _) =
+            tungstenite::client("ws://localhost/", stream).map_err(|error| failed(&error))?;
+        socket
+            .get_ref()
+            .set_read_timeout(Some(SOCKET_POLL))
+            .map_err(|error| failed(&error))?;
+        let (outgoing, sent) = async_channel::unbounded::<String>();
+        let events = events.clone();
+        spawn_thread("zz-agent-socket", move || {
+            'pump: loop {
+                loop {
+                    match sent.try_recv() {
+                        Ok(text) => {
+                            if socket.send(Message::text(text)).is_err() {
+                                break 'pump;
+                            }
+                        }
+                        Err(async_channel::TryRecvError::Empty) => break,
+                        Err(async_channel::TryRecvError::Closed) => {
+                            let _ = socket.close(None);
+                            let _ = socket.flush();
+                            return;
+                        }
+                    }
+                }
+                match socket.read() {
+                    Ok(Message::Text(text)) => {
+                        let line = text.as_str().as_bytes().to_vec();
+                        if line.len() > MAX_FRAME_BYTES {
+                            continue;
+                        }
+                        if events
+                            .send_blocking(ChildEvent::Line(generation, line))
+                            .is_err()
+                        {
+                            let _ = socket.close(None);
+                            let _ = socket.flush();
+                            return;
+                        }
+                    }
+                    Ok(Message::Close(_)) => break,
+                    Ok(_) => {}
+                    Err(tungstenite::Error::Io(error))
+                        if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+                    Err(_) => break,
+                }
+            }
+            let _ = events.send_blocking(ChildEvent::Closed(generation));
+        })?;
+        Ok(Self {
+            child: None,
+            stdin: outgoing,
+        })
     }
 }
 

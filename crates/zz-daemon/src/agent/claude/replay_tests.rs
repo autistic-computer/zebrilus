@@ -22,6 +22,7 @@ fn setup() -> (Runtime, Receiver<AgentStreamPayload>) {
         generation: 1,
         stderr: StderrTail::default(),
         ready_sent: true,
+        resumed_quiet: false,
         session: Some(Session {
             id: new_uuid(),
             cwd: PathBuf::from("/work"),

@@ -25,6 +25,16 @@ fn fixture() -> Fixture {
         )
         .expect("mux setup");
     shared
+        .inner
+        .lock()
+        .engine
+        .state
+        .convert_pane(
+            context.pane.expect("terminal pane"),
+            PaneKind::Agent(zz_protocol::AgentDescriptor::default()),
+        )
+        .expect("agent pane");
+    shared
         .attach(client, context.session.expect("session"))
         .expect("attach");
     take_reliable_messages(&mailbox);
@@ -44,7 +54,8 @@ fn spec() -> AgentPaneSpec {
         resume_session: None,
         auto_approve: None,
         workspace: AgentWorkspaceEnvironment::default(),
-        lens: None,
+        model: None,
+        effort: None,
     }
 }
 
@@ -61,6 +72,20 @@ fn runtime(shared: &Arc<Shared>, pane: PaneId) -> (Publisher, Arc<AgentRuntime>,
     let generation = runtime.pane_generation(pane).expect("generation");
     *shared.agent.lock() = Some(Arc::clone(&runtime));
     (publisher, runtime, generation)
+}
+
+fn settle(fixture: &mut Fixture) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    loop {
+        fixture.inbox.turn(&fixture.shared);
+        take_reliable_messages(&fixture.mailbox);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        if !fixture.shared.agent_tx.pending.load(Ordering::Acquire)
+            || std::time::Instant::now() > deadline
+        {
+            break;
+        }
+    }
 }
 
 fn titled(title: &str) -> AgentPaneWire {
@@ -122,8 +147,7 @@ fn agent_inbox_bounds_each_turn_and_keeps_the_next_wake() {
     let mut fixture = fixture();
     let pane = fixture.pane;
     let (publisher, runtime, generation) = runtime(&fixture.shared, pane);
-    fixture.inbox.turn(&fixture.shared);
-    take_reliable_messages(&fixture.mailbox);
+    settle(&mut fixture);
     for index in 0..=DRAIN_BURST {
         publisher.publish_agent_state(generation, pane, titled(&index.to_string()));
     }

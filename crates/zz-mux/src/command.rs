@@ -22,15 +22,17 @@ use std::{
 
 use parking_lot::Mutex;
 use zz_protocol::{
-    AgentAutoApprove, Axis, BrowserDescriptor, ChooseTreeKind, ChooserPreviewSize,
-    ClientEnvironmentBlob, ClientId, CommandInvocation, CommandPromptMode, CommandPromptType,
-    CommandResolution, CommandSpec, DEFAULT_AGENT_AUTO_APPROVE, DEFAULT_AGENT_CLAUDE_CODE_COMMAND,
-    DEFAULT_AGENT_COMMAND, DEFAULT_BROWSER_PROFILE, EditorDescriptor, KeyToken,
-    MAX_AGENT_COMMAND_BYTES, MuxOptionKey, NATIVE_COMMAND_NAMES, PaneBorderIndicators,
-    PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PopupBorderLines, RawText,
-    ServerError, SessionId, SourceSpan, TerminalUiCommand, WindowId, catalog_command_spec,
-    command_specs, normalize_browser_profile_name, parse_tmux_command_options, parse_tmux_options,
-    resolve_command, unimplemented_tmux_command_spec,
+    AgentAutoApprove, AgentDescriptor, AgentProvider, Axis, BrowserDescriptor, ChooseTreeKind,
+    ChooserPreviewSize, ClientEnvironmentBlob, ClientId, CommandInvocation, CommandPromptMode,
+    CommandPromptType, CommandResolution, CommandSpec, DEFAULT_AGENT_AUTO_APPROVE,
+    DEFAULT_AGENT_CLAUDE_CODE_COMMAND, DEFAULT_AGENT_COMMAND, DEFAULT_BROWSER_PROFILE,
+    EditorDescriptor, KeyToken, MAX_AGENT_COMMAND_BYTES, MAX_AGENT_OPTION_BYTES,
+    MAX_AGENT_SESSION_ID_BYTES, MAX_GUI_TEXT_BYTES, MuxOptionKey, NATIVE_COMMAND_NAMES,
+    PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot,
+    PopupBorderLines, RawText, ServerError, SessionId, SourceSpan, TerminalUiCommand, WindowId,
+    catalog_command_spec, command_specs, normalize_browser_profile_name,
+    parse_tmux_command_options, parse_tmux_options, resolve_command,
+    unimplemented_tmux_command_spec,
 };
 use zz_terminal::{
     CopyJump, CopyJumpDirection, CopyModeAction, CopyModeCopy, CopyModeCountPolicy, CopyModeSearch,
@@ -1348,6 +1350,10 @@ pub enum MuxEffect {
         environment: Vec<(String, String)>,
         empty: bool,
     },
+    AgentForked {
+        pane: PaneId,
+        at: Option<String>,
+    },
     PaneFormatOutput {
         pane: PaneId,
         format: String,
@@ -2285,6 +2291,7 @@ fn pane_kind_name(kind: &PaneKind) -> &'static str {
         PaneKind::Terminal => "terminal",
         PaneKind::Browser(_) => "browser",
         PaneKind::Editor(_) => "editor",
+        PaneKind::Agent(_) => "agent",
     }
 }
 
@@ -7913,19 +7920,85 @@ impl MuxEngine {
         let (options, positional) = parse_command_options("select-pane-kind", args)?;
         let Some((selection, command)) = positional.split_first() else {
             return Err(ServerError::CommandParse(
-                "select-pane-kind requires exactly one of: terminal, browser, editor".to_owned(),
+                "select-pane-kind requires exactly one of: terminal, browser, editor, agent"
+                    .to_owned(),
             ));
         };
-        if selection.as_str() != "terminal"
+        if !matches!(selection.as_str(), "terminal" | "agent")
             && (!command.is_empty() || options.value("-c").is_some())
         {
             return Err(ServerError::CommandParse(
                 "select-pane-kind: -c and a command need the terminal kind".to_owned(),
             ));
         }
+        if selection.as_str() != "agent"
+            && (["--resume", "--model", "--effort", "--at"]
+                .iter()
+                .any(|option| options.value(option).is_some())
+                || options.has("--fork"))
+        {
+            return Err(ServerError::CommandParse(
+                "select-pane-kind: --resume, --fork, --at, --model and --effort need the agent kind"
+                    .to_owned(),
+            ));
+        }
+        if options.value("--at").is_some() && !options.has("--fork") {
+            return Err(ServerError::CommandParse(
+                "select-pane-kind: --at needs --fork".to_owned(),
+            ));
+        }
         let pane = self.resolve_pane(options.value("-t"), context.window, context.pane)?;
+        let fork = options.has("--fork").then(|| MuxEffect::AgentForked {
+            pane,
+            at: options.value("--at").map(str::to_owned),
+        });
+        let words = || {
+            (!command.is_empty()).then(|| {
+                command
+                    .iter()
+                    .map(|word| word.as_str().to_owned())
+                    .collect::<Vec<_>>()
+            })
+        };
+        match (
+            self.state.pane(pane).map(|pane| &pane.kind),
+            selection.as_str(),
+        ) {
+            (Some(PaneKind::Terminal), "agent") => {
+                let agent = agent_selection(&options, command)?;
+                self.state
+                    .convert_pane(pane, PaneKind::Agent(agent.clone()))?;
+                return Ok(agent_opened(
+                    MuxEffect::PaneMaterialized {
+                        pane,
+                        kind: PaneKindSnapshot::Agent(agent),
+                        inherit_cwd_from: Some(pane),
+                        cwd: options.value("-c").map(expand_home),
+                        command: None,
+                    },
+                    fork,
+                ));
+            }
+            (Some(PaneKind::Agent(_)), "terminal") => {
+                self.state.convert_pane(pane, PaneKind::Terminal)?;
+                return Ok(Execution::effect(MuxEffect::PaneRespawned {
+                    pane,
+                    cwd: options.value("-c").map(expand_home),
+                    command: words(),
+                    environment: Vec::new(),
+                    empty: false,
+                }));
+            }
+            _ => {}
+        }
+        let mut command = command;
         let kind = match selection.as_str() {
             "terminal" => PaneKind::Terminal,
+            "agent" => {
+                let agent = agent_selection(&options, command)?;
+                command = &[];
+                PaneKind::Agent(agent)
+            }
             "browser" => PaneKind::Browser(BrowserDescriptor::single(
                 "about:blank".to_owned(),
                 DEFAULT_BROWSER_PROFILE.to_owned(),
@@ -7950,24 +8023,27 @@ impl MuxEngine {
             }
             _ => {
                 return Err(ServerError::InvalidCommand(format!(
-                    "unknown pane kind {selection:?}; expected terminal, browser, or editor"
+                    "unknown pane kind {selection:?}; expected terminal, browser, editor, or agent"
                 )));
             }
         };
         let snapshot_kind = pane_kind_snapshot(&kind);
         let inherit_cwd_from = self.state.materialize_pane(pane, kind)?;
-        Ok(Execution::effect(MuxEffect::PaneMaterialized {
-            pane,
-            kind: snapshot_kind,
-            inherit_cwd_from,
-            cwd: options.value("-c").map(expand_home),
-            command: (!command.is_empty()).then(|| {
-                command
-                    .iter()
-                    .map(|word| word.as_str().to_owned())
-                    .collect()
-            }),
-        }))
+        Ok(agent_opened(
+            MuxEffect::PaneMaterialized {
+                pane,
+                kind: snapshot_kind,
+                inherit_cwd_from,
+                cwd: options.value("-c").map(expand_home),
+                command: (!command.is_empty()).then(|| {
+                    command
+                        .iter()
+                        .map(|word| word.as_str().to_owned())
+                        .collect()
+                }),
+            },
+            fork,
+        ))
     }
 
     fn break_pane(
@@ -19153,7 +19229,104 @@ fn pane_kind_snapshot(kind: &PaneKind) -> PaneKindSnapshot {
         PaneKind::Terminal => PaneKindSnapshot::Terminal,
         PaneKind::Browser(browser) => PaneKindSnapshot::Browser(browser.clone()),
         PaneKind::Editor(editor) => PaneKindSnapshot::Editor(editor.clone()),
+        PaneKind::Agent(agent) => PaneKindSnapshot::Agent(agent.clone()),
     }
+}
+
+fn agent_opened(opened: MuxEffect, fork: Option<MuxEffect>) -> Execution {
+    let mut effects = vec![opened];
+    effects.extend(fork);
+    Execution {
+        output: RawText::default(),
+        effects,
+    }
+}
+
+fn agent_selection(options: &Options, args: &[RawText]) -> Result<AgentDescriptor, ServerError> {
+    let usage = || {
+        ServerError::CommandParse(
+            "usage: select-pane-kind [-t pane] [-c start-directory] agent claude|codex \
+             [--resume session-id]"
+                .to_owned(),
+        )
+    };
+    let (provider, session_id) = match args {
+        [provider] => (provider, options.value("--resume")),
+        [provider, flag, session_id]
+            if flag.as_str() == "--resume" && options.value("--resume").is_none() =>
+        {
+            (provider, Some(session_id.as_str()))
+        }
+        _ => return Err(usage()),
+    };
+    let provider = provider
+        .as_str()
+        .parse::<AgentProvider>()
+        .map_err(ServerError::CommandParse)?;
+    if session_id.is_some_and(|session_id| {
+        session_id.is_empty()
+            || session_id.len() > MAX_AGENT_SESSION_ID_BYTES
+            || session_id.chars().any(char::is_control)
+    }) {
+        return Err(ServerError::InvalidCommand(format!(
+            "agent session ID must be 1..={MAX_AGENT_SESSION_ID_BYTES} non-control bytes"
+        )));
+    }
+    let setting = |option: &str| -> Result<Option<String>, ServerError> {
+        options
+            .value(option)
+            .map(|value| {
+                if value.is_empty()
+                    || value.len() > MAX_AGENT_OPTION_BYTES
+                    || value.starts_with('-')
+                    || value
+                        .chars()
+                        .any(|character| character.is_control() || character.is_whitespace())
+                {
+                    Err(ServerError::InvalidCommand(format!(
+                        "select-pane-kind: {option} takes one word"
+                    )))
+                } else {
+                    Ok(value.to_owned())
+                }
+            })
+            .transpose()
+    };
+    let model = setting("--model")?;
+    let effort = setting("--effort")?;
+    if options.has("--fork") && session_id.is_none() {
+        return Err(ServerError::CommandParse(
+            "select-pane-kind: --fork needs --resume".to_owned(),
+        ));
+    }
+    if let Some(at) = options.value("--at")
+        && (at.is_empty()
+            || at.len() > MAX_AGENT_SESSION_ID_BYTES
+            || !at
+                .chars()
+                .all(|character| character.is_ascii_alphanumeric() || character == '-'))
+    {
+        return Err(ServerError::InvalidCommand(
+            "select-pane-kind: --at takes a message id".to_owned(),
+        ));
+    }
+    let cwd = options
+        .value("-c")
+        .map(|cwd| PathBuf::from(expand_home(cwd)));
+    if cwd.as_ref().is_some_and(|cwd| {
+        !cwd.is_absolute() || cwd.as_os_str().as_encoded_bytes().len() > MAX_GUI_TEXT_BYTES
+    }) {
+        return Err(ServerError::InvalidCommand(
+            "agent working directory must be absolute and stay inside the wire limit".to_owned(),
+        ));
+    }
+    Ok(AgentDescriptor {
+        provider,
+        cwd,
+        session_id: session_id.map(str::to_owned),
+        model,
+        effort,
+    })
 }
 
 struct WindowDestination {
@@ -28241,6 +28414,305 @@ mod tests {
         ));
 
         assert!(engine.state.validate().is_ok());
+    }
+
+    #[test]
+    fn agent_selection_materializes_a_picker_with_provider_cwd_and_resume() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "agent"]))
+            .expect("session");
+        let mut picker = || {
+            engine
+                .execute(
+                    &mut context,
+                    &command("split-window", &["--kind", "picker", "-h"]),
+                )
+                .expect("picker split");
+            context.pane.expect("picker pane").to_string()
+        };
+        let (tail, option, bare) = (picker(), picker(), picker());
+        let mut select = |args: &[&str]| {
+            engine.execute(
+                &mut ExecutionContext::default(),
+                &command("select-pane-kind", args),
+            )
+        };
+
+        for args in [
+            &["-t", tail.as_str(), "agent"][..],
+            &["-t", tail.as_str(), "agent", "gemini"],
+            &["-t", tail.as_str(), "agent", "claude", "--resume"],
+            &["-t", tail.as_str(), "agent", "claude", "--fork", "abc"],
+            &[
+                "-t",
+                tail.as_str(),
+                "agent",
+                "claude",
+                "--resume",
+                "abc",
+                "x",
+            ],
+            &[
+                "-t",
+                tail.as_str(),
+                "--resume",
+                "a",
+                "agent",
+                "claude",
+                "--resume",
+                "b",
+            ],
+            &["-t", tail.as_str(), "--resume", "abc", "terminal"],
+            &["-t", tail.as_str(), "-c", "relative/dir", "agent", "codex"],
+            &["-t", tail.as_str(), "agent", "codex", "--resume", "bad\nid"],
+        ] {
+            assert!(select(args).is_err(), "{args:?}");
+        }
+
+        let tail_effect = select(&[
+            "-t",
+            &tail,
+            "-c",
+            "/work/repo",
+            "agent",
+            "claude",
+            "--resume",
+            "session-1",
+        ])
+        .expect("agent with a trailing resume");
+        let option_effect = select(&["-t", &option, "--resume", "thread-2", "agent", "codex"])
+            .expect("agent with a resume option");
+        let bare_effect = select(&["-t", &bare, "agent", "claude-code"]).expect("bare agent");
+
+        let expected = [
+            (
+                tail_effect,
+                AgentDescriptor {
+                    provider: AgentProvider::ClaudeCode,
+                    cwd: Some(PathBuf::from("/work/repo")),
+                    session_id: Some("session-1".to_owned()),
+                    ..AgentDescriptor::default()
+                },
+            ),
+            (
+                option_effect,
+                AgentDescriptor {
+                    provider: AgentProvider::Codex,
+                    session_id: Some("thread-2".to_owned()),
+                    ..AgentDescriptor::default()
+                },
+            ),
+            (
+                bare_effect,
+                AgentDescriptor {
+                    provider: AgentProvider::ClaudeCode,
+                    ..AgentDescriptor::default()
+                },
+            ),
+        ];
+        for (execution, descriptor) in expected {
+            let Some(MuxEffect::PaneMaterialized {
+                pane,
+                kind: PaneKindSnapshot::Agent(agent),
+                command,
+                ..
+            }) = execution.effects.first()
+            else {
+                panic!("agent selection materializes the picker: {execution:?}");
+            };
+            assert_eq!(agent, &descriptor);
+            assert_eq!(command, &None);
+            assert_eq!(
+                engine.state.pane(*pane).map(|pane| &pane.kind),
+                Some(&PaneKind::Agent(descriptor))
+            );
+            assert_eq!(
+                engine.state.pane(*pane).map(|pane| pane.title.as_str()),
+                Some("agent")
+            );
+        }
+        assert!(engine.state.validate().is_ok());
+    }
+
+    #[test]
+    fn a_terminal_turns_into_an_agent_chat_and_back_keeping_its_pane() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "flip"]))
+            .expect("session");
+        let pane = context.pane.expect("terminal");
+        let target = pane.to_string();
+        let window = context.window.expect("window");
+        let layout = engine.state.windows[&window].layout.clone();
+
+        let to_chat = engine
+            .execute(
+                &mut ExecutionContext::default(),
+                &command(
+                    "select-pane-kind",
+                    &[
+                        "-t", &target, "-c", "/work", "--resume", "s-1", "--model", "haiku",
+                        "--effort", "low", "agent", "claude",
+                    ],
+                ),
+            )
+            .expect("terminal to chat");
+        let descriptor = AgentDescriptor {
+            provider: AgentProvider::ClaudeCode,
+            cwd: Some(PathBuf::from("/work")),
+            session_id: Some("s-1".to_owned()),
+            model: Some("haiku".to_owned()),
+            effort: Some("low".to_owned()),
+        };
+        assert_eq!(
+            to_chat.effects.first(),
+            Some(&MuxEffect::PaneMaterialized {
+                pane,
+                kind: PaneKindSnapshot::Agent(descriptor.clone()),
+                inherit_cwd_from: Some(pane),
+                cwd: Some("/work".to_owned()),
+                command: None,
+            })
+        );
+        assert_eq!(
+            engine.state.pane(pane).map(|pane| &pane.kind),
+            Some(&PaneKind::Agent(descriptor))
+        );
+        assert_eq!(engine.state.windows[&window].layout, layout);
+        assert!(
+            engine
+                .execute(
+                    &mut ExecutionContext::default(),
+                    &command("select-pane-kind", &["-t", &target, "agent", "codex"]),
+                )
+                .is_err(),
+            "a chat is already an agent pane"
+        );
+
+        let to_cli = engine
+            .execute(
+                &mut ExecutionContext::default(),
+                &command(
+                    "select-pane-kind",
+                    &[
+                        "-t", &target, "-c", "/work", "terminal", "/bin/sh", "-c", "claude",
+                    ],
+                ),
+            )
+            .expect("chat to terminal");
+        assert_eq!(
+            to_cli.effects.first(),
+            Some(&MuxEffect::PaneRespawned {
+                pane,
+                cwd: Some("/work".to_owned()),
+                command: Some(vec![
+                    "/bin/sh".to_owned(),
+                    "-c".to_owned(),
+                    "claude".to_owned()
+                ]),
+                environment: Vec::new(),
+                empty: false,
+            })
+        );
+        assert_eq!(
+            engine.state.pane(pane).map(|pane| &pane.kind),
+            Some(&PaneKind::Terminal)
+        );
+        assert_eq!(engine.state.windows[&window].layout, layout);
+        assert!(
+            engine
+                .execute(
+                    &mut ExecutionContext::default(),
+                    &command(
+                        "select-pane-kind",
+                        &["-t", &target, "--model", "x", "terminal"]
+                    ),
+                )
+                .is_err()
+        );
+        assert!(engine.state.validate().is_ok());
+    }
+
+    #[test]
+    fn a_fork_opens_a_new_pane_on_a_copy_of_the_session() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "fork"]))
+            .expect("session");
+        let source = context.pane.expect("pane");
+        engine
+            .execute(&mut context, &command("new-window", &[]))
+            .expect("window for the fork");
+        let pane = context.pane.expect("new window's pane");
+        assert_ne!(pane, source);
+        let forked = engine
+            .execute(
+                &mut context,
+                &command(
+                    "select-pane-kind",
+                    &["--resume", "s-1", "--fork", "--at", "u-2", "agent", "codex"],
+                ),
+            )
+            .expect("fork");
+        assert!(matches!(
+            forked.effects.as_slice(),
+            [
+                MuxEffect::PaneMaterialized {
+                    pane: opened,
+                    kind: PaneKindSnapshot::Agent(agent),
+                    ..
+                },
+                MuxEffect::AgentForked { pane: copied, at },
+                ..
+            ] if *opened == pane
+                && *copied == pane
+                && agent.session_id.as_deref() == Some("s-1")
+                && at.as_deref() == Some("u-2")
+        ));
+        assert!(matches!(
+            engine.state.pane(source).map(|pane| &pane.kind),
+            Some(PaneKind::Terminal)
+        ));
+        let target = source.to_string();
+        for args in [
+            &["-t", target.as_str(), "--fork", "agent", "claude"][..],
+            &[
+                "-t",
+                target.as_str(),
+                "--resume",
+                "s",
+                "--at",
+                "u",
+                "agent",
+                "claude",
+            ],
+            &[
+                "-t",
+                target.as_str(),
+                "--resume",
+                "s",
+                "--fork",
+                "--at",
+                "../x",
+                "agent",
+                "claude",
+            ],
+            &["-t", target.as_str(), "--fork", "terminal"],
+        ] {
+            assert!(
+                engine
+                    .execute(
+                        &mut ExecutionContext::default(),
+                        &command("select-pane-kind", args)
+                    )
+                    .is_err(),
+                "{args:?}"
+            );
+        }
     }
 
     #[test]

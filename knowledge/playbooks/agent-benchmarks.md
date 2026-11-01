@@ -144,9 +144,9 @@ banner, running the bare binary, `set-option` without `-p`, `agent-send` without
 
 `bench/agents/fresh/` asks what a new user's Claude Code and Codex get from zz 0.21.0 with nothing
 else installed (see `bench/agents/README.md`). Haiku 5.5 and gpt-6-luna, 8 tasks, 2 reps, 119 runs.
-The agent pane rows below were measured on the Agent pane kind, which was removed on 2026-10-23;
-Claude Code and Codex now run only in terminal panes, with the [agent lens](/concepts/agent-lens.md)
-drawn over them. Those rows are history and cannot be rerun.
+The agent pane rows below were measured on the Agent pane kind that was removed on 2026-10-23. The
+[agent panes](/concepts/agent-panes.md) of 2026-11-01 run the same drivers, but nobody has rerun
+these rows on them yet.
 
 | Setup | Claude | Codex |
 | --- | --- | --- |

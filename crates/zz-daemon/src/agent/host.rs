@@ -232,17 +232,11 @@ pub(crate) struct AgentPaneSpec {
     pub(crate) provider: AgentProvider,
     pub(crate) cwd: PathBuf,
     pub(crate) resume_session: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) effort: Option<String>,
     pub(crate) auto_approve: Option<AgentAutoApprove>,
     pub(crate) workspace: AgentWorkspaceEnvironment,
-    pub(crate) lens: Option<LensSpec>,
 }
-
-#[cfg(unix)]
-pub(crate) use crate::agent::lens::LensSpec;
-
-#[cfg(not(unix))]
-#[derive(Clone, Debug)]
-pub(crate) enum LensSpec {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AgentConnectionPhase {
@@ -312,7 +306,8 @@ impl AgentPaneState {
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self::new(&AgentPaneSpec {
-            lens: None,
+            model: None,
+            effort: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -446,13 +441,6 @@ impl AgentHost {
             .as_ref()
             .map(|factory| factory(&spec))
         {
-            return self.open_with(pane, generation, spec, runner);
-        }
-        #[cfg(unix)]
-        if let Some(lens) = spec.lens.clone() {
-            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(crate::agent::lens::run_lens(lens, channels))
-            });
             return self.open_with(pane, generation, spec, runner);
         }
         let mut config = self.config.lock().clone();
@@ -1125,6 +1113,19 @@ impl PanePump {
                 self.reclaim_queue();
             }
         }
+        if matches!(&payload, AgentStreamPayload::SessionReady { .. }) {
+            for (option_id, value) in [
+                ("model", self.spec.model.take()),
+                ("effort", self.spec.effort.take()),
+            ] {
+                if let Some(value) = value {
+                    self.send(RuntimeCommand::SetConfigOption {
+                        option_id: option_id.to_owned(),
+                        value,
+                    });
+                }
+            }
+        }
         let refresh_git = matches!(
             &payload,
             AgentStreamPayload::SessionReady { .. }
@@ -1385,7 +1386,7 @@ impl PanePump {
             let state = self.state.lock();
             state.phase == AgentConnectionPhase::Running
                 && state.pending_permissions.is_empty()
-                && (state.capabilities.verbs || self.spec.lens.is_some())
+                && state.capabilities.verbs
         };
         let text = prompt.text.trim();
         if !steerable || text.is_empty() || !prompt.images.is_empty() {
@@ -1983,7 +1984,8 @@ mod tests {
                 pane,
                 1,
                 AgentPaneSpec {
-                    lens: None,
+                    model: None,
+                    effort: None,
                     provider: AgentProvider::Codex,
                     cwd: PathBuf::from("/"),
                     resume_session: None,
@@ -2015,7 +2017,8 @@ mod tests {
             );
             let pane = PaneId(7);
             let spec = AgentPaneSpec {
-                lens: None,
+                model: None,
+                effort: None,
                 provider: AgentProvider::Codex,
                 cwd: cwd.unwrap_or_else(|| PathBuf::from("/")),
                 resume_session,
@@ -2439,7 +2442,8 @@ mod tests {
                     pane,
                     1,
                     AgentPaneSpec {
-                        lens: None,
+                        model: None,
+                        effort: None,
                         provider,
                         cwd: directory.path().to_owned(),
                         resume_session: None,
@@ -3313,7 +3317,8 @@ mod tests {
     fn a_new_agent_session_reset_reclaims_prompts_still_in_the_mailbox() {
         let recorder = Recorder::default();
         let spec = AgentPaneSpec {
-            lens: None,
+            model: None,
+            effort: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -3519,7 +3524,8 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
-                lens: None,
+                model: None,
+                effort: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
@@ -3594,7 +3600,8 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
-                lens: None,
+                model: None,
+                effort: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,

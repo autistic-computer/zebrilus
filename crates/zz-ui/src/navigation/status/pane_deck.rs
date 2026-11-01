@@ -42,6 +42,17 @@ impl StatusPaneEntry {
                 editor.path.as_deref().unwrap_or(&editor.cwd),
             ),
             PaneKindSnapshot::Picker => format!("New pane · {}", pane.id),
+            PaneKindSnapshot::Agent(agent) => agent.cwd.as_ref().map_or_else(
+                || format!("{} · {}", agent.provider.label(), pane.id),
+                |cwd| {
+                    format!(
+                        "{} · {}\n{}",
+                        agent.provider.label(),
+                        pane.id,
+                        cwd.display()
+                    )
+                },
+            ),
         };
         Self {
             label: pane.label.clone().into(),

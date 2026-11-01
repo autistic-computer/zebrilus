@@ -1,11 +1,12 @@
 use std::cmp::Reverse;
 
 use zz_protocol::{
-    AgentProvider, CommandInvocation, MuxSnapshot, PaneId, SessionId, SessionSnapshot, WindowId,
+    AgentProvider, CommandInvocation, MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot,
+    SessionId, SessionSnapshot, WindowId,
 };
 
 use crate::{
-    agent_launch::{AgentLaunches, interactive_shell},
+    agent_launch::AgentLaunches,
     fuzzy::fuzzy_match,
     navigation::{last_component, pane_place, session_place},
     program::Program,
@@ -48,10 +49,6 @@ impl AgentChoice {
             "codex" => AgentProvider::Codex,
             _ => AgentProvider::ClaudeCode,
         }
-    }
-
-    fn command(self) -> &'static str {
-        self.program().commands[0]
     }
 }
 
@@ -188,6 +185,42 @@ fn holder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<(&SessionSnapshot, Win
 }
 
 #[must_use]
+fn agent_pane_command(
+    target: String,
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> CommandInvocation {
+    let mut args = vec!["-t".to_owned(), target, "-c".to_owned(), folder.to_owned()];
+    args.extend(launches.agent_flags(agent.provider()));
+    args.extend(["agent".to_owned(), agent.program.to_owned()]);
+    command("select-pane-kind", args)
+}
+
+#[must_use]
+pub fn first_chat_commands(
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> Vec<CommandInvocation> {
+    let name = session_name(folder);
+    vec![
+        command(
+            "new-session",
+            [
+                "-d".to_owned(),
+                "-s".to_owned(),
+                name.clone(),
+                "-c".to_owned(),
+                folder.to_owned(),
+            ],
+        ),
+        agent_pane_command(format!("{name}:"), folder, agent, launches),
+        command("attach-session", ["-t".to_owned(), name]),
+    ]
+}
+
+#[must_use]
 pub fn start_agent_commands(
     snapshot: &MuxSnapshot,
     pane: PaneId,
@@ -195,17 +228,12 @@ pub fn start_agent_commands(
     agent: AgentChoice,
     launches: &AgentLaunches,
 ) -> Vec<CommandInvocation> {
-    let mut arguments = vec![
-        "-t".to_owned(),
+    let mut commands = vec![agent_pane_command(
         pane.to_string(),
-        "-c".to_owned(),
-        folder.to_owned(),
-        "terminal".to_owned(),
-    ];
-    arguments.extend(interactive_shell(
-        &launches.command(agent.provider(), agent.command()),
-    ));
-    let mut commands = vec![command("select-pane-kind", arguments)];
+        folder,
+        agent,
+        launches,
+    )];
     let Some((session, window)) = holder(snapshot, pane) else {
         return commands;
     };
@@ -254,16 +282,59 @@ pub fn start_agent_commands(
     commands
 }
 
+fn idle_terminal(pane: &PaneSnapshot) -> bool {
+    matches!(pane.kind, PaneKindSnapshot::Terminal)
+        && (pane.dead || pane.summary.process.is_empty())
+}
+
 #[must_use]
-pub fn chat_picker_place(snapshot: &MuxSnapshot, pane: PaneId) -> Option<(SessionId, WindowId)> {
+pub fn agent_picker_place(
+    snapshot: &MuxSnapshot,
+    pane: PaneId,
+    chat_view: bool,
+) -> Option<(SessionId, WindowId)> {
+    if !chat_view {
+        return None;
+    }
     snapshot.sessions.iter().find_map(|session| {
-        session
-            .windows
-            .iter()
-            .find(|window| window.panes.contains_key(&pane))
-            .filter(|window| window.panes.len() == 1)
-            .map(|window| (session.id, window.id))
+        session.windows.iter().find_map(|window| {
+            let held = window.panes.get(&pane)?;
+            let offered = match held.kind {
+                PaneKindSnapshot::Picker => true,
+                PaneKindSnapshot::Terminal => window.panes.len() == 1 && idle_terminal(held),
+                _ => false,
+            };
+            offered.then_some((session.id, window.id))
+        })
     })
+}
+
+fn find_pane(snapshot: &MuxSnapshot, pane: PaneId) -> Option<&PaneSnapshot> {
+    snapshot
+        .sessions
+        .iter()
+        .flat_map(|session| &session.windows)
+        .find_map(|window| window.panes.get(&pane))
+}
+
+#[must_use]
+pub fn picker_folders(snapshot: &MuxSnapshot, pane: PaneId) -> Vec<FolderChoice> {
+    let mut folders = recent_folders(snapshot);
+    let own = find_pane(snapshot, pane)
+        .filter(|held| matches!(held.kind, PaneKindSnapshot::Terminal))
+        .and_then(pane_place);
+    if let Some(index) = own.and_then(|own| folders.iter().position(|folder| folder.path == own)) {
+        let folder = folders.remove(index);
+        folders.insert(0, folder);
+    }
+    folders
+}
+
+#[must_use]
+pub fn close_picker_command(snapshot: &MuxSnapshot, pane: PaneId) -> Option<CommandInvocation> {
+    find_pane(snapshot, pane)
+        .filter(|held| matches!(held.kind, PaneKindSnapshot::Picker))
+        .map(|_| command("kill-pane", ["-t".to_owned(), pane.to_string()]))
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -651,48 +722,169 @@ mod tests {
     fn the_folder_decides_the_session_the_chat_lands_in() {
         let fleet = fleet();
         let claude = AGENT_CHOICES[0];
-        let fresh = AgentLaunches::default();
-        let mut picked = AgentLaunches::default();
-        picked.pick(AgentProvider::ClaudeCode, "model", "opus");
-        let start = |folder: &str, agent: AgentChoice, launches: &AgentLaunches| {
+        let none = AgentLaunches::default();
+        let start = |folder: &str, agent: AgentChoice| {
             lines(&start_agent_commands(
                 &fleet,
                 PaneId(4),
                 folder,
                 agent,
-                launches,
+                &none,
             ))
-        };
-        let run = |folder: &str, line: &str| {
-            format!(
-                r#"select-pane-kind -t %4 -c {folder} terminal /bin/sh -c exec "${{SHELL:-/bin/sh}}" -ic '{line}'"#
-            )
         };
         assert_eq!(claude.title(), "Claude Code");
         assert_eq!(
-            start("~/dev/zz", claude, &fresh),
-            [run("~/dev/zz", "claude")]
+            start("~/dev/zz", claude),
+            ["select-pane-kind -t %4 -c ~/dev/zz agent claude"]
         );
         assert_eq!(
-            start("~/dev/zz", claude, &picked),
-            [run("~/dev/zz", "claude --model opus")]
-        );
-        assert_eq!(
-            start("~/dev/clairvo", AGENT_CHOICES[1], &picked),
+            start("~/dev/clairvo", AGENT_CHOICES[1]),
             [
-                run("~/dev/clairvo", "codex"),
-                "move-window -s @3 -t $2:".to_owned(),
+                "select-pane-kind -t %4 -c ~/dev/clairvo agent codex",
+                "move-window -s @3 -t $2:",
             ]
         );
         assert_eq!(
-            start("~/notes", claude, &fresh),
+            start("~/notes", claude),
             [
-                run("~/notes", "claude"),
-                "new-session -d -s notes -c ~/notes".to_owned(),
-                "move-window -s @3 -t notes:".to_owned(),
-                "kill-window -a -t @3".to_owned(),
+                "select-pane-kind -t %4 -c ~/notes agent claude",
+                "new-session -d -s notes -c ~/notes",
+                "move-window -s @3 -t notes:",
+                "kill-window -a -t @3",
             ]
         );
+    }
+
+    #[test]
+    fn a_first_chat_makes_its_own_session_and_attaches_to_it() {
+        let none = AgentLaunches::default();
+        assert_eq!(
+            lines(&first_chat_commands("~", AGENT_CHOICES[0], &none)),
+            [
+                "new-session -d -s home -c ~",
+                "select-pane-kind -t home: -c ~ agent claude",
+                "attach-session -t home",
+            ]
+        );
+        assert_eq!(
+            lines(&first_chat_commands(
+                "~/dev/zz.app",
+                AGENT_CHOICES[1],
+                &none
+            ))[1],
+            "select-pane-kind -t zz-app: -c ~/dev/zz.app agent codex"
+        );
+    }
+
+    #[test]
+    fn a_new_chat_starts_on_the_model_and_effort_last_picked() {
+        let mut launches = AgentLaunches::default();
+        launches.pick(
+            AgentProvider::ClaudeCode,
+            crate::agent_settings::MODEL,
+            "haiku",
+        );
+        launches.pick(
+            AgentProvider::ClaudeCode,
+            crate::agent_settings::EFFORT,
+            "low",
+        );
+        launches.pick(
+            AgentProvider::Codex,
+            crate::agent_settings::EFFORT,
+            "medium",
+        );
+        assert_eq!(
+            lines(&start_agent_commands(
+                &fleet(),
+                PaneId(4),
+                "~/dev/zz",
+                AGENT_CHOICES[0],
+                &launches
+            )),
+            ["select-pane-kind -t %4 -c ~/dev/zz --model haiku --effort low agent claude"]
+        );
+        assert_eq!(
+            lines(&first_chat_commands("~", AGENT_CHOICES[1], &launches))[1],
+            "select-pane-kind -t home: -c ~ --effort medium agent codex"
+        );
+    }
+
+    #[test]
+    fn the_sidebar_view_decides_what_a_picker_offers() {
+        let fleet = fleet();
+        assert_eq!(
+            agent_picker_place(&fleet, PaneId(4), true),
+            Some((SessionId(1), WindowId(3)))
+        );
+        assert_eq!(agent_picker_place(&fleet, PaneId(4), false), None);
+        let split = snapshot(vec![session(
+            1,
+            vec![window(1, vec![agent(1, "~/dev/zz", 50), picker(2)])],
+        )]);
+        assert_eq!(
+            agent_picker_place(&split, PaneId(2), true),
+            Some((SessionId(1), WindowId(1)))
+        );
+        assert_eq!(agent_picker_place(&split, PaneId(2), false), None);
+        assert_eq!(agent_picker_place(&split, PaneId(1), true), None);
+        assert_eq!(agent_picker_place(&fleet, PaneId(99), true), None);
+    }
+
+    #[test]
+    fn chat_view_offers_agents_over_a_terminal_alone_with_nothing_running() {
+        let idle = |id| pane(id, PaneKindSnapshot::Terminal, "~/notes", "", 10);
+        let mut exited = pane(2, PaneKindSnapshot::Terminal, "~/notes", "claude", 10);
+        exited.dead = true;
+        let fleet = snapshot(vec![session(
+            1,
+            vec![
+                window(1, vec![idle(1)]),
+                window(2, vec![exited]),
+                window(3, vec![pane(3, PaneKindSnapshot::Terminal, "~", "vim", 10)]),
+                window(4, vec![agent(4, "~/dev/zz", 10)]),
+                window(5, vec![idle(5), idle(6)]),
+            ],
+        )]);
+        let offered = |pane| agent_picker_place(&fleet, PaneId(pane), true).is_some();
+        assert!(offered(1), "a shell alone in its window");
+        assert!(offered(2), "a CLI that exited");
+        assert!(!offered(3), "a program still running");
+        assert!(!offered(4), "an agent is already a chat");
+        assert!(
+            !offered(5) && !offered(6),
+            "split windows keep their terminals"
+        );
+        assert_eq!(agent_picker_place(&fleet, PaneId(1), false), None);
+        assert_eq!(picker_folders(&fleet, PaneId(1))[0].path, "~/notes");
+        assert_eq!(picker_folders(&fleet, PaneId(4))[0].path, "~/dev/zz");
+        assert_eq!(
+            picker_folders(&snapshot(Vec::new()), PaneId(1))[0].path,
+            "~"
+        );
+        assert_eq!(
+            lines(&start_agent_commands(
+                &fleet,
+                PaneId(1),
+                "~/notes",
+                AGENT_CHOICES[0],
+                &AgentLaunches::default()
+            )),
+            ["select-pane-kind -t %1 -c ~/notes agent claude"]
+        );
+    }
+
+    #[test]
+    fn escape_closes_only_a_picker_pane() {
+        let fleet = fleet();
+        assert_eq!(
+            close_picker_command(&fleet, PaneId(4))
+                .as_ref()
+                .map(|command| lines(std::slice::from_ref(command))),
+            Some(vec!["kill-pane -t %4".to_owned()])
+        );
+        assert_eq!(close_picker_command(&fleet, PaneId(2)), None);
+        assert_eq!(close_picker_command(&fleet, PaneId(99)), None);
     }
 
     #[test]
@@ -719,11 +911,6 @@ mod tests {
             ChatKey::Start(AGENT_CHOICES[0])
         );
         assert_eq!(picker.key("escape", None, false, &[]), ChatKey::Close);
-        assert_eq!(
-            chat_picker_place(&fleet(), PaneId(4)),
-            Some((SessionId(1), WindowId(3)))
-        );
-        assert_eq!(chat_picker_place(&fleet(), PaneId(1)), None);
     }
 
     #[test]

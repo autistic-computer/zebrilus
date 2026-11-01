@@ -133,6 +133,19 @@ impl AgentRuntime {
         self.fanout.close_lane(pane);
     }
 
+    pub(crate) fn close_and_wait(&self, pane: PaneId) {
+        let thread = {
+            let _lifecycle = self.lifecycle.lock();
+            let thread = self.host.close(pane);
+            self.fanout.close_lane(pane);
+            thread
+        };
+        if let Some(thread) = thread {
+            let _ = thread.join();
+            crate::agent::child::join_reapers();
+        }
+    }
+
     pub(crate) fn command(&self, pane: PaneId, command: HostCommand) -> bool {
         let _lifecycle = self.lifecycle.lock();
         match self.host.command(pane, command) {
@@ -1904,7 +1917,8 @@ mod tests {
         }));
         let pane = PaneId(45);
         let spec = AgentPaneSpec {
-            lens: None,
+            model: None,
+            effort: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,

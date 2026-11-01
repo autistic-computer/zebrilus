@@ -244,6 +244,7 @@ pub enum ChooserPaneKind {
     Terminal,
     Browser,
     Editor,
+    Agent,
 }
 
 fn chooser_key_label(key: &str) -> SharedString {
@@ -291,6 +292,7 @@ pub fn tree_chooser_row(
         Some(ChooserPaneKind::Terminal) => IconName::SquareTerminal,
         Some(ChooserPaneKind::Browser) => IconName::Globe,
         Some(ChooserPaneKind::Editor) => IconName::File,
+        Some(ChooserPaneKind::Agent) => IconName::Bot,
         None if target.starts_with('$') => IconName::Folder,
         None => IconName::PanelsTopLeft,
     };

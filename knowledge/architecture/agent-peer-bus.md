@@ -7,6 +7,12 @@ tags: [architecture, agent, messaging, claude-code]
 timestamp: 2026-10-23T00:00:00-03:00
 ---
 
+> **Status 2026-11-01.** `agent-send` no longer posts to a Claude Code TUI's peer socket and
+> no longer waits on its replies: a terminal running Claude Code or Codex refuses `agent-send`
+> and is flipped to an [agent pane](/concepts/agent-panes.md) instead. Claude Code still discovers
+> and messages named zz terminal panes as below. The sections on sending into Claude Code are
+> history.
+
 The daemon joins Claude Code's local peer protocol in two directions. You can target a terminal
 pane running Claude Code with `agent-send`, and Claude Code can discover and message a named
 terminal pane through `ListAgents` and `SendMessage`. Until 2026-10-23 an Agent pane registered as a
@@ -217,7 +223,7 @@ came, or nothing when the session answered only in its pane. `blocked` exits 3 u
 so a message that lands just as an earlier turn ends can return that turn's end.
 
 `agent-send -t %N --wait ''` (empty text, no `--context`) posts nothing and skips the
-[agent lens](/concepts/agent-lens.md), which would refuse an empty prompt. It prints a kept late reply
+[agent panes](/concepts/agent-panes.md), which would refuse an empty prompt. It prints a kept late reply
 at once, returns at once with empty text when the pane is idle, and otherwise waits for the reply
 or the end of the running turn the same way. A driver re-arms a timed-out wait this way without
 nudging the worker. Terminal panes without a Claude Code record treat empty text the same way on

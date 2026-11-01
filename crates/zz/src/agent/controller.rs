@@ -113,7 +113,6 @@ pub(crate) struct AgentPaneState {
     pub(crate) pending_composer: Option<Arc<str>>,
     pub(crate) queued_prompts: usize,
     pub(crate) settings: Option<LensSettings>,
-    pub(crate) dialogs_closed: u64,
 }
 
 #[derive(Debug)]
@@ -135,7 +134,6 @@ struct AgentThread {
     session_reset: bool,
     unknown_updates: u64,
     settings: Option<LensSettings>,
-    dialogs_closed: u64,
 }
 
 impl AgentThread {
@@ -158,7 +156,6 @@ impl AgentThread {
             session_reset: false,
             unknown_updates: 0,
             settings: None,
-            dialogs_closed: 0,
         }
     }
 
@@ -179,7 +176,6 @@ impl AgentThread {
             pending_composer: None,
             queued_prompts: 0,
             settings: self.settings.clone(),
-            dialogs_closed: self.dialogs_closed,
         }
     }
 
@@ -446,7 +442,7 @@ impl AgentController {
             return Ok(());
         }
         let Some(thread) = self.panes.get(&pane) else {
-            return Err(Arc::from("the lens is not open"));
+            return Err(Arc::from("the agent is not connected"));
         };
         if let Some(refusal) = thread.image_refusal(!images.is_empty()) {
             return Err(refusal);
@@ -658,7 +654,6 @@ impl AgentController {
             } => (config_options, option_id.as_str()),
             _ => return false,
         };
-        let dialog = option == agent_settings::DIALOG;
         let Some(thread) = self.panes.get_mut(&pane) else {
             return false;
         };
@@ -668,9 +663,6 @@ impl AgentController {
                 launch::update(|launches| launches.follow(provider, before, &settings));
             }
             thread.settings = Some(settings);
-        }
-        if dialog {
-            thread.dialogs_closed += 1;
         }
         true
     }

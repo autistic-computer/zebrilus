@@ -7,7 +7,7 @@ use zz_client::new_chat::{ChatPicker, FolderChoice};
 use zz_protocol::{AgentProvider, DisplayPanesState, PaneId, PaneIndicator, TmuxColour, WindowId};
 use zz_ui::{
     pane::{
-        ChatPickerRow, FloatingSurface, PaneDragOverlayState, PaneLens, PaneOverlayCorner,
+        ChatPickerRow, FlipTo, FloatingSurface, PaneDragOverlayState, PaneFlip, PaneOverlayCorner,
         PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, chat_picker_rows, pane_drag_chip,
         pane_drag_overlay, pane_drop_preview, pane_indicator, pane_indicator_overlay,
         pane_overlay_stack, pane_picker_choices, pane_picker_row, pane_picker_surface,
@@ -24,7 +24,7 @@ use super::fixtures::{
     BUILD, LOGS, PANE_CHOICES, SERVER, TerminalPane, gap, placeholder_pane, radii, stateful,
     terminal_body,
 };
-use crate::stories::agent::lens;
+use crate::stories::agent::pane as agent_pane;
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
 
@@ -43,7 +43,7 @@ pub const STORY: Story = Story {
         Section {
             id: "terminal-header",
             name: "Terminal header",
-            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W at the tallest height the window fits, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it. A terminal running Claude Code or Codex adds the lens toggle before them, lit while the pane shows the agent timeline.",
+            summary: "terminal_pane_header with its split, Float, drag and close actions. Float sends break-pane -W at the tallest height the window fits, which turns the pane into a PiP. An inactive header hides its actions until the pointer is over it. A terminal running Claude Code or Codex, and an agent pane, add the flip button before them, which switches the pane between the CLI and the chat.",
             build: |_, cx| stateless(terminal_header, cx),
         },
         Section {
@@ -79,19 +79,19 @@ pub const STORY: Story = Story {
         Section {
             id: "pip",
             name: "PiP",
-            summary: "PipSurface draws every float that is not modal: the pane's content in a card that casts the float shadow, its title in the top border like a pane header, and tile back, zoom and close while pointed at (always on touch). Any pane can be one, and a terminal running Claude Code or Codex keeps its lens toggle there. Thrown by its title, it settles in the third of the window it was headed for.",
+            summary: "PipSurface draws every float that is not modal: the pane's content in a card that casts the float shadow, its title in the top border like a pane header, and tile back, zoom and close while pointed at (always on touch). Any pane can be one, and a pane running Claude Code or Codex keeps its flip button there. Thrown by its title, it settles in the third of the window it was headed for.",
             build: |window, cx| stateful(window, cx, pip_views, pip),
         },
         Section {
             id: "picker",
             name: "New pane picker",
-            summary: "A freshly split pane asks what it should become: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states.",
+            summary: "With the sidebar on the session tree, a new pane asks what it should become, even alone in a new window: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states. Agents start there by typing the CLI into a terminal.",
             build: |_, cx| stateless(picker, cx),
         },
         Section {
             id: "new-agent",
             name: "New agent picker",
-            summary: "The picker a new chat opens: alone in its own window, chat_picker_rows offers Claude Code and Codex under the folder they will start in. The folder starts as the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, and the folder picked there (or the folder of a file picked) is where the agent starts.",
+            summary: "With the sidebar on chats, every new pane opens this picker instead of the pane kinds, and so do an empty workspace and a window whose only pane is a terminal with nothing running (a fresh shell, a CLI that exited). chat_picker_rows offers Claude Code and Codex under the folder they will start in, and picking one turns the pane into a chat. The folder starts as that terminal's folder, or else the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, which lists folders with no terminal open, and the folder picked there (or the folder of a file picked) is where the agent starts.",
             build: |_, cx| stateless(chat_picker, cx),
         },
         Section {
@@ -181,7 +181,7 @@ fn header(
     title: &'static str,
     active: bool,
     draggable: bool,
-    lens: Option<PaneLens>,
+    flip: Option<PaneFlip>,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
     zz_ui::pane::terminal_pane_header(
@@ -189,7 +189,7 @@ fn header(
         title,
         zz_ui::pane::PaneDragSource::new(zz_protocol::PaneId(id), title, draggable, |_, _, _| {}),
         false,
-        lens,
+        flip,
         |_, _, _| {},
         cx,
     )
@@ -232,7 +232,7 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "running Claude Code: the lens toggle shows the agent timeline",
+            "running Claude Code: the flip button switches the pane to a chat",
             header_box(
                 "header-claude",
                 None,
@@ -241,9 +241,11 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
                     "Pinned tabs keep their icon width",
                     true,
                     true,
-                    Some(PaneLens {
+                    Some(PaneFlip {
                         provider: AgentProvider::ClaudeCode,
-                        open: false,
+                        to: FlipTo::Chat,
+                        armed: false,
+                        pending: false,
                     }),
                     cx,
                 ),
@@ -251,7 +253,7 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
             ),
         )
         .state(
-            "running Codex with the lens open: the toggle lit, Show terminal on hover",
+            "a Codex agent pane: the flip button switches it to the CLI",
             header_box(
                 "header-codex",
                 None,
@@ -260,9 +262,11 @@ fn terminal_header(_: &mut Window, cx: &mut App) -> AnyElement {
                     "codex",
                     true,
                     true,
-                    Some(PaneLens {
+                    Some(PaneFlip {
                         provider: AgentProvider::Codex,
-                        open: true,
+                        to: FlipTo::Cli,
+                        armed: false,
+                        pending: false,
                     }),
                     cx,
                 ),
@@ -832,8 +836,8 @@ struct PipViews {
 
 fn pip_views(window: &mut Window, cx: &mut App) -> PipViews {
     PipViews {
-        claude: lens::floating_claude(window, cx),
-        codex: lens::floating_codex(window, cx),
+        claude: agent_pane::floating_claude(window, cx),
+        codex: agent_pane::floating_codex(window, cx),
     }
 }
 
@@ -894,11 +898,11 @@ fn pip(views: &PipViews, _: &mut Window, cx: &mut App) -> AnyElement {
             states()
                 .columns(2)
                 .state(
-                    "Claude Code as a PiP with the lens open: the timeline under the terminal header",
+                    "a Claude Code agent pane as a PiP: the chat under the pane header",
                     pip_box("pip-claude", 340.0, views.claude.clone()),
                 )
                 .state(
-                    "Codex as a PiP showing its terminal: the toggle opens the lens",
+                    "Codex in a terminal PiP: the flip button turns it into a chat",
                     pip_box("pip-codex", 340.0, views.codex.clone()),
                 ),
         )
@@ -1031,6 +1035,12 @@ fn picker(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+fn shell_folders() -> Vec<FolderChoice> {
+    let mut folders = chat_folders();
+    folders.rotate_right(1);
+    folders
+}
+
 pub(crate) fn chat_folders() -> Vec<FolderChoice> {
     [("~/dev/zz", 2), ("~/dev/clairvo", 1), ("~/notes", 0)]
         .into_iter()
@@ -1047,7 +1057,17 @@ pub(crate) fn chat_picker_surface(
     enabled: bool,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
-    let rows = chat_picker_rows(7, picker, &chat_folders(), enabled, cx)
+    folder_picker_surface(id, picker, &chat_folders(), enabled, cx)
+}
+
+fn folder_picker_surface(
+    id: &'static str,
+    picker: &ChatPicker,
+    folders: &[FolderChoice],
+    enabled: bool,
+    cx: &App,
+) -> ala::Stateful<ala::Div> {
+    let rows = chat_picker_rows(7, picker, folders, enabled, cx)
         .into_iter()
         .map(|row| match row {
             ChatPickerRow::Label(label) => label.into_any_element(),
@@ -1060,6 +1080,7 @@ pub(crate) fn chat_picker_surface(
 fn chat_picker_pane(
     id: &'static str,
     picker: &ChatPicker,
+    folders: &[FolderChoice],
     enabled: bool,
     cx: &App,
 ) -> impl IntoElement {
@@ -1068,7 +1089,7 @@ fn chat_picker_pane(
         260.0,
         zz_ui::pane::pane_surface(
             "pane",
-            chat_picker_surface("picker", picker, enabled, cx),
+            folder_picker_surface("picker", picker, folders, enabled, cx),
             Vec::new(),
             super::fixtures::chrome(true, false, true, cx),
             cx,
@@ -1080,8 +1101,14 @@ fn chat_picker(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .columns(2)
         .state(
-            "Claude Code selected, in the folder agents used last",
-            chat_picker_pane("chat-picker-claude", &ChatPicker::default(), true, cx),
+            "a new pane in chat view: Claude Code selected, in the folder agents used last",
+            chat_picker_pane(
+                "chat-picker-claude",
+                &ChatPicker::default(),
+                &chat_folders(),
+                true,
+                cx,
+            ),
         )
         .state(
             "Codex selected, in a folder picked from the file picker",
@@ -1092,13 +1119,43 @@ fn chat_picker(_: &mut Window, cx: &mut App) -> AnyElement {
                     folder: Some("~/notes".to_owned()),
                     ..ChatPicker::default()
                 },
+                &chat_folders(),
+                true,
+                cx,
+            ),
+        )
+        .state(
+            "over a shell alone in its window: the shell's folder comes first",
+            chat_picker_pane(
+                "chat-picker-shell",
+                &ChatPicker::default(),
+                &shell_folders(),
+                true,
+                cx,
+            ),
+        )
+        .state(
+            "chat view with nothing open: the first chat starts in the home folder",
+            chat_picker_pane(
+                "chat-picker-empty",
+                &ChatPicker::default(),
+                &[FolderChoice {
+                    path: "~".to_owned(),
+                    agents: 0,
+                }],
                 true,
                 cx,
             ),
         )
         .state(
             "read-only client: rows dim and stop taking clicks",
-            chat_picker_pane("chat-picker-readonly", &ChatPicker::default(), false, cx),
+            chat_picker_pane(
+                "chat-picker-readonly",
+                &ChatPicker::default(),
+                &chat_folders(),
+                false,
+                cx,
+            ),
         )
         .into_any_element()
 }

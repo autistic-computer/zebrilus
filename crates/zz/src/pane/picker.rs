@@ -4,8 +4,8 @@ use ala::{
 };
 use penna::IconName;
 use zz_client::new_chat::{
-    AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place, folder_start,
-    recent_folders, start_agent_commands,
+    AgentChoice, ChatKey, ChatPicker, FolderChoice, agent_picker_place, close_picker_command,
+    first_chat_commands, folder_start, picker_folders, recent_folders, start_agent_commands,
 };
 use zz_protocol::{CommandInvocation, MuxSnapshot, PaneId, SessionId, WindowId};
 use zz_ui::pane::{ChatPickerRow, ChatPickerTarget, chat_picker_rows, pane_picker_row};
@@ -126,22 +126,25 @@ pub(crate) struct ChooseFolder {
 }
 
 pub(crate) struct AgentChosen {
-    pub(crate) pane: PaneId,
     pub(crate) window: WindowId,
     pub(crate) from: SessionId,
 }
 
 struct Chat {
-    window: WindowId,
-    session: SessionId,
+    place: Option<(SessionId, WindowId)>,
     folders: Vec<FolderChoice>,
 }
 
-fn chat_picker(snapshot: &MuxSnapshot, pane: PaneId) -> Option<Chat> {
-    chat_picker_place(snapshot, pane).map(|(session, window)| Chat {
-        window,
-        session,
-        folders: recent_folders(snapshot),
+fn chat_picker(snapshot: &MuxSnapshot, pane: Option<PaneId>, chat_view: bool) -> Option<Chat> {
+    let Some(pane) = pane else {
+        return Some(Chat {
+            place: None,
+            folders: recent_folders(snapshot),
+        });
+    };
+    agent_picker_place(snapshot, pane, chat_view).map(|place| Chat {
+        place: Some(place),
+        folders: picker_folders(snapshot, pane),
     })
 }
 
@@ -156,21 +159,18 @@ fn materialize_command(pane: PaneId, choice: PaneChoice) -> CommandInvocation {
     )
 }
 
-fn close_command(pane: PaneId) -> CommandInvocation {
-    CommandInvocation::new("kill-pane", ["-t".to_owned(), pane.to_string()])
-}
-
 fn select_command(pane: PaneId) -> CommandInvocation {
     CommandInvocation::new("select-pane", ["-t".to_owned(), pane.to_string()])
 }
 
 pub(crate) struct PanePickerView {
-    pane: PaneId,
+    pane: Option<PaneId>,
     mux: ala::Entity<MuxClient>,
     focus_handle: FocusHandle,
     selected: usize,
     window_corners: WindowCorners,
     chat: ChatPicker,
+    chat_view: bool,
 }
 
 impl EventEmitter<AgentChosen> for PanePickerView {}
@@ -179,6 +179,14 @@ impl EventEmitter<ChooseFolder> for PanePickerView {}
 
 impl PanePickerView {
     pub(crate) fn new(pane: PaneId, mux: ala::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
+        Self::build(Some(pane), mux, cx)
+    }
+
+    pub(crate) fn empty(mux: ala::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
+        Self::build(None, mux, cx)
+    }
+
+    fn build(pane: Option<PaneId>, mux: ala::Entity<MuxClient>, cx: &mut Context<Self>) -> Self {
         Self {
             pane,
             mux,
@@ -186,7 +194,20 @@ impl PanePickerView {
             selected: 0,
             window_corners: WindowCorners::NONE,
             chat: ChatPicker::default(),
+            chat_view: false,
         }
+    }
+
+    pub(crate) fn set_chat_view(&mut self, chat_view: bool, cx: &mut Context<Self>) {
+        if self.chat_view != chat_view {
+            self.chat_view = chat_view;
+            self.selected = 0;
+            cx.notify();
+        }
+    }
+
+    fn id(&self) -> u64 {
+        self.pane.map_or(u64::MAX, |pane| pane.0)
     }
 
     pub(crate) fn focus(&self) -> &FocusHandle {
@@ -204,31 +225,39 @@ impl PanePickerView {
     }
 
     fn activate(&self, choice: PaneChoice, cx: &Context<Self>) {
-        self.mux
-            .read(cx)
-            .execute(materialize_command(self.pane, choice));
+        if let Some(pane) = self.pane {
+            self.mux.read(cx).execute(materialize_command(pane, choice));
+        }
     }
 
     fn close(&self, cx: &Context<Self>) {
-        self.mux.read(cx).execute(close_command(self.pane));
+        let mux = self.mux.read(cx);
+        if let Some(command) = self
+            .pane
+            .and_then(|pane| close_picker_command(&mux.snapshot(), pane))
+        {
+            mux.execute(command);
+        }
     }
 
     fn chat(&self, cx: &App) -> Option<Chat> {
-        chat_picker(&self.mux.read(cx).snapshot(), self.pane)
+        chat_picker(&self.mux.read(cx).snapshot(), self.pane, self.chat_view)
     }
 
     fn start(&self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
         let mux = self.mux.read(cx);
         let folder = self.chat.folder(&chat.folders);
         let launches = crate::agent::launch::load();
-        for command in start_agent_commands(&mux.snapshot(), self.pane, folder, agent, &launches) {
+        let (Some(pane), Some((from, window))) = (self.pane, chat.place) else {
+            for command in first_chat_commands(folder, agent, &launches) {
+                mux.execute(command);
+            }
+            return;
+        };
+        for command in start_agent_commands(&mux.snapshot(), pane, folder, agent, &launches) {
             mux.execute(command);
         }
-        cx.emit(AgentChosen {
-            pane: self.pane,
-            window: chat.window,
-            from: chat.session,
-        });
+        cx.emit(AgentChosen { window, from });
     }
 
     fn settle(&mut self, outcome: ChatKey, chat: &Chat, cx: &mut Context<Self>) -> bool {
@@ -254,7 +283,7 @@ impl PanePickerView {
     }
 
     fn chat_rows(&self, chat: &Chat, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        chat_picker_rows(self.pane.0, &self.chat, &chat.folders, true, cx)
+        chat_picker_rows(self.id(), &self.chat, &chat.folders, true, cx)
             .into_iter()
             .map(|row| match row {
                 ChatPickerRow::Label(label) => label.into_any_element(),
@@ -326,7 +355,7 @@ impl PanePickerView {
         let view = cx.entity();
         let hover_view = view.clone();
         pane_picker_row(
-            (choice.element_id(), self.pane.0),
+            (choice.element_id(), self.id()),
             choice.title(),
             choice.icon(),
             choice.shortcut(),
@@ -372,7 +401,7 @@ impl Render for PanePickerView {
                 .collect::<Vec<_>>()
         };
         zz_ui::pane::pane_picker_surface(
-            ("pane-picker", self.pane.0),
+            ("pane-picker", self.id()),
             config::pane_content_radii(cx, self.window_corners),
             rows,
             cx,
@@ -381,7 +410,9 @@ impl Render for PanePickerView {
         .track_focus(&self.focus_handle)
         .on_key_down(cx.listener(Self::on_key_down))
         .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-            select_mux.read(cx).execute(select_command(pane));
+            if let Some(pane) = pane {
+                select_mux.read(cx).execute(select_command(pane));
+            }
             focus_handle.focus(window, cx);
         })
     }
@@ -497,10 +528,6 @@ mod tests {
         assert_eq!(
             materialize_command(PaneId(42), PaneChoice::Editor),
             CommandInvocation::new("select-pane-kind", ["-t", "%42", "editor"])
-        );
-        assert_eq!(
-            close_command(PaneId(7)),
-            CommandInvocation::new("kill-pane", ["-t", "%7"])
         );
         assert_eq!(
             select_command(PaneId(7)),

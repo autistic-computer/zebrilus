@@ -46,7 +46,7 @@ impl AgentInbox {
                     .engine
                     .state
                     .pane(message.pane)
-                    .is_some_and(|pane| matches!(pane.kind, PaneKind::Terminal))
+                    .is_some_and(|pane| matches!(pane.kind, PaneKind::Agent(_)))
             {
                 return;
             }

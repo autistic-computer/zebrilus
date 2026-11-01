@@ -22,6 +22,7 @@ use parking_lot::{Condvar, Mutex};
 #[cfg(windows)]
 use std::io::{Seek, SeekFrom};
 
+mod agent_flip;
 #[cfg(feature = "agent")]
 mod agent_inbox;
 #[cfg(feature = "agent")]
@@ -55,8 +56,6 @@ mod history_io;
     reason = "job families move to the loop registry in subsequent slices"
 )]
 mod jobs;
-#[cfg(feature = "agent")]
-mod lens;
 #[cfg(unix)]
 mod lifecycle;
 #[cfg(unix)]
@@ -4513,6 +4512,10 @@ const INSPECT_VERBS: &[(&str, &[&str])] = &[
     ),
     ("editor", &["resize-pane", "kill-pane"]),
     ("picker", &["resize-pane", "kill-pane", "select-pane-kind"]),
+    (
+        "agent",
+        &["agent-send", "flip-agent", "resize-pane", "kill-pane"],
+    ),
 ];
 
 const INSPECT_EVENTS: &[&str] = &[
@@ -4541,6 +4544,7 @@ enum DaemonCommandDispatch {
     IfShell,
     AgentSend,
     AgentRespond,
+    FlipAgent,
     SendLastOutput,
     ShowLastOutput,
     Inspect,
@@ -4578,6 +4582,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("if", DaemonCommandDispatch::IfShell),
     ("agent-send", DaemonCommandDispatch::AgentSend),
     ("agent-respond", DaemonCommandDispatch::AgentRespond),
+    ("flip-agent", DaemonCommandDispatch::FlipAgent),
     ("send-last-output", DaemonCommandDispatch::SendLastOutput),
     ("show-last-output", DaemonCommandDispatch::ShowLastOutput),
     ("inspect", DaemonCommandDispatch::Inspect),
@@ -4695,16 +4700,10 @@ struct SharedServer {
     agent_stopped: AtomicBool,
     #[cfg(all(feature = "agent", unix))]
     agent_peers: Mutex<BTreeMap<PaneId, crate::agent::claude_peers::PeerInbox>>,
-    #[cfg(all(feature = "agent", unix))]
-    lens_hub: std::sync::OnceLock<Option<crate::agent::lens_channel::Hub>>,
     #[cfg(feature = "agent")]
     agent_tx: agent_publisher::Sender,
     #[cfg(feature = "agent")]
     agent_rx: Mutex<Option<crossbeam_channel::Receiver<agent_publisher::Message>>>,
-    #[cfg(all(feature = "agent", unix))]
-    peer_wait_inbox: Mutex<Option<crate::agent::claude_peers::PeerInbox>>,
-    #[cfg(all(feature = "agent", unix))]
-    peer_waits: Arc<Mutex<crate::agent::claude_peers::PeerWaits>>,
     kitty_image_frames: Mutex<BTreeMap<KittyImageKey, KittyImageFrames>>,
     terminal_frames: Arc<TerminalFrames>,
     pasted_images: Mutex<BTreeMap<PaneId, PanePastedImages>>,
@@ -5661,16 +5660,10 @@ impl Shared {
             agent_stopped: AtomicBool::new(false),
             #[cfg(all(feature = "agent", unix))]
             agent_peers: Mutex::new(BTreeMap::new()),
-            #[cfg(all(feature = "agent", unix))]
-            lens_hub: std::sync::OnceLock::new(),
             #[cfg(feature = "agent")]
             agent_tx,
             #[cfg(feature = "agent")]
             agent_rx: Mutex::new(Some(agent_rx)),
-            #[cfg(all(feature = "agent", unix))]
-            peer_wait_inbox: Mutex::new(None),
-            #[cfg(all(feature = "agent", unix))]
-            peer_waits: Arc::new(Mutex::new(crate::agent::claude_peers::PeerWaits::default())),
             kitty_image_frames: Mutex::new(BTreeMap::new()),
             terminal_frames: Arc::default(),
             pasted_images: Mutex::new(BTreeMap::new()),
@@ -8429,6 +8422,7 @@ impl Shared {
                     DaemonCommandDispatch::AgentRespond => {
                         self.agent_respond(kind, context, &command.args)
                     }
+                    DaemonCommandDispatch::FlipAgent => self.flip_agent(context, &command.args),
                     DaemonCommandDispatch::SendLastOutput => {
                         self.send_last_output(client, context, &command.args)
                     }
@@ -9356,6 +9350,9 @@ impl Shared {
         let mut source_files = Vec::new();
         let mut pane_stream_inputs: Vec<(PaneId, RawText)> = Vec::new();
         let mut removed_panes = Vec::new();
+        let mut agent_panes_opened: Vec<(PaneId, Option<Arc<TerminalSession>>)> = Vec::new();
+        #[cfg(feature = "agent")]
+        let mut agent_panes_closed = Vec::new();
         let mut relocated_terminal_views = Vec::new();
         let mut retired_command_outputs = Vec::new();
         let mut deferred_terminal_commands = Vec::new();
@@ -9868,12 +9865,6 @@ impl Shared {
                                     &shim.executable,
                                 );
                             }
-                            #[cfg(all(unix, feature = "agent"))]
-                            if self.mux_config_selection.lock().0 {
-                                crate::agent::claude_plugin::pane_environment(&mut env, || {
-                                    self.lens_hub().map(|hub| hub.path().to_path_buf())
-                                });
-                            }
                             if let Some(path) = &working_directory {
                                 env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
                             }
@@ -9964,6 +9955,10 @@ impl Shared {
                         environment,
                         empty,
                     } => {
+                        #[cfg(feature = "agent")]
+                        if inner.agent_panes.remove(pane) {
+                            agent_panes_closed.push(*pane);
+                        }
                         clear_pane_modes(&mut inner, *pane);
                         let previous = inner.terminal_spawns.get(pane).cloned().unwrap_or_default();
                         let history_limit = inner.engine.history_limit_for_pane(*pane)?;
@@ -10048,12 +10043,6 @@ impl Shared {
                                 &shim.directory,
                                 &shim.executable,
                             );
-                        }
-                        #[cfg(all(unix, feature = "agent"))]
-                        if self.mux_config_selection.lock().0 {
-                            crate::agent::claude_plugin::pane_environment(&mut env, || {
-                                self.lens_hub().map(|hub| hub.path().to_path_buf())
-                            });
                         }
                         if let Some(path) = &working_directory {
                             env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
@@ -10161,6 +10150,68 @@ impl Shared {
                             pipe.jobs.wake.wake();
                         }
                         terminals_to_watch.push((*pane, session));
+                    }
+                    MuxEffect::PaneCreated {
+                        pane,
+                        kind: PaneKindSnapshot::Agent(descriptor),
+                        inherit_cwd_from,
+                        ..
+                    }
+                    | MuxEffect::PaneMaterialized {
+                        pane,
+                        kind: PaneKindSnapshot::Agent(descriptor),
+                        inherit_cwd_from,
+                        ..
+                    } => {
+                        let working_directory = descriptor
+                            .cwd
+                            .clone()
+                            .filter(|path| path.is_dir())
+                            .or_else(|| {
+                                inherit_cwd_from
+                                    .and_then(|source| inner.terminals.get(&source))
+                                    .and_then(|terminal| terminal_working_directory(terminal))
+                            })
+                            .or_else(|| std::env::current_dir().ok());
+                        let folder = working_directory
+                            .as_deref()
+                            .map(|path| path.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        inner
+                            .engine
+                            .state
+                            .update_agent(*pane, |agent| agent.cwd = working_directory)?;
+                        inner.engine.set_pane_runtime_facts(
+                            *pane,
+                            PaneRuntimeFacts {
+                                current_path: folder.clone(),
+                                start_path: folder,
+                                ..PaneRuntimeFacts::default()
+                            },
+                        );
+                        let replaced = inner.terminals_mut().remove(pane);
+                        if let Some(terminal) = &replaced {
+                            clear_pane_modes(&mut inner, *pane);
+                            pane_summary::forget_pane_program(&mut inner, *pane);
+                            inner.program_status_panes.remove(pane);
+                            inner.pane_read_observations.remove(pane);
+                            for streamed in inner
+                                .clients
+                                .values_mut()
+                                .filter_map(|c| c.streamed_terminals.as_mut())
+                            {
+                                streamed.remove(pane);
+                            }
+                            terminal.terminate();
+                            retire_terminal(terminal);
+                        }
+                        agent_panes_opened.push((*pane, replaced));
+                    }
+                    MuxEffect::AgentForked { pane, at } => {
+                        #[cfg(feature = "agent")]
+                        inner.agent_forks.insert(*pane, at.clone());
+                        #[cfg(not(feature = "agent"))]
+                        let _ = (pane, at);
                     }
                     MuxEffect::PaneCreated {
                         kind: PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Picker,
@@ -11976,7 +12027,13 @@ impl Shared {
                 self.reconfigure_agents();
             }
             self.close_agent_panes(&removed_panes);
+            self.close_agent_panes(&agent_panes_closed);
+            for (pane, replaced) in agent_panes_opened {
+                self.open_agent_pane(pane, replaced);
+            }
         }
+        #[cfg(not(feature = "agent"))]
+        let _ = agent_panes_opened;
         for pane in removed_panes {
             self.cancel_pane_files(pane);
             self.publish(EventPayload::PaneRemoved(pane));
@@ -16744,37 +16801,50 @@ impl Shared {
         } else {
             parsed.payload()?
         };
-        #[cfg(feature = "agent")]
-        let caller = self
-            .inner
-            .lock()
-            .client(context.replay_client().unwrap_or(client))
-            .and_then(|client| client.origin)
-            .or(context.pane.filter(|_| kind == ClientKind::Interactive));
-        let lens_only = parsed.final_only
+        let chat_only = parsed.final_only
             || parsed.notify
             || matches!(
                 parsed.on_block,
                 AgentBlockPolicy::Allow | AgentBlockPolicy::Deny
             );
-        if lens_only && parsed.wait_only() {
+        if chat_only && parsed.wait_only() {
             return Err(ServerError::NativeCommandParse(
                 "agent-send: --wait without text takes only --timeout, --json and --on-block wait|fail"
                     .to_owned(),
             )
             .into());
         }
-        if lens_only || (parsed.wait && !parsed.wait_only()) {
-            let pane = self.inner.lock().engine.resolve_pane(
+        let (pane, agent_pane) = {
+            let inner = self.inner.lock();
+            let pane = inner.engine.resolve_pane(
                 parsed.target.as_deref(),
                 context.window,
                 context.pane,
             )?;
-            #[cfg(feature = "agent")]
-            if self.open_lens(pane) {
-                if parsed.notify {
-                    return self.submit_agent_prompt_and_notify(caller, pane, payload, kind);
-                }
+            let agent_pane = matches!(
+                inner.engine.state.pane(pane).map(|pane| &pane.kind),
+                Some(PaneKind::Agent(_))
+            );
+            (pane, agent_pane)
+        };
+        #[cfg(feature = "agent")]
+        if agent_pane {
+            if parsed.wait_only() {
+                return Err(ServerError::NativeCommandParse(format!(
+                    "agent-send: {pane} is a chat; --wait needs text to send"
+                ))
+                .into());
+            }
+            if parsed.notify {
+                let caller = self
+                    .inner
+                    .lock()
+                    .client(context.replay_client().unwrap_or(client))
+                    .and_then(|client| client.origin)
+                    .or(context.pane.filter(|_| kind == ClientKind::Interactive));
+                return self.submit_agent_prompt_and_notify(caller, pane, payload, kind);
+            }
+            if parsed.wait || chat_only {
                 if !matches!(kind, ClientKind::Command | ClientKind::Control) {
                     return Err(ServerError::InvalidCommand(
                         "agent-send --wait needs a command client".to_owned(),
@@ -16783,162 +16853,53 @@ impl Shared {
                 }
                 return self.submit_agent_prompt_and_wait(client, pane, payload, &parsed);
             }
-            if lens_only {
-                let flag = if parsed.final_only {
-                    "--final"
-                } else if parsed.notify {
-                    "--notify"
+            let runtime = self.agent_runtime().ok_or(ServerError::PaneExited(pane))?;
+            if !runtime.prompt(
+                pane,
+                AgentPrompt {
+                    owner: ClientInstanceId(u64::MAX),
+                    text: payload,
+                    images: Vec::new(),
+                },
+            ) {
+                return Err(ServerError::PaneExited(pane).into());
+            }
+            return Ok(Execution {
+                output: if kind == ClientKind::Interactive {
+                    RawText::default()
                 } else {
-                    "--on-block allow|deny"
-                };
-                return Err(ServerError::NativeCommandParse(format!(
-                    "agent-send: {flag} needs Claude Code or Codex running in {pane}"
-                ))
-                .into());
-            }
+                    pane.to_string().into()
+                },
+                effects: Vec::new(),
+            });
         }
-        #[cfg(all(feature = "agent", unix))]
-        {
-            use crate::agent::claude_peers;
-
-            let target = {
-                let inner = self.inner.lock();
-                let pane = inner.engine.resolve_pane(
-                    parsed.target.as_deref(),
-                    context.window,
-                    context.pane,
-                )?;
-                matches!(
-                    inner.engine.state.pane(pane).map(|pane| &pane.kind),
-                    Some(PaneKind::Terminal)
-                )
-                .then(|| {
-                    (
-                        pane,
-                        inner
-                            .engine
-                            .pane_runtime_facts(pane)
-                            .and_then(|runtime| runtime.pid),
-                    )
-                })
+        #[cfg(not(feature = "agent"))]
+        if agent_pane {
+            return Err(ServerError::InvalidCommand(format!(
+                "{pane} is a chat and this zz was built without agent support"
+            ))
+            .into());
+        }
+        if let Some(provider) = self.terminal_agent(pane).filter(|_| !parsed.wait_only()) {
+            return Err(ServerError::InvalidTarget(format!(
+                "{pane} runs {} in its terminal; flip the pane to chat first: flip-agent -t {pane}",
+                provider.label()
+            ))
+            .into());
+        }
+        if chat_only {
+            let flag = if parsed.final_only {
+                "--final"
+            } else if parsed.notify {
+                "--notify"
+            } else {
+                "--on-block allow|deny"
             };
-            if let Some((pane, pane_pid)) = target {
-                let codex = self.codex_terminal_context(pane);
-                let mut records = claude_peers::read_records().unwrap_or_else(|error| {
-                    log::warn!(target: "zz::agent", "could not read Claude peers: {error}");
-                    Vec::new()
-                });
-                if codex.is_some() {
-                    records.retain(|record| record.zz.is_none());
-                }
-                if let Some(record) =
-                    claude_peers::record_for_pane(&records, &pane.to_string(), pane_pid)
-                {
-                    let (name, socket) = {
-                        let peers = self.agent_peers.lock();
-                        match caller.and_then(|pane| peers.get(&pane)) {
-                            Some(peer) => {
-                                (peer.name().to_owned(), Some(peer.socket_path().to_owned()))
-                            }
-                            None => (
-                                caller.map_or_else(|| "zz".to_owned(), |pane| format!("zz {pane}")),
-                                None,
-                            ),
-                        }
-                    };
-                    if parsed.wait {
-                        if !matches!(kind, ClientKind::Command | ClientKind::Control) {
-                            return Err(ServerError::InvalidCommand(
-                                "agent-send --wait needs a command client".to_owned(),
-                            )
-                            .into());
-                        }
-                        return self.send_peer_message_and_wait(
-                            client, pane, record, &payload, &name, &parsed,
-                        );
-                    }
-                    claude_peers::post_message(record, &payload, &name, socket.as_deref())?;
-                    return Ok(Execution {
-                        output: if parsed.submit && kind != ClientKind::Interactive {
-                            pane.to_string().into()
-                        } else {
-                            RawText::default()
-                        },
-                        effects: Vec::new(),
-                    });
-                }
-                if !parsed.wait
-                    && let Some((pid, title, cwd)) = codex
-                {
-                    let delivered =
-                        match crate::agent::codex_queue::deliver(pid, &title, &cwd, &payload) {
-                            Ok(delivered) => delivered,
-                            Err(crate::agent::codex_queue::QueueError::NoName) => {
-                                let terminal = self
-                                    .inner
-                                    .lock()
-                                    .terminals
-                                    .get(&pane)
-                                    .cloned()
-                                    .ok_or(ServerError::PaneExited(pane))?;
-                                return terminal_reads::send_text(
-                                    self,
-                                    client,
-                                    pane,
-                                    terminal,
-                                    &payload,
-                                    SEND_TEXT_TIMEOUT,
-                                    true,
-                                );
-                            }
-                            Err(error) => {
-                                return Err(ServerError::InvalidCommand(
-                                    error.for_pane(pane, &title, &cwd),
-                                )
-                                .into());
-                            }
-                        };
-                    log::info!(target: "zz::agent", "queued Codex message {} for thread {} in {pane}", delivered.message_id, delivered.thread_id);
-                    return Ok(Execution {
-                        output: if kind == ClientKind::Interactive {
-                            RawText::default()
-                        } else {
-                            pane.to_string().into()
-                        },
-                        effects: Vec::new(),
-                    });
-                }
-            }
+            return Err(ServerError::NativeCommandParse(format!(
+                "agent-send: {flag} needs an agent chat pane"
+            ))
+            .into());
         }
-        if parsed.wait {
-            let terminal = {
-                let inner = self.inner.lock();
-                let pane = inner.engine.resolve_pane(
-                    parsed.target.as_deref(),
-                    context.window,
-                    context.pane,
-                )?;
-                matches!(
-                    inner.engine.state.pane(pane).map(|pane| &pane.kind),
-                    Some(PaneKind::Terminal)
-                )
-                .then_some(pane)
-            };
-            if let Some(pane) = terminal {
-                if !matches!(kind, ClientKind::Command | ClientKind::Control) {
-                    return Err(ServerError::InvalidCommand(
-                        "agent-send --wait needs a command client".to_owned(),
-                    )
-                    .into());
-                }
-                return self.send_terminal_message_and_wait(client, pane, &payload, &parsed);
-            }
-        }
-        let pane = self.inner.lock().engine.resolve_pane(
-            parsed.target.as_deref(),
-            context.window,
-            context.pane,
-        )?;
         let terminal = {
             let inner = self.inner.lock();
             matches!(
@@ -16954,18 +16915,22 @@ impl Shared {
             ))
             .into());
         };
-        #[cfg(feature = "agent")]
-        let agent = self.terminal_agent(pane).is_some();
-        #[cfg(not(feature = "agent"))]
-        let agent = false;
-        if !agent && self.pane_agent_state(pane).is_empty() {
+        if parsed.wait {
+            if !matches!(kind, ClientKind::Command | ClientKind::Control) {
+                return Err(ServerError::InvalidCommand(
+                    "agent-send --wait needs a command client".to_owned(),
+                )
+                .into());
+            }
+            return self.send_terminal_message_and_wait(client, pane, &payload, &parsed);
+        }
+        if self.pane_agent_state(pane).is_empty() {
             return Err(ServerError::MissingTarget(format!(
                 "no agent runs in {pane}; send-text types into any pane"
             ))
             .into());
         }
-        #[cfg(feature = "agent")]
-        return terminal_reads::send_text(
+        terminal_reads::send_text(
             self,
             client,
             pane,
@@ -16973,12 +16938,7 @@ impl Shared {
             &payload,
             SEND_TEXT_TIMEOUT,
             parsed.submit,
-        );
-        #[cfg(not(feature = "agent"))]
-        {
-            let _ = terminal;
-            Err(ServerError::PaneExited(pane).into())
-        }
+        )
     }
 
     fn pane_agent_state(&self, pane: PaneId) -> String {
@@ -17079,186 +17039,6 @@ impl Shared {
         wait.finish(self, Execution::default())
     }
 
-    #[cfg(all(feature = "agent", unix))]
-    fn send_peer_message_and_wait(
-        self: &Arc<Self>,
-        client: ClientId,
-        pane: PaneId,
-        record: &crate::agent::claude_peers::PeerRecord,
-        text: &str,
-        name: &str,
-        parsed: &ParsedAgentSend,
-    ) -> Result<Execution, DaemonError> {
-        use crate::agent::claude_peers::{self, PeerInbox, PeerKind, PeerMetadata, PeerReply};
-        let target = format!("uds:{}", record.messaging_socket_path.display());
-        let initial = self.pane_agent_state(pane);
-        let ready = if text.is_empty() {
-            match self.peer_waits.lock().take_late(&target) {
-                Some(reply) => Some(PeerReply::Text(reply)),
-                None => (initial == "idle").then_some(PeerReply::TurnEnded),
-            }
-        } else {
-            self.peer_waits.lock().forget(&target);
-            None
-        };
-        let message = if ready.is_some() {
-            None
-        } else {
-            let mut inbox = self.peer_wait_inbox.lock();
-            if inbox.is_none() {
-                let waits = Arc::clone(&self.peer_waits);
-                *inbox = Some(PeerInbox::register(
-                    PeerMetadata {
-                        pid: Some(std::process::id()),
-                        kind: PeerKind::Daemon,
-                        pane: String::new(),
-                        name: "zz".to_owned(),
-                        cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/")),
-                        tmux: String::new(),
-                    },
-                    move |event| waits.lock().handle(event),
-                )?);
-            }
-            let peer = inbox
-                .as_ref()
-                .ok_or_else(|| ServerError::InvalidCommand("reply peer unavailable".to_owned()))?;
-            let message = if text.is_empty() {
-                Ok(None)
-            } else {
-                claude_peers::prepare_message(text, name, Some(peer.socket_path())).map(Some)
-            };
-            match message {
-                Ok(message) => message,
-                Err(error) => {
-                    if self.peer_waits.lock().idle() {
-                        inbox.take();
-                    }
-                    return Err(error.into());
-                }
-            }
-        };
-        let started = Instant::now();
-        let timeout = parsed.wait_timeout();
-        let on_block = parsed.on_block;
-        let parsed = parsed.clone();
-        let message_id = match &message {
-            Some(message) => message.msg_id().to_owned(),
-            None => claude_peers::uuid_v4()?,
-        };
-        let lapsed = target.clone();
-        let registered = message_id.clone();
-        let (wait, reply) =
-            agent_waits::reply::<PeerReply>(self, timeout, move |shared, outcome| {
-                let unanswered = matches!(
-                    outcome,
-                    terminal_requests::ReplyOutcome::TimedOut
-                        | terminal_requests::ReplyOutcome::Closed
-                );
-                let (inbox, late) = {
-                    let mut inbox = shared.peer_wait_inbox.lock();
-                    let mut waits = shared.peer_waits.lock();
-                    waits.cancel(&registered);
-                    let late = matches!(
-                        outcome,
-                        terminal_requests::ReplyOutcome::Ready(PeerReply::TurnEnded)
-                    )
-                    .then(|| waits.take_late(&lapsed))
-                    .flatten();
-                    if unanswered {
-                        waits.lapse(lapsed);
-                    }
-                    (if waits.idle() { inbox.take() } else { None }, late)
-                };
-                drop(inbox);
-                if unanswered {
-                    shared.terminal_requests.schedule(
-                        Instant::now() + claude_peers::LATE_REPLY_KEEP,
-                        |shared| {
-                            let inbox = {
-                                let mut inbox = shared.peer_wait_inbox.lock();
-                                if shared.peer_waits.lock().idle() {
-                                    inbox.take()
-                                } else {
-                                    None
-                                }
-                            };
-                            drop(inbox);
-                        },
-                    );
-                }
-                let reply = |text: &str, reason: &str| {
-                    shared.record_command_stderr(client, &pane.to_string());
-                    agent_terminal_reply_output(pane, text, started.elapsed(), reason, &parsed)
-                };
-                match outcome {
-                    terminal_requests::ReplyOutcome::Ready(PeerReply::Text(text)) => {
-                        Ok(Execution {
-                            output: reply(&text, "end_turn").into(),
-                            effects: Vec::new(),
-                        })
-                    }
-                    terminal_requests::ReplyOutcome::Ready(PeerReply::TurnEnded) => Ok(Execution {
-                        output: reply(late.as_deref().unwrap_or_default(), "end_turn").into(),
-                        effects: Vec::new(),
-                    }),
-                    terminal_requests::ReplyOutcome::Ready(PeerReply::Blocked) => {
-                        Err(DaemonError::CommandExit {
-                            output: if parsed.json {
-                                reply("", "blocked")
-                            } else {
-                                shared.record_command_stderr(client, &pane.to_string());
-                                format!("{pane}: blocked (agent_state=blocked)")
-                            }
-                            .into(),
-                            exit_code: 3,
-                        })
-                    }
-                    terminal_requests::ReplyOutcome::Ready(PeerReply::Failed(message)) => {
-                        Err(ServerError::InvalidCommand(format!("{pane}: {message}")).into())
-                    }
-                    terminal_requests::ReplyOutcome::Closed => {
-                        Err(ServerError::PaneExited(pane).into())
-                    }
-                    terminal_requests::ReplyOutcome::TimedOut => Err(DaemonError::CommandExit {
-                        output: format!(
-                            "{pane}: no reply within {} seconds; the turn is still running. \
-                         `agent-send -t {pane} --wait ''` waits again without sending",
-                            timeout.unwrap().as_secs()
-                        )
-                        .into(),
-                        exit_code: 124,
-                    }),
-                }
-            });
-        if let Some(ready) = ready {
-            reply.try_send(ready);
-            return wait.finish(self, Execution::default());
-        }
-        let reply = Arc::new(reply);
-        self.peer_waits
-            .lock()
-            .register_reply(message_id, target, Arc::clone(&reply));
-        if let Some(message) = &message
-            && let Err(error) = claude_peers::post_prepared(record, message)
-        {
-            wait.state.resolve(Err(error.into()));
-            return wait.finish(self, Execution::default());
-        }
-        agent_waits::watch_peer(
-            self,
-            agent_waits::PeerTurn {
-                pane,
-                pid: record.pid,
-                on_block,
-                seen_working: !matches!(initial.as_str(), "" | "idle"),
-            },
-            Arc::downgrade(&reply),
-            wait.state.continuation.clone(),
-        );
-        self.report_command_queue_park();
-        wait.finish(self, Execution::default())
-    }
-
     fn resolve_agent_permission_pane(
         &self,
         context: &ExecutionContext,
@@ -17277,7 +17057,7 @@ impl Shared {
             return Ok(pane);
         }
         Err(ServerError::InvalidTarget(format!(
-            "{pane} has no agent lens open; open it in the zz app or run agent-send --final first"
+            "{pane} is not an agent chat; agent-respond answers permissions in agent panes"
         ))
         .into())
     }
@@ -17473,14 +17253,14 @@ impl Shared {
         }
         drop(inner);
         let mut output = Vec::new();
-        for (_pane, mut values) in rows {
+        for (pane, mut values) in rows {
             #[cfg(feature = "agent")]
-            let (lensed, permission) = {
-                let lens = self
+            let (chat, permission) = {
+                let state = self
                     .open_agent_runtime()
-                    .and_then(|runtime| runtime.wire_state(_pane));
-                let lensed = lens.is_some();
-                let pending = lens.and_then(|state| state.pending_permission);
+                    .and_then(|runtime| runtime.wire_state(pane));
+                let chat = state.is_some();
+                let pending = state.and_then(|state| state.pending_permission);
                 if let Some(pending) = &pending {
                     values.insert(
                         "agent_pending_permission".to_owned(),
@@ -17490,10 +17270,10 @@ impl Shared {
                 let permission = pending.map_or(serde_json::Value::Null, |permission| {
                     agent_permission_json(&permission)
                 });
-                (lensed, permission)
+                (chat, permission)
             };
             #[cfg(not(feature = "agent"))]
-            let (lensed, permission) = (false, serde_json::Value::Null);
+            let (chat, permission) = (false, serde_json::Value::Null);
             values.insert("permission".to_owned(), permission);
             let kind = values["pane_kind"].as_str().unwrap_or_default().to_owned();
             let mut verbs = INSPECT_VERBS
@@ -17501,7 +17281,9 @@ impl Shared {
                 .find_map(|(name, verbs)| (*name == kind).then_some(*verbs))
                 .unwrap_or_default()
                 .to_vec();
-            if kind == "terminal"
+            if kind == "terminal" && self.terminal_agent(pane).is_some() {
+                verbs.push("flip-agent");
+            } else if kind == "terminal"
                 && !values["agent_state"]
                     .as_str()
                     .unwrap_or_default()
@@ -17509,14 +17291,14 @@ impl Shared {
             {
                 verbs.push("agent-send");
             }
-            if lensed {
+            if chat {
                 verbs.push("agent-respond");
             }
             values.insert("verbs".to_owned(), serde_json::json!(verbs));
             let events = INSPECT_EVENTS
                 .iter()
                 .copied()
-                .filter(|event| *event != "agent-tool-call" || lensed)
+                .filter(|event| *event != "agent-tool-call" || chat)
                 .collect::<Vec<_>>();
             values.insert("events".to_owned(), serde_json::json!(events));
             let block = if json {
@@ -33135,7 +32917,7 @@ impl Shared {
 
     #[cfg(all(feature = "agent", unix))]
     fn update_terminal_peer(self: &Arc<Self>, pane: PaneId) {
-        use crate::agent::claude_peers::{self, PeerEvent, PeerInbox, PeerKind, PeerMetadata};
+        use crate::agent::claude_peers::{self, PeerEvent, PeerInbox, PeerMetadata};
 
         let mut peers = self.agent_peers.lock();
         if self.agent_stopped.load(Ordering::Acquire) {
@@ -33190,7 +32972,6 @@ impl Shared {
             };
             PeerMetadata {
                 pid: Some(pid),
-                kind: PeerKind::Terminal,
                 pane: pane.to_string(),
                 name: name.to_owned(),
                 cwd: if runtime.current_path.is_empty() {
@@ -33240,6 +33021,142 @@ impl Shared {
         }
     }
 
+    fn open_agent_pane(self: &Arc<Self>, pane: PaneId, replaced: Option<Arc<TerminalSession>>) {
+        let (cli, fork) = {
+            let mut inner = self.inner.lock();
+            (
+                inner.cli_exits.remove(&pane),
+                inner.agent_forks.remove(&pane),
+            )
+        };
+        let running = move |terminal: &Option<Arc<TerminalSession>>| {
+            terminal
+                .as_ref()
+                .is_some_and(|terminal| terminal.completion().is_none())
+                || cli.is_some_and(crate::pid_alive)
+        };
+        if let Some(at) = fork {
+            let shared = Arc::downgrade(&self.server_owner());
+            let spawned = std::thread::Builder::new()
+                .name("zz-agent-fork".to_owned())
+                .spawn(move || {
+                    let Some(shared) = shared.upgrade() else {
+                        return;
+                    };
+                    shared.fork_agent_session(pane, at.as_deref());
+                    shared.open_agent_pane(pane, replaced);
+                });
+            if let Err(error) = spawned {
+                log::warn!(target: "zz::agent", "could not fork the session for {pane}: {error}");
+            }
+            return;
+        }
+        if running(&replaced) {
+            let shared = Arc::downgrade(&self.server_owner());
+            let spawned = std::thread::Builder::new()
+                .name("zz-agent-flip".to_owned())
+                .spawn(move || {
+                    let deadline = Instant::now() + AGENT_CLI_EXIT_GRACE;
+                    while running(&replaced) && Instant::now() < deadline {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    if let Some(shared) = shared.upgrade() {
+                        shared.open_agent_pane(pane, None);
+                    }
+                });
+            if let Err(error) = spawned {
+                log::warn!(target: "zz::agent", "could not wait for {pane}'s CLI to exit: {error}");
+                self.open_agent_pane(pane, None);
+            }
+            return;
+        }
+        let _effects = self.agent_effects.lock();
+        let Some(spec) = self.agent_pane_spec(pane) else {
+            return;
+        };
+        let Some(runtime) = self.agent_runtime() else {
+            return;
+        };
+        runtime.reconfigure(self.agent_spawn_config());
+        self.inner.lock().agent_panes.insert(pane);
+        self.refresh_agent_visibility();
+        if !runtime.open(pane, spec) {
+            log::warn!(target: "zz::agent", "{pane} already has an agent runtime");
+        }
+    }
+
+    fn fork_agent_session(&self, pane: PaneId, at: Option<&str>) {
+        let source = match &self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .map(|pane| &pane.kind)
+        {
+            Some(PaneKind::Agent(agent)) => agent.session_id.clone().map(|id| (agent.provider, id)),
+            _ => None,
+        };
+        let Some((provider, source)) = source else {
+            return;
+        };
+        let forked = match provider {
+            AgentProvider::ClaudeCode => crate::agent_fork::claude_config()
+                .ok_or_else(|| "HOME is not set".to_owned())
+                .and_then(|config| crate::agent_fork::claude(&config, &source, at)),
+            AgentProvider::Codex => crate::agent_fork::codex_home()
+                .ok_or_else(|| "HOME is not set".to_owned())
+                .and_then(|home| crate::agent_fork::codex(&home, &source, at)),
+        };
+        let session = forked
+            .inspect_err(|error| {
+                log::warn!(target: "zz::agent", "could not fork {source} for {pane}, starting a new chat: {error}");
+            })
+            .ok();
+        let changed = self
+            .inner
+            .lock()
+            .engine
+            .state
+            .update_agent(pane, |agent| agent.session_id = session)
+            .unwrap_or(false);
+        if changed {
+            self.publish_snapshot_state();
+        }
+    }
+
+    fn agent_pane_spec(&self, pane: PaneId) -> Option<AgentPaneSpec> {
+        let inner = self.inner.lock();
+        let PaneKind::Agent(descriptor) = &inner.engine.state.pane(pane)?.kind else {
+            return None;
+        };
+        let session = inner
+            .engine
+            .state
+            .window_for_pane(pane)
+            .map(|window| inner.engine.state.windows[&window].session);
+        Some(AgentPaneSpec {
+            provider: descriptor.provider,
+            cwd: descriptor
+                .cwd
+                .clone()
+                .or_else(|| std::env::current_dir().ok())
+                .unwrap_or_else(|| PathBuf::from("/")),
+            resume_session: descriptor.session_id.clone(),
+            model: descriptor.model.clone(),
+            effort: descriptor.effort.clone(),
+            auto_approve: None,
+            workspace: AgentWorkspaceEnvironment {
+                pane: Some(pane.to_string()),
+                session: session.map(|session| session.to_string()),
+                socket: None,
+                tmux: session.map(|session| tmux_environment(&self.socket_path, Some(session))),
+                tmux_pane: Some(pane.to_string()),
+                ..AgentWorkspaceEnvironment::default()
+            },
+        })
+    }
+
     fn close_agent_panes(&self, panes: &[PaneId]) {
         if panes.is_empty() {
             return;
@@ -33251,11 +33168,6 @@ impl Shared {
             for pane in panes {
                 peers.remove(pane);
             }
-            if let Some(hub) = self.lens_hub.get().and_then(Option::as_ref) {
-                for pane in panes {
-                    hub.forget(*pane);
-                }
-            }
         }
         if let Some(runtime) = self.open_agent_runtime() {
             for pane in panes {
@@ -33264,7 +33176,7 @@ impl Shared {
         }
         let mut inner = self.inner.lock();
         for pane in panes {
-            inner.lens_panes.remove(pane);
+            inner.agent_panes.remove(pane);
         }
         for client in inner.clients.values_mut() {
             for pane in panes {
@@ -33279,10 +33191,6 @@ impl Shared {
             self.agent_stopped.store(true, Ordering::Release);
             #[cfg(unix)]
             self.agent_peers.lock().clear();
-            #[cfg(unix)]
-            if let Some(hub) = self.lens_hub.get().and_then(Option::as_ref) {
-                hub.close();
-            }
             self.agent.lock().take()
         };
         let Some(runtime) = runtime else {
@@ -33305,18 +33213,13 @@ impl Shared {
             .pane(pane)
             .map(|pane| &pane.kind)
         {
-            Some(PaneKind::Terminal) => {}
+            Some(PaneKind::Agent(_)) => {}
             Some(_) => {
                 return Err(ServerError::InvalidTarget(format!(
-                    "{pane} is not a terminal pane"
+                    "{pane} is not an agent pane"
                 )));
             }
             None => return Err(ServerError::MissingTarget(pane.to_string())),
-        }
-        if matches!(message, ProtocolMessage::AgentReplay { .. }) && !self.open_lens(pane) {
-            return Err(ServerError::InvalidTarget(format!(
-                "{pane} is not running Claude Code or Codex"
-            )));
         }
         if let ProtocolMessage::AgentSessionOp { op, .. } = &message {
             let valid_directory = |path: &Path| {
@@ -33822,6 +33725,17 @@ impl Shared {
     }
 
     fn apply_agent_state(self: &Arc<Self>, pane: PaneId, state: AgentPaneWire) {
+        let adopted = state.session_id.clone().is_some_and(|session_id| {
+            self.inner
+                .lock()
+                .engine
+                .state
+                .update_agent(pane, |agent| agent.session_id = Some(session_id))
+                .unwrap_or(false)
+        });
+        if adopted {
+            self.publish_snapshot_state();
+        }
         let subscribers = {
             let inner = self.inner.lock();
             attached_clients_for_pane(&inner, pane)
@@ -33900,7 +33814,7 @@ fn agent_message_pane(message: &ProtocolMessage) -> Result<PaneId, ServerError> 
 #[cfg(feature = "agent")]
 fn session_agent_panes(inner: &ServerState, session: SessionId) -> Vec<PaneId> {
     inner
-        .lens_panes
+        .agent_panes
         .iter()
         .copied()
         .filter(|pane| {
@@ -35090,7 +35004,13 @@ struct ServerState {
     #[cfg(all(feature = "agent", unix))]
     claude_peer_states: BTreeMap<PaneId, String>,
     #[cfg(feature = "agent")]
-    lens_panes: BTreeSet<PaneId>,
+    agent_panes: BTreeSet<PaneId>,
+    #[cfg(all(feature = "agent", unix))]
+    armed_flips: BTreeSet<PaneId>,
+    #[cfg(feature = "agent")]
+    cli_exits: BTreeMap<PaneId, u32>,
+    #[cfg(feature = "agent")]
+    agent_forks: BTreeMap<PaneId, Option<String>>,
     artifacts: artifacts::Artifacts,
     artifacts_watching: bool,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,
@@ -37092,6 +37012,10 @@ impl ChooseTreeSession {
                                 || "Editor · scratch".to_owned(),
                                 |path| format!("Editor · {path}"),
                             ),
+                        ),
+                        PaneKind::Agent(agent) => (
+                            Some(ChooseTreePaneKind::Agent),
+                            format!("Agent · {}", agent.provider.label()),
                         ),
                     };
                     if !push_choose_tree_item(
@@ -45849,6 +45773,9 @@ fn output_routed(inner: &ServerState, pane: PaneId) -> bool {
         .is_some_and(zz_terminal::TerminalFrameSink::takes_output)
 }
 
+#[cfg(feature = "agent")]
+const AGENT_CLI_EXIT_GRACE: Duration = Duration::from_secs(5);
+
 fn retire_terminal(terminal: &TerminalSession) {
     terminal.retire();
     if let Some(sink) = shard_sink::PaneSink::of(terminal) {
@@ -45946,7 +45873,7 @@ fn visible_agent_panes(
         .keys()
         .filter(|pane| {
             window.zoomed_pane.is_none_or(|zoomed| **pane == zoomed)
-                && inner.lens_panes.contains(*pane)
+                && inner.agent_panes.contains(*pane)
         })
         .copied()
         .collect()
@@ -51667,7 +51594,7 @@ Run `zz <verb> --help` for options, or `zz list-commands [verb]` for usage.
 `zz` without a verb attaches the terminal UI (`new-session -A`); with `--host NAME`, on that host.
 Pane options need `-p`: `zz set-option -p -t %3 @name reviewer`.
 
-`#{pane_kind}` is `terminal`, `browser`, `editor`, or `picker`.
+`#{pane_kind}` is `terminal`, `browser`, `editor`, `picker`, or `agent`.
 `#{pane_last_command_status}` is the last completed command's exit code, or empty
 when unknown; terminal panes report it from OSC 133 marks.
 `#{@name}` reads a user option from pane, window, session, then global scope.
@@ -51728,20 +51655,26 @@ Commands that set an explicit exit code keep that code.
 ";
     WORKSPACE_TOOLS_AGENT = r#"## Agents
 
-Agents run as their own CLIs in terminal panes: start Claude Code or Codex in a pane, for example `zz split-window -h claude`. The desktop and web clients draw a lens over a terminal running either one, its timeline in place of the cell grid, switched from the pane header. The lens reads the transcript the CLI writes and types into the CLI, so the terminal stays the source of truth.
+Claude Code and Codex run two ways in a pane, and a pane flips between them on the same session. In a terminal pane the CLI runs as its own TUI, started like any program (`zz split-window -h claude`). In an agent pane the daemon runs the CLI headless and the clients draw the conversation as a chat: `zz select-pane-kind -t %N [-c DIR] [--resume ID] [--model M] [--effort E] agent claude|codex` turns a picker or a terminal into one.
+
+### `zz flip-agent [-t %N] [--now | --when-idle | --cancel]`
+
+Flip a terminal running Claude Code or Codex into a chat on the same session, or a chat into a terminal running the CLI with that session resumed, through the user's interactive shell. The pane keeps its id and place. When something runs (a turn, background shells or subagents, queued prompts) the flip fails with an error that starts with `busy:` and says what runs; `--now` flips anyway and stops it, `--when-idle` flips once nothing runs, and `--cancel` drops a waiting flip. Codex on its shared app server never refuses: the turn lives in the server and the other side picks it up.
+
+`zz select-pane-kind --resume ID --fork [--at MESSAGE] agent claude|codex` opens a chat on a copy of a session, through that message's turn when `--at` names one.
 
 ### `zz agent-send [-t %N] [--submit | --notify | --wait [--progress] [--timeout SECS] [--on-block wait|fail|allow|deny] [--json | --final]] [--context PATH[:START[-END]]] [TEXT]`
 
-Send TEXT to the agent running in a terminal pane: Claude Code through its peer socket, Codex through `codex queue`, otherwise typed into its input, with Enter only when `--submit` is given. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
+Send TEXT as a prompt to an agent pane (a chat), or to another agent in a terminal pane, typed into its input with Enter only when `--submit` is given. A terminal running Claude Code or Codex refuses it: flip the pane to chat first. Read stdin when TEXT is omitted: `git diff | zz agent-send -t %3`. `--context` adds a file/line header and fences the payload; text is capped at 1 MiB.
 
-`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` go through the pane's lens: TEXT is typed into the CLI, and the transcript tells when the turn ends. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A pane running neither Claude Code nor Codex falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves a Claude Code permission prompt and `--on-block deny` rejects it, with the keys its dialog takes. Codex approvals are answered in its terminal.
+`--submit` sends now and prints the chosen pane. `--wait`, `--notify`, `--final`, `--json` and `--on-block` follow the chat's turn. `--notify` runs from inside another terminal pane and, when the target's turn ends, posts its reply back into the calling pane. `--wait` waits for the turn and prints its reply on stdout (pane ID on stderr). A terminal pane falls back to waiting on `@agent_state`, and `--notify`, `--final` and `--on-block allow|deny` exit 2 there. Failure, cancellation, hand-back, or timeout exits non-zero. The timeout defaults to 600 seconds; `0` waits forever. A timeout leaves the turn running. `--json` prints one object with turn facts, `final_text`, and `transcript`. `--final` prints only the text after the last tool call or tool update. Both require `--wait`; combining them is a usage error. `--on-block wait` waits for permission. `--on-block fail` prints the pending permission JSON and exits 3 while the turn continues. `--on-block allow` approves the pending permission and `--on-block deny` rejects it.
 
-Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts tool calls the transcript showed; permission counters count only requests that reached the lens. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
+Turn facts: `final_text` contains message text after the last tool call or tool update. `tool_calls` counts the turn's tool calls; permission counters count the chat's requests. Each buffer keeps its tail when capped: 1 MiB for the transcript and 256 KiB for final text. The JSON object has `pane`, `stop_reason`, `duration_ms`, `tool_calls`, `permissions` (`requested`, `allowed`, `denied`), `truncated`, `final_text`, and `transcript`. A blocked reply also has a nested `permission` object. Exit 0 means `end_turn`; other stop reasons exit 1 with the reply still printed, except cancellation, which keeps its existing error output. A blocked wait exits 3 and a timeout exits 124. Stderr carries the pane ID and on-block audit lines. `--progress` requires `--wait` and an explicit `-t %N`. It prints tool calls, state changes, and a heartbeat after 60 seconds without a line to stderr. Titles in progress lines stop at 120 characters.
 
 ### `zz agent-respond [-t %N] (--allow | --deny | --option ID) [REQUEST_ID]`
 
-Answer the named or oldest pending permission in a pane whose lens is open, in a desktop or web client or through a running `agent-send --wait`. Read the pending request with `zz inspect -t %N --json | jq .permission`.
-Print the chosen option ID. `--allow` approves once and `--deny` rejects. Other panes exit 1 with `has no agent lens open`.
+Answer the named or oldest pending permission in an agent pane. Read the pending request with `zz inspect -t %N --json | jq .permission`.
+Print the chosen option ID. `--allow` approves once and `--deny` rejects. Other panes exit 1 with `is not an agent chat`.
 
 ### Permissions
 
@@ -51750,7 +51683,7 @@ Terminal agents keep their own permission settings: Codex `approval_policy`, Cla
 ### `zz inspect [-a | -t %N] [--json]`
 
 Describe a pane's kind, process, geometry, exit status, progress, agent facts, and browser URL.
-Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; terminal panes with a nonempty `agent_state` also include `agent-send`, and panes with an open lens `agent-respond`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
+Read one `key: value` line per field, or use `--json` for one object with string facts and string arrays for `verbs` and `events`. Text output lists use spaces and skip empty facts; JSON keeps every key, with empty strings for unavailable facts. `agent_pending_permission` is the pending request ID, or empty. `verbs` lists what applies to this pane's kind; agent panes list `agent-send`, `flip-agent` and `agent-respond`, a terminal running Claude Code or Codex lists `flip-agent`, and another terminal with a nonempty `agent_state` lists `agent-send`. `events` names what `zz events` can report for the pane. Use `-a` for every pane in every session, ordered by session ID, window index, and pane index, with a blank line between text blocks or one JSON object per line; `-a` and `-t` cannot be combined. With neither, inspect the current pane.
 
 ```sh
 zz inspect -a --json | jq -c 'select(.agent_state!="") | {pane_id,agent_state}'
@@ -51763,7 +51696,7 @@ The keys, in text output order, are `session_id`, `session_name`, `window_id`, `
 ### `zz events [-t %N]`
 
 Stream hook events.
-Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string. Terminal panes with an open lens also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
+Print JSON lines, flushed per line: `{"seq":1,"event":"agent-state-changed","time":1750000000000,"hook_pane":"%3","agent_state":"working",...}`. Each line includes the hook's string variables. `time` is Unix milliseconds. Wait for the first line, `{"seq":0,"event":"ready","time":...}`, before starting work. On subscriber overflow, `gap` consumes the next sequence number; the client reconnects and continues counting without another `ready` line. Use `-t %N` for a pane, `-t @N` for a window, `-t '$N'` for a session ID, or `-t name` for a session name. Filters match exact hook fields, and a session filter also passes the events of that session's windows and panes; `ready` and `gap` always print. Omit `-t` to stream without filtering. `agent-state-changed` carries `agent_state` for every pane kind and `agent_pending_permission` with the permission ID or an empty string. Agent panes also emit `agent-tool-call` for new calls and completed or failed status changes. Each event carries `tool_call_id`, `tool_title`, `tool_kind`, and `tool_status`; titles collapse whitespace and stop at 200 characters: `{"seq":2,"event":"agent-tool-call","time":1750000000000,"hook_pane":"%3","tool_call_id":"call-1","tool_title":"cargo test","tool_kind":"execute","tool_status":"in_progress"}`. These agent events are stream-only; `set-hook` cannot bind them. Other `@option-changed` firings are not streamed; use a hook for those. Invalid arguments exit 2. Connection and daemon errors, or any disconnect other than overflow, exit 1, including server shutdown.
 
 "#;
     WORKSPACE_TOOLS_TERMINAL = r#"## Terminal panes
@@ -52004,26 +51937,10 @@ refresh-client -B 'agent:%5:#{agent_state}'
 
 ### Sending to terminal agents
 
-A terminal pane running Claude Code with cross-session messaging is a valid
-target. Plain sends and `--submit` deliver through Claude Code's inbox between
-its tool calls, attributed to your pane, or start a turn when it is idle.
-`--wait` types into the pane through its lens instead and prints the turn's reply.
-When the pane's program is not recognized as Claude Code, `--wait` uses the inbox:
-it prints the session's reply and exits non-zero if Claude Code refuses,
-expires, or drops the message, the session exits, or the timeout passes. Held
-and delivered status updates keep the wait open. A plain send carries no reply
-address unless you are a registered peer: a caller that needs the answer uses
-`--wait`, and a pane that should be reachable sets `@name`.
+A terminal pane running Claude Code or Codex takes no prompts from `agent-send`:
+flip it to a chat with `zz flip-agent -t %N` and send there.
 
-A terminal pane running Codex is also a valid target. The daemon reads the session
-name from the pane title and queues the text through Codex's own `codex queue`.
-Codex runs it at its next idle, with polling taking up to ten seconds. Plain sends
-and `--submit` both queue the message and print the pane ID for command clients.
-A fresh session has no name until its first prompt, so a plain send to it is typed
-into the pane instead; `/rename` inside Codex resolves a name collision.
-
-For a terminal pane running neither Claude Code nor Codex and without a peer
-reply channel, `--wait` requires a non-empty `@agent_state` and types the text. It waits for a
+For a terminal pane running another agent, `--wait` requires a non-empty `@agent_state` and types the text. It waits for a
 non-idle state followed by `idle`, and prints nothing on success in text mode.
 `--json` prints turn facts with empty reply text. There, `--final`, `--notify` and
 `--on-block allow|deny` exit 2 before sending. A pane that
@@ -52059,7 +51976,7 @@ terminal sessions keep their own registration.
 
 ### Foreign agents in terminal panes
 
-A terminal agent other than Claude Code or Codex has no lens. Configure its lifecycle hooks (Stop,
+A terminal agent other than Claude Code or Codex has no chat. Configure its lifecycle hooks (Stop,
 Notification, or equivalent) to write a pane option:
 
 ```sh
@@ -78545,8 +78462,7 @@ set-option -g @alias-mixed-next yes
             (vec!["--on-block", "allow"], "--on-block allow|deny"),
             (vec!["--on-block", "deny"], "--on-block allow|deny"),
         ] {
-            let message =
-                format!("agent-send: {flag} needs Claude Code or Codex running in {target}");
+            let message = format!("agent-send: {flag} needs an agent chat pane");
             let mut args = vec!["-t", &target, "--wait"];
             args.extend(flags);
             args.push("must-not-arrive");
@@ -83875,6 +83791,7 @@ set-option -g @alias-mixed-next yes
             "capture-pane",
             "agent-send",
             "agent-respond",
+            "flip-agent",
             "send-last-output",
             "show-last-output",
             "send-text",
@@ -84647,6 +84564,16 @@ set-option -g @alias-mixed-next yes
             )
             .unwrap();
         let pane = context.pane.unwrap();
+        shared
+            .inner
+            .lock()
+            .engine
+            .state
+            .convert_pane(
+                pane,
+                PaneKind::Agent(zz_protocol::AgentDescriptor::default()),
+            )
+            .unwrap();
         let mailbox = OutboundMailbox::new();
         let (control, _) =
             shared.register_subscribed(ClientKind::Control, None, None, Arc::clone(&mailbox));
@@ -84655,7 +84582,8 @@ set-option -g @alias-mixed-next yes
         assert!(runtime.open(
             pane,
             AgentPaneSpec {
-                lens: None,
+                model: None,
+                effort: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
@@ -89605,350 +89533,6 @@ set-option -g @alias-mixed-next yes
                 assert_eq!(state.output.trim(), "working");
             },
         );
-    }
-
-    #[cfg(all(feature = "agent", unix))]
-    #[test]
-    fn claude_peer_waits_end_on_the_turn_and_keep_late_replies() {
-        use std::io::{BufRead, BufReader};
-        use std::os::unix::net::{UnixListener, UnixStream};
-
-        with_claude_peer_status(
-            "claude_peer_waits_end_on_the_turn_and_keep_late_replies",
-            |shared, pane, path, mut record| {
-                let sockets = tempfile::Builder::new()
-                    .prefix("zz-turn-")
-                    .tempdir_in("/tmp")
-                    .expect("short socket directory");
-                let socket = sockets.path().join("peer.sock");
-                let listener = UnixListener::bind(&socket).expect("peer listener");
-                record["messagingSocketPath"] = socket.display().to_string().into();
-                let status = |record: &mut serde_json::Value, status: &str| {
-                    record["status"] = status.into();
-                    fs::write(path, serde_json::to_vec(record).expect("record JSON"))
-                        .expect("peer record");
-                    shared.sync_claude_peer_states();
-                };
-                status(&mut record, "idle");
-                let send = |args: Vec<String>| {
-                    let waiting = Arc::clone(shared);
-                    thread::spawn(move || {
-                        waiting.execute(
-                            ClientId(1),
-                            ClientKind::Command,
-                            &mut ExecutionContext::default(),
-                            &CommandInvocation::new("agent-send", args),
-                        )
-                    })
-                };
-                let target = pane.to_string();
-                let posted = || {
-                    let (stream, _) = listener.accept().expect("posted message");
-                    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                    let mut line = String::new();
-                    BufReader::new(stream)
-                        .read_line(&mut line)
-                        .expect("wire line");
-                    let value: serde_json::Value = serde_json::from_str(&line).expect("wire JSON");
-                    value["from"].as_str().expect("reply address").to_owned()
-                };
-
-                let waiter = send(vec![
-                    "-t".into(),
-                    target.clone(),
-                    "--wait".into(),
-                    "hello".into(),
-                ]);
-                posted();
-                status(&mut record, "busy");
-                thread::sleep(Duration::from_millis(300));
-                assert!(!waiter.is_finished(), "a busy turn keeps the wait open");
-                status(&mut record, "idle");
-                let execution = waiter.join().expect("wait thread").expect("turn end");
-                assert!(execution.output.is_empty());
-
-                let waiter = send(vec![
-                    "-t".into(),
-                    target.clone(),
-                    "--wait".into(),
-                    "--timeout".into(),
-                    "0.2".into(),
-                    "slow job".into(),
-                ]);
-                let inbox = posted();
-                let late = waiter.join().expect("wait thread");
-                assert!(matches!(
-                    late,
-                    Err(DaemonError::CommandExit { exit_code: 124, ref output })
-                        if output.to_string().contains("--wait ''")
-                ));
-                let mut reply = UnixStream::connect(inbox.strip_prefix("uds:").expect("UDS"))
-                    .expect("the inbox outlives the timed-out wait");
-                serde_json::to_writer(
-                    &mut reply,
-                    &serde_json::json!({
-                        "type": "user", "from": format!("uds:{}", socket.display()),
-                        "message": {"content": "<cross-session-message from-name=\"w\">\nDONE ok\n</cross-session-message>"}
-                    }),
-                )
-                .expect("reply JSON");
-                reply.write_all(b"\n").expect("reply line");
-                drop(reply);
-                let rearm = || vec!["-t".into(), target.clone(), "--wait".into(), String::new()];
-                let deadline = Instant::now() + Duration::from_secs(5);
-                loop {
-                    let output = send(rearm()).join().expect("rearm").expect("rearm").output;
-                    if output == "DONE ok" {
-                        break;
-                    }
-                    assert!(output.is_empty());
-                    assert!(Instant::now() < deadline, "the late reply was lost");
-                    thread::sleep(Duration::from_millis(20));
-                }
-                let execution = send(rearm()).join().expect("rearm").expect("idle pane");
-                assert!(execution.output.is_empty());
-
-                status(&mut record, "busy");
-                let waiter = send(rearm());
-                thread::sleep(Duration::from_millis(300));
-                assert!(
-                    !waiter.is_finished(),
-                    "a wait without text waits for the turn"
-                );
-                status(&mut record, "waiting");
-                thread::sleep(Duration::from_millis(300));
-                assert!(
-                    !waiter.is_finished(),
-                    "a permission prompt waits by default"
-                );
-                status(&mut record, "idle");
-                assert!(
-                    waiter
-                        .join()
-                        .expect("wait thread")
-                        .expect("turn end")
-                        .output
-                        .is_empty()
-                );
-                listener.set_nonblocking(true).expect("nonblocking");
-                assert!(
-                    listener.accept().is_err(),
-                    "a wait without text posts nothing"
-                );
-            },
-        );
-    }
-
-    #[cfg(all(feature = "agent", unix))]
-    #[test]
-    fn agent_send_delivers_to_claude_terminal_peer() {
-        use std::io::{BufRead, BufReader};
-        use std::os::unix::net::{UnixListener, UnixStream};
-
-        const CHILD: &str = "ZZ_TEST_CLAUDE_TERMINAL_PEER";
-        if std::env::var_os(CHILD).is_none() {
-            let directory = tempfile::tempdir().expect("peer registry directory");
-            let mut child =
-                std::process::Command::new(std::env::current_exe().expect("test binary"))
-                    .args([
-                        "--exact",
-                        "daemon::tests::agent_send_delivers_to_claude_terminal_peer",
-                        "--nocapture",
-                        "--test-threads=1",
-                    ])
-                    .env(CHILD, "1")
-                    .env("CLAUDE_CONFIG_DIR", directory.path())
-                    .spawn()
-                    .expect("isolated peer regression");
-            let deadline = Instant::now() + Duration::from_secs(30);
-            loop {
-                if let Some(status) = child.try_wait().expect("poll peer regression") {
-                    assert!(status.success());
-                    return;
-                }
-                if Instant::now() >= deadline {
-                    child.kill().expect("stop stalled peer regression");
-                    child.wait().expect("reap stalled peer regression");
-                    panic!("isolated peer regression stalled");
-                }
-                thread::sleep(Duration::from_millis(10));
-            }
-        }
-        let directory = PathBuf::from(std::env::var_os("CLAUDE_CONFIG_DIR").expect("peer config"));
-        let sockets = tempfile::Builder::new()
-            .prefix("zz-peer-")
-            .tempdir_in("/tmp")
-            .expect("short socket directory");
-        let socket = sockets.path().join("peer.sock");
-        let listener = UnixListener::bind(&socket).expect("peer listener");
-        listener
-            .set_nonblocking(true)
-            .expect("nonblocking listener");
-        let shared = Arc::new(Shared::new(1));
-        let mailbox = OutboundMailbox::new();
-        let (client, _) =
-            shared.register_subscribed(ClientKind::Interactive, None, None, Arc::clone(&mailbox));
-        let mut context = ExecutionContext::default();
-        shared
-            .execute(
-                client,
-                ClientKind::Interactive,
-                &mut context,
-                &CommandInvocation::new("new-session", ["-s", "claude-peer"]),
-            )
-            .expect("terminal session");
-        let pane = context.pane.expect("terminal pane");
-        let terminal = shared.inner.lock().terminals[&pane].clone();
-        wait_for_terminal_identity(&terminal);
-        let pid = terminal.process_id().expect("shell pid");
-        wait_for_runtime_pid(&shared, pane, pid);
-        let start = std::process::Command::new("ps")
-            .args(["-p", &pid.to_string(), "-o", "lstart="])
-            .env("TZ", "UTC")
-            .output()
-            .expect("process start");
-        assert!(start.status.success());
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock")
-            .as_millis() as u64;
-        let record = serde_json::json!({
-            "pid": pid, "sessionId": "peer-test", "cwd": directory,
-            "startedAt": now, "procStart": String::from_utf8_lossy(&start.stdout).trim(),
-            "version": "2.1.267", "peerProtocol": 1, "peerFeatures": [],
-            "kind": "interactive", "entrypoint": "cli",
-            "pidDomain": if cfg!(target_os = "macos") { "darwin" } else { "linux" },
-            "tmux": format!("claude-peer:@0.{pane}"), "messagingSocketPath": socket,
-            "name": "terminal-peer", "status": "idle", "updatedAt": now,
-            "statusUpdatedAt": now
-        });
-        fs::create_dir_all(directory.join("sessions")).expect("registry");
-        fs::write(
-            directory.join("sessions").join(format!("{pid}.json")),
-            serde_json::to_vec(&record).expect("record JSON"),
-        )
-        .expect("peer record");
-        shared.inner.lock().client_entry(client).origin = Some(pane);
-        for submit in [false, true] {
-            let mut args = vec!["-t".to_owned(), pane.to_string()];
-            if submit {
-                args.push("--submit".to_owned());
-            }
-            args.push("hello".to_owned());
-            let result = shared
-                .execute(
-                    client,
-                    ClientKind::Command,
-                    &mut context.clone(),
-                    &CommandInvocation::new("agent-send", args),
-                )
-                .expect("send to Claude terminal peer");
-            assert_eq!(
-                result.output,
-                if submit {
-                    pane.to_string()
-                } else {
-                    String::new()
-                }
-            );
-            let (stream, _) = listener.accept().expect("outbound connection");
-            stream.set_nonblocking(false).expect("blocking peer stream");
-            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-            let mut line = String::new();
-            BufReader::new(stream)
-                .read_line(&mut line)
-                .expect("peer wire line");
-            let value: serde_json::Value = serde_json::from_str(&line).expect("wire JSON");
-            assert_eq!(value["msgV"], 1);
-            assert_eq!(value["type"], "user");
-            assert_eq!(value["priority"], "next");
-            assert!(value.get("from").is_none());
-            assert_eq!(value["message"]["role"], "user");
-            assert_eq!(
-                value["message"]["content"],
-                format!(
-                    "<cross-session-message from-name=\"zz {pane}\" from-mode=\"prompting\">\nhello\n</cross-session-message>"
-                )
-            );
-        }
-        for dropped in [false, true] {
-            let waiting_shared = Arc::clone(&shared);
-            let mut waiting_context = context.clone();
-            let waiter = thread::spawn(move || {
-                waiting_shared.execute(
-                    client,
-                    ClientKind::Command,
-                    &mut waiting_context,
-                    &CommandInvocation::new(
-                        "agent-send",
-                        ["-t", &pane.to_string(), "--wait", "hello"],
-                    ),
-                )
-            });
-            let deadline = Instant::now() + Duration::from_secs(5);
-            let stream = loop {
-                match listener.accept() {
-                    Ok((stream, _)) => break stream,
-                    Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                        assert!(Instant::now() < deadline, "waiting for peer message");
-                        thread::sleep(Duration::from_millis(10));
-                    }
-                    Err(error) => panic!("peer accept: {error}"),
-                }
-            };
-            stream.set_nonblocking(false).expect("blocking peer stream");
-            let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-            let mut line = String::new();
-            BufReader::new(stream)
-                .read_line(&mut line)
-                .expect("wait wire line");
-            let value: serde_json::Value = serde_json::from_str(&line).expect("wait JSON");
-            let from = value["from"].as_str().expect("reply address");
-            let daemon_record: serde_json::Value = serde_json::from_slice(
-                &fs::read(
-                    directory
-                        .join("sessions")
-                        .join(format!("{}.json", std::process::id())),
-                )
-                .expect("transient daemon peer"),
-            )
-            .expect("daemon record JSON");
-            assert_eq!(daemon_record["zz"], serde_json::json!({"daemon": true}));
-            assert_eq!(daemon_record["peerFeatures"], serde_json::json!([]));
-            assert!(daemon_record.get("tmux").is_none());
-            let response = if dropped {
-                serde_json::json!({
-                    "action": "peer_message_status", "orig_msg_id": value["msg_id"],
-                    "status": "dropped", "reason": "peer policy",
-                    "from": format!("uds:{}", socket.display())
-                })
-            } else {
-                serde_json::json!({
-                    "type": "user", "from": format!("uds:{}", socket.display()),
-                    "message": {"content": "<cross-session-message from-name=\"terminal-peer\">\n  hello back  \n</cross-session-message>"}
-                })
-            };
-            let mut reply = UnixStream::connect(from.strip_prefix("uds:").expect("UDS reply"))
-                .expect("reply connection");
-            serde_json::to_writer(&mut reply, &response).expect("reply JSON");
-            reply.write_all(b"\n").expect("reply line");
-            drop(reply);
-            let result = waiter.join().expect("wait thread");
-            if dropped {
-                assert!(matches!(result,
-                    Err(DaemonError::Server(ServerError::InvalidCommand(message)))
-                    if message.contains("dropped") && message.contains("peer policy")));
-            } else {
-                assert_eq!(result.expect("peer reply").output, "hello back");
-            }
-            assert!(
-                !directory
-                    .join("sessions")
-                    .join(format!("{}.json", std::process::id()))
-                    .exists()
-            );
-        }
-        assert!(matches!(listener.accept(), Err(error) if error.kind() == ErrorKind::WouldBlock));
     }
 
     #[test]
@@ -122691,7 +122275,7 @@ bind - split-window -v -c "#{pane_current_path}"
         }
 
         #[test]
-        fn a_lens_pane_is_visible_before_its_runtime_starts() {
+        fn an_agent_pane_is_visible_before_its_runtime_starts() {
             let shared = Arc::new(Shared::new(1));
             let mailbox = OutboundMailbox::new();
             let (client, _) = shared.register_subscribed(
@@ -122745,7 +122329,7 @@ bind - split-window -v -c "#{pane_current_path}"
 
             assert!(
                 observed.load(Ordering::Acquire),
-                "the runner started before the attached client could see the lens pane"
+                "the runner started before the attached client could see the agent pane"
             );
             let deadline = Instant::now() + Duration::from_secs(10);
             while !take_reliable_messages(&mailbox).iter().any(|message| {
@@ -123521,8 +123105,8 @@ bind - split-window -v -c "#{pane_current_path}"
                 assert_eq!(
                     daemon_error_text(&error),
                     format!(
-                        "invalid target: {terminal} has no agent lens open; open it in the zz \
-                         app or run agent-send --final first"
+                        "invalid target: {terminal} is not an agent chat; agent-respond answers \
+                         permissions in agent panes"
                     )
                 );
             }

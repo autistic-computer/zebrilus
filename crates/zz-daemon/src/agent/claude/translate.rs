@@ -106,28 +106,6 @@ impl Translator {
         }))
     }
 
-    pub(crate) fn knows(&self, tool: &str) -> bool {
-        self.tools.contains_key(tool)
-    }
-
-    pub(crate) fn running(&self, tool: &str) -> bool {
-        self.knows(tool) && (!self.settled.contains(tool) || self.background.contains(tool))
-    }
-
-    pub(crate) fn waiting_on(&self, tool: &str) -> bool {
-        self.settled.contains(tool) && self.background.contains(tool)
-    }
-
-    pub(crate) fn agent_finished(&mut self, tool: &str, result: Option<&str>) -> Vec<Value> {
-        self.system(&json!({
-            "type": "system",
-            "subtype": "task_notification",
-            "tool_use_id": tool,
-            "status": "completed",
-            "summary": result,
-        }))
-    }
-
     pub(crate) fn task_tool_call(&self, task_id: &str) -> Option<String> {
         self.task_tools.get(task_id).cloned()
     }
@@ -1117,12 +1095,16 @@ fn display_path(path: &str, cwd: &Path) -> String {
         )
 }
 
-pub(crate) fn available_commands(commands: &[Value], hidden: &HashSet<String>) -> Value {
+pub(crate) fn available_commands(
+    commands: &[Value],
+    hidden: &HashSet<String>,
+    listed: Option<&HashSet<String>>,
+) -> Value {
     let commands = commands
         .iter()
         .filter_map(|command| {
             let name = command["name"].as_str()?;
-            if hidden.contains(name) {
+            if hidden.contains(name) || listed.is_some_and(|listed| !listed.contains(name)) {
                 return None;
             }
             let mut entry = json!({
@@ -1336,7 +1318,6 @@ mod tests {
         assert_eq!(updates[0]["status"], "in_progress");
         assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
         assert!(updates[0].get("content").is_none(), "{}", updates[0]);
-        assert!(translator.running("g1"));
         let done = json!({"type":"user","uuid":"u2","message":{"role":"user","content":
             "<task-notification>\n<task-id>a9</task-id>\n<tool-use-id>g1</tool-use-id>\n<status>completed</status>\n<summary>Agent \"Find it\" finished</summary>\n<result>src/lib.rs:4</result>\n<usage><duration_ms>6532</duration_ms></usage>\n</task-notification>"}});
         let updates = translator.history_entry(&done);
@@ -1344,7 +1325,6 @@ mod tests {
         assert_eq!(updates[0]["toolCallId"], "g1");
         assert_eq!(updates[0]["status"], "completed");
         assert_eq!(updates[0]["content"][0]["content"]["text"], "src/lib.rs:4");
-        assert!(!translator.running("g1"));
     }
 
     #[test]
@@ -1504,19 +1484,32 @@ mod tests {
     #[test]
     fn commands_carry_their_hint_and_hide_terminal_ones() {
         let hidden = HashSet::from(["doctor".to_owned()]);
-        let update = available_commands(
-            &[
-                json!({"name":"compact","description":"Compact","argumentHint":"<focus>"}),
-                json!({"name":"doctor","description":"Doctor","argumentHint":""}),
-            ],
-            &hidden,
-        );
+        let commands = [
+            json!({"name":"compact","description":"Compact","argumentHint":"<focus>"}),
+            json!({"name":"doctor","description":"Doctor","argumentHint":""}),
+            json!({"name":"terminal-setup","description":"Set up the terminal","argumentHint":""}),
+        ];
+        let update = available_commands(&commands, &hidden, None);
         serde_json::from_value::<SessionUpdate>(update.clone()).expect("ACP update");
         assert_eq!(
             update["availableCommands"].as_array().map(Vec::len),
-            Some(1)
+            Some(2)
         );
         assert_eq!(update["availableCommands"][0]["input"]["hint"], "<focus>");
+
+        let listed = HashSet::from(["compact".to_owned(), "doctor".to_owned()]);
+        let update = available_commands(&commands, &hidden, Some(&listed));
+        let names = update["availableCommands"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|command| command["name"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["compact"],
+            "only the init frame's commands that work without the TUI"
+        );
     }
 
     #[test]

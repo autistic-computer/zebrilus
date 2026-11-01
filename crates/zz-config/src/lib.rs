@@ -877,7 +877,7 @@ pub fn parse_config(source: &str, system_font_family: &str) -> ParsedConfig {
             parsed.diagnostics.push(ConfigDiagnostic {
                 line: line_number,
                 message: format!(
-                    "`{key}` was removed: run Claude Code or Codex in a terminal pane and open its lens from the pane header"
+                    "`{key}` was removed: open a chat from the New agent picker, or flip a terminal running Claude Code or Codex from its pane header"
                 ),
             });
             continue;

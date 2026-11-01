@@ -11,10 +11,11 @@ use zz_client::{
         AgentCommand, CommandCompletion, active_command_hint, bare_command_name, completion_query,
         meaningful_command_description, pane_commands, ranked_completions, rendered_error,
     },
+    agent_flip::{AgentFlips, FlipMode, FlipTo, flip_target},
     agent_lens::{
-        AgentCursor, LENS_WELCOME_DETAIL, LensEmpty, LensTranscript, MAX_AGENT_HISTORY_BYTES,
-        MAX_AGENT_HISTORY_ITEMS, PendingPermission, accepts_prompt, conversation_changed,
-        lens_empty, lens_placeholder, lens_welcome_title, pending_permissions, restore_reclaim_id,
+        AGENT_WELCOME_DETAIL, AgentCursor, AgentEmpty, LensTranscript, MAX_AGENT_HISTORY_BYTES,
+        MAX_AGENT_HISTORY_ITEMS, PendingPermission, accepts_prompt, agent_empty, agent_placeholder,
+        agent_welcome_title, conversation_changed, pending_permissions, restore_reclaim_id,
         restored_prompts, track_usage, turn_running,
     },
     agent_question::{QuestionCard, QuestionCardStep},
@@ -36,7 +37,7 @@ use zz_client::{
 };
 use zz_protocol::{
     AgentConnectionPhase, AgentPaneWire, AgentProvider, AgentQuestionAnswer, CommandInvocation,
-    PaneId, PaneSnapshot, ProtocolMessage,
+    CommandResponse, PaneId, PaneKindSnapshot, PaneSnapshot, ProtocolMessage,
 };
 
 use crate::{Client, pane_id};
@@ -373,6 +374,7 @@ pub struct Agents {
     replays: Vec<(PaneId, u64)>,
     status: Option<String>,
     providers_requested: bool,
+    flips: AgentFlips,
 }
 
 impl Agents {
@@ -449,6 +451,31 @@ struct Context {
 }
 
 impl Client {
+    pub(crate) fn observe_flips(&mut self) {
+        let snapshot = self.core.snapshot();
+        self.agents.flips.observe(snapshot);
+    }
+
+    pub(crate) fn flip_reply(&mut self, response: &CommandResponse) -> Option<Value> {
+        let (request, result) = match response {
+            CommandResponse::Success { request_id, .. } => (*request_id, Ok(())),
+            CommandResponse::Error {
+                request_id, error, ..
+            } => (*request_id, Err(error.to_string())),
+        };
+        if !self.agents.flips.owns(request) {
+            return None;
+        }
+        let error = self
+            .agents
+            .flips
+            .settle(request, result.as_ref().copied().map_err(String::as_str));
+        Some(json!({
+            "type": "flip",
+            "error": error.map(|error| format!("flip-agent: {error}")),
+        }))
+    }
+
     fn pane_snapshot(&self, pane: PaneId) -> Option<&PaneSnapshot> {
         self.core
             .snapshot()
@@ -778,8 +805,6 @@ impl Client {
                 .filter(|card| card.request_id() == head.request_id)
             {
                 question_json(card, &head.title, counter, context.writable)
-            } else if head.options.is_empty() {
-                json!({ "kind": "wait", "requestId": head.request_id, "title": head.title })
             } else {
                 json!({
                     "kind": "permission",
@@ -810,15 +835,15 @@ impl Client {
                 })
             });
         let empty = rows.is_empty().then(|| {
-            match lens_empty(context.connected, &state.phase, context.provider) {
-                LensEmpty::Welcome(provider) => json!({
+            match agent_empty(context.connected, &state.phase, context.provider) {
+                AgentEmpty::Welcome(provider) => json!({
                     "welcome": {
-                        "title": lens_welcome_title(provider),
-                        "detail": LENS_WELCOME_DETAIL,
+                        "title": agent_welcome_title(provider),
+                        "detail": AGENT_WELCOME_DETAIL,
                         "provider": provider_id(provider),
                     }
                 }),
-                LensEmpty::Message { text, busy } => json!({ "text": text, "busy": busy }),
+                AgentEmpty::Message { text, busy } => json!({ "text": text, "busy": busy }),
             }
         });
         let completions = lens
@@ -834,7 +859,7 @@ impl Client {
         json!({
             "pane": pane.0,
             "provider": context.provider.map(provider_id),
-            "placeholder": lens_placeholder(context.provider),
+            "placeholder": agent_placeholder(context.provider),
             "cwd": cwd,
             "connected": context.connected,
             "writable": context.writable,
@@ -1168,12 +1193,14 @@ impl Client {
     }
 
     pub fn agent_prune(&mut self) {
+        let snapshot = self.core.snapshot();
+        self.agents.flips.observe(snapshot);
         let stale = self
             .agents
             .lenses
             .iter()
             .copied()
-            .filter(|pane| self.pane_snapshot(*pane).and_then(pane_agent).is_none())
+            .filter(|pane| !self.agent_is_chat(pane.0 as f64))
             .collect::<Vec<_>>();
         for pane in stale {
             self.agents.lenses.remove(&pane);
@@ -1203,13 +1230,75 @@ impl Client {
             .map(|provider| provider_id(provider).to_owned())
     }
 
-    pub fn agent_lens_open(&self, pane: f64) -> bool {
-        self.agents.lenses.contains(&pane_id(pane))
+    pub fn agent_is_chat(&self, pane: f64) -> bool {
+        self.pane_snapshot(pane_id(pane))
+            .is_some_and(|pane| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
+    }
+
+    pub fn agent_flip_state(&self, pane: f64) -> String {
+        let pane = pane_id(pane);
+        let Some(target) = self.pane_snapshot(pane).and_then(flip_target) else {
+            return Value::Null.to_string();
+        };
+        let flip = self.agents.flips.state(pane);
+        json!({
+            "to": match target.to {
+                FlipTo::Chat => "chat",
+                FlipTo::Cli => "cli",
+            },
+            "icon": match target.to {
+                FlipTo::Chat => "chat",
+                FlipTo::Cli => "square-terminal",
+            },
+            "title": zz_client::agent_flip::flip_tooltip(target.to, flip.armed()),
+            "armed": flip.armed(),
+            "armedLabel": zz_client::agent_flip::armed_label(target.to),
+            "pending": flip.pending(),
+            "busy": flip.busy().map(|reason| json!({
+                "title": zz_client::agent_flip::BUSY_TITLE,
+                "detail": zz_client::agent_flip::busy_detail(reason),
+            })),
+        })
+        .to_string()
+    }
+
+    pub fn agent_flip(&mut self, pane: f64) -> bool {
+        let pane = pane_id(pane);
+        let Some(target) = self.pane_snapshot(pane).and_then(flip_target) else {
+            return false;
+        };
+        if !self.writable() {
+            return false;
+        }
+        let mut flips = std::mem::take(&mut self.agents.flips);
+        let sent = flips.press(pane, target.to, |command| Some(self.invoke(command)));
+        self.agents.flips = flips;
+        sent
+    }
+
+    pub fn agent_flip_choose(&mut self, pane: f64, choice: &str) -> bool {
+        let pane = pane_id(pane);
+        let mode = match choice {
+            "now" => FlipMode::Now,
+            "when-idle" => FlipMode::WhenIdle,
+            "cancel" => FlipMode::Cancel,
+            _ => {
+                self.agents.flips.dismiss(pane);
+                return true;
+            }
+        };
+        if !self.writable() {
+            return false;
+        }
+        let mut flips = std::mem::take(&mut self.agents.flips);
+        let sent = flips.choose(pane, mode, |command| Some(self.invoke(command)));
+        self.agents.flips = flips;
+        sent
     }
 
     pub fn agent_open(&mut self, pane: f64) -> bool {
         let pane = pane_id(pane);
-        if self.pane_snapshot(pane).and_then(pane_agent).is_none() {
+        if !self.agent_is_chat(pane.0 as f64) {
             return false;
         }
         if !self.agents.lenses.insert(pane) {

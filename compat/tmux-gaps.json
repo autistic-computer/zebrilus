@@ -323,6 +323,7 @@
         "native-command:debug-marker",
         "native-command:events",
         "native-command:fleet",
+        "native-command:flip-agent",
         "native-command:focus-sidebar",
         "native-command:html",
         "native-command:import-tmux-config",

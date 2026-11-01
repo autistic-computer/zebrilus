@@ -322,8 +322,7 @@ impl PaletteBackend for ConnectionPalette {
         if !connection.connected {
             return Err("Not connected".into());
         }
-        let pane = listing_pane(connection.core.snapshot(), anchor)
-            .ok_or_else(|| SharedString::from("No terminal to list files through"))?;
+        let pane = listing_pane(connection.core.snapshot(), anchor);
         let request_id = PATH_LISTS.fetch_add(1, Ordering::Relaxed) + 1;
         self.send(
             ProtocolMessage::PathListRequest {
@@ -435,6 +434,7 @@ fn tree_pane(
             PaneKindSnapshot::Browser(_) => "Browser · unavailable",
             PaneKindSnapshot::Editor(_) => "Editor · unavailable",
             PaneKindSnapshot::Picker => "New pane",
+            PaneKindSnapshot::Agent(_) => "Agent",
         }
         .into(),
         icon: match &pane.kind {
@@ -442,6 +442,7 @@ fn tree_pane(
             PaneKindSnapshot::Terminal => IconName::SquareTerminal,
             PaneKindSnapshot::Browser(_) => IconName::Globe,
             PaneKindSnapshot::Editor(_) => IconName::File,
+            PaneKindSnapshot::Agent(agent) => zz_ui::pane::agent_provider_icon(agent.provider),
         },
         running: attention == Some(AgentAttentionStatus::Working),
         needs_you: pane.status.as_ref().is_some_and(|status| {
@@ -560,7 +561,7 @@ mod tests {
             sent.borrow().last(),
             Some(&ProtocolMessage::PathListRequest {
                 request_id: request,
-                pane,
+                pane: Some(pane),
                 dir: Some("~/src/".to_owned()),
             }),
             "a pane that is not a terminal here lists through one that is"
@@ -599,6 +600,31 @@ mod tests {
                 pane,
                 action: TerminalViewAction::Paste("'my notes.txt' ".to_owned()),
             }))
+        );
+
+        let mut pickers_only = snapshot(pane);
+        if let Some(only) = pickers_only.sessions[0].windows[0].panes.get_mut(&pane) {
+            only.kind = PaneKindSnapshot::Picker;
+        }
+        connection.update(cx, |connection, cx| {
+            connection.handle_message_for_test(
+                ProtocolMessage::Event(Event {
+                    sequence: 2,
+                    payload: EventPayload::Snapshot(pickers_only),
+                }),
+                cx,
+            );
+        });
+        let request = cx
+            .update(|cx| backend.list_path(HOST, "~/", Some(pane), cx))
+            .expect("a named folder lists with no terminal open");
+        assert_eq!(
+            sent.borrow().last(),
+            Some(&ProtocolMessage::PathListRequest {
+                request_id: request,
+                pane: None,
+                dir: Some("~/".to_owned()),
+            })
         );
     }
 }

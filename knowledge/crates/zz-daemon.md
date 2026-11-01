@@ -1,7 +1,7 @@
 ---
 type: Rust Crate
 title: zz-daemon crate
-description: The persistent local daemon. Sole authority for mux state, owner of PTY-backed terminal sessions and the agent lens runtimes over them, and the fan-out engine that streams coalesced terminal frames and agent timelines to attached and short-lived clients over a socket or named pipe.
+description: The persistent local daemon. Sole authority for mux state, owner of PTY-backed terminal sessions and of the agent drivers behind agent panes, and the fan-out engine that streams coalesced terminal frames and agent timelines to attached and short-lived clients over a socket or named pipe.
 resource: crates/zz-daemon/src/daemon.rs
 tags: [crate, daemon, ipc, fanout, transport, agent]
 timestamp: 2026-10-24T00:00:00-03:00
@@ -18,12 +18,11 @@ attach to one session at once, each with its own viewport and window focus. The 
 detach so that sessions, windows, splits, and running terminal processes outlive every window. See
 [session persistence](/concepts/session-persistence.md).
 
-Behind the default-on `agent` cargo feature it also owns the agent runtime. Since v113 the only
-thing that opens it is the [agent lens](/concepts/agent-lens.md): a terminal pane running Claude
-Code or Codex gets a lens runtime (`agent/lens.rs`, opened by `daemon/lens.rs`) that reads the
-transcript the CLI writes and types prompts into it, on its own thread, until the pane closes. A
-client that opens the lens replays the stream and tails it. The native drivers and the ACP runtime
-stay in the crate; no pane opens them.
+Behind the default-on `agent` cargo feature it also owns the agent runtime. Each
+[agent pane](/concepts/agent-panes.md) runs the CLI's native driver (`agent/claude`,
+`agent/codex`) on its own thread until the pane closes or flips to the CLI, and `flip-agent`
+(`daemon/agent_flip.rs`, with `agent/cli_session.rs` reading the TUI's session) switches a pane
+between a terminal running the CLI and the chat. Clients replay the pane's stream and tail it.
 
 The daemon speaks the versioned [wire protocol](/protocol/wire-protocol.md) from
 [zz-protocol](/crates/zz-protocol.md), applies commands through the serialized `MuxEngine`, and
@@ -45,7 +44,7 @@ rebuild it.
 |----------------|-------|
 | Own mux state (`MuxEngine`, sessions/windows/panes/splits) | `Shared.inner: Mutex<ServerState>` |
 | Own each terminal pane's PTY worker | `ServerState.terminals: BTreeMap<PaneId, Arc<TerminalSession>>` |
-| Own each open agent lens | `Shared.agent: Mutex<Option<Arc<AgentRuntime>>>` → `agent::host::AgentHost`, one thread per lens pane; `ServerState.lens_panes` lists the terminals with an open lens |
+| Own each agent pane's driver | `Shared.agent: Mutex<Option<Arc<AgentRuntime>>>` → `agent::host::AgentHost`, one thread per agent pane; `ServerState.agent_panes` lists them, `armed_flips` the panes waiting to flip |
 | Bind + guard the owner-only endpoint | `Daemon::run_foreground`, `LocalListener`, `SocketGuard`, `restrict_socket_permissions` |
 | Accept connections, one thread per client | `run_foreground` accept loop → `handle_connection` |
 | Prepare + execute commands | `Shared::prepare_command_list` / `execute_command_request_with_prepared` / `Shared::execute` (mux engine under one lock); opaque multi-command alias groups enter the same daemon command queue as sourced and callback command lists |
@@ -65,7 +64,7 @@ rebuild it.
 | `wake.rs` | (crate-internal) `AcceptWake`, `wake_loop`, `LoopThread` | The `mio` waker plumbing every producer thread uses to wake the event loop, with the per-thread latch that folds repeated wakes from the loop's own thread into one |
 | `keys.rs` | (crate-internal) `input_key_name`, `send_tokens` | tmux key spelling ↔ `KeyInput`; named-key/literal fan-out for `send-keys` |
 | `status.rs` | (crate-internal) `StatusRenderer`, `status_context` | Expands the [tmux status line](/tmux/status-line.md) per client: strftime, bounded `#()` execution with an output cache, change diffing |
-| `agent/` (feature `agent`) | `AgentStreamItem`/`AgentStreamPayload` and friends via the crate root | The daemon-owned agent runtime: `host` (one thread per pane, prompt queue, permission bookkeeping), `lens` (the lens runtime over a terminal running Claude Code or Codex, Unix only), `runtime` (the ACP connection), `fanout` (coalescing, wire sequence, replay ring, pane state), `journal`, `git_summary` (bounded current-worktree totals), `environment` (ACP child PATH repair and workspace identity), `paths`, plus a test-only in-process `fixture` |
+| `agent/` (feature `agent`) | `AgentStreamItem`/`AgentStreamPayload` and friends via the crate root | The daemon-owned agent runtime: `host` (one thread per pane, prompt queue, permission bookkeeping), `runtime` (the ACP connection), `fanout` (coalescing, wire sequence, replay ring, pane state), `journal`, `git_summary` (bounded current-worktree totals), `environment` (ACP child PATH repair and workspace identity), `paths`, plus a test-only in-process `fixture` |
 
 # How the daemon runs
 

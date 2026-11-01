@@ -95,13 +95,6 @@ impl<T> Reply<T> {
         }
     }
 
-    #[cfg(feature = "agent")]
-    pub(crate) fn close(&self) {
-        if let Some(callback) = self.callback.lock().take() {
-            callback(None);
-        }
-    }
-
     pub(crate) fn try_send(&self, value: T) {
         if let Some(callback) = self.callback.lock().take() {
             callback(Some(value));

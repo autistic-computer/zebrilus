@@ -16,10 +16,9 @@ raw-terminal client over one persistent daemon. Its model contains these pane su
   (see [zz-terminal](/crates/zz-terminal.md));
 - a **Chromium browser** powered by CEF Alloy off-screen rendering (OSR), composited as an ala image
   (see [ala-cef](/crates/ala-cef.md));
-- an **agent lens** over a terminal pane whose foreground program is Claude Code or Codex: the
-  header gets a toggle that swaps the cell grid for the agent timeline of that same pane, read by the
-  daemon from the transcript the CLI writes, with a composer that types into the CLI (see
-  [agent lens](/concepts/agent-lens.md)). There is no agent pane kind;
+- an **agent pane**, a chat over Claude Code or Codex that the daemon runs headless through the
+  vendor drivers; a flip button switches a pane between it and the CLI's own TUI in a terminal on
+  the same session (see [agent panes](/concepts/agent-panes.md));
 - an Editor pane, compiled out behind the `editor-pane` cargo feature as well as
   `experimental-editor-pane`.
 
@@ -101,6 +100,6 @@ validation remains outstanding.
 
 - [Process model](/architecture/process-model.md) . daemon, GUI client, CEF subprocesses, PTY workers.
 - [Data flow](/architecture/data-flow.md) . how frames and input move end to end.
-- [Agent lens](/concepts/agent-lens.md) . the agent timeline over a terminal running Claude Code
-  or Codex: lens runtime, agent stream, input, and approvals.
+- [Agent panes](/concepts/agent-panes.md) . chats over Claude Code or Codex, the flip between chat
+  and CLI, the agent stream, input, and approvals.
 - [Design plans](/designs/index.md) . feature plans and decision records.

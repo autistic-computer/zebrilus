@@ -11,7 +11,7 @@ pub(crate) mod claude;
 #[cfg(unix)]
 pub(crate) mod claude_peers;
 #[cfg(unix)]
-pub(crate) mod claude_plugin;
+pub(crate) mod cli_session;
 pub(crate) mod codex;
 #[cfg(unix)]
 pub(crate) mod codex_queue;
@@ -22,16 +22,6 @@ pub(crate) mod fixture;
 pub(crate) mod git_summary;
 pub(crate) mod host;
 pub(crate) mod journal;
-#[cfg(unix)]
-pub(crate) mod lens;
-#[cfg(unix)]
-pub(crate) mod lens_channel;
-#[cfg(unix)]
-pub(crate) mod lens_claude_mod;
-#[cfg(unix)]
-pub(crate) mod lens_commands;
-#[cfg(unix)]
-pub(crate) mod lens_settings;
 pub(crate) mod paths;
 pub(crate) mod runtime;
 pub(crate) mod stream;

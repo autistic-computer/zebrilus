@@ -106,12 +106,14 @@ scrim. Escape, confirmation, or clicking the scrim dismisses it and returns focu
 Opening this panel leaves the saved sidebar preference unchanged.
 
 Session and window selection, terminal splits and divider dragging, pane zoom, daemon command
-prompts, choosers, menus, confirmations, popups, command output, and agent lens prompt/permission
-controls use live daemon state. A terminal running Claude Code or Codex gets the
-[agent lens](/concepts/agent-lens.md) toggle in its header, as on desktop, and the lens shows the
-timeline and composer under the terminal header. The lens has no project, history, provider, model
-or effort picker, and the daemon refuses images sent through it. Composer actions share the
-desktop presentation. Appearance preferences for the
+prompts, choosers, menus, confirmations, popups, command output, and agent chat prompt/permission
+controls use live daemon state. An agent pane draws its chat under a pane header with the agent's
+mark, and the app follows its stream for as long as the pane is an agent pane
+(`Connection::watch_agent_panes`). That header, and a terminal running Claude Code or Codex, carry
+the [flip button](/concepts/agent-panes.md), which switches the pane between the CLI and the chat;
+the busy choice and an armed flip show in the pane's corner, the armed one from the pane's
+`flip_armed` summary. Fork from a message opens a new window with an agent pane on the fork, and
+side chat a floating one. Composer actions share the desktop presentation. Appearance preferences for the
 browser live in local storage: system/light/dark mode, the interface theme (Default or one saved
 in the browser by Import), zoom, animations, and what Interface sets over the theme: the
 style, the corner radius, the accent and the tint. Picking a theme clears the style and radius;
@@ -185,7 +187,7 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `clients/app/src/app/floating.rs`: daemon menu and confirmation interaction over shared floating surfaces.
 - `crates/zz-ui/src/command/`: shared palette, menu, confirmation, and frame presentation.
 - `crates/zz-client/src/completion.rs`: shared command, option, history, and live-target completion.
-- `clients/app/src/app/agent_lens.rs`: the agent lens timeline and composer over a terminal pane.
+- `clients/app/src/app/agent_pane.rs`: an agent pane's chat and composer.
 - `clients/app/src/app/settings.rs`: supported settings pages and shared previews.
 - `clients/app/src/preferences.rs`: local preference persistence and migration.
 - `clients/app/src/app/sidebar.rs`: session tree, keyboard focus, disclosure controls, and row actions.
@@ -195,8 +197,9 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `crates/zz-client/src/navigation.rs`: shared tree labels, layout order, and rename command construction.
 - `crates/zz-client/src/agent_transcript.rs`: shared streaming transcript, plan, permission, and tool reduction.
 - `crates/zz-client/src/pane_separator.rs`: active pane separator spans for desktop and thin clients.
-- `crates/zz-client/src/agent_completion.rs`: shared provider command matching, query replacement, and hints.
-- `crates/zz-client/src/agent_lens.rs`: the agent stream cursor (replay, gaps, command catalog), the lens journal reducer, parked permissions, restored drafts and context usage.
+- `crates/zz-client/src/agent_completion.rs`: shared provider command matching, query replacement, and hints; the slash list leaves out commands that need the CLI's own screen.
+- `crates/zz-client/src/agent_flip.rs`: the flip button's state (idle, busy choice, armed) and the `flip-agent` commands every client sends.
+- `crates/zz-client/src/agent_lens.rs`: the agent stream cursor (replay, gaps, command catalog), the chat journal reducer, parked permissions, restored drafts and context usage.
 - `crates/zz-client/src/agent_timeline.rs`: timeline rows, turn folding, trace labels and counts, plan and composer labels, shared by zz-ui and the HTML client.
 - `crates/zz-ui/src/agent/slash.rs`: shared Agent command suggestion rows and list.
 - `clients/app/src/app/picker.rs`: pane-picker interaction over shared desktop rows.

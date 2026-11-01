@@ -270,5 +270,5 @@ no single-ink mark, so its row keeps the kind icon.
 # Related
 
 - [Mux snapshots](/protocol/snapshots.md), [the wire protocol](/protocol/wire-protocol.md)
-- [Program status (OSC 7501)](/terminal/program-status.md), [Agent lens](/concepts/agent-lens.md)
+- [Program status (OSC 7501)](/terminal/program-status.md), [Agent panes](/concepts/agent-panes.md)
 - [Terminal bell](/designs/terminal-bell.md), [Fleet attach](/designs/fleet-attach.md)

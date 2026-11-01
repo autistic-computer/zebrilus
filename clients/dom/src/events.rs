@@ -20,7 +20,10 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
     match event {
         CoreEvent::HelloReceived => json!({ "type": "hello" }),
         CoreEvent::Attached { session } => json!({ "type": "attached", "session": session.0 }),
-        CoreEvent::SnapshotChanged => json!({ "type": "tree" }),
+        CoreEvent::SnapshotChanged => {
+            client.observe_flips();
+            json!({ "type": "tree" })
+        }
         CoreEvent::ViewportChanged { pane, damage } => json!({
             "type": "viewport",
             "pane": pane.0,
@@ -62,9 +65,9 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
             "action": format!("{action:?}"),
         }),
         CoreEvent::ServerStopping => json!({ "type": "serverStopping" }),
-        CoreEvent::CommandResponse(response) => {
-            json!({ "type": "commandResponse", "response": value(&response) })
-        }
+        CoreEvent::CommandResponse(response) => client
+            .flip_reply(&response)
+            .unwrap_or_else(|| json!({ "type": "commandResponse", "response": value(&response) })),
         CoreEvent::ClientMessage {
             pane,
             kind,

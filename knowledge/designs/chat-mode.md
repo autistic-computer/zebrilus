@@ -1,8 +1,8 @@
 ---
 type: Design Plan
 title: "Chat mode: the sidebar lists agents, not windows"
-description: "The flat sidebar became chat mode: each machine lists one row per window running Claude Code or Codex, the agent's tile leads the pane stack with the panes it split behind it, sessions and agentless windows stay in the session tree, and a host's New agent opens a picker window that starts the CLI in a chosen folder inside that folder's session. Desktop, web, iPad and the HTML client share the zz-client model."
-status: Built (2026-10-28; the HTML client has no file picker yet)
+description: "The flat sidebar became chat mode: each machine lists one row per window running Claude Code or Codex, the agent's tile leads the pane stack with the panes it split behind it, sessions and agentless windows stay in the session tree, and a host's New agent opens a picker window that starts the agent in a chosen folder inside that folder's session. The sidebar view decides what a new pane offers: agents in chat view, pane kinds in the session tree. Desktop, web, iPad and the HTML client share the zz-client model."
+status: Built (2026-10-28; picker by sidebar view 2026-11-01; the HTML client has no file picker yet)
 resource: crates/zz-client/src/new_chat.rs
 tags:
 - sidebar
@@ -38,38 +38,71 @@ window, `new-window -t <session>: --kind picker`, in the session of the folder t
 used last (`recent_folders`, `session_for_folder`); a host with no session gets one named after
 that folder. The desktop follows the new window once it appears.
 
-A picker alone in its window offers the agents instead of pane kinds (`ChatPicker`, drawn by
-`zz_ui::pane::chat_picker_rows`): the folder line on top, and Claude Code (`c`) or Codex (`x`).
+# What a picker offers
+
+The sidebar view decides, not the picker's window (`agent_picker_place`, which every client asks
+with its own view: the desktop's `flat-sidebar` setting, zz-app's `flat_sidebar` preference on web,
+iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`):
+
+- **Chat view.** Every picker pane offers the agents (`ChatPicker`, drawn by
+  `zz_ui::pane::chat_picker_rows`): the folder line on top, and Claude Code (`c`) or Codex (`x`).
+  So does a window whose only pane is a terminal with nothing running (its foreground is the shell,
+  or it is dead: a fresh shell, a CLI that exited); the picker draws over that terminal, Escape
+  leaves it alone (`close_picker_command` closes only picker panes), and picking turns that pane
+  into the agent. The folder line starts on that terminal's folder (`picker_folders`).
+- **Session tree.** Every picker offers pane kinds, even alone in its window, and a terminal is a
+  terminal. Agents start there by typing the CLI into a terminal.
+
+Chat view with nothing open shows the agent picker too. On the desktop that is the empty workspace
+(no sessions): the picker takes the place of the New session card, and picking runs
+`first_chat_commands` (`new-session -d -s <folder name> -c <folder>`, `select-pane-kind -t <name>:
+-c <folder> [--model m] [--effort e] agent <cli>`, `attach-session -t <name>`). Web and iPad never sit on an empty host: the
+daemon makes a session when a client attaches to none, so a host with no chats, or one whose last
+chat closed, lands on a shell alone in its window and shows the picker over it.
+
 Tab or a click on the folder opens the file picker (the command palette's insert path browser,
 `CommandPaletteView::new_folder_pick`) one folder up from the current one; Enter there hands the
 highlighted folder, or the folder holding a highlighted file, back to the picker as where the agent
-starts (`PaletteActionLevel::picked_folder`) instead of inserting it. The HTML client has no file picker
-yet, so its Tab lists the folders the host's panes have been in and takes a typed path
+starts (`PaletteActionLevel::picked_folder`) instead of inserting it. The folder browser lists with no
+terminal open: a folder named from its root goes out with no pane, or through a pane that is not a
+terminal (wire 118, see [the wire protocol](/protocol/wire-protocol.md)). The HTML client has no file
+picker yet, so its Tab lists the folders the host's panes have been in and takes a typed path
 (`folder_rows`).
 
-Choosing an agent runs `select-pane-kind -t <pane> -c <folder> terminal <cli>` (`start_agent_commands`),
-the CLI started through the user's interactive shell with the model and effort last picked (see
-[Starting a chat](/concepts/agent-lens.md#starting-a-chat)), then puts the window in that folder's
-session:
+# Starting the agent
+
+Choosing an agent runs `select-pane-kind -t <pane> -c <folder> [--model m] [--effort e] agent
+<claude|codex>`
+(`start_agent_commands`), which turns the picker or terminal pane into an agent pane running the
+driver, then puts the window in that folder's session:
 
 - the folder's session is the picker's own: nothing moves;
 - another session is the folder's: `move-window` into it;
 - no session is the folder's: `new-session -d -s <folder name>`, `move-window` into it and
   `kill-window -a` its starting shell; a session holding only the picker is renamed instead.
 
-The desktop opens the agent's lens as soon as the CLI is detected in that pane, and switches to the
-window if it moved sessions. In chat mode every agent pane opens with its lens on, not only new
-ones; turning a lens off keeps that pane on its terminal until the agent exits. The command
-palette lists the chats too (see the [palette](/concepts/command-palette.md)).
+The desktop switches to the window if it moved sessions. No client draws a chat over a terminal
+any more: a terminal running Claude Code or Codex and an agent pane both carry a flip button in
+their header that switches the pane between the CLI and the chat on the same session
+(`flip-agent`, see the [agent panes](/concepts/agent-panes.md)), and the sidebar mode does not open
+chats by itself. The command palette lists the chats too (see the
+[palette](/concepts/command-palette.md)).
+A new chat starts on the model and effort last picked: `start_agent_commands` and
+`first_chat_commands` add `--model` and `--effort` from `zz_client::agent_launch::AgentLaunches`
+(`agent_flags`). The desktop remembers them per CLI in `agent-launch.json` from the chat's model
+and effort menu; web, iPad, iPhone and the HTML client remember none yet, so their chats start on
+the CLI's default.
 
 # Daemon changes
 
 Both are additive to native surface: `new-window` accepts `--kind picker`, and `select-pane-kind`
 takes `-c start-directory` and a trailing command for the `terminal` kind (a leading `~` names the
-daemon's home). A remote host on an older daemon answers New agent with a parse error.
+daemon's home). A remote host on an older daemon answers New agent with a parse error. The agent
+flip adds the `agent <claude|codex>` kind to `select-pane-kind`, for a picker or a terminal pane.
 
 # Not built
 
 - A file picker in the HTML client.
-- Agent CLIs beyond Claude Code and Codex; the list follows the programs the lens supports.
+- Remembering the last picked model and effort on web, iPad, iPhone and the HTML client.
+- Agent CLIs beyond Claude Code and Codex; the list follows the programs zz can drive.
 - The HTML client draws agent tiles with kit glyphs rather than program marks.

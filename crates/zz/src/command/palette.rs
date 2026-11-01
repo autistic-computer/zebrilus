@@ -318,19 +318,17 @@ impl PaletteBackend for MuxPalette {
         cx: &mut App,
     ) -> Result<u64, SharedString> {
         let host = HostId::from(host);
-        let pane = {
+        let (pane, name) = {
             let mux = self.mux.read(cx);
             let Some((_, name, _, snapshot)) = mux.fleet_hosts().find(|(id, ..)| *id == host)
             else {
                 return Err("No such host".into());
             };
-            let name = host_name(host, name);
-            let pane = snapshot
-                .and_then(|snapshot| listing_pane(snapshot, anchor))
-                .ok_or_else(|| format!("{name} has no terminal to list files through"))?;
-            (pane, name)
+            (
+                snapshot.and_then(|snapshot| listing_pane(snapshot, anchor)),
+                host_name(host, name),
+            )
         };
-        let (pane, name) = pane;
         self.mux
             .update(cx, |mux, _| {
                 mux.request_host_path_list(host, pane, dir.to_owned())
@@ -483,6 +481,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Browser => "Browser",
             MuxTreePaneKind::Editor => "Editor",
             MuxTreePaneKind::Picker => "New pane",
+            MuxTreePaneKind::Agent(_) => "Agent",
         }
         .into(),
         icon: match pane.kind {
@@ -490,6 +489,7 @@ fn tree_pane(pane: &MuxTreePane, attached: bool, mux: &MuxClient) -> PaletteTree
             MuxTreePaneKind::Terminal => IconName::SquareTerminal,
             MuxTreePaneKind::Browser => IconName::Globe,
             MuxTreePaneKind::Editor => IconName::File,
+            MuxTreePaneKind::Agent(provider) => zz_ui::pane::agent_provider_icon(provider),
         },
         running: attention == Some(zz_client::AgentAttentionStatus::Working),
         needs_you: matches!(

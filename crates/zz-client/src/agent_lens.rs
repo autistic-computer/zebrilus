@@ -141,8 +141,6 @@ impl AgentCursor {
                                     .pointer("/input/hint")
                                     .and_then(Value::as_str)
                                     .map(ToOwned::to_owned),
-                                terminal: command.pointer("/_meta/zz/terminal")
-                                    == Some(&Value::Bool(true)),
                                 skill: command.pointer("/_meta/zz/skill")
                                     == Some(&Value::Bool(true)),
                             })
@@ -189,7 +187,6 @@ pub struct LensTranscript<I> {
     pub model: AgentTranscript<I>,
     pub chat: ChatView,
     pub settings: Option<crate::agent_settings::LensSettings>,
-    pub dialogs_closed: u64,
     decode: ImageDecoder<I>,
     session_reset: bool,
 }
@@ -200,7 +197,6 @@ impl<I> LensTranscript<I> {
             model: AgentTranscript::new(decode),
             chat: ChatView::default(),
             settings: None,
-            dialogs_closed: 0,
             decode,
             session_reset: false,
         }
@@ -228,15 +224,6 @@ impl<I> LensTranscript<I> {
             "sessionReady" | "sessionSwitched" | "configOptionsChanged"
         ) {
             self.note_settings(item);
-        }
-        if kind == "configOptionsChanged"
-            && item
-                .get("option_id")
-                .or_else(|| item.get("optionId"))
-                .and_then(Value::as_str)
-                == Some(crate::agent_settings::DIALOG)
-        {
-            self.dialogs_closed += 1;
         }
         match kind {
             "sessionReset" => {
@@ -524,20 +511,21 @@ pub fn accepts_prompt(state: &AgentPaneWire) -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LensEmpty {
+pub enum AgentEmpty {
     Welcome(AgentProvider),
     Message { text: String, busy: bool },
 }
 
 #[must_use]
-pub fn lens_welcome_title(provider: AgentProvider) -> String {
-    format!("{} is waiting for its first prompt", provider.label())
+pub fn agent_welcome_title(provider: AgentProvider) -> String {
+    format!("{} is ready", provider.label())
 }
 
-pub const LENS_WELCOME_DETAIL: &str = "What you send here goes to the session in this terminal.";
+pub const AGENT_WELCOME_DETAIL: &str =
+    "Ask it anything. To use the CLI's own screen, switch the pane to the CLI.";
 
 #[must_use]
-pub fn lens_placeholder(provider: Option<AgentProvider>) -> String {
+pub fn agent_placeholder(provider: Option<AgentProvider>) -> String {
     format!(
         "Message {}…",
         provider.map_or("the agent", AgentProvider::label)
@@ -545,31 +533,29 @@ pub fn lens_placeholder(provider: Option<AgentProvider>) -> String {
 }
 
 #[must_use]
-pub fn lens_empty(
+pub fn agent_empty(
     connected: bool,
     phase: &AgentConnectionPhase,
     provider: Option<AgentProvider>,
-) -> LensEmpty {
+) -> AgentEmpty {
     let agent = provider.map_or("the agent", AgentProvider::label);
     let text = if connected {
         match phase {
-            AgentConnectionPhase::Starting => format!("Reading {agent}’s transcript…"),
+            AgentConnectionPhase::Starting => format!("Starting {agent}…"),
             AgentConnectionPhase::Ready => match provider {
-                Some(provider) => return LensEmpty::Welcome(provider),
-                None => format!("{agent} is waiting for its first prompt."),
+                Some(provider) => return AgentEmpty::Welcome(provider),
+                None => format!("{agent} is ready."),
             },
             AgentConnectionPhase::Running => format!("Waiting for {agent}’s first update…"),
             AgentConnectionPhase::AwaitingPermission => {
                 "The agent needs your permission.".to_owned()
             }
-            AgentConnectionPhase::Failed { .. } => {
-                format!("Could not read {agent}’s transcript.")
-            }
+            AgentConnectionPhase::Failed { .. } => format!("{agent} stopped."),
         }
     } else {
         "The agent is offline.".to_owned()
     };
-    LensEmpty::Message {
+    AgentEmpty::Message {
         text,
         busy: connected
             && matches!(
@@ -856,29 +842,29 @@ mod tests {
     }
 
     #[test]
-    fn empty_lens_names_the_agent_and_its_phase() {
+    fn an_empty_chat_names_the_agent_and_its_phase() {
         assert_eq!(
-            lens_empty(
+            agent_empty(
                 true,
                 &AgentConnectionPhase::Ready,
                 Some(AgentProvider::Codex)
             ),
-            LensEmpty::Welcome(AgentProvider::Codex)
+            AgentEmpty::Welcome(AgentProvider::Codex)
         );
         assert_eq!(
-            lens_empty(
+            agent_empty(
                 true,
                 &AgentConnectionPhase::Starting,
                 Some(AgentProvider::Codex)
             ),
-            LensEmpty::Message {
-                text: "Reading Codex’s transcript…".to_owned(),
+            AgentEmpty::Message {
+                text: "Starting Codex…".to_owned(),
                 busy: true
             }
         );
         assert_eq!(
-            lens_empty(false, &AgentConnectionPhase::Ready, None),
-            LensEmpty::Message {
+            agent_empty(false, &AgentConnectionPhase::Ready, None),
+            AgentEmpty::Message {
                 text: "The agent is offline.".to_owned(),
                 busy: false
             }

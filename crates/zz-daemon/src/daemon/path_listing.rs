@@ -705,12 +705,13 @@ impl Shared {
         self: &Arc<Self>,
         client: ClientId,
         kind: ClientKind,
-        request: (u64, PaneId, Option<String>),
+        request: (u64, Option<PaneId>, Option<String>),
         outbound: &Arc<OutboundMailbox>,
         walk: (&Arc<AtomicBool>, &Arc<Mutex<()>>),
     ) {
         let (request_id, pane, dir) = request;
         let (cancel, turn) = walk;
+        let own_root = dir.as_deref().is_some_and(names_own_root);
         let refusal = {
             let inner = self.inner.lock();
             if kind != ClientKind::Interactive {
@@ -719,12 +720,16 @@ impl Shared {
                 Some("path listing needs the zz desktop app".to_owned())
             } else if inner.client_flags.contains(client) {
                 Some("client is read-only".to_owned())
-            } else if !client_is_attached_to_pane(&inner, client, pane)
-                && !dir.as_deref().is_some_and(names_own_root)
-            {
-                Some(format!("{pane} is not in an attached session"))
-            } else {
+            } else if own_root {
                 None
+            } else {
+                match pane {
+                    None => Some("a relative path needs a terminal pane".to_owned()),
+                    Some(pane) if !client_is_attached_to_pane(&inner, client, pane) => {
+                        Some(format!("{pane} is not in an attached session"))
+                    }
+                    Some(_) => None,
+                }
             }
         };
         if let Some(refusal) = refusal {
@@ -738,27 +743,43 @@ impl Shared {
             self.record_requested_path_list_root(client, request_id, dir.as_deref());
         let input = {
             let inner = self.inner.lock();
-            inner.terminals.get(&pane).map(|terminal| {
-                let facts = inner.engine.pane_runtime_facts(pane);
-                ListingInput {
-                    pane,
-                    pane_pid: terminal.process_id(),
-                    foreground: terminal.foreground_process_id(),
-                    start_path: facts
-                        .map(|facts| facts.start_path.clone())
-                        .unwrap_or_default(),
-                    reported_path: facts
-                        .map(|facts| facts.reported_path.clone())
-                        .unwrap_or_default(),
+            let terminal = pane.and_then(|pane| Some((pane, inner.terminals.get(&pane)?)));
+            match terminal {
+                None if own_root => Some(ListingInput {
+                    pane: None,
+                    pane_pid: None,
+                    foreground: None,
+                    start_path: String::new(),
+                    reported_path: String::new(),
                     home: home_directory_for(&inner.engine, ""),
+                }),
+                None => None,
+                Some((pane, terminal)) => {
+                    let facts = inner.engine.pane_runtime_facts(pane);
+                    Some(ListingInput {
+                        pane: Some(pane),
+                        pane_pid: terminal.process_id(),
+                        foreground: terminal.foreground_process_id(),
+                        start_path: facts
+                            .map(|facts| facts.start_path.clone())
+                            .unwrap_or_default(),
+                        reported_path: facts
+                            .map(|facts| facts.reported_path.clone())
+                            .unwrap_or_default(),
+                        home: home_directory_for(&inner.engine, ""),
+                    })
                 }
-            })
+            }
         };
         let Some(input) = input else {
             self.restore_path_list_root(client, request_id, previous);
+            let error = pane.map_or_else(
+                || "a relative path needs a terminal pane".to_owned(),
+                |pane| format!("{pane} is not a terminal pane"),
+            );
             let _ = outbound.enqueue_reliable(&ProtocolMessage::PathListBegin {
                 request_id,
-                result: Err(format!("{pane} is not a terminal pane")),
+                result: Err(error),
             });
             return;
         };
@@ -854,7 +875,7 @@ impl Shared {
 }
 
 struct ListingInput {
-    pane: PaneId,
+    pane: Option<PaneId>,
     pane_pid: Option<u32>,
     foreground: Option<u32>,
     start_path: String,
@@ -1012,9 +1033,12 @@ fn resolve_path_list(
         ),
         None => None,
     };
-    let root = requested
-        .or(fallback)
-        .ok_or_else(|| format!("{pane} has no working directory"))?;
+    let root = requested.or(fallback).ok_or_else(|| {
+        pane.map_or_else(
+            || "no folder to list".to_owned(),
+            |pane| format!("{pane} has no working directory"),
+        )
+    })?;
     let root_text = root
         .to_str()
         .filter(|text| text.len() <= MAX_PATH_LIST_TEXT_BYTES && listable_text(text))
@@ -1028,7 +1052,10 @@ fn resolve_path_list(
         root: root_text,
         display_root: display_root(&root, home.as_deref()),
         cwd: cwd.map(str::to_owned),
-        insert: insert_style(pane, pane_pid, foreground, &basename),
+        insert: pane.map_or_else(
+            || InsertStyle::Shell(shell_kind(&basename)),
+            |pane| insert_style(pane, pane_pid, foreground, &basename),
+        ),
     };
     Ok(ResolvedListing {
         root_is_home: home.as_deref().is_some_and(|home| Path::new(home) == root),
@@ -1931,13 +1958,14 @@ mod tests {
         shared: &Arc<Shared>,
         client: ClientId,
         kind: ClientKind,
-        request: (u64, PaneId, Option<String>),
+        request: (u64, impl Into<Option<PaneId>>, Option<String>),
     ) -> Vec<ProtocolMessage> {
         let mailbox = OutboundMailbox::new();
+        let (request_id, pane, dir) = request;
         shared.start_path_list(
             client,
             kind,
-            request,
+            (request_id, pane.into(), dir),
             &mailbox,
             (&Arc::new(AtomicBool::new(false)), &Arc::new(Mutex::new(()))),
         );
@@ -2165,6 +2193,64 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn a_named_folder_lists_without_a_terminal_pane() {
+        let (shared, client, shell) = path_list_client();
+        let mut context = ExecutionContext::default();
+        shared
+            .execute(
+                client,
+                ClientKind::Interactive,
+                &mut context,
+                &CommandInvocation::new("new-window", ["-t", "roots:", "--kind", "picker"]),
+            )
+            .expect("picker window");
+        let picker = context.pane.expect("picker pane");
+        assert_ne!(picker, shell);
+        let scratch = tempfile::tempdir().expect("temp dir");
+        let root = scratch.path().canonicalize().expect("canonical temp dir");
+        touch(&root, "notes/a.txt");
+        let root_text = root.to_str().expect("utf-8 temp dir").to_owned();
+        for (request_id, anchor) in [(1, None), (2, Some(picker))] {
+            let messages = listing(
+                &shared,
+                client,
+                ClientKind::Interactive,
+                (request_id, anchor, Some(root_text.clone())),
+            );
+            let Some(ProtocolMessage::PathListBegin {
+                result: Ok(begin), ..
+            }) = messages.first()
+            else {
+                panic!("{anchor:?} should list {root_text}, got {messages:?}");
+            };
+            assert_eq!(begin.root, root_text);
+            assert!(messages.iter().any(|message| matches!(
+                message,
+                ProtocolMessage::PathListChunk { entries, .. }
+                    if entries.iter().any(|entry| entry.rel == "notes")
+            )));
+        }
+        for (anchor, expected) in [
+            (None, "a relative path needs a terminal pane".to_owned()),
+            (Some(picker), format!("{picker} is not a terminal pane")),
+        ] {
+            let messages = listing(
+                &shared,
+                client,
+                ClientKind::Interactive,
+                (3, anchor, Some("notes".to_owned())),
+            );
+            assert!(
+                matches!(
+                    messages.as_slice(),
+                    [ProtocolMessage::PathListBegin { result: Err(error), .. }] if *error == expected
+                ),
+                "{messages:?}"
+            );
+        }
+    }
+
     fn path_list_client() -> (Arc<Shared>, ClientId, PaneId) {
         let shared = Arc::new(Shared::new(1));
         let (client, _) =
@@ -2262,7 +2348,7 @@ mod tests {
         shared.start_path_list(
             client,
             ClientKind::Interactive,
-            (1, pane, Some(root.clone())),
+            (1, Some(pane), Some(root.clone())),
             &mailbox,
             (&first, &turn),
         );
@@ -2270,7 +2356,7 @@ mod tests {
         shared.start_path_list(
             client,
             ClientKind::Interactive,
-            (2, pane, Some(root)),
+            (2, Some(pane), Some(root)),
             &mailbox,
             (&Arc::new(AtomicBool::new(false)), &turn),
         );

@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::VecDeque;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Instant;
 
@@ -836,17 +836,6 @@ impl ChatState {
 
     fn open(&self, item: &ItemId) -> Option<&Open> {
         self.items.iter().find(|open| open.id == *item)
-    }
-
-    pub(crate) fn within(&self, item: &ItemId, roots: &HashSet<ItemId>) -> bool {
-        let mut at = self.open(item);
-        while let Some(open) = at {
-            if roots.contains(&open.id) {
-                return true;
-            }
-            at = open.parent.as_ref().and_then(|parent| self.open(parent));
-        }
-        false
     }
 
     fn pending(&self, item: &ItemId) -> bool {

@@ -17,6 +17,7 @@ pub enum PaneTag {
     Terminal,
     Browser,
     Editor,
+    Agent(AgentProvider),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,6 +151,7 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
         PaneKindSnapshot::Terminal => PaneTag::Terminal,
         PaneKindSnapshot::Browser(_) => PaneTag::Browser,
         PaneKindSnapshot::Editor(_) => PaneTag::Editor,
+        PaneKindSnapshot::Agent(agent) => PaneTag::Agent(agent.provider),
     }
 }
 
@@ -157,6 +159,10 @@ pub fn pane_tag(kind: &PaneKindSnapshot) -> PaneTag {
 pub fn pane_program(pane: &PaneSnapshot) -> Option<&'static Program> {
     match &pane.kind {
         PaneKindSnapshot::Terminal => resolve(pane.summary.process.iter().map(String::as_str)),
+        PaneKindSnapshot::Agent(agent) => Program::by_id(match agent.provider {
+            AgentProvider::ClaudeCode => "claude",
+            AgentProvider::Codex => "codex",
+        }),
         _ => None,
     }
 }
@@ -374,7 +380,9 @@ fn headline_pane<'a>(
 }
 
 fn agent_like(pane: &PaneSnapshot) -> bool {
-    pane.status.is_some() || !pane.summary.name.trim().is_empty()
+    matches!(pane.kind, PaneKindSnapshot::Agent(_))
+        || pane.status.is_some()
+        || !pane.summary.name.trim().is_empty()
 }
 
 fn agent_title(pane: &PaneSnapshot) -> Option<String> {
@@ -520,6 +528,10 @@ pub fn pane_detail(window: &WindowSnapshot, pane: &PaneSnapshot, title: &str) ->
             )]
         }
         PaneKindSnapshot::Picker => vec![part("New pane", Tone::Muted)],
+        PaneKindSnapshot::Agent(agent) => vec![part(
+            location.unwrap_or_else(|| agent.provider.label().to_owned()),
+            Tone::Muted,
+        )],
     }
 }
 
@@ -534,6 +546,7 @@ fn location(pane: &PaneSnapshot) -> Option<String> {
         });
     }
     let fallback = match &pane.kind {
+        PaneKindSnapshot::Agent(agent) => agent.cwd.as_deref()?.to_string_lossy().into_owned(),
         PaneKindSnapshot::Editor(editor) => editor.cwd.clone(),
         _ => return None,
     };

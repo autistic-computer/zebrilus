@@ -54,6 +54,20 @@ const MAX_REPLAY_UPDATES: usize = 4096;
 const SESSION_PAGE: usize = 50;
 const SIDE_TIMEOUT: Duration = Duration::from_mins(2);
 const VERB_HELP: &str = "zz commands: `/btw <question>` (or `/side`) asks Claude without adding to the conversation, `/steer <text>` redirects the running turn, `/fork` continues in a copy of this conversation, and `/rewind [n]` continues from before your last n prompts (1 by default) without changing files. Every other `/` command goes to Claude Code.";
+const CHAT_REFUSED: [&str; 12] = [
+    "status",
+    "help",
+    "memory",
+    "permissions",
+    "export",
+    "rewind",
+    "resume",
+    "tasks",
+    "btw",
+    "focus",
+    "fast",
+    "doctor",
+];
 const AGENT_NAME: &str = "Claude Code";
 const AGENT_KEY: &str = "claude-code";
 const BASE_ARGS: [&str; 11] = [
@@ -195,6 +209,7 @@ pub(crate) async fn run_claude_runtime(
         generation: 0,
         stderr: StderrTail::default(),
         ready_sent: false,
+        resumed_quiet: false,
         session: None,
         starting: None,
         translator: Translator::default(),
@@ -318,6 +333,7 @@ impl Permission {
 struct Settings {
     commands: Vec<Value>,
     hidden_commands: HashSet<String>,
+    listed_commands: Option<HashSet<String>>,
     models: Vec<Value>,
     model: String,
     mode: String,
@@ -329,6 +345,7 @@ impl Settings {
         Self {
             commands: Vec::new(),
             hidden_commands: HashSet::new(),
+            listed_commands: None,
             models: Vec::new(),
             model: command.model_flag().unwrap_or_else(|| "default".to_owned()),
             mode: command.mode_flag().unwrap_or_else(|| "default".to_owned()),
@@ -436,6 +453,7 @@ struct Runtime {
     generation: u64,
     stderr: StderrTail,
     ready_sent: bool,
+    resumed_quiet: bool,
     session: Option<Session>,
     starting: Option<Starting>,
     translator: Translator,
@@ -647,6 +665,20 @@ impl Runtime {
             }
             RuntimeCommand::Prompt { turn_id, prompt } => {
                 self.last_turn = self.last_turn.max(turn_id);
+                if let Some(name) = self.refused_command(&prompt.text) {
+                    self.emit(AgentStreamPayload::PromptAccepted { turn_id })
+                        .await?;
+                    return self
+                        .finish(
+                            turn_id,
+                            AgentPromptOutcome::Failed {
+                                message: format!(
+                                    "/{name} only works in Claude Code's own screen; flip the pane to the CLI to use it"
+                                ),
+                            },
+                        )
+                        .await;
+                }
                 if self.deferred_cancels.remove(&turn_id) {
                     self.emit(AgentStreamPayload::PromptAccepted { turn_id })
                         .await?;
@@ -860,6 +892,7 @@ impl Runtime {
             },
             other => other,
         };
+        self.resumed_quiet = matches!(launch, Launch::Resume(_));
         self.starting = Some(Starting { start, launch, cwd });
         self.request(
             &json!({
@@ -1229,8 +1262,51 @@ impl Runtime {
         .await
     }
 
+    fn refused_command(&self, text: &str) -> Option<String> {
+        let name = text
+            .trim_start()
+            .strip_prefix('/')?
+            .split_whitespace()
+            .next()?;
+        (CHAT_REFUSED.contains(&name) || self.settings.hidden_commands.contains(name))
+            .then(|| name.to_owned())
+    }
+
+    async fn follow_session(&mut self, frame: &Value) -> Result<(), String> {
+        let Some(next) = frame["session_id"]
+            .as_str()
+            .filter(|next| sessions::valid_uuid(next))
+        else {
+            return Ok(());
+        };
+        let Some(session) = self.session.as_mut().filter(|session| session.id != next) else {
+            return Ok(());
+        };
+        next.clone_into(&mut session.id);
+        let cwd = session.cwd.clone();
+        self.emit(AgentStreamPayload::SessionSwitched {
+            session_id: next.to_owned(),
+            cwd,
+            modes: Some(self.settings.mode_state()),
+            config_options: Some(self.settings.config_options()),
+            replay: Vec::new(),
+        })
+        .await
+    }
+
     async fn publish_commands(&self) -> Result<(), String> {
-        let update = available_commands(&self.settings.commands, &self.settings.hidden_commands);
+        let hidden = self
+            .settings
+            .hidden_commands
+            .iter()
+            .cloned()
+            .chain(CHAT_REFUSED.map(str::to_owned))
+            .collect::<HashSet<_>>();
+        let update = available_commands(
+            &self.settings.commands,
+            &hidden,
+            self.settings.listed_commands.as_ref(),
+        );
         self.update(update, true).await
     }
 
@@ -1442,6 +1518,9 @@ impl Runtime {
             }
             Some("command_lifecycle") => return self.lifecycle(&frame).await,
             Some("system") => self.system(&frame).await?,
+            Some("result") if self.resumed_quiet && frame["num_turns"] == 0 => {
+                return Ok(());
+            }
             Some("result") => {
                 let error = (frame["is_error"] == true).then(|| result_error(&frame));
                 let commands = result_commands(&frame);
@@ -1462,6 +1541,7 @@ impl Runtime {
                         .await?;
                     }
                 }
+                self.follow_session(&frame).await?;
             }
             _ => {}
         }
@@ -1505,8 +1585,18 @@ impl Runtime {
                     .filter_map(Value::as_str)
                     .map(str::to_owned)
                     .collect::<HashSet<_>>();
-                if hidden != self.settings.hidden_commands {
+                let listed = frame["slash_commands"].as_array().map(|names| {
+                    names
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_owned)
+                        .collect::<HashSet<_>>()
+                });
+                if hidden != self.settings.hidden_commands
+                    || listed != self.settings.listed_commands
+                {
                     self.settings.hidden_commands = hidden;
+                    self.settings.listed_commands = listed;
                     self.publish_commands().await?;
                 }
                 let mut changed = false;
@@ -1575,6 +1665,9 @@ impl Runtime {
                 self.publish_commands().await?;
             }
             Some("session_state_changed") => {
+                if frame["state"] == "idle" {
+                    self.resumed_quiet = false;
+                }
                 let fact = if frame["state"] == "idle" {
                     Fact::Idle
                 } else {

@@ -250,35 +250,6 @@ impl Translator {
             .collect()
     }
 
-    pub(crate) fn asking(&self) -> Option<(&str, &str)> {
-        let asked = self.asked.first()?;
-        let question = asked
-            .questions
-            .iter()
-            .zip(&asked.answers)
-            .find(|(_, answer)| answer.is_none())
-            .map_or("", |(question, _)| question.as_str());
-        Some((&asked.id, question))
-    }
-
-    pub(crate) fn asks(&self, id: &str) -> bool {
-        self.asked.iter().any(|asked| asked.id == id)
-    }
-
-    pub(crate) fn agent_answer(&self, path: &str, text: &str) -> Vec<Value> {
-        let Some(row) = self.paths.get(path) else {
-            return Vec::new();
-        };
-        if text.trim().is_empty() {
-            return Vec::new();
-        }
-        vec![json!({
-            "sessionUpdate": "tool_call_update",
-            "toolCallId": row,
-            "content": [text_content(&tail(text))],
-        })]
-    }
-
     fn ask(&mut self, id: &str, item: &Value) -> Vec<Value> {
         let questions = item["questions"]
             .as_array()
@@ -1481,7 +1452,6 @@ mod tests {
             )
         };
         assert!(reply(&mut translator, 0, "Which color?", "Red").is_empty());
-        assert_eq!(translator.asking(), Some(("call_q", "Which size?")));
         let done = reply(&mut translator, 1, "Which size?", "Large");
         assert_eq!(done.len(), 1, "{done:?}");
         assert_eq!(done[0]["status"], "completed");
@@ -1492,7 +1462,6 @@ mod tests {
                 {"question": "Which size?", "answer": "Large"},
             ])
         );
-        assert_eq!(translator.asking(), None);
     }
 
     #[test]

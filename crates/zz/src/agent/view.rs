@@ -1,7 +1,5 @@
 use std::{
-    cell::Cell,
     collections::{BTreeSet, HashMap},
-    rc::Rc,
     sync::Arc,
 };
 use zz_ui::agent::composer::{COMPOSER_OUTER_PADDING, Composer};
@@ -16,21 +14,19 @@ use zz_ui::agent::presentation::MAX_RENDERED_ERROR_BYTES;
 #[cfg(test)]
 use zz_ui::agent::presentation::rendered_error;
 use zz_ui::agent::presentation::{
-    empty_state, error_card, lens_welcome, permission_card, permission_option, spinner_phase,
-    terminal_wait_card,
+    agent_welcome, empty_state, error_card, permission_card, permission_option, spinner_phase,
 };
 use zz_ui::agent::question::{QuestionCardAction, QuestionCardState, QuestionCardStep};
 use zz_ui::agent::tasks::{TaskTrayAction, TrayPanel, task_tray};
 
 use ala::{
-    AnyElement, Context, Entity, EntityId, EventEmitter, FocusHandle, Focusable, Image,
-    IntoElement, KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Pixels,
-    Render, ScrollStrategy, SharedString, Subscription, UniformListScrollHandle, Window, div,
-    prelude::*, px, uniform_list,
+    AnyElement, Context, Entity, EntityId, FocusHandle, Focusable, Image, IntoElement,
+    KeyDownEvent, ListAlignment, ListState, MouseButton, MouseDownEvent, Render, ScrollStrategy,
+    SharedString, Subscription, UniformListScrollHandle, Window, div, prelude::*, px, uniform_list,
 };
 use zz_client::agent_completion::{
     CommandCompletion, active_command_hint, command_label, composer_completions,
-    meaningful_command_description, pane_commands, terminal_command,
+    meaningful_command_description, pane_commands,
 };
 use zz_client::agent_settings::{ComposerSetter, composer_setter};
 use zz_client::agent_transcript::rewind_command;
@@ -480,10 +476,6 @@ pub(crate) struct AgentView {
     floats: bool,
     chat: zz_ui::agent::chat::ChatPane,
     chat_inline: bool,
-    terminal: Option<Entity<crate::terminal::view::TerminalView>>,
-    sheet: Option<harness::Sheet>,
-    refocus: bool,
-    lens_height: Rc<Cell<Pixels>>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -525,7 +517,13 @@ impl AgentView {
             .iter()
             .flat_map(|session| &session.windows)
             .find_map(|window| window.panes.get(&pane))
-            .map(|pane| std::path::PathBuf::from(&pane.summary.cwd))
+            .map(|pane| match &pane.kind {
+                zz_protocol::PaneKindSnapshot::Agent(zz_protocol::AgentDescriptor {
+                    cwd: Some(cwd),
+                    ..
+                }) if pane.summary.cwd.is_empty() => cwd.clone(),
+                _ => std::path::PathBuf::from(&pane.summary.cwd),
+            })
             .filter(|cwd| cwd.is_absolute())
             .unwrap_or_else(|| std::path::PathBuf::from("/"));
         controller.update(cx, |controller, _| {
@@ -606,10 +604,6 @@ impl AgentView {
             floats,
             chat: zz_ui::agent::chat::ChatPane::default(),
             chat_inline: false,
-            terminal: None,
-            sheet: None,
-            lens_height: Rc::default(),
-            refocus: false,
             _subscriptions: vec![
                 input_observer,
                 timeline_store_observer,
@@ -699,8 +693,7 @@ impl AgentView {
         let cwd = self.pane_state.cwd.clone();
         self.timeline_store
             .update(cx, |store, cx| store.set_cwd(Some(cwd), cx));
-        let closed = self.follow_dialogs();
-        changed || store_changed || closed
+        changed || store_changed
     }
 
     fn update_timeline_store(
@@ -1017,9 +1010,6 @@ impl AgentView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.sheet_open() {
-            return;
-        }
         if self.completions.is_empty() && self.handle_permission_key(event, window, cx) {
             cx.stop_propagation();
             return;
@@ -1088,11 +1078,6 @@ impl AgentView {
         });
         match result {
             Ok(()) => {
-                if terminal_command(&value, &self.pane_state.available_commands).is_some()
-                    && !self.open_sheet(value.trim(), None, window, cx)
-                {
-                    cx.emit(ShowTerminal);
-                }
                 self.input.update(cx, |input, cx| {
                     input.set_value("", window, cx);
                 });
@@ -1188,13 +1173,12 @@ impl AgentView {
             .as_deref()
             .unwrap_or(state.provider.label());
         let message: SharedString = match state.connection {
-            AgentConnectionState::Starting | AgentConnectionState::Restoring => {
-                format!("Reading {agent}’s transcript…").into()
-            }
-            AgentConnectionState::Ready => return lens_welcome(state.provider, cx),
+            AgentConnectionState::Starting => format!("Starting {agent}…").into(),
+            AgentConnectionState::Restoring => format!("Resuming {agent}’s session…").into(),
+            AgentConnectionState::Ready => return agent_welcome(state.provider, cx),
             AgentConnectionState::Running => format!("Waiting for {agent}’s first update…").into(),
             AgentConnectionState::Cancelling => "Cancelling the current turn…".into(),
-            AgentConnectionState::Failed => format!("Could not read {agent}’s transcript.").into(),
+            AgentConnectionState::Failed => format!("{agent} stopped.").into(),
             AgentConnectionState::Disconnected => "The agent is offline.".into(),
         };
         empty_state(message, pane_is_busy(state.connection), view, cx)
@@ -1251,22 +1235,7 @@ impl AgentView {
             return None;
         }
         if permission.options.is_empty() {
-            let view = view.clone();
-            return Some(
-                terminal_wait_card(
-                    format!("agent-show-terminal-{}-{request_id}", self.pane.0),
-                    permission.title.clone(),
-                    move |window, cx| {
-                        view.update(cx, |view, cx| {
-                            if !view.open_sheet("", Some(request_id), window, cx) {
-                                cx.emit(ShowTerminal);
-                            }
-                        });
-                    },
-                    cx,
-                )
-                .into_any_element(),
-            );
+            return None;
         }
         let enabled = !self.permission_wizard.answered.contains(&request_id);
         let highlighted = current.then_some(self.permission_wizard.highlighted);
@@ -1656,7 +1625,7 @@ impl AgentView {
                                 format!("agent-completion-{}-{index}", pane.0),
                                 &label,
                                 description.map(Into::into),
-                                SlashKind::of(command.terminal, command.skill),
+                                SlashKind::of(command.skill),
                                 is_selected,
                                 cx,
                             )
@@ -1790,10 +1759,6 @@ impl AgentView {
     }
 }
 
-pub(crate) struct ShowTerminal;
-
-impl EventEmitter<ShowTerminal> for AgentView {}
-
 impl Focusable for AgentView {
     fn focus_handle(&self, cx: &ala::App) -> FocusHandle {
         self.focus(cx)
@@ -1892,7 +1857,6 @@ impl Render for AgentView {
         let view = cx.entity();
         let input_focus = self.focus(cx);
         let chat_body = use_chat.then(|| self.render_chat(&state, &view, window, cx));
-        let sheet = self.render_sheet(&view, window, cx);
         let timeline = AgentTimeline::new(
             rows,
             self.timeline_scroll.clone(),
@@ -1916,7 +1880,7 @@ impl Render for AgentView {
             timeline
         };
         let root = div()
-            .id(("agent-lens", self.pane.0))
+            .id(("agent-pane", self.pane.0))
             .key_context(AGENT_KEY_CONTEXT)
             .track_focus(&input_focus)
             .relative()
@@ -1964,8 +1928,7 @@ impl Render for AgentView {
                         this.child(self.render_jump_to_end(&view, cx))
                     }),
             )
-            .child(self.render_composer(&state, &view, cx))
-            .children(sheet);
+            .child(self.render_composer(&state, &view, cx));
         round_div_radii(root, pane_content_radii(cx, self.window_corners))
             .when(!floats, |root| root.rounded_tl(px(0.0)).rounded_tr(px(0.0)))
     }
@@ -1976,7 +1939,7 @@ fn disconnected_pane_state() -> AgentPaneState {
         provider: AgentProvider::Codex,
         connection: AgentConnectionState::Disconnected,
         pending_permissions: Arc::from([]),
-        error: Some(Arc::from("the lens is not open")),
+        error: Some(Arc::from("the agent is not connected")),
         agent_name: None,
         cwd: std::path::PathBuf::from("/"),
         session_id: None,
@@ -1988,7 +1951,6 @@ fn disconnected_pane_state() -> AgentPaneState {
         pending_composer: None,
         queued_prompts: 0,
         settings: None,
-        dialogs_closed: 0,
     }
 }
 
@@ -2457,10 +2419,6 @@ mod completion_tests {
                 floats: false,
                 chat: zz_ui::agent::chat::ChatPane::default(),
                 chat_inline: false,
-                terminal: None,
-                sheet: None,
-                refocus: false,
-                lens_height: Rc::default(),
                 _subscriptions: Vec::new(),
             }
         });
@@ -2550,10 +2508,6 @@ mod completion_tests {
                 floats: false,
                 chat: zz_ui::agent::chat::ChatPane::default(),
                 chat_inline: false,
-                terminal: None,
-                sheet: None,
-                refocus: false,
-                lens_height: Rc::default(),
                 _subscriptions: Vec::new(),
             });
             view.read(cx).focus(cx).focus(window, cx);

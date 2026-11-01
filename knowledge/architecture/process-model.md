@@ -117,13 +117,12 @@ legacy setuid sandbox layer is disabled (no `--no-sandbox`).
 
 # Agent lens model
 
-The daemon does not launch an AI provider for any pane. Claude Code and Codex run as the user's own
-CLIs in terminal panes. When a client opens the lens on one, or `agent-send --wait` targets it,
-`agent::host::AgentHost` starts a lens runtime for that terminal's `PaneId` on its own
-`zz-agent-{n}` thread. The runtime starts no process: it tails the CLI's transcript (Claude's session
-jsonl, the rollout Codex holds open), pastes prompts into the terminal, and lives until the pane
-closes. Pane removal and **daemon** shutdown stop it; a GUI quit does neither. The native Claude and
-Codex drivers and the ACP runtime are still in the crate, but nothing opens them. See [agent lens](/concepts/agent-lens.md).
+Claude Code and Codex run either as the user's own CLIs in terminal panes, or headless under an agent
+pane. For an agent pane `agent::host::AgentHost` runs the CLI's native driver on its own
+`zz-agent-{n}` thread: `claude -p` over stream-json, or a client of Codex's shared app server
+daemon (an app server of its own when `agent-command` has arguments). It lives until the pane closes
+or flips to the CLI. Pane removal and **daemon** shutdown stop it; a GUI quit does neither. See
+[agent panes](/concepts/agent-panes.md).
 
 The desktop client keeps only the rendering half: the reducer, view, composer draft and permission
 cards. `zz-tui` links only

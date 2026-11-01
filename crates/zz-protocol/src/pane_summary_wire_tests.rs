@@ -30,6 +30,7 @@ fn filled() -> PaneSummary {
         repo: "~".to_owned(),
         branch: "main".to_owned(),
         process: vec!["codex".to_owned(), "sleep".to_owned()],
+        flip_armed: true,
     }
 }
 
@@ -83,9 +84,9 @@ fn status(app: String, title: String, message: String) -> PaneStatus {
     }
 }
 
-const SUMMARY_TAIL: [u8; 32] = [
+const SUMMARY_TAIL: [u8; 33] = [
     0, 172, 2, 1, 1, 1, 2, 2, b'r', b'v', 1, b'~', 1, b'~', 4, b'm', b'a', b'i', b'n', 2, 5, b'c',
-    b'o', b'd', b'e', b'x', 5, b's', b'l', b'e', b'e', b'p',
+    b'o', b'd', b'e', b'x', 5, b's', b'l', b'e', b'e', b'p', 1,
 ];
 
 #[test]

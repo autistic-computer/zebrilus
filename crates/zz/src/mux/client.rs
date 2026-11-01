@@ -835,6 +835,7 @@ struct HostConnection {
     reconnect_attach: Option<ReconnectAttachState>,
     in_flight_commands: RwLock<VecDeque<(u64, String)>>,
     watched_commands: RwLock<VecDeque<(u64, bool)>>,
+    answered_commands: RwLock<BTreeSet<u64>>,
     ssh_auth_declined: bool,
     color_scheme_sent: Option<TerminalColorScheme>,
     background_core: ClientCore,
@@ -866,6 +867,7 @@ impl HostConnection {
             reconnect_attach: None,
             in_flight_commands: RwLock::new(VecDeque::new()),
             watched_commands: RwLock::new(VecDeque::new()),
+            answered_commands: RwLock::new(BTreeSet::new()),
             ssh_auth_declined: false,
             color_scheme_sent: None,
             background_core: ClientCore::new(),
@@ -946,6 +948,7 @@ impl HostConnection {
             reconnect_attach: None,
             in_flight_commands: RwLock::new(VecDeque::new()),
             watched_commands: RwLock::new(VecDeque::new()),
+            answered_commands: RwLock::new(BTreeSet::new()),
             ssh_auth_declined: false,
             color_scheme_sent: None,
             background_core: ClientCore::new(),
@@ -974,6 +977,18 @@ impl HostConnection {
             watched.pop_front();
         }
         watched.push_back((request_id, false));
+    }
+
+    fn answer_command(&self, request_id: u64) {
+        let mut answered = self.answered_commands.write();
+        while answered.len() >= MAX_TRACKED_COMMANDS {
+            answered.pop_first();
+        }
+        answered.insert(request_id);
+    }
+
+    fn take_answered(&self, request_id: u64) -> bool {
+        self.answered_commands.write().remove(&request_id)
     }
 
     fn settle_command(&self, request_id: u64) -> bool {
@@ -1071,9 +1086,10 @@ pub struct MuxClient {
     #[cfg(feature = "agent-pane")]
     agent_events: AgentEvents,
     #[cfg(feature = "agent-pane")]
-    agent_lenses: BTreeSet<PaneId>,
+    watched_agents: BTreeSet<PaneId>,
     screenshot_requests: Vec<(PaneId, u64, String)>,
     terminal_commands: BTreeMap<PaneId, Vec<TerminalUiCommand>>,
+    command_answers: Vec<(u64, Result<(), String>)>,
     pane_images: BTreeMap<PaneId, PaneImageSnapshots>,
     pasted_image_assemblies: BTreeMap<(PaneId, u32), PastedImageAssembly>,
     pending_pasted_image_previews: BTreeSet<(PaneId, u32)>,
@@ -1225,9 +1241,10 @@ impl MuxClient {
             #[cfg(feature = "agent-pane")]
             agent_events: AgentEvents::default(),
             #[cfg(feature = "agent-pane")]
-            agent_lenses: BTreeSet::new(),
+            watched_agents: BTreeSet::new(),
             screenshot_requests: Vec::new(),
             terminal_commands: BTreeMap::new(),
+            command_answers: Vec::new(),
             pane_images: BTreeMap::new(),
             pasted_image_assemblies: BTreeMap::new(),
             pending_pasted_image_previews: BTreeSet::new(),
@@ -2934,7 +2951,7 @@ impl MuxClient {
     pub(crate) fn request_host_path_list(
         &mut self,
         host: HostId,
-        pane: PaneId,
+        pane: Option<PaneId>,
         dir: String,
     ) -> Option<u64> {
         #[cfg(test)]
@@ -3093,6 +3110,37 @@ impl MuxClient {
         let request_id = self.execute_on_host(self.attached_host, command)?;
         self.attached_connection().watch_command(request_id);
         Some(request_id)
+    }
+
+    pub fn execute_answered(&self, command: CommandInvocation) -> Option<u64> {
+        let request_id = self.execute_on_host(self.attached_host, command)?;
+        self.attached_connection().answer_command(request_id);
+        Some(request_id)
+    }
+
+    pub(crate) fn has_command_answers(&self) -> bool {
+        !self.command_answers.is_empty()
+    }
+
+    pub(crate) fn take_command_answers(&mut self) -> Vec<(u64, Result<(), String>)> {
+        std::mem::take(&mut self.command_answers)
+    }
+
+    fn answer(&mut self, host: HostId, request_id: u64, result: Result<(), String>) -> bool {
+        if request_id == 0
+            || !self
+                .connections
+                .get(&host)
+                .is_some_and(|connection| connection.take_answered(request_id))
+        {
+            return false;
+        }
+        if let Some(connection) = self.connections.get(&host) {
+            connection.take_command(request_id);
+            connection.settle_command(request_id);
+        }
+        self.command_answers.push((request_id, result));
+        true
     }
 
     #[must_use]
@@ -3805,7 +3853,7 @@ impl MuxClient {
 
     #[cfg(feature = "agent-pane")]
     fn apply_agent_updates(&mut self, pane: PaneId, first_seq: u64, items: Vec<Vec<u8>>) {
-        if !self.agent_lenses.contains(&pane) {
+        if !self.watched_agents.contains(&pane) {
             return;
         }
         let cursor = self.agent_cursors.entry(pane).or_default();
@@ -3836,8 +3884,8 @@ impl MuxClient {
     }
 
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn open_agent_lens(&mut self, pane: PaneId) {
-        self.agent_lenses.insert(pane);
+    pub(crate) fn watch_agent(&mut self, pane: PaneId) {
+        self.watched_agents.insert(pane);
         if !self.agent_cursors.contains_key(&pane)
             && self.send_agent_request(pane, AgentRequest::Replay { from_seq: 0 })
         {
@@ -3847,8 +3895,8 @@ impl MuxClient {
     }
 
     #[cfg(feature = "agent-pane")]
-    pub(crate) fn close_agent_lens(&mut self, pane: PaneId) {
-        self.agent_lenses.remove(&pane);
+    pub(crate) fn unwatch_agent(&mut self, pane: PaneId) {
+        self.watched_agents.remove(&pane);
         self.agent_cursors.remove(&pane);
         self.agent_replays_pending.remove(&pane);
         self.agent_events
@@ -4075,6 +4123,10 @@ impl MuxClient {
         if request_id == 0 {
             return false;
         }
+        if self.answer(host, request_id, Err(error.to_string())) {
+            cx.notify();
+            return true;
+        }
         let tracked = self.connections.get(&host).and_then(|connection| {
             connection.settle_command(request_id);
             connection.take_command(request_id)
@@ -4253,7 +4305,9 @@ impl MuxClient {
                     request_id,
                     ..
                 }) => {
-                    if let Some(connection) = self.connections.get(&host) {
+                    if self.answer(host, request_id, Ok(())) {
+                        cx.notify();
+                    } else if let Some(connection) = self.connections.get(&host) {
                         connection.take_command(request_id);
                         connection.settle_command(request_id);
                     }
@@ -4509,7 +4563,7 @@ impl MuxClient {
             CoreEvent::AgentStateChanged { pane, .. } => {
                 cx.emit(AgentStateChanged);
                 #[cfg(feature = "agent-pane")]
-                if self.agent_lenses.contains(&pane)
+                if self.watched_agents.contains(&pane)
                     && let Some(state) = self.core.agent_state(pane).cloned()
                 {
                     self.agent_events.states.push((pane, state));
@@ -4529,7 +4583,7 @@ impl MuxClient {
                     "agent lane cleared for {pane} from {next_seq}; replaying from the shell's cursor"
                 );
                 #[cfg(feature = "agent-pane")]
-                if self.agent_lenses.contains(&pane) {
+                if self.watched_agents.contains(&pane) {
                     self.request_agent_replay_from_cursor(pane);
                 }
             }
@@ -4622,7 +4676,7 @@ impl MuxClient {
         self.browser_commands.remove(&pane);
         self.terminal_commands.remove(&pane);
         #[cfg(feature = "agent-pane")]
-        self.close_agent_lens(pane);
+        self.unwatch_agent(pane);
         self.pane_images.remove(&pane);
         self.pasted_image_assemblies
             .retain(|(target, _), _| *target != pane);
@@ -4726,10 +4780,14 @@ impl MuxClient {
                 }
             }
             CommandResponse::Success { request_id, .. } => {
-                let connection = self.attached_connection();
-                connection.take_command(request_id);
-                if connection.settle_command(request_id) {
+                if self.answer(host, request_id, Ok(())) {
                     cx.notify();
+                } else {
+                    let connection = self.attached_connection();
+                    connection.take_command(request_id);
+                    if connection.settle_command(request_id) {
+                        cx.notify();
+                    }
                 }
                 self.error = None;
             }
@@ -8118,7 +8176,7 @@ mod tests {
     #[cfg(feature = "agent-pane")]
     #[cfg(feature = "agent-pane")]
     #[ala::test]
-    fn a_lens_tracks_its_pane_only_while_it_is_open(cx: &mut TestAppContext) {
+    fn an_agent_pane_tracks_its_stream_only_while_watched(cx: &mut TestAppContext) {
         cx.update(|cx| {
             crate::config::set_fleet_hosts_for_test(Vec::new(), cx);
             let mux = cx.new(|cx| {
@@ -8134,20 +8192,20 @@ mod tests {
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1)]);
                 assert!(applied_agent_seqs(mux, pane).is_empty());
 
-                mux.open_agent_lens(pane);
-                mux.open_agent_lens(pane);
+                mux.watch_agent(pane);
+                mux.watch_agent(pane);
                 assert_eq!(
                     sink.borrow().as_slice(),
                     [(pane, AgentRequest::Replay { from_seq: 0 })],
                     "opening asks for the whole journal once"
                 );
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1), agent_blob(2)]);
-                mux.close_agent_lens(pane);
+                mux.unwatch_agent(pane);
                 assert!(applied_agent_seqs(mux, pane).is_empty());
                 mux.apply_agent_updates(pane, 3, vec![agent_blob(3)]);
                 assert!(applied_agent_seqs(mux, pane).is_empty());
 
-                mux.open_agent_lens(pane);
+                mux.watch_agent(pane);
                 assert_eq!(
                     sink.borrow().last(),
                     Some(&(pane, AgentRequest::Replay { from_seq: 0 })),
@@ -8171,7 +8229,7 @@ mod tests {
             });
             mux.update(cx, |mux, cx| {
                 let pane = PaneId(3);
-                mux.agent_lenses.insert(pane);
+                mux.watched_agents.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
                 let blob = agent_blob;
                 let reset = agent_reset;
@@ -8251,7 +8309,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
-                mux.agent_lenses.insert(pane);
+                mux.watched_agents.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
                 let applied = |mux: &mut MuxClient| applied_agent_seqs(mux, pane);
 
@@ -8311,7 +8369,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
-                mux.agent_lenses.insert(pane);
+                mux.watched_agents.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
 
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1), agent_blob(2)]);
@@ -8351,7 +8409,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
-                mux.agent_lenses.insert(pane);
+                mux.watched_agents.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
 
                 mux.apply_agent_updates(pane, 1, vec![agent_blob(1)]);
@@ -8389,7 +8447,7 @@ mod tests {
             });
             mux.update(cx, |mux, _| {
                 let pane = PaneId(3);
-                mux.agent_lenses.insert(pane);
+                mux.watched_agents.insert(pane);
                 let sink = mux.record_agent_requests_for_test();
 
                 mux.apply_agent_updates(

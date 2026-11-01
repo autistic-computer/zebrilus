@@ -183,8 +183,8 @@ is picked.
 `experimental-agent-pane` and `agent-working-directory` went with the Agent pane on 2026-10-23,
 and `driver-agent`, `driver-model`, `driver-effort` and `driver-hosts` went with the Driver Agent on
 2026-10-28 (`zz_config::RETIRED_AGENT_KEYS`). A line with any of them is reported with
-`` `<key>` was removed: run Claude Code or Codex in a terminal pane and open its lens from the pane
-header `` and ignored (see [agent lens](/concepts/agent-lens.md)).
+`` `<key>` was removed: open a chat from the New agent picker, or flip a terminal running Claude
+Code or Codex from its pane header `` and ignored (see [agent panes](/concepts/agent-panes.md)).
 `status-show-session` and `status-agents` are retired status bar keys
 (`zz_config::RETIRED_STATUS_KEYS`). `status-show-session` went with the session menu and is
 reported with `` `status-show-session` was removed: the status bar no longer has a session menu;
@@ -413,7 +413,7 @@ feature the matching config flag below reads false regardless of the file, the S
 Editor page disappear, and a pane handed over by a featureful daemon renders a labelled placeholder.
 Dev builds opt back in with `ZZ_CARGO_FEATURES=editor-pane just run mac` (or `--features` on cargo
 directly). The `agent-pane` cargo feature keeps the same facade (`crates/zz/src/agent/mod.rs`) for
-the [agent lens](/concepts/agent-lens.md) and is in the default set; it has no config flag.
+the [agent panes](/concepts/agent-panes.md) and is in the default set; it has no config flag.
 
 `experimental-editor-pane` is a **hard capability gate** with two consumers of the same config
 entry. Client-side it gates the pane picker's Editor row (and the `e` hotkey) in
@@ -483,7 +483,7 @@ amount, and the pane's root paints the pane background like every other pane.
 Floating panes take the theme's full glass like every popover. Settings previews that are not
 inside a frame use `zz_ui::pane_look::pane_color`.
 
-The agent lens surface uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
+An agent pane's chat uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
 the `agent.composer` field role), so at rest it draws what the theme gives that role, a soft wash
 by default, rather than an opaque raised card.
 The footer inherits the main pane background and adds no fill of its own.
@@ -563,7 +563,7 @@ No agent key is app-owned any more: `agent-working-directory` went with the Agen
 retired keys above). The three agent keys are [mux options](#daemon-owned-mux-option-keys). They
 configure the daemon's native Claude Code and Codex drivers and its ACP runtime. Since the Agent
 pane was removed on 2026-10-23 nothing opens those outside tests. The
-[agent lens](/concepts/agent-lens.md) reads the files the CLI writes and ignores them.
+[agent panes](/concepts/agent-panes.md) reads the files the CLI writes and ignores them.
 
 The command values may be unquoted, wrapped in matching single/double quotes, or supplied as
 raw JSON when explicit arguments/environment variables are needed. zz does not log the configured
@@ -656,7 +656,7 @@ second-prefix arming and `send-prefix -2`; a reload reapplies them exactly like 
 
 The three agent keys became mux options when the Agent pane's ACP runtime moved into the daemon at
 wire v53: the daemon spawns the driver, so the daemon owns what it spawns. They apply to the native
-drivers only, not to the [agent lens](/concepts/agent-lens.md).
+drivers only, not to the [agent panes](/concepts/agent-panes.md).
 They are still written in `zz/config` like any other key; the client's parser recognizes them and
 partitions them into the ordered daemon set, exactly as it does for the appearance and other mux
 keys. Changing one reconfigures the runtime without restarting the children already running.

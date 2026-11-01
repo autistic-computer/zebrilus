@@ -560,6 +560,7 @@ impl Palette {
                         Some(ChooseTreePaneKind::Terminal) => "square-terminal",
                         Some(ChooseTreePaneKind::Browser) => "globe",
                         Some(ChooseTreePaneKind::Editor) => "file",
+                        Some(ChooseTreePaneKind::Agent) => "bot",
                         None => "plus",
                     },
                 ),
@@ -1068,12 +1069,14 @@ impl Client {
                                             PaneKindSnapshot::Browser(_) => "Browser · unavailable",
                                             PaneKindSnapshot::Editor(_) => "Editor · unavailable",
                                             PaneKindSnapshot::Picker => "New pane",
+                                            PaneKindSnapshot::Agent(_) => "Agent",
                                         },
                                         icon: match &pane.kind {
                                             PaneKindSnapshot::Picker => "plus",
                                             PaneKindSnapshot::Terminal => "square-terminal",
                                             PaneKindSnapshot::Browser(_) => "globe",
                                             PaneKindSnapshot::Editor(_) => "file",
+                                            PaneKindSnapshot::Agent(_) => "bot",
                                         },
                                         running: attention == Some(AgentAttentionStatus::Working),
                                         needs_you: pane.status.as_ref().is_some_and(|status| {

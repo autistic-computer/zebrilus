@@ -1,4 +1,4 @@
-mod agent_lens;
+mod agent_pane;
 #[cfg(any(target_os = "ios", target_os = "android"))]
 mod authentication;
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -38,8 +38,8 @@ use penna::{
 };
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
-    drop_preview_bounds, drop_zone_at, pane_drop_command, pane_rects, predicted_drop_layout,
-    split_ratio_basis,
+    drop_preview_bounds, drop_zone_at, new_chat::agent_picker_place, pane_drop_command, pane_rects,
+    predicted_drop_layout, split_ratio_basis,
 };
 use zz_protocol::{
     ChooseBufferAction, ChooseTreeAction, ChooseTreeKind, ChooseTreePaneKind, CommandInvocation,
@@ -73,7 +73,7 @@ use crate::{
     connection::Connection,
     terminal::TerminalPane,
 };
-use agent_lens::{AgentLens, ShowTerminal};
+use agent_pane::AgentPane;
 pub(crate) use settings::phone;
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -108,7 +108,7 @@ pub struct AppShell {
     hosts: hosts::Hosts,
     terminals: HashMap<PaneId, Entity<TerminalPane>>,
     waiting_panes: BTreeSet<PaneId>,
-    lenses: HashMap<PaneId, Entity<AgentLens>>,
+    agents: HashMap<PaneId, Entity<AgentPane>>,
     #[cfg(any(target_os = "ios", target_os = "android"))]
     browsers: HashMap<PaneId, Entity<browser_pane::BrowserPane>>,
     pickers: HashMap<PaneId, Entity<picker::PanePicker>>,
@@ -353,7 +353,7 @@ impl AppShell {
             hosts,
             terminals: HashMap::new(),
             waiting_panes: BTreeSet::new(),
-            lenses: HashMap::new(),
+            agents: HashMap::new(),
             #[cfg(any(target_os = "ios", target_os = "android"))]
             browsers: HashMap::new(),
             pickers: HashMap::new(),
@@ -1138,16 +1138,12 @@ impl AppShell {
         if let Some(browser) = self.browsers.get(&pane) {
             browser.read(cx).focus_handle(cx).focus(window, cx);
         }
-        if let Some(lens) = self
-            .lenses
-            .get(&pane)
-            .filter(|_| self.connection.read(cx).agent_lens_open(pane))
-        {
-            lens.read(cx).focus_handle(cx).focus(window, cx);
-        } else if let Some(terminal) = self.terminals.get(&pane) {
-            terminal.read(cx).focus_handle(cx).focus(window, cx);
+        if let Some(agent) = self.agents.get(&pane) {
+            agent.read(cx).focus_handle(cx).focus(window, cx);
         } else if let Some(picker) = self.pickers.get(&pane) {
             picker.read(cx).focus_handle(cx).focus(window, cx);
+        } else if let Some(terminal) = self.terminals.get(&pane) {
+            terminal.read(cx).focus_handle(cx).focus(window, cx);
         }
         self.command(
             "select-pane",
@@ -1172,31 +1168,39 @@ impl AppShell {
                     .map(|(id, pane)| (*id, pane.kind.clone()))
             })
             .collect();
-        if self.pickers.keys().any(|pane| {
-            self.focused_pane == Some(*pane)
-                && !matches!(existing.get(pane), Some(PaneKindSnapshot::Picker))
-        }) {
+        let shown = self
+            .pickers
+            .keys()
+            .copied()
+            .filter(|pane| match existing.get(pane) {
+                Some(PaneKindSnapshot::Picker) => true,
+                Some(PaneKindSnapshot::Terminal) => self.agent_picker_shown(*pane, cx),
+                _ => false,
+            })
+            .collect::<Vec<_>>();
+        if self
+            .pickers
+            .keys()
+            .any(|pane| self.focused_pane == Some(*pane) && !shown.contains(pane))
+        {
             self.focused_pane = None;
         }
         self.terminals
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Terminal)));
         self.waiting_panes
             .retain(|pane| existing.contains_key(pane));
-        let connection = self.connection.read(cx);
-        if self
-            .lenses
-            .keys()
-            .any(|pane| self.focused_pane == Some(*pane) && !connection.agent_lens_open(*pane))
-        {
+        if self.agents.keys().any(|pane| {
+            self.focused_pane == Some(*pane)
+                && !matches!(existing.get(pane), Some(PaneKindSnapshot::Agent(_)))
+        }) {
             self.focused_pane = None;
         }
-        self.lenses
-            .retain(|pane, _| connection.agent_lens_open(*pane));
+        self.agents
+            .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Agent(_))));
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
-        self.pickers
-            .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Picker)));
+        self.pickers.retain(|pane, _| shown.contains(pane));
     }
 
     fn terminal_entity(&mut self, pane: PaneId, cx: &mut Context<Self>) -> Entity<TerminalPane> {
@@ -1242,54 +1246,48 @@ impl AppShell {
             .clone()
     }
 
-    fn shown_lens(
+    fn agent_entity(
         &mut self,
         pane: PaneId,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Option<Entity<AgentLens>> {
-        if !self.connection.read(cx).agent_lens_open(pane) {
-            return None;
-        }
-        Some(
-            self.lenses
-                .entry(pane)
-                .or_insert_with(|| {
-                    let connection = self.connection.clone();
-                    let lens = cx.new(|cx| AgentLens::new(pane, connection, window, cx));
-                    cx.subscribe_in(
-                        &lens,
-                        window,
-                        move |this, _, _: &ShowTerminal, window, cx| {
-                            if this.connection.read(cx).agent_lens_open(pane) {
-                                this.toggle_lens(pane, window, cx);
-                            }
-                        },
-                    )
-                    .detach();
-                    lens
-                })
-                .clone(),
-        )
+    ) -> Entity<AgentPane> {
+        self.agents
+            .entry(pane)
+            .or_insert_with(|| {
+                let connection = self.connection.clone();
+                cx.new(|cx| AgentPane::new(pane, connection, window, cx))
+            })
+            .clone()
     }
 
-    fn toggle_lens(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
-        if self.connection.read(cx).agent_lens_open(pane) {
-            self.connection
-                .update(cx, |connection, cx| connection.close_agent_lens(pane, cx));
-            self.lenses.remove(&pane);
-            self.compact.remember_lens(pane, false);
-        } else if self.connection.read(cx).terminal_agent(pane).is_some() {
-            self.connection
-                .update(cx, |connection, cx| connection.open_agent_lens(pane, cx));
-            self.shown_lens(pane, window, cx);
-            self.compact.remember_lens(pane, true);
-        } else {
-            return;
-        }
-        self.focus_pane(pane, window, cx);
-        self.focused_pane = None;
+    fn flip_pane(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        self.connection
+            .update(cx, |connection, cx| connection.flip(pane, cx));
         cx.notify();
+    }
+
+    pub(super) fn flip_overlay(&self, pane: PaneId, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let connection = self.connection.read(cx);
+        let flip = connection.flips.state(pane);
+        if *flip == zz_client::agent_flip::Flip::Idle {
+            return None;
+        }
+        let to = connection.terminal_flip(pane)?.to;
+        let entity = cx.weak_entity();
+        zz_ui::pane::pane_flip_overlay(
+            pane,
+            to,
+            flip,
+            move |choice, _, cx| {
+                let _ = entity.update(cx, |this, cx| {
+                    this.connection.update(cx, |connection, cx| {
+                        connection.choose_flip(pane, choice.mode(), cx);
+                    });
+                });
+            },
+            cx,
+        )
     }
 
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -1358,7 +1356,8 @@ impl AppShell {
         pane: PaneId,
         cx: &mut Context<Self>,
     ) -> Entity<picker::PanePicker> {
-        self.pickers
+        let picker = self
+            .pickers
             .entry(pane)
             .or_insert_with(|| {
                 let connection = self.connection.clone();
@@ -1373,7 +1372,19 @@ impl AppShell {
                 .detach();
                 picker
             })
-            .clone()
+            .clone();
+        let chat_view = self.preferences.flat_sidebar;
+        picker.update(cx, |picker, cx| picker.set_chat_view(chat_view, cx));
+        picker
+    }
+
+    fn agent_picker_shown(&self, pane: PaneId, cx: &App) -> bool {
+        agent_picker_place(
+            self.connection.read(cx).core.snapshot(),
+            pane,
+            self.preferences.flat_sidebar,
+        )
+        .is_some()
     }
 
     fn dismiss_pane_prefix(&self, pane: PaneId, cx: &mut App) {
@@ -1417,9 +1428,9 @@ impl AppShell {
     ) -> ala::Stateful<ala::Div> {
         let view = cx.entity();
         let touch_view = cx.weak_entity();
-        let lens_view = cx.weak_entity();
+        let flip_view = cx.weak_entity();
         let connection = self.connection.clone();
-        let lens = self.pane_lens(pane_id, cx);
+        let flip = self.pane_flip(pane_id, cx);
         let float_rows = self.pip_fill_rows(cx);
         zz_ui::pane::pane_header(
             icon,
@@ -1434,10 +1445,10 @@ impl AppShell {
                 });
             })),
             floats,
-            lens,
-            move |action, window, cx| {
-                if action == zz_ui::pane::TerminalPaneAction::Lens {
-                    let _ = lens_view.update(cx, |this, cx| this.toggle_lens(pane_id, window, cx));
+            flip,
+            move |action, _, cx| {
+                if action == zz_ui::pane::TerminalPaneAction::Flip {
+                    let _ = flip_view.update(cx, |this, cx| this.flip_pane(pane_id, cx));
                     return;
                 }
                 connection.update(cx, |connection, cx| {
@@ -1456,14 +1467,16 @@ impl AppShell {
         }))
     }
 
-    pub(super) fn pane_lens(&self, pane: PaneId, cx: &App) -> Option<zz_ui::pane::PaneLens> {
+    pub(super) fn pane_flip(&self, pane: PaneId, cx: &App) -> Option<zz_ui::pane::PaneFlip> {
         let connection = self.connection.read(cx);
-        connection
-            .terminal_agent(pane)
-            .map(|provider| zz_ui::pane::PaneLens {
-                provider,
-                open: connection.agent_lens_open(pane),
-            })
+        let target = connection.terminal_flip(pane)?;
+        let flip = connection.flips.state(pane);
+        Some(zz_ui::pane::PaneFlip {
+            provider: target.provider,
+            to: target.to,
+            armed: flip.armed(),
+            pending: flip.pending(),
+        })
     }
 
     fn on_pane_drag_start(&mut self, drag: PaneDrag, cx: &mut Context<Self>) {
@@ -1867,8 +1880,13 @@ impl AppShell {
             let Some(pane) = active_window.panes.get(&pane_id) else {
                 continue;
             };
+            let agent_picker = matches!(pane.kind, PaneKindSnapshot::Terminal)
+                && self.agent_picker_shown(pane_id, cx);
             let frame = floating::pane_frame(
-                matches!(pane.kind, PaneKindSnapshot::Terminal),
+                matches!(
+                    pane.kind,
+                    PaneKindSnapshot::Terminal | PaneKindSnapshot::Agent(_)
+                ) && !agent_picker,
                 is_float,
                 &self.preferences,
                 f32::from(cx.theme().pane_radius()),
@@ -1879,14 +1897,24 @@ impl AppShell {
                 Corners::all(px(frame.radius))
             };
             let dead_label = zz_client::terminal_view::dead_label(pane.dead, pane.dead_status);
-            let lens = matches!(pane.kind, PaneKindSnapshot::Terminal)
-                .then(|| self.shown_lens(pane_id, window, cx))
-                .flatten();
-            let lens_shown = lens.is_some();
+            let agent_shown = matches!(pane.kind, PaneKindSnapshot::Agent(_));
             let content = match &pane.kind {
-                PaneKindSnapshot::Terminal if let Some(lens) = lens => {
-                    lens.update(cx, |lens, cx| {
-                        lens.set_corner_radii(
+                PaneKindSnapshot::Terminal if agent_picker => {
+                    let picker = self.picker_entity(pane_id, cx);
+                    if can_focus
+                        && pane_id == active_window.active_pane
+                        && self.focused_pane != Some(pane_id)
+                    {
+                        picker.read(cx).focus_handle(cx).focus(window, cx);
+                        self.focused_pane = Some(pane_id);
+                    }
+                    picker.update(cx, |picker, cx| picker.set_corner_radii(radii, cx));
+                    picker.into_any_element()
+                }
+                PaneKindSnapshot::Agent(_) => {
+                    let agent = self.agent_entity(pane_id, window, cx);
+                    agent.update(cx, |agent, cx| {
+                        agent.set_corner_radii(
                             Corners {
                                 top_left: px(0.0),
                                 top_right: px(0.0),
@@ -1899,10 +1927,10 @@ impl AppShell {
                         && pane_id == active_window.active_pane
                         && self.focused_pane != Some(pane_id)
                     {
-                        lens.read(cx).focus_handle(cx).focus(window, cx);
+                        agent.read(cx).focus_handle(cx).focus(window, cx);
                         self.focused_pane = Some(pane_id);
                     }
-                    lens.into_any_element()
+                    agent.into_any_element()
                 }
                 PaneKindSnapshot::Terminal => {
                     let terminal = self.pane_terminal(pane_id, window, cx);
@@ -1995,7 +2023,7 @@ impl AppShell {
                 let title = zz_client::navigation::pane_label(pane);
                 let header = self.pane_header(
                     pane_id,
-                    IconName::SquareTerminal,
+                    zz_ui::pane::pane_kind_icon(&pane.kind),
                     title,
                     active_window.active_pane == pane_id,
                     can_drag,
@@ -2024,23 +2052,24 @@ impl AppShell {
             let chrome = PaneChrome::new(radii, frame.framed)
                 .active(active)
                 .dimmed(
-                    !active && (lens_shown || !matches!(pane.kind, PaneKindSnapshot::Terminal)),
+                    !active
+                        && (agent_shown
+                            || agent_picker
+                            || !matches!(pane.kind, PaneKindSnapshot::Terminal)),
                     self.preferences.pane_inactive_opacity,
                 )
                 .frame(frame.framed.then(|| {
                     PaneLook::global(cx).frame(cx.theme(), cx.theme().background, active)
                 }));
-            let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal);
+            let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal) && !agent_picker;
             let mut status_tags = Vec::new();
+            status_tags.extend(self.flip_overlay(pane_id, cx));
             if !terminal_pane && let Some(label) = dead_label {
                 status_tags.push(
                     zz_ui::pane::pane_status_badge(IconName::CircleX, label, cx).into_any_element(),
                 );
             }
-            if terminal_pane
-                && !lens_shown
-                && self.connection.read(cx).core.viewport(pane_id).is_none()
-            {
+            if terminal_pane && self.connection.read(cx).core.viewport(pane_id).is_none() {
                 self.waiting_panes.insert(pane_id);
                 status_tags.push(
                     zz_ui::pane::pane_waiting_state(format!("Waiting for {pane_id}"), cx)
@@ -2605,6 +2634,7 @@ impl AppShell {
                                     ChooseTreePaneKind::Terminal => ChooserPaneKind::Terminal,
                                     ChooseTreePaneKind::Browser => ChooserPaneKind::Browser,
                                     ChooseTreePaneKind::Editor => ChooserPaneKind::Editor,
+                                    ChooseTreePaneKind::Agent => ChooserPaneKind::Agent,
                                 });
                                 let (label, detail) = if item.text.is_empty() {
                                     (item.label.clone(), item.detail.clone())
