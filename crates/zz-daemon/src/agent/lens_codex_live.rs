@@ -16,7 +16,7 @@ use zz_protocol::{
 
 use super::{
     AgentPrompt, AgentPromptOutcome, AgentStreamPayload, Codex, Found, Lens, Read, Source, Tail,
-    Turn, arguments, codex_home,
+    Turn, arguments, codex_home, is_rollout, open_files,
 };
 use zz_daemon_client::process_info;
 
@@ -34,11 +34,7 @@ use crate::agent::{
 
 const JOIN: Duration = Duration::from_secs(3);
 const FRESH: u64 = 30;
-const EMBEDDED: [&str; 11] = [
-    "-c",
-    "--config",
-    "--enable",
-    "--disable",
+const EMBEDDED: [&str; 8] = [
     "--search",
     "--profile",
     "-p",
@@ -46,6 +42,11 @@ const EMBEDDED: [&str; 11] = [
     "--no-daemon",
     "--strict-config",
     "--remote",
+    "--dangerously-bypass-hook-trust",
+];
+const SHARED: [&str; 2] = [
+    "tui.fullscreen_transcript",
+    "suppress_unstable_features_warning",
 ];
 const QUIET: [&str; 5] = [
     "turn/moderationMetadata",
@@ -109,14 +110,42 @@ enum Pending {
 }
 
 pub(super) fn embedded(arguments: &[String]) -> bool {
-    arguments.iter().skip(1).any(|argument| {
-        EMBEDDED.iter().any(|flag| {
-            argument == flag
-                || argument
+    let mut words = arguments.iter().skip(1).map(String::as_str);
+    while let Some(word) = words.next() {
+        let config = match word {
+            "-c" | "--config" => words.next(),
+            _ => word
+                .strip_prefix("--config=")
+                .or_else(|| word.strip_prefix("-c").filter(|rest| !rest.is_empty())),
+        };
+        if let Some(config) = config {
+            if !shared(config) {
+                return true;
+            }
+            continue;
+        }
+        if EMBEDDED.iter().any(|flag| {
+            word == *flag
+                || word
                     .strip_prefix(flag)
                     .is_some_and(|rest| rest.starts_with('=') || !flag.starts_with("--"))
-        })
-    })
+        }) {
+            return true;
+        }
+    }
+    false
+}
+
+fn shared(config: &str) -> bool {
+    let Some((key, value)) = config.split_once('=') else {
+        return false;
+    };
+    let key = key.trim();
+    matches!(value.trim(), "true" | "false")
+        && (SHARED.contains(&key)
+            || key
+                .strip_prefix("features.")
+                .is_some_and(|name| !name.is_empty() && !name.contains('.')))
 }
 
 impl Live {
@@ -575,7 +604,7 @@ impl Codex {
             return Some(wire);
         }
         let pid = self.pid?;
-        if embedded(&arguments(pid)) {
+        if embedded(&arguments(pid)) || open_files(pid).iter().any(|path| is_rollout(path)) {
             return None;
         }
         let socket = control::socket(&codex_home()?)?;

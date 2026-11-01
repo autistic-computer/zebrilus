@@ -725,8 +725,6 @@ fn a_tui_in_embedded_mode_keeps_the_rollout_path() {
         "codex -c model=gpt-6-luna",
         "codex -cmodel=gpt-6-luna",
         "codex --config=model=x",
-        "codex --enable web_search",
-        "codex --disable tools",
         "codex --search",
         "codex --profile work",
         "codex -p work",
@@ -734,6 +732,10 @@ fn a_tui_in_embedded_mode_keeps_the_rollout_path() {
         "codex --no-daemon",
         "codex --strict-config",
         "codex --remote ws://127.0.0.1:1",
+        "codex --dangerously-bypass-hook-trust",
+        "codex -c features.web_search=true -c model=x",
+        "codex -c features.web_search=maybe",
+        "codex -c tui.theme=dark",
     ] {
         assert!(embedded(&words(line)), "{line}");
     }
@@ -742,6 +744,12 @@ fn a_tui_in_embedded_mode_keeps_the_rollout_path() {
         "codex -m gpt-6-luna",
         "codex resume abc",
         "codex --cd /tmp",
+        "codex --enable web_search",
+        "codex --disable=tools",
+        "codex -c features.web_search=true",
+        "codex -cfeatures.web_search=false",
+        "codex --config tui.fullscreen_transcript=true",
+        "codex --config=suppress_unstable_features_warning=true",
     ] {
         assert!(!embedded(&words(line)), "{line}");
     }
