@@ -84,6 +84,44 @@
       "fill": "solid",
       "outline": false,
       "shadow": "float"
+    },
+    "card.bubble": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none"
+    },
+    "field.composer": {
+      "fill": "tint",
+      "outline": true,
+      "hover": "none",
+      "selected": "none"
+    },
+    "button.send": {
+      "shape": "pill"
+    },
+    "tab.page": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "card.code": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none"
+    },
+    "tile.stack": {
+      "shadow": "contact"
+    },
+    "icon-button.bar": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "row.nav": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "tab.window": {
+      "hover": "tint",
+      "selected": "tint"
     }
   },
   "light": {

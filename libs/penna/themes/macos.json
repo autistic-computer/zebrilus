@@ -157,6 +157,84 @@
       "fill": "solid",
       "outline": true,
       "shadow": "float"
+    },
+    "card.image": {
+      "fill": "tint"
+    },
+    "card.bubble": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none"
+    },
+    "field.composer": {
+      "smoothing": 2.5,
+      "hover": "none",
+      "selected": "none"
+    },
+    "icon-button.floating": {
+      "fill": "solid"
+    },
+    "button.send": {
+      "shape": "round",
+      "smoothing": 2.0
+    },
+    "tab.tray": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "field.address": {
+      "selected": "tint"
+    },
+    "menu-item.tint": {
+      "fill": "tint"
+    },
+    "tab.page": {
+      "selected": "tint"
+    },
+    "card.code": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none"
+    },
+    "tile.stack": {
+      "shadow": "contact",
+      "smoothing": 3.0
+    },
+    "chip.floating": {
+      "fill": "solid",
+      "outline": true
+    },
+    "chip.marker": {
+      "hover": "tint",
+      "selected": "accent"
+    },
+    "chip.drag": {
+      "fill": "solid",
+      "outline": true
+    },
+    "tile.drop": {
+      "shadow": "none"
+    },
+    "icon-button.bar": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "menu-item.card": {
+      "fill": "solid",
+      "selected": "tint"
+    },
+    "row.nav": {
+      "smoothing": 2.5,
+      "hover": "tint",
+      "selected": "glass"
+    },
+    "chip.bar": {
+      "hover": "lift",
+      "selected": "lift"
+    },
+    "tab.window": {
+      "smoothing": 2.5,
+      "selected": "glass"
     }
   },
   "light": {

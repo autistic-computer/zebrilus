@@ -132,7 +132,8 @@ button[data-penna] {
   --penna-icon-size: 12px;
 }
 
-[data-penna^="icon-button"],
+[data-penna="icon-button"],
+[data-penna="icon-button.flat"],
 [data-penna="chrome.button"] {
   display: inline-grid;
   place-items: center;
@@ -143,7 +144,7 @@ button[data-penna] {
   --penna-icon-size: 14px;
 }
 
-[data-penna^="icon-button"][data-size="small"] {
+:is([data-penna="icon-button"], [data-penna="icon-button.flat"])[data-size="small"] {
   width: 24px;
   height: 24px;
   --penna-icon-size: 12px;
@@ -174,7 +175,7 @@ button[data-penna] {
   padding: 6px 8px;
 }
 
-[data-penna^="field"] :is(input, textarea) {
+:is([data-penna="field"], [data-penna="field.multiline"]) :is(input, textarea) {
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -186,7 +187,7 @@ button[data-penna] {
   resize: none;
 }
 
-[data-penna^="field"] ::placeholder {
+:is([data-penna="field"], [data-penna="field.multiline"]) ::placeholder {
   color: var(--penna-muted);
   opacity: 0.6;
 }

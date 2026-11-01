@@ -26,6 +26,31 @@
   "roles": {
     "menu-item": {
       "selected": "tint"
+    },
+    "field.composer": {
+      "hover": "none",
+      "selected": "none"
+    },
+    "button.send": {
+      "fill": "tint",
+      "outline": false,
+      "shadow": "none",
+      "shape": "pill",
+      "hover": "lift"
+    },
+    "field.address": {
+      "selected": "tint"
+    },
+    "tile.stack": {
+      "smoothing": 3.0
+    },
+    "row.nav": {
+      "hover": "tint",
+      "selected": "tint"
+    },
+    "tab.window": {
+      "hover": "tint",
+      "selected": "tint"
     }
   },
   "light": {

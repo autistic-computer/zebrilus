@@ -2,7 +2,7 @@
 type: Design Plan
 title: "The kit: penna owns every piece of UI chrome"
 description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and every per-theme tweak an app layer made moves into penna's own theme files. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
-status: In progress (2026-11-01, nidus done, zebrilus next)
+status: In progress (2026-11-01, nidus done, zebrilus roles in penna, typed variants next)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -63,55 +63,57 @@ Every per-theme tweak an app layer makes today moves into penna's theme files un
 
 An app role becomes a kit recipe: a penna-owned role picked by a component's variant, named for the kit (`tab.window`, `field.composer`, `icon-button.send`), not for the app. When a recipe lands, the app ids it replaces go into penna's retired list, so saved and pasted themes still load; a custom override a user saved for a retired id resets.
 
-### zebrilus: 43 roles
+### zebrilus: 43 roles, now 0
+
+Every zz role moved into penna (2026-11-01): 31 became kit recipes under kit names with their code patches and per-theme tweaks, 11 that had no patch and no tweak folded into the kit role they sat under, and `agent.action` merged into `icon-button.row`, which had the same look. Their old ids are in penna's retired list. zz code still picks most recipes by name (`roles::TAB_WINDOW`); the Becomes column is the typed variant that will pick it instead.
 
 Theme tweaks: D default, M macos, Y yaru. A dash means none.
 
 | Role | Parent | Code patch | Theme tweaks | Becomes | Status |
 |---|---|---|---|---|---|
-| titlebar.window-tab | tab | ink rest | D hover/selected tint; M smoothing 2.5, selected glass; Y hover/selected tint | Tab variant | todo |
-| browser.tab | tab | - | M selected tint; Y hover/selected tint | Tab variant | todo |
-| agent.tray | tab | - | M hover/selected tint | Tab variant | todo |
-| titlebar.status-chip | badge | selected tint | M hover/selected lift | Chip | todo |
-| pane.chip | floating | contact shadow, selected tint, capsule | M solid, outline | Chip | todo |
-| pane.display-panes | floating | hover/selected ring | M hover tint, selected accent | Chip | todo |
-| pane.drag-chip | floating | capsule | M solid, outline | Chip | todo |
-| browser.empty-icon | badge | pill, no outline | - | Chip | todo |
-| sidebar.entry | row | ink rest | D hover/selected tint; M smoothing 2.5, hover tint, selected glass; Y hover/selected tint | Row | todo |
-| sidebar.cursor | row | outline, contact shadow, hover tint, selected accent | - | Row | todo |
-| sidebar.host-action | button | no outline, no shadow | - | Button variant | todo |
-| sidebar.row-action | icon-button | hover/selected none | - | IconButton variant | todo |
-| pane.header.button | icon-button | hover/selected none | M, Y hover/selected tint | IconButton variant | todo |
-| pane.header.flip | pane.header.button | selected tint | - | IconButton variant | todo |
-| browser.button | icon-button | - | - | IconButton variant | todo |
-| agent.action | icon-button | hover/selected none | - | IconButton variant | todo |
-| agent.jump | icon-button | solid, outline, contact shadow, hover tint | M solid | IconButton variant | todo |
-| agent.send | button | solid, outline, contact shadow, hover/selected tint | D tint, no outline, no shadow, pill, hover lift; M round, smoothing 2; Y pill | IconButton variant | todo |
-| pane.float | floating | selected ring | - | FloatingPanel variant | todo |
-| pane.pip | pane.float | float shadow | - | FloatingPanel variant | todo |
-| pane.find-bar | popover | - | - | FloatingPanel variant | todo |
-| palette | popover | - | - | FloatingPanel variant | todo |
-| pane.picker | menu-item | - | M solid, selected tint | MenuItem variant | todo |
-| agent.option | menu-item | - | - | MenuItem variant | todo |
-| browser.suggestion | menu-item | tint | M tint | MenuItem variant | todo |
-| drawer.hosts | drawer | - | - | Drawer | todo |
-| drawer.add-host | drawer | - | - | Drawer | todo |
-| drawer.new-pane | drawer | - | - | Drawer | todo |
-| drawer.tabs | drawer | - | - | Drawer | todo |
-| drawer.bindings | drawer | - | - | Drawer | todo |
-| pane-stack | tile | no outline, no shadow, hover/selected tint, capsule | D smoothing 3; M contact shadow, smoothing 3; Y contact shadow | Well | todo |
-| pane.drop-zone | floating | tint, no shadow, hover/selected tint | M no shadow | Tile variant | todo |
-| phone.mini | tile | no fill, selected ring | - | Tile variant | todo |
-| pane.header | bar | fixed knobs | - | Bar | todo |
-| pane.header.title | button.quiet | hover/selected tint | - | Bar title | todo |
-| rule.split | rule | - | - | Rule variant | todo |
-| agent.bubble | card | - | M, Y tint, no outline, no shadow | Bubble | todo |
-| code | card | no outline, no shadow | M, Y tint, no outline, no shadow | CodeBlock | todo |
-| figure | card | no fill | - | Figure | todo |
-| agent.attachment | card | - | M tint | ImageTile | todo |
-| agent.composer | field.multiline | pill | D hover/selected none; M smoothing 2.5, hover/selected none; Y tint, outline, hover/selected none | Field variant | todo |
-| browser.address | field | no fill, no outline | D, M selected tint | Field variant | todo |
-| picker.notice | bar | - | - | Notice | todo |
+| titlebar.window-tab | tab | ink rest | D hover/selected tint; M smoothing 2.5, selected glass; Y hover/selected tint | Tab variant | recipe `tab.window` |
+| browser.tab | tab | - | M selected tint; Y hover/selected tint | Tab variant | recipe `tab.page` |
+| agent.tray | tab | - | M hover/selected tint | Tab variant | recipe `tab.tray` |
+| titlebar.status-chip | badge | selected tint | M hover/selected lift | Chip | recipe `chip.bar` |
+| pane.chip | floating | contact shadow, selected tint, capsule | M solid, outline | Chip | recipe `chip.floating` |
+| pane.display-panes | floating | hover/selected ring | M hover tint, selected accent | Chip | recipe `chip.marker` |
+| pane.drag-chip | floating | capsule | M solid, outline | Chip | recipe `chip.drag` |
+| browser.empty-icon | badge | pill, no outline | - | Chip | recipe `badge.icon` |
+| sidebar.entry | row | ink rest | D hover/selected tint; M smoothing 2.5, hover tint, selected glass; Y hover/selected tint | Row | recipe `row.nav` |
+| sidebar.cursor | row | outline, contact shadow, hover tint, selected accent | - | Row | recipe `row.cursor` |
+| sidebar.host-action | button | no outline, no shadow | - | Button variant | recipe `button.row` |
+| sidebar.row-action | icon-button | hover/selected none | - | IconButton variant | recipe `icon-button.row` |
+| pane.header.button | icon-button | hover/selected none | M, Y hover/selected tint | IconButton variant | recipe `icon-button.bar` |
+| pane.header.flip | pane.header.button | selected tint | - | IconButton variant | recipe `icon-button.toggle` |
+| browser.button | icon-button | - | - | IconButton variant | folded into `icon-button` |
+| agent.action | icon-button | hover/selected none | - | IconButton variant | recipe `icon-button.row` |
+| agent.jump | icon-button | solid, outline, contact shadow, hover tint | M solid | IconButton variant | recipe `icon-button.floating` |
+| agent.send | button | solid, outline, contact shadow, hover/selected tint | D tint, no outline, no shadow, pill, hover lift; M round, smoothing 2; Y pill | IconButton variant | recipe `button.send` |
+| pane.float | floating | selected ring | - | FloatingPanel variant | recipe `floating.pane` |
+| pane.pip | pane.float | float shadow | - | FloatingPanel variant | recipe `floating.pip` |
+| pane.find-bar | popover | - | - | FloatingPanel variant | folded into `popover` |
+| palette | popover | - | - | FloatingPanel variant | folded into `popover` |
+| pane.picker | menu-item | - | M solid, selected tint | MenuItem variant | recipe `menu-item.card` |
+| agent.option | menu-item | - | - | MenuItem variant | folded into `menu-item` |
+| browser.suggestion | menu-item | tint | M tint | MenuItem variant | recipe `menu-item.tint` |
+| drawer.hosts | drawer | - | - | Drawer | folded into `drawer` |
+| drawer.add-host | drawer | - | - | Drawer | folded into `drawer` |
+| drawer.new-pane | drawer | - | - | Drawer | folded into `drawer` |
+| drawer.tabs | drawer | - | - | Drawer | folded into `drawer` |
+| drawer.bindings | drawer | - | - | Drawer | folded into `drawer` |
+| pane-stack | tile | no outline, no shadow, hover/selected tint, capsule | D smoothing 3; M contact shadow, smoothing 3; Y contact shadow | Well | recipe `tile.stack` |
+| pane.drop-zone | floating | tint, no shadow, hover/selected tint | M no shadow | Tile variant | recipe `tile.drop` |
+| phone.mini | tile | no fill, selected ring | - | Tile variant | recipe `tile.mini` |
+| pane.header | bar | fixed knobs | - | Bar | recipe `bar.pane` |
+| pane.header.title | button.quiet | hover/selected tint | - | Bar title | recipe `button.title` |
+| rule.split | rule | - | - | Rule variant | folded into `rule` |
+| agent.bubble | card | - | M, Y tint, no outline, no shadow | Bubble | recipe `card.bubble` |
+| code | card | no outline, no shadow | M, Y tint, no outline, no shadow | CodeBlock | recipe `card.code` |
+| figure | card | no fill | - | Figure | recipe `card.figure` |
+| agent.attachment | card | - | M tint | ImageTile | recipe `card.image` |
+| agent.composer | field.multiline | pill | D hover/selected none; M smoothing 2.5, hover/selected none; Y tint, outline, hover/selected none | Field variant | recipe `field.composer` |
+| browser.address | field | no fill, no outline | D, M selected tint | Field variant | recipe `field.address` |
+| picker.notice | bar | - | - | Notice | folded into `bar` |
 
 ### nidus: 8 roles, now 0
 
