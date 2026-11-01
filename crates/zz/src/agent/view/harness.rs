@@ -116,6 +116,7 @@ impl AgentView {
             session,
             &self.chat_cwd(),
             self.pane,
+            self.pane_state.settings.as_ref(),
         );
         self.mux.read(cx).execute(command);
     }
@@ -129,6 +130,7 @@ impl AgentView {
             session,
             &self.chat_cwd(),
             Some(message),
+            self.pane_state.settings.as_ref(),
         );
         self.mux.read(cx).execute(command);
     }

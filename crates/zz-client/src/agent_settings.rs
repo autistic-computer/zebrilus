@@ -177,10 +177,19 @@ fn forked_chat(
     provider: AgentProvider,
     session: &str,
     message: Option<&str>,
+    settings: Option<&LensSettings>,
 ) -> CommandInvocation {
     let mut select = vec!["select-pane-kind", "--resume", session, "--fork"];
     if let Some(message) = message {
         select.extend(["--at", message]);
+    }
+    if let Some(settings) = settings {
+        if !settings.model.is_empty() {
+            select.extend(["--model", &settings.model]);
+        }
+        if !settings.effort.is_empty() {
+            select.extend(["--effort", &settings.effort]);
+        }
     }
     select.extend(["agent", agent_program(provider)]);
     let line = format!("{} ; {}", command_line(opener), command_line(&select));
@@ -193,8 +202,15 @@ pub fn fork_chat_command(
     session: &str,
     cwd: &str,
     message: Option<&str>,
+    settings: Option<&LensSettings>,
 ) -> CommandInvocation {
-    forked_chat(&["new-window", "-c", cwd], provider, session, message)
+    forked_chat(
+        &["new-window", "-c", cwd],
+        provider,
+        session,
+        message,
+        settings,
+    )
 }
 
 #[must_use]
@@ -203,6 +219,7 @@ pub fn side_chat_command(
     session: &str,
     cwd: &str,
     from: PaneId,
+    settings: Option<&LensSettings>,
 ) -> CommandInvocation {
     let from = from.to_string();
     forked_chat(
@@ -222,6 +239,7 @@ pub fn side_chat_command(
         provider,
         session,
         None,
+        settings,
     )
 }
 
@@ -340,7 +358,8 @@ mod tests {
                 AgentProvider::Codex,
                 "t",
                 "/src/my app",
-                Some("i")
+                Some("i"),
+                None
             )),
             "new-window -c '/src/my app' ; select-pane-kind --resume t --fork --at i agent codex"
         );
@@ -349,6 +368,7 @@ mod tests {
                 AgentProvider::ClaudeCode,
                 "s",
                 "/a",
+                None,
                 None
             )),
             "new-window -c /a ; select-pane-kind --resume s --fork agent claude"
@@ -358,9 +378,25 @@ mod tests {
                 AgentProvider::ClaudeCode,
                 "s",
                 "/a/it's $HOME",
-                PaneId(4)
+                PaneId(4),
+                None
             )),
             "new-pane -t %4 -c \"/a/it's \\$HOME\" -x 46% -y 72% -T 'Side chat' ; select-pane-kind --resume s --fork agent claude"
+        );
+        let settings = LensSettings {
+            model: "haiku".to_owned(),
+            effort: "low".to_owned(),
+            ..LensSettings::default()
+        };
+        assert_eq!(
+            line(fork_chat_command(
+                AgentProvider::ClaudeCode,
+                "s",
+                "/a",
+                Some("m"),
+                Some(&settings)
+            )),
+            "new-window -c /a ; select-pane-kind --resume s --fork --at m --model haiku --effort low agent claude"
         );
         assert!(!real_session("lens-%3"));
     }

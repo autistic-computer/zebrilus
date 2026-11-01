@@ -197,7 +197,13 @@ impl AgentPane {
         let (Some(session), Some(provider)) = (self.session(cx), self.provider(cx)) else {
             return;
         };
-        let command = side_chat_command(provider, &session, &self.chat_cwd(cx), self.pane);
+        let command = side_chat_command(
+            provider,
+            &session,
+            &self.chat_cwd(cx),
+            self.pane,
+            self.transcript.lens.settings.as_ref(),
+        );
         self.connection.update(cx, |connection, cx| {
             connection.invoke(command, cx);
         });
@@ -209,7 +215,13 @@ impl AgentPane {
         else {
             return;
         };
-        let command = fork_chat_command(provider, &session, &self.chat_cwd(cx), Some(message));
+        let command = fork_chat_command(
+            provider,
+            &session,
+            &self.chat_cwd(cx),
+            Some(message),
+            self.transcript.lens.settings.as_ref(),
+        );
         self.connection.update(cx, |connection, cx| {
             connection.invoke(command, cx);
         });
