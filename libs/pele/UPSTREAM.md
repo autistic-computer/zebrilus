@@ -22,6 +22,13 @@ Themes take concrete SVG colors. `RenderOptions.measurer` lets a host measure
 labels with its own fonts, and `RenderOptions.transparent` leaves the canvas
 unpainted for a host that draws its own backdrop.
 
+A flowchart, class, state or ER diagram that runs across and is wider than
+`max_width` turns to run down when the down layout fits the width, at any
+width. Under `direction_breakpoint` it also turns when down is merely
+narrower, as upstream does. Upstream only turns under the breakpoint, so a
+wide host there shrinks the diagram instead; `auto_direction: false` keeps
+the authored direction everywhere.
+
 The development binary reads JSON lines on stdin and answers each with `ok: true`
 and the result, or `ok: false` and a structured error:
 

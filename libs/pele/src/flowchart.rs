@@ -2452,15 +2452,50 @@ mod tests {
         )
         .unwrap();
         assert!(fixed.width > fixed.height);
-        let below_breakpoint = render(
+        let above_breakpoint = render(
             source,
             &RenderOptions {
                 direction_breakpoint: 250.0,
-                ..options
+                ..options.clone()
             },
         )
         .unwrap();
-        assert!(below_breakpoint.width > below_breakpoint.height);
+        assert_eq!(above_breakpoint, down);
+        let wide = "flowchart LR;A[a label far wider than the host]-->B[another label far wider than the host]";
+        let host = RenderOptions {
+            max_width: Some(120.0),
+            direction_breakpoint: 100.0,
+            ..options.clone()
+        };
+        let kept = render(wide, &host).unwrap();
+        assert!(kept.width > kept.height);
+        let narrow = render(
+            wide,
+            &RenderOptions {
+                direction_breakpoint: 640.0,
+                ..host
+            },
+        )
+        .unwrap();
+        assert!(narrow.width < kept.width);
+    }
+
+    #[test]
+    fn a_flow_too_wide_for_its_host_turns_down_when_that_fits() {
+        let source = "flowchart LR\n    A[Step one] --> B[Step two] --> C[Step three] --> D[Step four] --> E[Step five] --> F[Step six] --> G[Step seven] --> H[Step eight]";
+        let options = RenderOptions {
+            font_size: 13.0,
+            max_width: Some(640.0),
+            ..RenderOptions::default()
+        };
+        let result = render(source, &options).unwrap();
+        assert!(result.width <= 640.0, "{}", result.width);
+        assert!(result.height > result.width);
+        let fits = render("flowchart LR\n    A --> B --> C", &options).unwrap();
+        assert!(
+            fits.width > fits.height,
+            "a flow that fits keeps its direction"
+        );
     }
 
     #[test]

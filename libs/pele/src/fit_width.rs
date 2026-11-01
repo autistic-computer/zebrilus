@@ -55,15 +55,15 @@ pub fn turn_to_fit(
     if !options.auto_direction || across.width <= available {
         return Ok(across);
     }
-    if available >= options.direction_breakpoint {
-        return Ok(across);
-    }
     let down = draw(true)?;
-    Ok(if down.width < across.width {
-        down
-    } else {
-        across
-    })
+    let narrow = available < options.direction_breakpoint;
+    Ok(
+        if down.width < across.width && (narrow || down.width <= available) {
+            down
+        } else {
+            across
+        },
+    )
 }
 
 pub fn runs_across(direction: &str) -> bool {
