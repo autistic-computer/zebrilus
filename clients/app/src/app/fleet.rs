@@ -154,7 +154,7 @@ impl AppShell {
 
     fn reset_host_state(&mut self) {
         self.terminals.clear();
-        self.lenses.clear();
+        self.agents.clear();
         self.browsers.clear();
         self.pickers.clear();
         self.waiting_panes.clear();
