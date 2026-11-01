@@ -275,7 +275,8 @@ carries one coalesced batch of JSON agent stream items numbered by the pane's fa
 watching it (one that sent `AgentReplay` for it).
 `AgentState { pane, state: AgentPaneWire }` is the small typed pane state published to every client
 attached to the session and to the pane's watchers: `phase` (`Starting | Ready | Running | AwaitingPermission | Failed
-{ message }`), `queued_prompts: u32`, `session_id`, `title`, the adapter's auth methods, config
+{ message }`), `queued_prompts: u32`, `session_id`, `title` (the session's title, which also names the
+pane; filled since 2026-11-01), the adapter's auth methods, config
 options, and modes as one JSON `String` blob each (≤ `MAX_AGENT_STATE_BLOB_BYTES`, 256 KiB, because
 postcard cannot carry the ACP SDK's JSON-shaped types),
 `pending_permission: Option<AgentPermissionWire { request_id, payload }>` whose payload is bounded to
