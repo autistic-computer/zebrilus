@@ -150,7 +150,9 @@ history and the bridge replays it through the machine.
 `SessionReady`, `SessionEnded`, `TurnStarted { by }`, `TurnClaimed`, `TurnStopping`, `TurnEnded { outcome }`,
 `ItemStarted { turn, parent, kind, body }`, `ItemAppended`, `ItemChanged`, `ItemBackgrounded`,
 `ItemEnded { status }`, `RequestOpened { item, ask, blocking }`, `RequestClosed { close }`,
-`QueueChanged`, `UsageChanged`. Items carry start and end times, so a client can say "Worked for 1m
+`QueueChanged`, `UsageChanged`, `TurnActivity { text }` (what the running turn is doing, `None`
+clears it) and `ItemsSummarized { items, summary }` (a sentence for a finished batch, applied to
+closed items too). Items carry start and end times, so a client can say "Worked for 1m
 12s" without a clock of its own. Item kinds: user, agent, reasoning, plan, notice, error, subagent,
 read, edit, search, execute, fetch, web, mcp, tool.
 

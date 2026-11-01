@@ -2787,12 +2787,14 @@ fn draw(
         q += 1;
     }
 
-    let surface = svg::esc(&theme.surface);
+    let node_fill = svg::esc(theme.node_fill());
+    let node_stroke = svg::esc(theme.node_stroke());
     let border = svg::esc(&theme.border);
     let line = svg::esc(&theme.line);
     let background = svg::esc(&theme.background);
-    let surface_attrs = format!(" fill=\"{surface}\" stroke=\"{border}\"");
+    let surface_attrs = format!(" fill=\"{node_fill}\" stroke=\"{node_stroke}\"");
     let rule = format!(" fill=\"none\" stroke=\"{border}\"");
+    let node_rule = format!(" fill=\"none\" stroke=\"{node_stroke}\"");
 
     let mut clusters = String::new();
     let mut fills = Vec::new();
@@ -3010,7 +3012,7 @@ fn draw(
                     let mut at = PAD_Y - h / 2.0 + view.label.height;
                     let _ = write!(
                         body,
-                        "<path d=\"M{},{}H{}\"{rule}{}/>",
+                        "<path d=\"M{},{}H{}\"{node_rule}{}/>",
                         n(-w / 2.0),
                         n(at + 6.0),
                         n(w / 2.0),

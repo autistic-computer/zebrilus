@@ -187,6 +187,35 @@ fn messages_for_a_pane_that_is_no_longer_a_terminal_are_dropped() {
     runtime.shutdown();
 }
 
+#[test]
+fn a_chat_title_names_its_pane_and_window() {
+    let mut fixture = fixture();
+    let pane = fixture.pane;
+    let (publisher, runtime, generation) = runtime(&fixture.shared, pane);
+    settle(&mut fixture);
+    let names = |fixture: &Fixture| {
+        let inner = fixture.shared.inner.lock();
+        let window = inner.engine.state.window_for_pane(pane).expect("window");
+        (
+            inner.engine.state.pane(pane).expect("pane").title.clone(),
+            inner.engine.state.windows[&window].name.clone(),
+        )
+    };
+    publisher.publish_agent_state(generation, pane, titled("Fix the flaky resize test"));
+    fixture.inbox.turn(&fixture.shared);
+    assert_eq!(
+        names(&fixture),
+        (
+            "Fix the flaky resize test".to_owned(),
+            "Fix the flaky resize test".to_owned()
+        )
+    );
+    publisher.publish_agent_state(generation, pane, AgentPaneWire::default());
+    fixture.inbox.turn(&fixture.shared);
+    assert_eq!(names(&fixture), ("agent".to_owned(), "agent".to_owned()));
+    runtime.shutdown();
+}
+
 #[cfg(unix)]
 #[test]
 fn a_shell_hook_keeps_the_agent_inbox_running() {

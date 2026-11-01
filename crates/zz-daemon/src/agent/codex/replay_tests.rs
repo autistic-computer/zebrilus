@@ -1,4 +1,5 @@
 use async_channel::Receiver;
+use zz_protocol::chat::{Answer, ItemId, ItemStatus, QuestionAnswer, RequestClose, RequestId};
 
 use super::*;
 
@@ -40,6 +41,8 @@ fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         tasks: Vec::new(),
         loading: None,
         instructions: None,
+        title: Title::default(),
+        titler: None,
     };
     smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
     (runtime, receiver)
@@ -345,4 +348,260 @@ fn a_child_thread_approval_resolved_elsewhere_closes_its_card() {
     assert!(runtime.permissions.is_empty());
     let (view, _) = chat_of(&runtime);
     assert!(view.open_requests().next().is_none());
+}
+
+const LIVE_THREAD: &str = "01a1943b-e5c3-7841-880b-f6c0a9341ec8";
+const LIVE_CALL: &str = "call_a04acfd0ee5f43b584adae85ea080afd";
+
+fn feed_step(runtime: &mut Runtime, step: &str) {
+    for line in include_str!("fixtures/app-server-live.jsonl").lines() {
+        let entry: Value = serde_json::from_str(line).expect("recorded line");
+        if entry["step"] == step && entry["dir"] == "in" && entry["msg"]["method"].is_string() {
+            smol::block_on(runtime.message(entry["msg"].clone())).expect("message");
+        }
+    }
+}
+
+fn payloads(receiver: &Receiver<AgentStreamPayload>) -> Vec<AgentStreamPayload> {
+    std::iter::from_fn(|| receiver.try_recv().ok()).collect()
+}
+
+fn asked_requests(payloads: &[AgentStreamPayload]) -> Vec<(u64, Value, Vec<AgentQuestion>)> {
+    payloads
+        .iter()
+        .filter_map(|payload| match payload {
+            AgentStreamPayload::PermissionRequested {
+                request_id,
+                tool_call,
+                questions,
+                ..
+            } => Some((*request_id, tool_call.clone(), questions.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+fn answer_out(runtime: &Runtime) -> Vec<(String, bool)> {
+    runtime
+        .requests
+        .values()
+        .filter_map(|(outgoing, _)| match outgoing {
+            Outgoing::Answer { text, steered } => Some((text.clone(), *steered)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn answer_card(runtime: &mut Runtime, request_id: u64, answer: &str) {
+    smol::block_on(runtime.control(RuntimeControl::AnswerQuestion {
+        request_id,
+        answers: vec![AgentQuestionAnswer {
+            id: "q0".to_owned(),
+            answers: vec![answer.to_owned()],
+        }],
+    }))
+    .expect("answer");
+}
+
+fn async_item(id: &str, title: &str) -> Value {
+    json!({ "type": "agentMessage", "id": id, "text": format!("{title}\n- A\n- B"),
+        "phase": "final_answer", "delivery": "async",
+        "questions": [{ "title": title, "options": ["A", "B"] }] })
+}
+
+#[test]
+fn the_recorded_async_question_becomes_a_card_and_its_answer_starts_a_turn() {
+    let (mut runtime, receiver) = setup(LIVE_THREAD);
+    feed_step(&mut runtime, "question");
+    let seen = payloads(&receiver);
+    assert!(
+        !seen.iter().any(|payload| matches!(payload,
+            AgentStreamPayload::Update { update }
+                if update["content"]["text"] == "Which color?\n- Red\n- Blue")),
+        "the fallback text was drawn as a message"
+    );
+    let asked = asked_requests(&seen);
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    let (request_id, tool_call, questions) = asked[0].clone();
+    assert_eq!(
+        tool_call,
+        json!({ "toolCallId": LIVE_CALL, "title": "Which color?", "kind": "other",
+            "_meta": { "zz": { "background": true } } })
+    );
+    let labels = questions[0]
+        .options
+        .iter()
+        .map(|option| option.label.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        (
+            questions[0].question.as_str(),
+            labels,
+            questions[0].allow_other
+        ),
+        ("Which color?", vec!["Red", "Blue"], true)
+    );
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    assert!(view.running().is_none());
+    assert_eq!(view.asking().map(|request| request.id.0), Some(request_id));
+    answer_card(&mut runtime, request_id, "Blue");
+    assert_eq!(
+        answer_out(&runtime),
+        [(
+            format!(
+                "<send_user_message_question_reply>\n[{{\"questionItemId\":\"[\\\"request_user_input_async\\\",\\\"{LIVE_CALL}\\\",0]\",\"question\":\"Which color?\",\"answer\":\"Blue\"}}]\n</send_user_message_question_reply>\n"
+            ),
+            false,
+        )]
+    );
+    feed_step(&mut runtime, "question-reply");
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    let request = view.request(RequestId(request_id)).expect("request");
+    assert_eq!(request.close, Some(answered(&["Blue"])));
+    assert_eq!(view.requests.len(), 1, "{:?}", view.requests);
+    assert_eq!(
+        view.item(&ItemId::new(LIVE_CALL))
+            .map(|item| item.status.clone()),
+        Some(ItemStatus::Completed)
+    );
+    assert!(
+        !view
+            .items
+            .values()
+            .any(|item| item.body.text.contains("send_user_message_question_reply")),
+        "the reply showed as a message"
+    );
+    assert!(runtime.permissions.is_empty());
+}
+
+#[test]
+fn an_answer_steers_a_running_turn_and_starts_one_if_the_steer_misses() {
+    let thread = "thread-1";
+    let (mut runtime, receiver) = setup(thread);
+    for message in [
+        json!({ "method": "turn/started", "params": { "threadId": thread, "turn": { "id": "t1" } } }),
+        json!({ "method": "item/started", "params": { "threadId": thread, "item": async_item("call_q", "Which?") } }),
+    ] {
+        smol::block_on(runtime.message(message)).expect("message");
+    }
+    let (request_id, _, _) = asked_requests(&payloads(&receiver))[0].clone();
+    answer_card(&mut runtime, request_id, "B");
+    let steered = answer_out(&runtime);
+    assert_eq!(steered.len(), 1);
+    assert!(steered[0].1, "a running turn takes the answer as a steer");
+    let rpc = runtime
+        .requests
+        .iter()
+        .find(|(_, (outgoing, _))| matches!(outgoing, Outgoing::Answer { .. }))
+        .map(|(id, _)| *id)
+        .expect("steer request");
+    smol::block_on(runtime.message(json!({ "id": rpc, "error": { "message": "no active turn" } })))
+        .expect("steer refused");
+    assert_eq!(answer_out(&runtime), [(steered[0].0.clone(), false)]);
+}
+
+#[test]
+fn another_message_closes_an_open_card_unanswered() {
+    let thread = "thread-1";
+    let (mut runtime, receiver) = setup(thread);
+    for message in [
+        json!({ "method": "turn/started", "params": { "threadId": thread, "turn": { "id": "t1" } } }),
+        json!({ "method": "item/started", "params": { "threadId": thread, "item": async_item("call_q", "Which?") } }),
+        json!({ "method": "turn/completed", "params": { "threadId": thread, "turn": { "id": "t1", "status": "completed" } } }),
+        json!({ "method": "turn/started", "params": { "threadId": thread, "turn": { "id": "t2" } } }),
+        json!({ "method": "item/completed", "params": { "threadId": thread, "item": {
+            "type": "userMessage", "id": "m2", "content": [{ "type": "text", "text": "skip that, go on" }] } } }),
+    ] {
+        smol::block_on(runtime.message(message)).expect("message");
+    }
+    let seen = payloads(&receiver);
+    let (request_id, _, _) = asked_requests(&seen)[0].clone();
+    assert!(seen.iter().any(|payload| matches!(payload,
+        AgentStreamPayload::PermissionResolved { request_id: id, canceled: true } if *id == request_id)));
+    assert!(runtime.permissions.is_empty());
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    let request = view.request(RequestId(request_id)).expect("request");
+    assert_eq!(request.close, Some(answered(&[""])));
+    assert!(view.asking().is_none());
+}
+
+fn answered(answers: &[&str]) -> RequestClose {
+    RequestClose::Answered {
+        answer: Answer::Questions {
+            answers: answers
+                .iter()
+                .enumerate()
+                .map(|(index, answer)| QuestionAnswer {
+                    question: format!("q{index}"),
+                    answers: (!answer.is_empty())
+                        .then(|| (*answer).to_owned())
+                        .into_iter()
+                        .collect(),
+                })
+                .collect(),
+        },
+    }
+}
+
+#[test]
+fn a_resumed_thread_shows_the_answered_question_and_reopens_the_open_one() {
+    let thread = "thread-1";
+    let (mut runtime, receiver) = setup(thread);
+    let reply = translate::question_reply(
+        "call_a",
+        &translate::async_questions(&async_item("call_a", "First?")).expect("questions"),
+        &[AgentQuestionAnswer {
+            id: "q0".to_owned(),
+            answers: vec!["A".to_owned()],
+        }],
+    );
+    runtime.loading = Some(Loading {
+        start: Start::Open,
+        thread: json!({ "id": thread, "turns": [
+            { "id": "t1", "items": [
+                { "type": "userMessage", "id": "m1", "content": [{ "type": "text", "text": "ask me" }] },
+                async_item("call_a", "First?"),
+            ] },
+            { "id": "t2", "items": [
+                { "type": "userMessage", "id": "m2", "content": [{ "type": "text", "text": reply }] },
+                async_item("call_b", "Second?"),
+            ] },
+        ] }),
+        cwd: PathBuf::from("/work"),
+        children: HashMap::new(),
+    });
+    smol::block_on(runtime.apply(&Fact::SessionClosed)).expect("closed");
+    smol::block_on(runtime.load()).expect("load");
+    let asked = asked_requests(&payloads(&receiver));
+    assert_eq!(
+        asked
+            .iter()
+            .map(|(_, tool_call, _)| tool_call["toolCallId"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["call_b"]
+    );
+    let (view, rejects) = chat_of(&runtime);
+    assert!(rejects.is_empty(), "{rejects:#?}");
+    let first = view
+        .requests
+        .iter()
+        .find(|request| request.item == Some(ItemId::new("call_a")))
+        .expect("first question");
+    assert_eq!(first.close, Some(answered(&["A"])));
+    let open = view.asking().expect("second question still open");
+    assert_eq!(open.item, Some(ItemId::new("call_b")));
+    assert_eq!(open.id.0, asked[0].0);
+    assert!(
+        !view.items.values().any(|item| item
+            .body
+            .text
+            .contains("send_user_message_question_reply")
+            || item.body.text.contains("- A")),
+        "a reply or a fallback showed as a message"
+    );
+    answer_card(&mut runtime, asked[0].0, "B");
+    assert_eq!(answer_out(&runtime).len(), 1);
 }

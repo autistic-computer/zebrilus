@@ -46,6 +46,13 @@ pub(crate) enum Fact {
         item: ItemId,
         status: ItemStatus,
     },
+    Activity {
+        text: Option<String>,
+    },
+    Summarized {
+        items: Vec<ItemId>,
+        summary: String,
+    },
     RequestOpened {
         request: RequestId,
         item: Option<ItemId>,
@@ -158,7 +165,7 @@ impl Machine for ChatMachine {
     type Reject = Reject;
 
     fn transition(state: &ChatState, fact: &Fact, ctx: &Ctx) -> ChatDecision {
-        if let Some(decision) = quiet(state, fact) {
+        if let Some(decision) = quiet(state, fact, ctx) {
             return decision;
         }
         let mut draft = Draft {
@@ -178,7 +185,7 @@ impl Machine for ChatMachine {
     }
 }
 
-fn quiet(state: &ChatState, fact: &Fact) -> Option<ChatDecision> {
+fn quiet(state: &ChatState, fact: &Fact, ctx: &Ctx) -> Option<ChatDecision> {
     let (item, emit) = match fact {
         Fact::ItemAppended { item, text } => (
             item,
@@ -198,6 +205,36 @@ fn quiet(state: &ChatState, fact: &Fact) -> Option<ChatDecision> {
             return Some(
                 Decision::stay()
                     .with_effect(Effect::Emit(ChatEvent::UsageChanged { usage: *usage })),
+            );
+        }
+        Fact::Activity { text } => {
+            let Some(turn) = state.current else {
+                return Some(Decision::stay());
+            };
+            return Some(
+                Decision::stay().with_effect(Effect::Emit(ChatEvent::TurnActivity {
+                    turn,
+                    text: text.clone(),
+                    at: ctx.at,
+                })),
+            );
+        }
+        Fact::Summarized { items, summary } => {
+            let known = items
+                .iter()
+                .filter(|item| state.open(item).is_some() || state.remembers(item))
+                .cloned()
+                .collect::<Vec<_>>();
+            if known.is_empty() {
+                return Some(Decision::reject(Reject::UnknownItem(
+                    items.first().cloned().unwrap_or_default(),
+                )));
+            }
+            return Some(
+                Decision::stay().with_effect(Effect::Emit(ChatEvent::ItemsSummarized {
+                    items: known,
+                    summary: summary.clone(),
+                })),
             );
         }
         _ => return None,
@@ -347,7 +384,7 @@ impl Draft {
                 self.queue_changed();
                 Ok(())
             }
-            Fact::Usage { .. } => Ok(()),
+            Fact::Usage { .. } | Fact::Activity { .. } | Fact::Summarized { .. } => Ok(()),
         }
     }
 

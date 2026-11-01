@@ -54,8 +54,14 @@ const STORY: Story = Story {
         Section {
             id: "live",
             name: "Live turn",
-            summary: "One line per run of tools; while a tool runs the line names it, between tools it shows the latest reasoning heading. The bottom line says Thinking or Working with a shimmer, a turning sparkle and the time since the prompt. A reply that lands while you watch types itself in over under a second.",
+            summary: "The last line of a running turn says what the agent is doing now, with a turning sparkle, a shimmer and the time since the prompt. It takes the newest of three things: the CLI's own activity line, the running tool's own description (a command's own text when it has none), and the latest reasoning heading. It says Thinking only when nothing more specific is known. While the newest run of tools is still going, the line opens to its steps. A reply that lands while you watch types itself in over under a second.",
             build: chat::live,
+        },
+        Section {
+            id: "batches",
+            name: "Batch summaries",
+            summary: "Claude Code sends one plain sentence for each finished batch of tool calls and names the calls by id; zz puts it on that batch's line, which opens to the calls. A sentence that lands after the reply, or after a replay, still finds its calls. Codex and subagents send none, so their runs keep zz's own count of what ran, and Codex's live line comes from the active item: the command, the tool's title, Waiting for agents, or the reasoning heading.",
+            build: chat::batches,
         },
         Section {
             id: "finished",
@@ -72,7 +78,7 @@ const STORY: Story = Story {
         Section {
             id: "messages",
             name: "Messages",
-            summary: "Your messages sit right-aligned in a raised bubble that caps its height and scrolls; replies have no bubble. Hovering a message shows when it was sent, Copy and Fork; on a reply, Copy takes every text of the turn.",
+            summary: "Your messages sit right-aligned in a raised bubble that caps its height and scrolls; replies have no bubble. Hovering a message shows when it was sent, Copy and Fork, muted until the pointer is on them; on a reply, Copy takes every text of the turn.",
             build: chat::messages,
         },
         Section {

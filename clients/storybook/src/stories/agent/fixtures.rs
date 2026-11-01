@@ -127,6 +127,41 @@ impl Script {
         self.tool(id, None, kind, target).done(id)
     }
 
+    pub fn described(
+        &mut self,
+        id: &str,
+        kind: ItemKind,
+        target: &str,
+        activity: &str,
+    ) -> &mut Self {
+        self.start(
+            id,
+            None,
+            kind,
+            ItemBody {
+                target: Some(target.to_owned()),
+                activity: Some(activity.to_owned()),
+                ..ItemBody::default()
+            },
+        )
+    }
+
+    pub fn activity(&mut self, text: &str) -> &mut Self {
+        let at = self.at;
+        self.event(&ChatEvent::TurnActivity {
+            turn: TurnId(self.turn),
+            text: Some(text.to_owned()),
+            at,
+        })
+    }
+
+    pub fn summarize(&mut self, items: &[&str], summary: &str) -> &mut Self {
+        self.event(&ChatEvent::ItemsSummarized {
+            items: items.iter().map(|id| ItemId::new(*id)).collect(),
+            summary: summary.to_owned(),
+        })
+    }
+
     pub fn notice(&mut self, id: &str, kind: ItemKind, text: &str) -> &mut Self {
         self.start(id, None, kind, ItemBody::text(text)).done(id)
     }
@@ -174,6 +209,27 @@ impl Script {
             item: item.map(ItemId::new),
             ask,
             blocking: true,
+            at,
+        })
+    }
+
+    pub fn ask_async(&mut self, request: u64, item: &str, question: AgentQuestion) -> &mut Self {
+        let at = self.at;
+        self.start(
+            item,
+            None,
+            ItemKind::Tool,
+            ItemBody::titled(question.question.clone()),
+        )
+        .background(item)
+        .event(&ChatEvent::RequestOpened {
+            request: RequestId(request),
+            turn: None,
+            item: Some(ItemId::new(item)),
+            ask: Ask::Questions {
+                questions: vec![question],
+            },
+            blocking: false,
             at,
         })
     }
@@ -492,6 +548,18 @@ pub fn question(id: &str, text: &str, options: Vec<AgentQuestionOption>) -> Agen
         allow_other: true,
         secret: false,
     }
+}
+
+pub fn rendering_question() -> AgentQuestion {
+    question(
+        "q0",
+        "Which rendering element should this test emphasize?",
+        vec![
+            option("Tables", None),
+            option("Diagrams", None),
+            option("Code blocks", None),
+        ],
+    )
 }
 
 pub fn branch_question() -> AgentQuestion {

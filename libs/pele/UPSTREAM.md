@@ -18,7 +18,10 @@ let result = pele::render("flowchart LR\n A[Source] --> B[SVG]", &options)?;
 ```
 
 The result carries the SVG markup, its size, the diagram type and the links.
-Themes take concrete SVG colors. `RenderOptions.measurer` lets a host measure
+Themes take concrete SVG colors. `Theme.node` and `Theme.node_border` paint
+the nodes (flowchart and state nodes, sequence participants and activations,
+classes and entities) apart from clusters, frames and notes; left unset they
+take `surface` and `border`, as upstream does. `RenderOptions.measurer` lets a host measure
 labels with its own fonts, and `RenderOptions.transparent` leaves the canvas
 unpainted for a host that draws its own backdrop.
 

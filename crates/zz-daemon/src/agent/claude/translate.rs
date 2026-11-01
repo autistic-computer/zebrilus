@@ -62,8 +62,33 @@ impl Translator {
             Some("user") => self.user(frame),
             Some("system") => self.system(frame),
             Some("result") => self.result(frame),
+            Some("tool_use_summary") => self.tool_summary(frame),
             _ => Vec::new(),
         }
+    }
+
+    fn tool_summary(&self, frame: &Value) -> Vec<Value> {
+        let Some(summary) = frame["summary"]
+            .as_str()
+            .map(str::trim)
+            .filter(|summary| !summary.is_empty())
+        else {
+            return Vec::new();
+        };
+        let ids = frame["preceding_tool_use_ids"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .filter(|id| self.tools.contains_key(*id) && !self.hidden_tools.contains(*id))
+            .collect::<Vec<_>>();
+        if ids.is_empty() {
+            return Vec::new();
+        }
+        vec![json!({
+            "sessionUpdate": "session_info_update",
+            "_meta": { "zz": { "summary": summary, "toolCallIds": ids } },
+        })]
     }
 
     pub(crate) fn history_entry(&mut self, entry: &Value) -> Vec<Value> {
@@ -196,6 +221,13 @@ impl Translator {
                 }
                 vec![update]
             }
+            Some("task_summary") => vec![json!({
+                "sessionUpdate": "session_info_update",
+                "_meta": { "zz": { "activity": frame["detail"]
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|detail| !detail.is_empty()) } },
+            })],
             Some("local_command_output") => frame["content"]
                 .as_str()
                 .filter(|text| !text.trim().is_empty())
@@ -409,7 +441,15 @@ impl Translator {
         }
         if let Some(parent) = parent {
             call["_meta"]["claudeCode"]["parentToolUseId"] = Value::from(parent);
-            call["_meta"]["zz"] = json!({ "parent": parent });
+            call["_meta"]["zz"]["parent"] = Value::from(parent);
+        }
+        if let Some(activity) = input["description"]
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .filter(|_| matches!(name.as_str(), "Bash" | "PowerShell" | "Agent" | "Task"))
+        {
+            call["_meta"]["zz"]["activity"] = Value::from(clip_title(activity));
         }
         vec![call]
     }
@@ -1510,6 +1550,48 @@ mod tests {
             ["compact"],
             "only the init frame's commands that work without the TUI"
         );
+    }
+
+    #[test]
+    fn summary_frames_become_the_live_line_and_batch_sentences() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let call = |id: &str, command: &str, description: &str| {
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[
+                {"type":"tool_use","id":id,"name":"Bash","input":{"command":command,"description":description}}]}})
+        };
+        let first = translator.frame(&call("toolu_1", "wc -l a.txt", "Count lines in a.txt"));
+        assert_eq!(
+            first[0]["_meta"]["zz"],
+            json!({ "activity": "Count lines in a.txt" })
+        );
+        translator.frame(&call("toolu_2", "ls", ""));
+        let todo = json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[
+            {"type":"tool_use","id":"toolu_3","name":"TodoWrite","input":{"todos":[]}}]}});
+        translator.frame(&todo);
+        let updates = [
+            json!({"type":"system","subtype":"task_summary","detail":"Listing files in current directory"}),
+            json!({"type":"tool_use_summary","summary":"Counted lines in a.txt",
+                "preceding_tool_use_ids":["toolu_1","toolu_2","toolu_3","toolu_unknown"]}),
+            json!({"type":"system","subtype":"post_turn_summary","status_category":"completed",
+                "status_detail":"ran wc -l and ls as asked","needs_action":""}),
+            json!({"type":"system","subtype":"task_summary","detail":null}),
+        ]
+        .iter()
+        .flat_map(|frame| translator.frame(frame))
+        .collect::<Vec<_>>();
+        assert_eq!(
+            updates,
+            [
+                json!({"sessionUpdate":"session_info_update",
+                    "_meta":{"zz":{"activity":"Listing files in current directory"}}}),
+                json!({"sessionUpdate":"session_info_update",
+                    "_meta":{"zz":{"summary":"Counted lines in a.txt","toolCallIds":["toolu_1","toolu_2"]}}}),
+                json!({"sessionUpdate":"session_info_update","_meta":{"zz":{"activity":null}}}),
+            ]
+        );
+        for update in &updates {
+            serde_json::from_value::<SessionUpdate>(update.clone()).expect("ACP update");
+        }
     }
 
     #[test]

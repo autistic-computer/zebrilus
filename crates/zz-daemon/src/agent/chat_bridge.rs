@@ -159,7 +159,7 @@ impl Shadow {
                     request: RequestId(*request_id),
                     item,
                     ask: ask(tool_call, options, questions),
-                    blocking: true,
+                    blocking: tool_call["_meta"]["zz"]["background"] != true,
                 });
             }
             AgentStreamPayload::PermissionResolved { request_id, .. } => {
@@ -203,6 +203,7 @@ impl Shadow {
             Some("tool_call") => self.tool_call(update),
             Some("tool_call_update") => self.tool_update(update),
             Some("plan") => self.plan(update),
+            Some("session_info_update") => self.session_info(update),
             Some("usage_update") => {
                 if let (Some(used), Some(size)) = (update["used"].as_u64(), update["size"].as_u64())
                 {
@@ -275,6 +276,11 @@ impl Shadow {
             title: update["title"].as_str().unwrap_or_default().to_owned(),
             target: target(update),
             text: content_text(&update["content"]).unwrap_or_default(),
+            activity: update["_meta"]["zz"]["activity"]
+                .as_str()
+                .map(str::trim)
+                .filter(|activity| !activity.is_empty())
+                .map(str::to_owned),
             ..ItemBody::default()
         };
         let parent = update["_meta"]["zz"]["parent"].as_str().map(ItemId::new);
@@ -384,6 +390,36 @@ impl Shadow {
             item: item.clone(),
             status,
         });
+    }
+
+    fn session_info(&mut self, update: &Value) {
+        let zz = &update["_meta"]["zz"];
+        if let (Some(summary), Some(ids)) = (
+            zz["summary"].as_str().map(str::trim),
+            zz["toolCallIds"].as_array(),
+        ) && !summary.is_empty()
+        {
+            let items = ids
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ItemId::new)
+                .collect::<Vec<_>>();
+            if !items.is_empty() {
+                self.step(Fact::Summarized {
+                    items,
+                    summary: summary.to_owned(),
+                });
+            }
+        }
+        if let Some(activity) = zz.get("activity") {
+            self.step(Fact::Activity {
+                text: activity
+                    .as_str()
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                    .map(str::to_owned),
+            });
+        }
     }
 
     fn plan(&mut self, update: &Value) {

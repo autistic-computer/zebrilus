@@ -846,7 +846,8 @@ impl AgentController {
             | AgentStreamPayload::SessionDeleteFailed { .. }
             | AgentStreamPayload::Authenticated
             | AgentStreamPayload::ConfigOptionsChanged { .. }
-            | AgentStreamPayload::ModeChanged { .. } => {
+            | AgentStreamPayload::ModeChanged { .. }
+            | AgentStreamPayload::TitleChanged { .. } => {
                 return None;
             }
             AgentStreamPayload::SessionSwitched {

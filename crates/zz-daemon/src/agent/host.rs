@@ -267,6 +267,12 @@ pub(crate) struct AgentPendingPermission {
     pub(crate) questions: Vec<AgentQuestion>,
 }
 
+impl AgentPendingPermission {
+    fn outlives_turn(&self) -> bool {
+        self.tool_call["_meta"]["zz"]["background"] == true
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct AgentPaneState {
     pub(crate) phase: AgentConnectionPhase,
@@ -282,6 +288,7 @@ pub(crate) struct AgentPaneState {
     pub(crate) last_seq: u64,
     pub(crate) git: Option<AgentGitSummary>,
     pub(crate) tasks: Vec<AgentTaskWire>,
+    pub(crate) title: Option<String>,
 }
 
 impl AgentPaneState {
@@ -300,6 +307,7 @@ impl AgentPaneState {
             last_seq: 0,
             git: None,
             tasks: Vec::new(),
+            title: None,
         }
     }
 
@@ -1031,7 +1039,10 @@ impl PanePump {
         let accepted = {
             let mut state = self.state.lock();
             if state.phase != AgentConnectionPhase::Ready
-                || !state.pending_permissions.is_empty()
+                || !state
+                    .pending_permissions
+                    .iter()
+                    .all(AgentPendingPermission::outlives_turn)
                 || self.active_turn.is_some()
             {
                 false
@@ -1064,6 +1075,18 @@ impl PanePump {
 
     fn observe(&mut self, payload: AgentStreamPayload) {
         if matches!(&payload, AgentStreamPayload::PromptAccepted { .. }) {
+            return;
+        }
+        if let AgentStreamPayload::TitleChanged { title } = payload {
+            let state = {
+                let mut state = self.state.lock();
+                if state.title == title {
+                    return;
+                }
+                state.title = title;
+                state.clone()
+            };
+            (self.sink)(self.pane, self.generation, state, None);
             return;
         }
         if let AgentStreamPayload::PromptFinished { turn_id, .. } = &payload
@@ -1155,7 +1178,7 @@ impl PanePump {
                     state.error = None;
                     state.git = None;
                     state.tasks.clear();
-                    settle_turn(&mut state);
+                    state.pending_permissions.clear();
                 }
                 AgentStreamPayload::SessionReady { session_id, .. } => {
                     state.session_id = Some(session_id.clone());
@@ -1269,7 +1292,8 @@ impl PanePump {
                 | AgentStreamPayload::SessionDeleteFailed { .. }
                 | AgentStreamPayload::PromptsReclaimed { .. }
                 | AgentStreamPayload::PromptsRestored { .. }
-                | AgentStreamPayload::Chat { .. } => {}
+                | AgentStreamPayload::Chat { .. }
+                | AgentStreamPayload::TitleChanged { .. } => {}
             }
         }
         let permission = if turn_result.is_none()
@@ -1385,7 +1409,10 @@ impl PanePump {
         let steerable = {
             let state = self.state.lock();
             state.phase == AgentConnectionPhase::Running
-                && state.pending_permissions.is_empty()
+                && state
+                    .pending_permissions
+                    .iter()
+                    .all(AgentPendingPermission::outlives_turn)
                 && state.capabilities.verbs
         };
         let text = prompt.text.trim();
@@ -1813,7 +1840,9 @@ fn append_reply_tail(buffer: &mut String, text: &str, cap: usize) -> bool {
 }
 
 fn settle_turn(state: &mut AgentPaneState) {
-    state.pending_permissions.clear();
+    state
+        .pending_permissions
+        .retain(AgentPendingPermission::outlives_turn);
 }
 
 #[cfg(test)]

@@ -444,6 +444,61 @@ impl Rewind {
     }
 }
 
+const MAX_TITLE_CHARS: usize = 80;
+const MAX_TITLE_PROMPT_CHARS: usize = 1000;
+
+#[derive(Default)]
+pub(crate) struct Title {
+    current: Option<String>,
+    asked: bool,
+}
+
+impl Title {
+    pub(crate) fn start(&mut self, title: Option<String>) -> bool {
+        self.asked = false;
+        self.rename(title)
+    }
+
+    pub(crate) fn rename(&mut self, title: Option<String>) -> bool {
+        if self.current == title {
+            return false;
+        }
+        self.current = title;
+        true
+    }
+
+    pub(crate) fn generated(&mut self, title: Option<String>) -> bool {
+        self.current.is_none() && self.rename(title)
+    }
+
+    pub(crate) fn ask(&mut self, prompt: &str) -> Option<String> {
+        let prompt = prompt.trim();
+        if self.current.is_some() || self.asked || prompt.is_empty() || prompt.starts_with('/') {
+            return None;
+        }
+        self.asked = true;
+        Some(prompt.chars().take(MAX_TITLE_PROMPT_CHARS).collect())
+    }
+
+    pub(crate) fn current(&self) -> Option<String> {
+        self.current.clone()
+    }
+}
+
+pub(crate) fn clean_title(text: &str) -> Option<String> {
+    let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let title = line
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(MAX_TITLE_CHARS)
+        .collect::<String>();
+    let title = title.trim();
+    (!title.is_empty()).then(|| title.to_owned())
+}
+
 pub(crate) fn rewind_shortfall(prompts: usize) -> String {
     match prompts {
         0 => "Nothing to rewind yet: send a prompt first.".to_owned(),

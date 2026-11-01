@@ -29,7 +29,8 @@ use zz_ui::pane_look::pane_color;
 
 use super::fixtures::{
     Script, agent, agents_script, approval, approval_of, branch_question, chart_screenshot,
-    checks_question, completed, palettes, placement, question, story_hosts, tab_strip_screenshot,
+    checks_question, completed, palettes, placement, question, rendering_question, story_hosts,
+    tab_strip_screenshot,
 };
 use crate::story::states;
 
@@ -533,24 +534,172 @@ fn working(script: &mut Script) -> &mut Script {
 }
 
 pub fn live(window: &mut Window, cx: &mut App) -> AnyView {
-    let mut running = Script::new();
-    working(&mut running).tool(
-        "x1",
-        None,
-        ItemKind::Execute,
-        "cargo test -p zz-daemon agent::fanout",
-    );
+    let described = || {
+        let mut script = Script::new();
+        working(&mut script).described(
+            "x1",
+            ItemKind::Execute,
+            "cargo test -p zz-daemon agent::fanout",
+            "Run the fanout lane tests",
+        );
+        script
+    };
+    let mut reported = described();
+    reported
+        .pause(4_000)
+        .activity("Checking why the lane keeps its turn after a replay");
     let mut thinking = Script::new();
     working(&mut thinking).think(
         "t2",
         "**Reading the replay path.** The lane keeps its cursor.",
     );
+    let mut fresh = Script::new();
+    fresh
+        .turn("The chat keeps spinning after Codex finishes a turn. Find out why and fix it.")
+        .pause(3_000);
     threads(
         vec![
-            ("running a tool", Thread::new(running)),
+            (
+                "a running tool: the line says what it does, in the tool's own words",
+                Thread::new(described()),
+            ),
+            (
+                "opened, the line lists the steps of the run still going",
+                Thread::new(described()).opened(ChatOpen {
+                    runs: vec![ItemId::new("e1")],
+                    ..ChatOpen::default()
+                }),
+            ),
+            (
+                "the CLI's own activity line, newer than the tool",
+                Thread::new(reported),
+            ),
             (
                 "between tools, the reasoning heading",
                 Thread::new(thinking),
+            ),
+            ("nothing more specific yet: Thinking", Thread::new(fresh)),
+        ],
+        window,
+        cx,
+    )
+}
+
+fn repos() -> Script {
+    let mut script = Script::new();
+    script
+        .turn("Check every repo's sync state and pull whatever is behind.")
+        .ran(
+            "x1",
+            ItemKind::Execute,
+            "git -C ala status --short --branch",
+        )
+        .ran(
+            "x2",
+            ItemKind::Execute,
+            "git -C penna status --short --branch",
+        )
+        .ran("x3", ItemKind::Execute, "git -C pele-rs fetch --all")
+        .summarize(
+            &["x1", "x2", "x3"],
+            "Fetched and checked each repo's sync state and dirty files",
+        )
+        .reply(
+            "a1",
+            "penna is two commits behind its main; the others are clean.",
+        )
+        .ran("x4", ItemKind::Execute, "just libs pull penna");
+    script
+}
+
+fn repos_live() -> Script {
+    let mut script = repos();
+    script.described(
+        "x5",
+        ItemKind::Execute,
+        "just libs check penna",
+        "Check penna after the pull",
+    );
+    script
+}
+
+fn repos_done() -> Script {
+    let mut script = repos();
+    script
+        .ran("r1", ItemKind::Read, "libs/penna/Cargo.lock")
+        .summarize(&["x4", "r1"], "Pulled penna and checked its lockfile")
+        .reply("a2", "penna is in step with its main again.")
+        .finish(completed());
+    script
+}
+
+fn codex_live() -> Script {
+    let mut script = Script::new();
+    script
+        .turn("Run the daemon tests in two agents and tell me what fails.")
+        .think(
+            "t1",
+            "**Splitting the suite**\n\nThe agent and mux tests run apart.",
+        )
+        .done("t1")
+        .ran("x1", ItemKind::Execute, "cargo test -p zz-daemon --no-run")
+        .ran("x2", ItemKind::Read, "crates/zz-daemon/Cargo.toml")
+        .reply("a1", "Two agents run the agent and the mux tests.")
+        .start(
+            "w1",
+            None,
+            ItemKind::Tool,
+            ItemBody {
+                activity: Some("Waiting for agents".to_owned()),
+                ..ItemBody::titled("Waited for agents")
+            },
+        );
+    script
+}
+
+fn codex_done() -> Script {
+    let mut script = codex_live();
+    script
+        .done("w1")
+        .ran(
+            "x3",
+            ItemKind::Execute,
+            "cargo test -p zz-daemon agent::fanout",
+        )
+        .reply("a2", "Both halves pass; nothing fails.")
+        .finish(completed());
+    script
+}
+
+pub fn batches(window: &mut Window, cx: &mut App) -> AnyView {
+    let opened = |turns: Vec<TurnId>, runs: &[&str]| ChatOpen {
+        turns,
+        runs: runs.iter().map(|id| ItemId::new(*id)).collect(),
+        ..ChatOpen::default()
+    };
+    threads(
+        vec![
+            (
+                "a finished batch reads as the sentence the CLI sent for it",
+                Thread::new(repos_live()),
+            ),
+            (
+                "opened, the batch lists its calls",
+                Thread::new(repos_live()).opened(opened(Vec::new(), &["x1"])),
+            ),
+            (
+                "a finished turn folds its batches behind Worked for",
+                Thread::new(repos_done()).opened(opened(vec![TurnId(1)], &[])),
+            ),
+            (
+                "Codex sends no sentences: its runs keep zz's own count, and the live line comes from the active item",
+                Thread::new(codex_live()).vendor(zz_ui::program::OPENAI_ICON),
+            ),
+            (
+                "a finished Codex turn",
+                Thread::new(codex_done())
+                    .vendor(zz_ui::program::OPENAI_ICON)
+                    .opened(opened(vec![TurnId(1)], &[])),
             ),
         ],
         window,
@@ -1291,10 +1440,35 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         .ask(2, None, placement())
         .answer(2, &["Settings › Interface", "7 days"])
         .tool("e1", None, ItemKind::Edit, "crates/zz-ui/src/settings.rs");
+    let mut waiting = Script::new();
+    waiting
+        .turn("Run steps 1 to 9 of the render test, and ask me which element to stress at step 7.")
+        .ran("x1", ItemKind::Execute, "cargo test -p pele render")
+        .reply("a1", "Steps 1 to 6 passed. Step 7 needs your pick.")
+        .ask_async(3, "call_q", rendering_question());
+    let mut ended = Script::new();
+    ended
+        .turn("Run steps 1 to 9 of the render test, and ask me which element to stress at step 7.")
+        .ran("x1", ItemKind::Execute, "cargo test -p pele render")
+        .ask_async(3, "call_q", rendering_question())
+        .reply("a1", "Waiting for your choice: Tables, Diagrams, or Code blocks.")
+        .finish(completed());
     let mut views: Vec<(SharedString, AnyView)> = Vec::new();
     let mut add = |label: &'static str, thread: &Entity<Thread>| {
         views.push((label.into(), thread.clone().into()));
     };
+    add(
+        "Codex asks without stopping: the turn waits for your answer",
+        &Thread::new(waiting)
+            .vendor(zz_ui::program::OPENAI_ICON)
+            .view(window, cx),
+    );
+    add(
+        "Codex asked and ended its turn: the card stays open",
+        &Thread::new(ended)
+            .vendor(zz_ui::program::OPENAI_ICON)
+            .view(window, cx),
+    );
     add(
         "an approval on the tool that needs it, first option highlighted",
         &Thread::new(approve).view(window, cx),

@@ -6,8 +6,8 @@ use zz_protocol::chat::{
 
 use crate::chat_rows::{
     AgentState, Fold, RunLabel, Unit, agent_ms, agent_prompt, agent_rows, agent_state, answered,
-    background_live, background_rows, duration, reasoning_body, run_shows, run_summary, turn_rows,
-    unit_at,
+    background_live, background_rows, duration, live_line, reasoning_body, run_shows, run_summary,
+    turn_rows, unit_at,
 };
 
 struct Thread {
@@ -941,5 +941,267 @@ fn a_thought_body_drops_its_leading_headings() {
     assert_eq!(
         reasoning_body("Just thinking aloud.").as_deref(),
         Some("Just thinking aloud.")
+    );
+}
+
+impl Thread {
+    fn activity(&mut self, text: Option<&str>) {
+        let at = self.at;
+        self.event(&ChatEvent::TurnActivity {
+            turn: TurnId(1),
+            text: text.map(str::to_owned),
+            at,
+        });
+    }
+
+    fn described(&mut self, id: &str, kind: ItemKind, target: &str, activity: &str) {
+        self.start(
+            id,
+            None,
+            kind,
+            ItemBody {
+                target: Some(target.to_owned()),
+                activity: Some(activity.to_owned()),
+                ..ItemBody::default()
+            },
+        );
+    }
+
+    fn summarize(&mut self, items: &[&str], summary: &str) {
+        self.event(&ChatEvent::ItemsSummarized {
+            items: ids(items),
+            summary: summary.to_owned(),
+        });
+    }
+
+    fn labels(&self) -> Vec<String> {
+        self.rows()
+            .shown
+            .iter()
+            .chain(&self.rows().folded)
+            .filter_map(|unit| match unit {
+                Unit::Run(run) => Some(match &run.label {
+                    RunLabel::Live { action, detail } => format!("{action} {detail}"),
+                    RunLabel::Thinking { heading } => {
+                        heading.clone().unwrap_or_else(|| "Thinking".to_owned())
+                    }
+                    RunLabel::Done { summary } => summary.clone(),
+                }),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+#[test]
+fn the_live_line_names_the_newest_thing_the_agent_is_doing() {
+    let mut thread = Thread::new();
+    assert_eq!(thread.rows().activity, None);
+    thread.described(
+        "x1",
+        ItemKind::Execute,
+        "wc -l a.txt",
+        "Count lines in a.txt",
+    );
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Count lines in a.txt")
+    );
+    thread.activity(Some("Checking each repo's sync state"));
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Checking each repo's sync state")
+    );
+    thread.tool("r1", ItemKind::Read, "crates/zz/src/main.rs");
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Reading crates/zz/src/main.rs")
+    );
+    thread.done("r1");
+    thread.done("x1");
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Checking each repo's sync state")
+    );
+    thread.start(
+        "t1",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Reading the lane**\n\nIt keeps a cursor.\n\n**Weighing the fix**"),
+    );
+    assert_eq!(thread.rows().activity.as_deref(), Some("Weighing the fix"));
+    thread.start("a1", None, ItemKind::Agent, ItemBody::text("Found it."));
+    assert_eq!(thread.rows().activity, None);
+    thread.activity(Some("Writing the fix"));
+    assert_eq!(thread.rows().activity.as_deref(), Some("Writing the fix"));
+    thread.activity(None);
+    assert_eq!(thread.rows().activity, None);
+    thread.done("t1");
+    thread.done("a1");
+    thread.finish(completed());
+    assert_eq!(thread.rows().activity, None);
+}
+
+#[test]
+fn a_codex_turn_takes_its_live_line_from_the_active_item() {
+    let mut thread = Thread::new();
+    thread.start(
+        "t1",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Considering final step timing**"),
+    );
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Considering final step timing")
+    );
+    thread.tool("x1", ItemKind::Execute, "cargo test -p zz-daemon");
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Running cargo test -p zz-daemon")
+    );
+    thread.done("x1");
+    thread.start(
+        "w1",
+        None,
+        ItemKind::Tool,
+        ItemBody {
+            activity: Some("Waiting for agents".to_owned()),
+            ..ItemBody::titled("Waited for agents")
+        },
+    );
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Waiting for agents")
+    );
+    thread.done("w1");
+    assert_eq!(
+        thread.rows().activity.as_deref(),
+        Some("Considering final step timing")
+    );
+    thread.done("t1");
+    thread.finish(completed());
+    assert_eq!(
+        thread.labels(),
+        ["Ran cargo test -p zz-daemon, used a tool"]
+    );
+}
+
+#[test]
+fn a_summary_that_lands_after_its_rows_names_its_batch_by_tool_id() {
+    let mut thread = Thread::new();
+    thread.tool("r1", ItemKind::Read, "a.txt");
+    thread.done("r1");
+    thread.tool("x1", ItemKind::Execute, "wc -l a.txt");
+    thread.done("x1");
+    thread.start(
+        "t1",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Planning the edit**\n\nThe count is off by one."),
+    );
+    thread.done("t1");
+    thread.tool("e1", ItemKind::Edit, "a.txt");
+    thread.end("e1", ItemStatus::Failed { message: None });
+    assert_eq!(thread.labels(), ["Planning the edit"]);
+    thread.summarize(&["x1", "r1", "ghost"], "Counted lines in a.txt");
+    assert_eq!(
+        thread.labels(),
+        ["Counted lines in a.txt", "Planning the edit"]
+    );
+    let Unit::Run(second) = &thread.rows().shown[1] else {
+        panic!("a second run");
+    };
+    assert_eq!(second.items, ids(&["t1", "e1"]));
+    thread.summarize(&["e1"], "Tried to fix the count");
+    thread.start("a1", None, ItemKind::Agent, ItemBody::text("Done."));
+    thread.done("a1");
+    thread.finish(completed());
+    assert_eq!(
+        thread.labels(),
+        [
+            "Counted lines in a.txt",
+            "Tried to fix the count · 1 failed"
+        ]
+    );
+
+    let mut log = zz_protocol::chat::ChatLog::default();
+    let mut live = Thread::new();
+    for event in [
+        ChatEvent::ItemStarted {
+            item: ItemId::new("x9"),
+            turn: Some(TurnId(1)),
+            parent: None,
+            kind: ItemKind::Execute,
+            body: ItemBody::default(),
+            at: 1,
+        },
+        ChatEvent::ItemEnded {
+            item: ItemId::new("x9"),
+            status: ItemStatus::Completed,
+            at: 2,
+        },
+        ChatEvent::ItemsSummarized {
+            items: ids(&["x9"]),
+            summary: "Checked the build".to_owned(),
+        },
+    ] {
+        live.event(&event);
+        log.push(&event);
+    }
+    let mut replayed = ChatView::default();
+    for event in [
+        ChatEvent::SessionReady {
+            session: "s".to_owned(),
+        },
+        ChatEvent::TurnStarted {
+            turn: TurnId(1),
+            by: TurnBy::User { prompt: 1 },
+            at: 0,
+        },
+    ]
+    .iter()
+    .chain(log.events())
+    {
+        replayed.apply(event).expect("replayed event");
+    }
+    assert_eq!(
+        turn_rows(&replayed, &replayed.turns[0], 0).shown,
+        turn_rows(&live.view, &live.view.turns[0], 0).shown
+    );
+    assert_eq!(live.labels(), ["Checked the build"]);
+}
+
+#[test]
+fn an_open_async_question_says_waiting_until_a_tool_runs() {
+    let mut thread = Thread::new();
+    thread.start(
+        "t1",
+        None,
+        ItemKind::Reasoning,
+        ItemBody::text("**Waiting on the pick.**"),
+    );
+    thread.background("q1", ItemKind::Tool);
+    let at = thread.at;
+    thread.event(&ChatEvent::RequestOpened {
+        request: RequestId(4),
+        turn: Some(TurnId(1)),
+        item: Some(ItemId::new("q1")),
+        ask: Ask::Questions {
+            questions: Vec::new(),
+        },
+        blocking: false,
+        at,
+    });
+    let turn = &thread.view.turns[0];
+    assert_eq!(
+        live_line(&thread.view, turn).as_deref(),
+        Some("Waiting for your answer")
+    );
+    thread.tool("x1", ItemKind::Execute, "cargo test");
+    let turn = &thread.view.turns[0];
+    assert_eq!(
+        live_line(&thread.view, turn).as_deref(),
+        Some("Running cargo test")
     );
 }
