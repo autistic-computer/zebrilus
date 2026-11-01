@@ -168,9 +168,16 @@ fn a_lens_that_opens_wakes_the_plugin_to_start_streaming() {
     );
     assert!(started.elapsed() < Duration::from_secs(5));
     let waiting = poll(&path, "m");
-    until(|| channel.polling("m"));
+    until(|| {
+        hub.shared.state.lock().panes[&PANE]
+            .polls
+            .get("m")
+            .is_some_and(|poll| poll.open == 1)
+    });
+    let started = Instant::now();
     drop(channel);
     assert_eq!(waiting.join().unwrap()["watched"], false);
+    assert!(started.elapsed() < Duration::from_secs(5));
 }
 
 #[test]
