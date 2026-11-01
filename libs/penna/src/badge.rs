@@ -88,7 +88,7 @@ impl Badge {
             .on(ground);
         let mut layer = theme.layer(surface, PaintState::Rest);
         if self.opaque {
-            layer.fill = ground.fill.blend(layer.fill);
+            layer.fill = layer.ground.fill;
         }
         layer
     }
