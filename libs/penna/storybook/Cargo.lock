@@ -147,7 +147,7 @@ dependencies = [
 [[package]]
 name = "ala"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#be48f39d7e7df1bfff2d6299cda2839ec5c0d395"
+source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
 dependencies = [
  "accesskit",
  "ala-macros",
@@ -220,7 +220,7 @@ dependencies = [
 [[package]]
 name = "ala-macros"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#be48f39d7e7df1bfff2d6299cda2839ec5c0d395"
+source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -231,7 +231,7 @@ dependencies = [
 [[package]]
 name = "ala-platform"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#be48f39d7e7df1bfff2d6299cda2839ec5c0d395"
+source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
 dependencies = [
  "accesskit",
  "accesskit_android",
@@ -1170,7 +1170,7 @@ dependencies = [
 [[package]]
 name = "cosmic-text"
 version = "0.19.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#be48f39d7e7df1bfff2d6299cda2839ec5c0d395"
+source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
 dependencies = [
  "bitflags",
  "fontdb 0.23.0",
@@ -5241,6 +5241,7 @@ checksum = "977d0a4abdef933f424a99fe09f95576e089b90aebc6f016a3bc813762493e91"
 dependencies = [
  "base64",
  "data-url",
+ "flate2",
  "fontdb 0.24.0",
  "harfrust 0.12.0",
  "imagesize",
