@@ -62,7 +62,11 @@ impl Known {
                 .as_str()
                 .is_none_or(|source| source == "user");
         let cwd = thread["cwd"].as_str().map(PathBuf::from);
-        let born = born(&id).or_else(|| thread["createdAt"].as_u64().map(|at| at * 1000));
+        let born = born(&id).or_else(|| {
+            thread["createdAt"]
+                .as_u64()
+                .map(|at| at.saturating_mul(1000))
+        });
         let (true, Some(cwd), Some(born)) = (top, cwd, born) else {
             return Some((id, None));
         };

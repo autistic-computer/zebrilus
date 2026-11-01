@@ -168,3 +168,13 @@ fn a_thread_named_after_the_folder_does_not_match_the_folder_segment() {
     ];
     assert_eq!(picked(&threads, 1_001, &[1_000], Some("proj")), None);
 }
+
+#[test]
+fn a_created_at_past_any_real_time_is_kept_without_overflow() {
+    let (_, known) = Known::of(&json!({
+        "id": "2c3bdb36-3c6e-4f6a-9d40-0c0ef9c1e5a1", "cwd": "/work/proj",
+        "createdAt": u64::MAX,
+    }))
+    .unwrap();
+    assert_eq!(known.expect("a top-level thread").born, u64::MAX);
+}
