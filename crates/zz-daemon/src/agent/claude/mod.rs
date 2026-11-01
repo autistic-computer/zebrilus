@@ -27,8 +27,8 @@ use zz_protocol::{
 
 use crate::agent::{
     child::{
-        ChildEvent, Input, Process, Rewind, cancelled, fit_update, new_uuid, next_input, option,
-        prompt_outcome, random_u64, rewind_shortfall,
+        ChildEvent, Input, Process, Rewind, Title, cancelled, clean_title, fit_update, new_uuid,
+        next_input, option, prompt_outcome, random_u64, rewind_shortfall,
     },
     environment::{AgentWorkspaceEnvironment, agent_path, find_executable},
     host::RuntimeChannels,
@@ -53,6 +53,7 @@ const CONTROL_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_REPLAY_UPDATES: usize = 4096;
 const SESSION_PAGE: usize = 50;
 const SIDE_TIMEOUT: Duration = Duration::from_mins(2);
+const TITLE_TIMEOUT: Duration = Duration::from_mins(1);
 const VERB_HELP: &str = "zz commands: `/btw <question>` (or `/side`) asks Claude without adding to the conversation, `/steer <text>` redirects the running turn, `/fork` continues in a copy of this conversation, and `/rewind [n]` continues from before your last n prompts (1 by default) without changing files. Every other `/` command goes to Claude Code.";
 const CHAT_REFUSED: [&str; 12] = [
     "status",
@@ -223,6 +224,7 @@ pub(crate) async fn run_claude_runtime(
         tasks: Vec::new(),
         verbs: 0,
         reply: None,
+        title: Title::default(),
     };
     let commands = channels.commands;
     let controls = channels.controls;
@@ -301,6 +303,7 @@ enum Outgoing {
     Mode { mode_id: String },
     Side { message_id: String, reply: String },
     StopTask,
+    Title { session: String },
 }
 
 enum Permission {
@@ -468,6 +471,7 @@ struct Runtime {
     settings: Settings,
     verbs: u64,
     reply: Option<String>,
+    title: Title,
 }
 
 impl Runtime {
@@ -692,6 +696,7 @@ impl Runtime {
                         .await;
                 }
                 let content = prompt_content(&prompt);
+                let text = prompt.text.clone();
                 let uuid = new_uuid();
                 let fact = Fact::Prompt {
                     turn: turn_id,
@@ -720,6 +725,7 @@ impl Runtime {
                     "message": { "role": "user", "content": content },
                     "origin": { "kind": "human" },
                 }));
+                self.ask_title(&text);
                 self.emit(AgentStreamPayload::PromptAccepted { turn_id })
                     .await
             }
@@ -953,6 +959,7 @@ impl Runtime {
             command.env(name, value);
         }
         command.env("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
+        command.env("CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES", "1");
         for (name, value) in &self.command.env {
             command.env(name, value);
         }
@@ -1015,6 +1022,10 @@ impl Runtime {
         }
         self.translator = Translator::new(starting.cwd.clone());
         let session_id = starting.launch.session_id().to_owned();
+        let title = match starting.launch.history() {
+            Some(source) => saved_title(source, &starting.cwd).await,
+            None => None,
+        };
         let replay = match starting.launch.history() {
             Some(source) => {
                 self.history(source, starting.launch.at(), &session_id, &starting.cwd)
@@ -1059,6 +1070,10 @@ impl Runtime {
             }
         }
         self.publish_commands().await?;
+        if self.title.start(title.clone()) {
+            self.emit(AgentStreamPayload::TitleChanged { title })
+                .await?;
+        }
         if let Launch::Fork { source, at, .. } = &starting.launch {
             let text = if at.is_some() {
                 format!(
@@ -1291,7 +1306,47 @@ impl Runtime {
             config_options: Some(self.settings.config_options()),
             replay: Vec::new(),
         })
-        .await
+        .await?;
+        if self.title.start(None) {
+            self.emit(AgentStreamPayload::TitleChanged { title: None })
+                .await?;
+        }
+        Ok(())
+    }
+
+    fn ask_title(&mut self, prompt: &str) {
+        let Some(session) = self.session.as_ref().map(|session| session.id.clone()) else {
+            return;
+        };
+        if let Some(description) = self.title.ask(prompt) {
+            self.request(
+                &json!({
+                    "subtype": "generate_session_title",
+                    "description": description,
+                    "persist": true,
+                }),
+                Outgoing::Title { session },
+                TITLE_TIMEOUT,
+            );
+        }
+    }
+
+    async fn titled(&mut self, session: &str, result: Result<Value, String>) -> Result<(), String> {
+        if self.session.as_ref().map(|current| current.id.as_str()) != Some(session) {
+            return Ok(());
+        }
+        let title = match result {
+            Ok(response) => response["title"].as_str().and_then(clean_title),
+            Err(error) => {
+                log::debug!(target: "zz::agent", "Claude Code did not name the session: {error}");
+                None
+            }
+        };
+        if self.title.generated(title.clone()) {
+            self.emit(AgentStreamPayload::TitleChanged { title })
+                .await?;
+        }
+        Ok(())
     }
 
     async fn publish_commands(&self) -> Result<(), String> {
@@ -1374,6 +1429,7 @@ impl Runtime {
             (Outgoing::Interrupt | Outgoing::StopTask, Ok(_)) | (Outgoing::Interrupt, Err(_)) => {
                 Ok(())
             }
+            (Outgoing::Title { session }, result) => self.titled(&session, result).await,
             (Outgoing::StopTask, Err(error)) => {
                 self.notice(&format!("Could not stop the task: {error}"))
                     .await
@@ -1663,6 +1719,13 @@ impl Runtime {
             Some("commands_changed") => {
                 self.settings.commands = frame["commands"].as_array().cloned().unwrap_or_default();
                 self.publish_commands().await?;
+            }
+            Some("session_title_changed") => {
+                let title = frame["title"].as_str().and_then(clean_title);
+                if self.title.rename(title.clone()) {
+                    self.emit(AgentStreamPayload::TitleChanged { title })
+                        .await?;
+                }
             }
             Some("session_state_changed") => {
                 if frame["state"] == "idle" {
@@ -2104,6 +2167,15 @@ pub(crate) fn answered(
     json!({ "behavior": "allow", "updatedInput": input })
 }
 
+async fn saved_title(session: &str, cwd: &Path) -> Option<String> {
+    let file =
+        sessions::config_home().and_then(|config| sessions::session_file(&config, cwd, session))?;
+    smol::unblock(move || sessions::title(&file))
+        .await
+        .as_deref()
+        .and_then(clean_title)
+}
+
 fn side_answer(message_id: &str, reply: &str, answer: &str) -> Value {
     json!({
         "sessionUpdate": "agent_message_chunk",
@@ -2322,6 +2394,9 @@ read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[{"name":"compact","description":"Compact","argumentHint":""}],"models":[{"value":"default","displayName":"Default","description":"Opus"}],"current_permission_mode":"default"}}}'
 read -r prompt
 case "$prompt" in *'"text":"hello"'*) ;; *) echo "bad prompt: $prompt" >&2; exit 3 ;; esac
+read -r title
+case "$title" in *'"request_id":"zz-2"'*'"generate_session_title"'*'"description":"hello"'*'"persist":true'*) ;; *) echo "bad title: $title" >&2; exit 5 ;; esac
+printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-2","response":{"title":"Say hello"}}}'
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
 printf '%s\n' '{"type":"assistant","parent_tool_use_id":null,"message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"rm -rf build"}}]}}'
 printf '%s\n' '{"type":"control_request","request_id":"perm-1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"rm -rf build"},"tool_use_id":"t1","permission_suggestions":[]}}'
@@ -2331,6 +2406,7 @@ printf '%s\n' '{"type":"user","parent_tool_use_id":null,"message":{"role":"user"
 printf '%s\n' '{"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[{"type":"text","text":"done"}]}}'
 printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":5,"output_tokens":2},"modelUsage":{"m":{"contextWindow":1000}},"total_cost_usd":0.01}'
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"idle"}'
+printf '%s\n' '{"type":"system","subtype":"session_title_changed","title":"Greet the user"}'
 while read -r line; do :; done
 "#;
 
@@ -2423,6 +2499,10 @@ while read -r line; do :; done
                 next().await,
                 AgentStreamPayload::PromptAccepted { turn_id: 1 }
             ));
+            assert!(matches!(
+                next().await,
+                AgentStreamPayload::TitleChanged { title } if title.as_deref() == Some("Say hello")
+            ));
             assert!(
                 matches!(next().await, AgentStreamPayload::Update { update } if update["title"] == "rm -rf build")
             );
@@ -2472,6 +2552,12 @@ while read -r line; do :; done
                 next().await,
                 AgentStreamPayload::PromptFinished { turn_id: 1, outcome: AgentPromptOutcome::Finished { stop_reason } } if stop_reason == "end_turn"
             ));
+            let renamed = loop {
+                if let AgentStreamPayload::TitleChanged { title } = next().await {
+                    break title;
+                }
+            };
+            assert_eq!(renamed.as_deref(), Some("Greet the user"));
             commands
                 .send(RuntimeCommand::Shutdown)
                 .await
@@ -2589,6 +2675,7 @@ while read -r line; do :; done
 read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
 read -r prompt
+read -r title
 printf '%s\n' '{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"b1","task_type":"local_bash","description":"sleep 30"},{"task_id":"w1","task_type":"monitor","description":"watcher","ambient":true}]}'
 printf '%s\n' '{"type":"control_request","request_id":"q-1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","tool_use_id":"t9","input":{"questions":[{"question":"Which fruit?","header":"Fruit","multiSelect":false,"options":[{"label":"apple"},{"label":"pear"}]},{"question":"Which colors?","header":"Colors","multiSelect":true,"options":[{"label":"red"},{"label":"blue"},{"label":"green"}]}]}}}'
 read -r answer
@@ -2726,6 +2813,7 @@ while read -r line; do :; done
 read -r init
 printf '%s\n' '{"type":"control_response","response":{"subtype":"success","request_id":"zz-1","response":{"commands":[],"models":[],"current_permission_mode":"default"}}}'
 read -r prompt
+read -r title
 printf '%s\n' '{"type":"system","subtype":"session_state_changed","state":"running"}'
 printf '%s\n' '{"type":"control_request","request_id":"q-1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","tool_use_id":"t9","input":{"questions":[{"question":"Which fruit?","header":"Fruit","multiSelect":false,"options":[{"label":"apple"},{"label":"pear"}]}]}}}'
 read -r answer

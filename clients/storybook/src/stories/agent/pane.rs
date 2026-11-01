@@ -95,12 +95,14 @@ impl Scene {
         }
     }
 
-    const fn title(self) -> &'static str {
-        match self {
-            Self::Claude => "Pinned tabs keep their icon width",
-            Self::ClaudeAsks => "Open the pinned tabs pull request",
-            Self::ClaudePlans => "Plan the pinned tabs fix",
-            Self::Codex | Self::CodexFirst => "codex",
+    const fn title(self, side: Side) -> &'static str {
+        match (self, side) {
+            (Self::Claude, _) => "Pinned tabs keep their icon width",
+            (Self::ClaudeAsks, _) => "Open the pinned tabs pull request",
+            (Self::ClaudePlans, _) => "Plan the pinned tabs fix",
+            (Self::Codex, _) => "Fix the tab drop preview",
+            (Self::CodexFirst, Side::Chat) => "agent",
+            (Self::CodexFirst, Side::Cli) => "codex",
         }
     }
 
@@ -449,7 +451,7 @@ impl AgentPaneStory {
 
     fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
-        let title = self.scene.title();
+        let title = self.scene.title(self.side);
         let flip = self.flips.state(self.pane());
         pane_header(
             match self.side {

@@ -64,7 +64,9 @@ updates, `sessions.rs` reads Claude's own session files.
   --await-initialize`. zz leaves out `--setting-sources=user`, so project and local settings apply
   as they do in the TUI. Extra arguments in `agent-claude-code-command` are appended, and `--model`
   or `--permission-mode` there seed the pickers.
-- **Environment.** `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`, the workspace identity
+- **Environment.** `CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS=1`,
+  `CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES=1` (the live activity line and batch sentences the chat
+  draws, [agent panes](/concepts/agent-panes.md)), the workspace identity
   (`ZZ_PANE` and friends), and the daemon's parent-Claude scrub list removed.
   `CLAUDE_CODE_ENTRYPOINT` stays unset, so sessions record `sdk-cli` and the `claude --resume`
   picker hides them; resuming by ID still works, and zz lists them itself.

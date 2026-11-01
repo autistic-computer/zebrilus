@@ -63,6 +63,7 @@ pub struct TurnRows {
     pub folded: Vec<Unit>,
     pub shown: Vec<Unit>,
     pub fold: Option<Fold>,
+    pub activity: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -87,6 +88,7 @@ pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64) -> TurnRows {
     let live = turn.is_open();
     let standalone = unattached(view, Some(turn.id));
     let units = units(view, &turn.items, &standalone, live);
+    let activity = live.then(|| live_line(view, turn)).flatten();
     let elapsed = turn.ended_at.unwrap_or(now).saturating_sub(turn.started_at);
     let fold = match &turn.outcome {
         None => Fold::Working { ms: elapsed },
@@ -117,6 +119,7 @@ pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64) -> TurnRows {
             folded: Vec::new(),
             shown: units,
             fold: live.then_some(fold),
+            activity,
         };
     };
     let (mut folded, mut shown) = (Vec::new(), Vec::new());
@@ -132,7 +135,53 @@ pub fn turn_rows(view: &ChatView, turn: &TurnView, now: u64) -> TurnRows {
         folded,
         shown,
         fold: Some(fold),
+        activity,
     }
+}
+
+pub fn live_line(view: &ChatView, turn: &TurnView) -> Option<String> {
+    let mut line = turn
+        .activity
+        .as_ref()
+        .map(|activity| (activity.at, Some(activity.text.clone())));
+    let mut busy = false;
+    for item in turn.items.iter().filter_map(|id| view.item(id)) {
+        let text = match item.kind {
+            ItemKind::User | ItemKind::Agent => None,
+            ItemKind::Reasoning => match last_heading(&item.body.text) {
+                Some(heading) => Some(heading),
+                None => continue,
+            },
+            kind if (kind.is_tool() || kind == ItemKind::Subagent)
+                && item.status.is_open()
+                && !item.background =>
+            {
+                busy = true;
+                Some(doing(item))
+            }
+            _ => continue,
+        };
+        if line.as_ref().is_none_or(|(at, _)| item.started_at >= *at) {
+            line = Some((item.started_at, text));
+        }
+    }
+    if !busy && view.asking().is_some() {
+        return Some("Waiting for your answer".to_owned());
+    }
+    line.and_then(|(_, text)| text)
+}
+
+fn doing(item: &ItemView) -> String {
+    if let Some(activity) = item.body.activity.as_deref().map(str::trim)
+        && !activity.is_empty()
+    {
+        return activity.to_owned();
+    }
+    if item.kind == ItemKind::Subagent && !item.body.title.trim().is_empty() {
+        return item.body.title.clone();
+    }
+    let (action, detail) = live_parts(item);
+    format!("{action} {detail}")
 }
 
 fn still_running(view: &ChatView, unit: &Unit) -> bool {
@@ -314,6 +363,12 @@ pub fn run_summary(view: &ChatView, items: &[ItemId]) -> String {
     if let Some(first) = summary.get(..1) {
         summary = format!("{}{}", first.to_uppercase(), &summary[1..]);
     }
+    summary.push_str(&outcomes(&tools));
+    summary
+}
+
+fn outcomes(tools: &[&ItemView]) -> String {
+    let mut suffix = String::new();
     let failed = tools
         .iter()
         .filter(|item| matches!(item.status, ItemStatus::Failed { .. }))
@@ -323,12 +378,12 @@ pub fn run_summary(view: &ChatView, items: &[ItemId]) -> String {
         .filter(|item| item.status == ItemStatus::Declined)
         .count();
     if failed > 0 {
-        let _ = write!(summary, " · {failed} failed");
+        let _ = write!(suffix, " · {failed} failed");
     }
     if denied > 0 {
-        let _ = write!(summary, " · {denied} denied");
+        let _ = write!(suffix, " · {denied} denied");
     }
-    summary
+    suffix
 }
 
 pub fn duration(ms: u64) -> String {
@@ -504,7 +559,59 @@ fn flush(view: &ChatView, run: &mut Vec<ItemId>, out: &mut Vec<Unit>, tail: bool
     if run.is_empty() {
         return;
     }
-    let items = std::mem::take(run);
+    let batches = batches(view, std::mem::take(run));
+    let last = batches.len().saturating_sub(1);
+    for (index, items) in batches.into_iter().enumerate() {
+        push_run(view, items, out, tail && index == last);
+    }
+}
+
+fn batches(view: &ChatView, items: Vec<ItemId>) -> Vec<Vec<ItemId>> {
+    let batch_of = |id: &ItemId| {
+        view.item(id)
+            .filter(|item| item.kind.is_tool())
+            .map(|item| item.summary.as_ref().map(|summary| summary.batch))
+    };
+    let mut out = Vec::new();
+    let mut current = Vec::new();
+    let mut batch = None;
+    let mut thoughts = 0;
+    for id in items {
+        match batch_of(&id) {
+            Some(this) => {
+                if batch.is_some_and(|known| known != this) {
+                    let carried = current.split_off(current.len() - thoughts);
+                    out.push(std::mem::replace(&mut current, carried));
+                }
+                batch = Some(this);
+                thoughts = 0;
+            }
+            None => thoughts += 1,
+        }
+        current.push(id);
+    }
+    if matches!(batch, Some(Some(_))) && thoughts > 0 {
+        let carried = current.split_off(current.len() - thoughts);
+        out.push(std::mem::replace(&mut current, carried));
+    }
+    out.push(current);
+    out
+}
+
+fn summarized<'a>(view: &'a ChatView, items: &[ItemId]) -> Option<(&'a str, Vec<&'a ItemView>)> {
+    let tools = items
+        .iter()
+        .filter_map(|id| view.item(id))
+        .filter(|item| item.kind.is_tool())
+        .collect::<Vec<_>>();
+    let summary = tools.first()?.summary.as_ref()?;
+    tools
+        .iter()
+        .all(|item| item.summary.as_ref() == Some(summary))
+        .then_some((summary.text.as_str(), tools))
+}
+
+fn push_run(view: &ChatView, items: Vec<ItemId>, out: &mut Vec<Unit>, tail: bool) {
     if !tail && !run_shows(view, &items) {
         return;
     }
@@ -513,9 +620,12 @@ fn flush(view: &ChatView, run: &mut Vec<ItemId>, out: &mut Vec<Unit>, tail: bool
         .rev()
         .filter_map(|id| view.item(id))
         .find(|item| item.kind.is_tool() && item.status.is_open());
-    let label = match running {
-        Some(item) => live_label(item),
-        None if tail => RunLabel::Thinking {
+    let label = match (running, summarized(view, &items)) {
+        (Some(item), _) => live_label(item),
+        (None, Some((summary, tools))) => RunLabel::Done {
+            summary: format!("{summary}{}", outcomes(&tools)),
+        },
+        (None, None) if tail => RunLabel::Thinking {
             heading: items
                 .iter()
                 .rev()
@@ -523,7 +633,7 @@ fn flush(view: &ChatView, run: &mut Vec<ItemId>, out: &mut Vec<Unit>, tail: bool
                 .find(|item| item.kind == ItemKind::Reasoning)
                 .and_then(|item| heading(&item.body.text)),
         },
-        None => RunLabel::Done {
+        (None, None) => RunLabel::Done {
             summary: run_summary(view, &items),
         },
     };
@@ -531,6 +641,11 @@ fn flush(view: &ChatView, run: &mut Vec<ItemId>, out: &mut Vec<Unit>, tail: bool
 }
 
 fn live_label(item: &ItemView) -> RunLabel {
+    let (action, detail) = live_parts(item);
+    RunLabel::Live { action, detail }
+}
+
+fn live_parts(item: &ItemView) -> (&'static str, String) {
     let target = item
         .body
         .target
@@ -545,10 +660,7 @@ fn live_label(item: &ItemView) -> RunLabel {
         ItemKind::Web => "Searching the web for",
         _ => "Using",
     };
-    RunLabel::Live {
-        action,
-        detail: target,
-    }
+    (action, target)
 }
 
 pub fn run_shows(view: &ChatView, items: &[ItemId]) -> bool {
@@ -582,17 +694,24 @@ fn heading_line(line: &str) -> Option<&str> {
 }
 
 fn heading(text: &str) -> Option<String> {
-    text.lines().map(str::trim).find_map(|line| {
-        let inner = line
-            .strip_prefix("**")
-            .and_then(|rest| rest.split("**").next())
-            .or_else(|| {
-                line.strip_prefix('#')
-                    .map(|rest| rest.trim_start_matches('#'))
-            })?;
-        let inner = inner.trim().trim_end_matches('.');
-        (!inner.is_empty()).then(|| inner.to_owned())
-    })
+    text.lines().find_map(heading_of)
+}
+
+fn last_heading(text: &str) -> Option<String> {
+    text.lines().rev().find_map(heading_of)
+}
+
+fn heading_of(line: &str) -> Option<String> {
+    let line = line.trim();
+    let inner = line
+        .strip_prefix("**")
+        .and_then(|rest| rest.split("**").next())
+        .or_else(|| {
+            line.strip_prefix('#')
+                .map(|rest| rest.trim_start_matches('#'))
+        })?;
+    let inner = inner.trim().trim_end_matches('.');
+    (!inner.is_empty()).then(|| inner.to_owned())
 }
 
 fn last_text(view: &ChatView, ids: &[ItemId]) -> Option<String> {

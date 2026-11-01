@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-01T21:00:00-03:00
+timestamp: 2026-11-01T23:00:00-03:00
 ---
 
 # Overview
@@ -64,6 +64,39 @@ window's or float's pane becomes the target of the next command:
   <message> agent <claude|codex>`
 - Side chat in a PiP: `new-pane -c <dir> ; select-pane-kind --resume <session> --fork agent
   <claude|codex>`
+
+# Chat titles
+
+A chat is named after its session, the name each CLI gives its own sessions.
+
+- **Pane and window.** The pane title is the session title, and `agent` until one is known. The
+  driver reports it as `AgentStreamPayload::TitleChanged`, which the host keeps out of the stream:
+  it lands in `AgentPaneState.title`, goes out as `AgentPaneWire.title`, and the daemon sets the
+  pane title from it (`apply_agent_title`, `MuxState::update_agent_title`). A title from the CLI
+  replaces one set with `select-pane -T`, as a program's OSC title does, and `allow-set-title off`
+  keeps the pane's own. With the default `automatic-rename-format`, a window whose active pane is a
+  chat takes the chat's title as its name (`refresh_automatic_window_name_for_pane`), so
+  `list-windows`, the status bar, the chat sidebar, the session tree and the phone overview all read
+  it; a window the user renamed keeps its name. `pane-title-changed` and `window-renamed` fire. No
+  wire change: the pane title and `AgentPaneWire.title` were already on the wire.
+- **Claude Code.** On start or resume the driver reads the transcript's last `customTitle` (a
+  rename), else its last `aiTitle` (`claude::sessions::title`, the head and tail reads the session
+  list uses); a fork or rewind takes the source session's. After the first prompt of an untitled
+  session (not a `/` command) it sends the `generate_session_title` control request with the prompt
+  as the description and `persist: true`, so the CLI saves the title in the session as well. The
+  turn does not wait on it. A `/rename` comes back as `system` / `session_title_changed`, and a
+  `/clear` starts untitled.
+- **Codex.** The thread's `name` from the `thread/start`, `thread/resume` or `thread/fork` answer; a
+  fork or rewind keeps the chat's title when the copy has none. After the first prompt of an unnamed
+  thread the driver starts an ephemeral thread (`ephemeral: true`, read-only sandbox, approvals
+  never) on the first listed model whose id contains luna, nano, mini or small (else the chat's
+  model), at low effort when that model offers it, asks it for a short title for the prompt, saves it
+  with `thread/name/set` so the user's other Codex clients show it, and unsubscribes from the helper.
+  An ephemeral thread is never saved, so the helper stays out of thread lists, though the shared app
+  server announces it with `thread/started` to connected clients while it runs.
+  `thread/name/updated` follows renames from any client, the TUI's `/rename` included.
+- **Flips** keep the title: the chat resumes the session and reads its saved name, and the CLI shows
+  its own.
 
 # The flip
 
@@ -229,11 +262,26 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   shown images). The desktop agent view and the thin client's agent pane hook
   `ChatPane::close_on_release`, so closing the pane frees every image it held, through its window
   or, when the window closed with it, from the asset cache alone.
-- **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
-  a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
-  chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
-  you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it arrived; replies
-  already there on the first look show at once).
+- **Live turns.** The last line of a running turn says what the agent is doing now, with a shimmer,
+  a turning sparkle and the time since the prompt (`chat_rows::live_line`). It takes the newest of:
+  the CLI's own activity line (`ChatEvent::TurnActivity`, from Claude Code's `task_summary`), a
+  running tool's own description (`ItemBody::activity`: Claude's Bash, PowerShell and Agent
+  `description`, Codex's `wait` as Waiting for agents), else the running tool's verb and target
+  ("Running cargo test"), and the latest reasoning heading. A message the agent writes after them
+  clears them, and the line says Thinking only when nothing more specific is known. While a Codex
+  async question is open and no tool runs, it says Waiting for your answer (`ChatView::asking`). While the
+  newest run of tools is still going, the line is that run's header and opens to its steps. It
+  hides while the chat waits on you. The transcript only gets a reply once it is whole, so a reply
+  that lands while you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it
+  arrived; replies already there on the first look show at once).
+- **Batches.** Claude Code sends a sentence for each finished batch of tool calls
+  (`tool_use_summary`, with the ids it covers), and the run's header shows it instead of zz's count
+  ("Counted lines in a.txt" for "Ran 2 commands"), with failures and denials still counted after
+  it. The chat matches it by tool id (`ChatEvent::ItemsSummarized`), so a sentence that lands after
+  the reply, after the turn, or in a replay finds its rows, and a run that two sentences cover
+  splits in two. Codex, subagents and a session resumed from the CLI's transcript (which keeps no
+  sentences) show zz's count. Claude Code's `post_turn_summary`, a line about the whole turn sent
+  after it, is not drawn: the reply sits right under the fold and says the same thing.
 - **Thinking.** A finished run whose reasoning is only headings (Codex records the headings of its
   summaries; the reasoning itself is encrypted) leaves no row, while the running one still shows
   its heading. Opening a run lists its reasoning, heading removed and muted, in order with its
@@ -246,14 +294,32 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close
   button or a second click closes it. An approval it waits on sits under its row.
 - **Answered questions.** The question, with the answer under it.
+- **Codex's async questions.** Codex can ask without stopping its turn
+  (`request_user_input_async`); the app server sends that as an `agentMessage` with
+  `delivery: "async"`, `questions` (`{ title, options? }`) and a markdown copy in `text`. The
+  driver shows the questions as the inline question card, each taking an option or typed text,
+  and drops the copy while keeping any other text (`codex::translate::async_questions`). The card
+  is a background request: not blocking, kept past the end of its turn by the driver, the chat and
+  the host (`AgentPendingPermission::outlives_turn`). An answer goes back as a user message in the
+  CLI's own reply format, `<send_user_message_question_reply>` around
+  `[{questionItemId, question, answer}]` with the id `["request_user_input_async", call, index]`
+  (`translate::question_reply`): `turn/steer` into the running turn, else `turn/start`, and a
+  start when the steer misses the turn. That message closes the card as answered and never shows
+  as a bubble, also when the TUI sent it. Any other message closes the card with no answer, Stop
+  leaves it open, and a resumed thread shows the answered ones as records and reopens the one
+  still waiting.
 - **Diagrams.** A mermaid or SVG block sits in a card on the `code` role, like a code block, whose
   header holds its label, Copy source and Open full diagram. pele (`libs/pele`) draws mermaid:
   flowchart, sequence, class, state, ER, gantt, pie and quadrant. Any other type stays an ordinary
   code block of its source, and a supported source that does not parse shows the error with its
-  line and column. The diagram's canvas is transparent, so it shows the card through it; nodes fill
-  with the card blended with the soft neutral paint, text is the app font at 13 px measured by the
-  app's text system (ala's SVG renderer draws `system-ui` in the face that text system uses), and
-  series colors come from primary, success, warning, danger and muted. A flowchart, class, state or
+  line and column. The diagram's canvas is transparent, so it shows the card through it. Nodes
+  take the accent's soft paint with an accent border (pele's `node` and `node_border`), edges and
+  arrows the muted foreground, and clusters, frames and notes stay neutral; text is the app font at
+  13 px measured by the app's text system (ala's SVG renderer draws `system-ui` in the face that
+  text system uses). Pie, gantt and quadrant series are the accent, success, warning and danger,
+  then hues that fill the widest gaps between them, all at one Oklch lightness near the accent's
+  (0.5 to 0.58 on a light card, 0.68 to 0.78 on a dark one) so the card-colored labels on slices
+  and bars read on every fill (`MermaidThemeColors::series`). A flowchart, class, state or
   ER diagram that runs across and is wider than 640 px turns to run down when that fits. A figure
   draws at its own size, scaled down only to fit the transcript's width, so a diagram that turned or
   a long sequence keeps its 13 px labels however tall it gets. Answers use the same markdown style

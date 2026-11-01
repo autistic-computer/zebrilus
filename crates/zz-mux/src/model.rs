@@ -2481,6 +2481,25 @@ impl MuxState {
         self.update_pane_title(pane, title)
     }
 
+    pub fn update_agent_title(
+        &mut self,
+        pane: PaneId,
+        title: Option<&str>,
+    ) -> Result<bool, ServerError> {
+        let kind = &self
+            .pane(pane)
+            .ok_or_else(|| ServerError::MissingTarget(pane.to_string()))?
+            .kind;
+        if !matches!(kind, PaneKind::Agent(_)) {
+            return Ok(false);
+        }
+        let fallback = pane_title(kind, "");
+        match title {
+            Some(title) => self.update_pane_title_from_terminal(pane, title, true),
+            None => self.update_pane_title_from_terminal(pane, fallback, false),
+        }
+    }
+
     pub fn set_pane_bell(&mut self, pane: PaneId, bell: bool) -> bool {
         let Some(pane_state) = self.pane_mut(pane) else {
             return false;

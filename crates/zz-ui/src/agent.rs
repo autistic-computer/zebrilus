@@ -1798,6 +1798,8 @@ fn activity_row_glyph(icon: IconName, size: f32, cx: &App) -> Div {
 struct ActivityMark {
     icon: Option<IconName>,
     spin: Option<f32>,
+    turn: Option<f32>,
+    shimmer: Option<u64>,
     tint: Option<Hsla>,
     label_color: Option<Hsla>,
     detail: Option<SharedString>,
@@ -1811,6 +1813,8 @@ impl ActivityMark {
         Self {
             icon: None,
             spin: None,
+            turn: None,
+            shimmer: None,
             tint: None,
             label_color: None,
             detail: None,
@@ -1915,7 +1919,12 @@ fn activity_row_marked(
         crate::icon::cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
     let glyph = match (mark.spin, mark.icon) {
         (Some(phase), _) => Some(spinner(phase)),
-        (None, Some(icon)) => Some(Icon::new(icon)),
+        (None, Some(icon)) => Some(match mark.turn {
+            Some(phase) => {
+                Icon::new(icon).transform(ala::Transformation::rotate(ala::percentage(phase)))
+            }
+            None => Icon::new(icon),
+        }),
         (None, None) => None,
     }
     .map(|glyph| {
@@ -1926,6 +1935,7 @@ fn activity_row_marked(
         }
     });
     let spread = mark.spread;
+    let live = mark.shimmer.is_some();
     let end_icon = match end {
         RowEnd::None => None,
         RowEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
@@ -1968,12 +1978,19 @@ fn activity_row_marked(
                 .text_ellipsis()
                 .whitespace_nowrap()
                 .when_some(mark.label_color, ala::Styled::text_color)
-                .child(single_line(label)),
+                .map(|this| match mark.shimmer {
+                    Some(now) => {
+                        this.flex_shrink(1.0)
+                            .child(chat::shimmer(&single_line(label), now, cx))
+                    }
+                    None => this.child(single_line(label)),
+                }),
         )
         .when_some(mark.detail, |this, detail| {
             this.child(
                 div()
                     .debug_selector(|| "agent-activity-detail".to_owned())
+                    .when(live, ala::Styled::flex_none)
                     .min_w_0()
                     .overflow_hidden()
                     .text_ellipsis()
@@ -3335,6 +3352,9 @@ const MERMAID_FONT_SIZE: f64 = 13.0;
 const MERMAID_LAYOUT_WIDTH: f64 = 640.0;
 const MERMAID_MEASURE_SIZE: f32 = 64.0;
 const MERMAID_MAX_RADIUS: f64 = 4.0;
+const MERMAID_SERIES: usize = 8;
+const MERMAID_SERIES_LIGHTNESS_LIGHT: (f32, f32) = (0.5, 0.58);
+const MERMAID_SERIES_LIGHTNESS_DARK: (f32, f32) = (0.68, 0.78);
 
 fn mermaid_options(cx: &App) -> pele::RenderOptions {
     let theme = cx.theme();
@@ -3358,6 +3378,11 @@ fn mermaid_render_options(
     radius: f64,
     measurer: Option<Arc<dyn pele::text::TextMeasurer>>,
 ) -> pele::RenderOptions {
+    let series = colors
+        .series()
+        .into_iter()
+        .map(css_color)
+        .collect::<Vec<_>>();
     pele::RenderOptions {
         font_size: MERMAID_FONT_SIZE,
         font_family: mermaid_font_family(font_family, "system-ui", "sans-serif"),
@@ -3369,20 +3394,14 @@ fn mermaid_render_options(
             background: css_color(colors.background),
             foreground: css_color(colors.foreground),
             muted: css_color(colors.muted_foreground),
-            line: css_color(colors.primary),
+            line: css_color(colors.muted_foreground),
             surface: css_color(colors.surface),
             surface_alt: css_color(colors.muted),
             border: css_color(colors.border),
-            accent: css_color(colors.primary),
-            series: [
-                colors.primary,
-                colors.success,
-                colors.warning,
-                colors.danger,
-                colors.muted_foreground,
-            ]
-            .map(css_color)
-            .to_vec(),
+            accent: series[0].clone(),
+            node: Some(css_color(colors.node)),
+            node_border: Some(css_color(colors.node_border)),
+            series,
             radius,
         },
         measurer,
@@ -3448,8 +3467,11 @@ struct MermaidThemeColors {
     foreground: Hsla,
     muted_foreground: Hsla,
     border: Hsla,
+    node: Hsla,
+    node_border: Hsla,
     primary: Hsla,
     primary_foreground: Hsla,
+    accent: Hsla,
     success: Hsla,
     warning: Hsla,
     danger: Hsla,
@@ -3457,24 +3479,83 @@ struct MermaidThemeColors {
 
 impl MermaidThemeColors {
     fn from_app(cx: &App) -> Self {
-        let background = cx.theme().ground_of(crate::roles::CODE).opaque().fill;
+        Self::from_theme(cx.theme())
+    }
+
+    fn from_theme(theme: &penna::Theme) -> Self {
+        let code = theme.ground_of(crate::roles::CODE).opaque();
+        let background = code.fill;
         Self {
             background,
-            surface: background.blend(cx.theme().paint(Tone::Neutral, Emphasis::Soft).fill),
-            muted: cx
-                .theme()
-                .paint(Tone::Neutral, Emphasis::Soft)
+            surface: background.blend(theme.paint(Tone::Neutral, Emphasis::Soft).fill),
+            muted: theme
+                .paint_on(code, Tone::Neutral, Emphasis::Soft)
                 .opaque()
                 .fill,
-            foreground: cx.theme().foreground,
-            muted_foreground: cx.theme().foreground.muted(),
-            border: cx.theme().border(),
-            primary: cx.theme().foreground,
-            primary_foreground: cx.theme().paint(Tone::Neutral, Emphasis::Solid).text,
-            success: cx.theme().success,
-            warning: cx.theme().warning,
-            danger: cx.theme().danger,
+            foreground: theme.foreground,
+            muted_foreground: theme.foreground.muted(),
+            border: theme.border(),
+            node: theme
+                .paint_on(code, Tone::Accent, Emphasis::Soft)
+                .opaque()
+                .fill,
+            node_border: background
+                .blend(theme.paint_on(code, Tone::Accent, Emphasis::Outline).border),
+            primary: theme.foreground,
+            primary_foreground: theme.paint(Tone::Neutral, Emphasis::Solid).text,
+            accent: theme.accent.opaque(),
+            success: theme.success.opaque(),
+            warning: theme.warning.opaque(),
+            danger: theme.danger.opaque(),
         }
+    }
+
+    fn series(&self) -> Vec<Hsla> {
+        let (lightness, chroma, _) = crate::to_oklch(self.accent);
+        let (low, high) = if crate::oklab_lightness(self.background) < 0.5 {
+            MERMAID_SERIES_LIGHTNESS_DARK
+        } else {
+            MERMAID_SERIES_LIGHTNESS_LIGHT
+        };
+        let lightness = lightness.clamp(low, high);
+        let mut hues = [self.accent, self.success, self.warning, self.danger]
+            .map(|tone| {
+                let (_, chroma, hue) = crate::to_oklch(tone);
+                (chroma, hue)
+            })
+            .to_vec();
+        while hues.len() < MERMAID_SERIES {
+            let mut taken = hues.iter().map(|(_, hue)| *hue).collect::<Vec<_>>();
+            taken.sort_by(f32::total_cmp);
+            let wrap = taken
+                .first()
+                .zip(taken.last())
+                .map(|(first, last)| (*last, first + 360.0 - last));
+            let (from, gap) = taken
+                .windows(2)
+                .map(|pair| (pair[0], pair[1] - pair[0]))
+                .chain(wrap)
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .unwrap_or((0.0, 360.0));
+            hues.push((chroma, (from + gap / 2.0).rem_euclid(360.0)));
+        }
+        hues.into_iter()
+            .map(|(chroma, hue)| oklch_in_gamut(lightness, chroma, hue))
+            .collect()
+    }
+}
+
+fn oklch_in_gamut(lightness: f32, mut chroma: f32, hue: f32) -> Hsla {
+    loop {
+        let color = crate::oklch(lightness, chroma, hue);
+        let (drawn_lightness, drawn_chroma, _) = crate::to_oklch(color);
+        if chroma.is_nan()
+            || chroma < 0.01
+            || (drawn_lightness - lightness).abs() + (drawn_chroma - chroma).abs() < 0.002
+        {
+            return color;
+        }
+        chroma *= 0.95;
     }
 }
 
@@ -3500,7 +3581,7 @@ fn mermaid_font_family(font_family: &str, system: &str, generic: &str) -> String
 }
 
 fn mermaid_theme_key(cx: &App) -> u64 {
-    const LOOK: u32 = 6;
+    const LOOK: u32 = 7;
     let mut hasher = DefaultHasher::new();
     LOOK.hash(&mut hasher);
     let colors = MermaidThemeColors::from_app(cx);
@@ -3511,7 +3592,10 @@ fn mermaid_theme_key(cx: &App) -> u64 {
         colors.foreground,
         colors.muted_foreground,
         colors.border,
+        colors.node,
+        colors.node_border,
         colors.primary,
+        colors.accent,
         colors.success,
         colors.warning,
         colors.danger,
@@ -5011,8 +5095,11 @@ mod tests {
                 foreground: test_color([0xe8, 0xe9, 0xed]),
                 muted_foreground: test_color([0x97, 0x9b, 0xa6]),
                 border: test_color([0x38, 0x3a, 0x40]),
-                primary: test_color([0x8b, 0x5c, 0xf6]),
-                primary_foreground: test_color([0xff, 0xff, 0xff]),
+                node: test_color([0x1f, 0x1c, 0x2e]),
+                node_border: test_color([0x55, 0x3b, 0x8f]),
+                primary: test_color([0xe8, 0xe9, 0xed]),
+                primary_foreground: test_color([0x10, 0x11, 0x12]),
+                accent: test_color([0x8b, 0x5c, 0xf6]),
                 success: test_color([0x2f, 0x85, 0x5a]),
                 warning: test_color([0xb7, 0x79, 0x1f]),
                 danger: test_color([0xc5, 0x30, 0x30]),
@@ -5072,13 +5159,64 @@ mod tests {
         assert_eq!(theme.surface_alt, "#24262b");
         assert_eq!(theme.foreground, "#e8e9ed");
         assert_eq!(theme.muted, "#979ba6");
-        assert_eq!(theme.line, "#8b5cf6");
+        assert_eq!(theme.line, "#979ba6");
         assert_eq!(theme.border, "#383a40");
+        assert_eq!(theme.node.as_deref(), Some("#1f1c2e"));
+        assert_eq!(theme.node_border.as_deref(), Some("#553b8f"));
+        assert_eq!(theme.accent, theme.series[0]);
         assert_eq!(
             theme.series,
-            ["#8b5cf6", "#2f855a", "#b7791f", "#c53030", "#979ba6"]
+            [
+                "#9f7cff", "#59ac7f", "#c98934", "#f65f58", "#1aa7d2", "#ea53c3", "#98a201",
+                "#5396ff"
+            ]
         );
         assert!((theme.radius - 6.0).abs() < f64::EPSILON);
+    }
+
+    fn builtin_pele_theme(id: &str, mode: crate::ThemeMode) -> pele::Theme {
+        let mut theme = penna::Theme::from(&*penna::ThemeColor::for_mode(mode));
+        theme.mode = mode;
+        crate::interface_theme::builtin_theme(id)
+            .expect("a built-in theme")
+            .apply(&mut theme);
+        mermaid_render_options(
+            MermaidThemeColors::from_theme(&theme),
+            ["", ""],
+            MERMAID_MAX_RADIUS,
+            None,
+        )
+        .theme
+    }
+
+    #[test]
+    fn the_macos_theme_paints_diagrams_in_its_own_colors() {
+        let theme = builtin_pele_theme("macos", crate::ThemeMode::Light);
+        assert_eq!(
+            [
+                &theme.background,
+                &theme.foreground,
+                &theme.muted,
+                &theme.line,
+                &theme.surface,
+                &theme.surface_alt,
+                &theme.border,
+                &theme.accent,
+            ],
+            [
+                "#ededed", "#1d1d1f", "#636365", "#636365", "#e4e4e4", "#e4e4e4", "#d5d5d5",
+                "#006fe8"
+            ]
+        );
+        assert_eq!(theme.node.as_deref(), Some("#d1deed"));
+        assert_eq!(theme.node_border.as_deref(), Some("#6ba8ea"));
+        assert_eq!(
+            theme.series,
+            [
+                "#006fe8", "#0f8d37", "#af5c08", "#da0c21", "#a83fba", "#0c858d", "#84770a",
+                "#c72b7e"
+            ]
+        );
     }
 
     #[test]

@@ -802,10 +802,13 @@ fn draw_actor(
     let y = |offset: f64| svg::num(top + offset);
     let shape = format!(
         " fill=\"{}\" stroke=\"{}\"",
-        svg::esc(&color.surface),
-        svg::esc(&color.border)
+        svg::esc(color.node_fill()),
+        svg::esc(color.node_stroke())
     );
-    let line = format!(" fill=\"none\" stroke=\"{}\"", svg::esc(&color.border));
+    let line = format!(
+        " fill=\"none\" stroke=\"{}\"",
+        svg::esc(color.node_stroke())
+    );
     if actor.kind == "actor" {
         let _ = write!(
             body,
@@ -878,8 +881,8 @@ fn draw_actor(
             col.width - 5.0,
             col.height - 5.0,
             color.radius,
-            &color.surface,
-            &color.border,
+            color.node_fill(),
+            color.node_stroke(),
         ));
         body.push_str(&rect(
             left,
@@ -887,8 +890,8 @@ fn draw_actor(
             col.width - 5.0,
             col.height - 5.0,
             color.radius,
-            &color.surface,
-            &color.border,
+            color.node_fill(),
+            color.node_stroke(),
         ));
     } else if actor.kind == "queue" {
         let left = svg::num(cx - col.width / 2.0 + 6.0);
@@ -909,8 +912,8 @@ fn draw_actor(
             col.width,
             col.height,
             color.radius,
-            &color.surface,
-            &color.border,
+            color.node_fill(),
+            color.node_stroke(),
         ));
     }
     let label_x = if actor.kind == "collections" {
@@ -998,8 +1001,8 @@ fn activation_end(
         10.0,
         bottom - start,
         2.0,
-        &options.theme.surface,
-        &options.theme.border,
+        options.theme.node_fill(),
+        options.theme.node_stroke(),
     );
     (
         format!(

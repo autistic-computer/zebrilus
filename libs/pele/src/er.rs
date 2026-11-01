@@ -2576,10 +2576,11 @@ fn draw(model: &Model, options: &RenderOptions, turned: bool) -> Result<RenderRe
     }
 
     let background = esc(&theme.background);
-    let surface = esc(&theme.surface);
+    let node_fill = esc(theme.node_fill());
+    let node_stroke = esc(theme.node_stroke());
     let border = esc(&theme.border);
     let muted_color = esc(&theme.muted);
-    let box_attrs = format!(" fill=\"{surface}\" stroke=\"{border}\"");
+    let box_attrs = format!(" fill=\"{node_fill}\" stroke=\"{node_stroke}\"");
     let mut clusters = String::new();
     let mut fills = Vec::new();
     let mut nodes_out = String::new();
@@ -2698,7 +2699,7 @@ fn draw(model: &Model, options: &RenderOptions, turned: bool) -> Result<RenderRe
                 .style
                 .stroke
                 .as_deref()
-                .map_or_else(|| border.clone(), esc);
+                .map_or_else(|| node_stroke.clone(), esc);
             let mut stripes = String::new();
             let mut cells = String::new();
             let mut y = y0 + view.head_h;
@@ -2767,7 +2768,7 @@ fn draw(model: &Model, options: &RenderOptions, turned: bool) -> Result<RenderRe
                 _ => background.clone(),
             };
             format!(
-                "<rect {shape}{}/><g class=\"pele-er-stripes\" fill=\"{shade}\"{}>{stripes}</g><path class=\"pele-er-divider\" d=\"M{},{divider_y}H{}\" stroke=\"{line_color}\"/><rect {shape} fill=\"none\" stroke=\"{border}\"{}/>{name}<g class=\"pele-er-attributes\" font-size=\"{}\">{cells}</g>",
+                "<rect {shape}{}/><g class=\"pele-er-stripes\" fill=\"{shade}\"{}>{stripes}</g><path class=\"pele-er-divider\" d=\"M{},{divider_y}H{}\" stroke=\"{line_color}\"/><rect {shape} fill=\"none\" stroke=\"{node_stroke}\"{}/>{name}<g class=\"pele-er-attributes\" font-size=\"{}\">{cells}</g>",
                 rounded(&format!("{box_attrs}{}", view.style.shape), theme.radius),
                 if view.style.shape.contains("fill:") {
                     " opacity=\"0.6\""

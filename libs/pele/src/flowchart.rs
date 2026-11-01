@@ -1980,11 +1980,12 @@ fn draw(
         }
     }
 
-    let surface = svg::esc(&theme.surface);
+    let node_fill = svg::esc(theme.node_fill());
+    let node_stroke = svg::esc(theme.node_stroke());
     let border = svg::esc(&theme.border);
     let line = svg::esc(&theme.line);
-    let shape_attrs = format!(" fill=\"{surface}\" stroke=\"{border}\"");
-    let line_attrs = format!(" stroke=\"{border}\"");
+    let shape_attrs = format!(" fill=\"{node_fill}\" stroke=\"{node_stroke}\"");
+    let line_attrs = format!(" stroke=\"{node_stroke}\"");
     let mut clusters = String::new();
     let mut struck_titles = String::new();
     let mut nodes_out = String::new();
