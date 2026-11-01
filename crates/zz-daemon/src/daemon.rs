@@ -22,6 +22,7 @@ use parking_lot::{Condvar, Mutex};
 #[cfg(windows)]
 use std::io::{Seek, SeekFrom};
 
+mod agent_flip;
 #[cfg(feature = "agent")]
 mod agent_inbox;
 #[cfg(feature = "agent")]
@@ -4541,6 +4542,7 @@ enum DaemonCommandDispatch {
     IfShell,
     AgentSend,
     AgentRespond,
+    FlipAgent,
     SendLastOutput,
     ShowLastOutput,
     Inspect,
@@ -4578,6 +4580,7 @@ const DAEMON_COMMAND_DISPATCHES: &[(&str, DaemonCommandDispatch)] = &[
     ("if", DaemonCommandDispatch::IfShell),
     ("agent-send", DaemonCommandDispatch::AgentSend),
     ("agent-respond", DaemonCommandDispatch::AgentRespond),
+    ("flip-agent", DaemonCommandDispatch::FlipAgent),
     ("send-last-output", DaemonCommandDispatch::SendLastOutput),
     ("show-last-output", DaemonCommandDispatch::ShowLastOutput),
     ("inspect", DaemonCommandDispatch::Inspect),
@@ -8429,6 +8432,7 @@ impl Shared {
                     DaemonCommandDispatch::AgentRespond => {
                         self.agent_respond(kind, context, &command.args)
                     }
+                    DaemonCommandDispatch::FlipAgent => self.flip_agent(context, &command.args),
                     DaemonCommandDispatch::SendLastOutput => {
                         self.send_last_output(client, context, &command.args)
                     }

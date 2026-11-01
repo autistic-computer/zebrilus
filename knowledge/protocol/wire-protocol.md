@@ -1,10 +1,10 @@
 ---
 type: Protocol
-title: zz wire protocol (v117)
+title: zz wire protocol (v118)
 description: The versioned, little-endian length-prefixed, postcard-encoded control protocol whose ProtocolMessage enum carries the entire client/daemon conversation over local IPC or an SSH tunnel.
 resource: crates/zz-protocol/src/framing.rs
 tags: [protocol, wire, framing, postcard, versioning]
-timestamp: 2026-10-26T00:00:00-03:00
+timestamp: 2026-11-01T00:00:00-03:00
 ---
 
 # Overview
@@ -15,7 +15,7 @@ daemon through an OpenSSH `ssh -L` Unix-socket forward. iOS instead carries the 
 through `zz proxy` over an in-process `russh` SSH channel.
 Every message is wrapped in a fixed envelope carrying a `u32` little-endian length prefix, a
 one-byte **lane** tag, a **flags** byte, and a `u16` **protocol version**. The current wire version is
-**`PROTOCOL_VERSION = 117`** (`crates/zz-protocol/src/message.rs`).
+**`PROTOCOL_VERSION = 118`** (`crates/zz-protocol/src/message.rs`).
 
 The version is a gate, not a negotiation: a frame whose envelope version differs from the running
 build's is rejected outright. Before disconnecting, a daemon makes a best-effort
@@ -64,7 +64,7 @@ Relevant constants (`framing.rs`): `MAX_FRAME_BYTES = 64 * 1024 * 1024`, `ENVELO
 | length | 0..4 | `u32` LE | Bytes following the prefix (`4 + payload`) |
 | lane | 4 | `u8` | `0` = Control, `1` = Terminal |
 | flags | 5 | `u8` | `0x00` only; every other value is rejected |
-| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (117) |
+| version | 6..8 | `u16` LE | `PROTOCOL_VERSION` (118) |
 | payload | 8.. | bytes | `postcard(ProtocolMessage)` (Control) or packed terminal sections |
 
 # Schema . `ProtocolMessage` (Control lane)
@@ -1038,11 +1038,21 @@ v117 appends `MuxOptionKey::CommandAlias`: the server's `command-alias` array, o
 a line, published with the other mux options and again whenever the array changes. The command
 palette turns the entries into verbs ([command palette](/concepts/command-palette.md#your-own-verbs)).
 
+v118 brings the agent pane kind back, for a chat over Claude Code or Codex that a pane flips to
+and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)` after `Editor`
+and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
+model, effort }` holds the provider, the absolute working directory, the vendor session to resume,
+and the model and effort to start with; every field but `provider` is optional.
+`select-pane-kind [-c dir] agent claude|codex [--resume session-id]` turns a picker into one, and
+`flip-agent [-t pane] [--now | --when-idle | --cancel]` joins the command catalog.
+
 # Versioning & compatibility
 
-- **`PROTOCOL_VERSION: u16 = 117`** is stamped into every frame's envelope and re-checked inside
+- **`PROTOCOL_VERSION: u16 = 118`** is stamped into every frame's envelope and re-checked inside
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
+- v118 requires updated clients and daemon together, including the daemon on every ssh host.
+  v118 appends `PaneKindSnapshot::Agent(AgentDescriptor)` and `ChooseTreePaneKind::Agent`.
 - v117 requires updated clients and daemon together, including the daemon on every ssh host.
   v117 appends `MuxOptionKey::CommandAlias`.
 - v116 requires updated clients and daemon together, including the daemon on every ssh host.
