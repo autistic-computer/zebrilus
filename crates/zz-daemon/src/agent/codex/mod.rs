@@ -51,6 +51,8 @@ use zz_machine::Machine;
 use translate::Translator;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_mins(1);
+#[cfg(unix)]
+const MANAGED_START: Duration = Duration::from_secs(20);
 const SESSION_PAGE: u64 = 50;
 const MAX_CHILD_THREADS: usize = 16;
 const AGENT_NAME: &str = "Codex";
@@ -796,28 +798,41 @@ impl Runtime {
                 self.command.program
             )
         })?;
-        let mut command = Command::new(program);
-        command.arg("app-server").args(&self.command.args);
-        if let Some(path) = self.workspace.path(agent_path()) {
-            command.env("PATH", path);
-        }
-        for (name, value) in self.workspace.entries() {
-            command.env(name, value);
-        }
-        if self.workspace.pane.is_some() {
-            command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
-        }
-        for (name, value) in &self.command.env {
-            command.env(name, value);
-        }
         self.generation += 1;
-        self.process = Some(Process::launch(
-            &mut command,
-            AGENT_NAME,
-            self.generation,
-            &self.child_tx,
-            &self.stderr,
-        )?);
+        #[cfg(unix)]
+        let managed = managed_daemon(&program, &self.command);
+        #[cfg(not(unix))]
+        let managed: Option<PathBuf> = None;
+        if let Some(socket) = managed {
+            self.process = Some(Process::connect(
+                &socket,
+                AGENT_NAME,
+                self.generation,
+                &self.child_tx,
+            )?);
+        } else {
+            let mut command = Command::new(program);
+            command.arg("app-server").args(&self.command.args);
+            if let Some(path) = self.workspace.path(agent_path()) {
+                command.env("PATH", path);
+            }
+            for (name, value) in self.workspace.entries() {
+                command.env(name, value);
+            }
+            if self.workspace.pane.is_some() {
+                command.env(crate::WORKSPACE_CONTEXT_SENT_ENVIRONMENT_VARIABLE, "1");
+            }
+            for (name, value) in &self.command.env {
+                command.env(name, value);
+            }
+            self.process = Some(Process::launch(
+                &mut command,
+                AGENT_NAME,
+                self.generation,
+                &self.child_tx,
+                &self.stderr,
+            )?);
+        }
         self.initialized = false;
         self.requests.clear();
         self.request(
@@ -2047,6 +2062,59 @@ impl Runtime {
             .await?;
         }
         Ok(())
+    }
+}
+
+pub(crate) fn codex_home() -> Option<PathBuf> {
+    std::env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))
+}
+
+#[cfg(unix)]
+pub(crate) fn uses_managed_daemon(command: &CodexCommand) -> bool {
+    command.args.is_empty() && command.env.is_empty()
+}
+
+#[cfg(unix)]
+pub(crate) fn managed_socket() -> Option<PathBuf> {
+    control::socket(&codex_home()?)
+}
+
+#[cfg(unix)]
+fn managed_daemon(program: &Path, command: &CodexCommand) -> Option<PathBuf> {
+    use zz_daemon_client::unmasked::SpawnUnmasked as _;
+
+    if cfg!(test) || !uses_managed_daemon(command) {
+        return None;
+    }
+    if let Some(socket) = managed_socket() {
+        return Some(socket);
+    }
+    let started = Command::new(program)
+        .args(["app-server", "daemon", "start"])
+        .env_remove("ZZ_PANE")
+        .env_remove("ZZ_SESSION")
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status_unmasked();
+    if let Err(error) = started {
+        log::warn!(target: "zz::agent", "could not start the Codex app server daemon: {error}");
+        return None;
+    }
+    let deadline = Instant::now() + MANAGED_START;
+    loop {
+        if let Some(socket) = managed_socket() {
+            return Some(socket);
+        }
+        if Instant::now() >= deadline {
+            log::warn!(target: "zz::agent", "the Codex app server daemon did not open its socket; running Codex's app server for this pane");
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
