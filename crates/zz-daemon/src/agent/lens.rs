@@ -45,6 +45,7 @@ const LOCATE: Duration = Duration::from_secs(1);
 const CODEX_LOCATE: Duration = Duration::from_secs(5);
 const ROLLOUT_DAYS: usize = 7;
 const SETTLE: Duration = Duration::from_secs(5);
+const UNCLAIMED: Duration = Duration::from_mins(1);
 const DIALOG_SETTLE: Duration = Duration::from_millis(800);
 const DIALOG_GIVE_UP: Duration = Duration::from_mins(30);
 const IDLE_GRACE: Duration = Duration::from_secs(2);
@@ -711,7 +712,11 @@ impl Codex {
             .filter(|path| is_rollout(path))
             .filter_map(|path| RolloutMeta::read(&path).map(|meta| (path, meta)))
             .find(|(_, meta)| meta.parent.is_none())
-            .or_else(|| newest_rollout(sessions?, pid))?;
+            .or_else(|| {
+                (!self.crowded())
+                    .then(|| newest_rollout(sessions?, pid))
+                    .flatten()
+            })?;
         self.relocated(&path);
         Some(Found {
             session: meta.thread,
@@ -1846,6 +1851,11 @@ impl Lens {
             }
             return payloads;
         };
+        let unseen = if self.source.awaiting() {
+            UNCLAIMED
+        } else {
+            SETTLE
+        };
         let mut payloads = Vec::new();
         if status.busy && !self.busy {
             self.busy = true;
@@ -1866,7 +1876,7 @@ impl Lens {
                 return finished;
             }
             let idle = *turn.idle_since.get_or_insert_with(Instant::now);
-            finished || (turn.busy && idle.elapsed() >= IDLE_GRACE) || turn.sent.elapsed() >= SETTLE
+            finished || (turn.busy && idle.elapsed() >= IDLE_GRACE) || turn.sent.elapsed() >= unseen
         });
         if settled {
             payloads.extend(self.settle(false));

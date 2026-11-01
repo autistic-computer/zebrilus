@@ -1601,6 +1601,74 @@ fn a_first_prompt_into_a_relaunched_tui_keeps_its_turn_until_the_reply() {
 }
 
 #[test]
+fn tuis_started_together_show_no_session_until_the_claim_names_theirs() {
+    let dir = tempfile::tempdir().unwrap();
+    let day = dir.path().join("sessions/2026/11/01");
+    std::fs::create_dir_all(&day).unwrap();
+    let here = std::env::current_dir().unwrap();
+    let mine = day.join(format!("rollout-2026-11-01T09-00-00-{THREAD}.jsonl"));
+    let theirs = day.join(format!("rollout-2026-11-01T09-00-00-{SECOND}.jsonl"));
+    for (path, thread) in [(&mine, THREAD), (&theirs, SECOND)] {
+        let meta = rollout_line("session_meta", &json!({ "id": thread, "cwd": here }));
+        std::fs::write(path, format!("{meta}\n")).unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let sessions = dir.path().join("sessions");
+    let pid = std::process::id();
+    let close = FIRST_START + 1;
+    let unnamed = [
+        (THREAD, listed(THREAD, &mine, None)),
+        (SECOND, listed(SECOND, &theirs, None)),
+    ];
+
+    let (wire, _alone_peer, _) = claimer(&unnamed);
+    let mut alone = claiming(wire, close, &[]);
+    alone.launch_pid = Some(pid);
+    let guessed = alone.find(Some(pid), Some(&sessions));
+    assert_eq!(
+        guessed.map(|found| found.session).as_deref(),
+        Some(SECOND),
+        "a TUI alone in its folder still reads the newest rollout"
+    );
+
+    let (wire, peer, next) = claimer(&unnamed);
+    let mut codex = claiming(wire, close, &[FIRST_START]);
+    codex.launch_pid = Some(pid);
+    let pane = Arc::new(Pane::default());
+    let mut lens = over(codex, &pane);
+    let opened = lens.open();
+    let found = codex_of(&mut lens).find(Some(pid), Some(&sessions));
+    assert!(found.is_none(), "another TUI's rollout stays out");
+    assert!(lens.located(found, false).is_empty());
+    assert!(lens.session.is_none());
+    assert!(opened.iter().any(|payload| matches!(
+        payload,
+        AgentStreamPayload::SessionReady { session_id, .. } if session_id == "lens-%7"
+    )));
+    assert!(lens.source.awaiting(), "a prompt waits for the claim");
+
+    *pane.title.lock() = Some("Reply with alpha | proj".to_owned());
+    peer.deliver(json!({ "id": next, "result": { "data": [THREAD, SECOND], "nextCursor": null } }));
+    peer.deliver(
+        json!({ "id": next + 1, "result": listed(THREAD, &mine, Some("Reply with alpha")) }),
+    );
+    peer.deliver(
+        json!({ "id": next + 2, "result": listed(SECOND, &theirs, Some("Reply with omega")) }),
+    );
+    joins(&peer, next + 3, THREAD, "idle");
+    codex_of(&mut lens).link.claims.next = None;
+    let found = codex_of(&mut lens).find(Some(pid), Some(&sessions));
+    assert_eq!(
+        found.as_ref().map(|found| found.session.as_str()),
+        Some(THREAD)
+    );
+    lens.located(found, false);
+    assert_eq!(lens.session.as_deref(), Some(THREAD));
+    assert!(codex_of(&mut lens).is_live());
+    assert!(!lens.source.awaiting());
+}
+
+#[test]
 fn a_tui_back_on_the_shown_rollout_keeps_it_when_a_later_look_finds_nothing() {
     let mut live = Harness::joined();
     let rollout = rollout_of(live._dir.path(), THREAD);

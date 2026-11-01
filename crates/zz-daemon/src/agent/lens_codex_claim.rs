@@ -30,6 +30,7 @@ pub(super) struct Claims {
     known: HashMap<String, Option<Known>>,
     pub(super) next: Option<Instant>,
     pub(super) drained: Option<Read>,
+    crowded: bool,
 }
 
 pub(super) struct Idle {
@@ -228,6 +229,10 @@ impl Codex {
         self.link.claims.next = None;
     }
 
+    pub(in super::super) fn crowded(&self) -> bool {
+        self.link.claims.crowded
+    }
+
     pub(super) fn claimed(&self, thread: &str) -> bool {
         self.link
             .claims
@@ -237,8 +242,11 @@ impl Codex {
     }
 
     fn choose_thread(&mut self) -> Option<Chosen> {
+        let here = self.here();
+        let others = here.as_deref().and_then(|here| self.neighbors_in(here));
+        self.link.claims.crowded = others.as_ref().is_none_or(|others| !others.is_empty());
         let mine = self.born?;
-        let here = self.here()?;
+        let here = here?;
         let threads = match self.survey(&here) {
             Ok(threads) => threads,
             Err(error) => {
@@ -250,7 +258,7 @@ impl Codex {
         if threads.is_empty() {
             return None;
         }
-        let others = self.neighbors_in(&here)?;
+        let others = others?;
         let title = self.link.pane.as_ref().and_then(|pane| pane.title());
         let project = here
             .file_name()

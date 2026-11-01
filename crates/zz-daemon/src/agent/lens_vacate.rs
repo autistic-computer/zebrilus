@@ -43,6 +43,13 @@ impl Source {
         }
     }
 
+    pub(super) fn awaiting(&self) -> bool {
+        match self {
+            Self::Claude(_) => false,
+            Self::Codex(codex) => codex.tail.is_none() && codex.pid.is_some() && codex.crowded(),
+        }
+    }
+
     fn moved(&self, session: &str) -> bool {
         match self {
             Self::Claude(claude) => claude
