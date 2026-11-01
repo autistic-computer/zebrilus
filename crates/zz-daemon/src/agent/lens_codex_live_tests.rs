@@ -1414,3 +1414,29 @@ fn an_answer_already_streaming_when_the_lens_joins_shows_whole() {
         ["hello from the side channel"]
     );
 }
+
+#[test]
+fn frames_left_by_a_replaced_tui_stay_out_of_the_next_session() {
+    let mut live = Harness::joined();
+    for message in frames("tui-turn") {
+        live.peer.deliver(message);
+    }
+    let next = rollout_of(live._dir.path(), SECOND);
+    write_rollout(&next, SECOND, &[]);
+    let codex = codex_of(&mut live.lens);
+    codex.pid = Some(std::process::id());
+    codex.relaunched(std::process::id());
+    let mut after = live.lens.reload(
+        Found {
+            session: SECOND.to_owned(),
+            path: next,
+            cwd: PathBuf::from("/work/proj"),
+        },
+        false,
+    );
+    after.extend(live.drain());
+    let (shadow, view) = view(&[&live.opened, &after]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert!(texts(&view, ItemKind::User).is_empty(), "{after:?}");
+    assert!(texts(&view, ItemKind::Agent).is_empty(), "{after:?}");
+}

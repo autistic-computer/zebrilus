@@ -577,6 +577,11 @@ impl Codex {
     }
 
     pub(super) fn join(&mut self, path: &Path, cwd: &Path) {
+        self.link.claims.drained = None;
+        self.subscribe(path, cwd);
+    }
+
+    fn subscribe(&mut self, path: &Path, cwd: &Path) {
         let followed = self
             .link
             .live
@@ -714,7 +719,7 @@ impl Codex {
             return caught;
         };
         let cwd = self.link.cwd.clone();
-        self.join(&path, &cwd);
+        self.subscribe(&path, &cwd);
         if self.link.live.is_some() {
             let lines = self.tail.as_mut().map(Tail::backlog).unwrap_or_default();
             for entry in lines {
