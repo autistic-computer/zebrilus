@@ -185,6 +185,7 @@ struct Read {
     finished: bool,
     failed: Option<String>,
     reload: bool,
+    payloads: Vec<AgentStreamPayload>,
 }
 
 struct Found {
@@ -558,6 +559,7 @@ struct Codex {
     held: Vec<Value>,
     asked: Vec<(String, Option<u64>)>,
     dropped: Vec<Value>,
+    link: codex_live::Link,
 }
 
 struct CodexChild {
@@ -616,9 +618,15 @@ impl Codex {
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
         self.picks.refresh();
         self.pid = codex_queue::codex_pid(pane_pid?);
+        if self.pid.is_none() {
+            self.vanished();
+        }
         let pid = self.pid?;
         if self.launch_pid != Some(pid) {
             self.launched(pid, zz_daemon_client::process_info::start_time(pid));
+        }
+        if let Some(found) = self.located() {
+            return Some(found);
         }
         let (path, meta) = open_files(pid)
             .into_iter()
@@ -626,6 +634,7 @@ impl Codex {
             .filter_map(|path| RolloutMeta::read(&path).map(|meta| (path, meta)))
             .find(|(_, meta)| meta.parent.is_none())
             .or_else(|| newest_rollout(&codex_sessions()?, pid))?;
+        self.relocated(&path);
         Some(Found {
             session: meta.thread,
             path,
@@ -636,6 +645,7 @@ impl Codex {
     fn launched(&mut self, pid: u32, born: Option<u64>) {
         if self.launch_pid.is_some() {
             self.picks.forget();
+            self.relaunched(pid);
         }
         self.launch = Facts::codex_launch(
             &arguments(pid),
@@ -658,6 +668,7 @@ impl Codex {
     }
 
     fn load(&mut self, path: PathBuf, cwd: &Path) -> Vec<Value> {
+        self.join(&path, cwd);
         let (tail, text) = Tail::open(path);
         self.translator = CodexTranslator::new(cwd.to_path_buf());
         self.busy = false;
@@ -676,14 +687,29 @@ impl Codex {
         }
         read.updates.extend(self.child_lines(None, true));
         self.ended = (!self.busy && read.finished).then(|| read.failed.map_or(Ok(()), Err));
+        self.joined(&read.updates);
         read.updates
     }
 
     fn read(&mut self) -> Read {
+        if let Some(read) = self.read_live() {
+            return read;
+        }
         let mut read = Read {
             updates: std::mem::take(&mut self.dropped),
+            payloads: self.closed(),
             ..Read::default()
         };
+        self.look_for_children();
+        let lines = self.tail.as_mut().map(Tail::lines).unwrap_or_default();
+        for entry in lines {
+            self.entry(&entry, &mut read);
+        }
+        read.updates.extend(self.child_lines(None, false));
+        read
+    }
+
+    fn look_for_children(&mut self) {
         for index in 0..self.children.len() {
             let child = &mut self.children[index];
             if child.tail.is_none() && !child.lost {
@@ -691,12 +717,6 @@ impl Codex {
                 self.find_child(index);
             }
         }
-        let lines = self.tail.as_mut().map(Tail::lines).unwrap_or_default();
-        for entry in lines {
-            self.entry(&entry, &mut read);
-        }
-        read.updates.extend(self.child_lines(None, false));
-        read
     }
 
     fn entry(&mut self, entry: &Value, read: &mut Read) {
@@ -738,6 +758,9 @@ impl Codex {
                 let Some(item) = rollout::v2_item(&payload["item"]) else {
                     return;
                 };
+                if let Some(id) = item["id"].as_str() {
+                    self.heard(id);
+                }
                 let stale = self.note_question(&item, entry);
                 if item["type"] == "subAgentActivity" {
                     let thread = item["agentThreadId"].as_str().unwrap_or_default();
@@ -1188,7 +1211,11 @@ impl Source {
             Self::Claude(claude) => claude.status(),
             Self::Codex(codex) => Some(Status {
                 busy: codex.busy,
-                waiting: codex.translator.asking().map(|_| CODEX_QUESTION.to_owned()),
+                waiting: codex
+                    .translator
+                    .asking()
+                    .filter(|_| !codex.is_live())
+                    .map(|_| CODEX_QUESTION.to_owned()),
             }),
         }
     }
@@ -1398,7 +1425,10 @@ impl Lens {
         Self::with_source(spec, source, permission_ids)
     }
 
-    fn with_source(spec: LensSpec, source: Source, permission_ids: Arc<AtomicU64>) -> Self {
+    fn with_source(spec: LensSpec, mut source: Source, permission_ids: Arc<AtomicU64>) -> Self {
+        if let Source::Codex(codex) = &mut source {
+            codex.link.ids = permission_ids.clone();
+        }
         Self {
             spec,
             source,
@@ -1476,6 +1506,9 @@ impl Lens {
     }
 
     fn set(&mut self, option_id: String, value: &str) -> Vec<AgentStreamPayload> {
+        if let Some(payloads) = self.live_set(&option_id, value) {
+            return payloads;
+        }
         let busy = self.busy || self.turn.is_some();
         let setter = lens_settings::command(
             self.spec.provider,
@@ -1666,6 +1699,7 @@ impl Lens {
         }
         self.failed = read.failed;
         payloads.extend(self.observe(read.finished, read.updates));
+        payloads.extend(read.payloads);
         self.failed = None;
         payloads.extend(self.release());
         payloads.extend(self.follow_settings());
@@ -1870,6 +1904,9 @@ impl Lens {
         if prompt.text.trim().is_empty() && prompt.images.is_empty() {
             return failed("Nothing to send.");
         }
+        if let Some(payloads) = self.live_prompt(turn_id, prompt) {
+            return payloads;
+        }
         if !prompt.images.is_empty()
             && let Err(message) = self.spec.io.attach(&prompt.images)
         {
@@ -1905,6 +1942,9 @@ impl Lens {
         if text.is_empty() {
             return Vec::new();
         }
+        if let Some(payloads) = self.live_steer(text, &prompt) {
+            return payloads;
+        }
         match self.spec.io.submit(text) {
             Ok(()) => Vec::new(),
             Err(error) => {
@@ -1922,6 +1962,9 @@ impl Lens {
     fn cancel(&mut self) -> Vec<AgentStreamPayload> {
         if let Some(turn) = self.turn.as_mut() {
             turn.cancelled = true;
+        }
+        if let Some(payloads) = self.live_cancel() {
+            return payloads;
         }
         match self.spec.io.keys(&["Escape"]) {
             Ok(()) => self
@@ -1942,6 +1985,9 @@ impl Lens {
         request_id: u64,
         answers: &[AgentQuestionAnswer],
     ) -> Vec<AgentStreamPayload> {
+        if let Some(payloads) = self.live_answer(request_id, answers) {
+            return payloads;
+        }
         let Some(permission) = self
             .permission
             .as_mut()
@@ -1973,6 +2019,9 @@ impl Lens {
     }
 
     fn respond(&mut self, request_id: u64, option_id: Option<&str>) -> Vec<AgentStreamPayload> {
+        if let Some(payloads) = self.live_respond(request_id, option_id) {
+            return payloads;
+        }
         let Some(permission) = self
             .permission
             .as_mut()
@@ -2075,10 +2124,24 @@ pub(crate) async fn run_lens(spec: LensSpec, channels: RuntimeChannels) -> Resul
     let mut lens = Lens::new(spec, permission_ids);
     let mut opened = false;
     loop {
+        let wake = lens.wake();
         let input = futures_lite::future::or(
             async { Input::Command(commands.recv().await) },
             futures_lite::future::or(async { Input::Control(controls.recv().await) }, async {
-                smol::Timer::after(POLL).await;
+                futures_lite::future::or(
+                    async {
+                        smol::Timer::after(POLL).await;
+                    },
+                    async {
+                        if let Some(wake) = wake
+                            && wake.recv().await.is_ok()
+                        {
+                            return;
+                        }
+                        std::future::pending::<()>().await;
+                    },
+                )
+                .await;
                 Input::Tick
             }),
         )
@@ -3511,6 +3574,9 @@ mod tests {
         assert!(lens.turn.is_none());
     }
 }
+
+#[path = "lens_codex_live.rs"]
+mod codex_live;
 
 #[cfg(test)]
 #[path = "lens_codex_tests.rs"]

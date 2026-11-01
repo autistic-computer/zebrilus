@@ -11109,6 +11109,7 @@ dependencies = [
  "smol",
  "tempfile",
  "thiserror 2.0.21",
+ "tungstenite 0.29.0",
  "windows-sys 0.61.2",
  "zz-daemon-client",
  "zz-machine",

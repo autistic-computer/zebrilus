@@ -15,6 +15,7 @@ agent = [
     "dep:base64",
     "dep:futures-lite",
     "dep:smol",
+    "dep:tungstenite",
     "dep:zz-machine",
 ]
 
@@ -37,6 +38,7 @@ parking_lot.workspace = true
 regex.workspace = true
 tempfile.workspace = true
 thiserror.workspace = true
+tungstenite = { version = "0.29.0", default-features = false, features = ["handshake"], optional = true }
 zz-daemon-client.workspace = true
 zz-mux.workspace = true
 zz-protocol.workspace = true

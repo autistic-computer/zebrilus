@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent lens
-description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
+description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript or joins the Codex TUI's app server, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
-tags: [agent, lens, claude-code, codex, transcript, terminal, pane]
-timestamp: 2026-10-31T20:30:00-03:00
+tags: [agent, lens, claude-code, codex, transcript, app-server, terminal, pane]
+timestamp: 2026-10-31T22:30:00-03:00
 ---
 
 # Overview
@@ -125,6 +125,86 @@ Claude's session record carries `status` (`busy`, `idle`, `waiting`). The runtim
 `Activity { busy }` events, so the pane's phase follows the TUI whether the turn came from the
 lens, from typing in the terminal, or from a peer message.
 
+# Codex over the app server
+
+A Codex TUI runs its threads on the managed app server it starts itself unless it is in embedded
+mode. `codex_live::embedded` reads that from its arguments the way Codex 0.166 does: `-c`/`--config`
+overrides other than `features.<name>=true|false`, `tui.fullscreen_transcript` and
+`suppress_unstable_features_warning`, `--search`, `--profile`/`-p`, `--oss`, `--no-daemon`,
+`--strict-config`, `--dangerously-bypass-hook-trust` and `--remote` (its own server) all count;
+`--enable` and `--disable` become feature overrides and do not. Embedded mode the arguments do not
+show (an executor or identity from the environment, a feature mismatch with the running server) is
+caught because only an embedded TUI holds its rollout open. Once the runtime has found the TUI's
+rollout (above), `Codex::load` joins that server as a second client (`agent/lens_codex_live.rs`,
+transport in `agent/codex/control.rs`), provided no other Codex TUI runs in the thread's folder
+(the folder each was started in or pointed at with `-C`): nothing ties a TUI process to its thread,
+so with two TUIs in one folder the lens could not tell which thread is this pane's and keeps the
+rollout path:
+
+- It resolves `$CODEX_HOME/app-server-control/app-server-control.sock`, a symlink into
+  `/tmp/codex-daemon-<uid>/` that keeps the path under `sun_path`, upgrades it to a WebSocket with
+  `tungstenite`, sends `initialize` (experimental API on, rate limit, moderation and read-state
+  notifications opted out), checks that `thread/loaded/list` holds the rollout's thread, and
+  subscribes with `thread/resume {excludeTurns: true}`. A reader thread polls the socket every 20 ms
+  and wakes the lens loop (`Lens::wake`), so live frames do not wait for the 250 ms tick.
+- History still comes from the rollout, opened after the subscription. The item ids it names are kept,
+  and live `item/*` frames for them are dropped, so nothing shows twice and nothing between the two
+  goes missing. A live `item/completed` whose start came before the join gets its start first.
+- Live frames go through the `codex::translate::Translator` the native driver uses.
+  `rollout::live_item` turns an async question (`agentMessage` with `questions`) into the
+  `userInputRequest` shape and a `<send_user_message_question_reply>` message into `userInputReply`,
+  as the rollout reader does. Agent and reasoning deltas stream text. A batch of frames stops at each
+  busy change, turn end or request, so the lens emits them in the order Codex sent them.
+- Busy and idle follow `turn/started`, `turn/completed` and `thread/status/changed`; a `failed` turn
+  fails the lens prompt with Codex's message. The resume reply and `thread/settings/updated` set the
+  model, effort and folder. Subagent rows still read their child rollouts as above.
+- Prompts go out as `turn/start` (images as data URLs, `codex::turn_input`), `/steer` as `turn/steer`
+  with the running turn as `expectedTurnId`, and Stop as `turn/interrupt`, which leaves background
+  terminals running as Esc does. Prompts that start with `/` or `!` are the TUI's own commands and
+  are still typed into it. A refused `turn/start` fails the prompt; a refused steer hands the text
+  back to the composer.
+- Approvals: `item/commandExecution/requestApproval`, `item/fileChange/requestApproval` and
+  `item/permissions/requestApproval` reach every subscribed client. Each becomes a card whose
+  options are the request's `availableDecisions` (Allow, Always allow `<command>` for an exec policy
+  amendment, Reject), shaped by the native driver's `codex::approval`; the reply is the decision the
+  user picked. The first answer wins: when the TUI answers, `serverRequest/resolved` withdraws the
+  card. Requests the lens does not show (MCP elicitation and the rest) are left to the TUI, and the
+  lens never answers on its own. A blocking `item/tool/requestUserInput` is answered the way the
+  native driver does.
+- Async questions become an answerable card with the question and its options. The answer goes back
+  as a `<send_user_message_question_reply>` message, through `turn/steer` while a turn runs and
+  `turn/start` otherwise, and the TUI shows it as "↪ Re: <question>". The card closes when the reply
+  item arrives, from either client. Unlike the rollout path, a question stays open after its turn
+  ends, since Codex still takes the answer then.
+- Footer model and effort picks and typed `/model x` and `/effort x` go out as
+  `thread/settings/update` with the model and effort. Codex takes it mid-turn and applies it from the
+  next turn, so nothing is held. Typed `/plan` sets `collaborationMode` to `plan` the same way. Folder
+  changes are still typed as `/cd`.
+- `thread/started` for a new top-level, non-ephemeral thread in the same folder (`/new`, `/fork` or
+  `/resume` typed in the TUI) makes that thread the session once its rollout exists, when it forks
+  the joined thread or this TUI is the only one in the folder. A thread created within 30 s of
+  another TUI in the folder starting is that TUI's and is ignored. Any other new thread there could
+  be either TUI's, so the lens leaves the server and goes back to the rollout path.
+- When the TUI exits, the runtime unsubscribes, closes the socket and skips the rollout tail past
+  what live frames covered. Every card still open from the server is withdrawn, here and whenever
+  the link drops or the lens joins another thread. A Codex that shows up in the pane again joins
+  without a reload once locating its rollout finds the same one, since threads stay loaded after
+  their TUI leaves and the new one may be on a fresh thread: the rollout lines not read yet come
+  first, then live frames. A connection the server closes reloads the session.
+- Streamed command output keeps at most four times what a row shows (`codex::translate`), so a
+  background terminal that keeps writing does not grow the lens.
+
+Anything else (embedded mode, no socket, a failed handshake, a thread the server has not loaded)
+keeps the rollout tail and typed keys this page describes. Checked live on 2026-10-31 against Codex
+0.166 in an isolated `CODEX_HOME`: a turn typed in the TUI streamed into the lens in 23 deltas, a
+lens prompt showed in the TUI, an approval answered in the lens closed the TUI's dialog and one
+answered in the TUI withdrew the card, an async question answered in the lens showed as "↪ Re:
+Which color?", a model and effort pick moved the TUI's status line to GPT-5.6-Luna medium, Stop
+showed "Conversation interrupted", and a TUI started with `-c` stayed on the rollout path. A
+second check the same day: with a lens joined to one TUI, a second TUI started in the same folder
+and sent its first message without taking the lens, a lens on the second TUI kept the rollout path,
+and only a `--no-daemon` TUI held its rollout open.
+
 # Input and approvals
 
 - **Prompts.** The composer sends `AgentPrompt` as before. The runtime delivers it with
@@ -153,9 +233,9 @@ lens, from typing in the terminal, or from a peer message.
   options, titled "Waiting for a ... in the terminal". Clients draw it with
   `zz_ui::agent::presentation::terminal_wait_card`, whose one action, Show terminal, opens the
   terminal PiP (below) so the user answers there.
-- **Codex approvals.** The rollout records nothing while Codex's dialog waits, so the lens shows no
-  card; the user answers in the terminal.
-- **Codex questions.** `request_user_input_async` records an `AgentMessage` with `questions` and
+- **Codex approvals.** Without the app server the rollout records nothing while Codex's dialog
+  waits, so the lens shows no card; the user answers in the terminal.
+- **Codex questions.** Without the app server, `request_user_input_async` records an `AgentMessage` with `questions` and
   `delivery: "async"`. It becomes a question row marked as background from the start, so the call
   does not block its turn. Codex 0.166 shows the question editor collapsed: keys typed then
   (digits, Enter, text) go to its ordinary composer, and only its edit-queued-message key
@@ -278,7 +358,9 @@ alike. Picking one sends `AgentSetConfigOption`, which the runtime types into th
 TUI (`lens_settings::command`) and shows at once:
 
 - **Claude Code.** `/model <alias>` or `/effort <level>`. Its "Set model to …" line confirms it.
-- **Codex.** Codex has no `/effort`; its `/model` takes the level inline, so a model pick types
+- **Codex.** Joined to the app server, picks go out as `thread/settings/update` (see
+  [Codex over the app server](#codex-over-the-app-server)). Otherwise: Codex has no `/effort`; its
+  `/model` takes the level inline, so a model pick types
   `/model <slug> --reasoning=<level>`, keeping the current level when the new model takes it and the
   model's default otherwise, and a level pick types `/model <current slug> --reasoning=<level>`.
   Codex answers "Model changed to … for this session only" in the terminal, and its rollout names
