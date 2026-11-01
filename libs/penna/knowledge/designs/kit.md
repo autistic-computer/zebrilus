@@ -2,7 +2,7 @@
 type: Design Plan
 title: "The kit: penna owns every piece of UI chrome"
 description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and every per-theme tweak an app layer made moves into penna's own theme files. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
-status: In progress (2026-11-01, slice 1)
+status: In progress (2026-11-01, slice 2)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -117,10 +117,10 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 
 | Role | Parent | Code patch | Becomes | Status |
 |---|---|---|---|---|
-| status | badge | selected tint | Chip | todo |
-| board.chip | badge | selected tint | Chip | todo |
-| first-run.step | badge | selected accent | Chip (step) | todo |
-| banner | card | no shadow | Notice | todo |
+| status | badge | selected tint | Chip (`chip`) | done |
+| board.chip | badge | selected tint | Chip (`chip`) | done |
+| first-run.step | badge | selected accent | Steps (`step`) | done |
+| banner | card | no shadow | Notice (`notice`) | done |
 | computer-card | sidebar | - | Inspector | todo |
 | board | card | no shadow | Well | todo |
 | board.screen | card | contact shadow | Tile | todo |
@@ -131,7 +131,7 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 Each slice lands in penna (component, variants, recipes, theme tweaks, stories), then in each app through `just libs pull penna` plus a fix commit, then the app's roles retire.
 
 1. Tokens and `Label` (this doc).
-2. Chip from Badge and Notice from `callout`; nidus status pill, first-run steps and banners.
+2. Chip, Steps and Notice; nidus status pill, board chips, first-run steps, banners and the panel's status card. The `chip` and `step` recipes are pills: nidus asked for `rounded_full()` before, which the role's radius overrode. `feedback::callout` and `inline_alert` stay until zebrilus's notice batch moves to Notice.
 3. Inspector, Well, Tile and Dock; the rest of nid-app's chrome; nidus lint on.
 4. zebrilus families, one integration each: icon buttons, chips, drawers, floating panels, tabs, menu items, canvas, bars and rules, content, rows, fields, notice; zebrilus lint on.
 5. Close registration: `SurfaceRole` fields and constructors become crate-private, `penna::register` goes away, the retired list is penna's.

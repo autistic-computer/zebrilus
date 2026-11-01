@@ -850,6 +850,38 @@ impl SurfaceRole {
     pub const BADGE: Self =
         Self::new("badge", Kind::Label, "Badges", "Small labels and counts").capsule(true);
 
+    pub const CHIP: Self = Self::under(
+        &Self::BADGE,
+        "chip",
+        "Chips",
+        "A name or a state with a dot or an icon, and a detail after it",
+    )
+    .with(
+        StylePatch::EMPTY
+            .shape(Shape::Pill)
+            .selected(Highlight::Tint),
+    );
+
+    pub const STEP: Self = Self::under(
+        &Self::BADGE,
+        "step",
+        "Steps",
+        "The numbered dots of a step strip and the lines between them",
+    )
+    .with(
+        StylePatch::EMPTY
+            .shape(Shape::Pill)
+            .selected(Highlight::Accent),
+    );
+
+    pub const NOTICE: Self = Self::new(
+        "notice",
+        Kind::Card,
+        "Notices",
+        "A problem or a note above a page or in a panel, tinted by its tone",
+    )
+    .with(StylePatch::EMPTY.shadow(Shadow::None));
+
     pub const KEYCAP: Self = Self::new("keycap", Kind::Label, "Keycaps", "Key hints");
 
     pub const ICON_TILE: Self = Self::new(
@@ -872,11 +904,12 @@ impl SurfaceRole {
     )
     .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
 
-    pub const KIT: [Self; 28] = [
+    pub const KIT: [Self; 31] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
         Kind::Pane.role(),
         Kind::Card.role(),
+        Self::NOTICE,
         Kind::Floating.role(),
         Self::POPOVER,
         Self::DIALOG,
@@ -897,6 +930,8 @@ impl SurfaceRole {
         Self::TEXT_AREA,
         Kind::Label.role(),
         Self::BADGE,
+        Self::CHIP,
+        Self::STEP,
         Self::KEYCAP,
         Self::ICON_TILE,
         Self::GRABBER,

@@ -18,6 +18,7 @@ mod notifications;
 mod scrollbars;
 mod selection;
 mod sheet;
+mod status;
 mod support;
 mod title_bar;
 pub mod which_key;
@@ -30,6 +31,7 @@ pub const STORIES: &[Story] = &[
     menus::STORY,
     dialogs::STORY,
     feedback::STORY,
+    status::STORY,
     notifications::STORY,
     sheet::STORY,
     scrollbars::STORY,

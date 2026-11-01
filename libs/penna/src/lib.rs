@@ -5,6 +5,7 @@ pub(crate) const BLINK_IDLE_TIMEOUT: web_time::Duration = web_time::Duration::fr
 pub mod badge;
 pub mod button;
 pub mod check;
+mod chip;
 #[cfg(feature = "editor")]
 pub mod code_editor;
 pub mod color_picker;
@@ -21,6 +22,7 @@ mod label;
 pub mod list;
 pub mod menu;
 pub mod motion;
+mod notice;
 pub mod overlay;
 pub mod picker;
 pub mod popover;
@@ -36,6 +38,7 @@ pub mod shell;
 pub mod sidebar;
 pub mod slider;
 pub mod spinner;
+mod steps;
 pub mod switch;
 pub mod text;
 pub mod theme_css;
@@ -54,6 +57,7 @@ pub mod notification {
     pub use super::overlay::Notification;
 }
 
+pub use chip::{Chip, Dot};
 pub use foundation::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
     Colorize, Disableable, Edge, ElementExt, Elevation, Emphasis, FOCUS_RING_WIDTH, Fill, Ground,
@@ -68,7 +72,9 @@ pub use foundation::{
 };
 pub use icon::{Assets, Icon, IconName};
 pub use label::Label;
+pub use notice::Notice;
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};
+pub use steps::Steps;
 pub use title_bar::{
     MACOS_TRAFFIC_LIGHT_SPAN, TITLE_BAR_HEIGHT, TitleBar, WindowControls, draws_window_controls,
     macos_traffic_light_clearance, window_controls_width,
