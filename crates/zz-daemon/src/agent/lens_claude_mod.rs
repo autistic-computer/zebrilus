@@ -1,5 +1,5 @@
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     sync::{
         Arc,
         atomic::{AtomicU64, Ordering},
@@ -25,21 +25,29 @@ const UNRELAYED: Duration = Duration::from_secs(2);
 const SETTLED: Duration = Duration::from_secs(1);
 const MAX_BLOCKS: usize = 64;
 const MAX_STRANGERS: usize = 8;
+const EXITED: &str = "Claude Code exited before it took the prompt";
 
 pub(crate) struct Link {
     channel: Channel,
     io: Arc<dyn LensPane>,
     permission_ids: Arc<AtomicU64>,
     instance: Option<Instance>,
+    held: Vec<Value>,
     strangers: Vec<(String, String)>,
     blocks: Vec<Block>,
     asks: Vec<Ask>,
     payloads: Vec<AgentStreamPayload>,
     commands: u64,
-    prompts: Vec<(u64, String)>,
+    prompts: Vec<Prompt>,
     unrelayed: Option<Instant>,
     done: Option<Instant>,
     started: bool,
+}
+
+struct Prompt {
+    id: u64,
+    instance: String,
+    text: String,
 }
 
 struct Instance {
@@ -124,20 +132,17 @@ pub(crate) struct Drained {
 
 impl Link {
     pub(crate) fn open(
-        path: PathBuf,
+        mut channel: Channel,
         permission_ids: Arc<AtomicU64>,
         io: Arc<dyn LensPane>,
-    ) -> Option<Self> {
-        let channel = Channel::bind(path)
-            .inspect_err(|error| {
-                log::warn!(target: "zz::agent", "the Claude Code lens channel did not open: {error}");
-            })
-            .ok()?;
-        Some(Self {
+    ) -> Self {
+        let held = channel.greeting();
+        Self {
             channel,
             io,
             permission_ids,
             instance: None,
+            held,
             strangers: Vec::new(),
             blocks: Vec::new(),
             asks: Vec::new(),
@@ -147,7 +152,15 @@ impl Link {
             unrelayed: None,
             done: None,
             started: false,
-        })
+        }
+    }
+
+    pub(crate) fn greet(&mut self, session: Option<&str>) {
+        for hello in std::mem::take(&mut self.held) {
+            if let Some(from) = hello["i"].as_str() {
+                self.hello(from, &hello, session);
+            }
+        }
     }
 
     pub(crate) fn live(&self) -> bool {
@@ -195,9 +208,15 @@ impl Link {
         (busy, waiting.filter(|_| since.elapsed() >= UNRELAYED))
     }
 
-    pub(crate) fn drain(&mut self, session: Option<&str>, cwd: &Path) -> Drained {
+    pub(crate) fn drain(
+        &mut self,
+        session: Option<&str>,
+        cwd: &Path,
+        alive: impl FnOnce() -> bool,
+    ) -> Drained {
         let mut drained = Drained::default();
         self.started = false;
+        self.greet(session);
         if !self.live()
             && let Some(position) = self.strangers.iter().position(|(id, from)| {
                 session.is_none_or(|session| session == from) && self.channel.polling(id)
@@ -209,7 +228,47 @@ impl Link {
         for event in self.channel.drain() {
             self.event(&event, session, cwd, &mut drained);
         }
+        self.recover(alive, &mut drained);
         drained
+    }
+
+    fn recover(&mut self, alive: impl FnOnce() -> bool, drained: &mut Drained) {
+        let lost = self
+            .channel
+            .lost()
+            .iter()
+            .filter_map(|command| command["id"].as_u64())
+            .collect::<Vec<_>>();
+        let current = self
+            .instance
+            .as_ref()
+            .map(|instance| instance.id.clone())
+            .filter(|id| self.channel.polling(id));
+        let (gone, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.prompts)
+            .into_iter()
+            .partition(|prompt| {
+                lost.contains(&prompt.id) || current.as_ref() != Some(&prompt.instance)
+            });
+        self.prompts = kept;
+        if gone.is_empty() {
+            return;
+        }
+        for prompt in &gone {
+            self.channel.abandon(&prompt.instance);
+        }
+        if !alive() {
+            log::debug!(target: "zz::agent", "Claude Code left with {} lens prompt(s) unread", gone.len());
+            drained.failed = Some(EXITED.to_owned());
+            drained.finished = true;
+            return;
+        }
+        for prompt in gone {
+            log::debug!(target: "zz::agent", "the Claude Code plugin left before it took a lens prompt; typing it");
+            if let Err(error) = self.io.submit(&prompt.text) {
+                drained.failed = Some(error);
+                drained.finished = true;
+            }
+        }
     }
 
     fn event(&mut self, event: &Value, session: Option<&str>, cwd: &Path, drained: &mut Drained) {
@@ -278,9 +337,9 @@ impl Link {
             "ack" => {
                 let prompt = event["id"]
                     .as_u64()
-                    .and_then(|id| self.prompts.iter().position(|(sent, _)| *sent == id));
+                    .and_then(|id| self.prompts.iter().position(|prompt| prompt.id == id));
                 if let Some(position) = prompt {
-                    let (_, text) = self.prompts.remove(position);
+                    let Prompt { text, .. } = self.prompts.remove(position);
                     if event["ok"] == false {
                         log::debug!(
                             target: "zz::agent",
@@ -334,7 +393,6 @@ impl Link {
         self.strangers.retain(|(id, _)| id != from);
         self.resolve(|_| true);
         self.blocks.clear();
-        self.prompts.clear();
         self.instance = Some(Instance {
             id: from.to_owned(),
             turn,
@@ -573,22 +631,25 @@ impl Link {
         }])
     }
 
-    fn send(&mut self, op: &str, mut command: Value) -> Result<u64, String> {
-        let instance = self
-            .instance
-            .as_ref()
-            .filter(|instance| self.channel.polling(&instance.id))
-            .ok_or("Claude Code's zz plugin is not connected")?;
-        self.commands += 1;
-        command["id"] = Value::from(self.commands);
+    fn send(&mut self, op: &str, mut command: Value) -> Result<(u64, String), String> {
+        let unlinked = "Claude Code's zz plugin is not connected";
+        let instance = self.instance.as_ref().ok_or(unlinked)?.id.clone();
+        command["id"] = Value::from(self.commands + 1);
         command["op"] = Value::from(op);
-        self.channel.send(&instance.id, command);
-        Ok(self.commands)
+        if !self.channel.send(&instance, command) {
+            return Err(unlinked.to_owned());
+        }
+        self.commands += 1;
+        Ok((self.commands, instance))
     }
 
     pub(crate) fn prompt(&mut self, text: &str) -> Result<(), String> {
-        let id = self.send("prompt", json!({ "text": text }))?;
-        self.prompts.push((id, text.to_owned()));
+        let (id, instance) = self.send("prompt", json!({ "text": text }))?;
+        self.prompts.push(Prompt {
+            id,
+            instance,
+            text: text.to_owned(),
+        });
         Ok(())
     }
 

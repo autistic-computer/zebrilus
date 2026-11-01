@@ -6,8 +6,6 @@ use std::{
     sync::OnceLock,
 };
 
-use zz_protocol::PaneId;
-
 const DIRECTORY: &str = "claude-plugin";
 const PLUGIN_DIRS: &str = "CLAUDE_CODE_PLUGIN_DIRS";
 pub(crate) const SOCKET: &str = "ZZ_LENS_SOCKET";
@@ -67,9 +65,9 @@ fn installed() -> Option<&'static Path> {
         .as_deref()
 }
 
-pub(crate) fn lens_socket(daemon_socket: &Path, pane: PaneId) -> Option<PathBuf> {
+pub(crate) fn lens_socket(daemon_socket: &Path) -> Option<PathBuf> {
     let stem = daemon_socket.file_stem()?.to_str()?;
-    let path = daemon_socket.with_file_name(format!("{stem}-lens-{}.sock", pane.0));
+    let path = daemon_socket.with_file_name(format!("{stem}-lens.sock"));
     (path.as_os_str().len() <= MAX_SOCKET_PATH).then_some(path)
 }
 
@@ -89,10 +87,12 @@ pub(crate) fn plugin_dirs(inherited: Option<&OsStr>, ours: &Path) -> Option<OsSt
 
 pub(crate) fn pane_environment(
     environment: &mut Vec<(OsString, Option<OsString>)>,
-    pane: PaneId,
-    daemon_socket: &Path,
+    hub: impl FnOnce() -> Option<PathBuf>,
 ) {
-    let (Some(plugin), Some(socket)) = (installed(), lens_socket(daemon_socket, pane)) else {
+    let Some(plugin) = installed() else {
+        return;
+    };
+    let Some(socket) = hub() else {
         return;
     };
     merge(environment, plugin, socket, std::env::var_os(PLUGIN_DIRS));
@@ -120,8 +120,6 @@ fn merge(
 mod tests {
     use std::ffi::OsString;
     use std::path::{Path, PathBuf};
-
-    use zz_protocol::PaneId;
 
     use super::{FILES, PLUGIN_DIRS, SOCKET, folder, install, lens_socket, merge, plugin_dirs};
 
@@ -204,7 +202,7 @@ mod tests {
     #[test]
     fn the_pane_gets_the_plugin_and_its_socket_without_losing_the_users_folders() {
         let plugin = Path::new("/data/zz/claude-plugin");
-        let socket = PathBuf::from("/tmp/zz-me/default-lens-3.sock");
+        let socket = PathBuf::from("/tmp/zz-me/default-lens.sock");
 
         let mut environment = vec![(OsString::from(PLUGIN_DIRS), Some(OsString::from("/mine")))];
         merge(
@@ -243,12 +241,16 @@ mod tests {
     }
 
     #[test]
-    fn each_pane_gets_its_own_socket_beside_the_daemons() {
+    fn the_lens_socket_sits_beside_the_daemons() {
         assert_eq!(
-            lens_socket(Path::new("/tmp/zz-me/default.sock"), PaneId(12)),
-            Some(PathBuf::from("/tmp/zz-me/default-lens-12.sock"))
+            lens_socket(Path::new("/tmp/zz-me/default.sock")),
+            Some(PathBuf::from("/tmp/zz-me/default-lens.sock"))
+        );
+        assert_eq!(
+            lens_socket(Path::new("/tmp/zz-me/default")),
+            Some(PathBuf::from("/tmp/zz-me/default-lens.sock"))
         );
         let long = format!("/tmp/{}/default.sock", "x".repeat(90));
-        assert_eq!(lens_socket(Path::new(&long), PaneId(1)), None);
+        assert_eq!(lens_socket(Path::new(&long)), None);
     }
 }

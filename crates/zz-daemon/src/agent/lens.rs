@@ -29,6 +29,7 @@ use crate::agent::{
     },
     codex_queue,
     host::RuntimeChannels,
+    lens_channel::Channel,
     lens_claude_mod::{self, Link},
     lens_commands::{self, Listed},
     lens_settings::{self, Catalog, Facts},
@@ -63,7 +64,7 @@ pub(crate) trait LensPane: Send + Sync {
     fn keys(&self, keys: &[&str]) -> Result<(), String>;
     fn attach(&self, images: &[AgentImage]) -> Result<(), String>;
     fn screen(&self) -> Option<String>;
-    fn channel(&self) -> Option<PathBuf> {
+    fn channel(&self) -> Option<Channel> {
         None
     }
 }
@@ -295,6 +296,9 @@ impl Claude {
         let path = sessions::session_file(&files.config, &cwd, &record.session_id);
         let session = record.session_id.clone();
         self.record = Some(record);
+        if let Some(link) = self.link.as_mut() {
+            link.greet(Some(&session));
+        }
         Some(Found {
             session,
             path: path?,
@@ -425,7 +429,12 @@ impl Claude {
         };
         let record = self.record.as_ref();
         let cwd = record.map_or_else(|| PathBuf::from("/"), |record| PathBuf::from(&record.cwd));
-        let drained = link.drain(record.map(|record| record.session_id.as_str()), &cwd);
+        let pid = record.map(|record| record.pid);
+        let drained = link.drain(
+            record.map(|record| record.session_id.as_str()),
+            &cwd,
+            || pid.is_some_and(crate::pid_alive),
+        );
         read.finished |= drained.finished;
         read.failed = drained.failed;
         drained.live
@@ -1469,8 +1478,8 @@ impl Lens {
         let source = match spec.provider {
             AgentProvider::ClaudeCode => {
                 let mut claude = Claude::new(ClaudeFiles::from_environment());
-                claude.link = spec.io.channel().and_then(|path| {
-                    Link::open(path, Arc::clone(&permission_ids), Arc::clone(&spec.io))
+                claude.link = spec.io.channel().map(|channel| {
+                    Link::open(channel, Arc::clone(&permission_ids), Arc::clone(&spec.io))
                 });
                 Source::Claude(Box::new(claude))
             }
@@ -1777,7 +1786,11 @@ impl Lens {
             .into_iter()
             .map(|update| AgentStreamPayload::Update { update });
         let Some(status) = self.source.status() else {
-            return updates.collect();
+            let mut payloads = updates.collect::<Vec<_>>();
+            if finished {
+                payloads.extend(self.settle(false));
+            }
+            return payloads;
         };
         let mut payloads = Vec::new();
         if status.busy && !self.busy {
