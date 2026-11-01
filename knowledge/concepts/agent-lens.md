@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, joins the Codex TUI's app server, and talks to Claude Code through the zz plugin, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, app-server, plugin, terminal, pane]
-timestamp: 2026-10-31T23:30:00-03:00
+timestamp: 2026-10-31T23:45:00-03:00
 ---
 
 # Overview
@@ -82,12 +82,15 @@ but no pane opens them now.
   id in the record (`/clear`, `/resume`) becomes a session switch with a fresh replay, and a prompt
   whose parent is not the last line seen (`/rewind`) reloads the chain. A `system` /
   `turn_duration` line marks a finished turn.
-- **Codex.** The runtime looks for the rollout the pane's `codex` process holds open, through
+- **Codex.** A TUI on its managed app server is asked there first: the runtime claims the TUI's
+  own thread (see [Codex over the app server](#codex-over-the-app-server)) and reads that thread's
+  rollout. Otherwise it looks for the rollout the pane's `codex` process holds open, through
   `/proc/<pid>/fd` on Linux or `lsof -p` on macOS, and takes the one whose `session_meta` has no
-  parent. Codex 0.164 on macOS leaves the file to its shared app-server (`~/.codex/packages`), so the
-  runtime falls back to the newest parentless rollout in the last 7 day folders of
-  `$CODEX_HOME/sessions` whose cwd matches the pane and that was modified since the process started
-  (`newest_rollout`); two Codex panes in one folder can then pick each other's session.
+  parent. Codex 0.164 and later on macOS leave the file to their shared app-server
+  (`~/.codex/packages`), so the runtime falls back to the newest parentless rollout in the last 7
+  day folders of `$CODEX_HOME/sessions` whose cwd matches the pane and that was modified since the
+  process started (`newest_rollout`); when the claim cannot decide, two Codex panes in one folder
+  can then pick each other's session.
   `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items into the app
   server's shapes and `codex::translate::Translator::history_item` translates them:
   - A command recorded as `[bash|zsh|sh|dash, -c|-lc, script]` shows only its script, and a
@@ -232,22 +235,45 @@ overrides other than `features.<name>=true|false`, `tui.fullscreen_transcript` a
 `--strict-config`, `--dangerously-bypass-hook-trust` and `--remote` (its own server) all count;
 `--enable` and `--disable` become feature overrides and do not. Embedded mode the arguments do not
 show (an executor or identity from the environment, a feature mismatch with the running server) is
-caught because only an embedded TUI holds its rollout open. Once the runtime has found the TUI's
-rollout (above), `Codex::load` joins that server as a second client (`agent/lens_codex_live.rs`,
-transport in `agent/codex/control.rs`), provided no other Codex TUI runs in the thread's folder
-(the folder each was started in or pointed at with `-C`): nothing ties a TUI process to its thread,
-so with two TUIs in one folder the lens could not tell which thread is this pane's and keeps the
-rollout path:
+caught because only an embedded TUI holds its rollout open, and the lens remembers that pid as
+embedded.
+
+Nothing in the TUI process names its thread, so the runtime asks the server which thread is this
+pane's (`agent/lens_codex_claim.rs`, at most once a second while the lens is not joined). It lists
+`thread/loaded/list` (at most 16 pages), reads the threads with `thread/read` (one it rules out
+once, a candidate on every look for its name and rollout path, one unloaded in between is skipped),
+and keeps the top-level, non-ephemeral ones whose cwd is the TUI's folder (the folder it was started in or pointed
+at with `-C`). A thread's age comes from its id, a UUIDv7: a thread with no message yet reports the
+current time as its `createdAt`. A thread is this TUI's when:
+
+- the pane's terminal title (`LensPane::title`, the OSC title the terminal engine keeps) shows the
+  thread's name as a whole ` | ` segment, after any activity glyphs. Codex 0.166's default title is
+  activity, thread name and project name, and it cuts a name past 48 characters to 45 and `...`; a
+  name equal to the folder's own is not matched, since the project segment shows it anyway. A
+  `codex resume` thread is found this way;
+- or, when the title names none of them or several, the threads made since the first Codex TUI in
+  the folder started line up one to one with the TUIs by start time, each made before the next TUI
+  started; the i-th TUI owns the i-th thread. Alone in its folder, a TUI owns the one thread made
+  since it started.
+
+When neither decides (two TUIs started within a few seconds and no thread named yet, a `/new` beside
+another TUI, a thread left loaded by a TUI that exited), the runtime keeps the rollout path above
+and asks again on its next look. A claimed thread is joined even beside other Codex TUIs, and a lens
+on the rollout path whose claim names the thread it already reads joins again
+(`agent/lens_codex_live.rs`, transport in `agent/codex/control.rs`):
 
 - It resolves `$CODEX_HOME/app-server-control/app-server-control.sock`, a symlink into
   `/tmp/codex-daemon-<uid>/` that keeps the path under `sun_path`, upgrades it to a WebSocket with
   `tungstenite`, sends `initialize` (experimental API on, rate limit, moderation and read-state
   notifications opted out), checks that `thread/loaded/list` holds the rollout's thread, and
-  subscribes with `thread/resume {excludeTurns: true}`. A reader thread polls the socket every 20 ms
-  and wakes the lens loop (`Lens::wake`), so live frames do not wait for the 250 ms tick.
+  subscribes with `thread/resume {excludeTurns: true}`, retrying twice 100 ms apart while the server
+  answers "no rollout found". The connection the claim opened is the one that joins. A reader
+  thread polls the socket every 20 ms and wakes the lens loop (`Lens::wake`), so live frames do not
+  wait for the 250 ms tick.
 - History still comes from the rollout, opened after the subscription. The item ids it names are kept,
   and live `item/*` frames for them are dropped, so nothing shows twice and nothing between the two
-  goes missing. A live `item/completed` whose start came before the join gets its start first.
+  goes missing. A live `item/completed` whose start came before the join gets its start first, and
+  deltas for such an item are dropped so the finished item shows whole.
 - Live frames go through the `codex::translate::Translator` the native driver uses.
   `rollout::live_item` turns an async question (`agentMessage` with `questions`) into the
   `userInputRequest` shape and a `<send_user_message_question_reply>` message into `userInputReply`,
@@ -256,6 +282,15 @@ rollout path:
 - Busy and idle follow `turn/started`, `turn/completed` and `thread/status/changed`; a `failed` turn
   fails the lens prompt with Codex's message. The resume reply and `thread/settings/updated` set the
   model, effort and folder. Subagent rows still read their child rollouts as above.
+- A fresh TUI's thread has no rollout until its first message, and `thread/resume` fails with "no
+  rollout found" until then. The claim still finds it (it is loaded, and `thread/read` gives its
+  rollout path ahead of time), and the server takes `turn/start` on any loaded thread from any
+  client, subscribed or not. So the first lens prompt goes out as `turn/start` on the claim's
+  connection, and the TUI shows it as its own. The rollout exists about 100 ms later; the lens loads
+  it and subscribes on that same connection, carrying the pending request over, so a refused start
+  still fails the prompt. Checked live, the subscription landed before the turn's user message item,
+  and the rollout read after it covers anything earlier. Only `turn/started` comes before it; the
+  resume reply's active status stands in for it.
 - Prompts go out as `turn/start` (images as data URLs, `codex::turn_input`), `/steer` as `turn/steer`
   with the running turn as `expectedTurnId`, and Stop as `turn/interrupt`, which leaves background
   terminals running as Esc does. Prompts that start with `/` or `!` are the TUI's own commands and
@@ -272,8 +307,9 @@ rollout path:
 - Async questions become an answerable card with the question and its options. The answer goes back
   as a `<send_user_message_question_reply>` message, through `turn/steer` while a turn runs and
   `turn/start` otherwise, and the TUI shows it as "↪ Re: <question>". The card closes when the reply
-  item arrives, from either client. Unlike the rollout path, a question stays open after its turn
-  ends, since Codex still takes the answer then.
+  item arrives, from either client. A reply the server refuses puts a notice in the chat with its
+  error and asks the question again in a new card. Unlike the rollout path, a question stays open
+  after its turn ends, since Codex still takes the answer then.
 - Footer model and effort picks and typed `/model x` and `/effort x` go out as
   `thread/settings/update` with the model and effort. Codex takes it mid-turn and applies it from the
   next turn, so nothing is held. Typed `/plan` sets `collaborationMode` to `plan` the same way. Folder
@@ -282,13 +318,21 @@ rollout path:
   `/resume` typed in the TUI) makes that thread the session once its rollout exists, when it forks
   the joined thread or this TUI is the only one in the folder. A thread created within 30 s of
   another TUI in the folder starting is that TUI's and is ignored. Any other new thread there could
-  be either TUI's, so the lens leaves the server and goes back to the rollout path.
-- When the TUI exits, the runtime unsubscribes, closes the socket and skips the rollout tail past
-  what live frames covered. Every card still open from the server is withdrawn, here and whenever
-  the link drops or the lens joins another thread. A Codex that shows up in the pane again joins
-  without a reload once locating its rollout finds the same one, since threads stay loaded after
-  their TUI leaves and the new one may be on a fresh thread: the rollout lines not read yet come
-  first, then live frames. A connection the server closes reloads the session.
+  be either TUI's, so the lens leaves the server and goes back to the rollout path until a claim
+  names its thread again.
+- When the TUI exits, or another one replaces it in the pane, the runtime first reads the frames
+  still queued (often the end of the last turn) for the next read, then unsubscribes, closes the
+  socket and skips the rollout tail past what live frames covered. When the pane loads another
+  session before that read, the frames are dropped, since its rollout replay covers what belongs to
+  it. The claim goes with the TUI, so a prompt sent before the next claim is typed, never sent to
+  the old thread. Every card still open from the server is withdrawn,
+  here and whenever the link drops or the lens joins another thread. A Codex that shows up in the
+  pane again joins without a reload once locating its rollout finds the same one, since threads stay
+  loaded after their TUI leaves and the new one may be on a fresh thread: the rollout lines not read
+  yet come first, then live frames. A connection the server closes reloads the session on the
+  rollout path. When the server is back (`codex app-server daemon start`, or a restart) the TUI
+  reconnects and resumes its thread, and the next claim, within the 5 s locate period, joins the
+  lens again.
 - Streamed command output keeps at most four times what a row shows (`codex::translate`), so a
   background terminal that keeps writing does not grow the lens.
 
@@ -300,8 +344,15 @@ answered in the TUI withdrew the card, an async question answered in the lens sh
 Which color?", a model and effort pick moved the TUI's status line to GPT-5.6-Luna medium, Stop
 showed "Conversation interrupted", and a TUI started with `-c` stayed on the rollout path. A
 second check the same day: with a lens joined to one TUI, a second TUI started in the same folder
-and sent its first message without taking the lens, a lens on the second TUI kept the rollout path,
-and only a `--no-daemon` TUI held its rollout open.
+and sent its first message without taking the lens, a lens on the second TUI then kept the rollout
+path, and only a `--no-daemon` TUI held its rollout open. A third check that evening, against
+`gpt-5.6-luna` at low effort through an isolated headless daemon: a fresh TUI's first
+`agent-send` went out as `turn/start` from zz's connection before its thread had a rollout, and zz
+then subscribed on the same connection; a second TUI started in the same folder 55 s later was
+claimed by start order and both lenses sent their prompts over the server to the right TUI; two
+TUIs started in the same second stayed on the rollout path until their first turns named their
+threads ("Reply with alpha | proj2"), then both joined by title; and after the Codex app server was
+killed and started again, all four lenses joined again within 5 s of the TUIs reconnecting.
 
 # Input and approvals
 

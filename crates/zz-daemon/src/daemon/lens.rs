@@ -90,6 +90,12 @@ impl LensPane for TerminalLens {
         let shared = self.owner.upgrade()?;
         shared.lens_hub.get()?.as_ref()?.attach(self.pane)
     }
+
+    fn title(&self) -> Option<String> {
+        let shared = self.owner.upgrade()?;
+        let terminal = shared.inner.lock().terminals.get(&self.pane).cloned()?;
+        Some(terminal.latest_viewport().title().to_owned()).filter(|title| !title.is_empty())
+    }
 }
 
 pub(super) fn lens_provider(process: &[String]) -> Option<AgentProvider> {
