@@ -57,10 +57,12 @@ session:
 - no session is the folder's: `new-session -d -s <folder name>`, `move-window` into it and
   `kill-window -a` its starting shell; a session holding only the picker is renamed instead.
 
-The desktop opens the agent's lens as soon as the CLI is detected in that pane, and switches to the
-window if it moved sessions. In chat mode every agent pane opens with its lens on, not only new
-ones; turning a lens off keeps that pane on its terminal until the agent exits. The command
-palette lists the chats too (see the [palette](/concepts/command-palette.md)).
+The desktop switches to the window if it moved sessions. No client draws a chat over a terminal
+any more: a terminal running Claude Code or Codex and an agent pane both carry a flip button in
+their header that switches the pane between the CLI and the chat on the same session
+(`flip-agent`, see the [agent lens](/concepts/agent-lens.md)), and the sidebar mode does not open
+chats by itself. The command palette lists the chats too (see the
+[palette](/concepts/command-palette.md)).
 
 # Daemon changes
 
@@ -71,5 +73,5 @@ daemon's home). A remote host on an older daemon answers New agent with a parse 
 # Not built
 
 - A file picker in the HTML client.
-- Agent CLIs beyond Claude Code and Codex; the list follows the programs the lens supports.
+- Agent CLIs beyond Claude Code and Codex; the list follows the programs zz can drive.
 - The HTML client draws agent tiles with kit glyphs rather than program marks.
