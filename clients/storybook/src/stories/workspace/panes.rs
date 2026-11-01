@@ -85,13 +85,13 @@ pub const STORY: Story = Story {
         Section {
             id: "picker",
             name: "New pane picker",
-            summary: "A freshly split pane asks what it should become: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states.",
+            summary: "With the sidebar on the session tree, a new pane asks what it should become, even alone in a new window: pane_picker_surface with the three pane_picker_row choices, in their selected, resting and read-only states. Agents start there by typing the CLI into a terminal.",
             build: |_, cx| stateless(picker, cx),
         },
         Section {
             id: "new-agent",
             name: "New agent picker",
-            summary: "The picker a new chat opens: alone in its own window, chat_picker_rows offers Claude Code and Codex under the folder they will start in. The folder starts as the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, and the folder picked there (or the folder of a file picked) is where the agent starts.",
+            summary: "With the sidebar on chats, every new pane opens this picker instead of the pane kinds, and so do an empty workspace and a window whose only pane is a terminal with nothing running (a fresh shell, a CLI that exited). chat_picker_rows offers Claude Code and Codex under the folder they will start in, and picking one turns the pane into a chat. The folder starts as that terminal's folder, or else the one this machine's agents worked in last; Tab or a click on it opens the file picker one folder up, which lists folders with no terminal open, and the folder picked there (or the folder of a file picked) is where the agent starts.",
             build: |_, cx| stateless(chat_picker, cx),
         },
         Section {
@@ -1031,6 +1031,12 @@ fn picker(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+fn shell_folders() -> Vec<FolderChoice> {
+    let mut folders = chat_folders();
+    folders.rotate_right(1);
+    folders
+}
+
 pub(crate) fn chat_folders() -> Vec<FolderChoice> {
     [("~/dev/zz", 2), ("~/dev/clairvo", 1), ("~/notes", 0)]
         .into_iter()
@@ -1047,7 +1053,17 @@ pub(crate) fn chat_picker_surface(
     enabled: bool,
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
-    let rows = chat_picker_rows(7, picker, &chat_folders(), enabled, cx)
+    folder_picker_surface(id, picker, &chat_folders(), enabled, cx)
+}
+
+fn folder_picker_surface(
+    id: &'static str,
+    picker: &ChatPicker,
+    folders: &[FolderChoice],
+    enabled: bool,
+    cx: &App,
+) -> ala::Stateful<ala::Div> {
+    let rows = chat_picker_rows(7, picker, folders, enabled, cx)
         .into_iter()
         .map(|row| match row {
             ChatPickerRow::Label(label) => label.into_any_element(),
@@ -1060,6 +1076,7 @@ pub(crate) fn chat_picker_surface(
 fn chat_picker_pane(
     id: &'static str,
     picker: &ChatPicker,
+    folders: &[FolderChoice],
     enabled: bool,
     cx: &App,
 ) -> impl IntoElement {
@@ -1068,7 +1085,7 @@ fn chat_picker_pane(
         260.0,
         zz_ui::pane::pane_surface(
             "pane",
-            chat_picker_surface("picker", picker, enabled, cx),
+            folder_picker_surface("picker", picker, folders, enabled, cx),
             Vec::new(),
             super::fixtures::chrome(true, false, true, cx),
             cx,
@@ -1080,8 +1097,14 @@ fn chat_picker(_: &mut Window, cx: &mut App) -> AnyElement {
     states()
         .columns(2)
         .state(
-            "Claude Code selected, in the folder agents used last",
-            chat_picker_pane("chat-picker-claude", &ChatPicker::default(), true, cx),
+            "a new pane in chat view: Claude Code selected, in the folder agents used last",
+            chat_picker_pane(
+                "chat-picker-claude",
+                &ChatPicker::default(),
+                &chat_folders(),
+                true,
+                cx,
+            ),
         )
         .state(
             "Codex selected, in a folder picked from the file picker",
@@ -1092,13 +1115,43 @@ fn chat_picker(_: &mut Window, cx: &mut App) -> AnyElement {
                     folder: Some("~/notes".to_owned()),
                     ..ChatPicker::default()
                 },
+                &chat_folders(),
+                true,
+                cx,
+            ),
+        )
+        .state(
+            "over a shell alone in its window: the shell's folder comes first",
+            chat_picker_pane(
+                "chat-picker-shell",
+                &ChatPicker::default(),
+                &shell_folders(),
+                true,
+                cx,
+            ),
+        )
+        .state(
+            "chat view with nothing open: the first chat starts in the home folder",
+            chat_picker_pane(
+                "chat-picker-empty",
+                &ChatPicker::default(),
+                &[FolderChoice {
+                    path: "~".to_owned(),
+                    agents: 0,
+                }],
                 true,
                 cx,
             ),
         )
         .state(
             "read-only client: rows dim and stop taking clicks",
-            chat_picker_pane("chat-picker-readonly", &ChatPicker::default(), false, cx),
+            chat_picker_pane(
+                "chat-picker-readonly",
+                &ChatPicker::default(),
+                &chat_folders(),
+                false,
+                cx,
+            ),
         )
         .into_any_element()
 }
