@@ -251,6 +251,10 @@ impl Drop for Channel {
 }
 
 impl Pane {
+    fn idle(&self) -> bool {
+        self.lens == 0 && !self.polls.keys().any(|instance| self.polling(instance))
+    }
+
     fn polling(&self, instance: &str) -> bool {
         self.polls.get(instance).is_some_and(|poll| {
             !poll.gone && (poll.open > 0 || poll.last.is_some_and(|at| at.elapsed() < STALE))
@@ -302,8 +306,14 @@ impl Pane {
 }
 
 fn reachable(state: &mut State, pane: PaneId) -> Option<&mut Pane> {
-    if state.closed || (state.panes.len() >= MAX_PANES && !state.panes.contains_key(&pane)) {
+    if state.closed {
         return None;
+    }
+    if state.panes.len() >= MAX_PANES && !state.panes.contains_key(&pane) {
+        state.panes.retain(|_, held| !held.idle());
+        if state.panes.len() >= MAX_PANES {
+            return None;
+        }
     }
     Some(state.panes.entry(pane).or_default())
 }

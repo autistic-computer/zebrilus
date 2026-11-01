@@ -241,3 +241,36 @@ fn a_closed_hub_lets_a_waiting_ask_pass_and_removes_its_socket() {
     assert!(!path.exists());
     assert!(!channel.polling("m"));
 }
+
+#[test]
+fn a_full_hub_makes_room_from_panes_whose_plugin_left() {
+    let (_root, hub, path) = hub();
+    let long_ago = Instant::now().checked_sub(super::STALE * 2).unwrap();
+    {
+        let mut state = hub.shared.state.lock();
+        for pane in 0..super::MAX_PANES as u64 {
+            let mut held = super::Pane::default();
+            held.polls.insert(
+                "left".to_owned(),
+                super::Poll {
+                    open: 0,
+                    last: Some(long_ago),
+                    gone: false,
+                },
+            );
+            state.panes.insert(PaneId(1000 + pane), held);
+        }
+        let live = state.panes.get_mut(&PaneId(1000)).unwrap();
+        live.polls.get_mut("left").unwrap().open = 1;
+    }
+    let (status, _) = post(
+        &path,
+        &json!([{ "t": "hello", "i": "m", "session": "s1", "turn": null }]),
+    );
+    assert_eq!(status, 200);
+    let channel = hub.attach(PANE).unwrap();
+    assert_eq!(channel.hellos().len(), 1);
+    let state = hub.shared.state.lock();
+    assert!(state.panes.len() <= super::MAX_PANES);
+    assert!(state.panes.contains_key(&PaneId(1000)));
+}
