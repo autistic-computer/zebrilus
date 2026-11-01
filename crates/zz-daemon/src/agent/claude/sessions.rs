@@ -241,10 +241,7 @@ fn summary(
     if first_line.contains("\"isSidechain\":true") {
         return None;
     }
-    let title = last_field(&lite.tail, "customTitle")
-        .or_else(|| last_field(&lite.head, "customTitle"))
-        .or_else(|| last_field(&lite.tail, "aiTitle"))
-        .or_else(|| last_field(&lite.head, "aiTitle"))
+    let title = saved_title(&lite)
         .or_else(|| last_field(&lite.tail, "lastPrompt"))
         .or_else(|| last_field(&lite.tail, "summary"))
         .or_else(|| first_prompt(&lite.head))?;
@@ -262,6 +259,16 @@ fn summary(
             updated_at,
         },
     ))
+}
+
+fn saved_title(lite: &Lite) -> Option<String> {
+    ["customTitle", "aiTitle"]
+        .into_iter()
+        .find_map(|key| last_field(&lite.tail, key).or_else(|| last_field(&lite.head, key)))
+}
+
+pub(crate) fn title(path: &Path) -> Option<String> {
+    saved_title(&read_lite(path)?)
 }
 
 pub(crate) fn rfc3339(ms: u128) -> Option<String> {
@@ -507,6 +514,25 @@ mod tests {
             session_file(config.path(), &cwd, first),
             Some(dir.join(format!("{first}.jsonl")))
         );
+    }
+
+    #[test]
+    fn a_saved_title_takes_a_rename_over_the_generated_one() {
+        let directory = tempfile::tempdir().expect("tempdir");
+        let path = directory.path().join("s.jsonl");
+        let prompt = "{\"type\":\"user\",\"uuid\":\"a\",\"message\":{\"role\":\"user\",\"content\":\"fix the build\"}}";
+        let custom = "{\"type\":\"custom-title\",\"customTitle\":\"Release notes\"}";
+        let ai = "{\"type\":\"ai-title\",\"aiTitle\":\"Fix the build\"}";
+        let saved = |lines: &[&str]| {
+            std::fs::write(&path, lines.join("\n")).expect("transcript");
+            title(&path)
+        };
+        assert_eq!(
+            saved(&[prompt, custom, ai]).as_deref(),
+            Some("Release notes")
+        );
+        assert_eq!(saved(&[prompt, ai]).as_deref(), Some("Fix the build"));
+        assert_eq!(saved(&[prompt]), None);
     }
 
     #[test]

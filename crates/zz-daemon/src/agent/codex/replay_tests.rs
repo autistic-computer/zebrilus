@@ -40,6 +40,8 @@ fn setup(thread: &str) -> (Runtime, Receiver<AgentStreamPayload>) {
         tasks: Vec::new(),
         loading: None,
         instructions: None,
+        title: Title::default(),
+        titler: None,
     };
     smol::block_on(runtime.apply(&Fact::SessionReady)).expect("ready");
     (runtime, receiver)

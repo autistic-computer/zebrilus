@@ -29,8 +29,8 @@ use zz_protocol::{
 
 use crate::agent::{
     child::{
-        ChildEvent, Input, Process, Rewind, cancelled, fit_update, next_input, option,
-        prompt_outcome, random_u64,
+        ChildEvent, Input, Process, Rewind, Title, cancelled, clean_title, fit_update, next_input,
+        option, prompt_outcome, random_u64,
     },
     environment::{AgentWorkspaceEnvironment, agent_path, find_executable},
     host::RuntimeChannels,
@@ -59,6 +59,8 @@ const AGENT_NAME: &str = "Codex";
 const AGENT_KEY: &str = "codex";
 const VERB_HELP: &str = "zz commands: `/btw <question>` (or `/side`) asks Codex in a throwaway copy of the thread, `/steer <text>` redirects the running turn, `/fork` continues in a copy of this conversation, and `/rewind [n]` continues from before your last n prompts (1 by default) without changing files. `/compact` and `/review` run Codex's own compaction and review.";
 const SIDE_PREFIX: &str = "Answer this side question briefly from what you already know. Do not run commands, edit files, or call tools.\n\n";
+const TITLE_PREFIX: &str = "Name the conversation that opens with the message below. Reply with the name alone on one line: a task title of at most six words that starts with a verb, in the message's language, with no quotes, markdown or closing period. Do not run commands or call tools.\n\nMessage:\n";
+const TITLE_MODELS: [&str; 4] = ["luna", "nano", "mini", "small"];
 const MODES: [(&str, &str, &str); 3] = [
     (
         "read-only",
@@ -148,6 +150,8 @@ pub(crate) async fn run_codex_runtime(
         tasks: Vec::new(),
         loading: None,
         instructions: None,
+        title: Title::default(),
+        titler: None,
     };
     let commands = channels.commands;
     let controls = channels.controls;
@@ -224,6 +228,15 @@ enum Outgoing {
     },
     SideTurn {
         thread: String,
+    },
+    TitleThread {
+        prompt: String,
+        effort: Option<String>,
+    },
+    TitleTurn,
+    TitleName {
+        thread: String,
+        title: String,
     },
     Sessions {
         client: zz_protocol::ClientId,
@@ -421,6 +434,15 @@ struct Runtime {
     tasks: Vec<AgentTaskWire>,
     loading: Option<Loading>,
     instructions: Option<String>,
+    title: Title,
+    titler: Option<Titler>,
+}
+
+struct Titler {
+    target: String,
+    helper: Option<String>,
+    text: String,
+    streamed: bool,
 }
 
 struct Loading {
@@ -989,7 +1011,8 @@ impl Runtime {
             );
             return Ok(());
         }
-        self.settle(start, thread, cwd, Vec::new()).await
+        let name = response["thread"]["name"].clone();
+        self.settle(start, thread, cwd, Vec::new(), &name).await
     }
 
     async fn settle(
@@ -998,6 +1021,7 @@ impl Runtime {
         thread: String,
         cwd: PathBuf,
         history: Vec<(Value, bool)>,
+        name: &Value,
     ) -> Result<(), String> {
         let (source, before) = self
             .starting
@@ -1053,6 +1077,15 @@ impl Runtime {
             true,
         )
         .await?;
+        let title = name.as_str().and_then(clean_title).or_else(|| {
+            (start == Start::Fork)
+                .then(|| self.title.current())
+                .flatten()
+        });
+        if self.title.start(title.clone()) {
+            self.emit(AgentStreamPayload::TitleChanged { title })
+                .await?;
+        }
         if let (Start::Fork, Some(source)) = (start, source) {
             let text = if before.is_some() {
                 format!(
@@ -1148,7 +1181,14 @@ impl Runtime {
         });
         let history = self.history(&loading.thread, &children);
         self.session = previous;
-        self.settle(loading.start, id, loading.cwd, history).await
+        self.settle(
+            loading.start,
+            id,
+            loading.cwd,
+            history,
+            &loading.thread["name"],
+        )
+        .await
     }
 
     fn history(
@@ -1256,9 +1296,115 @@ impl Runtime {
                 });
                 self.settings.turn_overrides(&mut params);
                 self.request("turn/start", &params, Outgoing::Turn { turn_id });
+                self.ask_title(thread, &text);
             }
         }
         Ok(())
+    }
+
+    fn ask_title(&mut self, thread: String, prompt: &str) {
+        if self.titler.is_some() {
+            return;
+        }
+        let Some(prompt) = self.title.ask(prompt) else {
+            return;
+        };
+        let model = self
+            .settings
+            .models
+            .iter()
+            .find(|model| {
+                model["model"]
+                    .as_str()
+                    .is_some_and(|id| TITLE_MODELS.iter().any(|mark| id.contains(mark)))
+            })
+            .or_else(|| self.settings.current_model());
+        let low = model.is_some_and(|model| {
+            model["supportedReasoningEfforts"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(|effort| effort["reasoningEffort"] == "low")
+        });
+        let mut params = json!({
+            "cwd": self.cwd().display().to_string(),
+            "ephemeral": true,
+            "approvalPolicy": "never",
+            "sandbox": "read-only",
+        });
+        if let Some(id) = model.and_then(|model| model["model"].as_str()) {
+            params["model"] = Value::from(id);
+        }
+        self.titler = Some(Titler {
+            target: thread,
+            helper: None,
+            text: String::new(),
+            streamed: false,
+        });
+        self.request(
+            "thread/start",
+            &params,
+            Outgoing::TitleThread {
+                prompt,
+                effort: low.then(|| "low".to_owned()),
+            },
+        );
+    }
+
+    fn is_title_helper(&self, thread: &str) -> bool {
+        self.titler
+            .as_ref()
+            .and_then(|titler| titler.helper.as_deref())
+            == Some(thread)
+    }
+
+    fn title_notification(&mut self, method: &str, params: &Value) {
+        let Some(titler) = self.titler.as_mut() else {
+            return;
+        };
+        match method {
+            "item/agentMessage/delta" => {
+                if let Some(delta) = params["delta"].as_str() {
+                    titler.text.push_str(delta);
+                    titler.streamed = true;
+                }
+            }
+            "item/completed" if params["item"]["type"] == "agentMessage" && !titler.streamed => {
+                if let Some(text) = params["item"]["text"].as_str() {
+                    titler.text.push_str(text);
+                }
+            }
+            "turn/completed" => {
+                let text = std::mem::take(&mut titler.text);
+                self.finish_title(&text);
+            }
+            _ => {}
+        }
+    }
+
+    fn finish_title(&mut self, text: &str) {
+        let Some(titler) = self.titler.take() else {
+            return;
+        };
+        if let Some(helper) = titler.helper {
+            self.request(
+                "thread/unsubscribe",
+                &json!({ "threadId": helper }),
+                Outgoing::Quiet,
+            );
+        }
+        if let Some(title) = generated_title(text)
+            && self.thread_id().as_deref() == Some(titler.target.as_str())
+        {
+            self.request(
+                "thread/name/set",
+                &json!({ "threadId": titler.target, "name": title }),
+                Outgoing::TitleName {
+                    thread: titler.target,
+                    title,
+                },
+            );
+        }
     }
 
     async fn verb(&mut self, text: &str) -> Result<(), String> {
@@ -1459,7 +1605,7 @@ impl Runtime {
             }
             (Outgoing::Models | Outgoing::Terminals, Err(_))
             | (Outgoing::Quiet, _)
-            | (Outgoing::Steer | Outgoing::SideTurn { .. }, Ok(_)) => Ok(()),
+            | (Outgoing::Steer | Outgoing::SideTurn { .. } | Outgoing::TitleTurn, Ok(_)) => Ok(()),
             (Outgoing::Thread { start, cwd }, Ok(response)) => {
                 self.threaded(start, cwd, response).await
             }
@@ -1582,6 +1728,44 @@ impl Runtime {
                     }),
                     Outgoing::SideTurn { thread: side },
                 );
+                Ok(())
+            }
+            (Outgoing::TitleThread { prompt, effort }, Ok(response)) => {
+                let current = self.thread_id();
+                let helper = response["thread"]["id"]
+                    .as_str()
+                    .filter(|helper| Some(*helper) != current.as_deref())
+                    .map(str::to_owned);
+                let Some((titler, helper)) = self.titler.as_mut().zip(helper) else {
+                    self.finish_title("");
+                    return Ok(());
+                };
+                titler.helper = Some(helper.clone());
+                let mut params = json!({
+                    "threadId": helper,
+                    "input": [{ "type": "text", "text": format!("{TITLE_PREFIX}{prompt}"), "text_elements": [] }],
+                    "approvalPolicy": "never",
+                    "sandboxPolicy": { "type": "readOnly", "networkAccess": false },
+                });
+                if let Some(effort) = effort {
+                    params["effort"] = Value::from(effort);
+                }
+                self.request("turn/start", &params, Outgoing::TitleTurn);
+                Ok(())
+            }
+            (Outgoing::TitleThread { .. } | Outgoing::TitleTurn, Err(error)) => {
+                log::debug!(target: "zz::agent", "Codex did not name the thread: {error}");
+                self.finish_title("");
+                Ok(())
+            }
+            (Outgoing::TitleName { thread, title }, result) => {
+                if result.is_err() || self.thread_id().as_deref() != Some(thread.as_str()) {
+                    return Ok(());
+                }
+                if self.title.generated(Some(title.clone())) {
+                    self.emit(AgentStreamPayload::TitleChanged { title: Some(title) })
+                        .await?;
+                }
                 Ok(())
             }
             (Outgoing::SideFork { reply, .. }, Err(error)) => {
@@ -1790,6 +1974,13 @@ impl Runtime {
                 .side_notification(thread.to_owned(), method, params)
                 .await;
         }
+        if params["threadId"]
+            .as_str()
+            .is_some_and(|thread| self.is_title_helper(thread))
+        {
+            self.title_notification(method, params);
+            return Ok(());
+        }
         let current = self.thread_id();
         if let Some(thread) = params["threadId"].as_str()
             && Some(thread) != current.as_deref()
@@ -1867,6 +2058,13 @@ impl Runtime {
                     self.notice(text).await?;
                 }
             }
+            "thread/name/updated" => {
+                let title = params["threadName"].as_str().and_then(clean_title);
+                if self.title.rename(title.clone()) {
+                    self.emit(AgentStreamPayload::TitleChanged { title })
+                        .await?;
+                }
+            }
             _ => {}
         }
         if self.session.is_none() {
@@ -1942,6 +2140,13 @@ impl Runtime {
             .is_some_and(|thread| self.sides.contains_key(thread))
         {
             self.reply_error(&rpc_id, "a side question does not run tools");
+            return Ok(());
+        }
+        if params["threadId"]
+            .as_str()
+            .is_some_and(|thread| self.is_title_helper(thread))
+        {
+            self.reply_error(&rpc_id, "naming a thread does not run tools");
             return Ok(());
         }
         if let Some((reply, tool_call)) = approval(method, params) {
@@ -2087,6 +2292,15 @@ impl Runtime {
         }
         Ok(())
     }
+}
+
+fn generated_title(text: &str) -> Option<String> {
+    let title = clean_title(text)?;
+    let title = title
+        .trim_matches(|character| matches!(character, '"' | '`' | '*' | '“' | '”'))
+        .trim_end_matches('.')
+        .trim();
+    (!title.is_empty()).then(|| title.to_owned())
 }
 
 pub(crate) fn codex_home() -> Option<PathBuf> {
@@ -2871,5 +3085,145 @@ done
         };
         let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
         assert_eq!(result, Ok(()));
+    }
+
+    #[cfg(unix)]
+    const FAKE_NAMING_CODEX: &str = r#"#!/bin/sh
+[ "$1" = app-server ] || exit 2
+while IFS= read -r line; do
+  printf '%s\n' "$line" >> "$0.log"
+  id=$(printf '%s' "$line" | sed -n 's/^{\("method":"[^"]*",\)\{0,1\}"id":\([0-9][0-9]*\),.*/\2/p')
+  case "$line" in
+    *'"method":"model/list"'*)
+      printf '{"id":%s,"result":{"data":[{"model":"gpt-big","isDefault":true,"supportedReasoningEfforts":[{"reasoningEffort":"high"}]},{"model":"gpt-luna","supportedReasoningEfforts":[{"reasoningEffort":"low"}]}]}}\n' "$id" ;;
+    *'"method":"thread/start"'*'"ephemeral":true'*) printf '{"id":%s,"result":{"thread":{"id":"h1","ephemeral":true}}}\n' "$id" ;;
+    *'"method":"thread/start"'*) printf '{"id":%s,"result":{"thread":{"id":"t1","name":null}}}\n' "$id" ;;
+    *'"method":"turn/start"'*'"threadId":"h1"'*)
+      printf '{"id":%s,"result":{"turn":{"id":"h-turn"}}}\n' "$id"
+      printf '%s\n' '{"method":"item/agentMessage/delta","params":{"threadId":"h1","itemId":"n","delta":"\"Fix the flaky "}}'
+      printf '%s\n' '{"method":"item/agentMessage/delta","params":{"threadId":"h1","itemId":"n","delta":"resize test.\""}}'
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"h1","turn":{"id":"h-turn","status":"completed"}}}' ;;
+    *'"method":"turn/start"'*'"text":"rename it"'*)
+      printf '{"id":%s,"result":{"turn":{"id":"u2"}}}\n' "$id"
+      printf '%s\n' '{"method":"thread/name/updated","params":{"threadId":"t1","threadName":"Renamed in the TUI"}}'
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u2","status":"completed"}}}' ;;
+    *'"method":"turn/start"'*)
+      printf '{"id":%s,"result":{"turn":{"id":"u1"}}}\n' "$id"
+      printf '%s\n' '{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}'
+      printf '%s\n' '{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"completed"}}}' ;;
+    *'"method":"thread/name/set"'*'"threadId":"t1"'*)
+      printf '{"id":%s,"result":{}}\n' "$id"
+      printf '%s\n' '{"method":"thread/name/updated","params":{"threadId":"t1","threadName":"Fix the flaky resize test"}}' ;;
+    *) [ -n "$id" ] && printf '{"id":%s,"result":{}}\n' "$id" ;;
+  esac
+done
+"#;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_new_thread_is_named_on_a_throwaway_thread_and_follows_renames() {
+        use std::os::unix::fs::PermissionsExt as _;
+
+        let directory = tempfile::tempdir().expect("tempdir");
+        let program = directory.path().join("codex");
+        std::fs::write(&program, FAKE_NAMING_CODEX).expect("fake codex");
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))
+            .expect("executable");
+        let command = CodexCommand::parse(&program.display().to_string()).expect("native");
+        let (commands, command_rx) = async_channel::unbounded();
+        let (_controls, control_rx) = async_channel::unbounded();
+        let (events, event_rx) = async_channel::unbounded();
+        let runtime = run_codex_runtime(
+            command,
+            AgentWorkspaceEnvironment::default(),
+            AgentProvider::Codex,
+            RuntimeChannels {
+                auto_approve: Arc::new(Mutex::new(AgentAutoApprove::Off)),
+                permission_ids: Arc::new(AtomicU64::new(1)),
+                journal: None,
+                commands: command_rx,
+                controls: control_rx,
+                events,
+            },
+        );
+        let prompt = |turn_id, text: &str| RuntimeCommand::Prompt {
+            turn_id,
+            prompt: AgentPrompt {
+                text: text.to_owned(),
+                ..Default::default()
+            },
+        };
+        let title = || async {
+            let AgentStreamPayload::TitleChanged { title } = until(&event_rx, |payload| {
+                matches!(payload, AgentStreamPayload::TitleChanged { .. })
+            })
+            .await
+            else {
+                unreachable!();
+            };
+            title
+        };
+        let driver = async {
+            commands
+                .send(RuntimeCommand::Open {
+                    cwd: directory.path().to_path_buf(),
+                    resume_session: None,
+                })
+                .await
+                .expect("open");
+            until(&event_rx, |payload| {
+                matches!(payload, AgentStreamPayload::SessionReady { .. })
+            })
+            .await;
+            commands
+                .send(prompt(1, "the resize test fails on CI, fix it"))
+                .await
+                .expect("prompt");
+            assert_eq!(title().await.as_deref(), Some("Fix the flaky resize test"));
+            commands.send(prompt(2, "rename it")).await.expect("prompt");
+            assert_eq!(title().await.as_deref(), Some("Renamed in the TUI"));
+            commands
+                .send(RuntimeCommand::Shutdown)
+                .await
+                .expect("shutdown");
+        };
+        let (result, ()) = smol::block_on(futures_lite::future::zip(runtime, driver));
+        assert_eq!(result, Ok(()));
+        let log = std::fs::read_to_string(directory.path().join("codex.log")).expect("log");
+        let requests = log
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .collect::<Vec<_>>();
+        let sent = |method: &str| {
+            requests
+                .iter()
+                .filter(|request| request["method"] == method)
+                .map(|request| request["params"].clone())
+                .collect::<Vec<_>>()
+        };
+        let helpers = sent("thread/start")
+            .into_iter()
+            .filter(|params| params["ephemeral"] == true)
+            .collect::<Vec<_>>();
+        assert_eq!(helpers.len(), 1, "{log}");
+        assert_eq!(helpers[0]["model"], "gpt-luna");
+        assert_eq!(helpers[0]["approvalPolicy"], "never");
+        assert_eq!(helpers[0]["sandbox"], "read-only");
+        let helper_turn = sent("turn/start")
+            .into_iter()
+            .find(|params| params["threadId"] == "h1")
+            .expect("a turn on the throwaway thread");
+        assert_eq!(helper_turn["effort"], "low");
+        assert!(
+            helper_turn["input"][0]["text"]
+                .as_str()
+                .is_some_and(|text| text.ends_with("the resize test fails on CI, fix it")),
+            "{helper_turn}"
+        );
+        assert_eq!(
+            sent("thread/name/set"),
+            [json!({ "threadId": "t1", "name": "Fix the flaky resize test" })]
+        );
+        assert_eq!(sent("thread/unsubscribe"), [json!({ "threadId": "h1" })]);
     }
 }
