@@ -5,38 +5,12 @@ use ala::{
     Styled as _, TestAppContext, Window, div, px, size,
 };
 use penna::{
-    Fill, Highlight, IconName, Kind, Shadow, StylePatch, StyledExt as _, SurfaceRole,
-    interface_theme,
+    Fill, IconName, Kind, Shadow, StylePatch, StyledExt as _, SurfaceRole, interface_theme,
 };
 use penna_storybook::{Catalog, Section, creator, story::stateless};
 use serde_json::{Value, json};
 
 const P: StylePatch = StylePatch::EMPTY;
-
-const BOARD: SurfaceRole = SurfaceRole::new(
-    "desk",
-    Kind::Card,
-    "Arrangement",
-    "The well the screens are arranged on",
-)
-.with(P.shadow(Shadow::None));
-const SCREEN: SurfaceRole = SurfaceRole::under(
-    &BOARD,
-    "desk.screen",
-    "Screens",
-    "A screen on the arrangement",
-)
-.with(P.shadow(Shadow::Contact));
-const CHIP: SurfaceRole = SurfaceRole::under(
-    &SurfaceRole::BADGE,
-    "desk.chip",
-    "Screen names",
-    "The name above each screen on the arrangement",
-)
-.with(P.selected(Highlight::Tint));
-
-const ROLES: &[SurfaceRole] = &[BOARD, SCREEN, CHIP];
-const RETIRED: &[&str] = &["desk.shelf"];
 
 const BOARD_PLATE: Section = Section {
     id: "desk",
@@ -50,30 +24,24 @@ fn board(_: &mut Window, cx: &mut App) -> AnyElement {
         div()
             .size(px(120.0))
             .p(px(8.0))
-            .surface(SCREEN, cx)
-            .child(div().surface(CHIP, cx).child(name))
+            .surface(SurfaceRole::SCREEN_TILE, cx)
+            .child(div().surface(SurfaceRole::CHIP, cx).child(name))
     };
     div()
         .flex()
         .gap(px(16.0))
         .w(px(320.0))
         .p(px(16.0))
-        .surface(BOARD, cx)
+        .surface(SurfaceRole::WELL, cx)
         .child(screen("left", cx))
         .child(screen("right", cx))
         .into_any_element()
-}
-
-fn register() {
-    penna::roles::register(ROLES);
-    penna::roles::retire(RETIRED);
 }
 
 static BOARD_APP: Catalog = Catalog {
     title: "board storybook",
     name: "desk",
     storage: "board-storybook",
-    register,
     init: penna::init,
     logo: IconName::Layers.path(),
     plates: &[creator::CONTROLS, BOARD_PLATE],
@@ -141,66 +109,60 @@ fn the_app_catalog_puts_the_creator_first_with_its_plates() {
 }
 
 #[test]
-fn app_roles_show_in_the_tree_under_their_parents() {
+fn the_roles_a_plate_draws_show_in_the_tree_under_their_parents() {
     install();
     let tree = tree();
-    let board = role(&tree, "desk");
-    assert_eq!(board["kind"], "card");
-    assert_eq!(board["group"], Kind::Card.role().label);
-    assert_eq!(board["members"], 1);
-    let screen = role(&tree, "desk.screen");
-    assert_eq!(screen["group"], "Arrangement");
-    assert_eq!(screen["depth"], board["depth"].as_u64().unwrap() + 1);
-    assert_eq!(screen["patch"], json!({}));
+    let well = role(&tree, "well");
+    assert_eq!(well["kind"], "card");
+    assert_eq!(well["group"], Kind::Card.role().label);
+    assert_eq!(well["style"]["shadow"], "none");
+    assert_eq!(well["style"]["fill"], "tint");
+    let screen = role(&tree, "tile.screen");
     assert_eq!(screen["style"]["shadow"], "contact");
-    assert_eq!(board["style"]["shadow"], "none");
-    let chip = role(&tree, "desk.chip");
+    let chip = role(&tree, "chip");
     assert_eq!(chip["group"], SurfaceRole::BADGE.label);
-    assert!(
-        tree.iter().position(|role| role["id"] == "desk")
-            < tree.iter().position(|role| role["id"] == "desk.screen")
-    );
+    assert_eq!(chip["style"]["shape"], "pill");
 }
 
 #[ala::test]
-fn an_edit_to_an_app_role_lands_in_the_export_and_parses_back(cx: &mut TestAppContext) {
+fn an_edit_to_a_recipe_lands_in_the_export_and_parses_back(cx: &mut TestAppContext) {
     install();
     cx.update(penna::init);
-    let edit = json!({ "desk.screen": { "fill": "tint", "shadow": "contact" } });
+    let edit = json!({ "tile.screen": { "fill": "tint", "shadow": "contact" } });
     cx.update(|cx| penna_storybook::set_knobs(&query(&edit), cx))
         .unwrap();
-    assert_eq!(role(&tree(), "desk.screen")["patch"], edit["desk.screen"]);
+    assert_eq!(role(&tree(), "tile.screen")["patch"], edit["tile.screen"]);
     let exported = penna_storybook::theme_file_json();
     let theme = interface_theme::parse_theme(&exported).unwrap();
     assert_eq!(
-        theme.roles.get("desk.screen"),
+        theme.roles.get("tile.screen"),
         Some(&P.fill(Fill::Tint).shadow(Shadow::Contact))
     );
     let knobs =
         serde_json::from_str::<Value>(&penna_storybook::import_theme(&exported).unwrap()).unwrap();
-    assert_eq!(knobs["roles"]["desk.screen"], edit["desk.screen"]);
+    assert_eq!(knobs["roles"]["tile.screen"], edit["tile.screen"]);
 }
 
 #[test]
-fn import_drops_retired_app_roles_and_names_unknown_ones() {
+fn import_drops_retired_ids_and_names_unknown_ones() {
     install();
     let theme = json!({ "roles": {
-        "desk.shelf": { "fill": "tint" },
-        "desk.screen": { "fill": "tint" },
+        "board.screen": { "fill": "tint" },
+        "tile.screen": { "fill": "tint" },
     } });
     let knobs =
         serde_json::from_str::<Value>(&penna_storybook::import_theme(&theme.to_string()).unwrap())
             .unwrap();
-    assert_eq!(knobs["roles"], json!({ "desk.screen": { "fill": "tint" } }));
+    assert_eq!(knobs["roles"], json!({ "tile.screen": { "fill": "tint" } }));
     let error = penna_storybook::import_theme(
-        &json!({ "roles": { "desk.scren": { "fill": "tint" } } }).to_string(),
+        &json!({ "roles": { "tile.scren": { "fill": "tint" } } }).to_string(),
     )
     .unwrap_err();
-    assert!(error.contains("unknown role `desk.scren`"), "{error}");
+    assert!(error.contains("unknown role `tile.scren`"), "{error}");
 }
 
 #[ala::test]
-fn the_app_plate_reports_the_app_roles_it_draws(cx: &mut TestAppContext) {
+fn the_app_plate_reports_the_roles_it_draws(cx: &mut TestAppContext) {
     install();
     cx.update(penna::init);
     let creator = penna_storybook::find(creator::ID).unwrap();
@@ -208,16 +170,12 @@ fn the_app_plate_reports_the_app_roles_it_draws(cx: &mut TestAppContext) {
         .unwrap();
     draw(cx);
     let drawn = serde_json::from_str::<Value>(&penna_storybook::drawn_roles_json()).unwrap();
-    let board = drawn["desk"].as_array().unwrap();
-    for id in ["desk", "desk.screen", "desk.chip"] {
-        assert!(board.iter().any(|role| role == id), "{id} in {board:?}");
+    let desk = drawn["desk"].as_array().unwrap();
+    for id in ["well", "tile.screen", "chip"] {
+        assert!(desk.iter().any(|role| role == id), "{id} in {desk:?}");
     }
     let controls = drawn["controls"].as_array().unwrap();
-    assert!(
-        controls
-            .iter()
-            .all(|role| !role.as_str().unwrap().starts_with("desk"))
-    );
+    assert!(controls.iter().all(|role| role != "well"));
 }
 
 struct Groups;

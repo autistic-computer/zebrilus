@@ -4,9 +4,8 @@ use ala::{
     prelude::FluentBuilder as _, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, Fill, IconName,
-    InteractivePaintExt as _, Kind, Paint, PaintExt as _, PaintState, Sizable as _, StylePatch,
-    StyledExt as _, Tone,
+    ActiveTheme as _, Colorize as _, Disableable as _, Elevation, Emphasis, IconName,
+    InteractivePaintExt as _, Paint, PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     badge::Badge,
     button::Button,
     check::Check,
@@ -571,13 +570,11 @@ fn grounds(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
-const P: StylePatch = StylePatch::EMPTY;
-
-const FIELD_ROWS: [(&str, Option<StylePatch>); 4] = [
+const FIELD_ROWS: [(&str, Option<Emphasis>); 4] = [
     ("the theme's", None),
-    ("soft", Some(P.fill(Fill::Tint).outline(true))),
-    ("outline", Some(P.fill(Fill::None).outline(true))),
-    ("ghost", Some(P.fill(Fill::None).outline(false))),
+    ("soft", Some(Emphasis::Soft)),
+    ("outline", Some(Emphasis::Outline)),
+    ("ghost", Some(Emphasis::Ghost)),
 ];
 
 struct Fields {
@@ -649,12 +646,10 @@ impl Render for Fields {
         let rows = FIELD_ROWS
             .iter()
             .zip(&self.grid)
-            .map(|((name, patch), states)| {
+            .map(|((name, emphasis), states)| {
                 let cell = |index: usize| {
                     Input::new(&states[index])
-                        .when_some(*patch, |input, patch| {
-                            input.surface_role(Kind::Field.role().with(patch))
-                        })
+                        .when_some(*emphasis, Input::emphasis)
                         .when(index == 2, |input| input.tone(Tone::Danger))
                         .disabled(index == 3)
                         .into_any_element()

@@ -84,17 +84,6 @@ pub use title_bar::{
     macos_traffic_light_clearance, window_controls_width,
 };
 
-pub fn register(
-    roles: &'static [SurfaceRole],
-    retired: &'static [&'static str],
-    themes: &'static [(&'static str, &'static str)],
-) {
-    roles::register(roles);
-    roles::retire(retired);
-    interface_theme::register(themes);
-    let _ = interface_theme::builtin_themes();
-}
-
 pub fn init(cx: &mut ala::App) {
     foundation::init(cx);
     #[cfg(feature = "editor")]

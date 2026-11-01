@@ -591,10 +591,14 @@ pub struct SurfaceRole {
     pub knobs: Option<Knobs>,
     pub row: bool,
     pub capsule: Option<bool>,
+    sealed: Sealed,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct Sealed;
+
 impl SurfaceRole {
-    pub const fn new(
+    pub(crate) const fn new(
         id: &'static str,
         kind: Kind,
         label: &'static str,
@@ -610,10 +614,11 @@ impl SurfaceRole {
             knobs: None,
             row: false,
             capsule: None,
+            sealed: Sealed,
         }
     }
 
-    pub const fn under(
+    pub(crate) const fn under(
         parent: &'static SurfaceRole,
         id: &'static str,
         label: &'static str,
@@ -626,22 +631,22 @@ impl SurfaceRole {
         }
     }
 
-    pub const fn with(self, patch: StylePatch) -> Self {
+    pub(crate) const fn with(self, patch: StylePatch) -> Self {
         Self { patch, ..self }
     }
 
-    pub const fn with_knobs(self, knobs: Knobs) -> Self {
+    pub(crate) const fn with_knobs(self, knobs: Knobs) -> Self {
         Self {
             knobs: Some(knobs),
             ..self
         }
     }
 
-    pub const fn rows(self) -> Self {
+    pub(crate) const fn rows(self) -> Self {
         Self { row: true, ..self }
     }
 
-    pub const fn capsule(self, capsule: bool) -> Self {
+    pub(crate) const fn capsule(self, capsule: bool) -> Self {
         Self {
             capsule: Some(capsule),
             ..self

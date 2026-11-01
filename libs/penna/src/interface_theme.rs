@@ -444,54 +444,20 @@ const BUILTIN_SOURCES: [&str; BUILTIN_THEMES.len()] = [
     include_str!("../themes/yaru.json"),
 ];
 
-static LAYERS: OnceLock<&'static [(&'static str, &'static str)]> = OnceLock::new();
 static BUILTINS: OnceLock<Vec<(&'static str, InterfaceTheme)>> = OnceLock::new();
 
-pub fn register(themes: &'static [(&'static str, &'static str)]) {
-    assert!(
-        LAYERS.get().is_some() || BUILTINS.get().is_none(),
-        "the built-in themes were read before the app registered its theme layers; call \
-         penna::register before penna::init and before reading any theme"
-    );
-    crate::roles::set_once(&LAYERS, themes, "penna::interface_theme::register");
-}
-
-fn builtins_from(themes: &[(&'static str, &'static str)]) -> Vec<(&'static str, InterfaceTheme)> {
-    let mut stacks = BUILTIN_THEMES
-        .into_iter()
-        .zip(BUILTIN_SOURCES)
-        .map(|(id, source)| (id, vec![source]))
-        .collect::<Vec<_>>();
-    for &(id, source) in themes {
-        match stacks.iter_mut().find(|(known, _)| *known == id) {
-            Some((_, stack)) => stack.push(source),
-            None => stacks.push((id, vec![source])),
-        }
-    }
-    stacks
-        .into_iter()
-        .map(|(id, stack)| {
-            let theme = parse_layers(&stack).unwrap_or_else(|error| {
-                let hint = if error.starts_with("unknown role") && !crate::roles::registered() {
-                    "; an app's roles must be registered before its theme layers are read, so \
-                     call penna::register before penna::init and before reading any theme"
-                } else {
-                    ""
-                };
-                let theme = if stack.len() == 1 && BUILTIN_THEMES.contains(&id) {
-                    format!("built-in theme {id}")
-                } else {
-                    format!("theme {id} with the app's theme layer")
-                };
-                panic!("{theme} does not parse: {error}{hint}")
-            });
-            (id, theme)
-        })
-        .collect()
-}
-
 pub fn builtin_themes() -> &'static [(&'static str, InterfaceTheme)] {
-    BUILTINS.get_or_init(|| builtins_from(LAYERS.get().copied().unwrap_or_default()))
+    BUILTINS.get_or_init(|| {
+        BUILTIN_THEMES
+            .into_iter()
+            .zip(BUILTIN_SOURCES)
+            .map(|(id, source)| {
+                let theme = parse_theme(source)
+                    .unwrap_or_else(|error| panic!("built-in theme {id} does not parse: {error}"));
+                (id, theme)
+            })
+            .collect()
+    })
 }
 
 pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
@@ -989,209 +955,6 @@ mod tests {
             crate::parse_hex("#ff8800").ok()
         );
         assert_eq!(accent_color("chartreuse", ThemeMode::Dark), None);
-    }
-
-    #[test]
-    fn app_layers_lay_over_the_builtins_and_new_ids_add_themes() {
-        use crate::{Fill, Shape};
-        let layer = r#"{"materials":{"radius":3,"float":{"y":2}},"roles":{"button":{"fill":"tint"},"chrome.button":{"shape":"pill"}}}"#;
-        let again = r#"{"roles":{"button":{"shape":"square"}}}"#;
-        let plain = r#"{"name":"Plain","materials":{"radius":3}}"#;
-        let ids = |themes: &[(&'static str, InterfaceTheme)]| {
-            themes.iter().map(|(id, _)| *id).collect::<Vec<_>>()
-        };
-        let alone = builtins_from(&[]);
-        let layered = builtins_from(&[("macos", layer), ("plain", plain), ("macos", again)]);
-        assert_eq!(ids(&layered), ["default", "macos", "yaru", "plain"]);
-        assert_eq!(layered[0], alone[0]);
-        assert_eq!(layered[2], alone[2]);
-
-        let (macos, before) = (&layered[1].1, &alone[1].1);
-        assert_eq!(macos.name, before.name);
-        assert_eq!(
-            macos.materials,
-            Materials {
-                radius: 3.0,
-                float: ShadowMaterial {
-                    y: 2.0,
-                    ..before.materials.float
-                },
-                ..before.materials.clone()
-            }
-        );
-        assert_eq!((&macos.light, &macos.dark), (&before.light, &before.dark));
-        assert_eq!(
-            macos.roles["button"],
-            before.roles["button"].fill(Fill::Tint).shape(Shape::Square)
-        );
-        assert_eq!(
-            macos.roles["chrome.button"],
-            before.roles["chrome.button"].shape(Shape::Pill)
-        );
-        let untouched = |roles: &BTreeMap<String, StylePatch>| {
-            roles
-                .iter()
-                .filter(|(id, _)| !matches!(id.as_str(), "button" | "chrome.button"))
-                .map(|(id, patch)| (id.clone(), *patch))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(untouched(&macos.roles), untouched(&before.roles));
-
-        let plain = &layered[3].1;
-        assert_eq!(plain.name, "Plain");
-        assert_eq!(
-            plain.materials,
-            Materials {
-                radius: 3.0,
-                ..Materials::default()
-            }
-        );
-        assert!(plain.roles.is_empty());
-        assert_eq!(plain.light, ThemeColors::default());
-    }
-
-    #[test]
-    fn a_layer_naming_unregistered_roles_says_to_register_first() {
-        let read = std::panic::catch_unwind(|| {
-            builtins_from(&[("default", r#"{"roles":{"app.card":{}}}"#)])
-        });
-        let message = *read.unwrap_err().downcast::<String>().unwrap();
-        assert!(message.contains("unknown role `app.card`"), "{message}");
-        assert!(
-            message.contains("call penna::register before penna::init"),
-            "{message}"
-        );
-    }
-
-    fn assert_shows(shown: &InterfaceTheme, mode: ThemeMode, cx: &ala::App) {
-        let mut expected = Theme::from(&*ThemeColor::for_mode(mode));
-        expected.mode = mode;
-        shown.apply(&mut expected);
-        let theme = Theme::global(cx);
-        assert_eq!(theme.mode, mode);
-        assert_eq!(theme.colors, expected.colors, "{mode:?}");
-        assert_eq!(
-            (
-                theme.radius,
-                theme.control_radius,
-                theme.outline,
-                theme.row_inset
-            ),
-            (
-                expected.radius,
-                expected.control_radius,
-                expected.outline,
-                expected.row_inset
-            ),
-            "{mode:?}"
-        );
-        assert_eq!(
-            (
-                theme.smoothing,
-                theme.picked_smoothing,
-                theme.picked_outlines
-            ),
-            (
-                expected.smoothing,
-                expected.picked_smoothing,
-                expected.picked_outlines
-            ),
-            "{mode:?}"
-        );
-        assert_eq!(
-            (theme.primary, theme.flat_highlights, theme.bright_surfaces),
-            (
-                expected.primary,
-                expected.flat_highlights,
-                expected.bright_surfaces
-            ),
-            "{mode:?}"
-        );
-        assert_eq!(
-            (theme.highlight_strength, theme.glass, theme.picked_shadows),
-            (
-                expected.highlight_strength,
-                expected.glass,
-                expected.picked_shadows
-            ),
-            "{mode:?}"
-        );
-        assert_eq!(
-            (theme.contact_shadow, theme.float_shadow),
-            (expected.contact_shadow, expected.float_shadow),
-            "{mode:?}"
-        );
-        assert_eq!(theme.styles, expected.styles, "{mode:?}");
-    }
-
-    #[ala::test]
-    fn init_applies_the_default_theme(cx: &mut ala::TestAppContext) {
-        cx.update(|cx| {
-            crate::init(cx);
-            let theme = Theme::global(cx);
-            assert_eq!(theme.radius, px(default_theme().materials.radius));
-            assert!(!theme.styles.is_empty());
-            assert_shows(default_theme(), theme.mode, cx);
-        });
-    }
-
-    #[ala::test]
-    fn activating_in_either_mode_shows_only_that_theme(cx: &mut ala::TestAppContext) {
-        let layered = parse_layers(&[
-            default_theme().to_json().as_str(),
-            r##"{"materials":{"radius":3,"control-radius":2,"outline":1,"picked-outlines":true,"glass":"clear","light-glass":"frosted","float":{"y":2}},"roles":{"button":{"fill":"tint"}},"light":{"accent":"#ff0000"},"dark":{"accent":"#00ff00"}}"##,
-        ])
-        .unwrap();
-        let plain = parse_theme(r#"{"materials":{"radius":12}}"#).unwrap();
-        cx.update(|cx| {
-            crate::init(cx);
-            for mode in [ThemeMode::Light, ThemeMode::Dark, ThemeMode::Light] {
-                layered.activate(Some(mode), None, cx);
-                assert_shows(&layered, mode, cx);
-            }
-            plain.activate(Some(ThemeMode::Dark), None, cx);
-            assert_shows(&plain, ThemeMode::Dark, cx);
-            assert!(Theme::global(cx).styles.is_empty());
-            layered.activate(Some(ThemeMode::Dark), None, cx);
-            plain.activate(Some(ThemeMode::Light), None, cx);
-            assert_shows(&plain, ThemeMode::Light, cx);
-        });
-    }
-
-    #[ala::test]
-    fn a_theme_without_a_font_shows_the_system_font(cx: &mut ala::TestAppContext) {
-        let lilex = parse_theme(r#"{"materials":{"font":"Lilex"}}"#).unwrap();
-        let plain = parse_theme(r#"{"materials":{"radius":12}}"#).unwrap();
-        cx.update(|cx| {
-            crate::init(cx);
-            lilex.activate(Some(ThemeMode::Dark), None, cx);
-            assert_eq!(Theme::global(cx).font_family, "Lilex");
-            plain.activate(Some(ThemeMode::Dark), None, cx);
-            assert_eq!(Theme::global(cx).font_family, ala::Font::default().family);
-        });
-        let mut kit = Theme::from(&*ThemeColor::for_mode(ThemeMode::Light));
-        lilex.apply(&mut kit);
-        assert_eq!(kit.font_family, "Lilex");
-        plain.apply(&mut kit);
-        assert_eq!(kit.font_family, ala::Font::default().family);
-    }
-
-    #[ala::test]
-    fn activating_without_a_mode_follows_the_system(cx: &mut ala::TestAppContext) {
-        cx.update(|cx| {
-            crate::init(cx);
-            let system = ThemeMode::from(cx.window_appearance());
-            default_theme().activate(
-                Some(match system {
-                    ThemeMode::Light => ThemeMode::Dark,
-                    ThemeMode::Dark => ThemeMode::Light,
-                }),
-                None,
-                cx,
-            );
-            default_theme().activate(None, None, cx);
-            assert_shows(default_theme(), system, cx);
-        });
     }
 
     #[test]

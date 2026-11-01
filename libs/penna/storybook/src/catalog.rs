@@ -9,7 +9,6 @@ pub struct Catalog {
     pub title: &'static str,
     pub name: &'static str,
     pub storage: &'static str,
-    pub register: fn(),
     pub init: fn(&mut App),
     pub logo: &'static str,
     pub plates: &'static [Section],
@@ -50,7 +49,6 @@ pub static PENNA: Catalog = Catalog {
     title: "penna storybook",
     name: "penna",
     storage: "penna-storybook",
-    register: || {},
     init: penna::init,
     logo: IconName::Pencil.path(),
     plates: crate::creator::PLATES,
@@ -63,10 +61,7 @@ pub static PENNA: Catalog = Catalog {
 static INSTALLED: OnceLock<&'static Catalog> = OnceLock::new();
 
 pub fn install(catalog: &'static Catalog) {
-    let installed = *INSTALLED.get_or_init(|| {
-        (catalog.register)();
-        catalog
-    });
+    let installed = *INSTALLED.get_or_init(|| catalog);
     assert!(
         std::ptr::eq(installed, catalog),
         "the storybook already runs the {} catalog",

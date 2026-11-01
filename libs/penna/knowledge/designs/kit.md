@@ -138,11 +138,14 @@ Each slice lands in penna (component, variants, recipes, theme tweaks, stories),
 2. Chip, Steps and Notice; nidus status pill, board chips, first-run steps, banners and the panel's status card. The `chip` and `step` recipes are pills: nidus asked for `rounded_full()` before, which the role's radius overrode. `feedback::callout` and `inline_alert` stay until zebrilus's notice batch moves to Notice.
 3. Inspector, Well, Tile and Dock; the rest of nid-app's chrome; nidus lint on. The well is a tinted recess and tiles are painted on its ground (`Tile::on(Well::ground(cx))`), so screens stand apart from it on every theme; as plain cards both had the same fill wherever a theme turns outlines off.
 4. zebrilus families, one integration each: icon buttons, chips, drawers, floating panels, tabs, menu items, canvas, bars and rules, content, rows, fields, notice; zebrilus lint on.
-5. Close registration: `SurfaceRole` fields and constructors become crate-private, `penna::register` goes away, the retired list is penna's.
+5. Close registration (done 2026-11-01): `SurfaceRole` has a private field and crate-private constructors and builders, so no other crate can make or restyle a role; `penna::register`, `roles::register`, `roles::retire` and app theme layers are gone; the retired list is penna's. Field looks the storybook used to build by hand are `Input::emphasis`.
 
 ## Lint
 
-Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root; a per-crate file would replace the root list). Added paths: `penna::SurfaceRole::new`, `penna::SurfaceRole::under`, `penna::register`, `penna::roles::register`, `penna::StyledExt::{surface, surface_at, layer, rule_on}`, `penna::Theme::layer`, `penna::InteractiveSurfaceExt::surface_hover`, `penna::StatefulSurfaceExt::surface_interactive`, `penna::row_surface`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}`, the `penna::StyledExt::font_*` weight helpers and `penna::rems_from_px`. The lint is checked once by hand when added, on Linux and on a Mac (macOS-only code is not compiled on Linux). Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
+Defining a role is a compile error outside penna. The lint covers painting and text by hand.
+
+
+Each app extends the `disallowed-methods` list it already has (`nidus/crates/nid-app/clippy.toml`, `zebrilus/clippy.toml` at the workspace root; a per-crate file would replace the root list). Added paths: `penna::StyledExt::{surface, surface_at, layer, rule_on}`, `penna::Theme::layer`, `penna::InteractiveSurfaceExt::surface_hover`, `penna::StatefulSurfaceExt::surface_interactive`, `penna::row_surface`, `ala::Styled::{text_size, text_xs, text_sm, text_base, text_lg, text_xl, text_2xl, text_3xl, font_weight}`, the `penna::StyledExt::font_*` weight helpers and `penna::rems_from_px`. The lint is checked once by hand when added, on Linux and on a Mac (macOS-only code is not compiled on Linux). Spacing setters stay open: `gap(Space::S4)` and `gap(px(10.))` are the same call, so Space use is a review rule.
 
 ## How to work
 

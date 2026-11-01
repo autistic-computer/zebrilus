@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{actions, state::InputState};
-use crate::Colorize as _;
+use crate::{Colorize as _, Fill};
 
 const LINE_HEIGHT: DefiniteLength = DefiniteLength::Fraction(1.25);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +55,7 @@ pub struct Input {
     content_type: Option<InputContentType>,
     align: TextAlign,
     tone: Tone,
+    emphasis: Option<Emphasis>,
     surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
 }
@@ -137,6 +138,7 @@ impl Input {
             content_type: None,
             align: TextAlign::Left,
             tone: Tone::Neutral,
+            emphasis: None,
             surface_role: None,
             on: None,
         }
@@ -145,6 +147,12 @@ impl Input {
     #[must_use]
     pub fn tone(mut self, tone: Tone) -> Self {
         self.tone = tone;
+        self
+    }
+
+    #[must_use]
+    pub fn emphasis(mut self, emphasis: Emphasis) -> Self {
+        self.emphasis = Some(emphasis);
         self
     }
 
@@ -220,9 +228,16 @@ impl Input {
         } else {
             Kind::Field.role()
         };
-        Surface::new(self.surface_role.unwrap_or(field))
-            .tone(self.tone)
-            .on_maybe(self.on)
+        let role = self.surface_role.unwrap_or(field);
+        let role = match self.emphasis {
+            None => role,
+            Some(Emphasis::Solid | Emphasis::Soft) => {
+                role.with(role.patch.fill(Fill::Tint).outline(true))
+            }
+            Some(Emphasis::Outline) => role.with(role.patch.fill(Fill::None).outline(true)),
+            Some(Emphasis::Ghost) => role.with(role.patch.fill(Fill::None).outline(false)),
+        };
+        Surface::new(role).tone(self.tone).on_maybe(self.on)
     }
 
     fn sized<E: Styled>(element: E, size: Size) -> E {
