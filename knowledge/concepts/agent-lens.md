@@ -156,8 +156,13 @@ and is the whole story when the plugin is not there.
   long-polls `/commands?instance=<id>` (15 s, answering `{commands, watched}`) and posts each
   permission to `/ask`, which answers `decision`, `pass` or `pending` (ask again). The mod says
   hello as soon as the session starts and retries once a second while the daemon is away, so the
-  link is up whether or not a lens is open. A pane's state exists only once its plugin has spoken,
-  so panes that never run Claude cost nothing.
+  link is up whether or not a lens is open. `/clear`, `/resume` and `/branch` move the CLI to
+  another session id without a new `session.start`, so the mod says hello again when its id
+  differs from the one it last announced: right after `session.end` (the new id shows once that
+  hook returns) and before each long-poll. A pane's state exists only once its plugin has spoken,
+  so panes that never run Claude cost nothing; a hub holding 4096 panes drops the ones with no
+  lens and no polling plugin (a CLI that dies after its pane closed can speak once more) before it
+  turns a new pane away.
 - **Before a lens opens.** The hub keeps only each instance's latest `hello` (eight per pane),
   with its turn and model kept current from `turn`, `step`, `done`, `end` and `model`; other events
   are dropped, and `/ask` answers `pass` at once, so the TUI dialog works as if zz were not there.
@@ -212,7 +217,9 @@ and is the whole story when the plugin is not there.
   queued for it, or that could not be written to it, come back to the lens as lost. A prompt the
   plugin never acknowledged and can no longer take is typed while the record's process still runs
   (the mod reloaded), and otherwise ends its turn with "Claude Code exited before it took the
-  prompt" instead of an empty answer.
+  prompt" instead of an empty answer. A new prompt or steer while no plugin polls and the pane
+  has neither a Claude record nor a `claude` process fails with "Claude Code is not running in
+  this pane" instead of being typed into the shell.
 - **Fallback.** No socket, an older CLI, a policy that turns mods off, or a plugin that has hung up
   or not polled in 3 s: the lens types, reads the record and answers with keys exactly as below.
 
