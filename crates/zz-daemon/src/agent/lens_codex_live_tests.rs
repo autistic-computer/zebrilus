@@ -1310,6 +1310,24 @@ fn the_lens_joins_again_once_a_restarted_app_server_answers() {
 }
 
 #[test]
+fn frames_queued_when_the_tui_exits_still_reach_the_chat() {
+    let mut live = Harness::joined();
+    for message in frames("tui-turn") {
+        live.peer.deliver(message);
+    }
+    codex_of(&mut live.lens).vanished();
+    let after = live.drain();
+    assert!(!live.live());
+    let (shadow, view) = view(&[&live.opened, &after]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert_eq!(
+        texts(&view, ItemKind::User),
+        ["Count from 1 to 5, one number per line, nothing else."]
+    );
+    assert_eq!(texts(&view, ItemKind::Agent), ["1\n2\n3\n4\n5"]);
+}
+
+#[test]
 fn a_refused_question_reply_says_why_and_asks_again() {
     let mut live = Harness::joined();
     live.sent();

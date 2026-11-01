@@ -524,6 +524,7 @@ impl Codex {
     }
 
     pub(super) fn relaunched(&mut self, pid: u32) {
+        self.drain();
         self.leave();
         self.link.relive = false;
         self.link.rearm = self.tail.is_some() && !embedded(&arguments(pid));
@@ -537,7 +538,24 @@ impl Codex {
     }
 
     pub(super) fn vanished(&mut self) {
+        self.drain();
         self.leave();
+    }
+
+    fn drain(&mut self) {
+        let Some(mut live) = self.link.live.take() else {
+            return;
+        };
+        let mut read = Read::default();
+        while let Next::Message(message) = live.connection.next() {
+            self.message(&mut live, &message, &mut read);
+        }
+        self.link.live = Some(live);
+        let drained = self.link.claims.drained.get_or_insert_with(Read::default);
+        drained.updates.extend(read.updates);
+        drained.payloads.extend(read.payloads);
+        drained.finished |= read.finished;
+        drained.failed = drained.failed.take().or(read.failed);
     }
 
     pub(super) fn is_live(&self) -> bool {
@@ -723,6 +741,7 @@ impl Codex {
         read.updates.extend(caught.updates);
         read.finished = caught.finished;
         read.failed = caught.failed;
+        self.read_idle(&mut read);
         self.look_for_children();
         self.follow_question(&mut live, &mut read);
         let busy = self.busy;

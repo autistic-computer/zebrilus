@@ -28,6 +28,7 @@ pub(super) struct Claims {
     pub(super) chosen: Option<Chosen>,
     known: HashMap<String, Option<Known>>,
     pub(super) next: Option<Instant>,
+    pub(super) drained: Option<Read>,
 }
 
 pub(super) struct Idle {
@@ -338,6 +339,12 @@ impl Codex {
     }
 
     pub(in super::super) fn read_idle(&mut self, read: &mut Read) {
+        if let Some(drained) = self.link.claims.drained.take() {
+            read.updates.splice(0..0, drained.updates);
+            read.payloads.splice(0..0, drained.payloads);
+            read.finished |= drained.finished;
+            read.failed = read.failed.take().or(drained.failed);
+        }
         let Some(idle) = self.link.claims.idle.as_mut() else {
             return;
         };
