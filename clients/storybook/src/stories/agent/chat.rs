@@ -992,7 +992,7 @@ sequenceDiagram\n\
     Lens->>Sub: open its chat\n\
     destroy Sub\n\
     Sub-->>Lens: answer\n\
-    Lens-->>CLI: prompt typed into the TUI\n\
+    Lens-->>CLI: prompt over the live channel\n\
 ```";
 
 const FLOWCHART: &str = "```mermaid\n\

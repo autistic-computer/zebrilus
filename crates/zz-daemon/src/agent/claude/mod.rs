@@ -1641,23 +1641,7 @@ impl Runtime {
         match tool.as_str() {
             "AskUserQuestion" => self.ask_questions(claude_id, &tool_use_id, input).await,
             "ExitPlanMode" => {
-                let content = input["plan"]
-                    .as_str()
-                    .map_or_else(
-                        || json!([]),
-                        |plan| json!([{ "type": "content", "content": { "type": "text", "text": plan } }]),
-                    );
-                let tool_call = json!({
-                    "toolCallId": tool_use_id,
-                    "title": "Ready to code?",
-                    "kind": "switch_mode",
-                    "content": content,
-                });
-                let options = json!([
-                    option("accept_edits", "Yes, and auto-accept edits", "allow_always"),
-                    option("approve", "Yes, and manually approve edits", "allow_once"),
-                    option("keep_planning", "No, keep planning", "reject_once"),
-                ]);
+                let (tool_call, options) = plan_request(&tool_use_id, &input);
                 self.ask(
                     Permission::Plan { claude_id, input },
                     tool_call,
@@ -1681,22 +1665,14 @@ impl Runtime {
                     return Ok(());
                 }
                 let suggestions = request["permission_suggestions"].clone();
-                let mut options = vec![option("allow", "Allow", "allow_once")];
-                if suggestions.as_array().is_some_and(|list| !list.is_empty())
-                    && request["suppress_always_allow_rule"] != true
-                {
-                    options.push(option("allow_always", "Always allow", "allow_always"));
-                }
-                options.push(option("reject", "Reject", "reject_once"));
-                let mut tool_call = json!({
-                    "toolCallId": tool_use_id,
-                    "title": info.title,
-                    "kind": info.kind,
-                    "rawInput": input,
-                });
-                if !info.content.is_empty() {
-                    tool_call["content"] = Value::Array(info.content);
-                }
+                let (tool_call, options) = approval_request(
+                    &tool,
+                    &tool_use_id,
+                    &input,
+                    &suggestions,
+                    request["suppress_always_allow_rule"] != true,
+                    &self.cwd(),
+                );
                 self.ask(
                     Permission::Approval {
                         claude_id,
@@ -1704,7 +1680,7 @@ impl Runtime {
                         suggestions,
                     },
                     tool_call,
-                    Value::Array(options),
+                    options,
                     Vec::new(),
                 )
                 .await
@@ -1753,62 +1729,12 @@ impl Runtime {
         tool_use_id: &str,
         input: Value,
     ) -> Result<(), String> {
-        let questions = input["questions"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .enumerate()
-            .map(|(index, question)| {
-                let text = question["question"]
-                    .as_str()
-                    .unwrap_or("Question")
-                    .to_owned();
-                AgentQuestion {
-                    id: format!("q{index}"),
-                    header: question["header"].as_str().map(str::to_owned),
-                    question: text,
-                    options: question["options"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .map(|choice| AgentQuestionOption {
-                            label: choice["label"].as_str().unwrap_or_default().to_owned(),
-                            description: choice["description"]
-                                .as_str()
-                                .filter(|text| !text.is_empty())
-                                .map(str::to_owned),
-                        })
-                        .collect(),
-                    multi_select: question["multiSelect"] == true,
-                    allow_other: true,
-                    secret: false,
-                }
-            })
-            .collect::<Vec<_>>();
+        let questions = question_list(&input);
         if questions.is_empty() {
             self.respond(&claude_id, &allow(&input, None));
             return Ok(());
         }
-        let options = match questions.as_slice() {
-            [only] if !only.multi_select => only
-                .options
-                .iter()
-                .enumerate()
-                .map(|(index, choice)| {
-                    let name = match &choice.description {
-                        Some(description) => format!("{}: {description}", choice.label),
-                        None => choice.label.clone(),
-                    };
-                    option(&format!("answer-{index}"), &name, "allow_once")
-                })
-                .collect(),
-            _ => Vec::new(),
-        };
-        let title = match questions.as_slice() {
-            [only] => only.question.clone(),
-            _ => "Claude has questions".to_owned(),
-        };
-        let tool_call = json!({ "toolCallId": tool_use_id, "title": title });
+        let (tool_call, options) = question_request(tool_use_id, &questions);
         self.ask(
             Permission::Question {
                 claude_id,
@@ -1816,7 +1742,7 @@ impl Runtime {
                 questions: questions.clone(),
             },
             tool_call,
-            Value::Array(options),
+            options,
             questions,
         )
         .await
@@ -1947,7 +1873,113 @@ impl Runtime {
     }
 }
 
-fn chosen(questions: &[AgentQuestion], option: Option<&str>) -> Option<AgentQuestionAnswer> {
+pub(crate) fn plan_request(tool_use_id: &str, input: &Value) -> (Value, Value) {
+    let content = input["plan"].as_str().map_or_else(
+        || json!([]),
+        |plan| json!([{ "type": "content", "content": { "type": "text", "text": plan } }]),
+    );
+    let tool_call = json!({
+        "toolCallId": tool_use_id,
+        "title": "Ready to code?",
+        "kind": "switch_mode",
+        "content": content,
+    });
+    let options = json!([
+        option("accept_edits", "Yes, and auto-accept edits", "allow_always"),
+        option("approve", "Yes, and manually approve edits", "allow_once"),
+        option("keep_planning", "No, keep planning", "reject_once"),
+    ]);
+    (tool_call, options)
+}
+
+pub(crate) fn approval_request(
+    tool: &str,
+    tool_use_id: &str,
+    input: &Value,
+    suggestions: &Value,
+    always: bool,
+    cwd: &Path,
+) -> (Value, Value) {
+    let info = tool_info(tool, input, cwd);
+    let mut options = vec![option("allow", "Allow", "allow_once")];
+    if always && suggestions.as_array().is_some_and(|list| !list.is_empty()) {
+        options.push(option("allow_always", "Always allow", "allow_always"));
+    }
+    options.push(option("reject", "Reject", "reject_once"));
+    let mut tool_call = json!({
+        "toolCallId": tool_use_id,
+        "title": info.title,
+        "kind": info.kind,
+        "rawInput": input,
+    });
+    if !info.content.is_empty() {
+        tool_call["content"] = Value::Array(info.content);
+    }
+    (tool_call, Value::Array(options))
+}
+
+pub(crate) fn question_list(input: &Value) -> Vec<AgentQuestion> {
+    input["questions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+        .map(|(index, question)| AgentQuestion {
+            id: format!("q{index}"),
+            header: question["header"].as_str().map(str::to_owned),
+            question: question["question"]
+                .as_str()
+                .unwrap_or("Question")
+                .to_owned(),
+            options: question["options"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|choice| AgentQuestionOption {
+                    label: choice["label"].as_str().unwrap_or_default().to_owned(),
+                    description: choice["description"]
+                        .as_str()
+                        .filter(|text| !text.is_empty())
+                        .map(str::to_owned),
+                })
+                .collect(),
+            multi_select: question["multiSelect"] == true,
+            allow_other: true,
+            secret: false,
+        })
+        .collect()
+}
+
+pub(crate) fn question_request(tool_use_id: &str, questions: &[AgentQuestion]) -> (Value, Value) {
+    let options = match questions {
+        [only] if !only.multi_select => only
+            .options
+            .iter()
+            .enumerate()
+            .map(|(index, choice)| {
+                let name = match &choice.description {
+                    Some(description) => format!("{}: {description}", choice.label),
+                    None => choice.label.clone(),
+                };
+                option(&format!("answer-{index}"), &name, "allow_once")
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let title = match questions {
+        [only] => only.question.clone(),
+        _ => "Claude has questions".to_owned(),
+    };
+    (
+        json!({ "toolCallId": tool_use_id, "title": title }),
+        Value::Array(options),
+    )
+}
+
+pub(crate) fn chosen(
+    questions: &[AgentQuestion],
+    option: Option<&str>,
+) -> Option<AgentQuestionAnswer> {
     let index = option?.strip_prefix("answer-")?.parse::<usize>().ok()?;
     let question = questions.first()?;
     Some(AgentQuestionAnswer {
@@ -1956,7 +1988,11 @@ fn chosen(questions: &[AgentQuestion], option: Option<&str>) -> Option<AgentQues
     })
 }
 
-fn answered(input: &Value, questions: &[AgentQuestion], answers: &[AgentQuestionAnswer]) -> Value {
+pub(crate) fn answered(
+    input: &Value,
+    questions: &[AgentQuestion],
+    answers: &[AgentQuestionAnswer],
+) -> Value {
     let mut map = Map::new();
     for question in questions {
         if let Some(answer) = answers
@@ -1995,7 +2031,7 @@ fn task_kind(task_type: &str) -> String {
     .to_owned()
 }
 
-fn allow(input: &Value, permissions: Option<Value>) -> Value {
+pub(crate) fn allow(input: &Value, permissions: Option<Value>) -> Value {
     let mut response = json!({ "behavior": "allow", "updatedInput": input });
     if let Some(permissions) = permissions {
         response["updatedPermissions"] = permissions;
@@ -2003,14 +2039,14 @@ fn allow(input: &Value, permissions: Option<Value>) -> Value {
     response
 }
 
-fn allow_with_mode(input: &Value, mode: &str) -> Value {
+pub(crate) fn allow_with_mode(input: &Value, mode: &str) -> Value {
     allow(
         input,
         Some(json!([{ "type": "setMode", "mode": mode, "destination": "session" }])),
     )
 }
 
-fn deny(message: &str, interrupt: bool) -> Value {
+pub(crate) fn deny(message: &str, interrupt: bool) -> Value {
     let mut response = json!({ "behavior": "deny", "message": message });
     if interrupt {
         response["interrupt"] = Value::Bool(true);

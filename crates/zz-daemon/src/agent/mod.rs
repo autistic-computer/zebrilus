@@ -10,6 +10,8 @@ pub(crate) mod child;
 pub(crate) mod claude;
 #[cfg(unix)]
 pub(crate) mod claude_peers;
+#[cfg(unix)]
+pub(crate) mod claude_plugin;
 pub(crate) mod codex;
 #[cfg(unix)]
 pub(crate) mod codex_queue;
@@ -22,6 +24,10 @@ pub(crate) mod host;
 pub(crate) mod journal;
 #[cfg(unix)]
 pub(crate) mod lens;
+#[cfg(unix)]
+pub(crate) mod lens_channel;
+#[cfg(unix)]
+pub(crate) mod lens_claude_mod;
 #[cfg(unix)]
 pub(crate) mod lens_commands;
 #[cfg(unix)]

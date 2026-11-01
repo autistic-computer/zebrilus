@@ -29,6 +29,8 @@ use crate::agent::{
     },
     codex_queue,
     host::RuntimeChannels,
+    lens_channel::Channel,
+    lens_claude_mod::{self, Link},
     lens_commands::{self, Listed},
     lens_settings::{self, Catalog, Facts},
     runtime::{RuntimeCommand, RuntimeControl},
@@ -43,6 +45,7 @@ const LOCATE: Duration = Duration::from_secs(1);
 const CODEX_LOCATE: Duration = Duration::from_secs(5);
 const ROLLOUT_DAYS: usize = 7;
 const SETTLE: Duration = Duration::from_secs(5);
+const UNCLAIMED: Duration = Duration::from_mins(1);
 const DIALOG_SETTLE: Duration = Duration::from_millis(800);
 const DIALOG_GIVE_UP: Duration = Duration::from_mins(30);
 const IDLE_GRACE: Duration = Duration::from_secs(2);
@@ -62,6 +65,12 @@ pub(crate) trait LensPane: Send + Sync {
     fn keys(&self, keys: &[&str]) -> Result<(), String>;
     fn attach(&self, images: &[AgentImage]) -> Result<(), String>;
     fn screen(&self) -> Option<String>;
+    fn channel(&self) -> Option<Channel> {
+        None
+    }
+    fn title(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -185,6 +194,7 @@ struct Read {
     finished: bool,
     failed: Option<String>,
     reload: bool,
+    payloads: Vec<AgentStreamPayload>,
 }
 
 struct Found {
@@ -228,6 +238,8 @@ struct Claude {
     launch: Facts,
     launch_pid: Option<u32>,
     dialog_closed: bool,
+    link: Option<Link>,
+    vacant: bool,
 }
 
 struct Subagent {
@@ -255,6 +267,8 @@ impl Claude {
             launch: Facts::default(),
             launch_pid: None,
             dialog_closed: false,
+            link: None,
+            vacant: false,
         }
     }
 
@@ -276,23 +290,40 @@ impl Claude {
     }
 
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
+        self.vacant = false;
         let pane_pid = pane_pid?;
         let files = self.files.as_ref()?;
         let mut records = claude_peers::read_records_in(&files.registry).ok()?;
         records.retain(|record| record.zz.is_none());
         let record = claude_peers::record_in_pane(&records, pane_pid).cloned();
         self.follow_launch(pane_pid, record.as_ref());
-        let record = record?;
+        let Some(record) = record else {
+            self.vacant = agent_pid(pane_pid, "claude").is_none();
+            return None;
+        };
         let files = self.files.as_ref()?;
         let cwd = PathBuf::from(&record.cwd);
         let path = sessions::session_file(&files.config, &cwd, &record.session_id);
         let session = record.session_id.clone();
         self.record = Some(record);
+        if let Some(link) = self.link.as_mut() {
+            link.greet(Some(&session));
+        }
+        self.vacant = path.is_none();
         Some(Found {
             session,
             path: path?,
             cwd,
         })
+    }
+
+    fn left(&self, pane_pid: u32) -> bool {
+        let Some(files) = self.files.as_ref() else {
+            return false;
+        };
+        let records = claude_peers::read_records_in(&files.registry).unwrap_or_default();
+        claude_peers::record_in_pane(&records, pane_pid).is_none()
+            && agent_pid(pane_pid, "claude").is_none()
     }
 
     fn follow_launch(&mut self, pane_pid: u32, record: Option<&PeerRecord>) {
@@ -333,15 +364,21 @@ impl Claude {
             }
         }
         let record = self.record.as_ref()?;
-        Some(Status {
-            busy: matches!(record.status.as_str(), "busy" | "waiting"),
-            waiting: (record.status == "waiting")
-                .then(|| record.waiting_for.clone())
-                .filter(|why| !why.is_empty()),
-        })
+        let busy = matches!(record.status.as_str(), "busy" | "waiting");
+        let waiting = (record.status == "waiting")
+            .then(|| record.waiting_for.clone())
+            .filter(|why| !why.is_empty());
+        let (busy, waiting) = match self.link.as_mut() {
+            Some(link) => link.status(busy, record.status == "waiting", waiting),
+            None => (busy, waiting),
+        };
+        Some(Status { busy, waiting })
     }
 
     fn load(&mut self, path: PathBuf, cwd: &Path) -> Vec<Value> {
+        if let Some(link) = self.link.as_mut().filter(|_| self.tail.is_some()) {
+            link.forget();
+        }
         let (tail, text) = Tail::open(path);
         self.translator = ClaudeTranslator::new(cwd.to_path_buf());
         self.open.clear();
@@ -368,7 +405,8 @@ impl Claude {
         for entry in sessions::chain_tail(&text) {
             self.facts.claude_entry(&entry);
             self.track(&entry);
-            updates.extend(stamped(self.translator.history_entry(&entry), &entry));
+            let history = stamped(self.translator.history_entry(&entry), &entry);
+            updates.extend(self.reconcile(&entry, history));
             updates.extend(self.agent_lines(false));
         }
         updates.extend(self.finished_agents());
@@ -379,7 +417,10 @@ impl Claude {
 
     fn read(&mut self) -> Read {
         let mut read = Read::default();
+        let mut live = self.drain(&mut read);
         let Some(tail) = self.tail.as_mut() else {
+            read.updates
+                .extend(live.into_iter().map(|(_, update)| update));
             return read;
         };
         let lines = tail.lines();
@@ -388,14 +429,42 @@ impl Claude {
             if read.reload {
                 break;
             }
+            read.updates
+                .extend(lens_claude_mod::before(&mut live, recorded(&entry)));
             read.updates.extend(self.agent_lines(true));
             self.entry(&entry, &mut read);
         }
         if !read.reload {
+            read.updates
+                .extend(live.into_iter().map(|(_, update)| update));
             read.updates.extend(self.agent_lines(true));
             read.updates.extend(self.finished_agents());
         }
         read
+    }
+
+    fn drain(&mut self, read: &mut Read) -> Vec<(Option<u64>, Value)> {
+        let Some(link) = self.link.as_mut() else {
+            return Vec::new();
+        };
+        let record = self.record.as_ref();
+        let cwd = record.map_or_else(|| PathBuf::from("/"), |record| PathBuf::from(&record.cwd));
+        let pid = record.map(|record| record.pid);
+        let drained = link.drain(
+            record.map(|record| record.session_id.as_str()),
+            &cwd,
+            || pid.is_some_and(crate::pid_alive),
+        );
+        read.finished |= drained.finished;
+        read.failed = drained.failed;
+        drained.live
+    }
+
+    fn reconcile(&mut self, entry: &Value, updates: Vec<Value>) -> Vec<Value> {
+        match self.link.as_mut() {
+            Some(link) => link.reconcile(entry, updates),
+            None => updates,
+        }
     }
 
     fn discover(&mut self) {
@@ -491,7 +560,10 @@ impl Claude {
     }
 
     fn entry(&mut self, entry: &Value, read: &mut Read) {
-        if entry["type"] == "system" && entry["subtype"] == "turn_duration" {
+        if entry["type"] == "system"
+            && entry["subtype"] == "turn_duration"
+            && !self.link.as_ref().is_some_and(Link::live)
+        {
             read.finished = true;
         }
         let Some(uuid) = entry["uuid"].as_str() else {
@@ -515,8 +587,8 @@ impl Claude {
             return;
         }
         self.track(entry);
-        read.updates
-            .extend(stamped(self.translator.history_entry(entry), entry));
+        let updates = stamped(self.translator.history_entry(entry), entry);
+        read.updates.extend(self.reconcile(entry, updates));
     }
 
     fn track(&mut self, entry: &Value) {
@@ -558,6 +630,8 @@ struct Codex {
     held: Vec<Value>,
     asked: Vec<(String, Option<u64>)>,
     dropped: Vec<Value>,
+    link: codex_live::Link,
+    owner: Option<u32>,
 }
 
 struct CodexChild {
@@ -615,17 +689,38 @@ impl CodexPicks {
 impl Codex {
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
         self.picks.refresh();
-        self.pid = codex_queue::codex_pid(pane_pid?);
+        let pid = codex_queue::codex_pid(pane_pid?);
+        self.find(pid, codex_sessions().as_deref())
+    }
+
+    fn find(&mut self, pid: Option<u32>, sessions: Option<&Path>) -> Option<Found> {
+        self.pid = pid;
+        if self.pid.is_none() {
+            self.vanished();
+        }
         let pid = self.pid?;
         if self.launch_pid != Some(pid) {
             self.launched(pid, zz_daemon_client::process_info::start_time(pid));
+        }
+        if let Some(found) = self.located() {
+            return Some(found);
+        }
+        match self.claim() {
+            codex_live::Claim::Thread(found) => return Some(found),
+            codex_live::Claim::Waiting => return None,
+            codex_live::Claim::Unsure => {}
         }
         let (path, meta) = open_files(pid)
             .into_iter()
             .filter(|path| is_rollout(path))
             .filter_map(|path| RolloutMeta::read(&path).map(|meta| (path, meta)))
             .find(|(_, meta)| meta.parent.is_none())
-            .or_else(|| newest_rollout(&codex_sessions()?, pid))?;
+            .or_else(|| {
+                (!self.crowded())
+                    .then(|| newest_rollout(sessions?, pid))
+                    .flatten()
+            })?;
+        self.relocated(&path);
         Some(Found {
             session: meta.thread,
             path,
@@ -636,6 +731,7 @@ impl Codex {
     fn launched(&mut self, pid: u32, born: Option<u64>) {
         if self.launch_pid.is_some() {
             self.picks.forget();
+            self.relaunched(pid);
         }
         self.launch = Facts::codex_launch(
             &arguments(pid),
@@ -658,6 +754,8 @@ impl Codex {
     }
 
     fn load(&mut self, path: PathBuf, cwd: &Path) -> Vec<Value> {
+        self.join(&path, cwd);
+        self.owner = self.pid;
         let (tail, text) = Tail::open(path);
         self.translator = CodexTranslator::new(cwd.to_path_buf());
         self.busy = false;
@@ -676,14 +774,30 @@ impl Codex {
         }
         read.updates.extend(self.child_lines(None, true));
         self.ended = (!self.busy && read.finished).then(|| read.failed.map_or(Ok(()), Err));
+        self.joined(&read.updates);
         read.updates
     }
 
     fn read(&mut self) -> Read {
+        if let Some(read) = self.read_live() {
+            return read;
+        }
         let mut read = Read {
             updates: std::mem::take(&mut self.dropped),
+            payloads: self.closed(),
             ..Read::default()
         };
+        self.read_idle(&mut read);
+        self.look_for_children();
+        let lines = self.tail.as_mut().map(Tail::lines).unwrap_or_default();
+        for entry in lines {
+            self.entry(&entry, &mut read);
+        }
+        read.updates.extend(self.child_lines(None, false));
+        read
+    }
+
+    fn look_for_children(&mut self) {
         for index in 0..self.children.len() {
             let child = &mut self.children[index];
             if child.tail.is_none() && !child.lost {
@@ -691,12 +805,6 @@ impl Codex {
                 self.find_child(index);
             }
         }
-        let lines = self.tail.as_mut().map(Tail::lines).unwrap_or_default();
-        for entry in lines {
-            self.entry(&entry, &mut read);
-        }
-        read.updates.extend(self.child_lines(None, false));
-        read
     }
 
     fn entry(&mut self, entry: &Value, read: &mut Read) {
@@ -738,6 +846,9 @@ impl Codex {
                 let Some(item) = rollout::v2_item(&payload["item"]) else {
                     return;
                 };
+                if let Some(id) = item["id"].as_str() {
+                    self.heard(id);
+                }
                 let stale = self.note_question(&item, entry);
                 if item["type"] == "subAgentActivity" {
                     let thread = item["agentThreadId"].as_str().unwrap_or_default();
@@ -1188,7 +1299,11 @@ impl Source {
             Self::Claude(claude) => claude.status(),
             Self::Codex(codex) => Some(Status {
                 busy: codex.busy,
-                waiting: codex.translator.asking().map(|_| CODEX_QUESTION.to_owned()),
+                waiting: codex
+                    .translator
+                    .asking()
+                    .filter(|_| !codex.is_live())
+                    .map(|_| CODEX_QUESTION.to_owned()),
             }),
         }
     }
@@ -1317,6 +1432,28 @@ impl Source {
             Self::Codex(_) => false,
         }
     }
+
+    fn link(&mut self) -> Option<&mut Link> {
+        match self {
+            Self::Claude(claude) => claude.link.as_mut(),
+            Self::Codex(_) => None,
+        }
+    }
+
+    fn live_link(&mut self) -> Option<&mut Link> {
+        self.link().filter(|link| link.live())
+    }
+
+    fn left(&self, pane_pid: Option<u32>) -> Option<&'static str> {
+        match self {
+            Self::Claude(claude) => (claude.link.as_ref().is_none_or(|link| !link.live())
+                && pane_pid.is_some_and(|pid| claude.left(pid)))
+            .then_some("Claude Code is not running in this pane"),
+            Self::Codex(codex) => pane_pid
+                .is_some_and(|pid| codex.left(pid))
+                .then_some("Codex is not running in this pane"),
+        }
+    }
 }
 
 struct Turn {
@@ -1349,6 +1486,7 @@ struct Lens {
     next_locate: Instant,
     published: Facts,
     dialog: Option<Instant>,
+    vacant: bool,
 }
 
 fn pickable(input: &Value) -> Option<AgentQuestion> {
@@ -1391,14 +1529,22 @@ impl Lens {
     fn new(spec: LensSpec, permission_ids: Arc<AtomicU64>) -> Self {
         let source = match spec.provider {
             AgentProvider::ClaudeCode => {
-                Source::Claude(Box::new(Claude::new(ClaudeFiles::from_environment())))
+                let mut claude = Claude::new(ClaudeFiles::from_environment());
+                claude.link = spec.io.channel().map(|channel| {
+                    Link::open(channel, Arc::clone(&permission_ids), Arc::clone(&spec.io))
+                });
+                Source::Claude(Box::new(claude))
             }
             AgentProvider::Codex => Source::Codex(Box::default()),
         };
         Self::with_source(spec, source, permission_ids)
     }
 
-    fn with_source(spec: LensSpec, source: Source, permission_ids: Arc<AtomicU64>) -> Self {
+    fn with_source(spec: LensSpec, mut source: Source, permission_ids: Arc<AtomicU64>) -> Self {
+        if let Source::Codex(codex) = &mut source {
+            codex.link.ids = permission_ids.clone();
+            codex.link.pane = Some(Arc::clone(&spec.io));
+        }
         Self {
             spec,
             source,
@@ -1412,6 +1558,7 @@ impl Lens {
             next_locate: Instant::now(),
             published: Facts::default(),
             dialog: None,
+            vacant: false,
         }
     }
 
@@ -1476,6 +1623,9 @@ impl Lens {
     }
 
     fn set(&mut self, option_id: String, value: &str) -> Vec<AgentStreamPayload> {
+        if let Some(payloads) = self.live_set(&option_id, value) {
+            return payloads;
+        }
         let busy = self.busy || self.turn.is_some();
         let setter = lens_settings::command(
             self.spec.provider,
@@ -1487,6 +1637,12 @@ impl Lens {
         let sent = setter.and_then(|setter| {
             if busy && self.source.hold(setter.slot, &setter.text) {
                 Ok(setter)
+            } else if let Some(link) = self
+                .source
+                .live_link()
+                .filter(|_| option_id == lens_settings::MODEL)
+            {
+                link.set_model(value.trim()).map(|()| setter)
             } else {
                 self.spec.io.submit(&setter.text).map(|()| setter)
             }
@@ -1569,6 +1725,14 @@ impl Lens {
     fn locate(&mut self, opening: bool) -> Vec<AgentStreamPayload> {
         self.next_locate = Instant::now() + self.source.every();
         let found = self.source.locate(self.spec.io.pid());
+        self.located(found, opening)
+    }
+
+    fn located(&mut self, found: Option<Found>, opening: bool) -> Vec<AgentStreamPayload> {
+        self.vacant = found.is_none() && self.session.is_some() && self.source.vacant();
+        if found.is_some() {
+            self.source.own();
+        }
         let Some(found) = found else {
             return if opening {
                 vec![
@@ -1651,6 +1815,7 @@ impl Lens {
     fn tick(&mut self) -> Vec<AgentStreamPayload> {
         let mut payloads = if Instant::now() >= self.next_locate
             || (self.turn.is_some() && self.session.is_none())
+            || self.moved()
         {
             self.locate(false)
         } else {
@@ -1666,12 +1831,17 @@ impl Lens {
         }
         self.failed = read.failed;
         payloads.extend(self.observe(read.finished, read.updates));
+        payloads.extend(read.payloads);
         self.failed = None;
+        if let Some(link) = self.source.link() {
+            payloads.extend(link.take_payloads());
+        }
         payloads.extend(self.release());
         payloads.extend(self.follow_settings());
         if self.source.take_listing_change() {
             payloads.push(self.commands());
         }
+        payloads.extend(self.vacate());
         payloads
     }
 
@@ -1680,7 +1850,16 @@ impl Lens {
             .into_iter()
             .map(|update| AgentStreamPayload::Update { update });
         let Some(status) = self.source.status() else {
-            return updates.collect();
+            let mut payloads = updates.collect::<Vec<_>>();
+            if finished {
+                payloads.extend(self.settle(false));
+            }
+            return payloads;
+        };
+        let unseen = if self.source.awaiting() {
+            UNCLAIMED
+        } else {
+            SETTLE
         };
         let mut payloads = Vec::new();
         if status.busy && !self.busy {
@@ -1702,10 +1881,13 @@ impl Lens {
                 return finished;
             }
             let idle = *turn.idle_since.get_or_insert_with(Instant::now);
-            finished || (turn.busy && idle.elapsed() >= IDLE_GRACE) || turn.sent.elapsed() >= SETTLE
+            finished || (turn.busy && idle.elapsed() >= IDLE_GRACE) || turn.sent.elapsed() >= unseen
         });
         if settled {
             payloads.extend(self.settle(false));
+            if status.busy {
+                payloads.push(AgentStreamPayload::Activity { busy: true });
+            }
         }
         payloads
     }
@@ -1870,13 +2052,22 @@ impl Lens {
         if prompt.text.trim().is_empty() && prompt.images.is_empty() {
             return failed("Nothing to send.");
         }
+        if let Some(payloads) = self.live_prompt(turn_id, prompt) {
+            return payloads;
+        }
+        if let Some(message) = self.source.left(self.spec.io.pid()) {
+            return failed(message);
+        }
         if !prompt.images.is_empty()
             && let Err(message) = self.spec.io.attach(&prompt.images)
         {
             return failed(&message);
         }
+        let typed = !prompt.images.is_empty() || prompt.text.trim_start().starts_with('/');
         let submitted = if prompt.text.trim().is_empty() {
             self.spec.io.keys(&["Enter"])
+        } else if let Some(link) = self.source.live_link().filter(|_| !typed) {
+            link.prompt(&prompt.text)
         } else {
             self.spec.io.submit(&prompt.text)
         };
@@ -1905,7 +2096,14 @@ impl Lens {
         if text.is_empty() {
             return Vec::new();
         }
-        match self.spec.io.submit(text) {
+        if let Some(payloads) = self.live_steer(text, &prompt) {
+            return payloads;
+        }
+        let typed = match self.source.left(self.spec.io.pid()) {
+            Some(message) => Err(message.to_owned()),
+            None => self.spec.io.submit(text),
+        };
+        match typed {
             Ok(()) => Vec::new(),
             Err(error) => {
                 log::debug!(target: "zz::agent", "could not steer {}: {error}", self.spec.pane);
@@ -1922,6 +2120,12 @@ impl Lens {
     fn cancel(&mut self) -> Vec<AgentStreamPayload> {
         if let Some(turn) = self.turn.as_mut() {
             turn.cancelled = true;
+        }
+        if let Some(payloads) = self.live_cancel() {
+            return payloads;
+        }
+        if let Some(link) = self.source.live_link().filter(|link| link.busy()) {
+            return link.stop();
         }
         match self.spec.io.keys(&["Escape"]) {
             Ok(()) => self
@@ -1942,6 +2146,16 @@ impl Lens {
         request_id: u64,
         answers: &[AgentQuestionAnswer],
     ) -> Vec<AgentStreamPayload> {
+        if let Some(payloads) = self.live_answer(request_id, answers) {
+            return payloads;
+        }
+        if let Some(payloads) = self
+            .source
+            .link()
+            .and_then(|link| link.answer(request_id, answers))
+        {
+            return payloads;
+        }
         let Some(permission) = self
             .permission
             .as_mut()
@@ -1973,6 +2187,16 @@ impl Lens {
     }
 
     fn respond(&mut self, request_id: u64, option_id: Option<&str>) -> Vec<AgentStreamPayload> {
+        if let Some(payloads) = self.live_respond(request_id, option_id) {
+            return payloads;
+        }
+        if let Some(payloads) = self
+            .source
+            .link()
+            .and_then(|link| link.respond(request_id, option_id))
+        {
+            return payloads;
+        }
         let Some(permission) = self
             .permission
             .as_mut()
@@ -2075,10 +2299,24 @@ pub(crate) async fn run_lens(spec: LensSpec, channels: RuntimeChannels) -> Resul
     let mut lens = Lens::new(spec, permission_ids);
     let mut opened = false;
     loop {
+        let wake = lens.wake();
         let input = futures_lite::future::or(
             async { Input::Command(commands.recv().await) },
             futures_lite::future::or(async { Input::Control(controls.recv().await) }, async {
-                smol::Timer::after(POLL).await;
+                futures_lite::future::or(
+                    async {
+                        smol::Timer::after(POLL).await;
+                    },
+                    async {
+                        if let Some(wake) = wake
+                            && wake.recv().await.is_ok()
+                        {
+                            return;
+                        }
+                        std::future::pending::<()>().await;
+                    },
+                )
+                .await;
                 Input::Tick
             }),
         )
@@ -2780,7 +3018,10 @@ mod tests {
             writeln!(file, "{line}").unwrap();
         };
         let pane = Arc::new(FakePane::default());
-        let mut codex = Codex::default();
+        let mut codex = Codex {
+            pid: Some(std::process::id()),
+            ..Codex::default()
+        };
         codex.picks.catalog = Catalog::codex_json(
             r#"{"models":[
                 {"slug":"gpt-6.1-sol","visibility":"list","priority":1,"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"},{"effort":"ultra"}]},
@@ -3421,7 +3662,10 @@ mod tests {
         let rollout = root.path().join("rollout-2026-10-24T10-09-22-test.jsonl");
         std::fs::write(&rollout, "").unwrap();
         let pane = Arc::new(FakePane::default());
-        let mut codex = Codex::default();
+        let mut codex = Codex {
+            pid: Some(std::process::id()),
+            ..Codex::default()
+        };
         codex.load(rollout.clone(), root.path());
         let mut lens = Lens::with_source(
             LensSpec {
@@ -3475,7 +3719,10 @@ mod tests {
                 provider: AgentProvider::Codex,
                 io: Arc::new(FakePane::default()),
             },
-            Source::Codex(Box::default()),
+            Source::Codex(Box::new(Codex {
+                pid: Some(std::process::id()),
+                ..Codex::default()
+            })),
             Arc::new(AtomicU64::new(1)),
         );
         lens.command(RuntimeCommand::Prompt {
@@ -3512,6 +3759,20 @@ mod tests {
     }
 }
 
+#[path = "lens_codex_live.rs"]
+mod codex_live;
+
+#[path = "lens_vacate.rs"]
+mod vacate;
+
 #[cfg(test)]
 #[path = "lens_codex_tests.rs"]
 mod codex_tests;
+
+#[cfg(test)]
+#[path = "lens_claude_mod_tests.rs"]
+mod claude_mod_tests;
+
+#[cfg(test)]
+#[path = "lens_vacate_tests.rs"]
+mod vacate_tests;

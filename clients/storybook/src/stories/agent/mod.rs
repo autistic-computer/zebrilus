@@ -13,7 +13,7 @@ const STORY: Story = Story {
     id: "agent",
     name: "Agent",
     group: "Agent",
-    summary: "A terminal running Claude Code or Codex shows a lens toggle in its header. The lens draws the CLI's session as a chat in place of the cells, with a composer that types into the CLI, and the toggle brings the terminal back. Every chat here is folded from fixed chat events and drawn with the calls the apps make: chat_column, chat_thread, chat_agent_pip and an ask hook that draws asks the way the desktop does, on the pane's own fill.",
+    summary: "A terminal running Claude Code or Codex shows a lens toggle in its header. The lens draws the CLI's session as a chat in place of the cells, with a composer that sends to the CLI, and the toggle brings the terminal back. Every chat here is folded from fixed chat events and drawn with the calls the apps make: chat_column, chat_thread, chat_agent_pip and an ask hook that draws asks the way the desktop does, on the pane's own fill.",
     sections: &[
         Section {
             id: "lens-toggle",
@@ -114,7 +114,7 @@ const STORY: Story = Story {
         Section {
             id: "empty-states",
             name: "Empty states",
-            summary: "What the lens shows before the first message: the welcome, which names the agent and says the composer types into its terminal, the waiting and failure messages, and the error card for a prompt the TUI did not take.",
+            summary: "What the lens shows before the first message: the welcome, which names the agent and says what you send goes to the session in its terminal, the waiting and failure messages, and the error card for a prompt the TUI did not take.",
             build: chrome::empty_states,
         },
         Section {

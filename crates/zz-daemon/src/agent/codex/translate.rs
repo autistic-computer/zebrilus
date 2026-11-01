@@ -76,6 +76,14 @@ impl Translator {
                 };
                 let output = self.commands.entry(id.to_owned()).or_default();
                 output.push_str(delta);
+                if output.len() > 4 * MAX_OUTPUT_CHARS {
+                    let keep = output
+                        .char_indices()
+                        .rev()
+                        .nth(MAX_OUTPUT_CHARS - 1)
+                        .map_or(0, |(at, _)| at);
+                    output.drain(..keep);
+                }
                 vec![json!({
                     "sessionUpdate": "tool_call_update",
                     "toolCallId": id,
@@ -976,6 +984,32 @@ mod tests {
     use agent_client_protocol::schema::v1::SessionUpdate;
 
     use super::*;
+
+    #[test]
+    fn streamed_command_output_keeps_only_what_it_can_show() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let chunk = format!("{}\n", "x".repeat(MAX_OUTPUT_CHARS));
+        for _ in 0..8 {
+            translator.notification(
+                "item/commandExecution/outputDelta",
+                &json!({ "itemId": "c", "delta": chunk }),
+            );
+        }
+        assert!(
+            translator.commands["c"].len() <= 4 * MAX_OUTPUT_CHARS,
+            "{} bytes kept",
+            translator.commands["c"].len()
+        );
+        let updates = translator.notification(
+            "item/commandExecution/outputDelta",
+            &json!({ "itemId": "c", "delta": "end\n" }),
+        );
+        let shown = updates[0]["content"][0]["content"]["text"]
+            .as_str()
+            .unwrap();
+        assert!(shown.trim_end().ends_with("x\nend"));
+        assert!(shown.chars().count() >= MAX_OUTPUT_CHARS - 1);
+    }
 
     fn replay() -> Vec<Value> {
         let path =
