@@ -9865,11 +9865,13 @@ impl Shared {
                                 );
                             }
                             #[cfg(all(unix, feature = "agent"))]
-                            crate::agent::claude_plugin::pane_environment(
-                                &mut env,
-                                *pane,
-                                &self.socket_path,
-                            );
+                            if self.mux_config_selection.lock().0 {
+                                crate::agent::claude_plugin::pane_environment(
+                                    &mut env,
+                                    *pane,
+                                    &self.socket_path,
+                                );
+                            }
                             if let Some(path) = &working_directory {
                                 env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
                             }
@@ -10046,11 +10048,13 @@ impl Shared {
                             );
                         }
                         #[cfg(all(unix, feature = "agent"))]
-                        crate::agent::claude_plugin::pane_environment(
-                            &mut env,
-                            *pane,
-                            &self.socket_path,
-                        );
+                        if self.mux_config_selection.lock().0 {
+                            crate::agent::claude_plugin::pane_environment(
+                                &mut env,
+                                *pane,
+                                &self.socket_path,
+                            );
+                        }
                         if let Some(path) = &working_directory {
                             env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
                         }
