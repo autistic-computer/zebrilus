@@ -1951,7 +1951,6 @@ fn disconnected_pane_state() -> AgentPaneState {
         pending_composer: None,
         queued_prompts: 0,
         settings: None,
-        dialogs_closed: 0,
     }
 }
 

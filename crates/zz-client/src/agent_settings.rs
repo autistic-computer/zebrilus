@@ -1,12 +1,8 @@
 use serde_json::Value;
-use zz_protocol::AgentProvider;
-
-use crate::agent_launch::interactive_shell;
+use zz_protocol::{AgentProvider, CommandInvocation, PaneId};
 
 pub const MODEL: &str = "model";
 pub const EFFORT: &str = "effort";
-pub const CWD: &str = "cwd";
-pub const DIALOG: &str = "dialog";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Choice {
@@ -21,7 +17,6 @@ pub struct LensSettings {
     pub models: Vec<Choice>,
     pub effort: String,
     pub efforts: Vec<Choice>,
-    pub cwd: String,
 }
 
 impl LensSettings {
@@ -58,9 +53,6 @@ impl LensSettings {
                 .map(|effort| text(&effort["currentValue"]))
                 .unwrap_or_default(),
             efforts: choices(effort),
-            cwd: find(CWD)
-                .map(|cwd| text(&cwd["currentValue"]))
-                .unwrap_or_default(),
         })
     }
 
@@ -98,22 +90,22 @@ impl LensSettings {
             _ => None,
         }
     }
+}
 
-    #[must_use]
-    pub fn short_cwd(&self, home: Option<&str>) -> String {
-        let cwd = self.cwd.trim_end_matches('/');
-        if let Some(home) = home.map(|home| home.trim_end_matches('/'))
-            && !home.is_empty()
-            && let Some(rest) = cwd.strip_prefix(home)
-            && (rest.is_empty() || rest.starts_with('/'))
-        {
-            return format!("~{rest}");
-        }
-        if cwd.is_empty() && !self.cwd.is_empty() {
-            return "/".to_owned();
-        }
-        cwd.to_owned()
+#[must_use]
+pub fn short_folder(folder: &str, home: Option<&str>) -> String {
+    let trimmed = folder.trim_end_matches('/');
+    if let Some(home) = home.map(|home| home.trim_end_matches('/'))
+        && !home.is_empty()
+        && let Some(rest) = trimmed.strip_prefix(home)
+        && (rest.is_empty() || rest.starts_with('/'))
+    {
+        return format!("~{rest}");
     }
+    if trimmed.is_empty() && !folder.is_empty() {
+        return "/".to_owned();
+    }
+    trimmed.to_owned()
 }
 
 #[must_use]
@@ -162,25 +154,75 @@ pub fn source_message(item: &str) -> Option<&str> {
 }
 
 #[must_use]
-pub fn side_chat_command(provider: AgentProvider, session: &str) -> Vec<String> {
-    let words = match provider {
-        AgentProvider::ClaudeCode => ["claude", "--resume", session, "--fork-session"]
-            .map(str::to_owned)
-            .to_vec(),
-        AgentProvider::Codex => ["codex", "fork", session].map(str::to_owned).to_vec(),
-    };
-    interactive_shell(&words)
+pub const fn agent_program(provider: AgentProvider) -> &'static str {
+    match provider {
+        AgentProvider::ClaudeCode => "claude",
+        AgentProvider::Codex => "codex",
+    }
+}
+
+pub const SIDE_CHAT_WIDTH: &str = "46%";
+pub const SIDE_CHAT_HEIGHT: &str = "72%";
+
+fn command_line(words: &[&str]) -> String {
+    words
+        .iter()
+        .map(|word| crate::verbs::quote(word))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn forked_chat(
+    opener: &[&str],
+    provider: AgentProvider,
+    session: &str,
+    message: Option<&str>,
+) -> CommandInvocation {
+    let mut select = vec!["select-pane-kind", "--resume", session, "--fork"];
+    if let Some(message) = message {
+        select.extend(["--at", message]);
+    }
+    select.extend(["agent", agent_program(provider)]);
+    let line = format!("{} ; {}", command_line(opener), command_line(&select));
+    CommandInvocation::new("if-shell", ["-F", "1", &line])
 }
 
 #[must_use]
-pub fn fork_command(provider: AgentProvider, session: &str, message: &str) -> Vec<String> {
-    let provider = match provider {
-        AgentProvider::ClaudeCode => "claude",
-        AgentProvider::Codex => "codex",
-    };
-    ["zz", "tools", "--fork-chat", provider, session, message]
-        .map(str::to_owned)
-        .to_vec()
+pub fn fork_chat_command(
+    provider: AgentProvider,
+    session: &str,
+    cwd: &str,
+    message: Option<&str>,
+) -> CommandInvocation {
+    forked_chat(&["new-window", "-c", cwd], provider, session, message)
+}
+
+#[must_use]
+pub fn side_chat_command(
+    provider: AgentProvider,
+    session: &str,
+    cwd: &str,
+    from: PaneId,
+) -> CommandInvocation {
+    let from = from.to_string();
+    forked_chat(
+        &[
+            "new-pane",
+            "-t",
+            &from,
+            "-c",
+            cwd,
+            "-x",
+            SIDE_CHAT_WIDTH,
+            "-y",
+            SIDE_CHAT_HEIGHT,
+            "-T",
+            "Side chat",
+        ],
+        provider,
+        session,
+        None,
+    )
 }
 
 #[must_use]
@@ -198,7 +240,6 @@ mod tests {
         let options = json!([
             {"id":"model","currentValue":"opus","options":[{"value":"opus","name":"Opus"},{"value":"haiku","name":"Haiku"}],"_meta":{"zz":{"label":"Opus 5.5"}}},
             {"id":"effort","currentValue":"xhigh","options":[{"value":"high","name":"High"},{"value":"xhigh","name":"Extra high"}]},
-            {"id":"cwd","currentValue":"/Users/me/src/zz","options":[]},
         ]);
         let settings = LensSettings::parse(&options).expect("settings");
         assert_eq!(settings.summary(), "Opus 5.5 · Extra high");
@@ -207,8 +248,15 @@ mod tests {
             settings.choices(EFFORT).map(|(_, current)| current),
             Some("xhigh")
         );
-        assert_eq!(settings.short_cwd(Some("/Users/me")), "~/src/zz");
-        assert_eq!(settings.short_cwd(Some("/Users/m")), "/Users/me/src/zz");
+        assert_eq!(
+            short_folder("/Users/me/src/zz", Some("/Users/me")),
+            "~/src/zz"
+        );
+        assert_eq!(
+            short_folder("/Users/me/src/zz", Some("/Users/m")),
+            "/Users/me/src/zz"
+        );
+        assert_eq!(short_folder("/", None), "/");
         let codex = LensSettings::parse(&json!([
             {"id":"model","currentValue":"gpt-6-luna","options":[{"value":"gpt-6-luna","name":"GPT-6-Luna","_meta":{"zz":{"efforts":["low","high"],"defaultEffort":"low"}}}],"_meta":{"zz":{"label":"GPT-6-Luna"}}},
             {"id":"effort","currentValue":"high","options":[{"value":"low","name":"Low"},{"value":"high","name":"High"}]},
@@ -282,17 +330,37 @@ mod tests {
         assert_eq!(source_message("u:3f2a~2"), Some("3f2a"));
         assert_eq!(source_message("a:3f2a"), None);
         assert_eq!(source_message("u:message"), None);
+        let line = |command: CommandInvocation| {
+            assert_eq!(command.name, "if-shell");
+            assert_eq!(command.args[..2], ["-F", "1"]);
+            command.args[2].as_str().to_owned()
+        };
         assert_eq!(
-            fork_command(AgentProvider::Codex, "t", "i"),
-            ["zz", "tools", "--fork-chat", "codex", "t", "i"]
+            line(fork_chat_command(
+                AgentProvider::Codex,
+                "t",
+                "/src/my app",
+                Some("i")
+            )),
+            "new-window -c '/src/my app' ; select-pane-kind --resume t --fork --at i agent codex"
         );
         assert_eq!(
-            side_chat_command(AgentProvider::ClaudeCode, "s"),
-            [
-                "/bin/sh",
-                "-c",
-                r#"exec "${SHELL:-/bin/sh}" -ic 'claude --resume s --fork-session'"#
-            ]
+            line(fork_chat_command(
+                AgentProvider::ClaudeCode,
+                "s",
+                "/a",
+                None
+            )),
+            "new-window -c /a ; select-pane-kind --resume s --fork agent claude"
+        );
+        assert_eq!(
+            line(side_chat_command(
+                AgentProvider::ClaudeCode,
+                "s",
+                "/a/it's $HOME",
+                PaneId(4)
+            )),
+            "new-pane -t %4 -c \"/a/it's \\$HOME\" -x 46% -y 72% -T 'Side chat' ; select-pane-kind --resume s --fork agent claude"
         );
         assert!(!real_session("lens-%3"));
     }

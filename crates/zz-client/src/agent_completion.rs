@@ -11,7 +11,6 @@ pub struct AgentCommand {
     pub name: String,
     pub description: String,
     pub input_hint: Option<String>,
-    pub terminal: bool,
     pub skill: bool,
 }
 
@@ -30,7 +29,6 @@ pub fn agent_command_model(command: AvailableCommand) -> AgentCommand {
             .unwrap_or_default()
     };
     AgentCommand {
-        terminal: flag("terminal"),
         skill: flag("skill"),
         name: command.name,
         description: command.description,
@@ -78,9 +76,8 @@ const ZZ_COMMAND_DESCRIPTIONS: [(&str, &str, Option<&str>); 5] = [
 ];
 
 pub fn pane_commands(vendor: &[AgentCommand], verbs: bool) -> Vec<AgentCommand> {
-    let vendor = vendor.iter().filter(|command| !command.terminal);
     if !verbs {
-        return vendor.cloned().collect();
+        return vendor.to_vec();
     }
     let own = ZZ_COMMAND_DESCRIPTIONS
         .iter()
@@ -91,6 +88,7 @@ pub fn pane_commands(vendor: &[AgentCommand], verbs: bool) -> Vec<AgentCommand> 
             ..AgentCommand::default()
         });
     vendor
+        .iter()
         .filter(|command| {
             !zz_protocol::agent_stream::AGENT_VERBS.contains(&bare_command_name(&command.name))
         })
@@ -402,25 +400,19 @@ mod tests {
     }
 
     #[test]
-    fn commands_that_need_the_cli_screen_stay_out_of_the_slash_menu() {
+    fn the_slash_menu_lists_what_the_agent_reports_plus_zz_verbs() {
         let parse = |value: serde_json::Value| {
             agent_command_model(serde_json::from_value::<AvailableCommand>(value).unwrap())
         };
-        let status = parse(serde_json::json!({
-            "name": "status",
-            "description": "Status in the terminal",
-            "_meta": { "zz": { "terminal": true, "skill": false } },
-        }));
         let pet = parse(serde_json::json!({
             "name": "$hatch-pet",
             "description": "Make a pet",
             "_meta": { "zz": { "skill": true } },
         }));
         let plain = parse(serde_json::json!({ "name": "compact", "description": "Compact" }));
-        assert!(status.terminal && !status.skill);
-        assert!(pet.skill && !pet.terminal);
-        assert!(!plain.terminal && !plain.skill);
-        let reported = [status, pet, plain];
+        let fork = parse(serde_json::json!({ "name": "fork", "description": "The CLI's fork" }));
+        assert!(pet.skill && !plain.skill);
+        let reported = [pet, plain, fork];
         let names = |commands: Vec<AgentCommand>| {
             commands
                 .into_iter()
@@ -429,11 +421,15 @@ mod tests {
         };
         assert_eq!(
             names(pane_commands(&reported, false)),
-            ["$hatch-pet", "compact"]
+            ["$hatch-pet", "compact", "fork"]
         );
         let with_verbs = names(pane_commands(&reported, true));
-        assert!(!with_verbs.contains(&"status".to_owned()));
-        assert!(with_verbs.contains(&"fork".to_owned()));
+        assert_eq!(&with_verbs[..2], ["$hatch-pet", "compact"]);
+        assert_eq!(
+            with_verbs.iter().filter(|name| *name == "fork").count(),
+            1,
+            "zz's own /fork replaces the CLI's"
+        );
         let commands = pane_commands(&reported, false);
         assert_eq!(command_label("$hatch-pet"), "$hatch-pet");
         assert_eq!(command_label("/compact"), "/compact");

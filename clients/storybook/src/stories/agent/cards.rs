@@ -81,14 +81,7 @@ pub fn slash_commands(query: &str) -> Vec<CommandCompletion> {
             Some("instructions"),
         ),
         command("clear", "Start a new session with empty context", None),
-        AgentCommand {
-            terminal: true,
-            ..command(
-                "status",
-                "Version, model, account and connectivity, in the terminal",
-                None,
-            )
-        },
+        command("stats", "Show usage and activity stats", None),
         command("model", "Switch the model", Some("model")),
         AgentCommand {
             skill: true,
@@ -180,7 +173,7 @@ fn render_slash_menu(_: &mut Window, cx: &mut App) -> AnyElement {
             )),
         )
         .state(
-            "/st: status needs the CLI's own screen, so the chat leaves it out",
+            "filtered by /st",
             prefix_width(slash_list(
                 "slash-terminal",
                 &slash_commands("st"),

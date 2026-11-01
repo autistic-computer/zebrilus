@@ -141,8 +141,6 @@ impl AgentCursor {
                                     .pointer("/input/hint")
                                     .and_then(Value::as_str)
                                     .map(ToOwned::to_owned),
-                                terminal: command.pointer("/_meta/zz/terminal")
-                                    == Some(&Value::Bool(true)),
                                 skill: command.pointer("/_meta/zz/skill")
                                     == Some(&Value::Bool(true)),
                             })
@@ -189,7 +187,6 @@ pub struct LensTranscript<I> {
     pub model: AgentTranscript<I>,
     pub chat: ChatView,
     pub settings: Option<crate::agent_settings::LensSettings>,
-    pub dialogs_closed: u64,
     decode: ImageDecoder<I>,
     session_reset: bool,
 }
@@ -200,7 +197,6 @@ impl<I> LensTranscript<I> {
             model: AgentTranscript::new(decode),
             chat: ChatView::default(),
             settings: None,
-            dialogs_closed: 0,
             decode,
             session_reset: false,
         }
@@ -228,15 +224,6 @@ impl<I> LensTranscript<I> {
             "sessionReady" | "sessionSwitched" | "configOptionsChanged"
         ) {
             self.note_settings(item);
-        }
-        if kind == "configOptionsChanged"
-            && item
-                .get("option_id")
-                .or_else(|| item.get("optionId"))
-                .and_then(Value::as_str)
-                == Some(crate::agent_settings::DIALOG)
-        {
-            self.dialogs_closed += 1;
         }
         match kind {
             "sessionReset" => {
