@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-01T21:00:00-03:00
+timestamp: 2026-11-01T22:00:00-03:00
 ---
 
 # Overview
@@ -250,10 +250,14 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   header holds its label, Copy source and Open full diagram. pele (`libs/pele`) draws mermaid:
   flowchart, sequence, class, state, ER, gantt, pie and quadrant. Any other type stays an ordinary
   code block of its source, and a supported source that does not parse shows the error with its
-  line and column. The diagram's canvas is transparent, so it shows the card through it; nodes fill
-  with the card blended with the soft neutral paint, text is the app font at 13 px measured by the
-  app's text system (ala's SVG renderer draws `system-ui` in the face that text system uses), and
-  series colors come from primary, success, warning, danger and muted. A flowchart, class, state or
+  line and column. The diagram's canvas is transparent, so it shows the card through it. Nodes
+  take the accent's soft paint with an accent border (pele's `node` and `node_border`), edges and
+  arrows the muted foreground, and clusters, frames and notes stay neutral; text is the app font at
+  13 px measured by the app's text system (ala's SVG renderer draws `system-ui` in the face that
+  text system uses). Pie, gantt and quadrant series are the accent, success, warning and danger,
+  then hues that fill the widest gaps between them, all at one Oklch lightness near the accent's
+  (0.5 to 0.58 on a light card, 0.68 to 0.78 on a dark one) so the card-colored labels on slices
+  and bars read on every fill (`MermaidThemeColors::series`). A flowchart, class, state or
   ER diagram that runs across and is wider than 640 px turns to run down when that fits. A figure
   draws at its own size, scaled down only to fit the transcript's width, so a diagram that turned or
   a long sequence keeps its 13 px labels however tall it gets. Answers use the same markdown style
