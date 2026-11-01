@@ -493,7 +493,7 @@ round to the same device pixel grid. Rows that wrap give the icon a first-line s
 first line's pixel line height. The agent timeline's activity rows, cards, alerts, task tray and composer
 footer, the workspace status pills, markdown task lists and the settings disclosure heading all
 use it. The glyph's own ink has to be centred in its 24-unit box too; the ala notes are in
-`.agents/skills/ala-interface/SKILL.md`.
+the `ala-interface` skill (`skills/ala-interface` in autistic-computer/agents).
 
 A radius is a *request*, not the final corner. ala caps one at half the shorter side . the point a
 rounded rectangle stops existing . so one global setting applied to components of different sizes
