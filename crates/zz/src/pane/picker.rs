@@ -247,13 +247,14 @@ impl PanePickerView {
     fn start(&self, chat: &Chat, agent: AgentChoice, cx: &mut Context<Self>) {
         let mux = self.mux.read(cx);
         let folder = self.chat.folder(&chat.folders);
+        let launches = crate::agent::launch::load();
         let (Some(pane), Some((from, window))) = (self.pane, chat.place) else {
-            for command in first_chat_commands(folder, agent) {
+            for command in first_chat_commands(folder, agent, &launches) {
                 mux.execute(command);
             }
             return;
         };
-        for command in start_agent_commands(&mux.snapshot(), pane, folder, agent) {
+        for command in start_agent_commands(&mux.snapshot(), pane, folder, agent, &launches) {
             mux.execute(command);
         }
         cx.emit(AgentChosen { window, from });

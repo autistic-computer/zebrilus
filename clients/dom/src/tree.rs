@@ -757,7 +757,10 @@ impl Client {
                     .get(&pane)
                     .map(|picker| picker.folder(&folders).to_owned())
                     .unwrap_or_default();
-                for command in start_agent_commands(self.core.snapshot(), pane, &folder, agent) {
+                let launches = zz_client::agent_launch::AgentLaunches::default();
+                for command in
+                    start_agent_commands(self.core.snapshot(), pane, &folder, agent, &launches)
+                {
                     self.invoke(command);
                 }
                 true
