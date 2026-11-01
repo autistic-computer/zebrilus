@@ -230,8 +230,9 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   `ChatPane::close_on_release`, so closing the pane frees every image it held, through its window
   or, when the window closed with it, from the asset cache alone.
 - **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
-  a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
-  chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
+  a shimmer across the word, a turning sparkle and the time since the prompt. It hides while a
+  blocking card waits on you, and says Waiting for your answer while a Codex async question is
+  open and nothing else runs (`ChatView::asking`). The transcript only gets a reply once it is whole, so a reply that lands while
   you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it arrived; replies
   already there on the first look show at once).
 - **Thinking.** A finished run whose reasoning is only headings (Codex records the headings of its
@@ -246,6 +247,20 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   (`chat_agent_pip`): the prompt it was given, its own rows, its answer and a footer; its close
   button or a second click closes it. An approval it waits on sits under its row.
 - **Answered questions.** The question, with the answer under it.
+- **Codex's async questions.** Codex can ask without stopping its turn
+  (`request_user_input_async`); the app server sends that as an `agentMessage` with
+  `delivery: "async"`, `questions` (`{ title, options? }`) and a markdown copy in `text`. The
+  driver shows the questions as the inline question card, each taking an option or typed text,
+  and drops the copy while keeping any other text (`codex::translate::async_questions`). The card
+  is a background request: not blocking, kept past the end of its turn by the driver, the chat and
+  the host (`AgentPendingPermission::outlives_turn`). An answer goes back as a user message in the
+  CLI's own reply format, `<send_user_message_question_reply>` around
+  `[{questionItemId, question, answer}]` with the id `["request_user_input_async", call, index]`
+  (`translate::question_reply`): `turn/steer` into the running turn, else `turn/start`, and a
+  start when the steer misses the turn. That message closes the card as answered and never shows
+  as a bubble, also when the TUI sent it. Any other message closes the card with no answer, Stop
+  leaves it open, and a resumed thread shows the answered ones as records and reopens the one
+  still waiting.
 - **Diagrams.** A mermaid or SVG block sits in a card on the `code` role, like a code block, whose
   header holds its label, Copy source and Open full diagram. pele (`libs/pele`) draws mermaid:
   flowchart, sequence, class, state, ER, gantt, pie and quadrant. Any other type stays an ordinary
