@@ -287,10 +287,10 @@ fn anchor(hwnd: HWND) -> Option<TrayAnchor> {
         uID: TRAY_ICON_ID,
         ..Default::default()
     };
-    let rect = unsafe { Shell_NotifyIconGetRect(&identifier) }.ok()?;
-    let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
+    let rect = unsafe { Shell_NotifyIconGetRect(&raw const identifier) }.ok()?;
+    let monitor = unsafe { MonitorFromRect(&raw const rect, MONITOR_DEFAULTTONEAREST) };
     let (mut dpi, mut unused) = (0, 0);
-    unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi, &mut unused) }.ok()?;
+    unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &raw mut dpi, &raw mut unused) }.ok()?;
     let scale = dpi as f32 / 96.0;
     let logical = |value: i32| ala::px(value as f32 / scale);
     Some(TrayAnchor {
