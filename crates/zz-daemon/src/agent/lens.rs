@@ -667,6 +667,7 @@ impl Codex {
     }
 
     fn load(&mut self, path: PathBuf, cwd: &Path) -> Vec<Value> {
+        self.join(&path, cwd);
         let (tail, text) = Tail::open(path);
         self.translator = CodexTranslator::new(cwd.to_path_buf());
         self.busy = false;
@@ -675,7 +676,6 @@ impl Codex {
         self.held.clear();
         self.asked.clear();
         self.dropped.clear();
-        self.join(&tail.path, cwd);
         self.tail = Some(tail);
         let mut read = Read::default();
         for entry in text
