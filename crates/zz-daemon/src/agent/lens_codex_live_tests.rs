@@ -12,7 +12,7 @@ use zz_protocol::{
     chat::{Answer, ChatView, ItemId, ItemKind, ItemStatus, QuestionAnswer, RequestClose},
 };
 
-use super::{super::*, Connection, embedded};
+use super::{super::*, Claim, Connection, embedded};
 use crate::agent::codex::control::Peer;
 
 const THREAD: &str = "01a1943b-e5c3-7841-880b-f6c0a9341ec8";
@@ -30,6 +30,7 @@ const MODELS: &str = r#"{"models":[
 #[derive(Default)]
 struct Pane {
     typed: Mutex<Vec<String>>,
+    title: Mutex<Option<String>>,
 }
 
 impl LensPane for Pane {
@@ -55,6 +56,10 @@ impl LensPane for Pane {
 
     fn screen(&self) -> Option<String> {
         None
+    }
+
+    fn title(&self) -> Option<String> {
+        self.title.lock().clone()
     }
 }
 
@@ -986,6 +991,12 @@ fn a_model_picked_in_the_terminal_moves_the_lens_controls() {
     assert!(live.sent().is_empty(), "nothing goes back to the server");
 }
 
+const SECOND: &str = "01a1943c-14a3-7a00-8000-0000000000b2";
+const TITLE_THREAD: &str = "01a1943b-e7b7-7b00-8000-0000000000c3";
+const FIRST_START: u64 = 1_793_488_312;
+const SECOND_START: u64 = 1_793_488_324;
+const ASKED: &str = "Reply with exactly: hello from the side channel";
+
 fn rollout_of(dir: &std::path::Path, thread: &str) -> PathBuf {
     dir.join(format!("rollout-2026-10-31T20-11-55-{thread}.jsonl"))
 }
@@ -1001,11 +1012,301 @@ fn write_rollout(path: &std::path::Path, thread: &str, lines: &[Value]) {
     std::fs::write(path, text).unwrap();
 }
 
+fn listed(thread: &str, path: &std::path::Path, name: Option<&str>) -> Value {
+    json!({ "thread": {
+        "id": thread, "cwd": "/work/proj", "ephemeral": false, "parentThreadId": null,
+        "threadSource": "user", "createdAt": 1_793_498_657u64, "name": name, "path": path,
+    } })
+}
+
+fn claimer(threads: &[(&str, Value)]) -> (Connection, Peer, u64) {
+    let (connection, peer) = Connection::pair();
+    peer.deliver(json!({ "id": 0, "result": { "userAgent": "codex" } }));
+    let ids = threads.iter().map(|(id, _)| *id).collect::<Vec<_>>();
+    peer.deliver(json!({ "id": 1, "result": { "data": ids, "nextCursor": null } }));
+    let mut next = 2;
+    for (_, thread) in threads {
+        peer.deliver(json!({ "id": next, "result": thread }));
+        next += 1;
+    }
+    (connection, peer, next)
+}
+
+fn joins(peer: &Peer, next: u64, thread: &str, status: &str) {
+    peer.deliver(json!({ "id": next, "result": { "data": [thread], "nextCursor": null } }));
+    let mut joined = resume();
+    joined["thread"]["id"] = Value::from(thread);
+    joined["thread"]["status"] = json!({ "type": status });
+    peer.deliver(json!({ "id": next + 1, "result": joined }));
+}
+
+fn claiming(wire: Connection, started: u64, others: &[u64]) -> Codex {
+    let mut codex = Codex::default();
+    codex.link.wire = Some(wire);
+    codex.link.neighbors = Some(others.to_vec());
+    codex.link.here = Some(PathBuf::from("/work/proj"));
+    codex.born = Some(started);
+    codex.picks.catalog = Catalog::codex_json(MODELS);
+    codex
+}
+
+fn over(codex: Codex, pane: &Arc<Pane>) -> Lens {
+    Lens::with_source(
+        LensSpec {
+            pane: PaneId(7),
+            provider: AgentProvider::Codex,
+            io: pane.clone(),
+        },
+        Source::Codex(Box::new(codex)),
+        Arc::new(AtomicU64::new(1)),
+    )
+}
+
 fn outgoing(peer: &Peer) -> Vec<Value> {
     peer.outgoing
         .try_iter()
         .map(|text| serde_json::from_str(&text).unwrap())
         .collect()
+}
+
+fn settle(lens: &mut Lens, peer: &Peer) -> Vec<AgentStreamPayload> {
+    let mut payloads = Vec::new();
+    loop {
+        let tick = lens.tick();
+        if tick.is_empty() && peer.incoming.is_empty() {
+            return payloads;
+        }
+        payloads.extend(tick);
+    }
+}
+
+fn codex_of(lens: &mut Lens) -> &mut Codex {
+    let Source::Codex(codex) = &mut lens.source else {
+        unreachable!()
+    };
+    codex
+}
+
+fn prompt(text: &str, turn_id: u64) -> RuntimeCommand {
+    RuntimeCommand::Prompt {
+        turn_id,
+        prompt: AgentPrompt {
+            text: text.to_owned(),
+            ..AgentPrompt::default()
+        },
+    }
+}
+
+#[test]
+fn the_first_prompt_of_a_fresh_tui_goes_over_the_app_server() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = rollout_of(dir.path(), THREAD);
+    let title = json!({ "thread": {
+        "id": TITLE_THREAD, "cwd": "/work/proj", "ephemeral": true, "parentThreadId": null,
+        "threadSource": "thread_title", "createdAt": 1_793_498_657u64, "path": null,
+    } });
+    let (wire, peer, next) =
+        claimer(&[(THREAD, listed(THREAD, &path, None)), (TITLE_THREAD, title)]);
+    let mut codex = claiming(wire, FIRST_START, &[]);
+    assert!(matches!(codex.claim(), Claim::Waiting), "no rollout yet");
+    let pane = Arc::new(Pane::default());
+    let mut lens = over(codex, &pane);
+    let opened = lens.open();
+
+    assert!(lens.command(prompt(ASKED, 9)).is_empty());
+    let sent = outgoing(&peer);
+    let [start] = named(&sent, "turn/start")[..] else {
+        panic!("one turn/start in {sent:?}");
+    };
+    assert_eq!(start["params"]["threadId"], THREAD);
+    assert_eq!(start["id"], next);
+    assert!(pane.typed.lock().is_empty(), "nothing is typed");
+    peer.deliver(json!({ "id": next, "result": { "turn": { "id": "01a1943d-b799-77a0-a087-385bb2870a47" } } }));
+    let mut payloads = lens.tick();
+
+    let user = frames("lens-turn")
+        .into_iter()
+        .find(|message| message["method"] == "item/completed")
+        .unwrap()["params"]["item"]
+        .clone();
+    write_rollout(
+        &path,
+        THREAD,
+        &[
+            rollout_line(
+                "event_msg",
+                &json!({ "type": "task_started", "turn_id": "t1" }),
+            ),
+            item_line(
+                &json!({ "type": "UserMessage", "id": user["id"], "content": user["content"] }),
+            ),
+        ],
+    );
+    let Claim::Thread(found) = codex_of(&mut lens).claim() else {
+        panic!("the rollout exists now");
+    };
+    assert_eq!(found.session, THREAD);
+    joins(&peer, next + 1, THREAD, "active");
+    payloads.extend(lens.reload(found, false));
+    assert!(codex_of(&mut lens).is_live());
+    let sent = outgoing(&peer);
+    assert_eq!(
+        sent.iter()
+            .map(|message| message["method"].as_str().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["thread/loaded/list", "thread/resume"],
+        "the connection the prompt went out on joins the thread"
+    );
+
+    let live = frames("lens-turn");
+    let (_, after) = until(&live, "turn/started");
+    for message in after {
+        peer.deliver(message.clone());
+    }
+    payloads.extend(settle(&mut lens, &peer));
+    assert!(
+        payloads.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::PromptFinished {
+                turn_id: 9,
+                outcome: AgentPromptOutcome::Finished { .. }
+            }
+        )),
+        "{payloads:?}"
+    );
+    let (shadow, view) = view(&[&opened, &payloads]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert_eq!(texts(&view, ItemKind::User), [ASKED]);
+    assert_eq!(
+        texts(&view, ItemKind::Agent),
+        ["hello from the side channel"]
+    );
+    assert!(pane.typed.lock().is_empty());
+}
+
+#[test]
+fn a_refused_first_prompt_fails_its_turn() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = rollout_of(dir.path(), THREAD);
+    let (wire, peer, next) = claimer(&[(THREAD, listed(THREAD, &path, None))]);
+    let mut codex = claiming(wire, FIRST_START, &[]);
+    assert!(matches!(codex.claim(), Claim::Waiting));
+    let pane = Arc::new(Pane::default());
+    let mut lens = over(codex, &pane);
+    lens.open();
+    lens.command(prompt("hi", 4));
+    peer.deliver(json!({ "id": next, "error": { "code": -32600, "message": "thread not found" } }));
+    let done = lens.tick();
+    assert!(done.iter().any(|payload| matches!(
+        payload,
+        AgentStreamPayload::PromptFinished { turn_id: 4, outcome: AgentPromptOutcome::Failed { message } }
+            if message == "thread not found"
+    )), "{done:?}");
+}
+
+fn beside(
+    started: u64,
+    others: &[u64],
+    title: Option<&str>,
+    names: [Option<&str>; 2],
+) -> (Lens, Peer, Arc<Pane>, tempfile::TempDir) {
+    let dir = tempfile::tempdir().unwrap();
+    let first = rollout_of(dir.path(), THREAD);
+    let second = rollout_of(dir.path(), SECOND);
+    write_rollout(&first, THREAD, &[]);
+    write_rollout(&second, SECOND, &[]);
+    let (wire, peer, next) = claimer(&[
+        (THREAD, listed(THREAD, &first, names[0])),
+        (SECOND, listed(SECOND, &second, names[1])),
+    ]);
+    let pane = Arc::new(Pane::default());
+    *pane.title.lock() = title.map(str::to_owned);
+    let mut lens = over(claiming(wire, started, others), &pane);
+    let Claim::Thread(found) = codex_of(&mut lens).claim() else {
+        panic!("the claim picks one thread");
+    };
+    joins(&peer, next, &found.session, "idle");
+    lens.reload(found, true);
+    (lens, peer, pane, dir)
+}
+
+#[test]
+fn two_tuis_in_one_folder_each_join_their_own_thread() {
+    for (started, other, thread) in [
+        (FIRST_START, SECOND_START, THREAD),
+        (SECOND_START, FIRST_START, SECOND),
+    ] {
+        let (mut lens, peer, pane, _dir) = beside(started, &[other], None, [None, None]);
+        assert!(
+            codex_of(&mut lens).is_live(),
+            "{thread} joins beside the other TUI"
+        );
+        let sent = outgoing(&peer);
+        let [resumed] = named(&sent, "thread/resume")[..] else {
+            panic!("one resume in {sent:?}");
+        };
+        assert_eq!(resumed["params"]["threadId"], thread);
+        lens.command(prompt("hi", 2));
+        let sent = outgoing(&peer);
+        assert_eq!(named(&sent, "turn/start")[0]["params"]["threadId"], thread);
+        assert!(pane.typed.lock().is_empty());
+    }
+}
+
+#[test]
+fn tuis_started_together_tell_their_threads_apart_by_title() {
+    let names = [Some("Reply with pong"), Some("Count to five")];
+    let close = FIRST_START + 1;
+    for (started, other, title, thread) in [
+        (FIRST_START, close, "Reply with pong | proj", THREAD),
+        (close, FIRST_START, "⠋ Count to five | proj", SECOND),
+    ] {
+        let (mut lens, peer, _, _dir) = beside(started, &[other], Some(title), names);
+        assert!(codex_of(&mut lens).is_live());
+        let sent = outgoing(&peer);
+        assert_eq!(
+            named(&sent, "thread/resume")[0]["params"]["threadId"],
+            thread
+        );
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let first = rollout_of(dir.path(), THREAD);
+    let second = rollout_of(dir.path(), SECOND);
+    let (wire, _peer, _) = claimer(&[
+        (THREAD, listed(THREAD, &first, None)),
+        (SECOND, listed(SECOND, &second, None)),
+    ]);
+    let mut codex = claiming(wire, close, &[FIRST_START]);
+    assert!(
+        matches!(codex.claim(), Claim::Unsure),
+        "no names and no order keep the rollout path"
+    );
+}
+
+#[test]
+fn the_lens_joins_again_once_a_restarted_app_server_answers() {
+    let mut live = Harness::joined();
+    live.peer = Connection::pair().1;
+    live.lens.tick();
+    live.lens.tick();
+    assert!(!live.live(), "the old server is gone");
+    let path = rollout_of(live._dir.path(), THREAD);
+    let (wire, peer, next) = claimer(&[(THREAD, listed(THREAD, &path, Some("Reply with pong")))]);
+    let codex = codex_of(&mut live.lens);
+    codex.link.wire = Some(wire);
+    codex.link.here = Some(PathBuf::from("/work/proj"));
+    codex.born = Some(FIRST_START);
+    codex.pid = Some(std::process::id());
+    codex.link.claims.next = None;
+    let Claim::Thread(found) = codex.claim() else {
+        panic!("the TUI's thread is loaded again");
+    };
+    assert_eq!(found.session, THREAD);
+    joins(&peer, next, THREAD, "idle");
+    live.lens.tick();
+    assert!(live.live());
+    let sent = outgoing(&peer);
+    assert_eq!(named(&sent, "thread/resume").len(), 1);
 }
 
 #[test]

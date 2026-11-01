@@ -15,8 +15,8 @@ use zz_protocol::{
 };
 
 use super::{
-    AgentPrompt, AgentPromptOutcome, AgentStreamPayload, Codex, Found, Lens, Read, Source, Tail,
-    Turn, arguments, codex_home, is_rollout, open_files,
+    AgentPrompt, AgentPromptOutcome, AgentStreamPayload, Codex, Found, Lens, LensPane, Read,
+    Source, Tail, Turn, arguments, codex_home, is_rollout, open_files,
 };
 use zz_daemon_client::process_info;
 
@@ -35,6 +35,7 @@ use crate::agent::{
 const JOIN: Duration = Duration::from_secs(3);
 const FRESH: u64 = 30;
 const PAGES: usize = 16;
+const RESUME_TRIES: u32 = 3;
 const EMBEDDED: [&str; 8] = [
     "--search",
     "--profile",
@@ -67,13 +68,20 @@ pub(super) struct Link {
     rearm: bool,
     cwd: PathBuf,
     closed: Vec<u64>,
+    claims: claim::Claims,
+    embedded: Option<u32>,
     notices: u64,
     pub(super) ids: Arc<AtomicU64>,
+    pub(super) pane: Option<Arc<dyn LensPane>>,
     #[cfg(test)]
     pub(super) wire: Option<Connection>,
     #[cfg(test)]
     pub(super) neighbors: Option<Vec<u64>>,
+    #[cfg(test)]
+    pub(super) here: Option<PathBuf>,
 }
+
+pub(super) use claim::Claim;
 
 pub(super) struct Live {
     connection: Connection,
@@ -151,26 +159,31 @@ fn shared(config: &str) -> bool {
                 .is_some_and(|name| !name.is_empty() && !name.contains('.')))
 }
 
+fn hello(connection: &mut Connection) -> Result<(), String> {
+    connection.call(
+        "initialize",
+        &json!({
+            "clientInfo": { "name": "zz", "title": "zz", "version": env!("CARGO_PKG_VERSION") },
+            "capabilities": {
+                "experimentalApi": true,
+                "requestAttestation": false,
+                "optOutNotificationMethods": QUIET,
+            },
+        }),
+        JOIN,
+    )?;
+    connection.notify("initialized");
+    Ok(())
+}
+
 impl Live {
     fn join(
         mut connection: Connection,
+        calls: HashMap<u64, Call>,
         thread: String,
         path: &Path,
         cwd: &Path,
     ) -> Result<Self, String> {
-        connection.call(
-            "initialize",
-            &json!({
-                "clientInfo": { "name": "zz", "title": "zz", "version": env!("CARGO_PKG_VERSION") },
-                "capabilities": {
-                    "experimentalApi": true,
-                    "requestAttestation": false,
-                    "optOutNotificationMethods": QUIET,
-                },
-            }),
-            JOIN,
-        )?;
-        connection.notify("initialized");
         let mut cursor = Value::Null;
         let mut pages = 0;
         loop {
@@ -187,11 +200,20 @@ impl Live {
                 return Err(format!("thread {thread} is not loaded in the app server"));
             }
         }
-        let joined = connection.call(
-            "thread/resume",
-            &json!({ "threadId": thread, "excludeTurns": true }),
-            JOIN,
-        )?;
+        let mut tries = 1;
+        let joined = loop {
+            match connection.call(
+                "thread/resume",
+                &json!({ "threadId": thread, "excludeTurns": true }),
+                JOIN,
+            ) {
+                Err(error) if error.starts_with("no rollout found") && tries < RESUME_TRIES => {
+                    tries += 1;
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                joined => break joined?,
+            }
+        };
         Ok(Self {
             connection,
             thread,
@@ -201,7 +223,7 @@ impl Live {
             turn: None,
             history: HashSet::new(),
             seen: HashSet::new(),
-            calls: HashMap::new(),
+            calls,
             requests: HashMap::new(),
             asks: HashMap::new(),
             card: None,
@@ -537,21 +559,28 @@ impl Codex {
     }
 
     pub(super) fn join(&mut self, path: &Path, cwd: &Path) {
+        let followed = self
+            .link
+            .live
+            .as_ref()
+            .and_then(|live| live.next.as_ref())
+            .map(|(thread, _)| thread.clone());
         self.drop_live();
         self.link.relive = false;
         self.link.rearm = false;
         self.link.cwd = cwd.to_path_buf();
-        if self.neighbors().is_none_or(|others| !others.is_empty()) {
-            log::info!(target: "zz::agent", "another Codex may share {}; the lens reads the rollout", cwd.display());
-            return;
-        }
-        let Some(connection) = self.dial() else {
-            return;
-        };
         let Some(thread) = RolloutMeta::read(path).map(|meta| meta.thread) else {
             return;
         };
-        match Live::join(connection, thread, path, cwd) {
+        let ours = self.claimed(&thread) || followed.as_deref() == Some(thread.as_str());
+        if !ours && self.neighbors().is_none_or(|others| !others.is_empty()) {
+            log::info!(target: "zz::agent", "another Codex may share {}; the lens reads the rollout", cwd.display());
+            return;
+        }
+        let Some((connection, calls)) = self.connect() else {
+            return;
+        };
+        match Live::join(connection, calls, thread, path, cwd) {
             Ok(live) => self.link.live = Some(Box::new(live)),
             Err(error) => {
                 log::info!(target: "zz::agent", "the Codex lens reads the rollout instead: {error}");
@@ -560,11 +589,7 @@ impl Codex {
     }
 
     fn neighbors(&self) -> Option<Vec<u64>> {
-        #[cfg(test)]
-        if let Some(neighbors) = &self.link.neighbors {
-            return Some(neighbors.clone());
-        }
-        others_in(self.pid?, &self.link.cwd)
+        self.neighbors_in(&self.link.cwd)
     }
 
     fn started_thread(&self, live: &mut Live, thread: &Value) {
@@ -609,15 +634,21 @@ impl Codex {
             return Some(wire);
         }
         let pid = self.pid?;
-        if embedded(&arguments(pid)) || open_files(pid).iter().any(|path| is_rollout(path)) {
+        if self.link.embedded == Some(pid) || embedded(&arguments(pid)) {
+            self.link.embedded = Some(pid);
             return None;
         }
         let socket = control::socket(&codex_home()?)?;
-        Connection::open(&socket, JOIN)
+        let connection = Connection::open(&socket, JOIN)
             .map_err(|error| {
-                log::info!(target: "zz::agent", "no Codex app server to join: {error}");
+                log::debug!(target: "zz::agent", "no Codex app server to join: {error}");
             })
-            .ok()
+            .ok()?;
+        if open_files(pid).iter().any(|path| is_rollout(path)) {
+            self.link.embedded = Some(pid);
+            return None;
+        }
+        Some(connection)
     }
 
     pub(super) fn heard(&mut self, id: &str) {
@@ -962,7 +993,13 @@ impl Codex {
 impl Lens {
     pub(super) fn wake(&self) -> Option<async_channel::Receiver<()>> {
         match &self.source {
-            Source::Codex(codex) => codex.link.live.as_ref().map(|live| live.connection.wake()),
+            Source::Codex(codex) => codex
+                .link
+                .live
+                .as_ref()
+                .map(|live| &live.connection)
+                .or_else(|| codex.link.claims.idle.as_ref().map(|idle| &idle.connection))
+                .map(Connection::wake),
             Source::Claude(_) => None,
         }
     }
@@ -989,13 +1026,24 @@ impl Lens {
         {
             return None;
         }
-        let live = self.live()?;
-        let thread = live.thread.clone();
-        live.call(
-            Call::Start,
-            "turn/start",
-            &json!({ "threadId": thread, "input": native::turn_input(prompt) }),
-        );
+        let input = native::turn_input(prompt);
+        if let Some(live) = self.live() {
+            let thread = live.thread.clone();
+            live.call(
+                Call::Start,
+                "turn/start",
+                &json!({ "threadId": thread, "input": input }),
+            );
+        } else {
+            let Source::Codex(codex) = &mut self.source else {
+                return None;
+            };
+            let (idle, thread) = codex.waiting()?;
+            let id = idle
+                .connection
+                .request("turn/start", &json!({ "threadId": thread, "input": input }));
+            idle.calls.insert(id, Call::Start);
+        }
         self.turn = Some(Turn {
             id: turn_id,
             sent: Instant::now(),
@@ -1175,6 +1223,9 @@ impl Lens {
         Some(vec![self.settings_changed(option_id, value.trim())])
     }
 }
+
+#[path = "lens_codex_claim.rs"]
+mod claim;
 
 #[cfg(test)]
 #[path = "lens_codex_live_tests.rs"]

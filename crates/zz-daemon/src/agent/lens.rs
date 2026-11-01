@@ -66,6 +66,9 @@ pub(crate) trait LensPane: Send + Sync {
     fn channel(&self) -> Option<PathBuf> {
         None
     }
+    fn title(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Clone)]
@@ -667,6 +670,11 @@ impl Codex {
         if let Some(found) = self.located() {
             return Some(found);
         }
+        match self.claim() {
+            codex_live::Claim::Thread(found) => return Some(found),
+            codex_live::Claim::Waiting => return None,
+            codex_live::Claim::Unsure => {}
+        }
         let (path, meta) = open_files(pid)
             .into_iter()
             .filter(|path| is_rollout(path))
@@ -739,6 +747,7 @@ impl Codex {
             payloads: self.closed(),
             ..Read::default()
         };
+        self.read_idle(&mut read);
         self.look_for_children();
         let lines = self.tail.as_mut().map(Tail::lines).unwrap_or_default();
         for entry in lines {
@@ -1482,6 +1491,7 @@ impl Lens {
     fn with_source(spec: LensSpec, mut source: Source, permission_ids: Arc<AtomicU64>) -> Self {
         if let Source::Codex(codex) = &mut source {
             codex.link.ids = permission_ids.clone();
+            codex.link.pane = Some(Arc::clone(&spec.io));
         }
         Self {
             spec,
