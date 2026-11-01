@@ -4,11 +4,12 @@ use std::thread::{self, JoinHandle};
 use async_channel::Sender;
 use parking_lot::Mutex;
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::CreateBitmap;
+use windows::Win32::Graphics::Gdi::{CreateBitmap, MONITOR_DEFAULTTONEAREST, MonitorFromRect};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW,
-    Shell_NotifyIconW,
+    NOTIFYICONIDENTIFIER, Shell_NotifyIconGetRect, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CW_USEDEFAULT, CreateIconIndirect, CreatePopupMenu, CreateWindowExW,
@@ -21,7 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::core::{PCWSTR, w};
 
-use super::{Menu, MenuEntry, TrayEvent, TrayIcon, TrayOptions, decode, send};
+use super::{Menu, MenuEntry, TrayAnchor, TrayEvent, TrayIcon, TrayOptions, decode, send};
 
 const WM_TRAY: u32 = WM_APP + 1;
 const WM_LOOK: u32 = WM_APP + 2;
@@ -249,7 +250,7 @@ unsafe extern "system" fn window_procedure(
         match message {
             WM_TRAY => match lparam.0 as u32 {
                 WM_LBUTTONUP if state.menu_on_click => show_menu(hwnd, state),
-                WM_LBUTTONUP => send(&state.events, TrayEvent::Activate),
+                WM_LBUTTONUP => send(&state.events, TrayEvent::Activate(anchor(hwnd))),
                 WM_RBUTTONUP => show_menu(hwnd, state),
                 _ => {}
             },
@@ -273,6 +274,35 @@ unsafe extern "system" fn window_procedure(
         }
         DefWindowProcW(hwnd, message, wparam, lparam)
     }
+}
+
+#[allow(
+    unsafe_code,
+    reason = "the icon's rectangle and its monitor's scale have no safe binding"
+)]
+fn anchor(hwnd: HWND) -> Option<TrayAnchor> {
+    let identifier = NOTIFYICONIDENTIFIER {
+        cbSize: size_of::<NOTIFYICONIDENTIFIER>() as u32,
+        hWnd: hwnd,
+        uID: TRAY_ICON_ID,
+        ..Default::default()
+    };
+    let rect = unsafe { Shell_NotifyIconGetRect(&identifier) }.ok()?;
+    let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
+    let (mut dpi, mut unused) = (0, 0);
+    unsafe { GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi, &mut unused) }.ok()?;
+    let scale = dpi as f32 / 96.0;
+    let logical = |value: i32| ala::px(value as f32 / scale);
+    Some(TrayAnchor {
+        display: ala::DisplayId::from(monitor.0 as u64),
+        bounds: ala::Bounds::new(
+            ala::point(logical(rect.left), logical(rect.top)),
+            ala::size(
+                logical(rect.right - rect.left),
+                logical(rect.bottom - rect.top),
+            ),
+        ),
+    })
 }
 
 #[allow(unsafe_code, reason = "menus have no safe binding")]

@@ -115,7 +115,7 @@ impl ksni::Tray for SniTray {
 
     fn activate(&mut self, _x: i32, _y: i32) {
         if !self.menu_on_click {
-            send(&self.events, TrayEvent::Activate);
+            send(&self.events, TrayEvent::Activate(None));
         }
     }
 

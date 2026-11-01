@@ -35,7 +35,7 @@ impl TrayEvent {
     fn from_tray(event: penna::tray::TrayEvent) -> Option<Self> {
         use penna::tray::TrayEvent as Tray;
         match event {
-            Tray::Activate => Some(Self::Toggle),
+            Tray::Activate(_) => Some(Self::Toggle),
             Tray::Available(available) => Some(Self::Available(available)),
             Tray::Action(action) => Self::from_action(&action),
         }
@@ -123,7 +123,7 @@ mod tests {
         assert_eq!(TrayEvent::Available(true).action(), None);
         assert_eq!(TrayEvent::from_action("sparkle"), None);
         assert_eq!(
-            TrayEvent::from_tray(penna::tray::TrayEvent::Activate),
+            TrayEvent::from_tray(penna::tray::TrayEvent::Activate(None)),
             Some(TrayEvent::Toggle)
         );
     }
