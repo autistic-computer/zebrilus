@@ -102,7 +102,6 @@ libghostty-vt = { path = "third_party/rust/libghostty-vt", default-features = fa
 log = "0.4.34"
 mach2 = "0.5"
 memchr = "2.8.3"
-merman = { version = "=0.9.3", default-features = false, features = ["svg", "all-diagrams", "layout-cytoscape"] }
 metal = "0.33"
 mimalloc = "0.1.52"
 naga = { version = "=30.0.1", features = ["glsl-in", "wgsl-in", "wgsl-out"] }
@@ -179,6 +178,7 @@ zeroize = "=1.9.0"
 ala = { path = "libs/ala/crates/ala", default-features = false }
 penna = { path = "libs/penna" }
 ala-cef = { path = "libs/ala-cef", default-features = false }
+pele = { path = "libs/pele" }
 ala-macros = { path = "libs/ala/crates/ala-macros" }
 ala-platform = { path = "libs/ala/crates/ala-platform", default-features = false }
 

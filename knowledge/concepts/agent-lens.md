@@ -377,8 +377,12 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   button or a second click closes it. An approval it waits on sits under its row.
 - **Answered questions.** The question, with the answer under it.
 - **Diagrams.** A mermaid or SVG block sits in a card on the `code` role, like a code block, whose
-  header holds its label, Copy source and Open full diagram. The diagram's canvas is transparent, so
-  it shows the card through it; edge and relation labels keep a chip in the node fill. Answers use
+  header holds its label, Copy source and Open full diagram. pele (`libs/pele`) draws mermaid:
+  flowchart, sequence, class, state, ER, gantt, pie and quadrant. Any other type stays an ordinary
+  code block of its source, and a supported source that does not parse shows the error with its
+  line and column. The diagram's canvas is transparent, so it shows the card through it; nodes fill
+  with the card blended with the soft neutral paint, text is the app font at 13 px measured by the
+  app's text system, and series colors come from primary, success, warning, danger and muted. Answers use
   the same markdown style as code blocks and tables elsewhere (`agent_text_view`). The chat passes
   its pane as the owner (`ChatHooks::owner`), so on the desktop an HTML block's live page can reply
   to the agent, and two panes showing the same item keep their own preview toggles.
