@@ -1,10 +1,10 @@
 ---
 type: Concept
 title: Agent lens
-description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript or joins the Codex TUI's app server, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
+description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, joins the Codex TUI's app server, and talks to Claude Code through the zz plugin, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
-tags: [agent, lens, claude-code, codex, transcript, app-server, terminal, pane]
-timestamp: 2026-10-31T22:30:00-03:00
+tags: [agent, lens, claude-code, codex, transcript, app-server, plugin, terminal, pane]
+timestamp: 2026-10-31T23:00:00-03:00
 ---
 
 # Overview
@@ -14,6 +14,10 @@ and a terminal whose foreground program is `claude` or `codex` gets a lens butto
 With the lens on, the pane body shows that agent's timeline and a composer in place of the cell
 grid; clicking again shows the terminal. The terminal process stays the source of truth: the
 timeline is read from the transcript the CLI already writes, and the composer types into the TUI.
+When the CLI offers a live channel the lens uses it instead of typing: a Codex TUI on its app
+server is joined as a second client (see [Codex over the app server](#codex-over-the-app-server)),
+and for Claude Code a plugin zz loads into the CLI streams the running turn and takes prompts,
+approvals, questions and model picks (see [The Claude Code plugin](#the-claude-code-plugin)).
 
 The rulings, the full deletion map and the history of the earlier attempt are in the
 [agent lens design](/designs/agent-lens.md). Both halves are on main (merged in `69ceca016`).
@@ -123,7 +127,72 @@ but no pane opens them now.
 
 Claude's session record carries `status` (`busy`, `idle`, `waiting`). The runtime turns it into
 `Activity { busy }` events, so the pane's phase follows the TUI whether the turn came from the
-lens, from typing in the terminal, or from a peer message.
+lens, from typing in the terminal, or from a peer message. While the Claude Code plugin is
+connected, the plugin's turn edges decide instead (below).
+
+# The Claude Code plugin
+
+zz ships a Claude Code plugin whose hooks module (a "mod", `crates/zz-daemon/assets/claude-plugin`)
+gives the Claude lens a live channel. The transcript stays for history on open, resume and rewind,
+and is the whole story when the plugin is not there.
+
+- **Loading.** The daemon writes the plugin into `<daemon data dir>/claude-plugin-<hash of its
+  files>` (`agent/claude_plugin.rs`, `include_str!`; not in tests), and every pane it spawns gets
+  that folder appended to `CLAUDE_CODE_PLUGIN_DIRS` (the user's own folders stay first) and
+  `ZZ_LENS_SOCKET`, a socket beside the daemon's own (`<socket stem>-lens-<pane>.sock`, left out
+  past 100 bytes). The CLI loads the folder with no flag and no prompt, watches it and reloads the
+  mod when a file in it changes, and writes about 880 KB of type files into it; one folder per
+  version means a daemon of another build never swaps the mod under sessions it did not start.
+  The mod does nothing without `ZZ_LENS_SOCKET`.
+- **Channel.** The lens runtime listens on that socket (`agent/lens_channel.rs`): HTTP/1.1 over
+  the Unix socket, which the mod reaches with `$.http.fetch` and `socketPath`. HTTP because a mod
+  hook has a 10 s budget of its own time that `$.clock.sleep` spends, while a `$` call in flight is
+  free, so a permission hook can wait for the lens as long as the dialog is up only on a fetch. The
+  mod posts its events in batches to `/events`, long-polls `/commands?instance=<id>` (15 s) and
+  posts each permission to `/ask`, which answers `decision`, `pass` or `pending` (ask again). Nobody
+  listens until a lens opens on the pane, so the mod retries once a second and stays quiet.
+- **Events** (`agent/lens_claude_mod.rs`, `Link`). `hello` (instance, session, model, running
+  turn), `turn` and `done` (main-loop `turn.start` and `turn.complete`, Esc included), `step`,
+  `text` and `thinking` chunks with their block index and UTF-16 offset, `used` (PostToolUse,
+  PostToolUseFailure, PermissionDenied), `end`, `model` and `ack`. A `hello` from a session other
+  than the pane's record is held, not adopted: its events are dropped and its asks pass at once,
+  and the lens adopts it once the record names its session while the lens has no live plugin. The
+  CLI registers a fresh session id before the one `claude -c` resumes, so a `hello` can arrive
+  ahead of its record. A `claude -p` never connects at all (the mod skips sessions that are not
+  interactive).
+- **Turns.** While the plugin polls, busy and idle come from its turn edges, so Esc in the TUI ends
+  the lens turn on the next 250 ms tick. A turn that starts and ends inside one tick still reports
+  busy for it, and a main-loop step counts as a start (a background agent's follow-up turn). The
+  record's `waiting` is held back for 2 s in case the plugin relays it, then shows the terminal card
+  as before.
+- **Live text.** Text and thinking chunks become `agent_message_chunk` and `agent_thought_chunk`
+  under `live:<turn>:<step>:<index>`, stamped with the mod's time and merged with transcript lines
+  by time. When the transcript writes the block, it matches the oldest live block of the same kind
+  and `apiBlockIndex` whose text it starts with (or that starts with it, after Esc) and adds only
+  what the lens has not shown. A block joined partway or with a gap stops streaming and the
+  transcript finishes it; a reload or session switch forgets what was shown, so the replay shows it
+  whole. Subagent text stays on the transcript path (`_meta.zz.parent`).
+- **Approvals and questions.** `tool.check` notes each call that will ask, so `classic.PermissionRequest`
+  (which has no `tool_use_id`) can name its tool. The hook first runs what is beneath it, then posts
+  to `/ask` and waits while the TUI dialog is up; the first answer wins. The lens draws the card
+  the native driver drew (`claude::approval_request`, `plan_request`, `question_request`) and answers
+  with the same decisions (`allow` with `updatedInput`, Always allow with the suggestions,
+  `allow_with_mode` for a plan, `answered` for questions, several and multi-select joined with
+  ", "). An answer given in the TUI withdraws the card once the record, which read `waiting` while
+  the card was up, reads anything else (about 50 ms after the answer, while the tool still runs),
+  on `used`, the next step of that loop, the end of that loop's turn (a background agent's card
+  outlives the main turn), or when the plugin stops polling, and the waiting hook gets `pass`. A
+  background agent's ask shows no dialog on the main screen and leaves the record `busy`, so its
+  card stays until it is answered.
+- **Actions.** A prompt goes through `$.prompt.submit({ text, asUser: true })`; the TUI shows
+  "Prompt from the zz plugin" and the transcript records it with a plugin origin. Prompts with
+  images, slash commands and steers are still typed. After Esc the CLI refuses plugin prompts until
+  someone types ("the session was stopped and nobody has sent input since"), so a refused prompt is
+  typed instead. Stop answers waiting cards with deny and interrupt and calls `$.turn.abort`, which
+  leaves no "Interrupted" marker. A model pick calls `$.config.set({ key: "model" })`, which also
+  saves it as the user's default, as `/model` does; effort has no API and is still typed.
+- **Fallback.** No socket, an older CLI, a policy that turns mods off, or a plugin that has not
+  polled in 3 s: the lens types, reads the record and answers with keys exactly as below.
 
 # Codex over the app server
 
@@ -215,7 +284,7 @@ and only a `--no-daemon` TUI held its rollout open.
   are the CLI's own and are typed through (see Slash commands below). The composer's
   placeholder names the agent ("Message Claude Code…"), and before the agent has written a
   transcript the lens shows `presentation::lens_welcome`: the agent's mark, "Claude Code is waiting
-  for its first prompt" and "What you send here is typed into the terminal."
+  for its first prompt" and "What you send here goes to the session in this terminal."
 - **Steer.** `AgentSteer` types text into a running turn without opening a lens turn, so the
   running one keeps its tracking. No client sends it now; the daemon still takes it. The pane host
   sends the runtime `/steer <text>` and the lens pastes `<text>` like a prompt. Claude Code reads text typed mid-turn
@@ -225,8 +294,10 @@ and only a `--no-daemon` TUI held its rollout open.
   (`commandMode: "prompt"`, `origin.kind: "human"`); the translator turns that into the user's
   message, and other origins (peers, task notifications) stay hidden. Codex 0.164 records it as an
   `item_completed` `UserMessage` inside the same turn. Until then the timeline shows nothing for it.
-- **Stop.** `AgentCancel` sends Escape to the TUI.
-- **Claude permission prompts.** While the dialog is up, the record reads `"status":"waiting"` with
+- **Stop.** `AgentCancel` sends Escape to the TUI, or aborts the turn through the Claude Code
+  plugin while it is connected.
+- **Claude permission prompts.** With the Claude Code plugin connected, the hook carries them
+  (above). Without it, while the dialog is up, the record reads `"status":"waiting"` with
   `"waitingFor":"permission prompt"`, and the pending `tool_use` is the last assistant block with no
   `tool_result`. The runtime raises a permission request for that tool with Allow (sends `1`) and
   Deny (sends Escape). Any other `waitingFor` (a plan approval, a question) raises a request with no
@@ -358,6 +429,8 @@ alike. Picking one sends `AgentSetConfigOption`, which the runtime types into th
 TUI (`lens_settings::command`) and shows at once:
 
 - **Claude Code.** `/model <alias>` or `/effort <level>`. Its "Set model to …" line confirms it.
+  With the Claude Code plugin connected, a model pick goes through `$.config.set` instead and
+  nothing is typed.
 - **Codex.** Joined to the app server, picks go out as `thread/settings/update` (see
   [Codex over the app server](#codex-over-the-app-server)). Otherwise: Codex has no `/effort`; its
   `/model` takes the level inline, so a model pick types

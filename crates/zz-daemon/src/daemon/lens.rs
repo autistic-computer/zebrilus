@@ -82,6 +82,11 @@ impl LensPane for TerminalLens {
         let terminal = shared.inner.lock().terminals.get(&self.pane).cloned()?;
         terminal.capture(CaptureOptions::default()).ok()
     }
+
+    fn channel(&self) -> Option<PathBuf> {
+        let shared = self.owner.upgrade()?;
+        crate::agent::claude_plugin::lens_socket(&shared.socket_path, self.pane)
+    }
 }
 
 pub(super) fn lens_provider(process: &[String]) -> Option<AgentProvider> {

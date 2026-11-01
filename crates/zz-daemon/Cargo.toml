@@ -14,6 +14,7 @@ agent = [
     "dep:async-channel",
     "dep:base64",
     "dep:futures-lite",
+    "dep:httparse",
     "dep:smol",
     "dep:tungstenite",
     "dep:zz-machine",
@@ -27,6 +28,7 @@ chrono = { workspace = true, features = ["alloc", "std"] }
 futures-lite = { workspace = true, optional = true }
 getrandom.workspace = true
 glob = "0.3"
+httparse = { version = "1.10.1", optional = true }
 ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
