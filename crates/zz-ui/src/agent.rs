@@ -45,7 +45,6 @@ use presentation::{spinner, spinner_phase};
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
 const SVG_NODE_NAME: &str = "zz-svg";
 const RICH_MARKDOWN_NODE_NAME: &str = "zz-rich-markdown";
-const FIGURE_MAX_HEIGHT: f32 = 560.0;
 const FIGURE_HEADER_HEIGHT: f32 = 30.0;
 const FIGURE_MAX_SOURCE_BYTES: usize = 32 * 1024;
 const FIGURE_RENDER_DEBOUNCE: Duration = Duration::from_millis(250);
@@ -3252,14 +3251,12 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
             .id(("agent-mermaid", source.source_offset))
             .w_full()
             .min_w_0()
-            .max_h(px(FIGURE_MAX_HEIGHT))
             .overflow_hidden()
             .child(
                 div().flex().w_full().justify_center().child(
                     img(ImageSource::Render(image.clone()))
                         .debug_selector(|| "agent-figure-image".to_owned())
                         .max_w_full()
-                        .max_h(px(FIGURE_MAX_HEIGHT))
                         .mx_auto(),
                 ),
             )
@@ -4265,6 +4262,19 @@ mod tests {
             .expect("the svg block should paint as an image");
         assert_eq!(figure.size.width, px(80.0));
         assert_eq!(figure.size.height, px(40.0));
+    }
+
+    #[ala::test]
+    fn a_tall_figure_draws_at_its_own_size(cx: &mut TestAppContext) {
+        let cx = painted_answer(
+            "```svg\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"900\"><rect width=\"120\" height=\"900\" fill=\"red\"/></svg>\n```\n",
+            cx,
+        );
+        let figure = cx
+            .debug_bounds("agent-figure-image")
+            .expect("the svg block should paint as an image");
+        assert_eq!(figure.size.width, px(120.0));
+        assert_eq!(figure.size.height, px(900.0));
     }
 
     #[ala::test]
