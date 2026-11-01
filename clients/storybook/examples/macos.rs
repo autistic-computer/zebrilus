@@ -5,8 +5,8 @@ use ala::{
     point, prelude::*, px, size,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Fill, IconName, Kind, Root, Selectable as _, Shadow, Shape,
-    Sizable as _, StylePatch, StyledExt as _, SurfaceRole, Theme, ThemeMode,
+    ActiveTheme as _, Colorize as _, IconName, Kind, Root, Selectable as _, Sizable as _,
+    StyledExt as _, SurfaceRole, Theme, ThemeMode,
     button::{Button, ButtonVariants as _},
     h_flex,
     switch::Switch,
@@ -36,13 +36,7 @@ impl Render for Comparison {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let foreground = cx.theme().foreground;
         let muted = foreground.muted();
-        let glass_sample = SurfaceRole::new(
-            "comparison.glass",
-            Kind::Card,
-            "Glass sample",
-            "Reference material sample",
-        )
-        .with(StylePatch::EMPTY.fill(Fill::Glass).outline(false));
+        let glass_sample = Kind::Floating.role();
         let panel_ground = cx.theme().ground_of(glass_sample);
         let group_ground = cx.theme().ground_of(roles::CHROME_BUTTON);
         let dark = cx.theme().mode.is_dark();
@@ -67,16 +61,8 @@ impl Render for Comparison {
             .size_full()
             .gap(px(4.0))
             .p(px(4.0))
-            .surface(
-                SurfaceRole::new("comparison.track", Kind::Card, "Tab track", "A tab group").with(
-                    StylePatch::EMPTY
-                        .fill(Fill::Tint)
-                        .outline(false)
-                        .shadow(Shadow::None)
-                        .shape(Shape::Pill),
-                ),
-                cx,
-            )
+            .surface(SurfaceRole::WELL, cx)
+            .rounded_full()
             .children(
                 [
                     ("Terminal", IconName::Terminal),
@@ -266,16 +252,13 @@ fn load(sources: &[PathBuf]) -> Result<InterfaceTheme, String> {
 fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let sources = std::env::args().nth(1).map_or_else(
-        || {
-            vec![root.join("libs/penna/themes/macos.json")]
-        },
+        || vec![root.join("libs/penna/themes/macos.json")],
         |path| vec![PathBuf::from(path)],
     );
     let backdrop = std::env::args().nth(2).map_or_else(
         || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("examples/macos-backdrop.png"),
         PathBuf::from,
     );
-    zz_ui::register();
     let definition = load(&sources).expect("parse theme");
     ala_platform::application()
         .with_assets(Assets)

@@ -9,7 +9,6 @@ pub static CATALOG: Catalog = Catalog {
     title: "zz storybook",
     name: "zz",
     storage: "zz-storybook",
-    register: zz_ui::register,
     init: zz_ui::init,
     logo: zz_ui::ZZ_LOGO,
     plates: stories::theme_creator::PLATES,

@@ -1077,7 +1077,12 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
             vec![
                 drawer_screen(
                     "drawer-screen-hosts",
-                    drawer("drawer-hosts", "alienware", penna::SurfaceRole::DRAWER, hosts),
+                    drawer(
+                        "drawer-hosts",
+                        "alienware",
+                        penna::SurfaceRole::DRAWER,
+                        hosts,
+                    ),
                     cx,
                 ),
                 drawer_screen(

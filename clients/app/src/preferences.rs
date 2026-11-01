@@ -156,7 +156,6 @@ impl Preferences {
 
     #[must_use]
     pub fn saved(&self) -> &SavedThemes {
-        zz_ui::register();
         &self.themes
     }
 
@@ -187,7 +186,6 @@ impl Preferences {
     }
 
     pub fn change_appearance(&mut self, change: AppearanceChange) {
-        zz_ui::register();
         self.appearance.change(change, &self.themes);
     }
 

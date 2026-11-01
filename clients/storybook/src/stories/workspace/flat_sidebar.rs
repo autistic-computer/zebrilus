@@ -15,9 +15,10 @@ use zz_client::{
     },
 };
 use zz_protocol::{
-    AgentDescriptor, AgentProvider, Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId,
-    PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneStatusKind, PaneStatusState, PaneSummary,
-    SessionId, SessionSnapshot, ShellCommand, SplitId, WindowId, WindowSnapshot,
+    AgentDescriptor, AgentProvider, Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators,
+    PaneBorderLines, PaneBorderStatus, PaneId, PaneKindSnapshot, PaneSnapshot, PaneStatus,
+    PaneStatusKind, PaneStatusState, PaneSummary, SessionId, SessionSnapshot, ShellCommand,
+    SplitId, WindowId, WindowSnapshot,
 };
 use zz_ui::{
     command::PaletteHostId,

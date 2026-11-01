@@ -38,12 +38,7 @@ pub mod terminal_images;
 
 pub use program::{Assets, CHROME_ICON, CLAUDE_ICON, OPENAI_ICON, ZZ_LOGO};
 
-pub fn register() {
-    penna::register(&[], &[], &[]);
-}
-
 pub fn init(cx: &mut ala::App) {
-    register();
     #[cfg(feature = "tree-sitter")]
     register_tmux_language();
     penna::init(cx);

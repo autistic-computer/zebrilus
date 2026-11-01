@@ -1451,7 +1451,10 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         .turn("Run steps 1 to 9 of the render test, and ask me which element to stress at step 7.")
         .ran("x1", ItemKind::Execute, "cargo test -p pele render")
         .ask_async(3, "call_q", rendering_question())
-        .reply("a1", "Waiting for your choice: Tables, Diagrams, or Code blocks.")
+        .reply(
+            "a1",
+            "Waiting for your choice: Tables, Diagrams, or Code blocks.",
+        )
         .finish(completed());
     let mut views: Vec<(SharedString, AnyView)> = Vec::new();
     let mut add = |label: &'static str, thread: &Entity<Thread>| {

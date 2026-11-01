@@ -9,22 +9,18 @@ pub use penna::motion::{DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMAT
 pub use zz_client::appearance::{AccentSetting, ThemeModeSetting};
 
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
-    crate::register();
     penna::interface_theme::parse_theme(source)
 }
 
 pub fn builtin_themes() -> &'static [(&'static str, InterfaceTheme)] {
-    crate::register();
     penna::interface_theme::builtin_themes()
 }
 
 pub fn builtin_theme(id: &str) -> Option<&'static InterfaceTheme> {
-    crate::register();
     penna::interface_theme::builtin_theme(id)
 }
 
 pub fn default_theme() -> &'static InterfaceTheme {
-    crate::register();
     penna::interface_theme::default_theme()
 }
 

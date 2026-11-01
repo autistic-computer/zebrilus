@@ -13,17 +13,14 @@ use penna::{Kind, SurfaceRole};
 pub const PANE: SurfaceRole = Kind::Pane.role();
 
 pub fn all() -> impl Iterator<Item = SurfaceRole> {
-    crate::register();
     penna::roles::all()
 }
 
 pub fn find(id: &str) -> Option<SurfaceRole> {
-    crate::register();
     penna::roles::find(id)
 }
 
 pub fn members(group: SurfaceRole) -> impl Iterator<Item = SurfaceRole> {
-    crate::register();
     penna::roles::members(group)
 }
 
