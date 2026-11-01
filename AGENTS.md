@@ -1,5 +1,10 @@
 # AGENTS.md
 
+Read `~/dev/autistic-computer/.agents/AGENTS.md` first: the rules every autistic-computer repo
+shares. This file adds what is specific to zz.
+
+@~/dev/autistic-computer/.agents/AGENTS.md
+
 Zebrilus (zz, repo autistic-computer/zebrilus) is a tmux-superset terminal multiplexer that ships as a native GPU desktop app: a Rust workspace built on ala (our fork of the GPUI UI framework, in `libs/ala`), a persistent daemon that owns sessions and PTYs, Chromium browser panes (CEF off-screen rendering), agent panes (ACP), and remote hosts over plain ssh. Targets macOS and Linux (Wayland), with experimental Windows/WSL, iOS and Android clients, and a raw-terminal attach client.
 
 Rust edition 2024, MSRV 1.99. Release builds on mac/windows require Zig 0.16.0 (see `mise.toml`).
@@ -81,14 +86,9 @@ Recipes live in `Justfile` and `scripts/just/*.just` and run from the repo root.
 | `bench/run.sh` | Terminal throughput benchmarks |
 </important>
 
-<important if="you are about to stash, reset, revert, or clean the working tree">
-Multiple agent sessions often share this checkout in parallel. Never `git stash`, hard-reset, or discard uncommitted changes you did not author — you may be destroying another session's in-flight work.
-</important>
-
 <important if="you are changing anything under libs/">
 
 - `libs/ala`, `libs/penna`, `libs/ala-cef` and `libs/pele` are git subtrees of [autistic-computer/ala](https://github.com/autistic-computer/ala), [autistic-computer/penna](https://github.com/autistic-computer/penna), [autistic-computer/ala-cef](https://github.com/autistic-computer/ala-cef) and [autistic-computer/pele-rs](https://github.com/autistic-computer/pele-rs), libraries other apps build on. Edit them in place and commit them with the zz code that needs the change, like any other file here.
-- No comments in their code, doc comments included. Third-party copyright and license notices live in each lib's `NOTICE`, and every README is the same centered `<samp>` block: the three-row bird drawn in quadrant block characters over the frontmatter, padded with literal non-breaking spaces so the lines stay aligned, then a `<kbd>` link to autistic.computer.
 - They must build on their own: no zz crate dependencies and no paths outside their own directory. Each is its own Cargo workspace, excluded from zz's; zz uses them by path, and the root `[patch."https://github.com/autistic-computer/ala"]` (repeated in `clients/web`, `clients/storybook` and `clients/dom/theme`) points the kit's git dependency on ala at `libs/ala`. The root `[patch.crates-io]` points `cef-dll-sys` at ala-cef's adapter, as ala-cef's own manifest does.
 - The root clippy and `cargo ci-test` skip them. Run `just libs check <ala|penna|ala-cef|pele>` when you touch one; CI runs the same.
 - Commits touching `libs/<lib>` reach its repo with `just libs push <lib>` once they are on main, carrying their commit messages along, so write those for a reader outside zz. pele came in by `git subtree add` on a branch, and its add commit names a main commit from before `libs/pele` existed, so a plain `git subtree split` of it pulls zz's own history along; `just libs push pele` splits with `--ignore-joins` onto pele-rs's main instead. `just libs pull <lib>` merges commits made in the lib repo; do that before pushing if the lib repo moved.
@@ -129,6 +129,4 @@ A few `zz-daemon` tests are timing-sensitive and only fail under full-workspace 
 - If a page contradicts the source it cites, fix the page — source is ground truth.
 </important>
 
-- No AI attribution in commits, PR descriptions or branch names: no co-author trailer with an email (never `noreply@anthropic.com` or any other `@anthropic.com` or `@openai.com` address: delete the `Co-Authored-By: Claude <noreply@anthropic.com>` line when a tool or harness adds it), no model or product name as author or co-author, no "Generated with ..." line, no `claude/` or `codex/` branch prefix. A co-author trailer is a funny name with no email. `.claude/settings.json` turns Claude Code's own attribution off.
-- No research about other products in the repo, commit messages, PR descriptions or code: no surveys, teardowns, comparisons or benchmarks against competitors, and no "like X does" to justify a choice. Say what zz does with its own numbers. Code and docs can name upstreams, dependencies, standards and protocols zz implements; commit messages and PR descriptions name none of them and cite no other project's commits or PRs: say "upstream".
-- No comments in code, doc comments and Python docstrings included. What stays is what a tool reads: shebangs, `# shellcheck` and `# noqa` directives, `@ts-check`, the help headers `bench/run.sh`, `bench/inner.sh`, `bench/gen-fixtures.sh` and `compat/run.sh` print with `sed`, and module docstrings that argparse shows through `__doc__`. Just recipe docs are `[doc("...")]` attributes
+- Besides what the shared no-comments rule keeps, zz keeps the help headers `bench/run.sh`, `bench/inner.sh`, `bench/gen-fixtures.sh` and `compat/run.sh` print with `sed`, and module docstrings that argparse shows through `__doc__`.

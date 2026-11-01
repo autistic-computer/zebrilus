@@ -17,6 +17,3 @@ version: 0.1.0                    <br>
 <p align="center">
 <a href="https://autistic.computer"><kbd> /{&gt; autistic.computer </kbd></a>
 </p>
-
-Source provenance and the upstream MIT notice are preserved in [NOTICE](NOTICE).
-The code is distributed under the [MIT license](LICENSE).

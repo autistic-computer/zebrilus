@@ -25,7 +25,7 @@ and sized to its content, so a section looks exactly like that piece does in the
 `penna-storybook` holds the story types (`story.rs`: `Story`, `Section`, `stateless`, `states`,
 `row`, `Framed`), the section host, the backdrop under floating sections, the theme knobs, the JSON
 the page reads, the wasm exports, the page's `web/` files, the Inter and Lilex fonts the page
-draws with (`fonts/`, OFL, noted in penna's `NOTICE`), the icon review sheet (`icons/`), the
+draws with (`fonts/`, OFL, noted in penna's `NOTICE.md`), the icon review sheet (`icons/`), the
 theme creator (`src/creator`) and the Foundation and Kit stories (`src/foundation`, `src/kit`). An
 app's storybook is that harness plus a `penna_storybook::Catalog`:
 

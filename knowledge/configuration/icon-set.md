@@ -22,7 +22,7 @@ rounds panes. The desktop app, the web and iOS clients and the storybook all dra
 The glyphs are adapted from the Linear style of the [Solar Icons Set](https://www.figma.com/community/file/1166831539721848736)
 by 480 Design, CC BY 4.0. Each icon taken from Solar names its source in a `solar` field; icons
 without one are zz's own, drawn in Solar's style. `libs/penna/src/icon/LICENSE-SOLAR` holds the
-credit and the list of changes the license asks for, and `THIRD_PARTY_NOTICE.md` lists the set.
+credit and the list of changes the license asks for, and `NOTICE.md` lists the set.
 
 Program tiles in the flat sidebar draw the generic programs (a terminal, `log`, `sleep`, `top`,
 `caffeinate`, lazygit, an inspector, a browser) from this set too, through the `icon` field of

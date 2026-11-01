@@ -102,8 +102,8 @@ Without it a debug build is too slow to use: the storybook drew one theme creato
 
 penna is `Apache-2.0 AND CC-BY-4.0`. Its icons (`IconName`, drawn from `src/icon/solar.json`) are
 adapted from the Solar Icons Set by 480 Design under CC BY 4.0, so an app that ships them credits
-the set in its own notices or About page, as penna's `NOTICE` and `src/icon/LICENSE-SOLAR` do. The
-kit's code started as gpui-component (Apache-2.0), credited in the same `NOTICE`.
+the set in its own notices or About page, as penna's `NOTICE.md` and `src/icon/LICENSE-SOLAR` do. The
+kit's code started as gpui-component (Apache-2.0), credited in the same `NOTICE.md`.
 `penna-storybook` is `Apache-2.0 AND OFL-1.1` for the Inter and Lilex fonts its page bundles.
 
 # Set up an app
