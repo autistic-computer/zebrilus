@@ -4,6 +4,7 @@ pub(crate) const BLINK_IDLE_TIMEOUT: web_time::Duration = web_time::Duration::fr
 
 pub mod badge;
 pub mod button;
+mod canvas;
 pub mod check;
 mod chip;
 #[cfg(feature = "editor")]
@@ -16,6 +17,7 @@ pub mod foundation;
 pub mod highlighter;
 pub mod icon;
 pub mod input;
+mod inspector;
 pub mod interface_theme;
 pub mod kbd;
 mod label;
@@ -57,6 +59,7 @@ pub mod notification {
     pub use super::overlay::Notification;
 }
 
+pub use canvas::{Dock, Tile, TileVariant, Well};
 pub use chip::{Chip, Dot};
 pub use foundation::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, BASE_UI_FONT_SIZE, CHROME_GAP, CORNER_SMOOTHING,
@@ -71,6 +74,7 @@ pub use foundation::{
     window_paddings,
 };
 pub use icon::{Assets, Icon, IconName};
+pub use inspector::Inspector;
 pub use label::Label;
 pub use notice::Notice;
 pub use overlay::{ROOT_KEY_CONTEXT, Root, WindowExt};

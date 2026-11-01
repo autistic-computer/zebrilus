@@ -838,6 +838,41 @@ impl SurfaceRole {
             .selected(Highlight::Ring),
     );
 
+    pub const WELL: Self = Self::new(
+        "well",
+        Kind::Card,
+        "Wells",
+        "The area things are arranged on, like screens on a desk",
+    )
+    .with(
+        StylePatch::EMPTY
+            .fill(Fill::Tint)
+            .outline(false)
+            .shadow(Shadow::None),
+    );
+
+    pub const SCREEN_TILE: Self = Self::new(
+        "tile.screen",
+        Kind::Card,
+        "Screen tiles",
+        "A screen drawn to scale on a well",
+    )
+    .with(StylePatch::EMPTY.shadow(Shadow::Contact));
+
+    pub const CARD_TILE: Self = Self::new(
+        "tile.card",
+        Kind::Card,
+        "Card tiles",
+        "A card for something you can place, in a dock under a well",
+    );
+
+    pub const INSPECTOR: Self = Self::under(
+        &crate::roles::SIDEBAR,
+        "inspector",
+        "Inspectors",
+        "The selected thing's details, in a column beside the content",
+    );
+
     pub const TEXT_AREA: Self = Self::new(
         "field.multiline",
         Kind::Field,
@@ -904,9 +939,10 @@ impl SurfaceRole {
     )
     .with(StylePatch::EMPTY.shape(Shape::Pill).outline(false));
 
-    pub const KIT: [Self; 31] = [
+    pub const KIT: [Self; 35] = [
         Kind::Bar.role(),
         Kind::Panel.role(),
+        Self::INSPECTOR,
         Kind::Pane.role(),
         Kind::Card.role(),
         Self::NOTICE,
@@ -926,6 +962,9 @@ impl SurfaceRole {
         Self::ROW,
         Self::TAB,
         Self::TILE,
+        Self::WELL,
+        Self::SCREEN_TILE,
+        Self::CARD_TILE,
         Kind::Field.role(),
         Self::TEXT_AREA,
         Kind::Label.role(),

@@ -2,8 +2,11 @@
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+mod panel;
 #[cfg(target_os = "windows")]
 mod windows;
+
+pub use panel::TrayPanel;
 
 use std::sync::Arc;
 

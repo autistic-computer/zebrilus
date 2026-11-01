@@ -2,7 +2,7 @@
 type: Design Plan
 title: "The kit: penna owns every piece of UI chrome"
 description: "Apps compose penna components and stop defining surface roles, theme patches, text sizes, spacing and colors. Tokens (Space, TextStyle) are fixed ratios measured in rems. Each app role becomes a kit recipe picked by a typed variant, and every per-theme tweak an app layer made moves into penna's own theme files. Work lands in vertical slices: a component family, its stories, then both apps in their pull."
-status: In progress (2026-11-01, slice 2)
+status: In progress (2026-11-01, nidus done, zebrilus next)
 resource: src/foundation/space.rs
 tags:
 - ui
@@ -113,7 +113,9 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | browser.address | field | no fill, no outline | D, M selected tint | Field variant | todo |
 | picker.notice | bar | - | - | Notice | todo |
 
-### nidus: 8 roles
+### nidus: 8 roles, now 0
+
+nid-app registers no roles and its clippy list carries the kit lint. Its settings previews moved to Well, the menu bar panel to `tray::TrayPanel` with `ListItem` rows.
 
 | Role | Parent | Code patch | Becomes | Status |
 |---|---|---|---|---|
@@ -121,10 +123,10 @@ Theme tweaks: D default, M macos, Y yaru. A dash means none.
 | board.chip | badge | selected tint | Chip (`chip`) | done |
 | first-run.step | badge | selected accent | Steps (`step`) | done |
 | banner | card | no shadow | Notice (`notice`) | done |
-| computer-card | sidebar | - | Inspector | todo |
-| board | card | no shadow | Well | todo |
-| board.screen | card | contact shadow | Tile | todo |
-| board.found | card | - | Tile variant | todo |
+| computer-card | sidebar | - | Inspector (`inspector`) | done |
+| board | card | no shadow | Well (`well`, now a tint without outline) | done |
+| board.screen | card | contact shadow | Tile, Screen variant (`tile.screen`) | done |
+| board.found | card | - | Tile, Card variant (`tile.card`) | done |
 
 ## Slices
 
@@ -132,7 +134,7 @@ Each slice lands in penna (component, variants, recipes, theme tweaks, stories),
 
 1. Tokens and `Label` (this doc).
 2. Chip, Steps and Notice; nidus status pill, board chips, first-run steps, banners and the panel's status card. The `chip` and `step` recipes are pills: nidus asked for `rounded_full()` before, which the role's radius overrode. `feedback::callout` and `inline_alert` stay until zebrilus's notice batch moves to Notice.
-3. Inspector, Well, Tile and Dock; the rest of nid-app's chrome; nidus lint on.
+3. Inspector, Well, Tile and Dock; the rest of nid-app's chrome; nidus lint on. The well is a tinted recess and tiles are painted on its ground (`Tile::on(Well::ground(cx))`), so screens stand apart from it on every theme; as plain cards both had the same fill wherever a theme turns outlines off.
 4. zebrilus families, one integration each: icon buttons, chips, drawers, floating panels, tabs, menu items, canvas, bars and rules, content, rows, fields, notice; zebrilus lint on.
 5. Close registration: `SurfaceRole` fields and constructors become crate-private, `penna::register` goes away, the retired list is penna's.
 

@@ -2,6 +2,7 @@ use crate::story::Story;
 
 mod appearance;
 mod buttons;
+mod canvas;
 #[cfg(feature = "editor")]
 mod code_editor;
 mod color_picker;
@@ -32,6 +33,7 @@ pub const STORIES: &[Story] = &[
     dialogs::STORY,
     feedback::STORY,
     status::STORY,
+    canvas::STORY,
     notifications::STORY,
     sheet::STORY,
     scrollbars::STORY,
