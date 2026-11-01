@@ -15,6 +15,8 @@ const STREAM = new Set(['text', 'thinking', 'used'])
 export const register: Register = (on) => {
   const instance = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   let call: Call | undefined
+  let renew: (() => Promise<void>) | undefined
+  let announced: string | undefined
   let linked = false
   let watched = false
   let sending = false
@@ -79,14 +81,17 @@ export const register: Register = (on) => {
         body,
         socketPath: socket,
       })
-    const hello = async (): Promise<Event> => ({
-      t: 'hello',
-      i: instance,
-      at: Date.now(),
-      session: await $.session.id(),
-      model: await $.session.model(),
-      turn: turn ?? null,
-    })
+    const hello = async (): Promise<Event> => {
+      announced = await $.session.id()
+      return {
+        t: 'hello',
+        i: instance,
+        at: Date.now(),
+        session: announced,
+        model: await $.session.model(),
+        turn: turn ?? null,
+      }
+    }
     const restarted = call !== undefined
     call = channel
     let polling = false
@@ -116,7 +121,7 @@ export const register: Register = (on) => {
       polling = true
       try {
         for (;;) {
-          if (!linked) {
+          if (!linked || (await $.session.id()) !== announced) {
             if (!(await post([await hello()]))) break
             linked = true
           }
@@ -132,6 +137,9 @@ export const register: Register = (on) => {
       polling = false
     }
 
+    renew = async () => {
+      if (linked && (await $.session.id()) !== announced) await post([await hello()])
+    }
     if (restarted && linked) void post([await hello()])
     void poll()
     $.clock.every(RETRY, () => {
@@ -143,7 +151,11 @@ export const register: Register = (on) => {
   on('session.end', async ($, e, next) => {
     turn = undefined
     emit({ t: 'end', reason: e.reason })
-    return next(e)
+    const result = await next(e)
+    $.clock.after(0, () => {
+      void renew?.()
+    })
+    return result
   })
 
   on('turn.start', async ($, e, next) => {
