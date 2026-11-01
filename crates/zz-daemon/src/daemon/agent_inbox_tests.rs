@@ -25,6 +25,16 @@ fn fixture() -> Fixture {
         )
         .expect("mux setup");
     shared
+        .inner
+        .lock()
+        .engine
+        .state
+        .convert_pane(
+            context.pane.expect("terminal pane"),
+            PaneKind::Agent(zz_protocol::AgentDescriptor::default()),
+        )
+        .expect("agent pane");
+    shared
         .attach(client, context.session.expect("session"))
         .expect("attach");
     take_reliable_messages(&mailbox);
@@ -44,6 +54,8 @@ fn spec() -> AgentPaneSpec {
         resume_session: None,
         auto_approve: None,
         workspace: AgentWorkspaceEnvironment::default(),
+        model: None,
+        effort: None,
         lens: None,
     }
 }

@@ -232,51 +232,6 @@ pub(super) fn state_changed(shared: &Arc<Shared>, pane: PaneId) {
     }
 }
 
-#[cfg(all(feature = "agent", unix))]
-pub(super) struct PeerTurn {
-    pub(super) pane: PaneId,
-    pub(super) pid: u32,
-    pub(super) on_block: AgentBlockPolicy,
-    pub(super) seen_working: bool,
-}
-
-#[cfg(all(feature = "agent", unix))]
-pub(super) fn watch_peer(
-    shared: &Arc<Shared>,
-    mut turn: PeerTurn,
-    reply: Weak<cmdq::Reply<crate::agent::claude_peers::PeerReply>>,
-    continuation: cmdq::WaitContinuation,
-) {
-    use crate::agent::claude_peers::PeerReply;
-
-    shared
-        .terminal_requests
-        .schedule(Instant::now() + Duration::from_millis(100), move |shared| {
-            if continuation.ready() {
-                return;
-            }
-            let Some(sender) = reply.upgrade() else {
-                return;
-            };
-            if !crate::pid_alive(turn.pid) {
-                sender.close();
-                return;
-            }
-            match shared.pane_agent_state(turn.pane).as_str() {
-                "idle" if turn.seen_working => return sender.try_send(PeerReply::TurnEnded),
-                "blocked" if turn.on_block == AgentBlockPolicy::Fail => {
-                    return sender.try_send(PeerReply::Blocked);
-                }
-                "failed" => {
-                    return sender.try_send(PeerReply::Failed("agent_state=failed".to_owned()));
-                }
-                "" | "idle" => {}
-                _ => turn.seen_working = true,
-            }
-            watch_peer(shared, turn, reply, continuation);
-        });
-}
-
 #[cfg(all(test, unix))]
 #[path = "agent_waits_tests.rs"]
 mod tests;

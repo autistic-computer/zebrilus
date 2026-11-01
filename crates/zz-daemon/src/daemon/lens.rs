@@ -98,28 +98,7 @@ impl LensPane for TerminalLens {
     }
 }
 
-pub(super) fn lens_provider(process: &[String]) -> Option<AgentProvider> {
-    process.iter().find_map(|candidate| {
-        let name = candidate.rsplit(['/', '\\']).next()?;
-        let name = name.strip_suffix(".exe").unwrap_or(name);
-        match name.to_ascii_lowercase().as_str() {
-            "claude" => Some(AgentProvider::ClaudeCode),
-            "codex" => Some(AgentProvider::Codex),
-            _ => None,
-        }
-    })
-}
-
 impl Shared {
-    pub(super) fn terminal_agent(&self, pane: PaneId) -> Option<AgentProvider> {
-        let inner = self.inner.lock();
-        let state = inner.engine.state.pane(pane)?;
-        if !matches!(state.kind, PaneKind::Terminal) {
-            return None;
-        }
-        lens_provider(&state.summary.process)
-    }
-
     #[cfg(unix)]
     pub(super) fn lens_hub(&self) -> Option<&Hub> {
         if self.agent_stopped.load(Ordering::Acquire) {
@@ -165,7 +144,7 @@ impl Shared {
             .and_then(|terminal| terminal_working_directory(terminal))
             .or_else(|| std::env::current_dir().ok())
             .unwrap_or_else(|| PathBuf::from("/"));
-        self.inner.lock().lens_panes.insert(pane);
+        self.inner.lock().agent_panes.insert(pane);
         self.refresh_agent_visibility();
         let spec = AgentPaneSpec {
             provider,
@@ -173,6 +152,8 @@ impl Shared {
             resume_session: None,
             auto_approve: None,
             workspace: AgentWorkspaceEnvironment::default(),
+            model: None,
+            effort: None,
             lens: Some(LensSpec {
                 pane,
                 provider,
@@ -185,71 +166,8 @@ impl Shared {
         if runtime.open(pane, spec) {
             return true;
         }
-        self.inner.lock().lens_panes.remove(&pane);
+        self.inner.lock().agent_panes.remove(&pane);
         self.refresh_agent_visibility();
         false
-    }
-
-    #[cfg(test)]
-    pub(super) fn open_test_agent(self: &Arc<Self>, pane: PaneId) -> bool {
-        let Some(runtime) = self.agent_runtime() else {
-            return false;
-        };
-        self.inner.lock().lens_panes.insert(pane);
-        self.refresh_agent_visibility();
-        let spec = AgentPaneSpec {
-            provider: AgentProvider::Codex,
-            cwd: PathBuf::from("/"),
-            resume_session: None,
-            auto_approve: None,
-            workspace: AgentWorkspaceEnvironment::default(),
-            lens: None,
-        };
-        runtime.open(pane, spec)
-    }
-
-    pub(super) fn recent_agent_terminal(&self, origin: PaneId) -> Option<PaneId> {
-        let candidates = {
-            let inner = self.inner.lock();
-            let window =
-                &inner.engine.state.windows[&inner.engine.state.window_for_pane(origin)?];
-            std::iter::once(&window.active_pane)
-                .chain(window.last_panes())
-                .chain(window.pane_order())
-                .copied()
-                .filter(|pane| *pane != origin)
-                .collect::<Vec<_>>()
-        };
-        candidates
-            .into_iter()
-            .find(|pane| self.terminal_agent(*pane).is_some())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_terminal_running_claude_or_codex_gets_a_lens() {
-        let process = |names: &[&str]| {
-            names
-                .iter()
-                .map(|name| (*name).to_owned())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(
-            lens_provider(&process(&["/home/me/.local/bin/claude", "node"])),
-            Some(AgentProvider::ClaudeCode)
-        );
-        assert_eq!(
-            lens_provider(&process(&["node", "/opt/homebrew/bin/codex"])),
-            Some(AgentProvider::Codex)
-        );
-        assert_eq!(
-            lens_provider(&process(&["C:\\tools\\Codex.exe"])),
-            Some(AgentProvider::Codex)
-        );
-        assert_eq!(lens_provider(&process(&["/bin/zsh", "vim"])), None);
     }
 }

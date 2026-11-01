@@ -232,6 +232,8 @@ pub(crate) struct AgentPaneSpec {
     pub(crate) provider: AgentProvider,
     pub(crate) cwd: PathBuf,
     pub(crate) resume_session: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) effort: Option<String>,
     pub(crate) auto_approve: Option<AgentAutoApprove>,
     pub(crate) workspace: AgentWorkspaceEnvironment,
     pub(crate) lens: Option<LensSpec>,
@@ -312,6 +314,8 @@ impl AgentPaneState {
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self::new(&AgentPaneSpec {
+            model: None,
+            effort: None,
             lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
@@ -1123,6 +1127,19 @@ impl PanePump {
                     });
                 }
                 self.reclaim_queue();
+            }
+        }
+        if matches!(&payload, AgentStreamPayload::SessionReady { .. }) {
+            for (option_id, value) in [
+                ("model", self.spec.model.take()),
+                ("effort", self.spec.effort.take()),
+            ] {
+                if let Some(value) = value {
+                    self.send(RuntimeCommand::SetConfigOption {
+                        option_id: option_id.to_owned(),
+                        value,
+                    });
+                }
             }
         }
         let refresh_git = matches!(
@@ -1983,6 +2000,8 @@ mod tests {
                 pane,
                 1,
                 AgentPaneSpec {
+                    model: None,
+                    effort: None,
                     lens: None,
                     provider: AgentProvider::Codex,
                     cwd: PathBuf::from("/"),
@@ -2015,6 +2034,8 @@ mod tests {
             );
             let pane = PaneId(7);
             let spec = AgentPaneSpec {
+                model: None,
+                effort: None,
                 lens: None,
                 provider: AgentProvider::Codex,
                 cwd: cwd.unwrap_or_else(|| PathBuf::from("/")),
@@ -2439,6 +2460,8 @@ mod tests {
                     pane,
                     1,
                     AgentPaneSpec {
+                        model: None,
+                        effort: None,
                         lens: None,
                         provider,
                         cwd: directory.path().to_owned(),
@@ -3313,6 +3336,8 @@ mod tests {
     fn a_new_agent_session_reset_reclaims_prompts_still_in_the_mailbox() {
         let recorder = Recorder::default();
         let spec = AgentPaneSpec {
+            model: None,
+            effort: None,
             lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
@@ -3519,6 +3544,8 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
+                model: None,
+                effort: None,
                 lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
@@ -3594,6 +3621,8 @@ mod tests {
             pane,
             1,
             AgentPaneSpec {
+                model: None,
+                effort: None,
                 lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),

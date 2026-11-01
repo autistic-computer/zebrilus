@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::{OsStr, OsString};
 use std::fmt::Write as _;
 use std::fs;
@@ -10,9 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(test)]
-use std::sync::mpsc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -51,15 +49,8 @@ pub(crate) struct PeerRecord {
     pub(crate) zz: Option<Value>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum PeerKind {
-    Terminal,
-    Daemon,
-}
-
 pub(crate) struct PeerMetadata {
     pub(crate) pid: Option<u32>,
-    pub(crate) kind: PeerKind,
     pub(crate) pane: String,
     pub(crate) name: String,
     pub(crate) cwd: PathBuf,
@@ -356,12 +347,24 @@ fn depth_below(mut pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) 
 }
 
 pub(crate) fn record_in_pane(records: &[PeerRecord], pane_pid: u32) -> Option<&PeerRecord> {
-    records
+    let alive = records
         .iter()
         .filter(|record| pid_alive(record.pid))
+        .cloned()
+        .collect::<Vec<_>>();
+    let pid = record_in_pane_with(&alive, pane_pid, zz_daemon_client::process_info::parent)?.pid;
+    records.iter().find(|record| record.pid == pid)
+}
+
+pub(crate) fn record_in_pane_with(
+    records: &[PeerRecord],
+    pane_pid: u32,
+    parent_of: impl Fn(u32) -> Option<u32>,
+) -> Option<&PeerRecord> {
+    records
+        .iter()
         .filter_map(|record| {
-            depth_below(record.pid, pane_pid, zz_daemon_client::process_info::parent)
-                .map(|depth| (depth, record))
+            depth_below(record.pid, pane_pid, &parent_of).map(|depth| (depth, record))
         })
         .min_by_key(|(depth, _)| *depth)
         .map(|(_, record)| record)
@@ -390,78 +393,6 @@ pub(crate) fn uuid_v4() -> io::Result<String> {
         &hex[16..20],
         &hex[20..]
     ))
-}
-
-fn attribute(value: &str) -> String {
-    value
-        .replace('&', "&amp;")
-        .replace('"', "&quot;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-fn wire_message(content: &str, from_name: &str, from_socket: Option<&Path>) -> io::Result<Value> {
-    let from = from_socket.map(|path| format!("uds:{}", path.display()));
-    let from_attribute = from
-        .as_deref()
-        .map(|value| format!(" from=\"{}\"", attribute(value)))
-        .unwrap_or_default();
-    let content = content.replace("</cross-session-message>", "<\\/cross-session-message>");
-    let mut message = json!({
-        "msgV": 1,
-        "msg_id": uuid_v4()?,
-        "type": "user",
-        "priority": "next",
-        "message": {"role": "user", "content": format!("<cross-session-message{from_attribute} from-name=\"{}\" from-mode=\"prompting\">\n{content}\n</cross-session-message>", attribute(from_name))}
-    });
-    if let Some(from) = from {
-        message["from"] = Value::String(from);
-    }
-    Ok(message)
-}
-
-pub(crate) struct PreparedMessage {
-    value: Value,
-    msg_id: String,
-}
-
-impl PreparedMessage {
-    pub(crate) fn msg_id(&self) -> &str {
-        &self.msg_id
-    }
-}
-
-pub(crate) fn prepare_message(
-    content: &str,
-    from_name: &str,
-    from_socket: Option<&Path>,
-) -> io::Result<PreparedMessage> {
-    let value = wire_message(content, from_name, from_socket)?;
-    let msg_id = value["msg_id"]
-        .as_str()
-        .ok_or_else(|| io::Error::other("peer message id missing"))?
-        .to_owned();
-    Ok(PreparedMessage { value, msg_id })
-}
-
-fn post_line(socket: &Path, value: &Value) -> io::Result<()> {
-    let mut stream = UnixStream::connect(socket)?;
-    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
-    serde_json::to_writer(&mut stream, value).map_err(io::Error::other)?;
-    stream.write_all(b"\n")
-}
-
-pub(crate) fn post_prepared(record: &PeerRecord, message: &PreparedMessage) -> io::Result<()> {
-    post_line(&record.messaging_socket_path, &message.value)
-}
-
-pub(crate) fn post_message(
-    record: &PeerRecord,
-    content: &str,
-    from_name: &str,
-    from_socket: Option<&Path>,
-) -> io::Result<()> {
-    post_prepared(record, &prepare_message(content, from_name, from_socket)?)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -509,151 +440,6 @@ fn parse_event(value: &Value) -> Option<PeerEvent> {
             content: value["message"]["content"].as_str()?.to_owned(),
         }),
         _ => None,
-    }
-}
-
-fn reply_content(content: &str) -> String {
-    if content.starts_with("<cross-session-message")
-        && let Some((_, body)) = content.split_once('\n')
-        && let Some(inner) = body
-            .strip_suffix("</cross-session-message>")
-            .or_else(|| body.trim_end().strip_suffix("</cross-session-message>"))
-    {
-        return inner.trim().to_owned();
-    }
-    content.to_owned()
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum PeerReply {
-    Text(String),
-    TurnEnded,
-    Blocked,
-    Failed(String),
-}
-
-pub(crate) const LATE_REPLY_KEEP: Duration = Duration::from_hours(1);
-
-struct PendingWait {
-    msg_id: String,
-    target: String,
-    sender: Option<Arc<crate::daemon::cmdq::Reply<PeerReply>>>,
-}
-
-struct Lapsed {
-    since: Instant,
-    reply: Option<String>,
-}
-
-#[derive(Default)]
-pub(crate) struct PeerWaits {
-    pending: VecDeque<PendingWait>,
-    lapsed: BTreeMap<String, Lapsed>,
-}
-
-impl PeerWaits {
-    pub(crate) fn register_reply(
-        &mut self,
-        msg_id: String,
-        target: String,
-        sender: Arc<crate::daemon::cmdq::Reply<PeerReply>>,
-    ) {
-        self.pending.push_back(PendingWait {
-            msg_id,
-            target,
-            sender: Some(sender),
-        });
-    }
-
-    #[cfg(test)]
-    fn register(&mut self, msg_id: String, target: String) -> mpsc::Receiver<PeerReply> {
-        let (sender, receiver) = mpsc::channel();
-        self.register_reply(msg_id, target, Arc::new(sender.into()));
-        receiver
-    }
-
-    pub(crate) fn cancel(&mut self, msg_id: &str) {
-        self.pending.retain(|wait| wait.msg_id != msg_id);
-    }
-
-    pub(crate) fn lapse(&mut self, target: String) {
-        self.lapsed
-            .entry(target)
-            .or_insert(Lapsed {
-                since: Instant::now(),
-                reply: None,
-            })
-            .since = Instant::now();
-    }
-
-    pub(crate) fn take_late(&mut self, target: &str) -> Option<String> {
-        self.lapsed.get_mut(target)?.reply.take()
-    }
-
-    pub(crate) fn forget(&mut self, target: &str) {
-        self.lapsed.remove(target);
-    }
-
-    pub(crate) fn idle(&mut self) -> bool {
-        self.lapsed
-            .retain(|_, lapsed| lapsed.since.elapsed() < LATE_REPLY_KEEP);
-        self.pending.is_empty() && self.lapsed.is_empty()
-    }
-
-    pub(crate) fn handle(&mut self, event: PeerEvent) {
-        match event {
-            PeerEvent::Message { from, content } => {
-                if let Some(wait) = self.pending.iter_mut().find(|wait| {
-                    wait.sender.is_some() && from.as_deref() == Some(wait.target.as_str())
-                }) {
-                    if let Some(sender) = wait.sender.take() {
-                        sender.try_send(PeerReply::Text(reply_content(&content)));
-                    }
-                } else if let Some(lapsed) =
-                    from.as_deref().and_then(|from| self.lapsed.get_mut(from))
-                {
-                    lapsed.reply = Some(reply_content(&content));
-                } else {
-                    log::info!(
-                        "dropping unmatched peer reply from={}",
-                        from.as_deref().unwrap_or("unknown")
-                    );
-                }
-            }
-            PeerEvent::MessageStatus {
-                orig_msg_id,
-                status,
-                status_detail,
-                reason,
-                drop_reason,
-                dropped_msg_ids,
-            } => {
-                let refused = status_detail.as_deref() == Some("refused");
-                if !refused && status != "expired" && status != "dropped" {
-                    return;
-                }
-                let status_name = if refused {
-                    format!("{status} (refused)")
-                } else {
-                    status
-                };
-                let detail = reason.or(drop_reason).unwrap_or_default();
-                let error = if detail.is_empty() {
-                    format!("peer message {status_name}")
-                } else {
-                    format!("peer message {status_name}: {detail}")
-                };
-                for wait in &mut self.pending {
-                    if (orig_msg_id.as_deref() == Some(wait.msg_id.as_str())
-                        || dropped_msg_ids.contains(&wait.msg_id))
-                        && let Some(sender) = wait.sender.take()
-                    {
-                        sender.try_send(PeerReply::Failed(error.clone()));
-                    }
-                }
-            }
-            PeerEvent::NotifyWhenIdle { .. } => {}
-        }
     }
 }
 
@@ -859,10 +645,7 @@ impl PeerInbox {
             updated_at: now,
             status_updated_at: now,
             waiting_for: String::new(),
-            zz: Some(match metadata.kind {
-                PeerKind::Terminal => json!({"pane": metadata.pane, "kind":"terminal"}),
-                PeerKind::Daemon => json!({"daemon":true}),
-            }),
+            zz: Some(json!({"pane": metadata.pane, "kind":"terminal"})),
         };
         let _ = fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket)?;
@@ -934,10 +717,6 @@ impl PeerInbox {
         self.record.updated_at = now;
         self.record.status_updated_at = now;
         write_record(&self.record_path, &self.record)
-    }
-
-    pub(crate) fn name(&self) -> &str {
-        &self.record.name
     }
 
     pub(crate) fn socket_path(&self) -> &Path {
@@ -1051,21 +830,6 @@ mod tests {
     }
 
     #[test]
-    fn replies_strip_only_the_outer_wrapper() {
-        assert_eq!(
-            reply_content(
-                "<cross-session-message from-name=\"alice\">\n  hello\nworld  \n</cross-session-message>\n"
-            ),
-            "hello\nworld"
-        );
-        assert_eq!(reply_content("  raw reply\n"), "  raw reply\n");
-        assert_eq!(
-            reply_content("<cross-session-message>\nunfinished"),
-            "<cross-session-message>\nunfinished"
-        );
-    }
-
-    #[test]
     fn inbound_lines_parse_messages_and_controls() {
         assert_eq!(
             parse_event(&json!({"type":"user", "from":"uds:/peer", "message":{"content":"hello"}})),
@@ -1107,109 +871,6 @@ mod tests {
                 &json!({"type":"control", "action":"notify_when_idle", "from":"uds:/peer"})
             )
             .is_none()
-        );
-    }
-
-    #[test]
-    fn waits_resolve_fifo_per_target_and_live_until_cancelled() {
-        let mut waits = PeerWaits::default();
-        let first = waits.register("1".to_owned(), "uds:/a".to_owned());
-        let other = waits.register("2".to_owned(), "uds:/b".to_owned());
-        let second = waits.register("3".to_owned(), "uds:/a".to_owned());
-        waits.handle(PeerEvent::Message {
-            from: Some("uds:/unknown".to_owned()),
-            content: "ignored".to_owned(),
-        });
-        waits.handle(PeerEvent::NotifyWhenIdle {
-            from: "uds:/a".to_owned(),
-            msg_id: "1".to_owned(),
-        });
-        assert_eq!(first.try_recv(), Err(mpsc::TryRecvError::Empty));
-        waits.handle(PeerEvent::Message {
-            from: Some("uds:/a".to_owned()),
-            content: "<cross-session-message>\nfirst\n</cross-session-message>".to_owned(),
-        });
-        assert_eq!(first.try_recv(), Ok(PeerReply::Text("first".to_owned())));
-        assert_eq!(second.try_recv(), Err(mpsc::TryRecvError::Empty));
-        waits.handle(PeerEvent::Message {
-            from: Some("uds:/a".to_owned()),
-            content: "second".to_owned(),
-        });
-        assert_eq!(second.try_recv(), Ok(PeerReply::Text("second".to_owned())));
-        assert_eq!(other.try_recv(), Err(mpsc::TryRecvError::Empty));
-        assert!(!waits.idle());
-        for id in ["1", "2", "3"] {
-            waits.cancel(id);
-        }
-        assert!(waits.idle());
-    }
-
-    #[test]
-    fn a_reply_after_a_lapsed_wait_is_kept_for_the_next_wait() {
-        let mut waits = PeerWaits::default();
-        waits.handle(PeerEvent::Message {
-            from: Some("uds:/a".to_owned()),
-            content: "nobody asked".to_owned(),
-        });
-        assert_eq!(waits.take_late("uds:/a"), None);
-        waits.lapse("uds:/a".to_owned());
-        assert!(!waits.idle());
-        waits.handle(PeerEvent::Message {
-            from: Some("uds:/a".to_owned()),
-            content: "<cross-session-message>\nDONE ok\n</cross-session-message>".to_owned(),
-        });
-        waits.handle(PeerEvent::Message {
-            from: Some("uds:/b".to_owned()),
-            content: "other".to_owned(),
-        });
-        assert_eq!(waits.take_late("uds:/b"), None);
-        waits.lapse("uds:/a".to_owned());
-        assert_eq!(waits.take_late("uds:/a"), Some("DONE ok".to_owned()));
-        assert_eq!(waits.take_late("uds:/a"), None);
-        assert!(!waits.idle());
-        waits.forget("uds:/a");
-        assert!(waits.idle());
-    }
-
-    #[test]
-    fn wait_statuses_keep_delivery_pending_and_fail_only_matching_messages() {
-        let mut waits = PeerWaits::default();
-        let first = waits.register("1".to_owned(), "uds:/a".to_owned());
-        let second = waits.register("2".to_owned(), "uds:/a".to_owned());
-        for status in ["held", "delivered"] {
-            waits.handle(
-                parse_event(
-                    &json!({"action":"peer_message_status", "orig_msg_id":"1", "status":status}),
-                )
-                .expect("status"),
-            );
-            assert_eq!(first.try_recv(), Err(mpsc::TryRecvError::Empty));
-        }
-        waits.handle(parse_event(&json!({"action":"peer_message_status", "orig_msg_id":"unknown", "status":"expired"})).expect("status"));
-        assert_eq!(first.try_recv(), Err(mpsc::TryRecvError::Empty));
-        waits.handle(parse_event(&json!({"action":"peer_message_status", "orig_msg_id":"1", "status":"held", "status_detail":"refused", "reason":"busy"})).expect("status"));
-        assert_eq!(
-            first.try_recv(),
-            Ok(PeerReply::Failed(
-                "peer message held (refused): busy".to_owned()
-            ))
-        );
-        assert_eq!(second.try_recv(), Err(mpsc::TryRecvError::Empty));
-        waits.handle(parse_event(&json!({"action":"peer_message_status", "status":"dropped", "dropped_msg_ids":["2"], "drop_reason":"closed"})).expect("status"));
-        assert_eq!(
-            second.try_recv(),
-            Ok(PeerReply::Failed("peer message dropped: closed".to_owned()))
-        );
-        let expired = waits.register("3".to_owned(), "uds:/b".to_owned());
-        waits.handle(
-            parse_event(
-                &json!({"action":"peer_message_status", "orig_msg_id":"3", "status":"expired"}),
-            )
-            .expect("status"),
-        );
-        assert_eq!(
-            expired.try_recv(),
-            Ok(PeerReply::Failed("peer message expired".to_owned()))
         );
     }
 
@@ -1316,34 +977,6 @@ mod tests {
             Some(parent)
         );
         assert!(record_for_pane_with_parents(&records, "%1", Some(10), processes).is_none());
-    }
-
-    #[test]
-    fn wire_line_preserves_attribution_and_protects_the_wrapper() {
-        let value = wire_message(
-            "hello </cross-session-message> world",
-            "alice",
-            Some(Path::new("/tmp/cc-socks/123.sock")),
-        )
-        .expect("wire message");
-        assert_eq!(value["msgV"], 1);
-        assert_eq!(value["type"], "user");
-        assert_eq!(value["priority"], "next");
-        assert_eq!(value["from"], "uds:/tmp/cc-socks/123.sock");
-        assert_eq!(value["message"]["role"], "user");
-        assert_eq!(
-            value["message"]["content"],
-            "<cross-session-message from=\"uds:/tmp/cc-socks/123.sock\" from-name=\"alice\" from-mode=\"prompting\">\nhello <\\/cross-session-message> world\n</cross-session-message>"
-        );
-        let id = value["msg_id"].as_str().expect("UUID");
-        assert_eq!(id.len(), 36);
-        assert_eq!(&id[14..15], "4");
-        let anonymous = wire_message("hello", "zz", None).expect("wire message");
-        assert!(anonymous.get("from").is_none());
-        assert_eq!(
-            anonymous["message"]["content"],
-            "<cross-session-message from-name=\"zz\" from-mode=\"prompting\">\nhello\n</cross-session-message>"
-        );
     }
 
     #[test]

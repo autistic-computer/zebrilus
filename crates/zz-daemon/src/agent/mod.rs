@@ -12,6 +12,8 @@ pub(crate) mod claude;
 pub(crate) mod claude_peers;
 #[cfg(unix)]
 pub(crate) mod claude_plugin;
+#[cfg(unix)]
+pub(crate) mod cli_session;
 pub(crate) mod codex;
 #[cfg(unix)]
 pub(crate) mod codex_queue;
