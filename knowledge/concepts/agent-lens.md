@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript or joins the Codex TUI's app server, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, app-server, terminal, pane]
-timestamp: 2026-10-31T22:00:00-03:00
+timestamp: 2026-10-31T22:30:00-03:00
 ---
 
 # Overview
@@ -127,11 +127,19 @@ lens, from typing in the terminal, or from a peer message.
 
 # Codex over the app server
 
-A Codex TUI started without `-c`/`--config`, `--enable`, `--disable`, `--search`,
-`--profile`/`-p`, `--oss`, `--no-daemon`, `--strict-config` or `--remote` runs its threads on the
-managed app server it starts itself (`codex_live::embedded` decides). Once the runtime has found the
-TUI's rollout (above), `Codex::load` joins that server as a second client (`agent/lens_codex_live.rs`,
-transport in `agent/codex/control.rs`):
+A Codex TUI runs its threads on the managed app server it starts itself unless it is in embedded
+mode. `codex_live::embedded` reads that from its arguments the way Codex 0.166 does: `-c`/`--config`
+overrides other than `features.<name>=true|false`, `tui.fullscreen_transcript` and
+`suppress_unstable_features_warning`, `--search`, `--profile`/`-p`, `--oss`, `--no-daemon`,
+`--strict-config`, `--dangerously-bypass-hook-trust` and `--remote` (its own server) all count;
+`--enable` and `--disable` become feature overrides and do not. Embedded mode the arguments do not
+show (an executor or identity from the environment, a feature mismatch with the running server) is
+caught because only an embedded TUI holds its rollout open. Once the runtime has found the TUI's
+rollout (above), `Codex::load` joins that server as a second client (`agent/lens_codex_live.rs`,
+transport in `agent/codex/control.rs`), provided no other Codex TUI runs in the thread's folder
+(the folder each was started in or pointed at with `-C`): nothing ties a TUI process to its thread,
+so with two TUIs in one folder the lens could not tell which thread is this pane's and keeps the
+rollout path:
 
 - It resolves `$CODEX_HOME/app-server-control/app-server-control.sock`, a symlink into
   `/tmp/codex-daemon-<uid>/` that keeps the path under `sun_path`, upgrades it to a WebSocket with
@@ -139,7 +147,7 @@ transport in `agent/codex/control.rs`):
   notifications opted out), checks that `thread/loaded/list` holds the rollout's thread, and
   subscribes with `thread/resume {excludeTurns: true}`. A reader thread polls the socket every 20 ms
   and wakes the lens loop (`Lens::wake`), so live frames do not wait for the 250 ms tick.
-- History still comes from the rollout, read after the subscription. The item ids it names are kept,
+- History still comes from the rollout, opened after the subscription. The item ids it names are kept,
   and live `item/*` frames for them are dropped, so nothing shows twice and nothing between the two
   goes missing. A live `item/completed` whose start came before the join gets its start first.
 - Live frames go through the `codex::translate::Translator` the native driver uses.
@@ -173,12 +181,18 @@ transport in `agent/codex/control.rs`):
   next turn, so nothing is held. Typed `/plan` sets `collaborationMode` to `plan` the same way. Folder
   changes are still typed as `/cd`.
 - `thread/started` for a new top-level, non-ephemeral thread in the same folder (`/new`, `/fork` or
-  `/resume` typed in the TUI) makes that thread the session once its rollout exists. Another TUI in
-  the same folder can be mistaken for this one, as with the rollout guess.
+  `/resume` typed in the TUI) makes that thread the session once its rollout exists, when it forks
+  the joined thread or this TUI is the only one in the folder. A thread created within 30 s of
+  another TUI in the folder starting is that TUI's and is ignored. Any other new thread there could
+  be either TUI's, so the lens leaves the server and goes back to the rollout path.
 - When the TUI exits, the runtime unsubscribes, closes the socket and skips the rollout tail past
-  what live frames covered. A Codex that shows up in the pane again joins without a reload: the
-  rollout lines it has not read yet come first, then live frames. A connection the server closes
-  reloads the session.
+  what live frames covered. Every card still open from the server is withdrawn, here and whenever
+  the link drops or the lens joins another thread. A Codex that shows up in the pane again joins
+  without a reload once locating its rollout finds the same one, since threads stay loaded after
+  their TUI leaves and the new one may be on a fresh thread: the rollout lines not read yet come
+  first, then live frames. A connection the server closes reloads the session.
+- Streamed command output keeps at most four times what a row shows (`codex::translate`), so a
+  background terminal that keeps writing does not grow the lens.
 
 Anything else (embedded mode, no socket, a failed handshake, a thread the server has not loaded)
 keeps the rollout tail and typed keys this page describes. Checked live on 2026-10-31 against Codex
@@ -186,7 +200,10 @@ keeps the rollout tail and typed keys this page describes. Checked live on 2026-
 lens prompt showed in the TUI, an approval answered in the lens closed the TUI's dialog and one
 answered in the TUI withdrew the card, an async question answered in the lens showed as "↪ Re:
 Which color?", a model and effort pick moved the TUI's status line to GPT-5.6-Luna medium, Stop
-showed "Conversation interrupted", and a TUI started with `-c` stayed on the rollout path.
+showed "Conversation interrupted", and a TUI started with `-c` stayed on the rollout path. A
+second check the same day: with a lens joined to one TUI, a second TUI started in the same folder
+and sent its first message without taking the lens, a lens on the second TUI kept the rollout path,
+and only a `--no-daemon` TUI held its rollout open.
 
 # Input and approvals
 
