@@ -68,12 +68,13 @@ from the CLI's own transcript.
 | `ala`, `ala-macros`, `ala-platform` | ala, our GPUI: the core with Zed's utility code folded in, its macros, and every platform backend (iOS's UIKit and Android's NDK ones included) as a module per target |
 | `penna` | widget kit on ala: theme, primitives, widgets, settings and phone chrome, icons; no zz dependencies (see [penna](/references/penna.md)) |
 | `zz-ui` | zz's application UI on penna, shared by the desktop and thin clients |
+| `pele` (`libs/pele`) | Mermaid text to static SVG in Rust, no JavaScript engine; zz-ui's agent chat draws mermaid blocks with it |
 | `zz-app` (`clients/app`) | the thin-client app the web, iOS and Android clients share |
 | `zz-ios` (`clients/ios`) | iOS entry point around zz-app and ala-platform's UIKit backend |
 | `zz-android` (`clients/android`) | Android entry point around zz-app and ala-platform's NDK backend, with the Java glue and APK files |
 | [zz-xtask](/crates/zz-xtask.md) | builds and validates platform CEF bundles |
 
-Workspace members without a dedicated page here: the ala crates (see [ala](/references/ala.md)), `penna` (see [penna](/references/penna.md)), `zz-ui`, `zz-app`, `zz-ios`, `zz-android`, and `zz-tui` (`zz attach`).
+Workspace members without a dedicated page here: the ala crates (see [ala](/references/ala.md)), `penna` (see [penna](/references/penna.md)), `pele` (its `UPSTREAM.md` and `PORT_STATUS.json` say what is ported), `zz-ui`, `zz-app`, `zz-ios`, `zz-android`, and `zz-tui` (`zz attach`).
 The UIKit backend is `libs/ala/crates/ala-platform/src/ios`; the iOS app and its launch resources live in `clients/ios`.
 The Android backend is `libs/ala/crates/ala-platform/src/android`; the Android app, its Java glue and manifest live in `clients/android`.
 See [crates](/crates/index.md).
