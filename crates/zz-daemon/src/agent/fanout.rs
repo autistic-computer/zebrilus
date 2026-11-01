@@ -1919,7 +1919,6 @@ mod tests {
         let spec = AgentPaneSpec {
             model: None,
             effort: None,
-            lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,

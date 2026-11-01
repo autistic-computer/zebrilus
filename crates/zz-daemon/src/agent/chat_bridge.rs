@@ -31,8 +31,6 @@ pub(crate) struct Shadow {
     asked: HashMap<u64, ItemId>,
     answered_items: HashSet<ItemId>,
     answers: u64,
-    backgrounded: HashSet<ItemId>,
-    attached: bool,
     history: Vec<AgentStreamPayload>,
     pub(crate) events: Vec<ChatEvent>,
     outbox: Vec<ChatEvent>,
@@ -61,12 +59,6 @@ impl Shadow {
     #[must_use]
     pub(crate) fn codex(mut self) -> Self {
         self.codex = true;
-        self
-    }
-
-    #[must_use]
-    pub(crate) fn attached(mut self) -> Self {
-        self.attached = true;
         self
     }
 
@@ -101,7 +93,6 @@ impl Shadow {
         {
             if self.session.is_some() {
                 self.splits.clear();
-                self.backgrounded.clear();
                 self.bodies.clear();
                 self.plan = None;
             }
@@ -228,13 +219,6 @@ impl Shadow {
         let Some(text) = update["content"]["text"].as_str() else {
             return;
         };
-        if self.attached
-            && kind == ItemKind::User
-            && !self.replaying
-            && self.state.current().is_none()
-        {
-            self.step(Fact::Turn(turn::Fact::Busy));
-        }
         let parent = update["_meta"]["zz"]["parent"].as_str().map(ItemId::new);
         let whole = whole || parent.is_some();
         let key = update["messageId"].as_str().unwrap_or("message");
@@ -472,11 +456,7 @@ impl Shadow {
         let leftover = self
             .state
             .open_kinds()
-            .filter(|(id, _, _)| {
-                !before.contains(id)
-                    && !self.state.asked_about(id)
-                    && (!self.attached || !self.state.within(id, &self.backgrounded))
-            })
+            .filter(|(id, _, _)| !before.contains(id) && !self.state.asked_about(id))
             .map(|(id, kind, _)| (id.clone(), kind))
             .collect::<Vec<_>>();
         for (item, kind) in leftover.into_iter().rev() {
@@ -515,9 +495,6 @@ impl Shadow {
                 self.rejects.push((fact, reject));
             }
             return Vec::new();
-        }
-        if let Fact::ItemBackgrounded { item } = &fact {
-            self.backgrounded.insert(item.clone());
         }
         let mut effects = Vec::new();
         for effect in step.effects {

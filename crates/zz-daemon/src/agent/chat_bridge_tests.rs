@@ -557,7 +557,7 @@ fn a_chat_mode_prompt_shows_its_pasted_images_and_sends_them_once() {
         format: "image/png".to_owned(),
         data: b"hi".to_vec(),
     };
-    let mut shadow = Shadow::recording().attached();
+    let mut shadow = Shadow::recording();
     ready(&mut shadow);
     let mut sent = Vec::new();
     for (id, text) in [("p1", "what is this?"), ("p2", "")] {
@@ -660,7 +660,7 @@ fn only_a_spawned_codex_agent_is_a_subagent() {
 
 #[test]
 fn an_async_codex_question_outlives_its_turn_and_takes_its_answer() {
-    let mut shadow = Shadow::recording().codex().attached();
+    let mut shadow = Shadow::recording().codex();
     ready(&mut shadow);
     shadow.turn(&turn::Fact::Busy, None, Instant::now());
     shadow.payload(&update(json!({

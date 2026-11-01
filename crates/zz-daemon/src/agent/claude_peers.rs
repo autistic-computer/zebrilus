@@ -346,16 +346,6 @@ fn depth_below(mut pid: u32, root: u32, parent_of: impl Fn(u32) -> Option<u32>) 
     None
 }
 
-pub(crate) fn record_in_pane(records: &[PeerRecord], pane_pid: u32) -> Option<&PeerRecord> {
-    let alive = records
-        .iter()
-        .filter(|record| pid_alive(record.pid))
-        .cloned()
-        .collect::<Vec<_>>();
-    let pid = record_in_pane_with(&alive, pane_pid, zz_daemon_client::process_info::parent)?.pid;
-    records.iter().find(|record| record.pid == pid)
-}
-
 pub(crate) fn record_in_pane_with(
     records: &[PeerRecord],
     pane_pid: u32,
@@ -903,9 +893,10 @@ mod tests {
     }
 
     #[test]
-    fn the_lens_finds_the_claude_nearest_the_pane_without_a_tmux_field() {
+    fn the_record_nearest_the_pane_wins_without_a_tmux_field() {
         let me = std::process::id();
         let parent = std::os::unix::process::parent_id();
+        let parent_of = zz_daemon_client::process_info::parent;
         let record = |pid| PeerRecord {
             pid,
             updated_at: now_ms(),
@@ -913,14 +904,17 @@ mod tests {
         };
         let records = [record(me), record(parent)];
         assert_eq!(
-            record_in_pane(&records, parent).map(|record| record.pid),
+            record_in_pane_with(&records, parent, parent_of).map(|record| record.pid),
             Some(parent)
         );
         assert_eq!(
-            record_in_pane(&records, me).map(|record| record.pid),
+            record_in_pane_with(&records, me, parent_of).map(|record| record.pid),
             Some(me)
         );
-        assert!(record_in_pane(&records[..1], parent.saturating_add(1_000_000)).is_none());
+        assert!(
+            record_in_pane_with(&records[..1], parent.saturating_add(1_000_000), parent_of)
+                .is_none()
+        );
     }
 
     #[test]

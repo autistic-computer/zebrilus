@@ -106,28 +106,6 @@ impl Translator {
         }))
     }
 
-    pub(crate) fn knows(&self, tool: &str) -> bool {
-        self.tools.contains_key(tool)
-    }
-
-    pub(crate) fn running(&self, tool: &str) -> bool {
-        self.knows(tool) && (!self.settled.contains(tool) || self.background.contains(tool))
-    }
-
-    pub(crate) fn waiting_on(&self, tool: &str) -> bool {
-        self.settled.contains(tool) && self.background.contains(tool)
-    }
-
-    pub(crate) fn agent_finished(&mut self, tool: &str, result: Option<&str>) -> Vec<Value> {
-        self.system(&json!({
-            "type": "system",
-            "subtype": "task_notification",
-            "tool_use_id": tool,
-            "status": "completed",
-            "summary": result,
-        }))
-    }
-
     pub(crate) fn task_tool_call(&self, task_id: &str) -> Option<String> {
         self.task_tools.get(task_id).cloned()
     }
@@ -1340,7 +1318,6 @@ mod tests {
         assert_eq!(updates[0]["status"], "in_progress");
         assert_eq!(updates[0]["_meta"]["zz"]["background"], true);
         assert!(updates[0].get("content").is_none(), "{}", updates[0]);
-        assert!(translator.running("g1"));
         let done = json!({"type":"user","uuid":"u2","message":{"role":"user","content":
             "<task-notification>\n<task-id>a9</task-id>\n<tool-use-id>g1</tool-use-id>\n<status>completed</status>\n<summary>Agent \"Find it\" finished</summary>\n<result>src/lib.rs:4</result>\n<usage><duration_ms>6532</duration_ms></usage>\n</task-notification>"}});
         let updates = translator.history_entry(&done);
@@ -1348,7 +1325,6 @@ mod tests {
         assert_eq!(updates[0]["toolCallId"], "g1");
         assert_eq!(updates[0]["status"], "completed");
         assert_eq!(updates[0]["content"][0]["content"]["text"], "src/lib.rs:4");
-        assert!(!translator.running("g1"));
     }
 
     #[test]

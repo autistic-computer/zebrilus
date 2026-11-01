@@ -56,7 +56,6 @@ fn spec() -> AgentPaneSpec {
         workspace: AgentWorkspaceEnvironment::default(),
         model: None,
         effort: None,
-        lens: None,
     }
 }
 

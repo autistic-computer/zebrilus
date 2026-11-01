@@ -236,15 +236,7 @@ pub(crate) struct AgentPaneSpec {
     pub(crate) effort: Option<String>,
     pub(crate) auto_approve: Option<AgentAutoApprove>,
     pub(crate) workspace: AgentWorkspaceEnvironment,
-    pub(crate) lens: Option<LensSpec>,
 }
-
-#[cfg(unix)]
-pub(crate) use crate::agent::lens::LensSpec;
-
-#[cfg(not(unix))]
-#[derive(Clone, Debug)]
-pub(crate) enum LensSpec {}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum AgentConnectionPhase {
@@ -316,7 +308,6 @@ impl AgentPaneState {
         Self::new(&AgentPaneSpec {
             model: None,
             effort: None,
-            lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -450,13 +441,6 @@ impl AgentHost {
             .as_ref()
             .map(|factory| factory(&spec))
         {
-            return self.open_with(pane, generation, spec, runner);
-        }
-        #[cfg(unix)]
-        if let Some(lens) = spec.lens.clone() {
-            let runner: PaneRunner = Box::new(move |channels: RuntimeChannels| {
-                Box::pin(crate::agent::lens::run_lens(lens, channels))
-            });
             return self.open_with(pane, generation, spec, runner);
         }
         let mut config = self.config.lock().clone();
@@ -1402,7 +1386,7 @@ impl PanePump {
             let state = self.state.lock();
             state.phase == AgentConnectionPhase::Running
                 && state.pending_permissions.is_empty()
-                && (state.capabilities.verbs || self.spec.lens.is_some())
+                && state.capabilities.verbs
         };
         let text = prompt.text.trim();
         if !steerable || text.is_empty() || !prompt.images.is_empty() {
@@ -2002,7 +1986,6 @@ mod tests {
                 AgentPaneSpec {
                     model: None,
                     effort: None,
-                    lens: None,
                     provider: AgentProvider::Codex,
                     cwd: PathBuf::from("/"),
                     resume_session: None,
@@ -2036,7 +2019,6 @@ mod tests {
             let spec = AgentPaneSpec {
                 model: None,
                 effort: None,
-                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: cwd.unwrap_or_else(|| PathBuf::from("/")),
                 resume_session,
@@ -2462,7 +2444,6 @@ mod tests {
                     AgentPaneSpec {
                         model: None,
                         effort: None,
-                        lens: None,
                         provider,
                         cwd: directory.path().to_owned(),
                         resume_session: None,
@@ -3338,7 +3319,6 @@ mod tests {
         let spec = AgentPaneSpec {
             model: None,
             effort: None,
-            lens: None,
             provider: AgentProvider::Codex,
             cwd: PathBuf::from("/"),
             resume_session: None,
@@ -3546,7 +3526,6 @@ mod tests {
             AgentPaneSpec {
                 model: None,
                 effort: None,
-                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
@@ -3623,7 +3602,6 @@ mod tests {
             AgentPaneSpec {
                 model: None,
                 effort: None,
-                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,

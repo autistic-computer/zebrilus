@@ -175,7 +175,6 @@ impl Shared {
             workspace: AgentWorkspaceEnvironment::default(),
             model: None,
             effort: None,
-            lens: None,
         };
         runtime.open(pane, spec)
     }

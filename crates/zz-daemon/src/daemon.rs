@@ -56,8 +56,6 @@ mod history_io;
     reason = "job families move to the loop registry in subsequent slices"
 )]
 mod jobs;
-#[cfg(feature = "agent")]
-mod lens;
 #[cfg(unix)]
 mod lifecycle;
 #[cfg(unix)]
@@ -4702,8 +4700,6 @@ struct SharedServer {
     agent_stopped: AtomicBool,
     #[cfg(all(feature = "agent", unix))]
     agent_peers: Mutex<BTreeMap<PaneId, crate::agent::claude_peers::PeerInbox>>,
-    #[cfg(all(feature = "agent", unix))]
-    lens_hub: std::sync::OnceLock<Option<crate::agent::lens_channel::Hub>>,
     #[cfg(feature = "agent")]
     agent_tx: agent_publisher::Sender,
     #[cfg(feature = "agent")]
@@ -5664,8 +5660,6 @@ impl Shared {
             agent_stopped: AtomicBool::new(false),
             #[cfg(all(feature = "agent", unix))]
             agent_peers: Mutex::new(BTreeMap::new()),
-            #[cfg(all(feature = "agent", unix))]
-            lens_hub: std::sync::OnceLock::new(),
             #[cfg(feature = "agent")]
             agent_tx,
             #[cfg(feature = "agent")]
@@ -9871,12 +9865,6 @@ impl Shared {
                                     &shim.executable,
                                 );
                             }
-                            #[cfg(all(unix, feature = "agent"))]
-                            if self.mux_config_selection.lock().0 {
-                                crate::agent::claude_plugin::pane_environment(&mut env, || {
-                                    self.lens_hub().map(|hub| hub.path().to_path_buf())
-                                });
-                            }
                             if let Some(path) = &working_directory {
                                 env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
                             }
@@ -10055,12 +10043,6 @@ impl Shared {
                                 &shim.directory,
                                 &shim.executable,
                             );
-                        }
-                        #[cfg(all(unix, feature = "agent"))]
-                        if self.mux_config_selection.lock().0 {
-                            crate::agent::claude_plugin::pane_environment(&mut env, || {
-                                self.lens_hub().map(|hub| hub.path().to_path_buf())
-                            });
                         }
                         if let Some(path) = &working_directory {
                             env.push(("PWD".into(), Some(path.as_os_str().to_owned())));
@@ -33160,7 +33142,6 @@ impl Shared {
                 tmux_pane: Some(pane.to_string()),
                 ..AgentWorkspaceEnvironment::default()
             },
-            lens: None,
         })
     }
 
@@ -33174,11 +33155,6 @@ impl Shared {
             let mut peers = self.agent_peers.lock();
             for pane in panes {
                 peers.remove(pane);
-            }
-            if let Some(hub) = self.lens_hub.get().and_then(Option::as_ref) {
-                for pane in panes {
-                    hub.forget(*pane);
-                }
             }
         }
         if let Some(runtime) = self.open_agent_runtime() {
@@ -33203,10 +33179,6 @@ impl Shared {
             self.agent_stopped.store(true, Ordering::Release);
             #[cfg(unix)]
             self.agent_peers.lock().clear();
-            #[cfg(unix)]
-            if let Some(hub) = self.lens_hub.get().and_then(Option::as_ref) {
-                hub.close();
-            }
             self.agent.lock().take()
         };
         let Some(runtime) = runtime else {
@@ -84609,7 +84581,6 @@ set-option -g @alias-mixed-next yes
             AgentPaneSpec {
                 model: None,
                 effort: None,
-                lens: None,
                 provider: AgentProvider::Codex,
                 cwd: PathBuf::from("/"),
                 resume_session: None,
