@@ -232,7 +232,7 @@ impl Link {
                 }
                 self.done = Some(Instant::now());
                 drained.finished = true;
-                self.resolve(|_| true);
+                self.resolve(|ask| ask.agent.is_none());
             }
             "done" => self.resolve(|ask| ask.agent.as_deref() == agent),
             "end" => {

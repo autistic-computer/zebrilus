@@ -171,7 +171,8 @@ and is the whole story when the plugin is not there.
   with the same decisions (`allow` with `updatedInput`, Always allow with the suggestions,
   `allow_with_mode` for a plan, `answered` for questions, several and multi-select joined with
   ", "). An answer given in the TUI withdraws the card on `used`, the next step of that loop, the
-  turn's end, or when the plugin stops polling, and the waiting hook gets `pass`.
+  end of that loop's turn (a background agent's card outlives the main turn), or when the plugin
+  stops polling, and the waiting hook gets `pass`.
 - **Actions.** A prompt goes through `$.prompt.submit({ text, asUser: true })`; the TUI shows
   "Prompt from the zz plugin" and the transcript records it with a plugin origin. Prompts with
   images, slash commands and steers are still typed. After Esc the CLI refuses plugin prompts until

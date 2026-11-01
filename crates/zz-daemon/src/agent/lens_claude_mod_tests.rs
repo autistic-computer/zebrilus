@@ -893,3 +893,31 @@ fn another_claude_in_the_pane_is_ignored_and_never_blocked() {
     assert_eq!(nested.join().unwrap(), json!({ "pass": true }));
     assert!(texts(&lens.tick(), "agent_message_chunk").is_empty());
 }
+
+#[test]
+fn a_background_agents_card_outlives_the_main_turn_and_closes_with_its_own() {
+    let rig = Rig::new(true);
+    let mut lens = rig.lens();
+    lens.open();
+    let _poll = rig.poll();
+    rig.hello(Some(TURN));
+    live(&mut lens);
+    let hook = rig.ask(json!({
+        "t": "ask", "key": "mod-1:5", "tool": "Bash", "input": { "command": "ls" },
+        "id": "toolu_bg", "agent": "a1",
+    }));
+    let started = Instant::now();
+    let request_id = loop {
+        if let Some((request_id, ..)) = requested(&lens.tick()) {
+            break request_id;
+        }
+        assert!(started.elapsed() < Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    rig.post(&[json!({ "t": "done", "turn": TURN, "reason": "answer" })]);
+    assert!(resolved(&lens.tick()).is_empty());
+    assert!(!hook.is_finished());
+    rig.post(&[json!({ "t": "done", "turn": "agent-turn", "agent": "a1", "reason": "answer" })]);
+    assert_eq!(resolved(&lens.tick()), [request_id]);
+    assert_eq!(hook.join().unwrap(), json!({ "pass": true }));
+}
