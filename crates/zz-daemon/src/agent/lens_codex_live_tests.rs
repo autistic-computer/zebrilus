@@ -954,3 +954,34 @@ fn a_tui_relaunched_in_the_pane_is_joined_only_once_its_rollout_is_this_one() {
         .collect::<Vec<_>>();
     assert_eq!(named(&sent, "thread/resume").len(), 1);
 }
+
+#[test]
+fn a_model_picked_in_the_terminal_moves_the_lens_controls() {
+    let mut live = Harness::joined();
+    live.sent();
+    assert_eq!(
+        live.lens.source.facts().model.as_deref(),
+        Some("gpt-6-luna")
+    );
+    let mut updated = frames("settings")
+        .into_iter()
+        .find(|message| message["method"] == "thread/settings/updated")
+        .expect("a settings frame");
+    updated["params"]["threadSettings"]["model"] = Value::from("gpt-5.6-luna");
+    updated["params"]["threadSettings"]["effort"] = Value::from("medium");
+    let mut elsewhere = updated.clone();
+    elsewhere["params"]["threadId"] = Value::from("another-thread");
+    elsewhere["params"]["threadSettings"]["model"] = Value::from("gpt-6-sol");
+    let moved = live.play(&[elsewhere, updated]);
+    let changed = moved
+        .iter()
+        .filter_map(|payload| match payload {
+            AgentStreamPayload::ConfigOptionsChanged {
+                option_id, value, ..
+            } => Some((option_id.as_str(), value.as_str())),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(changed, [("model", "gpt-5.6-luna"), ("effort", "medium")]);
+    assert!(live.sent().is_empty(), "nothing goes back to the server");
+}
