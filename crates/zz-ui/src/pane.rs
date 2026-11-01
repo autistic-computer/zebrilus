@@ -171,13 +171,52 @@ pub enum TerminalPaneAction {
     Tile,
     Zoom,
     Close,
-    Lens,
+    Flip,
+}
+
+pub use zz_client::agent_flip::FlipTo;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PaneFlip {
+    pub provider: zz_protocol::AgentProvider,
+    pub to: FlipTo,
+    pub armed: bool,
+    pub pending: bool,
+}
+
+impl PaneFlip {
+    #[must_use]
+    pub fn of(
+        pane: &zz_protocol::PaneSnapshot,
+        flip: &zz_client::agent_flip::Flip,
+    ) -> Option<Self> {
+        zz_client::agent_flip::flip_target(pane).map(|target| Self {
+            provider: target.provider,
+            to: target.to,
+            armed: flip.armed(),
+            pending: flip.pending(),
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct PaneLens {
-    pub provider: zz_protocol::AgentProvider,
-    pub open: bool,
+pub enum FlipChoice {
+    WhenIdle,
+    Now,
+    Dismiss,
+    Cancel,
+}
+
+impl FlipChoice {
+    #[must_use]
+    pub const fn mode(self) -> Option<zz_client::agent_flip::FlipMode> {
+        match self {
+            Self::WhenIdle => Some(zz_client::agent_flip::FlipMode::WhenIdle),
+            Self::Now => Some(zz_client::agent_flip::FlipMode::Now),
+            Self::Cancel => Some(zz_client::agent_flip::FlipMode::Cancel),
+            Self::Dismiss => None,
+        }
+    }
 }
 
 impl TerminalPaneAction {
@@ -202,7 +241,7 @@ impl TerminalPaneAction {
                 "kill-pane",
                 ["-t".to_owned(), pane.to_string()],
             )],
-            Self::Lens => Vec::new(),
+            Self::Flip => Vec::new(),
         }
     }
 }
@@ -245,7 +284,7 @@ pub fn terminal_pane_header(
     title: impl Into<SharedString>,
     drag: PaneDragSource,
     floats: bool,
-    lens: Option<PaneLens>,
+    flip: Option<PaneFlip>,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<ala::Div> {
@@ -255,32 +294,180 @@ pub fn terminal_pane_header(
         title,
         drag,
         floats,
-        lens,
+        flip,
         on_action,
         cx,
     )
 }
 
-pub fn pane_lens_button(
-    lens: PaneLens,
-    on_toggle: impl Fn(&mut Window, &mut App) + 'static,
+#[must_use]
+pub const fn flip_icon(to: FlipTo) -> IconName {
+    match to {
+        FlipTo::Chat => IconName::Chat,
+        FlipTo::Cli => IconName::SquareTerminal,
+    }
+}
+
+pub fn pane_flip_button(
+    flip: PaneFlip,
+    on_flip: impl Fn(&mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Button {
-    let label = if lens.open {
-        "Show terminal"
-    } else {
-        "Show agent view"
-    };
-    pane_header_icon_button("pane-lens", IconName::Eye, true, cx)
-        .surface_role(roles::PANE_LENS)
-        .debug_selector(|| "pane-lens".into())
-        .selected(lens.open)
-        .when(lens.open, |button| button.text_color(cx.theme().foreground))
-        .tooltip(label)
+    pane_header_icon_button("pane-flip", flip_icon(flip.to), !flip.pending, cx)
+        .surface_role(roles::PANE_FLIP)
+        .debug_selector(|| "pane-flip".into())
+        .selected(flip.armed)
+        .when(flip.armed, |button| {
+            button.text_color(cx.theme().foreground)
+        })
+        .tooltip(zz_client::agent_flip::flip_tooltip(flip.to, flip.armed))
         .on_click(move |_, window, cx| {
             cx.stop_propagation();
-            on_toggle(window, cx);
+            on_flip(window, cx);
         })
+}
+
+fn flip_choice_button(
+    id: impl Into<ElementId>,
+    label: &'static str,
+    choice: FlipChoice,
+    on_choice: &std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)>,
+) -> Button {
+    let on_choice = std::rc::Rc::clone(on_choice);
+    Button::new(id)
+        .label(label)
+        .compact()
+        .when(choice != FlipChoice::Now, |button| {
+            button.emphasis(Emphasis::Ghost)
+        })
+        .on_click(move |_, window, cx| {
+            cx.stop_propagation();
+            on_choice(choice, window, cx);
+        })
+}
+
+pub fn pane_flip_busy(
+    pane: zz_protocol::PaneId,
+    reason: &str,
+    on_choice: impl Fn(FlipChoice, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<ala::Div> {
+    let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
+        std::rc::Rc::new(on_choice);
+    pane_chip(PaintState::Rest, cx)
+        .id(("pane-flip-busy", pane.0))
+        .debug_selector(|| "pane-flip-busy".into())
+        .flex()
+        .flex_col()
+        .gap(px(8.0))
+        .w(px(300.0))
+        .max_w_full()
+        .p(px(10.0))
+        .font_family(cx.theme().font_family.clone())
+        .text_size(crate::rems_from_px(13.0))
+        .line_height(px(16.0))
+        .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            div()
+                .flex()
+                .items_start()
+                .gap(px(7.0))
+                .child(
+                    div().relative().top(px(1.5)).child(
+                        Icon::new(IconName::TriangleAlert)
+                            .size(px(13.0))
+                            .text_color(cx.theme().warning),
+                    ),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .gap(px(2.0))
+                        .child(
+                            div()
+                                .font_weight(FontWeight::MEDIUM)
+                                .child(zz_client::agent_flip::BUSY_TITLE),
+                        )
+                        .child(
+                            div()
+                                .text_color(cx.theme().foreground.muted())
+                                .child(zz_client::agent_flip::busy_detail(reason)),
+                        ),
+                )
+                .child(
+                    flip_choice_button(
+                        ("pane-flip-dismiss", pane.0),
+                        "",
+                        FlipChoice::Dismiss,
+                        &on_choice,
+                    )
+                    .icon(IconName::Xmark)
+                    .tooltip("Keep this pane as it is"),
+                ),
+        )
+        .child(
+            div()
+                .flex()
+                .justify_end()
+                .gap(px(6.0))
+                .child(flip_choice_button(
+                    ("pane-flip-when-idle", pane.0),
+                    zz_client::agent_flip::WHEN_IDLE_LABEL,
+                    FlipChoice::WhenIdle,
+                    &on_choice,
+                ))
+                .child(flip_choice_button(
+                    ("pane-flip-now", pane.0),
+                    zz_client::agent_flip::NOW_LABEL,
+                    FlipChoice::Now,
+                    &on_choice,
+                )),
+        )
+}
+
+pub fn pane_flip_armed(
+    pane: zz_protocol::PaneId,
+    to: FlipTo,
+    on_cancel: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Stateful<ala::Div> {
+    let on_choice: std::rc::Rc<dyn Fn(FlipChoice, &mut Window, &mut App)> =
+        std::rc::Rc::new(move |_, window, cx| on_cancel(window, cx));
+    pane_status_badge(IconName::Clock, zz_client::agent_flip::armed_label(to), cx)
+        .id(("pane-flip-armed", pane.0))
+        .debug_selector(|| "pane-flip-armed".into())
+        .pr(px(4.0))
+        .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(flip_choice_button(
+            ("pane-flip-cancel", pane.0),
+            zz_client::agent_flip::CANCEL_LABEL,
+            FlipChoice::Cancel,
+            &on_choice,
+        ))
+}
+
+pub fn pane_flip_overlay(
+    pane: zz_protocol::PaneId,
+    to: FlipTo,
+    flip: &zz_client::agent_flip::Flip,
+    on_choice: impl Fn(FlipChoice, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Option<AnyElement> {
+    if let Some(reason) = flip.busy() {
+        return Some(pane_flip_busy(pane, reason, on_choice, cx).into_any_element());
+    }
+    flip.armed().then(|| {
+        pane_flip_armed(
+            pane,
+            to,
+            move |window, cx| on_choice(FlipChoice::Cancel, window, cx),
+            cx,
+        )
+        .into_any_element()
+    })
 }
 
 #[allow(
@@ -293,7 +480,7 @@ pub fn pane_header(
     title: impl Into<SharedString>,
     drag: PaneDragSource,
     floats: bool,
-    lens: Option<PaneLens>,
+    flip: Option<PaneFlip>,
     on_action: impl Fn(TerminalPaneAction, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> Stateful<ala::Div> {
@@ -336,17 +523,17 @@ pub fn pane_header(
                 .on_close(move |window, cx| close(TerminalPaneAction::Close, window, cx)),
             ),
         )
-        .children(lens.map(|lens| {
+        .children(flip.map(|flip| {
             div()
                 .flex()
                 .flex_none()
-                .when(!active, |slot| {
+                .when(!active && !flip.armed, |slot| {
                     slot.invisible()
                         .group_hover("terminal-pane-header", ala::Styled::visible)
                 })
-                .child(pane_lens_button(
-                    lens,
-                    move |window, cx| toggle(TerminalPaneAction::Lens, window, cx),
+                .child(pane_flip_button(
+                    flip,
+                    move |window, cx| toggle(TerminalPaneAction::Flip, window, cx),
                     cx,
                 ))
         }))

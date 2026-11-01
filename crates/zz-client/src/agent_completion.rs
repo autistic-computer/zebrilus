@@ -38,13 +38,6 @@ pub fn agent_command_model(command: AvailableCommand) -> AgentCommand {
     }
 }
 
-pub fn terminal_command<'a>(value: &str, commands: &'a [AgentCommand]) -> Option<&'a AgentCommand> {
-    let name = value.trim().strip_prefix('/')?.split_whitespace().next()?;
-    commands
-        .iter()
-        .find(|command| command.terminal && bare_command_name(&command.name) == name)
-}
-
 pub const MAX_RENDERED_ERROR_BYTES: usize = 1024;
 
 pub fn rendered_error(error: &str) -> String {
@@ -85,8 +78,9 @@ const ZZ_COMMAND_DESCRIPTIONS: [(&str, &str, Option<&str>); 5] = [
 ];
 
 pub fn pane_commands(vendor: &[AgentCommand], verbs: bool) -> Vec<AgentCommand> {
+    let vendor = vendor.iter().filter(|command| !command.terminal);
     if !verbs {
-        return vendor.to_vec();
+        return vendor.cloned().collect();
     }
     let own = ZZ_COMMAND_DESCRIPTIONS
         .iter()
@@ -97,7 +91,6 @@ pub fn pane_commands(vendor: &[AgentCommand], verbs: bool) -> Vec<AgentCommand> 
             ..AgentCommand::default()
         });
     vendor
-        .iter()
         .filter(|command| {
             !zz_protocol::agent_stream::AGENT_VERBS.contains(&bare_command_name(&command.name))
         })
@@ -118,8 +111,7 @@ impl CommandCompletion {
     }
 
     pub fn submits(&self) -> bool {
-        (self.command.terminal && self.command.input_hint.is_none())
-            || matches!(setter(&self.insertion()), Some((_, Some(_))))
+        matches!(setter(&self.insertion()), Some((_, Some(_))))
     }
 }
 
@@ -410,7 +402,7 @@ mod tests {
     }
 
     #[test]
-    fn lens_commands_carry_their_terminal_and_skill_flags() {
+    fn commands_that_need_the_cli_screen_stay_out_of_the_slash_menu() {
         let parse = |value: serde_json::Value| {
             agent_command_model(serde_json::from_value::<AvailableCommand>(value).unwrap())
         };
@@ -428,13 +420,21 @@ mod tests {
         assert!(status.terminal && !status.skill);
         assert!(pet.skill && !pet.terminal);
         assert!(!plain.terminal && !plain.skill);
-        let commands = [status, pet, plain];
+        let reported = [status, pet, plain];
+        let names = |commands: Vec<AgentCommand>| {
+            commands
+                .into_iter()
+                .map(|command| command.name)
+                .collect::<Vec<_>>()
+        };
         assert_eq!(
-            terminal_command(" /status ", &commands).map(|command| command.name.as_str()),
-            Some("status")
+            names(pane_commands(&reported, false)),
+            ["$hatch-pet", "compact"]
         );
-        assert!(terminal_command("/compact", &commands).is_none());
-        assert!(terminal_command("why /status", &commands).is_none());
+        let with_verbs = names(pane_commands(&reported, true));
+        assert!(!with_verbs.contains(&"status".to_owned()));
+        assert!(with_verbs.contains(&"fork".to_owned()));
+        let commands = pane_commands(&reported, false);
         assert_eq!(command_label("$hatch-pet"), "$hatch-pet");
         assert_eq!(command_label("/compact"), "/compact");
         let query = completion_query("/hat", 4).unwrap();

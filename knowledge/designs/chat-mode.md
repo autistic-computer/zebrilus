@@ -80,9 +80,14 @@ driver, then puts the window in that folder's session:
 - no session is the folder's: `new-session -d -s <folder name>`, `move-window` into it and
   `kill-window -a` its starting shell; a session holding only the picker is renamed instead.
 
-The desktop switches to the window if it moved sessions. The command palette lists the chats too
-(see the [palette](/concepts/command-palette.md)). `select-pane-kind ... agent` names no model or
-effort, so a new chat starts on the CLI's own default rather than the model and effort last picked.
+The desktop switches to the window if it moved sessions. No client draws a chat over a terminal
+any more: a terminal running Claude Code or Codex and an agent pane both carry a flip button in
+their header that switches the pane between the CLI and the chat on the same session
+(`flip-agent`, see the [agent lens](/concepts/agent-lens.md)), and the sidebar mode does not open
+chats by itself. The command palette lists the chats too (see the
+[palette](/concepts/command-palette.md)).
+`select-pane-kind ... agent` names no model or effort yet, so a new chat starts on the
+CLI's own default rather than the model and effort last picked.
 
 # Daemon changes
 
@@ -95,5 +100,5 @@ flip adds the `agent <claude|codex>` kind to `select-pane-kind`, for a picker or
 
 - A file picker in the HTML client.
 - Starting a new chat on the model and effort last picked.
-- Agent CLIs beyond Claude Code and Codex; the list follows the programs the lens supports.
+- Agent CLIs beyond Claude Code and Codex; the list follows the programs zz can drive.
 - The HTML client draws agent tiles with kit glyphs rather than program marks.

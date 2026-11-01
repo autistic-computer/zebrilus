@@ -185,7 +185,7 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `clients/app/src/app/floating.rs`: daemon menu and confirmation interaction over shared floating surfaces.
 - `crates/zz-ui/src/command/`: shared palette, menu, confirmation, and frame presentation.
 - `crates/zz-client/src/completion.rs`: shared command, option, history, and live-target completion.
-- `clients/app/src/app/agent_lens.rs`: the agent lens timeline and composer over a terminal pane.
+- `clients/app/src/app/agent_pane.rs`: an agent pane's chat and composer.
 - `clients/app/src/app/settings.rs`: supported settings pages and shared previews.
 - `clients/app/src/preferences.rs`: local preference persistence and migration.
 - `clients/app/src/app/sidebar.rs`: session tree, keyboard focus, disclosure controls, and row actions.
@@ -195,7 +195,8 @@ reject foreign origins, invalid frames, and asset paths outside the served direc
 - `crates/zz-client/src/navigation.rs`: shared tree labels, layout order, and rename command construction.
 - `crates/zz-client/src/agent_transcript.rs`: shared streaming transcript, plan, permission, and tool reduction.
 - `crates/zz-client/src/pane_separator.rs`: active pane separator spans for desktop and thin clients.
-- `crates/zz-client/src/agent_completion.rs`: shared provider command matching, query replacement, and hints.
+- `crates/zz-client/src/agent_completion.rs`: shared provider command matching, query replacement, and hints; the slash list leaves out commands that need the CLI's own screen.
+- `crates/zz-client/src/agent_flip.rs`: the flip button's state (idle, busy choice, armed) and the `flip-agent` commands every client sends.
 - `crates/zz-client/src/agent_lens.rs`: the agent stream cursor (replay, gaps, command catalog), the lens journal reducer, parked permissions, restored drafts and context usage.
 - `crates/zz-client/src/agent_timeline.rs`: timeline rows, turn folding, trace labels and counts, plan and composer labels, shared by zz-ui and the HTML client.
 - `crates/zz-ui/src/agent/slash.rs`: shared Agent command suggestion rows and list.

@@ -446,7 +446,7 @@ impl AgentController {
             return Ok(());
         }
         let Some(thread) = self.panes.get(&pane) else {
-            return Err(Arc::from("the lens is not open"));
+            return Err(Arc::from("the agent is not connected"));
         };
         if let Some(refusal) = thread.image_refusal(!images.is_empty()) {
             return Err(refusal);

@@ -243,7 +243,18 @@ pub fn approval(title: &str, allow_similar: &str) -> Ask {
     }
 }
 
-pub fn lens_approval(title: &str) -> Ask {
+pub fn plan_approval() -> Ask {
+    Ask::Plan {
+        markdown: "Give pinned tabs a 28px floor in tab_strip.rs, then read the stored widths in the drop preview.".to_owned(),
+        options: vec![
+            ask_option("auto", "Yes, and auto-accept edits", OptionKind::AllowAlways),
+            ask_option("manual", "Yes, and manually approve edits", OptionKind::Allow),
+            ask_option("keep", "No, keep planning", OptionKind::Deny),
+        ],
+    }
+}
+
+pub fn approval_of(title: &str) -> Ask {
     Ask::Approval {
         title: title.to_owned(),
         detail: None,
@@ -275,14 +286,6 @@ pub fn palettes() -> Ask {
             .enumerate()
             .map(|(index, name)| ask_option(&format!("palette-{index}"), name, OptionKind::Allow))
             .collect(),
-    }
-}
-
-pub fn terminal_ask(title: &str) -> Ask {
-    Ask::Approval {
-        title: title.to_owned(),
-        detail: None,
-        options: Vec::new(),
     }
 }
 

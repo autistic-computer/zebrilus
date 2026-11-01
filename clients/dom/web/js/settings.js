@@ -688,14 +688,14 @@ function previewPane(index, body) {
   return pane;
 }
 
-function terminalSample(title, sample, lens) {
+function terminalSample(title, sample, flip) {
   return [
     h(
       "div",
       { "data-penna": "pane.header", class: "dim" },
       headerTitle("square-terminal", title),
       h("span", { class: "grow" }),
-      lens && h("span", { class: "lens" }, h("button", { "data-penna": "pane.header.button", class: "action", title: "Show agent view" }, icon("bot"))),
+      flip && h("span", { class: "flip" }, h("button", { "data-penna": "pane.header.button", class: "action", title: "Switch to chat" }, icon("chat"))),
       h("button", { "data-penna": "pane.header.button", class: "action", title: "Split bottom" }, icon("panel-bottom")),
       h("button", { "data-penna": "pane.header.button", class: "action", title: "Split right" }, icon("panel-right")),
       h("button", { "data-penna": "pane.header.button", class: "action", title: "Float" }, icon("picture-in-picture")),

@@ -47,12 +47,12 @@ use zz_ui::pip::{PipCard, PipDrag, PipLayout, PipPlaced, PipStage, PipSurface, P
 use zz_ui::{
     pane::{
         DropPreview, DropPreviewFrame, FloatingSurface, PaneArrivals, PaneChrome, PaneDrag,
-        PaneDragOverlayState, PaneDragSource, PaneLens, PaneMotion, PaneOverlayCorner,
+        PaneDragOverlayState, PaneDragSource, PaneFlip, PaneMotion, PaneOverlayCorner,
         PaneSplitAxis, PaneSplitHighlight, PaneSplitSide, PipGrab, TerminalPaneAction, moving_pane,
         pane_border_color, pane_drag_overlay, pane_drag_preview, pane_drop_preview,
         pane_header_frame, pane_indicator, pane_indicator_overlay, pane_overlay_stack,
         pane_split_hit_target, pane_split_slot, pane_split_surface, pane_surface, pane_sync_badge,
-        pane_unzoom_control, pane_waiting_state, terminal_pane_header,
+        pane_unzoom_control, pane_waiting_state,
     },
     pane_look::{PaneLook, pane_color},
     shell::{app_connection_state, app_workspace_surface},
@@ -68,7 +68,7 @@ use super::{
 };
 use crate::{
     agent::AgentController,
-    agent::{AgentView, ShowTerminal},
+    agent::AgentView,
     browser::controller::{BrowserController, ControllerEvent},
     browser::view::BrowserView,
     chooser::buffer::ChooseBufferView,
@@ -548,11 +548,12 @@ impl PaneContent {
 
 #[derive(Clone, Debug, PartialEq)]
 struct TerminalHeaderState {
+    icon: penna::IconName,
     active: bool,
     title: String,
     can_drag: bool,
     floats: bool,
-    lens: Option<PaneLens>,
+    flip: Option<PaneFlip>,
     radii: Corners<Pixels>,
     opacity: f32,
 }
@@ -584,9 +585,10 @@ impl Render for TerminalHeaderView {
         let canvas = Rc::clone(&self.canvas);
         let drag_app = self.app.clone();
         let click_app = self.app.clone();
-        let lens_app = self.app.clone();
+        let flip_app = self.app.clone();
         let title = state.title.clone();
-        let header = terminal_pane_header(
+        let header = zz_ui::pane::pane_header(
+            state.icon.clone(),
             state.active,
             title.clone(),
             PaneDragSource::new(pane, title, state.can_drag, move |drag, _, cx| {
@@ -595,11 +597,11 @@ impl Render for TerminalHeaderView {
                 }
             }),
             state.floats,
-            state.lens,
+            state.flip,
             move |action, window, cx| {
-                if matches!(action, TerminalPaneAction::Lens) {
-                    if let Some(app) = lens_app.upgrade() {
-                        app.update(cx, |view, cx| view.toggle_lens(pane, window, cx));
+                if matches!(action, TerminalPaneAction::Flip) {
+                    if let Some(app) = flip_app.upgrade() {
+                        app.update(cx, |view, cx| view.flip_pane(pane, window, cx));
                     }
                     return;
                 }
@@ -719,9 +721,7 @@ pub struct AppView {
     browsers: BTreeMap<PaneId, Entity<BrowserView>>,
     inline_browser: Entity<crate::browser::inline::InlineBrowser>,
     agents: BTreeMap<PaneId, Entity<AgentView>>,
-    lenses: BTreeSet<PaneId>,
-    pending_lenses: BTreeSet<PaneId>,
-    lens_dismissed: BTreeSet<PaneId>,
+    flips: zz_client::agent_flip::AgentFlips,
     editors: BTreeMap<PaneId, Entity<EditorView>>,
     command_output: Option<(PaneId, Entity<TerminalView>)>,
     menu: Option<Entity<MenuView>>,
@@ -798,6 +798,7 @@ impl AppView {
         let mut observed_palette_agents = Vec::new();
         cx.observe_in(&mux, window, move |view, mux, window, cx| {
             view.drain_gui_requests(cx);
+            view.drain_flip_answers(cx);
             let snapshot = mux.read(cx).snapshot();
             let snapshot_arrived = !Arc::ptr_eq(&snapshot, &observed_snapshot);
             if snapshot_arrived {
@@ -1133,9 +1134,7 @@ impl AppView {
             browsers: BTreeMap::new(),
             inline_browser,
             agents: BTreeMap::new(),
-            lenses: BTreeSet::new(),
-            pending_lenses: BTreeSet::new(),
-            lens_dismissed: BTreeSet::new(),
+            flips: zz_client::agent_flip::AgentFlips::default(),
             editors: BTreeMap::new(),
             command_output: None,
             menu: None,
@@ -1985,18 +1984,7 @@ impl AppView {
         let mut wanted_browsers = BTreeSet::new();
         let mut wanted_agents = BTreeSet::new();
         let mut wanted_editors = BTreeSet::new();
-        self.promote_pending_lenses(&snapshot, attached);
-        self.open_chat_lenses(&snapshot, attached, chat_mode);
-        let lensed = self.lensed_panes(&snapshot, attached);
-        let open = lensed.keys().copied().collect::<BTreeSet<_>>();
-        #[cfg(feature = "agent-pane")]
-        for pane in self.lenses.difference(&open) {
-            self.mux.update(cx, |mux, _| mux.close_agent_lens(*pane));
-        }
-        self.lenses = open;
-        self.agent_controller.update(cx, |controller, cx| {
-            controller.retain_panes(&self.lenses, cx);
-        });
+        self.flips.observe(&snapshot);
         let active_window = snapshot
             .sessions
             .iter()
@@ -2038,24 +2026,7 @@ impl AppView {
                                 });
                                 self.terminals.insert(pane, view);
                             }
-                            if let Some(provider) = lensed.get(pane).copied() {
-                                wanted_agents.insert(*pane);
-                                self.ensure_lens_view(*pane, provider, window, cx);
-                            }
-                            if !self.terminal_headers.contains_key(pane) {
-                                let pane = *pane;
-                                let app = cx.entity().downgrade();
-                                let mux = self.mux.clone();
-                                let canvas = Rc::clone(&self.pane_canvas_bounds);
-                                let header = cx.new(|_| TerminalHeaderView {
-                                    pane,
-                                    app,
-                                    mux,
-                                    canvas,
-                                    state: None,
-                                });
-                                self.terminal_headers.insert(pane, header);
-                            }
+                            self.ensure_pane_header(*pane, cx);
                         }
                         PaneKindSnapshot::Browser(browser) => {
                             wanted_browsers.insert(*pane);
@@ -2096,7 +2067,11 @@ impl AppView {
                                 });
                             }
                         }
-                        PaneKindSnapshot::Agent(_) => {}
+                        PaneKindSnapshot::Agent(agent) => {
+                            wanted_agents.insert(*pane);
+                            self.ensure_agent_view(*pane, agent, window, cx);
+                            self.ensure_pane_header(*pane, cx);
+                        }
                         PaneKindSnapshot::Editor(editor) => {
                             wanted_editors.insert(*pane);
                             if let Some(view) = self.editors.get(pane) {
@@ -2358,8 +2333,19 @@ impl AppView {
         self.terminals
             .retain(|pane, _| wanted_terminals.contains(pane));
         self.terminal_headers
-            .retain(|pane, _| wanted_terminals.contains(pane));
+            .retain(|pane, _| wanted_terminals.contains(pane) || wanted_agents.contains(pane));
+        #[cfg(feature = "agent-pane")]
+        for pane in self
+            .agents
+            .keys()
+            .filter(|pane| !wanted_agents.contains(pane))
+        {
+            self.mux.update(cx, |mux, _| mux.unwatch_agent(*pane));
+        }
         self.agents.retain(|pane, _| wanted_agents.contains(pane));
+        self.agent_controller.update(cx, |controller, cx| {
+            controller.retain_panes(&wanted_agents, cx);
+        });
         self.editors.retain(|pane, _| wanted_editors.contains(pane));
         let removed_browsers = self
             .browsers
@@ -2619,142 +2605,89 @@ impl AppView {
     }
 
     fn on_agent_chosen(&mut self, chosen: &AgentChosen, cx: &mut Context<Self>) {
-        self.pending_lenses.insert(chosen.pane);
         let host = self.mux.read(cx).attached_host();
         self.sidebar.update(cx, |sidebar, _| {
             sidebar.follow_moved_window(host, chosen.window, chosen.from);
         });
     }
 
-    fn promote_pending_lenses(&mut self, snapshot: &MuxSnapshot, attached: Option<SessionId>) {
-        let panes = snapshot
-            .sessions
-            .iter()
-            .flat_map(|session| {
-                session.windows.iter().flat_map(move |window| {
-                    window.panes.values().map(move |pane| (session.id, pane))
-                })
-            })
-            .filter(|(_, pane)| self.pending_lenses.contains(&pane.id))
-            .map(|(session, pane)| {
-                let ready = Some(session) == attached
-                    && matches!(pane.kind, PaneKindSnapshot::Terminal)
-                    && zz_client::window_summary::pane_agent(pane).is_some();
-                (pane.id, ready)
-            })
-            .collect::<Vec<_>>();
-        self.pending_lenses
-            .retain(|pane| panes.iter().any(|(id, ready)| id == pane && !ready));
-        self.lenses.extend(
-            panes
-                .into_iter()
-                .filter(|(_, ready)| *ready)
-                .map(|(id, _)| id),
-        );
-    }
-
-    fn open_chat_lenses(
-        &mut self,
-        snapshot: &MuxSnapshot,
-        attached: Option<SessionId>,
-        chat_mode: bool,
-    ) {
-        let agents = snapshot
-            .sessions
-            .iter()
-            .flat_map(|session| {
-                session.windows.iter().flat_map(move |window| {
-                    window.panes.values().map(move |pane| (session.id, pane))
-                })
-            })
-            .filter(|(_, pane)| {
-                matches!(pane.kind, PaneKindSnapshot::Terminal)
-                    && zz_client::window_summary::pane_agent(pane).is_some()
-            })
-            .map(|(session, pane)| (session, pane.id))
-            .collect::<Vec<_>>();
-        self.lens_dismissed
-            .retain(|pane| agents.iter().any(|(_, agent)| agent == pane));
-        if !chat_mode {
+    fn ensure_pane_header(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        if self.terminal_headers.contains_key(&pane) {
             return;
         }
-        self.lenses.extend(
-            agents
-                .into_iter()
-                .filter(|(session, pane)| {
-                    Some(*session) == attached && !self.lens_dismissed.contains(pane)
-                })
-                .map(|(_, pane)| pane),
-        );
+        let app = cx.entity().downgrade();
+        let mux = self.mux.clone();
+        let canvas = Rc::clone(&self.pane_canvas_bounds);
+        let header = cx.new(|_| TerminalHeaderView {
+            pane,
+            app,
+            mux,
+            canvas,
+            state: None,
+        });
+        self.terminal_headers.insert(pane, header);
     }
 
-    fn lensed_panes(
-        &self,
-        snapshot: &MuxSnapshot,
-        attached: Option<SessionId>,
-    ) -> BTreeMap<PaneId, zz_protocol::AgentProvider> {
-        snapshot
-            .sessions
-            .iter()
-            .filter(|session| Some(session.id) == attached)
-            .flat_map(|session| &session.windows)
-            .flat_map(|window| &window.panes)
-            .filter(|(pane, _)| self.lenses.contains(pane))
-            .filter_map(|(pane, snapshot)| {
-                matches!(snapshot.kind, PaneKindSnapshot::Terminal)
-                    .then(|| zz_client::window_summary::pane_agent(snapshot))
-                    .flatten()
-                    .map(|provider| (*pane, provider))
-            })
-            .collect()
-    }
-
-    fn ensure_lens_view(
+    fn ensure_agent_view(
         &mut self,
         pane: PaneId,
-        provider: zz_protocol::AgentProvider,
+        agent: &zz_protocol::AgentDescriptor,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         #[cfg(feature = "agent-pane")]
-        self.mux.update(cx, |mux, _| mux.open_agent_lens(pane));
+        self.mux.update(cx, |mux, _| mux.watch_agent(pane));
         if self.agents.contains_key(&pane) {
             return;
         }
         let controller = self.agent_controller.clone();
         let mux = self.mux.clone();
-        let terminal = self.terminals.get(&pane).cloned();
-        let view = cx.new(|cx| {
-            let mut view = AgentView::new(pane, provider, controller, mux, window, cx);
-            if let Some(terminal) = terminal {
-                view.set_terminal(terminal);
-            }
-            view
-        });
-        cx.subscribe_in(
-            &view,
-            window,
-            move |this, _, _: &ShowTerminal, window, cx| {
-                if this.lenses.contains(&pane) {
-                    this.toggle_lens(pane, window, cx);
-                }
-            },
-        )
-        .detach();
+        let provider = agent.provider;
+        let view = cx.new(|cx| AgentView::new(pane, provider, controller, mux, window, cx));
         self.agents.insert(pane, view);
     }
 
-    fn toggle_lens(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
-        if self.lenses.remove(&pane) {
-            self.lens_dismissed.insert(pane);
-        } else {
-            self.lenses.insert(pane);
-            self.lens_dismissed.remove(&pane);
+    fn flip_pane(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
+        let snapshot = self.mux.read(cx).snapshot();
+        let Some(target) = snapshot
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&pane))
+            .and_then(zz_client::agent_flip::flip_target)
+        else {
+            return;
+        };
+        let mux = self.mux.clone();
+        if self.flips.press(pane, target.to, |command| {
+            mux.read(cx).execute_answered(command)
+        }) {
+            self.refresh_flip(pane, window, cx);
         }
-        #[cfg(feature = "agent-pane")]
-        if !self.lenses.contains(&pane) {
-            self.mux.update(cx, |mux, _| mux.close_agent_lens(pane));
+    }
+
+    fn choose_flip(
+        &mut self,
+        pane: PaneId,
+        choice: zz_ui::pane::FlipChoice,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(mode) = choice.mode() else {
+            self.flips.dismiss(pane);
+            self.refresh_flip(pane, window, cx);
+            return;
+        };
+        let mux = self.mux.clone();
+        if self
+            .flips
+            .choose(pane, mode, |command| mux.read(cx).execute_answered(command))
+        {
+            self.refresh_flip(pane, window, cx);
         }
+    }
+
+    fn refresh_flip(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
         self.synchronized_signature = None;
         self.synchronize_panes(window, cx);
         if let Some((_, focus)) = self.pane_focus_target(pane, cx) {
@@ -2763,14 +2696,65 @@ impl AppView {
         cx.notify();
     }
 
-    fn pane_lens(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneLens> {
-        matches!(snapshot.kind, PaneKindSnapshot::Terminal)
-            .then(|| zz_client::window_summary::pane_agent(snapshot))
-            .flatten()
-            .map(|provider| PaneLens {
-                provider,
-                open: self.lenses.contains(&snapshot.id),
-            })
+    fn drain_flip_answers(&mut self, cx: &mut Context<Self>) {
+        if !self.mux.read(cx).has_command_answers() {
+            return;
+        }
+        let answers = self.mux.update(cx, |mux, _| mux.take_command_answers());
+        for (request, result) in answers {
+            if !self.flips.owns(request) {
+                continue;
+            }
+            if let Some(error) = self
+                .flips
+                .settle(request, result.as_ref().copied().map_err(String::as_str))
+            {
+                self.mux.update(cx, |_, cx| {
+                    MuxClient::emit_notification(
+                        ClientMessageKind::Error,
+                        format!("flip-agent: {error}"),
+                        cx,
+                    );
+                });
+            }
+        }
+        cx.notify();
+    }
+
+    fn pane_flip(&self, snapshot: &zz_protocol::PaneSnapshot) -> Option<PaneFlip> {
+        PaneFlip::of(snapshot, self.flips.state(snapshot.id))
+    }
+
+    fn flip_overlay(&self, pane: PaneId, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let flip = self.flips.state(pane);
+        if *flip == zz_client::agent_flip::Flip::Idle {
+            return None;
+        }
+        let to = self.flips_target(pane, cx)?;
+        let app = cx.entity().downgrade();
+        zz_ui::pane::pane_flip_overlay(
+            pane,
+            to,
+            flip,
+            move |choice, window, cx| {
+                if let Some(app) = app.upgrade() {
+                    app.update(cx, |view, cx| view.choose_flip(pane, choice, window, cx));
+                }
+            },
+            cx,
+        )
+    }
+
+    fn flips_target(&self, pane: PaneId, cx: &App) -> Option<zz_ui::pane::FlipTo> {
+        self.mux
+            .read(cx)
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&pane))
+            .and_then(zz_client::agent_flip::flip_target)
+            .map(|target| target.to)
     }
 
     #[cfg(feature = "agent-pane")]
@@ -3539,20 +3523,23 @@ impl AppView {
                     PaneContent::element,
                 );
                 let terminal_header = pane_snapshot.filter(|held| {
-                    matches!(held.kind, PaneKindSnapshot::Terminal)
-                        && !self.pickers.contains_key(pane)
+                    matches!(
+                        held.kind,
+                        PaneKindSnapshot::Terminal | PaneKindSnapshot::Agent(_)
+                    ) && !self.pickers.contains_key(pane)
                 });
                 let header_view = terminal_header
                     .and_then(|snapshot| Some((snapshot, self.terminal_headers.get(pane)?)));
                 let content = if let Some((snapshot, header_view)) = header_view {
                     let state = TerminalHeaderState {
+                        icon: zz_ui::pane::pane_kind_icon(&snapshot.kind),
                         active,
                         title: zz_client::navigation::pane_label(snapshot),
                         can_drag: self.mux.read(cx).is_connected()
                             && window.zoomed_pane.is_none()
                             && window.panes.len() > 1,
                         floats: window.floating.iter().any(|float| float.pane == *pane),
-                        lens: self.pane_lens(snapshot),
+                        flip: self.pane_flip(snapshot),
                         radii,
                         opacity: if inactive { inactive_opacity } else { 1.0 },
                     };
@@ -3575,6 +3562,7 @@ impl AppView {
                     content
                 };
                 let mut status_tags: Vec<AnyElement> = Vec::new();
+                status_tags.extend(self.flip_overlay(*pane, cx));
                 if terminal_overlay.is_none() {
                     if let Some(label) = dead_label {
                         status_tags.push(
@@ -4131,11 +4119,14 @@ impl AppView {
         let connected = self.mux.read(cx).is_connected();
         if let Some(header_view) = self.terminal_headers.get(&pane) {
             let state = TerminalHeaderState {
+                icon: snapshot.map_or(penna::IconName::SquareTerminal, |pane| {
+                    zz_ui::pane::pane_kind_icon(&pane.kind)
+                }),
                 active,
                 title: label,
                 can_drag: connected,
                 floats: true,
-                lens: snapshot.and_then(|snapshot| self.pane_lens(snapshot)),
+                flip: snapshot.and_then(|snapshot| self.pane_flip(snapshot)),
                 radii: Corners::default(),
                 opacity,
             };

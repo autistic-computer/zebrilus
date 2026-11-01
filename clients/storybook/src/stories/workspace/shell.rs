@@ -30,7 +30,7 @@ pub const STORY: Story = Story {
         Section {
             id: "app",
             name: "App",
-            summary: "app_shell_surface with a terminal, Claude Code in a terminal with its lens toggle, and a browser pane. With the sidebar open the status bar goes away; with it hidden the status bar takes the titlebar and the canvas drops its top margin.",
+            summary: "app_shell_surface with a terminal, Claude Code in a terminal with its flip button, and a browser pane. With the sidebar open the status bar goes away; with it hidden the status bar takes the titlebar and the canvas drops its top margin.",
             build: |window, cx| stateful(window, cx, Shell::new, app),
         },
         Section {
@@ -75,7 +75,7 @@ fn canvas(gaps: bool, address: &Entity<InputState>, window: &Window, cx: &App) -
         .render("shell-terminal", Vec::new(), cx);
     let agent = TerminalPane::new(2, "Review sidebar", CLAUDE)
         .gaps(gaps)
-        .lens(AgentProvider::ClaudeCode)
+        .flip(AgentProvider::ClaudeCode)
         .render("shell-agent", Vec::new(), cx);
     let browser = browser_pane("shell-browser", address, false, gaps, window, cx);
     let right = pane_split_surface(

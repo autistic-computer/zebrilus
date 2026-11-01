@@ -7,9 +7,8 @@ use std::{
 };
 
 use ala::{
-    AnyElement, App, Context, Corners, Entity, EventEmitter, FocusHandle, Focusable, IntoElement,
-    ListAlignment, ListState, Pixels, Render, ScrollWheelEvent, Subscription, Window, div,
-    prelude::*, px,
+    AnyElement, App, Context, Corners, Entity, FocusHandle, Focusable, IntoElement, ListAlignment,
+    ListState, Pixels, Render, ScrollWheelEvent, Subscription, Window, div, prelude::*, px,
 };
 use penna::{
     Disableable as _,
@@ -20,11 +19,11 @@ use penna::{
 use serde_json::Value;
 use zz_client::agent_completion::{
     AgentCommand, CommandCompletion, active_command_hint, command_label, composer_completions,
-    meaningful_command_description, pane_commands, terminal_command,
+    meaningful_command_description, pane_commands,
 };
 use zz_client::agent_lens::{
-    LensEmpty, LensTranscript, PendingPermission, accepts_prompt, conversation_changed, lens_empty,
-    lens_placeholder, pending_permissions, restore_reclaim_id, restored_prompts, track_usage,
+    AgentEmpty, LensTranscript, PendingPermission, accepts_prompt, agent_empty, agent_placeholder,
+    conversation_changed, pending_permissions, restore_reclaim_id, restored_prompts, track_usage,
     turn_running,
 };
 use zz_client::agent_settings::{
@@ -55,8 +54,7 @@ use zz_ui::{
         },
         fold_timeline_rows,
         presentation::{
-            empty_state, error_card, lens_welcome, permission_card, permission_option,
-            terminal_wait_card,
+            agent_welcome, empty_state, error_card, permission_card, permission_option,
         },
         question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
         refs::{ChatRefs, open_path},
@@ -72,7 +70,7 @@ use crate::{command_palette::palette_backend, connection::Connection};
 const SIDE_CHAT_WIDTH: &str = "46%";
 const SIDE_CHAT_HEIGHT: &str = "72%";
 
-impl AgentLens {
+impl AgentPane {
     fn lens_settings(&self, state: &AgentPaneWire) -> Option<LensSettings> {
         self.transcript
             .lens
@@ -92,7 +90,7 @@ impl AgentLens {
     }
 
     fn provider(&self, cx: &App) -> Option<zz_protocol::AgentProvider> {
-        self.terminal(cx)
+        self.pane_snapshot(cx)
             .and_then(zz_client::window_summary::pane_agent)
     }
 
@@ -107,7 +105,7 @@ impl AgentLens {
             .as_ref()
             .map(|settings| settings.cwd.clone())
             .filter(|cwd| !cwd.is_empty())
-            .or_else(|| self.terminal(cx).map(|pane| pane.summary.cwd.clone()))
+            .or_else(|| self.pane_snapshot(cx).map(|pane| pane.summary.cwd.clone()))
             .unwrap_or_default()
     }
 
@@ -189,7 +187,7 @@ impl AgentLens {
             agent_side_chat_button(
                 ("agent-side-chat", self.pane.0),
                 enabled && self.forks(cx),
-                move |_, cx| entity.update(cx, AgentLens::open_side_chat),
+                move |_, cx| entity.update(cx, AgentPane::open_side_chat),
             )
             .into_any_element()
         };
@@ -237,7 +235,7 @@ impl AgentLens {
     }
 }
 
-pub(super) struct AgentLens {
+pub(super) struct AgentPane {
     pane: PaneId,
     connection: Entity<Connection>,
     connected: bool,
@@ -273,14 +271,14 @@ pub(super) struct AgentLens {
     _subscriptions: Vec<Subscription>,
 }
 
-impl AgentLens {
+impl AgentPane {
     pub(super) fn new(
         pane: PaneId,
         connection: Entity<Connection>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let placeholder = lens_placeholder(connection.read(cx).terminal_agent(pane));
+        let placeholder = agent_placeholder(connection.read(cx).terminal_agent(pane));
         let input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder(placeholder)
@@ -412,7 +410,7 @@ impl AgentLens {
         }
     }
 
-    fn terminal<'a>(&self, cx: &'a App) -> Option<&'a PaneSnapshot> {
+    fn pane_snapshot<'a>(&self, cx: &'a App) -> Option<&'a PaneSnapshot> {
         self.connection
             .read(cx)
             .core
@@ -424,7 +422,7 @@ impl AgentLens {
     }
 
     fn cwd(&self, cx: &App) -> Option<PathBuf> {
-        self.terminal(cx)
+        self.pane_snapshot(cx)
             .map(|pane| pane.summary.cwd.as_str())
             .filter(|cwd| !cwd.is_empty())
             .map(PathBuf::from)
@@ -612,7 +610,7 @@ impl AgentLens {
                                 &command_label(&command.name),
                                 meaningful_command_description(&command.description)
                                     .map(|description| description.to_owned().into()),
-                                zz_ui::agent::slash::SlashKind::of(command.terminal, command.skill),
+                                zz_ui::agent::slash::SlashKind::of(command.skill),
                                 selected == Some(index),
                                 cx,
                             )
@@ -751,9 +749,6 @@ impl AgentLens {
         let attachments = self.attachments.clone();
         if !self.send_prompt(&text, &attachments, cx) {
             return;
-        }
-        if terminal_command(&text, &self.commands).is_some() {
-            cx.emit(ShowTerminal);
         }
         self.attachments.clear();
         self.draft_error = None;
@@ -953,16 +948,6 @@ impl AgentLens {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let request_id = permission.request_id;
-        if permission.options.is_empty() {
-            let lens = cx.entity();
-            return terminal_wait_card(
-                format!("agent-show-terminal-{}-{request_id}", self.pane.0),
-                permission.title,
-                move |_, cx| lens.update(cx, |_, cx| cx.emit(ShowTerminal)),
-                cx,
-            )
-            .into_any_element();
-        }
         let writable = self.connection.read(cx).connected
             && !self.connection.read(cx).core.attached_read_only()
             && !self.permission_answered.contains(&request_id);
@@ -1363,17 +1348,13 @@ impl AgentLens {
     }
 }
 
-pub(super) struct ShowTerminal;
-
-impl EventEmitter<ShowTerminal> for AgentLens {}
-
-impl Focusable for AgentLens {
+impl Focusable for AgentPane {
     fn focus_handle(&self, cx: &App) -> FocusHandle {
         self.input.read(cx).focus_handle(cx)
     }
 }
 
-impl Render for AgentLens {
+impl Render for AgentPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.synchronize(window, cx);
         self.synchronize_completions(cx);
@@ -1627,12 +1608,12 @@ impl Render for AgentLens {
         };
         let chat = use_chat.then(|| self.render_chat(inline, window, cx));
         let provider = self
-            .terminal(cx)
+            .pane_snapshot(cx)
             .and_then(zz_client::window_summary::pane_agent);
         let empty = (self.rows.is_empty() && !use_chat).then(|| {
-            match lens_empty(connected, &state.phase, provider) {
-                LensEmpty::Welcome(provider) => lens_welcome(provider, cx),
-                LensEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
+            match agent_empty(connected, &state.phase, provider) {
+                AgentEmpty::Welcome(provider) => agent_welcome(provider, cx),
+                AgentEmpty::Message { text, busy } => empty_state(text, busy, cx.entity_id(), cx),
             }
         });
         let timeline = AgentTimeline::new(
@@ -1723,7 +1704,7 @@ impl Render for AgentLens {
     }
 }
 
-impl AgentLens {
+impl AgentPane {
     fn render_chat(
         &mut self,
         inline: HashMap<u64, AnyElement>,

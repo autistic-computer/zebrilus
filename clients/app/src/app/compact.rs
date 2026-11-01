@@ -60,7 +60,7 @@ const LAST_PANE: &str = "last-pane";
 const KILL_PANE: &str = "kill-pane";
 const ALL_BINDINGS: &str = "all-bindings";
 const OVERVIEW: &str = "overview";
-const LENS: &str = "lens";
+const FLIP: &str = "flip";
 const NEW_TERMINAL: &str = "new-terminal";
 const NEW_BROWSER: &str = "new-browser";
 const NEW_SESSION: &str = "new-session";
@@ -103,7 +103,6 @@ pub(super) struct CompactState {
     cards: Rc<RefCell<BTreeMap<PaneId, Bounds<Pixels>>>>,
     text: Option<TerminalText>,
     page_background: Option<ala::Hsla>,
-    lens_dismissed: BTreeSet<PaneId>,
     menu: Option<(MenuFrom, PillSpring)>,
     pill_at: Rc<Cell<Bounds<Pixels>>>,
 }
@@ -116,14 +115,6 @@ enum MenuFrom {
 }
 
 impl CompactState {
-    pub(super) fn remember_lens(&mut self, pane: PaneId, open: bool) {
-        if open {
-            self.lens_dismissed.remove(&pane);
-        } else {
-            self.lens_dismissed.insert(pane);
-        }
-    }
-
     #[cfg_attr(not(any(target_os = "ios", target_os = "android")), allow(dead_code))]
     pub(super) fn forget_panes(&mut self) {
         self.notice = None;
@@ -147,7 +138,7 @@ impl CompactState {
     }
 }
 
-fn pill_menu(lens: Option<zz_ui::pane::PaneLens>) -> Vec<Vec<PillMenuItem>> {
+fn pill_menu(flip: Option<zz_ui::pane::PaneFlip>) -> Vec<Vec<PillMenuItem>> {
     let mut panes = vec![
         PillMenuItem::new(RENAME_PANE, "Rename pane", IconName::Pencil),
         PillMenuItem::new(NEW_WINDOW, "New window", IconName::AppWindow),
@@ -155,13 +146,12 @@ fn pill_menu(lens: Option<zz_ui::pane::PaneLens>) -> Vec<Vec<PillMenuItem>> {
         PillMenuItem::new(LAST_PANE, "Last pane", IconName::History),
         PillMenuItem::new(OVERVIEW, "Overview", IconName::LayoutDashboard),
     ];
-    if let Some(lens) = lens {
-        let (label, icon) = if lens.open {
-            ("Terminal view", IconName::SquareTerminal)
-        } else {
-            ("Lens view", IconName::Eye)
-        };
-        panes.push(PillMenuItem::new(LENS, label, icon).look(PillMenuLook::Primary));
+    if let Some(flip) = flip {
+        let label = zz_client::agent_flip::flip_tooltip(flip.to, flip.armed);
+        panes.push(
+            PillMenuItem::new(FLIP, label, zz_ui::pane::flip_icon(flip.to))
+                .look(PillMenuLook::Primary),
+        );
     }
     vec![
         vec![
@@ -533,9 +523,10 @@ impl AppShell {
                 window.dismiss_virtual_keyboard();
                 self.open_overview(cx);
             }
-            LENS => {
+            FLIP => {
+                self.compact.menu = None;
                 if let Some(pane) = self.active_window(cx).map(|window| window.active_pane) {
-                    self.toggle_lens(pane, window, cx);
+                    self.flip_pane(pane, cx);
                 }
             }
             _ => self.prefix_action(id, cx),
@@ -739,13 +730,11 @@ impl AppShell {
         let dead = zz_client::terminal_view::dead_label(pane.dead, pane.dead_status);
         let mut background = cx.theme().background;
         let mut rows_above = false;
-        let lens = matches!(pane.kind, PaneKindSnapshot::Terminal)
-            .then(|| self.shown_lens(pane_id, window, cx))
-            .flatten();
         let content = match &pane.kind {
-            PaneKindSnapshot::Terminal if let Some(lens) = lens => {
-                lens.update(cx, |lens, cx| {
-                    lens.set_corner_radii(
+            PaneKindSnapshot::Agent(_) => {
+                let agent = self.agent_entity(pane_id, window, cx);
+                agent.update(cx, |agent, cx| {
+                    agent.set_corner_radii(
                         Corners {
                             top_left: px(0.0),
                             top_right: px(0.0),
@@ -756,10 +745,10 @@ impl AppShell {
                     );
                 });
                 if can_focus && self.focused_pane != Some(pane_id) {
-                    lens.read(cx).focus_handle(cx).focus(window, cx);
+                    agent.read(cx).focus_handle(cx).focus(window, cx);
                     self.focused_pane = Some(pane_id);
                 }
-                lens.into_any_element()
+                agent.into_any_element()
             }
             PaneKindSnapshot::Terminal => {
                 let terminal = self.pane_terminal(pane_id, window, cx);
@@ -831,14 +820,6 @@ impl AppShell {
                 Corners::all(radius),
                 cx,
             ),
-            PaneKindSnapshot::Agent(agent) => super::unsupported_pane(
-                "Agent",
-                zz_ui::pane::agent_provider_icon(agent.provider),
-                "This client does not draw agent chats yet.",
-                None,
-                Corners::all(radius),
-                cx,
-            ),
             PaneKindSnapshot::Picker => {
                 let picker = self.picker_entity(pane_id, cx);
                 picker.update(cx, |picker, cx| {
@@ -859,6 +840,7 @@ impl AppShell {
             ala_platform::mobile::set_status_bar_on_dark(Some(background.l < 0.5));
         }
         let browser = matches!(pane.kind, PaneKindSnapshot::Browser(_));
+        let flip = self.flip_overlay(pane_id, cx);
         let fade = top_inset + px(TOP_FADE);
         let scrim = cx.theme().background.opaque().blend(background);
         div()
@@ -871,6 +853,15 @@ impl AppShell {
             .bg(background)
             .rounded(radius)
             .child(div().flex_1().min_h_0().min_w_0().child(content))
+            .when_some(flip, |page, flip| {
+                page.child(
+                    zz_ui::pane::pane_overlay_stack(
+                        zz_ui::pane::PaneOverlayCorner::TopRight,
+                        [flip],
+                    )
+                    .top(top_inset + px(8.0)),
+                )
+            })
             .when(rows_above && top_inset > px(0.0), |page| {
                 page.child(
                     div()
@@ -1049,29 +1040,6 @@ impl AppShell {
             .unwrap_or_default()
     }
 
-    fn open_default_lenses(&mut self, pages: &[Page], cx: &mut Context<Self>) {
-        if !super::settings::phone() {
-            return;
-        }
-        let connection = self.connection.read(cx);
-        self.compact
-            .lens_dismissed
-            .retain(|pane| connection.terminal_agent(*pane).is_some());
-        let closed = pages
-            .iter()
-            .map(|page| page.pane)
-            .filter(|pane| {
-                connection.terminal_agent(*pane).is_some()
-                    && !connection.agent_lens_open(*pane)
-                    && !self.compact.lens_dismissed.contains(pane)
-            })
-            .collect::<Vec<_>>();
-        for pane in closed {
-            self.connection
-                .update(cx, |connection, cx| connection.open_agent_lens(pane, cx));
-        }
-    }
-
     pub(super) fn compact_shell(
         &mut self,
         terminal_overlays: Vec<AnyElement>,
@@ -1082,7 +1050,6 @@ impl AppShell {
         self.prune_pane_entities(cx);
         let model = self.status_model(cx);
         let (pages, current) = pages(&model, &self.unseen_agents);
-        self.open_default_lenses(&pages, cx);
         let current_pane = pages.get(current).map(|page| page.pane);
         if self.compact.last_current.is_some() && current_pane != self.compact.last_current {
             self.compact.zoom_intent = current_pane;
@@ -1135,7 +1102,7 @@ impl AppShell {
         }
         let keyless = pages.get(self.compact.pager.index()).is_some_and(|page| {
             matches!(page.kind, PaneKindSnapshot::Browser(_))
-                || self.connection.read(cx).agent_lens_open(page.pane)
+                || matches!(page.kind, PaneKindSnapshot::Agent(_))
         });
         self.compact
             .morph
@@ -1568,7 +1535,7 @@ impl AppShell {
             let items = if from == MenuFrom::Host {
                 host_menu(self.shown_host_connected(cx))
             } else {
-                pill_menu(shown_page.and_then(|page| self.pane_lens(page.pane, cx)))
+                pill_menu(shown_page.and_then(|page| self.pane_flip(page.pane, cx)))
             };
             let pick = cx.weak_entity();
             let shut = cx.weak_entity();

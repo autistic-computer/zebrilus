@@ -6,7 +6,7 @@ use zz_protocol::AgentProvider;
 use zz_protocol::chat::ItemKind;
 use zz_ui::agent::{
     agent_jump_to_bottom_button,
-    presentation::{empty_state, error_card, lens_welcome},
+    presentation::{agent_welcome, empty_state, error_card},
 };
 
 use super::{
@@ -77,18 +77,15 @@ impl Render for EmptyStates {
             pane_fill(cx).child(empty_column(state)).into_any_element()
         };
         let messages = [
-            ("opening", "Reading Claude Code’s transcript…", true),
+            ("starting", "Starting Claude Code…", true),
+            ("resuming a session", "Resuming Codex’s session…", true),
             (
                 "running, nothing streamed yet",
                 "Waiting for Codex’s first update…",
                 true,
             ),
             ("cancelling", "Cancelling the current turn…", true),
-            (
-                "transcript unreadable",
-                "Could not read Codex’s transcript.",
-                false,
-            ),
+            ("the CLI stopped", "Codex stopped.", false),
             ("offline", "The agent is offline.", false),
         ];
         let grid = messages
@@ -99,38 +96,34 @@ impl Render for EmptyStates {
         let welcome = |provider, cx: &App| {
             pane_fill(cx)
                 .h(px(340.0))
-                .child(empty_column(lens_welcome(provider, cx)))
+                .child(empty_column(agent_welcome(provider, cx)))
         };
         states()
             .state(
-                "welcome: Claude Code has not written a transcript yet",
+                "welcome: a new Claude Code chat, before its first prompt",
                 welcome(AgentProvider::ClaudeCode, cx),
             )
             .state(
-                "welcome: Codex before its first prompt",
+                "welcome: a new Codex chat",
                 welcome(AgentProvider::Codex, cx),
             )
             .state("waiting and failure messages", grid)
             .state(
                 "error card, a prompt with images",
                 error_card(
-                    "could not paste the image: %3: text not echoed in 2s, nothing submitted",
+                    "Codex does not take images with this model; pick another model or send text",
                     false,
                     cx,
                 ),
             )
             .state(
-                "error card, the TUI did not take the paste",
-                error_card(
-                    "%14: text not echoed within 2 seconds; nothing submitted",
-                    false,
-                    cx,
-                ),
+                "error card, the CLI exited mid-turn",
+                error_card("Claude Code exited before it took the prompt", true, cx),
             )
             .state(
                 "error card, long error",
                 error_card(
-                    &"%14: text not echoed within 2 seconds; nothing submitted\n".repeat(12),
+                    &"API Error: 529 overloaded; the turn stopped after 3 retries\n".repeat(12),
                     true,
                     cx,
                 ),
