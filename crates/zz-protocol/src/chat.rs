@@ -136,6 +136,8 @@ pub struct ItemBody {
     pub exit_code: Option<i32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<AgentImage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub activity: Option<String>,
 }
 
 impl ItemBody {
@@ -259,6 +261,12 @@ pub enum ChatEvent {
         outcome: TurnOutcome,
         at: u64,
     },
+    TurnActivity {
+        turn: TurnId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+        at: u64,
+    },
     ItemStarted {
         item: ItemId,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -284,6 +292,10 @@ pub enum ChatEvent {
         item: ItemId,
         status: ItemStatus,
         at: u64,
+    },
+    ItemsSummarized {
+        items: Vec<ItemId>,
+        summary: String,
     },
     RequestOpened {
         request: RequestId,
@@ -330,6 +342,12 @@ pub enum ChatPhase {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Activity {
+    pub text: String,
+    pub at: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TurnView {
     pub id: TurnId,
     pub by: TurnBy,
@@ -338,12 +356,19 @@ pub struct TurnView {
     pub outcome: Option<TurnOutcome>,
     pub stopping: bool,
     pub items: Vec<ItemId>,
+    pub activity: Option<Activity>,
 }
 
 impl TurnView {
     pub fn is_open(&self) -> bool {
         self.outcome.is_none()
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Summary {
+    pub batch: u32,
+    pub text: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -358,6 +383,7 @@ pub struct ItemView {
     pub background: bool,
     pub started_at: u64,
     pub ended_at: Option<u64>,
+    pub summary: Option<Summary>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -407,6 +433,7 @@ pub struct ChatView {
     pub skipped: u32,
     pub last_session: Option<String>,
     pictured: VecDeque<ItemId>,
+    batches: u32,
 }
 
 impl ChatView {
@@ -514,6 +541,7 @@ impl ChatView {
                     outcome: None,
                     stopping: false,
                     items: Vec::new(),
+                    activity: None,
                 });
             }
             ChatEvent::TurnClaimed { turn, prompt } => {
@@ -542,6 +570,12 @@ impl ChatView {
                 let running = self.running_mut(id)?;
                 running.outcome = Some(outcome.clone());
                 running.ended_at = Some(*at);
+            }
+            ChatEvent::TurnActivity { turn, text, at } => {
+                self.running_mut(*turn)?.activity = text.as_ref().map(|text| Activity {
+                    text: text.clone(),
+                    at: *at,
+                });
             }
             ChatEvent::ItemStarted {
                 item,
@@ -592,6 +626,7 @@ impl ChatView {
                         background,
                         started_at: *at,
                         ended_at: None,
+                        summary: None,
                     },
                 );
                 for request in &mut self.requests {
@@ -654,6 +689,21 @@ impl ChatView {
                 let view = self.open_item_mut(item)?;
                 view.status = status.clone();
                 view.ended_at = Some(*at);
+            }
+            ChatEvent::ItemsSummarized { items, summary } => {
+                if !items.iter().any(|item| self.items.contains_key(item)) {
+                    return Err(Skip::UnknownItem);
+                }
+                self.batches += 1;
+                let batch = Summary {
+                    batch: self.batches,
+                    text: summary.clone(),
+                };
+                for item in items {
+                    if let Some(view) = self.items.get_mut(item) {
+                        view.summary = Some(batch.clone());
+                    }
+                }
             }
             ChatEvent::RequestOpened {
                 request,

@@ -720,3 +720,75 @@ fn an_async_codex_question_outlives_its_turn_and_takes_its_answer() {
         Some(ItemStatus::Completed)
     );
 }
+
+#[test]
+fn a_batch_summary_after_the_turn_still_names_its_tools_and_the_live_line_follows_the_turn() {
+    use zz_protocol::chat::{ChatEvent, TurnId};
+
+    let info = |zz: serde_json::Value| {
+        update(json!({ "sessionUpdate": "session_info_update", "_meta": { "zz": zz } }))
+    };
+    let mut shadow = Shadow::recording();
+    ready(&mut shadow);
+    running(&mut shadow, "c1");
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call", "toolCallId": "t1", "title": "wc -l a.txt",
+        "kind": "execute", "status": "in_progress", "rawInput": { "command": "wc -l a.txt" },
+        "_meta": { "zz": { "activity": "Count lines in a.txt" } },
+    })));
+    shadow.payload(&info(json!({ "activity": "Counting lines" })));
+    shadow.payload(&update(json!({
+        "sessionUpdate": "tool_call_update", "toolCallId": "t1", "status": "completed",
+        "content": [{ "type": "content", "content": { "type": "text", "text": "2 a.txt" } }],
+    })));
+    shadow.payload(&tool("t2", "completed"));
+    end_turn(&mut shadow, "c1");
+    shadow.payload(&info(json!({
+        "summary": "Counted lines in a.txt", "toolCallIds": ["t1", "t2", "ghost"],
+    })));
+    shadow.payload(&info(json!({ "activity": null })));
+    let picked = shadow
+        .events
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                ChatEvent::TurnActivity { .. } | ChatEvent::ItemsSummarized { .. }
+            )
+        })
+        .map(|event| match event {
+            ChatEvent::TurnActivity { turn, text, .. } => ChatEvent::TurnActivity {
+                turn: *turn,
+                text: text.clone(),
+                at: 0,
+            },
+            other => other.clone(),
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        picked,
+        [
+            ChatEvent::TurnActivity {
+                turn: TurnId(1),
+                text: Some("Counting lines".to_owned()),
+                at: 0,
+            },
+            ChatEvent::ItemsSummarized {
+                items: vec![ItemId::new("t1"), ItemId::new("t2")],
+                summary: "Counted lines in a.txt".to_owned(),
+            },
+        ]
+    );
+    let view = view(&shadow);
+    let first = view.item(&ItemId::new("t1")).expect("t1");
+    assert_eq!(first.body.activity.as_deref(), Some("Count lines in a.txt"));
+    assert_eq!(first.body.text, "2 a.txt");
+    assert_eq!(
+        first.summary,
+        view.item(&ItemId::new("t2")).expect("t2").summary
+    );
+    assert_eq!(
+        first.summary.as_ref().map(|summary| summary.text.as_str()),
+        Some("Counted lines in a.txt")
+    );
+}

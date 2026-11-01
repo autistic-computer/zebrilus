@@ -953,6 +953,7 @@ impl Runtime {
             command.env(name, value);
         }
         command.env("CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS", "1");
+        command.env("CLAUDE_CODE_EMIT_TOOL_USE_SUMMARIES", "1");
         for (name, value) in &self.command.env {
             command.env(name, value);
         }

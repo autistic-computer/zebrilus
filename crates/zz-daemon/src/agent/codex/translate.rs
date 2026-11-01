@@ -90,6 +90,17 @@ impl Translator {
             "item/reasoning/summaryTextDelta" | "item/reasoning/textDelta" => {
                 self.delta("agent_thought_chunk", params)
             }
+            "item/reasoning/summaryPartAdded" => match params["itemId"].as_str() {
+                Some(id)
+                    if params["summaryIndex"]
+                        .as_u64()
+                        .is_some_and(|index| index > 0)
+                        && self.streamed.contains(id) =>
+                {
+                    vec![chunk("agent_thought_chunk", id, "\n\n")]
+                }
+                _ => Vec::new(),
+            },
             "item/commandExecution/outputDelta" => {
                 let (Some(id), Some(delta)) = (params["itemId"].as_str(), params["delta"].as_str())
                 else {
@@ -394,6 +405,9 @@ impl Translator {
         }
         if !info.locations.is_empty() {
             call["locations"] = Value::Array(info.locations);
+        }
+        if item["type"] == "collabAgentToolCall" && item["tool"] == "wait" {
+            call["_meta"]["zz"] = json!({ "activity": "Waiting for agents" });
         }
         let mut updates = vec![call];
         for thread in adopted {
@@ -1436,6 +1450,47 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{update} is not an ACP update: {error}"));
         }
         updates
+    }
+
+    #[test]
+    fn a_running_wait_says_so_and_each_reasoning_summary_starts_its_own_paragraph() {
+        let mut translator = Translator::new(PathBuf::from("/work"));
+        let wait = translator.notification(
+            "item/started",
+            &json!({"item": {"type": "collabAgentToolCall", "id": "w", "tool": "wait",
+                "status": "inProgress", "receiverThreadIds": [], "agentsStates": {}}}),
+        );
+        assert_eq!(wait[0]["title"], "Waited for agents");
+        assert_eq!(wait[0]["_meta"]["zz"]["activity"], "Waiting for agents");
+        let part = |index: u64| json!({"itemId": "r", "summaryIndex": index});
+        let delta = |text: &str| json!({"itemId": "r", "summaryIndex": 0, "delta": text});
+        assert!(
+            translator
+                .notification("item/reasoning/summaryPartAdded", &part(0))
+                .is_empty()
+        );
+        let mut text = String::new();
+        for update in [
+            translator.notification(
+                "item/reasoning/summaryTextDelta",
+                &delta("**Reading the lane**\n\nIt keeps its cursor."),
+            ),
+            translator.notification("item/reasoning/summaryPartAdded", &part(1)),
+            translator.notification(
+                "item/reasoning/summaryTextDelta",
+                &delta("**Considering final step timing**"),
+            ),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert_eq!(update["sessionUpdate"], "agent_thought_chunk");
+            text.push_str(update["content"]["text"].as_str().unwrap_or_default());
+        }
+        assert_eq!(
+            text,
+            "**Reading the lane**\n\nIt keeps its cursor.\n\n**Considering final step timing**"
+        );
     }
 
     #[test]

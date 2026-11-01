@@ -127,6 +127,41 @@ impl Script {
         self.tool(id, None, kind, target).done(id)
     }
 
+    pub fn described(
+        &mut self,
+        id: &str,
+        kind: ItemKind,
+        target: &str,
+        activity: &str,
+    ) -> &mut Self {
+        self.start(
+            id,
+            None,
+            kind,
+            ItemBody {
+                target: Some(target.to_owned()),
+                activity: Some(activity.to_owned()),
+                ..ItemBody::default()
+            },
+        )
+    }
+
+    pub fn activity(&mut self, text: &str) -> &mut Self {
+        let at = self.at;
+        self.event(&ChatEvent::TurnActivity {
+            turn: TurnId(self.turn),
+            text: Some(text.to_owned()),
+            at,
+        })
+    }
+
+    pub fn summarize(&mut self, items: &[&str], summary: &str) -> &mut Self {
+        self.event(&ChatEvent::ItemsSummarized {
+            items: items.iter().map(|id| ItemId::new(*id)).collect(),
+            summary: summary.to_owned(),
+        })
+    }
+
     pub fn notice(&mut self, id: &str, kind: ItemKind, text: &str) -> &mut Self {
         self.start(id, None, kind, ItemBody::text(text)).done(id)
     }
