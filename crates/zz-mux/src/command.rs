@@ -5678,9 +5678,14 @@ impl MuxEngine {
             return false;
         }
         let session = window_state.session;
-        let pane_dead = window_state.panes[&pane].dead;
+        let pane_state = &window_state.panes[&pane];
+        let pane_dead = pane_state.dead;
         let format = self.automatic_rename_format_for_window(window).to_owned();
-        if !pane_dead
+        let agent_title = (format == DEFAULT_AUTOMATIC_RENAME_FORMAT
+            && matches!(pane_state.kind, PaneKind::Agent(_)))
+        .then(|| RawText::from(pane_state.title.clone()));
+        if agent_title.is_none()
+            && !pane_dead
             && !self.pane_runtime_facts.contains_key(&pane)
             && format == DEFAULT_AUTOMATIC_RENAME_FORMAT
         {
@@ -5690,19 +5695,21 @@ impl MuxEngine {
             inner: hooks,
             command: None,
         };
-        let name = expand_format_with_hooks(
-            &format,
-            self,
-            FormatContext {
-                session: Some(session),
-                window: Some(window),
-                pane: None,
-                active_session: Some(session),
-                format_client: FormatClient::NoClient,
-                format_type: FormatType::Window,
-            },
-            &mut hooks,
-        );
+        let name = agent_title.unwrap_or_else(|| {
+            expand_format_with_hooks(
+                &format,
+                self,
+                FormatContext {
+                    session: Some(session),
+                    window: Some(window),
+                    pane: None,
+                    active_session: Some(session),
+                    format_client: FormatClient::NoClient,
+                    format_type: FormatType::Window,
+                },
+                &mut hooks,
+            )
+        });
         let changed = self.state.windows[&window].name != name;
         if changed {
             self.state
@@ -5710,6 +5717,19 @@ impl MuxEngine {
                 .expect("automatic rename window exists");
         }
         changed
+    }
+
+    pub fn update_agent_title(&mut self, pane: PaneId, title: Option<&str>) -> bool {
+        if !self
+            .state
+            .update_agent_title(pane, title)
+            .unwrap_or_default()
+        {
+            return false;
+        }
+        let mut hooks = CommandHooks::new(self.format_now());
+        self.refresh_automatic_window_name_for_pane(pane, &mut hooks);
+        true
     }
 
     fn remain_on_exit_for_window(&self, window: WindowId) -> RemainOnExit {
@@ -6087,7 +6107,7 @@ impl MuxEngine {
             "find-window" => self.find_window(context, &command.args)?,
             "split-window" => self.split_window(context, &command.args, command.stdin(), hooks)?,
             "new-pane" => self.new_pane(context, &command.args, command.stdin(), hooks)?,
-            "select-pane-kind" => self.select_pane_kind(context, &command.args)?,
+            "select-pane-kind" => self.select_pane_kind(context, &command.args, hooks)?,
             "break-pane" => self.break_pane(context, &command.args, hooks)?,
             "join-pane" | "move-pane" => self.join_pane(context, &command.args, name, hooks)?,
             "set-browser-url" => self.set_browser_url(context, &command.args)?,
@@ -7916,6 +7936,7 @@ impl MuxEngine {
         &mut self,
         context: &ExecutionContext,
         args: &[RawText],
+        hooks: &mut impl StatusHooks,
     ) -> Result<Execution, ServerError> {
         let (options, positional) = parse_command_options("select-pane-kind", args)?;
         let Some((selection, command)) = positional.split_first() else {
@@ -7968,6 +7989,7 @@ impl MuxEngine {
                 let agent = agent_selection(&options, command)?;
                 self.state
                     .convert_pane(pane, PaneKind::Agent(agent.clone()))?;
+                self.refresh_automatic_window_name_for_pane(pane, hooks);
                 return Ok(agent_opened(
                     MuxEffect::PaneMaterialized {
                         pane,
@@ -8029,6 +8051,9 @@ impl MuxEngine {
         };
         let snapshot_kind = pane_kind_snapshot(&kind);
         let inherit_cwd_from = self.state.materialize_pane(pane, kind)?;
+        if matches!(snapshot_kind, PaneKindSnapshot::Agent(_)) {
+            self.refresh_automatic_window_name_for_pane(pane, hooks);
+        }
         Ok(agent_opened(
             MuxEffect::PaneMaterialized {
                 pane,
@@ -28632,6 +28657,57 @@ mod tests {
                     ),
                 )
                 .is_err()
+        );
+        assert!(engine.state.validate().is_ok());
+    }
+
+    #[test]
+    fn a_chat_names_its_pane_and_window_after_its_session_title() {
+        let mut engine = MuxEngine::default();
+        let mut context = ExecutionContext::default();
+        engine
+            .execute(&mut context, &command("new-session", &["-s", "chats"]))
+            .expect("session");
+        let pane = context.pane.expect("terminal");
+        let window = context.window.expect("window");
+        let target = pane.to_string();
+        assert!(!engine.update_agent_title(pane, Some("Not a chat")));
+        engine
+            .execute(
+                &mut ExecutionContext::default(),
+                &command("select-pane-kind", &["-t", &target, "agent", "claude"]),
+            )
+            .expect("terminal to chat");
+        let names = |engine: &MuxEngine| {
+            (
+                engine.state.pane(pane).expect("pane").title.clone(),
+                engine.state.windows[&window].name.clone(),
+            )
+        };
+        assert_eq!(names(&engine), ("agent".to_owned(), "agent".to_owned()));
+
+        assert!(engine.update_agent_title(pane, Some("Fix the flaky resize test")));
+        assert_eq!(
+            names(&engine),
+            (
+                "Fix the flaky resize test".to_owned(),
+                "Fix the flaky resize test".to_owned()
+            )
+        );
+        assert!(!engine.update_agent_title(pane, Some("Fix the flaky resize test")));
+        assert!(engine.update_agent_title(pane, None));
+        assert_eq!(names(&engine), ("agent".to_owned(), "agent".to_owned()));
+
+        engine
+            .execute(
+                &mut ExecutionContext::default(),
+                &command("rename-window", &["-t", &window.to_string(), "notes"]),
+            )
+            .expect("rename");
+        assert!(engine.update_agent_title(pane, Some("Renamed in the CLI")));
+        assert_eq!(
+            names(&engine),
+            ("Renamed in the CLI".to_owned(), "notes".to_owned())
         );
         assert!(engine.state.validate().is_ok());
     }

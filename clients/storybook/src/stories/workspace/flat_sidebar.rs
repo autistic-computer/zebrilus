@@ -15,7 +15,7 @@ use zz_client::{
     },
 };
 use zz_protocol::{
-    Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId,
+    AgentDescriptor, AgentProvider, Axis, LayoutNode, MuxSnapshot, PaneBorderIndicators, PaneBorderLines, PaneBorderStatus, PaneId,
     PaneKindSnapshot, PaneSnapshot, PaneStatus, PaneStatusKind, PaneStatusState, PaneSummary,
     SessionId, SessionSnapshot, ShellCommand, SplitId, WindowId, WindowSnapshot,
 };
@@ -178,6 +178,17 @@ fn codex(id: u64, title: &str) -> PaneSnapshot {
     agent_cli(id, title, "codex")
 }
 
+fn chat(id: u64, provider: AgentProvider, title: &str) -> PaneSnapshot {
+    pane(
+        id,
+        title,
+        PaneKindSnapshot::Agent(AgentDescriptor {
+            provider,
+            ..AgentDescriptor::default()
+        }),
+    )
+}
+
 fn agent_cli(id: u64, title: &str, command: &str) -> PaneSnapshot {
     let mut pane = terminal(id, title);
     pane.summary.process = vec![command.to_owned()];
@@ -324,7 +335,7 @@ fn macbook(rows: Rows) -> FlatHost {
                         2,
                         None,
                         vec![
-                            codex(2, "codex-review")
+                            chat(2, AgentProvider::Codex, "Review the clippy fixes")
                                 .status(Blocked, Some(Permission), "cargo clippy --workspace")
                                 .ago(MINUTE + 15),
                         ],
@@ -454,7 +465,7 @@ fn ubuntu(rows: Rows) -> FlatHost {
                             terminal(2, "cargo bench")
                                 .at("/home/fabrico/zz/bench", "main")
                                 .ago(3 * HOUR),
-                            codex(3, "codex"),
+                            chat(3, AgentProvider::Codex, "Profile the bench run"),
                             browser(4, "Grafana", "http://localhost:3000/"),
                         ],
                     ),

@@ -1,7 +1,7 @@
 ---
 type: Concept
 title: Agent panes and the flip
-description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
+description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how a chat and its window are named after the CLI's session title, how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
 timestamp: 2026-11-01T23:00:00-03:00
@@ -64,6 +64,39 @@ window's or float's pane becomes the target of the next command:
   <message> agent <claude|codex>`
 - Side chat in a PiP: `new-pane -c <dir> ; select-pane-kind --resume <session> --fork agent
   <claude|codex>`
+
+# Chat titles
+
+A chat is named after its session, the name each CLI gives its own sessions.
+
+- **Pane and window.** The pane title is the session title, and `agent` until one is known. The
+  driver reports it as `AgentStreamPayload::TitleChanged`, which the host keeps out of the stream:
+  it lands in `AgentPaneState.title`, goes out as `AgentPaneWire.title`, and the daemon sets the
+  pane title from it (`apply_agent_title`, `MuxState::update_agent_title`). A title from the CLI
+  replaces one set with `select-pane -T`, as a program's OSC title does, and `allow-set-title off`
+  keeps the pane's own. With the default `automatic-rename-format`, a window whose active pane is a
+  chat takes the chat's title as its name (`refresh_automatic_window_name_for_pane`), so
+  `list-windows`, the status bar, the chat sidebar, the session tree and the phone overview all read
+  it; a window the user renamed keeps its name. `pane-title-changed` and `window-renamed` fire. No
+  wire change: the pane title and `AgentPaneWire.title` were already on the wire.
+- **Claude Code.** On start or resume the driver reads the transcript's last `customTitle` (a
+  rename), else its last `aiTitle` (`claude::sessions::title`, the head and tail reads the session
+  list uses); a fork or rewind takes the source session's. After the first prompt of an untitled
+  session (not a `/` command) it sends the `generate_session_title` control request with the prompt
+  as the description and `persist: true`, so the CLI saves the title in the session as well. The
+  turn does not wait on it. A `/rename` comes back as `system` / `session_title_changed`, and a
+  `/clear` starts untitled.
+- **Codex.** The thread's `name` from the `thread/start`, `thread/resume` or `thread/fork` answer; a
+  fork or rewind keeps the chat's title when the copy has none. After the first prompt of an unnamed
+  thread the driver starts an ephemeral thread (`ephemeral: true`, read-only sandbox, approvals
+  never) on the first listed model whose id contains luna, nano, mini or small (else the chat's
+  model), at low effort when that model offers it, asks it for a short title for the prompt, saves it
+  with `thread/name/set` so the user's other Codex clients show it, and unsubscribes from the helper.
+  An ephemeral thread is never saved, so the helper stays out of thread lists, though the shared app
+  server announces it with `thread/started` to connected clients while it runs.
+  `thread/name/updated` follows renames from any client, the TUI's `/rename` included.
+- **Flips** keep the title: the chat resumes the session and reads its saved name, and the CLI shows
+  its own.
 
 # The flip
 
