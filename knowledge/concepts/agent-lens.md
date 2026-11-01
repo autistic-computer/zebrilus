@@ -134,11 +134,14 @@ zz ships a Claude Code plugin whose hooks module (a "mod", `crates/zz-daemon/ass
 gives the Claude lens a live channel. The transcript stays for history on open, resume and rewind,
 and is the whole story when the plugin is not there.
 
-- **Loading.** The daemon writes the plugin into `<daemon data dir>/claude-plugin` when its files
-  changed (`agent/claude_plugin.rs`, `include_str!`), and every pane it spawns gets that folder
-  appended to `CLAUDE_CODE_PLUGIN_DIRS` (the user's own folders stay first) and `ZZ_LENS_SOCKET`, a
-  socket beside the daemon's own (`<socket stem>-lens-<pane>.sock`, left out past 100 bytes). The
-  CLI loads the folder with no flag and no prompt; the mod does nothing without `ZZ_LENS_SOCKET`.
+- **Loading.** The daemon writes the plugin into `<daemon data dir>/claude-plugin-<hash of its
+  files>` (`agent/claude_plugin.rs`, `include_str!`; not in tests), and every pane it spawns gets
+  that folder appended to `CLAUDE_CODE_PLUGIN_DIRS` (the user's own folders stay first) and
+  `ZZ_LENS_SOCKET`, a socket beside the daemon's own (`<socket stem>-lens-<pane>.sock`, left out
+  past 100 bytes). The CLI loads the folder with no flag and no prompt, watches it and reloads the
+  mod when a file in it changes, and writes about 880 KB of type files into it; one folder per
+  version means a daemon of another build never swaps the mod under sessions it did not start.
+  The mod does nothing without `ZZ_LENS_SOCKET`.
 - **Channel.** The lens runtime listens on that socket (`agent/lens_channel.rs`): HTTP/1.1 over
   the Unix socket, which the mod reaches with `$.http.fetch` and `socketPath`. HTTP because a mod
   hook has a 10 s budget of its own time that `$.clock.sleep` spends, while a `$` call in flight is

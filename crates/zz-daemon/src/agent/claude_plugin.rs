@@ -1,5 +1,6 @@
 use std::{
     ffi::{OsStr, OsString},
+    hash::{DefaultHasher, Hash as _, Hasher as _},
     io::{self, Write as _},
     path::{Path, PathBuf},
     sync::OnceLock,
@@ -28,7 +29,7 @@ const FILES: &[(&str, &str)] = &[
 ];
 
 pub(crate) fn install(root: &Path) -> io::Result<PathBuf> {
-    let directory = root.join(DIRECTORY);
+    let directory = root.join(folder(FILES));
     for (name, text) in FILES {
         let path = directory.join(name);
         if std::fs::read(&path).is_ok_and(|old| old == text.as_bytes()) {
@@ -43,10 +44,19 @@ pub(crate) fn install(root: &Path) -> io::Result<PathBuf> {
     Ok(directory)
 }
 
+fn folder(files: &[(&str, &str)]) -> String {
+    let mut hasher = DefaultHasher::new();
+    files.hash(&mut hasher);
+    format!("{DIRECTORY}-{:016x}", hasher.finish())
+}
+
 fn installed() -> Option<&'static Path> {
     static PLUGIN: OnceLock<Option<PathBuf>> = OnceLock::new();
     PLUGIN
         .get_or_init(|| {
+            if cfg!(test) {
+                return None;
+            }
             let root = super::paths::daemon_data_dir().ok()?;
             install(&root)
                 .inspect_err(|error| {
@@ -113,7 +123,7 @@ mod tests {
 
     use zz_protocol::PaneId;
 
-    use super::{FILES, PLUGIN_DIRS, SOCKET, install, lens_socket, merge, plugin_dirs};
+    use super::{FILES, PLUGIN_DIRS, SOCKET, folder, install, lens_socket, merge, plugin_dirs};
 
     fn value(environment: &[(OsString, Option<OsString>)], name: &str) -> Option<OsString> {
         environment
@@ -152,6 +162,24 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(directory.join(".claude-plugin/types/index.d.ts")).unwrap(),
             "kept"
+        );
+    }
+
+    #[test]
+    fn each_version_of_the_plugin_gets_its_own_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let older = root.path().join(folder(&[("hooks/register.ts", "older")]));
+        std::fs::create_dir_all(older.join("hooks")).unwrap();
+        std::fs::write(older.join("hooks/register.ts"), "older").unwrap();
+
+        let directory = install(root.path()).unwrap();
+
+        assert_eq!(directory.file_name().unwrap(), folder(FILES).as_str());
+        assert_ne!(directory, older);
+        assert_eq!(folder(FILES), folder(FILES));
+        assert_eq!(
+            std::fs::read_to_string(older.join("hooks/register.ts")).unwrap(),
+            "older"
         );
     }
 
