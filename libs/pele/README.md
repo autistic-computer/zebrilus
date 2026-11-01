@@ -5,12 +5,11 @@
               ▀▜▀▜▀               <br>
                                   <br>
 ---                               <br>
-name: pele                        <br>
-description: mermaid to svg       <br>
+name: pele-rs                     <br>
+description: port of pele         <br>
 author: autistic.computer         <br>
 license: mit                      <br>
-version: 0.1.0                    <br>
-usage: pele::render(src, &amp;opts)   <br>
+version: 0.1.0                    <br>
 ---                               
 </samp>
 </p>
@@ -18,3 +17,6 @@ usage: pele::render(src, &amp;opts)   <br>
 <p align="center">
 <a href="https://autistic.computer"><kbd> /{&gt; autistic.computer </kbd></a>
 </p>
+
+Source provenance and the upstream MIT notice are preserved in [NOTICE](NOTICE).
+The code is distributed under the [MIT license](LICENSE).
