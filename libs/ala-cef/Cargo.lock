@@ -86,7 +86,7 @@ dependencies = [
 [[package]]
 name = "ala"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#be48f39d7e7df1bfff2d6299cda2839ec5c0d395"
+source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
 dependencies = [
  "accesskit",
  "ala-macros",
@@ -197,7 +197,7 @@ dependencies = [
 [[package]]
 name = "ala-macros"
 version = "0.1.0"
-source = "git+https://github.com/autistic-computer/ala?branch=main#be48f39d7e7df1bfff2d6299cda2839ec5c0d395"
+source = "git+https://github.com/autistic-computer/ala?branch=main#02174c06d161195caa9e5df3aad6759ac6bde72a"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -1573,7 +1573,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3982,7 +3982,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4613,7 +4613,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4987,6 +4987,7 @@ checksum = "977d0a4abdef933f424a99fe09f95576e089b90aebc6f016a3bc813762493e91"
 dependencies = [
  "base64",
  "data-url",
+ "flate2",
  "fontdb",
  "harfrust",
  "imagesize",
@@ -5462,7 +5463,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
