@@ -1126,3 +1126,43 @@ fn a_prompt_left_with_a_plugin_that_hung_up_is_typed_while_the_cli_runs() {
     assert!(lens.turn.is_some());
     assert!(lens.source.live_link().is_none());
 }
+
+#[test]
+fn a_prompt_after_the_cli_left_the_pane_fails_instead_of_reaching_the_shell() {
+    let rig = Rig::new(true);
+    rig.record("idle");
+    let mut lens = rig.lens();
+    lens.open();
+    let polling = rig.open_poll();
+    rig.hello(None);
+    live(&mut lens);
+    drop(polling);
+    std::fs::remove_file(
+        rig.root
+            .path()
+            .join(format!("registry/{}.json", std::process::id())),
+    )
+    .unwrap();
+    until(|| {
+        lens.tick();
+        lens.source.live_link().is_none()
+    });
+
+    let payloads = ask_prompt(&mut lens, 8, "rm -rf build");
+    assert_eq!(
+        failure(&payloads, 8).as_deref(),
+        Some("Claude Code is not running in this pane")
+    );
+    let steered = lens.command(RuntimeCommand::Verb {
+        prompt: AgentPrompt {
+            text: "/steer git push".to_owned(),
+            ..AgentPrompt::default()
+        },
+    });
+    assert!(matches!(
+        steered.as_slice(),
+        [AgentStreamPayload::PromptsReclaimed { prompts }] if prompts[0].text == "git push"
+    ));
+    assert!(rig.pane.sent.lock().is_empty());
+    assert!(lens.turn.is_none());
+}

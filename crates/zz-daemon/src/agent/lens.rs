@@ -306,6 +306,15 @@ impl Claude {
         })
     }
 
+    fn left(&self, pane_pid: u32) -> bool {
+        let Some(files) = self.files.as_ref() else {
+            return false;
+        };
+        let records = claude_peers::read_records_in(&files.registry).unwrap_or_default();
+        claude_peers::record_in_pane(&records, pane_pid).is_none()
+            && agent_pid(pane_pid, "claude").is_none()
+    }
+
     fn follow_launch(&mut self, pane_pid: u32, record: Option<&PeerRecord>) {
         let (pid, cwd) = match record {
             Some(record) => (record.pid, record.cwd.clone()),
@@ -1403,6 +1412,15 @@ impl Source {
     fn live_link(&mut self) -> Option<&mut Link> {
         self.link().filter(|link| link.live())
     }
+
+    fn left(&self, pane_pid: Option<u32>) -> Option<&'static str> {
+        match self {
+            Self::Claude(claude) => (claude.link.as_ref().is_none_or(|link| !link.live())
+                && pane_pid.is_some_and(|pid| claude.left(pid)))
+            .then_some("Claude Code is not running in this pane"),
+            Self::Codex(_) => None,
+        }
+    }
 }
 
 struct Turn {
@@ -1986,6 +2004,9 @@ impl Lens {
         if let Some(payloads) = self.live_prompt(turn_id, prompt) {
             return payloads;
         }
+        if let Some(message) = self.source.left(self.spec.io.pid()) {
+            return failed(message);
+        }
         if !prompt.images.is_empty()
             && let Err(message) = self.spec.io.attach(&prompt.images)
         {
@@ -2027,7 +2048,11 @@ impl Lens {
         if let Some(payloads) = self.live_steer(text, &prompt) {
             return payloads;
         }
-        match self.spec.io.submit(text) {
+        let typed = match self.source.left(self.spec.io.pid()) {
+            Some(message) => Err(message.to_owned()),
+            None => self.spec.io.submit(text),
+        };
+        match typed {
             Ok(()) => Vec::new(),
             Err(error) => {
                 log::debug!(target: "zz::agent", "could not steer {}: {error}", self.spec.pane);
