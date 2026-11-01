@@ -1501,7 +1501,7 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 bash -n compat/attached-client.sh
-python3 .agents/skills/okf/scripts/okf.py validate knowledge
+python3 ~/.agents/skills/okf/scripts/okf.py validate knowledge
 git diff --check
 compat/run.sh --check-summary
 ```
