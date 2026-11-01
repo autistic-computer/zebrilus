@@ -55,7 +55,7 @@ use zz_ui::{
 use super::{
     agent::{
         cards::{COMMAND, permission},
-        lens,
+        pane as agent_pane,
     },
     console::{
         chooser::confirm_prompt,
@@ -100,14 +100,14 @@ pub const PLATES: &[Section] = &[
     Section {
         id: "flat",
         name: "Flat sidebar",
-        summary: "The flat sidebar beside Claude Code with its lens open and two terminals. The keyboard cursor sits on a window, and a host that is not connected offers Connect.",
+        summary: "The flat sidebar beside a Claude Code chat and two terminals. The keyboard cursor sits on a window, and a host that is not connected offers Connect.",
         build: Flat::view,
     },
     Section {
-        id: "lens",
-        name: "Lens",
-        summary: "The agent lens over two terminals, each toggle lit while its lens is open: Claude Code at a plan approval, whose card offers Show terminal, and Codex before its first prompt.",
-        build: Lens::view,
+        id: "agent",
+        name: "Agent panes",
+        summary: "Two agent panes, each with its flip button: Claude Code at a plan approval, and a new Codex chat before its first prompt.",
+        build: AgentPanes::view,
     },
     Section {
         id: "panes",
@@ -125,7 +125,7 @@ pub const PLATES: &[Section] = &[
     Section {
         id: "pip",
         name: "PiP",
-        summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and Claude Code with its lens open.",
+        summary: "Floats drawn as PiPs over the tiled panes, casting the float shadow: a terminal with its title in the top border, and a Claude Code chat.",
         build: Pip::view,
     },
     Section {
@@ -178,7 +178,7 @@ const LAYOUTS: [&str; 2] = ["Tree", "Flat"];
 const WHICH_KEY_HEIGHT: f32 = 300.0;
 const PANES_HEIGHT: f32 = 250.0;
 const PIP_HEIGHT: f32 = 420.0;
-const LENS_HEIGHT: f32 = 420.0;
+const AGENT_HEIGHT: f32 = 420.0;
 const START_HEIGHT: f32 = 300.0;
 const START_PAGE_HEIGHT: f32 = 220.0;
 const PREFIX: &str = "ctrl-b";
@@ -253,7 +253,7 @@ struct Flat {
 impl Flat {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
         let flat = cx.new(|_| Live::new(None).cursor_and_offline());
-        let agent = lens::tiled(window, cx);
+        let agent = agent_pane::tiled(window, cx);
         cx.new(|_| Self { flat, agent }).into()
     }
 }
@@ -332,47 +332,47 @@ impl Flat {
     }
 }
 
-struct Lens {
+struct AgentPanes {
     plans: AnyView,
     first: AnyView,
 }
 
-impl Lens {
+impl AgentPanes {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let plans = lens::tiled_plans(window, cx);
-        let first = lens::tiled_first(window, cx);
+        let plans = agent_pane::tiled_plans(window, cx);
+        let first = agent_pane::tiled_first(window, cx);
         cx.new(|_| Self { plans, first }).into()
     }
 }
 
-impl Render for Lens {
+impl Render for AgentPanes {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let gaps = crate::pane().gaps;
         let plans = pane_surface(
-            "showcase-lens-plans",
+            "showcase-agent-plans",
             self.plans.clone(),
             Vec::new(),
             chrome(true, true, gaps, cx),
             cx,
         );
         let first = pane_surface(
-            "showcase-lens-first",
+            "showcase-agent-first",
             self.first.clone(),
             Vec::new(),
             chrome(false, true, gaps, cx),
             cx,
         );
         div()
-            .id("showcase-lens")
+            .id("showcase-agent")
             .w_full()
-            .h(px(LENS_HEIGHT))
+            .h(px(AGENT_HEIGHT))
             .overflow_hidden()
             .rounded(cx.theme().radius)
             .framed(cx)
             .bg(cx.theme().background)
             .p(gap(gaps))
             .child(pane_split_surface(
-                "showcase-lens-split",
+                "showcase-agent-split",
                 PaneSplitAxis::Horizontal,
                 0.5,
                 false,
@@ -389,13 +389,13 @@ impl Render for Lens {
 }
 
 struct Pip {
-    lens: AnyView,
+    agent: AnyView,
 }
 
 impl Pip {
     fn view(window: &mut Window, cx: &mut App) -> AnyView {
-        let lens = lens::floating_claude(window, cx);
-        cx.new(|_| Self { lens }).into()
+        let agent = agent_pane::floating_claude(window, cx);
+        cx.new(|_| Self { agent }).into()
     }
 }
 
@@ -459,7 +459,7 @@ impl Render for Pip {
                         .top(px(32.0))
                         .w(px(380.0))
                         .h(px(320.0))
-                        .child(self.lens.clone()),
+                        .child(self.agent.clone()),
                 ),
         )
     }

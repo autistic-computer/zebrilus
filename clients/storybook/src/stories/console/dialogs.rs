@@ -147,7 +147,7 @@ pub const STORY: Story = Story {
         Section {
             id: "inline-alerts",
             name: "Inline alerts",
-            summary: "inline_alert, the failure a pane shows in place instead of a modal: the alert dialog's layout on the popover surface, with the main action last on the right. The browser and editor panes and the agent lens all use it.",
+            summary: "inline_alert, the failure a pane shows in place instead of a modal: the alert dialog's layout on the popover surface, with the main action last on the right. The browser, editor and agent panes all use it.",
             build: |_, cx| stateless(inline_alerts, cx),
         },
     ],
@@ -176,18 +176,18 @@ fn inline_alerts(_: &mut Window, cx: &mut App) -> AnyElement {
             .child(alert_actions(cx).child(retry("editor-retry"))),
         )
         .state(
-            "agent lens: the TUI did not take the prompt",
+            "agent pane: the CLI exited mid-turn",
             inline_alert(
-                Some("The prompt did not reach Claude Code".into()),
-                "%14: text not echoed within 2 seconds; nothing submitted",
+                Some("Claude Code stopped".into()),
+                "Claude Code exited before it took the prompt",
                 cx,
             ),
         )
         .state(
-            "agent lens: a prompt with images, no title",
+            "agent pane: a prompt with images, no title",
             inline_alert(
                 None,
-                "could not paste the image: %3: text not echoed in 2s, nothing submitted",
+                "Codex does not take images with this model; pick another model or send text",
                 cx,
             ),
         )

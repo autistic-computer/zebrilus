@@ -30,9 +30,10 @@ use zz_ui::{
     pane::agent_provider_icon,
 };
 
-use crate::stories::agent::lens;
+use crate::stories::agent::pane as agent_pane;
 use crate::story::Framed as _;
 use crate::story::{Section, Story, row, stateless, states};
+use zz_ui::pane::FlipTo;
 
 pub const STORY: Story = Story {
     id: "phone",
@@ -55,7 +56,7 @@ pub const STORY: Story = Story {
         Section {
             id: "pill-menu",
             name: "Pill menu",
-            summary: "What tapping the pill, or the prefix key over the keyboard, opens, the way Calendar's + rises into its actions: the page dims, the pill turns into a close button and the actions stack above it. Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Lens view, which reads Terminal view while the lens is open. On a host's page the pill opens what + and the chat did: a new terminal, browser or session on that host (only while it is connected), All hosts and Settings.",
+            summary: "What tapping the pill, or the prefix key over the keyboard, opens, the way Calendar's + rises into its actions: the page dims, the pill turns into a close button and the actions stack above it. Overview sits nearest the thumb; Kill pane and All bindings sit furthest. A pane running Claude Code or Codex adds Switch to chat, which reads Switch to the CLI on an agent pane. On a host's page the pill opens what + and the chat did: a new terminal, browser or session on that host (only while it is connected), All hosts and Settings.",
             build: |_, cx| cx.new(Menus::new).into(),
         },
         Section {
@@ -95,10 +96,10 @@ pub const STORY: Story = Story {
             build: |_, cx| cx.new(Screen::new).into(),
         },
         Section {
-            id: "lens",
-            name: "Agent lens",
-            summary: "A terminal running Claude Code or Codex on the phone opens in the lens, since typing into a TUI with a phone keyboard is slow. Lens view and Terminal view in the pill's menu switch between them; switching to the terminal keeps that pane there until the agent exits. While the lens is open the page drops the key row the way a browser page does, and the composer sends to the CLI.",
-            build: phone_lens,
+            id: "agent",
+            name: "Agent pane",
+            summary: "An agent pane on the phone is a chat, which beats typing into a TUI with a phone keyboard. Switch to the CLI and Switch to chat in the pill's menu flip the pane on the same session; a busy pane asks first in its corner. A chat page drops the key row the way a browser page does.",
+            build: phone_agents,
         },
     ],
 };
@@ -598,7 +599,7 @@ const MENU_TOP: f32 = 12.0;
 const PREFIX_AT: (f32, f32) = (12.0, 8.0);
 const PREFIX_SIZE: f32 = 40.0;
 
-fn menu_items(lens: Option<bool>) -> Vec<Vec<PillMenuItem>> {
+fn menu_items(flip: Option<FlipTo>) -> Vec<Vec<PillMenuItem>> {
     let mut panes = vec![
         PillMenuItem::new("rename-pane", "Rename pane", IconName::Pencil),
         PillMenuItem::new("new-window", "New window", IconName::AppWindow),
@@ -606,13 +607,11 @@ fn menu_items(lens: Option<bool>) -> Vec<Vec<PillMenuItem>> {
         PillMenuItem::new("last-pane", "Last pane", IconName::History),
         PillMenuItem::new("overview", "Overview", IconName::LayoutDashboard),
     ];
-    if let Some(open) = lens {
-        let (label, icon) = if open {
-            ("Terminal view", IconName::SquareTerminal)
-        } else {
-            ("Lens view", IconName::Eye)
-        };
-        panes.push(PillMenuItem::new("lens", label, icon).look(PillMenuLook::Primary));
+    if let Some(to) = flip {
+        panes.push(
+            PillMenuItem::new("flip", to.label(), zz_ui::pane::flip_icon(to))
+                .look(PillMenuLook::Primary),
+        );
     }
     vec![
         vec![
@@ -707,8 +706,8 @@ impl Render for Menus {
             .columns(2)
             .state("tapping the pill", Self::from_pill(menu_items(None), cx))
             .state(
-                "on a Claude Code pane: Lens view",
-                Self::from_pill(menu_items(Some(false)), cx),
+                "on a terminal running Claude Code: Switch to chat",
+                Self::from_pill(menu_items(Some(FlipTo::Chat)), cx),
             )
             .state("on a host's page", Self::from_pill(host_menu_items(), cx))
             .state(
@@ -743,40 +742,46 @@ impl Render for Menus {
     }
 }
 
-struct PhoneLens(Vec<(&'static str, &'static str, AgentProvider, AnyView)>);
+struct PhoneAgents(Vec<(&'static str, &'static str, AgentProvider, AnyView)>);
 
-fn phone_lens(window: &mut Window, cx: &mut App) -> AnyView {
+fn phone_agents(window: &mut Window, cx: &mut App) -> AnyView {
     let views = vec![
         (
-            "Claude Code with the lens open: a turn running, the plan and a background task above the composer",
+            "a Claude Code chat: a turn running, the plan and a background task above the composer",
             "Pinned tabs keep their icon width",
             AgentProvider::ClaudeCode,
-            lens::phone_claude(window, cx),
+            agent_pane::phone_claude(window, cx),
         ),
         (
-            "Claude Code at its permission prompt: Allow types 1, Deny presses Esc",
+            "Claude Code at its permission prompt",
             "Open the pinned tabs pull request",
             AgentProvider::ClaudeCode,
-            lens::phone_claude_asks(window, cx),
+            agent_pane::phone_claude_asks(window, cx),
         ),
         (
-            "Codex after switching to its terminal: Lens view in the pill's menu opens the lens again",
+            "Switch to the CLI during a turn: the choice sits in the page's corner",
+            "Pinned tabs keep their icon width",
+            AgentProvider::ClaudeCode,
+            agent_pane::phone_claude_busy(window, cx),
+        ),
+        (
+            "Codex in a terminal: Switch to chat in the pill's menu turns it into a chat",
             "codex",
             AgentProvider::Codex,
-            lens::phone_codex(window, cx),
+            agent_pane::phone_codex(window, cx),
         ),
     ];
-    cx.new(|_| PhoneLens(views)).into()
+    cx.new(|_| PhoneAgents(views)).into()
 }
 
-impl Render for PhoneLens {
+impl Render for PhoneAgents {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let placement = placement();
         self.0.iter().enumerate().fold(
             states(),
             |states, (index, (label, title, provider, view))| {
                 let pill = compact_floating_pill(
-                    ("lens-pill", index),
+                    ("agent-pill", index),
                     PillLabel {
                         icon: agent_provider_icon(*provider),
                         title: (*title).into(),

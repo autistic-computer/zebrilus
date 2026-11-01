@@ -1,26 +1,28 @@
-use std::rc::Rc;
-
 use ala::{
     AnyElement, AnyView, App, AppContext as _, Context, Div, Entity, IntoElement,
     ParentElement as _, Render, SharedString, Styled as _, Window, div, prelude::*, px,
 };
 use penna::{ActiveTheme as _, input::InputState};
+use zz_client::agent_flip::{AgentFlips, Flip, FlipMode};
 use zz_protocol::chat::{ItemKind, ItemStatus};
 use zz_protocol::{AgentProvider, PaneId};
 use zz_ui::{
     agent::{
-        presentation::{lens_welcome, spinner_phase, terminal_pip},
+        presentation::{agent_welcome, spinner_phase},
         tasks::{TaskTrayAction, TrayPanel, task_tray},
     },
-    pane::{PaneDragSource, PaneLens, TerminalPaneAction, terminal_pane_header},
+    pane::{
+        FlipChoice, FlipTo, PaneDragSource, PaneFlip, PaneOverlayCorner, TerminalPaneAction,
+        agent_provider_icon, pane_flip_overlay, pane_header, pane_overlay_stack,
+    },
     pane_look::pane_color,
     pip::PipSurface,
 };
 
 use super::{
-    chat::{Frame, Show, Thread, Views, empty_column},
+    chat::{Frame, Thread, Views, empty_column},
     composer::{Draft, claude_settings, codex_settings, composer, composer_input},
-    fixtures::{PLAN, PLAN_STEPS, Script, completed, lens_approval, tasks, terminal_ask},
+    fixtures::{PLAN, PLAN_STEPS, Script, approval_of, completed, plan_approval, tasks},
 };
 use crate::stories::workspace::fixtures::{CLAUDE, CODEX, Tone, terminal_body};
 use crate::story::{Framed as _, states};
@@ -59,13 +61,6 @@ const CLAUDE_PLANS: &[(Tone, &str)] = &[
         "> Plan how pinned tabs keep their width, then wait for me.",
     ),
     (Tone::Plain, "  Ready to code?"),
-    (Tone::Plain, "  Here is Claude's plan:"),
-    (
-        Tone::Muted,
-        "  1. Give pinned tabs a 28px floor in tab_strip.rs",
-    ),
-    (Tone::Muted, "  2. Read stored widths in the drop preview"),
-    (Tone::Plain, "  Would you like to proceed?"),
     (Tone::Success, "  › 1. Yes, and auto-accept edits"),
     (Tone::Muted, "    2. Yes, and manually approve edits"),
     (Tone::Muted, "    3. No, keep planning"),
@@ -121,6 +116,14 @@ impl Scene {
 
     const fn running(self) -> bool {
         !matches!(self, Self::Codex | Self::CodexFirst)
+    }
+
+    const fn busy(self) -> Option<&'static str> {
+        match self {
+            Self::Claude => Some("a turn and 1 background task"),
+            Self::ClaudeAsks | Self::ClaudePlans => Some("a turn"),
+            Self::Codex | Self::CodexFirst => None,
+        }
     }
 
     fn icon(self) -> penna::IconName {
@@ -215,7 +218,7 @@ impl Scene {
                     .ask(
                         1,
                         Some("x2"),
-                        lens_approval("git push -u origin fix/pinned-tab-width"),
+                        approval_of("git push -u origin fix/pinned-tab-width"),
                     );
             }
             Self::ClaudePlans => {
@@ -232,11 +235,7 @@ impl Scene {
                         "crates/zz-ui/src/browser/tab_strip.rs",
                     )
                     .ran("r2", ItemKind::Read, "crates/zz-ui/src/browser/drag.rs")
-                    .ask(
-                        1,
-                        None,
-                        terminal_ask("Waiting for a plan approval in the terminal"),
-                    );
+                    .ask(1, None, plan_approval());
             }
             Self::CodexFirst => {}
         }
@@ -264,25 +263,55 @@ fn pane_frame(cx: &App) -> Div {
         .bg(pane_color(theme, theme.background))
 }
 
-pub struct LensPane {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Side {
+    Chat,
+    Cli,
+}
+
+impl Side {
+    const fn flip_to(self) -> FlipTo {
+        match self {
+            Self::Chat => FlipTo::Cli,
+            Self::Cli => FlipTo::Chat,
+        }
+    }
+
+    const fn flipped(self) -> Self {
+        match self {
+            Self::Chat => Self::Cli,
+            Self::Cli => Self::Chat,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Start {
+    Idle,
+    Busy,
+    Armed,
+}
+
+pub struct AgentPaneStory {
     scene: Scene,
     look: Look,
-    open: bool,
+    side: Side,
+    flips: AgentFlips,
+    next_request: u64,
     thread: Entity<Thread>,
     input: Entity<InputState>,
     tray: Option<TrayPanel>,
-    sheet: Option<SharedString>,
 }
 
-fn build(scene: Scene, look: Look, open: bool, window: &mut Window, cx: &mut App) -> AnyView {
-    build_with(scene, look, open, None, window, cx)
+fn build(scene: Scene, look: Look, side: Side, window: &mut Window, cx: &mut App) -> AnyView {
+    build_with(scene, look, side, Start::Idle, window, cx)
 }
 
 fn build_with(
     scene: Scene,
     look: Look,
-    open: bool,
-    sheet: Option<&'static str>,
+    side: Side,
+    start: Start,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
@@ -290,81 +319,149 @@ fn build_with(
     input.update(cx, |input, cx| {
         input.set_placeholder(format!("Message {}…", scene.provider().label()), cx);
     });
-    cx.new(|cx: &mut Context<LensPane>| {
-        let lens = cx.weak_entity();
-        let show: Show = Rc::new(move |_: &mut Window, cx: &mut App| {
-            let _ = lens.update(cx, |lens, cx| {
-                lens.sheet = Some(lens.scene.provider().label().into());
-                cx.notify();
-            });
-        });
+    cx.new(|cx: &mut Context<AgentPaneStory>| {
         let thread = Thread::new(scene.script())
             .framed(Frame::Scroll(None))
             .vendor(scene.icon())
-            .terminal(show)
             .view(window, cx);
-        LensPane {
+        let mut story = AgentPaneStory {
             scene,
             look,
-            open,
+            side,
+            flips: AgentFlips::default(),
+            next_request: 1,
             thread,
             input,
             tray: None,
-            sheet: sheet.map(SharedString::from),
+        };
+        if start != Start::Idle {
+            story.flip();
         }
+        if start == Start::Armed {
+            story.choose(FlipChoice::WhenIdle);
+        }
+        story
     })
     .into()
 }
 
 pub(crate) fn tiled(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Claude, Look::Tiled, true, window, cx)
+    build(Scene::Claude, Look::Tiled, Side::Chat, window, cx)
 }
 
 pub(crate) fn tiled_plans(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::ClaudePlans, Look::Tiled, true, window, cx)
+    build(Scene::ClaudePlans, Look::Tiled, Side::Chat, window, cx)
 }
 
 pub(crate) fn tiled_first(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::CodexFirst, Look::Tiled, true, window, cx)
+    build(Scene::CodexFirst, Look::Tiled, Side::Chat, window, cx)
 }
 
 pub(crate) fn floating_claude(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Claude, Look::Floating, true, window, cx)
+    build(Scene::Claude, Look::Floating, Side::Chat, window, cx)
 }
 
 pub(crate) fn floating_codex(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Codex, Look::Floating, false, window, cx)
+    build(Scene::Codex, Look::Floating, Side::Cli, window, cx)
 }
 
 pub(crate) fn phone_claude(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Claude, Look::Phone, true, window, cx)
+    build(Scene::Claude, Look::Phone, Side::Chat, window, cx)
 }
 
 pub(crate) fn phone_claude_asks(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::ClaudeAsks, Look::Phone, true, window, cx)
+    build(Scene::ClaudeAsks, Look::Phone, Side::Chat, window, cx)
 }
 
 pub(crate) fn phone_codex(window: &mut Window, cx: &mut App) -> AnyView {
-    build(Scene::Codex, Look::Phone, false, window, cx)
+    build(Scene::Codex, Look::Phone, Side::Cli, window, cx)
 }
 
-impl LensPane {
+pub(crate) fn phone_claude_busy(window: &mut Window, cx: &mut App) -> AnyView {
+    build_with(
+        Scene::Claude,
+        Look::Phone,
+        Side::Chat,
+        Start::Busy,
+        window,
+        cx,
+    )
+}
+
+impl AgentPaneStory {
+    const fn pane(&self) -> PaneId {
+        PaneId(self.scene.pane())
+    }
+
+    fn send(&mut self) -> impl FnOnce(zz_protocol::CommandInvocation) -> Option<u64> + use<> {
+        let request = self.next_request;
+        self.next_request += 1;
+        move |_| Some(request)
+    }
+
+    fn answer(&mut self) {
+        let request = self.next_request - 1;
+        let pane = self.pane();
+        let reply = match self.flips.state(pane) {
+            Flip::Sending(FlipMode::Ask) => self.scene.busy().map(|busy| format!("busy: {busy}")),
+            Flip::Sending(_) => None,
+            _ => return,
+        };
+        let flips_now = matches!(
+            self.flips.state(pane),
+            Flip::Sending(FlipMode::Ask | FlipMode::Now)
+        ) && reply.is_none();
+        self.flips
+            .settle(request, reply.as_deref().map_or(Ok(()), Err));
+        if flips_now {
+            self.side = self.side.flipped();
+            self.flips.observe_panes([(pane, self.side.flip_to())]);
+        }
+    }
+
+    fn flip(&mut self) {
+        let pane = self.pane();
+        let send = self.send();
+        if self.flips.press(pane, self.side.flip_to(), send) {
+            self.answer();
+        }
+    }
+
+    fn choose(&mut self, choice: FlipChoice) {
+        let pane = self.pane();
+        let Some(mode) = choice.mode() else {
+            self.flips.dismiss(pane);
+            return;
+        };
+        let send = self.send();
+        if self.flips.choose(pane, mode, send) {
+            self.answer();
+        }
+    }
+
     fn header(&self, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
         let title = self.scene.title();
-        terminal_pane_header(
+        let flip = self.flips.state(self.pane());
+        pane_header(
+            match self.side {
+                Side::Chat => agent_provider_icon(self.scene.provider()),
+                Side::Cli => penna::IconName::SquareTerminal,
+            },
             true,
             title,
-            PaneDragSource::new(PaneId(self.scene.pane()), title, true, |_, _, _| {}),
+            PaneDragSource::new(self.pane(), title, true, |_, _, _| {}),
             self.look == Look::Floating,
-            Some(PaneLens {
+            Some(PaneFlip {
                 provider: self.scene.provider(),
-                open: self.open,
+                to: self.side.flip_to(),
+                armed: flip.armed(),
+                pending: flip.pending(),
             }),
             move |action, _, cx| {
-                if action == TerminalPaneAction::Lens {
+                if action == TerminalPaneAction::Flip {
                     entity.update(cx, |view, cx| {
-                        view.open = !view.open;
+                        view.flip();
                         cx.notify();
                     });
                 }
@@ -374,15 +471,34 @@ impl LensPane {
         .into_any_element()
     }
 
+    fn overlay(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let entity = cx.entity();
+        pane_flip_overlay(
+            self.pane(),
+            self.side.flip_to(),
+            self.flips.state(self.pane()),
+            move |choice, _, cx| {
+                entity.update(cx, |view, cx| {
+                    view.choose(choice);
+                    cx.notify();
+                });
+            },
+            cx,
+        )
+        .map(|overlay| {
+            pane_overlay_stack(PaneOverlayCorner::TopRight, [overlay]).into_any_element()
+        })
+    }
+
     fn prefix(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        if self.scene != Scene::Claude {
+        if self.scene != Scene::Claude || self.side != Side::Chat {
             return Vec::new();
         }
         let phase = spinner_phase(cx.entity_id(), cx);
         let entity = cx.entity();
         let tasks = tasks().into_iter().take(1).collect::<Vec<_>>();
         task_tray(
-            "lens-tray",
+            "agent-pane-tray",
             Some(PLAN),
             &tasks,
             self.tray,
@@ -403,11 +519,11 @@ impl LensPane {
         .collect()
     }
 
-    fn lens(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn chat(&self, cx: &mut Context<Self>) -> AnyElement {
         let prefix = self.prefix(cx);
         let composer = composer(
             Draft {
-                id: SharedString::from(format!("lens-composer-{}", self.scene.pane())),
+                id: SharedString::from(format!("agent-pane-composer-{}", self.scene.pane())),
                 input: self.input.clone(),
                 running: self.scene.running(),
                 writable: true,
@@ -421,7 +537,6 @@ impl LensPane {
             cx,
         );
         let chat = self.thread.read(cx).shows_chat();
-        let entity = cx.entity();
         div()
             .relative()
             .flex()
@@ -440,38 +555,32 @@ impl LensPane {
                 div()
                     .flex_1()
                     .min_h_0()
-                    .child(empty_column(lens_welcome(self.scene.provider(), cx)))
+                    .child(empty_column(agent_welcome(self.scene.provider(), cx)))
                     .into_any_element()
             })
             .child(composer)
-            .when_some(self.sheet.clone(), |lens, title| {
-                lens.child(terminal_pip(
-                    ("lens-sheet", self.scene.pane()),
-                    title,
-                    self.scene.icon(),
-                    terminal_body(self.scene.terminal(), false, cx).into_any_element(),
-                    cx.theme().background,
-                    move |_, cx| {
-                        entity.update(cx, |view, cx| {
-                            view.sheet = None;
-                            cx.notify();
-                        });
-                    },
-                    cx,
-                ))
-            })
             .into_any_element()
     }
 }
 
-impl Render for LensPane {
+impl Render for AgentPaneStory {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let body = if self.open {
-            self.lens(cx)
-        } else {
-            terminal_body(self.scene.terminal(), false, cx).into_any_element()
+        let body = match self.side {
+            Side::Chat => self.chat(cx),
+            Side::Cli => terminal_body(self.scene.terminal(), false, cx).into_any_element(),
         };
-        let id = ("lens-pane", self.scene.pane());
+        let overlay = self.overlay(cx);
+        let body = div()
+            .relative()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .child(body)
+            .children(overlay)
+            .into_any_element();
+        let id = ("agent-pane", self.scene.pane());
         if self.look == Look::Phone {
             return div()
                 .id(id)
@@ -518,56 +627,56 @@ fn panes_of(cases: Vec<(&'static str, AnyView)>, cx: &mut App) -> AnyView {
 pub fn panes(window: &mut Window, cx: &mut App) -> AnyView {
     let cases = vec![
         (
-            "Claude Code with the lens open: a turn running, the plan and a background task above the composer",
-            build(Scene::Claude, Look::Page(640.0), true, window, cx),
+            "Claude Code as a chat: a turn running, the plan and a background task above the composer. The flip button switches to the CLI; with work running it asks first",
+            build(Scene::Claude, Look::Page(640.0), Side::Chat, window, cx),
         ),
         (
-            "Claude Code at its permission prompt: the card sits on the tool row; Allow types 1, Deny presses Esc",
-            build(Scene::ClaudeAsks, Look::Page(480.0), true, window, cx),
+            "Claude Code at its permission prompt: the card sits on the tool row, and the answer goes to the CLI",
+            build(Scene::ClaudeAsks, Look::Page(480.0), Side::Chat, window, cx),
         ),
         (
-            "Codex showing its terminal: the toggle opens the lens on the same session",
-            build(Scene::Codex, Look::Page(360.0), false, window, cx),
+            "Codex in a terminal: the flip button turns the pane into a chat on the same session, since nothing is running",
+            build(Scene::Codex, Look::Page(360.0), Side::Cli, window, cx),
         ),
         (
-            "Codex before its first prompt: the welcome names it, and what you send goes to its session",
-            build(Scene::CodexFirst, Look::Page(360.0), true, window, cx),
+            "a new Codex chat before its first prompt",
+            build(Scene::CodexFirst, Look::Page(360.0), Side::Chat, window, cx),
         ),
     ];
     panes_of(cases, cx)
 }
 
-pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
+pub fn choices(window: &mut Window, cx: &mut App) -> AnyView {
     let cases = vec![
         (
-            "Claude Code running /config: its own dialog opens in a wide PiP over the chat, keys go to it, and the PiP closes when Claude's input box comes back, or on Done",
+            "the flip button pressed during a turn: the pane says what switching now stops. Switch when idle arms the flip, Switch now stops the work and switches, and the X keeps the pane as it is",
             build_with(
                 Scene::Claude,
                 Look::Page(560.0),
-                true,
-                Some("/config · Claude Code"),
+                Side::Chat,
+                Start::Busy,
                 window,
                 cx,
             ),
         ),
         (
-            "Claude Code at a plan approval the lens cannot answer: Show terminal on the card opens the dialog in the PiP",
+            "an armed flip: the button stays lit and the pane says it switches when idle. Cancel, or the button again, disarms it",
             build_with(
-                Scene::ClaudePlans,
-                Look::Page(520.0),
-                true,
-                Some("Claude Code"),
+                Scene::Claude,
+                Look::Page(560.0),
+                Side::Chat,
+                Start::Armed,
                 window,
                 cx,
             ),
         ),
         (
-            "Codex showing its usage: commands only its own screen draws (/usage, /skills, /side) open in the PiP; Esc or Done closes it",
+            "the same choice on a terminal running Claude Code at its own prompt",
             build_with(
-                Scene::Codex,
-                Look::Page(480.0),
-                true,
-                Some("/usage · Codex"),
+                Scene::ClaudeAsks,
+                Look::Page(360.0),
+                Side::Cli,
+                Start::Busy,
                 window,
                 cx,
             ),
@@ -576,87 +685,101 @@ pub fn sheets(window: &mut Window, cx: &mut App) -> AnyView {
     panes_of(cases, cx)
 }
 
-struct ToggleCase {
+struct FlipCase {
     label: &'static str,
     provider: AgentProvider,
     title: &'static str,
-    open: bool,
+    to: FlipTo,
+    armed: bool,
+    pending: bool,
     active: bool,
     floats: bool,
     width: Option<f32>,
 }
 
-const TOGGLE: ToggleCase = ToggleCase {
+const FLIP: FlipCase = FlipCase {
     label: "",
     provider: AgentProvider::ClaudeCode,
     title: "Pinned tabs keep their icon width",
-    open: false,
+    to: FlipTo::Chat,
+    armed: false,
+    pending: false,
     active: true,
     floats: false,
     width: None,
 };
 
-const TOGGLES: [ToggleCase; 7] = [
-    ToggleCase {
-        label: "Claude Code, terminal showing",
-        ..TOGGLE
+const FLIPS: [FlipCase; 8] = [
+    FlipCase {
+        label: "a terminal running Claude Code: Switch to chat",
+        ..FLIP
     },
-    ToggleCase {
-        label: "Claude Code, lens open",
-        open: true,
-        ..TOGGLE
+    FlipCase {
+        label: "a Claude Code chat: Switch to the CLI",
+        to: FlipTo::Cli,
+        ..FLIP
     },
-    ToggleCase {
-        label: "Codex, terminal showing",
+    FlipCase {
+        label: "a terminal running Codex",
         provider: AgentProvider::Codex,
         title: "codex",
-        ..TOGGLE
+        ..FLIP
     },
-    ToggleCase {
-        label: "Codex, lens open",
-        provider: AgentProvider::Codex,
-        title: "codex",
-        open: true,
-        ..TOGGLE
+    FlipCase {
+        label: "armed: lit until the flip runs or is cancelled",
+        to: FlipTo::Cli,
+        armed: true,
+        ..FLIP
     },
-    ToggleCase {
-        label: "inactive pane: the toggle and the actions wait for the pointer",
+    FlipCase {
+        label: "waiting for the daemon's answer",
+        pending: true,
+        ..FLIP
+    },
+    FlipCase {
+        label: "inactive pane: the button and the actions wait for the pointer",
         active: false,
-        ..TOGGLE
+        ..FLIP
     },
-    ToggleCase {
+    FlipCase {
         label: "floating: Tile back and Zoom take the place of the splits",
-        open: true,
+        to: FlipTo::Cli,
         floats: true,
-        ..TOGGLE
+        ..FLIP
     },
-    ToggleCase {
-        label: "narrow pane, long title, lens open",
+    FlipCase {
+        label: "narrow pane, long title, a chat",
         title: "Investigate why the browser pane drops frames on the secondary display at 120 Hz",
-        open: true,
+        to: FlipTo::Cli,
         width: Some(380.0),
-        ..TOGGLE
+        ..FLIP
     },
 ];
 
-pub fn toggles(_: &mut Window, cx: &mut App) -> AnyView {
-    crate::story::stateless(render_toggles, cx)
+pub fn flip_buttons(_: &mut Window, cx: &mut App) -> AnyView {
+    crate::story::stateless(render_flip_buttons, cx)
 }
 
-fn render_toggles(_: &mut Window, cx: &mut App) -> AnyElement {
+fn render_flip_buttons(_: &mut Window, cx: &mut App) -> AnyElement {
     let cx: &App = cx;
-    TOGGLES
+    FLIPS
         .iter()
         .enumerate()
         .fold(states(), |states, (index, case)| {
-            let header = terminal_pane_header(
+            let header = pane_header(
+                match case.to {
+                    FlipTo::Chat => penna::IconName::SquareTerminal,
+                    FlipTo::Cli => agent_provider_icon(case.provider),
+                },
                 case.active,
                 case.title,
                 PaneDragSource::new(PaneId(index as u64 + 1), case.title, true, |_, _, _| {}),
                 case.floats,
-                Some(PaneLens {
+                Some(PaneFlip {
                     provider: case.provider,
-                    open: case.open,
+                    to: case.to,
+                    armed: case.armed,
+                    pending: case.pending,
                 }),
                 |_, _, _| {},
                 cx,
@@ -669,7 +792,7 @@ fn render_toggles(_: &mut Window, cx: &mut App) -> AnyElement {
             states.state(
                 case.label,
                 pane_frame(cx)
-                    .id(("lens-toggle", index))
+                    .id(("flip-button", index))
                     .when_some(case.width, |frame, width| frame.w(px(width)))
                     .child(div().opacity(opacity).child(header))
                     .child(div().h(px(20.0))),

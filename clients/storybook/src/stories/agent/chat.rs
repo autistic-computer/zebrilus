@@ -21,22 +21,19 @@ use zz_ui::agent::{
         chat_thread, shows_chat,
     },
     composer::COMPOSER_OUTER_PADDING,
-    presentation::{permission_card, permission_option, terminal_wait_card},
+    presentation::{permission_card, permission_option},
     question::{QuestionCardAction, QuestionCardState, QuestionCardStep},
     refs::ChatRefs,
 };
 use zz_ui::pane_look::pane_color;
 
 use super::fixtures::{
-    Script, agent, agents_script, approval, branch_question, chart_screenshot, checks_question,
-    completed, lens_approval, palettes, placement, question, story_hosts, tab_strip_screenshot,
-    terminal_ask,
+    Script, agent, agents_script, approval, approval_of, branch_question, chart_screenshot,
+    checks_question, completed, palettes, placement, question, story_hosts, tab_strip_screenshot,
 };
 use crate::story::states;
 
 const PHASE: f32 = 0.25;
-
-pub type Show = Rc<dyn Fn(&mut Window, &mut App)>;
 
 #[derive(Clone, Copy)]
 pub enum Frame {
@@ -76,7 +73,6 @@ pub struct Thread {
     vendor: IconName,
     frame: Frame,
     width: Option<f32>,
-    terminal: Option<Show>,
     measured: bool,
 }
 
@@ -93,7 +89,6 @@ impl Thread {
             vendor: zz_ui::program::CLAUDE_ICON,
             frame: Frame::Grow(0.0),
             width: None,
-            terminal: None,
             measured: false,
         }
     }
@@ -120,11 +115,6 @@ impl Thread {
 
     pub fn vendor(mut self, vendor: IconName) -> Self {
         self.vendor = vendor;
-        self
-    }
-
-    pub fn terminal(mut self, show: Show) -> Self {
-        self.terminal = Some(show);
         self
     }
 
@@ -315,22 +305,7 @@ impl Thread {
             } => (title, options),
         };
         if options.is_empty() {
-            let show = self.terminal.clone();
-            return Some(
-                terminal_wait_card(
-                    ("story-show-terminal", id.0),
-                    title.clone(),
-                    move |window, cx| match &show {
-                        Some(show) => show(window, cx),
-                        None => window.push_notification(
-                            Notification::new().message("Opens the terminal in a PiP"),
-                            cx,
-                        ),
-                    },
-                    cx,
-                )
-                .into_any_element(),
-            );
+            return None;
         }
         let enabled = !self.sent.contains(&id);
         let highlighted = current.then_some(self.highlighted);
@@ -1269,7 +1244,7 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         .ask(
             1,
             Some("x1"),
-            lens_approval("git commit -am 'Bump the storybook lock'"),
+            approval_of("git commit -am 'Bump the storybook lock'"),
         )
         .ask(
             2,
@@ -1283,23 +1258,6 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         .ran("r1", ItemKind::Read, "crates/zz-ui/src/settings.rs")
         .reply("a1", "Two choices decide where this lives.")
         .ask(2, None, placement());
-    let mut wait = Script::new();
-    wait.turn("Plan how pinned tabs keep their width, then wait for me.")
-        .ran(
-            "s1",
-            ItemKind::Search,
-            "rg -n \"pinned\" crates/zz-ui/src/browser",
-        )
-        .ran(
-            "r1",
-            ItemKind::Read,
-            "crates/zz-ui/src/browser/tab_strip.rs",
-        )
-        .ask(
-            7,
-            None,
-            terminal_ask("Waiting for a plan approval in the terminal"),
-        );
     let mut long = Script::new();
     long.turn("Give pinned tabs a width floor everywhere they are drawn.")
         .tool(
@@ -1311,7 +1269,7 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         .ask(
             1,
             Some("e1"),
-            lens_approval(
+            approval_of(
                 "Edit crates/zz-ui/src/browser/tab_strip.rs, crates/zz-ui/src/browser/drag.rs and four more files to give pinned tabs a width floor",
             ),
         );
@@ -1402,10 +1360,6 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
             }],
         ))
         .view(window, cx),
-    );
-    add(
-        "a dialog the lens cannot answer: its one action shows the terminal",
-        &Thread::new(wait).view(window, cx),
     );
     add(
         "answered: a record, the turn goes on",
