@@ -37,9 +37,18 @@ check lib:
         cargo test --manifest-path libs/penna/storybook/Cargo.toml "${args[@]}" --all-features
     fi
 
-[doc("Push zz's commits under libs/<lib> to autistic-computer/<lib> main (pele goes to pele-rs).")]
+[doc("Push zz's commits under libs/<lib> to autistic-computer/<lib> main (pele goes to pele-rs, split onto that repo's main without reading join trailers).")]
 push lib:
-    git subtree push --prefix=libs/{{ lib }} {{ org }}/{{ if lib == "pele" { "pele-rs" } else { lib } }}.git main
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "{{ lib }}" == pele ]]; then
+        repo={{ org }}/pele-rs.git
+        git fetch --quiet "$repo" main
+        onto=$(git rev-parse FETCH_HEAD)
+        git subtree push --prefix=libs/pele --ignore-joins --onto="$onto" "$repo" main
+    else
+        git subtree push --prefix=libs/{{ lib }} {{ org }}/{{ lib }}.git main
+    fi
 
 [doc("Merge autistic-computer/<lib> main into libs/<lib> (pele comes from pele-rs).")]
 pull lib:
