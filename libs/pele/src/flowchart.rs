@@ -979,6 +979,7 @@ fn parse(source: &str, max_edges: usize) -> Result<Model, PeleError> {
         return Err(PeleError::syntax("Expected a flowchart declaration", 1, 1));
     };
     let header_text = keyword(&header.text, "flowchart")
+        .or_else(|| keyword(&header.text, "flowchart-elk"))
         .or_else(|| keyword(&header.text, "graph"))
         .ok_or_else(|| {
             PeleError::syntax("Expected flowchart or graph", header.line, header.column)
@@ -2276,6 +2277,16 @@ mod tests {
         assert_eq!(model.nodes[2].shape, Shape::Cylinder);
         assert_eq!(model.edges[0].label, "go");
         assert_eq!(model.edges[1].head, 2);
+    }
+
+    #[test]
+    fn an_elk_header_draws_as_a_flowchart() {
+        let source = "flowchart-elk LR\n A --> B";
+        assert!(crate::supports(source));
+        let model = parse(source, 10).unwrap();
+        assert_eq!(model.direction, Dir::Lr);
+        assert_eq!(model.edges.len(), 1);
+        assert!(crate::render(source, &RenderOptions::default()).is_ok());
     }
 
     #[test]
