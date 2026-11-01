@@ -985,3 +985,113 @@ fn a_model_picked_in_the_terminal_moves_the_lens_controls() {
     assert_eq!(changed, [("model", "gpt-5.6-luna"), ("effort", "medium")]);
     assert!(live.sent().is_empty(), "nothing goes back to the server");
 }
+
+fn rollout_of(dir: &std::path::Path, thread: &str) -> PathBuf {
+    dir.join(format!("rollout-2026-10-31T20-11-55-{thread}.jsonl"))
+}
+
+fn write_rollout(path: &std::path::Path, thread: &str, lines: &[Value]) {
+    let meta = rollout_line(
+        "session_meta",
+        &json!({ "id": thread, "cwd": "/work/proj" }),
+    );
+    let text = std::iter::once(&meta)
+        .chain(lines)
+        .fold(String::new(), |all, line| all + &line.to_string() + "\n");
+    std::fs::write(path, text).unwrap();
+}
+
+fn outgoing(peer: &Peer) -> Vec<Value> {
+    peer.outgoing
+        .try_iter()
+        .map(|text| serde_json::from_str(&text).unwrap())
+        .collect()
+}
+
+#[test]
+fn a_refused_question_reply_says_why_and_asks_again() {
+    let mut live = Harness::joined();
+    live.sent();
+    let asked = live.play(&frames("question"));
+    let [(request_id, _, _)] = requested(&asked)[..] else {
+        panic!("one card in {asked:?}");
+    };
+    let answer = [AgentQuestionAnswer {
+        id: "q0".to_owned(),
+        answers: vec!["Blue".to_owned()],
+    }];
+    let answered = live.lens.control(RuntimeControl::AnswerQuestion {
+        request_id,
+        answers: answer.to_vec(),
+    });
+    let sent = live.sent();
+    let start = named(&sent, "turn/start")[0];
+    let refused = live.play(&[
+        json!({ "id": start["id"], "error": { "code": -32600, "message": "thread is closing" } }),
+    ]);
+    let [(again, tool_call, _)] = requested(&refused)[..] else {
+        panic!("the question is asked again in {refused:?}");
+    };
+    assert_ne!(again, request_id);
+    assert_eq!(tool_call["toolCallId"], QUESTION);
+    let mut shadow = Shadow::recording().codex().attached();
+    shadow_lens(&mut shadow, &live.opened);
+    shadow_lens(&mut shadow, &asked);
+    shadow.answered(request_id, chat_answers(&answer));
+    shadow_lens(&mut shadow, &answered);
+    shadow_lens(&mut shadow, &refused);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    let mut view = ChatView::default();
+    for event in &shadow.events {
+        view.apply(event).unwrap();
+    }
+    assert!(view.open_requests().any(|request| request.id.0 == again));
+    assert!(
+        texts(&view, ItemKind::Notice)
+            .iter()
+            .any(|text| text == "Codex did not take the answer: thread is closing")
+    );
+}
+
+#[test]
+fn a_loaded_list_that_never_ends_stops_after_a_few_pages() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = rollout_of(dir.path(), THREAD);
+    write_rollout(&path, THREAD, &[]);
+    let (wire, peer) = Connection::pair();
+    peer.deliver(json!({ "id": 0, "result": { "userAgent": "codex" } }));
+    for id in 1..=40 {
+        peer.deliver(
+            json!({ "id": id, "result": { "data": ["someone-else"], "nextCursor": "more" } }),
+        );
+    }
+    let mut codex = Codex::default();
+    codex.link.wire = Some(wire);
+    codex.link.neighbors = Some(Vec::new());
+    codex.load(path, std::path::Path::new("/work/proj"));
+    assert!(!codex.is_live());
+    let sent = outgoing(&peer);
+    assert_eq!(named(&sent, "thread/loaded/list").len(), 16);
+    assert!(named(&sent, "thread/resume").is_empty());
+}
+
+#[test]
+fn an_answer_already_streaming_when_the_lens_joins_shows_whole() {
+    let mut live = Harness::joined();
+    let late = frames("lens-turn")
+        .into_iter()
+        .filter(|message| {
+            let started = message["method"] == "item/started"
+                && message["params"]["item"]["type"] == "agentMessage";
+            let early = matches!(message["params"]["delta"].as_str(), Some("hello" | " from"));
+            !started && !early
+        })
+        .collect::<Vec<_>>();
+    let payloads = live.play(&late);
+    let (shadow, view) = view(&[&live.opened, &payloads]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert_eq!(
+        texts(&view, ItemKind::Agent),
+        ["hello from the side channel"]
+    );
+}

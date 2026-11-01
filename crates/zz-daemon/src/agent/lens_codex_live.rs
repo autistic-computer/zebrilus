@@ -34,6 +34,7 @@ use crate::agent::{
 
 const JOIN: Duration = Duration::from_secs(3);
 const FRESH: u64 = 30;
+const PAGES: usize = 16;
 const EMBEDDED: [&str; 8] = [
     "--search",
     "--profile",
@@ -66,6 +67,7 @@ pub(super) struct Link {
     rearm: bool,
     cwd: PathBuf,
     closed: Vec<u64>,
+    notices: u64,
     pub(super) ids: Arc<AtomicU64>,
     #[cfg(test)]
     pub(super) wire: Option<Connection>,
@@ -94,6 +96,7 @@ enum Call {
     Start,
     Steer(AgentPrompt),
     Settings(String),
+    Reply(String),
     Quiet,
 }
 
@@ -169,6 +172,7 @@ impl Live {
         )?;
         connection.notify("initialized");
         let mut cursor = Value::Null;
+        let mut pages = 0;
         loop {
             let page = connection.call("thread/loaded/list", &json!({ "cursor": cursor }), JOIN)?;
             if page["data"]
@@ -178,7 +182,8 @@ impl Live {
                 break;
             }
             cursor = page["nextCursor"].clone();
-            if cursor.is_null() {
+            pages += 1;
+            if cursor.is_null() || pages >= PAGES {
                 return Err(format!("thread {thread} is not loaded in the app server"));
             }
         }
@@ -273,7 +278,7 @@ impl Live {
         }
         let text = format!("{REPLY_OPEN}\n{}\n{REPLY_CLOSE}\n", Value::Array(entries));
         let input = json!([{ "type": "text", "text": text, "text_elements": [] }]);
-        self.send_input(Call::Quiet, &input);
+        self.send_input(Call::Reply(item.to_owned()), &input);
     }
 
     fn send_input(&mut self, call: Call, input: &Value) {
@@ -771,10 +776,10 @@ impl Codex {
             "thread/settings/updated" => self.settings(&params["threadSettings"]),
             "item/started" | "item/completed" => self.item(live, method, &params["item"], read),
             _ => {
-                if params["itemId"]
-                    .as_str()
-                    .is_some_and(|id| live.history.contains(id))
-                {
+                let streamed = method.ends_with("/delta") || method.ends_with("Delta");
+                if params["itemId"].as_str().is_some_and(|id| {
+                    live.history.contains(id) || (streamed && !live.seen.contains(id))
+                }) {
                     return;
                 }
                 read.updates
@@ -834,6 +839,19 @@ impl Codex {
                     option_id,
                     message: error,
                 });
+            }
+            Call::Reply(item) => {
+                log::info!(target: "zz::agent", "the Codex app server refused a question reply: {error}");
+                self.link.notices += 1;
+                read.updates.push(json!({
+                    "sessionUpdate": "agent_message_chunk",
+                    "messageId": format!("zz-notice-reply-{item}-{}", self.link.notices),
+                    "content": { "type": "text", "text": format!("Codex did not take the answer: {error}") },
+                    "_meta": { "zz": { "notice": true } },
+                }));
+                if live.card.as_ref().is_some_and(|(_, card)| *card == item) {
+                    live.card = None;
+                }
             }
             Call::Quiet => {
                 log::debug!(target: "zz::agent", "the Codex app server refused a lens request: {error}");
