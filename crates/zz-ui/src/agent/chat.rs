@@ -11,7 +11,7 @@ use std::{
 use ala::{
     AnyElement, App, ClipboardItem, Context, Div, FontWeight, Global, HighlightStyle, Image,
     ImageFormat, IntoElement, ScrollHandle, ScrollWheelEvent, SharedString, Stateful, StyledText,
-    Subscription, Transformation, Window, div, percentage, prelude::*, px, relative,
+    Subscription, Window, div, prelude::*, px, relative,
 };
 use zz_client::chat_rows::{self, AgentState, Fold, RunLabel, Unit};
 use zz_protocol::{
@@ -386,6 +386,14 @@ impl Draw<'_, '_> {
             .count();
         let expanded = self.open.turns.contains(&turn.id);
         let fold = rows.fold.filter(|_| !rows.folded.is_empty());
+        let moving = live && !self.view.waiting();
+        let tail = match rows.shown[lead..].last() {
+            Some(Unit::Run(run)) if moving && !matches!(run.label, RunLabel::Done { .. }) => {
+                Some(run)
+            }
+            _ => None,
+        };
+        let settled = rows.shown.len() - usize::from(tail.is_some());
         let reply = v_flex()
             .id(("chat-reply", turn.id.0))
             .group(REPLY_GROUP)
@@ -400,9 +408,13 @@ impl Draw<'_, '_> {
             .when(expanded, |column| {
                 column.children(rows.folded.iter().map(|unit| self.unit(unit, live)))
             })
-            .children(rows.shown[lead..].iter().map(|unit| self.unit(unit, live)))
-            .when(live && !self.view.waiting(), |column| {
-                column.child(self.thinking(turn))
+            .children(
+                rows.shown[lead..settled]
+                    .iter()
+                    .map(|unit| self.unit(unit, live)),
+            )
+            .when(moving, |column| {
+                column.child(self.live_line(turn, rows.activity.as_deref(), tail))
             })
             .when(!live, |column| {
                 let ordered = rows.shown[..lead]
@@ -528,22 +540,7 @@ impl Draw<'_, '_> {
         v_flex()
             .w_full()
             .child(row)
-            .when(expanded, |column| {
-                column.child(
-                    v_flex().w_full().pl(px(18.0)).children(
-                        run.items
-                            .iter()
-                            .filter_map(|id| view.item(id))
-                            .filter_map(|item| {
-                                if item.kind.is_tool() {
-                                    Some(step_row(item, self.phase, self.cx))
-                                } else {
-                                    thought_row(item, self.hooks.owner, self.cx)
-                                }
-                            }),
-                    ),
-                )
-            })
+            .when(expanded, |column| column.child(self.steps(&run.items)))
             .into_any_element()
     }
 
@@ -576,41 +573,60 @@ impl Draw<'_, '_> {
         text[..cut].to_owned().into()
     }
 
-    fn thinking(&self, turn: &TurnView) -> AnyElement {
-        let cx = self.cx;
-        let working = turn.items.iter().any(|id| {
-            self.view.item(id).is_some_and(|item| {
-                item.status.is_open()
-                    && !matches!(
-                        item.kind,
-                        ItemKind::Agent | ItemKind::Reasoning | ItemKind::User
-                    )
-            })
-        });
-        let label = if working { "Working" } else { "Thinking" };
+    fn live_line(
+        &self,
+        turn: &TurnView,
+        activity: Option<&str>,
+        tail: Option<&chat_rows::Run>,
+    ) -> AnyElement {
         let seconds = self.now.saturating_sub(turn.started_at) / 1000;
-        let elapsed =
-            (seconds > 0 && seconds < 86_400).then(|| chat_rows::duration(seconds * 1000));
-        h_flex()
-            .id(("chat-thinking", turn.id.0))
-            .gap_2()
-            .items_center()
-            .text_size(crate::rems_from_px(12.5))
-            .child(
-                Icon::new(IconName::Sparkle)
-                    .size(px(13.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .transform(Transformation::rotate(percentage(self.phase))),
-            )
-            .child(shimmer(label, self.now, cx))
-            .when_some(elapsed, |row, elapsed| {
-                row.child(
-                    div()
-                        .text_color(cx.theme().foreground.faint())
-                        .child(elapsed),
-                )
+        let mut mark = ActivityMark::plain(IconName::Sparkle);
+        mark.turn = Some(self.phase);
+        mark.shimmer = Some(self.now);
+        mark.detail =
+            (seconds > 0 && seconds < 86_400).then(|| chat_rows::duration(seconds * 1000).into());
+        let run = tail.filter(|run| chat_rows::run_shows(self.view, &run.items));
+        let first = run.and_then(|run| run.items.first()).cloned();
+        let expanded = first
+            .as_ref()
+            .is_some_and(|first| self.open.runs.contains(first));
+        let row = activity_row_marked(
+            ("chat-live", turn.id.0),
+            mark,
+            SharedString::from(activity.unwrap_or("Thinking").to_owned()),
+            if first.is_some() {
+                RowEnd::Disclosure(expanded)
+            } else {
+                RowEnd::None
+            },
+            self.cx,
+        );
+        let row = match first {
+            Some(first) => self.hooks.clickable(row, ChatClick::Run(first)),
+            None => row,
+        };
+        v_flex()
+            .w_full()
+            .child(row)
+            .when_some(run.filter(|_| expanded), |column, run| {
+                column.child(self.steps(&run.items))
             })
             .into_any_element()
+    }
+
+    fn steps(&self, items: &[ItemId]) -> Div {
+        v_flex().w_full().pl(px(18.0)).children(
+            items
+                .iter()
+                .filter_map(|id| self.view.item(id))
+                .filter_map(|item| {
+                    if item.kind.is_tool() {
+                        Some(step_row(item, self.phase, self.cx))
+                    } else {
+                        thought_row(item, self.hooks.owner, self.cx)
+                    }
+                }),
+        )
     }
 
     fn agents(&self, ids: &[ItemId]) -> AnyElement {
@@ -772,7 +788,7 @@ fn agent_status(state: Option<&AgentState>, phase: f32, cx: &App) -> Option<AnyE
     })
 }
 
-fn shimmer(label: &str, now: u64, cx: &App) -> StyledText {
+pub(super) fn shimmer(label: &str, now: u64, cx: &App) -> StyledText {
     let text = format!("{label}…");
     let count = text.chars().count();
     let span = u64::try_from(count + 8).unwrap_or(u64::MAX);

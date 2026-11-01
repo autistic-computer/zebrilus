@@ -1798,6 +1798,8 @@ fn activity_row_glyph(icon: IconName, size: f32, cx: &App) -> Div {
 struct ActivityMark {
     icon: Option<IconName>,
     spin: Option<f32>,
+    turn: Option<f32>,
+    shimmer: Option<u64>,
     tint: Option<Hsla>,
     label_color: Option<Hsla>,
     detail: Option<SharedString>,
@@ -1811,6 +1813,8 @@ impl ActivityMark {
         Self {
             icon: None,
             spin: None,
+            turn: None,
+            shimmer: None,
             tint: None,
             label_color: None,
             detail: None,
@@ -1915,7 +1919,12 @@ fn activity_row_marked(
         crate::icon::cap_center_drop(px(ACTIVITY_ROW_FONT_SIZE), px(ACTIVITY_ROW_FONT_SIZE), cx);
     let glyph = match (mark.spin, mark.icon) {
         (Some(phase), _) => Some(spinner(phase)),
-        (None, Some(icon)) => Some(Icon::new(icon)),
+        (None, Some(icon)) => Some(match mark.turn {
+            Some(phase) => {
+                Icon::new(icon).transform(ala::Transformation::rotate(ala::percentage(phase)))
+            }
+            None => Icon::new(icon),
+        }),
         (None, None) => None,
     }
     .map(|glyph| {
@@ -1926,6 +1935,7 @@ fn activity_row_marked(
         }
     });
     let spread = mark.spread;
+    let live = mark.shimmer.is_some();
     let end_icon = match end {
         RowEnd::None => None,
         RowEnd::Disclosure(expanded) => Some(disclosure_icon(expanded)),
@@ -1968,12 +1978,19 @@ fn activity_row_marked(
                 .text_ellipsis()
                 .whitespace_nowrap()
                 .when_some(mark.label_color, ala::Styled::text_color)
-                .child(single_line(label)),
+                .map(|this| match mark.shimmer {
+                    Some(now) => {
+                        this.flex_shrink(1.0)
+                            .child(chat::shimmer(&single_line(label), now, cx))
+                    }
+                    None => this.child(single_line(label)),
+                }),
         )
         .when_some(mark.detail, |this, detail| {
             this.child(
                 div()
                     .debug_selector(|| "agent-activity-detail".to_owned())
+                    .when(live, ala::Styled::flex_none)
                     .min_w_0()
                     .overflow_hidden()
                     .text_ellipsis()
