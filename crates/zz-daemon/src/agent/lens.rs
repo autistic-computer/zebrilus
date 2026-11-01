@@ -696,6 +696,7 @@ impl Codex {
         }
         let mut read = Read {
             updates: std::mem::take(&mut self.dropped),
+            payloads: self.closed(),
             ..Read::default()
         };
         self.look_for_children();

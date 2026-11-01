@@ -794,3 +794,55 @@ fn a_new_thread_in_the_same_folder_becomes_the_session_once_its_rollout_exists()
         Some("next".to_owned())
     );
 }
+
+#[test]
+fn cards_open_when_the_tui_exits_are_withdrawn() {
+    let mut live = Harness::joined();
+    live.sent();
+    let mut cards = live.play(&frames("question"));
+    let approval = frames("approval");
+    cards.extend(live.play(&approval[..1]));
+    let open = requested(&cards)
+        .iter()
+        .map(|(request_id, _, _)| *request_id)
+        .collect::<Vec<_>>();
+    assert_eq!(open.len(), 2, "{cards:?}");
+    assert!(resolved(&cards).is_empty(), "{cards:?}");
+    if let Source::Codex(codex) = &mut live.lens.source {
+        codex.vanished();
+    }
+    let after = live.drain();
+    let mut withdrawn = resolved(&after);
+    withdrawn.sort_unstable();
+    assert_eq!(withdrawn, open, "{after:?}");
+    let (shadow, view) = view(&[&live.opened, &cards, &after]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert_eq!(
+        view.open_requests()
+            .map(|request| request.id.0)
+            .collect::<Vec<_>>()
+            .len(),
+        1,
+        "only the terminal's own question card is left"
+    );
+    assert!(
+        view.open_requests()
+            .all(|request| !open.contains(&request.id.0))
+    );
+}
+
+#[test]
+fn a_card_open_when_the_app_server_goes_away_is_withdrawn() {
+    let mut live = Harness::joined();
+    live.sent();
+    let approval = frames("approval");
+    let card = live.play(&approval[..1]);
+    let [(request_id, _, _)] = requested(&card)[..] else {
+        panic!("one card in {card:?}");
+    };
+    live.peer = Connection::pair().1;
+    let mut after = live.lens.tick();
+    after.extend(live.lens.tick());
+    assert!(!live.live());
+    assert_eq!(resolved(&after), [request_id], "{after:?}");
+}

@@ -59,6 +59,7 @@ pub(super) struct Link {
     live: Option<Box<Live>>,
     relive: bool,
     cwd: PathBuf,
+    closed: Vec<u64>,
     pub(super) ids: Arc<AtomicU64>,
     #[cfg(test)]
     pub(super) wire: Option<Connection>,
@@ -405,8 +406,28 @@ fn pick(decisions: &[Value], option: Option<&str>) -> Value {
 }
 
 impl Codex {
+    fn drop_live(&mut self) -> bool {
+        let Some(live) = self.link.live.take() else {
+            return false;
+        };
+        let mut open = live.requests.keys().copied().collect::<Vec<_>>();
+        open.sort_unstable();
+        self.link.closed.extend(open);
+        true
+    }
+
+    pub(super) fn closed(&mut self) -> Vec<AgentStreamPayload> {
+        std::mem::take(&mut self.link.closed)
+            .into_iter()
+            .map(|request_id| AgentStreamPayload::PermissionResolved {
+                request_id,
+                canceled: true,
+            })
+            .collect()
+    }
+
     pub(super) fn leave(&mut self) {
-        if self.link.live.take().is_none() {
+        if !self.drop_live() {
             return;
         }
         self.busy = false;
@@ -447,7 +468,7 @@ impl Codex {
     }
 
     pub(super) fn join(&mut self, path: &Path, cwd: &Path) {
-        self.link.live = None;
+        self.drop_live();
         self.link.relive = false;
         self.link.cwd = cwd.to_path_buf();
         let Some(connection) = self.dial() else {
@@ -547,6 +568,7 @@ impl Codex {
         let mut live = self.link.live.take()?;
         let mut read = Read {
             updates: std::mem::take(&mut self.dropped),
+            payloads: self.closed(),
             ..Read::default()
         };
         read.updates.extend(caught.updates);
