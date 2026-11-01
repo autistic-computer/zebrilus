@@ -1,9 +1,7 @@
-use ala::{App, Div, ElementId, IntoElement, Pixels, SharedString, Stateful, div, prelude::*, px};
+use ala::{App, ElementId, IntoElement, Pixels, SharedString, prelude::*, px};
+use penna::{Label, Panel, PanelLook, Row, RowLook, TextStyle};
 
-use crate::{
-    ActiveTheme as _, StyledExt as _, SurfaceRole, h_flex, muted_on, roles, row_state, row_surface,
-    v_flex,
-};
+use crate::{ActiveTheme as _, StyledExt as _, row_state, v_flex};
 
 const ROW_HEIGHT: f32 = 40.0;
 const MAX_VISIBLE_ROWS: u8 = 6;
@@ -45,68 +43,53 @@ pub fn suggestion_row(
     kind: SlashKind,
     selected: bool,
     cx: &App,
-) -> Stateful<Div> {
+) -> Row {
     let state = row_state(selected, true);
-    let muted = muted_on(cx.theme().ground_at(SurfaceRole::MENU_ITEM, state), cx);
-    row_surface(
-        h_flex()
-            .id(id)
-            .w_full()
-            .h(px(ROW_HEIGHT))
-            .items_center()
-            .gap_3()
-            .px_3()
-            .cursor_pointer(),
-        SurfaceRole::MENU_ITEM,
-        state,
-        px(ROW_HEIGHT),
-        cx,
-    )
-    .child(
-        v_flex()
-            .flex_1()
-            .min_w_0()
-            .child(
-                div()
-                    .w_full()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .whitespace_nowrap()
-                    .text_size(crate::rems_from_px(12.0))
-                    .line_height(px(16.0))
-                    .font_weight(ala::FontWeight::MEDIUM)
-                    .child(label.to_owned()),
-            )
-            .when_some(description, |column, description| {
-                column.child(
-                    div()
+    let ground = cx.theme().ground_at(RowLook::Menu, state);
+    Row::new(id, RowLook::Menu)
+        .state(state)
+        .row_height(px(ROW_HEIGHT))
+        .h_flex()
+        .w_full()
+        .h(px(ROW_HEIGHT))
+        .gap_3()
+        .px_3()
+        .cursor_pointer()
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    Label::new(TextStyle::Small, label.to_owned())
+                        .strong()
+                        .truncate()
                         .w_full()
-                        .min_w_0()
-                        .overflow_hidden()
-                        .text_ellipsis()
-                        .whitespace_nowrap()
-                        .text_size(crate::rems_from_px(11.0))
-                        .line_height(px(14.0))
-                        .text_color(muted)
-                        .child(description),
+                        .min_w_0(),
                 )
-            }),
-    )
-    .children(kind.badge().map(|badge| {
-        div()
-            .flex_none()
-            .text_size(crate::rems_from_px(10.0))
-            .line_height(px(14.0))
-            .text_color(muted)
-            .child(badge)
-    }))
+                .when_some(description, |column, description| {
+                    column.child(
+                        Label::new(TextStyle::Caption, description)
+                            .muted()
+                            .on(ground)
+                            .truncate()
+                            .w_full()
+                            .min_w_0()
+                            .line_height(px(14.0)),
+                    )
+                }),
+        )
+        .children(kind.badge().map(|badge| {
+            Label::new(TextStyle::Micro, badge)
+                .muted()
+                .on(ground)
+                .flex_none()
+        }))
 }
 
-pub fn suggestion_list(rows: impl IntoElement, cx: &App) -> Div {
-    v_flex()
+pub fn suggestion_list(rows: impl IntoElement, cx: &App) -> Panel {
+    Panel::new("agent-slash-suggestions", PanelLook::Inline)
+        .v_flex()
         .w_full()
-        .surface(roles::INLINE_PANEL, cx)
         .list_inset(cx)
         .py(px(LIST_PADDING))
         .overflow_hidden()

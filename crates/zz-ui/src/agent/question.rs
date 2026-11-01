@@ -1,9 +1,10 @@
 use std::{rc::Rc, sync::Arc};
 
 use ala::{
-    AnyElement, App, Context, Div, Entity, Focusable as _, FontWeight, IntoElement, SharedString,
-    Subscription, Window, div, prelude::*, px,
+    AnyElement, App, Context, Entity, Focusable as _, IntoElement, SharedString, Subscription,
+    Window, div, prelude::*, px,
 };
+use penna::{Label, Panel, TextStyle};
 use zz_protocol::agent_stream::AgentQuestion;
 #[cfg(test)]
 use zz_protocol::{
@@ -22,7 +23,7 @@ use crate::{
 
 use super::presentation::{
     CARD_GAP, CARD_GUTTER, CARD_TITLE_LINE, CardTile, card_button, card_chip, card_close,
-    card_divider, card_footer, card_header, card_surface, card_tiles, card_trailing,
+    card_divider, card_footer, card_header, card_surface, card_tiles, card_title, card_trailing,
 };
 pub use zz_client::agent_question::{
     OTHER_LABEL, QuestionCard, QuestionCardAction, QuestionCardStep,
@@ -150,7 +151,7 @@ impl QuestionCardState {
         enabled: bool,
         on_action: impl Fn(QuestionCardAction, &mut Window, &mut App) + 'static,
         cx: &App,
-    ) -> Div {
+    ) -> Panel {
         let on_action: Rc<dyn Fn(QuestionCardAction, &mut Window, &mut App)> = Rc::new(on_action);
         let card = &self.card;
         let several = card.questions().len() > 1;
@@ -186,7 +187,7 @@ impl QuestionCardState {
                 } else {
                     PaintState::Disabled
                 });
-        card_surface(cx)
+        card_surface(SharedString::from(format!("{id}-card")))
             .children(
                 card.questions()
                     .iter()
@@ -206,13 +207,10 @@ impl QuestionCardState {
             )
             .when_some(problem.clone(), |card, problem| {
                 card.child(
-                    div()
+                    Label::new(TextStyle::Small, problem)
                         .px(px(CARD_GUTTER))
                         .pt(px(CARD_GUTTER))
-                        .text_size(crate::rems_from_px(12.0))
-                        .line_height(px(16.0))
-                        .text_color(cx.theme().tone(Tone::Danger))
-                        .child(problem),
+                        .text_color(cx.theme().tone(Tone::Danger)),
                 )
             })
             .child(
@@ -354,16 +352,13 @@ impl QuestionCardState {
                     .when_some(question.header.clone(), |row, header| {
                         row.child(card_chip(header))
                     })
-                    .child(div().min_w_0().flex_1().child(question.question.clone()))
+                    .child(card_title(question.question.clone()))
                     .when(question.multi_select, |row| {
                         row.child(
-                            h_flex()
-                                .flex_none()
-                                .h(px(CARD_TITLE_LINE))
-                                .text_size(crate::rems_from_px(11.0))
-                                .font_weight(FontWeight::NORMAL)
-                                .text_color(cx.theme().foreground.muted())
-                                .child("Pick any"),
+                            h_flex().flex_none().h(px(CARD_TITLE_LINE)).child(
+                                Label::new(TextStyle::Caption, "Pick any")
+                                    .text_color(cx.theme().foreground.muted()),
+                            ),
                         )
                     })
                     .children(trailing.into_iter().flatten()),

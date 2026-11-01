@@ -20,10 +20,10 @@ use web_time::{Duration, Instant};
 
 use crate::{
     ActiveTheme as _, CHROME_GAP, Colorize as _, Edge, Emphasis, Ground, Icon, IconName,
-    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Surface, SurfaceRole, Tone,
+    PaintExt as _, PaintState, Sizable as _, StyledExt as _, Tone,
     attachment::{open_attachment_preview, open_render_image_preview},
     badge::Badge,
-    button::{Button, ButtonVariants as _},
+    button::{Button, ButtonLook, ButtonVariants as _},
     check::Check,
     h_flex,
     mend::{PENDING_LINK_URL, mend},
@@ -34,12 +34,13 @@ use crate::{
     v_flex,
 };
 use ala::{
-    AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, FollowMode, FontWeight,
-    Global, Hsla, Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior, ListState,
-    ObjectFit, Pixels, RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas, div, img,
-    list, prelude::*, px, relative,
+    AnyElement, App, ClipboardItem, Context, Div, ElementId, Entity, FollowMode, Global, Hsla,
+    Image, ImageSource, IntoElement, ListOffset, ListSizingBehavior, ListState, ObjectFit, Pixels,
+    RenderImage, Rgba, SharedString, Stateful, Task, Window, canvas, div, img, list, prelude::*,
+    px, relative,
 };
 use parking_lot::RwLock;
+use penna::{Card, CardLook, Label, Panel, PanelLook, RuleLook, TextStyle};
 use presentation::{spinner, spinner_phase};
 
 const MERMAID_NODE_NAME: &str = "zz-mermaid";
@@ -840,7 +841,7 @@ impl StickSpring {
 pub fn agent_jump_to_bottom_button(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::compact_icon(id, IconName::ArrowDown)
         .secondary()
-        .surface_role(crate::roles::ICON_BUTTON_FLOATING)
+        .look(ButtonLook::Floating)
         .on(transcript_ground(cx))
         .tooltip("Jump to latest")
 }
@@ -1303,34 +1304,34 @@ fn render_answer(
     cx: &mut App,
 ) -> AnyElement {
     let copy = markdown.clone();
-    v_flex()
-        .id(("agent-assistant-entry", id))
-        .debug_selector(|| "agent-answer".to_owned())
-        .group(ASSISTANT_ENTRY_GROUP)
-        .w_full()
-        .gap_1()
-        .text_size(crate::rems_from_px(13.0))
-        .child(assistant_markdown_view(store, id, markdown, cx))
-        .when(copyable, |this| {
-            this.child(
-                h_flex().w_full().h(px(28.0)).items_center().child(
-                    shown_on_hover(ASSISTANT_ENTRY_GROUP, cx).child(
-                        message_action(
-                            Button::compact_icon(("agent-copy-assistant", id), IconName::Copy)
-                                .tooltip("Copy message")
-                                .on_click(move |_, _, cx| {
-                                    cx.write_to_clipboard(ClipboardItem::new_string(
-                                        copy.full_text(),
-                                    ));
-                                }),
-                            cx,
-                        )
-                        .debug_selector(|| "agent-assistant-copy".to_owned()),
-                    ),
+    transcript_text(
+        v_flex()
+            .id(("agent-assistant-entry", id))
+            .debug_selector(|| "agent-answer".to_owned())
+            .group(ASSISTANT_ENTRY_GROUP)
+            .w_full()
+            .gap_1(),
+        13.0,
+    )
+    .child(assistant_markdown_view(store, id, markdown, cx))
+    .when(copyable, |this| {
+        this.child(
+            h_flex().w_full().h(px(28.0)).items_center().child(
+                shown_on_hover(ASSISTANT_ENTRY_GROUP, cx).child(
+                    message_action(
+                        Button::compact_icon(("agent-copy-assistant", id), IconName::Copy)
+                            .tooltip("Copy message")
+                            .on_click(move |_, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(copy.full_text()));
+                            }),
+                        cx,
+                    )
+                    .debug_selector(|| "agent-assistant-copy".to_owned()),
                 ),
-            )
-        })
-        .into_any_element()
+            ),
+        )
+    })
+    .into_any_element()
 }
 
 fn render_trace(
@@ -1376,7 +1377,7 @@ fn render_trace(
                 div()
                     .debug_selector(|| "agent-trace-thought".to_owned())
                     .pl(px(TRACE_INDENT))
-                    .text_size(crate::rems_from_px(12.0))
+                    .type_style(TextStyle::Small, cx)
                     .line_height(px(18.0))
                     .text_color(timeline_affordance_color(cx))
                     .line_clamp(2)
@@ -1456,15 +1457,13 @@ fn render_trace_steps(
         .w_full()
         .ml_1()
         .pl_4()
-        .rule_on(crate::roles::TREE_RULE, Edge::Left, cx)
+        .rule(RuleLook::Tree, Edge::Left, cx)
         .children(trace.steps.iter().map(|index| {
             match &trace.members[*index] {
                 AgentEntry::Reasoning { id, markdown, .. } => {
                     render_thought(store, *id, markdown.clone(), cx)
                 }
-                AgentEntry::Assistant { id, markdown, .. } => div()
-                    .py_1()
-                    .text_size(crate::rems_from_px(12.0))
+                AgentEntry::Assistant { id, markdown, .. } => transcript_text(div().py_1(), 12.0)
                     .text_color(timeline_affordance_color(cx))
                     .child(markdown_view(
                         store,
@@ -1501,10 +1500,7 @@ fn render_thought(
         ))
         .when(!empty, |this| {
             this.child(
-                div()
-                    .pl(px(TRACE_INDENT))
-                    .pb_1()
-                    .text_size(crate::rems_from_px(12.0))
+                transcript_text(div().pl(px(TRACE_INDENT)).pb_1(), 12.0)
                     .text_color(timeline_affordance_color(cx))
                     .child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx)),
             )
@@ -1549,6 +1545,10 @@ fn render_trace_tool(
     }
 }
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the failure tail is the failed command's own output, kept small in the code font under its row"
+)]
 fn render_failure(
     store: &Entity<AgentTimelineStore>,
     tool: &AgentToolEntry,
@@ -1663,24 +1663,24 @@ fn reply_popover(
     markdown: AgentMarkdown,
     side: bool,
     cx: &mut App,
-) -> Div {
-    v_flex()
-        .debug_selector(|| "agent-reply-popover".to_owned())
-        .max_w(relative(0.85))
-        .gap_1()
-        .px_3()
-        .py_2()
-        .surface(crate::roles::INLINE_PANEL, cx)
-        .text_size(crate::rems_from_px(13.0))
-        .when(side, |popover| {
-            popover.child(
-                div()
-                    .text_size(crate::rems_from_px(10.0))
-                    .text_color(cx.theme().foreground.muted())
-                    .child("Side answer · not in the conversation"),
-            )
-        })
-        .child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
+) -> Panel {
+    transcript_text(
+        Panel::new(("agent-reply-popover", id), PanelLook::Inline)
+            .debug_selector(|| "agent-reply-popover".to_owned())
+            .v_flex()
+            .max_w(relative(0.85))
+            .gap_1()
+            .px_3()
+            .py_2(),
+        13.0,
+    )
+    .when(side, |popover| {
+        popover.child(
+            Label::new(TextStyle::Micro, "Side answer · not in the conversation")
+                .text_color(cx.theme().foreground.muted()),
+        )
+    })
+    .child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
 }
 
 fn render_notice(
@@ -1689,30 +1689,32 @@ fn render_notice(
     markdown: AgentMarkdown,
     cx: &mut App,
 ) -> AnyElement {
-    h_flex()
-        .id(("agent-notice-entry", id))
-        .debug_selector(|| "agent-notice".to_owned())
-        .w_full()
-        .items_start()
-        .gap_2()
-        .text_size(crate::rems_from_px(12.0))
-        .text_color(timeline_affordance_color(cx))
-        .child(
-            div()
-                .flex_none()
-                .h(px(ACTIVITY_ROW_HEIGHT - 8.0))
-                .flex()
-                .items_center()
-                .child(Icon::new(IconName::Info).size(px(ACTIVITY_ROW_FONT_SIZE))),
-        )
-        .child(div().flex_1().min_w_0().child(markdown_view(
-            store,
-            id,
-            MarkdownSlot::Body,
-            markdown,
-            cx,
-        )))
-        .into_any_element()
+    transcript_text(
+        h_flex()
+            .id(("agent-notice-entry", id))
+            .debug_selector(|| "agent-notice".to_owned())
+            .w_full()
+            .items_start()
+            .gap_2(),
+        12.0,
+    )
+    .text_color(timeline_affordance_color(cx))
+    .child(
+        div()
+            .flex_none()
+            .h(px(ACTIVITY_ROW_HEIGHT - 8.0))
+            .flex()
+            .items_center()
+            .child(Icon::new(IconName::Info).size(px(ACTIVITY_ROW_FONT_SIZE))),
+    )
+    .child(div().flex_1().min_w_0().child(markdown_view(
+        store,
+        id,
+        MarkdownSlot::Body,
+        markdown,
+        cx,
+    )))
+    .into_any_element()
 }
 
 pub fn agent_attachment_thumbnail(
@@ -1720,8 +1722,8 @@ pub fn agent_attachment_thumbnail(
     image: Arc<Image>,
     side: Pixels,
     cx: &App,
-) -> Stateful<Div> {
-    attachment_tile(id, image, side, composer::composer_ground(cx), cx)
+) -> Card {
+    attachment_tile(id, image, side, composer::composer_ground(cx))
 }
 
 pub fn composer_attachment(
@@ -1756,15 +1758,13 @@ fn attachment_tile(
     image: Arc<Image>,
     side: Pixels,
     ground: Ground,
-    cx: &App,
-) -> Stateful<Div> {
+) -> Card {
     let preview = Arc::clone(&image);
-    div()
-        .id(id)
+    Card::new(id, CardLook::Image)
+        .on(ground)
         .size(side)
         .flex_none()
         .overflow_hidden()
-        .surface(Surface::new(crate::roles::CARD_IMAGE).on(ground), cx)
         .cursor_pointer()
         .child(
             img(ImageSource::Image(image))
@@ -1949,7 +1949,7 @@ fn activity_row_marked(
         .gap_2()
         .overflow_hidden()
         .font_family(cx.theme().font_family.clone())
-        .text_size(crate::rems_from_px(ACTIVITY_ROW_FONT_SIZE))
+        .type_style(TextStyle::Body, cx)
         .line_height(px(ACTIVITY_ROW_LINE_HEIGHT))
         .text_color(timeline_affordance_color(cx))
         .when(clickable, |row| {
@@ -2039,6 +2039,14 @@ const TRACE_COUNT_BADGE_OVERHANG: f32 =
     TRACE_COUNT_BADGE_LEFT + TRACE_COUNT_BADGE - ACTIVITY_ROW_FONT_SIZE;
 const TRACE_COUNT_GAP: f32 = TRACE_COUNT_BADGE_OVERHANG + 6.0;
 
+#[allow(
+    clippy::disallowed_methods,
+    reason = "the transcript body is what the user and the agent wrote: it keeps the transcript's text size and the line spacing its markdown inherits"
+)]
+fn transcript_text<E: Styled>(element: E, size: f32) -> E {
+    element.text_size(crate::rems_from_px(size))
+}
+
 fn transcript_ground(cx: &App) -> Ground {
     let theme = cx.theme();
     Ground {
@@ -2052,19 +2060,12 @@ fn transcript_ground(cx: &App) -> Ground {
     reason = "the ring is a cutout in the color the badge sits on that parts it from the icon it overlaps, not an edge"
 )]
 fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> Stateful<Div> {
-    let theme = cx.theme();
     let ground = transcript_ground(cx);
-    let badge = theme.layer(
-        Surface::new(SurfaceRole::BADGE)
-            .tone(if count.failed {
-                Tone::Danger
-            } else {
-                Tone::Neutral
-            })
-            .prominent(count.failed)
-            .on(ground),
-        PaintState::Rest,
-    );
+    let (tone, emphasis) = if count.failed {
+        (Tone::Danger, Emphasis::Solid)
+    } else {
+        (Tone::Neutral, Emphasis::Soft)
+    };
     let tooltip = SharedString::from(count.describe());
     div()
         .id(("agent-trace-count", slot))
@@ -2072,28 +2073,29 @@ fn trace_count_glyph(slot: usize, count: TraceCount, drop: Pixels, cx: &App) -> 
         .flex_none()
         .relative()
         .top(drop)
-        .when(count.failed, |this| this.text_color(theme.danger))
+        .when(count.failed, |this| this.text_color(cx.theme().danger))
         .child(Icon::new(count.icon).size(px(ACTIVITY_ROW_FONT_SIZE)))
         .child(
-            h_flex()
+            div()
                 .debug_selector(|| "agent-trace-count-badge".to_owned())
                 .absolute()
                 .top(px(-6.5))
                 .left(px(TRACE_COUNT_BADGE_LEFT))
-                .min_w(px(TRACE_COUNT_BADGE))
-                .h(px(TRACE_COUNT_BADGE))
-                .px(px(3.0))
-                .justify_center()
-                .layer(&badge)
-                .when(badge.glass.is_none(), |badge_fill| {
-                    badge_fill.bg(badge.ground.fill)
-                })
-                .border(px(TRACE_COUNT_RING))
-                .border_color(ground.fill)
-                .text_size(crate::rems_from_px(8.5))
-                .line_height(px(TRACE_COUNT_BADGE - 2.0 * TRACE_COUNT_RING))
-                .font_weight(ala::FontWeight::SEMIBOLD)
-                .child(count.count.to_string()),
+                .child(
+                    Badge::new(count.count.to_string())
+                        .tone(tone)
+                        .emphasis(emphasis)
+                        .opaque()
+                        .on(ground)
+                        .small()
+                        .min_w(px(TRACE_COUNT_BADGE))
+                        .h(px(TRACE_COUNT_BADGE))
+                        .px(px(3.0))
+                        .justify_center()
+                        .border(px(TRACE_COUNT_RING))
+                        .border_color(ground.fill)
+                        .line_height(px(TRACE_COUNT_BADGE - 2.0 * TRACE_COUNT_RING)),
+                ),
         )
         .tooltip(move |window, cx| crate::tooltip::Tooltip::new(tooltip.clone()).build(window, cx))
 }
@@ -2103,7 +2105,7 @@ const ASSISTANT_ENTRY_GROUP: &str = "agent-assistant-entry";
 
 fn message_action(button: Button, cx: &App) -> Button {
     button
-        .surface_role(crate::roles::ICON_BUTTON_ROW)
+        .look(ButtonLook::RowIcon)
         .text_color(timeline_affordance_color(cx))
 }
 
@@ -2123,38 +2125,39 @@ fn render_user_entry(
     rewind: Option<(&TimelineRewind, SharedString)>,
     cx: &mut App,
 ) -> AnyElement {
-    let bubble_ground = cx.theme().ground_of(crate::roles::CARD_BUBBLE);
-    let bubble = v_flex()
-        .debug_selector(|| "agent-user-bubble".to_owned())
-        .max_w(relative(1.0))
-        .gap_2()
-        .px_3()
-        .py_2()
-        .surface(crate::roles::CARD_BUBBLE, cx)
-        .text_size(crate::rems_from_px(13.0))
-        .when(!images.is_empty(), |this| {
-            this.child(
-                h_flex()
-                    .flex_wrap()
-                    .gap_1()
-                    .children(images.iter().enumerate().map(|(index, image)| {
-                        attachment_tile(
-                            (
-                                SharedString::from(format!("agent-user-attachment-{id}")),
-                                index,
-                            ),
-                            Arc::clone(image),
-                            TRANSCRIPT_ATTACHMENT,
-                            bubble_ground,
-                            cx,
-                        )
-                        .debug_selector(|| "agent-user-attachment".to_owned())
-                    })),
-            )
-        })
-        .when(!markdown.is_empty(), |this| {
-            this.child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
-        });
+    let bubble_ground = cx.theme().ground_of(CardLook::Bubble);
+    let bubble = transcript_text(
+        Card::new("agent-user-bubble", CardLook::Bubble)
+            .debug_selector(|| "agent-user-bubble".to_owned())
+            .v_flex()
+            .max_w(relative(1.0))
+            .gap_2()
+            .px_3()
+            .py_2(),
+        13.0,
+    )
+    .when(!images.is_empty(), |this| {
+        this.child(
+            h_flex()
+                .flex_wrap()
+                .gap_1()
+                .children(images.iter().enumerate().map(|(index, image)| {
+                    attachment_tile(
+                        (
+                            SharedString::from(format!("agent-user-attachment-{id}")),
+                            index,
+                        ),
+                        Arc::clone(image),
+                        TRANSCRIPT_ATTACHMENT,
+                        bubble_ground,
+                    )
+                    .debug_selector(|| "agent-user-attachment".to_owned())
+                })),
+        )
+    })
+    .when(!markdown.is_empty(), |this| {
+        this.child(markdown_view(store, id, MarkdownSlot::Body, markdown, cx))
+    });
     let entry = v_flex().id(("agent-user-entry", id)).w_full().items_end();
     let Some((rewind, message_id)) = rewind else {
         return entry.child(bubble).into_any_element();
@@ -2204,8 +2207,6 @@ pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {
     let dot = cx.theme().paint(Tone::Primary, Emphasis::Solid).fill;
     v_flex()
         .w_full()
-        .text_size(crate::rems_from_px(FONT))
-        .line_height(px(LINE))
         .children(plan_items(source).into_iter().map(|(state, text)| {
             let marker = match state {
                 PlanItemState::Pending | PlanItemState::Done => {
@@ -2237,16 +2238,14 @@ pub(crate) fn render_plan_items(source: &str, cx: &App) -> Div {
                         .child(marker),
                 )
                 .child(
-                    div()
+                    Label::new(TextStyle::Small, text.to_owned())
+                        .line_height(px(LINE))
                         .flex_1()
                         .min_w_0()
                         .when(state == PlanItemState::Done, |text| {
                             text.text_color(muted).line_through()
                         })
-                        .when(state == PlanItemState::InProgress, |text| {
-                            text.font_weight(FontWeight::MEDIUM)
-                        })
-                        .child(text.to_owned()),
+                        .when(state == PlanItemState::InProgress, Label::strong),
                 )
         }))
 }
@@ -2772,7 +2771,7 @@ fn agent_code_block_body(
             .items_center()
             .justify_center()
             .gap_2()
-            .text_size(crate::rems_from_px(11.0))
+            .type_style(TextStyle::Caption, cx)
             .text_color(cx.theme().foreground.muted())
             .font_family(cx.theme().font_family.clone())
             .child(
@@ -2851,7 +2850,7 @@ fn agent_code_block_body(
             .min_h(px(40.0))
             .items_center()
             .gap_2()
-            .text_size(crate::rems_from_px(11.0))
+            .type_style(TextStyle::Caption, cx)
             .font_family(cx.theme().font_family.clone())
             .text_color(cx.theme().foreground.muted())
             .child(
@@ -2893,7 +2892,7 @@ fn agent_code_block_chrome(
     let block = html_block_id(scope, code_block);
     let preview = previews_html(&language, cx).then(|| html_preview_shown(block, visual, cx));
     let page = code.clone();
-    let ground = cx.theme().ground_of(crate::roles::CARD_CODE);
+    let ground = cx.theme().ground_of(CardLook::Code);
 
     h_flex()
         .w_full()
@@ -2904,7 +2903,7 @@ fn agent_code_block_chrome(
         .child(
             div()
                 .debug_selector(|| "agent-code-language".to_owned())
-                .text_size(crate::rems_from_px(10.0))
+                .type_style(TextStyle::Micro, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(language),
         )
@@ -3251,7 +3250,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
             .items_center()
             .justify_center()
             .gap_2()
-            .text_size(crate::rems_from_px(11.0))
+            .type_style(TextStyle::Caption, cx)
             .text_color(cx.theme().foreground.muted())
             .child(
                 Icon::new(IconName::Loader)
@@ -3279,7 +3278,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
         FigureRenderResult::Failed(error) => v_flex()
             .w_full()
             .gap_2()
-            .text_size(crate::rems_from_px(11.0))
+            .type_style(TextStyle::Caption, cx)
             .child(
                 h_flex()
                     .gap_2()
@@ -3300,11 +3299,10 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
             .into_any_element(),
     };
 
-    let card = cx.theme().ground_of(crate::roles::CARD_CODE);
-    v_flex()
-        .id(("agent-figure", source_offset))
+    let card = cx.theme().ground_of(CardLook::Code);
+    Card::new(("agent-figure", source_offset), CardLook::Code)
+        .v_flex()
         .w_full()
-        .surface(crate::roles::CARD_CODE, cx)
         .overflow_hidden()
         .child(
             h_flex()
@@ -3314,7 +3312,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
                 .pr_1()
                 .gap_1()
                 .items_center()
-                .text_size(crate::rems_from_px(11.5))
+                .type_style(TextStyle::Caption, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(div().flex_1().child(kind.label()))
                 .child(message_action(
@@ -3481,7 +3479,7 @@ impl MermaidThemeColors {
     }
 
     fn from_theme(theme: &penna::Theme) -> Self {
-        let code = theme.ground_of(crate::roles::CARD_CODE).opaque();
+        let code = theme.ground_of(CardLook::Code).opaque();
         let background = code.fill;
         Self {
             background,

@@ -1,12 +1,11 @@
 use super::AGENT_CONTENT_MAX_WIDTH;
-use crate::input::{Input, InputState, field_chrome, field_paint};
-use crate::{
-    ActiveTheme as _, CHROME_GAP, Colorize as _, Ground, PaintState, Surface, h_flex, roles, v_flex,
-};
+use crate::input::{FieldLook, Input, InputState, field_chrome, field_paint, field_underlay};
+use crate::{ActiveTheme as _, CHROME_GAP, Ground, PaintState, Surface, h_flex, v_flex};
 use ala::{
-    AnyElement, App, Entity, Focusable as _, IntoElement, RenderOnce, SharedString, Window, div,
-    prelude::*, px,
+    AnyElement, App, Entity, Focusable as _, IntoElement, Pixels, RenderOnce, SharedString, Window,
+    div, prelude::*, px,
 };
+use penna::{Label, TextStyle};
 
 pub const COMPOSER_FOOTER_HEIGHT: f32 = 28.0;
 pub const COMPOSER_OUTER_PADDING: f32 = 12.0;
@@ -21,7 +20,13 @@ const COMPOSER_TEXT: f32 = 13.0;
 const COMPOSER_TEXT_PADDING: f32 = (COMPOSER_BUTTON - COMPOSER_TEXT * 1.25) / 2.0;
 
 pub fn composer_ground(cx: &App) -> Ground {
-    cx.theme().ground_of(roles::FIELD_COMPOSER)
+    cx.theme().ground_of(FieldLook::Composer)
+}
+
+fn composer_radius(cx: &App) -> Pixels {
+    cx.theme()
+        .radius_of(FieldLook::Composer)
+        .min(px(COMPOSER_RADIUS))
 }
 
 #[derive(IntoElement)]
@@ -42,14 +47,10 @@ impl RenderOnce for Composer {
         } else {
             PaintState::Rest
         };
-        let paint = field_paint(roles::FIELD_COMPOSER, cx);
+        let paint = field_paint(FieldLook::Composer, cx);
         let leading = self.leading.is_some();
-        let surface = Surface::new(roles::FIELD_COMPOSER).on_maybe(self.ground);
-        let radius = cx
-            .theme()
-            .layer(surface, state)
-            .radius
-            .min(px(COMPOSER_RADIUS));
+        let surface = Surface::from(FieldLook::Composer).on_maybe(self.ground);
+        let radius = composer_radius(cx);
         field_chrome(
             h_flex()
                 .debug_selector(|| "composer".to_owned())
@@ -78,19 +79,16 @@ impl RenderOnce for Composer {
                         .h_auto()
                         .py(px(COMPOSER_TEXT_PADDING))
                         .when(leading, |input| input.pl(px(0.0)))
-                        .text_size(crate::rems_from_px(COMPOSER_TEXT))
                         .appearance(false)
                         .bordered(false)
                         .focus_bordered(false),
                 )
                 .when_some(self.command_hint, |column, hint| {
                     column.child(
-                        div()
+                        Label::new(TextStyle::Micro, hint)
                             .pb_1()
                             .when(!leading, ala::Styled::px_2)
-                            .text_size(crate::rems_from_px(10.0))
-                            .text_color(paint.muted_at(state))
-                            .child(hint),
+                            .text_color(paint.muted_at(state)),
                     )
                 }),
         )
@@ -111,19 +109,9 @@ pub struct AgentComposer {
 impl RenderOnce for AgentComposer {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_prefix = !self.prefix.is_empty();
-        let layer = cx.theme().layer(roles::FIELD_COMPOSER, PaintState::Rest);
-        let radius = layer.radius.min(px(COMPOSER_RADIUS));
-        let backing = layer.glass.is_none().then(|| {
-            div()
-                .absolute()
-                .top(px(COMPOSER_BACKING_INSET))
-                .bottom(px(COMPOSER_BACKING_INSET))
-                .left(px(COMPOSER_BACKING_INSET))
-                .right(px(COMPOSER_BACKING_INSET))
-                .rounded(radius - px(COMPOSER_BACKING_INSET))
-                .corner_smoothing(layer.smoothing)
-                .bg(cx.theme().background.opaque())
-        });
+        let inset = px(COMPOSER_BACKING_INSET);
+        let backing = field_underlay(FieldLook::Composer, inset, cx)
+            .map(|underlay| underlay.rounded(composer_radius(cx) - inset));
         v_flex()
             .flex_none()
             .w_full()

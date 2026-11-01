@@ -1,14 +1,15 @@
 use std::time::Duration;
 
 use ala::{
-    AnyElement, App, Div, ElementId, EntityId, FontWeight, SharedString, Stateful, Transformation,
-    div, ease_in_out, percentage, prelude::*, px,
+    AnyElement, App, Div, ElementId, EntityId, SharedString, Transformation, div, ease_in_out,
+    percentage, prelude::*, px,
 };
+use penna::{Label, Panel, PanelLook, Row, RowLook, RuleLook, TextStyle};
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, PaintState,
     StyledExt as _, Surface, Tone, badge::Badge, button::Button, feedback::inline_alert, h_flex,
-    kbd::Keycap, muted_on, pulse::pulse_phase, roles, v_flex,
+    kbd::Keycap, pulse::pulse_phase, v_flex,
 };
 
 pub use zz_client::agent_completion::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -27,19 +28,11 @@ pub fn welcome_state(
         .pb(px(32.0))
         .text_center()
         .child(icon.mb(px(24.0)).text_color(cx.theme().foreground.muted()))
+        .child(Label::new(TextStyle::Title, title).text_color(cx.theme().foreground))
         .child(
-            div()
-                .text_size(crate::rems_from_px(21.0))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(cx.theme().foreground)
-                .child(title.into()),
-        )
-        .child(
-            div()
+            Label::new(TextStyle::Body, detail)
                 .mt(px(10.0))
-                .text_size(crate::rems_from_px(13.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(detail.into()),
+                .text_color(cx.theme().foreground.muted()),
         )
 }
 
@@ -80,7 +73,7 @@ pub fn empty_state(
         .py(px(48.0))
         .items_center()
         .gap_2()
-        .text_size(crate::rems_from_px(12.0))
+        .type_style(TextStyle::Small, cx)
         .text_color(cx.theme().foreground.muted())
         .when(busy, |column| {
             column.child(
@@ -100,7 +93,7 @@ pub fn permission_option(
     highlighted: bool,
     enabled: bool,
     cx: &App,
-) -> Stateful<Div> {
+) -> Row {
     let tone = if danger { Tone::Danger } else { Tone::Neutral };
     let tile = CardTile::new(tone, enabled, highlighted && enabled, cx);
     tile.render(id, cx)
@@ -121,15 +114,15 @@ pub fn permission_card(
     options: Vec<AnyElement>,
     cancel: Button,
     cx: &App,
-) -> Div {
-    card_surface(cx)
+) -> Panel {
+    card_surface("agent-permission-card")
         .child(
             card_header()
                 .child(card_glyph(
                     Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
                     cx,
                 ))
-                .child(div().min_w_0().flex_1().child(title.into()))
+                .child(card_title(title))
                 .when_some(counter, |row, counter| row.child(card_chip(counter)))
                 .child(card_close(cancel, cx)),
         )
@@ -152,7 +145,7 @@ pub fn card_close(button: Button, cx: &App) -> Div {
 }
 
 pub fn card_button(button: Button, cx: &App) -> Button {
-    button.on(cx.theme().ground_of(roles::INLINE_PANEL))
+    button.on(cx.theme().ground_of(PanelLook::Inline))
 }
 
 pub(crate) const CARD_GUTTER: f32 = 12.0;
@@ -169,11 +162,11 @@ const CARD_LABEL_LINE: f32 = 16.0;
 const CARD_DETAIL_LINE: f32 = 14.0;
 const CARD_CLOSE: f32 = 24.0;
 
-pub(crate) fn card_surface(cx: &App) -> Div {
-    v_flex()
+pub(crate) fn card_surface(id: impl Into<ElementId>) -> Panel {
+    Panel::new(id, PanelLook::Inline)
+        .v_flex()
         .w_full()
         .overflow_hidden()
-        .surface(roles::INLINE_PANEL, cx)
 }
 
 pub(crate) fn card_header() -> Div {
@@ -184,9 +177,13 @@ pub(crate) fn card_header() -> Div {
         .px(px(CARD_GUTTER))
         .pt(px(CARD_TITLE_TOP))
         .pb(px(CARD_TITLE_BOTTOM))
-        .text_size(crate::rems_from_px(CARD_TITLE_SIZE))
-        .line_height(px(CARD_TITLE_LINE))
-        .font_weight(FontWeight::MEDIUM)
+}
+
+pub(crate) fn card_title(title: impl Into<SharedString>) -> Label {
+    Label::new(TextStyle::Body, title)
+        .strong()
+        .min_w_0()
+        .flex_1()
 }
 
 pub(crate) fn card_glyph(icon: Icon, cx: &App) -> Div {
@@ -214,7 +211,7 @@ pub(crate) fn card_divider(cx: &App) -> Div {
     div()
         .mx(px(CARD_GUTTER))
         .my(px(CARD_GAP))
-        .rule_on(roles::LIST_RULE, Edge::Top, cx)
+        .rule(RuleLook::List, Edge::Top, cx)
 }
 
 pub(crate) fn card_tiles() -> Div {
@@ -223,22 +220,20 @@ pub(crate) fn card_tiles() -> Div {
 
 #[derive(Clone, Copy)]
 pub(crate) struct CardTile {
-    surface: Surface,
+    tone: Tone,
     state: PaintState,
     ground: Ground,
-    muted: ala::Hsla,
 }
 
 impl CardTile {
     pub(crate) fn new(tone: Tone, enabled: bool, selected: bool, cx: &App) -> Self {
-        let surface = Surface::new(penna::SurfaceRole::MENU_ITEM).tone(tone);
         let state = crate::row_state(selected, enabled);
-        let layer = cx.theme().layer(surface, state);
         Self {
-            surface,
+            tone,
             state,
-            ground: layer.ground,
-            muted: muted_on(layer.ground, cx),
+            ground: cx
+                .theme()
+                .ground_at(Surface::from(RowLook::Menu).tone(tone), state),
         }
     }
 
@@ -250,27 +245,29 @@ impl CardTile {
         self.ground
     }
 
-    pub(crate) fn render(self, id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
+    pub(crate) fn render(self, id: impl Into<ElementId>, cx: &App) -> Row {
         let enabled = self.state != PaintState::Disabled;
         let height = crate::picker::LIST_ROW_HEIGHT;
-        crate::row_surface(h_flex().id(id), self.surface, self.state, height, cx)
+        Row::new(id, RowLook::Menu)
+            .tone(self.tone)
+            .state(self.state)
+            .row_height(height)
+            .h_flex()
             .w_full()
             .min_h(height)
             .items_start()
             .gap(px(CARD_GAP))
             .px(px(CARD_TILE_PADDING_X))
             .py(px(CARD_TILE_PADDING_Y))
-            .text_size(crate::rems_from_px(12.0))
-            .line_height(px(CARD_LABEL_LINE))
+            .type_style(TextStyle::Small, cx)
             .when(enabled, ala::Styled::cursor_pointer)
     }
 
-    pub(crate) fn detail(self, text: impl Into<SharedString>) -> Div {
-        div()
-            .text_size(crate::rems_from_px(11.0))
+    pub(crate) fn detail(self, text: impl Into<SharedString>) -> Label {
+        Label::new(TextStyle::Caption, text)
+            .muted()
+            .on(self.ground)
             .line_height(px(CARD_DETAIL_LINE))
-            .text_color(self.muted)
-            .child(text.into())
     }
 
     pub(crate) fn keycap(self, text: impl Into<SharedString>) -> Keycap {

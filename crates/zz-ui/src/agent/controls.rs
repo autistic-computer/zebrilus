@@ -7,13 +7,13 @@ use ala::{
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    Sizable as _, SurfaceRole, Tone,
-    button::{Button, ButtonVariants},
+    Sizable as _, StyledExt as _, Tone,
+    button::{Button, ButtonLook, ButtonVariants},
     h_flex,
     menu::{DropdownMenu as _, PopupMenu, PopupMenuItem},
-    roles,
     tooltip::Tooltip,
 };
+use penna::TextStyle;
 use zz_client::agent_settings::{self, LensSettings};
 
 use super::composer::{COMPOSER_BUTTON, COMPOSER_FOOTER_HEIGHT, composer_ground};
@@ -38,7 +38,7 @@ pub fn composer_action_button(
         .size(crate::rems_from_px(COMPOSER_BUTTON))
         .when(action != ComposerAction::Queue, ButtonVariants::primary)
         .when(action == ComposerAction::Queue, ButtonVariants::secondary)
-        .surface_role(roles::BUTTON_SEND)
+        .look(ButtonLook::Send)
         .on(composer_ground(cx))
         .tooltip(tooltip)
         .disabled(!enabled)
@@ -48,7 +48,7 @@ pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, cx: 
     Button::compact_icon(id, IconName::Plus)
         .size(crate::rems_from_px(COMPOSER_BUTTON))
         .secondary()
-        .surface_role(roles::BUTTON_SEND)
+        .look(ButtonLook::Send)
         .on(composer_ground(cx))
         .tooltip(tooltip)
 }
@@ -64,7 +64,6 @@ pub fn agent_directory_chip(
     cx: &App,
 ) -> Button {
     agent_chrome_button(id)
-        .surface_role(SurfaceRole::QUIET_BUTTON)
         .min_w_0()
         .flex_shrink_1()
         .max_w(px(220.0))
@@ -86,7 +85,6 @@ pub fn agent_settings_menu(
     let summary = settings.summary();
     let choices = !settings.models.is_empty() || !settings.efforts.is_empty();
     let button = agent_chrome_button(id)
-        .surface_role(SurfaceRole::QUIET_BUTTON)
         .text_color(cx.theme().foreground.muted())
         .disabled(!enabled || !choices)
         .child(if summary.is_empty() {
@@ -150,7 +148,7 @@ pub fn agent_side_chat_button(
     on_click: impl Fn(&mut Window, &mut App) + 'static,
 ) -> Button {
     agent_chrome_button(id)
-        .surface_role(SurfaceRole::QUIET_BUTTON)
+        .look(ButtonLook::Quiet)
         .icon(IconName::ChatPlus)
         .tooltip("Side chat: a floating copy of this chat for a quick question")
         .disabled(!enabled)
@@ -168,7 +166,6 @@ pub fn agent_queue_chip(
         Button::new(id)
             .ghost()
             .small()
-            .surface_role(SurfaceRole::QUIET_BUTTON)
             .icon(IconName::Undo2)
             .label(format!("{queued} queued"))
             .tooltip("Return the queued prompts to the composer")
@@ -202,7 +199,7 @@ pub fn git_summary_footer(
         .h(px(COMPOSER_FOOTER_HEIGHT))
         .items_center()
         .gap_2()
-        .text_size(crate::rems_from_px(11.0))
+        .type_style(TextStyle::Caption, cx)
         .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
         .child(
             Icon::new(IconName::GitBranch)

@@ -1,19 +1,16 @@
 use std::rc::Rc;
 
-use ala::{App, Div, SharedString, Window, div, prelude::*, px};
+use ala::{App, Div, MouseButton, SharedString, Window, div, prelude::*, px};
+use penna::{Panel, PanelLook, Row, RowLook, Tab, TabLook, TextStyle};
 use zz_protocol::AgentTaskWire;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, Icon, IconName, PaintState,
-    StatefulSurfaceExt as _, StyledExt as _, SurfaceRole, Tone, button::Button, h_flex, muted_on,
-    roles, row_surface, v_flex,
+    Sizable as _, StyledExt as _, Tone, button::Button, h_flex, muted_on, tooltip::Tooltip, v_flex,
 };
-
-use super::controls::agent_chrome_button;
 
 const TASK_ROW_HEIGHT: f32 = 28.0;
 const TASK_ROW_FONT_SIZE: f32 = 12.0;
-const TASK_ROW_LINE_HEIGHT: f32 = 16.0;
 const TASK_ICON_SIZE: f32 = 13.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,69 +63,72 @@ pub fn task_tray(
         let reveal = Rc::clone(&on_action);
         let task_id = task.id.clone();
         let tool_call = task.tool_call_id.clone();
-        h_flex()
-            .id((SharedString::from(format!("{id}-task")), index))
-            .w_full()
-            .h(px(TASK_ROW_HEIGHT))
-            .flex_none()
-            .gap_2()
-            .px((px(super::presentation::CARD_GUTTER) - cx.theme().row_inset).max(px(0.0)))
-            .overflow_hidden()
-            .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
-            .line_height(px(TASK_ROW_LINE_HEIGHT))
-            .when_some(tool_call, |row, tool_call| {
-                row_surface(
-                    row,
-                    SurfaceRole::MENU_ITEM,
-                    PaintState::Rest,
-                    px(TASK_ROW_HEIGHT),
-                    cx,
-                )
-                .cursor_pointer()
-                .on_click(move |_, window, cx| {
-                    reveal(TaskTrayAction::Reveal(tool_call.clone()), window, cx);
-                    cx.stop_propagation();
-                })
+        Row::new(
+            (SharedString::from(format!("{id}-task")), index),
+            RowLook::Menu,
+        )
+        .row_height(px(TASK_ROW_HEIGHT))
+        .interactive(tool_call.is_some())
+        .h_flex()
+        .w_full()
+        .h(px(TASK_ROW_HEIGHT))
+        .flex_none()
+        .gap_2()
+        .px((px(super::presentation::CARD_GUTTER) - cx.theme().row_inset).max(px(0.0)))
+        .overflow_hidden()
+        .type_style(TextStyle::Small, cx)
+        .when_some(tool_call, |row, tool_call| {
+            row.cursor_pointer().on_click(move |_, window, cx| {
+                reveal(TaskTrayAction::Reveal(tool_call.clone()), window, cx);
+                cx.stop_propagation();
             })
-            .text_color(row_paint.muted_at(PaintState::Rest))
-            .child(
-                div()
-                    .flex_none()
-                    .relative()
-                    .top(task_drop)
-                    .child(Icon::new(task_kind_icon(&task.kind)).size(px(TASK_ICON_SIZE))),
+        })
+        .text_color(row_paint.muted_at(PaintState::Rest))
+        .child(
+            div()
+                .flex_none()
+                .relative()
+                .top(task_drop)
+                .child(Icon::new(task_kind_icon(&task.kind)).size(px(TASK_ICON_SIZE))),
+        )
+        .child(
+            div()
+                .min_w_0()
+                .flex_1()
+                .overflow_hidden()
+                .text_ellipsis()
+                .whitespace_nowrap()
+                .child(task.description.clone()),
+        )
+        .child(
+            super::presentation::card_button(
+                Button::compact_icon(
+                    (SharedString::from(format!("{id}-task-stop")), index),
+                    IconName::Stop,
+                ),
+                cx,
             )
-            .child(
-                div()
-                    .min_w_0()
-                    .flex_1()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .whitespace_nowrap()
-                    .child(task.description.clone()),
-            )
-            .child(
-                super::presentation::card_button(
-                    Button::compact_icon(
-                        (SharedString::from(format!("{id}-task-stop")), index),
-                        IconName::Stop,
-                    ),
-                    cx,
-                )
-                .debug_selector(move || format!("agent-task-stop-{index}"))
-                .tooltip("Stop")
-                .disabled(!enabled)
-                .on_click(move |_, window, cx| {
-                    stop(TaskTrayAction::Stop(task_id.clone()), window, cx);
-                    cx.stop_propagation();
-                }),
-            )
+            .debug_selector(move || format!("agent-task-stop-{index}"))
+            .tooltip("Stop")
+            .disabled(!enabled)
+            .on_click(move |_, window, cx| {
+                stop(TaskTrayAction::Stop(task_id.clone()), window, cx);
+                cx.stop_propagation();
+            }),
+        )
     });
     let plan_toggle = Rc::clone(&on_action);
+    let tray_panel = || {
+        Panel::new(
+            SharedString::from(format!("{id}-tray-panel")),
+            PanelLook::Inline,
+        )
+        .v_flex()
+    };
     let panel = match open {
-        Some(TrayPanel::Tasks) if !tasks.is_empty() => Some(v_flex().children(rows)),
+        Some(TrayPanel::Tasks) if !tasks.is_empty() => Some(tray_panel().children(rows)),
         Some(TrayPanel::Plan) => plan.as_ref().map(|(source, _)| {
-            v_flex().child(
+            tray_panel().child(
                 div()
                     .px((px(super::presentation::CARD_GUTTER) - cx.theme().row_inset).max(px(0.0)))
                     .py_1()
@@ -144,18 +144,17 @@ pub fn task_tray(
         } else {
             PaintState::Rest
         };
-        let muted = muted_on(cx.theme().ground_at(roles::TAB_TRAY, state), cx);
-        h_flex()
-            .id(SharedString::from(format!("{id}-plan")))
+        let muted = muted_on(cx.theme().ground_at(TabLook::Tray, state), cx);
+        Tab::new(SharedString::from(format!("{id}-plan")), TabLook::Tray)
+            .state(state)
             .debug_selector(|| "agent-plan-chip".to_owned())
+            .h_flex()
             .min_w_0()
             .h(px(24.0))
             .px_2()
             .gap_1p5()
             .cursor_pointer()
-            .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
-            .line_height(px(TASK_ROW_LINE_HEIGHT))
-            .surface_interactive(roles::TAB_TRAY, state, cx)
+            .type_style(TextStyle::Small, cx)
             .child(
                 div()
                     .flex_none()
@@ -197,18 +196,26 @@ pub fn task_tray(
     });
     let tasks_open = open == Some(TrayPanel::Tasks);
     let tasks_chip = (!tasks.is_empty()).then(|| {
-        agent_chrome_button(SharedString::from(format!("{id}-tasks")))
+        let tooltip = if tasks_open {
+            "Hide background tasks"
+        } else {
+            "Show background tasks"
+        };
+        Tab::new(SharedString::from(format!("{id}-tasks")), TabLook::Tray)
             .debug_selector(|| "agent-task-tray".to_owned())
-            .surface_role(roles::TAB_TRAY)
+            .h_flex()
             .flex_none()
-            .icon(super::presentation::spinner(phase))
-            .label(task_tray_label(tasks.len()))
-            .tooltip(if tasks_open {
-                "Hide background tasks"
-            } else {
-                "Show background tasks"
-            })
+            .justify_center()
+            .h(px(24.0))
+            .px_2()
+            .gap_1()
+            .cursor_default()
+            .type_style(TextStyle::Small, cx)
             .text_color(cx.theme().foreground.muted())
+            .child(super::presentation::spinner(phase).small())
+            .child(task_tray_label(tasks.len()))
+            .tooltip(move |window, cx| Tooltip::new(tooltip).build(window, cx))
+            .on_mouse_down(MouseButton::Left, |_, window, _| window.prevent_default())
             .on_click(move |_, window, cx| {
                 toggle(TaskTrayAction::Toggle(TrayPanel::Tasks), window, cx);
                 cx.stop_propagation();
@@ -219,13 +226,7 @@ pub fn task_tray(
             .w_full()
             .gap_1()
             .when_some(panel, |tray, panel| {
-                tray.child(
-                    panel
-                        .w_full()
-                        .list_inset(cx)
-                        .py(px(4.0))
-                        .surface(roles::INLINE_PANEL, cx),
-                )
+                tray.child(panel.w_full().list_inset(cx).py(px(4.0)))
             })
             .child(
                 h_flex()
