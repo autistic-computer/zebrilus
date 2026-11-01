@@ -115,9 +115,8 @@
     "Byte-level SVG or pixel-level compatibility is asserted only for the class, state, ER and gantt documentation samples",
     "Upstream entity encoding before parsing is not applied to flowcharts, and the shared preprocessor rejects some front matter and unterminated directives upstream accepts",
     "Icons, math, images, executable click callbacks and browser mount/zoom APIs are outside the initial native rendering scope",
-    "Native font measurement callback integration with zz and multilingual font fallback require platform validation",
-    "Production zz rendering integration and replacement of the current default engine are not part of the initial library tests",
-    "The browser WebAssembly target builds; runtime Wasm behavior and Windows, iOS and Android builds still need validation"
+    "Multilingual font fallback through a host text measurer still needs validation on each platform",
+    "The browser WebAssembly target builds and renders; Windows, iOS and Android builds still need validation"
   ],
   "verification": {
     "integration_suite": "tests/compatibility.rs",
