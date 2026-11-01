@@ -526,6 +526,7 @@ impl Codex {
     pub(super) fn relaunched(&mut self, pid: u32) {
         self.drain();
         self.leave();
+        self.unclaim();
         self.link.relive = false;
         self.link.rearm = self.tail.is_some() && !embedded(&arguments(pid));
     }
@@ -540,6 +541,7 @@ impl Codex {
     pub(super) fn vanished(&mut self) {
         self.drain();
         self.leave();
+        self.unclaim();
     }
 
     fn drain(&mut self) {

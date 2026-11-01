@@ -1440,3 +1440,26 @@ fn frames_left_by_a_replaced_tui_stay_out_of_the_next_session() {
     assert!(texts(&view, ItemKind::User).is_empty(), "{after:?}");
     assert!(texts(&view, ItemKind::Agent).is_empty(), "{after:?}");
 }
+
+#[test]
+fn a_prompt_after_the_tui_exits_does_not_go_to_its_thread() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = rollout_of(dir.path(), THREAD);
+    let (wire, peer, _) = claimer(&[(THREAD, listed(THREAD, &path, None))]);
+    let mut codex = claiming(wire, FIRST_START, &[]);
+    assert!(matches!(codex.claim(), Claim::Waiting));
+    let pane = Arc::new(Pane::default());
+    let mut lens = over(codex, &pane);
+    lens.open();
+    codex_of(&mut lens).vanished();
+    lens.command(prompt("hi", 3));
+    let sent = outgoing(&peer);
+    assert!(named(&sent, "turn/start").is_empty(), "{sent:?}");
+    let codex = codex_of(&mut lens);
+    codex.pid = Some(std::process::id());
+    codex.relaunched(std::process::id());
+    codex.born = Some(SECOND_START);
+    lens.command(prompt("hi", 4));
+    let sent = outgoing(&peer);
+    assert!(named(&sent, "turn/start").is_empty(), "{sent:?}");
+}

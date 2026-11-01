@@ -218,6 +218,11 @@ impl Codex {
         })
     }
 
+    pub(super) fn unclaim(&mut self) {
+        self.link.claims.chosen = None;
+        self.link.claims.next = None;
+    }
+
     pub(super) fn claimed(&self, thread: &str) -> bool {
         self.link
             .claims
