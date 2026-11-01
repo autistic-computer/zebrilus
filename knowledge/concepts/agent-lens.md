@@ -211,8 +211,9 @@ embedded.
 
 Nothing in the TUI process names its thread, so the runtime asks the server which thread is this
 pane's (`agent/lens_codex_claim.rs`, at most once a second while the lens is not joined). It lists
-`thread/loaded/list` (at most 16 pages), reads each thread once with `thread/read`, and keeps the
-top-level, non-ephemeral ones whose cwd is the TUI's folder (the folder it was started in or pointed
+`thread/loaded/list` (at most 16 pages), reads the threads with `thread/read` (one it rules out
+once, a candidate on every look for its name and rollout path, one unloaded in between is skipped),
+and keeps the top-level, non-ephemeral ones whose cwd is the TUI's folder (the folder it was started in or pointed
 at with `-C`). A thread's age comes from its id, a UUIDv7: a thread with no message yet reports the
 current time as its `createdAt`. A thread is this TUI's when:
 
@@ -291,8 +292,11 @@ on the rollout path whose claim names the thread it already reads joins again
   be either TUI's, so the lens leaves the server and goes back to the rollout path until a claim
   names its thread again.
 - When the TUI exits, or another one replaces it in the pane, the runtime first reads the frames
-  still queued (often the end of the last turn), then unsubscribes, closes the socket and skips the
-  rollout tail past what live frames covered. Every card still open from the server is withdrawn,
+  still queued (often the end of the last turn) for the next read, then unsubscribes, closes the
+  socket and skips the rollout tail past what live frames covered. When the pane loads another
+  session before that read, the frames are dropped, since its rollout replay covers what belongs to
+  it. The claim goes with the TUI, so a prompt sent before the next claim is typed, never sent to
+  the old thread. Every card still open from the server is withdrawn,
   here and whenever the link drops or the lens joins another thread. A Codex that shows up in the
   pane again joins without a reload once locating its rollout finds the same one, since threads stay
   loaded after their TUI leaves and the new one may be on a fresh thread: the rollout lines not read
