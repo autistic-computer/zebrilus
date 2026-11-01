@@ -430,6 +430,11 @@ impl ChatView {
         self.open_requests().any(|request| request.blocking)
     }
 
+    pub fn asking(&self) -> Option<&RequestView> {
+        self.open_requests()
+            .find(|request| !request.blocking && matches!(request.ask, Ask::Questions { .. }))
+    }
+
     pub fn phase(&self) -> ChatPhase {
         match &self.session {
             SessionView::Starting => return ChatPhase::Starting,

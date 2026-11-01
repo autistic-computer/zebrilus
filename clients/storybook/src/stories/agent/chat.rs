@@ -29,7 +29,8 @@ use zz_ui::pane_look::pane_color;
 
 use super::fixtures::{
     Script, agent, agents_script, approval, approval_of, branch_question, chart_screenshot,
-    checks_question, completed, palettes, placement, question, story_hosts, tab_strip_screenshot,
+    checks_question, completed, palettes, placement, question, rendering_question, story_hosts,
+    tab_strip_screenshot,
 };
 use crate::story::states;
 
@@ -1291,10 +1292,35 @@ pub fn asks(window: &mut Window, cx: &mut App) -> AnyView {
         .ask(2, None, placement())
         .answer(2, &["Settings › Interface", "7 days"])
         .tool("e1", None, ItemKind::Edit, "crates/zz-ui/src/settings.rs");
+    let mut waiting = Script::new();
+    waiting
+        .turn("Run steps 1 to 9 of the render test, and ask me which element to stress at step 7.")
+        .ran("x1", ItemKind::Execute, "cargo test -p pele render")
+        .reply("a1", "Steps 1 to 6 passed. Step 7 needs your pick.")
+        .ask_async(3, "call_q", rendering_question());
+    let mut ended = Script::new();
+    ended
+        .turn("Run steps 1 to 9 of the render test, and ask me which element to stress at step 7.")
+        .ran("x1", ItemKind::Execute, "cargo test -p pele render")
+        .ask_async(3, "call_q", rendering_question())
+        .reply("a1", "Waiting for your choice: Tables, Diagrams, or Code blocks.")
+        .finish(completed());
     let mut views: Vec<(SharedString, AnyView)> = Vec::new();
     let mut add = |label: &'static str, thread: &Entity<Thread>| {
         views.push((label.into(), thread.clone().into()));
     };
+    add(
+        "Codex asks without stopping: the turn waits for your answer",
+        &Thread::new(waiting)
+            .vendor(zz_ui::program::OPENAI_ICON)
+            .view(window, cx),
+    );
+    add(
+        "Codex asked and ended its turn: the card stays open",
+        &Thread::new(ended)
+            .vendor(zz_ui::program::OPENAI_ICON)
+            .view(window, cx),
+    );
     add(
         "an approval on the tool that needs it, first option highlighted",
         &Thread::new(approve).view(window, cx),
