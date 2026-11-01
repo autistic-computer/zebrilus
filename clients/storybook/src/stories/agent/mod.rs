@@ -72,7 +72,7 @@ const STORY: Story = Story {
         Section {
             id: "markdown",
             name: "Markdown",
-            summary: "Replies render as markdown with the agent's extensions: headings, lists, tables and quotes, code blocks, a markdown fence drawn rich, and Mermaid and SVG fences drawn as figures. A figure sits in a container with a header holding its label, Copy source and Open full diagram; a source that does not parse shows the error.",
+            summary: "Replies render as markdown with the agent's extensions: headings, lists, tables and quotes, code blocks, a markdown fence drawn rich, and Mermaid and SVG fences drawn as figures. Mermaid flowchart, sequence, class, state, ER, gantt, pie and quadrant diagrams draw in the theme's colors on a transparent canvas; any other Mermaid type stays a plain code block. A figure sits in a container with a header holding its label, Copy source and Open full diagram; a source that does not parse shows the error with its line.",
             build: chat::markdown,
         },
         Section {

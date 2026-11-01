@@ -1000,9 +1000,82 @@ flowchart LR\n\
     View --> Thread[chat thread]\n\
 ```";
 
+const STATES: &str = "```mermaid\n\
+stateDiagram-v2\n\
+    [*] --> Idle\n\
+    Idle --> Working : prompt\n\
+    Working --> Asking : question\n\
+    Asking --> Working : answer\n\
+    Working --> Idle : turn ends\n\
+    Working --> Failed : error\n\
+    Failed --> [*]\n\
+```";
+
+const ENTITIES: &str = "```mermaid\n\
+erDiagram\n\
+    SESSION ||--o{ WINDOW : holds\n\
+    WINDOW ||--|{ PANE : splits\n\
+    PANE ||--o| AGENT : runs\n\
+    SESSION {\n\
+        string id PK\n\
+        string name\n\
+    }\n\
+    PANE {\n\
+        string id PK\n\
+        string window_id FK\n\
+        string cwd\n\
+    }\n\
+```";
+
+const GANTT: &str = "```mermaid\n\
+gantt\n\
+    title Lens rebuild\n\
+    dateFormat YYYY-MM-DD\n\
+    section Claude\n\
+        Channel      :done, claude, 2026-10-27, 3d\n\
+        Dialogs      :active, after claude, 3d\n\
+    section Codex\n\
+        Channel      :codex, 2026-10-28, 4d\n\
+        Questions    :crit, after codex, 2d\n\
+```";
+
+const PIE: &str = "```mermaid\n\
+pie showData\n\
+    title Tool calls this week\n\
+    \"Read\" : 42\n\
+    \"Edit\" : 28\n\
+    \"Bash\" : 18\n\
+    \"Search\" : 12\n\
+```";
+
+const QUADRANT: &str = "```mermaid\n\
+quadrantChart\n\
+    title Bugs by cost and reach\n\
+    x-axis Cheap to fix --> Costly to fix\n\
+    y-axis Few users --> Many users\n\
+    quadrant-1 Plan it\n\
+    quadrant-2 Fix now\n\
+    quadrant-3 Batch it\n\
+    quadrant-4 Reconsider\n\
+    Stale frame: [0.3, 0.8]\n\
+    Tab flicker: [0.2, 0.35]\n\
+    Wire bump: [0.75, 0.7]\n\
+    Font cache: [0.65, 0.2]\n\
+```";
+
+const UNSUPPORTED_MERMAID: &str = "```mermaid
+mindmap
+  root((zz))
+    Panes
+      Terminal
+      Browser
+    Agents
+      Lens
+```";
+
 const BROKEN_MERMAID: &str = "```mermaid\n\
-timelineDiagramX\n\
-    Prompt --> Answer\n\
+flowchart LR\n\
+    Prompt[ask the agent --> Answer\n\
 ```";
 
 const SVG: &str = "The p99 per build:\n\n\
@@ -1038,20 +1111,44 @@ pub fn markdown(window: &mut Window, cx: &mut App) -> AnyView {
                 Thread::new(said("Write the changelog entry.", MARKDOWN_FENCE)),
             ),
             (
-                "mermaid class diagram",
-                Thread::new(said("How is the chat put together?", CLASSES)),
+                "mermaid flowchart",
+                Thread::new(said("Where does a chat row come from?", FLOWCHART)),
             ),
             (
                 "mermaid sequence diagram",
                 Thread::new(said("How does a prompt get to the lens?", SEQUENCE)),
             ),
             (
-                "mermaid flowchart",
-                Thread::new(said("Where does a chat row come from?", FLOWCHART)),
+                "mermaid class diagram",
+                Thread::new(said("How is the chat put together?", CLASSES)),
             ),
             (
-                "a source that does not parse",
-                Thread::new(said("Draw it as a timeline.", BROKEN_MERMAID)),
+                "mermaid state diagram",
+                Thread::new(said("What states does a turn go through?", STATES)),
+            ),
+            (
+                "mermaid entity relationship diagram",
+                Thread::new(said("How do sessions, windows and panes relate?", ENTITIES)),
+            ),
+            (
+                "mermaid gantt chart",
+                Thread::new(said("Where is the lens rebuild at?", GANTT)),
+            ),
+            (
+                "mermaid pie chart",
+                Thread::new(said("Which tools ran most?", PIE)),
+            ),
+            (
+                "mermaid quadrant chart",
+                Thread::new(said("Sort the open bugs.", QUADRANT)),
+            ),
+            (
+                "a mermaid type zz does not draw stays a code block",
+                Thread::new(said("Map out zz as a mind map.", UNSUPPORTED_MERMAID)),
+            ),
+            (
+                "a mermaid source that does not parse shows the error",
+                Thread::new(said("Draw the prompt flow.", BROKEN_MERMAID)),
             ),
             ("an SVG", Thread::new(said("Chart the p99s.", SVG))),
             (
