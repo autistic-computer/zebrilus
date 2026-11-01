@@ -15,7 +15,7 @@ timestamp: 2026-10-23T00:00:00-03:00
 > terminal, `PaneLane::project` and `AgentPublisher::feed_agent_pane_text` were deleted in
 > `e0608066e`. Claude Code and Codex now run in ordinary terminal panes, so `capture-pane`,
 > `show-last-output`, `pipe-pane` and the bell work on them as on any terminal, and the GUI draws an
-> [agent lens](/concepts/agent-lens.md) over them ([design](/designs/agent-lens.md)). The rest of
+> [agent panes](/concepts/agent-panes.md) over them ([design](/designs/agent-lens.md)). The rest of
 > this page is history.
 
 # Why
@@ -81,6 +81,6 @@ grammar work on an Agent pane too.
 
 # Related
 
-- [Agent lens](/concepts/agent-lens.md) and its [design](/designs/agent-lens.md)
+- [Agent panes](/concepts/agent-panes.md) and its [design](/designs/agent-lens.md)
 - [Daemon-owned agent runtime](/designs/agent-daemon-runtime.md)
 - [tmux superset roadmap](/designs/tmux-superset-roadmap.md)

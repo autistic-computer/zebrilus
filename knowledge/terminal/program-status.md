@@ -83,7 +83,8 @@ answer first. Surfaces without a PTY (output views) leave
   `blocked`, `needs-approval`, `needs-input`, `failed` or `error`, `done`, `idle` or `starting`),
   so the OSC 9;4 bridge, the Claude peer sampler and user hooks reach every client's tree too.
   Until 2026-10-23 native Agent panes filled it from the agent fanout as well; that pane kind and
-  its status record are gone, and the [agent lens](/concepts/agent-lens.md) writes no status.
+  its status record are gone, and the [agent panes](/concepts/agent-panes.md) of 2026-11-01 write no
+  status record either.
   A pane in `program_status_panes` keeps its 7501 record; the mirror skips it. Every change of
   state or kind stamps `PaneSnapshot.summary.changed_at` and moves the `unseen` latch
   ([snapshots](/protocol/snapshots.md#pane-status-summary-and-time)). The formats above keep their

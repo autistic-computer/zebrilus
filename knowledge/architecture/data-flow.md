@@ -74,10 +74,9 @@ lens composer ──AgentPrompt──▶ lens runtime ──bracketed paste + En
 AgentController reducer ──────▶ AgentTimeline + composer                  [client]
 ```
 
-- The daemon runs one lens runtime per terminal `PaneId` with an open lens, on its own thread. It
-  translates the CLI's transcript lines into stream items with the vendor translators and fans them
-  out. `AgentController` is the reducer, rebuilding messages, thoughts, tool calls and turns from
-  the stream it replays and tails. See [agent lens](/concepts/agent-lens.md).
+- The daemon runs one driver per agent `PaneId`, on its own thread. It translates the CLI's
+  protocol frames into stream items with the vendor translators and fans them out. `AgentController` is the reducer, rebuilding messages, thoughts, tool calls and turns from
+  the stream it replays and tails. See [agent panes](/concepts/agent-panes.md).
 - A replay deliberately overlaps the live tail; the client's per-pane sequence cursor is what makes
   that idempotent. A lane overflow sends `AgentLagged` rather than closing the connection, and the
   client answers with `AgentReplay` from its cursor.

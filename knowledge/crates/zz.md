@@ -429,7 +429,7 @@ built:
   `window_summary::pane_agent` finds `claude` or `codex` in the pane's process list; opening it
   creates the pane's `AgentView` (`ensure_lens_view`) and asks the daemon for a replay, which opens
   the lens runtime there. A lens closes when its pane goes or the CLI is no longer the foreground
-  program. See [agent lens](/concepts/agent-lens.md).
+  program. See [agent panes](/concepts/agent-panes.md).
 - Computes browser visibility per frame (`BrowserView::set_visible`): a browser is only visible if
   its window is the active window, it isn't hidden by zoom, and it isn't covered by command-output,
   choose-tree, or choose-buffer overlays; invisible CEF sessions stop consuming paint bandwidth.

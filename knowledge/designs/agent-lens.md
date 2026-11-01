@@ -2,7 +2,7 @@
 type: Design Plan
 title: Agent lens . the agent view of a terminal pane
 description: "zz stops drawing its own agent pane. Claude Code and Codex run as their real TUIs in ordinary terminal panes, and a terminal running one of them gets a lens button in its header that swaps the cell grid for the agent timeline of that same pane. The daemon tails the transcript the CLI already writes (Claude's session jsonl, the rollout Codex holds open) through the existing translators, the lens composer pastes into the TUI, and a Claude permission prompt is answered with the keys the TUI takes. The Agent pane kind, its pickers and every place that treats it as a pane type are deleted; the native drivers stay in the source."
-status: Built and merged to main in 69ceca016 (2026-10-23; replaces the abandoned 2026-09-17 attempt)
+status: Superseded 2026-11-01 by agent panes and the flip (built and merged to main in 69ceca016 on 2026-10-23; the lens runtime was deleted)
 resource: crates/zz-daemon/src/agent/lens.rs
 tags:
 - agent
@@ -13,6 +13,11 @@ tags:
 - design-plan
 timestamp: 2026-10-28T00:00:00Z
 ---
+
+> **Superseded 2026-11-01.** The lens was dropped: agent panes are chats again over the native
+> drivers, and a flip button switches a pane between the CLI's TUI and the chat on the same session
+> ([agent panes](/concepts/agent-panes.md)). The lens runtime, the Claude Code plugin and the Codex
+> live join are deleted. This page is the record of the lens.
 
 # Rulings (fabrico, 2026-10-23)
 
@@ -133,7 +138,7 @@ card, `AgentComposer` and the task tray.
 | crates/zz | the Agent pane in `workspace/view.rs`, the picker's Agent choice, the New Agent Pane menu, the experimental setting, picker, history, title and session code in `agent/controller.rs` and `agent/view.rs`, the folder catalog in `file_picker.rs` (the file picker is editor-only now), `agent-send` composer commands |
 | clients/app | the Agent pane in `agent_pane.rs` (pickers, history, project directories), New Agent in the phone overview, the agent panes switch in settings |
 | storybook | the Agent pane story, rebuilt as a lens story over the kept components |
-| knowledge | `concepts/agent-pane.md` is replaced by [the agent lens concept](/concepts/agent-lens.md); pages that describe the pane type are corrected |
+| knowledge | `concepts/agent-pane.md` is replaced by [the agent lens concept](/concepts/agent-panes.md); pages that describe the pane type are corrected |
 
 ## Kept
 

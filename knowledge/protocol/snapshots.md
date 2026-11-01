@@ -123,9 +123,11 @@ dirty state stay GUI-local. Both paths are validated on deserialization as absol
 `MAX_EDITOR_PATH_BYTES` (16 KiB), and free of control characters, so a hostile descriptor cannot
 become mux state.
 
-There is no agent pane kind (v113). Claude Code and Codex run in `Terminal` panes; a client reads
-`summary.process` to decide which terminals get the [agent lens](/concepts/agent-lens.md). The
-lens timeline, prompts and permissions travel on the agent lane, never in the mux snapshot.
+`PaneKindSnapshot::Agent(AgentDescriptor)` (v118) is an [agent pane](/concepts/agent-panes.md):
+provider, folder, session, model and effort. A client reads a terminal's `summary.process` to offer
+the flip on one running Claude Code or Codex, and `summary.flip_armed` says a flip waits for the
+pane to go idle. The chat itself, prompts and permissions travel on the agent lane, never in the
+mux snapshot.
 
 ## Pane status, summary and time
 
@@ -331,4 +333,4 @@ An Editor pane carries the file it reopens:
 - Layout details: [split-pane layout](/concepts/split-pane-layout.md); durability:
   [session persistence](/concepts/session-persistence.md).
 - Cell contents stream separately via [packed terminal lanes](/protocol/terminal-lanes.md).
-- Agent timelines over terminal panes: [agent lens](/concepts/agent-lens.md).
+- Agent panes and the flip: [agent panes](/concepts/agent-panes.md).

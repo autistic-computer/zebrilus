@@ -199,8 +199,7 @@ elsewhere (`penna::kbd::KeyGlyphs`, [design system](/designs/design-system.md)),
 command's tmux shortcut (`C-b c`) as one small cap per key.
 
 Session, window, and pane targets use stable IDs for execution; rows display names and breadcrumbs.
-On the attached host, a terminal row whose [agent lens](/concepts/agent-lens.md) runtime is open
-reads `Agent · running`, `Agent · waiting for input`, `Agent · idle` or `Agent · failed` from that
+On the attached host, a row for an [agent pane](/concepts/agent-panes.md) reads `Agent · running`, `Agent · waiting for input`, `Agent · idle` or `Agent · failed` from that
 pane's agent state (`tree_pane` in `crates/zz/src/command/palette.rs`).
 Successful local navigation and command requests use the app's existing notification surface.
 

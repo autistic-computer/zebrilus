@@ -83,11 +83,11 @@ driver, then puts the window in that folder's session:
 The desktop switches to the window if it moved sessions. No client draws a chat over a terminal
 any more: a terminal running Claude Code or Codex and an agent pane both carry a flip button in
 their header that switches the pane between the CLI and the chat on the same session
-(`flip-agent`, see the [agent lens](/concepts/agent-lens.md)), and the sidebar mode does not open
+(`flip-agent`, see the [agent panes](/concepts/agent-panes.md)), and the sidebar mode does not open
 chats by itself. The command palette lists the chats too (see the
 [palette](/concepts/command-palette.md)).
-`select-pane-kind ... agent` names no model or effort yet, so a new chat starts on the
-CLI's own default rather than the model and effort last picked.
+`select-pane-kind ... agent` takes `--model` and `--effort`, so a new chat can start on the model
+and effort last picked.
 
 # Daemon changes
 

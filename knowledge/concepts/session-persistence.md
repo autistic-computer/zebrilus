@@ -188,12 +188,12 @@ Browser panes are the key asymmetry: the daemon persists only the **restorable d
 live browser. Live browser input while detached returns `PaneNotAttached` and is not queued for
 replay. See [browser lifecycle](/browser/lifecycle.md) and [browser profile](/browser/profile.md).
 
-Agents are not that asymmetry: Claude Code and Codex run in terminal panes, so they follow the
-terminal. A turn survives the GUI closing or detaching, and a client that opens the
-[agent lens](/concepts/agent-lens.md) again gets the timeline replayed from the lens runtime, which
-read it from the CLI's own transcript. What stays client-side is the rendering half: the reduced
-entries and the composer draft. A **daemon** exit takes the terminal and its CLI with it; the CLI's
-transcript stays on disk for the CLI to resume from.
+Agents are not that asymmetry: Claude Code and Codex run in terminal panes or under the daemon's
+[agent panes](/concepts/agent-panes.md), so they follow the daemon. A turn survives the GUI closing or
+detaching, and a client that shows an agent pane again gets the chat replayed from the pane's
+stream. What stays client-side is the rendering half: the reduced entries and the composer draft. A
+**daemon** exit takes the terminal or the driver and its CLI with it; the CLI's transcript stays on
+disk for the CLI to resume from.
 
 # Transport per platform
 

@@ -13,13 +13,11 @@ resource: crates/zz-daemon/src/agent/fanout.rs
 timestamp: 2026-10-24T00:00:00-03:00
 ---
 
-> **Status 2026-10-23.** The Agent pane kind is gone ([agent lens design](/designs/agent-lens.md)).
-> What this page built still runs: `agent::host` (one `zz-agent-{n}` thread per pane), the
-> fanout lane, the replay ring, the journal and the `Agent*` wire messages. The only runner a
-> production daemon opens on it is the lens runtime (`agent/lens.rs`), keyed by a terminal pane
-> running Claude Code or Codex and opened by `AgentReplay` or `agent-send --wait`
-> ([agent lens](/concepts/agent-lens.md)). The ACP runtime and the native drivers stay in the source,
-> but no pane opens them. Removed with the pane: `AgentDescriptor`, the
+> **Status 2026-11-01.** Agent panes are back and run the native drivers on this runtime
+> ([agent panes](/concepts/agent-panes.md)): `agent::host` (one `zz-agent-{n}` thread per pane),
+> the fanout lane, the replay ring, the journal and the `Agent*` wire messages. The 2026-10-23 lens
+> runtime that ran on it in between is deleted. Between 2026-10-23 and 2026-11-01 the Agent pane
+> kind was gone ([agent lens design](/designs/agent-lens.md)). Removed with the pane: `AgentDescriptor`, the
 > `experimental-agent-pane` option, `set-agent-provider`, `restart-agent-pane` and the
 > `AgentPaneRestart` effect, `EventPayload::AgentCommand` (`ComposerAppend`), the
 > `agent-working-directory` key, daemon pane titling and status records, and

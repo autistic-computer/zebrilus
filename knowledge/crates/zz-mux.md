@@ -60,7 +60,7 @@ layout undo. A `Pane` is an ID, a title, a `PaneKind` . `Picker { inherit_cwd_fr
 per-pane/window `InputOptions` (including `synchronize-panes`, `automatic-rename`, and
 `aggressive-resize` override bits). `Picker` is the runtime-free pending state a new pane sits in
 until the user chooses its kind. There is no agent kind: Claude Code and Codex run in `Terminal`
-panes, and clients draw the [agent lens](/concepts/agent-lens.md) over them. Pane titles are live
+panes, and clients draw the [agent panes](/concepts/agent-panes.md) over them. Pane titles are live
 metadata updated independently of explicit window names; tmux-compatible `select-pane -T` changes a
 title without selecting the pane.
 

@@ -108,7 +108,7 @@ Opening this panel leaves the saved sidebar preference unchanged.
 Session and window selection, terminal splits and divider dragging, pane zoom, daemon command
 prompts, choosers, menus, confirmations, popups, command output, and agent lens prompt/permission
 controls use live daemon state. A terminal running Claude Code or Codex gets the
-[agent lens](/concepts/agent-lens.md) toggle in its header, as on desktop, and the lens shows the
+[agent panes](/concepts/agent-panes.md) toggle in its header, as on desktop, and the lens shows the
 timeline and composer under the terminal header. The lens has no project, history, provider, model
 or effort picker, and the daemon refuses images sent through it. Composer actions share the
 desktop presentation. Appearance preferences for the

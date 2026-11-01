@@ -1027,7 +1027,7 @@ that text. The daemon sends the whole report on every change to each client that
 asked.
 
 v115 appends `ProtocolMessage::AgentSteer { pane, text }`, which redirects a running turn
-([agent lens](/concepts/agent-lens.md#input-and-approvals)). The pane host turns it into the
+([agent panes](/concepts/agent-panes.md)). The pane host turns it into the
 runtime's `/steer` verb while a turn runs; the lens types the text into the CLI without opening a
 turn of its own, and text the terminal refuses comes back as `PromptsReclaimed`. The Driver Agent's
 chat sent it; since that went on 2026-10-28 no client does, and the daemon still answers it.
@@ -1046,8 +1046,10 @@ and from the CLI's own TUI. It appends `PaneKindSnapshot::Agent(AgentDescriptor)
 and `ChooseTreePaneKind::Agent` after `Editor`. `AgentDescriptor { provider, cwd, session_id,
 model, effort }` holds the provider, the absolute working directory, the vendor session to resume,
 and the model and effort to start with; every field but `provider` is optional.
-`select-pane-kind [-c dir] agent claude|codex [--resume session-id]` turns a picker into one, and
-`flip-agent [-t pane] [--now | --when-idle | --cancel]` joins the command catalog.
+`select-pane-kind [-c dir] agent claude|codex [--resume session-id]` turns a picker or a terminal
+into one, and `flip-agent [-t pane] [--now | --when-idle | --cancel]` joins the command catalog.
+v118 also appends `PaneSummary.flip_armed`, set while a `flip-agent --when-idle` waits for the pane
+to go idle ([agent panes](/concepts/agent-panes.md)).
 
 # Versioning & compatibility
 
@@ -1055,7 +1057,8 @@ and the model and effort to start with; every field but `provider` is optional.
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
 - v118 requires updated clients and daemon together, including the daemon on every ssh host.
-  v118 appends `PaneKindSnapshot::Agent(AgentDescriptor)` and `ChooseTreePaneKind::Agent`, and makes
+  v118 appends `PaneKindSnapshot::Agent(AgentDescriptor)`, `ChooseTreePaneKind::Agent` and
+  `PaneSummary.flip_armed`, and makes
   `PathListRequest.pane` an `Option<PaneId>`, so a folder named from its root lists with no
   terminal pane open.
 - v117 requires updated clients and daemon together, including the daemon on every ssh host.
