@@ -1480,3 +1480,151 @@ fn a_thread_gone_between_the_list_and_its_read_does_not_spoil_the_claim() {
     };
     assert_eq!(found.session, THREAD);
 }
+
+#[test]
+fn a_first_prompt_into_a_relaunched_tui_keeps_its_turn_until_the_reply() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = rollout_of(dir.path(), SECOND);
+    write_rollout(&old, SECOND, &[]);
+    let pid = std::process::id();
+    let mut codex = Codex::default();
+    codex.link.neighbors = Some(Vec::new());
+    codex.link.here = Some(PathBuf::from("/work/proj"));
+    codex.picks.catalog = Catalog::codex_json(MODELS);
+    codex.pid = Some(pid);
+    codex.launch_pid = Some(pid);
+    let pane = Arc::new(Pane::default());
+    let mut lens = over(codex, &pane);
+    let opened = lens.reload(
+        Found {
+            session: SECOND.to_owned(),
+            path: old,
+            cwd: PathBuf::from("/work/proj"),
+        },
+        true,
+    );
+    lens.next_locate = Instant::now() + Duration::from_mins(1);
+
+    let gone = codex_of(&mut lens).find(None, None);
+    let mut payloads = lens.located(gone, false);
+    payloads.extend(lens.tick());
+    assert!(
+        payloads.iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::SessionReset { restoring: false }
+        )),
+        "the exited TUI's session leaves the lens: {payloads:?}"
+    );
+
+    let path = rollout_of(dir.path(), THREAD);
+    let (wire, peer, next) = claimer(&[(THREAD, listed(THREAD, &path, None))]);
+    let codex = codex_of(&mut lens);
+    codex.link.wire = Some(wire);
+    codex.born = Some(FIRST_START);
+    let waiting = codex_of(&mut lens).find(Some(pid), None);
+    assert!(waiting.is_none(), "no rollout yet");
+    payloads.extend(lens.located(waiting, false));
+    let sent_at = payloads.len();
+    assert!(lens.command(prompt(ASKED, 9)).is_empty());
+    let sent = outgoing(&peer);
+    assert_eq!(named(&sent, "turn/start")[0]["params"]["threadId"], THREAD);
+    peer.deliver(json!({ "id": next, "result": { "turn": { "id": "01a1943d-b799-77a0-a087-385bb2870a47" } } }));
+    payloads.extend(lens.tick());
+
+    let user = frames("lens-turn")
+        .into_iter()
+        .find(|message| message["method"] == "item/completed")
+        .unwrap()["params"]["item"]
+        .clone();
+    write_rollout(
+        &path,
+        THREAD,
+        &[
+            rollout_line(
+                "event_msg",
+                &json!({ "type": "task_started", "turn_id": "t1" }),
+            ),
+            item_line(
+                &json!({ "type": "UserMessage", "id": user["id"], "content": user["content"] }),
+            ),
+        ],
+    );
+    joins(&peer, next + 1, THREAD, "active");
+    let found = codex_of(&mut lens).find(Some(pid), None);
+    assert_eq!(
+        found.as_ref().map(|found| found.session.as_str()),
+        Some(THREAD)
+    );
+    payloads.extend(lens.located(found, false));
+    assert!(codex_of(&mut lens).is_live());
+    let live = frames("lens-turn");
+    let (_, after) = until(&live, "turn/started");
+    for message in after {
+        peer.deliver(message.clone());
+    }
+    payloads.extend(settle(&mut lens, &peer));
+
+    let done = payloads
+        .iter()
+        .position(|payload| {
+            matches!(
+                payload,
+                AgentStreamPayload::PromptFinished {
+                    turn_id: 9,
+                    outcome: AgentPromptOutcome::Finished { .. }
+                }
+            )
+        })
+        .expect("the turn finishes");
+    assert!(
+        !payloads[sent_at..done].iter().any(|payload| matches!(
+            payload,
+            AgentStreamPayload::SessionReset { .. } | AgentStreamPayload::SessionSwitched { .. }
+        )),
+        "{payloads:?}"
+    );
+    let reply = payloads[sent_at..done].iter().any(|payload| {
+        matches!(
+            payload,
+            AgentStreamPayload::Update { update }
+                if update["sessionUpdate"] == "agent_message_chunk"
+        )
+    });
+    assert!(reply, "the reply lands inside the turn: {payloads:?}");
+    let (shadow, view) = view(&[&opened, &payloads]);
+    assert!(shadow.rejects.is_empty(), "{:?}", shadow.rejects);
+    assert_eq!(texts(&view, ItemKind::User), [ASKED]);
+    assert_eq!(
+        texts(&view, ItemKind::Agent),
+        ["hello from the side channel"]
+    );
+}
+
+#[test]
+fn a_tui_back_on_the_shown_rollout_keeps_it_when_a_later_look_finds_nothing() {
+    let mut live = Harness::joined();
+    let rollout = rollout_of(live._dir.path(), THREAD);
+    let codex = codex_of(&mut live.lens);
+    codex.pid = Some(1);
+    codex.owner = Some(1);
+    codex.pid = Some(std::process::id());
+    codex.relaunched(std::process::id());
+    let again = live.lens.located(
+        Some(Found {
+            session: THREAD.to_owned(),
+            path: rollout,
+            cwd: PathBuf::from("/work/proj"),
+        }),
+        false,
+    );
+    assert!(again.is_empty(), "{again:?}");
+    live.lens.located(None, false);
+    let after = live.drain();
+    assert!(
+        !after
+            .iter()
+            .any(|payload| matches!(payload, AgentStreamPayload::SessionReset { .. })),
+        "{after:?}"
+    );
+    assert_eq!(live.lens.session.as_deref(), Some(THREAD));
+}

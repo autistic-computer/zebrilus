@@ -238,6 +238,7 @@ struct Claude {
     launch_pid: Option<u32>,
     dialog_closed: bool,
     link: Option<Link>,
+    vacant: bool,
 }
 
 struct Subagent {
@@ -266,6 +267,7 @@ impl Claude {
             launch_pid: None,
             dialog_closed: false,
             link: None,
+            vacant: false,
         }
     }
 
@@ -287,13 +289,17 @@ impl Claude {
     }
 
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
+        self.vacant = false;
         let pane_pid = pane_pid?;
         let files = self.files.as_ref()?;
         let mut records = claude_peers::read_records_in(&files.registry).ok()?;
         records.retain(|record| record.zz.is_none());
         let record = claude_peers::record_in_pane(&records, pane_pid).cloned();
         self.follow_launch(pane_pid, record.as_ref());
-        let record = record?;
+        let Some(record) = record else {
+            self.vacant = agent_pid(pane_pid, "claude").is_none();
+            return None;
+        };
         let files = self.files.as_ref()?;
         let cwd = PathBuf::from(&record.cwd);
         let path = sessions::session_file(&files.config, &cwd, &record.session_id);
@@ -302,6 +308,7 @@ impl Claude {
         if let Some(link) = self.link.as_mut() {
             link.greet(Some(&session));
         }
+        self.vacant = path.is_none();
         Some(Found {
             session,
             path: path?,
@@ -620,6 +627,7 @@ struct Codex {
     asked: Vec<(String, Option<u64>)>,
     dropped: Vec<Value>,
     link: codex_live::Link,
+    owner: Option<u32>,
 }
 
 struct CodexChild {
@@ -677,7 +685,12 @@ impl CodexPicks {
 impl Codex {
     fn locate(&mut self, pane_pid: Option<u32>) -> Option<Found> {
         self.picks.refresh();
-        self.pid = codex_queue::codex_pid(pane_pid?);
+        let pid = codex_queue::codex_pid(pane_pid?);
+        self.find(pid, codex_sessions().as_deref())
+    }
+
+    fn find(&mut self, pid: Option<u32>, sessions: Option<&Path>) -> Option<Found> {
+        self.pid = pid;
         if self.pid.is_none() {
             self.vanished();
         }
@@ -698,7 +711,7 @@ impl Codex {
             .filter(|path| is_rollout(path))
             .filter_map(|path| RolloutMeta::read(&path).map(|meta| (path, meta)))
             .find(|(_, meta)| meta.parent.is_none())
-            .or_else(|| newest_rollout(&codex_sessions()?, pid))?;
+            .or_else(|| newest_rollout(sessions?, pid))?;
         self.relocated(&path);
         Some(Found {
             session: meta.thread,
@@ -734,6 +747,7 @@ impl Codex {
 
     fn load(&mut self, path: PathBuf, cwd: &Path) -> Vec<Value> {
         self.join(&path, cwd);
+        self.owner = self.pid;
         let (tail, text) = Tail::open(path);
         self.translator = CodexTranslator::new(cwd.to_path_buf());
         self.busy = false;
@@ -1462,6 +1476,7 @@ struct Lens {
     next_locate: Instant,
     published: Facts,
     dialog: Option<Instant>,
+    vacant: bool,
 }
 
 fn pickable(input: &Value) -> Option<AgentQuestion> {
@@ -1533,6 +1548,7 @@ impl Lens {
             next_locate: Instant::now(),
             published: Facts::default(),
             dialog: None,
+            vacant: false,
         }
     }
 
@@ -1699,6 +1715,14 @@ impl Lens {
     fn locate(&mut self, opening: bool) -> Vec<AgentStreamPayload> {
         self.next_locate = Instant::now() + self.source.every();
         let found = self.source.locate(self.spec.io.pid());
+        self.located(found, opening)
+    }
+
+    fn located(&mut self, found: Option<Found>, opening: bool) -> Vec<AgentStreamPayload> {
+        self.vacant = found.is_none() && self.session.is_some() && self.source.vacant();
+        if found.is_some() {
+            self.source.own();
+        }
         let Some(found) = found else {
             return if opening {
                 vec![
@@ -1781,6 +1805,7 @@ impl Lens {
     fn tick(&mut self) -> Vec<AgentStreamPayload> {
         let mut payloads = if Instant::now() >= self.next_locate
             || (self.turn.is_some() && self.session.is_none())
+            || self.moved()
         {
             self.locate(false)
         } else {
@@ -1806,6 +1831,7 @@ impl Lens {
         if self.source.take_listing_change() {
             payloads.push(self.commands());
         }
+        payloads.extend(self.vacate());
         payloads
     }
 
@@ -3712,6 +3738,9 @@ mod tests {
 #[path = "lens_codex_live.rs"]
 mod codex_live;
 
+#[path = "lens_vacate.rs"]
+mod vacate;
+
 #[cfg(test)]
 #[path = "lens_codex_tests.rs"]
 mod codex_tests;
@@ -3719,3 +3748,7 @@ mod codex_tests;
 #[cfg(test)]
 #[path = "lens_claude_mod_tests.rs"]
 mod claude_mod_tests;
+
+#[cfg(test)]
+#[path = "lens_vacate_tests.rs"]
+mod vacate_tests;

@@ -573,6 +573,16 @@ impl Link {
         std::mem::take(&mut self.payloads)
     }
 
+    pub(crate) fn abandon(&mut self) -> Option<String> {
+        if self.prompts.is_empty() {
+            return None;
+        }
+        for prompt in std::mem::take(&mut self.prompts) {
+            self.channel.abandon(&prompt.instance);
+        }
+        Some(EXITED.to_owned())
+    }
+
     pub(crate) fn respond(
         &mut self,
         request_id: u64,
