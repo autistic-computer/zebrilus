@@ -870,7 +870,9 @@ on("attached", () => {
   cancelDrags();
 });
 
+state.chatView = Boolean(preferences.flat_sidebar);
 on("preferences", () => {
+  state.chatView = Boolean(preferences.flat_sidebar);
   markTree();
 });
 

@@ -31,6 +31,7 @@ use zz_client::{
         FloatCells, FloatGrip, FloatWindow, float_drag_command, float_drag_preview, float_pixels,
         float_title,
     },
+    new_chat::agent_picker_place,
     pane_drop_command, pane_rects, predicted_drop_layout,
 };
 use zz_mux::display_width;
@@ -711,6 +712,7 @@ pub struct AppView {
     mux: Entity<MuxClient>,
     sidebar: Entity<WorkspaceSidebar>,
     new_session: Entity<NewSessionView>,
+    empty_picker: Entity<PanePickerView>,
     pickers: BTreeMap<PaneId, Entity<PanePickerView>>,
     terminals: BTreeMap<PaneId, Entity<TerminalView>>,
     terminal_headers: BTreeMap<PaneId, Entity<TerminalHeaderView>>,
@@ -1109,12 +1111,22 @@ impl AppView {
         })
         .detach();
         let new_session = cx.new(|cx| NewSessionView::new(mux.clone(), cx));
+        let empty_picker = cx.new(|cx| PanePickerView::empty(mux.clone(), cx));
+        cx.subscribe_in(
+            &empty_picker,
+            window,
+            |this, picker, choose: &ChooseFolder, window, cx| {
+                this.open_folder_palette(picker, &choose.start, window, cx);
+            },
+        )
+        .detach();
         Self {
             controller,
             agent_controller,
             mux,
             sidebar,
             new_session,
+            empty_picker,
             pickers: BTreeMap::new(),
             terminals: BTreeMap::new(),
             terminal_headers: BTreeMap::new(),
@@ -1839,7 +1851,7 @@ impl AppView {
             return;
         }
         if self.empty_workspace_visible {
-            let focus = self.new_session.read(cx).focus().clone();
+            let focus = self.empty_focus(cx);
             focus.focus(window, cx);
             self.focused_pane = None;
             return;
@@ -1991,6 +2003,7 @@ impl AppView {
             .find(|session| Some(session.id) == attached)
             .map(|session| snapshot.focused_window_for(session));
 
+        let whole = &snapshot;
         for session in snapshot
             .sessions
             .iter()
@@ -2001,30 +2014,13 @@ impl AppView {
                     match &snapshot.kind {
                         PaneKindSnapshot::Picker => {
                             wanted_pickers.insert(*pane);
-                            if !self.pickers.contains_key(pane) {
-                                let mux = self.mux.clone();
-                                let pane = *pane;
-                                let view = cx.new(|cx| PanePickerView::new(pane, mux, cx));
-                                cx.subscribe_in(
-                                    &view,
-                                    window,
-                                    |this, _, chosen: &AgentChosen, _, cx| {
-                                        this.on_agent_chosen(chosen, cx);
-                                    },
-                                )
-                                .detach();
-                                cx.subscribe_in(
-                                    &view,
-                                    window,
-                                    |this, picker, choose: &ChooseFolder, window, cx| {
-                                        this.open_folder_palette(picker, &choose.start, window, cx);
-                                    },
-                                )
-                                .detach();
-                                self.pickers.insert(pane, view);
-                            }
+                            self.ensure_picker(*pane, window, cx);
                         }
                         PaneKindSnapshot::Terminal => {
+                            if agent_picker_place(whole, *pane, chat_mode).is_some() {
+                                wanted_pickers.insert(*pane);
+                                self.ensure_picker(*pane, window, cx);
+                            }
                             wanted_terminals.insert(*pane);
                             if !self.terminals.contains_key(pane) {
                                 let mux = self.mux.clone();
@@ -2355,6 +2351,9 @@ impl AppView {
         }
 
         self.pickers.retain(|pane, _| wanted_pickers.contains(pane));
+        for picker in self.pickers.values().chain([&self.empty_picker]) {
+            picker.update(cx, |picker, cx| picker.set_chat_view(chat_mode, cx));
+        }
         self.terminals
             .retain(|pane, _| wanted_terminals.contains(pane));
         self.terminal_headers
@@ -2503,7 +2502,7 @@ impl AppView {
             self.pane_focus_owed = false;
             self.focused_pane = None;
         } else if self.empty_workspace_focus_pending {
-            let focus = self.new_session.read(cx).focus().clone();
+            let focus = self.empty_focus(cx);
             focus.focus(window, cx);
             self.empty_workspace_focus_pending = false;
             self.sidebar_focus_owed = false;
@@ -2586,6 +2585,35 @@ impl AppView {
                     message: format!("{pane} has no live browser view in the attached session"),
                 });
             }
+        }
+    }
+
+    fn ensure_picker(&mut self, pane: PaneId, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pickers.contains_key(&pane) {
+            return;
+        }
+        let mux = self.mux.clone();
+        let view = cx.new(|cx| PanePickerView::new(pane, mux, cx));
+        cx.subscribe_in(&view, window, |this, _, chosen: &AgentChosen, _, cx| {
+            this.on_agent_chosen(chosen, cx);
+        })
+        .detach();
+        cx.subscribe_in(
+            &view,
+            window,
+            |this, picker, choose: &ChooseFolder, window, cx| {
+                this.open_folder_palette(picker, &choose.start, window, cx);
+            },
+        )
+        .detach();
+        self.pickers.insert(pane, view);
+    }
+
+    fn empty_focus(&self, cx: &App) -> FocusHandle {
+        if self.sidebar.read(cx).chat_mode() && self.mux.read(cx).has_hosts() {
+            self.empty_picker.read(cx).focus().clone()
+        } else {
+            self.new_session.read(cx).focus().clone()
         }
     }
 
@@ -3509,8 +3537,10 @@ impl AppView {
                     },
                     PaneContent::element,
                 );
-                let terminal_header =
-                    pane_snapshot.filter(|pane| matches!(pane.kind, PaneKindSnapshot::Terminal));
+                let terminal_header = pane_snapshot.filter(|held| {
+                    matches!(held.kind, PaneKindSnapshot::Terminal)
+                        && !self.pickers.contains_key(pane)
+                });
                 let header_view = terminal_header
                     .and_then(|snapshot| Some((snapshot, self.terminal_headers.get(pane)?)));
                 let content = if let Some((snapshot, header_view)) = header_view {
@@ -4489,7 +4519,11 @@ impl Render for AppView {
                 error.is_some(),
             )
         {
-            self.new_session.clone().into_any_element()
+            if has_hosts && self.sidebar.read(cx).chat_mode() {
+                self.empty_picker.clone().into_any_element()
+            } else {
+                self.new_session.clone().into_any_element()
+            }
         } else {
             app_connection_state(
                 error.map_or_else(
