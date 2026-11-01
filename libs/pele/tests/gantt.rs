@@ -308,7 +308,7 @@ fn undated_tasks_start_at_the_unix_epoch_without_a_today_marker() {
 #[test]
 fn theme_values_replace_every_upstream_css_variable() {
     let mut options = RenderOptions::default();
-    options.theme.background = "#010101".into();
+    options.theme.background = "#fefefe".into();
     options.theme.muted = "#020202".into();
     options.theme.line = "#030303".into();
     options.theme.surface = "#040404".into();
@@ -323,12 +323,46 @@ fn theme_values_replace_every_upstream_css_variable() {
     )
     .unwrap();
     for color in [
-        "#010101", "#020202", "#030303", "#040404", "#050505", "#060606", "#070707", "#080808",
+        "#fefefe", "#020202", "#030303", "#040404", "#050505", "#060606", "#070707", "#080808",
     ] {
         assert!(result.svg.contains(color), "missing {color}");
     }
     assert!(result.svg.contains("rx=\"9\""));
     assert_static(&result.svg, "theme");
+}
+
+fn bar_fill(svg: &str, state: &str) -> String {
+    let class = format!("class=\"pele-task {state}\"");
+    let at = svg.find(&class).unwrap_or_else(|| panic!("no {state} bar"));
+    let rest = &svg[at..];
+    let fill = &rest[rest.find(" fill=\"").unwrap() + 7..];
+    fill[..fill.find('"').unwrap()].to_owned()
+}
+
+#[test]
+fn bars_stand_apart_from_a_ground_close_to_their_fill() {
+    let source = "gantt\ndateFormat YYYY-MM-DD\nsection A\nPlain :2024-01-01, 2d\nFinished :done, 2024-01-03, 1d\nGoing :active, 2024-01-04, 2d\n";
+    let default = render(source, &RenderOptions::default()).unwrap();
+    assert_eq!(bar_fill(&default.svg, "pele-done"), "#e6e6e6");
+    assert!(default.svg.contains("fill-opacity=\"0.25\""));
+    for (background, foreground, surface_alt, accent) in [
+        ("#efefef", "#1d1d1f", "#f5f5f5", "#1d1d1f"),
+        ("#1f1f21", "#e4e4e6", "#28282a", "#e4e4e6"),
+    ] {
+        let mut options = RenderOptions::default();
+        options.theme.background = background.into();
+        options.theme.foreground = foreground.into();
+        options.theme.surface_alt = surface_alt.into();
+        options.theme.accent = accent.into();
+        let result = render(source, &options).unwrap();
+        let done = bar_fill(&result.svg, "pele-done");
+        assert_ne!(
+            done, surface_alt,
+            "a done bar on {background} must not vanish"
+        );
+        assert_ne!(done, background);
+        assert_static(&result.svg, background);
+    }
 }
 
 #[test]

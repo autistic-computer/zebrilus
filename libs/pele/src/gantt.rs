@@ -1,3 +1,4 @@
+use crate::svg::ink::{apart, mix};
 use crate::{LinkInfo, PeleError, RenderOptions, RenderResult, svg, text};
 use indexmap::IndexMap;
 use regex::Regex;
@@ -24,6 +25,8 @@ const FORMAT_STEP: f64 = 400.0;
 const WIDTH: f64 = 800.0;
 const MIN_PLOT: f64 = 240.0;
 const LABEL_GAP: f64 = 8.0;
+const BAR_GAP: f64 = 8.0;
+const EDGE_GAP: f64 = 20.0;
 
 const MONTHS: [&str; 12] = [
     "January",
@@ -3938,17 +3941,31 @@ fn draw(model: &GanttModel, options: &RenderOptions) -> Result<RenderResult, Pel
             text_fill = format!(" fill=\"{}\"", svg::esc(&theme.muted));
         } else {
             let color = if task.crit { critical } else { &theme.accent };
+            let lift = |fill: &str| apart(fill, &[&theme.background], &theme.foreground, BAR_GAP);
             let paint = match state {
-                "done" => format!("fill=\"{}\"", svg::esc(&theme.surface_alt)),
-                "active" => format!("fill=\"{}\" fill-opacity=\"0.25\"", svg::esc(color)),
-                _ => format!("fill=\"{}\"", svg::esc(color)),
+                "done" => format!("fill=\"{}\"", svg::esc(&lift(&theme.surface_alt))),
+                "active" => {
+                    let seen = mix(color, &theme.background, 0.25);
+                    let lifted = lift(&seen);
+                    if lifted == seen {
+                        format!("fill=\"{}\" fill-opacity=\"0.25\"", svg::esc(color))
+                    } else {
+                        format!("fill=\"{}\"", svg::esc(&lifted))
+                    }
+                }
+                _ => format!("fill=\"{}\"", svg::esc(&lift(color))),
             };
             let stroke = format!(
                 "stroke=\"{}\"",
-                svg::esc(if state == "done" && !task.crit {
-                    &theme.border
+                svg::esc(&if state == "done" && !task.crit {
+                    apart(
+                        &theme.border,
+                        &[&theme.background, &theme.surface_alt],
+                        &theme.foreground,
+                        EDGE_GAP,
+                    )
                 } else {
-                    color
+                    color.clone()
                 })
             );
             if task.milestone {

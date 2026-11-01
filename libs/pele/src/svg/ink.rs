@@ -236,6 +236,33 @@ pub fn mix(first: &str, second: &str, share: f64) -> String {
     }
 }
 
+fn lightness(raw: &str) -> Option<f64> {
+    let (y, _) = color(raw)?;
+    Some(if y <= 216.0 / 24389.0 {
+        y * 24389.0 / 27.0
+    } else {
+        116.0 * y.cbrt() - 16.0
+    })
+}
+
+pub fn apart(paint: &str, grounds: &[&str], toward: &str, gap: f64) -> String {
+    let clear = |paint: &str| {
+        grounds
+            .iter()
+            .all(|ground| match (lightness(paint), lightness(ground)) {
+                (Some(paint), Some(ground)) => (paint - ground).abs() >= gap,
+                _ => true,
+            })
+    };
+    if clear(paint) {
+        return paint.to_owned();
+    }
+    (1..=20)
+        .map(|step| mix(toward, paint, f64::from(step) / 20.0))
+        .find(|paint| clear(paint))
+        .unwrap_or_else(|| toward.to_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +291,26 @@ mod tests {
         assert!(!paints(&shape(&["fill:none"])));
         assert!(!paints(&shape(&["fill:#f00", "opacity:0"])));
         assert!(paints(&shape(&["fill:currentColor"])));
+    }
+
+    #[test]
+    fn apart_lifts_only_fills_that_vanish_into_the_ground() {
+        assert_eq!(apart("#e6e6e6", &["#ffffff"], "#1f1f1f", 8.0), "#e6e6e6");
+        let light = apart("#f5f5f5", &["#efefef"], "#1d1d1f", 8.0);
+        assert!(
+            lightness(&light).unwrap() <= lightness("#efefef").unwrap() - 8.0,
+            "{light}"
+        );
+        let dark = apart("#28282a", &["#1f1f21"], "#e4e4e6", 8.0);
+        assert!(
+            lightness(&dark).unwrap() >= lightness("#1f1f21").unwrap() + 8.0,
+            "{dark}"
+        );
+        let edge = apart("#3a3a3c", &["#1f1f21", "#28282a"], "#e4e4e6", 20.0);
+        assert!(
+            lightness(&edge).unwrap() >= lightness("#28282a").unwrap() + 20.0,
+            "{edge}"
+        );
     }
 
     #[test]
