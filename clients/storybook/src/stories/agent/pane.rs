@@ -298,6 +298,7 @@ pub struct AgentPaneStory {
     side: Side,
     flips: AgentFlips,
     next_request: u64,
+    armed: bool,
     thread: Entity<Thread>,
     input: Entity<InputState>,
     tray: Option<TrayPanel>,
@@ -330,6 +331,7 @@ fn build_with(
             side,
             flips: AgentFlips::default(),
             next_request: 1,
+            armed: false,
             thread,
             input,
             tray: None,
@@ -402,21 +404,27 @@ impl AgentPaneStory {
     fn answer(&mut self) {
         let request = self.next_request - 1;
         let pane = self.pane();
-        let reply = match self.flips.state(pane) {
-            Flip::Sending(FlipMode::Ask) => self.scene.busy().map(|busy| format!("busy: {busy}")),
-            Flip::Sending(_) => None,
-            _ => return,
+        let Flip::Sending(mode) = *self.flips.state(pane) else {
+            return;
         };
-        let flips_now = matches!(
-            self.flips.state(pane),
-            Flip::Sending(FlipMode::Ask | FlipMode::Now)
-        ) && reply.is_none();
-        self.flips
-            .settle(request, reply.as_deref().map_or(Ok(()), Err));
+        let reply = match mode {
+            FlipMode::Ask => self.scene.busy().map(|busy| format!("busy: {busy}")),
+            _ => None,
+        };
+        let flips_now = matches!(mode, FlipMode::Ask | FlipMode::Now) && reply.is_none();
+        match mode {
+            FlipMode::WhenIdle => self.armed = true,
+            FlipMode::Cancel => self.armed = false,
+            FlipMode::Ask | FlipMode::Now => {}
+        }
         if flips_now {
             self.side = self.side.flipped();
-            self.flips.observe_panes([(pane, self.side.flip_to())]);
+            self.armed = false;
         }
+        self.flips
+            .observe_panes([(pane, self.side.flip_to(), self.armed)]);
+        self.flips
+            .settle(request, reply.as_deref().map_or(Ok(()), Err));
     }
 
     fn flip(&mut self) {

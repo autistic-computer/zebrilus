@@ -451,6 +451,11 @@ struct Context {
 }
 
 impl Client {
+    pub(crate) fn observe_flips(&mut self) {
+        let snapshot = self.core.snapshot();
+        self.agents.flips.observe(snapshot);
+    }
+
     pub(crate) fn flip_reply(&mut self, response: &CommandResponse) -> Option<Value> {
         let (request, result) = match response {
             CommandResponse::Success { request_id, .. } => (*request_id, Ok(())),

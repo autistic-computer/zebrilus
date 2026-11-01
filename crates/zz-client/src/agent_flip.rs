@@ -116,15 +116,28 @@ struct PaneFlip {
 #[derive(Clone, Debug, Default)]
 pub struct AgentFlips {
     panes: BTreeMap<PaneId, PaneFlip>,
+    armed: BTreeMap<PaneId, FlipTo>,
     requests: BTreeMap<u64, (PaneId, FlipMode)>,
 }
 
 static IDLE: Flip = Flip::Idle;
+static ARMED: Flip = Flip::Armed;
 
 impl AgentFlips {
     #[must_use]
     pub fn state(&self, pane: PaneId) -> &Flip {
-        self.panes.get(&pane).map_or(&IDLE, |entry| &entry.flip)
+        match self.panes.get(&pane) {
+            Some(entry) => &entry.flip,
+            None if self.armed.contains_key(&pane) => &ARMED,
+            None => &IDLE,
+        }
+    }
+
+    fn side(&self, pane: PaneId) -> Option<FlipTo> {
+        self.panes
+            .get(&pane)
+            .map(|entry| entry.to)
+            .or_else(|| self.armed.get(&pane).copied())
     }
 
     pub fn press(
@@ -150,14 +163,13 @@ impl AgentFlips {
         mode: FlipMode,
         send: impl FnOnce(CommandInvocation) -> Option<u64>,
     ) -> bool {
-        let Some(entry) = self.panes.get(&pane) else {
+        let Some(to) = self.side(pane) else {
             return false;
         };
         let allowed = matches!(
-            (&entry.flip, mode),
+            (self.state(pane), mode),
             (Flip::Busy(_), FlipMode::Now | FlipMode::WhenIdle) | (Flip::Armed, FlipMode::Cancel)
         );
-        let to = entry.to;
         allowed && self.send(pane, to, mode, send)
     }
 
@@ -222,23 +234,29 @@ impl AgentFlips {
     }
 
     pub fn observe(&mut self, snapshot: &MuxSnapshot) {
-        if self.panes.is_empty() {
-            return;
-        }
         self.observe_panes(
             snapshot
                 .sessions
                 .iter()
                 .flat_map(|session| &session.windows)
                 .flat_map(|window| &window.panes)
-                .filter_map(|(id, pane)| Some((*id, flip_target(pane)?.to))),
+                .filter_map(|(id, pane)| {
+                    Some((*id, flip_target(pane)?.to, pane.summary.flip_armed))
+                }),
         );
     }
 
-    pub fn observe_panes(&mut self, panes: impl IntoIterator<Item = (PaneId, FlipTo)>) {
-        let sides = panes.into_iter().collect::<BTreeMap<_, _>>();
+    pub fn observe_panes(&mut self, panes: impl IntoIterator<Item = (PaneId, FlipTo, bool)>) {
+        let mut sides = BTreeMap::new();
+        self.armed.clear();
+        for (pane, to, armed) in panes {
+            sides.insert(pane, to);
+            if armed {
+                self.armed.insert(pane, to);
+            }
+        }
         self.panes
-            .retain(|pane, entry| sides.get(pane) == Some(&entry.to));
+            .retain(|pane, entry| sides.get(pane) == Some(&entry.to) && entry.flip != Flip::Armed);
         let panes = &self.panes;
         self.requests
             .retain(|_, (pane, _)| panes.contains_key(pane));
@@ -428,12 +446,12 @@ mod tests {
         flips.press(PANE, FlipTo::Chat, sender(&log));
         flips.settle(1, Err("busy: a turn"));
         flips.choose(PANE, FlipMode::WhenIdle, sender(&log));
-        flips.observe_panes([(PANE, FlipTo::Chat)]);
+        flips.observe_panes([(PANE, FlipTo::Chat, true)]);
         assert!(flips.owns(2));
         flips.settle(2, Ok(()));
-        flips.observe_panes([(PANE, FlipTo::Chat)]);
+        flips.observe_panes([(PANE, FlipTo::Chat, true)]);
         assert_eq!(flips.state(PANE), &Flip::Armed);
-        flips.observe_panes([(PANE, FlipTo::Cli)]);
+        flips.observe_panes([(PANE, FlipTo::Cli, false)]);
         assert_eq!(flips.state(PANE), &Flip::Idle);
         flips.press(PANE, FlipTo::Cli, sender(&log));
         flips.observe_panes([]);
@@ -448,9 +466,41 @@ mod tests {
         flips.press(PANE, FlipTo::Chat, sender(&log));
         flips.settle(1, Err("busy: a turn"));
         flips.choose(PANE, FlipMode::WhenIdle, sender(&log));
-        flips.observe_panes([(PANE, FlipTo::Cli)]);
+        flips.observe_panes([(PANE, FlipTo::Cli, false)]);
         assert_eq!(flips.settle(2, Ok(())), None);
         assert_eq!(flips.state(PANE), &Flip::Idle);
+    }
+
+    #[test]
+    fn the_daemons_armed_flag_arms_every_client_and_clears_it() {
+        let log = sent();
+        let mut flips = AgentFlips::default();
+        flips.observe_panes([(PANE, FlipTo::Cli, true)]);
+        assert_eq!(flips.state(PANE), &Flip::Armed);
+        assert!(flips.choose(PANE, FlipMode::Cancel, sender(&log)));
+        assert_eq!(args(&log.0.borrow()[0]), ["-t", "%7", "--cancel"]);
+        assert_eq!(flips.settle(1, Ok(())), None);
+        flips.observe_panes([(PANE, FlipTo::Cli, false)]);
+        assert_eq!(flips.state(PANE), &Flip::Idle);
+
+        flips.observe_panes([(PANE, FlipTo::Cli, true)]);
+        assert!(flips.press(PANE, FlipTo::Cli, sender(&log)));
+        assert_eq!(args(&log.0.borrow()[1]), ["-t", "%7", "--cancel"]);
+        flips.settle(2, Ok(()));
+        flips.observe_panes([(PANE, FlipTo::Cli, false)]);
+        assert_eq!(flips.state(PANE), &Flip::Idle);
+
+        flips.press(PANE, FlipTo::Cli, sender(&log));
+        flips.settle(3, Err("busy: a turn"));
+        flips.choose(PANE, FlipMode::WhenIdle, sender(&log));
+        flips.settle(4, Ok(()));
+        assert_eq!(flips.state(PANE), &Flip::Armed);
+        flips.observe_panes([(PANE, FlipTo::Cli, false)]);
+        assert_eq!(
+            flips.state(PANE),
+            &Flip::Idle,
+            "the flip ran or was cancelled elsewhere"
+        );
     }
 
     #[test]
