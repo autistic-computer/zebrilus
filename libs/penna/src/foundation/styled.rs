@@ -1,5 +1,6 @@
 use super::{
-    ActiveTheme, Edge, Emphasis, Layer, PaintState, StatefulSurfaceExt, Surface, SurfaceRole, Tone,
+    ActiveTheme, Edge, Emphasis, Layer, PaintState, StatefulSurfaceExt, Surface, SurfaceRole,
+    TextStyle, Tone,
 };
 use ala::{
     AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS,
@@ -64,6 +65,18 @@ pub trait StyledExt: Styled + Sized {
             .mb(margins.bottom.into())
             .ml(margins.left.into())
             .mr(margins.right.into())
+    }
+
+    fn type_style(self, style: TextStyle, cx: &App) -> Self {
+        let this = self
+            .text_size(style.size())
+            .line_height(style.line_height())
+            .font_weight(style.weight());
+        if style.is_mono() {
+            this.font_family(cx.theme().mono_font_family.clone())
+        } else {
+            this
+        }
     }
 
     fn surface_outline(self, color: Hsla, cx: &App) -> Self {

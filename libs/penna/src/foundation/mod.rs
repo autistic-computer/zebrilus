@@ -6,8 +6,10 @@ mod element_ext;
 mod geometry;
 mod index_path;
 mod palette;
+mod space;
 mod styled;
 mod surface;
+mod text_style;
 mod theme;
 mod theme_color;
 mod units;
@@ -20,6 +22,7 @@ pub use color::{Colorize, oklab_lightness, oklch, parse_hex, to_hex, to_oklch};
 pub use element_ext::{ElementExt, InteractiveElementExt};
 pub use geometry::Side;
 pub use index_path::IndexPath;
+pub use space::Space;
 pub(crate) use styled::ROW_CORNER_SMOOTHING;
 pub use styled::{
     Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, Selectable, Sizable, Size, StyledExt, h_flex,
@@ -31,6 +34,7 @@ pub use surface::{
     Shape, Smoothing, StatefulSurfaceExt, Style, StylePatch, Surface, SurfaceRole, drawn_roles,
     note_drawn_roles,
 };
+pub use text_style::TextStyle;
 pub use theme::{
     ADAPTIVE_CORNER_FRACTION, ActiveTheme, CHROME_GAP, CORNER_SMOOTHING,
     PANE_HEADER_CONTROL_HEIGHT, PANE_HEADER_HEIGHT, ScrollbarShow, Theme, ThemeMode,
