@@ -8968,7 +8968,7 @@ mod tests {
             lists.borrow().as_slice(),
             &[zz_protocol::ProtocolMessage::PathListRequest {
                 request_id: 1,
-                pane: PaneId(0),
+                pane: Some(PaneId(0)),
                 dir: Some("~/".to_owned()),
             }]
         );

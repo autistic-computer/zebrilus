@@ -2043,7 +2043,11 @@ impl InteractiveClient {
         Ok(request_id)
     }
 
-    pub fn request_path_list(&self, pane: PaneId, dir: Option<String>) -> Result<u64, DaemonError> {
+    pub fn request_path_list(
+        &self,
+        pane: Option<PaneId>,
+        dir: Option<String>,
+    ) -> Result<u64, DaemonError> {
         let request_id = REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         self.send(&ProtocolMessage::PathListRequest {
             request_id,
