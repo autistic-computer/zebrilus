@@ -1117,12 +1117,16 @@ fn display_path(path: &str, cwd: &Path) -> String {
         )
 }
 
-pub(crate) fn available_commands(commands: &[Value], hidden: &HashSet<String>) -> Value {
+pub(crate) fn available_commands(
+    commands: &[Value],
+    hidden: &HashSet<String>,
+    listed: Option<&HashSet<String>>,
+) -> Value {
     let commands = commands
         .iter()
         .filter_map(|command| {
             let name = command["name"].as_str()?;
-            if hidden.contains(name) {
+            if hidden.contains(name) || listed.is_some_and(|listed| !listed.contains(name)) {
                 return None;
             }
             let mut entry = json!({
@@ -1504,19 +1508,32 @@ mod tests {
     #[test]
     fn commands_carry_their_hint_and_hide_terminal_ones() {
         let hidden = HashSet::from(["doctor".to_owned()]);
-        let update = available_commands(
-            &[
-                json!({"name":"compact","description":"Compact","argumentHint":"<focus>"}),
-                json!({"name":"doctor","description":"Doctor","argumentHint":""}),
-            ],
-            &hidden,
-        );
+        let commands = [
+            json!({"name":"compact","description":"Compact","argumentHint":"<focus>"}),
+            json!({"name":"doctor","description":"Doctor","argumentHint":""}),
+            json!({"name":"terminal-setup","description":"Set up the terminal","argumentHint":""}),
+        ];
+        let update = available_commands(&commands, &hidden, None);
         serde_json::from_value::<SessionUpdate>(update.clone()).expect("ACP update");
         assert_eq!(
             update["availableCommands"].as_array().map(Vec::len),
-            Some(1)
+            Some(2)
         );
         assert_eq!(update["availableCommands"][0]["input"]["hint"], "<focus>");
+
+        let listed = HashSet::from(["compact".to_owned(), "doctor".to_owned()]);
+        let update = available_commands(&commands, &hidden, Some(&listed));
+        let names = update["availableCommands"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|command| command["name"].as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names,
+            ["compact"],
+            "only the init frame's commands that work without the TUI"
+        );
     }
 
     #[test]
