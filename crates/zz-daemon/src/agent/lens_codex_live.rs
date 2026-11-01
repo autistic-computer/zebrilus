@@ -18,8 +18,11 @@ use super::{
     AgentPrompt, AgentPromptOutcome, AgentStreamPayload, Codex, Found, Lens, Read, Source, Tail,
     Turn, arguments, codex_home,
 };
+use zz_daemon_client::process_info;
+
 use crate::agent::{
     child::option,
+    claude_peers,
     codex::{
         self as native, Reply,
         control::{self, Connection, Next},
@@ -30,6 +33,7 @@ use crate::agent::{
 };
 
 const JOIN: Duration = Duration::from_secs(3);
+const FRESH: u64 = 30;
 const EMBEDDED: [&str; 11] = [
     "-c",
     "--config",
@@ -63,6 +67,8 @@ pub(super) struct Link {
     pub(super) ids: Arc<AtomicU64>,
     #[cfg(test)]
     pub(super) wire: Option<Connection>,
+    #[cfg(test)]
+    pub(super) neighbors: Option<Vec<u64>>,
 }
 
 pub(super) struct Live {
@@ -79,6 +85,7 @@ pub(super) struct Live {
     asks: HashMap<String, Vec<AgentQuestion>>,
     card: Option<(u64, String)>,
     next: Option<(String, Option<PathBuf>)>,
+    lost: bool,
 }
 
 enum Call {
@@ -164,30 +171,13 @@ impl Live {
             asks: HashMap::new(),
             card: None,
             next: None,
+            lost: false,
         })
     }
 
     fn call(&mut self, call: Call, method: &str, params: &Value) {
         let id = self.connection.request(method, params);
         self.calls.insert(id, call);
-    }
-
-    fn started_thread(&mut self, thread: &Value) {
-        let Some(id) = thread["id"].as_str().filter(|id| *id != self.thread) else {
-            return;
-        };
-        if thread["ephemeral"] == true
-            || !thread["parentThreadId"].is_null()
-            || thread["threadSource"]
-                .as_str()
-                .is_some_and(|source| source != "user")
-            || !thread["cwd"]
-                .as_str()
-                .is_some_and(|cwd| same_dir(Path::new(cwd), &self.cwd))
-        {
-            return;
-        }
-        self.next = Some((id.to_owned(), thread["path"].as_str().map(PathBuf::from)));
     }
 
     fn resolved(&mut self, request: &Value, read: &mut Read) {
@@ -278,6 +268,45 @@ impl Drop for Live {
         self.connection
             .request("thread/unsubscribe", &json!({ "threadId": self.thread }));
     }
+}
+
+fn others_in(pid: u32, cwd: &Path) -> Option<Vec<u64>> {
+    let cwd = std::fs::canonicalize(cwd).ok()?;
+    let mine = std::iter::once(pid)
+        .chain(process_info::descendants(pid))
+        .collect::<HashSet<_>>();
+    Some(
+        claude_peers::process_parents()
+            .ok()?
+            .into_iter()
+            .map(|(other, _)| other)
+            .filter(|other| !mine.contains(other))
+            .filter(|other| process_info::command_name(*other).as_deref() == Some("codex"))
+            .filter_map(|other| {
+                let arguments = arguments(other);
+                if arguments.iter().any(|argument| argument == "app-server") {
+                    return None;
+                }
+                (folder(other, &arguments)? == cwd)
+                    .then(|| process_info::start_time(other).unwrap_or_default())
+            })
+            .collect(),
+    )
+}
+
+fn folder(pid: u32, arguments: &[String]) -> Option<PathBuf> {
+    let base = process_info::working_directory(pid)?;
+    let named = arguments
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find_map(|(index, argument)| match argument.as_str() {
+            "-C" | "--cd" => arguments.get(index + 1).map(String::as_str),
+            _ => argument
+                .strip_prefix("--cd=")
+                .or_else(|| argument.strip_prefix("-C")),
+        });
+    std::fs::canonicalize(named.map_or_else(|| base.clone(), |dir| base.join(dir))).ok()
 }
 
 fn same_dir(left: &Path, right: &Path) -> bool {
@@ -471,6 +500,10 @@ impl Codex {
         self.drop_live();
         self.link.relive = false;
         self.link.cwd = cwd.to_path_buf();
+        if self.neighbors().is_none_or(|others| !others.is_empty()) {
+            log::info!(target: "zz::agent", "another Codex may share {}; the lens reads the rollout", cwd.display());
+            return;
+        }
         let Some(connection) = self.dial() else {
             return;
         };
@@ -483,6 +516,50 @@ impl Codex {
                 log::info!(target: "zz::agent", "the Codex lens reads the rollout instead: {error}");
             }
         }
+    }
+
+    fn neighbors(&self) -> Option<Vec<u64>> {
+        #[cfg(test)]
+        if let Some(neighbors) = &self.link.neighbors {
+            return Some(neighbors.clone());
+        }
+        others_in(self.pid?, &self.link.cwd)
+    }
+
+    fn started_thread(&self, live: &mut Live, thread: &Value) {
+        let Some(id) = thread["id"].as_str().filter(|id| *id != live.thread) else {
+            return;
+        };
+        if thread["ephemeral"] == true
+            || !thread["parentThreadId"].is_null()
+            || thread["threadSource"]
+                .as_str()
+                .is_some_and(|source| source != "user")
+            || !thread["cwd"]
+                .as_str()
+                .is_some_and(|cwd| same_dir(Path::new(cwd), &live.cwd))
+        {
+            return;
+        }
+        if thread["forkedFromId"].as_str() != Some(live.thread.as_str()) {
+            match self.neighbors() {
+                Some(others) if others.is_empty() => {}
+                Some(others)
+                    if thread["createdAt"].as_u64().is_some_and(|created| {
+                        others
+                            .iter()
+                            .any(|born| (created.saturating_sub(FRESH)..=created).contains(born))
+                    }) =>
+                {
+                    return;
+                }
+                _ => {
+                    live.lost = true;
+                    return;
+                }
+            }
+        }
+        live.next = Some((id.to_owned(), thread["path"].as_str().map(PathBuf::from)));
     }
 
     fn dial(&mut self) -> Option<Connection> {
@@ -596,10 +673,13 @@ impl Codex {
             }
         }
         read.reload |= live.switching();
+        let lost = live.lost;
         self.link.live = Some(live);
         if gone {
             self.leave();
             read.reload = true;
+        } else if lost {
+            self.leave();
         }
         read.updates.extend(self.child_lines(None, false));
         Some(read)
@@ -617,7 +697,7 @@ impl Codex {
 
     fn notification(&mut self, live: &mut Live, method: &str, params: &Value, read: &mut Read) {
         match method {
-            "thread/started" => return live.started_thread(&params["thread"]),
+            "thread/started" => return self.started_thread(live, &params["thread"]),
             "serverRequest/resolved" => return live.resolved(&params["requestId"], read),
             _ => {}
         }

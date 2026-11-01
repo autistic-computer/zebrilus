@@ -107,6 +107,10 @@ struct Harness {
 
 impl Harness {
     fn open(history: &[Value], loaded: &[&str]) -> Self {
+        Self::beside(history, loaded, &[])
+    }
+
+    fn beside(history: &[Value], loaded: &[&str], others: &[u64]) -> Self {
         let dir = tempfile::tempdir().unwrap();
         let path = dir
             .path()
@@ -125,6 +129,7 @@ impl Harness {
         peer.deliver(json!({ "id": 2, "result": resume() }));
         let mut codex = Codex::default();
         codex.link.wire = Some(connection);
+        codex.link.neighbors = Some(others.to_vec());
         codex.picks.catalog = Catalog::codex_json(MODELS);
         let pane = Arc::new(Pane::default());
         let mut lens = Lens::with_source(
@@ -845,4 +850,64 @@ fn a_card_open_when_the_app_server_goes_away_is_withdrawn() {
     after.extend(live.lens.tick());
     assert!(!live.live());
     assert_eq!(resolved(&after), [request_id], "{after:?}");
+}
+
+fn started(id: &str, created: u64, path: &std::path::Path) -> Value {
+    json!({ "method": "thread/started", "params": { "thread": {
+        "id": id, "cwd": "/work/proj", "ephemeral": false, "parentThreadId": null,
+        "threadSource": "user", "path": path, "createdAt": created,
+    } } })
+}
+
+fn session(live: &Harness) -> Option<String> {
+    let Source::Codex(codex) = &live.lens.source else {
+        unreachable!()
+    };
+    codex.located().map(|found| found.session)
+}
+
+#[test]
+fn a_tui_started_beside_this_one_does_not_take_the_lens() {
+    let mut live = Harness::beside(&[], &[THREAD], &[]);
+    let path = live._dir.path().join("rollout-theirs.jsonl");
+    std::fs::write(&path, "").unwrap();
+    if let Source::Codex(codex) = &mut live.lens.source {
+        codex.link.neighbors = Some(vec![1_793_488_400]);
+    }
+    live.play(&[started("theirs", 1_793_488_403, &path)]);
+    assert!(live.live());
+    assert_eq!(session(&live).as_deref(), Some(THREAD));
+}
+
+#[test]
+fn a_new_thread_that_could_be_another_tuis_drops_the_lens_to_the_rollout() {
+    let mut live = Harness::beside(&[], &[THREAD], &[]);
+    let path = live._dir.path().join("rollout-unknown.jsonl");
+    std::fs::write(&path, "").unwrap();
+    if let Source::Codex(codex) = &mut live.lens.source {
+        codex.link.neighbors = Some(vec![1_793_400_000]);
+    }
+    live.play(&[started("unknown", 1_793_488_403, &path)]);
+    assert!(!live.live());
+    assert!(session(&live).is_none());
+}
+
+#[test]
+fn a_fork_of_the_joined_thread_is_followed_even_beside_another_tui() {
+    let crowded = Harness::beside(&[], &[THREAD], &[1_793_400_000]);
+    assert!(
+        !crowded.live(),
+        "another TUI in the folder keeps the rollout path"
+    );
+    assert!(named(&crowded.sent(), "thread/resume").is_empty());
+    let mut live = Harness::beside(&[], &[THREAD], &[]);
+    let path = live._dir.path().join("rollout-fork.jsonl");
+    std::fs::write(&path, "").unwrap();
+    if let Source::Codex(codex) = &mut live.lens.source {
+        codex.link.neighbors = Some(vec![1_793_400_000]);
+    }
+    let mut fork = started("fork", 1_793_488_403, &path);
+    fork["params"]["thread"]["forkedFromId"] = Value::from(THREAD);
+    live.play(&[fork]);
+    assert_eq!(session(&live).as_deref(), Some("fork"));
 }
