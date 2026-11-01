@@ -1,10 +1,10 @@
 ---
 type: Rust Crate
 title: zz crate (the ala client)
-description: The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal and Chromium browser panes plus the agent lens over terminals running Claude Code or Codex.
+description: The long-lived ala desktop client, linking zz-cli for CLI dispatch, daemon spawning, and terminal attach, and hosting terminal, Chromium browser and agent chat panes, with the flip button that switches a pane between the Claude Code or Codex CLI and its chat.
 resource: crates/zz/src/lib.rs
 tags: [ala, crate, client, terminal, browser, agent, ui]
-timestamp: 2026-10-23T00:00:00-03:00
+timestamp: 2026-11-01T20:00:00-03:00
 ---
 
 # Overview
@@ -16,7 +16,7 @@ never a `cli` it finds in a `bin` directory.
 It never owns mux state itself: it holds a socket/named-pipe connection to the daemon
 (`zz_daemon_client::InteractiveClient`, wrapped by `mux::client::MuxClient`), a set of local Chromium
 sessions (`ala_cef::BrowserRuntime`, wrapped by `browser::controller::BrowserController`), and
-and a viewport onto the daemon's agent lens runtimes (`agent::AgentController`), then reconciles them against
+and a viewport onto the daemon's agent pane runtimes (`agent::AgentController`), then reconciles them against
 `zz_protocol::MuxSnapshot` on every render. It also owns
 the CEF *subprocess* entrypoints: `zz` itself re-execs as a renderer/GPU/utility subprocess
 (detected via `--type=`), and a tiny sibling binary (`zz_helper`) is that subprocess executable
@@ -31,13 +31,13 @@ notifications unrelated to mux structure also skip the full tree projection.
 
 The crate's job is narrow and mechanical by design: turn `MuxSnapshot` + protocol events into a
 tree of stable ala entities (`Entity<PanePickerView>` / `Entity<TerminalView>` /
-`Entity<BrowserView>`, one per `PaneId`, plus an `Entity<AgentView>` for each terminal whose lens is open,
+`Entity<BrowserView>` / `Entity<AgentView>`, one per `PaneId`,
 created once and retained across re-renders) and two custom `ala::Element` implementations
 (`TerminalElement`, `BrowserElement`) that do the per-frame painting. All tmux-compatible
 parsing, layout math, and session/window/pane lifecycle live in [`zz-mux`](/crates/zz-mux.md) and
 [`zz-daemon`](/crates/zz-daemon.md); this crate renders, forwards input, and owns the GUI-scoped CEF
-runtimes whose durable identity comes from daemon snapshots. The agent lens is not in that set: the
-daemon reads the CLI's transcript and this crate reduces the stream it publishes.
+runtimes whose durable identity comes from daemon snapshots. An agent pane's driver runs in the
+daemon; this crate reduces the chat stream it publishes.
 
 # Process modes (`main.rs` / `lib.rs`)
 
@@ -254,7 +254,7 @@ unsupported compositors retain opaque app paint instead of exposing an unblurred
 `background-opacity` remains terminal-local: the client paints the terminal color at that alpha over
 an opaque app-pane base. `1` shows the terminal background, while lower values mix toward the app
 surface without exposing compositor blur. Ghostty's `background-blur` is ignored; the app-level
-switch above is the only native blur request. The pane picker, agent lens, Editor, Browser shell, waiting
+switch above is the only native blur request. The pane picker, agent chat, Editor, Browser shell, waiting
 state, and terminal cover the native backdrop. Browser blank, loading, error, and toolbar states
 share that surface; Chromium page frames retain their own pixels.
 
@@ -385,9 +385,8 @@ its PTYs and running agent turns continue.
 built:
 
 - Walks the attached session's active-window pane map and builds `wanted_pickers` /
-  `wanted_terminals` / `wanted_browsers` / `wanted_editors` (`BTreeSet<PaneId>`) from
-  `PaneKindSnapshot::{Picker, Terminal, Browser, Editor}`, plus `wanted_agents` for the terminals
-  whose lens this client has open (`lensed_panes`).
+  `wanted_terminals` / `wanted_browsers` / `wanted_agents` / `wanted_editors` (`BTreeSet<PaneId>`)
+  from `PaneKindSnapshot::{Picker, Terminal, Browser, Agent, Editor}`.
 - For every wanted pane not yet present in `self.pickers` / `self.terminals` / `self.browsers` /
   `self.agents`,
   creates the
@@ -425,11 +424,16 @@ built:
   / `take_browser_commands`) and applies them to the matching entity.
 - Retains only wanted terminals; for browsers no longer wanted, tells `BrowserController::close_pane`
   before dropping the entity, so the CEF session closes with the ala view.
-- Keeps the lens toggle per client in `AppView::lenses`. A terminal header shows the toggle when
-  `window_summary::pane_agent` finds `claude` or `codex` in the pane's process list; opening it
-  creates the pane's `AgentView` (`ensure_lens_view`) and asks the daemon for a replay, which opens
-  the lens runtime there. A lens closes when its pane goes or the CLI is no longer the foreground
-  program. See [agent panes](/concepts/agent-panes.md).
+- Gives each agent pane an `AgentView` (`ensure_agent_view`) and watches its stream
+  (`MuxClient::watch_agent`, an `AgentReplay` from the client's cursor); a pane that stops being an
+  agent pane drops both. Agent panes and terminals share `TerminalHeaderView`, which draws the
+  pane's kind icon and, on an agent pane or a terminal whose process list shows `claude` or `codex`
+  (`zz_client::agent_flip::flip_target`), the flip button. The button sends `flip-agent` through
+  `MuxClient::execute_answered`, whose reply comes back to `AppView::flips`
+  (`zz_client::agent_flip::AgentFlips`) instead of the error banner: a `busy:` reply shows Switch
+  when idle and Switch now in the pane's top-right corner, and the pane's `PaneSummary.flip_armed`
+  shows an armed flip there with Cancel, on every client. See
+  [agent panes](/concepts/agent-panes.md).
 - Computes browser visibility per frame (`BrowserView::set_visible`): a browser is only visible if
   its window is the active window, it isn't hidden by zoom, and it isn't covered by command-output,
   choose-tree, or choose-buffer overlays; invisible CEF sessions stop consuming paint bandwidth.
@@ -446,7 +450,7 @@ nested T-junctions. Gapped layouts draw each pane's frame and fill in glass from
 the glint and fresnel glow painted in the accent on the active pane, and a hairline stands in
 where the window cannot sample its backdrop or the theme has no glass.
 `pane-inactive-opacity` controls the retained strength of inactive content from `0` to `1`, with
-`1` disabling dimming. Native picker, editor, agent lens, and waiting surfaces use the inverse as a
+`1` disabling dimming. Native picker, editor, agent chat, and waiting surfaces use the inverse as a
 theme-background scrim. Terminal panes apply the factor to glyphs and decorations only. Browser
 panes apply it to the toolbar only, leaving terminal backgrounds and Chromium page pixels unchanged.
 Surface scrims sit above pane content and below overlays, so `SYNC`, the waiting placeholder, and
@@ -622,7 +626,7 @@ returned `ChromeAction`, which may stay local or send a protocol command.
 - Terminal keys and committed text resolve the daemon's root key table. Browser page input uses a
   separate surface route that skips root bindings and passes directly through the synchronized
   sink resolver.
-- Local text widgets (lens composer, address bar, sidebar fields) can't round-trip, so
+- Local text widgets (chat composer, address bar, sidebar fields) can't round-trip, so
   `mux/prefix.rs` installs one capture-phase interceptor at the workspace-window root. It claims
   exactly the canonical prefix chord (plus every key while the daemon reports the sequence armed
   via `EventPayload::PrefixArmed`) and forwards them as ordinary key input with the active pane as
@@ -801,8 +805,8 @@ in [running zz](/playbooks/running-zz.md) or the `zz::diagnostics::terminal_rend
 | `crates/zz/src/pane/layout.rs` | Normalized pane geometry for tmux-style active separator segments, including T-junction adjacency and live drag overrides |
 | `crates/zz/src/workspace/view.rs` | `AppView` . pane reconciliation, recursive layout rendering, split-drag resize, pane indicators, zoom, browser metadata forwarding, and overlay hosting |
 | `crates/zz/src/pane/picker.rs` | Headerless row-style Terminal/Browser/Editor pane picker with direct key badges, arrow/Vim navigation, click/Enter activation, and Escape close |
-| `crates/zz/src/agent/controller.rs` | The client half of the agent lens: the stream reducer over `zz_daemon::AgentStreamPayload`, per-pane replay cursors, and every user gesture turned into an `AgentRequest` on the wire (behind the `agent-pane` cargo feature; `agent/stub.rs` stands in without it) |
-| `crates/zz/src/agent/view.rs` | The lens body for one terminal pane: live timeline, slash completion, composer, cancel, permission cards, and errors |
+| `crates/zz/src/agent/controller.rs` | The client half of agent panes: the stream reducer over `zz_daemon::AgentStreamPayload`, per-pane replay cursors, and every user gesture turned into an `AgentRequest` on the wire (behind the `agent-pane` cargo feature; `agent/stub.rs` stands in without it) |
+| `crates/zz/src/agent/view.rs` | The chat of one agent pane: the chat thread, slash completion, composer, cancel, permission and question cards, errors, and (in `view/harness.rs`) the folder, model and effort, side chat and fork |
 | `crates/zz/src/workspace/new_session.rs` | Zero-session which-key panel: the New session and Settings rows that work from an empty workspace, then the prefix bindings that need a session, with click and Enter activation; with no host, the Connect to a computer screen. It resolves the keys and wires focus; `zz_ui::shell::empty_workspace*` draws it, so the storybook can too |
 | `crates/zz/src/mux/client.rs` | `MuxClient` . host-keyed `HostConnection` map (client `Arc`, reader thread + depth-1 channel, per-host state/snapshot), delegates non-frame protocol reduction to `ClientCore`, intercepts the retained terminal hot path, drains core effects into ala state, and owns `HistoryRing`, remote connect machinery, cross-host attach, and generation-guarded reconnect backoff |
 | `crates/zz/src/mux/hosts.rs` | `HostId`/`HostRegistry`/`HostState` (including `Reconnecting { attempt }`) . fleet host identity from `host-*` config entries, `local` pinned at id 0, retained-host range for a removed-but-attached host |

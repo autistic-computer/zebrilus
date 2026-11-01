@@ -183,8 +183,8 @@ is picked.
 `experimental-agent-pane` and `agent-working-directory` went with the Agent pane on 2026-10-23,
 and `driver-agent`, `driver-model`, `driver-effort` and `driver-hosts` went with the Driver Agent on
 2026-10-28 (`zz_config::RETIRED_AGENT_KEYS`). A line with any of them is reported with
-`` `<key>` was removed: run Claude Code or Codex in a terminal pane and open its lens from the pane
-header `` and ignored (see [agent panes](/concepts/agent-panes.md)).
+`` `<key>` was removed: open a chat from the New agent picker, or flip a terminal running Claude
+Code or Codex from its pane header `` and ignored (see [agent panes](/concepts/agent-panes.md)).
 `status-show-session` and `status-agents` are retired status bar keys
 (`zz_config::RETIRED_STATUS_KEYS`). `status-show-session` went with the session menu and is
 reported with `` `status-show-session` was removed: the status bar no longer has a session menu;
@@ -483,7 +483,7 @@ amount, and the pane's root paints the pane background like every other pane.
 Floating panes take the theme's full glass like every popover. Settings previews that are not
 inside a frame use `zz_ui::pane_look::pane_color`.
 
-The agent lens surface uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
+An agent pane's chat uses the chosen opacity. The composer is a field shell (`field_chrome` drawn as
 the `agent.composer` field role), so at rest it draws what the theme gives that role, a soft wash
 by default, rather than an opaque raised card.
 The footer inherits the main pane background and adds no fill of its own.

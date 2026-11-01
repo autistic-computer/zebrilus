@@ -56,7 +56,7 @@ iPad and iPhone, and the HTML client's preference passed in with `set_chat_view`
 Chat view with nothing open shows the agent picker too. On the desktop that is the empty workspace
 (no sessions): the picker takes the place of the New session card, and picking runs
 `first_chat_commands` (`new-session -d -s <folder name> -c <folder>`, `select-pane-kind -t <name>:
--c <folder> agent <cli>`, `attach-session -t <name>`). Web and iPad never sit on an empty host: the
+-c <folder> [--model m] [--effort e] agent <cli>`, `attach-session -t <name>`). Web and iPad never sit on an empty host: the
 daemon makes a session when a client attaches to none, so a host with no chats, or one whose last
 chat closed, lands on a shell alone in its window and shows the picker over it.
 
@@ -71,7 +71,8 @@ picker yet, so its Tab lists the folders the host's panes have been in and takes
 
 # Starting the agent
 
-Choosing an agent runs `select-pane-kind -t <pane> -c <folder> agent <claude|codex>`
+Choosing an agent runs `select-pane-kind -t <pane> -c <folder> [--model m] [--effort e] agent
+<claude|codex>`
 (`start_agent_commands`), which turns the picker or terminal pane into an agent pane running the
 driver, then puts the window in that folder's session:
 
@@ -86,8 +87,11 @@ their header that switches the pane between the CLI and the chat on the same ses
 (`flip-agent`, see the [agent panes](/concepts/agent-panes.md)), and the sidebar mode does not open
 chats by itself. The command palette lists the chats too (see the
 [palette](/concepts/command-palette.md)).
-`select-pane-kind ... agent` takes `--model` and `--effort`, so a new chat can start on the model
-and effort last picked.
+A new chat starts on the model and effort last picked: `start_agent_commands` and
+`first_chat_commands` add `--model` and `--effort` from `zz_client::agent_launch::AgentLaunches`
+(`agent_flags`). The desktop remembers them per CLI in `agent-launch.json` from the chat's model
+and effort menu; web, iPad, iPhone and the HTML client remember none yet, so their chats start on
+the CLI's default.
 
 # Daemon changes
 
@@ -99,6 +103,6 @@ flip adds the `agent <claude|codex>` kind to `select-pane-kind`, for a picker or
 # Not built
 
 - A file picker in the HTML client.
-- Starting a new chat on the model and effort last picked.
+- Remembering the last picked model and effort on web, iPad, iPhone and the HTML client.
 - Agent CLIs beyond Claude Code and Codex; the list follows the programs zz can drive.
 - The HTML client draws agent tiles with kit glyphs rather than program marks.
