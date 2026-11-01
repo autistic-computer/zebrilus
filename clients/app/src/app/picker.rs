@@ -237,7 +237,7 @@ impl PanePicker {
                     });
                 },
             )
-            .surface_role(roles::NEW_PANE_DRAWER)
+            .surface_role(penna::SurfaceRole::DRAWER)
             .header_role(roles::PHONE_BAR)
             .into_any_element(),
         )

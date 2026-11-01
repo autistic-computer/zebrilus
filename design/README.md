@@ -17,7 +17,7 @@ just design penna-tokens   # the same for penna's own page, which shows the kit'
 | `libs/penna/web/kit.js` | Loads the tokens for the chosen theme and mode, rounds corners the way ala does, adds the glass lens in Chromium |
 | `libs/penna/web/index.html` | penna's kit page, served at `/penna/` |
 | `libs/penna/src/theme_css.rs` | `penna::theme_css`: writes every registered role's look in every built-in theme as CSS tokens. penna's `theme_css` example writes `libs/penna/web/tokens/` |
-| `design/zz.css` | The layout of zz's own roles: pane headers, window tabs, the status chip, the agent composer, the palette, the terminal |
+| `design/zz.css` | The layout of zz's pieces: pane headers, window tabs, the status chip, the agent composer, the palette, the terminal |
 | `design/index.html` | zz's page, served at `/` |
 | `design/tokens/` | zz's tokens: penna's roles and zz's, with zz's patches, written by `crates/zz-ui/examples/theme_css.rs` |
 
@@ -83,4 +83,4 @@ theme, through `penna::theme_css`. Mockups name roles, not colors, same rule as 
 Put each question in its own folder under `mockups/`, one page with the variants next to each other
 (`.penna-variants` lays them out as figures). Mockups change layout and structure. To try a different
 look for a role (a tint instead of an accent, another radius), edit its theme file in
-`libs/penna/themes/` (zz's own roles: `crates/zz-ui/themes/`) and rerun `just design tokens`.
+`libs/penna/themes/` and rerun `just design tokens`.

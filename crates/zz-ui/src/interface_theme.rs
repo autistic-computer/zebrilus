@@ -8,12 +8,6 @@ pub use penna::interface_theme::{
 pub use penna::motion::{DEFAULT_ANIMATION_SPEED, MAX_ANIMATION_SPEED, MIN_ANIMATION_SPEED};
 pub use zz_client::appearance::{AccentSetting, ThemeModeSetting};
 
-pub(crate) static LAYERS: [(&str, &str); BUILTIN_THEMES.len()] = [
-    ("default", include_str!("../themes/default.json")),
-    ("macos", include_str!("../themes/macos.json")),
-    ("yaru", include_str!("../themes/yaru.json")),
-];
-
 pub fn parse_theme(source: &str) -> Result<InterfaceTheme, String> {
     crate::register();
     penna::interface_theme::parse_theme(source)
@@ -87,11 +81,11 @@ mod tests {
                 let mut kit = Theme::from(&*ThemeColor::for_mode(mode));
                 kit.mode = mode;
                 theme.apply(&mut kit);
-                let pill = kit.layer(roles::AGENT_COMPOSER, PaintState::Rest).ground;
+                let pill = kit.layer(roles::FIELD_COMPOSER, PaintState::Rest).ground;
                 for (button, prominent, least) in [("send and stop", true, 1.5), ("+", false, 1.05)]
                 {
                     let layer = kit.layer(
-                        Surface::new(roles::AGENT_SEND)
+                        Surface::new(roles::BUTTON_SEND)
                             .prominent(prominent)
                             .on(pill),
                         PaintState::Rest,
@@ -194,11 +188,12 @@ mod tests {
 
     #[test]
     fn retired_roles_load_and_drop() {
-        let theme = parse_theme(r#"{"roles":{"agent.status":{"fill":"tint"},"code":{}}}"#).unwrap();
-        assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["code"]);
-        for id in crate::roles::RETIRED {
-            assert_eq!(crate::roles::find(id), None, "{id}");
-        }
+        let theme = parse_theme(
+            r#"{"roles":{"agent.status":{"fill":"tint"},"agent.composer":{"fill":"tint"},"card.code":{}}}"#,
+        )
+        .unwrap();
+        assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["card.code"]);
+        assert_eq!(crate::roles::find("agent.composer"), None);
     }
 
     #[test]
@@ -237,36 +232,10 @@ mod tests {
     }
 
     #[test]
-    fn zz_layers_patch_only_zz_roles_of_the_kit_themes() {
-        use penna::SurfaceRole;
-        for (id, source) in LAYERS {
-            assert!(BUILTIN_THEMES.contains(&id), "{id}");
-            let layer = parse_theme(source).unwrap();
-            assert_eq!(
-                layer,
-                InterfaceTheme {
-                    roles: layer.roles.clone(),
-                    ..InterfaceTheme::default()
-                },
-                "{id}"
-            );
-            for role in layer.roles.keys() {
-                assert!(
-                    !SurfaceRole::KIT
-                        .iter()
-                        .chain(&penna::roles::CHROME)
-                        .any(|kit| kit.id == role.as_str()),
-                    "{id} patches the kit role {role}; it belongs in penna's theme"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn a_theme_naming_zz_roles_hints_at_their_full_ids() {
+    fn a_theme_naming_a_recipe_hints_at_its_full_id() {
         let error = parse_theme(r#"{"roles":{"composer":{}}}"#).unwrap_err();
-        assert!(error.contains("did you mean `agent.composer`"), "{error}");
-        let theme = parse_theme(r#"{"roles":{"pane.chip":{"shape":"pill"}}}"#).unwrap();
-        assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["pane.chip"]);
+        assert!(error.contains("did you mean `field.composer`"), "{error}");
+        let theme = parse_theme(r#"{"roles":{"chip.floating":{"shape":"pill"}}}"#).unwrap();
+        assert_eq!(theme.roles.keys().collect::<Vec<_>>(), ["chip.floating"]);
     }
 }

@@ -117,7 +117,7 @@ fn status_bar_preview(settings: StatusBarSettings, gaps: bool, cx: &App) -> ala:
             workspace_status_item("settings-preview-update", None, "v0.9.0".into(), cx)
                 .flex_none()
                 .px(px(6.0))
-                .surface(crate::roles::STATUS_CHIP, cx)
+                .surface(crate::roles::CHIP_BAR, cx)
                 .text_color(cx.theme().foreground.muted())
                 .child(status_dot(cx.theme().success))
                 .into_any_element(),

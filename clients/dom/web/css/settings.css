@@ -12,7 +12,7 @@
   translate: 0 200vh;
 }
 
-#settings button[data-penna^="button"] {
+#settings button:is([data-penna="button"], [data-penna="button.quiet"]) {
   line-height: 1;
 }
 
@@ -632,7 +632,7 @@
   background: none;
 }
 
-.settings-statusbar [data-penna="titlebar.window-tab"] {
+.settings-statusbar [data-penna="tab.window"] {
   flex: none;
   gap: 5px;
   width: 240px;
@@ -677,11 +677,11 @@
   border-radius: 50%;
 }
 
-.settings-statusbar [data-penna="sidebar.row-action"] {
+.settings-statusbar [data-penna="icon-button.row"] {
   visibility: hidden;
 }
 
-.settings-statusbar [data-penna="titlebar.window-tab"]:hover [data-penna="sidebar.row-action"] {
+.settings-statusbar [data-penna="tab.window"]:hover [data-penna="icon-button.row"] {
   visibility: visible;
 }
 
@@ -773,7 +773,7 @@
   background: var(--penna-fg);
 }
 
-.settings-panes .flip + [data-penna="pane.header.button"] {
+.settings-panes .flip + [data-penna="icon-button.bar"] {
   margin-left: 0;
 }
 
@@ -807,7 +807,7 @@
   line-height: 16px;
 }
 
-.settings-panes [data-penna="browser.tab"] {
+.settings-panes [data-penna="tab.page"] {
   display: flex;
   flex: none;
   align-items: center;
@@ -818,7 +818,7 @@
   gap: 12px;
 }
 
-.settings-panes [data-penna="browser.tab"] > .favicon {
+.settings-panes [data-penna="tab.page"] > .favicon {
   display: grid;
   place-items: center;
   width: 28px;
@@ -826,7 +826,7 @@
   margin-right: -12px;
 }
 
-.settings-panes [data-penna="browser.tab"] > .label {
+.settings-panes [data-penna="tab.page"] > .label {
   flex: 1;
   min-width: 0;
   margin-left: 12px;
@@ -834,7 +834,7 @@
   white-space: nowrap;
 }
 
-.settings-panes [data-penna="browser.button"] {
+.settings-panes [data-penna="icon-button"] {
   display: inline-grid;
   place-items: center;
   flex: none;

@@ -46,7 +46,7 @@ pub fn status_window(
     let group: SharedString = format!("status-window-{id:?}").into();
     let close_button = actions.close.clone();
     let tooltip = name.clone();
-    let tab = Surface::new(roles::WINDOW_TAB);
+    let tab = Surface::new(roles::TAB_WINDOW);
     let ground = cx.theme().layer(tab, state.paint_state()).ground;
     let hovered = cx.theme().layer(tab, PaintState::Hover).ground;
     let hovers = state.connected && !state.active;

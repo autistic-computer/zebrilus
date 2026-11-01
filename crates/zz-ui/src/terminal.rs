@@ -3252,7 +3252,6 @@ mod overlays {
         Selectable as _, StyledExt as _, SurfaceRole,
         button::{Button, ButtonVariants as _},
         input::{Input, InputState},
-        roles,
     };
 
     const IMAGE_PREVIEW_SIDE: f32 = 300.0;
@@ -3279,7 +3278,9 @@ mod overlays {
         let enabled = status.is_some_and(|status| {
             status.total > 0 && !status.pending() && !status.invalid_pattern()
         });
-        let bar = cx.theme().layer(roles::FIND_BAR, PaintState::Rest);
+        let bar = cx
+            .theme()
+            .layer(penna::SurfaceRole::POPOVER, PaintState::Rest);
         let button = |id: &'static str, icon: IconName, action: FindBarAction| {
             let on_action = std::rc::Rc::clone(&on_action);
             Button::compact_icon(id, icon)

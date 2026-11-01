@@ -392,7 +392,10 @@ fn pile_shifts(
 
 #[must_use]
 pub fn pip_content_radius(cx: &App) -> Pixels {
-    let border = cx.theme().layer(roles::PIP, PaintState::Rest).border_width;
+    let border = cx
+        .theme()
+        .layer(roles::FLOATING_PIP, PaintState::Rest)
+        .border_width;
     (cx.theme().pane_radius() - border).max(Pixels::ZERO)
 }
 
@@ -466,7 +469,7 @@ pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
         .try_global::<PipOpacity>()
         .map_or(DEFAULT_OPACITY, |opacity| opacity.0);
     theme
-        .layer(roles::PIP, PaintState::Rest)
+        .layer(roles::FLOATING_PIP, PaintState::Rest)
         .glass
         .unwrap_or_else(|| {
             GlassMaterial::edge(fill)
@@ -482,7 +485,7 @@ pub fn pip_material(fill: Hsla, cx: &App) -> GlassMaterial {
 
 impl RenderOnce for PipSurface {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let mut layer = cx.theme().layer(roles::PIP, PaintState::Rest);
+        let mut layer = cx.theme().layer(roles::FLOATING_PIP, PaintState::Rest);
         if !self.bordered {
             layer.border_width = Pixels::ZERO;
         }
@@ -581,7 +584,7 @@ mod tests {
     #[test]
     fn a_pip_casts_the_float_shadow() {
         let theme = penna::Theme::from(&*penna::ThemeColor::dark());
-        let pip = theme.layer(roles::PIP, PaintState::Rest);
+        let pip = theme.layer(roles::FLOATING_PIP, PaintState::Rest);
         assert_eq!(pip.shadow, theme.float_shadows());
         assert!(!pip.shadow.is_empty());
     }

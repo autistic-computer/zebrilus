@@ -2,7 +2,7 @@
 type: Design Plan
 title: "Surface roles: shared materials composed per piece of UI"
 description: "A theme defines its materials once (radius, corner smoothing, outline width, contact and float shadows, glass, primary, row inset) and every distinct piece of UI is a role that picks from them with seven props (fill, outline, shadow, shape, smoothing, hover, selected), resolved from its kind's built-in style and each group's built-in patch, then the theme's patches from the kind inward, so a theme's patch for a kind beats every built-in in it. Built 2026-10-13; regrouped 2026-10-14 into 10 broad kinds (bars, panels, panes, cards, floating, buttons, items, fields, labels, dividers) with groups under them, 73 zz roles in zz_ui::roles, every call site painting through Theme::layer, plus the inventory of about 450 painted pieces it was drawn from."
-status: Built (2026-10-13; agent pane rows updated for the lens 2026-10-23; driver chat roles added 2026-10-24, retired with the Driver Agent 2026-10-28)
+status: Built (2026-10-13); zz's roles moved into penna as kit recipes 2026-11-01, see penna's knowledge/designs/kit.md
 resource: libs/penna/src/foundation/surface.rs
 tags:
 - ui
@@ -38,7 +38,7 @@ then to a built-in value.
 | `Theme` fields for the materials, `styles` (the theme's patches) and `inspect` | `libs/penna/src/foundation/theme.rs` |
 | Window chrome roles, `register`, `retire` and the lookups (`all()`, `find()`, `members()`) | `libs/penna/src/roles.rs` |
 | zz's roles, retired ids, and the zz-ui lookups that register them first | `crates/zz-ui/src/roles.rs`, `zz_ui::register` in `crates/zz-ui/src/lib.rs` |
-| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, zz's patches for its own roles over them in `crates/zz-ui/themes/*.json` |
+| Theme files: `Materials`, the `roles` map and its id check; `ThemeOverrides`, what Settings sets over a theme | `libs/penna/src/interface_theme.rs`; the built-ins in `libs/penna/themes/*.json`, which also hold every recipe's per-theme tweaks |
 | The theme creator | `penna_storybook::creator` in `libs/penna/storybook/src/creator/`, `libs/penna/storybook/src/knobs.rs`; zz's plates in `clients/storybook/src/stories/theme_creator.rs` |
 
 ## The model
@@ -511,10 +511,9 @@ a role is not built.
 
 The preview is the catalog's plates: regions that paint real UI. penna's page shows penna's five
 (an app window with the sidebar and the appearance rows, controls, floating surfaces, content and
-the phone chrome); zz lists its eleven instead. An app makes its own roles editable by registering
-them (`penna::register`, which takes the roles, the ids that are gone and the app's theme layers) in its
-catalog's `register` function and adding a plate that draws them to the catalog's `plates`, next to penna's
-if it wants the kit's surfaces in view. Its roles show in the Roles step under their parents from
+the phone chrome); zz lists its eleven instead. Apps define no roles (penna's
+`knowledge/designs/kit.md`); a catalog adds a plate that draws the app's pieces to its `plates`,
+next to penna's if it wants the kit's surfaces in view. The roles it draws show in the Roles step under their parents from
 `penna::roles::all()`, picking one shows the plates that drew it (each section host records the
 roles it paints, so no plate lists them), Export writes their patches, and Import drops retired
 ids and refuses unknown ones with the same "unknown role" error as any theme file. The recipe is

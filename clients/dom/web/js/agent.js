@@ -59,12 +59,12 @@ function markdown(html) {
     const source = code?.textContent ?? pre.textContent;
     const block = h(
       "div",
-      { class: "agent-code", "data-penna": "code" },
+      { class: "agent-code", "data-penna": "card.code" },
       h(
         "div",
         { class: "agent-code-chrome" },
         text(language, { class: "agent-code-language" }),
-        button("agent.action", "Copy code", "copy", () => copy(source), { class: "agent-code-copy" }),
+        button("icon-button.row", "Copy code", "copy", () => copy(source), { class: "agent-code-copy" }),
       ),
       h("pre", {}, source.replace(/\n$/, "")),
     );
@@ -196,8 +196,8 @@ function trace(lens, turn) {
 function userBubble(lens, user) {
   const bubble = h(
     "div",
-    { class: "agent-bubble", "data-penna": "agent.bubble" },
-    user.images.length ? h("div", { class: "agent-attachments" }, user.images.map((src) => h("img", { class: "agent-attachment", "data-penna": "agent.attachment", src, alt: "" }))) : null,
+    { class: "agent-bubble", "data-penna": "card.bubble" },
+    user.images.length ? h("div", { class: "agent-attachments" }, user.images.map((src) => h("img", { class: "agent-attachment", "data-penna": "card.image", src, alt: "" }))) : null,
     user.html ? markdown(user.html) : null,
   );
   const entry = h("div", { class: "agent-user" });
@@ -213,7 +213,7 @@ function userBubble(lens, user) {
         "span",
         { class: "agent-rewind", "data-enabled": user.rewind.enabled || null },
         button(
-          "agent.action",
+          "icon-button.row",
           "Rewind to here: continue from before this prompt. Files stay as they are.",
           "history",
           () => act(lens, () => state.client.agent_rewind(lens.pane, user.rewind.id)),
@@ -250,7 +250,7 @@ function renderRow(lens, row) {
   for (const answer of row.answers) {
     const block = h("div", { class: "agent-answer" }, markdown(answer.html));
     if (answer.copy !== null && answer.copy !== undefined) {
-      block.append(h("div", { class: "agent-answer-actions" }, button("agent.action", "Copy message", "copy", () => copy(answer.copy))));
+      block.append(h("div", { class: "agent-answer-actions" }, button("icon-button.row", "Copy message", "copy", () => copy(answer.copy))));
     }
     turn.append(block);
   }
@@ -332,7 +332,7 @@ function permissionCard(card, actions) {
           "div",
           {
             class: "agent-option",
-            "data-penna": "agent.option",
+            "data-penna": "menu-item",
             role: "button",
             "data-tone": option.danger ? "danger" : null,
             "data-state": !card.writable ? "disabled" : option.selected ? "selected" : null,
@@ -379,7 +379,7 @@ function questionCard(lens, card) {
           "div",
           {
             class: "agent-option",
-            "data-penna": "agent.option",
+            "data-penna": "menu-item",
             role: "button",
             "data-state": option.picked ? "selected" : null,
             onclick: () => send({ pick: [q, o] }),
@@ -392,7 +392,7 @@ function questionCard(lens, card) {
     if (question.allowOther) {
       const other = h(
         "div",
-        { class: "agent-option", "data-penna": "agent.option", role: "button", "data-state": question.other ? "selected" : null, onclick: () => send({ other: q }) },
+        { class: "agent-option", "data-penna": "menu-item", role: "button", "data-state": question.other ? "selected" : null, onclick: () => send({ other: q }) },
         h("div", { class: "agent-option-label" }, "Other"),
       );
       tiles.append(other);
@@ -472,7 +472,7 @@ function tray(lens, tray, writable) {
     chip.append(
       h(
         "div",
-        { class: "agent-plan-chip", "data-penna": "agent.tray", "data-state": tray.plan.open ? "current" : null, role: "button", onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "plan")) },
+        { class: "agent-plan-chip", "data-penna": "tab.tray", "data-state": tray.plan.open ? "current" : null, role: "button", onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "plan")) },
         icon("circle-check"),
         text(tray.plan.label),
         tray.plan.current ? text(tray.plan.current, { class: "agent-plan-current" }) : null,
@@ -487,7 +487,7 @@ function tray(lens, tray, writable) {
         "button",
         {
           class: "agent-tasks-chip",
-          "data-penna": "agent.tray",
+          "data-penna": "tab.tray",
           "aria-label": tray.tasks.label,
           title: tray.tasks.open ? "Hide background tasks" : "Show background tasks",
           onclick: () => act(lens, () => state.client.agent_tray(lens.pane, "tasks")),
@@ -606,13 +606,13 @@ function createLens(pane) {
   const list = h("div", { class: "agent-list" });
   const scroll = h("div", { class: "agent-scroll" }, list);
   const area = h("div", { class: "agent-area" }, scroll);
-  const jump = button("agent.jump", "Jump to latest", "arrow-down", () => {
+  const jump = button("icon-button.floating", "Jump to latest", "arrow-down", () => {
     lens.pinned = true;
     scroll.scrollTo({ top: scroll.scrollHeight, behavior: "smooth" });
   }, { class: "agent-jump" });
   area.append(jump);
   const prefix = h("div", { class: "agent-prefix" });
-  const mention = button("agent.send", "Mention a host, session or file", "plus", () => {
+  const mention = button("button.send", "Mention a host, session or file", "plus", () => {
     const at = input.selectionStart;
     input.setRangeText("@", at, input.selectionEnd, "end");
     input.focus();
@@ -620,12 +620,12 @@ function createLens(pane) {
   });
   const hint = h("div", { class: "agent-hint" });
   const usage = h("div", { class: "agent-usage-slot" });
-  const action = h("button", { "data-penna": "agent.send", "data-prominent": true, "data-tone": "primary", class: "agent-action" }, icon("arrow-up"));
+  const action = h("button", { "data-penna": "button.send", "data-prominent": true, "data-tone": "primary", class: "agent-action" }, icon("arrow-up"));
   action.addEventListener("click", () => {
     if (lens.view?.action === "stop") act(lens, () => state.client.agent_cancel(lens.pane));
     else submit(lens);
   });
-  const pill = h("div", { class: "agent-pill", "data-penna": "agent.composer" }, mention, h("div", { class: "agent-field" }, input, hint), usage, action);
+  const pill = h("div", { class: "agent-pill", "data-penna": "field.composer" }, mention, h("div", { class: "agent-field" }, input, hint), usage, action);
   const upper = h("div", { class: "agent-upper" }, h("div", { class: "agent-column agent-stack" }, prefix, h("div", { class: "agent-pill-back" }, pill)));
   const git = h("div", { class: "agent-column agent-git" });
   const composer = h("div", { class: "agent-composer" }, upper, h("div", { class: "agent-footer" }, git));
@@ -853,7 +853,7 @@ const flipButtons = new WeakMap();
 paneHeaderButton((pane) => {
   let flipButton = flipButtons.get(pane);
   if (!flipButton) {
-    flipButton = button("pane.header.flip", "Switch to chat", "chat", (event) => {
+    flipButton = button("icon-button.toggle", "Switch to chat", "chat", (event) => {
       event.stopPropagation();
       flip(pane.id);
     });
@@ -878,7 +878,7 @@ function paintFlip(flipButton, flip) {
 
 function syncHeaders() {
   for (const [id, pane] of panes) {
-    const flipButton = pane.element.querySelector("[data-penna='pane.header.flip']");
+    const flipButton = pane.element.querySelector("[data-penna='icon-button.toggle']");
     if (flipButton) paintFlip(flipButton, flipState(id));
   }
 }

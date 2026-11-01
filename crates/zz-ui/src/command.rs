@@ -60,7 +60,8 @@ pub fn command_palette_row_height() -> f32 {
 
 pub fn command_palette_radius(cx: &App) -> Pixels {
     crate::picker::outer_radius(
-        &cx.theme().layer(crate::roles::PALETTE, PaintState::Rest),
+        &cx.theme()
+            .layer(penna::SurfaceRole::POPOVER, PaintState::Rest),
         px(COMMAND_PALETTE_INSET),
     )
 }
@@ -224,7 +225,7 @@ impl RenderOnce for CommandPaletteSurface {
             .flex()
             .flex_col()
             .overflow_hidden()
-            .surface(crate::roles::PALETTE, cx)
+            .surface(penna::SurfaceRole::POPOVER, cx)
             .rounded(command_palette_radius(cx))
             .on_mouse_down(ala::MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .children(input)

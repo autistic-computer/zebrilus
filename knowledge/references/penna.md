@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: penna
-description: How to build an app on penna, the widget kit on ala - the dependency and its features, dev profiles, licenses, the setup order (penna::register, penna::init, Root, activating a theme), roles and theme layers, the Appearance page, the kit pieces apps reuse, a storybook catalog and the lint list, with nidus as the worked example.
+description: How to build an app on penna, the widget kit on ala - the dependency and its features, dev profiles, licenses, the setup order (penna::init, Root, activating a theme), roles and themes, the Appearance page, the kit pieces apps reuse, a storybook catalog and the lint list, with nidus as the worked example.
 resource:
 - libs/penna/Cargo.toml
 - libs/penna/src/lib.rs
@@ -110,16 +110,9 @@ kit's code started as gpui-component (Apache-2.0), credited in the same `NOTICE.
 
 The order matters, and penna panics with a message that names the fix when it is wrong.
 
-1. **Register** the app's roles, retired role ids and theme layers once at startup, before
-   `penna::init` and before anything reads a theme or a role:
-   `penna::register(ROLES, RETIRED, LAYERS)`. An app with none of them skips it; one with roles
-   only can call `penna::roles::register(ROLES)`, as nidus does. Calling again with the same
-   lists is fine (`zz_ui::register` runs before every zz-ui theme lookup); different lists, a role
-   id taken from a kit role, an id a theme file cannot spell (lowercase letters, `-` and `.`), the
-   same id twice, or layers registered after a theme was read each panic. `penna::register` also
-   parses the layers before it returns, so a layer penna cannot read panics at that call, not
-   later inside the application's launch; the message names the theme, says when the app's layer
-   is the one that failed, and quotes the parse error.
+1. **Define no roles.** penna owns every surface role, every theme's patches for them, the text
+   styles and the spacing scale; an app composes penna's components (penna's
+   `knowledge/designs/kit.md`). zz and nidus register no roles or theme layers.
 2. **Give the application penna's assets** with `.with_assets(penna::Assets)`, or the icons draw
    nothing. An app with assets of its own passes an `AssetSource` that falls back to
    `penna::Assets` for paths it does not have, as `zz_ui::Assets` does. Then **`penna::init(cx)`**
@@ -153,10 +146,7 @@ The order matters, and penna panics with a message that names the fix when it is
    theme's `apply`, or call `activate`, which does both.
 
 ```rust
-static LAYERS: [(&str, &str); 1] = [("macos", include_str!("../themes/macos.json"))];
-
 fn main() {
-    penna::register(theme::ROLES, &[], &LAYERS);
     let platform = ala_platform::current_platform(false);
     let fonts = penna::settings::appearance::AvailableFonts(platform.text_system());
     let application = ala::Application::with_platform(platform).with_assets(penna::Assets);
@@ -179,40 +169,17 @@ Dialogs and toasts go through `WindowExt` on the window (`window.open_dialog`,
 Code that has only `App`, such as a background task, calls `penna::overlay::push_toast` after
 `set_toast_host` named the window to show it in.
 
-# Roles and theme layers
+# Roles and themes
 
-Every painted surface names a role ([surface roles](/designs/surface-roles.md)). penna brings the
-kit's kinds and groups (`SurfaceRole::KIT`: `button`, `menu-item`, `floating` and so on) and its
-chrome roles (`penna::roles::CHROME`: `window`, `titlebar`, `chrome.button`, `sidebar.row`,
-`rule.tree`, `inline-panel`, `picker`, the `phone.*` roles and more). An app adds its own:
-
-```rust
-pub const BOARD: SurfaceRole = SurfaceRole::new("board", Kind::Card, "Arrangement", "The well the screens sit on")
-    .with(StylePatch::EMPTY.shadow(Shadow::None));
-pub const CHIP: SurfaceRole = SurfaceRole::under(&SurfaceRole::BADGE, "board.chip", "Computer names", "The name above each computer");
-pub const ROLES: &[SurfaceRole] = &[BOARD, CHIP];
-```
-
-`SurfaceRole::new` hangs a role under a kind, `SurfaceRole::under` under a kit role or one of the
-app's own, and `.with` gives it a built-in look. Elements draw it with `.surface(ROLE, cx)`,
-`.rule_on(ROLE, edge, cx)` or a widget's `.surface_role(ROLE)`. Role ids never change once a theme
-file can name them; a role that goes away keeps its id in the retired list, so an old file loads
-with the entry dropped. An app may list penna's chrome roles unchanged to set their order;
-any other role under a chrome id panics at register, because penna's widgets draw their own
-consts. `penna::roles::all`, `find` and `members` list the kit's, penna's chrome and the app's
-roles together.
-
-A theme layer is `(theme id, JSON)`. Under a built-in id (`default`, `macos`, `yaru`, the
-`BUILTIN_THEMES`), it is laid over penna's file key by key: objects merge, and any other value
-replaces (`interface_theme::parse_layers`). An app's layer usually holds only `roles` patches for
-its own roles, as zz's `crates/zz-ui/themes/*.json` do. Under a new id it adds a whole theme, where
-missing materials take `Materials::default()` and missing colors the built-in palette. The file
-format is in [interface themes](/designs/interface-themes.md). `builtin_themes`, `builtin_theme(id)`
-and `default_theme` read the registered result, and `parse_theme` reads a user's file with the same
-checks: an unknown key or role id is an error. When it matches a real one apart from case, `-` or
-`_` (and `.` for a role id), or is the part of a role id after a dot (`preview` for
-`settings.preview`), the error names the one meant; otherwise an unknown key lists the keys
-allowed there.
+Every painted surface names a role ([surface roles](/designs/surface-roles.md)), and every role is
+penna's: the kit's kinds and groups (`SurfaceRole::KIT`), its chrome (`penna::roles::CHROME`) and
+the recipes its components pick by variant (`penna::roles::RECIPES`: `tab.window`,
+`field.composer`, `button.send` and the rest). A theme's tweak to a piece of UI lives in
+`libs/penna/themes/*.json` under that recipe's id. Ids that are gone stay in penna's retired list,
+so an old theme file loads with those entries dropped. `parse_theme` reads a user's file with the
+same checks: an unknown key or role id is an error, and when it matches a real one apart from case,
+`-` or `_` (and `.` for a role id), or is the part of a role id after a dot, the error names the one
+meant. The file format is in [interface themes](/designs/interface-themes.md).
 
 # The Appearance page
 
@@ -295,9 +262,7 @@ pub fn run() -> Result<(), wasm_bindgen::JsValue> {
 `..PENNA` keeps penna's stories, knobs and floating sections for every field the app leaves out,
 so a field added later does not break it. An app that sets its own `stories` without
 `penna_storybook::KIT` also sets `floating` to its own list, `&[]` when it has none: penna's list
-names Kit stories, and `problems()` reports each one the catalog lacks. `register` is the app's
-`penna::register` call, and `plates` puts the app's own UI into the theme creator so its roles can
-be tuned. A host test installs the catalog and asserts `CATALOG.problems()` is empty
+names Kit stories, and `problems()` reports each one the catalog lacks. `plates` puts the app's own UI into the theme creator so the roles it draws can be tuned. A host test installs the catalog and asserts `CATALOG.problems()` is empty
 (`libs/penna/storybook/tests/creator.rs` plays such an app). Give the workspace the dev profile
 block above, and set `penna`, `penna-storybook` and the app's crates to `opt-level = 0` in it:
 optimized and incremental, an edit once left an rlib that failed to link on wasm with undefined

@@ -558,7 +558,7 @@ impl Render for EditorView {
 }
 
 fn vim_mode_badge(mode: VimMode) -> Badge {
-    let badge = Badge::new(mode.label()).surface_role(zz_ui::roles::PANE_CHIP);
+    let badge = Badge::new(mode.label()).surface_role(zz_ui::roles::CHIP_FLOATING);
     let badge = if matches!(mode, VimMode::Normal) {
         badge
     } else {

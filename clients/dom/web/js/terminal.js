@@ -117,7 +117,7 @@ function pasteError(text) {
 
 function chip(icon, label, detail) {
   const element = document.createElement("div");
-  element.dataset.penna = "pane.chip";
+  element.dataset.penna = "chip.floating";
   element.className = "badge";
   element.innerHTML = `<i data-icon="${icon}"></i><span class="badge-label"></span>`;
   const holder = element.querySelector(".badge-label");
@@ -139,7 +139,7 @@ function chip(icon, label, detail) {
 
 function line(text, quiet) {
   const element = document.createElement("div");
-  element.dataset.penna = "pane.chip";
+  element.dataset.penna = "chip.floating";
   element.className = "chip-line";
   element.toggleAttribute("data-quiet", quiet);
   element.innerHTML = `<span data-text></span>`;
@@ -416,7 +416,7 @@ function terminal(pane) {
       if (status?.synchronized) top.append(chip("layers", "Sync"));
       if (status?.zoomed) {
         const button = document.createElement("button");
-        button.dataset.penna = "pane.chip";
+        button.dataset.penna = "chip.floating";
         button.className = "unzoom";
         button.title = "Unzoom";
         button.innerHTML = `<i data-icon="window-restore"></i><span data-text>Unzoom</span>`;
@@ -432,7 +432,7 @@ function terminal(pane) {
     },
     buildFind() {
       const find = document.createElement("div");
-      find.dataset.penna = "pane.find-bar";
+      find.dataset.penna = "popover";
       find.dataset.ground = "";
       find.className = "find";
       find.innerHTML = `

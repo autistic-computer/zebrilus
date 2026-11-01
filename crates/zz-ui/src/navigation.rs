@@ -130,7 +130,7 @@ pub fn workspace_status_item(
         .gap(px(5.0))
         .px(WORKSPACE_STATUS_CHIP_PADDING)
         .overflow_hidden()
-        .surface(Surface::new(roles::STATUS_CHIP), cx)
+        .surface(Surface::new(roles::CHIP_BAR), cx)
         .text_color(cx.theme().foreground.muted())
         .text_size(rems_from_px(WORKSPACE_STATUS_TEXT_SIZE))
         .line_height(WORKSPACE_STATUS_LINE_HEIGHT)
@@ -166,7 +166,7 @@ pub fn workspace_status_window(
     cx: &App,
 ) -> Stateful<ala::Div> {
     let foreground = cx.theme().foreground;
-    let tab = Surface::new(roles::WINDOW_TAB);
+    let tab = Surface::new(roles::TAB_WINDOW);
     let paint_state = state.paint_state();
     let name = div()
         .flex_1()
@@ -452,7 +452,7 @@ pub fn workspace_row_action(button: Button, ground: Ground, disabled: bool, cx: 
     let ink = cx.theme().paint_on(ground, Tone::Neutral, Emphasis::Ghost);
     button
         .ghost()
-        .surface_role(roles::ROW_ACTION)
+        .surface_role(roles::ICON_BUTTON_ROW)
         .on(ground)
         .disabled(disabled)
         .text_color(if disabled {

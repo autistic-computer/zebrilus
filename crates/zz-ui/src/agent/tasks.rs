@@ -144,7 +144,7 @@ pub fn task_tray(
         } else {
             PaintState::Rest
         };
-        let muted = muted_on(&cx.theme().layer(roles::AGENT_TRAY, state), cx);
+        let muted = muted_on(&cx.theme().layer(roles::TAB_TRAY, state), cx);
         h_flex()
             .id(SharedString::from(format!("{id}-plan")))
             .debug_selector(|| "agent-plan-chip".to_owned())
@@ -155,7 +155,7 @@ pub fn task_tray(
             .cursor_pointer()
             .text_size(crate::rems_from_px(TASK_ROW_FONT_SIZE))
             .line_height(px(TASK_ROW_LINE_HEIGHT))
-            .surface_interactive(roles::AGENT_TRAY, state, cx)
+            .surface_interactive(roles::TAB_TRAY, state, cx)
             .child(
                 div()
                     .flex_none()
@@ -199,7 +199,7 @@ pub fn task_tray(
     let tasks_chip = (!tasks.is_empty()).then(|| {
         agent_chrome_button(SharedString::from(format!("{id}-tasks")))
             .debug_selector(|| "agent-task-tray".to_owned())
-            .surface_role(roles::AGENT_TRAY)
+            .surface_role(roles::TAB_TRAY)
             .flex_none()
             .icon(super::presentation::spinner(phase))
             .label(task_tray_label(tasks.len()))

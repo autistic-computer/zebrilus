@@ -69,7 +69,7 @@ impl RenderOnce for BrowserHeader {
             .w_full()
             .h(Self::HEIGHT)
             .flex_none()
-            .surface(crate::roles::PANE_HEADER, cx)
+            .surface(crate::roles::BAR_PANE, cx)
             .pb(px(crate::CHROME_GAP))
             .child(
                 div()
@@ -146,7 +146,7 @@ impl RenderOnce for CompactBrowserBar {
             .w_full()
             .h(Self::HEIGHT)
             .px(px(12.0))
-            .surface(crate::roles::PANE_HEADER, cx)
+            .surface(crate::roles::BAR_PANE, cx)
             .text_color(cx.theme().foreground)
             .child(self.address)
             .child(
@@ -250,7 +250,7 @@ pub fn browser_address(
     cx: &App,
 ) -> ala::Stateful<ala::Div> {
     let focus_handle = address.read(cx).focus_handle(cx);
-    let role = crate::roles::ADDRESS_BAR;
+    let role = crate::roles::FIELD_ADDRESS;
     let state = if focus_handle.is_focused(window) {
         PaintState::Focused
     } else {
@@ -297,7 +297,7 @@ pub fn browser_address(
 pub fn browser_site_controls_button(cx: &App) -> Button {
     let address = cx
         .theme()
-        .layer(crate::roles::ADDRESS_BAR, PaintState::Rest)
+        .layer(crate::roles::FIELD_ADDRESS, PaintState::Rest)
         .radius;
     Button::compact_icon("browser-site-controls", IconName::SiteControls)
         .surface_role(crate::SurfaceRole::FLAT_ICON_BUTTON)
@@ -554,10 +554,10 @@ fn browser_tab_pill(
         .min_w(px(BROWSER_TAB_MIN_WIDTH))
         .flex()
         .items_center()
-        .surface_interactive(crate::roles::BROWSER_TAB, state, cx)
+        .surface_interactive(crate::roles::TAB_PAGE, state, cx)
         .when(!active, |tab| {
             tab.text_color(crate::muted_on(
-                &cx.theme().layer(crate::roles::BROWSER_TAB, state),
+                &cx.theme().layer(crate::roles::TAB_PAGE, state),
                 cx,
             ))
         })
@@ -661,7 +661,7 @@ pub fn browser_toolbar_button(
     selected: bool,
 ) -> Button {
     Button::compact_icon(id, icon)
-        .surface_role(crate::roles::BROWSER_BUTTON)
+        .surface_role(penna::SurfaceRole::ICON_BUTTON)
         .size(crate::rems_from_px(BROWSER_CONTROL_HEIGHT))
         .when(!disabled, |this| {
             this.text_color(cx.theme().foreground.muted())
@@ -680,7 +680,7 @@ pub fn compact_tabs_button(id: impl Into<ala::ElementId>, count: usize, cx: &App
     Button::new(id)
         .ghost()
         .compact()
-        .surface_role(crate::roles::BROWSER_BUTTON)
+        .surface_role(penna::SurfaceRole::ICON_BUTTON)
         .size(crate::PANE_HEADER_CONTROL_HEIGHT)
         .text_color(color)
         .child(
@@ -730,7 +730,7 @@ impl RenderOnce for BrowserEmptyHint {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .surface(crate::roles::BROWSER_EMPTY_ICON, cx)
+                    .surface(crate::roles::BADGE_ICON, cx)
                     .child(
                         Icon::new(IconName::Globe)
                             .small()
@@ -786,7 +786,7 @@ pub fn browser_recent_row(
     let height = crate::picker::LIST_ROW_HEIGHT;
     crate::row_surface(
         div().id(id).flex().w_full().h(height).flex_none(),
-        crate::roles::BROWSER_SUGGESTION,
+        crate::roles::MENU_ITEM_TINT,
         PaintState::Rest,
         height,
         cx,
@@ -1312,7 +1312,7 @@ impl RenderOnce for BrowserPickStatus {
             .justify_center()
             .child(
                 Badge::empty()
-                    .surface_role(crate::roles::PANE_CHIP)
+                    .surface_role(crate::roles::CHIP_FLOATING)
                     .font_weight(ala::FontWeight::NORMAL)
                     .max_w_full()
                     .h(px(28.0))

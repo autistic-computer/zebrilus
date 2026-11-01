@@ -237,7 +237,7 @@ pub fn program_tile(
         size,
         radius: stack_radius(size, around, cx),
         smoothing: theme
-            .layer(Surface::new(roles::PANE_STACK), PaintState::Rest)
+            .layer(Surface::new(roles::TILE_STACK), PaintState::Rest)
             .smoothing,
         dark: theme.is_dark(),
         ground: theme.ground().fill,

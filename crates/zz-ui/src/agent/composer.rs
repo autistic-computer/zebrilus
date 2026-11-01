@@ -21,7 +21,7 @@ const COMPOSER_TEXT: f32 = 13.0;
 const COMPOSER_TEXT_PADDING: f32 = (COMPOSER_BUTTON - COMPOSER_TEXT * 1.25) / 2.0;
 
 pub fn composer_ground(cx: &App) -> Ground {
-    cx.theme().ground_of(roles::AGENT_COMPOSER)
+    cx.theme().ground_of(roles::FIELD_COMPOSER)
 }
 
 #[derive(IntoElement)]
@@ -42,9 +42,9 @@ impl RenderOnce for Composer {
         } else {
             PaintState::Rest
         };
-        let paint = field_paint(roles::AGENT_COMPOSER, cx);
+        let paint = field_paint(roles::FIELD_COMPOSER, cx);
         let leading = self.leading.is_some();
-        let surface = Surface::new(roles::AGENT_COMPOSER).on_maybe(self.ground);
+        let surface = Surface::new(roles::FIELD_COMPOSER).on_maybe(self.ground);
         let radius = cx
             .theme()
             .layer(surface, state)
@@ -111,7 +111,7 @@ pub struct AgentComposer {
 impl RenderOnce for AgentComposer {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let has_prefix = !self.prefix.is_empty();
-        let layer = cx.theme().layer(roles::AGENT_COMPOSER, PaintState::Rest);
+        let layer = cx.theme().layer(roles::FIELD_COMPOSER, PaintState::Rest);
         let radius = layer.radius.min(px(COMPOSER_RADIUS));
         let backing = layer.glass.is_none().then(|| {
             div()

@@ -90,7 +90,7 @@ impl Render for Comparison {
                         .label(label)
                         .icon(icon)
                         .ghost()
-                        .surface_role(roles::WINDOW_TAB)
+                        .surface_role(roles::TAB_WINDOW)
                         .selected(self.selected == i)
                         .flex_1()
                         .h(px(28.0))
@@ -267,10 +267,7 @@ fn main() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
     let sources = std::env::args().nth(1).map_or_else(
         || {
-            vec![
-                root.join("libs/penna/themes/macos.json"),
-                root.join("crates/zz-ui/themes/macos.json"),
-            ]
+            vec![root.join("libs/penna/themes/macos.json")]
         },
         |path| vec![PathBuf::from(path)],
     );

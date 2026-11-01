@@ -79,7 +79,7 @@ pub struct StackTile {
 
 pub fn stack_radius(tile: Pixels, around: Pixels, cx: &App) -> Pixels {
     let theme = cx.theme();
-    let radius = theme.layer(roles::PANE_STACK, PaintState::Rest).radius;
+    let radius = theme.layer(roles::TILE_STACK, PaintState::Rest).radius;
     if radius == FULL_CORNER_RADIUS || radius == Pixels::ZERO {
         return radius;
     }
@@ -269,7 +269,7 @@ impl PaneStack {
         let size = self.size;
         let colors = program_colors(cx);
         let theme = cx.theme();
-        let tile = Surface::new(roles::PANE_STACK).on(self.tile_ground(cx));
+        let tile = Surface::new(roles::TILE_STACK).on(self.tile_ground(cx));
         let pad = size.gap();
         let travel = size.tile() + size.gap();
         let animate = !cx.reduce_motion();
@@ -406,7 +406,7 @@ impl RenderOnce for PaneStack {
         let open = openable && pointer.read(cx).open();
         let shown = self.tiles.len().clamp(1, RESTING);
         let resting = cx.theme().layer(
-            Surface::new(roles::PANE_STACK).on(self.tile_ground(cx)),
+            Surface::new(roles::TILE_STACK).on(self.tile_ground(cx)),
             PaintState::Rest,
         );
         let size = self.size;

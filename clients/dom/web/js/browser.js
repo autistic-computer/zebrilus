@@ -3,7 +3,7 @@ import { paneRenderer } from "./workspace.js";
 const REASON = "Embedded Chromium needs the desktop app. Open this page in a browser tab.";
 
 function control(icon, action) {
-  return `<button data-penna="browser.button" data-action="${action}" title="Requires the desktop browser runtime" disabled><i data-icon="${icon}"></i></button>`;
+  return `<button data-penna="icon-button" data-action="${action}" title="Requires the desktop browser runtime" disabled><i data-icon="${icon}"></i></button>`;
 }
 
 function browser(pane) {

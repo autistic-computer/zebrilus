@@ -99,7 +99,7 @@ impl RenderOnce for ChooserModal {
                 .flex_none()
                 .px(px(12.0))
                 .py(px(9.0))
-                .surface(Surface::new(roles::PICKER_NOTICE).on(modal.ground), cx)
+                .surface(Surface::new(penna::Kind::Bar.role()).on(modal.ground), cx)
                 .rule_on(roles::BAR_RULE, Edge::Bottom, cx)
                 .font_family(self.font_family.clone())
                 .text_size(crate::rems_from_px(11.0))

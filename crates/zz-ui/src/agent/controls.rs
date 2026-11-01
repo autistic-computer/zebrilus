@@ -38,7 +38,7 @@ pub fn composer_action_button(
         .size(crate::rems_from_px(COMPOSER_BUTTON))
         .when(action != ComposerAction::Queue, ButtonVariants::primary)
         .when(action == ComposerAction::Queue, ButtonVariants::secondary)
-        .surface_role(roles::AGENT_SEND)
+        .surface_role(roles::BUTTON_SEND)
         .on(composer_ground(cx))
         .tooltip(tooltip)
         .disabled(!enabled)
@@ -48,7 +48,7 @@ pub fn composer_add_button(id: impl Into<ElementId>, tooltip: &'static str, cx: 
     Button::compact_icon(id, IconName::Plus)
         .size(crate::rems_from_px(COMPOSER_BUTTON))
         .secondary()
-        .surface_role(roles::AGENT_SEND)
+        .surface_role(roles::BUTTON_SEND)
         .on(composer_ground(cx))
         .tooltip(tooltip)
 }

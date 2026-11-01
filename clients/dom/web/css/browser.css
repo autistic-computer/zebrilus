@@ -15,7 +15,7 @@
   gap: 4px;
 }
 
-.browser-toolbar [data-penna="browser.button"] {
+.browser-toolbar [data-penna="icon-button"] {
   display: inline-grid;
   place-items: center;
   width: 28px;

@@ -188,7 +188,7 @@ pub fn mini_pane(
 ) -> Div {
     let theme = cx.theme();
     let frame = theme.layer(
-        roles::PHONE_MINI,
+        roles::TILE_MINI,
         if current {
             PaintState::Selected
         } else {

@@ -554,7 +554,7 @@ impl AppShell {
                 let _ = dismiss.update(cx, |this, cx| on_dismiss(this, cx));
             },
         )
-        .surface_role(roles::ADD_HOST_DRAWER)
+        .surface_role(penna::SurfaceRole::DRAWER)
         .header_role(roles::PHONE_BAR)
         .into_any_element()
     }
@@ -684,7 +684,7 @@ impl AppShell {
                 });
             },
         )
-        .surface_role(roles::HOSTS_DRAWER)
+        .surface_role(penna::SurfaceRole::DRAWER)
         .header_role(roles::PHONE_BAR)
         .into_any_element()
     }

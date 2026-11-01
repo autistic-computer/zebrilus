@@ -194,7 +194,7 @@ function renderMenu(menu, area) {
 function renderConfirm(confirm, area) {
   const node = element(
     "div",
-    { "data-penna": "pane.float", class: "zz-confirm" },
+    { "data-penna": "floating.pane", class: "zz-confirm" },
     element("div", { class: "zz-confirm-prompt" }, element("span", { "data-text": true, text: confirm.prompt })),
   );
   node.style.width = `${confirm.width}px`;
@@ -368,7 +368,7 @@ function renderPanes() {
     const chip = element(
       "div",
       {
-        "data-penna": "pane.display-panes",
+        "data-penna": "chip.marker",
         class: "zz-indicator",
         "data-state": indicator.active ? "current" : null,
         "data-captioned": caption.length > 0,

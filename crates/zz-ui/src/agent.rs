@@ -840,7 +840,7 @@ impl StickSpring {
 pub fn agent_jump_to_bottom_button(id: impl Into<ElementId>, cx: &App) -> Button {
     Button::compact_icon(id, IconName::ArrowDown)
         .secondary()
-        .surface_role(crate::roles::AGENT_JUMP)
+        .surface_role(crate::roles::ICON_BUTTON_FLOATING)
         .on(transcript_ground(cx))
         .tooltip("Jump to latest")
 }
@@ -1764,7 +1764,7 @@ fn attachment_tile(
         .size(side)
         .flex_none()
         .overflow_hidden()
-        .surface(Surface::new(crate::roles::AGENT_ATTACHMENT).on(ground), cx)
+        .surface(Surface::new(crate::roles::CARD_IMAGE).on(ground), cx)
         .cursor_pointer()
         .child(
             img(ImageSource::Image(image))
@@ -2103,7 +2103,7 @@ const ASSISTANT_ENTRY_GROUP: &str = "agent-assistant-entry";
 
 fn message_action(button: Button, cx: &App) -> Button {
     button
-        .surface_role(crate::roles::AGENT_ACTION)
+        .surface_role(crate::roles::ICON_BUTTON_ROW)
         .text_color(timeline_affordance_color(cx))
 }
 
@@ -2123,14 +2123,14 @@ fn render_user_entry(
     rewind: Option<(&TimelineRewind, SharedString)>,
     cx: &mut App,
 ) -> AnyElement {
-    let bubble_ground = cx.theme().ground_of(crate::roles::AGENT_BUBBLE);
+    let bubble_ground = cx.theme().ground_of(crate::roles::CARD_BUBBLE);
     let bubble = v_flex()
         .debug_selector(|| "agent-user-bubble".to_owned())
         .max_w(relative(1.0))
         .gap_2()
         .px_3()
         .py_2()
-        .surface(crate::roles::AGENT_BUBBLE, cx)
+        .surface(crate::roles::CARD_BUBBLE, cx)
         .text_size(crate::rems_from_px(13.0))
         .when(!images.is_empty(), |this| {
             this.child(
@@ -2328,8 +2328,8 @@ fn agent_markdown_style(cx: &App) -> TextViewStyle {
         is_dark: cx.theme().is_dark(),
         ..TextViewStyle::default()
     }
-    .code_role(crate::roles::CODE)
-    .figure_role(crate::roles::FIGURE)
+    .code_role(crate::roles::CARD_CODE)
+    .figure_role(crate::roles::CARD_FIGURE)
 }
 
 pub(crate) fn agent_text_view(
@@ -2895,7 +2895,7 @@ fn agent_code_block_chrome(
     let block = html_block_id(scope, code_block);
     let preview = previews_html(&language, cx).then(|| html_preview_shown(block, visual, cx));
     let page = code.clone();
-    let ground = cx.theme().ground_of(crate::roles::CODE);
+    let ground = cx.theme().ground_of(crate::roles::CARD_CODE);
 
     h_flex()
         .w_full()
@@ -3302,11 +3302,11 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
             .into_any_element(),
     };
 
-    let card = cx.theme().ground_of(crate::roles::CODE);
+    let card = cx.theme().ground_of(crate::roles::CARD_CODE);
     v_flex()
         .id(("agent-figure", source_offset))
         .w_full()
-        .surface(crate::roles::CODE, cx)
+        .surface(crate::roles::CARD_CODE, cx)
         .overflow_hidden()
         .child(
             h_flex()
@@ -3483,7 +3483,7 @@ impl MermaidThemeColors {
     }
 
     fn from_theme(theme: &penna::Theme) -> Self {
-        let code = theme.ground_of(crate::roles::CODE).opaque();
+        let code = theme.ground_of(crate::roles::CARD_CODE).opaque();
         let background = code.fill;
         Self {
             background,

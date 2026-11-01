@@ -202,8 +202,8 @@ impl FlatRowState {
 
     fn surface(self) -> (Surface, PaintState) {
         let (role, state) = match self.paint_state() {
-            PaintState::Selected => (roles::SIDEBAR_CURSOR, PaintState::Selected),
-            state => (roles::SIDEBAR_ENTRY, state),
+            PaintState::Selected => (roles::ROW_CURSOR, PaintState::Selected),
+            state => (roles::ROW_NAV, state),
         };
         (Surface::new(role).on_maybe(self.ground), state)
     }
@@ -302,7 +302,7 @@ fn row_trailing_inset(cx: &App) -> Pixels {
 }
 
 fn tile_radius(size: StackSize, cx: &App) -> Pixels {
-    match cx.theme().style(roles::PANE_STACK).shape {
+    match cx.theme().style(roles::TILE_STACK).shape {
         Shape::Square => Pixels::ZERO,
         Shape::Pill => FULL_CORNER_RADIUS,
         Shape::Round => px(ROW_RADIUS) - (row_height() - px(size.tile())) / 2.0,
@@ -622,7 +622,7 @@ fn header_button(
         .small()
         .h(px(HEADER_BUTTON_HEIGHT))
         .font_weight(FontWeight::NORMAL)
-        .surface_role(roles::HOST_ACTION)
+        .surface_role(roles::BUTTON_ROW)
         .on_click(move |_: &ClickEvent, window, cx| {
             cx.stop_propagation();
             handler(event, window, cx);

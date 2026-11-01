@@ -26,7 +26,7 @@ pub fn pane_header_icon_button(
     cx: &App,
 ) -> Button {
     Button::compact_icon(id, icon)
-        .surface_role(roles::PANE_HEADER_BUTTON)
+        .surface_role(roles::ICON_BUTTON_BAR)
         .size(crate::PANE_HEADER_CONTROL_HEIGHT)
         .disabled(!enabled)
         .text_color(cx.theme().foreground.faint())
@@ -90,7 +90,7 @@ impl RenderOnce for PaneTitle {
         let coarse = crate::touch::CoarsePointer::get(cx);
         let movable = self.drag.enabled();
         let icon_size = px(PANE_TITLE_ICON_SIZE);
-        let surface = Surface::new(roles::PANE_TITLE).on(cx.theme().ground_of(roles::PANE_HEADER));
+        let surface = Surface::new(roles::BUTTON_TITLE).on(cx.theme().ground_of(roles::BAR_PANE));
         let icon = div()
             .relative()
             .flex_none()
@@ -314,7 +314,7 @@ pub fn pane_flip_button(
     cx: &App,
 ) -> Button {
     pane_header_icon_button("pane-flip", flip_icon(flip.to), !flip.pending, cx)
-        .surface_role(roles::PANE_FLIP)
+        .surface_role(roles::ICON_BUTTON_TOGGLE)
         .debug_selector(|| "pane-flip".into())
         .selected(flip.armed)
         .when(flip.armed, |button| {
@@ -507,7 +507,7 @@ pub fn pane_header(
         .items_center()
         .gap(px(8.0))
         .px(px(crate::CHROME_GAP))
-        .surface(Surface::new(roles::PANE_HEADER), cx)
+        .surface(Surface::new(roles::BAR_PANE), cx)
         .font_family(cx.theme().font_family.clone())
         .text_size(crate::rems_from_px(13.0))
         .line_height(px(16.0))
@@ -984,7 +984,7 @@ pub fn pane_drag_overlay(
             PaneDragOverlayState::Armed => veil.layer(&Layer {
                 border_width: Pixels::ZERO,
                 ..cx.theme().layer(
-                    Surface::new(roles::DROP_ZONE).on(Ground {
+                    Surface::new(roles::TILE_DROP).on(Ground {
                         glass: true,
                         ..cx.theme().ground()
                     }),
@@ -1012,7 +1012,7 @@ fn pane_drag_source_veil(cx: &App) -> Hsla {
 }
 
 pub fn pane_drop_preview(radius: Pixels, border_width: Pixels, cx: &App) -> ala::Div {
-    let layer = cx.theme().layer(roles::DROP_ZONE, PaintState::Selected);
+    let layer = cx.theme().layer(roles::TILE_DROP, PaintState::Selected);
     let border_width = if layer.border_width > Pixels::ZERO {
         border_width
     } else {
@@ -1031,7 +1031,7 @@ pub fn pane_drag_chip(
     cx: &App,
 ) -> ala::Div {
     let theme = cx.theme();
-    let layer = theme.layer(roles::DRAG_CHIP, PaintState::Rest);
+    let layer = theme.layer(roles::CHIP_DRAG, PaintState::Rest);
     let ink = theme.paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost);
     div()
         .flex()
@@ -1148,7 +1148,7 @@ pub fn pane_split_surface(
     cx: &App,
 ) -> Stateful<ala::Div> {
     let slot = f32::from(pane_split_slot(gap));
-    let ruled = cx.theme().style(roles::SPLIT_RULE).outline || hairline.is_some();
+    let ruled = cx.theme().style(penna::Kind::Rule.role()).outline || hairline.is_some();
     let first = div()
         .flex()
         .flex_none()
@@ -1326,7 +1326,7 @@ pub fn pane_indicator(
 ) -> Stateful<ala::Div> {
     let theme = cx.theme();
     let active = indicator.active();
-    let surface = Surface::new(roles::DISPLAY_PANES);
+    let surface = Surface::new(roles::CHIP_MARKER);
     let chip_state = if active {
         PaintState::Current
     } else {
@@ -1430,7 +1430,7 @@ pub fn pane_unzoom_control() -> Button {
     Button::new("pane-unzoom")
         .icon(IconName::WindowRestore)
         .label("Unzoom")
-        .surface_role(roles::PANE_CHIP)
+        .surface_role(roles::CHIP_FLOATING)
 }
 
 pub fn terminal_mode_indicator(
@@ -1508,7 +1508,7 @@ fn overlay_paint(cx: &App) -> crate::Paint {
 
 fn pane_chip(state: PaintState, cx: &App) -> ala::Div {
     div()
-        .surface_at(roles::PANE_CHIP, state, cx)
+        .surface_at(roles::CHIP_FLOATING, state, cx)
         .when(state == PaintState::Focused, |chip| {
             chip.focus_ring(&overlay_paint(cx))
         })
@@ -1640,7 +1640,7 @@ fn picker_item(
     cx: &App,
 ) -> Stateful<ala::Div> {
     let state = crate::row_state(selected, enabled);
-    let ground = cx.theme().layer(roles::PANE_PICKER, state).ground;
+    let ground = cx.theme().layer(roles::MENU_ITEM_CARD, state).ground;
     let ink = cx
         .theme()
         .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
@@ -1648,7 +1648,7 @@ fn picker_item(
     let height = crate::picker::LIST_ROW_HEIGHT;
     crate::row_surface(
         crate::h_flex().id(id).flex_none().h(height),
-        roles::PANE_PICKER,
+        roles::MENU_ITEM_CARD,
         state,
         height,
         cx,

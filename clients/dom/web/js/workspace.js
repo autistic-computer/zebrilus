@@ -38,7 +38,7 @@ const floatLayer = document.createElement("div");
 floatLayer.className = "float-layer";
 const preview = document.createElement("div");
 preview.className = "drop-preview";
-preview.dataset.penna = "pane.drop-zone";
+preview.dataset.penna = "tile.drop";
 preview.dataset.state = "selected";
 const toast = document.createElement("div");
 toast.className = "canvas-toast";
@@ -53,7 +53,7 @@ workspace.append(titlebar, canvas);
 
 const chip = document.createElement("div");
 chip.className = "drag-chip";
-chip.dataset.penna = "pane.drag-chip";
+chip.dataset.penna = "chip.drag";
 chip.hidden = true;
 chip.innerHTML = `<b class="penna-mono"></b><span class="penna-muted"></span>`;
 document.body.append(chip);
@@ -105,11 +105,11 @@ function headerActions(floats) {
 }
 
 function header(pane) {
-  const element = el("div", { "data-penna": "pane.header" });
+  const element = el("div", { "data-penna": "bar.pane" });
   const slot = el("div", { class: "title-slot" });
-  const title = el("div", { "data-penna": "pane.header.title", class: "pane-title" });
+  const title = el("div", { "data-penna": "button.title", class: "pane-title" });
   title.innerHTML = `<span class="title-icon"><i data-icon="square-terminal" class="kind"></i><i data-icon="arrows-move" class="move"></i></span><span class="title" data-text></span>`;
-  const close = iconButton("pane.header.button", "close", "xmark", "Close pane");
+  const close = iconButton("icon-button.bar", "close", "xmark", "Close pane");
   close.classList.add("title-close");
   title.append(close);
   slot.append(title);
@@ -202,12 +202,12 @@ function mount(pane, info) {
 }
 
 function badge(icon, label) {
-  return `<div data-penna="pane.chip" class="pane-badge"><i data-icon="${icon}"></i><span data-text>${escape(label)}</span></div>`;
+  return `<div data-penna="chip.floating" class="pane-badge"><i data-icon="${icon}"></i><span data-text>${escape(label)}</span></div>`;
 }
 
 function flipBusy(busy) {
   return [
-    `<div data-penna="pane.chip" class="pane-flip-busy">`,
+    `<div data-penna="chip.floating" class="pane-flip-busy">`,
     `<div class="pane-flip-row"><i data-icon="triangle-alert" class="pane-flip-glyph"></i>`,
     `<div class="pane-flip-text"><span class="pane-flip-title">${escape(busy.title)}</span><span class="pane-flip-detail">${escape(busy.detail)}</span></div>`,
     `<button data-penna="button.quiet" data-size="small" data-flip="dismiss" title="Keep this pane as it is" aria-label="Keep this pane as it is"><i data-icon="xmark"></i></button></div>`,
@@ -218,7 +218,7 @@ function flipBusy(busy) {
 }
 
 function flipArmed(label) {
-  return `<div data-penna="pane.chip" class="pane-badge pane-flip-armed"><i data-icon="clock"></i><span data-text>${escape(label)}</span><button data-penna="button.quiet" data-size="small" data-flip="cancel">Cancel</button></div>`;
+  return `<div data-penna="chip.floating" class="pane-badge pane-flip-armed"><i data-icon="clock"></i><span data-text>${escape(label)}</span><button data-penna="button.quiet" data-size="small" data-flip="cancel">Cancel</button></div>`;
 }
 
 function escape(text) {
@@ -258,7 +258,7 @@ function chrome(pane, info, window, floating) {
   if (info.deadLabel) tags.push(badge("circle-x", info.deadLabel));
   if (info.synchronized) tags.push(badge("layers", "Sync"));
   if (window.zoomedPane === pane.id) {
-    tags.push(`<button data-penna="pane.chip" class="unzoom" data-action="unzoom" aria-label="Unzoom"><i data-icon="window-restore"></i><span data-text>Unzoom</span></button>`);
+    tags.push(`<button data-penna="chip.floating" class="unzoom" data-action="unzoom" aria-label="Unzoom"><i data-icon="window-restore"></i><span data-text>Unzoom</span></button>`);
   }
   const html = tags.join("");
   if (pane.badges.dataset.html !== html) {
@@ -279,7 +279,7 @@ function renderHeader(parts, pane, info, window, floats, label) {
   if (parts.floats !== floats) {
     parts.floats = floats;
     parts.actions.replaceChildren(
-      ...headerActions(floats).map(([action, icon, title]) => iconButton("pane.header.button", action, icon, title)),
+      ...headerActions(floats).map(([action, icon, title]) => iconButton("icon-button.bar", action, icon, title)),
     );
   }
   const extras = headerButtons.map((factory) => factory(pane, info)).filter(Boolean);
@@ -514,7 +514,7 @@ function veils(window) {
     veil.hidden = false;
     veil.dataset.drag = !paneDrag ? "armed" : paneDrag.pane === pane.id ? "source" : "target";
     if (veil.dataset.drag === "armed") {
-      veil.dataset.penna = "pane.drop-zone";
+      veil.dataset.penna = "tile.drop";
       veil.dataset.state = "hover";
     } else {
       delete veil.dataset.penna;
@@ -545,7 +545,7 @@ function floatSurface(pane, float, info, window) {
     surface.addEventListener("pointerdown", (event) => event.stopPropagation());
     pane.surface = surface;
   }
-  surface.dataset.penna = float.modal ? "pane.float" : "pane.pip";
+  surface.dataset.penna = float.modal ? "floating.pane" : "floating.pip";
   surface.toggleAttribute("data-bordered", float.bordered);
   surface.toggleAttribute("data-modal", float.modal);
   surface.dataset.state = float.modal && active ? "current" : "";
@@ -658,11 +658,11 @@ function beginPip(pane, event) {
 }
 
 function windowTab(entry) {
-  const tab = el("div", { class: "window-tab", "data-penna": "titlebar.window-tab", "data-window": entry.id, title: entry.label });
+  const tab = el("div", { class: "window-tab", "data-penna": "tab.window", "data-window": entry.id, title: entry.label });
   if (entry.active) tab.dataset.state = "current";
   const deck = el("div", { class: "tab-deck" });
   entry.panes.slice(0, 3).forEach((pane, index) => {
-    const tile = el("span", { class: "deck-tile", "data-penna": "pane-stack" }, `<i data-icon="${paneIcon(pane.tag)}"></i>`);
+    const tile = el("span", { class: "deck-tile", "data-penna": "tile.stack" }, `<i data-icon="${paneIcon(pane.tag)}"></i>`);
     if (index === 0) tile.dataset.state = "current";
     tile.style.left = `${index * 5}px`;
     tile.style.zIndex = 3 - index;
@@ -674,7 +674,7 @@ function windowTab(entry) {
   const dots = el("span", { class: "tab-dots" }, `<i class="dot bell"></i><i class="dot activity"></i>`);
   dots.querySelector(".bell").style.opacity = entry.bell ? 1 : 0;
   dots.querySelector(".activity").style.opacity = entry.activity ? 1 : 0;
-  const close = el("button", { "data-penna": "sidebar.row-action", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
+  const close = el("button", { "data-penna": "icon-button.row", class: "tab-close", title: "Close window" }, `<i data-icon="xmark"></i>`);
   close.disabled = !writable();
   close.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -929,7 +929,7 @@ const AGENT_ICONS = { claude: "asterisk", codex: "braces" };
 
 function chatRows(pane, list, chat, view) {
   const row = (target, index, icon, title, note, shortcut, selected) => {
-    const element = el("div", { class: "picker-row", "data-penna": "pane.picker" });
+    const element = el("div", { class: "picker-row", "data-penna": "menu-item.card" });
     if (selected) element.dataset.state = "current";
     element.innerHTML = `<i data-icon="${icon}"></i><span class="picker-title"></span>${note ? `<span class="picker-note penna-muted"></span>` : ""}${shortcut ? `<span data-penna="keycap"><span data-text></span></span>` : ""}`;
     element.querySelector(".picker-title").textContent = title;
@@ -979,7 +979,7 @@ function picker(pane) {
       }
       list.replaceChildren(
         ...choices.map((choice, index) => {
-          const row = el("div", { class: "picker-row", "data-penna": "pane.picker" });
+          const row = el("div", { class: "picker-row", "data-penna": "menu-item.card" });
           if (index === view.selected) row.dataset.state = "current";
           if (!writable()) row.dataset.state = `${row.dataset.state || ""} disabled`.trim();
           row.innerHTML = `<i data-icon="${paneIcon(choice.kind)}"></i><span class="picker-title"></span><span data-penna="keycap"><span data-text></span></span>`;

@@ -145,7 +145,7 @@ function build(palette) {
   const rows = element("div", { class: "zz-palette-rows" });
   rows.addEventListener("mousedown", (event) => event.preventDefault());
   const footer = element("div", { "data-penna": "rule.bar", class: "zz-palette-footer" });
-  const surface = element("div", { "data-penna": "palette", class: "zz-palette", "data-kind": palette.kind }, field, usage, rows, footer);
+  const surface = element("div", { "data-penna": "popover", class: "zz-palette", "data-kind": palette.kind }, field, usage, rows, footer);
   surface.addEventListener("mousedown", (event) => {
     event.stopPropagation();
     if (event.target !== input) event.preventDefault();

@@ -1695,7 +1695,7 @@ impl AppShell {
                 });
             },
         )
-        .surface_role(roles::BINDINGS_DRAWER)
+        .surface_role(penna::SurfaceRole::DRAWER)
         .header_role(roles::PHONE_BAR)
         .into_any_element()
     }

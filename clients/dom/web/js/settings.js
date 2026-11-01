@@ -603,11 +603,11 @@ function statusBarPage() {
   const tab = (name, glyph, active, badges, stacked) =>
     h(
       "div",
-      { "data-penna": "titlebar.window-tab", "aria-selected": String(active) },
+      { "data-penna": "tab.window", "aria-selected": String(active) },
       h("span", { class: `tile${stacked ? " stacked" : ""}`, "data-penna": "icon-tile" }, icon(glyph)),
       h("span", { class: "name", "aria-label": name, text: name }),
       h("span", { class: "badges" }, badges && [h("i", { style: { background: "var(--penna-warning)" } }), h("i", { style: { background: "var(--penna-success)" } })]),
-      h("button", { "data-penna": "sidebar.row-action", title: "Close window" }, icon("xmark")),
+      h("button", { "data-penna": "icon-button.row", title: "Close window" }, icon("xmark")),
     );
   const preview = h(
     "div",
@@ -663,7 +663,7 @@ function lines(sample) {
 }
 
 function headerTitle(glyph, title) {
-  return h("div", { "data-penna": "pane.header.title" }, icon(glyph), text(title), h("button", { "data-penna": "pane.header.button", "data-action": "close", title: "Close pane" }, icon("xmark")));
+  return h("div", { "data-penna": "button.title" }, icon(glyph), text(title), h("button", { "data-penna": "icon-button.bar", "data-action": "close", title: "Close pane" }, icon("xmark")));
 }
 
 function previewPane(index, body) {
@@ -692,13 +692,13 @@ function terminalSample(title, sample, flip) {
   return [
     h(
       "div",
-      { "data-penna": "pane.header", class: "dim" },
+      { "data-penna": "bar.pane", class: "dim" },
       headerTitle("square-terminal", title),
       h("span", { class: "grow" }),
-      flip && h("span", { class: "flip" }, h("button", { "data-penna": "pane.header.button", class: "action", title: "Switch to chat" }, icon("chat"))),
-      h("button", { "data-penna": "pane.header.button", class: "action", title: "Split bottom" }, icon("panel-bottom")),
-      h("button", { "data-penna": "pane.header.button", class: "action", title: "Split right" }, icon("panel-right")),
-      h("button", { "data-penna": "pane.header.button", class: "action", title: "Float" }, icon("picture-in-picture")),
+      flip && h("span", { class: "flip" }, h("button", { "data-penna": "icon-button.bar", class: "action", title: "Switch to chat" }, icon("chat"))),
+      h("button", { "data-penna": "icon-button.bar", class: "action", title: "Split bottom" }, icon("panel-bottom")),
+      h("button", { "data-penna": "icon-button.bar", class: "action", title: "Split right" }, icon("panel-right")),
+      h("button", { "data-penna": "icon-button.bar", class: "action", title: "Float" }, icon("picture-in-picture")),
     ),
     h("div", { class: "dim body" }, lines(sample)),
   ];
@@ -708,23 +708,23 @@ function browserSample() {
   return [
     h(
       "div",
-      { "data-penna": "pane.header", class: "dim browser-header" },
+      { "data-penna": "bar.pane", class: "dim browser-header" },
       h(
         "div",
         { class: "tab-row" },
         headerTitle("globe", "Browser"),
-        h("div", { "data-penna": "browser.tab", "aria-selected": "true" }, h("span", { class: "favicon" }, icon("globe")), h("span", { class: "label", "aria-label": "zed.dev", text: "zed.dev" })),
-        h("button", { "data-penna": "browser.button", title: "New tab" }, icon("plus")),
+        h("div", { "data-penna": "tab.page", "aria-selected": "true" }, h("span", { class: "favicon" }, icon("globe")), h("span", { class: "label", "aria-label": "zed.dev", text: "zed.dev" })),
+        h("button", { "data-penna": "icon-button", title: "New tab" }, icon("plus")),
       ),
       h(
         "div",
         { class: "toolbar" },
-        h("button", { "data-penna": "browser.button", title: "Back" }, icon("arrow-left")),
-        h("button", { "data-penna": "browser.button", title: "Forward", disabled: true }, icon("arrow-right")),
-        h("button", { "data-penna": "browser.button", title: "Reload" }, icon("redo-2")),
-        h("div", { class: "address", "data-penna": "browser.address" }, h("button", { "data-penna": "browser.button", class: "site", title: "Site controls" }, icon("site-controls")), h("span", { text: "zed.dev/docs" })),
-        h("button", { "data-penna": "browser.button", title: "Pick an element" }, icon("inspector")),
-        h("button", { "data-penna": "browser.button", title: "More browser actions" }, icon("ellipsis-vertical")),
+        h("button", { "data-penna": "icon-button", title: "Back" }, icon("arrow-left")),
+        h("button", { "data-penna": "icon-button", title: "Forward", disabled: true }, icon("arrow-right")),
+        h("button", { "data-penna": "icon-button", title: "Reload" }, icon("redo-2")),
+        h("div", { class: "address", "data-penna": "field.address" }, h("button", { "data-penna": "icon-button", class: "site", title: "Site controls" }, icon("site-controls")), h("span", { text: "zed.dev/docs" })),
+        h("button", { "data-penna": "icon-button", title: "Pick an element" }, icon("inspector")),
+        h("button", { "data-penna": "icon-button", title: "More browser actions" }, icon("ellipsis-vertical")),
       ),
       h("div", { class: "rule", "data-penna": "rule.bar" }),
     ),

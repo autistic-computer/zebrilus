@@ -1068,7 +1068,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
     let bindings = drawer(
         "drawer-bindings",
         "All bindings",
-        roles::BINDINGS_DRAWER,
+        penna::SurfaceRole::DRAWER,
         WhichKeyList::new(rows),
     );
     tiles(
@@ -1077,7 +1077,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
             vec![
                 drawer_screen(
                     "drawer-screen-hosts",
-                    drawer("drawer-hosts", "alienware", roles::HOSTS_DRAWER, hosts),
+                    drawer("drawer-hosts", "alienware", penna::SurfaceRole::DRAWER, hosts),
                     cx,
                 ),
                 drawer_screen(
@@ -1085,7 +1085,7 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                     drawer(
                         "drawer-add-host",
                         "Add host",
-                        roles::ADD_HOST_DRAWER,
+                        penna::SurfaceRole::DRAWER,
                         add_host,
                     ),
                     cx,
@@ -1097,14 +1097,14 @@ fn drawers(destination: &Entity<InputState>, window: &mut Window, cx: &mut App) 
                     drawer(
                         "drawer-new-pane",
                         "New pane",
-                        roles::NEW_PANE_DRAWER,
+                        penna::SurfaceRole::DRAWER,
                         new_pane,
                     ),
                     cx,
                 ),
                 drawer_screen(
                     "drawer-screen-tabs",
-                    drawer("drawer-tabs", "Tabs", roles::TABS_DRAWER, tabs),
+                    drawer("drawer-tabs", "Tabs", penna::SurfaceRole::DRAWER, tabs),
                     cx,
                 ),
             ],
@@ -1440,8 +1440,8 @@ fn reading(cx: &App) -> AnyElement {
         is_dark: cx.theme().is_dark(),
         ..TextViewStyle::default()
     }
-    .code_role(zz_ui::roles::CODE)
-    .figure_role(zz_ui::roles::FIGURE);
+    .code_role(zz_ui::roles::CARD_CODE)
+    .figure_role(zz_ui::roles::CARD_FIGURE);
     card("showcase-reading", cx)
         .child(heading(
             "Reading",

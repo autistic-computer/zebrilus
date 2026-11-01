@@ -231,7 +231,7 @@ pub(crate) struct CardTile {
 
 impl CardTile {
     pub(crate) fn new(tone: Tone, enabled: bool, selected: bool, cx: &App) -> Self {
-        let surface = Surface::new(roles::AGENT_OPTION).tone(tone);
+        let surface = Surface::new(penna::SurfaceRole::MENU_ITEM).tone(tone);
         let state = crate::row_state(selected, enabled);
         let layer = cx.theme().layer(surface, state);
         Self {

@@ -862,7 +862,7 @@ pub fn chat_agent_pip(
         .children(agent_status(state.as_ref(), phase, cx))
         .child(
             Button::compact_icon("chat-agent-pip-close", IconName::Xmark)
-                .surface_role(crate::roles::AGENT_ACTION)
+                .surface_role(crate::roles::ICON_BUTTON_ROW)
                 .tooltip("Close")
                 .on_click(move |_, window, cx| {
                     cx.stop_propagation();
@@ -1025,7 +1025,7 @@ fn user_bubble(
     cx: &App,
 ) -> AnyElement {
     let key = id.as_str().to_owned();
-    let ground = cx.theme().ground_of(crate::roles::AGENT_BUBBLE);
+    let ground = cx.theme().ground_of(crate::roles::CARD_BUBBLE);
     let body = refs
         .and_then(|refs| {
             ref_text(
@@ -1048,7 +1048,7 @@ fn user_bubble(
                 .gap_2()
                 .px_3()
                 .py_2()
-                .surface(crate::roles::AGENT_BUBBLE, cx)
+                .surface(crate::roles::CARD_BUBBLE, cx)
                 .text_size(crate::rems_from_px(13.0))
                 .when(!images.is_empty(), |bubble| {
                     bubble.child(h_flex().flex_wrap().gap_1().children(

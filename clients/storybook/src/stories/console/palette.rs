@@ -1263,7 +1263,7 @@ fn on_surface(content: impl IntoElement, cx: &App) -> impl IntoElement {
     v_flex()
         .w_full()
         .p(px(8.0))
-        .surface(zz_ui::roles::PALETTE, cx)
+        .surface(penna::SurfaceRole::POPOVER, cx)
         .child(content)
 }
 

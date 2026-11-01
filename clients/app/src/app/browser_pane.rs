@@ -1012,7 +1012,7 @@ impl BrowserPane {
                     });
                 },
             )
-            .surface_role(roles::TABS_DRAWER)
+            .surface_role(penna::SurfaceRole::DRAWER)
             .header_role(roles::PHONE_BAR),
             window,
         )
