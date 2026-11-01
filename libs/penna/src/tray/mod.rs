@@ -7,12 +7,20 @@ mod windows;
 
 use std::sync::Arc;
 
+use ala::{Bounds, DisplayId, Pixels};
 use async_channel::Sender;
 use parking_lot::Mutex;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// Where the icon sits, in the same space as a window's bounds on `display`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TrayAnchor {
+    pub display: DisplayId,
+    pub bounds: Bounds<Pixels>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum TrayEvent {
-    Activate,
+    Activate(Option<TrayAnchor>),
     Action(String),
     Available(bool),
 }

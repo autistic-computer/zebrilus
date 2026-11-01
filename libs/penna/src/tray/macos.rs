@@ -1,3 +1,4 @@
+use ala::{Bounds, DisplayId, point, px, size};
 use async_channel::Sender;
 use objc2::runtime::{AnyObject, NSObject, NSObjectProtocol, Sel};
 use objc2::{
@@ -9,9 +10,9 @@ use objc2_app_kit::{
     NSEventModifierFlags, NSEventType, NSImage, NSMenu, NSMenuItem, NSStatusBar, NSStatusItem,
     NSVariableStatusItemLength,
 };
-use objc2_foundation::{NSData, NSSize, NSString, ns_string};
+use objc2_foundation::{NSData, NSNumber, NSSize, NSString, ns_string};
 
-use super::{Menu, MenuEntry, TrayEvent, TrayIcon, TrayOptions, send};
+use super::{Menu, MenuEntry, TrayAnchor, TrayEvent, TrayIcon, TrayOptions, send};
 
 const IMAGE_POINTS: f64 = 18.0;
 
@@ -119,7 +120,7 @@ define_class!(
             if self.ivars().menu_on_click || self.click_was_secondary() {
                 self.show_menu();
             } else {
-                send(&self.ivars().events, TrayEvent::Activate);
+                send(&self.ivars().events, TrayEvent::Activate(self.anchor()));
             }
         }
 
@@ -156,6 +157,25 @@ impl TrayTarget {
             actions: std::cell::RefCell::new(Vec::new()),
         });
         unsafe { msg_send![super(this), init] }
+    }
+
+    fn anchor(&self) -> Option<TrayAnchor> {
+        let window = self.ivars().item.button(self.mtm())?.window()?;
+        let screen = window.screen()?;
+        let number = screen
+            .deviceDescription()
+            .objectForKey(ns_string!("NSScreenNumber"))?
+            .downcast::<NSNumber>()
+            .ok()?;
+        let (frame, area) = (window.frame(), screen.frame());
+        let top = area.origin.y + area.size.height - frame.origin.y - frame.size.height;
+        Some(TrayAnchor {
+            display: DisplayId::from(u64::from(number.unsignedIntValue())),
+            bounds: Bounds::new(
+                point(px((frame.origin.x - area.origin.x) as f32), px(top as f32)),
+                size(px(frame.size.width as f32), px(frame.size.height as f32)),
+            ),
+        })
     }
 
     fn click_was_secondary(&self) -> bool {
