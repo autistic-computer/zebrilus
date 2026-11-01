@@ -14,6 +14,9 @@ const SOCKET: &str = "app-server-control/app-server-control.sock";
 const POLL: Duration = Duration::from_millis(20);
 
 pub(crate) fn socket(home: &Path) -> Option<PathBuf> {
+    if cfg!(test) {
+        return None;
+    }
     std::fs::canonicalize(home.join(SOCKET)).ok()
 }
 

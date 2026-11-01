@@ -634,6 +634,7 @@ impl Codex {
             .filter_map(|path| RolloutMeta::read(&path).map(|meta| (path, meta)))
             .find(|(_, meta)| meta.parent.is_none())
             .or_else(|| newest_rollout(&codex_sessions()?, pid))?;
+        self.relocated(&path);
         Some(Found {
             session: meta.thread,
             path,

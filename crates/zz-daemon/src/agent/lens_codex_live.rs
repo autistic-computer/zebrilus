@@ -62,6 +62,7 @@ const REPLY_CLOSE: &str = "</send_user_message_question_reply>";
 pub(super) struct Link {
     live: Option<Box<Live>>,
     relive: bool,
+    rearm: bool,
     cwd: PathBuf,
     closed: Vec<u64>,
     pub(super) ids: Arc<AtomicU64>,
@@ -468,14 +469,19 @@ impl Codex {
 
     pub(super) fn relaunched(&mut self, pid: u32) {
         self.leave();
-        self.link.relive = self.tail.is_some() && !embedded(&arguments(pid));
+        self.link.relive = false;
+        self.link.rearm = self.tail.is_some() && !embedded(&arguments(pid));
+    }
+
+    pub(super) fn relocated(&mut self, path: &Path) {
+        if self.link.rearm && self.tail.as_ref().is_some_and(|tail| tail.path == path) {
+            self.link.rearm = false;
+            self.link.relive = true;
+        }
     }
 
     pub(super) fn vanished(&mut self) {
-        if self.link.live.is_some() {
-            self.leave();
-            self.link.relive = self.tail.is_some();
-        }
+        self.leave();
     }
 
     pub(super) fn is_live(&self) -> bool {
@@ -499,6 +505,7 @@ impl Codex {
     pub(super) fn join(&mut self, path: &Path, cwd: &Path) {
         self.drop_live();
         self.link.relive = false;
+        self.link.rearm = false;
         self.link.cwd = cwd.to_path_buf();
         if self.neighbors().is_none_or(|others| !others.is_empty()) {
             log::info!(target: "zz::agent", "another Codex may share {}; the lens reads the rollout", cwd.display());

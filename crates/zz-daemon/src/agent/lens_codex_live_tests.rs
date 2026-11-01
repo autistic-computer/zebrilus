@@ -97,6 +97,14 @@ fn item_line(item: &Value) -> Value {
     )
 }
 
+fn server(loaded: &[&str]) -> (Connection, Peer) {
+    let (connection, peer) = Connection::pair();
+    peer.deliver(json!({ "id": 0, "result": { "userAgent": "codex" } }));
+    peer.deliver(json!({ "id": 1, "result": { "data": loaded, "nextCursor": null } }));
+    peer.deliver(json!({ "id": 2, "result": resume() }));
+    (connection, peer)
+}
+
 struct Harness {
     lens: Lens,
     peer: Peer,
@@ -123,10 +131,7 @@ impl Harness {
             .chain(history)
             .fold(String::new(), |all, line| all + &line.to_string() + "\n");
         std::fs::write(&path, text).unwrap();
-        let (connection, peer) = Connection::pair();
-        peer.deliver(json!({ "id": 0, "result": { "userAgent": "codex" } }));
-        peer.deliver(json!({ "id": 1, "result": { "data": loaded, "nextCursor": null } }));
-        peer.deliver(json!({ "id": 2, "result": resume() }));
+        let (connection, peer) = server(loaded);
         let mut codex = Codex::default();
         codex.link.wire = Some(connection);
         codex.link.neighbors = Some(others.to_vec());
@@ -910,4 +915,34 @@ fn a_fork_of_the_joined_thread_is_followed_even_beside_another_tui() {
     fork["params"]["thread"]["forkedFromId"] = Value::from(THREAD);
     live.play(&[fork]);
     assert_eq!(session(&live).as_deref(), Some("fork"));
+}
+
+#[test]
+fn a_tui_relaunched_in_the_pane_is_joined_only_once_its_rollout_is_this_one() {
+    let mut live = Harness::joined();
+    let rollout = live
+        ._dir
+        .path()
+        .join(format!("rollout-2026-10-31T20-11-55-{THREAD}.jsonl"));
+    let (wire, peer) = server(&[THREAD]);
+    if let Source::Codex(codex) = &mut live.lens.source {
+        codex.vanished();
+        codex.pid = Some(std::process::id());
+        codex.relaunched(std::process::id());
+        codex.link.wire = Some(wire);
+    }
+    live.drain();
+    assert!(!live.live(), "a new TUI may be on a new thread");
+    assert!(peer.outgoing.is_empty());
+    if let Source::Codex(codex) = &mut live.lens.source {
+        codex.relocated(&rollout);
+    }
+    live.lens.tick();
+    assert!(live.live());
+    let sent = peer
+        .outgoing
+        .try_iter()
+        .map(|text| serde_json::from_str::<Value>(&text).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(named(&sent, "thread/resume").len(), 1);
 }
