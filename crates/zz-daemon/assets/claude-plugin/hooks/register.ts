@@ -8,6 +8,7 @@ type Call = (path: string, method: string, body?: string) => Promise<HttpRespons
 
 const ASK_LIMIT = 30 * 60 * 1000
 const RETRY = 1000
+const MAX_QUEUE = 2000
 
 export const register: Register = (on) => {
   const instance = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
@@ -45,6 +46,11 @@ export const register: Register = (on) => {
 
   const emit = (event: Event) => {
     if (!linked) return
+    if (queue.length >= MAX_QUEUE) {
+      linked = false
+      queue = []
+      return
+    }
     queue.push({ ...event, i: instance, at: Date.now() })
     void flush()
   }
@@ -58,6 +64,7 @@ export const register: Register = (on) => {
 
   on('session.start', async ($, e, next) => {
     const result = await next(e)
+    if (!e.isInteractive) return result
     const socket = await $.env.get('ZZ_LENS_SOCKET')
     if (!socket) return result
     const channel: Call = (path, method, body) =>
@@ -175,8 +182,8 @@ export const register: Register = (on) => {
   on('classic.PermissionRequest', async ($, e, next) => {
     const result = await next(e)
     const channel = call
-    if (!linked || channel === undefined || result.decision !== undefined) return result
     const found = take(e.tool_name, JSON.stringify(e.tool_input), e.agent_id)
+    if (!linked || channel === undefined || result.decision !== undefined) return result
     asked += 1
     const body = JSON.stringify({
       t: 'ask',
@@ -190,7 +197,7 @@ export const register: Register = (on) => {
       suggestions: e.permission_suggestions ?? [],
     })
     const until = Date.now() + ASK_LIMIT
-    while (Date.now() < until) {
+    while (Date.now() < until && !next.signal.aborted) {
       let reply: Reply
       try {
         const response = await channel('/ask', 'POST', body)
