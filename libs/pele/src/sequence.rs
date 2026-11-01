@@ -1273,9 +1273,8 @@ fn draw(
             }
             Event::Frame { kind, text: value } => {
                 let title = labels[i].as_ref().unwrap().clone();
-                let nest = frames.len() as f64 * 10.0;
-                let mut left = columns.first().map_or(0.0, |c| c.x - 20.0) - nest;
-                let mut right = columns.last().map_or(120.0, |c| c.x + 20.0) + nest;
+                let mut left = columns.first().map_or(0.0, |c| c.x - 20.0);
+                let mut right = columns.last().map_or(120.0, |c| c.x + 20.0);
                 let tab_width = 40.0_f64.max(width_for(kind, tiny, text::BOLD, options) + 16.0);
                 if right - left < title.width + tab_width + 16.0 {
                     let extra = (title.width + tab_width + 16.0 - (right - left)) / 2.0;
@@ -1314,6 +1313,11 @@ fn draw(
             }
             Event::End => {
                 let Some(frame) = frames.pop() else { continue };
+                if let Some(parent) = frames.last_mut() {
+                    parent.left = parent.left.min(frame.left - 10.0);
+                    parent.right = parent.right.max(frame.right + 10.0);
+                    bound(&mut min_x, &mut max_x, parent.left, parent.right);
+                }
                 let bottom = y + 12.0;
                 if frame.kind == "rect" {
                     rectangles.push(rect(
@@ -1877,6 +1881,39 @@ mod tests {
         }
         assert!(!rendered.svg.contains("var("));
         assert!(!rendered.svg.contains("foreignObject"));
+    }
+
+    #[test]
+    fn a_nested_frame_sits_inside_the_frame_around_it() {
+        let source = "sequenceDiagram\nA->>B: one\nloop retry\nB->>C: spawn\nalt ok\nC-->>B: ok\nelse fail\nC-->>B: died\nend\nend\nB->>A: two";
+        let svg = render(source, &RenderOptions::default()).unwrap().svg;
+        let frame = |kind: &str| {
+            let start = svg
+                .find(&format!("pele-frame-{kind}\"><rect x=\""))
+                .unwrap_or_else(|| panic!("a {kind} frame in {svg}"));
+            let numbers = svg[start..]
+                .split('"')
+                .skip(2)
+                .step_by(2)
+                .take(4)
+                .map(|value| value.parse::<f64>().unwrap())
+                .collect::<Vec<_>>();
+            (
+                numbers[0],
+                numbers[1],
+                numbers[0] + numbers[2],
+                numbers[1] + numbers[3],
+            )
+        };
+        let (outer, inner) = (frame("loop"), frame("alt"));
+        assert!(
+            outer.0 < inner.0 && inner.2 < outer.2,
+            "{outer:?} {inner:?}"
+        );
+        assert!(
+            outer.1 < inner.1 && inner.3 < outer.3,
+            "{outer:?} {inner:?}"
+        );
     }
 
     #[test]

@@ -29,6 +29,11 @@ narrower, as upstream does. Upstream only turns under the breakpoint, so a
 wide host there shrinks the diagram instead; `auto_direction: false` keeps
 the authored direction everywhere.
 
+A sequence frame (`loop`, `alt`, `rect` and the rest) nested in another sits
+inside it: each frame that closes widens the one around it to clear it by 10
+px. Upstream widens the inner frame by 10 px a level instead, so it crosses
+the border of the frame it is in.
+
 The development binary reads JSON lines on stdin and answers each with `ok: true`
 and the result, or `ok: false` and a structured error:
 
