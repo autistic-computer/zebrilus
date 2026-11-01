@@ -4,7 +4,7 @@ title: Agent lens
 description: How a terminal pane running Claude Code or Codex shows an agent timeline. Covers the header toggle and chat mode, the slash commands and skills it lists, the terminal PiP for the CLI's own dialogs, references to panes, chats and files as links, copy and fork on messages, how the chat draws pastes, live turns, subagents and diagrams, the model, effort and folder controls, side chats and forks, pasted images, the daemon lens runtime that tails the CLI's own transcript, joins the Codex TUI's app server, and talks to Claude Code through the zz plugin, the agent stream that carries it to clients, Claude permission prompts, and what agent-send and agent-respond do with it.
 resource: crates/zz-daemon/src/agent/lens.rs
 tags: [agent, lens, claude-code, codex, transcript, app-server, plugin, terminal, pane]
-timestamp: 2026-10-31T23:45:00-03:00
+timestamp: 2026-11-01T06:00:00-03:00
 ---
 
 # Overview
@@ -79,9 +79,11 @@ but no pane opens them now.
   the runtime reads the last 8 MiB, walks the `parentUuid` chain from the newest leaf
   (`sessions::chain_tail`) and feeds the entries through `claude::translate::Translator::history_entry`,
   the translator the native driver uses for resume. New lines are tailed every 250 ms. A new session
-  id in the record (`/clear`, `/resume`) becomes a session switch with a fresh replay, and a prompt
-  whose parent is not the last line seen (`/rewind`) reloads the chain. A `system` /
-  `turn_duration` line marks a finished turn.
+  id in the record (`/resume`) becomes a session switch with a fresh replay, one whose transcript
+  does not exist yet (`/clear`, a new CLI) empties the chat (see
+  [When the CLI leaves](#when-the-cli-leaves)), and a prompt whose parent is not the last line seen
+  (`/rewind`) reloads the chain. A `system` / `turn_duration` line marks a finished turn, unless
+  the plugin polls (see [The Claude Code plugin](#the-claude-code-plugin)).
 - **Codex.** A TUI on its managed app server is asked there first: the runtime claims the TUI's
   own thread (see [Codex over the app server](#codex-over-the-app-server)) and reads that thread's
   rollout. Otherwise it looks for the rollout the pane's `codex` process holds open, through
@@ -89,8 +91,9 @@ but no pane opens them now.
   parent. Codex 0.164 and later on macOS leave the file to their shared app-server
   (`~/.codex/packages`), so the runtime falls back to the newest parentless rollout in the last 7
   day folders of `$CODEX_HOME/sessions` whose cwd matches the pane and that was modified since the
-  process started (`newest_rollout`); when the claim cannot decide, two Codex panes in one folder
-  can then pick each other's session.
+  process started (`newest_rollout`). That guess runs only while no other Codex TUI runs in the
+  pane's folder: beside another TUI the newest rollout could be that TUI's, so the lens shows no
+  session until the claim names this TUI's thread.
   `codex/rollout.rs` (`RolloutMeta`, `v2_item`) reshapes `item_completed` items into the app
   server's shapes and `codex::translate::Translator::history_item` translates them:
   - A command recorded as `[bash|zsh|sh|dash, -c|-lc, script]` shows only its script, and a
@@ -126,12 +129,30 @@ but no pane opens them now.
   fails the lens turn with Codex's message, so `agent-send --wait` exits 1. While a lens turn
   waits on a pane whose rollout is not found yet, the runtime looks on every tick instead of every
   5 s, and a rollout found after its turn already ended settles that turn from its last
-  `task_complete`.
+  `task_complete`. A lens turn that never sees the pane busy settles after 5 s, or after a minute
+  (`UNCLAIMED`) while the claim waits on a TUI that shares its folder.
 
 Claude's session record carries `status` (`busy`, `idle`, `waiting`). The runtime turns it into
 `Activity { busy }` events, so the pane's phase follows the TUI whether the turn came from the
 lens, from typing in the terminal, or from a peer message. While the Claude Code plugin is
 connected, the plugin's turn edges decide instead (below).
+
+## When the CLI leaves
+
+A new CLI writes its transcript or rollout only when its first prompt lands. So when the CLI
+behind the shown session exits, or moves to a session with no transcript yet (`/clear`), the
+runtime lets go of that session (`agent/lens_vacate.rs`): a turn still running there settles (a
+prompt the Claude Code plugin never took fails with "Claude Code exited before it took the
+prompt"), and the chat resets to no session, as on an open before a first prompt. The next
+session then loads as a first one, which keeps a lens turn in flight, so the first
+`agent-send --wait` to a CLI started again in the pane gets its reply. A turn sent before the
+switch can no longer end on it with no text.
+
+The runtime looks again on every tick while the shown session's CLI has moved (Claude's record is
+gone or names another session, the Codex TUI's pid has died), so it lets go within a tick or two
+of the exit, before a new CLI can be ready. It lets go only when the look finds nothing for the
+pane: a Claude record with no transcript or no `claude` process at all, or a Codex pid other than
+the one whose session the lens shows. A Codex TUI found again on the shown rollout keeps it.
 
 # The Claude Code plugin
 
@@ -185,10 +206,12 @@ and is the whole story when the plugin is not there.
   ahead of its record. A `claude -p` never connects at all (the mod skips sessions that are not
   interactive).
 - **Turns.** While the plugin polls, busy and idle come from its turn edges, so Esc in the TUI ends
-  the lens turn on the next 250 ms tick. A turn that starts and ends inside one tick still reports
-  busy for it, and a main-loop step counts as a start (a background agent's follow-up turn). The
-  record's `waiting` is held back for 2 s in case the plugin relays it, then shows the terminal card
-  as before.
+  the lens turn on the next 250 ms tick. The transcript's `turn_duration` line does not end a turn
+  while the plugin polls: the CLI writes it just after `done`, and a prompt sent at once (back-to-back
+  `agent-send --wait`) would otherwise end there with no text. A turn that starts and ends inside
+  one tick still reports busy for it, and a main-loop step counts as a start (a background agent's
+  follow-up turn). The record's `waiting` is held back for 2 s in case the plugin relays it, then
+  shows the terminal card as before.
 - **Live text.** Text and thinking chunks become `agent_message_chunk` and `agent_thought_chunk`
   under `live:<turn>:<step>:<index>`, stamped with the mod's time and merged with transcript lines
   by time. When the transcript writes the block, it matches the oldest live block of the same kind
@@ -257,8 +280,13 @@ current time as its `createdAt`. A thread is this TUI's when:
   since it started.
 
 When neither decides (two TUIs started within a few seconds and no thread named yet, a `/new` beside
-another TUI, a thread left loaded by a TUI that exited), the runtime keeps the rollout path above
-and asks again on its next look. A claimed thread is joined even beside other Codex TUIs, and a lens
+another TUI, a thread left loaded by a TUI that exited), the runtime asks again on its next look.
+Meanwhile a lens with no session yet shows none while another Codex TUI shares the folder, since
+the newest rollout there could be that TUI's and a question card from it would be answered by
+typing into this pane; alone in the folder, or for an embedded TUI found by its open file, it takes
+the rollout path above. A prompt sent before the claim decides is typed into this pane's TUI, and
+its turn waits up to a minute for the claim, so the reply still reaches it once the title names the
+thread. A claimed thread is joined even beside other Codex TUIs, and a lens
 on the rollout path whose claim names the thread it already reads joins again
 (`agent/lens_codex_live.rs`, transport in `agent/codex/control.rs`):
 
@@ -326,9 +354,10 @@ on the rollout path whose claim names the thread it already reads joins again
   session before that read, the frames are dropped, since its rollout replay covers what belongs to
   it. The claim goes with the TUI, so a prompt sent before the next claim is typed, never sent to
   the old thread. Every card still open from the server is withdrawn,
-  here and whenever the link drops or the lens joins another thread. A Codex that shows up in the
-  pane again joins without a reload once locating its rollout finds the same one, since threads stay
-  loaded after their TUI leaves and the new one may be on a fresh thread: the rollout lines not read
+  here and whenever the link drops or the lens joins another thread. Then the lens lets go of the
+  session ([When the CLI leaves](#when-the-cli-leaves)), and the next TUI's thread loads as a first
+  session. A Codex that replaced the TUI between two looks and is found on the same rollout joins
+  without a reload, since threads stay loaded after their TUI leaves: the rollout lines not read
   yet come first, then live frames. A connection the server closes reloads the session on the
   rollout path. When the server is back (`codex app-server daemon start`, or a restart) the TUI
   reconnects and resumes its thread, and the next claim, within the 5 s locate period, joins the
@@ -353,6 +382,12 @@ claimed by start order and both lenses sent their prompts over the server to the
 TUIs started in the same second stayed on the rollout path until their first turns named their
 threads ("Reply with alpha | proj2"), then both joined by title; and after the Codex app server was
 killed and started again, all four lenses joined again within 5 s of the TUIs reconnecting.
+Checked again on 2026-11-01 with `claude --model haiku` and `gpt-5.6-luna` at low effort: after
+`/exit` or `/quit` and a fresh CLI in the same pane, the first `agent-send --wait` returned its
+reply whether sent at once, 1 s or 3 s after the TUI was ready, as did one after `/clear` and three
+sent back to back; two Codex TUIs started in the same second each got their own first reply
+(typed, then joined by title) and their second over their own thread's connection; and a TUI
+started again beside another in its folder got its first reply once the title named its thread.
 
 # Input and approvals
 
