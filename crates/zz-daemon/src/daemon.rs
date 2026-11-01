@@ -10173,10 +10173,22 @@ impl Shared {
                                     .and_then(|terminal| terminal_working_directory(terminal))
                             })
                             .or_else(|| std::env::current_dir().ok());
+                        let folder = working_directory
+                            .as_deref()
+                            .map(|path| path.to_string_lossy().into_owned())
+                            .unwrap_or_default();
                         inner
                             .engine
                             .state
                             .update_agent(*pane, |agent| agent.cwd = working_directory)?;
+                        inner.engine.set_pane_runtime_facts(
+                            *pane,
+                            PaneRuntimeFacts {
+                                current_path: folder.clone(),
+                                start_path: folder,
+                                ..PaneRuntimeFacts::default()
+                            },
+                        );
                         let replaced = inner.terminals_mut().remove(pane);
                         if let Some(terminal) = &replaced {
                             clear_pane_modes(&mut inner, *pane);

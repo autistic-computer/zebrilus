@@ -23,6 +23,10 @@ fn run(shared: &Arc<Shared>, client: ClientId, args: &[&str]) -> Result<Executio
 }
 
 fn fixture(name: &str) -> (Arc<Shared>, ClientId, PaneId) {
+    fixture_running(name, "exec sleep 30")
+}
+
+fn fixture_running(name: &str, command: &str) -> (Arc<Shared>, ClientId, PaneId) {
     let shared = Arc::new(Shared::new(11));
     let (client, _) =
         shared.register_subscribed(ClientKind::Command, None, None, OutboundMailbox::new());
@@ -32,7 +36,7 @@ fn fixture(name: &str) -> (Arc<Shared>, ClientId, PaneId) {
             client,
             ClientKind::Command,
             &mut context,
-            &CommandInvocation::new("new-session", ["-d", "-s", name, "exec sleep 30"]),
+            &CommandInvocation::new("new-session", ["-d", "-s", name, command]),
         )
         .expect("session");
     let target = format!("{name}:");
@@ -122,14 +126,13 @@ fn flip_armed(shared: &Shared, pane: PaneId) -> bool {
 
 #[test]
 fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
-    let (shared, client, pane) = fixture("flip-to-chat");
-    shared
-        .inner
-        .lock()
-        .engine
-        .state
-        .update_pane_summary(pane, |summary| summary.process = vec!["claude".to_owned()]);
-    wait_for("the shell's pid", || {
+    let folder = tempfile::tempdir().expect("folder");
+    let cli = folder.path().join("claude");
+    std::fs::write(&cli, "#!/bin/sh\nsleep 30\n").expect("fake CLI");
+    std::fs::set_permissions(&cli, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+        .expect("executable");
+    let (shared, client, pane) = fixture_running("flip-to-chat", &cli.display().to_string());
+    wait_for("the CLI's pid", || {
         shared
             .inner
             .lock()
@@ -138,12 +141,28 @@ fn a_terminal_running_the_cli_flips_into_a_chat_once_the_cli_exits() {
             .and_then(|facts| facts.pid)
             .is_some()
     });
+    let process = vec![cli.display().to_string()];
+    shared
+        .inner
+        .lock()
+        .engine
+        .state
+        .update_pane_summary(pane, |summary| summary.process = process);
     run(&shared, client, &["flip-agent", "-t", &pane.to_string()]).expect("flip");
     wait_for("the chat", || {
         matches!(kind(&shared, pane), Some(PaneKind::Agent(agent)) if agent.provider == AgentProvider::ClaudeCode)
             && shared.inner.lock().agent_panes.contains(&pane)
     });
     assert!(!shared.inner.lock().terminals.contains_key(&pane));
+    assert!(
+        shared
+            .inner
+            .lock()
+            .engine
+            .pane_runtime_facts(pane)
+            .is_none_or(|facts| facts.pid.is_none() && facts.current_command.is_empty()),
+        "the CLI's process facts leave with it"
+    );
     assert!(
         run(
             &shared,
