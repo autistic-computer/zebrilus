@@ -4,7 +4,7 @@ title: Agent panes and the flip
 description: How a pane runs Claude Code or Codex as a chat (PaneKind::Agent over the vendor drivers), how flip-agent switches one pane between the CLI's own TUI and that chat on the same session (busy rules, --now, --when-idle and the armed flag, finding the TUI's session, waiting for the old process), forks and side chats, Codex on its shared app server, the chat's slash list, agent-send and agent-respond, and what the chat draws and how its stream reaches clients.
 resource: crates/zz-daemon/src/daemon/agent_flip.rs
 tags: [agent, agent-pane, flip, chat, claude-code, codex, driver, stream]
-timestamp: 2026-11-01T21:00:00-03:00
+timestamp: 2026-11-01T23:00:00-03:00
 ---
 
 # Overview
@@ -229,11 +229,25 @@ markdown carries them as `zzref:` links; the user's bubble draws them as clickab
   shown images). The desktop agent view and the thin client's agent pane hook
   `ChatPane::close_on_release`, so closing the pane frees every image it held, through its window
   or, when the window closed with it, from the asset cache alone.
-- **Live turns.** The last line of a running turn says Thinking, or Working while a tool runs, with
-  a shimmer across the word, a turning sparkle and the time since the prompt. It hides while the
-  chat waits on you. The transcript only gets a reply once it is whole, so a reply that lands while
-  you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it arrived; replies
-  already there on the first look show at once).
+- **Live turns.** The last line of a running turn says what the agent is doing now, with a shimmer,
+  a turning sparkle and the time since the prompt (`chat_rows::live_line`). It takes the newest of:
+  the CLI's own activity line (`ChatEvent::TurnActivity`, from Claude Code's `task_summary`), a
+  running tool's own description (`ItemBody::activity`: Claude's Bash, PowerShell and Agent
+  `description`, Codex's `wait` as Waiting for agents), else the running tool's verb and target
+  ("Running cargo test"), and the latest reasoning heading. A message the agent writes after them
+  clears them, and the line says Thinking only when nothing more specific is known. While the
+  newest run of tools is still going, the line is that run's header and opens to its steps. It
+  hides while the chat waits on you. The transcript only gets a reply once it is whole, so a reply
+  that lands while you watch types itself in over 220 to 900 ms (`ChatPane::sync` notes when it
+  arrived; replies already there on the first look show at once).
+- **Batches.** Claude Code sends a sentence for each finished batch of tool calls
+  (`tool_use_summary`, with the ids it covers), and the run's header shows it instead of zz's count
+  ("Counted lines in a.txt" for "Ran 2 commands"), with failures and denials still counted after
+  it. The chat matches it by tool id (`ChatEvent::ItemsSummarized`), so a sentence that lands after
+  the reply, after the turn, or in a replay finds its rows, and a run that two sentences cover
+  splits in two. Codex, subagents and a session resumed from the CLI's transcript (which keeps no
+  sentences) show zz's count. Claude Code's `post_turn_summary`, a line about the whole turn sent
+  after it, is not drawn: the reply sits right under the fold and says the same thing.
 - **Thinking.** A finished run whose reasoning is only headings (Codex records the headings of its
   summaries; the reasoning itself is encrypted) leaves no row, while the running one still shows
   its heading. Opening a run lists its reasoning, heading removed and muted, in order with its
