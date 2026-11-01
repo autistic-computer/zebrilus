@@ -344,7 +344,7 @@ impl Claude {
             .then(|| record.waiting_for.clone())
             .filter(|why| !why.is_empty());
         let (busy, waiting) = match self.link.as_mut() {
-            Some(link) => link.status(busy, waiting),
+            Some(link) => link.status(busy, record.status == "waiting", waiting),
             None => (busy, waiting),
         };
         Some(Status { busy, waiting })

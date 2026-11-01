@@ -106,6 +106,7 @@ struct Ask {
     input: Value,
     suggestions: Value,
     kind: AskKind,
+    shown: bool,
 }
 
 enum AskKind {
@@ -166,11 +167,23 @@ impl Link {
         self.instance.as_ref()?.model.as_deref()
     }
 
-    pub(crate) fn status(&mut self, busy: bool, waiting: Option<String>) -> (bool, Option<String>) {
+    pub(crate) fn status(
+        &mut self,
+        busy: bool,
+        asking: bool,
+        waiting: Option<String>,
+    ) -> (bool, Option<String>) {
         if !self.live() {
             self.unrelayed = None;
             self.resolve(|_| true);
             return (busy, waiting);
+        }
+        if asking {
+            for ask in &mut self.asks {
+                ask.shown = true;
+            }
+        } else {
+            self.resolve(|ask| ask.shown);
         }
         let settled = self.done.is_some_and(|done| done.elapsed() < SETTLED);
         let busy = self.busy() || self.started || (busy && !settled);
@@ -479,6 +492,7 @@ impl Link {
             input,
             suggestions,
             kind,
+            shown: false,
         });
         self.payloads.push(payload);
     }

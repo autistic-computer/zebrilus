@@ -176,9 +176,12 @@ and is the whole story when the plugin is not there.
   the native driver drew (`claude::approval_request`, `plan_request`, `question_request`) and answers
   with the same decisions (`allow` with `updatedInput`, Always allow with the suggestions,
   `allow_with_mode` for a plan, `answered` for questions, several and multi-select joined with
-  ", "). An answer given in the TUI withdraws the card on `used`, the next step of that loop, the
-  end of that loop's turn (a background agent's card outlives the main turn), or when the plugin
-  stops polling, and the waiting hook gets `pass`.
+  ", "). An answer given in the TUI withdraws the card once the record, which read `waiting` while
+  the card was up, reads anything else (about 50 ms after the answer, while the tool still runs),
+  on `used`, the next step of that loop, the end of that loop's turn (a background agent's card
+  outlives the main turn), or when the plugin stops polling, and the waiting hook gets `pass`. A
+  background agent's ask shows no dialog on the main screen and leaves the record `busy`, so its
+  card stays until it is answered.
 - **Actions.** A prompt goes through `$.prompt.submit({ text, asUser: true })`; the TUI shows
   "Prompt from the zz plugin" and the transcript records it with a plugin origin. Prompts with
   images, slash commands and steers are still typed. After Esc the CLI refuses plugin prompts until

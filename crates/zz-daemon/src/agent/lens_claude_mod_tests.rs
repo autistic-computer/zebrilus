@@ -949,3 +949,33 @@ fn a_hello_that_beat_the_record_to_its_session_is_adopted_once_the_record_catche
     .unwrap();
     live(&mut lens);
 }
+
+#[test]
+fn a_dialog_answered_in_the_terminal_withdraws_its_card_before_the_tool_ends() {
+    let rig = Rig::new(true);
+    let mut lens = rig.lens();
+    lens.open();
+    let _poll = rig.poll();
+    rig.hello(Some(TURN));
+    live(&mut lens);
+    rig.record("busy");
+    let hook = rig.ask(json!({
+        "t": "ask", "key": "mod-1:6", "tool": "Bash", "input": { "command": "sleep 8" },
+        "id": "toolu_slow",
+    }));
+    let started = Instant::now();
+    let request_id = loop {
+        if let Some((request_id, ..)) = requested(&lens.tick()) {
+            break request_id;
+        }
+        assert!(started.elapsed() < Duration::from_secs(5));
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(resolved(&lens.tick()).is_empty());
+
+    rig.record("waiting");
+    assert!(resolved(&lens.tick()).is_empty());
+    rig.record("busy");
+    assert_eq!(resolved(&lens.tick()), [request_id]);
+    assert_eq!(hook.join().unwrap(), json!({ "pass": true }));
+}
