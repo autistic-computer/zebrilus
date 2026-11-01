@@ -8,10 +8,9 @@ use penna::{
     sheet::{bottom_sheet, close_sheet, sheet_close, sheet_row},
 };
 use zz_client::{
-    agent_launch::AgentLaunches,
     new_chat::{
-        AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, chat_picker_place,
-        folder_start, recent_folders, start_agent_commands,
+        AGENT_CHOICES, AgentChoice, ChatKey, ChatPicker, FolderChoice, agent_picker_place,
+        close_picker_command, folder_start, picker_folders, start_agent_commands,
     },
     pane_picker::{PaneChoice, PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
 };
@@ -49,6 +48,7 @@ pub(super) struct PanePicker {
     chosen: Option<usize>,
     sheet_closed: bool,
     chat: ChatPicker,
+    chat_view: bool,
 }
 
 impl PanePicker {
@@ -66,12 +66,30 @@ impl PanePicker {
             chosen: None,
             sheet_closed: false,
             chat: ChatPicker::default(),
+            chat_view: false,
+        }
+    }
+
+    pub(super) fn set_chat_view(&mut self, chat_view: bool, cx: &mut Context<Self>) {
+        if self.chat_view != chat_view {
+            self.chat_view = chat_view;
+            self.selected = 0;
+            cx.notify();
         }
     }
 
     fn folders(&self, cx: &App) -> Option<Vec<FolderChoice>> {
         let snapshot = self.connection.read(cx).core.snapshot();
-        chat_picker_place(snapshot, self.pane).map(|_| recent_folders(snapshot))
+        agent_picker_place(snapshot, self.pane, self.chat_view)
+            .map(|_| picker_folders(snapshot, self.pane))
+    }
+
+    fn close(&self, cx: &mut Context<Self>) {
+        let command = close_picker_command(self.connection.read(cx).core.snapshot(), self.pane);
+        if let Some(command) = command {
+            self.connection
+                .update(cx, |connection, cx| connection.invoke(command, cx));
+        }
     }
 
     fn start(&self, agent: AgentChoice, folders: &[FolderChoice], cx: &mut Context<Self>) {
@@ -84,7 +102,6 @@ impl PanePicker {
             self.pane,
             self.chat.folder(folders),
             agent,
-            &AgentLaunches::default(),
         );
         self.connection.update(cx, |connection, cx| {
             for command in commands {
@@ -213,13 +230,7 @@ impl PanePicker {
                         this.sheet_closed = true;
                         match this.chosen.take() {
                             Some(index) => this.activate(index, cx),
-                            None => this.connection.update(cx, |connection, cx| {
-                                connection.command(
-                                    "kill-pane",
-                                    vec!["-t".into(), this.pane.to_string()],
-                                    cx,
-                                );
-                            }),
+                            None => this.close(cx),
                         }
                         cx.notify();
                     });
@@ -300,9 +311,7 @@ impl PanePicker {
             {
                 ChatKey::Start(agent) => self.start(agent, &folders, cx),
                 ChatKey::ChooseFolder => self.choose_folder(&folders, cx),
-                ChatKey::Close => self.connection.update(cx, |connection, cx| {
-                    connection.command("kill-pane", vec!["-t".into(), self.pane.to_string()], cx);
-                }),
+                ChatKey::Close => self.close(cx),
                 ChatKey::Changed => cx.notify(),
                 ChatKey::Ignored => return,
             }
@@ -320,9 +329,7 @@ impl PanePicker {
                 cx.notify();
             }
             PanePickerKey::Choose(index) => self.activate(index, cx),
-            PanePickerKey::Close => self.connection.update(cx, |connection, cx| {
-                connection.command("kill-pane", vec!["-t".into(), self.pane.to_string()], cx);
-            }),
+            PanePickerKey::Close => self.close(cx),
             PanePickerKey::Ignored => return,
         }
         cx.stop_propagation();

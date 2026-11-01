@@ -8,6 +8,7 @@ export const state = {
   cell: { width: 8, height: 16 },
   remembered: "",
   connected: false,
+  chatView: false,
 };
 
 const handlers = new Map();
@@ -75,6 +76,7 @@ function render() {
   frame = 0;
   if (treeDirty && state.client) {
     treeDirty = false;
+    state.client.set_chat_view(state.chatView);
     state.tree = JSON.parse(state.client.tree());
     for (const handler of phases.tree) handler(state.tree);
   }

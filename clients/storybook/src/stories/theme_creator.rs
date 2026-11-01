@@ -131,7 +131,7 @@ pub const PLATES: &[Section] = &[
     Section {
         id: "start",
         name: "Start",
-        summary: "The workspace before its first session, the first run with no host, a new split asking what it should become, and a new chat asking which agent to start and where.",
+        summary: "The workspace before its first session, the first run with no host, a new pane in the session tree asking what it should become, and a new pane in chat view asking which agent to start and where.",
         build: |_, cx| stateless(start, cx),
     },
     Section {

@@ -774,10 +774,13 @@ the repeat window or prefix-timeout runs out, so `PrefixArmed` and `KeyTableActi
 another key. `key_table_active_appends_after_the_command_client_exit` pins the tag.
 
 v107 adds the shell path picker ([design](/designs/path-picker-and-which-key.md)). The desktop
-advertises `ClientHello::CLIENT_PATH_PICKER_CAPABILITY` (`client-path-picker-v1`); iOS, web, the
-TUI and FFI clients do not, and `choose-path` answers them with an error, as does a
+advertises `ClientHello::CLIENT_PATH_PICKER_CAPABILITY` (`client-path-picker-v1`), and so do web
+and iOS now; the TUI and FFI clients do not, and `choose-path` answers them with an error, as does a
 `PathListRequest` from them or for a pane outside the client's attached session (unless its `dir`
-is absolute or starts with `~`, since 2026-10-26 with no version change). `EventPayload` gains
+is absolute or starts with `~`, since 2026-10-26 with no version change). Since v118 the request's
+`pane` is optional: a `dir` named from its root lists with no pane, or through a pane that is not a
+terminal (a picker, an agent), so the New agent picker's folder browser works where no terminal is
+open. A relative `dir` still needs a terminal pane. `EventPayload` gains
 `OpenPathPicker { pane, start_dir }` after `KeyTableActive`, pushed only to the invoking client.
 v107 also appends `EventPayload::KeyTablesPatched { tables, removed }` after `OpenPathPicker`: the
 tables whose bindings changed since the previous publication, each replacing the client's table of
@@ -1052,7 +1055,9 @@ and the model and effort to start with; every field but `provider` is optional.
   `Hello` and `Welcome` (`validate_control_message` rejects an inner-version mismatch even if the envelope
   version passed).
 - v118 requires updated clients and daemon together, including the daemon on every ssh host.
-  v118 appends `PaneKindSnapshot::Agent(AgentDescriptor)` and `ChooseTreePaneKind::Agent`.
+  v118 appends `PaneKindSnapshot::Agent(AgentDescriptor)` and `ChooseTreePaneKind::Agent`, and makes
+  `PathListRequest.pane` an `Option<PaneId>`, so a folder named from its root lists with no
+  terminal pane open.
 - v117 requires updated clients and daemon together, including the daemon on every ssh host.
   v117 appends `MuxOptionKey::CommandAlias`.
 - v116 requires updated clients and daemon together, including the daemon on every ssh host.

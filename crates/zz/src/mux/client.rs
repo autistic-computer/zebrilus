@@ -2934,7 +2934,7 @@ impl MuxClient {
     pub(crate) fn request_host_path_list(
         &mut self,
         host: HostId,
-        pane: PaneId,
+        pane: Option<PaneId>,
         dir: String,
     ) -> Option<u64> {
         #[cfg(test)]

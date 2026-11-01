@@ -12,8 +12,8 @@ use zz_client::{
     },
     navigation::{RenameTarget, ordered_panes, pane_label, rename_prompt_command, session_label},
     new_chat::{
-        AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, chat_picker_place, folder_rows,
-        open_picker_commands, recent_folders, start_agent_commands,
+        AGENT_CHOICES, ChatKey, ChatPicker, ChatStage, agent_picker_place, close_picker_command,
+        folder_rows, open_picker_commands, picker_folders, start_agent_commands,
     },
     pane_drop_command,
     pane_picker::{PanePickerKey, pane_choices, pane_kind_command, pane_picker_key},
@@ -46,10 +46,15 @@ pub struct Sidebar {
     focused: bool,
     clock: DaemonClock,
     chat_pickers: BTreeMap<PaneId, ChatPicker>,
+    chat_view: bool,
 }
 
 #[wasm_bindgen]
 impl Client {
+    pub fn set_chat_view(&mut self, on: bool) {
+        self.sidebar.chat_view = on;
+    }
+
     pub fn tree(&self) -> String {
         let snapshot = self.core.snapshot();
         let sessions = snapshot
@@ -663,11 +668,11 @@ impl Client {
     pub fn chat_picker(&mut self, pane: f64) -> String {
         let pane = pane_id(pane);
         let snapshot = self.core.snapshot();
-        if chat_picker_place(snapshot, pane).is_none() {
+        if agent_picker_place(snapshot, pane, self.sidebar.chat_view).is_none() {
             self.sidebar.chat_pickers.remove(&pane);
             return "null".to_owned();
         }
-        let folders = recent_folders(snapshot);
+        let folders = picker_folders(snapshot, pane);
         let picker = self.sidebar.chat_pickers.entry(pane).or_default();
         json!({
             "stage": match picker.stage {
@@ -706,7 +711,7 @@ impl Client {
             return false;
         }
         let pane = pane_id(pane);
-        let folders = recent_folders(self.core.snapshot());
+        let folders = picker_folders(self.core.snapshot(), pane);
         let picker = self.sidebar.chat_pickers.entry(pane).or_default();
         let rows = folder_rows(&picker.query, &folders, &[]);
         let text = (key.chars().count() == 1).then_some(key);
@@ -716,7 +721,7 @@ impl Client {
 
     pub fn chat_picker_click(&mut self, pane: f64, target: &str, index: usize) {
         let pane = pane_id(pane);
-        let folders = recent_folders(self.core.snapshot());
+        let folders = picker_folders(self.core.snapshot(), pane);
         let picker = self.sidebar.chat_pickers.entry(pane).or_default();
         let outcome = match target {
             "folder-line" => {
@@ -745,17 +750,14 @@ impl Client {
     fn settle_chat(&mut self, pane: PaneId, outcome: ChatKey) -> bool {
         match outcome {
             ChatKey::Start(agent) if !self.core.attached_read_only() => {
-                let folders = recent_folders(self.core.snapshot());
+                let folders = picker_folders(self.core.snapshot(), pane);
                 let folder = self
                     .sidebar
                     .chat_pickers
                     .get(&pane)
                     .map(|picker| picker.folder(&folders).to_owned())
                     .unwrap_or_default();
-                let launches = zz_client::agent_launch::AgentLaunches::default();
-                for command in
-                    start_agent_commands(self.core.snapshot(), pane, &folder, agent, &launches)
-                {
+                for command in start_agent_commands(self.core.snapshot(), pane, &folder, agent) {
                     self.invoke(command);
                 }
                 true
@@ -767,7 +769,9 @@ impl Client {
                 true
             }
             ChatKey::Close => {
-                self.pane_action(pane.0 as f64, "close", 0);
+                if let Some(command) = close_picker_command(self.core.snapshot(), pane) {
+                    self.invoke(command);
+                }
                 true
             }
             ChatKey::Changed => true,
@@ -842,14 +846,17 @@ impl Client {
         let panes = ordered_panes(window)
             .into_iter()
             .map(|pane| {
+                let agent_picker = matches!(pane.kind, PaneKindSnapshot::Terminal)
+                    && agent_picker_place(self.core.snapshot(), pane.id, self.sidebar.chat_view)
+                        .is_some();
                 json!({
                     "id": pane.id.0,
                     "label": pane_label(pane),
-                    "kind": kind(&pane.kind),
+                    "kind": if agent_picker { "picker" } else { kind(&pane.kind) },
                     "dead": pane.dead,
                     "deadStatus": pane.dead_status,
                     "deadLabel": pane.dead.then(|| pane.dead_status.map_or_else(|| "Dead".to_owned(), |status| format!("Dead · {status}"))),
-                    "waiting": matches!(pane.kind, PaneKindSnapshot::Terminal) && self.core.viewport(pane.id).is_none(),
+                    "waiting": matches!(pane.kind, PaneKindSnapshot::Terminal) && !agent_picker && self.core.viewport(pane.id).is_none(),
                     "bell": pane.bell,
                     "synchronized": pane.synchronized_input,
                     "mode": pane.mode.as_ref().map(|mode| format!("{mode:?}")),

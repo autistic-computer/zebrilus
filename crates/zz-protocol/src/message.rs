@@ -3661,7 +3661,7 @@ pub enum ProtocolMessage {
     },
     PathListRequest {
         request_id: u64,
-        pane: PaneId,
+        pane: Option<PaneId>,
         #[serde(deserialize_with = "deserialize_optional_path_list_text")]
         dir: Option<String>,
     },
@@ -5519,7 +5519,7 @@ mod tests {
         for (offset, message) in [
             super::ProtocolMessage::PathListRequest {
                 request_id: 7,
-                pane: crate::PaneId(4),
+                pane: Some(crate::PaneId(4)),
                 dir: Some("../x".to_owned()),
             },
             super::ProtocolMessage::PathListBegin {
@@ -5573,7 +5573,7 @@ mod tests {
         for message in [
             super::ProtocolMessage::PathListRequest {
                 request_id: 1,
-                pane: crate::PaneId(1),
+                pane: Some(crate::PaneId(1)),
                 dir: Some(long.clone()),
             },
             super::ProtocolMessage::PathListBegin {

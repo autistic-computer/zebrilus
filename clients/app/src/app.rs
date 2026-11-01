@@ -38,8 +38,8 @@ use penna::{
 };
 use zz_client::{
     ChromeAction, ChromeKeymap, ChromeProfile, DropZone, PaneRect, UI_TABLE, coerced_drop_zone,
-    drop_preview_bounds, drop_zone_at, pane_drop_command, pane_rects, predicted_drop_layout,
-    split_ratio_basis,
+    drop_preview_bounds, drop_zone_at, new_chat::agent_picker_place, pane_drop_command, pane_rects,
+    predicted_drop_layout, split_ratio_basis,
 };
 use zz_protocol::{
     ChooseBufferAction, ChooseTreeAction, ChooseTreeKind, ChooseTreePaneKind, CommandInvocation,
@@ -1144,10 +1144,10 @@ impl AppShell {
             .filter(|_| self.connection.read(cx).agent_lens_open(pane))
         {
             lens.read(cx).focus_handle(cx).focus(window, cx);
-        } else if let Some(terminal) = self.terminals.get(&pane) {
-            terminal.read(cx).focus_handle(cx).focus(window, cx);
         } else if let Some(picker) = self.pickers.get(&pane) {
             picker.read(cx).focus_handle(cx).focus(window, cx);
+        } else if let Some(terminal) = self.terminals.get(&pane) {
+            terminal.read(cx).focus_handle(cx).focus(window, cx);
         }
         self.command(
             "select-pane",
@@ -1172,10 +1172,21 @@ impl AppShell {
                     .map(|(id, pane)| (*id, pane.kind.clone()))
             })
             .collect();
-        if self.pickers.keys().any(|pane| {
-            self.focused_pane == Some(*pane)
-                && !matches!(existing.get(pane), Some(PaneKindSnapshot::Picker))
-        }) {
+        let shown = self
+            .pickers
+            .keys()
+            .copied()
+            .filter(|pane| match existing.get(pane) {
+                Some(PaneKindSnapshot::Picker) => true,
+                Some(PaneKindSnapshot::Terminal) => self.agent_picker_shown(*pane, cx),
+                _ => false,
+            })
+            .collect::<Vec<_>>();
+        if self
+            .pickers
+            .keys()
+            .any(|pane| self.focused_pane == Some(*pane) && !shown.contains(pane))
+        {
             self.focused_pane = None;
         }
         self.terminals
@@ -1195,8 +1206,7 @@ impl AppShell {
         #[cfg(any(target_os = "ios", target_os = "android"))]
         self.browsers
             .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Browser(_))));
-        self.pickers
-            .retain(|pane, _| matches!(existing.get(pane), Some(PaneKindSnapshot::Picker)));
+        self.pickers.retain(|pane, _| shown.contains(pane));
     }
 
     fn terminal_entity(&mut self, pane: PaneId, cx: &mut Context<Self>) -> Entity<TerminalPane> {
@@ -1358,7 +1368,8 @@ impl AppShell {
         pane: PaneId,
         cx: &mut Context<Self>,
     ) -> Entity<picker::PanePicker> {
-        self.pickers
+        let picker = self
+            .pickers
             .entry(pane)
             .or_insert_with(|| {
                 let connection = self.connection.clone();
@@ -1373,7 +1384,19 @@ impl AppShell {
                 .detach();
                 picker
             })
-            .clone()
+            .clone();
+        let chat_view = self.preferences.flat_sidebar;
+        picker.update(cx, |picker, cx| picker.set_chat_view(chat_view, cx));
+        picker
+    }
+
+    fn agent_picker_shown(&self, pane: PaneId, cx: &App) -> bool {
+        agent_picker_place(
+            self.connection.read(cx).core.snapshot(),
+            pane,
+            self.preferences.flat_sidebar,
+        )
+        .is_some()
     }
 
     fn dismiss_pane_prefix(&self, pane: PaneId, cx: &mut App) {
@@ -1867,8 +1890,10 @@ impl AppShell {
             let Some(pane) = active_window.panes.get(&pane_id) else {
                 continue;
             };
+            let agent_picker = matches!(pane.kind, PaneKindSnapshot::Terminal)
+                && self.agent_picker_shown(pane_id, cx);
             let frame = floating::pane_frame(
-                matches!(pane.kind, PaneKindSnapshot::Terminal),
+                matches!(pane.kind, PaneKindSnapshot::Terminal) && !agent_picker,
                 is_float,
                 &self.preferences,
                 f32::from(cx.theme().pane_radius()),
@@ -1884,6 +1909,18 @@ impl AppShell {
                 .flatten();
             let lens_shown = lens.is_some();
             let content = match &pane.kind {
+                PaneKindSnapshot::Terminal if agent_picker => {
+                    let picker = self.picker_entity(pane_id, cx);
+                    if can_focus
+                        && pane_id == active_window.active_pane
+                        && self.focused_pane != Some(pane_id)
+                    {
+                        picker.read(cx).focus_handle(cx).focus(window, cx);
+                        self.focused_pane = Some(pane_id);
+                    }
+                    picker.update(cx, |picker, cx| picker.set_corner_radii(radii, cx));
+                    picker.into_any_element()
+                }
                 PaneKindSnapshot::Terminal if let Some(lens) = lens => {
                     lens.update(cx, |lens, cx| {
                         lens.set_corner_radii(
@@ -2032,13 +2069,16 @@ impl AppShell {
             let chrome = PaneChrome::new(radii, frame.framed)
                 .active(active)
                 .dimmed(
-                    !active && (lens_shown || !matches!(pane.kind, PaneKindSnapshot::Terminal)),
+                    !active
+                        && (lens_shown
+                            || agent_picker
+                            || !matches!(pane.kind, PaneKindSnapshot::Terminal)),
                     self.preferences.pane_inactive_opacity,
                 )
                 .frame(frame.framed.then(|| {
                     PaneLook::global(cx).frame(cx.theme(), cx.theme().background, active)
                 }));
-            let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal);
+            let terminal_pane = matches!(&pane.kind, PaneKindSnapshot::Terminal) && !agent_picker;
             let mut status_tags = Vec::new();
             if !terminal_pane && let Some(label) = dead_label {
                 status_tags.push(
