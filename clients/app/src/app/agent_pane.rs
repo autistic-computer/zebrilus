@@ -27,8 +27,8 @@ use zz_client::agent_lens::{
     turn_running,
 };
 use zz_client::agent_settings::{
-    ComposerSetter, LensSettings, composer_setter, fork_command, real_session, side_chat_command,
-    source_message,
+    ComposerSetter, LensSettings, composer_setter, fork_chat_command, real_session, short_folder,
+    side_chat_command, source_message,
 };
 use zz_client::agent_transcript::{AgentThreadEntry, ToolPayload, is_zz_command, rewind_command};
 use zz_protocol::chat::RequestView;
@@ -67,9 +67,6 @@ use zz_ui::{
 
 use crate::{command_palette::palette_backend, connection::Connection};
 
-const SIDE_CHAT_WIDTH: &str = "46%";
-const SIDE_CHAT_HEIGHT: &str = "72%";
-
 impl AgentPane {
     fn lens_settings(&self, state: &AgentPaneWire) -> Option<LensSettings> {
         self.transcript
@@ -99,13 +96,14 @@ impl AgentPane {
     }
 
     fn chat_cwd(&self, cx: &App) -> String {
-        self.transcript
-            .lens
-            .settings
-            .as_ref()
-            .map(|settings| settings.cwd.clone())
-            .filter(|cwd| !cwd.is_empty())
-            .or_else(|| self.pane_snapshot(cx).map(|pane| pane.summary.cwd.clone()))
+        self.pane_snapshot(cx)
+            .map(|pane| match &pane.kind {
+                zz_protocol::PaneKindSnapshot::Agent(zz_protocol::AgentDescriptor {
+                    cwd: Some(cwd),
+                    ..
+                }) if pane.summary.cwd.is_empty() => cwd.to_string_lossy().into_owned(),
+                _ => pane.summary.cwd.clone(),
+            })
             .unwrap_or_default()
     }
 
@@ -152,10 +150,11 @@ impl AgentPane {
         let Some(settings) = self.lens_settings(state) else {
             return (None, Vec::new());
         };
-        let directory = (!settings.cwd.is_empty()).then(|| {
+        let cwd = self.chat_cwd(cx);
+        let directory = (!cwd.is_empty()).then(|| {
             agent_directory_chip(
                 ("agent-directory", self.pane.0),
-                settings.short_cwd(None),
+                short_folder(&cwd, None),
                 false,
                 cx,
             )
@@ -198,21 +197,9 @@ impl AgentPane {
         let (Some(session), Some(provider)) = (self.session(cx), self.provider(cx)) else {
             return;
         };
-        let mut arguments = vec![
-            "-t".to_owned(),
-            self.pane.to_string(),
-            "-c".to_owned(),
-            self.chat_cwd(cx),
-            "-x".to_owned(),
-            SIDE_CHAT_WIDTH.to_owned(),
-            "-y".to_owned(),
-            SIDE_CHAT_HEIGHT.to_owned(),
-            "-T".to_owned(),
-            "Side chat".to_owned(),
-        ];
-        arguments.extend(side_chat_command(provider, &session));
+        let command = side_chat_command(provider, &session, &self.chat_cwd(cx), self.pane);
         self.connection.update(cx, |connection, cx| {
-            connection.command("new-pane", arguments, cx);
+            connection.invoke(command, cx);
         });
     }
 
@@ -222,15 +209,9 @@ impl AgentPane {
         else {
             return;
         };
-        let mut arguments = vec![
-            "-c".to_owned(),
-            self.chat_cwd(cx),
-            "-n".to_owned(),
-            "fork".to_owned(),
-        ];
-        arguments.extend(fork_command(provider, &session, message));
+        let command = fork_chat_command(provider, &session, &self.chat_cwd(cx), Some(message));
         self.connection.update(cx, |connection, cx| {
-            connection.command("new-window", arguments, cx);
+            connection.invoke(command, cx);
         });
     }
 }

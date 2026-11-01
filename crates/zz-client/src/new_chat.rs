@@ -6,6 +6,7 @@ use zz_protocol::{
 };
 
 use crate::{
+    agent_launch::AgentLaunches,
     fuzzy::fuzzy_match,
     navigation::{last_component, pane_place, session_place},
     program::Program,
@@ -184,22 +185,24 @@ fn holder(snapshot: &MuxSnapshot, pane: PaneId) -> Option<(&SessionSnapshot, Win
 }
 
 #[must_use]
-fn agent_pane_command(target: String, folder: &str, agent: AgentChoice) -> CommandInvocation {
-    command(
-        "select-pane-kind",
-        [
-            "-t".to_owned(),
-            target,
-            "-c".to_owned(),
-            folder.to_owned(),
-            "agent".to_owned(),
-            agent.program.to_owned(),
-        ],
-    )
+fn agent_pane_command(
+    target: String,
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> CommandInvocation {
+    let mut args = vec!["-t".to_owned(), target, "-c".to_owned(), folder.to_owned()];
+    args.extend(launches.agent_flags(agent.provider()));
+    args.extend(["agent".to_owned(), agent.program.to_owned()]);
+    command("select-pane-kind", args)
 }
 
 #[must_use]
-pub fn first_chat_commands(folder: &str, agent: AgentChoice) -> Vec<CommandInvocation> {
+pub fn first_chat_commands(
+    folder: &str,
+    agent: AgentChoice,
+    launches: &AgentLaunches,
+) -> Vec<CommandInvocation> {
     let name = session_name(folder);
     vec![
         command(
@@ -212,7 +215,7 @@ pub fn first_chat_commands(folder: &str, agent: AgentChoice) -> Vec<CommandInvoc
                 folder.to_owned(),
             ],
         ),
-        agent_pane_command(format!("{name}:"), folder, agent),
+        agent_pane_command(format!("{name}:"), folder, agent, launches),
         command("attach-session", ["-t".to_owned(), name]),
     ]
 }
@@ -223,8 +226,14 @@ pub fn start_agent_commands(
     pane: PaneId,
     folder: &str,
     agent: AgentChoice,
+    launches: &AgentLaunches,
 ) -> Vec<CommandInvocation> {
-    let mut commands = vec![agent_pane_command(pane.to_string(), folder, agent)];
+    let mut commands = vec![agent_pane_command(
+        pane.to_string(),
+        folder,
+        agent,
+        launches,
+    )];
     let Some((session, window)) = holder(snapshot, pane) else {
         return commands;
     };
@@ -713,8 +722,15 @@ mod tests {
     fn the_folder_decides_the_session_the_chat_lands_in() {
         let fleet = fleet();
         let claude = AGENT_CHOICES[0];
+        let none = AgentLaunches::default();
         let start = |folder: &str, agent: AgentChoice| {
-            lines(&start_agent_commands(&fleet, PaneId(4), folder, agent))
+            lines(&start_agent_commands(
+                &fleet,
+                PaneId(4),
+                folder,
+                agent,
+                &none,
+            ))
         };
         assert_eq!(claude.title(), "Claude Code");
         assert_eq!(
@@ -741,8 +757,9 @@ mod tests {
 
     #[test]
     fn a_first_chat_makes_its_own_session_and_attaches_to_it() {
+        let none = AgentLaunches::default();
         assert_eq!(
-            lines(&first_chat_commands("~", AGENT_CHOICES[0])),
+            lines(&first_chat_commands("~", AGENT_CHOICES[0], &none)),
             [
                 "new-session -d -s home -c ~",
                 "select-pane-kind -t home: -c ~ agent claude",
@@ -750,8 +767,46 @@ mod tests {
             ]
         );
         assert_eq!(
-            lines(&first_chat_commands("~/dev/zz.app", AGENT_CHOICES[1]))[1],
+            lines(&first_chat_commands(
+                "~/dev/zz.app",
+                AGENT_CHOICES[1],
+                &none
+            ))[1],
             "select-pane-kind -t zz-app: -c ~/dev/zz.app agent codex"
+        );
+    }
+
+    #[test]
+    fn a_new_chat_starts_on_the_model_and_effort_last_picked() {
+        let mut launches = AgentLaunches::default();
+        launches.pick(
+            AgentProvider::ClaudeCode,
+            crate::agent_settings::MODEL,
+            "haiku",
+        );
+        launches.pick(
+            AgentProvider::ClaudeCode,
+            crate::agent_settings::EFFORT,
+            "low",
+        );
+        launches.pick(
+            AgentProvider::Codex,
+            crate::agent_settings::EFFORT,
+            "medium",
+        );
+        assert_eq!(
+            lines(&start_agent_commands(
+                &fleet(),
+                PaneId(4),
+                "~/dev/zz",
+                AGENT_CHOICES[0],
+                &launches
+            )),
+            ["select-pane-kind -t %4 -c ~/dev/zz --model haiku --effort low agent claude"]
+        );
+        assert_eq!(
+            lines(&first_chat_commands("~", AGENT_CHOICES[1], &launches))[1],
+            "select-pane-kind -t home: -c ~ --effort medium agent codex"
         );
     }
 
@@ -812,7 +867,8 @@ mod tests {
                 &fleet,
                 PaneId(1),
                 "~/notes",
-                AGENT_CHOICES[0]
+                AGENT_CHOICES[0],
+                &AgentLaunches::default()
             )),
             ["select-pane-kind -t %1 -c ~/notes agent claude"]
         );

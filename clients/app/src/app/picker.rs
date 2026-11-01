@@ -102,6 +102,7 @@ impl PanePicker {
             self.pane,
             self.chat.folder(folders),
             agent,
+            &zz_client::agent_launch::AgentLaunches::default(),
         );
         self.connection.update(cx, |connection, cx| {
             for command in commands {

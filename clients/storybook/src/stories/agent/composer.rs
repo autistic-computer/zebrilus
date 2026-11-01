@@ -179,7 +179,6 @@ pub fn claude_settings() -> LensSettings {
             ("xhigh", "Extra high"),
             ("max", "Max"),
         ]),
-        cwd: "/Users/you/src/zebrilus".to_owned(),
     }
 }
 
@@ -210,7 +209,6 @@ pub fn codex_settings() -> LensSettings {
             ("max", "Max"),
             ("ultra", "Ultra"),
         ]),
-        cwd: "/Users/you/src/zebrilus".to_owned(),
     }
 }
 

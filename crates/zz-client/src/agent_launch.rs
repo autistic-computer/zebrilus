@@ -109,33 +109,13 @@ impl AgentLaunches {
     }
 
     #[must_use]
-    pub fn command(&self, provider: AgentProvider, program: &str) -> Vec<String> {
+    pub fn agent_flags(&self, provider: AgentProvider) -> Vec<String> {
         let launch = self.get(provider);
-        let model = Some(launch.model.as_str()).filter(|model| launch_value(model));
-        let effort = Some(launch.effort.as_str()).filter(|effort| launch_value(effort));
-        let mut words = vec![program.to_owned()];
-        match provider {
-            AgentProvider::ClaudeCode => {
-                if let Some(model) = model {
-                    words.extend(["--model".to_owned(), model.to_owned()]);
-                }
-                if let Some(effort) = effort {
-                    words.extend(["--effort".to_owned(), effort.to_owned()]);
-                }
-            }
-            AgentProvider::Codex => {
-                if let Some(model) = model {
-                    words.extend(["-c".to_owned(), format!("model=\"{model}\"")]);
-                }
-                if let Some(effort) = effort {
-                    words.extend([
-                        "-c".to_owned(),
-                        format!("model_reasoning_effort=\"{effort}\""),
-                    ]);
-                }
-            }
-        }
-        words
+        [("--model", &launch.model), ("--effort", &launch.effort)]
+            .into_iter()
+            .filter(|(_, value)| launch_value(value))
+            .flat_map(|(flag, value)| [flag.to_owned(), value.clone()])
+            .collect()
     }
 }
 
@@ -228,10 +208,7 @@ mod tests {
     #[test]
     fn new_chats_start_with_the_model_and_effort_last_picked() {
         let mut launches = AgentLaunches::default();
-        assert_eq!(
-            launches.command(AgentProvider::ClaudeCode, "claude"),
-            ["claude"]
-        );
+        assert!(launches.agent_flags(AgentProvider::ClaudeCode).is_empty());
         assert!(launches.pick(AgentProvider::ClaudeCode, MODEL, "opus"));
         assert!(!launches.pick(AgentProvider::ClaudeCode, MODEL, "opus"));
         assert!(!launches.pick(AgentProvider::ClaudeCode, MODEL, "--danger"));
@@ -254,12 +231,12 @@ mod tests {
             &settings("gpt-5.5-codex", "high"),
         ));
         assert_eq!(
-            launches.command(AgentProvider::ClaudeCode, "claude"),
-            ["claude", "--model", "opus", "--effort", "xhigh"]
+            launches.agent_flags(AgentProvider::ClaudeCode),
+            ["--model", "opus", "--effort", "xhigh"]
         );
         assert_eq!(
-            launches.command(AgentProvider::Codex, "codex"),
-            ["codex", "-c", "model=\"gpt-5.5-codex\""]
+            launches.agent_flags(AgentProvider::Codex),
+            ["--model", "gpt-5.5-codex"]
         );
         let saved = serde_json::to_string(&launches).expect("json");
         assert_eq!(
