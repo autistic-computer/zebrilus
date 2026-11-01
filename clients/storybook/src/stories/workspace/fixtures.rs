@@ -9,7 +9,7 @@ use zz_client::StatusBarPane;
 use zz_protocol::{AgentProvider, BrowserDescriptor, EditorDescriptor, PaneId, PaneKindSnapshot};
 use zz_ui::{
     navigation::status::{StatusAction, StatusPaneEntry},
-    pane::{PaneChrome, PaneDragSource, PaneLens, pane_surface, terminal_pane_header},
+    pane::{FlipTo, PaneChrome, PaneDragSource, PaneFlip, pane_surface, terminal_pane_header},
     pane_look::PaneLook,
 };
 
@@ -176,7 +176,7 @@ pub struct TerminalPane {
     pub lines: &'static [(Tone, &'static str)],
     pub active: bool,
     pub gaps: bool,
-    pub lens: Option<PaneLens>,
+    pub flip: Option<PaneFlip>,
 }
 
 impl TerminalPane {
@@ -187,14 +187,16 @@ impl TerminalPane {
             lines,
             active: false,
             gaps: false,
-            lens: None,
+            flip: None,
         }
     }
 
-    pub const fn lens(mut self, provider: AgentProvider) -> Self {
-        self.lens = Some(PaneLens {
+    pub const fn flip(mut self, provider: AgentProvider) -> Self {
+        self.flip = Some(PaneFlip {
             provider,
-            open: false,
+            to: FlipTo::Chat,
+            armed: false,
+            pending: false,
         });
         self
     }
@@ -221,7 +223,7 @@ impl TerminalPane {
             self.title,
             PaneDragSource::new(PaneId(self.id), self.title, true, |_, _, _| {}),
             false,
-            self.lens,
+            self.flip,
             |_, _, _| {},
             cx,
         );

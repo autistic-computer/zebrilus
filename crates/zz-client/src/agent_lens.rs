@@ -524,20 +524,21 @@ pub fn accepts_prompt(state: &AgentPaneWire) -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LensEmpty {
+pub enum AgentEmpty {
     Welcome(AgentProvider),
     Message { text: String, busy: bool },
 }
 
 #[must_use]
-pub fn lens_welcome_title(provider: AgentProvider) -> String {
-    format!("{} is waiting for its first prompt", provider.label())
+pub fn agent_welcome_title(provider: AgentProvider) -> String {
+    format!("{} is ready", provider.label())
 }
 
-pub const LENS_WELCOME_DETAIL: &str = "What you send here goes to the session in this terminal.";
+pub const AGENT_WELCOME_DETAIL: &str =
+    "Ask it anything. To use the CLI's own screen, switch the pane to the CLI.";
 
 #[must_use]
-pub fn lens_placeholder(provider: Option<AgentProvider>) -> String {
+pub fn agent_placeholder(provider: Option<AgentProvider>) -> String {
     format!(
         "Message {}…",
         provider.map_or("the agent", AgentProvider::label)
@@ -545,31 +546,29 @@ pub fn lens_placeholder(provider: Option<AgentProvider>) -> String {
 }
 
 #[must_use]
-pub fn lens_empty(
+pub fn agent_empty(
     connected: bool,
     phase: &AgentConnectionPhase,
     provider: Option<AgentProvider>,
-) -> LensEmpty {
+) -> AgentEmpty {
     let agent = provider.map_or("the agent", AgentProvider::label);
     let text = if connected {
         match phase {
-            AgentConnectionPhase::Starting => format!("Reading {agent}’s transcript…"),
+            AgentConnectionPhase::Starting => format!("Starting {agent}…"),
             AgentConnectionPhase::Ready => match provider {
-                Some(provider) => return LensEmpty::Welcome(provider),
-                None => format!("{agent} is waiting for its first prompt."),
+                Some(provider) => return AgentEmpty::Welcome(provider),
+                None => format!("{agent} is ready."),
             },
             AgentConnectionPhase::Running => format!("Waiting for {agent}’s first update…"),
             AgentConnectionPhase::AwaitingPermission => {
                 "The agent needs your permission.".to_owned()
             }
-            AgentConnectionPhase::Failed { .. } => {
-                format!("Could not read {agent}’s transcript.")
-            }
+            AgentConnectionPhase::Failed { .. } => format!("{agent} stopped."),
         }
     } else {
         "The agent is offline.".to_owned()
     };
-    LensEmpty::Message {
+    AgentEmpty::Message {
         text,
         busy: connected
             && matches!(
@@ -856,29 +855,29 @@ mod tests {
     }
 
     #[test]
-    fn empty_lens_names_the_agent_and_its_phase() {
+    fn an_empty_chat_names_the_agent_and_its_phase() {
         assert_eq!(
-            lens_empty(
+            agent_empty(
                 true,
                 &AgentConnectionPhase::Ready,
                 Some(AgentProvider::Codex)
             ),
-            LensEmpty::Welcome(AgentProvider::Codex)
+            AgentEmpty::Welcome(AgentProvider::Codex)
         );
         assert_eq!(
-            lens_empty(
+            agent_empty(
                 true,
                 &AgentConnectionPhase::Starting,
                 Some(AgentProvider::Codex)
             ),
-            LensEmpty::Message {
-                text: "Reading Codex’s transcript…".to_owned(),
+            AgentEmpty::Message {
+                text: "Starting Codex…".to_owned(),
                 busy: true
             }
         );
         assert_eq!(
-            lens_empty(false, &AgentConnectionPhase::Ready, None),
-            LensEmpty::Message {
+            agent_empty(false, &AgentConnectionPhase::Ready, None),
+            AgentEmpty::Message {
                 text: "The agent is offline.".to_owned(),
                 busy: false
             }

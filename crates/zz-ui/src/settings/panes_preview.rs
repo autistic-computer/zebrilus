@@ -6,7 +6,7 @@ use crate::{
     },
     input::InputState,
     pane::{
-        PaneChrome, PaneDragSource, PaneLens, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
+        PaneChrome, PaneDragSource, PaneFlip, PaneSplitAxis, PaneSplitHighlight, PaneSplitSide,
         pane_header_actions, pane_header_frame, pane_header_icon_button, pane_split_surface,
         pane_surface, terminal_pane_header,
     },
@@ -133,9 +133,11 @@ impl RenderOnce for PanesPreview {
             terminal_sample(
                 2,
                 "claude",
-                Some(PaneLens {
+                Some(PaneFlip {
                     provider: AgentProvider::ClaudeCode,
-                    open: false,
+                    to: crate::pane::FlipTo::Chat,
+                    armed: false,
+                    pending: false,
                 }),
                 CLAUDE,
                 selected == 1,
@@ -219,7 +221,7 @@ fn noop_drag(pane: u64, title: &'static str) -> PaneDragSource {
 fn terminal_sample(
     pane: u64,
     title: &'static str,
-    lens: Option<PaneLens>,
+    flip: Option<PaneFlip>,
     lines: &'static [Line],
     active: bool,
     opacity: f32,
@@ -231,7 +233,7 @@ fn terminal_sample(
         title,
         noop_drag(pane, title),
         false,
-        lens,
+        flip,
         |_, _, _| {},
         cx,
     );

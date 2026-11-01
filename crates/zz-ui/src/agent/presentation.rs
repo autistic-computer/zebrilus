@@ -1,15 +1,14 @@
 use std::time::Duration;
 
 use ala::{
-    AnyElement, App, Div, ElementId, EntityId, FontWeight, Hsla, SharedString, Stateful,
-    Transformation, Window, div, ease_in_out, percentage, prelude::*, px,
+    AnyElement, App, Div, ElementId, EntityId, FontWeight, SharedString, Stateful, Transformation,
+    div, ease_in_out, percentage, prelude::*, px,
 };
 
 use crate::{
     ActiveTheme as _, Colorize as _, Edge, Emphasis, Ground, Icon, IconName, PaintState,
-    Sizable as _, StyledExt as _, Surface, Tone, badge::Badge, button::Button,
-    feedback::inline_alert, h_flex, kbd::Keycap, muted_on, pip::PipSurface, pulse::pulse_phase,
-    roles, v_flex,
+    StyledExt as _, Surface, Tone, badge::Badge, button::Button, feedback::inline_alert, h_flex,
+    kbd::Keycap, muted_on, pulse::pulse_phase, roles, v_flex,
 };
 
 pub use zz_client::agent_completion::{MAX_RENDERED_ERROR_BYTES, rendered_error};
@@ -44,11 +43,11 @@ pub fn welcome_state(
         )
 }
 
-pub fn lens_welcome(provider: zz_protocol::AgentProvider, cx: &App) -> Div {
+pub fn agent_welcome(provider: zz_protocol::AgentProvider, cx: &App) -> Div {
     welcome_state(
         Icon::new(crate::pane::agent_provider_icon(provider)).size(px(40.0)),
-        zz_client::agent_lens::lens_welcome_title(provider),
-        zz_client::agent_lens::LENS_WELCOME_DETAIL,
+        zz_client::agent_lens::agent_welcome_title(provider),
+        zz_client::agent_lens::AGENT_WELCOME_DETAIL,
         cx,
     )
 }
@@ -135,105 +134,6 @@ pub fn permission_card(
                 .child(card_close(cancel, cx)),
         )
         .child(card_tiles().pb(px(CARD_GUTTER)).children(options))
-}
-
-pub fn terminal_wait_card(
-    id: impl Into<ElementId>,
-    title: impl Into<SharedString>,
-    on_show: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> Div {
-    let show = CardTile::new(Tone::Neutral, true, false, cx);
-    card_surface(cx)
-        .child(
-            card_header()
-                .child(card_glyph(
-                    Icon::new(IconName::TriangleAlert).text_color(cx.theme().warning),
-                    cx,
-                ))
-                .child(div().min_w_0().flex_1().child(title.into())),
-        )
-        .child(
-            card_tiles().pb(px(CARD_GUTTER)).child(
-                show.render(id, cx)
-                    .child(div().min_w_0().flex_1().child("Show terminal"))
-                    .child(
-                        card_trailing().child(
-                            Icon::new(IconName::SquareTerminal)
-                                .size(px(CARD_GLYPH))
-                                .text_color(show.muted),
-                        ),
-                    )
-                    .on_click(move |_, window, cx| {
-                        cx.stop_propagation();
-                        on_show(window, cx);
-                    }),
-            ),
-        )
-}
-
-pub const TERMINAL_PIP_HEIGHT: f32 = 0.62;
-pub const TERMINAL_PIP_GAP: f32 = 8.0;
-
-pub fn terminal_pip(
-    id: impl Into<ElementId>,
-    title: impl Into<SharedString>,
-    icon: IconName,
-    body: AnyElement,
-    fill: Hsla,
-    on_done: impl Fn(&mut Window, &mut App) + 'static,
-    cx: &App,
-) -> Div {
-    let id = id.into();
-    let header = h_flex()
-        .flex_none()
-        .h(cx.theme().pane_header_height())
-        .w_full()
-        .pl_2()
-        .pr_1()
-        .gap_2()
-        .items_center()
-        .child(
-            Icon::new(icon)
-                .small()
-                .text_color(cx.theme().foreground.muted()),
-        )
-        .child(
-            div()
-                .min_w_0()
-                .flex_1()
-                .truncate()
-                .text_size(crate::rems_from_px(12.0))
-                .text_color(cx.theme().foreground.muted())
-                .child(title.into()),
-        )
-        .child(
-            Button::new((id.clone(), "done"))
-                .label("Done")
-                .emphasis(Emphasis::Ghost)
-                .compact()
-                .tooltip("Close the dialog and go back to the chat")
-                .on_click(move |_, window, cx| {
-                    cx.stop_propagation();
-                    on_done(window, cx);
-                }),
-        );
-    div()
-        .absolute()
-        .left_0()
-        .right_0()
-        .bottom(px(TERMINAL_PIP_GAP))
-        .h(ala::relative(TERMINAL_PIP_HEIGHT))
-        .child(
-            PipSurface::new(
-                id,
-                v_flex()
-                    .size_full()
-                    .child(header)
-                    .child(div().flex_1().min_h_0().overflow_hidden().child(body)),
-            )
-            .fill(fill),
-        )
 }
 
 pub fn card_close(button: Button, cx: &App) -> Div {

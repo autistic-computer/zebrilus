@@ -139,7 +139,7 @@ pub fn slash_list(
                         &command_label(&command.name),
                         meaningful_command_description(&command.description)
                             .map(|description| description.to_owned().into()),
-                        SlashKind::of(command.terminal, command.skill),
+                        SlashKind::of(command.skill),
                         selected == Some(index),
                         cx,
                     ))
@@ -180,7 +180,7 @@ fn render_slash_menu(_: &mut Window, cx: &mut App) -> AnyElement {
             )),
         )
         .state(
-            "commands that open the terminal",
+            "/st: status needs the CLI's own screen, so the chat leaves it out",
             prefix_width(slash_list(
                 "slash-terminal",
                 &slash_commands("st"),

@@ -126,7 +126,6 @@ pub(crate) struct ChooseFolder {
 }
 
 pub(crate) struct AgentChosen {
-    pub(crate) pane: PaneId,
     pub(crate) window: WindowId,
     pub(crate) from: SessionId,
 }
@@ -257,7 +256,7 @@ impl PanePickerView {
         for command in start_agent_commands(&mux.snapshot(), pane, folder, agent) {
             mux.execute(command);
         }
-        cx.emit(AgentChosen { pane, window, from });
+        cx.emit(AgentChosen { window, from });
     }
 
     fn settle(&mut self, outcome: ChatKey, chat: &Chat, cx: &mut Context<Self>) -> bool {

@@ -5,7 +5,7 @@ mod chat;
 mod chrome;
 mod composer;
 mod fixtures;
-pub(super) mod lens;
+pub(super) mod pane;
 
 pub const STORIES: &[Story] = &[STORY];
 
@@ -13,18 +13,24 @@ const STORY: Story = Story {
     id: "agent",
     name: "Agent",
     group: "Agent",
-    summary: "A terminal running Claude Code or Codex shows a lens toggle in its header. The lens draws the CLI's session as a chat in place of the cells, with a composer that sends to the CLI, and the toggle brings the terminal back. Every chat here is folded from fixed chat events and drawn with the calls the apps make: chat_column, chat_thread, chat_agent_pip and an ask hook that draws asks the way the desktop does, on the pane's own fill.",
+    summary: "An agent pane runs Claude Code or Codex for you and draws its session as a chat, with a composer that sends to it. The flip button in the header switches the same pane, on the same session, between the chat and the CLI's own screen in a terminal. Every chat here is folded from fixed chat events and drawn with the calls the apps make: chat_column, chat_thread, chat_agent_pip and an ask hook that draws asks the way the desktop does, on the pane's own fill.",
     sections: &[
         Section {
-            id: "lens-toggle",
-            name: "Lens toggle",
-            summary: "terminal_pane_header with a PaneLens: an eye before the pane actions, lit while the lens is open. Like the actions, it shows on the focused pane and waits for the pointer on the others.",
-            build: lens::toggles,
+            id: "flip-button",
+            name: "Flip button",
+            summary: "pane_header with a PaneFlip: before the pane actions, a chat bubble on a terminal running Claude Code or Codex and a terminal on an agent pane. It sends flip-agent for the pane. It is lit while a flip waits for the agent to be idle and disabled while the daemon answers. Like the actions, it shows on the focused pane and waits for the pointer on the others, unless a flip is armed.",
+            build: pane::flip_buttons,
+        },
+        Section {
+            id: "flip-choice",
+            name: "Busy choice",
+            summary: "When the agent is still working, flip-agent answers busy: with what is running, and the pane shows pane_flip_busy in its corner instead of a dialog: Switch when idle arms the flip (--when-idle), Switch now stops the work and switches (--now). An armed flip shows pane_flip_armed with Cancel (--cancel). Click the flip buttons and the choices; they run zz-client's flip state against a fake daemon.",
+            build: pane::choices,
         },
         Section {
             id: "composer",
             name: "Composer",
-            summary: "The lens's Composer: a pill with + (which starts an @ mention), the field, the context ring and the round action button, all inset the same from its edge. A long draft grows the pill and keeps the buttons on its last line. The branch and its changes sit under it. The action button sends, queues behind a running turn, or stops it.",
+            summary: "The agent pane's Composer: a pill with + (which starts an @ mention), the field, the context ring and the round action button, all inset the same from its edge. A long draft grows the pill and keeps the buttons on its last line. The branch and its changes sit under it. The action button sends, queues behind a running turn, or stops it.",
             build: composer::composers,
         },
         Section {
@@ -36,7 +42,7 @@ const STORY: Story = Story {
         Section {
             id: "slash-menu",
             name: "Slash menu",
-            summary: "Commands offered while typing a slash: the agent's own plus the zz verbs, ranked by the query.",
+            summary: "Commands offered while typing a slash: the ones the agent reports as working in a chat plus the zz verbs, ranked by the query. Commands that need the CLI's own screen are left out; flip the pane to the CLI to use them.",
             build: cards::slash_menu,
         },
         Section {
@@ -84,7 +90,7 @@ const STORY: Story = Story {
         Section {
             id: "asks",
             name: "Asks",
-            summary: "Approvals and questions sit in the thread, drawn the way the desktop draws them: an approval on the tool row that needs it, with its options as tiles (digits pick, Enter confirms, Esc cancels) that grey out once you answer, until the CLI moves on; the first open question as the question card; a dialog the lens cannot answer as a card whose one action shows the terminal; anything behind the first ask greyed out until its turn; and an answered question as a record. Click an option to answer it.",
+            summary: "Approvals and questions sit in the thread, drawn the way the desktop draws them: an approval on the tool row that needs it, with its options as tiles (digits pick, Enter confirms, Esc cancels) that grey out once you answer, until the CLI moves on; the first open question as the question card; anything behind the first ask greyed out until its turn; and an answered question as a record. Click an option to answer it.",
             build: chat::asks,
         },
         Section {
@@ -106,15 +112,9 @@ const STORY: Story = Story {
             build: chat::rows,
         },
         Section {
-            id: "terminal-pip",
-            name: "Terminal PiP",
-            summary: "Commands that only the CLI's own screen can show (/config, /status, /usage, /mcp), and dialogs the lens cannot answer, open the pane's live terminal in a wide PiP over the chat, pinned to the bottom of the screen where the CLI draws its dialog. Keys go to the CLI. The PiP closes when the CLI's input box comes back; Esc (Codex) or Done close it too.",
-            build: lens::sheets,
-        },
-        Section {
             id: "empty-states",
             name: "Empty states",
-            summary: "What the lens shows before the first message: the welcome, which names the agent and says what you send goes to the session in its terminal, the waiting and failure messages, and the error card for a prompt the TUI did not take.",
+            summary: "What an agent pane shows before the first message: the welcome, which names the agent and points at the flip button for the CLI's own screen, the starting, waiting and failure messages, and the error card for a turn that failed.",
             build: chrome::empty_states,
         },
         Section {
@@ -130,10 +130,10 @@ const STORY: Story = Story {
             build: chat::try_it,
         },
         Section {
-            id: "lens",
-            name: "Lens",
-            summary: "The pieces together under the terminal header: the chat, the task tray and the composer. Click the toggle to switch between the lens and the terminal it reads; the terminal process stays the source of truth.",
-            build: lens::panes,
+            id: "agent-pane",
+            name: "Agent pane",
+            summary: "The pieces together under the pane header: the chat, the task tray and the composer. Click the flip button to switch a pane between the chat and the CLI in a terminal; a pane that is busy asks first.",
+            build: pane::panes,
         },
     ],
 };

@@ -101,11 +101,11 @@ pub const PANE_HEADER_BUTTON: SurfaceRole = SurfaceRole::under(
     "Split and the other buttons in pane headers",
 )
 .with(P.hover(Highlight::None).selected(Highlight::None));
-pub const PANE_LENS: SurfaceRole = SurfaceRole::under(
+pub const PANE_FLIP: SurfaceRole = SurfaceRole::under(
     &PANE_HEADER_BUTTON,
-    "pane.header.lens",
-    "Lens toggles",
-    "The eye in the header of a terminal running Claude Code or Codex, tinted while the lens is open",
+    "pane.header.flip",
+    "Flip buttons",
+    "The button in the header of a pane running Claude Code or Codex that switches it between the CLI and the chat, tinted while a switch waits for the agent to be idle",
 )
 .with(P.hover(Highlight::None).selected(Highlight::Tint));
 pub const PANE_TITLE: SurfaceRole = SurfaceRole::under(
@@ -163,7 +163,7 @@ pub const AGENT_BUBBLE: SurfaceRole = SurfaceRole::new(
     "agent.bubble",
     Kind::Card,
     "Message bubbles",
-    "Your messages in the agent lens",
+    "Your messages in an agent chat",
 );
 pub const AGENT_COMPOSER: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::TEXT_AREA,
@@ -176,7 +176,7 @@ pub const AGENT_SEND: SurfaceRole = SurfaceRole::new(
     "agent.send",
     Kind::Button,
     "Composer buttons",
-    "Send, stop and + in the lens composer, filled in every theme",
+    "Send, stop and + in the chat composer, filled in every theme",
 )
 .with(
     P.fill(Fill::Solid)
@@ -214,7 +214,7 @@ pub const AGENT_OPTION: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::MENU_ITEM,
     "agent.option",
     "Answer options",
-    "The choices in question and permission cards, and Show terminal in the lens",
+    "The choices in question and permission cards",
 );
 pub const AGENT_JUMP: SurfaceRole = SurfaceRole::under(
     &SurfaceRole::ICON_BUTTON,
@@ -370,7 +370,7 @@ pub(crate) static ZZ: &[SurfaceRole] = &[
     WINDOW_CONTROLS,
     ROW_ACTION,
     PANE_HEADER_BUTTON,
-    PANE_LENS,
+    PANE_FLIP,
     PANE_TITLE,
     AGENT_SEND,
     AGENT_JUMP,
@@ -405,7 +405,7 @@ pub(crate) static ZZ: &[SurfaceRole] = &[
 
 pub const TONED: [SurfaceRole; 1] = [AGENT_SEND];
 
-pub static RETIRED: [&str; 7] = [
+pub static RETIRED: [&str; 8] = [
     "agent.status",
     "agent.picker",
     "chat.bubble",
@@ -413,6 +413,7 @@ pub static RETIRED: [&str; 7] = [
     "phone.driver-card",
     "drawer.driver",
     "rule.chat",
+    "pane.header.lens",
 ];
 
 pub fn all() -> impl Iterator<Item = SurfaceRole> {

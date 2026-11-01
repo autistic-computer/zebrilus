@@ -834,7 +834,7 @@ fn log_screen(columns: u16, rows: u16) -> Screen {
             "14:32:03",
             "INFO",
             info,
-            "lens on %14 tailing the claude session",
+            "agent %14 resumed claude session 4f1c",
         ),
         (
             "14:32:07",

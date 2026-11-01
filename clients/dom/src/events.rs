@@ -62,9 +62,9 @@ pub fn describe(client: &mut Client, event: CoreEvent) -> Value {
             "action": format!("{action:?}"),
         }),
         CoreEvent::ServerStopping => json!({ "type": "serverStopping" }),
-        CoreEvent::CommandResponse(response) => {
-            json!({ "type": "commandResponse", "response": value(&response) })
-        }
+        CoreEvent::CommandResponse(response) => client.flip_reply(&response).unwrap_or_else(
+            || json!({ "type": "commandResponse", "response": value(&response) }),
+        ),
         CoreEvent::ClientMessage {
             pane,
             kind,

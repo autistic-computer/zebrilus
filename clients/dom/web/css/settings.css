@@ -773,7 +773,7 @@
   background: var(--penna-fg);
 }
 
-.settings-panes .lens + [data-penna="pane.header.button"] {
+.settings-panes .flip + [data-penna="pane.header.button"] {
   margin-left: 0;
 }
 
