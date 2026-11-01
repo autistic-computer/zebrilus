@@ -10,7 +10,7 @@ use ala::{
 use crate::{
     ActiveTheme as _, Colorize as _, Disableable, Emphasis, FOCUS_RING_WIDTH, Ground, Icon,
     IconName, Kind, Layer, Paint, PaintState, Selectable, Sizable, Size, StyledExt as _, Surface,
-    SurfaceRole, Tone, h_flex, rems_from_px, tooltip::Tooltip,
+    SurfaceRole, Tone, h_flex, rems_from_px, roles, tooltip::Tooltip,
 };
 
 use super::button_icon::ButtonIcon;
@@ -64,6 +64,45 @@ pub trait ButtonVariants: Sized {
 
     fn text(self) -> Self {
         self.with_variant(ButtonVariant::Text)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ButtonLook {
+    Icon,
+    Quiet,
+    Flat,
+    Chrome,
+    Bar,
+    Toggle,
+    RowIcon,
+    Floating,
+    Row,
+    Send,
+    FloatingChip,
+}
+
+impl ButtonLook {
+    const fn role(self) -> SurfaceRole {
+        match self {
+            Self::Icon => SurfaceRole::ICON_BUTTON,
+            Self::Quiet => SurfaceRole::QUIET_BUTTON,
+            Self::Flat => SurfaceRole::FLAT_ICON_BUTTON,
+            Self::Chrome => roles::CHROME_BUTTON,
+            Self::Bar => roles::ICON_BUTTON_BAR,
+            Self::Toggle => roles::ICON_BUTTON_TOGGLE,
+            Self::RowIcon => roles::ICON_BUTTON_ROW,
+            Self::Floating => roles::ICON_BUTTON_FLOATING,
+            Self::Row => roles::BUTTON_ROW,
+            Self::Send => roles::BUTTON_SEND,
+            Self::FloatingChip => roles::CHIP_FLOATING,
+        }
+    }
+}
+
+impl From<ButtonLook> for Surface {
+    fn from(look: ButtonLook) -> Self {
+        Self::new(look.role())
     }
 }
 
@@ -325,6 +364,12 @@ impl Button {
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
+        self
+    }
+
+    #[must_use]
+    pub fn look(mut self, look: ButtonLook) -> Self {
+        self.surface_role = Some(look.role());
         self
     }
 

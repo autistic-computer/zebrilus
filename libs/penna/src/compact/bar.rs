@@ -116,6 +116,14 @@ pub(super) fn floating_layer(placement: &PillPlacement, cx: &App) -> Layer {
     }
 }
 
+pub fn pill_backdrop_reach(cx: &App) -> Option<Pixels> {
+    cx.theme()
+        .layer(roles::PHONE_PILL, PaintState::Rest)
+        .glass
+        .filter(GlassMaterial::reads_backdrop)
+        .map(|glass| glass.backdrop_reach())
+}
+
 pub fn pill_glass_over(backdrop: Hsla, cx: &App) -> Option<PillGlass> {
     let layer = cx.theme().layer(roles::PHONE_PILL, PaintState::Rest);
     let tint = layer.glass.filter(GlassMaterial::reads_backdrop)?.tint;

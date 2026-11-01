@@ -1,6 +1,9 @@
-use ala::{AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window};
+use ala::{
+    AnyElement, App, IntoElement, ParentElement as _, SharedString, Styled as _, Window, px,
+};
 use penna::{
-    Chip, Emphasis, IconName, Notice, Selectable as _, Sizable as _, Space, Steps, Tone,
+    ActiveTheme as _, Chip, ChipLook, Emphasis, IconName, Label, Notice, PaintState,
+    Selectable as _, Sizable as _, Space, Steps, TextStyle, Tone,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
 };
@@ -18,6 +21,12 @@ pub const STORY: Story = Story {
             name: "Chips",
             summary: "Chip::new(label) with a dot or an icon in front and a muted detail after it. Selected tints it; tone and emphasis paint it like a badge.",
             build: |_, cx| stateless(chips, cx),
+        },
+        Section {
+            id: "chip-looks",
+            name: "Chip looks",
+            summary: "Chip::new(id, label).look(look).state(state) for status in a title bar, over a pane, the display-panes markers, the chip that follows a dragged pane and the disc behind a blank page's icon. Chip::empty(id) takes its own children; .ring(color) recolors the ring a look draws; .interactive(true) lights it on hover.",
+            build: |_, cx| stateless(chip_looks, cx),
         },
         Section {
             id: "steps",
@@ -52,13 +61,13 @@ fn chips(_: &mut Window, _: &mut App) -> AnyElement {
                     (Tone::Danger, "Needs attention"),
                     (Tone::Neutral, "Paused"),
                 ]
-                .map(|(tone, label)| Chip::new(label).dot(tone)),
+                .map(|(tone, label)| Chip::new(label, label).dot(tone)),
             ),
         )
         .state(
             "detail",
             h_flex().w(Space::S16.rems() * 12.0).child(
-                Chip::new("Ready")
+                Chip::new("detail", "Ready")
                     .dot(Tone::Success)
                     .detail("ubuntu is to the right, past the edge of the built-in display"),
             ),
@@ -67,19 +76,23 @@ fn chips(_: &mut Window, _: &mut App) -> AnyElement {
             "icon",
             row()
                 .child(
-                    Chip::new("macbook")
+                    Chip::new("macbook", "macbook")
                         .icon(IconName::Laptop)
                         .detail("this Mac"),
                 )
-                .child(Chip::new("Unzoom").icon(IconName::WindowRestore)),
+                .child(Chip::new("unzoom", "Unzoom").icon(IconName::WindowRestore)),
         )
         .state(
             "selected",
             row()
-                .child(Chip::new("ubuntu").dot(Tone::Success))
-                .child(Chip::new("ubuntu").dot(Tone::Success).selected(true))
+                .child(Chip::new("rest", "ubuntu").dot(Tone::Success))
                 .child(
-                    Chip::new("On ubuntu")
+                    Chip::new("selected", "ubuntu")
+                        .dot(Tone::Success)
+                        .selected(true),
+                )
+                .child(
+                    Chip::new("primary", "On ubuntu")
                         .dot(Tone::Accent)
                         .tone(Tone::Primary)
                         .selected(true),
@@ -87,25 +100,102 @@ fn chips(_: &mut Window, _: &mut App) -> AnyElement {
         )
         .state(
             "emphasis",
-            row().children(
-                Emphasis::ALL.map(|emphasis| Chip::new(emphasis.name()).emphasis(emphasis)),
-            ),
+            row()
+                .children(Emphasis::ALL.map(|emphasis| {
+                    Chip::new(emphasis.name(), emphasis.name()).emphasis(emphasis)
+                })),
         )
         .state(
             "tones, solid",
-            row().children(
-                Tone::ALL.map(|tone| Chip::new(tone.name()).tone(tone).emphasis(Emphasis::Solid)),
-            ),
+            row().children(Tone::ALL.map(|tone| {
+                Chip::new(tone.name(), tone.name())
+                    .tone(tone)
+                    .emphasis(Emphasis::Solid)
+            })),
         )
         .state(
             "small",
             row()
-                .child(Chip::new("ubuntu").dot(Tone::Success).small())
+                .child(Chip::new("small", "ubuntu").dot(Tone::Success).small())
                 .child(
-                    Chip::new("xps")
+                    Chip::new("xps", "xps")
                         .dot(Tone::Neutral)
                         .small()
                         .detail("offline"),
+                ),
+        )
+        .into_any_element()
+}
+
+const CHIP_LOOKS: [(ChipLook, &str); 6] = [
+    (ChipLook::Plain, "plain"),
+    (ChipLook::Bar, "bar"),
+    (ChipLook::Floating, "floating"),
+    (ChipLook::Marker, "marker"),
+    (ChipLook::Drag, "drag"),
+    (ChipLook::Icon, "icon"),
+];
+
+const CHIP_STATES: [(PaintState, &str); 4] = [
+    (PaintState::Rest, "Rest"),
+    (PaintState::Hover, "Hover"),
+    (PaintState::Selected, "Selected"),
+    (PaintState::Disabled, "Disabled"),
+];
+
+fn chip_looks(_: &mut Window, cx: &mut App) -> AnyElement {
+    let ring = cx.theme().success;
+    CHIP_LOOKS
+        .iter()
+        .fold(states().columns(2), |states, (look, name)| {
+            states.state(
+                *name,
+                row().children(CHIP_STATES.iter().map(|(state, label)| {
+                    Chip::new(SharedString::from(format!("chip-{name}-{label}")), *label)
+                        .look(*look)
+                        .state(*state)
+                })),
+            )
+        })
+        .state(
+            "marker with a ring colour, pointed at to light",
+            row()
+                .child(
+                    Chip::new("marker-live", "1")
+                        .look(ChipLook::Marker)
+                        .interactive(true),
+                )
+                .child(
+                    Chip::new("marker-ring", "2")
+                        .look(ChipLook::Marker)
+                        .state(PaintState::Current)
+                        .ring(ring),
+                ),
+        )
+        .state(
+            "empty with children",
+            row()
+                .child(
+                    Chip::empty("chip-empty-body")
+                        .look(ChipLook::Floating)
+                        .px(Space::S5)
+                        .gap(Space::S3)
+                        .child(Label::new(TextStyle::Small, "%3").strong())
+                        .child(Label::new(TextStyle::Small, "vim")),
+                )
+                .child(
+                    Chip::empty("chip-empty-icon")
+                        .look(ChipLook::Icon)
+                        .size(px(32.0))
+                        .px_0()
+                        .justify_center()
+                        .child(penna::Icon::new(IconName::Globe).small()),
+                )
+                .child(
+                    Chip::new("chip-vim-mode", "INSERT")
+                        .look(ChipLook::Floating)
+                        .tone(Tone::Primary)
+                        .emphasis(Emphasis::Solid),
                 ),
         )
         .into_any_element()

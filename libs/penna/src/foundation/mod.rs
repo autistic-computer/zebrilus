@@ -25,8 +25,9 @@ pub use index_path::IndexPath;
 pub use space::Space;
 pub(crate) use styled::ROW_CORNER_SMOOTHING;
 pub use styled::{
-    Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, Selectable, Sizable, Size, StyledExt, h_flex,
-    lifted_shadow, list_row, muted_on, row_corners, row_radius, row_state, row_surface, v_flex,
+    Disableable, FOCUS_RING_WIDTH, RULE_WIDTH, RuleLook, Selectable, Sizable, Size, StyledExt,
+    h_flex, lifted_shadow, list_row, muted_on, row_corners, row_radius, row_state, row_surface,
+    v_flex,
 };
 pub(crate) use surface::restyle;
 pub use surface::{

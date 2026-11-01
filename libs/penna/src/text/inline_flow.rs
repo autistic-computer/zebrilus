@@ -13,7 +13,7 @@ use ala::{
     WhiteSpace, Window, img, point, prelude::FluentBuilder as _, px, relative, size,
 };
 
-use crate::{ActiveTheme as _, SurfaceRole, WindowExt as _, tooltip::Tooltip};
+use crate::{ActiveTheme as _, WindowExt as _, tooltip::Tooltip};
 
 use super::{
     inline::{Inline, InlineState, code_runs},
@@ -26,7 +26,6 @@ const IMAGE_LEN: usize = 1;
 pub(super) struct InlineFlow {
     id: ElementId,
     items: Vec<InlineFlowItem>,
-    code_role: Option<SurfaceRole>,
     links: Option<SharedLinks>,
 }
 
@@ -113,14 +112,8 @@ impl InlineFlow {
         Self {
             id: id.into(),
             items,
-            code_role: None,
             links: None,
         }
-    }
-
-    pub(super) fn code_role(mut self, code_role: Option<SurfaceRole>) -> Self {
-        self.code_role = code_role;
-        self
     }
 
     pub(super) fn links(mut self, links: Option<SharedLinks>) -> Self {
@@ -286,7 +279,6 @@ impl Element for InlineFlow {
 
                     let mut element = Inline::new(elements.len(), state, links, highlights)
                         .code_ranges(code_ranges)
-                        .code_role(self.code_role)
                         .links(self.links.clone())
                         .into_any_element();
                     element.prepaint_as_root(

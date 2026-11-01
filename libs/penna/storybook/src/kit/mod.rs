@@ -16,6 +16,8 @@ mod markdown;
 pub mod menus;
 mod navigation;
 mod notifications;
+mod panels;
+mod rows;
 mod scrollbars;
 mod selection;
 mod sheet;
@@ -34,6 +36,8 @@ pub const STORIES: &[Story] = &[
     feedback::STORY,
     status::STORY,
     canvas::STORY,
+    panels::STORY,
+    rows::STORY,
     notifications::STORY,
     sheet::STORY,
     scrollbars::STORY,

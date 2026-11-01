@@ -1,6 +1,6 @@
 use super::{
-    ActiveTheme, Edge, Emphasis, Layer, PaintState, StatefulSurfaceExt, Surface, SurfaceRole,
-    TextStyle, Tone,
+    ActiveTheme, Edge, Emphasis, Ground, Kind, Layer, PaintState, StatefulSurfaceExt, Surface,
+    SurfaceRole, TextStyle, Tone,
 };
 use ala::{
     AbsoluteLength, App, BoxShadow, DefiniteLength, Div, Edges, ElementId, FULL_CORNER_RADIUS,
@@ -136,6 +136,10 @@ pub trait StyledExt: Styled + Sized {
         }
     }
 
+    fn rule(self, look: RuleLook, edge: Edge, cx: &App) -> Self {
+        self.rule_on(look.role(), edge, cx)
+    }
+
     fn rule_on(self, role: SurfaceRole, edge: Edge, cx: &App) -> Self {
         let theme = cx.theme();
         if !theme.style(role).outline {
@@ -163,6 +167,32 @@ pub trait StyledExt: Styled + Sized {
 }
 
 impl<E: Styled> StyledExt for E {}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum RuleLook {
+    #[default]
+    Plain,
+    Bar,
+    List,
+    Tree,
+}
+
+impl RuleLook {
+    pub(crate) const fn role(self) -> SurfaceRole {
+        match self {
+            Self::Plain => Kind::Rule.role(),
+            Self::Bar => crate::roles::BAR_RULE,
+            Self::List => crate::roles::LIST_RULE,
+            Self::Tree => crate::roles::TREE_RULE,
+        }
+    }
+}
+
+impl From<RuleLook> for Surface {
+    fn from(look: RuleLook) -> Self {
+        Self::new(look.role())
+    }
+}
 
 pub fn row_radius(layer: &Layer, height: Pixels) -> Pixels {
     if layer.radius >= FULL_CORNER_RADIUS {
@@ -198,9 +228,9 @@ pub fn row_surface<E: StatefulInteractiveElement + Styled>(
     )
 }
 
-pub fn muted_on(layer: &Layer, cx: &App) -> Hsla {
+pub fn muted_on(ground: Ground, cx: &App) -> Hsla {
     cx.theme()
-        .paint_on(layer.ground, Tone::Neutral, Emphasis::Ghost)
+        .paint_on(ground, Tone::Neutral, Emphasis::Ghost)
         .muted_at(PaintState::Rest)
 }
 

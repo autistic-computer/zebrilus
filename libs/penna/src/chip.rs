@@ -1,43 +1,116 @@
 use ala::{
-    App, Div, Hsla, IntoElement, ParentElement as _, Pixels, RenderOnce, SharedString,
-    StyleRefinement, Styled, TextRun, Window, div, prelude::FluentBuilder as _, px,
+    AnyElement, App, Div, ElementId, Hsla, IntoElement, ParentElement, Pixels, RenderOnce,
+    SharedString, Styled as _, TextRun, Window, div, prelude::FluentBuilder as _, px,
 };
 
 use crate::{
-    ActiveTheme as _, Emphasis, Fill, Ground, Icon, Label, Layer, PaintState, Selectable, Sizable,
-    Size, Space, StyledExt as _, Surface, SurfaceRole, TextStyle, Theme, Tone, h_flex,
-    rems_from_px,
+    ActiveTheme as _, Colorize as _, Emphasis, Fill, Ground, Icon, Label, PaintState, Selectable,
+    Sizable, Size, Space, StyledExt as _, Surface, SurfaceRole, TextStyle, Tone,
+    plate::{Plate, plate_element},
+    rems_from_px, roles,
 };
 
 const DOT: f32 = 6.0;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ChipLook {
+    #[default]
+    Plain,
+    Bar,
+    Floating,
+    Marker,
+    Drag,
+    Icon,
+}
+
+impl ChipLook {
+    const fn role(self) -> SurfaceRole {
+        match self {
+            Self::Plain => SurfaceRole::CHIP,
+            Self::Bar => roles::CHIP_BAR,
+            Self::Floating => roles::CHIP_FLOATING,
+            Self::Marker => roles::CHIP_MARKER,
+            Self::Drag => roles::CHIP_DRAG,
+            Self::Icon => roles::BADGE_ICON,
+        }
+    }
+}
+
+impl From<ChipLook> for Surface {
+    fn from(look: ChipLook) -> Self {
+        Self::new(look.role())
+    }
+}
+
 #[derive(IntoElement)]
 pub struct Chip {
-    label: SharedString,
+    plate: Plate,
+    look: ChipLook,
+    label: Option<SharedString>,
     dot: Option<Tone>,
     icon: Option<Icon>,
     detail: Option<SharedString>,
     tone: Tone,
     emphasis: Emphasis,
-    selected: bool,
+    ring: Option<Hsla>,
     size: Size,
-    refinement: StyleRefinement,
+    children: Vec<AnyElement>,
 }
 
 impl Chip {
     #[must_use]
-    pub fn new(label: impl Into<SharedString>) -> Self {
+    pub fn new(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Self {
         Self {
-            label: label.into(),
+            label: Some(label.into()),
+            ..Self::empty(id)
+        }
+    }
+
+    #[must_use]
+    pub fn empty(id: impl Into<ElementId>) -> Self {
+        Self {
+            plate: Plate::new(id, SurfaceRole::CHIP),
+            look: ChipLook::Plain,
+            label: None,
             dot: None,
             icon: None,
             detail: None,
             tone: Tone::Neutral,
             emphasis: Emphasis::Soft,
-            selected: false,
+            ring: None,
             size: Size::Medium,
-            refinement: StyleRefinement::default(),
+            children: Vec::new(),
         }
+    }
+
+    #[must_use]
+    pub fn look(mut self, look: ChipLook) -> Self {
+        self.look = look;
+        self
+    }
+
+    #[must_use]
+    pub fn state(mut self, state: PaintState) -> Self {
+        self.plate.state = state;
+        self
+    }
+
+    #[must_use]
+    pub fn on(mut self, ground: Ground) -> Self {
+        self.plate.surface = self.plate.surface.on(ground);
+        self
+    }
+
+    #[must_use]
+    pub fn ring(mut self, color: Hsla) -> Self {
+        self.ring = Some(color);
+        self
+    }
+
+    #[must_use]
+    pub fn interactive(mut self, interactive: bool) -> Self {
+        self.plate.interactive = interactive;
+        self
     }
 
     #[must_use]
@@ -74,13 +147,14 @@ impl Chip {
         let (_, padding, text) = metrics(self.size);
         let rem = window.rem_size();
         let gap = Space::S3.rems().to_pixels(rem);
+        let label = self.label.clone().unwrap_or_default();
         let mut font = ala::font(cx.theme().font_family.clone());
         font.weight = text.strong_weight();
         let line = window.text_system().shape_line(
-            self.label.clone(),
+            label.clone(),
             text.size().to_pixels(rem),
             &[TextRun {
-                len: self.label.len(),
+                len: label.len(),
                 font,
                 color: cx.theme().foreground,
                 background_color: None,
@@ -99,33 +173,32 @@ impl Chip {
         line.width + padding.rems().to_pixels(rem) * 2.0 + lead
     }
 
-    fn paint_layer(&self, theme: &Theme) -> Layer {
-        let role = SurfaceRole::CHIP;
+    fn paint_surface(&self) -> Surface {
+        let role = self.look.role();
         let role = match self.emphasis {
             Emphasis::Solid | Emphasis::Soft => role,
             Emphasis::Outline => role.with(role.patch.fill(Fill::None)),
             Emphasis::Ghost => role.with(role.patch.fill(Fill::None).outline(false)),
         };
-        let surface = Surface::new(role)
+        Surface::new(role)
             .tone(self.tone)
-            .prominent(self.emphasis == Emphasis::Solid);
-        let state = if self.selected {
-            PaintState::Selected
-        } else {
-            PaintState::Rest
-        };
-        theme.layer(surface, state)
+            .prominent(self.emphasis == Emphasis::Solid)
+            .on_maybe(self.plate.surface.ground)
     }
 }
 
 impl Selectable for Chip {
     fn selected(mut self, selected: bool) -> Self {
-        self.selected = selected;
+        self.plate.state = if selected {
+            PaintState::Selected
+        } else {
+            PaintState::Rest
+        };
         self
     }
 
     fn is_selected(&self) -> bool {
-        self.selected
+        self.plate.state == PaintState::Selected
     }
 }
 
@@ -136,35 +209,53 @@ impl Sizable for Chip {
     }
 }
 
-impl Styled for Chip {
-    fn style(&mut self) -> &mut StyleRefinement {
-        &mut self.refinement
+impl ParentElement for Chip {
+    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
+        self.children.extend(elements);
     }
 }
 
+plate_element!(Chip, children);
+
 impl RenderOnce for Chip {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let layer = self.paint_layer(cx.theme());
-        let ground = layer.ground;
-        let (height, padding, text) = metrics(self.size);
-        h_flex()
+        let surface = self.paint_surface();
+        let Self {
+            mut plate,
+            label,
+            dot: lead_dot,
+            icon,
+            detail,
+            ring,
+            size,
+            children,
+            ..
+        } = self;
+        let theme = cx.theme();
+        let ground = theme.ground_at(surface, plate.state);
+        let accent = theme.accent.opaque();
+        let (height, padding, text) = metrics(size);
+        plate.surface = surface;
+        plate.base = plate
+            .base
+            .h_flex()
             .min_w_0()
             .h(rems_from_px(height))
             .px(padding)
             .gap(Space::S3)
-            .layer(&layer)
-            .refine_style(&self.refinement)
-            .when_some(self.dot, |chip, tone| chip.child(dot(tone, ground, cx)))
-            .when_some(self.icon, |chip, icon| {
+            .when_some(lead_dot, |chip, tone| chip.child(dot(tone, ground, cx)))
+            .when_some(icon, |chip, icon| {
                 chip.child(icon.with_size(px(text.design_px() + 1.0)))
             })
-            .child(
-                Label::new(text, self.label)
-                    .strong()
-                    .flex_none()
-                    .whitespace_nowrap(),
-            )
-            .when_some(self.detail, |chip, detail| {
+            .when_some(label, |chip, label| {
+                chip.child(
+                    Label::new(text, label)
+                        .strong()
+                        .flex_none()
+                        .whitespace_nowrap(),
+                )
+            })
+            .when_some(detail, |chip, detail| {
                 chip.child(
                     Label::new(text, format!("· {detail}"))
                         .muted()
@@ -173,6 +264,16 @@ impl RenderOnce for Chip {
                         .truncate(),
                 )
             })
+            .children(children);
+        plate.paint_with(cx, move |layer| {
+            if let Some(ring) = ring {
+                for shadow in &mut layer.shadow {
+                    if shadow.color == accent {
+                        shadow.color = ring;
+                    }
+                }
+            }
+        })
     }
 }
 

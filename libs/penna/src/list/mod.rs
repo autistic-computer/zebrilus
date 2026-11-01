@@ -1,8 +1,11 @@
+mod row;
 pub mod tree;
+
+pub use row::{Row, RowLook};
 
 use ala::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement as _, IntoElement, MouseButton,
-    MouseDownEvent, MouseMoveEvent, ParentElement, RenderOnce, Stateful,
+    MouseDownEvent, MouseMoveEvent, ParentElement, Pixels, RenderOnce, Stateful,
     StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
@@ -25,6 +28,7 @@ pub struct ListItem {
     disabled: bool,
     selected: bool,
     surface_role: Option<SurfaceRole>,
+    row_height: Pixels,
     on_click: Option<ClickHandler>,
     on_mouse_down: Vec<(MouseButton, MouseDownHandler)>,
     on_mouse_enter: Option<MouseMoveHandler>,
@@ -40,6 +44,7 @@ impl ListItem {
             disabled: false,
             selected: false,
             surface_role: None,
+            row_height: px(Size::Medium.control_px()),
             on_click: None,
             on_mouse_down: Vec::new(),
             on_mouse_enter: None,
@@ -56,6 +61,18 @@ impl ListItem {
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
+        self
+    }
+
+    #[must_use]
+    pub fn look(mut self, look: RowLook) -> Self {
+        self.surface_role = Some(look.role());
+        self
+    }
+
+    #[must_use]
+    pub fn row_height(mut self, height: Pixels) -> Self {
+        self.row_height = height;
         self
     }
 
@@ -126,6 +143,7 @@ impl RenderOnce for ListItem {
             disabled,
             selected,
             surface_role,
+            row_height,
             on_click,
             on_mouse_down,
             on_mouse_enter,
@@ -154,7 +172,7 @@ impl RenderOnce for ListItem {
             .px_3()
             .text_base()
             .layer(&layer)
-            .map(|this| row_corners(this, &layer, px(Size::Medium.control_px())))
+            .map(|this| row_corners(this, &layer, row_height))
             .refine_style(&style)
             .when(interactive, |this| {
                 this.when_some(on_click, |this, on_click| this.on_click(on_click))

@@ -23,7 +23,7 @@ pub use actions::{
 };
 pub use ala::TextAlign;
 pub(crate) use field::field_text;
-pub use field::{Input, InputContentType, field_chrome, field_paint};
+pub use field::{FieldLook, Input, InputContentType, field_chrome, field_paint, field_underlay};
 pub use number::NumberInput;
 pub use state::{InputEvent, InputState};
 

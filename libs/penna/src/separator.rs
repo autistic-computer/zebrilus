@@ -3,7 +3,7 @@ use ala::{
     div, prelude::FluentBuilder as _,
 };
 
-use crate::{Edge, Kind, StyledExt as _, SurfaceRole};
+use crate::{Edge, Kind, RuleLook, StyledExt as _, SurfaceRole};
 
 #[derive(IntoElement)]
 pub struct Separator {
@@ -41,6 +41,12 @@ impl Separator {
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
+        self
+    }
+
+    #[must_use]
+    pub fn look(mut self, look: RuleLook) -> Self {
+        self.surface_role = Some(look.role());
         self
     }
 }

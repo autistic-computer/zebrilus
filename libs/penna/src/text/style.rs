@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ala::{Pixels, Rems, StyleRefinement, px, rems};
 
-use crate::{SurfaceRole, highlighter::HighlightTheme};
+use crate::highlighter::HighlightTheme;
 
 #[derive(Clone)]
 pub struct TextViewStyle {
@@ -16,8 +16,6 @@ pub struct TextViewStyle {
     pub table: StyleRefinement,
     pub table_cell: StyleRefinement,
     pub is_dark: bool,
-    pub code_role: Option<SurfaceRole>,
-    pub figure_role: Option<SurfaceRole>,
 }
 
 impl PartialEq for TextViewStyle {
@@ -25,8 +23,6 @@ impl PartialEq for TextViewStyle {
         self.paragraph_gap == other.paragraph_gap
             && self.heading_base_font_size == other.heading_base_font_size
             && self.highlight_theme == other.highlight_theme
-            && self.code_role == other.code_role
-            && self.figure_role == other.figure_role
     }
 }
 
@@ -41,8 +37,6 @@ impl Default for TextViewStyle {
             table: StyleRefinement::default(),
             table_cell: StyleRefinement::default(),
             is_dark: false,
-            code_role: None,
-            figure_role: None,
         }
     }
 }
@@ -73,16 +67,6 @@ impl TextViewStyle {
 
     pub fn table_cell(mut self, style: StyleRefinement) -> Self {
         self.table_cell = style;
-        self
-    }
-
-    pub fn code_role(mut self, role: SurfaceRole) -> Self {
-        self.code_role = Some(role);
-        self
-    }
-
-    pub fn figure_role(mut self, role: SurfaceRole) -> Self {
-        self.figure_role = Some(role);
         self
     }
 }

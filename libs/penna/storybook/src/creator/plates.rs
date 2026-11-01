@@ -966,7 +966,6 @@ impl Phone {
             .map(|(index, (name, detail, current))| {
                 sheet_row(
                     ("creator-window-option", index),
-                    roles::PHONE_ROW,
                     Some(Icon::new(IconName::Layers)),
                     *name,
                     cx,
@@ -1002,15 +1001,13 @@ impl Phone {
                 )
                 .child(sheet_row(
                     "creator-new-window",
-                    roles::PHONE_ROW,
                     Some(Icon::new(IconName::Plus)),
                     "New window",
                     cx,
                 )),
             px(0.0),
             |_, _| {},
-        )
-        .header_role(roles::PHONE_BAR);
+        );
         phone_frame("creator-phone-sheet", cx)
             .relative()
             .h(px(PHONE_SHEET_HEIGHT))

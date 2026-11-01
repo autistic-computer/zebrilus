@@ -1,7 +1,7 @@
 use ala::{
-    AnyElement, App, DefiniteLength, Entity, InteractiveElement, IntoElement, MouseButton,
-    ParentElement as _, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, DefiniteLength, Div, Entity, InteractiveElement, IntoElement, MouseButton,
+    ParentElement as _, Pixels, RenderOnce, Role, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, TextAlign, Window, div, prelude::FluentBuilder as _, px, relative,
 };
 
 use crate::{
@@ -11,6 +11,7 @@ use crate::{
     foundation::restyle,
     h_flex,
     icon::{Icon, IconName},
+    roles,
     spinner::Spinner,
 };
 
@@ -58,6 +59,43 @@ pub struct Input {
     emphasis: Option<Emphasis>,
     surface_role: Option<SurfaceRole>,
     on: Option<Ground>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FieldLook {
+    Composer,
+    Address,
+}
+
+impl FieldLook {
+    const fn role(self) -> SurfaceRole {
+        match self {
+            Self::Composer => roles::FIELD_COMPOSER,
+            Self::Address => roles::FIELD_ADDRESS,
+        }
+    }
+}
+
+impl From<FieldLook> for Surface {
+    fn from(look: FieldLook) -> Self {
+        Self::new(look.role())
+    }
+}
+
+pub fn field_underlay(look: FieldLook, inset: Pixels, cx: &App) -> Option<Div> {
+    let theme = cx.theme();
+    let layer = theme.layer(look, PaintState::Rest);
+    layer.glass.is_none().then(|| {
+        div()
+            .absolute()
+            .top(inset)
+            .bottom(inset)
+            .left(inset)
+            .right(inset)
+            .rounded(layer.radius - inset)
+            .corner_smoothing(layer.smoothing)
+            .bg(theme.background.opaque())
+    })
 }
 
 pub fn field_paint(surface: impl Into<Surface>, cx: &App) -> Paint {

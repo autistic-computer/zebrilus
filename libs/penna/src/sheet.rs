@@ -10,11 +10,11 @@ use web_time::{Duration, Instant};
 
 use crate::dismissal::{Dismissal, Overdrag, Tick, coast, coasting};
 use crate::{
-    ActiveTheme as _, Emphasis, Icon, IconName, Kind, Layer, PaintState, Shape, StyledExt as _,
-    Surface, SurfaceRole, Tone,
+    ActiveTheme as _, Emphasis, Icon, IconName, Layer, PaintState, Shape, StyledExt as _, Surface,
+    SurfaceRole, Tone,
     button::Button,
     foundation::{muted_on, row_radius, row_surface},
-    h_flex,
+    h_flex, roles,
 };
 
 const ENTER: Duration = Duration::from_millis(240);
@@ -74,7 +74,6 @@ pub struct BottomSheet {
     on_dismiss: Dismiss,
     content_scroll: Option<ScrollHandle>,
     surface_role: Option<SurfaceRole>,
-    header_role: Option<SurfaceRole>,
     heading: Option<AnyElement>,
     full: Option<Pixels>,
 }
@@ -96,7 +95,6 @@ pub fn bottom_sheet(
         on_dismiss: Rc::new(on_dismiss),
         content_scroll: None,
         surface_role: None,
-        header_role: None,
         heading: None,
         full: None,
     }
@@ -112,12 +110,6 @@ impl BottomSheet {
     #[must_use]
     pub fn surface_role(mut self, role: SurfaceRole) -> Self {
         self.surface_role = Some(role);
-        self
-    }
-
-    #[must_use]
-    pub fn header_role(mut self, role: SurfaceRole) -> Self {
-        self.header_role = Some(role);
         self
     }
 
@@ -195,14 +187,13 @@ pub fn sheet_action(
 
 pub fn sheet_row(
     id: impl Into<ElementId>,
-    role: SurfaceRole,
     slot: Option<Icon>,
     label: impl IntoElement,
     cx: &App,
 ) -> Stateful<Div> {
     option_row(
         id,
-        role,
+        roles::PHONE_ROW,
         slot.map_or(Lead::Empty, |icon| Lead::Tile(Box::new(icon))),
         label,
         cx,
@@ -218,7 +209,7 @@ pub fn sheet_detail_row(
     cx: &App,
 ) -> Stateful<Div> {
     let layer = cx.theme().layer(role, PaintState::Rest);
-    let muted = muted_on(&layer, cx);
+    let muted = muted_on(layer.ground, cx);
     row_shell(id, role, px(DETAIL_HEIGHT), cx)
         .children(slot.map(|icon| icon_tile(icon, TILE, &layer, cx)))
         .child(
@@ -506,7 +497,7 @@ impl RenderOnce for BottomSheet {
                 PaintState::Rest,
             )
         };
-        let header = Surface::new(self.header_role.unwrap_or(Kind::Bar.role())).on(ground);
+        let header = Surface::new(roles::PHONE_BAR).on(ground);
         let close = state.clone();
         let scrim = div()
             .id("bottom-sheet-scrim")

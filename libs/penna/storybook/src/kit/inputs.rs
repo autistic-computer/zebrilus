@@ -1,15 +1,19 @@
 use ala::{
-    AnyView, App, AppContext as _, Context, Entity, IntoElement, Keystroke, ParentElement as _,
-    Render, Styled as _, Window, div,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, InteractiveElement as _,
+    IntoElement, Keystroke, ParentElement as _, Render, Styled as _, Window, div, px,
 };
 use penna::{
-    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Sizable as _, Size,
-    input::{Input, InputContentType, InputState, NumberInput, TextAlign},
+    ActiveTheme as _, Colorize as _, Disableable as _, Icon, IconName, Label, PaintState,
+    Sizable as _, Size, Space, TextStyle,
+    input::{
+        FieldLook, Input, InputContentType, InputState, NumberInput, TextAlign, field_chrome,
+        field_underlay,
+    },
     kbd::Kbd,
 };
 
 use super::support::after_first_frame;
-use crate::story::{Section, Story, states};
+use crate::story::{Section, Story, row, stateless, states};
 use penna::StyledExt as _;
 
 pub const STORY: Story = Story {
@@ -43,6 +47,12 @@ pub const STORY: Story = Story {
             build: |window, cx| cx.new(|cx| MultiLine::new(window, cx)).into(),
         },
         Section {
+            id: "field-looks",
+            name: "Field looks",
+            summary: "field_chrome(element, look, state, bordered, focus_bordered, cx) frames a field the app lays out itself: the chat composer and the browser's address bar, resting, hovered and focused. field_underlay(look, inset, cx) is the opaque plate behind a composer whose look draws no glass.",
+            build: |_, cx| stateless(field_looks, cx),
+        },
+        Section {
             id: "number",
             name: "Number input",
             summary: "NumberInput wraps a field between two steppers. Step, min and max live on the InputState.",
@@ -50,6 +60,60 @@ pub const STORY: Story = Story {
         },
     ],
 };
+
+const FIELD_STATES: [(PaintState, &str); 3] = [
+    (PaintState::Rest, "Rest"),
+    (PaintState::Hover, "Hover"),
+    (PaintState::Focused, "Focused"),
+];
+
+fn framed_field(look: FieldLook, state: PaintState, label: &'static str, cx: &App) -> AnyElement {
+    let radius = cx.theme().radius_of(look).min(px(20.0));
+    div()
+        .relative()
+        .w(px(220.0))
+        .children(
+            field_underlay(look, px(1.0), cx).map(|underlay| underlay.rounded(radius - px(1.0))),
+        )
+        .child(
+            field_chrome(
+                div()
+                    .id(label)
+                    .h(px(40.0))
+                    .px(Space::S8)
+                    .flex()
+                    .items_center(),
+                look,
+                state,
+                true,
+                true,
+                cx,
+            )
+            .rounded(radius)
+            .child(Label::new(TextStyle::Body, label).muted()),
+        )
+        .into_any_element()
+}
+
+fn field_looks(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    [
+        (FieldLook::Composer, "composer"),
+        (FieldLook::Address, "address"),
+    ]
+    .into_iter()
+    .fold(states(), |states, (look, name)| {
+        states.state(
+            name,
+            row().children(
+                FIELD_STATES
+                    .iter()
+                    .map(|(state, label)| framed_field(look, *state, label, cx)),
+            ),
+        )
+    })
+    .into_any_element()
+}
 
 fn field(
     window: &mut Window,

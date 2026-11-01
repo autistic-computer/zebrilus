@@ -1531,7 +1531,16 @@ impl Theme {
     }
 
     pub fn ground_of(&self, surface: impl Into<Surface>) -> Ground {
-        self.layer(surface, PaintState::Rest).ground
+        self.ground_at(surface, PaintState::Rest)
+    }
+
+    pub fn ground_at(&self, surface: impl Into<Surface>, state: PaintState) -> Ground {
+        self.layer(surface, state).ground
+    }
+
+    pub fn radius_of(&self, surface: impl Into<Surface>) -> Pixels {
+        let role = surface.into().role;
+        self.shape_radius(role, self.style(role).shape)
     }
 }
 

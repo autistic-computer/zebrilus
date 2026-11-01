@@ -1,7 +1,10 @@
-use ala::{AnyElement, App, IntoElement, ParentElement as _, Styled as _, Window, div, px};
+use ala::{
+    AnyElement, App, InteractiveElement as _, IntoElement, ParentElement as _, Styled as _, Window,
+    div, px,
+};
 use penna::{
-    Chip, Dock, IconName, Inspector, Label, PaintState, Sizable as _, Space, TextStyle, Tile,
-    TileVariant, Tone, Well,
+    ActiveTheme as _, Chip, Dock, IconName, Inspector, Label, PaintState, Sizable as _, Space,
+    TextStyle, Tile, TileVariant, Tone, Well,
     button::Button,
     h_flex,
     settings::{SettingEntry, SettingsStack},
@@ -9,7 +12,7 @@ use penna::{
     v_flex,
 };
 
-use crate::story::{Section, Story, stateless, states};
+use crate::story::{Framed as _, Section, Story, stateless, states};
 
 pub const STORY: Story = Story {
     id: "canvas",
@@ -22,6 +25,18 @@ pub const STORY: Story = Story {
             name: "Screen tiles",
             summary: "Tile::new(id).variant(TileVariant::Screen) on a Well, in each state the app gives it.",
             build: |_, cx| stateless(screens, cx),
+        },
+        Section {
+            id: "drop-and-veil",
+            name: "Drop zones and veils",
+            summary: "TileVariant::Drop marks where a dragged thing will land; TileVariant::Veil is the tint laid over panes while something is dragged. The caller sets the drop zone's corners.",
+            build: |_, cx| stateless(drops, cx),
+        },
+        Section {
+            id: "mini",
+            name: "Mini tiles",
+            summary: "TileVariant::Mini draws no fill of its own, so the caller's .bg and .rounded show; Selected rings the one a window opens to.",
+            build: |_, cx| stateless(minis, cx),
         },
         Section {
             id: "dock",
@@ -100,6 +115,72 @@ fn screens(_: &mut Window, cx: &mut App) -> AnyElement {
         .into_any_element()
 }
 
+fn pane(label: &'static str) -> ala::Div {
+    div()
+        .size_full()
+        .p(Space::S4)
+        .child(Label::new(TextStyle::Caption, label))
+}
+
+fn drops(_: &mut Window, cx: &mut App) -> AnyElement {
+    let radius = cx.theme().radius;
+    let area = |id: &'static str| div().id(id).relative().w(px(200.0)).h(px(120.0)).framed(cx);
+    states()
+        .columns(2)
+        .state(
+            "drop, selected",
+            area("drop-area").child(pane("Right half")).child(
+                Tile::new("drop")
+                    .variant(TileVariant::Drop)
+                    .state(PaintState::Selected)
+                    .absolute()
+                    .top(Space::S2)
+                    .bottom(Space::S2)
+                    .right(Space::S2)
+                    .w(px(96.0))
+                    .rounded(radius),
+            ),
+        )
+        .state(
+            "veil",
+            area("veil-area").child(pane("Drag to move")).child(
+                Tile::new("veil")
+                    .variant(TileVariant::Veil)
+                    .absolute()
+                    .inset_0(),
+            ),
+        )
+        .into_any_element()
+}
+
+fn mini(id: &'static str, state: PaintState, cx: &App) -> Tile {
+    Tile::new(id)
+        .variant(TileVariant::Mini)
+        .state(state)
+        .size_full()
+        .p(Space::S3)
+        .bg(cx.theme().background)
+        .rounded(px(6.0))
+        .child(Label::new(TextStyle::Micro, "zsh"))
+}
+
+fn minis(_: &mut Window, cx: &mut App) -> AnyElement {
+    let cx: &App = cx;
+    let window = |id: &'static str, state: PaintState| {
+        h_flex()
+            .w(px(140.0))
+            .h(px(90.0))
+            .gap(Space::S2)
+            .child(mini(id, state, cx))
+            .child(mini("other", PaintState::Rest, cx))
+    };
+    states()
+        .columns(2)
+        .state("rest", window("mini-rest", PaintState::Rest))
+        .state("selected", window("mini-selected", PaintState::Selected))
+        .into_any_element()
+}
+
 fn card(id: &'static str, name: &'static str, detail: &'static str, state: PaintState) -> Tile {
     Tile::new(id)
         .state(state)
@@ -160,7 +241,11 @@ fn inspector(_: &mut Window, _: &mut App) -> AnyElement {
         .child(
             Inspector::new("inspector", "ubuntu")
                 .subtitle("Connected · 2 screens")
-                .trailing(Chip::new("Ready").dot(Tone::Success).small())
+                .trailing(
+                    Chip::new("inspector-ready", "Ready")
+                        .dot(Tone::Success)
+                        .small(),
+                )
                 .on_close(|_, _, _| {})
                 .child(
                     SettingsStack::titled("What ubuntu can do here")

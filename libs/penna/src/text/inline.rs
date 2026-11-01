@@ -14,7 +14,7 @@ use ala::{
     quad,
 };
 
-use crate::{ActiveTheme, PaintState, SurfaceRole, WindowExt as _};
+use crate::{ActiveTheme, PaintState, WindowExt as _, roles};
 
 use super::{
     global::TextGlobal,
@@ -134,7 +134,6 @@ pub(super) struct Inline {
     links: Rc<Vec<(Range<usize>, LinkMark)>>,
     highlights: Vec<(Range<usize>, HighlightStyle)>,
     code_ranges: Vec<Range<usize>>,
-    code_role: Option<SurfaceRole>,
     styled_text: StyledText,
     streaming_veil: Option<(StreamingVeil, VeilKey)>,
     shared_links: Option<SharedLinks>,
@@ -192,7 +191,6 @@ impl Inline {
             links: Rc::new(links),
             highlights,
             code_ranges: Vec::new(),
-            code_role: None,
             text: text.clone(),
             styled_text: StyledText::new(text),
             streaming_veil: None,
@@ -211,11 +209,6 @@ impl Inline {
         self
     }
 
-    pub(super) fn code_role(mut self, code_role: Option<SurfaceRole>) -> Self {
-        self.code_role = code_role;
-        self
-    }
-
     pub(super) fn streaming_veil(
         mut self,
         streaming_veil: Option<StreamingVeil>,
@@ -229,20 +222,8 @@ impl Inline {
         if self.code_ranges.is_empty() {
             return;
         }
-        let theme = cx.theme();
-        let (fill_color, border_color, border_width, radius) = match self.code_role {
-            Some(role) => {
-                let layer = theme.layer(role, PaintState::Rest);
-                (layer.fill, layer.border, layer.border_width, layer.radius)
-            }
-            None => (
-                theme.surface(crate::Elevation::Popover).fill,
-                theme.transparent,
-                px(0.0),
-                theme.radius,
-            ),
-        };
-        let radius = radius.min(px(CODE_FILL_RADIUS_MAX));
+        let layer = cx.theme().layer(roles::CARD_CODE, PaintState::Rest);
+        let radius = layer.radius.min(px(CODE_FILL_RADIUS_MAX));
         let line_height = layout.line_height();
         let bounds = layout.bounds();
         let lines = layout.line_layouts();
@@ -259,9 +240,9 @@ impl Inline {
                 window.paint_quad(quad(
                     fill,
                     radius,
-                    fill_color,
-                    border_width,
-                    border_color,
+                    layer.fill,
+                    layer.border_width,
+                    layer.border,
                     BorderStyle::default(),
                 ));
             }

@@ -1,12 +1,13 @@
 use ala::{
-    AnyElement, App, Div, ElementId, InteractiveElement, Interactivity, IntoElement, ParentElement,
-    Pixels, RenderOnce, SharedString, Stateful, StatefulInteractiveElement, StyleRefinement,
-    Styled, Window, div, prelude::FluentBuilder as _,
+    AnyElement, App, ElementId, IntoElement, ParentElement, Pixels, RenderOnce, SharedString,
+    StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _,
 };
 
 use crate::{
     ActiveTheme as _, Edge, Ground, Label, PaintState, Space, StyledExt as _, Surface, SurfaceRole,
-    TextStyle, Tone, h_flex, roles, v_flex,
+    TextStyle, Tone, h_flex,
+    plate::{Plate, plate_element},
+    roles, v_flex,
 };
 
 #[derive(IntoElement, Default)]
@@ -53,6 +54,9 @@ pub enum TileVariant {
     #[default]
     Card,
     Screen,
+    Drop,
+    Veil,
+    Mini,
 }
 
 impl TileVariant {
@@ -60,82 +64,74 @@ impl TileVariant {
         match self {
             Self::Card => SurfaceRole::CARD_TILE,
             Self::Screen => SurfaceRole::SCREEN_TILE,
+            Self::Drop | Self::Veil => roles::TILE_DROP,
+            Self::Mini => roles::TILE_MINI,
         }
+    }
+}
+
+impl From<TileVariant> for Surface {
+    fn from(variant: TileVariant) -> Self {
+        Self::new(variant.role())
     }
 }
 
 #[derive(IntoElement)]
 pub struct Tile {
-    base: Stateful<Div>,
+    plate: Plate,
     variant: TileVariant,
-    tone: Tone,
-    state: PaintState,
-    ground: Option<Ground>,
 }
 
 impl Tile {
     #[must_use]
     pub fn new(id: impl Into<ElementId>) -> Self {
         Self {
-            base: div().id(id),
+            plate: Plate::new(id, TileVariant::Card.role()),
             variant: TileVariant::Card,
-            tone: Tone::Neutral,
-            state: PaintState::Rest,
-            ground: None,
         }
     }
 
     #[must_use]
     pub fn on(mut self, ground: Ground) -> Self {
-        self.ground = Some(ground);
+        self.plate.surface = self.plate.surface.on(ground);
         self
     }
 
     #[must_use]
     pub fn variant(mut self, variant: TileVariant) -> Self {
         self.variant = variant;
+        self.plate.surface.role = variant.role();
         self
     }
 
     #[must_use]
     pub fn tone(mut self, tone: Tone) -> Self {
-        self.tone = tone;
+        self.plate.surface = self.plate.surface.tone(tone);
         self
     }
 
     #[must_use]
     pub fn state(mut self, state: PaintState) -> Self {
-        self.state = state;
+        self.plate.state = state;
         self
     }
 }
 
-impl ParentElement for Tile {
-    fn extend(&mut self, elements: impl IntoIterator<Item = AnyElement>) {
-        self.base.extend(elements);
-    }
-}
-
-impl Styled for Tile {
-    fn style(&mut self) -> &mut StyleRefinement {
-        self.base.style()
-    }
-}
-
-impl InteractiveElement for Tile {
-    fn interactivity(&mut self) -> &mut Interactivity {
-        self.base.interactivity()
-    }
-}
-
-impl StatefulInteractiveElement for Tile {}
+plate_element!(Tile);
 
 impl RenderOnce for Tile {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let surface = Surface::new(self.variant.role())
-            .tone(self.tone)
-            .on_maybe(self.ground);
-        self.base.surface_at(surface, self.state, cx)
+        let mut plate = self.plate;
+        if self.variant != TileVariant::Veil {
+            return plate.paint(cx);
+        }
+        let ground = plate.surface.ground.unwrap_or_else(|| cx.theme().ground());
+        plate.surface = plate.surface.on(Ground {
+            glass: true,
+            ..ground
+        });
+        plate.state = PaintState::Hover;
+        plate.paint_with(cx, |layer| layer.border_width = Pixels::ZERO)
     }
 }
 

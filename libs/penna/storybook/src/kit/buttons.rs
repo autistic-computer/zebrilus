@@ -5,7 +5,7 @@ use ala::{
 use penna::{
     ActiveTheme as _, Colorize as _, Disableable as _, Emphasis, IconName, Selectable as _,
     Sizable as _, Tone,
-    button::{Button, ButtonRounded, ButtonVariant, ButtonVariants as _},
+    button::{Button, ButtonLook, ButtonRounded, ButtonVariant, ButtonVariants as _},
 };
 
 use super::support::{Probe, after_first_frame, hover, press, when_visible};
@@ -40,6 +40,12 @@ pub const STORY: Story = Story {
             name: "Shapes",
             summary: "Flat buttons without a resting surface, compact padding and rounded overrides.",
             build: |_, cx| stateless(custom_and_shapes, cx),
+        },
+        Section {
+            id: "looks",
+            name: "Looks",
+            summary: "Button::look(look) for buttons set into the app's chrome: icon, quiet and flat buttons, the window chrome's, pane header and flip buttons, the actions that show on a hovered row, the jump-to-latest button, host actions, the composer's send button and a pressable pane chip. Each row is resting, selected and disabled; point at a resting one to see its hover.",
+            build: |_, cx| stateless(looks, cx),
         },
         Section {
             id: "hovered",
@@ -275,6 +281,43 @@ fn custom_and_shapes(_: &mut Window, cx: &mut App) -> AnyElement {
                 ),
             ),
         )
+        .into_any_element()
+}
+
+const LOOKS: [(ButtonLook, &str, bool); 11] = [
+    (ButtonLook::Icon, "icon", true),
+    (ButtonLook::Quiet, "quiet", false),
+    (ButtonLook::Flat, "flat", true),
+    (ButtonLook::Chrome, "chrome", true),
+    (ButtonLook::Bar, "bar", true),
+    (ButtonLook::Toggle, "toggle", true),
+    (ButtonLook::RowIcon, "row icon", true),
+    (ButtonLook::Floating, "floating", true),
+    (ButtonLook::Row, "row", false),
+    (ButtonLook::Send, "send", true),
+    (ButtonLook::FloatingChip, "floating chip", false),
+];
+
+fn looks(_: &mut Window, _: &mut App) -> AnyElement {
+    LOOKS
+        .iter()
+        .fold(states().columns(3), |states, (look, name, icon_only)| {
+            let button = |state: &str| {
+                let button = Button::new(format!("look-{name}-{state}")).look(*look);
+                if *icon_only {
+                    button.ghost().icon(IconName::Plus).tooltip(*name)
+                } else {
+                    button.ghost().label("Connect")
+                }
+            };
+            states.state(
+                *name,
+                row()
+                    .child(button("rest").on_click(|_, _, _| {}))
+                    .child(button("selected").selected(true))
+                    .child(button("disabled").disabled(true)),
+            )
+        })
         .into_any_element()
 }
 
