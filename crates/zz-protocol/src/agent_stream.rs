@@ -128,6 +128,9 @@ pub enum AgentStreamPayload {
     Chat {
         event: crate::chat::ChatEvent,
     },
+    TitleChanged {
+        title: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]

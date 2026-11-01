@@ -282,6 +282,7 @@ pub(crate) struct AgentPaneState {
     pub(crate) last_seq: u64,
     pub(crate) git: Option<AgentGitSummary>,
     pub(crate) tasks: Vec<AgentTaskWire>,
+    pub(crate) title: Option<String>,
 }
 
 impl AgentPaneState {
@@ -300,6 +301,7 @@ impl AgentPaneState {
             last_seq: 0,
             git: None,
             tasks: Vec::new(),
+            title: None,
         }
     }
 
@@ -1066,6 +1068,18 @@ impl PanePump {
         if matches!(&payload, AgentStreamPayload::PromptAccepted { .. }) {
             return;
         }
+        if let AgentStreamPayload::TitleChanged { title } = payload {
+            let state = {
+                let mut state = self.state.lock();
+                if state.title == title {
+                    return;
+                }
+                state.title = title;
+                state.clone()
+            };
+            (self.sink)(self.pane, self.generation, state, None);
+            return;
+        }
         if let AgentStreamPayload::PromptFinished { turn_id, .. } = &payload
             && self.active_turn != Some(*turn_id)
         {
@@ -1269,7 +1283,8 @@ impl PanePump {
                 | AgentStreamPayload::SessionDeleteFailed { .. }
                 | AgentStreamPayload::PromptsReclaimed { .. }
                 | AgentStreamPayload::PromptsRestored { .. }
-                | AgentStreamPayload::Chat { .. } => {}
+                | AgentStreamPayload::Chat { .. }
+                | AgentStreamPayload::TitleChanged { .. } => {}
             }
         }
         let permission = if turn_result.is_none()

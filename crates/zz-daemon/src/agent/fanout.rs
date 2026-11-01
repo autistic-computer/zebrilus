@@ -417,6 +417,7 @@ struct StateFingerprint {
     auth_methods: usize,
     git: Option<zz_protocol::AgentGitSummary>,
     tasks: Vec<zz_protocol::AgentTaskWire>,
+    title: Option<String>,
     blobs: u64,
 }
 
@@ -1050,6 +1051,7 @@ impl PaneLane {
             auth_methods: state.auth_methods.len(),
             git: state.git.clone(),
             tasks: state.tasks.clone(),
+            title: state.title.clone(),
             blobs: self.blobs,
         };
         if self.fingerprint.as_ref() == Some(&fingerprint) {
@@ -1182,7 +1184,7 @@ fn wire(state: &AgentPaneState) -> AgentPaneWire {
         phase,
         queued_prompts: u32::try_from(state.queued_prompts).unwrap_or(u32::MAX),
         session_id: state.session_id.clone(),
-        title: None,
+        title: state.title.clone(),
         error: state.error.clone(),
         auth_methods: serde_json::to_string(&state.auth_methods).unwrap_or_default(),
         config_options: String::new(),

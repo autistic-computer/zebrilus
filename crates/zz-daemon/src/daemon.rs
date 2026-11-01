@@ -33736,6 +33736,7 @@ impl Shared {
         if adopted {
             self.publish_snapshot_state();
         }
+        self.apply_agent_title(pane, state.title.as_deref());
         let subscribers = {
             let inner = self.inner.lock();
             attached_clients_for_pane(&inner, pane)
@@ -33757,6 +33758,22 @@ impl Shared {
         for subscriber in subscribers {
             Self::send_event(&subscriber, payload.clone());
         }
+    }
+
+    fn apply_agent_title(self: &Arc<Self>, pane: PaneId, title: Option<&str>) {
+        let events = {
+            let mut inner = self.inner.lock();
+            if !inner.engine.allow_set_title(pane) {
+                return;
+            }
+            let scope = hook_events::HookScope::open(&mut inner.engine);
+            if !inner.engine.update_agent_title(pane, title) {
+                return;
+            }
+            scope.finish(&inner.engine, "").events
+        };
+        self.request_publish(timers::PublishReason::Tree);
+        self.run_event_hooks(events);
     }
 
     fn agent_tool_call_event(&self, pane: PaneId, call: AgentToolCall) -> Option<PendingHookEvent> {
