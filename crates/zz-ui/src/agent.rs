@@ -4304,7 +4304,7 @@ mod tests {
             });
         };
         hover_html_block(cx);
-        assert!(cx.debug_bounds("agent-code-language").is_some());
+        assert!(cx.debug_bounds("agent-code-copy").is_some());
         assert!(
             cx.debug_bounds("agent-code-open").is_none(),
             "no opener, no button"
