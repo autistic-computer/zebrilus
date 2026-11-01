@@ -29,7 +29,8 @@
       "features": [
         "Participant and actor declarations, aliases and typed participant metadata",
         "Solid/dashed and common bidirectional arrow messages",
-        "Notes, activations, automatic numbering and grouped/nested sequence blocks"
+        "Notes, activations, automatic numbering and grouped/nested sequence blocks",
+        "Participant creation and destruction, checked against upstream lifeline, actor and message geometry in tests/sequence.rs"
       ]
     },
     {

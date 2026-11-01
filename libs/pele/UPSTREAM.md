@@ -41,7 +41,9 @@ The tests use checked-in oracle fixtures and need no Node or upstream checkout.
 They cover native rendering and resvg 0.46 rasterization, source diagnostics,
 layered and compound layout coordinates, edge paths, chart geometry, extended
 shapes, text measurement, escaping and limits. The class, state, ER and gantt
-suites compare whole SVG bodies with upstream output.
+suites compare whole SVG bodies with upstream output, and the sequence suite
+compares the lifelines, participants, destroy crosses and message lines of
+diagrams that create and destroy participants.
 
 ## Comparing with upstream
 

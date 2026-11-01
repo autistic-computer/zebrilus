@@ -77,6 +77,13 @@ pub struct SequenceModel {
     pub acc_description: Option<String>,
     pub groups: Vec<ActorGroup>,
     events: Vec<Event>,
+    created: BTreeMap<usize, usize>,
+    destroyed: BTreeMap<usize, usize>,
+}
+
+enum Pending {
+    Create(usize),
+    Destroy(String),
 }
 
 fn word<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
@@ -360,6 +367,7 @@ pub fn parse(source: &str, max_edges: usize) -> Result<SequenceModel, PeleError>
     let mut number = 1.0;
     let mut step = 1.0;
     let mut messages = 0;
+    let mut pending = None;
     for (line_number, line) in statements(source) {
         if line.is_empty() || line.starts_with("%%") {
             continue;
@@ -376,6 +384,7 @@ pub fn parse(source: &str, max_edges: usize) -> Result<SequenceModel, PeleError>
             && !line.eq_ignore_ascii_case("end")
             && word(line, "participant").is_none()
             && word(line, "actor").is_none()
+            && word(line, "destroy").is_none()
         {
             return Err(failure(
                 "A participant box may only contain participant declarations",
@@ -401,6 +410,36 @@ pub fn parse(source: &str, max_edges: usize) -> Result<SequenceModel, PeleError>
             participant.kind = kind;
             participant.description = description;
             participant.group = participant.group.or(current_group);
+            continue;
+        }
+        if let Some(tail) = word(line, "create") {
+            let (kind, tail) = word(tail, "participant")
+                .map(|v| ("participant", v))
+                .or_else(|| word(tail, "actor").map(|v| ("actor", v)))
+                .ok_or_else(|| {
+                    failure("Expected participant or actor after create", line_number)
+                })?;
+            let (id, description, kind) = participant(tail, kind, line_number)?;
+            if model.actors.iter().any(|actor| actor.id == id) {
+                return Err(PeleError::semantic(
+                    "It is not possible to have actors with the same id, even if one is destroyed before the next is created. Use 'AS' aliases to simulate the behavior",
+                ));
+            }
+            let index = actor(&mut model, &id, line_number)?;
+            model.actors[index].kind = kind;
+            model.actors[index].description = description;
+            pending = Some(Pending::Create(index));
+            continue;
+        }
+        if let Some(tail) = word(line, "destroy") {
+            let id = tail.trim();
+            if !valid_id(id) {
+                return Err(failure(
+                    format!("Invalid sequence participant: {id}"),
+                    line_number,
+                ));
+            }
+            pending = Some(Pending::Destroy(id.to_owned()));
             continue;
         }
         if let Some(title) = word(line, "title").or_else(|| {
@@ -566,19 +605,12 @@ pub fn parse(source: &str, max_edges: usize) -> Result<SequenceModel, PeleError>
             model.events.push(Event::Divider(message_text(tail)));
             continue;
         }
-        if [
-            "create",
-            "destroy",
-            "link",
-            "links",
-            "properties",
-            "details",
-        ]
-        .iter()
-        .any(|kind| word(line, kind).is_some())
+        if ["link", "links", "properties", "details"]
+            .iter()
+            .any(|kind| word(line, kind).is_some())
         {
             return Err(PeleError::unsupported(
-                "Sequence creation, destruction, and participant menu metadata are not ported yet",
+                "Sequence participant menu metadata is not ported yet",
             ));
         }
         if let Some((from, token, target, value)) = message_parts(line) {
@@ -591,6 +623,29 @@ pub fn parse(source: &str, max_edges: usize) -> Result<SequenceModel, PeleError>
                 (0, target)
             };
             let to = actor(&mut model, target, line_number)?;
+            match pending.take() {
+                Some(Pending::Create(created)) => {
+                    if to != created {
+                        return Err(PeleError::semantic(format!(
+                            "The created participant {} does not have an associated creating message after its declaration. Please check the sequence diagram.",
+                            model.actors[created].id
+                        )));
+                    }
+                    model.created.insert(created, model.events.len());
+                }
+                Some(Pending::Destroy(id)) => {
+                    let ends = [from, to]
+                        .into_iter()
+                        .find(|&index| model.actors[index].id == id)
+                        .ok_or_else(|| {
+                            PeleError::semantic(format!(
+                                "The destroyed participant {id} does not have an associated destroying message after its declaration. Please check the sequence diagram."
+                            ))
+                        })?;
+                    model.destroyed.insert(ends, model.events.len());
+                }
+                None => {}
+            }
             messages += 1;
             if messages > max_edges {
                 return Err(PeleError::limit(format!(
@@ -649,6 +704,10 @@ struct Column {
     x: f64,
     top: f64,
     activations: Vec<f64>,
+    created_at: Option<usize>,
+    destroyed_at: Option<usize>,
+    life_start: f64,
+    life_end: Option<f64>,
 }
 
 struct Frame {
@@ -1016,7 +1075,8 @@ fn draw(
     let mut columns = model
         .actors
         .iter()
-        .map(|actor| {
+        .enumerate()
+        .map(|(index, actor)| {
             let label = label_for(&actor.description, size, wrap, options);
             let (width, height) = actor_size(&actor.kind, &label, size, tight);
             Column {
@@ -1026,6 +1086,10 @@ fn draw(
                 x: 0.0,
                 top: 0.0,
                 activations: Vec::new(),
+                created_at: model.created.get(&index).copied(),
+                destroyed_at: model.destroyed.get(&index).copied(),
+                life_start: 0.0,
+                life_end: None,
             }
         })
         .collect::<Vec<_>>();
@@ -1063,10 +1127,15 @@ fn draw(
                         28.0 + 8.0 + label.width + 16.0 + 10.0 + badge,
                     );
                 } else {
+                    let created = if columns[*to].created_at == Some(i) {
+                        columns[*to].width / 2.0
+                    } else {
+                        0.0
+                    };
                     need(
                         (*from).min(*to),
                         (*from).max(*to),
-                        label.width + 24.0 + 10.0 + badge,
+                        label.width + 24.0 + 10.0 + badge + created,
                     );
                 }
             }
@@ -1171,10 +1240,15 @@ fn draw(
             0.0
         }
     };
-    let row_height = columns.iter().map(|c| c.height).fold(0.0, f64::max);
+    let row_height = columns
+        .iter()
+        .filter(|c| c.created_at.is_none())
+        .map(|c| c.height)
+        .fold(0.0, f64::max);
     let header_bottom = box_top + row_height;
     for col in &mut columns {
         col.top = header_bottom - col.height;
+        col.life_start = header_bottom;
     }
     let mut y = header_bottom + 6.0;
     let mut frames = Vec::<Frame>::new();
@@ -1184,6 +1258,7 @@ fn draw(
     let mut messages = String::new();
     let mut message_labels = String::new();
     let mut notes = String::new();
+    let mut crosses = String::new();
     let line = svg::esc(&options.theme.line);
     let foreground = svg::esc(&options.theme.foreground);
     let border = svg::esc(&options.theme.border);
@@ -1368,6 +1443,9 @@ fn draw(
                     16.0_f64.max(width_for(&svg::num(n), tiny, 0, options) + 8.0)
                 });
                 let mut inner = String::new();
+                let line_y;
+                let mut created = None;
+                let mut mark = String::new();
                 let dotted = if arrow.dotted {
                     " stroke-dasharray=\"4 4\""
                 } else {
@@ -1386,7 +1464,7 @@ fn draw(
                     let x1 = edges(a, usize::from(*activate)).1;
                     let outside = x0.max(x1) + 28.0 + badge / 2.0;
                     if let Some(number) = number {
-                        inner.push_str(&number_badge(*number, x0, top, badge, tiny, options));
+                        mark = number_badge(*number, x0, top, badge, tiny, options);
                         x0 += badge / 2.0;
                     }
                     let begin = x0 + if arrow.at_start { trim } else { 0.0 };
@@ -1425,7 +1503,8 @@ fn draw(
                         options,
                     ));
                     bound(&mut min_x, &mut max_x, a.x, outside + 8.0 + label.width);
-                    y = bottom.max((top + bottom + label.height) / 2.0);
+                    line_y = bottom.max((top + bottom + label.height) / 2.0);
+                    y = line_y;
                 } else {
                     let direction = if b.x > a.x { 1.0 } else { -1.0 };
                     let a_edges = edges(a, 0);
@@ -1435,20 +1514,36 @@ fn draw(
                     } else {
                         a_edges.0
                     };
-                    let x1 = if direction > 0.0 {
+                    let creating = b.created_at == Some(i);
+                    let x1 = if creating {
+                        b.x - direction
+                            * if figure(&model.actors[*to].kind) {
+                                18.0
+                            } else {
+                                b.width / 2.0 + 1.0
+                            }
+                    } else if direction > 0.0 {
                         b_edges.0
                     } else {
                         b_edges.1
                     };
-                    let line_y = y
+                    line_y = y
                         + message_gap
                         + if label.height > 0.0 {
                             label.height + 2.0
                         } else {
                             6.0
-                        };
+                        }
+                        .max(if creating {
+                            b.height / 2.0 - message_gap + 6.0
+                        } else {
+                            0.0
+                        });
+                    if creating {
+                        created = Some((*to, line_y - b.height / 2.0));
+                    }
                     if let Some(number) = number {
-                        inner.push_str(&number_badge(*number, x0, line_y, badge, tiny, options));
+                        mark = number_badge(*number, x0, line_y, badge, tiny, options);
                         x0 += direction * badge / 2.0;
                     }
                     let begin = x0
@@ -1516,10 +1611,48 @@ fn draw(
                     );
                     y = line_y;
                 }
+                if let Some((index, top)) = created {
+                    let col = &mut columns[index];
+                    col.top = top;
+                    col.life_start = top + col.height;
+                    y = y.max(top + col.height - 6.0);
+                    let depth = frames.len();
+                    for (k, frame) in frames.iter_mut().enumerate() {
+                        let pad = 20.0 + (depth - 1 - k) as f64 * 10.0;
+                        frame.left = frame.left.min(col.x - col.width / 2.0 - pad);
+                        frame.right = frame.right.max(col.x + col.width / 2.0 + pad);
+                        bound(&mut min_x, &mut max_x, frame.left, frame.right);
+                    }
+                }
+                inner.push_str(&mark);
                 let _ = write!(
                     messages,
                     "<g class=\"pele-edge pele-message\" data-id=\"i{i}\">{inner}</g>"
                 );
+                for index in [*from, *to] {
+                    if columns[index].destroyed_at == Some(i)
+                        && (index == *from || from != to)
+                        && columns[index].life_end.is_none()
+                    {
+                        let col = &mut columns[index];
+                        let (cx, cy) = (col.x, line_y + 16.0);
+                        col.life_end = Some(cy);
+                        let _ = write!(
+                            crosses,
+                            "<path class=\"pele-destroy\" data-id=\"{}\" d=\"M{},{}L{},{}M{},{}L{},{}\"/>",
+                            svg::esc(&model.actors[index].id),
+                            svg::num(cx - 6.0),
+                            svg::num(cy - 6.0),
+                            svg::num(cx + 6.0),
+                            svg::num(cy + 6.0),
+                            svg::num(cx + 6.0),
+                            svg::num(cy - 6.0),
+                            svg::num(cx - 6.0),
+                            svg::num(cy + 6.0)
+                        );
+                        y = y.max(cy + 6.0);
+                    }
+                }
             }
         }
     }
@@ -1532,21 +1665,26 @@ fn draw(
     }
     let mut actors = String::new();
     let mut lifelines = String::new();
+    let mut foot_height = 0.0_f64;
     for (i, col) in columns.iter().enumerate() {
         actors.push_str(&draw_actor(&model.actors[i], col, col.top, false, options));
-        if mirror {
+        if mirror && col.life_end.is_none() {
             actors.push_str(&draw_actor(&model.actors[i], col, y, true, options));
+            foot_height = foot_height.max(col.height);
         }
-        let _ = write!(
-            lifelines,
-            "<path class=\"pele-lifeline\" data-id=\"{}\" d=\"M{},{}V{}\"/>",
-            svg::esc(&model.actors[i].id),
-            svg::num(col.x),
-            svg::num(header_bottom),
-            svg::num(y)
-        );
+        let end = col.life_end.unwrap_or(y);
+        if end > col.life_start {
+            let _ = write!(
+                lifelines,
+                "<path class=\"pele-lifeline\" data-id=\"{}\" d=\"M{},{}V{}\"/>",
+                svg::esc(&model.actors[i].id),
+                svg::num(col.x),
+                svg::num(col.life_start),
+                svg::num(end)
+            );
+        }
     }
-    let mut bottom = y + if mirror { row_height } else { 0.0 };
+    let mut bottom = y + foot_height;
     let mut boxes = String::new();
     for (i, group) in model.groups.iter().enumerate() {
         let members = model
@@ -1640,11 +1778,18 @@ fn draw(
     }
     let _ = write!(
         content,
-        "<g transform=\"translate({},{})\">{title_out}{boxes}{}<g fill=\"none\" stroke=\"{border}\">{lifelines}</g>{}<g class=\"pele-frames\">{frames_out}</g><g class=\"pele-edges\" fill=\"none\" stroke=\"{line}\" stroke-linecap=\"round\">{messages}</g><g class=\"pele-edge-labels\" font-size=\"{}\" fill=\"{foreground}\">{message_labels}</g><g class=\"pele-notes\">{notes}</g><g class=\"pele-nodes\">{actors}</g></g>",
+        "<g transform=\"translate({},{})\">{title_out}{boxes}{}<g fill=\"none\" stroke=\"{border}\">{lifelines}</g>{}<g class=\"pele-frames\">{frames_out}</g><g class=\"pele-edges\" fill=\"none\" stroke=\"{line}\" stroke-linecap=\"round\">{messages}</g>{}<g class=\"pele-edge-labels\" font-size=\"{}\" fill=\"{foreground}\">{message_labels}</g><g class=\"pele-notes\">{notes}</g><g class=\"pele-nodes\">{actors}</g></g>",
         svg::num(pad - min_x),
         svg::num(pad - min_y),
         rectangles.into_iter().rev().collect::<String>(),
         activations.into_iter().rev().collect::<String>(),
+        if crosses.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<g class=\"pele-destroys\" fill=\"none\" stroke=\"{line}\" stroke-width=\"1.5\" stroke-linecap=\"round\">{crosses}</g>"
+            )
+        },
         svg::num(small)
     );
     Ok(RenderResult::new(
@@ -1765,7 +1910,16 @@ mod tests {
         ] {
             assert!(parse(source, 100).is_err(), "{source}");
         }
-        assert!(parse("sequenceDiagram\ncreate participant A", 100).is_err());
+        assert!(parse("sequenceDiagram\ncreate thing A", 100).is_err());
+        assert!(
+            parse(
+                "sequenceDiagram\nA->>B: x\ncreate participant B\nA->>B: y",
+                100
+            )
+            .is_err()
+        );
+        assert!(parse("sequenceDiagram\ncreate participant C\nA->>B: x", 100).is_err());
+        assert!(parse("sequenceDiagram\nA->>B: x\ndestroy B\nA->>C: y", 100).is_err());
         assert!(parse("sequenceDiagram\nparticipant A@{type: [}", 100).is_err());
         assert!(parse("sequenceDiagram\nA->>B: one\nA->>B: two", 1).is_err());
     }
