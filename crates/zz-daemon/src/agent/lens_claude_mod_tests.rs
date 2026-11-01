@@ -1166,3 +1166,67 @@ fn a_prompt_after_the_cli_left_the_pane_fails_instead_of_reaching_the_shell() {
     assert!(rig.pane.sent.lock().is_empty());
     assert!(lens.turn.is_none());
 }
+
+#[test]
+fn a_prompt_sent_as_a_turn_ends_is_not_ended_by_that_turns_transcript_line() {
+    let rig = Rig::new(true);
+    let mut lens = rig.lens();
+    lens.open();
+    let poll = rig.poll();
+    rig.hello(None);
+    live(&mut lens);
+    assert!(ask_prompt(&mut lens, 1, "ping nine").is_empty());
+    poll.join().unwrap();
+    let poll = rig.poll();
+    rig.post(&[
+        json!({ "t": "turn", "turn": TURN }),
+        json!({ "t": "step", "turn": TURN, "step": 0 }),
+        text(TURN, 0, 0, 0, "ping nine"),
+        json!({ "t": "done", "turn": TURN, "reason": "answer" }),
+    ]);
+    let first = lens.tick();
+    assert!(first.iter().any(|payload| matches!(
+        payload,
+        AgentStreamPayload::PromptFinished { turn_id: 1, .. }
+    )));
+
+    assert!(ask_prompt(&mut lens, 2, "ping ten").is_empty());
+    assert_eq!(
+        poll.join().unwrap(),
+        json!([{ "id": 2, "op": "prompt", "text": "ping ten" }])
+    );
+    let _poll = rig.poll();
+    rig.line(&prompt("u1", "ping nine"));
+    rig.line(&said("a1", "u1", 0, "text", "ping nine"));
+    rig.line(&json!({
+        "type": "system", "subtype": "turn_duration", "uuid": "d1", "parentUuid": "a1",
+        "isSidechain": false, "durationMs": 700,
+    }));
+    let late = lens.tick();
+    assert!(
+        !late
+            .iter()
+            .any(|payload| matches!(payload, AgentStreamPayload::PromptFinished { .. })),
+        "{late:?}"
+    );
+
+    let next = "b2c3d4e5-0000-4000-8000-000000000002";
+    rig.post(&[
+        json!({ "t": "turn", "turn": next }),
+        json!({ "t": "step", "turn": next, "step": 0 }),
+        text(next, 0, 0, 0, "ping ten"),
+        json!({ "t": "done", "turn": next, "reason": "answer" }),
+    ]);
+    let second = lens.tick();
+    let reply = second.iter().position(|payload| {
+        matches!(payload, AgentStreamPayload::Update { update }
+            if update["content"]["text"] == "ping ten")
+    });
+    let done = second.iter().position(|payload| {
+        matches!(
+            payload,
+            AgentStreamPayload::PromptFinished { turn_id: 2, .. }
+        )
+    });
+    assert!(reply.is_some() && reply < done, "{second:?}");
+}

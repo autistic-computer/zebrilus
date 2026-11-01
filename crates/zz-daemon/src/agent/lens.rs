@@ -560,7 +560,10 @@ impl Claude {
     }
 
     fn entry(&mut self, entry: &Value, read: &mut Read) {
-        if entry["type"] == "system" && entry["subtype"] == "turn_duration" {
+        if entry["type"] == "system"
+            && entry["subtype"] == "turn_duration"
+            && !self.link.as_ref().is_some_and(Link::live)
+        {
             read.finished = true;
         }
         let Some(uuid) = entry["uuid"].as_str() else {
