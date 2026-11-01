@@ -3337,6 +3337,7 @@ fn render_figure(node: &MarkdownNode, window: &mut Window, cx: &mut App) -> impl
 const MERMAID_FONT_SIZE: f64 = 13.0;
 const MERMAID_LAYOUT_WIDTH: f64 = 640.0;
 const MERMAID_MEASURE_SIZE: f32 = 64.0;
+const MERMAID_MAX_RADIUS: f64 = 4.0;
 
 fn mermaid_options(cx: &App) -> pele::RenderOptions {
     let theme = cx.theme();
@@ -3349,7 +3350,7 @@ fn mermaid_options(cx: &App) -> pele::RenderOptions {
     mermaid_render_options(
         MermaidThemeColors::from_app(cx),
         [theme.font_family.as_ref(), theme.mono_font_family.as_ref()],
-        f64::from(theme.radius),
+        f64::from(theme.radius).min(MERMAID_MAX_RADIUS),
         Some(Arc::new(measurer)),
     )
 }
