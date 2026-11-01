@@ -90,6 +90,7 @@ pub struct RenderOptions {
     pub acc_descr: Option<String>,
     pub config: Value,
     pub theme: Theme,
+    pub transparent: bool,
     #[serde(skip)]
     pub measurer: Option<Arc<dyn text::TextMeasurer>>,
 }
@@ -114,6 +115,7 @@ impl Default for RenderOptions {
             acc_descr: None,
             config: Value::Object(Map::new()),
             theme: Theme::default(),
+            transparent: false,
             measurer: None,
         }
     }

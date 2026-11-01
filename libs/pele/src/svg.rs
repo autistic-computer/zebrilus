@@ -106,13 +106,20 @@ pub fn document(
     } else {
         ""
     };
+    let canvas = if options.transparent {
+        String::new()
+    } else {
+        format!(
+            "<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>",
+            esc(&options.theme.background)
+        )
+    };
     format!(
-        "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"pele pele-{kind}\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" color=\"{}\" role=\"graphics-document document\" aria-roledescription=\"{kind}\"{accessibility}{responsive}>{head}<rect width=\"100%\" height=\"100%\" fill=\"{}\"/>{content}</svg>",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" class=\"pele pele-{kind}\" viewBox=\"0 0 {width} {height}\" width=\"{width}\" height=\"{height}\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\" color=\"{}\" role=\"graphics-document document\" aria-roledescription=\"{kind}\"{accessibility}{responsive}>{head}{canvas}{content}</svg>",
         esc(&options.font_family),
         num(options.font_size),
         esc(&options.theme.foreground),
         esc(&options.theme.foreground),
-        esc(&options.theme.background),
     )
 }
 
@@ -286,6 +293,19 @@ mod tests {
             output,
             document("flowchart", 100.0, 100.0, &options, &content)
         );
+    }
+
+    #[test]
+    fn a_transparent_document_paints_no_canvas() {
+        let painted = document("flowchart", 100.0, 100.0, &RenderOptions::default(), "");
+        assert!(painted.contains("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>"));
+        let options = RenderOptions {
+            transparent: true,
+            ..RenderOptions::default()
+        };
+        let bare = document("flowchart", 100.0, 100.0, &options, "");
+        assert!(!bare.contains("<rect"));
+        assert!(bare.ends_with("></svg>"));
     }
 
     #[test]
