@@ -126,7 +126,6 @@ pub(crate) struct ChooseFolder {
 }
 
 pub(crate) struct AgentChosen {
-    pub(crate) pane: PaneId,
     pub(crate) window: WindowId,
     pub(crate) from: SessionId,
 }
@@ -225,7 +224,6 @@ impl PanePickerView {
             mux.execute(command);
         }
         cx.emit(AgentChosen {
-            pane: self.pane,
             window: chat.window,
             from: chat.session,
         });

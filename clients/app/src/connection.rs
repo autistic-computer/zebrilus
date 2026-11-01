@@ -14,7 +14,7 @@ use zz_client::{
 };
 use zz_protocol::{
     AgentProvider, CommandInvocation, CommandRequest, CommandResponse, InputMessage, PaneId,
-    ProtocolMessage, ServerError, SessionId,
+    PaneKindSnapshot, ProtocolMessage, ServerError, SessionId,
 };
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -70,7 +70,8 @@ pub struct Connection {
     providers_requested: bool,
     pub agent_events: HashMap<PaneId, Vec<(u64, Vec<u8>)>>,
     agent_cursors: HashMap<PaneId, AgentCursor>,
-    agent_lenses: BTreeSet<PaneId>,
+    watched_agents: BTreeSet<PaneId>,
+    pub flips: zz_client::agent_flip::AgentFlips,
     terminal_images: crate::terminal_images::TerminalImages,
     pasted_images: crate::terminal_images::PastedImages,
     prefix_cancel_pending: Option<u64>,
@@ -123,7 +124,8 @@ impl Connection {
             providers_requested: false,
             agent_events: HashMap::new(),
             agent_cursors: HashMap::new(),
-            agent_lenses: BTreeSet::new(),
+            watched_agents: BTreeSet::new(),
+            flips: zz_client::agent_flip::AgentFlips::default(),
             terminal_images: crate::terminal_images::TerminalImages::default(),
             pasted_images: crate::terminal_images::PastedImages::default(),
             prefix_cancel_pending: None,
@@ -158,33 +160,91 @@ impl Connection {
     }
 
     #[must_use]
-    pub fn agent_lens_open(&self, pane: PaneId) -> bool {
-        self.agent_lenses.contains(&pane)
+    pub fn terminal_flip(&self, pane: PaneId) -> Option<zz_client::agent_flip::FlipTarget> {
+        self.pane_snapshot(pane)
+            .and_then(zz_client::agent_flip::flip_target)
     }
 
-    pub fn open_agent_lens(&mut self, pane: PaneId, cx: &mut Context<Self>) {
-        let watched = self.agent_watched(pane);
-        if !self.agent_lenses.insert(pane) {
-            return;
+    #[must_use]
+    pub fn agent_watched(&self, pane: PaneId) -> bool {
+        self.watched_agents.contains(&pane)
+    }
+
+    fn watch_agent_panes(&mut self, cx: &mut Context<Self>) {
+        let attached = self.core.attached_session();
+        let wanted = self
+            .core
+            .snapshot()
+            .sessions
+            .iter()
+            .filter(|session| Some(session.id) == attached)
+            .flat_map(|session| &session.windows)
+            .flat_map(|window| &window.panes)
+            .filter(|(_, pane)| matches!(pane.kind, PaneKindSnapshot::Agent(_)))
+            .map(|(id, _)| *id)
+            .collect::<BTreeSet<_>>();
+        for pane in self
+            .watched_agents
+            .difference(&wanted)
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.forget_agent_stream(pane);
         }
-        if !watched {
+        let added = wanted
+            .difference(&self.watched_agents)
+            .copied()
+            .collect::<Vec<_>>();
+        self.watched_agents = wanted;
+        for pane in added {
             self.forget_agent_stream(pane);
             self.request_agent_replay(pane, cx);
         }
+    }
+
+    pub fn flip(&mut self, pane: PaneId, cx: &mut Context<Self>) {
+        let Some(target) = self
+            .pane_snapshot(pane)
+            .and_then(zz_client::agent_flip::flip_target)
+        else {
+            return;
+        };
+        if !self.connected || self.core.attached_read_only() {
+            return;
+        }
+        let mut flips = std::mem::take(&mut self.flips);
+        flips.press(pane, target.to, |command| Some(self.invoke(command, cx)));
+        self.flips = flips;
         cx.notify();
     }
 
-    pub fn close_agent_lens(&mut self, pane: PaneId, cx: &mut Context<Self>) {
-        if self.agent_lenses.remove(&pane) {
-            if !self.agent_watched(pane) {
-                self.forget_agent_stream(pane);
-            }
+    pub fn choose_flip(
+        &mut self,
+        pane: PaneId,
+        mode: Option<zz_client::agent_flip::FlipMode>,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(mode) = mode else {
+            self.flips.dismiss(pane);
             cx.notify();
+            return;
+        };
+        if !self.connected || self.core.attached_read_only() {
+            return;
         }
+        let mut flips = std::mem::take(&mut self.flips);
+        flips.choose(pane, mode, |command| Some(self.invoke(command, cx)));
+        self.flips = flips;
+        cx.notify();
     }
 
-    fn agent_watched(&self, pane: PaneId) -> bool {
-        self.agent_lenses.contains(&pane)
+    fn pane_snapshot(&self, pane: PaneId) -> Option<&zz_protocol::PaneSnapshot> {
+        self.core
+            .snapshot()
+            .sessions
+            .iter()
+            .flat_map(|session| &session.windows)
+            .find_map(|window| window.panes.get(&pane))
     }
 
     fn forget_agent_stream(&mut self, pane: PaneId) {
@@ -192,23 +252,10 @@ impl Connection {
         self.agent_cursors.remove(&pane);
     }
 
-    fn replay_agent_lenses(&mut self, cx: &mut Context<Self>) {
-        let watched = self.agent_lenses.iter().copied().collect::<Vec<_>>();
+    fn replay_agent_streams(&mut self, cx: &mut Context<Self>) {
+        let watched = self.watched_agents.iter().copied().collect::<Vec<_>>();
         for pane in watched {
             self.request_agent_replay(pane, cx);
-        }
-    }
-
-    fn close_stale_agent_lenses(&mut self) {
-        let stale = self
-            .agent_lenses
-            .iter()
-            .copied()
-            .filter(|pane| self.terminal_agent(*pane).is_none())
-            .collect::<Vec<_>>();
-        for pane in stale {
-            self.agent_lenses.remove(&pane);
-            self.forget_agent_stream(pane);
         }
     }
 
@@ -709,7 +756,7 @@ impl Connection {
         );
     }
 
-    pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) {
+    pub fn invoke(&mut self, command: CommandInvocation, cx: &mut Context<Self>) -> u64 {
         let request_id = self.next_request_id();
         self.commands.insert(request_id, command.name.clone());
         self.send(
@@ -720,6 +767,7 @@ impl Connection {
             }),
             cx,
         );
+        request_id
     }
 
     pub fn attach(&mut self, session: SessionId, cx: &mut Context<Self>) {
@@ -840,7 +888,7 @@ impl Connection {
                     if self.background {
                         self.status = "Connected".into();
                         self.send(ProtocolMessage::Resync, cx);
-                        self.replay_agent_lenses(cx);
+                        self.replay_agent_streams(cx);
                     } else if !self.attaching {
                         self.attach_target(target, cx);
                     }
@@ -854,14 +902,24 @@ impl Connection {
                     self.pasted_images.clear();
                     self.agent_events.clear();
                     self.agent_cursors.clear();
-                    self.close_stale_agent_lenses();
-                    self.replay_agent_lenses(cx);
+                    self.watched_agents.clear();
+                    self.watch_agent_panes(cx);
                     self.send(
                         ProtocolMessage::Input(InputMessage::ClientFocus {
                             focused: self.focused,
                         }),
                         cx,
                     );
+                }
+                CoreEvent::CommandResponse(CommandResponse::Error {
+                    request_id, error, ..
+                }) if self.flips.owns(*request_id) => {
+                    self.commands.remove(request_id);
+                    let message = error.to_string();
+                    if let Some(error) = self.flips.settle(*request_id, Err(&message)) {
+                        self.notify_error(format!("flip-agent: {error}"), cx);
+                    }
+                    cx.notify();
                 }
                 CoreEvent::CommandResponse(CommandResponse::Error {
                     request_id, error, ..
@@ -890,6 +948,10 @@ impl Connection {
                 }
                 CoreEvent::CommandResponse(CommandResponse::Success { request_id, .. }) => {
                     self.commands.remove(request_id);
+                    if self.flips.owns(*request_id) {
+                        self.flips.settle(*request_id, Ok(()));
+                        cx.notify();
+                    }
                 }
                 CoreEvent::ClientMessage { text, .. } => self.status.clone_from(text),
                 CoreEvent::Clipboard { text, .. } => {
@@ -938,7 +1000,10 @@ impl Connection {
                     }
                     _ => {}
                 },
-                CoreEvent::SnapshotChanged => self.close_stale_agent_lenses(),
+                CoreEvent::SnapshotChanged => {
+                    self.watch_agent_panes(cx);
+                    self.flips.observe(self.core.snapshot().as_ref());
+                }
                 CoreEvent::AgentUpdates {
                     pane,
                     first_seq,
@@ -972,7 +1037,7 @@ impl Connection {
                 CoreEvent::PaneRemoved { pane } => {
                     self.history.forget(*pane);
                     self.pasted_images.remove_pane(*pane);
-                    self.agent_lenses.remove(pane);
+                    self.watched_agents.remove(pane);
                     self.forget_agent_stream(*pane);
                 }
                 CoreEvent::Detached { .. } if self.background => {
@@ -1739,15 +1804,17 @@ mod tests {
 
     #[cfg(not(target_family = "wasm"))]
     #[ala::test]
-    fn an_agent_stream_is_kept_only_while_a_lens_watches_it(cx: &mut ala::TestAppContext) {
+    fn an_agent_pane_is_watched_and_flips_through_a_busy_choice(cx: &mut ala::TestAppContext) {
         use ala::AppContext as _;
+        use zz_client::agent_flip::{Flip, FlipMode};
         use zz_protocol::{
-            AgentProvider, Event, EventPayload, LayoutNode, MuxSnapshot, PaneId, PaneKindSnapshot,
-            PaneSnapshot, PaneSummary, SessionId, SessionSnapshot, WindowId, WindowSnapshot,
+            AgentDescriptor, AgentProvider, CommandResponse, Event, EventPayload, LayoutNode,
+            MuxSnapshot, PaneId, PaneKindSnapshot, PaneSnapshot, PaneSummary, ServerError,
+            SessionId, SessionSnapshot, WindowId, WindowSnapshot,
         };
 
         let pane = PaneId(1);
-        let snapshot = |generation, program: &str| MuxSnapshot {
+        let snapshot = |generation, kind: PaneKindSnapshot| MuxSnapshot {
             generation,
             sessions: vec![SessionSnapshot {
                 id: SessionId(1),
@@ -1767,7 +1834,7 @@ mod tests {
                         PaneSnapshot {
                             id: pane,
                             title: "test".into(),
-                            kind: PaneKindSnapshot::Terminal,
+                            kind,
                             synchronized_input: false,
                             bell: false,
                             dead: false,
@@ -1778,7 +1845,7 @@ mod tests {
                             mode: None,
                             status: None,
                             summary: PaneSummary {
-                                process: vec![program.to_owned()],
+                                process: vec!["claude".to_owned()],
                                 ..PaneSummary::default()
                             },
                         },
@@ -1809,6 +1876,12 @@ mod tests {
             first_seq: seq,
             items: vec![blob(seq)],
         };
+        let chat = || {
+            PaneKindSnapshot::Agent(AgentDescriptor {
+                provider: AgentProvider::ClaudeCode,
+                ..AgentDescriptor::default()
+            })
+        };
         let connection = cx.new(super::Connection::new);
         let sent = connection.update(cx, |connection, _| connection.record_input_for_test());
         let replays = || {
@@ -1822,36 +1895,94 @@ mod tests {
                 })
                 .count()
         };
+        let flips = || {
+            sent.borrow()
+                .iter()
+                .filter_map(|message| match message {
+                    ProtocolMessage::CommandRequest(request)
+                        if request.command.name == "flip-agent" =>
+                    {
+                        Some((
+                            request.request_id,
+                            request
+                                .command
+                                .args
+                                .iter()
+                                .map(|arg| arg.as_str().to_owned())
+                                .collect::<Vec<_>>(),
+                        ))
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        let reply = |request_id, error: Option<&str>| {
+            ProtocolMessage::CommandResponse(match error {
+                Some(error) => CommandResponse::Error {
+                    request_id,
+                    error: ServerError::InvalidCommand(error.to_owned()),
+                    output: zz_protocol::RawText::default(),
+                },
+                None => CommandResponse::Success {
+                    request_id,
+                    output: zz_protocol::RawText::default(),
+                    exit_code: 0,
+                    stderr: String::new(),
+                    stdout_claim: zz_protocol::StdoutClaim::default(),
+                },
+            })
+        };
         connection.update(cx, |connection, cx| {
+            connection.connected = true;
             connection.handle_message_for_test(
-                event(1, EventPayload::Snapshot(snapshot(1, "claude"))),
+                ProtocolMessage::Attached {
+                    session: SessionId(1),
+                    snapshot: snapshot(1, PaneKindSnapshot::Terminal),
+                    read_only: false,
+                    client_flags: String::new(),
+                },
                 cx,
             );
             assert_eq!(
                 connection.terminal_agent(pane),
                 Some(AgentProvider::ClaudeCode)
             );
+            assert!(!connection.agent_watched(pane));
             connection.handle_message_for_test(event(2, updates(1)), cx);
             assert!(!connection.agent_events.contains_key(&pane));
 
-            connection.open_agent_lens(pane, cx);
-            assert!(connection.agent_lens_open(pane));
-            assert_eq!(replays(), 1);
-            connection.handle_message_for_test(event(3, updates(1)), cx);
-            assert_eq!(connection.agent_events[&pane].len(), 1);
-
-            connection.close_agent_lens(pane, cx);
-            connection.handle_message_for_test(event(4, updates(2)), cx);
-            assert!(!connection.agent_events.contains_key(&pane));
-
-            connection.open_agent_lens(pane, cx);
-            assert_eq!(replays(), 2, "a reopened lens replays from the start");
-            connection.handle_message_for_test(event(5, updates(1)), cx);
-            assert_eq!(connection.agent_events[&pane].len(), 1);
+            connection.flip(pane, cx);
+            let (busy, args) = flips()[0].clone();
+            assert_eq!(args, ["-t", "%1"]);
+            connection.handle_message_for_test(reply(busy, Some("busy: a turn")), cx);
+            assert_eq!(
+                connection.flips.state(pane),
+                &Flip::Busy("a turn".to_owned())
+            );
+            connection.choose_flip(pane, Some(FlipMode::WhenIdle), cx);
+            let (armed, args) = flips()[1].clone();
+            assert_eq!(args, ["-t", "%1", "--when-idle"]);
+            connection.handle_message_for_test(reply(armed, None), cx);
+            assert_eq!(connection.flips.state(pane), &Flip::Armed);
 
             connection
-                .handle_message_for_test(event(7, EventPayload::Snapshot(snapshot(2, "zsh"))), cx);
-            assert!(!connection.agent_lens_open(pane));
+                .handle_message_for_test(event(3, EventPayload::Snapshot(snapshot(2, chat()))), cx);
+            assert_eq!(connection.flips.state(pane), &Flip::Idle);
+            assert!(connection.agent_watched(pane));
+            assert_eq!(replays(), 1);
+            connection.handle_message_for_test(event(4, updates(1)), cx);
+            assert_eq!(connection.agent_events[&pane].len(), 1);
+
+            connection.handle_message_for_test(
+                event(
+                    5,
+                    EventPayload::Snapshot(snapshot(3, PaneKindSnapshot::Terminal)),
+                ),
+                cx,
+            );
+            assert!(!connection.agent_watched(pane));
+            assert!(!connection.agent_events.contains_key(&pane));
+            connection.handle_message_for_test(event(6, updates(2)), cx);
             assert!(!connection.agent_events.contains_key(&pane));
         });
     }

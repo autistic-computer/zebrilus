@@ -22,26 +22,18 @@ pub fn suggestion_list_height(count: usize) -> Pixels {
 pub enum SlashKind {
     Command,
     Skill,
-    Terminal,
 }
 
 impl SlashKind {
     #[must_use]
-    pub const fn of(terminal: bool, skill: bool) -> Self {
-        if terminal {
-            Self::Terminal
-        } else if skill {
-            Self::Skill
-        } else {
-            Self::Command
-        }
+    pub const fn of(skill: bool) -> Self {
+        if skill { Self::Skill } else { Self::Command }
     }
 
     const fn badge(self) -> Option<&'static str> {
         match self {
             Self::Command => None,
             Self::Skill => Some("skill"),
-            Self::Terminal => Some("opens terminal"),
         }
     }
 }

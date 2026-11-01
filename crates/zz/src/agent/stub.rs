@@ -32,7 +32,7 @@ impl AgentController {
         _images: Vec<Arc<ala::Image>>,
         _cx: &mut Context<Self>,
     ) -> Result<(), Arc<str>> {
-        Err("the agent lens is not included in this build".into())
+        Err("agent chats are not included in this build".into())
     }
 
     pub(crate) fn is_shutting_down(&self) -> bool {
@@ -80,10 +80,6 @@ impl AgentView {
     }
 }
 
-pub(crate) struct ShowTerminal;
-
-impl ala::EventEmitter<ShowTerminal> for AgentView {}
-
 impl Render for AgentView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         div()
@@ -92,6 +88,6 @@ impl Render for AgentView {
             .items_center()
             .justify_center()
             .text_color(cx.theme().foreground.muted())
-            .child("The agent lens is not included in this build")
+            .child("Agent chats are not included in this build")
     }
 }
