@@ -10213,6 +10213,12 @@ impl Shared {
                         }
                         agent_panes_opened.push((*pane, replaced));
                     }
+                    MuxEffect::AgentForked { pane, at } => {
+                        #[cfg(feature = "agent")]
+                        inner.agent_forks.insert(*pane, at.clone());
+                        #[cfg(not(feature = "agent"))]
+                        let _ = (pane, at);
+                    }
                     MuxEffect::PaneCreated {
                         kind: PaneKindSnapshot::Browser(_) | PaneKindSnapshot::Picker,
                         ..
@@ -33022,13 +33028,35 @@ impl Shared {
     }
 
     fn open_agent_pane(self: &Arc<Self>, pane: PaneId, replaced: Option<Arc<TerminalSession>>) {
-        let cli = self.inner.lock().cli_exits.remove(&pane);
+        let (cli, fork) = {
+            let mut inner = self.inner.lock();
+            (
+                inner.cli_exits.remove(&pane),
+                inner.agent_forks.remove(&pane),
+            )
+        };
         let running = move |terminal: &Option<Arc<TerminalSession>>| {
             terminal
                 .as_ref()
                 .is_some_and(|terminal| terminal.completion().is_none())
                 || cli.is_some_and(crate::pid_alive)
         };
+        if let Some(at) = fork {
+            let shared = Arc::downgrade(&self.server_owner());
+            let spawned = std::thread::Builder::new()
+                .name("zz-agent-fork".to_owned())
+                .spawn(move || {
+                    let Some(shared) = shared.upgrade() else {
+                        return;
+                    };
+                    shared.fork_agent_session(pane, at.as_deref());
+                    shared.open_agent_pane(pane, replaced);
+                });
+            if let Err(error) = spawned {
+                log::warn!(target: "zz::agent", "could not fork the session for {pane}: {error}");
+            }
+            return;
+        }
         if running(&replaced) {
             let shared = Arc::downgrade(&self.server_owner());
             let spawned = std::thread::Builder::new()
@@ -33060,6 +33088,46 @@ impl Shared {
         self.refresh_agent_visibility();
         if !runtime.open(pane, spec) {
             log::warn!(target: "zz::agent", "{pane} already has an agent runtime");
+        }
+    }
+
+    fn fork_agent_session(&self, pane: PaneId, at: Option<&str>) {
+        let source = match &self
+            .inner
+            .lock()
+            .engine
+            .state
+            .pane(pane)
+            .map(|pane| &pane.kind)
+        {
+            Some(PaneKind::Agent(agent)) => agent.session_id.clone().map(|id| (agent.provider, id)),
+            _ => None,
+        };
+        let Some((provider, source)) = source else {
+            return;
+        };
+        let forked = match provider {
+            AgentProvider::ClaudeCode => crate::agent_fork::claude_config()
+                .ok_or_else(|| "HOME is not set".to_owned())
+                .and_then(|config| crate::agent_fork::claude(&config, &source, at)),
+            AgentProvider::Codex => crate::agent_fork::codex_home()
+                .ok_or_else(|| "HOME is not set".to_owned())
+                .and_then(|home| crate::agent_fork::codex(&home, &source, at)),
+        };
+        let session = forked
+            .inspect_err(|error| {
+                log::warn!(target: "zz::agent", "could not fork {source} for {pane}, starting a new chat: {error}");
+            })
+            .ok();
+        let changed = self
+            .inner
+            .lock()
+            .engine
+            .state
+            .update_agent(pane, |agent| agent.session_id = session)
+            .unwrap_or(false);
+        if changed {
+            self.publish_snapshot_state();
         }
     }
 
@@ -34957,6 +35025,8 @@ struct ServerState {
     armed_flips: BTreeSet<PaneId>,
     #[cfg(feature = "agent")]
     cli_exits: BTreeMap<PaneId, u32>,
+    #[cfg(feature = "agent")]
+    agent_forks: BTreeMap<PaneId, Option<String>>,
     artifacts: artifacts::Artifacts,
     artifacts_watching: bool,
     terminal_spawns: BTreeMap<PaneId, TerminalSpawn>,

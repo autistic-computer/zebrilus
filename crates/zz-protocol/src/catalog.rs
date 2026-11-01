@@ -1879,7 +1879,7 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
         name: "select-pane-kind",
         aliases: &[],
         description: "Materialize a pending pane as a terminal, browser, editor, or agent chat, or turn a terminal into an agent chat and back",
-        usage: "[-c start-directory] [-t target-pane] [--resume session-id] [--model model] [--effort effort] pane-kind [shell-command [argument ...]]",
+        usage: "[-c start-directory] [-t target-pane] [--resume session-id] [--fork] [--at message-id] [--model model] [--effort effort] pane-kind [shell-command [argument ...]]",
         options: &[
             CommandOptionSpec::value("-t", Pane, "target pane"),
             CommandOptionSpec::value(
@@ -1888,6 +1888,12 @@ pub static COMMAND_SPECS: &[CommandSpec] = &[
                 "start a terminal or agent in this directory",
             ),
             CommandOptionSpec::value("--resume", FreeForm, "agent session to resume"),
+            CommandOptionSpec::flag("--fork", "continue in a copy of the resumed session"),
+            CommandOptionSpec::value(
+                "--at",
+                FreeForm,
+                "with --fork, copy the session through this message's turn",
+            ),
             CommandOptionSpec::value("--model", FreeForm, "model the agent starts with"),
             CommandOptionSpec::value("--effort", FreeForm, "effort the agent starts with"),
         ],

@@ -32,6 +32,7 @@ const TMUX_SHIM_DIRECTORY_ENVIRONMENT_VARIABLE: &str = "ZZ_TMUX_SHIM_DIR";
 
 #[cfg(feature = "agent")]
 mod agent;
+pub mod agent_fork;
 #[cfg_attr(not(feature = "agent"), allow(dead_code))]
 mod bounded_command;
 mod daemon;
